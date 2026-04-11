@@ -1,0 +1,13 @@
+# Invalid guard operator
+@lexer
+state beg = 1
+tokens
+    ident
+    eof
+    err
+@ beg ~~ 1 → ident
+[a-zA-Z]+ → ident
+. → err
+@parser
+@conflicts = 0
+program! = IDENT → (module 1)

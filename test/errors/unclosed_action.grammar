@@ -1,0 +1,13 @@
+# Lexer action missing closing brace
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n' → newline, {beg = 1
+[a-zA-Z]+ → ident
+. → err
+@parser
+@conflicts = 0
+program! = IDENT → (module 1)

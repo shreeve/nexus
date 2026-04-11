@@ -1,0 +1,12 @@
+# State variable with non-numeric value
+@lexer
+state beg = hello
+tokens
+    ident
+    eof
+    err
+[a-zA-Z]+ → ident
+. → err
+@parser
+@conflicts = 0
+program! = IDENT → (module 1)

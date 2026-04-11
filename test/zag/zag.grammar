@@ -1,0 +1,487 @@
+# ==============================================================================
+# zag.grammar — Zag Language Lexer and Parser Grammar
+# ==============================================================================
+#
+# Defines the lexer and parser for Zag. Processed by nexus to
+# generate src/parser.zig.
+#
+# Usage: nexus zag.grammar src/parser.zig
+#
+# Zag is a high-performance systems language with elegant syntax that
+# compiles to Zig. This grammar defines the v0 bootstrap subset.
+# ==============================================================================
+
+@lang = "zag"
+
+@lexer
+
+# ==============================================================================
+# STATE VARIABLES
+# ==============================================================================
+
+state
+    beg   = 1       # beginning of line
+    paren = 0       # parenthesis depth
+    brace = 0       # brace depth
+
+after
+    beg = 0         # cleared after each token
+
+# ==============================================================================
+# TOKEN TYPES
+# ==============================================================================
+
+tokens
+    # Literals
+    ident           # Identifier: variable, function, type name
+    integer         # Integer: 0, 1, 42, 1000
+    real            # Decimal: 3.14, .5, 2.0
+    string_sq       # Single-quoted string: 'hello world'
+    string_dq       # Double-quoted string: "hello #{name}"
+    true            # true
+    false           # false
+
+    # Operators — arithmetic
+    plus            # +
+    minus           # - (infix subtraction)
+    minus_prefix    # - (unary negation, rewriter-classified)
+    star            # *
+    slash           # /
+    percent         # %
+    power           # **
+
+    # Operators — comparison
+    eq              # ==
+    ne              # !=
+    lt              # <
+    gt              # >
+    le              # <=
+    ge              # >=
+
+    # Operators — logical
+    and_sym         # &&
+    or_sym          # ||
+    not_sym         # !
+    question        # ?
+    nullish         # ??
+    bar             # |
+    ampersand       # &
+    caret           # ^
+    tilde           # ~
+    lshift          # <<
+    rshift          # >>
+    at              # @
+
+    # Operators — assignment
+    assign          # =
+    const_assign    # =!
+    plus_assign     # +=
+    minus_assign    # -=
+    star_assign     # *=
+    slash_assign    # /=
+
+    # Punctuation
+    lparen          # (
+    rparen          # )
+    lbrace          # {
+    rbrace          # }
+    lbracket        # [
+    rbracket        # ]
+    comma           # ,
+    colon           # :
+    arrow           # ->
+    fat_arrow       # =>
+    dot             # .
+    dotdot          # ..
+    pipe            # |>
+
+    # Whitespace and structure
+    indent          # Indentation increase
+    outdent         # Indentation decrease
+    newline         # Line terminator
+    post_if         # if (postfix, after return/break/continue)
+    dot_lbrace      # .{ (anonymous struct/array init)
+    bar_capture     # | (capture delimiter, rewriter-classified)
+    comment         # # through end of line
+    eof             # End of input
+    err             # Lexer error
+
+# ==============================================================================
+# COMMENTS
+# ==============================================================================
+
+'#' [^\n]*                                  → comment
+
+# ==============================================================================
+# NEWLINES AND LINE CONTINUATION
+# ==============================================================================
+
+"\\\n"                                      → skip         # line continuation
+"\r\n"                                      → newline, {beg = 1}
+'\n'                                        → newline, {beg = 1}
+'\r'                                        → newline, {beg = 1}
+
+# ==============================================================================
+# STRINGS
+# ==============================================================================
+
+'"' ([^"\\$\n] | '\\' . | '$')* '"'         → string_dq
+"'" ([^'\n] | "''")* "'"                    → string_sq
+
+# ==============================================================================
+# NUMBERS
+# ==============================================================================
+
+'0' [xX] [0-9a-fA-F]+                       → integer # hex
+'0' [bB] [01]+                              → integer # binary
+'0' [oO] [0-7]+                             → integer # octal
+[0-9]* '.' [0-9]+                           → real
+[0-9]+                                      → integer
+
+# ==============================================================================
+# MULTI-CHARACTER OPERATORS (longer patterns first)
+# ==============================================================================
+
+"**"                                        → power
+"=="                                        → eq
+"!="                                        → ne
+"<="                                        → le
+">="                                        → ge
+"&&"                                        → and_sym
+"||"                                        → or_sym
+"=!"                                        → const_assign
+"+="                                        → plus_assign
+"-="                                        → minus_assign
+"*="                                        → star_assign
+"/="                                        → slash_assign
+"->"                                        → arrow
+"=>"                                        → fat_arrow
+"|>"                                        → pipe
+"??"                                        → nullish
+".."                                        → dotdot
+"<<"                                        → lshift
+">>"                                        → rshift
+
+# ==============================================================================
+# SINGLE-CHARACTER OPERATORS AND PUNCTUATION
+# ==============================================================================
+
+'+'                                         → plus
+'-'                                         → minus
+'*'                                         → star
+'/'                                         → slash
+'%'                                         → percent
+'<'                                         → lt
+'>'                                         → gt
+'!'                                         → not_sym
+'?'                                         → question
+'|'                                         → bar
+'&'                                         → ampersand
+'^'                                         → caret
+'~'                                         → tilde
+'@'                                         → at
+'='                                         → assign
+'('                                         → lparen, {paren++}
+')'                                         → rparen, {paren--}
+'{'                                         → lbrace, {brace++}
+'}'                                         → rbrace, {brace--}
+'['                                         → lbracket
+']'                                         → rbracket
+','                                         → comma
+':'                                         → colon
+'.'                                         → dot
+
+# ==============================================================================
+# IDENTIFIERS
+# ==============================================================================
+
+[a-zA-Z_][a-zA-Z0-9_]* '?'?                 → ident
+
+# ==============================================================================
+# FALLBACK
+# ==============================================================================
+
+.                                           → err
+
+# ==============================================================================
+# PARSER
+# ==============================================================================
+
+@parser
+
+@conflicts = 18
+
+@as = [ident, keyword]
+
+# ==============================================================================
+# PROGRAM STRUCTURE
+# ==============================================================================
+
+name = IDENT
+
+program! = body                             → (module ...1)
+expr!    = expr                             → 1
+
+body     = stmt                             → (1)
+         | body NEWLINE stmt                → (...1 3)
+         | body NEWLINE                     → 1
+
+stmt     = use
+         | decl
+         | zig
+         | extvar
+         | ":" name stmt                    → (labeled 2 3)
+         | expr
+
+extvar   = EXTERN CONST name ":" type       → (extern_const 3 5)
+         | EXTERN name ":" type             → (extern_var 2 4)
+
+zig      = ZIG STRING_SQ                    → (zig 2)
+         | ZIG STRING_DQ                    → (zig 2)
+
+decl     = defn
+         | PUB decl                         → (pub 2)
+         | EXTERN decl                      → (extern 2)
+         | EXPORT decl                      → (export 2)
+         | PACKED decl                      → (packed 2)
+         | CALLCONV name decl               → (callconv 2 3)
+
+defn     = fun | sub | enum | struct | errors | typedef | test | opaq
+
+block    = INDENT body OUTDENT              → (block ...2)
+         | INDENT      OUTDENT              → (block)
+
+# ==============================================================================
+# DECLARATIONS
+# ==============================================================================
+
+fun      = FUN name params returns block    → (fun 2 3 4 5)
+         | FUN name params         block    → (fun 2 3 _ 4)
+         | FUN name        returns block    → (fun 2 _ 3 4)
+         | FUN name                block    → (fun 2 _ _ 3)
+
+sub      = SUB name params block            → (sub 2 3 _ 4)
+         | SUB name        block            → (sub 2 _ _ 3)
+
+use      = USE name                         → (use 2)
+typedef  = TYPE name "=" type               → (type 2 4)
+test     = TEST STRING_DQ block             → (test 2 3)
+opaq     = OPAQUE name                      → (opaque 2)
+
+enum     = ENUM   name INDENT members OUTDENT → (enum 2 ...4)
+errors   = ERROR  name INDENT members OUTDENT → (errors 2 ...4)
+struct   = STRUCT name INDENT members OUTDENT → (struct 2 ...4)
+
+# ==============================================================================
+# BUILDING BLOCKS — shared by declarations
+# ==============================================================================
+
+members  = member                           → (1)
+         | members NEWLINE member           → (...1 3)
+         | members NEWLINE                  → 1
+member   = field
+         | name "=" expr                    → (valued 1 3)
+         | fun
+         | sub
+
+field    = COMPTIME name ":" type           → (comptime_param 2 4)
+         | name                             → 1
+         | name ":" type                    → (: 1 3)
+         | name ":" type ALIGN atom         → (aligned 1 3 5)
+         | name ":" type "=" expr           → (default 1 3 5)
+
+params   = L(field)                         → (...1)
+returns  = "->" type                        → 2
+
+type     = name
+         | "!"                  type        → (error_union 2)
+         | "?"                  type        → (? 2)
+         | "*"                  type        → (ptr 2)
+         | "*" CONST            type        → (const_ptr 3)
+         | "*" VOLATILE         type        → (volatile_ptr 3)
+         | "["              "]" type        → (slice 3)
+         | "[" ":" atom     "]" type        → (sentinel_slice 3 5)
+         | "[" INTEGER      "]" type        → (array_type 2 4)
+         | "[" "*"          "]" type        → (many_ptr 4)
+         | "[" "*" ":" atom "]" type        → (sentinel_ptr 4 6)
+         | FN "(" L(type)   ")" type        → (fn_type 3 5)
+         | FN "("           ")" type        → (fn_type _ 4)
+
+# ==============================================================================
+# EXPRESSIONS
+# ==============================================================================
+
+expr     = if
+         | while
+         | for
+         | match
+         | postif
+         | coalesce
+         | catch
+         | return
+         | break
+         | continue
+         | defer
+         | errdefer
+         | comptime
+         | inline
+         | assign
+         | const
+         | @infix
+
+# --- Control flow ---
+
+cond     = expr
+         | expr AS  name                     → (as 1 3)
+         | expr BAR_CAPTURE name BAR_CAPTURE → (as 1 3)
+
+if       = IF cond block ELSE AS name block → (if 2 3 6 7)
+         | IF cond block ELSE AS name if    → (if 2 3 6 7)
+         | IF cond block ELSE if            → (if 2 3 5)
+         | IF cond block ELSE block         → (if 2 3 5)
+         | IF cond block                    → (if 2 3)
+
+while    = WHILE cond          block ELSE block → (while 2 _ 3 else:5)
+         | WHILE cond ":" expr block ELSE block → (while 2 4 5 else:7)
+         | WHILE cond          block        → (while 2 _ 3)
+         | WHILE cond ":" expr block        → (while 2 4 5)
+
+for      = FOR "*" name          IN expr block ELSE block → (for_ptr 3 _ 5 6 else:8)
+         | FOR "*" name "," name IN expr block ELSE block → (for_ptr 3 5 7 8 else:10)
+         | FOR          name     IN expr block ELSE block → (for 2 _ 4 5 else:7)
+         | FOR name "," name     IN expr block ELSE block → (for 2 4 6 7 else:9)
+         | FOR "*" name          IN expr block  → (for_ptr 3 _ 5 6)
+         | FOR "*" name "," name IN expr block  → (for_ptr 3 5 7 8)
+         | FOR          name     IN expr block  → (for 2 _ 4 5)
+         | FOR name "," name     IN expr block  → (for 2 4 6 7)
+
+match    = MATCH expr INDENT arms OUTDENT   → (match 2 ...4)
+arms     = arm                              → (1)
+         | arms NEWLINE arm                 → (...1 3)
+         | arms NEWLINE                     → 1
+patatom  = atom
+         | "." name                         → (enum_pattern 2)
+
+pattern  = patatom
+         | patatom ".." patatom             → (range_pattern 1 3)
+
+arm      = pattern AS name "=>" expr        → (arm 1 3 5)
+         | pattern AS name block            → (arm 1 3 4)
+         | pattern "=>" expr                → (arm 1 _ 3)
+         | pattern block                    → (arm 1 _ 2)
+
+# --- Expression modifiers ---
+
+postif   = @infix IF expr ELSE expr         → (if 3 1 5)
+         | @infix IF expr                   → (if 3 1)
+
+coalesce = @infix "??"          expr        → (?? 1 3)
+catch    = @infix CATCH AS name expr        → (catch 1 4 5)
+         | @infix CATCH         expr        → (catch 1 3)
+
+# --- Flow control ---
+
+return   = RETURN expr POST_IF expr         → (return value:2 if:4)
+         | RETURN POST_IF expr              → (return value:_ if:3)
+         | RETURN expr                      → (return value:2)
+         | RETURN                           → (return)
+break    = BREAK ":" name POST_IF expr      → (break value:_ to:3 if:5)
+         | BREAK ":" name expr              → (break value:4 to:3)
+         | BREAK ":" name                   → (break value:_ to:3)
+         | BREAK POST_IF expr               → (break value:_ to:_ if:3)
+         | BREAK expr                       → (break value:2)
+         | BREAK                            → (break)
+continue = CONTINUE ":" name POST_IF expr   → (continue to:3 if:5)
+         | CONTINUE ":" name                → (continue to:3)
+         | CONTINUE POST_IF expr            → (continue to:_ if:3)
+         | CONTINUE                         → (continue)
+
+# --- Statement modifiers ---
+
+defer    = DEFER    block                   → (defer 2)
+         | DEFER    expr                    → (defer 2)
+errdefer = ERRDEFER block                   → (errdefer 2)
+         | ERRDEFER expr                    → (errdefer 2)
+comptime = COMPTIME expr                    → (comptime 2)
+inline   = INLINE   expr                    → (inline 2)
+
+# --- Bindings ---
+
+assign   = call ":" type "="  expr          → (typed_assign 1 3 5)
+         | call "="           expr          → ( = 1 3)
+         | call "+="          expr          → (+= 1 3)
+         | call "-="          expr          → (-= 1 3)
+         | call "*="          expr          → (*= 1 3)
+         | call "/="          expr          → (/= 1 3)
+const    = call ":" type "=!" expr          → (typed_const 1 3 5)
+         | call          "=!" expr          → (const 1 3)
+
+# ==============================================================================
+# CALLS AND ATOMS
+# ==============================================================================
+
+unary    = "!" unary                        → (not 2)
+         | MINUS_PREFIX unary               → (neg 2)
+         | TRY unary                        → (try 2)
+         | "&" unary                        → (addr_of 2)
+         | "~" unary                        → (bit_not 2)
+         | call
+
+call     = call "." "*"                     → (deref 1)
+         | call "." name                    → (. 1 3)
+         | call "[" expr "]"                → (index 1 3)
+         | call L(term)                     → (call 1 ...2)
+         | call "(" args ")"                → (call 1 ...3)
+         | atom
+
+args     = L(expr)                          → (...1)
+         |                                  → ()
+
+term     = MINUS_PREFIX term                → (neg 2)
+         | "!" term                         → (not 2)
+         | atom
+
+atom     = name
+         | INTEGER
+         | REAL
+         | STRING_SQ
+         | STRING_DQ
+         | TRUE
+         | FALSE
+         | NULL                             → (null)
+         | UNREACHABLE                      → (unreachable)
+         | UNDEFINED                        → (undefined)
+         | "?" atom                         → (? 2)
+         | "@" name "(" args ")"            → (builtin 2 ...4)
+         | record
+         | lambda
+         | "[" args "]"                     → (array ...2)
+         | "(" expr ")"                     → 2
+         | DOT_LBRACE L(dotpair) "}"        → (anon_init ...2)
+         | DOT_LBRACE args "}"              → (anon_init ...2)
+         | DOT_LBRACE "}"                   → (anon_init)
+
+record   = name "{" L(pair) "}"             → (record 1 ...3)
+pair     = name ":" expr                    → (pair 1 3)
+dotpair  = "." name "=" expr                → (pair 2 4)
+
+lambda   = FN params block                  → (lambda 2 returns:_ 3)
+         | FN        block                  → (lambda params:_ returns:_ 2)
+
+# ==============================================================================
+# INFIX OPERATORS
+# ==============================================================================
+
+@infix unary
+    "|>"  left
+    "||"  left
+    "&&"  left
+    "|"   left
+    "^"   left
+    "&"   left
+    "=="  none, "!=" none, "<" none, ">" none, "<=" none, ">=" none
+    ".."  none
+    "<<"  left, ">>" left
+    "+"   left, "-"  left
+    "*"   left, "/"  left, "%"  left
+    "**"  right

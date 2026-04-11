@@ -1,0 +1,3 @@
+# Missing @lexer section
+@parser
+program! = IDENT → (module 1)

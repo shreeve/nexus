@@ -1,0 +1,697 @@
+# ==============================================================================
+# slash.grammar - Slash Shell Lexer and Parser Grammar
+# ==============================================================================
+#
+# Defines the lexer and parser for Slash. Processed by nexus to
+# generate src/parser.zig.
+#
+# Usage: nexus slash.grammar src/parser.zig
+# ==============================================================================
+
+@lexer
+
+# ==============================================================================
+# STATE VARIABLES
+# ==============================================================================
+#
+# These track lexer context across tokens within a single parse.
+#
+#   beg       - At beginning of line (1 = true, 0 = false)
+#   heredoc   - Inside a heredoc body (0 = no, 1 = single-quote, 2 = double-quote, 3 = backtick)
+#   paren     - Parenthesis nesting depth (for subshells and grouping)
+#   brace     - Brace nesting depth (for block delimiters)
+#   math      - Math context (1 = after `=` or `+=`; cleared on newline or list_start)
+#   math_lhs  - Last token can be the left-hand side of an infix math op (^, /); set in lexer.zig
+
+state beg     = 1
+state heredoc = 0
+state paren   = 0
+state brace   = 0
+state math    = 0
+state math_lhs = 0
+
+# ==============================================================================
+# TOKEN TYPES
+# ==============================================================================
+#
+# All token types the lexer can produce. The generator creates a Zig enum.
+
+tokens
+    # Literals
+    ident           # Bare word: command name, argument, variable name
+    missing         # ??? (command-not-found hook name)
+    flag            # Flag: -f, -la, --verbose
+    integer         # Integer: 0, 1, 42, 1000
+    real            # Decimal: 3.14, .5, 2.0
+    string_sq       # Single-quoted string: 'hello world'
+    string_dq       # Double-quoted string: "hello $name"
+    regex           # Regex literal: /pattern/flags
+
+    # Variable references
+    variable        # $name, $?, $$, $!, $#, $*, $0-$9
+    var_braced      # ${name}, ${1 ?? "default"}
+
+    # Heredoc markers
+    heredoc_sq      # ''' (single-quote heredoc start/end)
+    heredoc_dq      # """ (double-quote heredoc start/end)
+    heredoc_bt      # ```lang (backtick heredoc start, with language tag)
+    heredoc_end     # ``` (backtick heredoc end)
+    heredoc_body    # Content lines within a heredoc
+
+    # Herestring
+    herestring      # <<< operator
+
+    # Operators — pipeline and redirection
+    pipe            # |
+    pipe_err        # |&
+    redir_out       # >
+    redir_append    # >>
+    redir_in        # <
+    redir_err       # 2>
+    redir_err_app   # 2>>
+    redir_both      # &>
+    redir_dup       # 2>&1 (stderr to stdout duplication)
+    redir_fd_out    # N> (numbered fd output redirect)
+    redir_fd_in     # N< (numbered fd input redirect)
+    redir_fd_dup    # N>&M (numbered fd duplication)
+    proc_sub_in     # <(
+    proc_sub_out    # >(
+    dollar_paren    # $( for subshell capture
+
+    # Operators — boolean and control
+    and_sym         # &&
+    or_sym          # ||
+    not_sym         # !
+    xor             # xor (word form only — ^ is used for exponentiation)
+    bg              # & (at end of command, not &&)
+    semi            # ;
+
+    # Operators — comparison
+    eq              # ==
+    ne              # !=
+    le              # <=
+    ge              # >=
+    match           # =~
+    nomatch         # !~
+
+    # Operators — arithmetic
+    plus            # +
+    minus           # -
+    star            # *
+    slash           # /
+    percent         # %
+    power           # **
+
+    # Operators — assignment and default
+    assign          # =
+    plus_assign     # +=
+    default_op      # ??
+
+    # Punctuation
+    lparen          # (
+    lparen_tight    # ( with no preceding whitespace (pre==0)
+    rparen          # )
+    lbrace          # {
+    rbrace          # }
+    list_start      # [ in assignment context (after = or +=)
+    lbracket        # [ (general)
+    rbracket        # ]
+    question        # ?
+    comma           # ,
+    backslash       # \ (line continuation)
+    dollar          # $ (for expansion contexts)
+
+    # Keywords (recognized as ident, remapped via @as)
+    # if, unless, else, for, in, while, until, try,
+    # and, or, not, xor,
+    # cmd, key, set, test, source, exit, exec, break, continue, shift
+
+    # Whitespace and structure
+    indent          # Indentation increase (script mode)
+    outdent         # Indentation decrease (script mode)
+    newline         # Line terminator
+    comment         # # through end of line
+    eof             # End of input
+    err             # Lexer error
+
+# ==============================================================================
+# DEFAULT ACTIONS
+# ==============================================================================
+
+after
+    beg = 0         # Most tokens clear line-start flag
+
+# ==============================================================================
+# COMMENTS
+# ==============================================================================
+#
+# Comments start with # and run to end of line. Allowed everywhere,
+# including at the interactive prompt.
+#
+'#' [^\n]*                                  → comment
+
+# ==============================================================================
+# NEWLINES AND LINE CONTINUATION
+# ==============================================================================
+#
+# Newline resets to beginning of line. Backslash before newline is a
+# line continuation — the lexer skips both and continues.
+
+"\\\n"                                      → skip         # line continuation
+"\r\n"                                      → newline, {beg = 1}, {math = 0}
+'\n'                                        → newline, {beg = 1}, {math = 0}
+'\r'                                        → newline, {beg = 1}, {math = 0}
+
+# ==============================================================================
+# STRING LITERALS
+# ==============================================================================
+#
+# Single-quoted strings: no interpolation, no escapes except ''
+# Double-quoted strings: variable interpolation, standard escapes
+#
+# Triple-quote (''' and """) heredocs are handled separately below.
+
+# Double-quoted string (interpolated)
+'"' ([^"\\$\n] | '\\' . | '$')* '"'         → string_dq
+
+# Single-quoted string (literal)
+"'" ([^'\n] | "''")* "'"                    → string_sq
+
+# ==============================================================================
+# HEREDOC DELIMITERS
+# ==============================================================================
+#
+# Three types:
+#   '''  — literal (no interpolation)
+#   """  — interpolated
+#   ```lang — interpolated with syntax highlighting
+#
+# The lexer emits the delimiter token. The parser and evaluator handle
+# body collection and margin stripping.
+
+"'''"                                       → heredoc_sq
+'"""'                                       → heredoc_dq
+"```" [a-zA-Z][a-zA-Z0-9]*                  → heredoc_bt
+"```"                                       → heredoc_end
+
+# ==============================================================================
+# HERESTRING
+# ==============================================================================
+
+"<<<"                                       → herestring
+
+# ==============================================================================
+# NUMBERS
+# ==============================================================================
+#
+# Reals before integers (longer match first).
+
+[0-9]* '.' [0-9]+                           → real
+[0-9]+                                      → integer
+
+# ==============================================================================
+# REGEX LITERALS
+# ==============================================================================
+#
+# Regex literals: ~|pattern|flags — the ~ prefix with any delimiter.
+#
+# Syntax: ~ followed immediately (no space) by a non-/ non-alphanumeric
+# character. That character is the delimiter. Scan to the matching
+# delimiter, then consume optional flags (currently only `i` for case-insensitive).
+#
+# Examples:
+#   ~|^foo.*|i       pipe delimiter, case-insensitive
+#   ~!bar$!          bang delimiter
+#   ~#\d{3}#g        hash delimiter, global
+#   Note: / cannot be used as a standalone regex delimiter because
+#   ~/path is a valid tilde-expansion path. Use ~|pattern|i instead.
+#
+# The lexer handles this in the generated next() function, not as a
+# regex rule, since the delimiter character varies.
+
+# ==============================================================================
+# VARIABLE REFERENCES
+# ==============================================================================
+#
+# $name       — named variable
+# $1-$9       — positional arguments
+# ${10}       — positional argument >= 10
+# $?          — last exit code
+# $$          — shell PID
+# $!          — last background PID
+# $#          — argument count
+# $*          — all arguments
+# $0          — script name
+# ${name}     — braced variable
+# ${1 ?? x}   — braced with default value
+
+'$' '{' [^}\n]+ '}'                         → var_braced
+'$' [a-zA-Z_][a-zA-Z0-9_]*                  → variable
+'$' [0-9]                                   → variable
+'$' [?$!#*]                                 → variable
+
+# ==============================================================================
+# PROCESS SUBSTITUTION
+# ==============================================================================
+
+"<("                                        → proc_sub_in
+">("                                        → proc_sub_out
+"$("                                        → dollar_paren, {paren++}
+
+# ==============================================================================
+# MULTI-CHARACTER OPERATORS
+# ==============================================================================
+#
+# Order matters: longer patterns first to prevent partial matches.
+
+# Pipeline
+"|&"                                        → pipe_err
+
+# Boolean
+"&&"                                        → and_sym
+"||"                                        → or_sym
+
+# Comparison
+"=="                                        → eq
+"!="                                        → ne
+"<="                                        → le
+">="                                        → ge
+"=~"                                        → match
+"!~"                                        → nomatch
+"+="                                        → plus_assign, {math = 1}
+
+# Arithmetic
+"**"                                        → power
+'^' @ math != 0 & math_lhs != 0             → power
+
+# Command-not-found hook name
+"???"                                       → missing
+
+# Default value
+"??"                                        → default_op
+
+# Redirection (multi-char forms)
+">>"                                        → redir_append
+"&>"                                        → redir_both
+"2>>"                                       → redir_err_app
+"2>"                                        → redir_err
+"2>&1"                                      → redir_dup
+[0-9]+ '>' '&' [0-9]+                       → redir_fd_dup
+[0-9]+ '>'                                  → redir_fd_out
+[0-9]+ '<'                                  → redir_fd_in
+
+# ==============================================================================
+# FLAGS
+# ==============================================================================
+#
+# Command flags: -f, -la, --verbose. Must precede single-char '-' rule.
+
+'-' '-'? [a-zA-Z][a-zA-Z0-9_-]* ('=' [\w./:@,+-]*)? → flag
+
+# ==============================================================================
+# SINGLE-CHARACTER OPERATORS AND PUNCTUATION
+# ==============================================================================
+
+'|'                                         → pipe
+'>'                                         → redir_out
+'<'                                         → redir_in
+'!'                                         → not_sym
+'&'                                         → bg
+';'                                         → semi
+'+'                                         → plus
+'-'                                         → minus
+'*'                                         → star
+'/'                                         → slash
+'%'                                         → percent
+'='                                         → assign, {math = 1}
+'('                                         → lparen, {paren++}
+')'                                         → rparen, {paren--}
+'{'                                         → lbrace, {brace++}
+'}'                                         → rbrace, {brace--}
+'[' @ math != 0                             → list_start, {math = 0}
+'['                                         → lbracket
+']'                                         → rbracket
+'?'                                         → question
+','                                         → comma
+'\\'                                        → backslash
+'$'                                         → dollar
+
+# ==============================================================================
+# IDENTIFIERS AND KEYWORDS
+# ==============================================================================
+#
+# Bare words: command names, arguments, filenames, keywords.
+# Keywords are recognized in the parser via @as directives, not here.
+#
+# GLOB EXPANSION: Glob patterns (*.zig, file[0-9], {a,b}.txt) are tokenized
+# as IDENT by the lexer and parsed as command arguments. The executor expands
+# them to matching filenames at runtime, the same way bash works.
+
+# `^` as unary power (same token as `**`) uses guards above. `/` is the slash rule.
+
+[a-zA-Z_][\w./-]*                           → ident
+[./~][\w./-]* @ math == 0                   → ident   # paths (math off)
+[./~][\w./-]* @ math != 0 & math_lhs == 0   → ident   # paths after = / += when not in infix position
+[*?][\w./*?-]* @ math == 0                  → ident   # globs: *.zig, ?.txt, **/*.zig
+[\w./-]*[*?][\w./*?-]* @ math == 0          → ident   # globs: file*, src/*.zig (disabled in math — see integers)
+[\w./-]*\{[\w.,/*?-]+\}[\w./*?-]*           → ident   # braces: {a,b}.txt, src/{main,exec}.zig
+[\w./-]*\[[\w^./-]+\][\w./*?-]* @ math == 0 → ident   # brackets: file[0-9] (off in math — list literals use [)
+
+# ==============================================================================
+# ERROR / FALLBACK
+# ==============================================================================
+
+.                                           → err
+
+# ==============================================================================
+# END OF LEXER SECTION
+# ==============================================================================
+
+@parser
+
+# ==============================================================================
+# DIRECTIVES
+# ==============================================================================
+
+@lang = "slash"
+
+@conflicts = 16
+
+@as = [ident, cmd]
+
+# All keywords (if, unless, else, for, in, while, until, try, and, or, not,
+# xor, cmd, key, set, test, source, exit, break, continue, shift, exec)
+# are matched by slash.cmd_as() via the single @as directive above.
+# Word-form boolean operators (AND, OR, NOT, XOR) are referenced explicitly
+# in grammar rules alongside their symbol forms (&&, ||, !).
+
+# ------------------------------------------------------------------------------
+# ALIASES (zero-cost, expanded at compile time)
+# ------------------------------------------------------------------------------
+
+name     = IDENT
+cmd_name = IDENT
+
+# ==============================================================================
+# START SYMBOLS
+# ==============================================================================
+
+program!  = line*                           → (program ...1)
+oneline!  = stmt                            → 1
+
+# ==============================================================================
+# LINE STRUCTURE
+# ==============================================================================
+
+line      = stmt [COMMENT] NEWLINE          → 1
+          | [COMMENT] NEWLINE               → _
+
+stmt      = "=" expr                        → (display 2)
+          | IDENT "=" "-"                   → (unset 1)
+          | IDENT "=" list_literal          → (assign_argv 1 3)
+          | IDENT "+=" list_literal         → (append_argv 1 3)
+          | IDENT "=" assign_rhs            → (assign 1 3)
+          | cmd_def                         → 1
+          | key_def                         → 1
+          | set_stmt                        → 1
+          | if_stmt                         → 1
+          | unless_stmt                     → 1
+          | for_stmt                        → 1
+          | while_stmt                      → 1
+          | until_stmt                      → 1
+          | try_stmt                        → 1
+          | cmdlist <                       → 1
+
+# ==============================================================================
+# PIPELINES AND COMMAND LISTS
+# ==============================================================================
+#
+# A pipeline is one or more simple commands connected by pipes.
+# Command lists chain pipelines with &&, ||, ;, or &.
+
+cmdlist   = and_or ";" cmdlist              → (seq 1 3)
+          | and_or "&" cmdlist              → (bg 1 3)
+          | and_or "&"                      → (bg 1)
+          | and_or >                        → 1
+
+and_or    = and_or "&&" pipeline            → (and 1 3)
+          | and_or AND  pipeline            → (and 1 3)
+          | and_or "||" pipeline            → (or 1 3)
+          | and_or OR   pipeline            → (or 1 3)
+          | and_or XOR  pipeline            → (xor 1 3)
+          | pipeline
+
+pipeline  = command "|&" pipeline           → (pipe_err 1 3)
+          | command "|"  pipeline           → (pipe 1 3)
+          | command
+
+# ==============================================================================
+# COMMANDS
+# ==============================================================================
+#
+# A simple command: optional negation, command word, arguments, redirections.
+
+command   = "!" command                     → (not 2)
+          | NOT command                     → (not 2)
+          | "(" cmdlist ")"                 → (subshell 2)
+          | TEST FLAG word                  → (test 2 3)
+          | EXIT [INTEGER]                  → (exit 2)
+          | BREAK                           → (break)
+          | CONTINUE                        → (continue)
+          | SHIFT INTEGER                   → (shift 2)
+          | SHIFT                           → (shift)
+          | SOURCE word                     → (source 2)
+          | EXEC simple_cmd                 → (exec 2)
+          | simple_cmd
+
+simple_cmd = cmd_name cmd_arg* [heredoc]    → (cmd 1 ...2 3)
+
+cmd_arg   = argument
+          | redirect
+
+# ==============================================================================
+# ARGUMENTS
+# ==============================================================================
+
+word      = IDENT < | STRING_SQ < | STRING_DQ < | INTEGER < | REAL < | VARIABLE < | VAR_BRACED < | FLAG <
+
+argument  = IDENT | STRING_SQ | STRING_DQ | INTEGER | REAL | VARIABLE | VAR_BRACED | FLAG | REGEX | "-"
+          | proc_sub
+          | subshell_capture
+
+proc_sub      = "<(" pipeline ")"           → (procsub_in 2)
+              | ">(" pipeline ")"           → (procsub_out 2)
+
+subshell_capture = DOLLAR_PAREN pipeline ")" → (capture 2)
+
+# ==============================================================================
+# REDIRECTIONS
+# ==============================================================================
+
+redirect  = ">"   word                      → (redir_out 2)
+          | ">>"  word                      → (redir_append 2)
+          | "<"   word                      → (redir_in 2)
+          | "2>"  word                      → (redir_err 2)
+          | "2>>" word                      → (redir_err_app 2)
+          | "&>"  word                      → (redir_both 2)
+          | "2>&1"                          → (redir_dup)
+          | REDIR_FD_DUP                    → (redir_fd_dup 1)
+          | REDIR_FD_OUT word               → (redir_fd_out 1 2)
+          | REDIR_FD_IN  word               → (redir_fd_in 1 2)
+          | "<<<" word                      → (herestring 2)
+
+# ==============================================================================
+# HEREDOCS
+# ==============================================================================
+#
+# Three types: ''' (literal), """ (interpolated), ```lang (highlighted).
+# Body is collected by the evaluator based on delimiter indentation.
+
+heredoc   = HEREDOC_SQ HEREDOC_BODY* HEREDOC_SQ → (heredoc_literal ...2)
+          | HEREDOC_DQ HEREDOC_BODY* HEREDOC_DQ → (heredoc_interp ...2)
+          | HEREDOC_BT HEREDOC_BODY* HEREDOC_END → (heredoc_lang 1 ...2)
+
+# ==============================================================================
+# CONDITIONALS: if / unless / else
+# ==============================================================================
+#
+# In indentation mode, the lexer must NOT emit a NEWLINE between OUTDENT
+# and ELSE — the else_clause? lookahead expects ELSE immediately after
+# the block's closing OUTDENT. Brace mode is unaffected since whitespace
+# is auto-skipped between } and else.
+
+if_stmt   = IF condition block else_clause? → (if 2 3 4)
+unless_stmt = UNLESS condition block        → (unless 2 3)
+
+else_clause = ELSE if_stmt                  → 2
+            | ELSE block                    → (else 2)
+
+condition = comparison
+          | cmdlist >                       → 1
+
+comparison = cmp_term AND comparison        → (and 1 3)
+           | cmp_term OR  comparison        → (or 1 3)
+           | cmp_term
+
+cmp_term   = expr "==" expr                 → (eq 1 3)
+           | expr "!=" expr                 → (ne 1 3)
+           | expr "<"  expr                 → (lt 1 3)
+           | expr ">"  expr                 → (gt 1 3)
+           | expr "<=" expr                 → (le 1 3)
+           | expr ">=" expr                 → (ge 1 3)
+           | expr "=~" REGEX                → (match 1 3)
+           | expr "!~" REGEX                → (nomatch 1 3)
+           | expr "=~" expr                 → (match 1 3)
+           | expr "!~" expr                 → (nomatch 1 3)
+           | NOT cmp_term                   → (not 2)
+           | "(" comparison ")"             → 2
+
+# ==============================================================================
+# LOOPS: for / while / until
+# ==============================================================================
+
+for_stmt   = FOR name IN wordlist block     → (for 2 4 5)
+while_stmt = WHILE condition block          → (while 2 3)
+until_stmt = UNTIL condition block          → (until 2 3)
+
+wordlist   = word+                          → (list ...1)
+
+# ==============================================================================
+# PATTERN MATCHING: try
+# ==============================================================================
+
+try_stmt   = TRY try_subject try_block      → (try 2 3)
+
+try_block  = "{" try_bitem+ "}"             → (...2)
+           | INDENT try_iline+ OUTDENT      → (...2)
+
+try_bitem  = try_arm                        → 1
+           | NEWLINE                        → _
+           | COMMENT                        → _
+
+try_iline  = try_arm [COMMENT] NEWLINE      → 1
+           | [COMMENT] NEWLINE              → _
+
+try_arm    = REGEX block                    → (arm 1 2)
+           | STRING_DQ block                → (arm 1 2)
+           | STRING_SQ block                → (arm 1 2)
+           | word block                     → (arm 1 2)
+           | ELSE block                     → (arm_else 2)
+
+# ==============================================================================
+# BLOCKS
+# ==============================================================================
+#
+# Blocks are either brace-delimited or indentation-delimited.
+# The lexer emits INDENT/OUTDENT for indentation form.
+
+block     = "{" brace_item* "}"             → (block ...2)
+          | INDENT line* OUTDENT            → (block ...2)
+
+brace_item = stmt                           → 1
+           | NEWLINE                        → _
+           | COMMENT                        → _
+
+# ==============================================================================
+# USER COMMANDS: cmd
+# ==============================================================================
+#
+# cmd name body           — one-line, no params
+# cmd name(p1, p2) body   — one-line, with params
+# cmd name                — show definition
+# cmd name -              — delete
+# cmd                     — list all
+# cmd ???(name) body      — command-not-found hook
+#
+# WHITESPACE CONTRACT: `(` touching the name (pre=0) is a parameter list.
+# `(` after a space (pre>0) starts a subshell body. The generated parser
+# must check the LPAREN token's `pre` field when deciding whether to
+# enter the params? branch. LPAREN_TIGHT (pre==0) is a distinct token
+# from LPAREN so the parser can unambiguously enter the params rule.
+
+cmd_def   = CMD MISSING params? block       → (cmd_missing 3 4)
+          | CMD MISSING params? stmt        → (cmd_missing 3 4)
+          | CMD MISSING "-"                 → (cmd_missing_del)
+          | CMD MISSING >                   → (cmd_missing_show)
+          | CMD name params? block          → (cmd_def 2 3 4)
+          | CMD name params? stmt           → (cmd_def 2 3 4)
+          | CMD name "-"                    → (cmd_del 2)
+          | CMD name >                      → (cmd_show 2)
+          | CMD >                           → (cmd_list)
+
+# L(X) — comma-separated list of X (expands to: X ("," X)*)
+params    = LPAREN_TIGHT L(name) ")"        → 2
+
+# ==============================================================================
+# KEY BINDINGS: key
+# ==============================================================================
+
+key_def   = KEY key_combo cmdlist           → (key 2 3)
+          | KEY key_combo STRING_SQ         → (key 2 3)
+          | KEY key_combo STRING_DQ         → (key 2 3)
+          | KEY key_combo "-"               → (key_del 2)
+          | KEY >                           → (key_list)
+
+key_combo = IDENT "="                       → (key_combo_eq 1)
+          | IDENT
+          | STRING_SQ
+          | STRING_DQ
+          | INTEGER
+          | REAL
+          | VARIABLE
+          | VAR_BRACED
+          | FLAG
+
+# ==============================================================================
+# SHELL OPTIONS: set
+# ==============================================================================
+
+set_stmt  = SET name "-"                    → (set_reset 2)
+          | SET name word                   → (set 2 3)
+          | SET name >                      → (set_show 2)
+          | SET >                           → (set_list)
+
+# ==============================================================================
+# EXPRESSIONS
+# ==============================================================================
+#
+# Expressions are used in comparisons, variable assignments, inline math,
+# and default values. Arithmetic follows standard precedence.
+
+expr      = coalesce
+coalesce  = sum "??" coalesce               → (default 1 3)
+          | sum
+sum       = sum "+" term                    → (add 1 3)
+          | sum "-" term                    → (sub 1 3)
+          | term
+term      = term "*" factor                 → (mul 1 3)
+          | term "/" factor                 → (div 1 3)
+          | term "%" factor                 → (mod 1 3)
+          | factor
+factor    = base "**" factor                → (pow 1 3)
+          | base
+base      = "(" expr ")"                    → 2
+          | "-" base                        → (neg 2)
+          | "+" base                        → 2
+          | atom
+
+atom      = VARIABLE
+          | VAR_BRACED
+          | INTEGER
+          | REAL
+          | STRING_DQ
+          | STRING_SQ
+          | subshell_capture
+
+shift_value = SHIFT                         → (shift_value)
+bare_value  = IDENT
+assign_rhs  = shift_value
+            | bare_value
+            | expr
+try_subject = shift_value
+            | bare_value
+            | expr
+
+list_literal = LIST_START list_item* "]"    → (list ...2)
+list_item    = IDENT | STRING_SQ | STRING_DQ | INTEGER | REAL | VARIABLE | VAR_BRACED | FLAG | REGEX | "-"
+             | subshell_capture

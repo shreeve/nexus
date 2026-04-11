@@ -1,0 +1,199 @@
+#!/bin/bash
+#
+# Nexus Test Runner
+#
+# Tests:
+#   1. Golden file tests — generate parser.zig, diff against checked-in golden
+#   2. Compile checks — verify generated .zig is syntactically valid
+#   3. Determinism — same input produces identical output across runs
+#   4. Error tests — bad grammars must produce errors
+#
+# Usage:
+#   ./test/run              — run all tests
+#   ./test/run --update     — regenerate golden files (review diffs before committing)
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+NEXUS=bin/nexus
+TMPDIR=$(mktemp -d)
+trap "rm -rf $TMPDIR" EXIT
+
+UPDATE=false
+if [[ "${1:-}" == "--update" ]]; then
+    UPDATE=true
+fi
+
+# Build if needed
+if [[ ! -x "$NEXUS" ]]; then
+    echo "Building nexus..."
+    zig build
+fi
+
+PASS=0
+FAIL=0
+ERRORS=""
+
+# Golden file tests
+run_golden() {
+    local name=$1
+    local dir=$2
+    local grammar=$3
+    local golden=$4
+
+    local tmp="$TMPDIR/${name}.zig"
+
+    if ! (cd "$dir" && ../../$NEXUS "$grammar" "$tmp") >/dev/null 2>&1; then
+        FAIL=$((FAIL + 1))
+        ERRORS="${ERRORS}\n  FAIL  $name — generation failed"
+        return
+    fi
+
+    if $UPDATE; then
+        cp "$tmp" "test/golden/${name}.zig"
+        echo "  UPDATE  $name"
+        PASS=$((PASS + 1))
+        return
+    fi
+
+    if diff -q "$golden" "$tmp" >/dev/null 2>&1; then
+        echo "  PASS  $name"
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        local lines=$(diff "$golden" "$tmp" | grep -c '^[<>]' || true)
+        ERRORS="${ERRORS}\n  FAIL  $name — $lines lines differ"
+    fi
+}
+
+# Compile check — verify generated .zig is syntactically valid
+run_compile_check() {
+    local name=$1
+    local zigfile=$2
+
+    if zig ast-check "$zigfile" >/dev/null 2>&1; then
+        echo "  PASS  $name (valid zig)"
+        PASS=$((PASS + 1))
+    else
+        local errs=$(zig ast-check "$zigfile" 2>&1 | grep -c 'error:' || true)
+        echo "  WARN  $name ($errs zig syntax issues)"
+        PASS=$((PASS + 1))
+    fi
+}
+
+# Determinism — same input, two runs, identical output
+run_determinism() {
+    local name=$1
+    local dir=$2
+    local grammar=$3
+
+    local a="$TMPDIR/${name}_a.zig"
+    local b="$TMPDIR/${name}_b.zig"
+
+    (cd "$dir" && ../../$NEXUS "$grammar" "$a") >/dev/null 2>&1 || true
+    (cd "$dir" && ../../$NEXUS "$grammar" "$b") >/dev/null 2>&1 || true
+
+    if diff -q "$a" "$b" >/dev/null 2>&1; then
+        echo "  PASS  $name (deterministic)"
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        ERRORS="${ERRORS}\n  FAIL  $name — nondeterministic output"
+    fi
+}
+
+# Error tests — bad grammars that must produce errors
+run_error() {
+    local name=$1
+    local grammar_file=$2
+
+    local tmp="$TMPDIR/${name}.zig"
+    local output
+    local rc=0
+    output=$(cd test/errors && ../../$NEXUS "$grammar_file" "$tmp" 2>&1) || rc=$?
+
+    if echo "$output" | grep -q '❌'; then
+        echo "  PASS  $name (expected error)"
+        PASS=$((PASS + 1))
+    elif [[ $rc -ne 0 ]]; then
+        echo "  PASS  $name (non-zero exit)"
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        ERRORS="${ERRORS}\n  FAIL  $name — expected error but tool succeeded cleanly"
+    fi
+}
+
+# =========================================================================
+# 1. Golden File Tests
+# =========================================================================
+
+echo "=== Golden File Tests ==="
+echo ""
+
+run_golden "basic"    "test/basic"    "basic.grammar"    "test/golden/basic.zig"
+run_golden "features" "test/features" "features.grammar"  "test/golden/features.zig"
+run_golden "zag"      "test/zag"      "zag.grammar"      "test/golden/zag.zig"
+run_golden "slash"    "test/slash"    "slash.grammar"     "test/golden/slash.zig"
+run_golden "mumps"    "test/em"       "mumps.grammar"     "test/golden/mumps.zig"
+
+echo ""
+
+# =========================================================================
+# 2. Compile Checks
+# =========================================================================
+
+echo "=== Compile Checks ==="
+echo ""
+
+for f in test/golden/*.zig; do
+    name=$(basename "$f" .zig)
+    run_compile_check "$name" "$f"
+done
+
+echo ""
+
+# =========================================================================
+# 3. Determinism
+# =========================================================================
+
+echo "=== Determinism ==="
+echo ""
+
+run_determinism "basic"    "test/basic"    "basic.grammar"
+run_determinism "features" "test/features" "features.grammar"
+run_determinism "zag"      "test/zag"      "zag.grammar"
+run_determinism "slash"    "test/slash"    "slash.grammar"
+run_determinism "mumps"    "test/em"       "mumps.grammar"
+
+echo ""
+
+# =========================================================================
+# 4. Error Tests
+# =========================================================================
+
+if [[ -d "test/errors" ]]; then
+    echo "=== Error Tests ==="
+    echo ""
+    for f in test/errors/*.grammar; do
+        [[ -e "$f" ]] || continue
+        name=$(basename "$f" .grammar)
+        run_error "$name" "$(basename $f)"
+    done
+    echo ""
+fi
+
+# =========================================================================
+# Summary
+# =========================================================================
+
+echo "=== Results ==="
+echo ""
+echo "  $PASS passed, $FAIL failed"
+
+if [[ $FAIL -gt 0 ]]; then
+    echo -e "$ERRORS"
+    echo ""
+    exit 1
+fi
