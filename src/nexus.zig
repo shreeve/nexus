@@ -20,7 +20,7 @@ const Allocator = std.mem.Allocator;
 /// State variable declaration
 const StateVar = struct {
     name: []const u8,
-    initial_value: i32,
+    initialValue: i32,
 };
 
 /// Token type name
@@ -59,7 +59,7 @@ const Action = struct {
         dec, // {var--}
         counted, // {var = counted('x')}
         skip, // skip
-        simd_to, // simd_to 'x'
+        simdTo, // simd_to 'x'
     };
 };
 
@@ -69,9 +69,9 @@ const LexerRule = struct {
     guards: []const Guard,
     token: []const u8,
     actions: []const Action,
-    is_simd: bool = false,
-    simd_char: ?u8 = null,
-    is_skip: bool = false,
+    isSimd: bool = false,
+    simdChar: ?u8 = null,
+    isSkip: bool = false,
 };
 
 /// Default action
@@ -87,8 +87,8 @@ const LexerSpec = struct {
     defaults: std.ArrayListUnmanaged(DefaultAction),
     tokens: std.ArrayListUnmanaged(TokenDef),
     rules: std.ArrayListUnmanaged(LexerRule),
-    code_functions: std.ArrayListUnmanaged([]const u8),
-    lang_name: ?[]const u8 = null,
+    codeFunctions: std.ArrayListUnmanaged([]const u8),
+    langName: ?[]const u8 = null,
 
     fn init(allocator: Allocator) LexerSpec {
         return .{
@@ -97,7 +97,7 @@ const LexerSpec = struct {
             .defaults = .{},
             .tokens = .{},
             .rules = .{},
-            .code_functions = .{},
+            .codeFunctions = .{},
         };
     }
 
@@ -110,7 +110,7 @@ const LexerSpec = struct {
         self.defaults.deinit(self.allocator);
         self.tokens.deinit(self.allocator);
         self.rules.deinit(self.allocator);
-        self.code_functions.deinit(self.allocator);
+        self.codeFunctions.deinit(self.allocator);
     }
 };
 
@@ -360,7 +360,7 @@ const LexerParser = struct {
                 _ = self.expect('=');
                 self.skipWhitespace();
                 const name = self.parseIdentifier() orelse return error.ExpectedIdentifier;
-                try self.spec.code_functions.append(self.spec.allocator, name);
+                try self.spec.codeFunctions.append(self.spec.allocator, name);
                 continue;
             }
 
@@ -402,7 +402,7 @@ const LexerParser = struct {
             value = self.parseInt() orelse return error.ExpectedValue;
         }
 
-        try self.spec.states.append(self.allocator, .{ .name = name, .initial_value = value });
+        try self.spec.states.append(self.allocator, .{ .name = name, .initialValue = value });
     }
 
     fn parseDefaultsBlock(self: *LexerParser) !void {
@@ -468,25 +468,25 @@ const LexerParser = struct {
         var actions: std.ArrayListUnmanaged(Action) = .{};
         defer actions.deinit(self.allocator);
 
-        var is_simd = false;
-        var simd_char: ?u8 = null;
-        var is_skip = false;
+        var isSimd = false;
+        var simdChar: ?u8 = null;
+        var isSkip = false;
 
         self.skipWhitespace();
         while (self.expect(',')) {
             self.skipWhitespace();
 
             if (self.expectStr("simd_to")) {
-                is_simd = true;
+                isSimd = true;
                 self.skipWhitespace();
                 if (!self.expect('\'')) return error.ExpectedQuote;
-                simd_char = self.parseEscapedChar();
+                simdChar = self.parseEscapedChar();
                 if (!self.expect('\'')) return error.ExpectedQuote;
                 continue;
             }
 
             if (self.expectStr("skip")) {
-                is_skip = true;
+                isSkip = true;
                 continue;
             }
 
@@ -504,9 +504,9 @@ const LexerParser = struct {
             .guards = try guards.toOwnedSlice(self.allocator),
             .token = token,
             .actions = try actions.toOwnedSlice(self.allocator),
-            .is_simd = is_simd,
-            .simd_char = simd_char,
-            .is_skip = is_skip,
+            .isSimd = isSimd,
+            .simdChar = simdChar,
+            .isSkip = isSkip,
         });
     }
 
@@ -515,63 +515,63 @@ const LexerParser = struct {
         const start = self.pos;
 
         // Scan until we hit unquoted @ or => or end of line
-        var in_single_quote = false;
-        var in_double_quote = false;
-        var in_bracket = false;
-        var paren_depth: u32 = 0;
+        var inSingleQuote = false;
+        var inDoubleQuote = false;
+        var inBracket = false;
+        var parenDepth: u32 = 0;
 
         while (self.pos < self.source.len) {
             const c = self.source[self.pos];
             if (c == '\n') break;
 
             // Track quote/bracket/paren state
-            if (!in_single_quote and !in_double_quote and !in_bracket) {
+            if (!inSingleQuote and !inDoubleQuote and !inBracket) {
                 if (c == '\'') {
-                    in_single_quote = true;
+                    inSingleQuote = true;
                     self.pos += 1;
                     continue;
                 }
                 if (c == '"') {
-                    in_double_quote = true;
+                    inDoubleQuote = true;
                     self.pos += 1;
                     continue;
                 }
                 if (c == '[') {
-                    in_bracket = true;
+                    inBracket = true;
                     self.pos += 1;
                     continue;
                 }
                 if (c == '(') {
-                    paren_depth += 1;
+                    parenDepth += 1;
                     self.pos += 1;
                     continue;
                 }
-                if (c == ')' and paren_depth > 0) {
-                    paren_depth -= 1;
+                if (c == ')' and parenDepth > 0) {
+                    parenDepth -= 1;
                     self.pos += 1;
                     continue;
                 }
             }
 
             // Handle closing quotes/brackets
-            if (in_single_quote and c == '\'') {
-                in_single_quote = false;
+            if (inSingleQuote and c == '\'') {
+                inSingleQuote = false;
                 self.pos += 1;
                 continue;
             }
-            if (in_double_quote and c == '"') {
-                in_double_quote = false;
+            if (inDoubleQuote and c == '"') {
+                inDoubleQuote = false;
                 self.pos += 1;
                 continue;
             }
-            if (in_bracket and c == ']') {
-                in_bracket = false;
+            if (inBracket and c == ']') {
+                inBracket = false;
                 self.pos += 1;
                 continue;
             }
 
             // Only check for @ and arrows when not inside quotes/brackets/parens
-            if (!in_single_quote and !in_double_quote and !in_bracket and paren_depth == 0) {
+            if (!inSingleQuote and !inDoubleQuote and !inBracket and parenDepth == 0) {
                 if (c == '@') break;
                 // Check for -> (ASCII arrow)
                 if (c == '-' and self.pos + 1 < self.source.len and self.source[self.pos + 1] == '>') break;
@@ -675,9 +675,9 @@ const LexerParser = struct {
 // =============================================================================
 
 fn findTokenForChar(spec: *const LexerSpec, ch: u8) ?[]const u8 {
-    var guarded_match: ?[]const u8 = null;
+    var guardedMatch: ?[]const u8 = null;
     for (spec.rules.items) |rule| {
-        if (rule.is_skip) continue;
+        if (rule.isSkip) continue;
 
         // Single-quoted char: 'X' or '\n'
         if (rule.pattern.len >= 3 and rule.pattern[0] == '\'') {
@@ -697,7 +697,7 @@ fn findTokenForChar(spec: *const LexerSpec, ch: u8) ?[]const u8 {
                 const after = std.mem.trim(u8, rule.pattern[close..], " \t");
                 if (after.len == 0) {
                     if (rule.guards.len == 0) return rule.token;
-                    if (guarded_match == null) guarded_match = rule.token;
+                    if (guardedMatch == null) guardedMatch = rule.token;
                 }
             }
         }
@@ -706,16 +706,16 @@ fn findTokenForChar(spec: *const LexerSpec, ch: u8) ?[]const u8 {
         if (rule.pattern.len == 3 and rule.pattern[0] == '"' and rule.pattern[2] == '"') {
             if (rule.pattern[1] == ch) {
                 if (rule.guards.len == 0) return rule.token;
-                if (guarded_match == null) guarded_match = rule.token;
+                if (guardedMatch == null) guardedMatch = rule.token;
             }
         }
     }
-    return guarded_match;
+    return guardedMatch;
 }
 
 fn findTokenForLiteral(spec: *const LexerSpec, literal: []const u8) ?[]const u8 {
     for (spec.rules.items) |rule| {
-        if (rule.is_skip) continue;
+        if (rule.isSkip) continue;
         if (rule.pattern.len >= 3 and rule.pattern[0] == '"') {
             var i: usize = 1;
             while (i < rule.pattern.len) : (i += 1) {
@@ -744,7 +744,7 @@ const LexerGenerator = struct {
     output: std.ArrayListUnmanaged(u8),
 
     fn structName(self: *const LexerGenerator) []const u8 {
-        return if (self.spec.lang_name != null) "BaseLexer" else "Lexer";
+        return if (self.spec.langName != null) "BaseLexer" else "Lexer";
     }
 
     fn init(allocator: Allocator, spec: *const LexerSpec) LexerGenerator {
@@ -827,9 +827,9 @@ const LexerGenerator = struct {
     }
 
     fn emitGuardCondition(self: *LexerGenerator, guard: Guard) !void {
-        const is_pre = std.mem.eql(u8, guard.variable, "pre");
-        const lhs = if (is_pre) "wsCount" else guard.variable;
-        const prefix = if (is_pre) "" else "self.";
+        const isPre = std.mem.eql(u8, guard.variable, "pre");
+        const lhs = if (isPre) "wsCount" else guard.variable;
+        const prefix = if (isPre) "" else "self.";
 
         if (guard.negated and guard.op == .truthy) {
             try self.print("{s}{s} == 0", .{ prefix, lhs });
@@ -872,22 +872,22 @@ const LexerGenerator = struct {
         }
     }
 
-    fn emitTokenReturn(self: *LexerGenerator, keyword: []const u8, token: []const u8, char_count: u8) !void {
-        try self.print("                    {s} Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ keyword, token, char_count });
+    fn emitTokenReturn(self: *LexerGenerator, keyword: []const u8, token: []const u8, charCount: u8) !void {
+        try self.print("                    {s} Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ keyword, token, charCount });
     }
 
     /// Find the state variable that complex rules set for a given character.
     /// Used to determine which state variable an @code function affects.
-    fn findCodeFnStateVar(self: *LexerGenerator, first_char: u8) ?[]const u8 {
+    fn findCodeFnStateVar(self: *LexerGenerator, firstChar: u8) ?[]const u8 {
         for (self.spec.rules.items) |rule| {
             if (parseLiteralPattern(rule.pattern) != null) continue;
             if (rule.pattern.len == 0) continue;
-            var starts_with: ?u8 = null;
+            var startsWith: ?u8 = null;
             if (rule.pattern.len >= 3 and (rule.pattern[0] == '\'' or rule.pattern[0] == '"')) {
-                starts_with = rule.pattern[1];
+                startsWith = rule.pattern[1];
             }
-            if (starts_with) |sw| {
-                if (sw != first_char) continue;
+            if (startsWith) |sw| {
+                if (sw != firstChar) continue;
             } else continue;
             for (rule.actions) |action| {
                 if (action.kind == .set and action.variable != null) return action.variable;
@@ -898,7 +898,7 @@ const LexerGenerator = struct {
 
     const OpRule = struct {
         chars: [8]u8,
-        char_count: u8,
+        charCount: u8,
         token: []const u8,
         guards: []const Guard,
         actions: []const Action,
@@ -910,25 +910,25 @@ const LexerGenerator = struct {
 
         // Build set of characters that start string literal patterns
         // (these are handled by the string scanner, not the operator switch)
-        var string_start_chars: [256]bool = @splat(false);
+        var stringStartChars: [256]bool = @splat(false);
         for (self.spec.rules.items) |rule| {
-            const is_string_tok = std.mem.startsWith(u8, rule.token, "string");
-            if (!is_string_tok) continue;
+            const isStringTok = std.mem.startsWith(u8, rule.token, "string");
+            if (!isStringTok) continue;
             if (rule.guards.len > 0) continue;
             if (rule.pattern.len >= 3) {
                 const delim = rule.pattern[0];
                 if (delim == '\'' or delim == '"') {
-                    string_start_chars[rule.pattern[1]] = true;
+                    stringStartChars[rule.pattern[1]] = true;
                 }
             }
         }
 
         // Find the comment start character from the grammar
-        var comment_start_char: u8 = 0;
+        var commentStartChar: u8 = 0;
         for (self.spec.rules.items) |rule| {
             if (std.mem.eql(u8, rule.token, "comment")) {
                 const info = parseLiteralPattern(rule.pattern) orelse continue;
-                if (info.len > 0) comment_start_char = info.chars[0];
+                if (info.len > 0) commentStartChar = info.chars[0];
                 break;
             }
         }
@@ -938,12 +938,12 @@ const LexerGenerator = struct {
             if (info.len == 0) continue;
             const fc = info.chars[0];
             if (fc == '\n' or fc == '\r') continue;
-            if (fc == comment_start_char) continue;
-            if (string_start_chars[fc]) continue;
+            if (fc == commentStartChar) continue;
+            if (stringStartChars[fc]) continue;
 
             try groups[fc].append(self.allocator, .{
                 .chars = info.chars,
-                .char_count = info.len,
+                .charCount = info.len,
                 .token = rule.token,
                 .guards = rule.guards,
                 .actions = rule.actions,
@@ -972,98 +972,98 @@ const LexerGenerator = struct {
         );
     }
 
-    fn emitSwitchArm(self: *LexerGenerator, first_char: u8, rules: []const OpRule, code_fn: ?[]const u8) !void {
-        var single_rules = std.ArrayListUnmanaged(OpRule){};
-        defer single_rules.deinit(self.allocator);
-        var multi_rules = std.ArrayListUnmanaged(OpRule){};
-        defer multi_rules.deinit(self.allocator);
+    fn emitSwitchArm(self: *LexerGenerator, firstChar: u8, rules: []const OpRule, codeFn: ?[]const u8) !void {
+        var singleRules = std.ArrayListUnmanaged(OpRule){};
+        defer singleRules.deinit(self.allocator);
+        var multiRules = std.ArrayListUnmanaged(OpRule){};
+        defer multiRules.deinit(self.allocator);
 
         for (rules) |rule| {
-            if (rule.char_count > 1)
-                try multi_rules.append(self.allocator, rule)
+            if (rule.charCount > 1)
+                try multiRules.append(self.allocator, rule)
             else
-                try single_rules.append(self.allocator, rule);
+                try singleRules.append(self.allocator, rule);
         }
 
-        const lit = charToZigLiteral(first_char);
-        const lit_str = lit.buf[0..lit.len];
+        const lit = charToZigLiteral(firstChar);
+        const litStr = lit.buf[0..lit.len];
 
-        const has_guards = blk: {
-            for (single_rules.items) |r| if (r.guards.len > 0) break :blk true;
+        const hasGuards = blk: {
+            for (singleRules.items) |r| if (r.guards.len > 0) break :blk true;
             break :blk false;
         };
-        const has_actions = blk: {
-            for (single_rules.items) |r| if (r.actions.len > 0) break :blk true;
+        const hasActions = blk: {
+            for (singleRules.items) |r| if (r.actions.len > 0) break :blk true;
             break :blk false;
         };
-        const needs_blk = multi_rules.items.len > 0 or has_guards or has_actions;
+        const needsBlk = multiRules.items.len > 0 or hasGuards or hasActions;
 
-        if (!needs_blk) {
-            const r = single_rules.items[0];
-            try self.print("            '{s}' => Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = 1 }},\n", .{ lit_str, r.token });
+        if (!needsBlk) {
+            const r = singleRules.items[0];
+            try self.print("            '{s}' => Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = 1 }},\n", .{ litStr, r.token });
             return;
         }
 
         // Pre-guard shortcut: two rules for same char differing only by pre guard,
         // both producing single-char tokens with no actions.
         // Skip shortcut if pattern-exit logic is needed (requires a block).
-        if (multi_rules.items.len == 0 and single_rules.items.len == 2 and !has_actions) {
+        if (multiRules.items.len == 0 and singleRules.items.len == 2 and !hasActions) {
             var guarded: ?[]const u8 = null;
             var default: ?[]const u8 = null;
-            for (single_rules.items) |r| {
+            for (singleRules.items) |r| {
                 if (r.guards.len > 0) {
-                    var is_pre = false;
+                    var isPre = false;
                     for (r.guards) |g| {
                         if (std.mem.eql(u8, g.variable, "pre") and !g.negated and
                             (g.op == .truthy or (g.op == .gt and g.value == 0)))
-                            is_pre = true;
+                            isPre = true;
                     }
-                    if (is_pre) guarded = r.token;
+                    if (isPre) guarded = r.token;
                 } else {
                     default = r.token;
                 }
             }
             if (guarded != null and default != null) {
-                try self.print("            '{s}' => Token{{ .cat = if (wsCount > 0) .@\"{s}\" else .@\"{s}\", .pre = wsCount, .pos = start, .len = 1 }},\n", .{ lit_str, guarded.?, default.? });
+                try self.print("            '{s}' => Token{{ .cat = if (wsCount > 0) .@\"{s}\" else .@\"{s}\", .pre = wsCount, .pos = start, .len = 1 }},\n", .{ litStr, guarded.?, default.? });
                 return;
             }
         }
 
-        try self.print("            '{s}' => blk: {{\n", .{lit_str});
+        try self.print("            '{s}' => blk: {{\n", .{litStr});
 
         // Multi-char rules: group by second char, longest first
-        if (multi_rules.items.len > 0) {
-            try self.emitMultiCharPeekAhead(multi_rules.items, 1, code_fn);
+        if (multiRules.items.len > 0) {
+            try self.emitMultiCharPeekAhead(multiRules.items, 1, codeFn);
         }
 
         // Single-char rules with guards
-        try self.emitGuardedSingleCharRules(single_rules.items);
+        try self.emitGuardedSingleCharRules(singleRules.items);
 
         // If multi-char rules exist but no unguarded single-char fallback,
         // the blk: may not return. Add a fallback: rewind pos and route to
         // the appropriate scanner, or emit an error token.
         // Skip if guarded rules form an exhaustive chain (2+ guards, no unguarded).
-        if (multi_rules.items.len > 0) {
-            const has_unguarded = blk: {
-                for (single_rules.items) |r| {
+        if (multiRules.items.len > 0) {
+            const hasUnguarded = blk: {
+                for (singleRules.items) |r| {
                     if (r.guards.len == 0) break :blk true;
                 }
                 break :blk false;
             };
-            var guarded_count: usize = 0;
-            for (single_rules.items) |r| {
-                if (r.guards.len > 0) guarded_count += 1;
+            var guardedCount: usize = 0;
+            for (singleRules.items) |r| {
+                if (r.guards.len > 0) guardedCount += 1;
             }
-            const exhaustive = !has_unguarded and guarded_count >= 2;
-            if (!has_unguarded and !exhaustive) {
+            const exhaustive = !hasUnguarded and guardedCount >= 2;
+            if (!hasUnguarded and !exhaustive) {
                 // Determine fallback based on what this character starts
-                const is_string_start = (first_char == '\'' or first_char == '"');
-                const is_digit = (first_char >= '0' and first_char <= '9');
+                const isStringStart = (firstChar == '\'' or firstChar == '"');
+                const isDigit = (firstChar >= '0' and firstChar <= '9');
 
                 try self.write("                self.pos -= 1;\n");
-                if (is_string_start) {
+                if (isStringStart) {
                     try self.write("                break :blk self.scanString(start, wsCount);\n");
-                } else if (is_digit) {
+                } else if (isDigit) {
                     try self.write("                break :blk self.scanNumber(start, wsCount);\n");
                 } else {
                     try self.write("                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
@@ -1074,90 +1074,90 @@ const LexerGenerator = struct {
         try self.write("            },\n");
     }
 
-    fn emitMultiCharPeekAhead(self: *LexerGenerator, rules: []const OpRule, depth: u8, code_fn: ?[]const u8) !void {
-        const base_indent = "                ";
-        var indent_buf: [64]u8 = undefined;
+    fn emitMultiCharPeekAhead(self: *LexerGenerator, rules: []const OpRule, depth: u8, codeFn: ?[]const u8) !void {
+        const baseIndent = "                ";
+        var indentBuf: [64]u8 = undefined;
         const extra: usize = (@as(usize, depth) - 1) * 4;
         const indent = blk: {
-            @memset(&indent_buf, ' ');
-            break :blk indent_buf[0 .. base_indent.len + extra];
+            @memset(&indentBuf, ' ');
+            break :blk indentBuf[0 .. baseIndent.len + extra];
         };
 
-        var seen_second: [256]bool = @splat(false);
-        var second_chars: [256]u8 = undefined;
-        var second_count: usize = 0;
+        var seenSecond: [256]bool = @splat(false);
+        var secondChars: [256]u8 = undefined;
+        var secondCount: usize = 0;
 
         for (rules) |r| {
-            if (r.char_count <= depth) continue;
+            if (r.charCount <= depth) continue;
             const sc = r.chars[depth];
-            if (!seen_second[sc]) {
-                seen_second[sc] = true;
-                second_chars[second_count] = sc;
-                second_count += 1;
+            if (!seenSecond[sc]) {
+                seenSecond[sc] = true;
+                secondChars[secondCount] = sc;
+                secondCount += 1;
             }
         }
 
-        for (second_chars[0..second_count]) |sc| {
+        for (secondChars[0..secondCount]) |sc| {
             var matching = std.ArrayListUnmanaged(OpRule){};
             defer matching.deinit(self.allocator);
             for (rules) |r| {
-                if (r.char_count > depth and r.chars[depth] == sc)
+                if (r.charCount > depth and r.chars[depth] == sc)
                     try matching.append(self.allocator, r);
             }
 
-            const sc_lit = charToZigLiteral(sc);
-            const sc_str = sc_lit.buf[0..sc_lit.len];
+            const scLit = charToZigLiteral(sc);
+            const scStr = scLit.buf[0..scLit.len];
 
             // Check if ALL matching rules share the same guard
-            const all_same_guard = blk: {
+            const allSameGuard = blk: {
                 if (matching.items.len == 0) break :blk false;
-                const first_guards = matching.items[0].guards;
+                const firstGuards = matching.items[0].guards;
                 for (matching.items[1..]) |r| {
-                    if (r.guards.len != first_guards.len) break :blk false;
+                    if (r.guards.len != firstGuards.len) break :blk false;
                 }
-                break :blk first_guards.len > 0;
+                break :blk firstGuards.len > 0;
             };
 
-            if (all_same_guard) {
+            if (allSameGuard) {
                 try self.write(indent);
                 try self.write("if (");
                 try self.emitAllGuards(matching.items[0].guards);
-                try self.print(" and self.peek() == '{s}') {{\n", .{sc_str});
+                try self.print(" and self.peek() == '{s}') {{\n", .{scStr});
             } else {
                 try self.write(indent);
-                try self.print("if (self.peek() == '{s}') {{\n", .{sc_str});
+                try self.print("if (self.peek() == '{s}') {{\n", .{scStr});
             }
             try self.write(indent);
             try self.write("    self.pos += 1;\n");
 
             // Check for deeper (3-char) rules
-            var has_deeper = false;
+            var hasDeeper = false;
             for (matching.items) |r| {
-                if (r.char_count > depth + 1) {
-                    has_deeper = true;
+                if (r.charCount > depth + 1) {
+                    hasDeeper = true;
                     break;
                 }
             }
-            if (has_deeper) {
-                try self.emitMultiCharPeekAhead(matching.items, depth + 1, code_fn);
+            if (hasDeeper) {
+                try self.emitMultiCharPeekAhead(matching.items, depth + 1, codeFn);
             }
 
             // Emit terminating rules at this depth
             var terminated = false;
             for (matching.items) |r| {
-                if (r.char_count == depth + 1) {
-                    if (!all_same_guard and r.guards.len > 0) {
+                if (r.charCount == depth + 1) {
+                    if (!allSameGuard and r.guards.len > 0) {
                         try self.write(indent);
                         try self.write("    if (");
                         try self.emitAllGuards(r.guards);
                         try self.write(") {\n");
                         try self.emitActions(r.actions, indent);
-                        try self.emitTokenReturn("break :blk", r.token, r.char_count);
+                        try self.emitTokenReturn("break :blk", r.token, r.charCount);
                         try self.write(indent);
                         try self.write("    }\n");
                     } else if (!terminated) {
                         try self.emitActions(r.actions, indent);
-                        try self.emitTokenReturn("break :blk", r.token, r.char_count);
+                        try self.emitTokenReturn("break :blk", r.token, r.charCount);
                         terminated = true;
                     }
                 }
@@ -1190,12 +1190,12 @@ const LexerGenerator = struct {
 
         // Emit guarded rules as if-chain
         for (guarded.items, 0..) |r, i| {
-            const is_last = (i == guarded.items.len - 1);
+            const isLast = (i == guarded.items.len - 1);
             if (i == 0) {
                 try self.write("                if (");
                 try self.emitAllGuards(r.guards);
                 try self.write(") {\n");
-            } else if (is_last and unguarded == null) {
+            } else if (isLast and unguarded == null) {
                 try self.write(" else {\n");
             } else {
                 try self.write(" else if (");
@@ -1203,7 +1203,7 @@ const LexerGenerator = struct {
                 try self.write(") {\n");
             }
             try self.emitActions(r.actions, "                    ");
-            try self.emitTokenReturn("break :blk", r.token, r.char_count);
+            try self.emitTokenReturn("break :blk", r.token, r.charCount);
             try self.write("                }");
         }
 
@@ -1213,7 +1213,7 @@ const LexerGenerator = struct {
                 try self.write("\n");
             }
             try self.emitActions(r.actions, "                ");
-            try self.emitTokenReturn("break :blk", r.token, r.char_count);
+            try self.emitTokenReturn("break :blk", r.token, r.charCount);
         } else if (guarded.items.len > 0) {
             // If the last guarded rule was emitted as a bare `else`, the chain
             // is already exhaustive — no fallback needed.
@@ -1228,14 +1228,14 @@ const LexerGenerator = struct {
 
     fn generateEmptyPatternGuards(self: *LexerGenerator) !void {
         // Collect rules with empty patterns (guard-only, zero-width tokens)
-        var has_any = false;
+        var hasAny = false;
         for (self.spec.rules.items) |rule| {
             if (rule.pattern.len > 0) continue;
             if (rule.guards.len == 0) continue;
-            has_any = true;
+            hasAny = true;
             break;
         }
-        if (!has_any) return;
+        if (!hasAny) return;
 
         try self.write("        // Empty-pattern guard rules (zero-width tokens based on state)\n");
         for (self.spec.rules.items) |rule| {
@@ -1290,41 +1290,41 @@ const LexerGenerator = struct {
         // Collect newline rules from grammar (literal patterns for \n, \r, \r\n)
         const NlRule = struct {
             chars: [2]u8,
-            char_count: u8,
+            charCount: u8,
             token: []const u8,
             guards: []const Guard,
             actions: []const Action,
         };
 
-        var crlf_rules = std.ArrayListUnmanaged(NlRule){};
-        defer crlf_rules.deinit(self.allocator);
-        var lf_rules = std.ArrayListUnmanaged(NlRule){};
-        defer lf_rules.deinit(self.allocator);
-        var cr_rules = std.ArrayListUnmanaged(NlRule){};
-        defer cr_rules.deinit(self.allocator);
+        var crlfRules = std.ArrayListUnmanaged(NlRule){};
+        defer crlfRules.deinit(self.allocator);
+        var lfRules = std.ArrayListUnmanaged(NlRule){};
+        defer lfRules.deinit(self.allocator);
+        var crRules = std.ArrayListUnmanaged(NlRule){};
+        defer crRules.deinit(self.allocator);
 
         for (self.spec.rules.items) |rule| {
             const info = parseLiteralPattern(rule.pattern) orelse continue;
             if (info.len == 2 and info.chars[0] == '\r' and info.chars[1] == '\n') {
-                try crlf_rules.append(self.allocator, .{
+                try crlfRules.append(self.allocator, .{
                     .chars = .{ '\r', '\n' },
-                    .char_count = 2,
+                    .charCount = 2,
                     .token = rule.token,
                     .guards = rule.guards,
                     .actions = rule.actions,
                 });
             } else if (info.len == 1 and info.chars[0] == '\n') {
-                try lf_rules.append(self.allocator, .{
+                try lfRules.append(self.allocator, .{
                     .chars = .{ '\n', 0 },
-                    .char_count = 1,
+                    .charCount = 1,
                     .token = rule.token,
                     .guards = rule.guards,
                     .actions = rule.actions,
                 });
             } else if (info.len == 1 and info.chars[0] == '\r') {
-                try cr_rules.append(self.allocator, .{
+                try crRules.append(self.allocator, .{
                     .chars = .{ '\r', 0 },
-                    .char_count = 1,
+                    .charCount = 1,
                     .token = rule.token,
                     .guards = rule.guards,
                     .actions = rule.actions,
@@ -1332,7 +1332,7 @@ const LexerGenerator = struct {
             }
         }
 
-        if (lf_rules.items.len == 0 and cr_rules.items.len == 0) return;
+        if (lfRules.items.len == 0 and crRules.items.len == 0) return;
 
         try self.write(
             \\        // Newline handling (generated from grammar rules)
@@ -1341,17 +1341,17 @@ const LexerGenerator = struct {
         );
 
         // CRLF check first (longest match)
-        if (crlf_rules.items.len > 0) {
+        if (crlfRules.items.len > 0) {
             try self.write("            if (c == '\\r' and self.pos + 1 < self.source.len and self.source[self.pos + 1] == '\\n') {\n");
-            try self.emitNewlineRules(crlf_rules.items, 2);
+            try self.emitNewlineRules(crlfRules.items, 2);
             try self.write("            }\n");
         }
 
         // Single-char newline rules (\n and standalone \r)
         // After CRLF is excluded, \n and \r have identical handling — use \n rules
-        const single_rules = if (lf_rules.items.len > 0) lf_rules.items else cr_rules.items;
-        if (single_rules.len > 0) {
-            try self.emitNewlineRules(single_rules, 1);
+        const singleRules = if (lfRules.items.len > 0) lfRules.items else crRules.items;
+        if (singleRules.len > 0) {
+            try self.emitNewlineRules(singleRules, 1);
         }
 
         try self.write(
@@ -1360,7 +1360,7 @@ const LexerGenerator = struct {
         );
     }
 
-    fn emitNewlineRules(self: *LexerGenerator, rules: anytype, char_count: u8) !void {
+    fn emitNewlineRules(self: *LexerGenerator, rules: anytype, charCount: u8) !void {
         var guarded = std.ArrayListUnmanaged(@TypeOf(rules[0])){};
         defer guarded.deinit(self.allocator);
         var unguarded: ?@TypeOf(rules[0]) = null;
@@ -1374,7 +1374,7 @@ const LexerGenerator = struct {
         }
 
         // Consume the newline character(s)
-        if (char_count == 2) {
+        if (charCount == 2) {
             try self.write("                self.pos += 2;\n");
         } else {
             try self.write("                self.pos += 1;\n");
@@ -1385,17 +1385,17 @@ const LexerGenerator = struct {
             try self.emitAllGuards(r.guards);
             try self.write(") {\n");
             try self.emitActions(r.actions, "                    ");
-            try self.print("                    return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ r.token, char_count });
+            try self.print("                    return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ r.token, charCount });
             try self.write("                }\n");
         }
 
         if (unguarded) |r| {
             try self.emitActions(r.actions, "                ");
-            try self.print("                return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ r.token, char_count });
+            try self.print("                return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ r.token, charCount });
         }
     }
 
-    fn parseCharClass(pattern: []const u8) ?struct { chars: [256]bool, end_pos: usize } {
+    fn parseCharClass(pattern: []const u8) ?struct { chars: [256]bool, endPos: usize } {
         if (pattern.len == 0 or pattern[0] != '[') return null;
         var chars: [256]bool = @splat(false);
         var i: usize = 1;
@@ -1410,14 +1410,14 @@ const LexerGenerator = struct {
                 i += 1;
             }
         }
-        if (i < pattern.len and pattern[i] == ']') return .{ .chars = chars, .end_pos = i + 1 };
+        if (i < pattern.len and pattern[i] == ']') return .{ .chars = chars, .endPos = i + 1 };
         return null;
     }
 
     fn generateCharClassification(self: *LexerGenerator) !void {
         // Derive LETTER and DIGIT sets from grammar patterns
-        var letter_chars: [256]bool = @splat(false);
-        var digit_chars: [256]bool = @splat(false);
+        var letterChars: [256]bool = @splat(false);
+        var digitChars: [256]bool = @splat(false);
 
         for (self.spec.rules.items) |rule| {
             if (rule.guards.len > 0) continue;
@@ -1426,13 +1426,13 @@ const LexerGenerator = struct {
             if (std.mem.eql(u8, rule.token, "ident")) {
                 if (parseCharClass(rule.pattern)) |cc| {
                     for (0..256) |c| {
-                        if (cc.chars[c]) letter_chars[c] = true;
+                        if (cc.chars[c]) letterChars[c] = true;
                     }
                 }
             } else if (std.mem.eql(u8, rule.token, "integer")) {
                 if (parseCharClass(rule.pattern)) |cc| {
                     for (0..256) |c| {
-                        if (cc.chars[c]) digit_chars[c] = true;
+                        if (cc.chars[c]) digitChars[c] = true;
                     }
                 }
             }
@@ -1451,18 +1451,18 @@ const LexerGenerator = struct {
         );
 
         // Emit DIGIT entries
-        var has_digit_range = true;
+        var hasDigitRange = true;
         for ('0'..('9' + 1)) |c| {
-            if (!digit_chars[c]) {
-                has_digit_range = false;
+            if (!digitChars[c]) {
+                hasDigitRange = false;
                 break;
             }
         }
-        if (has_digit_range) {
+        if (hasDigitRange) {
             try self.write("        for ('0'..'9' + 1) |c| table[c] = DIGIT;\n");
         } else {
             for (0..256) |c| {
-                if (digit_chars[c]) {
+                if (digitChars[c]) {
                     const lit = charToZigLiteral(@intCast(c));
                     try self.print("        table['{s}'] = DIGIT;\n", .{lit.buf[0..lit.len]});
                 }
@@ -1470,29 +1470,29 @@ const LexerGenerator = struct {
         }
 
         // Emit LETTER entries — check for standard ranges first
-        var has_upper = true;
-        var has_lower = true;
+        var hasUpper = true;
+        var hasLower = true;
         for ('A'..('Z' + 1)) |c| {
-            if (!letter_chars[c]) {
-                has_upper = false;
+            if (!letterChars[c]) {
+                hasUpper = false;
                 break;
             }
         }
         for ('a'..('z' + 1)) |c| {
-            if (!letter_chars[c]) {
-                has_lower = false;
+            if (!letterChars[c]) {
+                hasLower = false;
                 break;
             }
         }
 
-        if (has_upper) try self.write("        for ('A'..'Z' + 1) |c| table[c] = LETTER;\n");
-        if (has_lower) try self.write("        for ('a'..'z' + 1) |c| table[c] = LETTER;\n");
+        if (hasUpper) try self.write("        for ('A'..'Z' + 1) |c| table[c] = LETTER;\n");
+        if (hasLower) try self.write("        for ('a'..'z' + 1) |c| table[c] = LETTER;\n");
 
         // Emit individual LETTER chars outside standard ranges
         for (0..256) |c| {
-            if (!letter_chars[c]) continue;
-            if (has_upper and c >= 'A' and c <= 'Z') continue;
-            if (has_lower and c >= 'a' and c <= 'z') continue;
+            if (!letterChars[c]) continue;
+            if (hasUpper and c >= 'A' and c <= 'Z') continue;
+            if (hasLower and c >= 'a' and c <= 'z') continue;
             const lit = charToZigLiteral(@intCast(c));
             try self.print("        table['{s}'] = LETTER;\n", .{lit.buf[0..lit.len]});
         }
@@ -1525,30 +1525,30 @@ const LexerGenerator = struct {
 
     fn generateScannerDispatch(self: *LexerGenerator) !void {
         // Derive dispatch conditions from grammar patterns
-        var has_number = false;
-        var number_has_leading_dot = false;
-        var has_ident = false;
+        var hasNumber = false;
+        var numberHasLeadingDot = false;
+        var hasIdent = false;
 
         // Collect string patterns (heredocs are handled by the language wrapper, not the engine)
-        const StringInfo = struct { open_char: u8, token: []const u8 };
-        var string_infos: [4]StringInfo = undefined;
-        var string_info_count: usize = 0;
+        const StringInfo = struct { openChar: u8, token: []const u8 };
+        var stringInfos: [4]StringInfo = undefined;
+        var stringInfoCount: usize = 0;
 
         for (self.spec.rules.items) |rule| {
             if (rule.guards.len > 0) continue;
 
-            const is_string_tok = std.mem.eql(u8, rule.token, "string") or
+            const isStringTok = std.mem.eql(u8, rule.token, "string") or
                 std.mem.startsWith(u8, rule.token, "string_");
-            if (is_string_tok) {
+            if (isStringTok) {
                 if (rule.pattern.len >= 3 and (rule.pattern[0] == '\'' or rule.pattern[0] == '"')) {
                     const delim = rule.pattern[0];
                     if (rule.pattern[1] != delim) {
-                        if (string_info_count < string_infos.len) {
-                            string_infos[string_info_count] = .{
-                                .open_char = rule.pattern[1],
+                        if (stringInfoCount < stringInfos.len) {
+                            stringInfos[stringInfoCount] = .{
+                                .openChar = rule.pattern[1],
                                 .token = rule.token,
                             };
-                            string_info_count += 1;
+                            stringInfoCount += 1;
                         }
                     }
                 }
@@ -1556,32 +1556,32 @@ const LexerGenerator = struct {
             if (std.mem.eql(u8, rule.token, "integer") or
                 std.mem.eql(u8, rule.token, "real"))
             {
-                has_number = true;
+                hasNumber = true;
                 if (std.mem.indexOf(u8, rule.pattern, "'.'") != null and
                     rule.pattern.len > 0 and rule.pattern[0] == '[')
                 {
                     const cc = parseCharClass(rule.pattern);
-                    if (cc != null and std.mem.startsWith(u8, rule.pattern[cc.?.end_pos..], "* '.'"))
-                        number_has_leading_dot = true;
+                    if (cc != null and std.mem.startsWith(u8, rule.pattern[cc.?.endPos..], "* '.'"))
+                        numberHasLeadingDot = true;
                 }
             }
             if (std.mem.eql(u8, rule.token, "ident") and rule.pattern.len > 0 and rule.pattern[0] == '[') {
-                has_ident = true;
+                hasIdent = true;
             }
         }
 
         // String token types
-        for (string_infos[0..string_info_count]) |si| {
-            const lit = charToZigLiteral(si.open_char);
-            const lit_str = lit.buf[0..lit.len];
+        for (stringInfos[0..stringInfoCount]) |si| {
+            const lit = charToZigLiteral(si.openChar);
+            const litStr = lit.buf[0..lit.len];
 
             try self.print(
                 \\        if (c == '{s}') {{
-            , .{lit_str});
+            , .{litStr});
 
             // Detect escape mechanism from the grammar pattern
-            const is_sq = (si.open_char == '\'');
-            if (is_sq) {
+            const isSq = (si.openChar == '\'');
+            if (isSq) {
                 // Single-quote: '' escape, stop on \n
                 try self.print(
                     \\            self.pos += 1;
@@ -1598,7 +1598,7 @@ const LexerGenerator = struct {
                     \\            return Token{{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
-                , .{ lit_str, lit_str, si.token });
+                , .{ litStr, litStr, si.token });
             } else {
                 // Double-quote: backslash escape, stop on \n
                 try self.print(
@@ -1616,12 +1616,12 @@ const LexerGenerator = struct {
                     \\            return Token{{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
-                , .{ lit_str, si.token });
+                , .{ litStr, si.token });
             }
         }
 
-        if (has_number) {
-            if (number_has_leading_dot) {
+        if (hasNumber) {
+            if (numberHasLeadingDot) {
                 try self.write(
                     \\        // Number (digit or leading dot followed by digit)
                     \\        if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
@@ -1640,7 +1640,7 @@ const LexerGenerator = struct {
             }
         }
 
-        if (has_ident) {
+        if (hasIdent) {
             try self.write(
                 \\        // Identifier
                 \\        if (isLetter(c)) {
@@ -1660,7 +1660,7 @@ const LexerGenerator = struct {
     fn generatePrefixScanners(self: *LexerGenerator) !void {
         // Find rules like: '$' [a-zA-Z_]... → variable, '$' '{' ... → var_braced
         // Group by prefix character
-        var emitted_prefixes: [256]bool = @splat(false);
+        var emittedPrefixes: [256]bool = @splat(false);
 
         for (self.spec.rules.items) |rule| {
             if (rule.guards.len > 0) continue;
@@ -1669,13 +1669,13 @@ const LexerGenerator = struct {
             // Match pattern: 'X' followed by character class or literal
             if (rule.pattern[0] != '\'') continue;
             if (rule.pattern[2] != '\'') continue;
-            const prefix_char = rule.pattern[1];
+            const prefixChar = rule.pattern[1];
 
             // Skip if this prefix is handled by string/number/ident/comment scanners
-            if (prefix_char == '"' or prefix_char == '\'') continue;
-            if (prefix_char >= '0' and prefix_char <= '9') continue;
-            if ((prefix_char >= 'a' and prefix_char <= 'z') or
-                (prefix_char >= 'A' and prefix_char <= 'Z') or prefix_char == '_' or prefix_char == '%') continue;
+            if (prefixChar == '"' or prefixChar == '\'') continue;
+            if (prefixChar >= '0' and prefixChar <= '9') continue;
+            if ((prefixChar >= 'a' and prefixChar <= 'z') or
+                (prefixChar >= 'A' and prefixChar <= 'Z') or prefixChar == '_' or prefixChar == '%') continue;
             // Skip comment start chars and flag chars (handled elsewhere)
             if (std.mem.eql(u8, rule.token, "comment")) continue;
             if (std.mem.eql(u8, rule.token, "skip")) continue;
@@ -1686,58 +1686,58 @@ const LexerGenerator = struct {
             if (trimmed.len == 0) continue;
             if (trimmed[0] == '[' and trimmed.len > 1 and trimmed[1] == '^') continue; // negated class like [^\n]
 
-            if (emitted_prefixes[prefix_char]) continue;
+            if (emittedPrefixes[prefixChar]) continue;
 
             // Collect all rules with this prefix
             const PrefixRule = struct { pattern: []const u8, token: []const u8, actions: []const Action };
-            var prefix_rules: [32]PrefixRule = undefined;
-            var prefix_count: usize = 0;
+            var prefixRules: [32]PrefixRule = undefined;
+            var prefixCount: usize = 0;
 
             for (self.spec.rules.items) |r| {
                 if (r.guards.len > 0) continue;
                 if (r.pattern.len < 5) continue;
                 if (r.pattern[0] != '\'' or r.pattern[2] != '\'') continue;
-                if (r.pattern[1] != prefix_char) continue;
-                if (prefix_count < prefix_rules.len) {
-                    prefix_rules[prefix_count] = .{ .pattern = r.pattern, .token = r.token, .actions = r.actions };
-                    prefix_count += 1;
+                if (r.pattern[1] != prefixChar) continue;
+                if (prefixCount < prefixRules.len) {
+                    prefixRules[prefixCount] = .{ .pattern = r.pattern, .token = r.token, .actions = r.actions };
+                    prefixCount += 1;
                 }
             }
 
-            if (prefix_count == 0) continue;
-            emitted_prefixes[prefix_char] = true;
+            if (prefixCount == 0) continue;
+            emittedPrefixes[prefixChar] = true;
 
-            const lit = charToZigLiteral(prefix_char);
-            const lit_str = lit.buf[0..lit.len];
+            const lit = charToZigLiteral(prefixChar);
+            const litStr = lit.buf[0..lit.len];
 
-            try self.print("        if (c == '{s}') {{\n", .{lit_str});
+            try self.print("        if (c == '{s}') {{\n", .{litStr});
             try self.write("            const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;\n");
 
             // Sort rules: longer patterns first for priority (literal sequences before classes)
             // Emit checks for each rule's second character condition
-            for (prefix_rules[0..prefix_count]) |pr| {
+            for (prefixRules[0..prefixCount]) |pr| {
                 // Parse what follows the prefix literal in the pattern
-                const pr_rest = pr.pattern[3..]; // after 'X'
-                const pr_trimmed = std.mem.trimLeft(u8, pr_rest, " ");
+                const prRest = pr.pattern[3..]; // after 'X'
+                const prTrimmed = std.mem.trimLeft(u8, prRest, " ");
 
-                if (pr_trimmed.len >= 3 and pr_trimmed[0] == '\'') {
+                if (prTrimmed.len >= 3 and prTrimmed[0] == '\'') {
                     // Second literal: '$' '{' → scan until matching close
-                    const second_char = pr_trimmed[1];
-                    const sc_lit = charToZigLiteral(second_char);
-                    const sc_str = sc_lit.buf[0..sc_lit.len];
+                    const secondChar = prTrimmed[1];
+                    const scLit = charToZigLiteral(secondChar);
+                    const scStr = scLit.buf[0..scLit.len];
 
                     // Find the closing delimiter
-                    if (std.mem.indexOf(u8, pr_trimmed[3..], "'")) |close_idx| {
-                        const end_pattern = pr_trimmed[3..][0..close_idx];
-                        if (end_pattern.len >= 3 and end_pattern[0] == ' ' and end_pattern[1] == '[' and end_pattern[2] == '^') {
+                    if (std.mem.indexOf(u8, prTrimmed[3..], "'")) |closeIdx| {
+                        const endPattern = prTrimmed[3..][0..closeIdx];
+                        if (endPattern.len >= 3 and endPattern[0] == ' ' and endPattern[1] == '[' and endPattern[2] == '^') {
                             // Pattern: '$' '{' [^}\n]+ '}' → scan to closing char
-                            if (std.mem.indexOf(u8, end_pattern[3..], "]") == null) continue;
+                            if (std.mem.indexOf(u8, endPattern[3..], "]") == null) continue;
                             // Find the close delimiter from the end of the pattern
                             if (std.mem.lastIndexOf(u8, pr.pattern, "'")) |li| {
                                 if (li > 3) {
-                                    const close_ch = pr.pattern[li - 1];
-                                    const cl_lit = charToZigLiteral(close_ch);
-                                    const cl_str = cl_lit.buf[0..cl_lit.len];
+                                    const closeCh = pr.pattern[li - 1];
+                                    const clLit = charToZigLiteral(closeCh);
+                                    const clStr = clLit.buf[0..clLit.len];
                                     try self.print(
                                         \\            if (nc == '{s}') {{
                                         \\                self.pos += 2;
@@ -1746,20 +1746,20 @@ const LexerGenerator = struct {
                                         \\                return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                                         \\            }}
                                         \\
-                                    , .{ sc_str, cl_str, cl_str, pr.token });
+                                    , .{ scStr, clStr, clStr, pr.token });
                                 }
                             }
                         }
                     }
-                } else if (pr_trimmed.len >= 1 and pr_trimmed[0] == '[') {
+                } else if (prTrimmed.len >= 1 and prTrimmed[0] == '[') {
                     // Character class: '$' [a-zA-Z_] → scan identifier-like
                     // Check what chars are in the class
-                    const has_alpha = std.mem.indexOf(u8, pr_trimmed, "a-z") != null or
-                        std.mem.indexOf(u8, pr_trimmed, "A-Z") != null;
-                    const has_digit = std.mem.indexOf(u8, pr_trimmed, "0-9") != null;
-                    const has_special = std.mem.indexOf(u8, pr_trimmed, "?$!#*") != null;
+                    const hasAlpha = std.mem.indexOf(u8, prTrimmed, "a-z") != null or
+                        std.mem.indexOf(u8, prTrimmed, "A-Z") != null;
+                    const hasDigit = std.mem.indexOf(u8, prTrimmed, "0-9") != null;
+                    const hasSpecial = std.mem.indexOf(u8, prTrimmed, "?$!#*") != null;
 
-                    if (has_alpha) {
+                    if (hasAlpha) {
                         // $name pattern: letter/underscore followed by alphanum
                         try self.print(
                             \\            if ((nc >= 'a' and nc <= 'z') or (nc >= 'A' and nc <= 'Z') or nc == '_') {{
@@ -1773,7 +1773,7 @@ const LexerGenerator = struct {
                             \\            }}
                             \\
                         , .{pr.token});
-                    } else if (has_digit) {
+                    } else if (hasDigit) {
                         // $0-$9 pattern
                         try self.print(
                             \\            if (nc >= '0' and nc <= '9') {{
@@ -1782,7 +1782,7 @@ const LexerGenerator = struct {
                             \\            }}
                             \\
                         , .{pr.token});
-                    } else if (has_special) {
+                    } else if (hasSpecial) {
                         // $?, $$, $!, $#, $*
                         try self.print(
                             \\            if (nc == '?' or nc == '$' or nc == '!' or nc == '#' or nc == '*') {{
@@ -1806,32 +1806,32 @@ const LexerGenerator = struct {
 
     fn generateNumberScanner(self: *LexerGenerator) !void {
         // Analyze number patterns to detect features
-        var has_decimal = false;
-        var has_exponent = false;
-        var has_leading_dot = false;
+        var hasDecimal = false;
+        var hasExponent = false;
+        var hasLeadingDot = false;
         for (self.spec.rules.items) |rule| {
             if (std.mem.eql(u8, rule.token, "real")) {
-                if (std.mem.indexOf(u8, rule.pattern, "'.'") != null) has_decimal = true;
-                if (std.mem.indexOf(u8, rule.pattern, "[Ee]") != null) has_exponent = true;
+                if (std.mem.indexOf(u8, rule.pattern, "'.'") != null) hasDecimal = true;
+                if (std.mem.indexOf(u8, rule.pattern, "[Ee]") != null) hasExponent = true;
                 if (rule.pattern.len > 0 and rule.pattern[0] == '[') {
                     const cc = parseCharClass(rule.pattern);
-                    if (cc != null and std.mem.startsWith(u8, rule.pattern[cc.?.end_pos..], "* '.'"))
-                        has_leading_dot = true;
+                    if (cc != null and std.mem.startsWith(u8, rule.pattern[cc.?.endPos..], "* '.'"))
+                        hasLeadingDot = true;
                 }
             }
         }
 
         // Check if any number patterns exist
-        var has_any = false;
+        var hasAny = false;
         for (self.spec.rules.items) |rule| {
             if (std.mem.eql(u8, rule.token, "integer") or
                 std.mem.eql(u8, rule.token, "real"))
             {
-                has_any = true;
+                hasAny = true;
                 break;
             }
         }
-        if (!has_any) return;
+        if (!hasAny) return;
 
         try self.write(
             \\
@@ -1839,25 +1839,25 @@ const LexerGenerator = struct {
             \\    fn scanNumber(self: *Self, start: u32, ws: u8) Token {
         );
 
-        if (has_decimal) {
+        if (hasDecimal) {
             try self.write(
                 \\        var hasDecimal = false;
             );
         }
-        if (has_exponent) {
+        if (hasExponent) {
             try self.write(
                 \\        var hasExponent = false;
             );
         }
-        if (has_leading_dot) {
+        if (hasLeadingDot) {
             try self.write(
                 \\        const startsWithDot = self.source[self.pos] == '.';
             );
         }
 
         // Check for grammar-defined number prefix patterns (e.g., 0x hex, 0b binary, 0o octal)
-        const has_prefixed = self.hasNumberPrefixPatterns();
-        if (has_prefixed) {
+        const hasPrefixed = self.hasNumberPrefixPatterns();
+        if (hasPrefixed) {
             try self.write(
                 \\
                 \\        // Number prefix patterns (from grammar)
@@ -1884,7 +1884,7 @@ const LexerGenerator = struct {
         );
 
         // Decimal part
-        if (has_decimal) {
+        if (hasDecimal) {
             try self.write(
                 \\        // Decimal part
                 \\        if (self.pos < self.source.len and self.source[self.pos] == '.') {
@@ -1902,7 +1902,7 @@ const LexerGenerator = struct {
         }
 
         // Exponent part
-        if (has_exponent) {
+        if (hasExponent) {
             try self.write(
                 \\        // Exponent part
                 \\        if (self.pos < self.source.len) {
@@ -1926,24 +1926,24 @@ const LexerGenerator = struct {
         }
 
         // Classification
-        if (has_decimal or has_exponent or has_leading_dot) {
+        if (hasDecimal or hasExponent or hasLeadingDot) {
             try self.write("        // Classify\n");
             try self.write("        const tokenCat: TokenCat = ");
 
-            if (has_decimal or has_exponent or has_leading_dot) {
+            if (hasDecimal or hasExponent or hasLeadingDot) {
                 try self.write("if (");
-                var first_cond = true;
-                if (has_decimal) {
+                var firstCond = true;
+                if (hasDecimal) {
                     try self.write("hasDecimal");
-                    first_cond = false;
+                    firstCond = false;
                 }
-                if (has_exponent) {
-                    if (!first_cond) try self.write(" or ");
+                if (hasExponent) {
+                    if (!firstCond) try self.write(" or ");
                     try self.write("hasExponent");
-                    first_cond = false;
+                    firstCond = false;
                 }
-                if (has_leading_dot) {
-                    if (!first_cond) try self.write(" or ");
+                if (hasLeadingDot) {
+                    if (!firstCond) try self.write(" or ");
                     try self.write("startsWithDot");
                 }
                 try self.write(")\n            .@\"real\"\n");
@@ -1988,8 +1988,8 @@ const LexerGenerator = struct {
             const rest = std.mem.trimLeft(u8, rule.pattern[3..], " ");
             if (rest.len < 3 or rest[0] != '[') continue;
             const close = std.mem.indexOfScalar(u8, rest, ']') orelse continue;
-            const char_class = rest[1..close];
-            const digit_part = std.mem.trimLeft(u8, rest[close + 1 ..], " ");
+            const charClass = rest[1..close];
+            const digitPart = std.mem.trimLeft(u8, rest[close + 1 ..], " ");
 
             // Build condition for prefix char
             if (!first) {
@@ -1999,36 +1999,36 @@ const LexerGenerator = struct {
                 first = false;
             }
             try self.write("if (");
-            var first_cond = true;
+            var firstCond = true;
             var i: usize = 0;
-            while (i < char_class.len) {
-                if (!first_cond) try self.write(" or ");
-                first_cond = false;
-                try self.print("prefix == '{c}'", .{char_class[i]});
+            while (i < charClass.len) {
+                if (!firstCond) try self.write(" or ");
+                firstCond = false;
+                try self.print("prefix == '{c}'", .{charClass[i]});
                 i += 1;
             }
             try self.write(") {\n");
             try self.write("                self.pos += 2;\n");
 
             // Build digit scanning loop from the digit class pattern
-            if (digit_part.len > 0 and digit_part[0] == '[') {
-                const dclose = std.mem.indexOfScalar(u8, digit_part, ']') orelse continue;
-                const dclass = digit_part[1..dclose];
+            if (digitPart.len > 0 and digitPart[0] == '[') {
+                const dclose = std.mem.indexOfScalar(u8, digitPart, ']') orelse continue;
+                const dclass = digitPart[1..dclose];
                 try self.write("                while (self.pos < self.source.len) {\n");
                 try self.write("                    const dc = self.source[self.pos];\n");
                 try self.write("                    if (");
                 // Parse ranges in digit class
                 var di: usize = 0;
-                var first_dc = true;
+                var firstDc = true;
                 while (di < dclass.len) {
                     if (di + 2 < dclass.len and dclass[di + 1] == '-') {
-                        if (!first_dc) try self.write(" or ");
-                        first_dc = false;
+                        if (!firstDc) try self.write(" or ");
+                        firstDc = false;
                         try self.print("(dc >= '{c}' and dc <= '{c}')", .{ dclass[di], dclass[di + 2] });
                         di += 3;
                     } else {
-                        if (!first_dc) try self.write(" or ");
-                        first_dc = false;
+                        if (!firstDc) try self.write(" or ");
+                        firstDc = false;
                         try self.print("dc == '{c}'", .{dclass[di]});
                         di += 1;
                     }
@@ -2064,7 +2064,7 @@ const LexerGenerator = struct {
             if (!std.mem.eql(u8, rule.token, "comment")) continue;
 
             // Extract the leading literal char from the pattern (e.g., ';' or '#')
-            const start_char = blk: {
+            const startChar = blk: {
                 if (rule.pattern.len >= 3 and rule.pattern[0] == '\'') {
                     if (rule.pattern[1] == '\\' and rule.pattern.len >= 4)
                         break :blk switch (rule.pattern[2]) {
@@ -2081,12 +2081,12 @@ const LexerGenerator = struct {
                 continue;
             };
 
-            const start_lit = charToZigLiteral(start_char);
-            const start_str = start_lit.buf[0..start_lit.len];
+            const startLit = charToZigLiteral(startChar);
+            const startStr = startLit.buf[0..startLit.len];
 
-            if (rule.is_simd and rule.simd_char != null) {
-                const stop_lit = charToZigLiteral(rule.simd_char.?);
-                const stop_str = stop_lit.buf[0..stop_lit.len];
+            if (rule.isSimd and rule.simdChar != null) {
+                const stopLit = charToZigLiteral(rule.simdChar.?);
+                const stopStr = stopLit.buf[0..stopLit.len];
 
                 try self.print(
                     \\        // Comment (SIMD accelerated, generated from grammar)
@@ -2098,7 +2098,7 @@ const LexerGenerator = struct {
                     \\            return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
-                , .{ start_str, stop_str, rule.token });
+                , .{ startStr, stopStr, rule.token });
             } else {
                 try self.print(
                     \\        // Comment (scan to end of line)
@@ -2109,7 +2109,7 @@ const LexerGenerator = struct {
                     \\            return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
-                , .{ start_str, rule.token });
+                , .{ startStr, rule.token });
             }
         }
     }
@@ -2188,7 +2188,7 @@ const LexerGenerator = struct {
     fn generateLexerStruct(self: *LexerGenerator) !void {
         // When @lang is set, generate BaseLexer (lang module may wrap it).
         // When not set, generate Lexer directly (self-contained).
-        const sname = if (self.spec.lang_name != null) "BaseLexer" else "Lexer";
+        const sname = if (self.spec.langName != null) "BaseLexer" else "Lexer";
 
         try self.write(
             \\// =============================================================================
@@ -2224,7 +2224,7 @@ const LexerGenerator = struct {
             \\
         );
         for (self.spec.states.items) |state| {
-            try self.print("            .{s} = {d},\n", .{ state.name, state.initial_value });
+            try self.print("            .{s} = {d},\n", .{ state.name, state.initialValue });
         }
         try self.write(
             \\        };
@@ -2251,7 +2251,7 @@ const LexerGenerator = struct {
         try self.write("    pub fn reset(self: *Self) void {\n");
         try self.write("        self.pos = 0;\n");
         for (self.spec.states.items) |state| {
-            try self.print("        self.{s} = {d};\n", .{ state.name, state.initial_value });
+            try self.print("        self.{s} = {d};\n", .{ state.name, state.initialValue });
         }
         try self.write("    }\n\n");
 
@@ -2287,7 +2287,7 @@ const LexerGenerator = struct {
 
         // When @lang is set, alias Lexer from the lang module (if it provides one)
         // or fall back to BaseLexer. This lets lang modules wrap the generated lexer.
-        if (self.spec.lang_name) |lang| {
+        if (self.spec.langName) |lang| {
             try self.print(
                 \\
                 \\pub const Lexer = if (@hasDecl({s}, "Lexer")) {s}.Lexer else BaseLexer;
@@ -2300,15 +2300,15 @@ const LexerGenerator = struct {
         try self.generateCharClassification();
 
         // Generate @code function wrappers (imported from @lang module)
-        for (self.spec.code_functions.items) |func_name| {
-            if (self.spec.lang_name) |lang| {
-                const state_var = self.findCodeFnStateVar('?') orelse "pat";
+        for (self.spec.codeFunctions.items) |funcName| {
+            if (self.spec.langName) |lang| {
+                const stateVar = self.findCodeFnStateVar('?') orelse "pat";
                 try self.print(
                     \\    fn {s}(self: *Self) void {{
                     \\        if ({s}.{s}(self.source, self.pos)) self.{s} = 1;
                     \\    }}
                     \\
-                , .{ func_name, lang, func_name, state_var });
+                , .{ funcName, lang, funcName, stateVar });
             }
         }
 
@@ -2338,10 +2338,10 @@ const LexerGenerator = struct {
         // Generate empty-pattern guard rules (zero-width tokens based on state)
         try self.generateEmptyPatternGuards();
 
-        const has_beg_state = for (self.spec.states.items) |s| {
+        const hasBegState = for (self.spec.states.items) |s| {
             if (std.mem.eql(u8, s.name, "beg")) break true;
         } else false;
-        if (has_beg_state) {
+        if (hasBegState) {
             try self.write(
                 \\        // From here, clear line-start flag
                 \\        self.beg = 0;
@@ -2411,11 +2411,11 @@ const ParserSymbolSet = struct {
     }
 
     fn addAll(self: *ParserSymbolSet, allocator: Allocator, other: *const ParserSymbolSet) !bool {
-        const old_count = self.items.items.len;
+        const oldCount = self.items.items.len;
         for (other.items.items) |id| {
             try self.add(allocator, id);
         }
-        return self.items.items.len > old_count;
+        return self.items.items.len > oldCount;
     }
 
     fn count(self: *const ParserSymbolSet) usize {
@@ -2433,12 +2433,12 @@ const ParserRule = struct {
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
     action: ?ParserAction, // Semantic action
-    action_offset: u8 = 0, // Position offset for start rules with marker tokens
+    actionOffset: u8 = 0, // Position offset for start rules with marker tokens
     nullable: bool = false,
     firsts: ParserSymbolSet = .{},
-    exclude_char: u8 = 0, // X "c" - exclude rule when next char matches
-    prefer_reduce: bool = false, // < hint - prefer reduce on S/R conflict
-    prefer_shift: bool = false, // > hint - prefer shift on S/R conflict
+    excludeChar: u8 = 0, // X "c" - exclude rule when next char matches
+    preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
+    preferShift: bool = false, // > hint - prefer shift on S/R conflict
 
     const ParserAction = struct {
         template: []const u8, // Original action string like (set 2? ...3)
@@ -2450,15 +2450,15 @@ const ParserRule = struct {
 
 /// LR Item: rule with dot position (A → α • β)
 const ParserItem = struct {
-    rule_id: u16,
+    ruleId: u16,
     dot: u8,
 
     fn id(self: ParserItem) u32 {
-        return (@as(u32, self.rule_id) << 8) | self.dot;
+        return (@as(u32, self.ruleId) << 8) | self.dot;
     }
 
     fn eql(a: ParserItem, b: ParserItem) bool {
-        return a.rule_id == b.rule_id and a.dot == b.dot;
+        return a.ruleId == b.ruleId and a.dot == b.dot;
     }
 };
 
@@ -2527,7 +2527,7 @@ const CodeBlock = struct {
 /// Parsed rule from grammar
 const ParsedRule = struct {
     name: []const u8,
-    is_start: bool,
+    isStart: bool,
     alternatives: []const ParsedAlternative,
 };
 
@@ -2535,9 +2535,9 @@ const ParsedRule = struct {
 const ParsedAlternative = struct {
     elements: []const ParsedElement,
     action: ?[]const u8,
-    exclude_char: u8 = 0, // X "c" hint
-    prefer_reduce: bool = false, // < hint - prefer reduce on S/R conflict
-    prefer_shift: bool = false, // > hint - prefer shift on S/R conflict
+    excludeChar: u8 = 0, // X "c" hint
+    preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
+    preferShift: bool = false, // > hint - prefer shift on S/R conflict
 };
 
 /// Parsed element within an alternative
@@ -2545,9 +2545,9 @@ const ParsedElement = struct {
     kind: Kind,
     value: []const u8,
     quantifier: Quantifier = .one,
-    optional_items: bool = false, // For L(X?): items can be empty
-    list_separator: ?[]const u8 = null, // For L(X, sep): custom separator
-    sub_elements: []const ParsedElement = &[_]ParsedElement{}, // For groups
+    optionalItems: bool = false, // For L(X?): items can be empty
+    listSeparator: ?[]const u8 = null, // For L(X, sep): custom separator
+    subElements: []const ParsedElement = &[_]ParsedElement{}, // For groups
     skip: bool = false, // For !element: parse but don't assign position
 
     const Kind = enum {
@@ -2555,12 +2555,12 @@ const ParsedElement = struct {
         token, // UPPERCASE token
         string, // "literal"
         group, // (...)
-        opt_group, // [...] optional group
-        req_list, // L(X)
-        opt_list, // [L(X)]
+        optGroup, // [...] optional group
+        reqList, // L(X)
+        optList, // [L(X)]
     };
 
-    const Quantifier = enum { one, optional, zero_plus, one_plus };
+    const Quantifier = enum { one, optional, zeroPlus, onePlus };
 };
 
 // =============================================================================
@@ -2626,7 +2626,7 @@ const GrammarLexer = struct {
             return self.makeToken(.eof, "");
         }
 
-        const start_line = self.line;
+        const startLine = self.line;
         const start = self.pos;
         const c = self.source[self.pos];
 
@@ -2658,7 +2658,7 @@ const GrammarLexer = struct {
         if (single) |kind| {
             self.advance();
             if (kind == .newline) self.line += 1;
-            return .{ .kind = kind, .text = self.source[start..self.pos], .line = start_line };
+            return .{ .kind = kind, .text = self.source[start..self.pos], .line = startLine };
         }
 
         // Multi-character tokens
@@ -2667,16 +2667,16 @@ const GrammarLexer = struct {
                 while (self.pos < self.source.len and self.source[self.pos] != '\n') {
                     self.advance();
                 }
-                return .{ .kind = .comment, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .comment, .text = self.source[start..self.pos], .line = startLine };
             },
             '-' => {
                 if (self.peek(1) == '>') {
                     self.advance();
                     self.advance();
-                    return .{ .kind = .arrow, .text = self.source[start..self.pos], .line = start_line };
+                    return .{ .kind = .arrow, .text = self.source[start..self.pos], .line = startLine };
                 }
                 self.advance();
-                return .{ .kind = .err, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .err, .text = self.source[start..self.pos], .line = startLine };
             },
             0xE2 => {
                 // UTF-8 arrows: → (0xE2 0x86 0x92) and ← (0xE2 0x86 0x90)
@@ -2688,17 +2688,17 @@ const GrammarLexer = struct {
                 self.advance();
                 self.advance();
                 if (kind != .err) self.advance();
-                return .{ .kind = kind, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = kind, .text = self.source[start..self.pos], .line = startLine };
             },
             '.' => {
                 if (self.peek(1) == '.' and self.peek(2) == '.') {
                     self.advance();
                     self.advance();
                     self.advance();
-                    return .{ .kind = .dots, .text = self.source[start..self.pos], .line = start_line };
+                    return .{ .kind = .dots, .text = self.source[start..self.pos], .line = startLine };
                 }
                 self.advance();
-                return .{ .kind = .err, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .err, .text = self.source[start..self.pos], .line = startLine };
             },
             '"' => {
                 self.advance();
@@ -2709,29 +2709,29 @@ const GrammarLexer = struct {
                     self.advance();
                 }
                 if (self.pos < self.source.len) self.advance();
-                return .{ .kind = .string, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .string, .text = self.source[start..self.pos], .line = startLine };
             },
             'a'...'z' => {
                 while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
                     self.advance();
                 }
-                return .{ .kind = .ident, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .ident, .text = self.source[start..self.pos], .line = startLine };
             },
             'A'...'Z' => {
                 while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
                     self.advance();
                 }
-                return .{ .kind = .token, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .token, .text = self.source[start..self.pos], .line = startLine };
             },
             '0'...'9' => {
                 while (self.pos < self.source.len and self.source[self.pos] >= '0' and self.source[self.pos] <= '9') {
                     self.advance();
                 }
-                return .{ .kind = .number, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .number, .text = self.source[start..self.pos], .line = startLine };
             },
             else => {
                 self.advance();
-                return .{ .kind = .err, .text = self.source[start..self.pos], .line = start_line };
+                return .{ .kind = .err, .text = self.source[start..self.pos], .line = startLine };
             },
         }
     }
@@ -2776,15 +2776,15 @@ const ParserDSLParser = struct {
     current: GrammarToken,
 
     rules: std.ArrayListUnmanaged(ParsedRule) = .{},
-    start_symbols: std.ArrayListUnmanaged([]const u8) = .{},
-    as_directives: std.ArrayListUnmanaged(AsDirective) = .{},
-    op_mappings: std.ArrayListUnmanaged(OpMapping) = .{},
-    error_names: std.ArrayListUnmanaged(ErrorName) = .{},
-    infix_ops: std.ArrayListUnmanaged(InfixOp) = .{},
-    infix_base: ?[]const u8 = null,
+    startSymbols: std.ArrayListUnmanaged([]const u8) = .{},
+    asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
+    opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
+    errorNames: std.ArrayListUnmanaged(ErrorName) = .{},
+    infixOps: std.ArrayListUnmanaged(InfixOp) = .{},
+    infixBase: ?[]const u8 = null,
     lang: ?[]const u8 = null,
-    code_blocks: std.ArrayListUnmanaged(CodeBlock) = .{},
-    expect_conflicts: ?u32 = null,
+    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
+    expectConflicts: ?u32 = null,
 
     fn init(allocator: Allocator, source: []const u8) ParserDSLParser {
         var p = ParserDSLParser{
@@ -2805,19 +2805,19 @@ const ParserDSLParser = struct {
             self.allocator.free(rule.alternatives);
         }
         self.rules.deinit(self.allocator);
-        self.start_symbols.deinit(self.allocator);
-        self.as_directives.deinit(self.allocator);
-        self.op_mappings.deinit(self.allocator);
-        self.error_names.deinit(self.allocator);
-        self.infix_ops.deinit(self.allocator);
-        self.code_blocks.deinit(self.allocator);
+        self.startSymbols.deinit(self.allocator);
+        self.asDirectives.deinit(self.allocator);
+        self.opMappings.deinit(self.allocator);
+        self.errorNames.deinit(self.allocator);
+        self.infixOps.deinit(self.allocator);
+        self.codeBlocks.deinit(self.allocator);
     }
 
     fn freeElements(self: *ParserDSLParser, elements: []const ParsedElement) void {
         for (elements) |elem| {
-            if (elem.sub_elements.len > 0) {
-                self.freeElements(elem.sub_elements);
-                self.allocator.free(elem.sub_elements);
+            if (elem.subElements.len > 0) {
+                self.freeElements(elem.subElements);
+                self.allocator.free(elem.subElements);
             }
         }
     }
@@ -2837,33 +2837,33 @@ const ParserDSLParser = struct {
 
     fn parseDirective(self: *ParserDSLParser) !void {
         self.advance(); // skip '@'
-        const directive_name = try self.expectIdent("directive name after @");
+        const directiveName = try self.expectIdent("directive name after @");
 
-        if (std.mem.eql(u8, directive_name, "as")) {
+        if (std.mem.eql(u8, directiveName, "as")) {
             try self.parseAsDirective();
-        } else if (std.mem.eql(u8, directive_name, "op")) {
+        } else if (std.mem.eql(u8, directiveName, "op")) {
             try self.parseOpDirective();
-        } else if (std.mem.eql(u8, directive_name, "lang")) {
+        } else if (std.mem.eql(u8, directiveName, "lang")) {
             try self.parseLangDirective();
-        } else if (std.mem.eql(u8, directive_name, "code")) {
+        } else if (std.mem.eql(u8, directiveName, "code")) {
             try self.parseCodeDirective();
-        } else if (std.mem.eql(u8, directive_name, "errors")) {
+        } else if (std.mem.eql(u8, directiveName, "errors")) {
             try self.parseErrorsDirective();
-        } else if (std.mem.eql(u8, directive_name, "infix")) {
+        } else if (std.mem.eql(u8, directiveName, "infix")) {
             try self.parseInfixDirective();
-        } else if (std.mem.eql(u8, directive_name, "conflicts")) {
+        } else if (std.mem.eql(u8, directiveName, "conflicts")) {
             try self.expect(.eq, "Expected '=' after @conflicts");
             if (self.current.kind != .number) {
                 std.debug.print("Expected number after @conflicts = at line {d}\n", .{self.current.line});
                 return error.ParseError;
             }
-            self.expect_conflicts = std.fmt.parseInt(u32, self.current.text, 10) catch {
+            self.expectConflicts = std.fmt.parseInt(u32, self.current.text, 10) catch {
                 std.debug.print("Invalid @conflicts value: {s}\n", .{self.current.text});
                 return error.ParseError;
             };
             self.advance();
         } else {
-            std.debug.print("Unknown directive @{s} at line {d}\n", .{ directive_name, self.current.line });
+            std.debug.print("Unknown directive @{s} at line {d}\n", .{ directiveName, self.current.line });
             return error.ParseError;
         }
     }
@@ -2879,7 +2879,7 @@ const ParserDSLParser = struct {
 
         if (self.current.kind == .newline) self.advance();
 
-        try self.as_directives.append(self.allocator, .{ .token = tok, .rule = rule });
+        try self.asDirectives.append(self.allocator, .{ .token = tok, .rule = rule });
     }
 
     fn parseOpDirective(self: *ParserDSLParser) !void {
@@ -2894,7 +2894,7 @@ const ParserDSLParser = struct {
             try self.expect(.arrow, "Expected '->' after literal");
             const tok = try self.expectString("token type");
 
-            try self.op_mappings.append(self.allocator, .{ .lit = lit, .tok = tok });
+            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
             if (self.current.kind == .comma) self.advance();
         }
 
@@ -2924,29 +2924,29 @@ const ParserDSLParser = struct {
         // braces inside strings and comments.
         const start = self.lexer.pos;
         var depth: usize = 1;
-        var in_string: u8 = 0;
+        var inString: u8 = 0;
         var escaped = false;
-        var in_line_comment = false;
-        var in_block_comment = false;
+        var inLineComment = false;
+        var inBlockComment = false;
         while (depth > 0 and self.lexer.pos < self.lexer.source.len) {
             const c = self.lexer.source[self.lexer.pos];
             const next = if (self.lexer.pos + 1 < self.lexer.source.len) self.lexer.source[self.lexer.pos + 1] else 0;
 
-            if (in_line_comment) {
-                if (c == '\n') in_line_comment = false;
+            if (inLineComment) {
+                if (c == '\n') inLineComment = false;
                 self.lexer.pos += 1;
                 continue;
             }
-            if (in_block_comment) {
+            if (inBlockComment) {
                 if (c == '*' and next == '/') {
-                    in_block_comment = false;
+                    inBlockComment = false;
                     self.lexer.pos += 2;
                     continue;
                 }
                 self.lexer.pos += 1;
                 continue;
             }
-            if (in_string != 0) {
+            if (inString != 0) {
                 if (escaped) {
                     escaped = false;
                     self.lexer.pos += 1;
@@ -2957,8 +2957,8 @@ const ParserDSLParser = struct {
                     self.lexer.pos += 1;
                     continue;
                 }
-                if (c == in_string) {
-                    in_string = 0;
+                if (c == inString) {
+                    inString = 0;
                     self.lexer.pos += 1;
                     continue;
                 }
@@ -2967,17 +2967,17 @@ const ParserDSLParser = struct {
             }
 
             if (c == '/' and next == '/') {
-                in_line_comment = true;
+                inLineComment = true;
                 self.lexer.pos += 2;
                 continue;
             }
             if (c == '/' and next == '*') {
-                in_block_comment = true;
+                inBlockComment = true;
                 self.lexer.pos += 2;
                 continue;
             }
             if (c == '"' or c == '\'') {
-                in_string = c;
+                inString = c;
                 self.lexer.pos += 1;
                 continue;
             }
@@ -2998,7 +2998,7 @@ const ParserDSLParser = struct {
         const code = std.mem.trim(u8, self.lexer.source[start..self.lexer.pos], " \t\n\r");
         self.lexer.pos += 1; // skip closing brace
 
-        try self.code_blocks.append(self.allocator, .{ .location = location, .code = code });
+        try self.codeBlocks.append(self.allocator, .{ .location = location, .code = code });
 
         // Advance to next token
         self.current = self.lexer.next();
@@ -3014,7 +3014,7 @@ const ParserDSLParser = struct {
             self.advance();
             self.advance(); // skip :
             const name = try self.expectString("error display name");
-            try self.error_names.append(self.allocator, .{ .rule = rule, .name = name });
+            try self.errorNames.append(self.allocator, .{ .rule = rule, .name = name });
             if (self.current.kind == .comma) self.advance();
             if (self.current.kind == .newline) self.advance();
             self.skipTrivia();
@@ -3030,7 +3030,7 @@ const ParserDSLParser = struct {
         if (self.current.kind == .eq) self.advance();
 
         const base = try self.expectIdent("base expression name for @precedence");
-        self.infix_base = base;
+        self.infixBase = base;
 
         if (self.current.kind == .newline) self.advance();
         self.skipTrivia();
@@ -3039,22 +3039,22 @@ const ParserDSLParser = struct {
         while (self.current.kind == .string) {
             const op = try self.expectString("operator literal");
 
-            const assoc_name = try self.expectIdent("associativity (left, right, none)");
-            const assoc: InfixOp.Assoc = if (std.mem.eql(u8, assoc_name, "left"))
+            const assocName = try self.expectIdent("associativity (left, right, none)");
+            const assoc: InfixOp.Assoc = if (std.mem.eql(u8, assocName, "left"))
                 .left
-            else if (std.mem.eql(u8, assoc_name, "right"))
+            else if (std.mem.eql(u8, assocName, "right"))
                 .right
-            else if (std.mem.eql(u8, assoc_name, "none"))
+            else if (std.mem.eql(u8, assocName, "none"))
                 .none
             else {
-                std.debug.print("Invalid associativity '{s}' at line {d} (expected left, right, none)\n", .{ assoc_name, self.current.line });
+                std.debug.print("Invalid associativity '{s}' at line {d} (expected left, right, none)\n", .{ assocName, self.current.line });
                 return error.ParseError;
             };
 
             // Skip explicit precedence number if present (backward compat)
             if (self.current.kind == .number) self.advance();
 
-            try self.infix_ops.append(self.allocator, .{ .op = op, .assoc = assoc, .prec = prec });
+            try self.infixOps.append(self.allocator, .{ .op = op, .assoc = assoc, .prec = prec });
 
             if (self.current.kind == .comma) {
                 self.advance(); // same-line comma = same precedence level
@@ -3078,10 +3078,10 @@ const ParserDSLParser = struct {
         const name = self.current.text;
         self.advance();
 
-        const is_start = self.current.kind == .bang;
-        if (is_start) {
+        const isStart = self.current.kind == .bang;
+        if (isStart) {
             self.advance();
-            try self.start_symbols.append(self.allocator, name);
+            try self.startSymbols.append(self.allocator, name);
         }
 
         if (self.current.kind != .eq) {
@@ -3095,7 +3095,7 @@ const ParserDSLParser = struct {
 
         try self.rules.append(self.allocator, .{
             .name = name,
-            .is_start = is_start,
+            .isStart = isStart,
             .alternatives = try alternatives.toOwnedSlice(self.allocator),
         });
     }
@@ -3111,9 +3111,9 @@ const ParserDSLParser = struct {
     fn parseAlternative(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(ParsedAlternative)) !void {
         var elements: std.ArrayListUnmanaged(ParsedElement) = .{};
         var action: ?[]const u8 = null;
-        var exclude_char: u8 = 0;
-        var prefer_reduce: bool = false;
-        var prefer_shift: bool = false;
+        var excludeChar: u8 = 0;
+        var preferReduce: bool = false;
+        var preferShift: bool = false;
 
         while (true) {
             if (self.current.kind == .comment) {
@@ -3123,14 +3123,14 @@ const ParserDSLParser = struct {
 
             // Check for < (tight binding / prefer reduce) hint
             if (self.current.kind == .langle) {
-                prefer_reduce = true;
+                preferReduce = true;
                 self.advance();
                 continue;
             }
 
             // Check for > (prefer shift) hint
             if (self.current.kind == .rangle) {
-                prefer_shift = true;
+                preferShift = true;
                 self.advance();
                 continue;
             }
@@ -3139,16 +3139,16 @@ const ParserDSLParser = struct {
             if (self.current.kind == .token and std.mem.eql(u8, self.current.text, "X")) {
                 self.advance();
                 if (self.current.kind == .string and self.current.text.len >= 2) {
-                    exclude_char = self.current.text[1];
+                    excludeChar = self.current.text[1];
                     self.advance();
                 }
                 continue;
             }
 
             // Skip V annotation (documentation only)
-            const is_v_annotation = (self.current.kind == .token and std.mem.eql(u8, self.current.text, "V")) or
+            const isVAnnotation = (self.current.kind == .token and std.mem.eql(u8, self.current.text, "V")) or
                 self.current.kind == .larrow;
-            if (is_v_annotation) {
+            if (isVAnnotation) {
                 while (self.current.kind != .arrow and
                     self.current.kind != .pipe and
                     self.current.kind != .newline and
@@ -3181,11 +3181,11 @@ const ParserDSLParser = struct {
                 break;
             }
 
-            const skip_element = self.current.kind == .bang;
-            if (skip_element) self.advance();
+            const skipElement = self.current.kind == .bang;
+            if (skipElement) self.advance();
 
             var element = try self.parseElement();
-            element.skip = skip_element;
+            element.skip = skipElement;
             try elements.append(self.allocator, element);
         }
 
@@ -3194,9 +3194,9 @@ const ParserDSLParser = struct {
         try alternatives.append(self.allocator, .{
             .elements = try elements.toOwnedSlice(self.allocator),
             .action = action,
-            .exclude_char = exclude_char,
-            .prefer_reduce = prefer_reduce,
-            .prefer_shift = prefer_shift,
+            .excludeChar = excludeChar,
+            .preferReduce = preferReduce,
+            .preferShift = preferShift,
         });
     }
 
@@ -3223,18 +3223,18 @@ const ParserDSLParser = struct {
                     self.advance(); // skip L
                     self.advance(); // skip (
                     if (self.current.kind == .ident or self.current.kind == .token) {
-                        element.kind = .req_list;
+                        element.kind = .reqList;
                         element.value = self.current.text;
                         self.advance();
                         if (self.current.kind == .question) {
-                            element.optional_items = true;
+                            element.optionalItems = true;
                             self.advance();
                         }
                         // Check for custom separator: L(X, sep)
                         if (self.current.kind == .comma) {
                             self.advance(); // skip comma
                             if (self.current.kind == .string or self.current.kind == .token) {
-                                element.list_separator = self.current.text;
+                                element.listSeparator = self.current.text;
                                 self.advance();
                             }
                         }
@@ -3258,23 +3258,23 @@ const ParserDSLParser = struct {
             },
             .lparen => {
                 self.advance();
-                var sub_elements: std.ArrayListUnmanaged(ParsedElement) = .{};
+                var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
 
                 while (self.current.kind != .rparen and self.current.kind != .eof) {
                     if (self.current.kind == .comma or self.current.kind == .pipe) {
                         self.advance();
                         continue;
                     }
-                    const skip_sub = self.current.kind == .bang;
-                    if (skip_sub) self.advance();
+                    const skipSub = self.current.kind == .bang;
+                    if (skipSub) self.advance();
 
                     if (self.current.kind == .ident or self.current.kind == .token or
                         self.current.kind == .string or self.current.kind == .lparen or
                         self.current.kind == .lbracket)
                     {
                         var sub = try self.parseElement();
-                        sub.skip = skip_sub;
-                        try sub_elements.append(self.allocator, sub);
+                        sub.skip = skipSub;
+                        try subElements.append(self.allocator, sub);
                     } else {
                         self.advance();
                     }
@@ -3283,30 +3283,30 @@ const ParserDSLParser = struct {
 
                 element.kind = .group;
                 element.value = "";
-                element.sub_elements = try sub_elements.toOwnedSlice(self.allocator);
+                element.subElements = try subElements.toOwnedSlice(self.allocator);
             },
             .lbracket => {
                 self.advance();
-                const first_token = self.current.text;
-                const first_kind = self.current.kind;
+                const firstToken = self.current.text;
+                const firstKind = self.current.kind;
 
                 // Check for [L(X)] or [L(X, sep)] syntax
-                if (std.mem.eql(u8, first_token, "L") and first_kind == .token and self.peekKind() == .lparen) {
+                if (std.mem.eql(u8, firstToken, "L") and firstKind == .token and self.peekKind() == .lparen) {
                     self.advance(); // skip L
                     self.advance(); // skip (
                     if (self.current.kind == .ident or self.current.kind == .token) {
-                        element.kind = .opt_list;
+                        element.kind = .optList;
                         element.value = self.current.text;
                         self.advance();
                         if (self.current.kind == .question) {
-                            element.optional_items = true;
+                            element.optionalItems = true;
                             self.advance();
                         }
                         // Check for custom separator: [L(X, sep)]
                         if (self.current.kind == .comma) {
                             self.advance(); // skip comma
                             if (self.current.kind == .string or self.current.kind == .token) {
-                                element.list_separator = self.current.text;
+                                element.listSeparator = self.current.text;
                                 self.advance();
                             }
                         }
@@ -3319,29 +3319,29 @@ const ParserDSLParser = struct {
                     }
                 } else {
                     // Parse bracket contents
-                    var has_dots = false;
-                    var sub_elements: std.ArrayListUnmanaged(ParsedElement) = .{};
+                    var hasDots = false;
+                    var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
 
-                    var first_elem = ParsedElement{
-                        .kind = if (first_kind == .string) .string else if (first_kind == .ident) .ident else .token,
-                        .value = first_token,
+                    var firstElem = ParsedElement{
+                        .kind = if (firstKind == .string) .string else if (firstKind == .ident) .ident else .token,
+                        .value = firstToken,
                     };
                     self.advance();
                     if (self.current.kind == .question) {
-                        first_elem.quantifier = .optional;
+                        firstElem.quantifier = .optional;
                         self.advance();
                     } else if (self.current.kind == .star) {
-                        first_elem.quantifier = .zero_plus;
+                        firstElem.quantifier = .zeroPlus;
                         self.advance();
                     } else if (self.current.kind == .plus) {
-                        first_elem.quantifier = .one_plus;
+                        firstElem.quantifier = .onePlus;
                         self.advance();
                     }
-                    try sub_elements.append(self.allocator, first_elem);
+                    try subElements.append(self.allocator, firstElem);
 
                     while (self.current.kind != .rbracket and self.current.kind != .eof) {
                         if (self.current.kind == .dots) {
-                            has_dots = true;
+                            hasDots = true;
                             self.advance();
                             continue;
                         }
@@ -3351,24 +3351,24 @@ const ParserDSLParser = struct {
                         }
                         if (self.current.kind == .ident or self.current.kind == .token or self.current.kind == .string) {
                             const sub = try self.parseElement();
-                            try sub_elements.append(self.allocator, sub);
+                            try subElements.append(self.allocator, sub);
                         } else {
                             self.advance();
                         }
                     }
                     if (self.current.kind == .rbracket) self.advance();
 
-                    if (has_dots) {
-                        element.kind = .opt_list;
-                        element.value = first_token;
-                    } else if (sub_elements.items.len == 1 and (first_kind == .ident or first_kind == .token)) {
-                        element.kind = if (first_kind == .ident) .ident else .token;
-                        element.value = first_token;
+                    if (hasDots) {
+                        element.kind = .optList;
+                        element.value = firstToken;
+                    } else if (subElements.items.len == 1 and (firstKind == .ident or firstKind == .token)) {
+                        element.kind = if (firstKind == .ident) .ident else .token;
+                        element.value = firstToken;
                         element.quantifier = .optional;
                     } else {
-                        element.kind = .opt_group;
-                        element.value = first_token;
-                        element.sub_elements = try sub_elements.toOwnedSlice(self.allocator);
+                        element.kind = .optGroup;
+                        element.value = firstToken;
+                        element.subElements = try subElements.toOwnedSlice(self.allocator);
                     }
                 }
             },
@@ -3383,10 +3383,10 @@ const ParserDSLParser = struct {
             element.quantifier = .optional;
             self.advance();
         } else if (self.current.kind == .star) {
-            element.quantifier = .zero_plus;
+            element.quantifier = .zeroPlus;
             self.advance();
         } else if (self.current.kind == .plus or self.current.kind == .dots) {
-            element.quantifier = .one_plus;
+            element.quantifier = .onePlus;
             self.advance();
         }
 
@@ -3395,16 +3395,16 @@ const ParserDSLParser = struct {
 
     fn parseAction(self: *ParserDSLParser) ![]const u8 {
         // Capture everything from current token to end of line
-        const text_ptr = self.current.text.ptr;
-        const source_ptr = self.lexer.source.ptr;
-        const start = @intFromPtr(text_ptr) - @intFromPtr(source_ptr);
+        const textPtr = self.current.text.ptr;
+        const sourcePtr = self.lexer.source.ptr;
+        const start = @intFromPtr(textPtr) - @intFromPtr(sourcePtr);
 
         while (self.current.kind != .newline and self.current.kind != .eof) {
             self.advance();
         }
 
-        const end_ptr = self.current.text.ptr;
-        const end = @intFromPtr(end_ptr) - @intFromPtr(source_ptr);
+        const endPtr = self.current.text.ptr;
+        const end = @intFromPtr(endPtr) - @intFromPtr(sourcePtr);
 
         return self.lexer.source[start..end];
     }
@@ -3414,11 +3414,11 @@ const ParserDSLParser = struct {
     }
 
     fn peekKind(self: *ParserDSLParser) GrammarToken.Kind {
-        const saved_pos = self.lexer.pos;
-        const saved_line = self.lexer.line;
+        const savedPos = self.lexer.pos;
+        const savedLine = self.lexer.line;
         const tok = self.lexer.next();
-        self.lexer.pos = saved_pos;
-        self.lexer.line = saved_line;
+        self.lexer.pos = savedPos;
+        self.lexer.line = savedLine;
         return tok.kind;
     }
 
@@ -3463,9 +3463,9 @@ const ParserDSLParser = struct {
 // =============================================================================
 
 const ConflictDetail = struct {
-    kind: enum { shift_reduce, reduce_reduce },
-    name_a: []const u8,
-    name_b: []const u8,
+    kind: enum { shiftReduce, reduceReduce },
+    nameA: []const u8,
+    nameB: []const u8,
 };
 
 const ParserGenerator = struct {
@@ -3473,9 +3473,9 @@ const ParserGenerator = struct {
 
     // Symbol management
     symbols: std.ArrayListUnmanaged(ParserSymbol) = .{},
-    symbol_map: std.StringHashMapUnmanaged(u16) = .{},
+    symbolMap: std.StringHashMapUnmanaged(u16) = .{},
     aliases: std.StringHashMapUnmanaged([]const u8) = .{},
-    next_symbol_id: u16 = 0,
+    nextSymbolId: u16 = 0,
 
     // Rules
     rules: std.ArrayListUnmanaged(ParserRule) = .{},
@@ -3484,35 +3484,35 @@ const ParserGenerator = struct {
     states: std.ArrayListUnmanaged(ParserState) = .{},
 
     // Special symbol IDs
-    accept_id: u16 = 0,
-    end_id: u16 = 0,
-    error_id: u16 = 0,
+    acceptId: u16 = 0,
+    endId: u16 = 0,
+    errorId: u16 = 0,
 
     // Multiple start symbol support
-    start_symbols: std.ArrayListUnmanaged(u16) = .{},
-    start_states: std.ArrayListUnmanaged(u16) = .{},
-    accept_rules: std.ArrayListUnmanaged(u16) = .{},
+    startSymbols: std.ArrayListUnmanaged(u16) = .{},
+    startStates: std.ArrayListUnmanaged(u16) = .{},
+    acceptRules: std.ArrayListUnmanaged(u16) = .{},
 
     conflicts: u32 = 0,
-    expect_conflicts: ?u32 = null,
-    conflict_details: std.ArrayListUnmanaged(ConflictDetail) = .{},
+    expectConflicts: ?u32 = null,
+    conflictDetails: std.ArrayListUnmanaged(ConflictDetail) = .{},
 
     // Directives
-    as_directives: std.ArrayListUnmanaged(AsDirective) = .{},
-    op_mappings: std.ArrayListUnmanaged(OpMapping) = .{},
-    error_names: std.ArrayListUnmanaged(ErrorName) = .{},
-    infix_ops: std.ArrayListUnmanaged(InfixOp) = .{},
-    infix_base: ?[]const u8 = null,
+    asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
+    opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
+    errorNames: std.ArrayListUnmanaged(ErrorName) = .{},
+    infixOps: std.ArrayListUnmanaged(InfixOp) = .{},
+    infixBase: ?[]const u8 = null,
     lang: ?[]const u8 = null,
-    lexer_spec: ?*const LexerSpec = null,
-    code_blocks: std.ArrayListUnmanaged(CodeBlock) = .{},
+    lexerSpec: ?*const LexerSpec = null,
+    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
 
     // Tags for enum generation
-    collected_tags: std.StringHashMapUnmanaged(u16) = .{},
-    tag_list: std.ArrayListUnmanaged([]const u8) = .{},
+    collectedTags: std.StringHashMapUnmanaged(u16) = .{},
+    tagList: std.ArrayListUnmanaged([]const u8) = .{},
 
     // X "c" exclusions
-    x_excludes: std.ArrayListUnmanaged(struct { state: u16, char: u8, shift: u16 }) = .{},
+    xExcludes: std.ArrayListUnmanaged(struct { state: u16, char: u8, shift: u16 }) = .{},
 
     fn init(allocator: Allocator) ParserGenerator {
         return .{ .allocator = allocator };
@@ -3521,7 +3521,7 @@ const ParserGenerator = struct {
     fn deinit(self: *ParserGenerator) void {
         for (self.symbols.items) |*sym| sym.deinit(self.allocator);
         self.symbols.deinit(self.allocator);
-        self.symbol_map.deinit(self.allocator);
+        self.symbolMap.deinit(self.allocator);
         self.aliases.deinit(self.allocator);
 
         for (self.rules.items) |*rule| {
@@ -3538,27 +3538,27 @@ const ParserGenerator = struct {
         }
         self.states.deinit(self.allocator);
 
-        self.start_symbols.deinit(self.allocator);
-        self.start_states.deinit(self.allocator);
-        self.accept_rules.deinit(self.allocator);
-        self.as_directives.deinit(self.allocator);
-        self.op_mappings.deinit(self.allocator);
-        self.error_names.deinit(self.allocator);
-        self.infix_ops.deinit(self.allocator);
-        self.code_blocks.deinit(self.allocator);
-        self.collected_tags.deinit(self.allocator);
-        self.tag_list.deinit(self.allocator);
-        self.x_excludes.deinit(self.allocator);
+        self.startSymbols.deinit(self.allocator);
+        self.startStates.deinit(self.allocator);
+        self.acceptRules.deinit(self.allocator);
+        self.asDirectives.deinit(self.allocator);
+        self.opMappings.deinit(self.allocator);
+        self.errorNames.deinit(self.allocator);
+        self.infixOps.deinit(self.allocator);
+        self.codeBlocks.deinit(self.allocator);
+        self.collectedTags.deinit(self.allocator);
+        self.tagList.deinit(self.allocator);
+        self.xExcludes.deinit(self.allocator);
     }
 
     fn addSymbol(self: *ParserGenerator, name: []const u8, kind: ParserSymbol.Kind) !u16 {
-        if (self.symbol_map.get(name)) |id| return id;
+        if (self.symbolMap.get(name)) |id| return id;
 
-        const id = self.next_symbol_id;
-        self.next_symbol_id += 1;
+        const id = self.nextSymbolId;
+        self.nextSymbolId += 1;
 
         try self.symbols.append(self.allocator, ParserSymbol.init(id, name, kind));
-        try self.symbol_map.put(self.allocator, name, id);
+        try self.symbolMap.put(self.allocator, name, id);
 
         return id;
     }
@@ -3571,12 +3571,12 @@ const ParserGenerator = struct {
             if (count > 100 or std.mem.eql(u8, resolved, target)) return null;
             resolved = target;
         }
-        return self.symbol_map.get(resolved);
+        return self.symbolMap.get(resolved);
     }
 
-    fn isAcceptRuleId(self: *ParserGenerator, rule_id: u16) bool {
-        for (self.accept_rules.items) |ar| {
-            if (rule_id == ar) return true;
+    fn isAcceptRuleId(self: *ParserGenerator, ruleId: u16) bool {
+        for (self.acceptRules.items) |ar| {
+            if (ruleId == ar) return true;
         }
         return false;
     }
@@ -3595,8 +3595,8 @@ const ParserGenerator = struct {
     /// Info about an optional group for expansion
     const OptGroupInfo = struct {
         index: usize, // Index in elements array
-        start_pos: usize, // Starting position number (1-based)
-        elem_count: usize, // Number of elements in this optional
+        startPos: usize, // Starting position number (1-based)
+        elemCount: usize, // Number of elements in this optional
     };
 
     /// Expand an alternative with consecutive opt_groups into multiple explicit alternatives.
@@ -3609,26 +3609,26 @@ const ParserGenerator = struct {
     fn expandOptionalGroups(self: *ParserGenerator, alt: ParsedAlternative) ![]ParsedAlternative {
         // Find all bracket-optionals ([X] or [A B C]) - these need expansion for stable positions.
         // Note: X? quantifiers (like SPACES?) don't need expansion - they're typically not in actions.
-        var opt_groups: std.ArrayListUnmanaged(OptGroupInfo) = .{};
-        defer opt_groups.deinit(self.allocator);
+        var optGroups: std.ArrayListUnmanaged(OptGroupInfo) = .{};
+        defer optGroups.deinit(self.allocator);
 
         var pos: usize = 1;
         for (alt.elements, 0..) |elem, idx| {
-            if (elem.kind == .opt_group) {
+            if (elem.kind == .optGroup) {
                 // Multi-element optional: [A B C]
-                try opt_groups.append(self.allocator, .{
+                try optGroups.append(self.allocator, .{
                     .index = idx,
-                    .start_pos = pos,
-                    .elem_count = elem.sub_elements.len,
+                    .startPos = pos,
+                    .elemCount = elem.subElements.len,
                 });
-                pos += elem.sub_elements.len;
-            } else if (elem.quantifier == .optional and (elem.kind == .ident or elem.kind == .opt_list)) {
+                pos += elem.subElements.len;
+            } else if (elem.quantifier == .optional and (elem.kind == .ident or elem.kind == .optList)) {
                 // Single-element bracket-optional: [X] parsed as X with .optional quantifier
                 // Only include nonterminals (ident) and optional lists, not token quantifiers (SPACES?)
-                try opt_groups.append(self.allocator, .{
+                try optGroups.append(self.allocator, .{
                     .index = idx,
-                    .start_pos = pos,
-                    .elem_count = 1,
+                    .startPos = pos,
+                    .elemCount = 1,
                 });
                 pos += 1;
             } else {
@@ -3638,14 +3638,14 @@ const ParserGenerator = struct {
 
         // If no opt_groups, no expansion needed
         // Note: Even single opt_groups need expansion for positionally stable output
-        if (opt_groups.items.len == 0) {
+        if (optGroups.items.len == 0) {
             var result: std.ArrayListUnmanaged(ParsedAlternative) = .{};
             try result.append(self.allocator, alt);
             return result.toOwnedSlice(self.allocator);
         }
 
         // Generate 2^n combinations
-        const n = opt_groups.items.len;
+        const n = optGroups.items.len;
         const combinations: usize = @as(usize, 1) << @intCast(n);
 
         var expanded: std.ArrayListUnmanaged(ParsedAlternative) = .{};
@@ -3653,48 +3653,48 @@ const ParserGenerator = struct {
         var combo: usize = 0;
         while (combo < combinations) : (combo += 1) {
             // Build elements for this combination
-            var new_elements: std.ArrayListUnmanaged(ParsedElement) = .{};
+            var newElements: std.ArrayListUnmanaged(ParsedElement) = .{};
 
             for (alt.elements, 0..) |elem, idx| {
                 // Check if this element is an optional (opt_group or single-element)
-                const opt_idx: ?usize = for (opt_groups.items, 0..) |og, oi| {
+                const optIdx: ?usize = for (optGroups.items, 0..) |og, oi| {
                     if (og.index == idx) break oi;
                 } else null;
 
-                if (opt_idx) |oi| {
+                if (optIdx) |oi| {
                     // Check if this optional is present in this combination
                     const present = (combo & (@as(usize, 1) << @intCast(oi))) != 0;
                     if (present) {
-                        if (elem.kind == .opt_group) {
+                        if (elem.kind == .optGroup) {
                             // Multi-element optional: add sub-elements directly
-                            for (elem.sub_elements) |sub| {
-                                try new_elements.append(self.allocator, sub);
+                            for (elem.subElements) |sub| {
+                                try newElements.append(self.allocator, sub);
                             }
                         } else {
                             // Single-element optional: add element without optional quantifier
-                            var non_opt = elem;
-                            non_opt.quantifier = .one;
-                            try new_elements.append(self.allocator, non_opt);
+                            var nonOpt = elem;
+                            nonOpt.quantifier = .one;
+                            try newElements.append(self.allocator, nonOpt);
                         }
                     }
                     // If not present, skip this optional entirely
                 } else {
-                    try new_elements.append(self.allocator, elem);
+                    try newElements.append(self.allocator, elem);
                 }
             }
 
             // Transform action with stable positions (use original elements for position mapping)
-            const final_elements = try new_elements.toOwnedSlice(self.allocator);
-            var new_action: ?[]const u8 = alt.action;
+            const finalElements = try newElements.toOwnedSlice(self.allocator);
+            var newAction: ?[]const u8 = alt.action;
             if (alt.action) |action| {
-                new_action = try self.transformActionStable(action, alt.elements, opt_groups.items, combo);
+                newAction = try self.transformActionStable(action, alt.elements, optGroups.items, combo);
             }
 
             try expanded.append(self.allocator, .{
-                .elements = final_elements,
-                .action = new_action,
-                .exclude_char = alt.exclude_char,
-                .prefer_reduce = alt.prefer_reduce,
+                .elements = finalElements,
+                .action = newAction,
+                .excludeChar = alt.excludeChar,
+                .preferReduce = alt.preferReduce,
             });
         }
 
@@ -3702,57 +3702,57 @@ const ParserGenerator = struct {
     }
 
     // Position map: 255 means nil/absent, otherwise it's the actual RHS position
-    const NIL_POS: u8 = 255;
-    const MAX_POSITIONS: usize = 64;
+    const nilPos: u8 = 255;
+    const maxPositions: usize = 64;
 
     /// Parsed position reference from action template
     const PosRef = struct {
         kind: enum { bare, keyed, spread },
-        pos_num: usize,
-        end_idx: usize, // Index after this reference in the action string
+        posNum: usize,
+        endIdx: usize, // Index after this reference in the action string
     };
 
     /// Tracks position references for trailing-nil stripping
-    const PosRefInfo = struct { start: usize, is_nil: bool };
+    const PosRefInfo = struct { start: usize, isNil: bool };
 
     /// Build logical-to-actual position map for stable positions.
     /// Maps logical positions (1-based) to actual RHS positions, or NIL_POS for absent optionals.
     fn buildPositionMap(
-        alt_elements: []const ParsedElement,
-        opt_groups: []const OptGroupInfo,
+        altElements: []const ParsedElement,
+        optGroups: []const OptGroupInfo,
         combo: usize,
-    ) [MAX_POSITIONS]u8 {
-        var pos_map: [MAX_POSITIONS]u8 = [_]u8{NIL_POS} ** MAX_POSITIONS;
-        var logical_pos: usize = 1;
-        var actual_pos: usize = 0;
+    ) [maxPositions]u8 {
+        var posMap: [maxPositions]u8 = [_]u8{nilPos} ** maxPositions;
+        var logicalPos: usize = 1;
+        var actualPos: usize = 0;
 
-        for (alt_elements, 0..) |_, elem_idx| {
+        for (altElements, 0..) |_, elemIdx| {
             // Find if this element is an opt_group
-            const opt_idx = for (opt_groups, 0..) |og, oi| {
-                if (og.index == elem_idx) break oi;
+            const optIdx = for (optGroups, 0..) |og, oi| {
+                if (og.index == elemIdx) break oi;
             } else null;
 
-            if (opt_idx) |oi| {
-                const og = opt_groups[oi];
+            if (optIdx) |oi| {
+                const og = optGroups[oi];
                 const present = (combo & (@as(usize, 1) << @intCast(oi))) != 0;
 
-                for (0..og.elem_count) |_| {
-                    if (logical_pos < MAX_POSITIONS) {
-                        pos_map[logical_pos] = if (present) @intCast(actual_pos) else NIL_POS;
+                for (0..og.elemCount) |_| {
+                    if (logicalPos < maxPositions) {
+                        posMap[logicalPos] = if (present) @intCast(actualPos) else nilPos;
                     }
-                    logical_pos += 1;
-                    if (present) actual_pos += 1;
+                    logicalPos += 1;
+                    if (present) actualPos += 1;
                 }
             } else {
-                if (logical_pos < MAX_POSITIONS) {
-                    pos_map[logical_pos] = @intCast(actual_pos);
+                if (logicalPos < maxPositions) {
+                    posMap[logicalPos] = @intCast(actualPos);
                 }
-                logical_pos += 1;
-                actual_pos += 1;
+                logicalPos += 1;
+                actualPos += 1;
             }
         }
 
-        return pos_map;
+        return posMap;
     }
 
     /// Parse a position reference at the given index in the action string.
@@ -3762,19 +3762,19 @@ const ParserGenerator = struct {
 
         // key:N (key prefix is for documentation, stripped from output)
         if (action[start] >= 'a' and action[start] <= 'z') {
-            var key_end = start;
-            while (key_end < action.len and action[key_end] != ':' and action[key_end] != ' ' and action[key_end] != ')') {
-                key_end += 1;
+            var keyEnd = start;
+            while (keyEnd < action.len and action[keyEnd] != ':' and action[keyEnd] != ' ' and action[keyEnd] != ')') {
+                keyEnd += 1;
             }
-            if (key_end < action.len and action[key_end] == ':') {
-                const num_start = key_end + 1;
-                var num_end = num_start;
-                while (num_end < action.len and action[num_end] >= '0' and action[num_end] <= '9') {
-                    num_end += 1;
+            if (keyEnd < action.len and action[keyEnd] == ':') {
+                const numStart = keyEnd + 1;
+                var numEnd = numStart;
+                while (numEnd < action.len and action[numEnd] >= '0' and action[numEnd] <= '9') {
+                    numEnd += 1;
                 }
-                if (num_end > num_start) {
-                    const pos_num = std.fmt.parseInt(usize, action[num_start..num_end], 10) catch return null;
-                    return .{ .kind = .keyed, .pos_num = pos_num, .end_idx = num_end };
+                if (numEnd > numStart) {
+                    const posNum = std.fmt.parseInt(usize, action[numStart..numEnd], 10) catch return null;
+                    return .{ .kind = .keyed, .posNum = posNum, .endIdx = numEnd };
                 }
             }
             return null;
@@ -3782,23 +3782,23 @@ const ParserGenerator = struct {
 
         // Bare number N
         if (action[start] >= '1' and action[start] <= '9') {
-            var num_end = start;
-            while (num_end < action.len and action[num_end] >= '0' and action[num_end] <= '9') {
-                num_end += 1;
+            var numEnd = start;
+            while (numEnd < action.len and action[numEnd] >= '0' and action[numEnd] <= '9') {
+                numEnd += 1;
             }
-            const pos_num = std.fmt.parseInt(usize, action[start..num_end], 10) catch return null;
-            return .{ .kind = .bare, .pos_num = pos_num, .end_idx = num_end };
+            const posNum = std.fmt.parseInt(usize, action[start..numEnd], 10) catch return null;
+            return .{ .kind = .bare, .posNum = posNum, .endIdx = numEnd };
         }
 
         // ...N (spread)
         if (start + 3 < action.len and action[start] == '.' and action[start + 1] == '.' and action[start + 2] == '.') {
-            var num_end = start + 3;
-            while (num_end < action.len and action[num_end] >= '0' and action[num_end] <= '9') {
-                num_end += 1;
+            var numEnd = start + 3;
+            while (numEnd < action.len and action[numEnd] >= '0' and action[numEnd] <= '9') {
+                numEnd += 1;
             }
-            if (num_end > start + 3) {
-                const pos_num = std.fmt.parseInt(usize, action[start + 3 .. num_end], 10) catch return null;
-                return .{ .kind = .spread, .pos_num = pos_num, .end_idx = num_end };
+            if (numEnd > start + 3) {
+                const posNum = std.fmt.parseInt(usize, action[start + 3 .. numEnd], 10) catch return null;
+                return .{ .kind = .spread, .posNum = posNum, .endIdx = numEnd };
             }
         }
 
@@ -3806,26 +3806,26 @@ const ParserGenerator = struct {
     }
 
     /// Strip trailing nil references from the result buffer.
-    fn stripTrailingNils(result: *std.ArrayListUnmanaged(u8), pos_refs: []const PosRefInfo) void {
+    fn stripTrailingNils(result: *std.ArrayListUnmanaged(u8), posRefs: []const PosRefInfo) void {
         // Find last non-nil position reference
-        var last_non_nil: ?usize = null;
-        for (pos_refs, 0..) |pr, idx| {
-            if (!pr.is_nil) last_non_nil = idx;
+        var lastNonNil: ?usize = null;
+        for (posRefs, 0..) |pr, idx| {
+            if (!pr.isNil) lastNonNil = idx;
         }
 
-        const truncate_start = if (last_non_nil) |lnn|
-            if (lnn + 1 < pos_refs.len) pos_refs[lnn + 1].start else return
-        else if (pos_refs.len > 0)
-            pos_refs[0].start
+        const truncateStart = if (lastNonNil) |lnn|
+            if (lnn + 1 < posRefs.len) posRefs[lnn + 1].start else return
+        else if (posRefs.len > 0)
+            posRefs[0].start
         else
             return;
 
         // Also remove preceding spaces
-        var actual_start = truncate_start;
-        while (actual_start > 0 and result.items[actual_start - 1] == ' ') {
-            actual_start -= 1;
+        var actualStart = truncateStart;
+        while (actualStart > 0 and result.items[actualStart - 1] == ' ') {
+            actualStart -= 1;
         }
-        result.items.len = actual_start;
+        result.items.len = actualStart;
     }
 
     /// Transform action template for stable positions.
@@ -3834,25 +3834,25 @@ const ParserGenerator = struct {
     fn transformActionStable(
         self: *ParserGenerator,
         action: []const u8,
-        alt_elements: []const ParsedElement,
-        opt_groups: []const OptGroupInfo,
+        altElements: []const ParsedElement,
+        optGroups: []const OptGroupInfo,
         combo: usize,
     ) ![]const u8 {
-        const pos_map = buildPositionMap(alt_elements, opt_groups, combo);
+        const posMap = buildPositionMap(altElements, optGroups, combo);
 
         var result: std.ArrayListUnmanaged(u8) = .{};
-        var pos_refs: std.ArrayListUnmanaged(PosRefInfo) = .{};
-        defer pos_refs.deinit(self.allocator);
+        var posRefs: std.ArrayListUnmanaged(PosRefInfo) = .{};
+        defer posRefs.deinit(self.allocator);
 
         var i: usize = 0;
         while (i < action.len) {
             if (parsePositionRef(action, i)) |ref| {
-                const mapped = if (ref.pos_num < MAX_POSITIONS) pos_map[ref.pos_num] else NIL_POS;
-                const is_nil = (mapped == NIL_POS);
+                const mapped = if (ref.posNum < maxPositions) posMap[ref.posNum] else nilPos;
+                const isNil = (mapped == nilPos);
 
-                try pos_refs.append(self.allocator, .{ .start = result.items.len, .is_nil = is_nil });
+                try posRefs.append(self.allocator, .{ .start = result.items.len, .isNil = isNil });
 
-                if (is_nil) {
+                if (isNil) {
                     try result.appendSlice(self.allocator, "nil");
                 } else {
                     // Output prefix (...) then mapped position
@@ -3860,26 +3860,26 @@ const ParserGenerator = struct {
                         try result.appendSlice(self.allocator, "...");
                     }
                     var buf: [16]u8 = undefined;
-                    const pos_str = std.fmt.bufPrint(&buf, "{d}", .{mapped + 1}) catch unreachable;
-                    try result.appendSlice(self.allocator, pos_str);
+                    const posStr = std.fmt.bufPrint(&buf, "{d}", .{mapped + 1}) catch unreachable;
+                    try result.appendSlice(self.allocator, posStr);
                 }
-                i = ref.end_idx;
+                i = ref.endIdx;
             } else {
                 try result.append(self.allocator, action[i]);
                 i += 1;
             }
         }
 
-        stripTrailingNils(&result, pos_refs.items);
+        stripTrailingNils(&result, posRefs.items);
         return result.toOwnedSlice(self.allocator);
     }
 
     /// Process parsed grammar into internal representation
     fn processGrammar(self: *ParserGenerator, parser: *ParserDSLParser) !void {
         // Add special symbols
-        self.accept_id = try self.addSymbol("$accept", .nonterminal);
-        self.end_id = try self.addSymbol("$end", .terminal);
-        self.error_id = try self.addSymbol("error", .terminal);
+        self.acceptId = try self.addSymbol("$accept", .nonterminal);
+        self.endId = try self.addSymbol("$end", .terminal);
+        self.errorId = try self.addSymbol("error", .terminal);
 
         // Pre-pass: detect aliases
         for (parser.rules.items) |rule| {
@@ -3899,124 +3899,124 @@ const ParserGenerator = struct {
         for (parser.rules.items) |rule| {
             if (self.aliases.contains(rule.name)) continue;
 
-            const lhs_id = self.getSymbol(rule.name).?;
+            const lhsId = self.getSymbol(rule.name).?;
 
             for (rule.alternatives) |alt| {
                 // Expand consecutive opt_groups into explicit alternatives
-                const expanded_alts = try self.expandOptionalGroups(alt);
+                const expandedAlts = try self.expandOptionalGroups(alt);
 
-                for (expanded_alts) |expanded_alt| {
+                for (expandedAlts) |expandedAlt| {
                     var rhs: std.ArrayListUnmanaged(u16) = .{};
 
-                    for (expanded_alt.elements) |elem| {
-                        const sym_id = try self.processElement(elem);
-                        try rhs.append(self.allocator, sym_id);
+                    for (expandedAlt.elements) |elem| {
+                        const symId = try self.processElement(elem);
+                        try rhs.append(self.allocator, symId);
                     }
 
-                    const rule_id: u16 = @intCast(self.rules.items.len);
+                    const ruleId: u16 = @intCast(self.rules.items.len);
                     try self.rules.append(self.allocator, .{
-                        .id = rule_id,
-                        .lhs = lhs_id,
+                        .id = ruleId,
+                        .lhs = lhsId,
                         .rhs = try rhs.toOwnedSlice(self.allocator),
-                        .action = if (expanded_alt.action) |a| .{ .template = a, .kind = .sexp } else null,
-                        .exclude_char = expanded_alt.exclude_char,
-                        .prefer_reduce = expanded_alt.prefer_reduce,
-                        .prefer_shift = expanded_alt.prefer_shift,
+                        .action = if (expandedAlt.action) |a| .{ .template = a, .kind = .sexp } else null,
+                        .excludeChar = expandedAlt.excludeChar,
+                        .preferReduce = expandedAlt.preferReduce,
+                        .preferShift = expandedAlt.preferShift,
                     });
-                    try self.symbols.items[lhs_id].rules.append(self.allocator, rule_id);
+                    try self.symbols.items[lhsId].rules.append(self.allocator, ruleId);
                 }
             }
         }
 
         // Use EOF as $end if defined
-        if (self.symbol_map.get("EOF")) |eof_id| {
-            self.end_id = eof_id;
+        if (self.symbolMap.get("EOF")) |eofId| {
+            self.endId = eofId;
         }
 
         // Create augmented rules for EACH start symbol
-        if (parser.start_symbols.items.len > 0) {
-            for (parser.start_symbols.items) |start_name| {
-                if (self.getSymbol(start_name)) |start_id| {
+        if (parser.startSymbols.items.len > 0) {
+            for (parser.startSymbols.items) |startName| {
+                if (self.getSymbol(startName)) |startId| {
                     // Create marker terminal "X!"
-                    const marker_name = try std.fmt.allocPrint(self.allocator, "{s}!", .{start_name});
-                    const marker_id = try self.addSymbol(marker_name, .terminal);
+                    const markerName = try std.fmt.allocPrint(self.allocator, "{s}!", .{startName});
+                    const markerId = try self.addSymbol(markerName, .terminal);
 
                     // Prepend marker to start rule
                     for (self.rules.items) |*rule| {
-                        if (rule.lhs == start_id) {
-                            var new_rhs: std.ArrayListUnmanaged(u16) = .{};
-                            try new_rhs.append(self.allocator, marker_id);
+                        if (rule.lhs == startId) {
+                            var newRhs: std.ArrayListUnmanaged(u16) = .{};
+                            try newRhs.append(self.allocator, markerId);
                             for (rule.rhs) |sym| {
-                                try new_rhs.append(self.allocator, sym);
+                                try newRhs.append(self.allocator, sym);
                             }
-                            rule.rhs = try new_rhs.toOwnedSlice(self.allocator);
-                            rule.action_offset = 1;
+                            rule.rhs = try newRhs.toOwnedSlice(self.allocator);
+                            rule.actionOffset = 1;
                             break;
                         }
                     }
 
                     // Create unique accept symbol
-                    const accept_name = try std.fmt.allocPrint(self.allocator, "$accept_{s}", .{start_name});
-                    const unique_accept_id = try self.addSymbol(accept_name, .nonterminal);
+                    const acceptName = try std.fmt.allocPrint(self.allocator, "$accept_{s}", .{startName});
+                    const uniqueAcceptId = try self.addSymbol(acceptName, .nonterminal);
 
                     // Create augmented rule: $accept_X → startSymbol EOF
-                    var accept_rhs: std.ArrayListUnmanaged(u16) = .{};
-                    try accept_rhs.append(self.allocator, start_id);
-                    try accept_rhs.append(self.allocator, self.end_id);
+                    var acceptRhs: std.ArrayListUnmanaged(u16) = .{};
+                    try acceptRhs.append(self.allocator, startId);
+                    try acceptRhs.append(self.allocator, self.endId);
 
-                    const accept_rule_id: u16 = @intCast(self.rules.items.len);
+                    const acceptRuleId: u16 = @intCast(self.rules.items.len);
                     try self.rules.append(self.allocator, .{
-                        .id = accept_rule_id,
-                        .lhs = unique_accept_id,
-                        .rhs = try accept_rhs.toOwnedSlice(self.allocator),
+                        .id = acceptRuleId,
+                        .lhs = uniqueAcceptId,
+                        .rhs = try acceptRhs.toOwnedSlice(self.allocator),
                         .action = null,
                     });
-                    try self.symbols.items[unique_accept_id].rules.append(self.allocator, accept_rule_id);
+                    try self.symbols.items[uniqueAcceptId].rules.append(self.allocator, acceptRuleId);
 
-                    try self.start_symbols.append(self.allocator, start_id);
-                    try self.accept_rules.append(self.allocator, accept_rule_id);
+                    try self.startSymbols.append(self.allocator, startId);
+                    try self.acceptRules.append(self.allocator, acceptRuleId);
                 }
             }
         } else if (self.rules.items.len > 0) {
             // Fallback: use first rule as start symbol
-            const start_symbol = self.rules.items[0].lhs;
+            const startSymbol = self.rules.items[0].lhs;
 
-            var accept_rhs: std.ArrayListUnmanaged(u16) = .{};
-            try accept_rhs.append(self.allocator, start_symbol);
-            try accept_rhs.append(self.allocator, self.end_id);
+            var acceptRhs: std.ArrayListUnmanaged(u16) = .{};
+            try acceptRhs.append(self.allocator, startSymbol);
+            try acceptRhs.append(self.allocator, self.endId);
 
-            const accept_rule_id: u16 = @intCast(self.rules.items.len);
+            const acceptRuleId: u16 = @intCast(self.rules.items.len);
             try self.rules.append(self.allocator, .{
-                .id = accept_rule_id,
-                .lhs = self.accept_id,
-                .rhs = try accept_rhs.toOwnedSlice(self.allocator),
+                .id = acceptRuleId,
+                .lhs = self.acceptId,
+                .rhs = try acceptRhs.toOwnedSlice(self.allocator),
                 .action = null,
             });
-            try self.symbols.items[self.accept_id].rules.append(self.allocator, accept_rule_id);
+            try self.symbols.items[self.acceptId].rules.append(self.allocator, acceptRuleId);
 
-            try self.start_symbols.append(self.allocator, start_symbol);
-            try self.accept_rules.append(self.allocator, accept_rule_id);
+            try self.startSymbols.append(self.allocator, startSymbol);
+            try self.acceptRules.append(self.allocator, acceptRuleId);
         }
 
         // Copy directives
-        for (parser.as_directives.items) |d| try self.as_directives.append(self.allocator, d);
-        for (parser.op_mappings.items) |m| try self.op_mappings.append(self.allocator, m);
-        for (parser.error_names.items) |e| try self.error_names.append(self.allocator, e);
-        for (parser.infix_ops.items) |op| try self.infix_ops.append(self.allocator, op);
-        self.infix_base = parser.infix_base;
+        for (parser.asDirectives.items) |d| try self.asDirectives.append(self.allocator, d);
+        for (parser.opMappings.items) |m| try self.opMappings.append(self.allocator, m);
+        for (parser.errorNames.items) |e| try self.errorNames.append(self.allocator, e);
+        for (parser.infixOps.items) |op| try self.infixOps.append(self.allocator, op);
+        self.infixBase = parser.infixBase;
         self.lang = parser.lang;
-        self.expect_conflicts = parser.expect_conflicts;
+        self.expectConflicts = parser.expectConflicts;
 
         // Generate infix expression chain if @infix was declared
-        if (self.infix_ops.items.len > 0 and self.infix_base != null) {
+        if (self.infixOps.items.len > 0 and self.infixBase != null) {
             try self.generateInfixChain();
         }
-        for (parser.code_blocks.items) |b| try self.code_blocks.append(self.allocator, b);
+        for (parser.codeBlocks.items) |b| try self.codeBlocks.append(self.allocator, b);
     }
 
     /// Validate that all referenced symbols are defined.
     /// Returns error count (0 = all valid).
-    pub fn validateSymbols(self: *ParserGenerator, lexer_spec: *const LexerSpec) u32 {
+    pub fn validateSymbols(self: *ParserGenerator, lexerSpec: *const LexerSpec) u32 {
         var errors: u32 = 0;
 
         for (self.symbols.items) |sym| {
@@ -4038,33 +4038,33 @@ const ParserGenerator = struct {
 
                 // Skip if there's a matching lowercase nonterminal (@as keyword)
                 // e.g., SET terminal has a matching 'set' nonterminal rule
-                var is_as_keyword = false;
+                var isAsKeyword = false;
                 for (self.symbols.items) |other| {
                     if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(sym.name, other.name)) {
-                        is_as_keyword = true;
+                        isAsKeyword = true;
                         break;
                     }
                 }
-                if (is_as_keyword) continue;
+                if (isAsKeyword) continue;
 
                 // Skip if it matches an @as directive rule name (e.g., SYSVAR from @as=[ident,sysvar])
-                for (self.as_directives.items) |directive| {
+                for (self.asDirectives.items) |directive| {
                     if (std.ascii.eqlIgnoreCase(directive.rule, sym.name)) {
-                        is_as_keyword = true;
+                        isAsKeyword = true;
                         break;
                     }
                 }
-                if (is_as_keyword) continue;
+                if (isAsKeyword) continue;
 
                 // When @lang is set, keyword terminals are resolved by the
                 // lang module's keyword matcher at compile time. Trust the
                 // Zig compiler to catch mismatches.
-                if (self.lang != null and self.as_directives.items.len > 0) continue;
+                if (self.lang != null and self.asDirectives.items.len > 0) continue;
 
                 var found = false;
 
                 // Check tokens block (case-insensitive since lexer uses lowercase)
-                for (lexer_spec.tokens.items) |tok| {
+                for (lexerSpec.tokens.items) |tok| {
                     if (std.ascii.eqlIgnoreCase(tok.name, sym.name)) {
                         found = true;
                         break;
@@ -4073,7 +4073,7 @@ const ParserGenerator = struct {
 
                 // Check lexer rules (case-insensitive)
                 if (!found) {
-                    for (lexer_spec.rules.items) |rule| {
+                    for (lexerSpec.rules.items) |rule| {
                         if (std.ascii.eqlIgnoreCase(rule.token, sym.name)) {
                             found = true;
                             break;
@@ -4092,20 +4092,20 @@ const ParserGenerator = struct {
     }
 
     fn processElement(self: *ParserGenerator, elem: ParsedElement) error{OutOfMemory}!u16 {
-        const base_id = try self.processBaseElement(elem);
+        const baseId = try self.processBaseElement(elem);
 
         return switch (elem.quantifier) {
-            .one => base_id,
-            .optional => try self.createOptionalRule(base_id),
-            .zero_plus => try self.createZeroPlusRule(base_id),
-            .one_plus => try self.createOnePlusRule(base_id),
+            .one => baseId,
+            .optional => try self.createOptionalRule(baseId),
+            .zeroPlus => try self.createZeroPlusRule(baseId),
+            .onePlus => try self.createOnePlusRule(baseId),
         };
     }
 
     fn processBaseElement(self: *ParserGenerator, elem: ParsedElement) error{OutOfMemory}!u16 {
         return switch (elem.kind) {
             .ident => blk: {
-                if (self.getSymbol(elem.value)) |sym_id| break :blk sym_id;
+                if (self.getSymbol(elem.value)) |symId| break :blk symId;
                 var resolved = elem.value;
                 while (self.aliases.get(resolved)) |target| resolved = target;
                 const kind: ParserSymbol.Kind = if (resolved.len > 0 and resolved[0] >= 'A' and resolved[0] <= 'Z')
@@ -4115,350 +4115,350 @@ const ParserGenerator = struct {
                 break :blk try self.addSymbol(resolved, kind);
             },
             .token => blk: {
-                if (self.getSymbol(elem.value)) |sym_id| break :blk sym_id;
+                if (self.getSymbol(elem.value)) |symId| break :blk symId;
                 var resolved = elem.value;
                 while (self.aliases.get(resolved)) |target| resolved = target;
                 break :blk try self.addSymbol(resolved, .terminal);
             },
             .string => try self.addSymbol(elem.value, .terminal),
             .group => blk: {
-                if (elem.sub_elements.len == 0) break :blk self.error_id;
+                if (elem.subElements.len == 0) break :blk self.errorId;
 
-                const grp_name = try std.fmt.allocPrint(self.allocator, "_grp_{d}", .{self.rules.items.len});
-                const grp_id = try self.addSymbol(grp_name, .nonterminal);
+                const grpName = try std.fmt.allocPrint(self.allocator, "_grp_{d}", .{self.rules.items.len});
+                const grpId = try self.addSymbol(grpName, .nonterminal);
 
                 var rhs: std.ArrayListUnmanaged(u16) = .{};
-                for (elem.sub_elements) |sub| {
+                for (elem.subElements) |sub| {
                     try rhs.append(self.allocator, try self.processElement(sub));
                 }
 
                 // Build action that excludes skipped elements
                 // If element has skip=true, don't include its position in the action
-                var action_template: ?[]const u8 = null;
-                var non_skipped: std.ArrayListUnmanaged(u8) = .{};
-                defer non_skipped.deinit(self.allocator);
+                var actionTemplate: ?[]const u8 = null;
+                var nonSkipped: std.ArrayListUnmanaged(u8) = .{};
+                defer nonSkipped.deinit(self.allocator);
 
-                for (elem.sub_elements, 0..) |sub, i| {
+                for (elem.subElements, 0..) |sub, i| {
                     if (!sub.skip) {
-                        try non_skipped.append(self.allocator, @intCast(i + 1)); // 1-based positions
+                        try nonSkipped.append(self.allocator, @intCast(i + 1)); // 1-based positions
                     }
                 }
 
                 // Generate action based on non-skipped count
-                if (non_skipped.items.len == 0) {
-                    action_template = "nil";
-                } else if (non_skipped.items.len == 1) {
+                if (nonSkipped.items.len == 0) {
+                    actionTemplate = "nil";
+                } else if (nonSkipped.items.len == 1) {
                     // Single non-skipped: just return that position
-                    action_template = try std.fmt.allocPrint(self.allocator, "{d}", .{non_skipped.items[0]});
-                } else if (non_skipped.items.len < elem.sub_elements.len) {
+                    actionTemplate = try std.fmt.allocPrint(self.allocator, "{d}", .{nonSkipped.items[0]});
+                } else if (nonSkipped.items.len < elem.subElements.len) {
                     // Multiple non-skipped but some skipped: build explicit list
                     var buf: std.ArrayListUnmanaged(u8) = .{};
                     defer buf.deinit(self.allocator);
                     try buf.append(self.allocator, '(');
-                    for (non_skipped.items, 0..) |pos, j| {
+                    for (nonSkipped.items, 0..) |pos, j| {
                         if (j > 0) try buf.append(self.allocator, ' ');
                         try buf.append(self.allocator, '0' + pos);
                     }
                     try buf.append(self.allocator, ')');
-                    action_template = try self.allocator.dupe(u8, buf.items);
+                    actionTemplate = try self.allocator.dupe(u8, buf.items);
                 }
                 // else: all elements included, action stays null (default list behavior)
 
-                const rule_id: u16 = @intCast(self.rules.items.len);
+                const ruleId: u16 = @intCast(self.rules.items.len);
                 try self.rules.append(self.allocator, .{
-                    .id = rule_id,
-                    .lhs = grp_id,
+                    .id = ruleId,
+                    .lhs = grpId,
                     .rhs = try rhs.toOwnedSlice(self.allocator),
-                    .action = if (action_template) |t| .{ .template = t, .kind = .sexp } else null,
+                    .action = if (actionTemplate) |t| .{ .template = t, .kind = .sexp } else null,
                 });
-                try self.symbols.items[grp_id].rules.append(self.allocator, rule_id);
+                try self.symbols.items[grpId].rules.append(self.allocator, ruleId);
 
-                break :blk grp_id;
+                break :blk grpId;
             },
-            .opt_group => self.error_id, // Should be expanded
-            .req_list => blk: {
-                const item_name = elem.value;
-                break :blk try self.createRequiredList(item_name, elem.optional_items, elem.list_separator);
+            .optGroup => self.errorId, // Should be expanded
+            .reqList => blk: {
+                const itemName = elem.value;
+                break :blk try self.createRequiredList(itemName, elem.optionalItems, elem.listSeparator);
             },
-            .opt_list => blk: {
-                const item_name = elem.value;
-                const req_list = try self.createRequiredList(item_name, elem.optional_items, elem.list_separator);
-                break :blk try self.createOptionalRule(req_list);
+            .optList => blk: {
+                const itemName = elem.value;
+                const reqList = try self.createRequiredList(itemName, elem.optionalItems, elem.listSeparator);
+                break :blk try self.createOptionalRule(reqList);
             },
         };
     }
 
-    fn createRequiredList(self: *ParserGenerator, item_name: []const u8, optional_items: bool, custom_sep: ?[]const u8) !u16 {
-        const item_id = self.getSymbol(item_name) orelse blk: {
-            const kind: ParserSymbol.Kind = if (item_name.len > 0 and item_name[0] >= 'A' and item_name[0] <= 'Z')
+    fn createRequiredList(self: *ParserGenerator, itemName: []const u8, optionalItems: bool, customSep: ?[]const u8) !u16 {
+        const itemId = self.getSymbol(itemName) orelse blk: {
+            const kind: ParserSymbol.Kind = if (itemName.len > 0 and itemName[0] >= 'A' and itemName[0] <= 'Z')
                 .terminal
             else
                 .nonterminal;
-            break :blk try self.addSymbol(item_name, kind);
+            break :blk try self.addSymbol(itemName, kind);
         };
 
-        const effective_item_id = if (optional_items)
-            try self.createOptionalRule(item_id)
+        const effectiveItemId = if (optionalItems)
+            try self.createOptionalRule(itemId)
         else
-            item_id;
+            itemId;
 
-        const sep_str = custom_sep orelse "\",\"";
-        const sep_id = try self.addSymbol(sep_str, .terminal);
+        const sepStr = customSep orelse "\",\"";
+        const sepId = try self.addSymbol(sepStr, .terminal);
 
-        const suffix: []const u8 = if (optional_items) "opt" else "";
-        const sep_suffix: []const u8 = if (custom_sep != null) "s" else "";
-        const list_name = try std.fmt.allocPrint(self.allocator, "_list_{d}{s}{s}", .{ item_id, suffix, sep_suffix });
-        const tail_name = try std.fmt.allocPrint(self.allocator, "_tail_{d}{s}{s}", .{ item_id, suffix, sep_suffix });
+        const suffix: []const u8 = if (optionalItems) "opt" else "";
+        const sepSuffix: []const u8 = if (customSep != null) "s" else "";
+        const listName = try std.fmt.allocPrint(self.allocator, "_list_{d}{s}{s}", .{ itemId, suffix, sepSuffix });
+        const tailName = try std.fmt.allocPrint(self.allocator, "_tail_{d}{s}{s}", .{ itemId, suffix, sepSuffix });
 
-        if (self.getSymbol(list_name)) |existing| return existing;
+        if (self.getSymbol(listName)) |existing| return existing;
 
-        const list_id = try self.addSymbol(list_name, .nonterminal);
-        const tail_id = try self.addSymbol(tail_name, .nonterminal);
+        const listId = try self.addSymbol(listName, .nonterminal);
+        const tailId = try self.addSymbol(tailName, .nonterminal);
 
         // Rule: _list → item _tail → (!1 ...2)
-        const list_rule_id: u16 = @intCast(self.rules.items.len);
-        var list_rhs: std.ArrayListUnmanaged(u16) = .{};
-        try list_rhs.append(self.allocator, effective_item_id);
-        try list_rhs.append(self.allocator, tail_id);
+        const listRuleId: u16 = @intCast(self.rules.items.len);
+        var listRhs: std.ArrayListUnmanaged(u16) = .{};
+        try listRhs.append(self.allocator, effectiveItemId);
+        try listRhs.append(self.allocator, tailId);
         try self.rules.append(self.allocator, .{
-            .id = list_rule_id,
-            .lhs = list_id,
-            .rhs = try list_rhs.toOwnedSlice(self.allocator),
+            .id = listRuleId,
+            .lhs = listId,
+            .rhs = try listRhs.toOwnedSlice(self.allocator),
             .action = .{ .template = "(!1 ...2)", .kind = .sexp },
         });
-        try self.symbols.items[list_id].rules.append(self.allocator, list_rule_id);
+        try self.symbols.items[listId].rules.append(self.allocator, listRuleId);
 
         // Rule: _tail → sep item _tail → (!2 ...3)
-        const tail_rule1_id: u16 = @intCast(self.rules.items.len);
-        var tail_rhs1: std.ArrayListUnmanaged(u16) = .{};
-        try tail_rhs1.append(self.allocator, sep_id);
-        try tail_rhs1.append(self.allocator, effective_item_id);
-        try tail_rhs1.append(self.allocator, tail_id);
+        const tailRule1Id: u16 = @intCast(self.rules.items.len);
+        var tailRhs1: std.ArrayListUnmanaged(u16) = .{};
+        try tailRhs1.append(self.allocator, sepId);
+        try tailRhs1.append(self.allocator, effectiveItemId);
+        try tailRhs1.append(self.allocator, tailId);
         try self.rules.append(self.allocator, .{
-            .id = tail_rule1_id,
-            .lhs = tail_id,
-            .rhs = try tail_rhs1.toOwnedSlice(self.allocator),
+            .id = tailRule1Id,
+            .lhs = tailId,
+            .rhs = try tailRhs1.toOwnedSlice(self.allocator),
             .action = .{ .template = "(!2 ...3)", .kind = .sexp },
         });
-        try self.symbols.items[tail_id].rules.append(self.allocator, tail_rule1_id);
+        try self.symbols.items[tailId].rules.append(self.allocator, tailRule1Id);
 
         // Rule: _tail → ε → ()
-        const tail_rule2_id: u16 = @intCast(self.rules.items.len);
+        const tailRule2Id: u16 = @intCast(self.rules.items.len);
         try self.rules.append(self.allocator, .{
-            .id = tail_rule2_id,
-            .lhs = tail_id,
+            .id = tailRule2Id,
+            .lhs = tailId,
             .rhs = &[_]u16{},
             .action = .{ .template = "()", .kind = .sexp },
             .nullable = true,
-            .prefer_shift = true,
+            .preferShift = true,
         });
-        try self.symbols.items[tail_id].rules.append(self.allocator, tail_rule2_id);
-        self.symbols.items[tail_id].nullable = true;
+        try self.symbols.items[tailId].rules.append(self.allocator, tailRule2Id);
+        self.symbols.items[tailId].nullable = true;
 
-        return list_id;
+        return listId;
     }
 
     fn generateInfixChain(self: *ParserGenerator) !void {
-        const base_name = self.infix_base orelse return;
-        const base_id = self.getSymbol(base_name) orelse blk: {
-            break :blk try self.addSymbol(base_name, .nonterminal);
+        const baseName = self.infixBase orelse return;
+        const baseId = self.getSymbol(baseName) orelse blk: {
+            break :blk try self.addSymbol(baseName, .nonterminal);
         };
 
         // Collect unique precedence levels and sort them
-        var levels_seen: [64]u32 = undefined;
-        var level_count: usize = 0;
+        var levelsSeen: [64]u32 = undefined;
+        var levelCount: usize = 0;
 
-        for (self.infix_ops.items) |op| {
+        for (self.infixOps.items) |op| {
             var found = false;
-            for (levels_seen[0..level_count]) |l| {
+            for (levelsSeen[0..levelCount]) |l| {
                 if (l == op.prec) {
                     found = true;
                     break;
                 }
             }
-            if (!found and level_count < 64) {
-                levels_seen[level_count] = op.prec;
-                level_count += 1;
+            if (!found and levelCount < 64) {
+                levelsSeen[levelCount] = op.prec;
+                levelCount += 1;
             }
         }
 
         // Sort levels ascending (level 1 = loosest binding)
-        for (0..level_count) |i| {
-            for (i + 1..level_count) |j| {
-                if (levels_seen[j] < levels_seen[i]) {
-                    const tmp = levels_seen[i];
-                    levels_seen[i] = levels_seen[j];
-                    levels_seen[j] = tmp;
+        for (0..levelCount) |i| {
+            for (i + 1..levelCount) |j| {
+                if (levelsSeen[j] < levelsSeen[i]) {
+                    const tmp = levelsSeen[i];
+                    levelsSeen[i] = levelsSeen[j];
+                    levelsSeen[j] = tmp;
                 }
             }
         }
 
         // Create a nonterminal for each level
-        var level_ids: [64]u16 = undefined;
-        for (0..level_count) |i| {
-            const name = try std.fmt.allocPrint(self.allocator, "_infix_{d}", .{levels_seen[i]});
-            level_ids[i] = try self.addSymbol(name, .nonterminal);
+        var levelIds: [64]u16 = undefined;
+        for (0..levelCount) |i| {
+            const name = try std.fmt.allocPrint(self.allocator, "_infix_{d}", .{levelsSeen[i]});
+            levelIds[i] = try self.addSymbol(name, .nonterminal);
         }
 
         // For each level, generate rules
-        for (0..level_count) |i| {
-            const level = levels_seen[i];
-            const this_id = level_ids[i];
-            const next_id = if (i + 1 < level_count) level_ids[i + 1] else base_id;
+        for (0..levelCount) |i| {
+            const level = levelsSeen[i];
+            const thisId = levelIds[i];
+            const nextId = if (i + 1 < levelCount) levelIds[i + 1] else baseId;
 
             // Find all operators at this level
-            for (self.infix_ops.items) |op| {
+            for (self.infixOps.items) |op| {
                 if (op.prec != level) continue;
 
-                const op_str = try std.fmt.allocPrint(self.allocator, "\"{s}\"", .{op.op});
-                const op_id = try self.addSymbol(op_str, .terminal);
+                const opStr = try std.fmt.allocPrint(self.allocator, "\"{s}\"", .{op.op});
+                const opId = try self.addSymbol(opStr, .terminal);
 
-                const action_str = try std.fmt.allocPrint(self.allocator, "({s} 1 3)", .{op.op});
+                const actionStr = try std.fmt.allocPrint(self.allocator, "({s} 1 3)", .{op.op});
 
                 var rhs: std.ArrayListUnmanaged(u16) = .{};
                 switch (op.assoc) {
                     .left => {
-                        try rhs.append(self.allocator, this_id);
-                        try rhs.append(self.allocator, op_id);
-                        try rhs.append(self.allocator, next_id);
+                        try rhs.append(self.allocator, thisId);
+                        try rhs.append(self.allocator, opId);
+                        try rhs.append(self.allocator, nextId);
                     },
                     .right => {
-                        try rhs.append(self.allocator, next_id);
-                        try rhs.append(self.allocator, op_id);
-                        try rhs.append(self.allocator, this_id);
+                        try rhs.append(self.allocator, nextId);
+                        try rhs.append(self.allocator, opId);
+                        try rhs.append(self.allocator, thisId);
                     },
                     .none => {
-                        try rhs.append(self.allocator, next_id);
-                        try rhs.append(self.allocator, op_id);
-                        try rhs.append(self.allocator, next_id);
+                        try rhs.append(self.allocator, nextId);
+                        try rhs.append(self.allocator, opId);
+                        try rhs.append(self.allocator, nextId);
                     },
                 }
 
-                const rule_id: u16 = @intCast(self.rules.items.len);
+                const ruleId: u16 = @intCast(self.rules.items.len);
                 try self.rules.append(self.allocator, .{
-                    .id = rule_id,
-                    .lhs = this_id,
+                    .id = ruleId,
+                    .lhs = thisId,
                     .rhs = try rhs.toOwnedSlice(self.allocator),
-                    .action = .{ .template = action_str, .kind = .sexp },
+                    .action = .{ .template = actionStr, .kind = .sexp },
                 });
-                try self.symbols.items[this_id].rules.append(self.allocator, rule_id);
+                try self.symbols.items[thisId].rules.append(self.allocator, ruleId);
             }
 
             // Passthrough rule: this_level → next_level
-            const passthrough_id: u16 = @intCast(self.rules.items.len);
-            var pass_rhs: std.ArrayListUnmanaged(u16) = .{};
-            try pass_rhs.append(self.allocator, next_id);
+            const passthroughId: u16 = @intCast(self.rules.items.len);
+            var passRhs: std.ArrayListUnmanaged(u16) = .{};
+            try passRhs.append(self.allocator, nextId);
             try self.rules.append(self.allocator, .{
-                .id = passthrough_id,
-                .lhs = this_id,
-                .rhs = try pass_rhs.toOwnedSlice(self.allocator),
+                .id = passthroughId,
+                .lhs = thisId,
+                .rhs = try passRhs.toOwnedSlice(self.allocator),
                 .action = .{ .template = "1", .kind = .passthrough },
             });
-            try self.symbols.items[this_id].rules.append(self.allocator, passthrough_id);
+            try self.symbols.items[thisId].rules.append(self.allocator, passthroughId);
         }
 
         // Create the `infix` entry point that aliases to the lowest-precedence level
-        const infix_id = try self.addSymbol("infix", .nonterminal);
-        const infix_rule_id: u16 = @intCast(self.rules.items.len);
-        var infix_rhs: std.ArrayListUnmanaged(u16) = .{};
-        try infix_rhs.append(self.allocator, level_ids[0]);
+        const infixId = try self.addSymbol("infix", .nonterminal);
+        const infixRuleId: u16 = @intCast(self.rules.items.len);
+        var infixRhs: std.ArrayListUnmanaged(u16) = .{};
+        try infixRhs.append(self.allocator, levelIds[0]);
         try self.rules.append(self.allocator, .{
-            .id = infix_rule_id,
-            .lhs = infix_id,
-            .rhs = try infix_rhs.toOwnedSlice(self.allocator),
+            .id = infixRuleId,
+            .lhs = infixId,
+            .rhs = try infixRhs.toOwnedSlice(self.allocator),
             .action = .{ .template = "1", .kind = .passthrough },
         });
-        try self.symbols.items[infix_id].rules.append(self.allocator, infix_rule_id);
+        try self.symbols.items[infixId].rules.append(self.allocator, infixRuleId);
     }
 
-    fn createOptionalRule(self: *ParserGenerator, sym_id: u16) !u16 {
-        const name = try std.fmt.allocPrint(self.allocator, "_opt_{d}", .{sym_id});
+    fn createOptionalRule(self: *ParserGenerator, symId: u16) !u16 {
+        const name = try std.fmt.allocPrint(self.allocator, "_opt_{d}", .{symId});
         if (self.getSymbol(name)) |existing| return existing;
 
-        const opt_id = try self.addSymbol(name, .nonterminal);
+        const optId = try self.addSymbol(name, .nonterminal);
 
         // Rule 1: opt → sym
-        const rule1_id: u16 = @intCast(self.rules.items.len);
+        const rule1Id: u16 = @intCast(self.rules.items.len);
         var rhs1: std.ArrayListUnmanaged(u16) = .{};
-        try rhs1.append(self.allocator, sym_id);
+        try rhs1.append(self.allocator, symId);
         try self.rules.append(self.allocator, .{
-            .id = rule1_id,
-            .lhs = opt_id,
+            .id = rule1Id,
+            .lhs = optId,
             .rhs = try rhs1.toOwnedSlice(self.allocator),
             .action = null,
         });
-        try self.symbols.items[opt_id].rules.append(self.allocator, rule1_id);
+        try self.symbols.items[optId].rules.append(self.allocator, rule1Id);
 
         // Rule 2: opt → ε
-        const rule2_id: u16 = @intCast(self.rules.items.len);
+        const rule2Id: u16 = @intCast(self.rules.items.len);
         try self.rules.append(self.allocator, .{
-            .id = rule2_id,
-            .lhs = opt_id,
+            .id = rule2Id,
+            .lhs = optId,
             .rhs = &[_]u16{},
             .action = null,
             .nullable = true,
         });
-        try self.symbols.items[opt_id].rules.append(self.allocator, rule2_id);
-        self.symbols.items[opt_id].nullable = true;
+        try self.symbols.items[optId].rules.append(self.allocator, rule2Id);
+        self.symbols.items[optId].nullable = true;
 
-        return opt_id;
+        return optId;
     }
 
-    fn createZeroPlusRule(self: *ParserGenerator, sym_id: u16) !u16 {
-        const name = try std.fmt.allocPrint(self.allocator, "_star_{d}", .{sym_id});
+    fn createZeroPlusRule(self: *ParserGenerator, symId: u16) !u16 {
+        const name = try std.fmt.allocPrint(self.allocator, "_star_{d}", .{symId});
         if (self.getSymbol(name)) |existing| return existing;
 
-        const star_id = try self.addSymbol(name, .nonterminal);
+        const starId = try self.addSymbol(name, .nonterminal);
 
         // Rule 1: star → sym star → (!1 ...2)
-        const rule1_id: u16 = @intCast(self.rules.items.len);
+        const rule1Id: u16 = @intCast(self.rules.items.len);
         var rhs1: std.ArrayListUnmanaged(u16) = .{};
-        try rhs1.append(self.allocator, sym_id);
-        try rhs1.append(self.allocator, star_id);
+        try rhs1.append(self.allocator, symId);
+        try rhs1.append(self.allocator, starId);
         try self.rules.append(self.allocator, .{
-            .id = rule1_id,
-            .lhs = star_id,
+            .id = rule1Id,
+            .lhs = starId,
             .rhs = try rhs1.toOwnedSlice(self.allocator),
             .action = .{ .template = "(!1 ...2)", .kind = .sexp },
         });
-        try self.symbols.items[star_id].rules.append(self.allocator, rule1_id);
+        try self.symbols.items[starId].rules.append(self.allocator, rule1Id);
 
         // Rule 2: star → ε → ()
-        const rule2_id: u16 = @intCast(self.rules.items.len);
+        const rule2Id: u16 = @intCast(self.rules.items.len);
         try self.rules.append(self.allocator, .{
-            .id = rule2_id,
-            .lhs = star_id,
+            .id = rule2Id,
+            .lhs = starId,
             .rhs = &[_]u16{},
             .action = .{ .template = "()", .kind = .sexp },
             .nullable = true,
         });
-        try self.symbols.items[star_id].rules.append(self.allocator, rule2_id);
-        self.symbols.items[star_id].nullable = true;
+        try self.symbols.items[starId].rules.append(self.allocator, rule2Id);
+        self.symbols.items[starId].nullable = true;
 
-        return star_id;
+        return starId;
     }
 
-    fn createOnePlusRule(self: *ParserGenerator, sym_id: u16) !u16 {
-        const name = try std.fmt.allocPrint(self.allocator, "_plus_{d}", .{sym_id});
+    fn createOnePlusRule(self: *ParserGenerator, symId: u16) !u16 {
+        const name = try std.fmt.allocPrint(self.allocator, "_plus_{d}", .{symId});
         if (self.getSymbol(name)) |existing| return existing;
 
-        const star_id = try self.createZeroPlusRule(sym_id);
-        const plus_id = try self.addSymbol(name, .nonterminal);
+        const starId = try self.createZeroPlusRule(symId);
+        const plusId = try self.addSymbol(name, .nonterminal);
 
         // Rule: plus → sym star → (!1 ...2)
-        const rule_id: u16 = @intCast(self.rules.items.len);
+        const ruleId: u16 = @intCast(self.rules.items.len);
         var rhs: std.ArrayListUnmanaged(u16) = .{};
-        try rhs.append(self.allocator, sym_id);
-        try rhs.append(self.allocator, star_id);
+        try rhs.append(self.allocator, symId);
+        try rhs.append(self.allocator, starId);
         try self.rules.append(self.allocator, .{
-            .id = rule_id,
-            .lhs = plus_id,
+            .id = ruleId,
+            .lhs = plusId,
             .rhs = try rhs.toOwnedSlice(self.allocator),
             .action = .{ .template = "(!1 ...2)", .kind = .sexp },
         });
-        try self.symbols.items[plus_id].rules.append(self.allocator, rule_id);
+        try self.symbols.items[plusId].rules.append(self.allocator, ruleId);
 
-        return plus_id;
+        return plusId;
     }
 
     // =========================================================================
@@ -4486,34 +4486,34 @@ const ParserGenerator = struct {
     /// Build the LR(0) automaton from the processed grammar.
     /// Creates states and transitions for the shift-reduce parser.
     fn buildAutomaton(self: *ParserGenerator) !void {
-        if (self.accept_rules.items.len == 0) return error.NoAcceptRule;
+        if (self.acceptRules.items.len == 0) return error.NoAcceptRule;
 
-        var state_map = std.StringHashMapUnmanaged(u16){};
-        defer state_map.deinit(self.allocator);
+        var stateMap = std.StringHashMapUnmanaged(u16){};
+        defer stateMap.deinit(self.allocator);
 
         // Create initial state for EACH accept rule
-        for (self.accept_rules.items) |accept_rule_id| {
-            var initial_items: std.ArrayListUnmanaged(ParserItem) = .{};
-            try initial_items.append(self.allocator, .{ .rule_id = accept_rule_id, .dot = 0 });
+        for (self.acceptRules.items) |acceptRuleId| {
+            var initialItems: std.ArrayListUnmanaged(ParserItem) = .{};
+            try initialItems.append(self.allocator, .{ .ruleId = acceptRuleId, .dot = 0 });
 
-            const kernel = try initial_items.toOwnedSlice(self.allocator);
+            const kernel = try initialItems.toOwnedSlice(self.allocator);
             const sig = try self.kernelSignature(kernel);
 
-            if (state_map.get(sig)) |existing_id| {
-                try self.start_states.append(self.allocator, existing_id);
+            if (stateMap.get(sig)) |existingId| {
+                try self.startStates.append(self.allocator, existingId);
             } else {
-                const initial_state = try self.closure(kernel);
-                const state_id: u16 = @intCast(self.states.items.len);
-                try self.states.append(self.allocator, initial_state);
-                try state_map.put(self.allocator, sig, state_id);
-                try self.start_states.append(self.allocator, state_id);
+                const initialState = try self.closure(kernel);
+                const stateId: u16 = @intCast(self.states.items.len);
+                try self.states.append(self.allocator, initialState);
+                try stateMap.put(self.allocator, sig, stateId);
+                try self.startStates.append(self.allocator, stateId);
             }
         }
 
         // Process states until no new ones
         var i: usize = 0;
         while (i < self.states.items.len) : (i += 1) {
-            try self.processTransitions(i, &state_map);
+            try self.processTransitions(i, &stateMap);
         }
     }
 
@@ -4531,22 +4531,22 @@ const ParserGenerator = struct {
     ///   If F → id, closure adds: { F → • id }
     ///   Result: { E → • T, T → • F, T → • T * F, F → • id }
     fn closure(self: *ParserGenerator, kernel: []const ParserItem) !ParserState {
-        var all_items: std.ArrayListUnmanaged(ParserItem) = .{};
+        var allItems: std.ArrayListUnmanaged(ParserItem) = .{};
         var reductions: std.ArrayListUnmanaged(ParserItem) = .{};
         var seen = std.AutoHashMap(u32, void).init(self.allocator);
         defer seen.deinit();
 
         // Start with kernel items
         for (kernel) |item| {
-            try all_items.append(self.allocator, item);
+            try allItems.append(self.allocator, item);
             try seen.put(item.id(), {});
         }
 
         // Process items, adding closure items as we go
-        var work_idx: usize = 0;
-        while (work_idx < all_items.items.len) : (work_idx += 1) {
-            const item = all_items.items[work_idx];
-            const rule = self.rules.items[item.rule_id];
+        var workIdx: usize = 0;
+        while (workIdx < allItems.items.len) : (workIdx += 1) {
+            const item = allItems.items[workIdx];
+            const rule = self.rules.items[item.ruleId];
 
             // Item with dot at end → reduction item
             if (item.dot >= rule.rhs.len) {
@@ -4555,15 +4555,15 @@ const ParserGenerator = struct {
             }
 
             // If next symbol after dot is nonterminal, add its productions
-            const next_sym = rule.rhs[item.dot];
-            const symbol = self.symbols.items[next_sym];
+            const nextSym = rule.rhs[item.dot];
+            const symbol = self.symbols.items[nextSym];
 
             if (symbol.kind == .nonterminal) {
-                for (symbol.rules.items) |rule_id| {
-                    const new_item = ParserItem{ .rule_id = rule_id, .dot = 0 };
-                    if (!seen.contains(new_item.id())) {
-                        try seen.put(new_item.id(), {});
-                        try all_items.append(self.allocator, new_item);
+                for (symbol.rules.items) |ruleId| {
+                    const newItem = ParserItem{ .ruleId = ruleId, .dot = 0 };
+                    if (!seen.contains(newItem.id())) {
+                        try seen.put(newItem.id(), {});
+                        try allItems.append(self.allocator, newItem);
                     }
                 }
             }
@@ -4572,7 +4572,7 @@ const ParserGenerator = struct {
         return ParserState{
             .id = @intCast(self.states.items.len),
             .kernel = kernel,
-            .items = try all_items.toOwnedSlice(self.allocator),
+            .items = try allItems.toOwnedSlice(self.allocator),
             .transitions = &[_]ParserTransition{},
             .reductions = try reductions.toOwnedSlice(self.allocator),
         };
@@ -4589,51 +4589,51 @@ const ParserGenerator = struct {
     ///   4. This closure is the target state for transition on X
     ///
     /// If the target state already exists (same kernel), reuse it.
-    fn processTransitions(self: *ParserGenerator, state_idx: usize, state_map: *std.StringHashMapUnmanaged(u16)) !void {
-        const state = &self.states.items[state_idx];
+    fn processTransitions(self: *ParserGenerator, stateIdx: usize, stateMap: *std.StringHashMapUnmanaged(u16)) !void {
+        const state = &self.states.items[stateIdx];
         var transitions: std.ArrayListUnmanaged(ParserTransition) = .{};
 
         // Group items by the symbol after the dot
-        var symbol_items = std.AutoHashMap(u16, std.ArrayListUnmanaged(ParserItem)).init(self.allocator);
+        var symbolItems = std.AutoHashMap(u16, std.ArrayListUnmanaged(ParserItem)).init(self.allocator);
         defer {
-            var iter = symbol_items.valueIterator();
+            var iter = symbolItems.valueIterator();
             while (iter.next()) |list| list.deinit(self.allocator);
-            symbol_items.deinit();
+            symbolItems.deinit();
         }
 
         for (state.items) |item| {
-            const rule = self.rules.items[item.rule_id];
+            const rule = self.rules.items[item.ruleId];
             if (item.dot >= rule.rhs.len) continue; // No symbol after dot
 
-            const next_sym = rule.rhs[item.dot];
-            const entry = try symbol_items.getOrPut(next_sym);
+            const nextSym = rule.rhs[item.dot];
+            const entry = try symbolItems.getOrPut(nextSym);
             if (!entry.found_existing) entry.value_ptr.* = .{};
             // Advance dot: A → α • X β becomes A → α X • β
-            try entry.value_ptr.append(self.allocator, .{ .rule_id = item.rule_id, .dot = item.dot + 1 });
+            try entry.value_ptr.append(self.allocator, .{ .ruleId = item.ruleId, .dot = item.dot + 1 });
         }
 
         // Create transitions and target states
-        var iter = symbol_items.iterator();
+        var iter = symbolItems.iterator();
         while (iter.next()) |entry| {
             const sym = entry.key_ptr.*;
-            const items_list = entry.value_ptr;
+            const itemsList = entry.value_ptr;
 
-            const kernel = try self.allocator.dupe(ParserItem, items_list.items);
+            const kernel = try self.allocator.dupe(ParserItem, itemsList.items);
             const sig = try self.kernelSignature(kernel);
 
             // Reuse existing state with same kernel, or create new one
-            const target = if (state_map.get(sig)) |existing| existing else blk: {
-                const new_state = try self.closure(kernel);
-                const new_id: u16 = @intCast(self.states.items.len);
-                try self.states.append(self.allocator, new_state);
-                try state_map.put(self.allocator, sig, new_id);
-                break :blk new_id;
+            const target = if (stateMap.get(sig)) |existing| existing else blk: {
+                const newState = try self.closure(kernel);
+                const newId: u16 = @intCast(self.states.items.len);
+                try self.states.append(self.allocator, newState);
+                try stateMap.put(self.allocator, sig, newId);
+                break :blk newId;
             };
 
             try transitions.append(self.allocator, .{ .symbol = sym, .target = target });
         }
 
-        self.states.items[state_idx].transitions = try transitions.toOwnedSlice(self.allocator);
+        self.states.items[stateIdx].transitions = try transitions.toOwnedSlice(self.allocator);
     }
 
     /// Generate a unique signature for a kernel (set of items).
@@ -4646,7 +4646,7 @@ const ParserGenerator = struct {
 
         std.mem.sort(ParserItem, sorted, {}, struct {
             fn lessThan(_: void, a: ParserItem, b: ParserItem) bool {
-                if (a.rule_id != b.rule_id) return a.rule_id < b.rule_id;
+                if (a.ruleId != b.ruleId) return a.ruleId < b.ruleId;
                 return a.dot < b.dot;
             }
         }.lessThan);
@@ -4654,7 +4654,7 @@ const ParserGenerator = struct {
         for (sorted, 0..) |item, i| {
             if (i > 0) try sig.append(self.allocator, '|');
             var buf: [32]u8 = undefined;
-            const slice = std.fmt.bufPrint(&buf, "{d}.{d}", .{ item.rule_id, item.dot }) catch "";
+            const slice = std.fmt.bufPrint(&buf, "{d}.{d}", .{ item.ruleId, item.dot }) catch "";
             try sig.appendSlice(self.allocator, slice);
         }
 
@@ -4701,15 +4701,15 @@ const ParserGenerator = struct {
             for (self.rules.items) |*rule| {
                 if (rule.nullable) continue;
 
-                var all_nullable = true;
-                for (rule.rhs) |sym_id| {
-                    if (!self.symbols.items[sym_id].nullable) {
-                        all_nullable = false;
+                var allNullable = true;
+                for (rule.rhs) |symId| {
+                    if (!self.symbols.items[symId].nullable) {
+                        allNullable = false;
                         break;
                     }
                 }
 
-                if (all_nullable or rule.rhs.len == 0) {
+                if (allNullable or rule.rhs.len == 0) {
                     rule.nullable = true;
                     changed = true;
                 }
@@ -4718,8 +4718,8 @@ const ParserGenerator = struct {
             for (self.symbols.items) |*sym| {
                 if (sym.nullable or sym.kind != .nonterminal) continue;
 
-                for (sym.rules.items) |rule_id| {
-                    if (self.rules.items[rule_id].nullable) {
+                for (sym.rules.items) |ruleId| {
+                    if (self.rules.items[ruleId].nullable) {
                         sym.nullable = true;
                         changed = true;
                         break;
@@ -4745,17 +4745,17 @@ const ParserGenerator = struct {
 
             // Compute FIRST for each rule's RHS
             for (self.rules.items) |*rule| {
-                const old_count = rule.firsts.count();
+                const oldCount = rule.firsts.count();
                 try self.computeFirstOfSequence(&rule.firsts, rule.rhs);
-                if (rule.firsts.count() > old_count) changed = true;
+                if (rule.firsts.count() > oldCount) changed = true;
             }
 
             // Propagate to nonterminals (union of all their rules' FIRST sets)
             for (self.symbols.items) |*sym| {
                 if (sym.kind != .nonterminal) continue;
 
-                for (sym.rules.items) |rule_id| {
-                    if (try sym.firsts.addAll(self.allocator, &self.rules.items[rule_id].firsts)) {
+                for (sym.rules.items) |ruleId| {
+                    if (try sym.firsts.addAll(self.allocator, &self.rules.items[ruleId].firsts)) {
                         changed = true;
                     }
                 }
@@ -4767,11 +4767,11 @@ const ParserGenerator = struct {
     ///
     /// Add FIRST(X₁). If X₁ nullable, add FIRST(X₂). Continue while nullable.
     fn computeFirstOfSequence(self: *ParserGenerator, result: *ParserSymbolSet, symbols: []const u16) !void {
-        for (symbols) |sym_id| {
-            const sym = &self.symbols.items[sym_id];
+        for (symbols) |symId| {
+            const sym = &self.symbols.items[symId];
 
             if (sym.kind == .terminal) {
-                try result.add(self.allocator, sym_id);
+                try result.add(self.allocator, symId);
                 break;
             } else {
                 _ = try result.addAll(self.allocator, &sym.firsts);
@@ -4797,11 +4797,11 @@ const ParserGenerator = struct {
             changed = false;
 
             for (self.rules.items) |rule| {
-                for (rule.rhs, 0..) |sym_id, i| {
-                    const sym = &self.symbols.items[sym_id];
+                for (rule.rhs, 0..) |symId, i| {
+                    const sym = &self.symbols.items[symId];
                     if (sym.kind != .nonterminal) continue;
 
-                    const old_count = sym.follows.count();
+                    const oldCount = sym.follows.count();
 
                     if (i == rule.rhs.len - 1) {
                         // A is at end: FOLLOW(LHS) ⊆ FOLLOW(A)
@@ -4813,19 +4813,19 @@ const ParserGenerator = struct {
                         const beta = rule.rhs[i + 1 ..];
                         try self.computeFirstOfSequence(&sym.follows, beta);
 
-                        var beta_nullable = true;
+                        var betaNullable = true;
                         for (beta) |b| {
                             if (!self.symbols.items[b].nullable) {
-                                beta_nullable = false;
+                                betaNullable = false;
                                 break;
                             }
                         }
-                        if (beta_nullable) {
+                        if (betaNullable) {
                             _ = try sym.follows.addAll(self.allocator, &self.symbols.items[rule.lhs].follows);
                         }
                     }
 
-                    if (sym.follows.count() > old_count) changed = true;
+                    if (sym.follows.count() > oldCount) changed = true;
                 }
             }
         }
@@ -4861,19 +4861,19 @@ const ParserGenerator = struct {
     const ParseAction = union(enum) {
         shift: u16,
         reduce: u16,
-        goto_state: u16,
+        gotoState: u16,
         accept: void,
         err: void,
     };
 
     /// Build the SLR(1) parse table from the LR(0) automaton and FOLLOW sets.
     fn buildParseTable(self: *ParserGenerator) ![][]ParseAction {
-        const num_states = self.states.items.len;
-        const num_symbols = self.symbols.items.len;
+        const numStates = self.states.items.len;
+        const numSymbols = self.symbols.items.len;
 
-        const table = try self.allocator.alloc([]ParseAction, num_states);
+        const table = try self.allocator.alloc([]ParseAction, numStates);
         for (table, 0..) |*row, i| {
-            row.* = try self.allocator.alloc(ParseAction, num_symbols);
+            row.* = try self.allocator.alloc(ParseAction, numSymbols);
             for (row.*) |*cell| cell.* = .err;
 
             const state = &self.states.items[i];
@@ -4882,7 +4882,7 @@ const ParserGenerator = struct {
             for (state.transitions) |trans| {
                 const sym = &self.symbols.items[trans.symbol];
                 if (sym.kind == .nonterminal) {
-                    row.*[trans.symbol] = .{ .goto_state = trans.target };
+                    row.*[trans.symbol] = .{ .gotoState = trans.target };
                 } else {
                     row.*[trans.symbol] = .{ .shift = trans.target };
                 }
@@ -4890,66 +4890,66 @@ const ParserGenerator = struct {
 
             // Accept action
             for (state.items) |item| {
-                const rule = &self.rules.items[item.rule_id];
-                if (item.dot < rule.rhs.len and rule.rhs[item.dot] == self.end_id) {
-                    if (self.isAcceptRuleId(item.rule_id)) {
-                        row.*[self.end_id] = .accept;
+                const rule = &self.rules.items[item.ruleId];
+                if (item.dot < rule.rhs.len and rule.rhs[item.dot] == self.endId) {
+                    if (self.isAcceptRuleId(item.ruleId)) {
+                        row.*[self.endId] = .accept;
                     }
                 }
             }
 
             // Reduce actions
             for (state.reductions) |item| {
-                const rule = &self.rules.items[item.rule_id];
+                const rule = &self.rules.items[item.ruleId];
 
-                if (self.isAcceptRuleId(item.rule_id)) {
-                    row.*[self.end_id] = .accept;
+                if (self.isAcceptRuleId(item.ruleId)) {
+                    row.*[self.endId] = .accept;
                     continue;
                 }
 
-                const lhs_sym = &self.symbols.items[rule.lhs];
+                const lhsSym = &self.symbols.items[rule.lhs];
 
-                for (lhs_sym.follows.slice()) |follow_id| {
-                    const current = &row.*[follow_id];
-                    const fname = self.symbols.items[follow_id].name;
-                    const x_char = if (fname.len == 3) fname[1] else 0;
+                for (lhsSym.follows.slice()) |followId| {
+                    const current = &row.*[followId];
+                    const fname = self.symbols.items[followId].name;
+                    const xChar = if (fname.len == 3) fname[1] else 0;
 
                     switch (current.*) {
-                        .err => current.* = .{ .reduce = item.rule_id },
+                        .err => current.* = .{ .reduce = item.ruleId },
                         .shift => |s| {
-                            if (rule.exclude_char != 0 and x_char == rule.exclude_char) {
+                            if (rule.excludeChar != 0 and xChar == rule.excludeChar) {
                                 // X "c": reduce in table, shift at runtime when pre==0
-                                current.* = .{ .reduce = item.rule_id };
-                                try self.x_excludes.append(self.allocator, .{
+                                current.* = .{ .reduce = item.ruleId };
+                                try self.xExcludes.append(self.allocator, .{
                                     .state = @intCast(i),
-                                    .char = x_char,
+                                    .char = xChar,
                                     .shift = s,
                                 });
-                            } else if (rule.prefer_reduce) {
+                            } else if (rule.preferReduce) {
                                 // < hint: prefer reduce (tight binding)
-                                current.* = .{ .reduce = item.rule_id };
-                            } else if (rule.prefer_shift) {
+                                current.* = .{ .reduce = item.ruleId };
+                            } else if (rule.preferShift) {
                                 // > hint: keep shift
                             } else {
                                 // Default: shift wins
                                 self.conflicts += 1;
-                                try self.conflict_details.append(self.allocator, .{
-                                    .kind = .shift_reduce,
-                                    .name_a = lhs_sym.name,
-                                    .name_b = fname,
+                                try self.conflictDetails.append(self.allocator, .{
+                                    .kind = .shiftReduce,
+                                    .nameA = lhsSym.name,
+                                    .nameB = fname,
                                 });
                             }
                         },
                         .reduce => |existing| {
-                            if (item.rule_id < existing) {
-                                current.* = .{ .reduce = item.rule_id };
+                            if (item.ruleId < existing) {
+                                current.* = .{ .reduce = item.ruleId };
                             }
                             self.conflicts += 1;
-                            const existing_rule = &self.rules.items[existing];
-                            try self.conflict_details.append(self.allocator, .{
-                                .kind = .reduce_reduce,
-                                .name_a = lhs_sym.name,
-                                .name_b = self.symbols.items[existing_rule.lhs].name,
+                            const existingRule = &self.rules.items[existing];
+                            try self.conflictDetails.append(self.allocator, .{
+                                .kind = .reduceReduce,
+                                .nameA = lhsSym.name,
+                                .nameB = self.symbols.items[existingRule.lhs].name,
                             });
                         },
                         else => {},
@@ -4965,7 +4965,7 @@ const ParserGenerator = struct {
     // Code Generation
     // =========================================================================
 
-    fn generateParserCode(self: *ParserGenerator, lexer_code: []const u8) ![]const u8 {
+    fn generateParserCode(self: *ParserGenerator, lexerCode: []const u8) ![]const u8 {
         var output: std.ArrayListUnmanaged(u8) = .{};
         const writer = output.writer(self.allocator);
 
@@ -4981,10 +4981,10 @@ const ParserGenerator = struct {
 
         // Strip the header from lexer code (it already has std import)
         // The lexer code starts with //! Parser...
-        const lexer_body = if (std.mem.indexOf(u8, lexer_code, "// =============================================================================")) |pos|
-            lexer_code[pos..]
+        const lexerBody = if (std.mem.indexOf(u8, lexerCode, "// =============================================================================")) |pos|
+            lexerCode[pos..]
         else
-            lexer_code;
+            lexerCode;
 
         // Write header
         try writer.writeAll(
@@ -5004,7 +5004,7 @@ const ParserGenerator = struct {
         }
 
         // Inject @code imports blocks
-        for (self.code_blocks.items) |block| {
+        for (self.codeBlocks.items) |block| {
             if (std.mem.eql(u8, block.location, "imports")) {
                 try writer.writeAll("\n// === @code imports ===\n");
                 try writer.writeAll(block.code);
@@ -5026,7 +5026,7 @@ const ParserGenerator = struct {
         );
 
         // Write lexer code (body only)
-        try writer.writeAll(lexer_body);
+        try writer.writeAll(lexerBody);
 
         // Generate Tag enum (re-export from language module if @lang specified)
         if (self.lang) |name| {
@@ -5048,7 +5048,7 @@ const ParserGenerator = struct {
                 \\pub const Tag = enum(u8) {
                 \\
             );
-            for (self.tag_list.items) |tag| {
+            for (self.tagList.items) |tag| {
                 try writer.writeAll("    @\"");
                 try writer.writeAll(tag);
                 try writer.writeAll("\",\n");
@@ -5100,7 +5100,7 @@ const ParserGenerator = struct {
         );
 
         // Inject @code sexp blocks
-        for (self.code_blocks.items) |block| {
+        for (self.codeBlocks.items) |block| {
             if (std.mem.eql(u8, block.location, "sexp")) {
                 try writer.writeAll("\n    // === @code sexp ===\n");
                 // Indent each line by 4 spaces
@@ -5305,8 +5305,8 @@ const ParserGenerator = struct {
         );
 
         // Generate per-rule semantic actions
-        for (self.rules.items, 0..) |rule, rule_idx| {
-            try writer.print("            {d} => ", .{rule_idx});
+        for (self.rules.items, 0..) |rule, ruleIdx| {
+            try writer.print("            {d} => ", .{ruleIdx});
             try self.generateRuleAction(writer, rule);
             try writer.writeAll(",\n");
         }
@@ -5322,23 +5322,23 @@ const ParserGenerator = struct {
         );
 
         // Generate token to symbol mapping
-        try writer.print("            .@\"eof\" => {d},\n", .{self.end_id});
-        var emitted_cats: std.StringHashMapUnmanaged(void) = .{};
+        try writer.print("            .@\"eof\" => {d},\n", .{self.endId});
+        var emittedCats: std.StringHashMapUnmanaged(void) = .{};
         defer {
-            var it = emitted_cats.keyIterator();
+            var it = emittedCats.keyIterator();
             while (it.next()) |key| self.allocator.free(key.*);
-            emitted_cats.deinit(self.allocator);
+            emittedCats.deinit(self.allocator);
         }
 
         // Check if we have @as directives for "ident" - if so, route through identToSymbol
-        var has_ident_as = false;
-        for (self.as_directives.items) |directive| {
+        var hasIdentAs = false;
+        for (self.asDirectives.items) |directive| {
             if (std.mem.eql(u8, directive.token, "ident")) {
-                has_ident_as = true;
+                hasIdentAs = true;
                 break;
             }
         }
-        if (has_ident_as) {
+        if (hasIdentAs) {
             try writer.writeAll("            .@\"ident\" => self.identToSymbol(token),\n");
         }
 
@@ -5352,80 +5352,80 @@ const ParserGenerator = struct {
                 if (std.mem.eql(u8, sym.name, "error")) continue;
 
                 // Convert to lowercase for TokenCat matching
-                var lower_buf: [64]u8 = undefined;
+                var lowerBuf: [64]u8 = undefined;
                 var len: usize = 0;
                 for (sym.name) |c| {
-                    if (len >= lower_buf.len) break;
-                    lower_buf[len] = if (c >= 'A' and c <= 'Z') c + 32 else c;
+                    if (len >= lowerBuf.len) break;
+                    lowerBuf[len] = if (c >= 'A' and c <= 'Z') c + 32 else c;
                     len += 1;
                 }
-                const lower_name = lower_buf[0..len];
+                const lowerName = lowerBuf[0..len];
 
                 // Skip ident if we're routing through identToSymbol
-                if (has_ident_as and std.mem.eql(u8, lower_name, "ident")) continue;
+                if (hasIdentAs and std.mem.eql(u8, lowerName, "ident")) continue;
 
                 // Determine if this terminal is an @as keyword (handled by identToSymbol)
                 // vs a real lexer token (needs tokenToSymbol mapping).
-                var is_as_keyword = false;
+                var isAsKeyword = false;
                 if (sym.name[0] >= 'A' and sym.name[0] <= 'Z') {
                     // Check if there's a corresponding lowercase nonterminal (e.g., IF↔if)
                     for (self.symbols.items) |other| {
                         if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(sym.name, other.name)) {
-                            is_as_keyword = true;
+                            isAsKeyword = true;
                             break;
                         }
                     }
                     // Check if it matches an @as directive rule name (e.g., CMD↔cmd)
-                    if (!is_as_keyword) {
-                        for (self.as_directives.items) |directive| {
-                            var upper_buf: [64]u8 = undefined;
-                            const upper_rule = std.ascii.upperString(upper_buf[0..directive.rule.len], directive.rule);
-                            if (std.mem.eql(u8, sym.name, upper_rule)) {
-                                is_as_keyword = true;
+                    if (!isAsKeyword) {
+                        for (self.asDirectives.items) |directive| {
+                            var upperBuf: [64]u8 = undefined;
+                            const upperRule = std.ascii.upperString(upperBuf[0..directive.rule.len], directive.rule);
+                            if (std.mem.eql(u8, sym.name, upperRule)) {
+                                isAsKeyword = true;
                                 break;
                             }
                         }
                     }
                     // When @as directives exist: if this terminal has no matching
                     // lexer token, it must be a keyword terminal (e.g., IF, UNLESS)
-                    if (!is_as_keyword and has_ident_as) {
-                        if (self.lexer_spec) |spec| {
-                            var has_lexer_token = false;
+                    if (!isAsKeyword and hasIdentAs) {
+                        if (self.lexerSpec) |spec| {
+                            var hasLexerToken = false;
                             for (spec.tokens.items) |tok| {
                                 if (std.ascii.eqlIgnoreCase(tok.name, sym.name)) {
-                                    has_lexer_token = true;
+                                    hasLexerToken = true;
                                     break;
                                 }
                             }
-                            if (!has_lexer_token) {
+                            if (!hasLexerToken) {
                                 for (spec.rules.items) |rule| {
                                     if (std.ascii.eqlIgnoreCase(rule.token, sym.name)) {
-                                        has_lexer_token = true;
+                                        hasLexerToken = true;
                                         break;
                                     }
                                 }
                             }
-                            if (!has_lexer_token) is_as_keyword = true;
+                            if (!hasLexerToken) isAsKeyword = true;
                         }
                     }
                 }
 
                 // Skip @as keywords - they're handled by identToSymbol
-                if (is_as_keyword) continue;
+                if (isAsKeyword) continue;
 
                 // Only generate for tokens that look like lexer token types (start with letter, no special chars)
-                var valid = len > 0 and lower_name[0] >= 'a' and lower_name[0] <= 'z';
+                var valid = len > 0 and lowerName[0] >= 'a' and lowerName[0] <= 'z';
                 if (valid) {
-                    for (lower_name) |ch| {
+                    for (lowerName) |ch| {
                         if (!((ch >= 'a' and ch <= 'z') or (ch >= '0' and ch <= '9') or ch == '_')) {
                             valid = false;
                             break;
                         }
                     }
                 }
-                if (valid and !emitted_cats.contains(lower_name)) {
-                    try writer.print("            .@\"{s}\" => {d},\n", .{ lower_name, sym.id });
-                    try emitted_cats.put(self.allocator, try self.allocator.dupe(u8, lower_name), {});
+                if (valid and !emittedCats.contains(lowerName)) {
+                    try writer.print("            .@\"{s}\" => {d},\n", .{ lowerName, sym.id });
+                    try emittedCats.put(self.allocator, try self.allocator.dupe(u8, lowerName), {});
                 }
             }
         }
@@ -5433,26 +5433,26 @@ const ParserGenerator = struct {
         // Generate @op mappings for operator literals (e.g., "'=" => noteq)
         for (self.symbols.items) |sym| {
             if (sym.kind == .terminal and sym.name.len >= 2 and sym.name[0] == '"') {
-                const raw_literal = sym.name[1 .. sym.name.len - 1];
+                const rawLiteral = sym.name[1 .. sym.name.len - 1];
                 // Unescape the literal (handle \\ -> \)
-                var literal_buf: [256]u8 = undefined;
-                var literal_len: usize = 0;
+                var literalBuf: [256]u8 = undefined;
+                var literalLen: usize = 0;
                 var i: usize = 0;
-                while (i < raw_literal.len) : (i += 1) {
-                    if (raw_literal[i] == '\\' and i + 1 < raw_literal.len) {
+                while (i < rawLiteral.len) : (i += 1) {
+                    if (rawLiteral[i] == '\\' and i + 1 < rawLiteral.len) {
                         i += 1;
-                        literal_buf[literal_len] = raw_literal[i];
+                        literalBuf[literalLen] = rawLiteral[i];
                     } else {
-                        literal_buf[literal_len] = raw_literal[i];
+                        literalBuf[literalLen] = rawLiteral[i];
                     }
-                    literal_len += 1;
+                    literalLen += 1;
                 }
-                const literal = literal_buf[0..literal_len];
+                const literal = literalBuf[0..literalLen];
                 // Look up in @op mappings
-                for (self.op_mappings.items) |m| {
-                    if (std.mem.eql(u8, literal, m.lit) and !emitted_cats.contains(m.tok)) {
+                for (self.opMappings.items) |m| {
+                    if (std.mem.eql(u8, literal, m.lit) and !emittedCats.contains(m.tok)) {
                         try writer.print("            .@\"{s}\" => {d},\n", .{ m.tok, sym.id });
-                        try emitted_cats.put(self.allocator, try self.allocator.dupe(u8, m.tok), {});
+                        try emittedCats.put(self.allocator, try self.allocator.dupe(u8, m.tok), {});
                         break;
                     }
                 }
@@ -5471,11 +5471,11 @@ const ParserGenerator = struct {
                 null;
 
             if (char) |c| {
-                if (self.lexer_spec) |spec| {
-                    if (findTokenForChar(spec, c)) |tok_name| {
-                        if (!emitted_cats.contains(tok_name)) {
-                            try writer.print("            .@\"{s}\" => {d},\n", .{ tok_name, sym.id });
-                            try emitted_cats.put(self.allocator, try self.allocator.dupe(u8, tok_name), {});
+                if (self.lexerSpec) |spec| {
+                    if (findTokenForChar(spec, c)) |tokName| {
+                        if (!emittedCats.contains(tokName)) {
+                            try writer.print("            .@\"{s}\" => {d},\n", .{ tokName, sym.id });
+                            try emittedCats.put(self.allocator, try self.allocator.dupe(u8, tokName), {});
                         }
                         continue;
                     }
@@ -5488,11 +5488,11 @@ const ParserGenerator = struct {
             if (sym.kind != .terminal or sym.name.len < 4 or sym.name[0] != '"') continue;
             const raw = sym.name[1 .. sym.name.len - 1];
             if (raw.len < 2) continue;
-            if (self.lexer_spec) |spec| {
-                if (findTokenForLiteral(spec, raw)) |tok_name| {
-                    if (!emitted_cats.contains(tok_name)) {
-                        try writer.print("            .@\"{s}\" => {d},\n", .{ tok_name, sym.id });
-                        try emitted_cats.put(self.allocator, try self.allocator.dupe(u8, tok_name), {});
+            if (self.lexerSpec) |spec| {
+                if (findTokenForLiteral(spec, raw)) |tokName| {
+                    if (!emittedCats.contains(tokName)) {
+                        try writer.print("            .@\"{s}\" => {d},\n", .{ tokName, sym.id });
+                        try emittedCats.put(self.allocator, try self.allocator.dupe(u8, tokName), {});
                     }
                 }
             }
@@ -5503,10 +5503,10 @@ const ParserGenerator = struct {
             \\        }};
             \\    }}
             \\
-        , .{self.error_id});
+        , .{self.errorId});
 
         // Generate identToSymbol based on @as directives
-        if (self.as_directives.items.len > 0) {
+        if (self.asDirectives.items.len > 0) {
             try writer.writeAll(
                 \\
                 \\    fn identToSymbol(self: *Parser, token: Token) u16 {
@@ -5518,11 +5518,11 @@ const ParserGenerator = struct {
             // Eager promotion: try all @as directives uniformly.
             // Parser action table disambiguates (keyword only promoted when
             // the parser state has a valid action for it).
-            for (self.as_directives.items) |directive| {
+            for (self.asDirectives.items) |directive| {
                 if (std.mem.eql(u8, directive.token, "ident")) {
                     const cap = capitalized(directive.rule);
-                    const cap_name = cap[0..directive.rule.len];
-                    try writer.print("        if (self.tryIdentAs{s}(token, text)) |sym| return sym;\n", .{cap_name});
+                    const capName = cap[0..directive.rule.len];
+                    try writer.print("        if (self.tryIdentAs{s}(token, text)) |sym| return sym;\n", .{capName});
                 }
             }
 
@@ -5533,13 +5533,13 @@ const ParserGenerator = struct {
             );
 
             // Generate try_ident_as_* functions for each @as directive
-            if (self.lang) |lang_name| {
+            if (self.lang) |langName| {
                 // External module: reference lang.{rule}As(), lang.{Rule}Id, etc.
-                for (self.as_directives.items) |directive| {
+                for (self.asDirectives.items) |directive| {
                     if (!std.mem.eql(u8, directive.token, "ident")) continue;
 
                     const cap = capitalized(directive.rule);
-                    const cap_name = cap[0..directive.rule.len];
+                    const capName = cap[0..directive.rule.len];
                     try writer.print(
                         \\
                         \\    fn tryIdentAs{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
@@ -5561,15 +5561,15 @@ const ParserGenerator = struct {
                         \\        return null;
                         \\    }}
                         \\
-                    , .{ cap_name, lang_name, directive.rule, directive.rule, directive.rule });
+                    , .{ capName, langName, directive.rule, directive.rule, directive.rule });
                 }
             } else {
                 // Inline: generate simple exact-match keyword functions
-                for (self.as_directives.items) |directive| {
+                for (self.asDirectives.items) |directive| {
                     if (!std.mem.eql(u8, directive.token, "ident")) continue;
 
                     const cap = capitalized(directive.rule);
-                    const cap_name = cap[0..directive.rule.len];
+                    const capName = cap[0..directive.rule.len];
                     try writer.print(
                         \\
                         \\    fn tryIdentAs{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
@@ -5585,7 +5585,7 @@ const ParserGenerator = struct {
                         \\        return null;
                         \\    }}
                         \\
-                    , .{ cap_name, directive.rule, directive.rule });
+                    , .{ capName, directive.rule, directive.rule });
                 }
             }
         } else {
@@ -5600,12 +5600,12 @@ const ParserGenerator = struct {
         }
 
         // Generate parse functions for each start symbol
-        for (self.start_symbols.items) |sym_id| {
-            const name = self.symbols.items[sym_id].name;
-            var fname_buf: [64]u8 = undefined;
-            fname_buf[0] = if (name[0] >= 'a' and name[0] <= 'z') name[0] - 32 else name[0];
-            @memcpy(fname_buf[1..name.len], name[1..]);
-            const fname = fname_buf[0..name.len];
+        for (self.startSymbols.items) |symId| {
+            const name = self.symbols.items[symId].name;
+            var fnameBuf: [64]u8 = undefined;
+            fnameBuf[0] = if (name[0] >= 'a' and name[0] <= 'z') name[0] - 32 else name[0];
+            @memcpy(fnameBuf[1..name.len], name[1..]);
+            const fname = fnameBuf[0..name.len];
 
             try writer.print(
                 \\
@@ -5617,7 +5617,7 @@ const ParserGenerator = struct {
         }
 
         // Inject @code parser blocks
-        for (self.code_blocks.items) |block| {
+        for (self.codeBlocks.items) |block| {
             if (std.mem.eql(u8, block.location, "parser")) {
                 try writer.writeAll("\n    // === @code parser ===\n");
                 // Indent each line by 4 spaces
@@ -5636,31 +5636,31 @@ const ParserGenerator = struct {
 
         // Generate symbol constants
         try writer.writeAll("// Symbol IDs\n");
-        for (self.start_symbols.items) |sym_id| {
-            const name = self.symbols.items[sym_id].name;
-            try writer.print("const SYM_{s}: u16 = {d};\n", .{ name, sym_id });
+        for (self.startSymbols.items) |symId| {
+            const name = self.symbols.items[symId].name;
+            try writer.print("const SYM_{s}: u16 = {d};\n", .{ name, symId });
             // Marker token
-            const marker_name = try std.fmt.allocPrint(self.allocator, "{s}!", .{name});
-            defer self.allocator.free(marker_name);
-            if (self.getSymbol(marker_name)) |marker_id| {
-                try writer.print("const SYM_{s}_START: u16 = {d};\n", .{ name, marker_id });
+            const markerName = try std.fmt.allocPrint(self.allocator, "{s}!", .{name});
+            defer self.allocator.free(markerName);
+            if (self.getSymbol(markerName)) |markerId| {
+                try writer.print("const SYM_{s}_START: u16 = {d};\n", .{ name, markerId });
             }
         }
 
         // Generate SYM_IDENT for identToSymbol fallback
-        if (self.getSymbol("IDENT")) |ident_id| {
-            try writer.print("const symIdent: u16 = {d};\n", .{ident_id});
+        if (self.getSymbol("IDENT")) |identId| {
+            try writer.print("const symIdent: u16 = {d};\n", .{identId});
         } else {
             // Fallback to error symbol if IDENT not defined
-            try writer.print("const symIdent: u16 = {d};\n", .{self.error_id});
+            try writer.print("const symIdent: u16 = {d};\n", .{self.errorId});
         }
 
         // Generate *_to_symbol mapping arrays and keyword matchers for @as directives
-        if (self.lang) |lang_name| {
+        if (self.lang) |langName| {
             // External module: reference lang.{Rule}Id, lang.{rule}As, etc.
-            for (self.as_directives.items) |directive| {
-                var specific_terminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
-                defer specific_terminals.deinit(self.allocator);
+            for (self.asDirectives.items) |directive| {
+                var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
+                defer specificTerminals.deinit(self.allocator);
 
                 // Collect ALL uppercase terminals as potential keyword targets.
                 // @hasField at comptime filters to those in the lang module's enum.
@@ -5669,74 +5669,74 @@ const ParserGenerator = struct {
                     if (sym.name[0] < 'A' or sym.name[0] > 'Z') continue;
                     if (sym.name[0] == '"') continue;
                     if (std.mem.endsWith(u8, sym.name, "!")) continue;
-                    try specific_terminals.append(self.allocator, .{ .name = sym.name, .id = sym.id });
+                    try specificTerminals.append(self.allocator, .{ .name = sym.name, .id = sym.id });
                 }
 
-                var fallback_name_buf: [64]u8 = undefined;
-                const fallback_name = std.ascii.upperString(fallback_name_buf[0..directive.rule.len], directive.rule);
-                var fallback_id: ?u16 = null;
+                var fallbackNameBuf: [64]u8 = undefined;
+                const fallbackName = std.ascii.upperString(fallbackNameBuf[0..directive.rule.len], directive.rule);
+                var fallbackId: ?u16 = null;
                 for (self.symbols.items) |sym| {
-                    if (sym.kind == .terminal and std.mem.eql(u8, sym.name, fallback_name)) {
-                        fallback_id = sym.id;
+                    if (sym.kind == .terminal and std.mem.eql(u8, sym.name, fallbackName)) {
+                        fallbackId = sym.id;
                         break;
                     }
                 }
 
-                const has_mappings = specific_terminals.items.len > 0;
-                const has_fallback = fallback_id != null;
-                const needs_var = has_mappings or has_fallback;
+                const hasMappings = specificTerminals.items.len > 0;
+                const hasFallback = fallbackId != null;
+                const needsVar = hasMappings or hasFallback;
 
                 const cap = capitalized(directive.rule);
-                const cap_name = cap[0..directive.rule.len];
+                const capName = cap[0..directive.rule.len];
                 try writer.print(
                     \\
                     \\// Mapping from {s}.{s}Id to grammar symbol IDs (computed at comptime)
                     \\const {s}ToSymbol = blk: {{
                     \\
-                , .{ lang_name, cap_name, directive.rule });
+                , .{ langName, capName, directive.rule });
 
-                if (needs_var) {
+                if (needsVar) {
                     try writer.writeAll("    var arr: [512]u16 = .{0} ** 512;\n");
                 } else {
                     try writer.writeAll("    const arr: [512]u16 = .{0} ** 512;\n");
                 }
 
-                for (specific_terminals.items) |term| {
-                    try writer.print("    if (@hasField({s}.{s}Id, \"{s}\")) arr[@intFromEnum({s}.{s}Id.{s})] = {d};\n", .{ lang_name, cap_name, term.name, lang_name, cap_name, term.name, term.id });
+                for (specificTerminals.items) |term| {
+                    try writer.print("    if (@hasField({s}.{s}Id, \"{s}\")) arr[@intFromEnum({s}.{s}Id.{s})] = {d};\n", .{ langName, capName, term.name, langName, capName, term.name, term.id });
                 }
 
-                if (fallback_id) |fid| {
+                if (fallbackId) |fid| {
                     try writer.print(
                         \\    for (@typeInfo({s}.{s}Id).@"enum".fields) |field| {{
                         \\        if (arr[field.value] == 0) arr[field.value] = {d};
                         \\    }}
                         \\
-                    , .{ lang_name, cap_name, fid });
+                    , .{ langName, capName, fid });
                 }
 
                 try writer.writeAll("    break :blk arr;\n};\n");
-                try writer.print("const {s}FallbackSymbol: u16 = {d};\n", .{ directive.rule, fallback_id orelse 0 });
+                try writer.print("const {s}FallbackSymbol: u16 = {d};\n", .{ directive.rule, fallbackId orelse 0 });
             }
         } else {
             // Inline: generate Id enums, As functions, and ToSymbol mappings
-            var emitted_rules = std.StringHashMap(void).init(self.allocator);
-            defer emitted_rules.deinit();
+            var emittedRules = std.StringHashMap(void).init(self.allocator);
+            defer emittedRules.deinit();
 
-            for (self.as_directives.items) |directive| {
-                if (emitted_rules.contains(directive.rule)) continue;
-                emitted_rules.put(directive.rule, {}) catch {};
+            for (self.asDirectives.items) |directive| {
+                if (emittedRules.contains(directive.rule)) continue;
+                emittedRules.put(directive.rule, {}) catch {};
 
-                var upper_buf: [64]u8 = undefined;
-                const upper = std.ascii.upperString(upper_buf[0..directive.rule.len], directive.rule);
+                var upperBuf: [64]u8 = undefined;
+                const upper = std.ascii.upperString(upperBuf[0..directive.rule.len], directive.rule);
                 const cap = capitalized(directive.rule);
-                const cap_name = cap[0..directive.rule.len];
-                try writer.print("\nconst {s}Id = enum(u16) {{ {s} = 0 }};\n", .{ cap_name, upper });
-                try writer.print("fn {s}As(name: []const u8) ?{s}Id {{ return if (std.mem.eql(u8, name, \"{s}\")) .{s} else null; }}\n", .{ directive.rule, cap_name, directive.rule, upper });
+                const capName = cap[0..directive.rule.len];
+                try writer.print("\nconst {s}Id = enum(u16) {{ {s} = 0 }};\n", .{ capName, upper });
+                try writer.print("fn {s}As(name: []const u8) ?{s}Id {{ return if (std.mem.eql(u8, name, \"{s}\")) .{s} else null; }}\n", .{ directive.rule, capName, directive.rule, upper });
             }
 
-            for (self.as_directives.items) |directive| {
-                var specific_terminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
-                defer specific_terminals.deinit(self.allocator);
+            for (self.asDirectives.items) |directive| {
+                var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
+                defer specificTerminals.deinit(self.allocator);
 
                 for (self.symbols.items) |sym| {
                     if (sym.kind != .terminal or sym.name.len == 0) continue;
@@ -5744,51 +5744,51 @@ const ParserGenerator = struct {
                     if (sym.name[0] == '"') continue;
                     for (self.symbols.items) |other| {
                         if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(sym.name, other.name)) {
-                            try specific_terminals.append(self.allocator, .{ .name = sym.name, .id = sym.id });
+                            try specificTerminals.append(self.allocator, .{ .name = sym.name, .id = sym.id });
                             break;
                         }
                     }
                 }
 
-                var fallback_name_buf: [64]u8 = undefined;
-                const fallback_name = std.ascii.upperString(fallback_name_buf[0..directive.rule.len], directive.rule);
-                var fallback_id: ?u16 = null;
+                var fallbackNameBuf: [64]u8 = undefined;
+                const fallbackName = std.ascii.upperString(fallbackNameBuf[0..directive.rule.len], directive.rule);
+                var fallbackId: ?u16 = null;
                 for (self.symbols.items) |sym| {
-                    if (sym.kind == .terminal and std.mem.eql(u8, sym.name, fallback_name)) {
-                        fallback_id = sym.id;
+                    if (sym.kind == .terminal and std.mem.eql(u8, sym.name, fallbackName)) {
+                        fallbackId = sym.id;
                         break;
                     }
                 }
 
-                const has_mappings = specific_terminals.items.len > 0;
-                const has_fallback = fallback_id != null;
-                const needs_var = has_mappings or has_fallback;
+                const hasMappings = specificTerminals.items.len > 0;
+                const hasFallback = fallbackId != null;
+                const needsVar = hasMappings or hasFallback;
 
                 const cap2 = capitalized(directive.rule);
-                const cap_name2 = cap2[0..directive.rule.len];
+                const capName2 = cap2[0..directive.rule.len];
                 try writer.print(
                     \\
                     \\const {s}ToSymbol = blk: {{
                     \\
                 , .{directive.rule});
 
-                if (needs_var) {
+                if (needsVar) {
                     try writer.writeAll("    var arr: [512]u16 = .{0} ** 512;\n");
                 } else {
                     try writer.writeAll("    const arr: [512]u16 = .{0} ** 512;\n");
                 }
 
-                for (specific_terminals.items) |term| {
-                    try writer.print("    if (@hasField({s}Id, \"{s}\")) arr[@intFromEnum({s}Id.{s})] = {d};\n", .{ cap_name2, term.name, cap_name2, term.name, term.id });
+                for (specificTerminals.items) |term| {
+                    try writer.print("    if (@hasField({s}Id, \"{s}\")) arr[@intFromEnum({s}Id.{s})] = {d};\n", .{ capName2, term.name, capName2, term.name, term.id });
                 }
 
-                if (fallback_id) |fid| {
+                if (fallbackId) |fid| {
                     try writer.print(
                         \\    for (@typeInfo({s}Id).@"enum".fields) |field| {{
                         \\        if (arr[field.value] == 0) arr[field.value] = {d};
                         \\    }}
                         \\
-                    , .{ cap_name2, fid });
+                    , .{ capName2, fid });
                 }
 
                 try writer.writeAll("    break :blk arr;\n};\n");
@@ -5811,8 +5811,8 @@ const ParserGenerator = struct {
         try writer.writeAll(" };\n");
 
         // Generate parse table
-        const num_states = table.len;
-        const num_symbols = self.symbols.items.len;
+        const numStates = table.len;
+        const numSymbols = self.symbols.items.len;
 
         try writer.print(
             \\
@@ -5822,7 +5822,7 @@ const ParserGenerator = struct {
             \\
             \\const sparse = [numStates][]const i16{{
             \\
-        , .{ num_states, num_symbols, num_states, num_symbols });
+        , .{ numStates, numSymbols, numStates, numSymbols });
 
         for (table) |row| {
             try writer.writeAll("    &.{");
@@ -5831,7 +5831,7 @@ const ParserGenerator = struct {
                 const value: i16 = switch (action) {
                     .shift => |s| @as(i16, @intCast(s)),
                     .reduce => |r| -@as(i16, @intCast(r)) - 2,
-                    .goto_state => |g| @as(i16, @intCast(g)),
+                    .gotoState => |g| @as(i16, @intCast(g)),
                     .accept => -1,
                     .err => continue,
                 };
@@ -5865,7 +5865,7 @@ const ParserGenerator = struct {
         // Generate X "c" exclude table - shift when pre==0 and char matches
         try writer.writeAll("// X \"c\" excludes: shift instead of reduce when pre==0 and char matches\n");
         try writer.writeAll("const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{\n");
-        for (self.x_excludes.items) |x| {
+        for (self.xExcludes.items) |x| {
             try writer.print("    .{{ .state = {d}, .char = '{c}', .shift = {d} }},\n", .{ x.state, x.char, x.shift });
         }
         try writer.writeAll("};\n\n");
@@ -5882,7 +5882,7 @@ const ParserGenerator = struct {
 
         // Generate start state lookup
         try writer.writeAll("const startStates = [_]struct { sym: u16, state: u16 }{\n");
-        for (self.start_symbols.items, self.start_states.items) |sym, state| {
+        for (self.startSymbols.items, self.startStates.items) |sym, state| {
             try writer.print("    .{{ .sym = {d}, .state = {d} }},\n", .{ sym, state });
         }
         try writer.writeAll("};\n\n");
@@ -5899,9 +5899,9 @@ const ParserGenerator = struct {
 
         // Generate accept rules
         try writer.writeAll("\nconst acceptRules = [_]u16{ ");
-        for (self.accept_rules.items, 0..) |rule_id, i| {
+        for (self.acceptRules.items, 0..) |ruleId, i| {
             if (i > 0) try writer.writeAll(", ");
-            try writer.print("{d}", .{rule_id});
+            try writer.print("{d}", .{ruleId});
         }
         try writer.writeAll(" };\n\n");
 
@@ -5914,7 +5914,7 @@ const ParserGenerator = struct {
         );
 
         // Inject @code bottom blocks
-        for (self.code_blocks.items) |block| {
+        for (self.codeBlocks.items) |block| {
             if (std.mem.eql(u8, block.location, "bottom")) {
                 try writer.writeAll("\n// === @code bottom ===\n");
                 try writer.writeAll(block.code);
@@ -5932,7 +5932,7 @@ const ParserGenerator = struct {
         }
 
         const template = rule.action.?.template;
-        const offset = rule.action_offset;
+        const offset = rule.actionOffset;
 
         // Handle simple cases
         if (std.mem.eql(u8, template, "nil") or std.mem.eql(u8, template, "_")) {
@@ -5994,83 +5994,83 @@ const ParserGenerator = struct {
 
         // Analyze elements
         const tag = elements.items[0];
-        var tag_name = tag;
+        var tagName = tag;
 
         // Strip key:value from tag if present (e.g., "dots:2?" -> "dots")
-        if (std.mem.indexOfScalar(u8, tag, ':')) |colon_pos| {
-            const after = tag[colon_pos + 1 ..];
+        if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
+            const after = tag[colonPos + 1 ..];
             if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
                 after[0] == '.' or after[0] == '~' or after[0] == '_'))
             {
-                tag_name = tag[0..colon_pos];
+                tagName = tag[0..colonPos];
             }
         }
 
-        const first_is_tag = self.isTagLiteral(tag_name);
+        const firstIsTag = self.isTagLiteral(tagName);
 
         // Count element types
-        var spread_count: usize = 0;
-        var spread_pos: u8 = 0;
-        var pos_count: usize = 0;
-        var first_pos: u8 = 0;
-        var has_tilde = false;
-        var has_other = false;
-        var has_nil = false;
+        var spreadCount: usize = 0;
+        var spreadPos: u8 = 0;
+        var posCount: usize = 0;
+        var firstPos: u8 = 0;
+        var hasTilde = false;
+        var hasOther = false;
+        var hasNil = false;
 
         for (elements.items[1..]) |elem| {
             const work = self.stripKeyAndSuffix(elem);
             if (work.len == 0) continue;
             if (work[0] == '.' and work.len >= 4 and work[1] == '.' and work[2] == '.') {
-                spread_count += 1;
-                spread_pos = work[3] - '1' + offset;
+                spreadCount += 1;
+                spreadPos = work[3] - '1' + offset;
             } else if (work[0] == '~') {
-                has_tilde = true;
+                hasTilde = true;
             } else if (work[0] >= '1' and work[0] <= '9') {
-                if (pos_count == 0) first_pos = work[0] - '1' + offset;
-                pos_count += 1;
+                if (posCount == 0) firstPos = work[0] - '1' + offset;
+                posCount += 1;
             } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
-                has_nil = true; // track nil separately for pattern matching
+                hasNil = true; // track nil separately for pattern matching
             } else if (!self.isTagLiteral(work)) {
-                has_other = true;
+                hasOther = true;
             }
         }
 
         // Pattern: (tag ...N) - use sexpSpread (only if no nil elements)
-        if (first_is_tag and spread_count == 1 and pos_count == 0 and !has_tilde and !has_other and !has_nil) {
-            try writer.print("self.sexpSpread(.@\"{s}\", pass[{d}])", .{ tag_name, spread_pos });
+        if (firstIsTag and spreadCount == 1 and posCount == 0 and !hasTilde and !hasOther and !hasNil) {
+            try writer.print("self.sexpSpread(.@\"{s}\", pass[{d}])", .{ tagName, spreadPos });
             return;
         }
 
         // Pattern: (tag N ...M) - use sexpPosSpread (only if no nil elements)
-        if (first_is_tag and spread_count == 1 and pos_count == 1 and !has_tilde and !has_other and !has_nil) {
-            try writer.print("self.sexpPosSpread(.@\"{s}\", pass[{d}], pass[{d}])", .{ tag_name, first_pos, spread_pos });
+        if (firstIsTag and spreadCount == 1 and posCount == 1 and !hasTilde and !hasOther and !hasNil) {
+            try writer.print("self.sexpPosSpread(.@\"{s}\", pass[{d}], pass[{d}])", .{ tagName, firstPos, spreadPos });
             return;
         }
 
         // Simple case: self.sexp(.@"tag", &.{pass[0], pass[1], ...})
         // Only if first element is a tag and no spreads/tilde
-        var tag_has_value = false;
-        var tag_value: []const u8 = "";
+        var tagHasValue = false;
+        var tagValue: []const u8 = "";
 
         // Check if tag has key:value format (like "dots:2?", "type:_")
-        if (std.mem.indexOfScalar(u8, tag, ':')) |colon_pos| {
-            const after = tag[colon_pos + 1 ..];
+        if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
+            const after = tag[colonPos + 1 ..];
             if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
                 after[0] == '.' or after[0] == '~' or after[0] == '_'))
             {
-                tag_has_value = true;
-                tag_value = self.stripKeyAndSuffix(tag);
+                tagHasValue = true;
+                tagValue = self.stripKeyAndSuffix(tag);
             }
         }
 
-        if (first_is_tag and spread_count == 0 and !has_tilde and !has_other) {
-            try writer.print("self.sexp(.@\"{s}\", &.{{", .{tag_name});
+        if (firstIsTag and spreadCount == 0 and !hasTilde and !hasOther) {
+            try writer.print("self.sexp(.@\"{s}\", &.{{", .{tagName});
             var first = true;
 
             // Add tag's value if it had key:value format
-            if (tag_has_value and tag_value.len > 0) {
-                if (tag_value[0] >= '1' and tag_value[0] <= '9') {
-                    try writer.print("pass[{d}]", .{tag_value[0] - '1' + offset});
+            if (tagHasValue and tagValue.len > 0) {
+                if (tagValue[0] >= '1' and tagValue[0] <= '9') {
+                    try writer.print("pass[{d}]", .{tagValue[0] - '1' + offset});
                     first = false;
                 }
             }
@@ -6122,8 +6122,8 @@ const ParserGenerator = struct {
         _ = self;
         var work = elem;
         // Strip key: prefix (e.g., "offset:3" -> "3", "type:_" -> "_")
-        if (std.mem.indexOfScalar(u8, work, ':')) |colon_pos| {
-            const after = work[colon_pos + 1 ..];
+        if (std.mem.indexOfScalar(u8, work, ':')) |colonPos| {
+            const after = work[colonPos + 1 ..];
             if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
                 after[0] == '.' or after[0] == '~' or after[0] == '_'))
             {
@@ -6144,10 +6144,10 @@ const ParserGenerator = struct {
     }
 
     fn registerTag(self: *ParserGenerator, tag: []const u8) !void {
-        if (!self.collected_tags.contains(tag)) {
+        if (!self.collectedTags.contains(tag)) {
             const owned = try self.allocator.dupe(u8, tag);
-            try self.collected_tags.put(self.allocator, owned, @intCast(self.tag_list.items.len));
-            try self.tag_list.append(self.allocator, owned);
+            try self.collectedTags.put(self.allocator, owned, @intCast(self.tagList.items.len));
+            try self.tagList.append(self.allocator, owned);
         }
     }
 
@@ -6161,12 +6161,12 @@ const ParserGenerator = struct {
             if (i > start) {
                 var tag = template[start..i];
                 // Strip key:value suffix (key:N? -> key)
-                if (std.mem.indexOfScalar(u8, tag, ':')) |colon_pos| {
-                    const after = tag[colon_pos + 1 ..];
+                if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
+                    const after = tag[colonPos + 1 ..];
                     if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
                         after[0] == '.' or after[0] == '~'))
                     {
-                        tag = tag[0..colon_pos];
+                        tag = tag[0..colonPos];
                     }
                 }
                 // Register tags - includes letters and special chars like ?, !, #
@@ -6194,8 +6194,8 @@ const ParserGenerator = struct {
 // =============================================================================
 
 fn reportConflicts(pg: *ParserGenerator) void {
-    if (pg.conflict_details.items.len == 0) {
-        if (pg.expect_conflicts) |expected| {
+    if (pg.conflictDetails.items.len == 0) {
+        if (pg.expectConflicts) |expected| {
             if (expected != 0)
                 std.debug.print("   ✅ 0 conflicts (expected {d} — consider updating @conflicts)\n", .{expected});
         }
@@ -6215,17 +6215,17 @@ fn reportConflicts(pg: *ParserGenerator) void {
     var seen = std.StringHashMap(u32).init(pg.allocator);
     defer seen.deinit();
 
-    for (pg.conflict_details.items) |c| {
-        const a = c.name_a;
-        const b = c.name_b;
-        const is_benign = (c.kind == .reduce_reduce and isAutoGen(a) and isAutoGen(b)) or
-            (c.kind == .shift_reduce and isAutoGen(a));
-        if (is_benign) {
+    for (pg.conflictDetails.items) |c| {
+        const a = c.nameA;
+        const b = c.nameB;
+        const isBenign = (c.kind == .reduceReduce and isAutoGen(a) and isAutoGen(b)) or
+            (c.kind == .shiftReduce and isAutoGen(a));
+        if (isBenign) {
             benign += 1;
         } else {
             var buf: [256]u8 = undefined;
-            const key_tag: []const u8 = if (c.kind == .shift_reduce) "S/R" else "R/R";
-            const key = std.fmt.bufPrint(&buf, "{s}: {s} vs {s}", .{ key_tag, a, b }) catch continue;
+            const keyTag: []const u8 = if (c.kind == .shiftReduce) "S/R" else "R/R";
+            const key = std.fmt.bufPrint(&buf, "{s}: {s} vs {s}", .{ keyTag, a, b }) catch continue;
             const owned = pg.allocator.dupe(u8, key) catch continue;
             const gop = seen.getOrPut(owned) catch continue;
             if (gop.found_existing) {
@@ -6254,7 +6254,7 @@ fn reportConflicts(pg: *ParserGenerator) void {
 
     // Check against @conflicts
     const total = pg.conflicts;
-    if (pg.expect_conflicts) |expected| {
+    if (pg.expectConflicts) |expected| {
         if (total == expected) {
             std.debug.print("   ✅ {d} conflicts (as expected)\n", .{total});
         } else {
@@ -6296,151 +6296,151 @@ pub fn main() !void {
         return;
     }
 
-    const grammar_file = args[1];
-    const output_file = if (args.len > 2) args[2] else "src/parser.zig";
+    const grammarFile = args[1];
+    const outputFile = if (args.len > 2) args[2] else "src/parser.zig";
 
     // Read grammar file
-    const source = std.fs.cwd().readFileAlloc(allocator, grammar_file, 1024 * 1024) catch |err| {
-        std.debug.print("Error reading {s}: {any}\n", .{ grammar_file, err });
+    const source = std.fs.cwd().readFileAlloc(allocator, grammarFile, 1024 * 1024) catch |err| {
+        std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
         return;
     };
     defer allocator.free(source);
 
-    std.debug.print("📖 Reading grammar from {s}\n", .{grammar_file});
+    std.debug.print("📖 Reading grammar from {s}\n", .{grammarFile});
 
     // Find @lexer section
-    const lexer_start = std.mem.indexOf(u8, source, "@lexer");
-    if (lexer_start == null) {
-        std.debug.print("❌ No @lexer section found in {s}\n", .{grammar_file});
+    const lexerStart = std.mem.indexOf(u8, source, "@lexer");
+    if (lexerStart == null) {
+        std.debug.print("❌ No @lexer section found in {s}\n", .{grammarFile});
         return;
     }
 
     // Parse lexer section
-    var lexer_parser = LexerParser.init(allocator, source[lexer_start.? + 6 ..]);
-    defer lexer_parser.deinit();
+    var lexerParser = LexerParser.init(allocator, source[lexerStart.? + 6 ..]);
+    defer lexerParser.deinit();
 
-    lexer_parser.parseLexerSection() catch |err| {
-        std.debug.print("❌ Lexer parse error at line {d}: {any}\n", .{ lexer_parser.line, err });
+    lexerParser.parseLexerSection() catch |err| {
+        std.debug.print("❌ Lexer parse error at line {d}: {any}\n", .{ lexerParser.line, err });
         return;
     };
 
     std.debug.print("   Lexer: {d} states, {d} tokens, {d} rules\n", .{
-        lexer_parser.spec.states.items.len,
-        lexer_parser.spec.tokens.items.len,
-        lexer_parser.spec.rules.items.len,
+        lexerParser.spec.states.items.len,
+        lexerParser.spec.tokens.items.len,
+        lexerParser.spec.rules.items.len,
     });
 
     // Pre-scan for @lang directive (needed by lexer generator for @code imports)
     // Matches @lang at start of file or after a newline
-    const lang_pos = std.mem.indexOf(u8, source, "\n@lang") orelse
+    const langPos = std.mem.indexOf(u8, source, "\n@lang") orelse
         if (source.len >= 5 and std.mem.eql(u8, source[0..5], "@lang")) @as(?usize, 0) else null;
-    if (lang_pos) |pos| {
+    if (langPos) |pos| {
         var i = pos + if (pos == 0) @as(usize, 5) else @as(usize, 6);
         while (i < source.len and (source[i] == ' ' or source[i] == '=' or source[i] == '\t')) : (i += 1) {}
         if (i < source.len and source[i] == '"') {
             i += 1;
-            const name_start = i;
+            const nameStart = i;
             while (i < source.len and source[i] != '"') : (i += 1) {}
-            if (i < source.len) lexer_parser.spec.lang_name = source[name_start..i];
+            if (i < source.len) lexerParser.spec.langName = source[nameStart..i];
         }
     }
 
     // Generate lexer code
-    var lexer_gen = LexerGenerator.init(allocator, &lexer_parser.spec);
-    defer lexer_gen.deinit();
+    var lexerGen = LexerGenerator.init(allocator, &lexerParser.spec);
+    defer lexerGen.deinit();
 
-    const lexer_code = lexer_gen.generate() catch |err| {
+    const lexerCode = lexerGen.generate() catch |err| {
         std.debug.print("❌ Lexer generation error: {any}\n", .{err});
         return;
     };
-    defer allocator.free(lexer_code);
+    defer allocator.free(lexerCode);
 
     // Find @parser section
-    const parser_start = std.mem.indexOf(u8, source, "@parser");
-    var final_code: []const u8 = lexer_code;
-    var parser_gen: ?ParserGenerator = null;
+    const parserStart = std.mem.indexOf(u8, source, "@parser");
+    var finalCode: []const u8 = lexerCode;
+    var parserGen: ?ParserGenerator = null;
 
-    if (parser_start) |ps| {
+    if (parserStart) |ps| {
         std.debug.print("   Parsing @parser section...\n", .{});
 
         // Parse parser section
-        var parser_dsl = ParserDSLParser.init(allocator, source[ps + 7 ..]);
-        defer parser_dsl.deinit();
+        var parserDsl = ParserDSLParser.init(allocator, source[ps + 7 ..]);
+        defer parserDsl.deinit();
 
-        parser_dsl.parse() catch |err| {
+        parserDsl.parse() catch |err| {
             std.debug.print("❌ Parser parse error: {any}\n", .{err});
             return;
         };
 
         // Propagate @lang from pre-scan if not set in @parser section
-        if (parser_dsl.lang == null) {
-            parser_dsl.lang = lexer_parser.spec.lang_name;
+        if (parserDsl.lang == null) {
+            parserDsl.lang = lexerParser.spec.langName;
         }
 
         std.debug.print("   Parser: {d} rules, {d} start symbols\n", .{
-            parser_dsl.rules.items.len,
-            parser_dsl.start_symbols.items.len,
+            parserDsl.rules.items.len,
+            parserDsl.startSymbols.items.len,
         });
 
         // Only generate parser if there are rules
-        if (parser_dsl.rules.items.len > 0) {
+        if (parserDsl.rules.items.len > 0) {
             // Generate parser
-            parser_gen = ParserGenerator.init(allocator);
-            parser_gen.?.lexer_spec = &lexer_parser.spec;
+            parserGen = ParserGenerator.init(allocator);
+            parserGen.?.lexerSpec = &lexerParser.spec;
 
-            parser_gen.?.processGrammar(&parser_dsl) catch |err| {
+            parserGen.?.processGrammar(&parserDsl) catch |err| {
                 std.debug.print("❌ Grammar processing error: {any}\n", .{err});
                 return;
             };
 
             // Validate all referenced symbols are defined
-            const validation_errors = parser_gen.?.validateSymbols(&lexer_parser.spec);
-            if (validation_errors > 0) {
-                std.debug.print("❌ Found {d} undefined symbol(s)\n", .{validation_errors});
+            const validationErrors = parserGen.?.validateSymbols(&lexerParser.spec);
+            if (validationErrors > 0) {
+                std.debug.print("❌ Found {d} undefined symbol(s)\n", .{validationErrors});
                 return;
             }
 
-            parser_gen.?.buildAutomaton() catch |err| {
+            parserGen.?.buildAutomaton() catch |err| {
                 std.debug.print("❌ Automaton build error: {any}\n", .{err});
                 return;
             };
 
-            parser_gen.?.computeLookaheads() catch |err| {
+            parserGen.?.computeLookaheads() catch |err| {
                 std.debug.print("❌ Lookahead computation error: {any}\n", .{err});
                 return;
             };
 
             std.debug.print("   Generated: {d} symbols, {d} rules, {d} states\n", .{
-                parser_gen.?.symbols.items.len,
-                parser_gen.?.rules.items.len,
-                parser_gen.?.states.items.len,
+                parserGen.?.symbols.items.len,
+                parserGen.?.rules.items.len,
+                parserGen.?.states.items.len,
             });
 
             // Generate combined code (builds parse table, detects conflicts)
-            final_code = parser_gen.?.generateParserCode(lexer_code) catch |err| {
+            finalCode = parserGen.?.generateParserCode(lexerCode) catch |err| {
                 std.debug.print("❌ Parser generation error: {any}\n", .{err});
                 return;
             };
 
-            reportConflicts(&parser_gen.?);
+            reportConflicts(&parserGen.?);
         }
     }
 
-    defer if (parser_gen) |*pg| {
+    defer if (parserGen) |*pg| {
         pg.deinit();
-        if (final_code.ptr != lexer_code.ptr) {
-            allocator.free(final_code);
+        if (finalCode.ptr != lexerCode.ptr) {
+            allocator.free(finalCode);
         }
     };
 
     // Write output
-    const file = std.fs.cwd().createFile(output_file, .{}) catch |err| {
-        std.debug.print("Error creating {s}: {any}\n", .{ output_file, err });
+    const file = std.fs.cwd().createFile(outputFile, .{}) catch |err| {
+        std.debug.print("Error creating {s}: {any}\n", .{ outputFile, err });
         return;
     };
     defer file.close();
 
-    try file.writeAll(final_code);
+    try file.writeAll(finalCode);
 
-    std.debug.print("✅ Generated: {s}\n", .{output_file});
+    std.debug.print("✅ Generated: {s}\n", .{outputFile});
 }
