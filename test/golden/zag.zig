@@ -4,7 +4,7 @@
 //! Contains both lexer and parser.
 
 const std = @import("std");
-const MAX_ARGS: usize = 32;
+const maxArgs: usize = 32;
 const zag = @import("zag.zig");
 
 // SIMD helpers (fallback if simd.zig not available)
@@ -161,7 +161,7 @@ pub const BaseLexer = struct {
     const LETTER: u8 = 1 << 1;
     const WHITESPACE: u8 = 1 << 2;
 
-    const char_flags: [256]u8 = blk: {
+    const charFlags: [256]u8 = blk: {
         var table: [256]u8 = [_]u8{0} ** 256;
         for ('0'..'9' + 1) |c| table[c] = DIGIT;
         for ('A'..'Z' + 1) |c| table[c] = LETTER;
@@ -173,15 +173,15 @@ pub const BaseLexer = struct {
     };
 
     inline fn isDigit(c: u8) bool {
-        return (char_flags[c] & DIGIT) != 0;
+        return (charFlags[c] & DIGIT) != 0;
     }
 
     inline fn isLetter(c: u8) bool {
-        return (char_flags[c] & LETTER) != 0;
+        return (charFlags[c] & LETTER) != 0;
     }
 
     inline fn isWhitespace(c: u8) bool {
-        return (char_flags[c] & WHITESPACE) != 0;
+        return (charFlags[c] & WHITESPACE) != 0;
     }
 
     inline fn isIdentChar(c: u8) bool {
@@ -190,13 +190,13 @@ pub const BaseLexer = struct {
     /// Match lexer rules
     pub fn matchRules(self: *Self) Token {
         // Count whitespace first
-        const ws_start = self.pos;
+        const wsStart = self.pos;
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        const ws_count: u8 = @intCast(@min(self.pos - ws_start, 255));
+        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
-        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = ws_count, .pos = self.pos, .len = 0 };
+        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
 
         const start = self.pos;
@@ -206,11 +206,11 @@ pub const BaseLexer = struct {
             if (c == '\r' and self.pos + 1 < self.source.len and self.source[self.pos + 1] == '\n') {
                 self.pos += 2;
                 self.beg = 1;
-                return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 2 };
+                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 2 };
             }
                 self.pos += 1;
                 self.beg = 1;
-                return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 1 };
+                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
         }
         // From here, clear line-start flag
         self.beg = 0;
@@ -219,13 +219,13 @@ pub const BaseLexer = struct {
                 const ch = self.source[self.pos];
                 if (ch == '"') {
                     self.pos += 1;
-                    return Token{ .cat = .@"string_dq", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"string_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (ch == '\\') { self.pos += 2; continue; }
                 if (ch == '\n') break;
                 self.pos += 1;
             }
-            return Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         if (c == '\'') {            self.pos += 1;
             while (self.pos < self.source.len) {
@@ -233,27 +233,27 @@ pub const BaseLexer = struct {
                 if (ch == '\'') {
                     self.pos += 1;
                     if (self.pos < self.source.len and self.source[self.pos] == '\'') { self.pos += 1; continue; }
-                    return Token{ .cat = .@"string_sq", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"string_sq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (ch == '\n') break;
                 self.pos += 1;
             }
-            return Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         // Number (digit or leading dot followed by digit)
         if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-            return self.scanNumber(start, ws_count);
+            return self.scanNumber(start, wsCount);
         }
         // Identifier
         if (isLetter(c)) {
-            return self.scanIdent(start, ws_count);
+            return self.scanIdent(start, wsCount);
         }
         // Comment (scan to end of line)
         if (c == '#') {
             while (self.pos < self.source.len and self.source[self.pos] != '\n') {
                 self.pos += 1;
             }
-            return Token{ .cat = .@"comment", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"comment", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         // Single/multi-char operators
         self.pos += 1;
@@ -261,153 +261,153 @@ pub const BaseLexer = struct {
             '!' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"ne", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"ne", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"not_sym", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"not_sym", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '%' => Token{ .cat = .@"percent", .pre = ws_count, .pos = start, .len = 1 },
+            '%' => Token{ .cat = .@"percent", .pre = wsCount, .pos = start, .len = 1 },
             '&' => blk: {
                 if (self.peek() == '&') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"and_sym", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"and_sym", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"ampersand", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"ampersand", .pre = wsCount, .pos = start, .len = 1 };
             },
             '(' => blk: {
                 self.paren += 1;
-                    break :blk Token{ .cat = .@"lparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lparen", .pre = wsCount, .pos = start, .len = 1 };
             },
             ')' => blk: {
                 self.paren -= 1;
-                    break :blk Token{ .cat = .@"rparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 };
             },
             '*' => blk: {
                 if (self.peek() == '*') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"power", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"star_assign", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"star_assign", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"star", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"star", .pre = wsCount, .pos = start, .len = 1 };
             },
             '+' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"plus_assign", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"plus_assign", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"plus", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"plus", .pre = wsCount, .pos = start, .len = 1 };
             },
-            ',' => Token{ .cat = .@"comma", .pre = ws_count, .pos = start, .len = 1 },
+            ',' => Token{ .cat = .@"comma", .pre = wsCount, .pos = start, .len = 1 },
             '-' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"minus_assign", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"minus_assign", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"arrow", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"arrow", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"minus", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"minus", .pre = wsCount, .pos = start, .len = 1 };
             },
             '.' => blk: {
                 if (self.peek() == '.') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"dotdot", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"dotdot", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"dot", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"dot", .pre = wsCount, .pos = start, .len = 1 };
             },
             '/' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"slash_assign", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"slash_assign", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"slash", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"slash", .pre = wsCount, .pos = start, .len = 1 };
             },
-            ':' => Token{ .cat = .@"colon", .pre = ws_count, .pos = start, .len = 1 },
+            ':' => Token{ .cat = .@"colon", .pre = wsCount, .pos = start, .len = 1 },
             '<' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"le", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"le", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '<') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"lshift", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"lshift", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"lt", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lt", .pre = wsCount, .pos = start, .len = 1 };
             },
             '=' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"eq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"eq", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '!') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"const_assign", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"const_assign", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"fat_arrow", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"fat_arrow", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"assign", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"assign", .pre = wsCount, .pos = start, .len = 1 };
             },
             '>' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"ge", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"ge", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"rshift", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"rshift", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"gt", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"gt", .pre = wsCount, .pos = start, .len = 1 };
             },
             '?' => blk: {
                 if (self.peek() == '?') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"nullish", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"nullish", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"question", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '@' => Token{ .cat = .@"at", .pre = ws_count, .pos = start, .len = 1 },
-            '[' => Token{ .cat = .@"lbracket", .pre = ws_count, .pos = start, .len = 1 },
+            '@' => Token{ .cat = .@"at", .pre = wsCount, .pos = start, .len = 1 },
+            '[' => Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 },
             '\\' => blk: {
                 if (self.peek() == '\n') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"skip", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"skip", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 self.pos -= 1;
-                break :blk Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
-            ']' => Token{ .cat = .@"rbracket", .pre = ws_count, .pos = start, .len = 1 },
-            '^' => Token{ .cat = .@"caret", .pre = ws_count, .pos = start, .len = 1 },
+            ']' => Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 },
+            '^' => Token{ .cat = .@"caret", .pre = wsCount, .pos = start, .len = 1 },
             '{' => blk: {
                 self.brace += 1;
-                    break :blk Token{ .cat = .@"lbrace", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lbrace", .pre = wsCount, .pos = start, .len = 1 };
             },
             '|' => blk: {
                 if (self.peek() == '|') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"or_sym", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"or_sym", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"pipe", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"bar", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"bar", .pre = wsCount, .pos = start, .len = 1 };
             },
             '}' => blk: {
                 self.brace -= 1;
-                    break :blk Token{ .cat = .@"rbrace", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rbrace", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '~' => Token{ .cat = .@"tilde", .pre = ws_count, .pos = start, .len = 1 },
-            else => Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 },
+            '~' => Token{ .cat = .@"tilde", .pre = wsCount, .pos = start, .len = 1 },
+            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
         };
     }
 
     /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var has_decimal = false;        const starts_with_dot = self.source[self.pos] == '.';
+    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var hasDecimal = false;        const startsWithDot = self.source[self.pos] == '.';
         // Number prefix patterns (from grammar)
         if (self.source[self.pos] == '0' and self.pos + 1 < self.source.len) {
             const prefix = self.source[self.pos + 1];
@@ -450,9 +450,9 @@ pub const BaseLexer = struct {
         }
         // Decimal part
         if (self.pos < self.source.len and self.source[self.pos] == '.') {
-            const next_c = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-            if (isDigit(next_c)) {
-                has_decimal = true;
+            const nextC = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+            if (isDigit(nextC)) {
+                hasDecimal = true;
                 self.pos += 1;
                 while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                     self.pos += 1;
@@ -460,12 +460,12 @@ pub const BaseLexer = struct {
             }
         }
         // Classify
-        const token_cat: TokenCat = if (has_decimal or starts_with_dot)
+        const tokenCat: TokenCat = if (hasDecimal or startsWithDot)
             .@"real"
         else
             .@"integer";
 
-        return Token{ .cat = token_cat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
+        return Token{ .cat = tokenCat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
     }
 
     /// Scan identifier (generated from grammar)
@@ -532,15 +532,15 @@ pub const Parser = struct {
     lexer: Lexer,
     source: []const u8,
     current: Token,
-    injected_token: ?u16 = null,
-    last_matched_id: u16 = 0,
+    injectedToken: ?u16 = null,
+    lastMatchedId: u16 = 0,
 
-    state_stack: std.ArrayListUnmanaged(u16) = .{},
-    value_stack: std.ArrayListUnmanaged(Sexp) = .{},
+    stateStack: std.ArrayListUnmanaged(u16) = .{},
+    valueStack: std.ArrayListUnmanaged(Sexp) = .{},
 
-    pub fn init(backing_allocator: std.mem.Allocator, source: []const u8) Parser {
+    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
         var p = Parser{
-            .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            .arena = std.heap.ArenaAllocator.init(backingAllocator),
             .lexer = Lexer.init(source),
             .source = source,
             .current = undefined,
@@ -577,63 +577,63 @@ pub const Parser = struct {
         });
     }
 
-    fn doParse(self: *Parser, start_sym: u16) !Sexp {
-        const start_state = getStartState(start_sym);
-        self.state_stack.clearRetainingCapacity();
-        self.value_stack.clearRetainingCapacity();
-        try self.state_stack.append(self.allocator(), start_state);
+    fn doParse(self: *Parser, startSym: u16) !Sexp {
+        const startState = getStartState(startSym);
+        self.stateStack.clearRetainingCapacity();
+        self.valueStack.clearRetainingCapacity();
+        try self.stateStack.append(self.allocator(), startState);
 
         while (true) {
-            const state = self.state_stack.getLast();
-            const sym = if (self.injected_token) |inj| inj else self.tokenToSymbol(self.current);
+            const state = self.stateStack.getLast();
+            const sym = if (self.injectedToken) |inj| inj else self.tokenToSymbol(self.current);
             var action = getAction(state, sym);
 
             // X "c" check: if reducing and next char matches with pre==0, shift instead
             if (action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-                if (getImmediateShift(state, self.source[self.current.pos])) |shift_target| {
-                    action = shift_target;
+                if (getImmediateShift(state, self.source[self.current.pos])) |shiftTarget| {
+                    action = shiftTarget;
                 }
             }
 
             if (action == 0) {
                 return error.ParseError;
             } else if (action == -1) {
-                return self.value_stack.getLast();
+                return self.valueStack.getLast();
             } else if (action > 0) {
                 // Shift
-                if (self.injected_token != null) {
-                    try self.value_stack.append(self.allocator(), .nil);
-                    self.injected_token = null;
+                if (self.injectedToken != null) {
+                    try self.valueStack.append(self.allocator(), .nil);
+                    self.injectedToken = null;
                 } else {
-                    try self.value_stack.append(self.allocator(), .{ .src = .{
+                    try self.valueStack.append(self.allocator(), .{ .src = .{
                         .pos = self.current.pos,
                         .len = self.current.len,
-                        .id  = self.last_matched_id,
+                        .id  = self.lastMatchedId,
                     } });
-                    self.last_matched_id = 0;
+                    self.lastMatchedId = 0;
                     self.current = self.lexer.next();
                 }
-                try self.state_stack.append(self.allocator(), @intCast(action));
+                try self.stateStack.append(self.allocator(), @intCast(action));
             } else {
                 // Reduce
-                const rule_id: u16 = @intCast(-action - 2);
-                var pass: [MAX_ARGS]Sexp = undefined;
-                const len = rule_len[rule_id];
+                const ruleId: u16 = @intCast(-action - 2);
+                var pass: [maxArgs]Sexp = undefined;
+                const len = ruleLen[ruleId];
                 for (0..len) |i| {
-                    pass[len - 1 - i] = self.value_stack.pop().?;
-                    _ = self.state_stack.pop();
+                    pass[len - 1 - i] = self.valueStack.pop().?;
+                    _ = self.stateStack.pop();
                 }
 
-                const result = self.executeAction(rule_id, pass[0..len]);
+                const result = self.executeAction(ruleId, pass[0..len]);
 
-                if (isAcceptRule(rule_id)) return result;
+                if (isAcceptRule(ruleId)) return result;
 
-                try self.value_stack.append(self.allocator(), result);
+                try self.valueStack.append(self.allocator(), result);
 
-                const goto_state = self.state_stack.getLast();
-                const next = getAction(goto_state, rule_lhs[rule_id]);
+                const gotoState = self.stateStack.getLast();
+                const next = getAction(gotoState, ruleLhs[ruleId]);
                 if (next <= 0) return error.ParseError;
-                try self.state_stack.append(self.allocator(), @intCast(next));
+                try self.stateStack.append(self.allocator(), @intCast(next));
             }
         }
     }
@@ -693,19 +693,19 @@ pub const Parser = struct {
         const items = if (spread == .list) spread.list else &[_]Sexp{};
         var len = items.len;
         while (len > 0 and items[len - 1] == .nil) len -= 1;
-        const skip_pos = (pos == .nil and len == 0);
-        const total = if (skip_pos) 1 else len + 2;
+        const skipPos = (pos == .nil and len == 0);
+        const total = if (skipPos) 1 else len + 2;
         const result = self.allocator().alloc(Sexp, total) catch return .nil;
         result[0] = .{ .tag = tag };
-        if (!skip_pos) {
+        if (!skipPos) {
             result[1] = pos;
             if (len > 0) @memcpy(result[2..][0..len], items[0..len]);
         }
         return .{ .list = result };
     }
 
-    fn executeAction(self: *Parser, rule_id: u16, pass: []Sexp) Sexp {
-        return switch (rule_id) {
+    fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
+        return switch (ruleId) {
             0 => self.sexpSpread(.@"module", pass[1]),
             1 => pass[1],
             2 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
@@ -1028,24 +1028,24 @@ pub const Parser = struct {
 
     fn identToSymbol(self: *Parser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
-        if (text.len == 0) return SYM_IDENT;
-        if (self.try_ident_as_keyword(token, text)) |sym| return sym;
-        return SYM_IDENT;
+        if (text.len == 0) return symIdent;
+        if (self.tryIdentAsKeyword(token, text)) |sym| return sym;
+        return symIdent;
     }
 
-    fn try_ident_as_keyword(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsKeyword(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
-        const state = self.state_stack.getLast();
-        if (zag.keyword_as(text)) |id| {
-            const id_idx = @intFromEnum(id);
-            const sym = keyword_to_symbol[id_idx];
+        const state = self.stateStack.getLast();
+        if (zag.keywordAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = keywordToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = keyword_fallback_symbol;
+            const fallback = keywordFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
         }
@@ -1053,11 +1053,11 @@ pub const Parser = struct {
     }
 
     pub fn parseProgram(self: *Parser) !Sexp {
-        self.injected_token = SYM_program_START;
+        self.injectedToken = SYM_program_START;
         return self.doParse(SYM_program);
     }
     pub fn parseExpr(self: *Parser) !Sexp {
-        self.injected_token = SYM_expr_START;
+        self.injectedToken = SYM_expr_START;
         return self.doParse(SYM_expr);
     }
 };
@@ -1067,76 +1067,76 @@ const SYM_program: u16 = 3;
 const SYM_program_START: u16 = 149;
 const SYM_expr: u16 = 4;
 const SYM_expr_START: u16 = 151;
-const SYM_IDENT: u16 = 60;
+const symIdent: u16 = 60;
 
-// Mapping from zag.keyword_id to grammar symbol IDs (computed at comptime)
-const keyword_to_symbol = blk: {
+// Mapping from zag.KeywordId to grammar symbol IDs (computed at comptime)
+const keywordToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(zag.keyword_id, "NEWLINE")) arr[@intFromEnum(zag.keyword_id.NEWLINE)] = 58;
-    if (@hasField(zag.keyword_id, "IDENT")) arr[@intFromEnum(zag.keyword_id.IDENT)] = 60;
-    if (@hasField(zag.keyword_id, "EXTERN")) arr[@intFromEnum(zag.keyword_id.EXTERN)] = 61;
-    if (@hasField(zag.keyword_id, "CONST")) arr[@intFromEnum(zag.keyword_id.CONST)] = 62;
-    if (@hasField(zag.keyword_id, "ZIG")) arr[@intFromEnum(zag.keyword_id.ZIG)] = 63;
-    if (@hasField(zag.keyword_id, "STRING_SQ")) arr[@intFromEnum(zag.keyword_id.STRING_SQ)] = 64;
-    if (@hasField(zag.keyword_id, "STRING_DQ")) arr[@intFromEnum(zag.keyword_id.STRING_DQ)] = 65;
-    if (@hasField(zag.keyword_id, "PUB")) arr[@intFromEnum(zag.keyword_id.PUB)] = 66;
-    if (@hasField(zag.keyword_id, "EXPORT")) arr[@intFromEnum(zag.keyword_id.EXPORT)] = 67;
-    if (@hasField(zag.keyword_id, "PACKED")) arr[@intFromEnum(zag.keyword_id.PACKED)] = 68;
-    if (@hasField(zag.keyword_id, "CALLCONV")) arr[@intFromEnum(zag.keyword_id.CALLCONV)] = 69;
-    if (@hasField(zag.keyword_id, "INDENT")) arr[@intFromEnum(zag.keyword_id.INDENT)] = 70;
-    if (@hasField(zag.keyword_id, "OUTDENT")) arr[@intFromEnum(zag.keyword_id.OUTDENT)] = 71;
-    if (@hasField(zag.keyword_id, "FUN")) arr[@intFromEnum(zag.keyword_id.FUN)] = 72;
-    if (@hasField(zag.keyword_id, "SUB")) arr[@intFromEnum(zag.keyword_id.SUB)] = 73;
-    if (@hasField(zag.keyword_id, "USE")) arr[@intFromEnum(zag.keyword_id.USE)] = 74;
-    if (@hasField(zag.keyword_id, "TYPE")) arr[@intFromEnum(zag.keyword_id.TYPE)] = 75;
-    if (@hasField(zag.keyword_id, "TEST")) arr[@intFromEnum(zag.keyword_id.TEST)] = 77;
-    if (@hasField(zag.keyword_id, "OPAQUE")) arr[@intFromEnum(zag.keyword_id.OPAQUE)] = 78;
-    if (@hasField(zag.keyword_id, "ENUM")) arr[@intFromEnum(zag.keyword_id.ENUM)] = 79;
-    if (@hasField(zag.keyword_id, "ERROR")) arr[@intFromEnum(zag.keyword_id.ERROR)] = 80;
-    if (@hasField(zag.keyword_id, "STRUCT")) arr[@intFromEnum(zag.keyword_id.STRUCT)] = 81;
-    if (@hasField(zag.keyword_id, "COMPTIME")) arr[@intFromEnum(zag.keyword_id.COMPTIME)] = 82;
-    if (@hasField(zag.keyword_id, "ALIGN")) arr[@intFromEnum(zag.keyword_id.ALIGN)] = 83;
-    if (@hasField(zag.keyword_id, "VOLATILE")) arr[@intFromEnum(zag.keyword_id.VOLATILE)] = 91;
-    if (@hasField(zag.keyword_id, "INTEGER")) arr[@intFromEnum(zag.keyword_id.INTEGER)] = 94;
-    if (@hasField(zag.keyword_id, "FN")) arr[@intFromEnum(zag.keyword_id.FN)] = 95;
-    if (@hasField(zag.keyword_id, "AS")) arr[@intFromEnum(zag.keyword_id.AS)] = 101;
-    if (@hasField(zag.keyword_id, "BAR_CAPTURE")) arr[@intFromEnum(zag.keyword_id.BAR_CAPTURE)] = 102;
-    if (@hasField(zag.keyword_id, "IF")) arr[@intFromEnum(zag.keyword_id.IF)] = 103;
-    if (@hasField(zag.keyword_id, "ELSE")) arr[@intFromEnum(zag.keyword_id.ELSE)] = 104;
-    if (@hasField(zag.keyword_id, "WHILE")) arr[@intFromEnum(zag.keyword_id.WHILE)] = 105;
-    if (@hasField(zag.keyword_id, "FOR")) arr[@intFromEnum(zag.keyword_id.FOR)] = 106;
-    if (@hasField(zag.keyword_id, "IN")) arr[@intFromEnum(zag.keyword_id.IN)] = 107;
-    if (@hasField(zag.keyword_id, "MATCH")) arr[@intFromEnum(zag.keyword_id.MATCH)] = 108;
-    if (@hasField(zag.keyword_id, "TERNARY_IF")) arr[@intFromEnum(zag.keyword_id.TERNARY_IF)] = 112;
-    if (@hasField(zag.keyword_id, "CATCH")) arr[@intFromEnum(zag.keyword_id.CATCH)] = 114;
-    if (@hasField(zag.keyword_id, "RETURN")) arr[@intFromEnum(zag.keyword_id.RETURN)] = 115;
-    if (@hasField(zag.keyword_id, "POST_IF")) arr[@intFromEnum(zag.keyword_id.POST_IF)] = 116;
-    if (@hasField(zag.keyword_id, "BREAK")) arr[@intFromEnum(zag.keyword_id.BREAK)] = 117;
-    if (@hasField(zag.keyword_id, "CONTINUE")) arr[@intFromEnum(zag.keyword_id.CONTINUE)] = 118;
-    if (@hasField(zag.keyword_id, "DEFER")) arr[@intFromEnum(zag.keyword_id.DEFER)] = 119;
-    if (@hasField(zag.keyword_id, "ERRDEFER")) arr[@intFromEnum(zag.keyword_id.ERRDEFER)] = 120;
-    if (@hasField(zag.keyword_id, "INLINE")) arr[@intFromEnum(zag.keyword_id.INLINE)] = 121;
-    if (@hasField(zag.keyword_id, "MINUS_PREFIX")) arr[@intFromEnum(zag.keyword_id.MINUS_PREFIX)] = 127;
-    if (@hasField(zag.keyword_id, "TRY")) arr[@intFromEnum(zag.keyword_id.TRY)] = 128;
-    if (@hasField(zag.keyword_id, "REAL")) arr[@intFromEnum(zag.keyword_id.REAL)] = 135;
-    if (@hasField(zag.keyword_id, "TRUE")) arr[@intFromEnum(zag.keyword_id.TRUE)] = 136;
-    if (@hasField(zag.keyword_id, "FALSE")) arr[@intFromEnum(zag.keyword_id.FALSE)] = 137;
-    if (@hasField(zag.keyword_id, "NULL")) arr[@intFromEnum(zag.keyword_id.NULL)] = 138;
-    if (@hasField(zag.keyword_id, "UNREACHABLE")) arr[@intFromEnum(zag.keyword_id.UNREACHABLE)] = 139;
-    if (@hasField(zag.keyword_id, "UNDEFINED")) arr[@intFromEnum(zag.keyword_id.UNDEFINED)] = 140;
-    if (@hasField(zag.keyword_id, "DOT_LBRACE")) arr[@intFromEnum(zag.keyword_id.DOT_LBRACE)] = 142;
+    if (@hasField(zag.KeywordId, "NEWLINE")) arr[@intFromEnum(zag.KeywordId.NEWLINE)] = 58;
+    if (@hasField(zag.KeywordId, "IDENT")) arr[@intFromEnum(zag.KeywordId.IDENT)] = 60;
+    if (@hasField(zag.KeywordId, "EXTERN")) arr[@intFromEnum(zag.KeywordId.EXTERN)] = 61;
+    if (@hasField(zag.KeywordId, "CONST")) arr[@intFromEnum(zag.KeywordId.CONST)] = 62;
+    if (@hasField(zag.KeywordId, "ZIG")) arr[@intFromEnum(zag.KeywordId.ZIG)] = 63;
+    if (@hasField(zag.KeywordId, "STRING_SQ")) arr[@intFromEnum(zag.KeywordId.STRING_SQ)] = 64;
+    if (@hasField(zag.KeywordId, "STRING_DQ")) arr[@intFromEnum(zag.KeywordId.STRING_DQ)] = 65;
+    if (@hasField(zag.KeywordId, "PUB")) arr[@intFromEnum(zag.KeywordId.PUB)] = 66;
+    if (@hasField(zag.KeywordId, "EXPORT")) arr[@intFromEnum(zag.KeywordId.EXPORT)] = 67;
+    if (@hasField(zag.KeywordId, "PACKED")) arr[@intFromEnum(zag.KeywordId.PACKED)] = 68;
+    if (@hasField(zag.KeywordId, "CALLCONV")) arr[@intFromEnum(zag.KeywordId.CALLCONV)] = 69;
+    if (@hasField(zag.KeywordId, "INDENT")) arr[@intFromEnum(zag.KeywordId.INDENT)] = 70;
+    if (@hasField(zag.KeywordId, "OUTDENT")) arr[@intFromEnum(zag.KeywordId.OUTDENT)] = 71;
+    if (@hasField(zag.KeywordId, "FUN")) arr[@intFromEnum(zag.KeywordId.FUN)] = 72;
+    if (@hasField(zag.KeywordId, "SUB")) arr[@intFromEnum(zag.KeywordId.SUB)] = 73;
+    if (@hasField(zag.KeywordId, "USE")) arr[@intFromEnum(zag.KeywordId.USE)] = 74;
+    if (@hasField(zag.KeywordId, "TYPE")) arr[@intFromEnum(zag.KeywordId.TYPE)] = 75;
+    if (@hasField(zag.KeywordId, "TEST")) arr[@intFromEnum(zag.KeywordId.TEST)] = 77;
+    if (@hasField(zag.KeywordId, "OPAQUE")) arr[@intFromEnum(zag.KeywordId.OPAQUE)] = 78;
+    if (@hasField(zag.KeywordId, "ENUM")) arr[@intFromEnum(zag.KeywordId.ENUM)] = 79;
+    if (@hasField(zag.KeywordId, "ERROR")) arr[@intFromEnum(zag.KeywordId.ERROR)] = 80;
+    if (@hasField(zag.KeywordId, "STRUCT")) arr[@intFromEnum(zag.KeywordId.STRUCT)] = 81;
+    if (@hasField(zag.KeywordId, "COMPTIME")) arr[@intFromEnum(zag.KeywordId.COMPTIME)] = 82;
+    if (@hasField(zag.KeywordId, "ALIGN")) arr[@intFromEnum(zag.KeywordId.ALIGN)] = 83;
+    if (@hasField(zag.KeywordId, "VOLATILE")) arr[@intFromEnum(zag.KeywordId.VOLATILE)] = 91;
+    if (@hasField(zag.KeywordId, "INTEGER")) arr[@intFromEnum(zag.KeywordId.INTEGER)] = 94;
+    if (@hasField(zag.KeywordId, "FN")) arr[@intFromEnum(zag.KeywordId.FN)] = 95;
+    if (@hasField(zag.KeywordId, "AS")) arr[@intFromEnum(zag.KeywordId.AS)] = 101;
+    if (@hasField(zag.KeywordId, "BAR_CAPTURE")) arr[@intFromEnum(zag.KeywordId.BAR_CAPTURE)] = 102;
+    if (@hasField(zag.KeywordId, "IF")) arr[@intFromEnum(zag.KeywordId.IF)] = 103;
+    if (@hasField(zag.KeywordId, "ELSE")) arr[@intFromEnum(zag.KeywordId.ELSE)] = 104;
+    if (@hasField(zag.KeywordId, "WHILE")) arr[@intFromEnum(zag.KeywordId.WHILE)] = 105;
+    if (@hasField(zag.KeywordId, "FOR")) arr[@intFromEnum(zag.KeywordId.FOR)] = 106;
+    if (@hasField(zag.KeywordId, "IN")) arr[@intFromEnum(zag.KeywordId.IN)] = 107;
+    if (@hasField(zag.KeywordId, "MATCH")) arr[@intFromEnum(zag.KeywordId.MATCH)] = 108;
+    if (@hasField(zag.KeywordId, "TERNARY_IF")) arr[@intFromEnum(zag.KeywordId.TERNARY_IF)] = 112;
+    if (@hasField(zag.KeywordId, "CATCH")) arr[@intFromEnum(zag.KeywordId.CATCH)] = 114;
+    if (@hasField(zag.KeywordId, "RETURN")) arr[@intFromEnum(zag.KeywordId.RETURN)] = 115;
+    if (@hasField(zag.KeywordId, "POST_IF")) arr[@intFromEnum(zag.KeywordId.POST_IF)] = 116;
+    if (@hasField(zag.KeywordId, "BREAK")) arr[@intFromEnum(zag.KeywordId.BREAK)] = 117;
+    if (@hasField(zag.KeywordId, "CONTINUE")) arr[@intFromEnum(zag.KeywordId.CONTINUE)] = 118;
+    if (@hasField(zag.KeywordId, "DEFER")) arr[@intFromEnum(zag.KeywordId.DEFER)] = 119;
+    if (@hasField(zag.KeywordId, "ERRDEFER")) arr[@intFromEnum(zag.KeywordId.ERRDEFER)] = 120;
+    if (@hasField(zag.KeywordId, "INLINE")) arr[@intFromEnum(zag.KeywordId.INLINE)] = 121;
+    if (@hasField(zag.KeywordId, "MINUS_PREFIX")) arr[@intFromEnum(zag.KeywordId.MINUS_PREFIX)] = 127;
+    if (@hasField(zag.KeywordId, "TRY")) arr[@intFromEnum(zag.KeywordId.TRY)] = 128;
+    if (@hasField(zag.KeywordId, "REAL")) arr[@intFromEnum(zag.KeywordId.REAL)] = 135;
+    if (@hasField(zag.KeywordId, "TRUE")) arr[@intFromEnum(zag.KeywordId.TRUE)] = 136;
+    if (@hasField(zag.KeywordId, "FALSE")) arr[@intFromEnum(zag.KeywordId.FALSE)] = 137;
+    if (@hasField(zag.KeywordId, "NULL")) arr[@intFromEnum(zag.KeywordId.NULL)] = 138;
+    if (@hasField(zag.KeywordId, "UNREACHABLE")) arr[@intFromEnum(zag.KeywordId.UNREACHABLE)] = 139;
+    if (@hasField(zag.KeywordId, "UNDEFINED")) arr[@intFromEnum(zag.KeywordId.UNDEFINED)] = 140;
+    if (@hasField(zag.KeywordId, "DOT_LBRACE")) arr[@intFromEnum(zag.KeywordId.DOT_LBRACE)] = 142;
     break :blk arr;
 };
-const keyword_fallback_symbol: u16 = 0;
+const keywordFallbackSymbol: u16 = 0;
 
-const rule_lhs = [_]u16{ 3, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 17, 18, 19, 20, 21, 21, 21, 22, 22, 22, 22, 23, 23, 23, 23, 23, 85, 86, 86, 24, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 97, 98, 98, 26, 26, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 27, 27, 27, 28, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30, 30, 30, 30, 30, 30, 30, 31, 32, 32, 32, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 37, 38, 38, 39, 39, 39, 39, 40, 40, 40, 40, 40, 40, 41, 41, 41, 41, 42, 42, 43, 43, 44, 45, 46, 46, 46, 46, 46, 46, 47, 47, 48, 48, 48, 48, 48, 48, 49, 49, 49, 131, 132, 132, 49, 49, 49, 133, 134, 134, 50, 50, 51, 51, 52, 52, 52, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 143, 144, 144, 53, 53, 53, 147, 148, 148, 54, 55, 56, 57, 57, 150, 152, 153, 153, 154, 154, 155, 155, 156, 156, 157, 157, 158, 158, 159, 159, 159, 159, 159, 159, 159, 160, 160, 161, 161, 161, 162, 162, 162, 163, 163, 163, 163, 164, 164, 100 };
-const rule_len = [_]u8{ 2, 2, 1, 3, 2, 1, 1, 1, 1, 3, 1, 5, 4, 2, 2, 1, 2, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 5, 4, 4, 3, 4, 3, 2, 4, 3, 2, 5, 5, 5, 1, 3, 2, 1, 3, 1, 1, 4, 1, 3, 5, 5, 2, 3, 0, 1, 2, 1, 2, 2, 2, 3, 3, 3, 5, 4, 4, 6, 2, 3, 0, 5, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4, 7, 7, 5, 5, 3, 5, 7, 3, 5, 8, 10, 7, 9, 6, 8, 5, 7, 5, 1, 3, 2, 1, 2, 1, 3, 5, 4, 3, 2, 5, 3, 5, 3, 5, 3, 4, 3, 2, 1, 5, 4, 3, 3, 2, 1, 5, 3, 3, 1, 2, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 3, 5, 3, 2, 2, 2, 2, 2, 1, 3, 3, 4, 2, 3, 0, 2, 4, 1, 2, 3, 0, 1, 0, 5, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 1, 1, 3, 3, 2, 3, 0, 3, 3, 2, 2, 3, 0, 4, 3, 4, 3, 2, 2, 2, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 17, 18, 19, 20, 21, 21, 21, 22, 22, 22, 22, 23, 23, 23, 23, 23, 85, 86, 86, 24, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 97, 98, 98, 26, 26, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 27, 27, 27, 28, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30, 30, 30, 30, 30, 30, 30, 31, 32, 32, 32, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 37, 38, 38, 39, 39, 39, 39, 40, 40, 40, 40, 40, 40, 41, 41, 41, 41, 42, 42, 43, 43, 44, 45, 46, 46, 46, 46, 46, 46, 47, 47, 48, 48, 48, 48, 48, 48, 49, 49, 49, 131, 132, 132, 49, 49, 49, 133, 134, 134, 50, 50, 51, 51, 52, 52, 52, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 143, 144, 144, 53, 53, 53, 147, 148, 148, 54, 55, 56, 57, 57, 150, 152, 153, 153, 154, 154, 155, 155, 156, 156, 157, 157, 158, 158, 159, 159, 159, 159, 159, 159, 159, 160, 160, 161, 161, 161, 162, 162, 162, 163, 163, 163, 163, 164, 164, 100 };
+const ruleLen = [_]u8{ 2, 2, 1, 3, 2, 1, 1, 1, 1, 3, 1, 5, 4, 2, 2, 1, 2, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 5, 4, 4, 3, 4, 3, 2, 4, 3, 2, 5, 5, 5, 1, 3, 2, 1, 3, 1, 1, 4, 1, 3, 5, 5, 2, 3, 0, 1, 2, 1, 2, 2, 2, 3, 3, 3, 5, 4, 4, 6, 2, 3, 0, 5, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4, 7, 7, 5, 5, 3, 5, 7, 3, 5, 8, 10, 7, 9, 6, 8, 5, 7, 5, 1, 3, 2, 1, 2, 1, 3, 5, 4, 3, 2, 5, 3, 5, 3, 5, 3, 4, 3, 2, 1, 5, 4, 3, 3, 2, 1, 5, 3, 3, 1, 2, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 3, 5, 3, 2, 2, 2, 2, 2, 1, 3, 3, 4, 2, 3, 0, 2, 4, 1, 2, 3, 0, 1, 0, 5, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 1, 1, 3, 3, 2, 3, 0, 3, 3, 2, 2, 3, 0, 4, 3, 4, 3, 2, 2, 2, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 1 };
 
 // Parse Table: 478 states × 183 symbols
-const NUM_STATES = 478;
-const NUM_SYMBOLS = 183;
+const numStates = 478;
+const numSymbols = 183;
 
-const sparse = [NUM_STATES][]const i16{
+const sparse = [numStates][]const i16{
     &.{3,2,149,3},
     &.{4,68,28,56,29,64,30,5,31,36,36,42,37,62,38,21,39,48,40,29,41,7,42,55,43,15,44,69,45,28,46,26,47,37,48,19,49,30,53,23,54,38,57,41,60,46,64,40,65,44,82,32,88,49,89,45,92,70,94,50,95,27,96,9,100,54,103,61,105,43,106,14,108,52,115,8,117,59,118,35,119,31,120,60,121,58,127,47,128,34,129,24,130,71,135,20,136,12,137,22,138,10,139,53,140,66,141,4,142,33,151,6,153,51,154,18,155,63,156,13,157,65,158,17,159,57,160,16,161,25,162,11,163,67,164,39},
     &.{1,-1},
@@ -1617,9 +1617,9 @@ const sparse = [NUM_STATES][]const i16{
     &.{1,-109,58,-109,59,-109,70,-109,71,-109,84,-109,87,-109,93,-109,99,-109,101,-109,102,-109,104,-109,116,-109,145,-109},
 };
 
-const parse_table = blk: {
+const parseTable = blk: {
     @setEvalBranchQuota(100000);
-    var t: [NUM_STATES][NUM_SYMBOLS]i16 = .{.{0} ** NUM_SYMBOLS} ** NUM_STATES;
+    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
         while (i < row.len) : (i += 2) {
@@ -1630,33 +1630,33 @@ const parse_table = blk: {
 };
 
 fn getAction(state: u16, sym: u16) i16 {
-    return parse_table[state][sym];
+    return parseTable[state][sym];
 }
 // X "c" excludes: shift instead of reduce when pre==0 and char matches
-const x_excludes = [_]struct { state: u16, char: u8, shift: u16 }{
+const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{
 };
 
 fn getImmediateShift(state: u16, char: u8) ?i16 {
-    for (x_excludes) |x| {
+    for (xExcludes) |x| {
         if (x.state == state and x.char == char) return @intCast(x.shift);
     }
     return null;
 }
-const start_states = [_]struct { sym: u16, state: u16 }{
+const startStates = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 3, .state = 0 },
     .{ .sym = 4, .state = 1 },
 };
 
-fn getStartState(start_sym: u16) u16 {
-    for (start_states) |entry| {
-        if (entry.sym == start_sym) return entry.state;
+fn getStartState(startSym: u16) u16 {
+    for (startStates) |entry| {
+        if (entry.sym == startSym) return entry.state;
     }
     return 0;
 }
 
-const accept_rules = [_]u16{ 215, 216 };
+const acceptRules = [_]u16{ 215, 216 };
 
-fn isAcceptRule(rule_id: u16) bool {
-    for (accept_rules) |ar| if (rule_id == ar) return true;
+fn isAcceptRule(ruleId: u16) bool {
+    for (acceptRules) |ar| if (ruleId == ar) return true;
     return false;
 }

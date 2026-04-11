@@ -4,7 +4,7 @@
 //! Contains both lexer and parser.
 
 const std = @import("std");
-const MAX_ARGS: usize = 32;
+const maxArgs: usize = 32;
 const basic = @import("basic.zig");
 
 // SIMD helpers (fallback if simd.zig not available)
@@ -103,7 +103,7 @@ pub const BaseLexer = struct {
     const LETTER: u8 = 1 << 1;
     const WHITESPACE: u8 = 1 << 2;
 
-    const char_flags: [256]u8 = blk: {
+    const charFlags: [256]u8 = blk: {
         var table: [256]u8 = [_]u8{0} ** 256;
         for ('0'..'9' + 1) |c| table[c] = DIGIT;
         for ('A'..'Z' + 1) |c| table[c] = LETTER;
@@ -115,15 +115,15 @@ pub const BaseLexer = struct {
     };
 
     inline fn isDigit(c: u8) bool {
-        return (char_flags[c] & DIGIT) != 0;
+        return (charFlags[c] & DIGIT) != 0;
     }
 
     inline fn isLetter(c: u8) bool {
-        return (char_flags[c] & LETTER) != 0;
+        return (charFlags[c] & LETTER) != 0;
     }
 
     inline fn isWhitespace(c: u8) bool {
-        return (char_flags[c] & WHITESPACE) != 0;
+        return (charFlags[c] & WHITESPACE) != 0;
     }
 
     inline fn isIdentChar(c: u8) bool {
@@ -132,13 +132,13 @@ pub const BaseLexer = struct {
     /// Match lexer rules
     pub fn matchRules(self: *Self) Token {
         // Count whitespace first
-        const ws_start = self.pos;
+        const wsStart = self.pos;
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        const ws_count: u8 = @intCast(@min(self.pos - ws_start, 255));
+        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
-        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = ws_count, .pos = self.pos, .len = 0 };
+        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
 
         const start = self.pos;
@@ -146,32 +146,32 @@ pub const BaseLexer = struct {
         // Newline handling (generated from grammar rules)
         if (c == '\n' or c == '\r') {
                 self.pos += 1;
-                return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 1 };
+                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
         }
         // Number
         if (isDigit(c)) {
-            return self.scanNumber(start, ws_count);
+            return self.scanNumber(start, wsCount);
         }
         // Identifier
         if (isLetter(c)) {
-            return self.scanIdent(start, ws_count);
+            return self.scanIdent(start, wsCount);
         }
         // Single/multi-char operators
         self.pos += 1;
         return switch (c) {
-            '(' => Token{ .cat = .@"lparen", .pre = ws_count, .pos = start, .len = 1 },
-            ')' => Token{ .cat = .@"rparen", .pre = ws_count, .pos = start, .len = 1 },
+            '(' => Token{ .cat = .@"lparen", .pre = wsCount, .pos = start, .len = 1 },
+            ')' => Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 },
             '*' => blk: {
                 if (self.peek() == '*') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"power", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"star", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"star", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '+' => Token{ .cat = .@"plus", .pre = ws_count, .pos = start, .len = 1 },
-            '-' => Token{ .cat = .@"minus", .pre = ws_count, .pos = start, .len = 1 },
-            '/' => Token{ .cat = .@"slash", .pre = ws_count, .pos = start, .len = 1 },
-            else => Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 },
+            '+' => Token{ .cat = .@"plus", .pre = wsCount, .pos = start, .len = 1 },
+            '-' => Token{ .cat = .@"minus", .pre = wsCount, .pos = start, .len = 1 },
+            '/' => Token{ .cat = .@"slash", .pre = wsCount, .pos = start, .len = 1 },
+            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
         };
     }
 
@@ -249,15 +249,15 @@ pub const Parser = struct {
     lexer: Lexer,
     source: []const u8,
     current: Token,
-    injected_token: ?u16 = null,
-    last_matched_id: u16 = 0,
+    injectedToken: ?u16 = null,
+    lastMatchedId: u16 = 0,
 
-    state_stack: std.ArrayListUnmanaged(u16) = .{},
-    value_stack: std.ArrayListUnmanaged(Sexp) = .{},
+    stateStack: std.ArrayListUnmanaged(u16) = .{},
+    valueStack: std.ArrayListUnmanaged(Sexp) = .{},
 
-    pub fn init(backing_allocator: std.mem.Allocator, source: []const u8) Parser {
+    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
         var p = Parser{
-            .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            .arena = std.heap.ArenaAllocator.init(backingAllocator),
             .lexer = Lexer.init(source),
             .source = source,
             .current = undefined,
@@ -294,63 +294,63 @@ pub const Parser = struct {
         });
     }
 
-    fn doParse(self: *Parser, start_sym: u16) !Sexp {
-        const start_state = getStartState(start_sym);
-        self.state_stack.clearRetainingCapacity();
-        self.value_stack.clearRetainingCapacity();
-        try self.state_stack.append(self.allocator(), start_state);
+    fn doParse(self: *Parser, startSym: u16) !Sexp {
+        const startState = getStartState(startSym);
+        self.stateStack.clearRetainingCapacity();
+        self.valueStack.clearRetainingCapacity();
+        try self.stateStack.append(self.allocator(), startState);
 
         while (true) {
-            const state = self.state_stack.getLast();
-            const sym = if (self.injected_token) |inj| inj else self.tokenToSymbol(self.current);
+            const state = self.stateStack.getLast();
+            const sym = if (self.injectedToken) |inj| inj else self.tokenToSymbol(self.current);
             var action = getAction(state, sym);
 
             // X "c" check: if reducing and next char matches with pre==0, shift instead
             if (action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-                if (getImmediateShift(state, self.source[self.current.pos])) |shift_target| {
-                    action = shift_target;
+                if (getImmediateShift(state, self.source[self.current.pos])) |shiftTarget| {
+                    action = shiftTarget;
                 }
             }
 
             if (action == 0) {
                 return error.ParseError;
             } else if (action == -1) {
-                return self.value_stack.getLast();
+                return self.valueStack.getLast();
             } else if (action > 0) {
                 // Shift
-                if (self.injected_token != null) {
-                    try self.value_stack.append(self.allocator(), .nil);
-                    self.injected_token = null;
+                if (self.injectedToken != null) {
+                    try self.valueStack.append(self.allocator(), .nil);
+                    self.injectedToken = null;
                 } else {
-                    try self.value_stack.append(self.allocator(), .{ .src = .{
+                    try self.valueStack.append(self.allocator(), .{ .src = .{
                         .pos = self.current.pos,
                         .len = self.current.len,
-                        .id  = self.last_matched_id,
+                        .id  = self.lastMatchedId,
                     } });
-                    self.last_matched_id = 0;
+                    self.lastMatchedId = 0;
                     self.current = self.lexer.next();
                 }
-                try self.state_stack.append(self.allocator(), @intCast(action));
+                try self.stateStack.append(self.allocator(), @intCast(action));
             } else {
                 // Reduce
-                const rule_id: u16 = @intCast(-action - 2);
-                var pass: [MAX_ARGS]Sexp = undefined;
-                const len = rule_len[rule_id];
+                const ruleId: u16 = @intCast(-action - 2);
+                var pass: [maxArgs]Sexp = undefined;
+                const len = ruleLen[ruleId];
                 for (0..len) |i| {
-                    pass[len - 1 - i] = self.value_stack.pop().?;
-                    _ = self.state_stack.pop();
+                    pass[len - 1 - i] = self.valueStack.pop().?;
+                    _ = self.stateStack.pop();
                 }
 
-                const result = self.executeAction(rule_id, pass[0..len]);
+                const result = self.executeAction(ruleId, pass[0..len]);
 
-                if (isAcceptRule(rule_id)) return result;
+                if (isAcceptRule(ruleId)) return result;
 
-                try self.value_stack.append(self.allocator(), result);
+                try self.valueStack.append(self.allocator(), result);
 
-                const goto_state = self.state_stack.getLast();
-                const next = getAction(goto_state, rule_lhs[rule_id]);
+                const gotoState = self.stateStack.getLast();
+                const next = getAction(gotoState, ruleLhs[ruleId]);
                 if (next <= 0) return error.ParseError;
-                try self.state_stack.append(self.allocator(), @intCast(next));
+                try self.stateStack.append(self.allocator(), @intCast(next));
             }
         }
     }
@@ -410,19 +410,19 @@ pub const Parser = struct {
         const items = if (spread == .list) spread.list else &[_]Sexp{};
         var len = items.len;
         while (len > 0 and items[len - 1] == .nil) len -= 1;
-        const skip_pos = (pos == .nil and len == 0);
-        const total = if (skip_pos) 1 else len + 2;
+        const skipPos = (pos == .nil and len == 0);
+        const total = if (skipPos) 1 else len + 2;
         const result = self.allocator().alloc(Sexp, total) catch return .nil;
         result[0] = .{ .tag = tag };
-        if (!skip_pos) {
+        if (!skipPos) {
             result[1] = pos;
             if (len > 0) @memcpy(result[2..][0..len], items[0..len]);
         }
         return .{ .list = result };
     }
 
-    fn executeAction(self: *Parser, rule_id: u16, pass: []Sexp) Sexp {
-        return switch (rule_id) {
+    fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
+        return switch (ruleId) {
             0 => self.sexpSpread(.@"module", pass[1]),
             1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             2 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
@@ -465,15 +465,15 @@ pub const Parser = struct {
     }
 
     fn identToSymbol(_: *Parser, _: Token) u16 {
-        return SYM_IDENT;
+        return symIdent;
     }
 
     pub fn parseProgram(self: *Parser) !Sexp {
-        self.injected_token = SYM_program_START;
+        self.injectedToken = SYM_program_START;
         return self.doParse(SYM_program);
     }
     pub fn parseInfix(self: *Parser) !Sexp {
-        self.injected_token = SYM_infix_START;
+        self.injectedToken = SYM_infix_START;
         return self.doParse(SYM_infix);
     }
 };
@@ -482,16 +482,16 @@ pub const Parser = struct {
 const SYM_program: u16 = 3;
 const SYM_program_START: u16 = 14;
 const SYM_infix: u16 = 7;
-const SYM_IDENT: u16 = 10;
+const symIdent: u16 = 10;
 
-const rule_lhs = [_]u16{ 3, 4, 4, 4, 5, 5, 6, 6, 6, 15, 17, 18, 18, 18, 19, 19, 19, 20, 20, 7 };
-const rule_len = [_]u8{ 2, 1, 3, 2, 2, 1, 1, 1, 3, 2, 2, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 6, 6, 6, 15, 17, 18, 18, 18, 19, 19, 19, 20, 20, 7 };
+const ruleLen = [_]u8{ 2, 1, 3, 2, 2, 1, 1, 1, 3, 2, 2, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
 
 // Parse Table: 33 states × 25 symbols
-const NUM_STATES = 33;
-const NUM_SYMBOLS = 25;
+const numStates = 33;
+const numSymbols = 25;
 
-const sparse = [NUM_STATES][]const i16{
+const sparse = [numStates][]const i16{
     &.{3,2,14,3},
     &.{5,7,6,4,7,6,9,5,10,10,11,11,12,12,18,8,19,13,20,9},
     &.{1,-1},
@@ -527,9 +527,9 @@ const sparse = [NUM_STATES][]const i16{
     &.{1,-4,8,-4},
 };
 
-const parse_table = blk: {
+const parseTable = blk: {
     @setEvalBranchQuota(100000);
-    var t: [NUM_STATES][NUM_SYMBOLS]i16 = .{.{0} ** NUM_SYMBOLS} ** NUM_STATES;
+    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
         while (i < row.len) : (i += 2) {
@@ -540,33 +540,33 @@ const parse_table = blk: {
 };
 
 fn getAction(state: u16, sym: u16) i16 {
-    return parse_table[state][sym];
+    return parseTable[state][sym];
 }
 // X "c" excludes: shift instead of reduce when pre==0 and char matches
-const x_excludes = [_]struct { state: u16, char: u8, shift: u16 }{
+const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{
 };
 
 fn getImmediateShift(state: u16, char: u8) ?i16 {
-    for (x_excludes) |x| {
+    for (xExcludes) |x| {
         if (x.state == state and x.char == char) return @intCast(x.shift);
     }
     return null;
 }
-const start_states = [_]struct { sym: u16, state: u16 }{
+const startStates = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 3, .state = 0 },
     .{ .sym = 7, .state = 1 },
 };
 
-fn getStartState(start_sym: u16) u16 {
-    for (start_states) |entry| {
-        if (entry.sym == start_sym) return entry.state;
+fn getStartState(startSym: u16) u16 {
+    for (startStates) |entry| {
+        if (entry.sym == startSym) return entry.state;
     }
     return 0;
 }
 
-const accept_rules = [_]u16{ 9, 10 };
+const acceptRules = [_]u16{ 9, 10 };
 
-fn isAcceptRule(rule_id: u16) bool {
-    for (accept_rules) |ar| if (rule_id == ar) return true;
+fn isAcceptRule(ruleId: u16) bool {
+    for (acceptRules) |ar| if (ruleId == ar) return true;
     return false;
 }

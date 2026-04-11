@@ -2,7 +2,7 @@
 //!
 //! Provides language-specific support for the generated parser:
 //!   - Tag enum for s-expression node types
-//!   - Keyword matching (cmd_id, cmd_as)
+//!   - Keyword matching (CmdId, cmdAs)
 //!   - Lexer wrapper (heredocs, indent/outdent, regex literals)
 //!
 //! Imported by parser.zig via @lang = "slash" directive.
@@ -110,7 +110,7 @@ pub const Tag = enum(u8) {
 // Keyword Matching
 // =============================================================================
 
-pub const cmd_id = enum(u16) {
+pub const CmdId = enum(u16) {
     IF,
     UNLESS,
     ELSE,
@@ -135,7 +135,7 @@ pub const cmd_id = enum(u16) {
     EXEC,
 };
 
-const cmd_map = std.StaticStringMap(cmd_id).initComptime(.{
+const cmdMap = std.StaticStringMap(CmdId).initComptime(.{
     .{ "if", .IF },
     .{ "unless", .UNLESS },
     .{ "else", .ELSE },
@@ -160,8 +160,8 @@ const cmd_map = std.StaticStringMap(cmd_id).initComptime(.{
     .{ "exec", .EXEC },
 });
 
-pub fn cmd_as(name: []const u8) ?cmd_id {
-    return cmd_map.get(name);
+pub fn cmdAs(name: []const u8) ?CmdId {
+    return cmdMap.get(name);
 }
 
 // =============================================================================

@@ -4,7 +4,7 @@
 //! Contains both lexer and parser.
 
 const std = @import("std");
-const MAX_ARGS: usize = 32;
+const maxArgs: usize = 32;
 const slash = @import("slash.zig");
 
 // SIMD helpers (fallback if simd.zig not available)
@@ -179,7 +179,7 @@ pub const BaseLexer = struct {
     const LETTER: u8 = 1 << 1;
     const WHITESPACE: u8 = 1 << 2;
 
-    const char_flags: [256]u8 = blk: {
+    const charFlags: [256]u8 = blk: {
         var table: [256]u8 = [_]u8{0} ** 256;
         for ('0'..'9' + 1) |c| table[c] = DIGIT;
         for ('A'..'Z' + 1) |c| table[c] = LETTER;
@@ -191,15 +191,15 @@ pub const BaseLexer = struct {
     };
 
     inline fn isDigit(c: u8) bool {
-        return (char_flags[c] & DIGIT) != 0;
+        return (charFlags[c] & DIGIT) != 0;
     }
 
     inline fn isLetter(c: u8) bool {
-        return (char_flags[c] & LETTER) != 0;
+        return (charFlags[c] & LETTER) != 0;
     }
 
     inline fn isWhitespace(c: u8) bool {
-        return (char_flags[c] & WHITESPACE) != 0;
+        return (charFlags[c] & WHITESPACE) != 0;
     }
 
     inline fn isIdentChar(c: u8) bool {
@@ -208,13 +208,13 @@ pub const BaseLexer = struct {
     /// Match lexer rules
     pub fn matchRules(self: *Self) Token {
         // Count whitespace first
-        const ws_start = self.pos;
+        const wsStart = self.pos;
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        const ws_count: u8 = @intCast(@min(self.pos - ws_start, 255));
+        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
-        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = ws_count, .pos = self.pos, .len = 0 };
+        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
 
         const start = self.pos;
@@ -225,12 +225,12 @@ pub const BaseLexer = struct {
                 self.pos += 2;
                 self.beg = 1;
                 self.math = 0;
-                return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 2 };
+                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 2 };
             }
                 self.pos += 1;
                 self.beg = 1;
                 self.math = 0;
-                return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 1 };
+                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
         }
         // From here, clear line-start flag
         self.beg = 0;
@@ -239,13 +239,13 @@ pub const BaseLexer = struct {
                 const ch = self.source[self.pos];
                 if (ch == '"') {
                     self.pos += 1;
-                    return Token{ .cat = .@"string_dq", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"string_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (ch == '\\') { self.pos += 2; continue; }
                 if (ch == '\n') break;
                 self.pos += 1;
             }
-            return Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         if (c == '\'') {            self.pos += 1;
             while (self.pos < self.source.len) {
@@ -253,20 +253,20 @@ pub const BaseLexer = struct {
                 if (ch == '\'') {
                     self.pos += 1;
                     if (self.pos < self.source.len and self.source[self.pos] == '\'') { self.pos += 1; continue; }
-                    return Token{ .cat = .@"string_sq", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"string_sq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (ch == '\n') break;
                 self.pos += 1;
             }
-            return Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         // Number (digit or leading dot followed by digit)
         if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-            return self.scanNumber(start, ws_count);
+            return self.scanNumber(start, wsCount);
         }
         // Identifier
         if (isLetter(c)) {
-            return self.scanIdent(start, ws_count);
+            return self.scanIdent(start, wsCount);
         }
         if (c == '$') {
             const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
@@ -274,7 +274,7 @@ pub const BaseLexer = struct {
                 self.pos += 2;
                 while (self.pos < self.source.len and self.source[self.pos] != '}' and self.source[self.pos] != '\n') self.pos += 1;
                 if (self.pos < self.source.len and self.source[self.pos] == '}') self.pos += 1;
-                return Token{ .cat = .@"var_braced", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                return Token{ .cat = .@"var_braced", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
             }
             if ((nc >= 'a' and nc <= 'z') or (nc >= 'A' and nc <= 'Z') or nc == '_') {
                 self.pos += 1;
@@ -283,15 +283,15 @@ pub const BaseLexer = struct {
                     if (!((vc >= 'a' and vc <= 'z') or (vc >= 'A' and vc <= 'Z') or (vc >= '0' and vc <= '9') or vc == '_')) break;
                     self.pos += 1;
                 }
-                return Token{ .cat = .@"variable", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                return Token{ .cat = .@"variable", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
             }
             if (nc >= '0' and nc <= '9') {
                 self.pos += 2;
-                return Token{ .cat = .@"variable", .pre = ws_count, .pos = start, .len = 2 };
+                return Token{ .cat = .@"variable", .pre = wsCount, .pos = start, .len = 2 };
             }
             if (nc == '?' or nc == '$' or nc == '!' or nc == '#' or nc == '*') {
                 self.pos += 2;
-                return Token{ .cat = .@"variable", .pre = ws_count, .pos = start, .len = 2 };
+                return Token{ .cat = .@"variable", .pre = wsCount, .pos = start, .len = 2 };
             }
         }
         if (c == '-') {
@@ -302,7 +302,7 @@ pub const BaseLexer = struct {
             while (self.pos < self.source.len and self.source[self.pos] != '\n') {
                 self.pos += 1;
             }
-            return Token{ .cat = .@"comment", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"comment", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         // Single/multi-char operators
         self.pos += 1;
@@ -310,196 +310,196 @@ pub const BaseLexer = struct {
             '!' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"ne", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"ne", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '~') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"nomatch", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"nomatch", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"not_sym", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"not_sym", .pre = wsCount, .pos = start, .len = 1 };
             },
             '$' => blk: {
                 if (self.peek() == '(') {
                     self.pos += 1;
                 self.paren += 1;
-                    break :blk Token{ .cat = .@"dollar_paren", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"dollar_paren", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"dollar", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"dollar", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '%' => Token{ .cat = .@"percent", .pre = ws_count, .pos = start, .len = 1 },
+            '%' => Token{ .cat = .@"percent", .pre = wsCount, .pos = start, .len = 1 },
             '&' => blk: {
                 if (self.peek() == '&') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"and_sym", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"and_sym", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_both", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"redir_both", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"bg", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"bg", .pre = wsCount, .pos = start, .len = 1 };
             },
             '(' => blk: {
                 self.paren += 1;
-                    break :blk Token{ .cat = .@"lparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lparen", .pre = wsCount, .pos = start, .len = 1 };
             },
             ')' => blk: {
                 self.paren -= 1;
-                    break :blk Token{ .cat = .@"rparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 };
             },
             '*' => blk: {
                 if (self.peek() == '*') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"power", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"star", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"star", .pre = wsCount, .pos = start, .len = 1 };
             },
             '+' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
                 self.math = 1;
-                    break :blk Token{ .cat = .@"plus_assign", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"plus_assign", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"plus", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"plus", .pre = wsCount, .pos = start, .len = 1 };
             },
-            ',' => Token{ .cat = .@"comma", .pre = ws_count, .pos = start, .len = 1 },
-            '-' => Token{ .cat = .@"minus", .pre = ws_count, .pos = start, .len = 1 },
-            '/' => Token{ .cat = .@"slash", .pre = ws_count, .pos = start, .len = 1 },
+            ',' => Token{ .cat = .@"comma", .pre = wsCount, .pos = start, .len = 1 },
+            '-' => Token{ .cat = .@"minus", .pre = wsCount, .pos = start, .len = 1 },
+            '/' => Token{ .cat = .@"slash", .pre = wsCount, .pos = start, .len = 1 },
             '2' => blk: {
                 if (self.peek() == '>') {
                     self.pos += 1;
                     if (self.peek() == '>') {
                         self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_err_app", .pre = ws_count, .pos = start, .len = 3 };
+                    break :blk Token{ .cat = .@"redir_err_app", .pre = wsCount, .pos = start, .len = 3 };
                     }
                     if (self.peek() == '&') {
                         self.pos += 1;
                         if (self.peek() == '1') {
                             self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_dup", .pre = ws_count, .pos = start, .len = 4 };
+                    break :blk Token{ .cat = .@"redir_dup", .pre = wsCount, .pos = start, .len = 4 };
                         }
                         self.pos -= 1;
                     }
-                    break :blk Token{ .cat = .@"redir_err", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"redir_err", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 self.pos -= 1;
-                break :blk self.scanNumber(start, ws_count);
+                break :blk self.scanNumber(start, wsCount);
             },
-            ';' => Token{ .cat = .@"semi", .pre = ws_count, .pos = start, .len = 1 },
+            ';' => Token{ .cat = .@"semi", .pre = wsCount, .pos = start, .len = 1 },
             '<' => blk: {
                 if (self.peek() == '<') {
                     self.pos += 1;
                     if (self.peek() == '<') {
                         self.pos += 1;
-                    break :blk Token{ .cat = .@"herestring", .pre = ws_count, .pos = start, .len = 3 };
+                    break :blk Token{ .cat = .@"herestring", .pre = wsCount, .pos = start, .len = 3 };
                     }
                     self.pos -= 1;
                 }
                 if (self.peek() == '(') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"proc_sub_in", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"proc_sub_in", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"le", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"le", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"redir_in", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"redir_in", .pre = wsCount, .pos = start, .len = 1 };
             },
             '=' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"eq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"eq", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '~') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"match", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"match", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 self.math = 1;
-                    break :blk Token{ .cat = .@"assign", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"assign", .pre = wsCount, .pos = start, .len = 1 };
             },
             '>' => blk: {
                 if (self.peek() == '(') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"proc_sub_out", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"proc_sub_out", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"ge", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"ge", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_append", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"redir_append", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"redir_out", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"redir_out", .pre = wsCount, .pos = start, .len = 1 };
             },
             '?' => blk: {
                 if (self.peek() == '?') {
                     self.pos += 1;
                     if (self.peek() == '?') {
                         self.pos += 1;
-                    break :blk Token{ .cat = .@"missing", .pre = ws_count, .pos = start, .len = 3 };
+                    break :blk Token{ .cat = .@"missing", .pre = wsCount, .pos = start, .len = 3 };
                     }
-                    break :blk Token{ .cat = .@"default_op", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"default_op", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"question", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 };
             },
             '[' => blk: {
                 if (self.math != 0) {
                     self.math = 0;
-                    break :blk Token{ .cat = .@"list_start", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"list_start", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                    break :blk Token{ .cat = .@"lbracket", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 };
             },
             '\\' => blk: {
                 if (self.peek() == '\n') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"skip", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"skip", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"backslash", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"backslash", .pre = wsCount, .pos = start, .len = 1 };
             },
-            ']' => Token{ .cat = .@"rbracket", .pre = ws_count, .pos = start, .len = 1 },
+            ']' => Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 },
             '^' => blk: {
                 if (self.math != 0 and self.math_lhs != 0) {
-                    break :blk Token{ .cat = .@"power", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                break :blk Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             '`' => blk: {
                 if (self.peek() == '`') {
                     self.pos += 1;
                     if (self.peek() == '`') {
                         self.pos += 1;
-                    break :blk Token{ .cat = .@"heredoc_end", .pre = ws_count, .pos = start, .len = 3 };
+                    break :blk Token{ .cat = .@"heredoc_end", .pre = wsCount, .pos = start, .len = 3 };
                     }
                     self.pos -= 1;
                 }
                 self.pos -= 1;
-                break :blk Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             '{' => blk: {
                 self.brace += 1;
-                    break :blk Token{ .cat = .@"lbrace", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lbrace", .pre = wsCount, .pos = start, .len = 1 };
             },
             '|' => blk: {
                 if (self.peek() == '&') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"pipe_err", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"pipe_err", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '|') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"or_sym", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"or_sym", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"pipe", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 1 };
             },
             '}' => blk: {
                 self.brace -= 1;
-                    break :blk Token{ .cat = .@"rbrace", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rbrace", .pre = wsCount, .pos = start, .len = 1 };
             },
-            else => Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 },
+            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
         };
     }
 
     /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var has_decimal = false;        const starts_with_dot = self.source[self.pos] == '.';        // Decimal integer
+    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var hasDecimal = false;        const startsWithDot = self.source[self.pos] == '.';        // Decimal integer
         if (isDigit(self.source[self.pos])) {
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                 self.pos += 1;
@@ -507,9 +507,9 @@ pub const BaseLexer = struct {
         }
         // Decimal part
         if (self.pos < self.source.len and self.source[self.pos] == '.') {
-            const next_c = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-            if (isDigit(next_c)) {
-                has_decimal = true;
+            const nextC = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+            if (isDigit(nextC)) {
+                hasDecimal = true;
                 self.pos += 1;
                 while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                     self.pos += 1;
@@ -517,12 +517,12 @@ pub const BaseLexer = struct {
             }
         }
         // Classify
-        const token_cat: TokenCat = if (has_decimal or starts_with_dot)
+        const tokenCat: TokenCat = if (hasDecimal or startsWithDot)
             .@"real"
         else
             .@"integer";
 
-        return Token{ .cat = token_cat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
+        return Token{ .cat = tokenCat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
     }
 
     /// Scan identifier (generated from grammar)
@@ -589,15 +589,15 @@ pub const Parser = struct {
     lexer: Lexer,
     source: []const u8,
     current: Token,
-    injected_token: ?u16 = null,
-    last_matched_id: u16 = 0,
+    injectedToken: ?u16 = null,
+    lastMatchedId: u16 = 0,
 
-    state_stack: std.ArrayListUnmanaged(u16) = .{},
-    value_stack: std.ArrayListUnmanaged(Sexp) = .{},
+    stateStack: std.ArrayListUnmanaged(u16) = .{},
+    valueStack: std.ArrayListUnmanaged(Sexp) = .{},
 
-    pub fn init(backing_allocator: std.mem.Allocator, source: []const u8) Parser {
+    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
         var p = Parser{
-            .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            .arena = std.heap.ArenaAllocator.init(backingAllocator),
             .lexer = Lexer.init(source),
             .source = source,
             .current = undefined,
@@ -634,63 +634,63 @@ pub const Parser = struct {
         });
     }
 
-    fn doParse(self: *Parser, start_sym: u16) !Sexp {
-        const start_state = getStartState(start_sym);
-        self.state_stack.clearRetainingCapacity();
-        self.value_stack.clearRetainingCapacity();
-        try self.state_stack.append(self.allocator(), start_state);
+    fn doParse(self: *Parser, startSym: u16) !Sexp {
+        const startState = getStartState(startSym);
+        self.stateStack.clearRetainingCapacity();
+        self.valueStack.clearRetainingCapacity();
+        try self.stateStack.append(self.allocator(), startState);
 
         while (true) {
-            const state = self.state_stack.getLast();
-            const sym = if (self.injected_token) |inj| inj else self.tokenToSymbol(self.current);
+            const state = self.stateStack.getLast();
+            const sym = if (self.injectedToken) |inj| inj else self.tokenToSymbol(self.current);
             var action = getAction(state, sym);
 
             // X "c" check: if reducing and next char matches with pre==0, shift instead
             if (action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-                if (getImmediateShift(state, self.source[self.current.pos])) |shift_target| {
-                    action = shift_target;
+                if (getImmediateShift(state, self.source[self.current.pos])) |shiftTarget| {
+                    action = shiftTarget;
                 }
             }
 
             if (action == 0) {
                 return error.ParseError;
             } else if (action == -1) {
-                return self.value_stack.getLast();
+                return self.valueStack.getLast();
             } else if (action > 0) {
                 // Shift
-                if (self.injected_token != null) {
-                    try self.value_stack.append(self.allocator(), .nil);
-                    self.injected_token = null;
+                if (self.injectedToken != null) {
+                    try self.valueStack.append(self.allocator(), .nil);
+                    self.injectedToken = null;
                 } else {
-                    try self.value_stack.append(self.allocator(), .{ .src = .{
+                    try self.valueStack.append(self.allocator(), .{ .src = .{
                         .pos = self.current.pos,
                         .len = self.current.len,
-                        .id  = self.last_matched_id,
+                        .id  = self.lastMatchedId,
                     } });
-                    self.last_matched_id = 0;
+                    self.lastMatchedId = 0;
                     self.current = self.lexer.next();
                 }
-                try self.state_stack.append(self.allocator(), @intCast(action));
+                try self.stateStack.append(self.allocator(), @intCast(action));
             } else {
                 // Reduce
-                const rule_id: u16 = @intCast(-action - 2);
-                var pass: [MAX_ARGS]Sexp = undefined;
-                const len = rule_len[rule_id];
+                const ruleId: u16 = @intCast(-action - 2);
+                var pass: [maxArgs]Sexp = undefined;
+                const len = ruleLen[ruleId];
                 for (0..len) |i| {
-                    pass[len - 1 - i] = self.value_stack.pop().?;
-                    _ = self.state_stack.pop();
+                    pass[len - 1 - i] = self.valueStack.pop().?;
+                    _ = self.stateStack.pop();
                 }
 
-                const result = self.executeAction(rule_id, pass[0..len]);
+                const result = self.executeAction(ruleId, pass[0..len]);
 
-                if (isAcceptRule(rule_id)) return result;
+                if (isAcceptRule(ruleId)) return result;
 
-                try self.value_stack.append(self.allocator(), result);
+                try self.valueStack.append(self.allocator(), result);
 
-                const goto_state = self.state_stack.getLast();
-                const next = getAction(goto_state, rule_lhs[rule_id]);
+                const gotoState = self.stateStack.getLast();
+                const next = getAction(gotoState, ruleLhs[ruleId]);
                 if (next <= 0) return error.ParseError;
-                try self.state_stack.append(self.allocator(), @intCast(next));
+                try self.stateStack.append(self.allocator(), @intCast(next));
             }
         }
     }
@@ -750,19 +750,19 @@ pub const Parser = struct {
         const items = if (spread == .list) spread.list else &[_]Sexp{};
         var len = items.len;
         while (len > 0 and items[len - 1] == .nil) len -= 1;
-        const skip_pos = (pos == .nil and len == 0);
-        const total = if (skip_pos) 1 else len + 2;
+        const skipPos = (pos == .nil and len == 0);
+        const total = if (skipPos) 1 else len + 2;
         const result = self.allocator().alloc(Sexp, total) catch return .nil;
         result[0] = .{ .tag = tag };
-        if (!skip_pos) {
+        if (!skipPos) {
             result[1] = pos;
             if (len > 0) @memcpy(result[2..][0..len], items[0..len]);
         }
         return .{ .list = result };
     }
 
-    fn executeAction(self: *Parser, rule_id: u16, pass: []Sexp) Sexp {
-        return switch (rule_id) {
+    fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
+        return switch (ruleId) {
             0 => self.spreadList(pass[0], pass[1]),
             1 => .{ .list = &[_]Sexp{} },
             2 => self.sexpSpread(.@"program", pass[1]),
@@ -1070,24 +1070,24 @@ pub const Parser = struct {
 
     fn identToSymbol(self: *Parser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
-        if (text.len == 0) return SYM_IDENT;
-        if (self.try_ident_as_cmd(token, text)) |sym| return sym;
-        return SYM_IDENT;
+        if (text.len == 0) return symIdent;
+        if (self.tryIdentAsCmd(token, text)) |sym| return sym;
+        return symIdent;
     }
 
-    fn try_ident_as_cmd(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsCmd(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
-        const state = self.state_stack.getLast();
-        if (slash.cmd_as(text)) |id| {
-            const id_idx = @intFromEnum(id);
-            const sym = cmd_to_symbol[id_idx];
+        const state = self.stateStack.getLast();
+        if (slash.cmdAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = cmdToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = cmd_fallback_symbol;
+            const fallback = cmdFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
         }
@@ -1095,11 +1095,11 @@ pub const Parser = struct {
     }
 
     pub fn parseProgram(self: *Parser) !Sexp {
-        self.injected_token = SYM_program_START;
+        self.injectedToken = SYM_program_START;
         return self.doParse(SYM_program);
     }
     pub fn parseOneline(self: *Parser) !Sexp {
-        self.injected_token = SYM_oneline_START;
+        self.injectedToken = SYM_oneline_START;
         return self.doParse(SYM_oneline);
     }
 };
@@ -1109,73 +1109,73 @@ const SYM_program: u16 = 3;
 const SYM_program_START: u16 = 152;
 const SYM_oneline: u16 = 4;
 const SYM_oneline_START: u16 = 154;
-const SYM_IDENT: u16 = 57;
+const symIdent: u16 = 57;
 
-// Mapping from slash.cmd_id to grammar symbol IDs (computed at comptime)
-const cmd_to_symbol = blk: {
+// Mapping from slash.CmdId to grammar symbol IDs (computed at comptime)
+const cmdToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(slash.cmd_id, "COMMENT")) arr[@intFromEnum(slash.cmd_id.COMMENT)] = 53;
-    if (@hasField(slash.cmd_id, "NEWLINE")) arr[@intFromEnum(slash.cmd_id.NEWLINE)] = 55;
-    if (@hasField(slash.cmd_id, "IDENT")) arr[@intFromEnum(slash.cmd_id.IDENT)] = 57;
-    if (@hasField(slash.cmd_id, "AND")) arr[@intFromEnum(slash.cmd_id.AND)] = 63;
-    if (@hasField(slash.cmd_id, "OR")) arr[@intFromEnum(slash.cmd_id.OR)] = 65;
-    if (@hasField(slash.cmd_id, "XOR")) arr[@intFromEnum(slash.cmd_id.XOR)] = 66;
-    if (@hasField(slash.cmd_id, "NOT")) arr[@intFromEnum(slash.cmd_id.NOT)] = 70;
-    if (@hasField(slash.cmd_id, "TEST")) arr[@intFromEnum(slash.cmd_id.TEST)] = 73;
-    if (@hasField(slash.cmd_id, "FLAG")) arr[@intFromEnum(slash.cmd_id.FLAG)] = 74;
-    if (@hasField(slash.cmd_id, "EXIT")) arr[@intFromEnum(slash.cmd_id.EXIT)] = 75;
-    if (@hasField(slash.cmd_id, "INTEGER")) arr[@intFromEnum(slash.cmd_id.INTEGER)] = 76;
-    if (@hasField(slash.cmd_id, "BREAK")) arr[@intFromEnum(slash.cmd_id.BREAK)] = 78;
-    if (@hasField(slash.cmd_id, "CONTINUE")) arr[@intFromEnum(slash.cmd_id.CONTINUE)] = 79;
-    if (@hasField(slash.cmd_id, "SHIFT")) arr[@intFromEnum(slash.cmd_id.SHIFT)] = 80;
-    if (@hasField(slash.cmd_id, "SOURCE")) arr[@intFromEnum(slash.cmd_id.SOURCE)] = 81;
-    if (@hasField(slash.cmd_id, "EXEC")) arr[@intFromEnum(slash.cmd_id.EXEC)] = 82;
-    if (@hasField(slash.cmd_id, "STRING_SQ")) arr[@intFromEnum(slash.cmd_id.STRING_SQ)] = 84;
-    if (@hasField(slash.cmd_id, "STRING_DQ")) arr[@intFromEnum(slash.cmd_id.STRING_DQ)] = 85;
-    if (@hasField(slash.cmd_id, "REAL")) arr[@intFromEnum(slash.cmd_id.REAL)] = 86;
-    if (@hasField(slash.cmd_id, "VARIABLE")) arr[@intFromEnum(slash.cmd_id.VARIABLE)] = 87;
-    if (@hasField(slash.cmd_id, "VAR_BRACED")) arr[@intFromEnum(slash.cmd_id.VAR_BRACED)] = 88;
-    if (@hasField(slash.cmd_id, "REGEX")) arr[@intFromEnum(slash.cmd_id.REGEX)] = 89;
-    if (@hasField(slash.cmd_id, "DOLLAR_PAREN")) arr[@intFromEnum(slash.cmd_id.DOLLAR_PAREN)] = 92;
-    if (@hasField(slash.cmd_id, "REDIR_FD_DUP")) arr[@intFromEnum(slash.cmd_id.REDIR_FD_DUP)] = 100;
-    if (@hasField(slash.cmd_id, "REDIR_FD_OUT")) arr[@intFromEnum(slash.cmd_id.REDIR_FD_OUT)] = 101;
-    if (@hasField(slash.cmd_id, "REDIR_FD_IN")) arr[@intFromEnum(slash.cmd_id.REDIR_FD_IN)] = 102;
-    if (@hasField(slash.cmd_id, "HEREDOC_SQ")) arr[@intFromEnum(slash.cmd_id.HEREDOC_SQ)] = 104;
-    if (@hasField(slash.cmd_id, "HEREDOC_BODY")) arr[@intFromEnum(slash.cmd_id.HEREDOC_BODY)] = 105;
-    if (@hasField(slash.cmd_id, "HEREDOC_DQ")) arr[@intFromEnum(slash.cmd_id.HEREDOC_DQ)] = 107;
-    if (@hasField(slash.cmd_id, "HEREDOC_BT")) arr[@intFromEnum(slash.cmd_id.HEREDOC_BT)] = 108;
-    if (@hasField(slash.cmd_id, "HEREDOC_END")) arr[@intFromEnum(slash.cmd_id.HEREDOC_END)] = 109;
-    if (@hasField(slash.cmd_id, "IF")) arr[@intFromEnum(slash.cmd_id.IF)] = 110;
-    if (@hasField(slash.cmd_id, "UNLESS")) arr[@intFromEnum(slash.cmd_id.UNLESS)] = 111;
-    if (@hasField(slash.cmd_id, "ELSE")) arr[@intFromEnum(slash.cmd_id.ELSE)] = 112;
-    if (@hasField(slash.cmd_id, "FOR")) arr[@intFromEnum(slash.cmd_id.FOR)] = 119;
-    if (@hasField(slash.cmd_id, "IN")) arr[@intFromEnum(slash.cmd_id.IN)] = 120;
-    if (@hasField(slash.cmd_id, "WHILE")) arr[@intFromEnum(slash.cmd_id.WHILE)] = 121;
-    if (@hasField(slash.cmd_id, "UNTIL")) arr[@intFromEnum(slash.cmd_id.UNTIL)] = 122;
-    if (@hasField(slash.cmd_id, "TRY")) arr[@intFromEnum(slash.cmd_id.TRY)] = 125;
-    if (@hasField(slash.cmd_id, "INDENT")) arr[@intFromEnum(slash.cmd_id.INDENT)] = 130;
-    if (@hasField(slash.cmd_id, "OUTDENT")) arr[@intFromEnum(slash.cmd_id.OUTDENT)] = 133;
-    if (@hasField(slash.cmd_id, "CMD")) arr[@intFromEnum(slash.cmd_id.CMD)] = 135;
-    if (@hasField(slash.cmd_id, "MISSING")) arr[@intFromEnum(slash.cmd_id.MISSING)] = 136;
-    if (@hasField(slash.cmd_id, "LPAREN_TIGHT")) arr[@intFromEnum(slash.cmd_id.LPAREN_TIGHT)] = 137;
-    if (@hasField(slash.cmd_id, "KEY")) arr[@intFromEnum(slash.cmd_id.KEY)] = 141;
-    if (@hasField(slash.cmd_id, "SET")) arr[@intFromEnum(slash.cmd_id.SET)] = 142;
-    if (@hasField(slash.cmd_id, "LIST_START")) arr[@intFromEnum(slash.cmd_id.LIST_START)] = 149;
-    for (@typeInfo(slash.cmd_id).@"enum".fields) |field| {
+    if (@hasField(slash.CmdId, "COMMENT")) arr[@intFromEnum(slash.CmdId.COMMENT)] = 53;
+    if (@hasField(slash.CmdId, "NEWLINE")) arr[@intFromEnum(slash.CmdId.NEWLINE)] = 55;
+    if (@hasField(slash.CmdId, "IDENT")) arr[@intFromEnum(slash.CmdId.IDENT)] = 57;
+    if (@hasField(slash.CmdId, "AND")) arr[@intFromEnum(slash.CmdId.AND)] = 63;
+    if (@hasField(slash.CmdId, "OR")) arr[@intFromEnum(slash.CmdId.OR)] = 65;
+    if (@hasField(slash.CmdId, "XOR")) arr[@intFromEnum(slash.CmdId.XOR)] = 66;
+    if (@hasField(slash.CmdId, "NOT")) arr[@intFromEnum(slash.CmdId.NOT)] = 70;
+    if (@hasField(slash.CmdId, "TEST")) arr[@intFromEnum(slash.CmdId.TEST)] = 73;
+    if (@hasField(slash.CmdId, "FLAG")) arr[@intFromEnum(slash.CmdId.FLAG)] = 74;
+    if (@hasField(slash.CmdId, "EXIT")) arr[@intFromEnum(slash.CmdId.EXIT)] = 75;
+    if (@hasField(slash.CmdId, "INTEGER")) arr[@intFromEnum(slash.CmdId.INTEGER)] = 76;
+    if (@hasField(slash.CmdId, "BREAK")) arr[@intFromEnum(slash.CmdId.BREAK)] = 78;
+    if (@hasField(slash.CmdId, "CONTINUE")) arr[@intFromEnum(slash.CmdId.CONTINUE)] = 79;
+    if (@hasField(slash.CmdId, "SHIFT")) arr[@intFromEnum(slash.CmdId.SHIFT)] = 80;
+    if (@hasField(slash.CmdId, "SOURCE")) arr[@intFromEnum(slash.CmdId.SOURCE)] = 81;
+    if (@hasField(slash.CmdId, "EXEC")) arr[@intFromEnum(slash.CmdId.EXEC)] = 82;
+    if (@hasField(slash.CmdId, "STRING_SQ")) arr[@intFromEnum(slash.CmdId.STRING_SQ)] = 84;
+    if (@hasField(slash.CmdId, "STRING_DQ")) arr[@intFromEnum(slash.CmdId.STRING_DQ)] = 85;
+    if (@hasField(slash.CmdId, "REAL")) arr[@intFromEnum(slash.CmdId.REAL)] = 86;
+    if (@hasField(slash.CmdId, "VARIABLE")) arr[@intFromEnum(slash.CmdId.VARIABLE)] = 87;
+    if (@hasField(slash.CmdId, "VAR_BRACED")) arr[@intFromEnum(slash.CmdId.VAR_BRACED)] = 88;
+    if (@hasField(slash.CmdId, "REGEX")) arr[@intFromEnum(slash.CmdId.REGEX)] = 89;
+    if (@hasField(slash.CmdId, "DOLLAR_PAREN")) arr[@intFromEnum(slash.CmdId.DOLLAR_PAREN)] = 92;
+    if (@hasField(slash.CmdId, "REDIR_FD_DUP")) arr[@intFromEnum(slash.CmdId.REDIR_FD_DUP)] = 100;
+    if (@hasField(slash.CmdId, "REDIR_FD_OUT")) arr[@intFromEnum(slash.CmdId.REDIR_FD_OUT)] = 101;
+    if (@hasField(slash.CmdId, "REDIR_FD_IN")) arr[@intFromEnum(slash.CmdId.REDIR_FD_IN)] = 102;
+    if (@hasField(slash.CmdId, "HEREDOC_SQ")) arr[@intFromEnum(slash.CmdId.HEREDOC_SQ)] = 104;
+    if (@hasField(slash.CmdId, "HEREDOC_BODY")) arr[@intFromEnum(slash.CmdId.HEREDOC_BODY)] = 105;
+    if (@hasField(slash.CmdId, "HEREDOC_DQ")) arr[@intFromEnum(slash.CmdId.HEREDOC_DQ)] = 107;
+    if (@hasField(slash.CmdId, "HEREDOC_BT")) arr[@intFromEnum(slash.CmdId.HEREDOC_BT)] = 108;
+    if (@hasField(slash.CmdId, "HEREDOC_END")) arr[@intFromEnum(slash.CmdId.HEREDOC_END)] = 109;
+    if (@hasField(slash.CmdId, "IF")) arr[@intFromEnum(slash.CmdId.IF)] = 110;
+    if (@hasField(slash.CmdId, "UNLESS")) arr[@intFromEnum(slash.CmdId.UNLESS)] = 111;
+    if (@hasField(slash.CmdId, "ELSE")) arr[@intFromEnum(slash.CmdId.ELSE)] = 112;
+    if (@hasField(slash.CmdId, "FOR")) arr[@intFromEnum(slash.CmdId.FOR)] = 119;
+    if (@hasField(slash.CmdId, "IN")) arr[@intFromEnum(slash.CmdId.IN)] = 120;
+    if (@hasField(slash.CmdId, "WHILE")) arr[@intFromEnum(slash.CmdId.WHILE)] = 121;
+    if (@hasField(slash.CmdId, "UNTIL")) arr[@intFromEnum(slash.CmdId.UNTIL)] = 122;
+    if (@hasField(slash.CmdId, "TRY")) arr[@intFromEnum(slash.CmdId.TRY)] = 125;
+    if (@hasField(slash.CmdId, "INDENT")) arr[@intFromEnum(slash.CmdId.INDENT)] = 130;
+    if (@hasField(slash.CmdId, "OUTDENT")) arr[@intFromEnum(slash.CmdId.OUTDENT)] = 133;
+    if (@hasField(slash.CmdId, "CMD")) arr[@intFromEnum(slash.CmdId.CMD)] = 135;
+    if (@hasField(slash.CmdId, "MISSING")) arr[@intFromEnum(slash.CmdId.MISSING)] = 136;
+    if (@hasField(slash.CmdId, "LPAREN_TIGHT")) arr[@intFromEnum(slash.CmdId.LPAREN_TIGHT)] = 137;
+    if (@hasField(slash.CmdId, "KEY")) arr[@intFromEnum(slash.CmdId.KEY)] = 141;
+    if (@hasField(slash.CmdId, "SET")) arr[@intFromEnum(slash.CmdId.SET)] = 142;
+    if (@hasField(slash.CmdId, "LIST_START")) arr[@intFromEnum(slash.CmdId.LIST_START)] = 149;
+    for (@typeInfo(slash.CmdId).@"enum".fields) |field| {
         if (arr[field.value] == 0) arr[field.value] = 135;
     }
     break :blk arr;
 };
-const cmd_fallback_symbol: u16 = 135;
+const cmdFallbackSymbol: u16 = 135;
 
-const rule_lhs = [_]u16{ 52, 52, 3, 4, 54, 54, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 77, 77, 10, 10, 10, 10, 10, 10, 10, 10, 83, 83, 11, 11, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 16, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 106, 106, 18, 18, 18, 19, 19, 20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 26, 27, 123, 123, 124, 28, 29, 127, 127, 128, 30, 131, 131, 132, 30, 31, 31, 31, 32, 32, 33, 33, 33, 33, 33, 134, 134, 34, 34, 35, 35, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 139, 140, 140, 37, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 39, 39, 39, 39, 40, 40, 40, 40, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 45, 45, 45, 45, 46, 46, 46, 46, 46, 46, 46, 47, 48, 48, 48, 49, 49, 49, 150, 150, 50, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 153, 155 };
-const rule_len = [_]u8{ 2, 0, 2, 2, 1, 0, 3, 2, 2, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 2, 2, 3, 3, 1, 0, 2, 1, 1, 2, 1, 2, 2, 1, 2, 0, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 0, 3, 3, 3, 3, 4, 3, 2, 2, 1, 1, 3, 3, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 3, 3, 2, 0, 2, 1, 3, 2, 0, 2, 3, 2, 0, 2, 3, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 0, 3, 3, 1, 1, 1, 3, 4, 3, 4, 3, 2, 3, 4, 3, 4, 3, 2, 1, 2, 3, 0, 3, 3, 3, 3, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2 };
+const ruleLhs = [_]u16{ 52, 52, 3, 4, 54, 54, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 77, 77, 10, 10, 10, 10, 10, 10, 10, 10, 83, 83, 11, 11, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 16, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 106, 106, 18, 18, 18, 19, 19, 20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 26, 27, 123, 123, 124, 28, 29, 127, 127, 128, 30, 131, 131, 132, 30, 31, 31, 31, 32, 32, 33, 33, 33, 33, 33, 134, 134, 34, 34, 35, 35, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 139, 140, 140, 37, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 39, 39, 39, 39, 40, 40, 40, 40, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 45, 45, 45, 45, 46, 46, 46, 46, 46, 46, 46, 47, 48, 48, 48, 49, 49, 49, 150, 150, 50, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 153, 155 };
+const ruleLen = [_]u8{ 2, 0, 2, 2, 1, 0, 3, 2, 2, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 2, 2, 3, 3, 1, 0, 2, 1, 1, 2, 1, 2, 2, 1, 2, 0, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 0, 3, 3, 3, 3, 4, 3, 2, 2, 1, 1, 3, 3, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 3, 3, 2, 0, 2, 1, 3, 2, 0, 2, 3, 2, 0, 2, 3, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 0, 3, 3, 1, 1, 1, 3, 4, 3, 4, 3, 2, 3, 4, 3, 4, 3, 2, 1, 2, 3, 0, 3, 3, 3, 3, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2 };
 
 // Parse Table: 351 states × 156 symbols
-const NUM_STATES = 351;
-const NUM_SYMBOLS = 156;
+const numStates = 351;
+const numSymbols = 156;
 
-const sparse = [NUM_STATES][]const i16{
+const sparse = [numStates][]const i16{
     &.{3,2,152,3},
     &.{4,4,154,5},
     &.{1,-1},
@@ -1529,9 +1529,9 @@ const sparse = [NUM_STATES][]const i16{
     &.{72,-166},
 };
 
-const parse_table = blk: {
+const parseTable = blk: {
     @setEvalBranchQuota(100000);
-    var t: [NUM_STATES][NUM_SYMBOLS]i16 = .{.{0} ** NUM_SYMBOLS} ** NUM_STATES;
+    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
         while (i < row.len) : (i += 2) {
@@ -1542,33 +1542,33 @@ const parse_table = blk: {
 };
 
 fn getAction(state: u16, sym: u16) i16 {
-    return parse_table[state][sym];
+    return parseTable[state][sym];
 }
 // X "c" excludes: shift instead of reduce when pre==0 and char matches
-const x_excludes = [_]struct { state: u16, char: u8, shift: u16 }{
+const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{
 };
 
 fn getImmediateShift(state: u16, char: u8) ?i16 {
-    for (x_excludes) |x| {
+    for (xExcludes) |x| {
         if (x.state == state and x.char == char) return @intCast(x.shift);
     }
     return null;
 }
-const start_states = [_]struct { sym: u16, state: u16 }{
+const startStates = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 3, .state = 0 },
     .{ .sym = 4, .state = 1 },
 };
 
-fn getStartState(start_sym: u16) u16 {
-    for (start_states) |entry| {
-        if (entry.sym == start_sym) return entry.state;
+fn getStartState(startSym: u16) u16 {
+    for (startStates) |entry| {
+        if (entry.sym == startSym) return entry.state;
     }
     return 0;
 }
 
-const accept_rules = [_]u16{ 228, 229 };
+const acceptRules = [_]u16{ 228, 229 };
 
-fn isAcceptRule(rule_id: u16) bool {
-    for (accept_rules) |ar| if (rule_id == ar) return true;
+fn isAcceptRule(ruleId: u16) bool {
+    for (acceptRules) |ar| if (ruleId == ar) return true;
     return false;
 }

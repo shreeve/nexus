@@ -149,7 +149,7 @@ pub const Tag = enum(u8) {
 // Keyword Lookup — maps identifier text to parser symbol IDs
 // =============================================================================
 
-pub const keyword_id = enum(u16) {
+pub const KeywordId = enum(u16) {
     FUN,
     SUB,
     USE,
@@ -204,7 +204,7 @@ pub const keyword_id = enum(u16) {
     OUTDENT,
 };
 
-const keyword_map = std.StaticStringMap(keyword_id).initComptime(.{
+const keywordMap = std.StaticStringMap(KeywordId).initComptime(.{
     .{ "fun", .FUN },
     .{ "sub", .SUB },
     .{ "use", .USE },
@@ -250,8 +250,8 @@ const keyword_map = std.StaticStringMap(keyword_id).initComptime(.{
     .{ "not", .NOT },
 });
 
-pub fn keyword_as(name: []const u8) ?keyword_id {
-    return keyword_map.get(name);
+pub fn keywordAs(name: []const u8) ?KeywordId {
+    return keywordMap.get(name);
 }
 
 // =============================================================================
@@ -568,20 +568,20 @@ pub const Lexer = struct {
 // Tests
 // =============================================================================
 
-test "keyword_as - core keywords" {
-    try std.testing.expectEqual(keyword_id.FUN, keyword_as("fun").?);
-    try std.testing.expectEqual(keyword_id.SUB, keyword_as("sub").?);
-    try std.testing.expectEqual(keyword_id.USE, keyword_as("use").?);
-    try std.testing.expectEqual(keyword_id.IF, keyword_as("if").?);
-    try std.testing.expectEqual(keyword_id.ELSE, keyword_as("else").?);
-    try std.testing.expectEqual(keyword_id.RETURN, keyword_as("return").?);
-    try std.testing.expectEqual(keyword_id.TRUE, keyword_as("true").?);
-    try std.testing.expectEqual(keyword_id.FALSE, keyword_as("false").?);
+test "keywordAs - core keywords" {
+    try std.testing.expectEqual(KeywordId.FUN, keywordAs("fun").?);
+    try std.testing.expectEqual(KeywordId.SUB, keywordAs("sub").?);
+    try std.testing.expectEqual(KeywordId.USE, keywordAs("use").?);
+    try std.testing.expectEqual(KeywordId.IF, keywordAs("if").?);
+    try std.testing.expectEqual(KeywordId.ELSE, keywordAs("else").?);
+    try std.testing.expectEqual(KeywordId.RETURN, keywordAs("return").?);
+    try std.testing.expectEqual(KeywordId.TRUE, keywordAs("true").?);
+    try std.testing.expectEqual(KeywordId.FALSE, keywordAs("false").?);
 }
 
-test "keyword_as - not a keyword" {
-    try std.testing.expect(keyword_as("total") == null);
-    try std.testing.expect(keyword_as("add") == null);
-    try std.testing.expect(keyword_as("exists?") == null);
-    try std.testing.expect(keyword_as("") == null);
+test "keywordAs - not a keyword" {
+    try std.testing.expect(keywordAs("total") == null);
+    try std.testing.expect(keywordAs("add") == null);
+    try std.testing.expect(keywordAs("exists?") == null);
+    try std.testing.expect(keywordAs("") == null);
 }

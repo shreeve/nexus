@@ -828,7 +828,7 @@ const LexerGenerator = struct {
 
     fn emitGuardCondition(self: *LexerGenerator, guard: Guard) !void {
         const is_pre = std.mem.eql(u8, guard.variable, "pre");
-        const lhs = if (is_pre) "ws_count" else guard.variable;
+        const lhs = if (is_pre) "wsCount" else guard.variable;
         const prefix = if (is_pre) "" else "self.";
 
         if (guard.negated and guard.op == .truthy) {
@@ -873,7 +873,7 @@ const LexerGenerator = struct {
     }
 
     fn emitTokenReturn(self: *LexerGenerator, keyword: []const u8, token: []const u8, char_count: u8) !void {
-        try self.print("                    {s} Token{{ .cat = .@\"{s}\", .pre = ws_count, .pos = start, .len = {d} }};\n", .{ keyword, token, char_count });
+        try self.print("                    {s} Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ keyword, token, char_count });
     }
 
     /// Find the state variable that complex rules set for a given character.
@@ -965,7 +965,7 @@ const LexerGenerator = struct {
         }
 
         try self.write(
-            \\            else => Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 },
+            \\            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
             \\        };
             \\    }
             \\
@@ -1000,7 +1000,7 @@ const LexerGenerator = struct {
 
         if (!needs_blk) {
             const r = single_rules.items[0];
-            try self.print("            '{s}' => Token{{ .cat = .@\"{s}\", .pre = ws_count, .pos = start, .len = 1 }},\n", .{ lit_str, r.token });
+            try self.print("            '{s}' => Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = 1 }},\n", .{ lit_str, r.token });
             return;
         }
 
@@ -1024,7 +1024,7 @@ const LexerGenerator = struct {
                 }
             }
             if (guarded != null and default != null) {
-                try self.print("            '{s}' => Token{{ .cat = if (ws_count > 0) .@\"{s}\" else .@\"{s}\", .pre = ws_count, .pos = start, .len = 1 }},\n", .{ lit_str, guarded.?, default.? });
+                try self.print("            '{s}' => Token{{ .cat = if (wsCount > 0) .@\"{s}\" else .@\"{s}\", .pre = wsCount, .pos = start, .len = 1 }},\n", .{ lit_str, guarded.?, default.? });
                 return;
             }
         }
@@ -1056,11 +1056,11 @@ const LexerGenerator = struct {
 
                 try self.write("                self.pos -= 1;\n");
                 if (is_string_start) {
-                    try self.write("                break :blk self.scanString(start, ws_count);\n");
+                    try self.write("                break :blk self.scanString(start, wsCount);\n");
                 } else if (is_digit) {
-                    try self.write("                break :blk self.scanNumber(start, ws_count);\n");
+                    try self.write("                break :blk self.scanNumber(start, wsCount);\n");
                 } else {
-                    try self.write("                break :blk Token{ .cat = .@\"err\", .pre = ws_count, .pos = start, .len = 1 };\n");
+                    try self.write("                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
                 }
             }
         }
@@ -1210,7 +1210,7 @@ const LexerGenerator = struct {
             try self.emitTokenReturn("break :blk", r.token, r.char_count);
         } else if (guarded.items.len > 0) {
             // All rules are guarded — emit error fallback when no guard matches
-            try self.write("\n                break :blk Token{ .cat = .@\"err\", .pre = ws_count, .pos = start, .len = 1 };\n");
+            try self.write("\n                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
         }
     }
 
@@ -1242,7 +1242,7 @@ const LexerGenerator = struct {
                 switch (action.kind) {
                     .set => {
                         if (std.mem.eql(u8, action.variable.?, "pre")) {
-                            try self.print("            ws_count = {d};\n", .{@as(u32, @intCast(action.value.?))});
+                            try self.print("            wsCount = {d};\n", .{@as(u32, @intCast(action.value.?))});
                         } else {
                             try self.print("            self.{s} = {d};\n", .{ action.variable.?, action.value.? });
                         }
@@ -1257,7 +1257,7 @@ const LexerGenerator = struct {
                             \\                    count +|= 1;
                             \\                    while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) self.pos += 1;
                             \\                }}
-                            \\                ws_count = count;
+                            \\                wsCount = count;
                             \\            }}
                             \\
                         , .{ch.buf[0..ch.len]});
@@ -1268,7 +1268,7 @@ const LexerGenerator = struct {
                 }
             }
 
-            try self.print("            return Token{{ .cat = .@\"{s}\", .pre = ws_count, .pos = ws_start, .len = @intCast(self.pos - ws_start) }};\n", .{rule.token});
+            try self.print("            return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = wsStart, .len = @intCast(self.pos - wsStart) }};\n", .{rule.token});
             try self.write("        }\n");
         }
         try self.write("\n");
@@ -1373,13 +1373,13 @@ const LexerGenerator = struct {
             try self.emitAllGuards(r.guards);
             try self.write(") {\n");
             try self.emitActions(r.actions, "                    ");
-            try self.print("                    return Token{{ .cat = .@\"{s}\", .pre = ws_count, .pos = start, .len = {d} }};\n", .{ r.token, char_count });
+            try self.print("                    return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ r.token, char_count });
             try self.write("                }\n");
         }
 
         if (unguarded) |r| {
             try self.emitActions(r.actions, "                ");
-            try self.print("                return Token{{ .cat = .@\"{s}\", .pre = ws_count, .pos = start, .len = {d} }};\n", .{ r.token, char_count });
+            try self.print("                return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ r.token, char_count });
         }
     }
 
@@ -1433,7 +1433,7 @@ const LexerGenerator = struct {
             \\    const LETTER: u8 = 1 << 1;
             \\    const WHITESPACE: u8 = 1 << 2;
             \\
-            \\    const char_flags: [256]u8 = blk: {
+            \\    const charFlags: [256]u8 = blk: {
             \\        var table: [256]u8 = [_]u8{0} ** 256;
             \\
         );
@@ -1493,15 +1493,15 @@ const LexerGenerator = struct {
             \\    };
             \\
             \\    inline fn isDigit(c: u8) bool {
-            \\        return (char_flags[c] & DIGIT) != 0;
+            \\        return (charFlags[c] & DIGIT) != 0;
             \\    }
             \\
             \\    inline fn isLetter(c: u8) bool {
-            \\        return (char_flags[c] & LETTER) != 0;
+            \\        return (charFlags[c] & LETTER) != 0;
             \\    }
             \\
             \\    inline fn isWhitespace(c: u8) bool {
-            \\        return (char_flags[c] & WHITESPACE) != 0;
+            \\        return (charFlags[c] & WHITESPACE) != 0;
             \\    }
             \\
             \\    inline fn isIdentChar(c: u8) bool {
@@ -1578,12 +1578,12 @@ const LexerGenerator = struct {
                     \\                if (ch == '{s}') {{
                     \\                    self.pos += 1;
                     \\                    if (self.pos < self.source.len and self.source[self.pos] == '{s}') {{ self.pos += 1; continue; }}
-                    \\                    return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                    \\                    return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\                }}
                     \\                if (ch == '\n') break;
                     \\                self.pos += 1;
                     \\            }}
-                    \\            return Token{{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                    \\            return Token{{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
                 , .{ lit_str, lit_str, si.token });
@@ -1595,13 +1595,13 @@ const LexerGenerator = struct {
                     \\                const ch = self.source[self.pos];
                     \\                if (ch == '{s}') {{
                     \\                    self.pos += 1;
-                    \\                    return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                    \\                    return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\                }}
                     \\                if (ch == '\\') {{ self.pos += 2; continue; }}
                     \\                if (ch == '\n') break;
                     \\                self.pos += 1;
                     \\            }}
-                    \\            return Token{{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                    \\            return Token{{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
                 , .{ lit_str, si.token });
@@ -1613,7 +1613,7 @@ const LexerGenerator = struct {
                 try self.write(
                     \\        // Number (digit or leading dot followed by digit)
                     \\        if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-                    \\            return self.scanNumber(start, ws_count);
+                    \\            return self.scanNumber(start, wsCount);
                     \\        }
                     \\
                 );
@@ -1621,7 +1621,7 @@ const LexerGenerator = struct {
                 try self.write(
                     \\        // Number
                     \\        if (isDigit(c)) {
-                    \\            return self.scanNumber(start, ws_count);
+                    \\            return self.scanNumber(start, wsCount);
                     \\        }
                     \\
                 );
@@ -1632,7 +1632,7 @@ const LexerGenerator = struct {
             try self.write(
                 \\        // Identifier
                 \\        if (isLetter(c)) {
-                \\            return self.scanIdent(start, ws_count);
+                \\            return self.scanIdent(start, wsCount);
                 \\        }
                 \\
             );
@@ -1731,7 +1731,7 @@ const LexerGenerator = struct {
                                         \\                self.pos += 2;
                                         \\                while (self.pos < self.source.len and self.source[self.pos] != '{s}' and self.source[self.pos] != '\n') self.pos += 1;
                                         \\                if (self.pos < self.source.len and self.source[self.pos] == '{s}') self.pos += 1;
-                                        \\                return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                                        \\                return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                                         \\            }}
                                         \\
                                     , .{ sc_str, cl_str, cl_str, pr.token });
@@ -1757,7 +1757,7 @@ const LexerGenerator = struct {
                             \\                    if (!((vc >= 'a' and vc <= 'z') or (vc >= 'A' and vc <= 'Z') or (vc >= '0' and vc <= '9') or vc == '_')) break;
                             \\                    self.pos += 1;
                             \\                }}
-                            \\                return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                            \\                return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                             \\            }}
                             \\
                         , .{pr.token});
@@ -1766,7 +1766,7 @@ const LexerGenerator = struct {
                         try self.print(
                             \\            if (nc >= '0' and nc <= '9') {{
                             \\                self.pos += 2;
-                            \\                return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = 2 }};
+                            \\                return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = 2 }};
                             \\            }}
                             \\
                         , .{pr.token});
@@ -1775,7 +1775,7 @@ const LexerGenerator = struct {
                         try self.print(
                             \\            if (nc == '?' or nc == '$' or nc == '!' or nc == '#' or nc == '*') {{
                             \\                self.pos += 2;
-                            \\                return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = 2 }};
+                            \\                return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = 2 }};
                             \\            }}
                             \\
                         , .{pr.token});
@@ -1829,17 +1829,17 @@ const LexerGenerator = struct {
 
         if (has_decimal) {
             try self.write(
-                \\        var has_decimal = false;
+                \\        var hasDecimal = false;
             );
         }
         if (has_exponent) {
             try self.write(
-                \\        var has_exponent = false;
+                \\        var hasExponent = false;
             );
         }
         if (has_leading_dot) {
             try self.write(
-                \\        const starts_with_dot = self.source[self.pos] == '.';
+                \\        const startsWithDot = self.source[self.pos] == '.';
             );
         }
 
@@ -1876,9 +1876,9 @@ const LexerGenerator = struct {
             try self.write(
                 \\        // Decimal part
                 \\        if (self.pos < self.source.len and self.source[self.pos] == '.') {
-                \\            const next_c = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-                \\            if (isDigit(next_c)) {
-                \\                has_decimal = true;
+                \\            const nextC = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+                \\            if (isDigit(nextC)) {
+                \\                hasDecimal = true;
                 \\                self.pos += 1;
                 \\                while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                 \\                    self.pos += 1;
@@ -1896,13 +1896,13 @@ const LexerGenerator = struct {
                 \\        if (self.pos < self.source.len) {
                 \\            const e = self.source[self.pos];
                 \\            if (e == 'E' or e == 'e') {
-                \\                var exp_pos = self.pos + 1;
-                \\                if (exp_pos < self.source.len and (self.source[exp_pos] == '+' or self.source[exp_pos] == '-')) {
-                \\                    exp_pos += 1;
+                \\                var expPos = self.pos + 1;
+                \\                if (expPos < self.source.len and (self.source[expPos] == '+' or self.source[expPos] == '-')) {
+                \\                    expPos += 1;
                 \\                }
-                \\                if (exp_pos < self.source.len and isDigit(self.source[exp_pos])) {
-                \\                    has_exponent = true;
-                \\                    self.pos = exp_pos;
+                \\                if (expPos < self.source.len and isDigit(self.source[expPos])) {
+                \\                    hasExponent = true;
+                \\                    self.pos = expPos;
                 \\                    while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                 \\                        self.pos += 1;
                 \\                    }
@@ -1916,23 +1916,23 @@ const LexerGenerator = struct {
         // Classification
         if (has_decimal or has_exponent or has_leading_dot) {
             try self.write("        // Classify\n");
-            try self.write("        const token_cat: TokenCat = ");
+            try self.write("        const tokenCat: TokenCat = ");
 
             if (has_decimal or has_exponent or has_leading_dot) {
                 try self.write("if (");
                 var first_cond = true;
                 if (has_decimal) {
-                    try self.write("has_decimal");
+                    try self.write("hasDecimal");
                     first_cond = false;
                 }
                 if (has_exponent) {
                     if (!first_cond) try self.write(" or ");
-                    try self.write("has_exponent");
+                    try self.write("hasExponent");
                     first_cond = false;
                 }
                 if (has_leading_dot) {
                     if (!first_cond) try self.write(" or ");
-                    try self.write("starts_with_dot");
+                    try self.write("startsWithDot");
                 }
                 try self.write(")\n            .@\"real\"\n");
                 try self.write("        else\n            .@\"integer\";\n");
@@ -1940,7 +1940,7 @@ const LexerGenerator = struct {
 
             try self.write(
                 \\
-                \\        return Token{ .cat = token_cat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
+                \\        return Token{ .cat = tokenCat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
                 \\    }
                 \\
             );
@@ -2083,7 +2083,7 @@ const LexerGenerator = struct {
                     \\            const remaining = self.source[self.pos..];
                     \\            const offset = simd.findByte(remaining, '{s}');
                     \\            self.pos += @intCast(offset);
-                    \\            return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                    \\            return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
                 , .{ start_str, stop_str, rule.token });
@@ -2094,7 +2094,7 @@ const LexerGenerator = struct {
                     \\            while (self.pos < self.source.len and self.source[self.pos] != '\n') {{
                     \\                self.pos += 1;
                     \\            }}
-                    \\            return Token{{ .cat = .@"{s}", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) }};
+                    \\            return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
                     \\        }}
                     \\
                 , .{ start_str, rule.token });
@@ -2304,16 +2304,16 @@ const LexerGenerator = struct {
             \\    /// Match lexer rules
             \\    pub fn matchRules(self: *Self) Token {
             \\        // Count whitespace first
-            \\        const ws_start = self.pos;
+            \\        const wsStart = self.pos;
             \\        while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             \\            self.pos += 1;
             \\        }
-            \\        const ws_count: u8 = @intCast(@min(self.pos - ws_start, 255));
+            \\        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
             \\        // EOF check
             \\        if (self.pos >= self.source.len) {
         );
         try self.write(
-            \\            return Token{ .cat = .@"eof", .pre = ws_count, .pos = self.pos, .len = 0 };
+            \\            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
             \\        }
             \\
             \\        const start = self.pos;
@@ -2468,8 +2468,19 @@ const ParserTransition = struct {
 /// @as directive for token-to-rule mapping (uses @lang module)
 const AsDirective = struct {
     token: []const u8, // "ident"
-    rule: []const u8, // "kw" -> kw_id, kw_as, kw_to_symbol
+    rule: []const u8, // "cmd" -> CmdId, cmdAs, cmdToSymbol
 };
+
+/// Capitalize first letter of a rule name for building compound identifiers.
+/// Assumes input is [a-z][a-z0-9]* (grammar @as rule names).
+fn capitalized(name: []const u8) [64]u8 {
+    var buf: [64]u8 = .{0} ** 64;
+    if (name.len > 0 and name.len <= 64) {
+        @memcpy(buf[0..name.len], name);
+        if (buf[0] >= 'a' and buf[0] <= 'z') buf[0] -= 32;
+    }
+    return buf;
+}
 
 /// @op directive for operator literal-to-token mappings
 const OpMapping = struct {
@@ -4971,7 +4982,7 @@ const ParserGenerator = struct {
             \\//! Contains both lexer and parser.
             \\
             \\const std = @import("std");
-            \\const MAX_ARGS: usize = 32;
+            \\const maxArgs: usize = 32;
             \\
         );
 
@@ -5104,15 +5115,15 @@ const ParserGenerator = struct {
             \\    lexer: Lexer,
             \\    source: []const u8,
             \\    current: Token,
-            \\    injected_token: ?u16 = null,
-            \\    last_matched_id: u16 = 0,
+            \\    injectedToken: ?u16 = null,
+            \\    lastMatchedId: u16 = 0,
             \\
-            \\    state_stack: std.ArrayListUnmanaged(u16) = .{},
-            \\    value_stack: std.ArrayListUnmanaged(Sexp) = .{},
+            \\    stateStack: std.ArrayListUnmanaged(u16) = .{},
+            \\    valueStack: std.ArrayListUnmanaged(Sexp) = .{},
             \\
-            \\    pub fn init(backing_allocator: std.mem.Allocator, source: []const u8) Parser {
+            \\    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
             \\        var p = Parser{
-            \\            .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            \\            .arena = std.heap.ArenaAllocator.init(backingAllocator),
             \\            .lexer = Lexer.init(source),
             \\            .source = source,
             \\            .current = undefined,
@@ -5149,63 +5160,63 @@ const ParserGenerator = struct {
             \\        });
             \\    }
             \\
-            \\    fn doParse(self: *Parser, start_sym: u16) !Sexp {
-            \\        const start_state = getStartState(start_sym);
-            \\        self.state_stack.clearRetainingCapacity();
-            \\        self.value_stack.clearRetainingCapacity();
-            \\        try self.state_stack.append(self.allocator(), start_state);
+            \\    fn doParse(self: *Parser, startSym: u16) !Sexp {
+            \\        const startState = getStartState(startSym);
+            \\        self.stateStack.clearRetainingCapacity();
+            \\        self.valueStack.clearRetainingCapacity();
+            \\        try self.stateStack.append(self.allocator(), startState);
             \\
             \\        while (true) {
-            \\            const state = self.state_stack.getLast();
-            \\            const sym = if (self.injected_token) |inj| inj else self.tokenToSymbol(self.current);
+            \\            const state = self.stateStack.getLast();
+            \\            const sym = if (self.injectedToken) |inj| inj else self.tokenToSymbol(self.current);
             \\            var action = getAction(state, sym);
             \\
             \\            // X "c" check: if reducing and next char matches with pre==0, shift instead
             \\            if (action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-            \\                if (getImmediateShift(state, self.source[self.current.pos])) |shift_target| {
-            \\                    action = shift_target;
+            \\                if (getImmediateShift(state, self.source[self.current.pos])) |shiftTarget| {
+            \\                    action = shiftTarget;
             \\                }
             \\            }
             \\
             \\            if (action == 0) {
             \\                return error.ParseError;
             \\            } else if (action == -1) {
-            \\                return self.value_stack.getLast();
+            \\                return self.valueStack.getLast();
             \\            } else if (action > 0) {
             \\                // Shift
-            \\                if (self.injected_token != null) {
-            \\                    try self.value_stack.append(self.allocator(), .nil);
-            \\                    self.injected_token = null;
+            \\                if (self.injectedToken != null) {
+            \\                    try self.valueStack.append(self.allocator(), .nil);
+            \\                    self.injectedToken = null;
             \\                } else {
-            \\                    try self.value_stack.append(self.allocator(), .{ .src = .{
+            \\                    try self.valueStack.append(self.allocator(), .{ .src = .{
             \\                        .pos = self.current.pos,
             \\                        .len = self.current.len,
-            \\                        .id  = self.last_matched_id,
+            \\                        .id  = self.lastMatchedId,
             \\                    } });
-            \\                    self.last_matched_id = 0;
+            \\                    self.lastMatchedId = 0;
             \\                    self.current = self.lexer.next();
             \\                }
-            \\                try self.state_stack.append(self.allocator(), @intCast(action));
+            \\                try self.stateStack.append(self.allocator(), @intCast(action));
             \\            } else {
             \\                // Reduce
-            \\                const rule_id: u16 = @intCast(-action - 2);
-            \\                var pass: [MAX_ARGS]Sexp = undefined;
-            \\                const len = rule_len[rule_id];
+            \\                const ruleId: u16 = @intCast(-action - 2);
+            \\                var pass: [maxArgs]Sexp = undefined;
+            \\                const len = ruleLen[ruleId];
             \\                for (0..len) |i| {
-            \\                    pass[len - 1 - i] = self.value_stack.pop().?;
-            \\                    _ = self.state_stack.pop();
+            \\                    pass[len - 1 - i] = self.valueStack.pop().?;
+            \\                    _ = self.stateStack.pop();
             \\                }
             \\
-            \\                const result = self.executeAction(rule_id, pass[0..len]);
+            \\                const result = self.executeAction(ruleId, pass[0..len]);
             \\
-            \\                if (isAcceptRule(rule_id)) return result;
+            \\                if (isAcceptRule(ruleId)) return result;
             \\
-            \\                try self.value_stack.append(self.allocator(), result);
+            \\                try self.valueStack.append(self.allocator(), result);
             \\
-            \\                const goto_state = self.state_stack.getLast();
-            \\                const next = getAction(goto_state, rule_lhs[rule_id]);
+            \\                const gotoState = self.stateStack.getLast();
+            \\                const next = getAction(gotoState, ruleLhs[ruleId]);
             \\                if (next <= 0) return error.ParseError;
-            \\                try self.state_stack.append(self.allocator(), @intCast(next));
+            \\                try self.stateStack.append(self.allocator(), @intCast(next));
             \\            }
             \\        }
             \\    }
@@ -5265,19 +5276,19 @@ const ParserGenerator = struct {
             \\        const items = if (spread == .list) spread.list else &[_]Sexp{};
             \\        var len = items.len;
             \\        while (len > 0 and items[len - 1] == .nil) len -= 1;
-            \\        const skip_pos = (pos == .nil and len == 0);
-            \\        const total = if (skip_pos) 1 else len + 2;
+            \\        const skipPos = (pos == .nil and len == 0);
+            \\        const total = if (skipPos) 1 else len + 2;
             \\        const result = self.allocator().alloc(Sexp, total) catch return .nil;
             \\        result[0] = .{ .tag = tag };
-            \\        if (!skip_pos) {
+            \\        if (!skipPos) {
             \\            result[1] = pos;
             \\            if (len > 0) @memcpy(result[2..][0..len], items[0..len]);
             \\        }
             \\        return .{ .list = result };
             \\    }
             \\
-            \\    fn executeAction(self: *Parser, rule_id: u16, pass: []Sexp) Sexp {
-            \\        return switch (rule_id) {
+            \\    fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
+            \\        return switch (ruleId) {
             \\
         );
 
@@ -5488,7 +5499,7 @@ const ParserGenerator = struct {
                 \\
                 \\    fn identToSymbol(self: *Parser, token: Token) u16 {
                 \\        const text = self.source[token.pos..][0..token.len];
-                \\        if (text.len == 0) return SYM_IDENT;
+                \\        if (text.len == 0) return symIdent;
                 \\
             );
 
@@ -5497,66 +5508,72 @@ const ParserGenerator = struct {
             // the parser state has a valid action for it).
             for (self.as_directives.items) |directive| {
                 if (std.mem.eql(u8, directive.token, "ident")) {
-                    try writer.print("        if (self.try_ident_as_{s}(token, text)) |sym| return sym;\n", .{directive.rule});
+                    const cap = capitalized(directive.rule);
+                    const cap_name = cap[0..directive.rule.len];
+                    try writer.print("        if (self.tryIdentAs{s}(token, text)) |sym| return sym;\n", .{cap_name});
                 }
             }
 
             try writer.writeAll(
-                \\        return SYM_IDENT;
+                \\        return symIdent;
                 \\    }
                 \\
             );
 
             // Generate try_ident_as_* functions for each @as directive
             if (self.lang) |lang_name| {
-                // External module: reference lang.{rule}_as(), lang.{rule}_id, etc.
+                // External module: reference lang.{rule}As(), lang.{Rule}Id, etc.
                 for (self.as_directives.items) |directive| {
                     if (!std.mem.eql(u8, directive.token, "ident")) continue;
 
+                    const cap = capitalized(directive.rule);
+                    const cap_name = cap[0..directive.rule.len];
                     try writer.print(
                         \\
-                        \\    fn try_ident_as_{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
+                        \\    fn tryIdentAs{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
                         \\        _ = token;
-                        \\        const state = self.state_stack.getLast();
-                        \\        if ({s}.{s}_as(text)) |id| {{
-                        \\            const id_idx = @intFromEnum(id);
-                        \\            const sym = {s}_to_symbol[id_idx];
+                        \\        const state = self.stateStack.getLast();
+                        \\        if ({s}.{s}As(text)) |id| {{
+                        \\            const idIdx = @intFromEnum(id);
+                        \\            const sym = {s}ToSymbol[idIdx];
                         \\            if (sym != 0 and getAction(state, sym) != 0) {{
-                        \\                self.last_matched_id = @intCast(id_idx);
+                        \\                self.lastMatchedId = @intCast(idIdx);
                         \\                return sym;
                         \\            }}
-                        \\            const fallback = {s}_fallback_symbol;
+                        \\            const fallback = {s}FallbackSymbol;
                         \\            if (fallback != 0 and getAction(state, fallback) != 0) {{
-                        \\                self.last_matched_id = @intCast(id_idx);
+                        \\                self.lastMatchedId = @intCast(idIdx);
                         \\                return fallback;
                         \\            }}
                         \\        }}
                         \\        return null;
                         \\    }}
                         \\
-                    , .{ directive.rule, lang_name, directive.rule, directive.rule, directive.rule });
+                    , .{ cap_name, lang_name, directive.rule, directive.rule, directive.rule });
                 }
             } else {
                 // Inline: generate simple exact-match keyword functions
                 for (self.as_directives.items) |directive| {
                     if (!std.mem.eql(u8, directive.token, "ident")) continue;
 
+                    const cap = capitalized(directive.rule);
+                    const cap_name = cap[0..directive.rule.len];
                     try writer.print(
                         \\
-                        \\    fn try_ident_as_{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
+                        \\    fn tryIdentAs{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
                         \\        _ = token;
-                        \\        const state = self.state_stack.getLast();
-                        \\        if ({s}_as(text)) |id| {{
-                        \\            const sym = {s}_to_symbol[@intFromEnum(id)];
+                        \\        const state = self.stateStack.getLast();
+                        \\        if ({s}As(text)) |id| {{
+                        \\            const sym = {s}ToSymbol[@intFromEnum(id)];
                         \\            if (sym != 0 and getAction(state, sym) != 0) {{
-                        \\                self.last_matched_id = @intFromEnum(id);
+                        \\                self.lastMatchedId = @intFromEnum(id);
                         \\                return sym;
                         \\            }}
                         \\        }}
                         \\        return null;
                         \\    }}
                         \\
-                    , .{ directive.rule, directive.rule, directive.rule });
+                    , .{ cap_name, directive.rule, directive.rule });
                 }
             }
         } else {
@@ -5564,7 +5581,7 @@ const ParserGenerator = struct {
             try writer.writeAll(
                 \\
                 \\    fn identToSymbol(_: *Parser, _: Token) u16 {
-                \\        return SYM_IDENT;
+                \\        return symIdent;
                 \\    }
                 \\
             );
@@ -5581,7 +5598,7 @@ const ParserGenerator = struct {
             try writer.print(
                 \\
                 \\    pub fn parse{s}(self: *Parser) !Sexp {{
-                \\        self.injected_token = SYM_{s}_START;
+                \\        self.injectedToken = SYM_{s}_START;
                 \\        return self.doParse(SYM_{s});
                 \\    }}
             , .{ fname, name, name });
@@ -5620,15 +5637,15 @@ const ParserGenerator = struct {
 
         // Generate SYM_IDENT for identToSymbol fallback
         if (self.getSymbol("IDENT")) |ident_id| {
-            try writer.print("const SYM_IDENT: u16 = {d};\n", .{ident_id});
+            try writer.print("const symIdent: u16 = {d};\n", .{ident_id});
         } else {
             // Fallback to error symbol if IDENT not defined
-            try writer.print("const SYM_IDENT: u16 = {d};\n", .{self.error_id});
+            try writer.print("const symIdent: u16 = {d};\n", .{self.error_id});
         }
 
         // Generate *_to_symbol mapping arrays and keyword matchers for @as directives
         if (self.lang) |lang_name| {
-            // External module: reference lang.{rule}_id, lang.{rule}_as, etc.
+            // External module: reference lang.{Rule}Id, lang.{rule}As, etc.
             for (self.as_directives.items) |directive| {
                 var specific_terminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
                 defer specific_terminals.deinit(self.allocator);
@@ -5657,12 +5674,14 @@ const ParserGenerator = struct {
                 const has_fallback = fallback_id != null;
                 const needs_var = has_mappings or has_fallback;
 
+                const cap = capitalized(directive.rule);
+                const cap_name = cap[0..directive.rule.len];
                 try writer.print(
                     \\
-                    \\// Mapping from {s}.{s}_id to grammar symbol IDs (computed at comptime)
-                    \\const {s}_to_symbol = blk: {{
+                    \\// Mapping from {s}.{s}Id to grammar symbol IDs (computed at comptime)
+                    \\const {s}ToSymbol = blk: {{
                     \\
-                , .{ lang_name, directive.rule, directive.rule });
+                , .{ lang_name, cap_name, directive.rule });
 
                 if (needs_var) {
                     try writer.writeAll("    var arr: [512]u16 = .{0} ** 512;\n");
@@ -5671,23 +5690,23 @@ const ParserGenerator = struct {
                 }
 
                 for (specific_terminals.items) |term| {
-                    try writer.print("    if (@hasField({s}.{s}_id, \"{s}\")) arr[@intFromEnum({s}.{s}_id.{s})] = {d};\n", .{ lang_name, directive.rule, term.name, lang_name, directive.rule, term.name, term.id });
+                    try writer.print("    if (@hasField({s}.{s}Id, \"{s}\")) arr[@intFromEnum({s}.{s}Id.{s})] = {d};\n", .{ lang_name, cap_name, term.name, lang_name, cap_name, term.name, term.id });
                 }
 
                 if (fallback_id) |fid| {
                     try writer.print(
-                        \\    for (@typeInfo({s}.{s}_id).@"enum".fields) |field| {{
+                        \\    for (@typeInfo({s}.{s}Id).@"enum".fields) |field| {{
                         \\        if (arr[field.value] == 0) arr[field.value] = {d};
                         \\    }}
                         \\
-                    , .{ lang_name, directive.rule, fid });
+                    , .{ lang_name, cap_name, fid });
                 }
 
                 try writer.writeAll("    break :blk arr;\n};\n");
-                try writer.print("const {s}_fallback_symbol: u16 = {d};\n", .{ directive.rule, fallback_id orelse 0 });
+                try writer.print("const {s}FallbackSymbol: u16 = {d};\n", .{ directive.rule, fallback_id orelse 0 });
             }
         } else {
-            // Inline: generate _id enums, _as functions, and _to_symbol mappings
+            // Inline: generate Id enums, As functions, and ToSymbol mappings
             var emitted_rules = std.StringHashMap(void).init(self.allocator);
             defer emitted_rules.deinit();
 
@@ -5695,11 +5714,12 @@ const ParserGenerator = struct {
                 if (emitted_rules.contains(directive.rule)) continue;
                 emitted_rules.put(directive.rule, {}) catch {};
 
-                // Emit _id enum (one variant: uppercase of rule name)
                 var upper_buf: [64]u8 = undefined;
                 const upper = std.ascii.upperString(upper_buf[0..directive.rule.len], directive.rule);
-                try writer.print("\nconst {s}_id = enum(u16) {{ {s} = 0 }};\n", .{ directive.rule, upper });
-                try writer.print("fn {s}_as(name: []const u8) ?{s}_id {{ return if (std.mem.eql(u8, name, \"{s}\")) .{s} else null; }}\n", .{ directive.rule, directive.rule, directive.rule, upper });
+                const cap = capitalized(directive.rule);
+                const cap_name = cap[0..directive.rule.len];
+                try writer.print("\nconst {s}Id = enum(u16) {{ {s} = 0 }};\n", .{ cap_name, upper });
+                try writer.print("fn {s}As(name: []const u8) ?{s}Id {{ return if (std.mem.eql(u8, name, \"{s}\")) .{s} else null; }}\n", .{ directive.rule, cap_name, directive.rule, upper });
             }
 
             for (self.as_directives.items) |directive| {
@@ -5732,9 +5752,11 @@ const ParserGenerator = struct {
                 const has_fallback = fallback_id != null;
                 const needs_var = has_mappings or has_fallback;
 
+                const cap2 = capitalized(directive.rule);
+                const cap_name2 = cap2[0..directive.rule.len];
                 try writer.print(
                     \\
-                    \\const {s}_to_symbol = blk: {{
+                    \\const {s}ToSymbol = blk: {{
                     \\
                 , .{directive.rule});
 
@@ -5745,16 +5767,16 @@ const ParserGenerator = struct {
                 }
 
                 for (specific_terminals.items) |term| {
-                    try writer.print("    if (@hasField({s}_id, \"{s}\")) arr[@intFromEnum({s}_id.{s})] = {d};\n", .{ directive.rule, term.name, directive.rule, term.name, term.id });
+                    try writer.print("    if (@hasField({s}Id, \"{s}\")) arr[@intFromEnum({s}Id.{s})] = {d};\n", .{ cap_name2, term.name, cap_name2, term.name, term.id });
                 }
 
                 if (fallback_id) |fid| {
                     try writer.print(
-                        \\    for (@typeInfo({s}_id).@"enum".fields) |field| {{
+                        \\    for (@typeInfo({s}Id).@"enum".fields) |field| {{
                         \\        if (arr[field.value] == 0) arr[field.value] = {d};
                         \\    }}
                         \\
-                    , .{ directive.rule, fid });
+                    , .{ cap_name2, fid });
                 }
 
                 try writer.writeAll("    break :blk arr;\n};\n");
@@ -5762,14 +5784,14 @@ const ParserGenerator = struct {
         }
 
         // Generate rule tables
-        try writer.writeAll("\nconst rule_lhs = [_]u16{ ");
+        try writer.writeAll("\nconst ruleLhs = [_]u16{ ");
         for (self.rules.items, 0..) |rule, i| {
             if (i > 0) try writer.writeAll(", ");
             try writer.print("{d}", .{rule.lhs});
         }
         try writer.writeAll(" };\n");
 
-        try writer.writeAll("const rule_len = [_]u8{ ");
+        try writer.writeAll("const ruleLen = [_]u8{ ");
         for (self.rules.items, 0..) |rule, i| {
             if (i > 0) try writer.writeAll(", ");
             try writer.print("{d}", .{rule.rhs.len});
@@ -5783,10 +5805,10 @@ const ParserGenerator = struct {
         try writer.print(
             \\
             \\// Parse Table: {d} states × {d} symbols
-            \\const NUM_STATES = {d};
-            \\const NUM_SYMBOLS = {d};
+            \\const numStates = {d};
+            \\const numSymbols = {d};
             \\
-            \\const sparse = [NUM_STATES][]const i16{{
+            \\const sparse = [numStates][]const i16{{
             \\
         , .{ num_states, num_symbols, num_states, num_symbols });
 
@@ -5810,9 +5832,9 @@ const ParserGenerator = struct {
         try writer.writeAll("};\n\n");
 
         try writer.writeAll(
-            \\const parse_table = blk: {
+            \\const parseTable = blk: {
             \\    @setEvalBranchQuota(100000);
-            \\    var t: [NUM_STATES][NUM_SYMBOLS]i16 = .{.{0} ** NUM_SYMBOLS} ** NUM_STATES;
+            \\    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
             \\    for (sparse, 0..) |row, state| {
             \\        var i: usize = 0;
             \\        while (i < row.len) : (i += 2) {
@@ -5823,14 +5845,14 @@ const ParserGenerator = struct {
             \\};
             \\
             \\fn getAction(state: u16, sym: u16) i16 {
-            \\    return parse_table[state][sym];
+            \\    return parseTable[state][sym];
             \\}
             \\
         );
 
         // Generate X "c" exclude table - shift when pre==0 and char matches
         try writer.writeAll("// X \"c\" excludes: shift instead of reduce when pre==0 and char matches\n");
-        try writer.writeAll("const x_excludes = [_]struct { state: u16, char: u8, shift: u16 }{\n");
+        try writer.writeAll("const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{\n");
         for (self.x_excludes.items) |x| {
             try writer.print("    .{{ .state = {d}, .char = '{c}', .shift = {d} }},\n", .{ x.state, x.char, x.shift });
         }
@@ -5838,7 +5860,7 @@ const ParserGenerator = struct {
 
         try writer.writeAll(
             \\fn getImmediateShift(state: u16, char: u8) ?i16 {
-            \\    for (x_excludes) |x| {
+            \\    for (xExcludes) |x| {
             \\        if (x.state == state and x.char == char) return @intCast(x.shift);
             \\    }
             \\    return null;
@@ -5847,16 +5869,16 @@ const ParserGenerator = struct {
         );
 
         // Generate start state lookup
-        try writer.writeAll("const start_states = [_]struct { sym: u16, state: u16 }{\n");
+        try writer.writeAll("const startStates = [_]struct { sym: u16, state: u16 }{\n");
         for (self.start_symbols.items, self.start_states.items) |sym, state| {
             try writer.print("    .{{ .sym = {d}, .state = {d} }},\n", .{ sym, state });
         }
         try writer.writeAll("};\n\n");
 
         try writer.writeAll(
-            \\fn getStartState(start_sym: u16) u16 {
-            \\    for (start_states) |entry| {
-            \\        if (entry.sym == start_sym) return entry.state;
+            \\fn getStartState(startSym: u16) u16 {
+            \\    for (startStates) |entry| {
+            \\        if (entry.sym == startSym) return entry.state;
             \\    }
             \\    return 0;
             \\}
@@ -5864,7 +5886,7 @@ const ParserGenerator = struct {
         );
 
         // Generate accept rules
-        try writer.writeAll("\nconst accept_rules = [_]u16{ ");
+        try writer.writeAll("\nconst acceptRules = [_]u16{ ");
         for (self.accept_rules.items, 0..) |rule_id, i| {
             if (i > 0) try writer.writeAll(", ");
             try writer.print("{d}", .{rule_id});
@@ -5872,8 +5894,8 @@ const ParserGenerator = struct {
         try writer.writeAll(" };\n\n");
 
         try writer.writeAll(
-            \\fn isAcceptRule(rule_id: u16) bool {
-            \\    for (accept_rules) |ar| if (rule_id == ar) return true;
+            \\fn isAcceptRule(ruleId: u16) bool {
+            \\    for (acceptRules) |ar| if (ruleId == ar) return true;
             \\    return false;
             \\}
             \\

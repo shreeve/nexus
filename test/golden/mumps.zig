@@ -4,7 +4,7 @@
 //! Contains both lexer and parser.
 
 const std = @import("std");
-const MAX_ARGS: usize = 32;
+const maxArgs: usize = 32;
 const mumps = @import("mumps.zig");
 
 // SIMD helpers (fallback if simd.zig not available)
@@ -156,7 +156,7 @@ pub const BaseLexer = struct {
     const LETTER: u8 = 1 << 1;
     const WHITESPACE: u8 = 1 << 2;
 
-    const char_flags: [256]u8 = blk: {
+    const charFlags: [256]u8 = blk: {
         var table: [256]u8 = [_]u8{0} ** 256;
         for ('0'..'9' + 1) |c| table[c] = DIGIT;
         for ('A'..'Z' + 1) |c| table[c] = LETTER;
@@ -168,15 +168,15 @@ pub const BaseLexer = struct {
     };
 
     inline fn isDigit(c: u8) bool {
-        return (char_flags[c] & DIGIT) != 0;
+        return (charFlags[c] & DIGIT) != 0;
     }
 
     inline fn isLetter(c: u8) bool {
-        return (char_flags[c] & LETTER) != 0;
+        return (charFlags[c] & LETTER) != 0;
     }
 
     inline fn isWhitespace(c: u8) bool {
-        return (char_flags[c] & WHITESPACE) != 0;
+        return (charFlags[c] & WHITESPACE) != 0;
     }
 
     inline fn isIdentChar(c: u8) bool {
@@ -188,13 +188,13 @@ pub const BaseLexer = struct {
     /// Match lexer rules
     pub fn matchRules(self: *Self) Token {
         // Count whitespace first
-        const ws_start = self.pos;
+        const wsStart = self.pos;
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        const ws_count: u8 = @intCast(@min(self.pos - ws_start, 255));
+        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
-        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = ws_count, .pos = self.pos, .len = 0 };
+        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
 
         const start = self.pos;
@@ -205,23 +205,23 @@ pub const BaseLexer = struct {
                 self.pos += 2;
                 if (self.pat == 0) {
                     self.beg = 1;
-                    return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 2 };
+                    return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.pat != 0) {
-                    return Token{ .cat = .@"patend", .pre = ws_count, .pos = start, .len = 2 };
+                    return Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 2 };
                 }
             }
                 self.pos += 1;
                 if (self.pat == 0) {
                     self.beg = 1;
-                    return Token{ .cat = .@"newline", .pre = ws_count, .pos = start, .len = 1 };
+                    return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
                 }
                 if (self.pat != 0) {
-                    return Token{ .cat = .@"patend", .pre = ws_count, .pos = start, .len = 1 };
+                    return Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 1 };
                 }
         }
         // Empty-pattern guard rules (zero-width tokens based on state)
-        if (self.beg != 0 and ws_count > 0) {
+        if (self.beg != 0 and wsCount > 0) {
             {
                 var count: u8 = 0;
                 while (self.pos < self.source.len and self.source[self.pos] == '.') {
@@ -229,13 +229,13 @@ pub const BaseLexer = struct {
                     count +|= 1;
                     while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) self.pos += 1;
                 }
-                ws_count = count;
+                wsCount = count;
             }
-            return Token{ .cat = .@"indent", .pre = ws_count, .pos = ws_start, .len = @intCast(self.pos - ws_start) };
+            return Token{ .cat = .@"indent", .pre = wsCount, .pos = wsStart, .len = @intCast(self.pos - wsStart) };
         }
-        if (self.beg == 0 and ws_count > 1) {
-            ws_count = 0;
-            return Token{ .cat = .@"spaces", .pre = ws_count, .pos = ws_start, .len = @intCast(self.pos - ws_start) };
+        if (self.beg == 0 and wsCount > 1) {
+            wsCount = 0;
+            return Token{ .cat = .@"spaces", .pre = wsCount, .pos = wsStart, .len = @intCast(self.pos - wsStart) };
         }
 
         // From here, clear line-start flag
@@ -245,21 +245,21 @@ pub const BaseLexer = struct {
                 const ch = self.source[self.pos];
                 if (ch == '"') {
                     self.pos += 1;
-                    return Token{ .cat = .@"string", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"string", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (ch == '\\') { self.pos += 2; continue; }
                 if (ch == '\n') break;
                 self.pos += 1;
             }
-            return Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         // Number (digit or leading dot followed by digit)
         if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-            return self.scanNumber(start, ws_count);
+            return self.scanNumber(start, wsCount);
         }
         // Identifier
         if (isLetter(c)) {
-            return self.scanIdent(start, ws_count);
+            return self.scanIdent(start, wsCount);
         }
         // Comment (SIMD accelerated, generated from grammar)
         if (c == ';') {
@@ -267,160 +267,160 @@ pub const BaseLexer = struct {
             const remaining = self.source[self.pos..];
             const offset = simd.findByte(remaining, '\n');
             self.pos += @intCast(offset);
-            return Token{ .cat = .@"comment", .pre = ws_count, .pos = start, .len = @intCast(self.pos - start) };
+            return Token{ .cat = .@"comment", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
         // Single/multi-char operators
         self.pos += 1;
         return switch (c) {
-            '!' => Token{ .cat = if (ws_count > 0) .@"exclaim_ws" else .@"exclaim", .pre = ws_count, .pos = start, .len = 1 },
-            '#' => Token{ .cat = if (ws_count > 0) .@"hash_ws" else .@"hash", .pre = ws_count, .pos = start, .len = 1 },
-            '$' => Token{ .cat = .@"dollar", .pre = ws_count, .pos = start, .len = 1 },
-            '&' => Token{ .cat = .@"ampersand", .pre = ws_count, .pos = start, .len = 1 },
+            '!' => Token{ .cat = if (wsCount > 0) .@"exclaim_ws" else .@"exclaim", .pre = wsCount, .pos = start, .len = 1 },
+            '#' => Token{ .cat = if (wsCount > 0) .@"hash_ws" else .@"hash", .pre = wsCount, .pos = start, .len = 1 },
+            '$' => Token{ .cat = .@"dollar", .pre = wsCount, .pos = start, .len = 1 },
+            '&' => Token{ .cat = .@"ampersand", .pre = wsCount, .pos = start, .len = 1 },
             '\'' => blk: {
                 if (self.pat == 0 and self.peek() == '?') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notques", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notques", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"noteq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"noteq", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '<') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notlt", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notlt", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notgt", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notgt", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '[') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notlbracket", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notlbracket", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == ']') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notrbracket", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notrbracket", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '&') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notampersand", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notampersand", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '!') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"notexclaim", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"notexclaim", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"not", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"not", .pre = wsCount, .pos = start, .len = 1 };
             },
             '(' => blk: {
                 if (self.pat != 0) {
                     self.dep += 1;
-                    break :blk Token{ .cat = .@"lparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lparen", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                    break :blk Token{ .cat = .@"lparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lparen", .pre = wsCount, .pos = start, .len = 1 };
             },
             ')' => blk: {
                 if (self.pat != 0 and self.dep != 0) {
                     self.dep -= 1;
-                    break :blk Token{ .cat = .@"rparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 };
                 } else if (self.pat != 0 and self.dep == 0) {
-                    break :blk Token{ .cat = .@"patend", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                    break :blk Token{ .cat = .@"rparen", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 };
             },
             '*' => blk: {
                 if (self.peek() == '*') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"starstar", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"starstar", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"star", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"star", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '+' => Token{ .cat = .@"plus", .pre = ws_count, .pos = start, .len = 1 },
+            '+' => Token{ .cat = .@"plus", .pre = wsCount, .pos = start, .len = 1 },
             ',' => blk: {
                 if (self.pat != 0 and self.dep == 0) {
-                    break :blk Token{ .cat = .@"patend", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                    break :blk Token{ .cat = .@"comma", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"comma", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '-' => Token{ .cat = .@"minus", .pre = ws_count, .pos = start, .len = 1 },
-            '.' => Token{ .cat = .@"dot", .pre = ws_count, .pos = start, .len = 1 },
-            '/' => Token{ .cat = .@"slash", .pre = ws_count, .pos = start, .len = 1 },
+            '-' => Token{ .cat = .@"minus", .pre = wsCount, .pos = start, .len = 1 },
+            '.' => Token{ .cat = .@"dot", .pre = wsCount, .pos = start, .len = 1 },
+            '/' => Token{ .cat = .@"slash", .pre = wsCount, .pos = start, .len = 1 },
             ':' => blk: {
                 if (self.pat != 0 and self.dep == 0) {
-                    break :blk Token{ .cat = .@"patend", .pre = ws_count, .pos = start, .len = 1 };
-                } else if (ws_count != 0) {
-                    break :blk Token{ .cat = .@"colon_ws", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 1 };
+                } else if (wsCount != 0) {
+                    break :blk Token{ .cat = .@"colon_ws", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                    break :blk Token{ .cat = .@"colon", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"colon", .pre = wsCount, .pos = start, .len = 1 };
             },
             '<' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"lteq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"lteq", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"lt", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lt", .pre = wsCount, .pos = start, .len = 1 };
             },
             '=' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"eqeq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"eqeq", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"eq", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"eq", .pre = wsCount, .pos = start, .len = 1 };
             },
             '>' => blk: {
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"gteq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"gteq", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"gt", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"gt", .pre = wsCount, .pos = start, .len = 1 };
             },
             '?' => blk: {
                 if (self.pat == 0 and self.peek() == '@') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"quesat", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"quesat", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.pat == 0) {
-                    break :blk Token{ .cat = .@"question", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 };
                 } else {
-                    break :blk Token{ .cat = .@"question", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                break :blk Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
                 self.pos -= 1;
-                break :blk Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '@' => Token{ .cat = .@"at", .pre = ws_count, .pos = start, .len = 1 },
-            '[' => Token{ .cat = .@"lbracket", .pre = ws_count, .pos = start, .len = 1 },
-            '\\' => Token{ .cat = .@"backslash", .pre = ws_count, .pos = start, .len = 1 },
+            '@' => Token{ .cat = .@"at", .pre = wsCount, .pos = start, .len = 1 },
+            '[' => Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 },
+            '\\' => Token{ .cat = .@"backslash", .pre = wsCount, .pos = start, .len = 1 },
             ']' => blk: {
                 if (self.peek() == ']') {
                     self.pos += 1;
                     if (self.peek() == '=') {
                         self.pos += 1;
-                    break :blk Token{ .cat = .@"sortsaftereq", .pre = ws_count, .pos = start, .len = 3 };
+                    break :blk Token{ .cat = .@"sortsaftereq", .pre = wsCount, .pos = start, .len = 3 };
                     }
-                    break :blk Token{ .cat = .@"sortsafter", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"sortsafter", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '=') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"followseq", .pre = ws_count, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"followseq", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"rbracket", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '^' => Token{ .cat = .@"caret", .pre = ws_count, .pos = start, .len = 1 },
+            '^' => Token{ .cat = .@"caret", .pre = wsCount, .pos = start, .len = 1 },
             '_' => blk: {
                 if (self.pat == 0) {
-                    break :blk Token{ .cat = .@"underscore", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"underscore", .pre = wsCount, .pos = start, .len = 1 };
                 } else {
-                    break :blk Token{ .cat = .@"patend", .pre = ws_count, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                break :blk Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '|' => Token{ .cat = .@"pipe", .pre = ws_count, .pos = start, .len = 1 },
-            else => Token{ .cat = .@"err", .pre = ws_count, .pos = start, .len = 1 },
+            '|' => Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 1 },
+            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
         };
     }
 
     /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var has_decimal = false;        var has_exponent = false;        const starts_with_dot = self.source[self.pos] == '.';        // Decimal integer
+    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var hasDecimal = false;        var hasExponent = false;        const startsWithDot = self.source[self.pos] == '.';        // Decimal integer
         if (isDigit(self.source[self.pos])) {
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                 self.pos += 1;
@@ -428,9 +428,9 @@ pub const BaseLexer = struct {
         }
         // Decimal part
         if (self.pos < self.source.len and self.source[self.pos] == '.') {
-            const next_c = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-            if (isDigit(next_c)) {
-                has_decimal = true;
+            const nextC = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+            if (isDigit(nextC)) {
+                hasDecimal = true;
                 self.pos += 1;
                 while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                     self.pos += 1;
@@ -441,13 +441,13 @@ pub const BaseLexer = struct {
         if (self.pos < self.source.len) {
             const e = self.source[self.pos];
             if (e == 'E' or e == 'e') {
-                var exp_pos = self.pos + 1;
-                if (exp_pos < self.source.len and (self.source[exp_pos] == '+' or self.source[exp_pos] == '-')) {
-                    exp_pos += 1;
+                var expPos = self.pos + 1;
+                if (expPos < self.source.len and (self.source[expPos] == '+' or self.source[expPos] == '-')) {
+                    expPos += 1;
                 }
-                if (exp_pos < self.source.len and isDigit(self.source[exp_pos])) {
-                    has_exponent = true;
-                    self.pos = exp_pos;
+                if (expPos < self.source.len and isDigit(self.source[expPos])) {
+                    hasExponent = true;
+                    self.pos = expPos;
                     while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                         self.pos += 1;
                     }
@@ -455,12 +455,12 @@ pub const BaseLexer = struct {
             }
         }
         // Classify
-        const token_cat: TokenCat = if (has_decimal or has_exponent or starts_with_dot)
+        const tokenCat: TokenCat = if (hasDecimal or hasExponent or startsWithDot)
             .@"real"
         else
             .@"integer";
 
-        return Token{ .cat = token_cat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
+        return Token{ .cat = tokenCat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
     }
 
     /// Scan identifier (generated from grammar)
@@ -527,15 +527,15 @@ pub const Parser = struct {
     lexer: Lexer,
     source: []const u8,
     current: Token,
-    injected_token: ?u16 = null,
-    last_matched_id: u16 = 0,
+    injectedToken: ?u16 = null,
+    lastMatchedId: u16 = 0,
 
-    state_stack: std.ArrayListUnmanaged(u16) = .{},
-    value_stack: std.ArrayListUnmanaged(Sexp) = .{},
+    stateStack: std.ArrayListUnmanaged(u16) = .{},
+    valueStack: std.ArrayListUnmanaged(Sexp) = .{},
 
-    pub fn init(backing_allocator: std.mem.Allocator, source: []const u8) Parser {
+    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
         var p = Parser{
-            .arena = std.heap.ArenaAllocator.init(backing_allocator),
+            .arena = std.heap.ArenaAllocator.init(backingAllocator),
             .lexer = Lexer.init(source),
             .source = source,
             .current = undefined,
@@ -572,63 +572,63 @@ pub const Parser = struct {
         });
     }
 
-    fn doParse(self: *Parser, start_sym: u16) !Sexp {
-        const start_state = getStartState(start_sym);
-        self.state_stack.clearRetainingCapacity();
-        self.value_stack.clearRetainingCapacity();
-        try self.state_stack.append(self.allocator(), start_state);
+    fn doParse(self: *Parser, startSym: u16) !Sexp {
+        const startState = getStartState(startSym);
+        self.stateStack.clearRetainingCapacity();
+        self.valueStack.clearRetainingCapacity();
+        try self.stateStack.append(self.allocator(), startState);
 
         while (true) {
-            const state = self.state_stack.getLast();
-            const sym = if (self.injected_token) |inj| inj else self.tokenToSymbol(self.current);
+            const state = self.stateStack.getLast();
+            const sym = if (self.injectedToken) |inj| inj else self.tokenToSymbol(self.current);
             var action = getAction(state, sym);
 
             // X "c" check: if reducing and next char matches with pre==0, shift instead
             if (action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-                if (getImmediateShift(state, self.source[self.current.pos])) |shift_target| {
-                    action = shift_target;
+                if (getImmediateShift(state, self.source[self.current.pos])) |shiftTarget| {
+                    action = shiftTarget;
                 }
             }
 
             if (action == 0) {
                 return error.ParseError;
             } else if (action == -1) {
-                return self.value_stack.getLast();
+                return self.valueStack.getLast();
             } else if (action > 0) {
                 // Shift
-                if (self.injected_token != null) {
-                    try self.value_stack.append(self.allocator(), .nil);
-                    self.injected_token = null;
+                if (self.injectedToken != null) {
+                    try self.valueStack.append(self.allocator(), .nil);
+                    self.injectedToken = null;
                 } else {
-                    try self.value_stack.append(self.allocator(), .{ .src = .{
+                    try self.valueStack.append(self.allocator(), .{ .src = .{
                         .pos = self.current.pos,
                         .len = self.current.len,
-                        .id  = self.last_matched_id,
+                        .id  = self.lastMatchedId,
                     } });
-                    self.last_matched_id = 0;
+                    self.lastMatchedId = 0;
                     self.current = self.lexer.next();
                 }
-                try self.state_stack.append(self.allocator(), @intCast(action));
+                try self.stateStack.append(self.allocator(), @intCast(action));
             } else {
                 // Reduce
-                const rule_id: u16 = @intCast(-action - 2);
-                var pass: [MAX_ARGS]Sexp = undefined;
-                const len = rule_len[rule_id];
+                const ruleId: u16 = @intCast(-action - 2);
+                var pass: [maxArgs]Sexp = undefined;
+                const len = ruleLen[ruleId];
                 for (0..len) |i| {
-                    pass[len - 1 - i] = self.value_stack.pop().?;
-                    _ = self.state_stack.pop();
+                    pass[len - 1 - i] = self.valueStack.pop().?;
+                    _ = self.stateStack.pop();
                 }
 
-                const result = self.executeAction(rule_id, pass[0..len]);
+                const result = self.executeAction(ruleId, pass[0..len]);
 
-                if (isAcceptRule(rule_id)) return result;
+                if (isAcceptRule(ruleId)) return result;
 
-                try self.value_stack.append(self.allocator(), result);
+                try self.valueStack.append(self.allocator(), result);
 
-                const goto_state = self.state_stack.getLast();
-                const next = getAction(goto_state, rule_lhs[rule_id]);
+                const gotoState = self.stateStack.getLast();
+                const next = getAction(gotoState, ruleLhs[ruleId]);
                 if (next <= 0) return error.ParseError;
-                try self.state_stack.append(self.allocator(), @intCast(next));
+                try self.stateStack.append(self.allocator(), @intCast(next));
             }
         }
     }
@@ -688,19 +688,19 @@ pub const Parser = struct {
         const items = if (spread == .list) spread.list else &[_]Sexp{};
         var len = items.len;
         while (len > 0 and items[len - 1] == .nil) len -= 1;
-        const skip_pos = (pos == .nil and len == 0);
-        const total = if (skip_pos) 1 else len + 2;
+        const skipPos = (pos == .nil and len == 0);
+        const total = if (skipPos) 1 else len + 2;
         const result = self.allocator().alloc(Sexp, total) catch return .nil;
         result[0] = .{ .tag = tag };
-        if (!skip_pos) {
+        if (!skipPos) {
             result[1] = pos;
             if (len > 0) @memcpy(result[2..][0..len], items[0..len]);
         }
         return .{ .list = result };
     }
 
-    fn executeAction(self: *Parser, rule_id: u16, pass: []Sexp) Sexp {
-        return switch (rule_id) {
+    fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
+        return switch (ruleId) {
             0 => self.list(pass),
             1 => self.list(pass),
             2 => self.list(pass),
@@ -1297,84 +1297,84 @@ pub const Parser = struct {
 
     fn identToSymbol(self: *Parser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
-        if (text.len == 0) return SYM_IDENT;
-        if (self.try_ident_as_cmd(token, text)) |sym| return sym;
-        if (self.try_ident_as_fn(token, text)) |sym| return sym;
-        if (self.try_ident_as_isv(token, text)) |sym| return sym;
-        if (self.try_ident_as_ssvn(token, text)) |sym| return sym;
-        return SYM_IDENT;
+        if (text.len == 0) return symIdent;
+        if (self.tryIdentAsCmd(token, text)) |sym| return sym;
+        if (self.tryIdentAsFn(token, text)) |sym| return sym;
+        if (self.tryIdentAsIsv(token, text)) |sym| return sym;
+        if (self.tryIdentAsSsvn(token, text)) |sym| return sym;
+        return symIdent;
     }
 
-    fn try_ident_as_cmd(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsCmd(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
-        const state = self.state_stack.getLast();
-        if (mumps.cmd_as(text)) |id| {
-            const id_idx = @intFromEnum(id);
-            const sym = cmd_to_symbol[id_idx];
+        const state = self.stateStack.getLast();
+        if (mumps.cmdAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = cmdToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = cmd_fallback_symbol;
+            const fallback = cmdFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
         }
         return null;
     }
 
-    fn try_ident_as_fn(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsFn(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
-        const state = self.state_stack.getLast();
-        if (mumps.fn_as(text)) |id| {
-            const id_idx = @intFromEnum(id);
-            const sym = fn_to_symbol[id_idx];
+        const state = self.stateStack.getLast();
+        if (mumps.fnAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = fnToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = fn_fallback_symbol;
+            const fallback = fnFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
         }
         return null;
     }
 
-    fn try_ident_as_isv(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsIsv(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
-        const state = self.state_stack.getLast();
-        if (mumps.isv_as(text)) |id| {
-            const id_idx = @intFromEnum(id);
-            const sym = isv_to_symbol[id_idx];
+        const state = self.stateStack.getLast();
+        if (mumps.isvAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = isvToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = isv_fallback_symbol;
+            const fallback = isvFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
         }
         return null;
     }
 
-    fn try_ident_as_ssvn(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsSsvn(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
-        const state = self.state_stack.getLast();
-        if (mumps.ssvn_as(text)) |id| {
-            const id_idx = @intFromEnum(id);
-            const sym = ssvn_to_symbol[id_idx];
+        const state = self.stateStack.getLast();
+        if (mumps.ssvnAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = ssvnToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = ssvn_fallback_symbol;
+            const fallback = ssvnFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) != 0) {
-                self.last_matched_id = @intCast(id_idx);
+                self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
         }
@@ -1382,23 +1382,23 @@ pub const Parser = struct {
     }
 
     pub fn parseRoutine(self: *Parser) !Sexp {
-        self.injected_token = SYM_routine_START;
+        self.injectedToken = SYM_routine_START;
         return self.doParse(SYM_routine);
     }
     pub fn parseCommands(self: *Parser) !Sexp {
-        self.injected_token = SYM_commands_START;
+        self.injectedToken = SYM_commands_START;
         return self.doParse(SYM_commands);
     }
     pub fn parseExpr(self: *Parser) !Sexp {
-        self.injected_token = SYM_expr_START;
+        self.injectedToken = SYM_expr_START;
         return self.doParse(SYM_expr);
     }
     pub fn parseDoarg(self: *Parser) !Sexp {
-        self.injected_token = SYM_doarg_START;
+        self.injectedToken = SYM_doarg_START;
         return self.doParse(SYM_doarg);
     }
     pub fn parseGotoarg(self: *Parser) !Sexp {
-        self.injected_token = SYM_gotoarg_START;
+        self.injectedToken = SYM_gotoarg_START;
         return self.doParse(SYM_gotoarg);
     }
 };
@@ -1414,257 +1414,257 @@ const SYM_doarg: u16 = 7;
 const SYM_doarg_START: u16 = 287;
 const SYM_gotoarg: u16 = 8;
 const SYM_gotoarg_START: u16 = 289;
-const SYM_IDENT: u16 = 109;
+const symIdent: u16 = 109;
 
-// Mapping from mumps.cmd_id to grammar symbol IDs (computed at comptime)
-const cmd_to_symbol = blk: {
+// Mapping from mumps.CmdId to grammar symbol IDs (computed at comptime)
+const cmdToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.cmd_id, "IDENT")) arr[@intFromEnum(mumps.cmd_id.IDENT)] = 109;
-    if (@hasField(mumps.cmd_id, "INTEGER")) arr[@intFromEnum(mumps.cmd_id.INTEGER)] = 110;
-    if (@hasField(mumps.cmd_id, "ZDIGITS")) arr[@intFromEnum(mumps.cmd_id.ZDIGITS)] = 111;
-    if (@hasField(mumps.cmd_id, "COMMENT")) arr[@intFromEnum(mumps.cmd_id.COMMENT)] = 113;
-    if (@hasField(mumps.cmd_id, "NEWLINE")) arr[@intFromEnum(mumps.cmd_id.NEWLINE)] = 115;
-    if (@hasField(mumps.cmd_id, "SPACES")) arr[@intFromEnum(mumps.cmd_id.SPACES)] = 116;
-    if (@hasField(mumps.cmd_id, "INDENT")) arr[@intFromEnum(mumps.cmd_id.INDENT)] = 124;
-    if (@hasField(mumps.cmd_id, "SET")) arr[@intFromEnum(mumps.cmd_id.SET)] = 132;
-    if (@hasField(mumps.cmd_id, "NEW")) arr[@intFromEnum(mumps.cmd_id.NEW)] = 142;
-    if (@hasField(mumps.cmd_id, "MERGE")) arr[@intFromEnum(mumps.cmd_id.MERGE)] = 148;
-    if (@hasField(mumps.cmd_id, "KILL")) arr[@intFromEnum(mumps.cmd_id.KILL)] = 151;
-    if (@hasField(mumps.cmd_id, "IF")) arr[@intFromEnum(mumps.cmd_id.IF)] = 155;
-    if (@hasField(mumps.cmd_id, "ELSE")) arr[@intFromEnum(mumps.cmd_id.ELSE)] = 157;
-    if (@hasField(mumps.cmd_id, "FOR")) arr[@intFromEnum(mumps.cmd_id.FOR)] = 158;
-    if (@hasField(mumps.cmd_id, "DO")) arr[@intFromEnum(mumps.cmd_id.DO)] = 161;
-    if (@hasField(mumps.cmd_id, "GOTO")) arr[@intFromEnum(mumps.cmd_id.GOTO)] = 165;
-    if (@hasField(mumps.cmd_id, "QUIT")) arr[@intFromEnum(mumps.cmd_id.QUIT)] = 170;
-    if (@hasField(mumps.cmd_id, "BREAK")) arr[@intFromEnum(mumps.cmd_id.BREAK)] = 171;
-    if (@hasField(mumps.cmd_id, "HANG")) arr[@intFromEnum(mumps.cmd_id.HANG)] = 175;
-    if (@hasField(mumps.cmd_id, "HALT")) arr[@intFromEnum(mumps.cmd_id.HALT)] = 176;
-    if (@hasField(mumps.cmd_id, "JOB")) arr[@intFromEnum(mumps.cmd_id.JOB)] = 177;
-    if (@hasField(mumps.cmd_id, "XECUTE")) arr[@intFromEnum(mumps.cmd_id.XECUTE)] = 181;
-    if (@hasField(mumps.cmd_id, "VIEW")) arr[@intFromEnum(mumps.cmd_id.VIEW)] = 184;
-    if (@hasField(mumps.cmd_id, "OPEN")) arr[@intFromEnum(mumps.cmd_id.OPEN)] = 187;
-    if (@hasField(mumps.cmd_id, "USE")) arr[@intFromEnum(mumps.cmd_id.USE)] = 190;
-    if (@hasField(mumps.cmd_id, "READ")) arr[@intFromEnum(mumps.cmd_id.READ)] = 193;
-    if (@hasField(mumps.cmd_id, "STRING")) arr[@intFromEnum(mumps.cmd_id.STRING)] = 199;
-    if (@hasField(mumps.cmd_id, "WRITE")) arr[@intFromEnum(mumps.cmd_id.WRITE)] = 200;
-    if (@hasField(mumps.cmd_id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.cmd_id.EXCLAIM_WS)] = 205;
-    if (@hasField(mumps.cmd_id, "HASH_WS")) arr[@intFromEnum(mumps.cmd_id.HASH_WS)] = 206;
-    if (@hasField(mumps.cmd_id, "PATEND")) arr[@intFromEnum(mumps.cmd_id.PATEND)] = 208;
-    if (@hasField(mumps.cmd_id, "QUESAT")) arr[@intFromEnum(mumps.cmd_id.QUESAT)] = 212;
-    if (@hasField(mumps.cmd_id, "CLOSE")) arr[@intFromEnum(mumps.cmd_id.CLOSE)] = 213;
-    if (@hasField(mumps.cmd_id, "LOCK")) arr[@intFromEnum(mumps.cmd_id.LOCK)] = 214;
-    if (@hasField(mumps.cmd_id, "TSTART")) arr[@intFromEnum(mumps.cmd_id.TSTART)] = 221;
-    if (@hasField(mumps.cmd_id, "COLON_WS")) arr[@intFromEnum(mumps.cmd_id.COLON_WS)] = 222;
-    if (@hasField(mumps.cmd_id, "TCOMMIT")) arr[@intFromEnum(mumps.cmd_id.TCOMMIT)] = 226;
-    if (@hasField(mumps.cmd_id, "TROLLBACK")) arr[@intFromEnum(mumps.cmd_id.TROLLBACK)] = 227;
-    if (@hasField(mumps.cmd_id, "TRESTART")) arr[@intFromEnum(mumps.cmd_id.TRESTART)] = 228;
-    if (@hasField(mumps.cmd_id, "ZWRITE")) arr[@intFromEnum(mumps.cmd_id.ZWRITE)] = 229;
-    if (@hasField(mumps.cmd_id, "ZBREAK")) arr[@intFromEnum(mumps.cmd_id.ZBREAK)] = 233;
-    if (@hasField(mumps.cmd_id, "ZHALT")) arr[@intFromEnum(mumps.cmd_id.ZHALT)] = 235;
-    if (@hasField(mumps.cmd_id, "ZKILL")) arr[@intFromEnum(mumps.cmd_id.ZKILL)] = 236;
-    if (@hasField(mumps.cmd_id, "SSVN")) arr[@intFromEnum(mumps.cmd_id.SSVN)] = 271;
-    if (@hasField(mumps.cmd_id, "REAL")) arr[@intFromEnum(mumps.cmd_id.REAL)] = 272;
-    if (@hasField(mumps.cmd_id, "TEXT")) arr[@intFromEnum(mumps.cmd_id.TEXT)] = 273;
-    if (@hasField(mumps.cmd_id, "SELECT")) arr[@intFromEnum(mumps.cmd_id.SELECT)] = 274;
-    if (@hasField(mumps.cmd_id, "JUSTIFY")) arr[@intFromEnum(mumps.cmd_id.JUSTIFY)] = 275;
-    if (@hasField(mumps.cmd_id, "INCREMENT")) arr[@intFromEnum(mumps.cmd_id.INCREMENT)] = 276;
-    if (@hasField(mumps.cmd_id, "FN")) arr[@intFromEnum(mumps.cmd_id.FN)] = 277;
-    if (@hasField(mumps.cmd_id, "ISV")) arr[@intFromEnum(mumps.cmd_id.ISV)] = 278;
+    if (@hasField(mumps.CmdId, "IDENT")) arr[@intFromEnum(mumps.CmdId.IDENT)] = 109;
+    if (@hasField(mumps.CmdId, "INTEGER")) arr[@intFromEnum(mumps.CmdId.INTEGER)] = 110;
+    if (@hasField(mumps.CmdId, "ZDIGITS")) arr[@intFromEnum(mumps.CmdId.ZDIGITS)] = 111;
+    if (@hasField(mumps.CmdId, "COMMENT")) arr[@intFromEnum(mumps.CmdId.COMMENT)] = 113;
+    if (@hasField(mumps.CmdId, "NEWLINE")) arr[@intFromEnum(mumps.CmdId.NEWLINE)] = 115;
+    if (@hasField(mumps.CmdId, "SPACES")) arr[@intFromEnum(mumps.CmdId.SPACES)] = 116;
+    if (@hasField(mumps.CmdId, "INDENT")) arr[@intFromEnum(mumps.CmdId.INDENT)] = 124;
+    if (@hasField(mumps.CmdId, "SET")) arr[@intFromEnum(mumps.CmdId.SET)] = 132;
+    if (@hasField(mumps.CmdId, "NEW")) arr[@intFromEnum(mumps.CmdId.NEW)] = 142;
+    if (@hasField(mumps.CmdId, "MERGE")) arr[@intFromEnum(mumps.CmdId.MERGE)] = 148;
+    if (@hasField(mumps.CmdId, "KILL")) arr[@intFromEnum(mumps.CmdId.KILL)] = 151;
+    if (@hasField(mumps.CmdId, "IF")) arr[@intFromEnum(mumps.CmdId.IF)] = 155;
+    if (@hasField(mumps.CmdId, "ELSE")) arr[@intFromEnum(mumps.CmdId.ELSE)] = 157;
+    if (@hasField(mumps.CmdId, "FOR")) arr[@intFromEnum(mumps.CmdId.FOR)] = 158;
+    if (@hasField(mumps.CmdId, "DO")) arr[@intFromEnum(mumps.CmdId.DO)] = 161;
+    if (@hasField(mumps.CmdId, "GOTO")) arr[@intFromEnum(mumps.CmdId.GOTO)] = 165;
+    if (@hasField(mumps.CmdId, "QUIT")) arr[@intFromEnum(mumps.CmdId.QUIT)] = 170;
+    if (@hasField(mumps.CmdId, "BREAK")) arr[@intFromEnum(mumps.CmdId.BREAK)] = 171;
+    if (@hasField(mumps.CmdId, "HANG")) arr[@intFromEnum(mumps.CmdId.HANG)] = 175;
+    if (@hasField(mumps.CmdId, "HALT")) arr[@intFromEnum(mumps.CmdId.HALT)] = 176;
+    if (@hasField(mumps.CmdId, "JOB")) arr[@intFromEnum(mumps.CmdId.JOB)] = 177;
+    if (@hasField(mumps.CmdId, "XECUTE")) arr[@intFromEnum(mumps.CmdId.XECUTE)] = 181;
+    if (@hasField(mumps.CmdId, "VIEW")) arr[@intFromEnum(mumps.CmdId.VIEW)] = 184;
+    if (@hasField(mumps.CmdId, "OPEN")) arr[@intFromEnum(mumps.CmdId.OPEN)] = 187;
+    if (@hasField(mumps.CmdId, "USE")) arr[@intFromEnum(mumps.CmdId.USE)] = 190;
+    if (@hasField(mumps.CmdId, "READ")) arr[@intFromEnum(mumps.CmdId.READ)] = 193;
+    if (@hasField(mumps.CmdId, "STRING")) arr[@intFromEnum(mumps.CmdId.STRING)] = 199;
+    if (@hasField(mumps.CmdId, "WRITE")) arr[@intFromEnum(mumps.CmdId.WRITE)] = 200;
+    if (@hasField(mumps.CmdId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.CmdId.EXCLAIM_WS)] = 205;
+    if (@hasField(mumps.CmdId, "HASH_WS")) arr[@intFromEnum(mumps.CmdId.HASH_WS)] = 206;
+    if (@hasField(mumps.CmdId, "PATEND")) arr[@intFromEnum(mumps.CmdId.PATEND)] = 208;
+    if (@hasField(mumps.CmdId, "QUESAT")) arr[@intFromEnum(mumps.CmdId.QUESAT)] = 212;
+    if (@hasField(mumps.CmdId, "CLOSE")) arr[@intFromEnum(mumps.CmdId.CLOSE)] = 213;
+    if (@hasField(mumps.CmdId, "LOCK")) arr[@intFromEnum(mumps.CmdId.LOCK)] = 214;
+    if (@hasField(mumps.CmdId, "TSTART")) arr[@intFromEnum(mumps.CmdId.TSTART)] = 221;
+    if (@hasField(mumps.CmdId, "COLON_WS")) arr[@intFromEnum(mumps.CmdId.COLON_WS)] = 222;
+    if (@hasField(mumps.CmdId, "TCOMMIT")) arr[@intFromEnum(mumps.CmdId.TCOMMIT)] = 226;
+    if (@hasField(mumps.CmdId, "TROLLBACK")) arr[@intFromEnum(mumps.CmdId.TROLLBACK)] = 227;
+    if (@hasField(mumps.CmdId, "TRESTART")) arr[@intFromEnum(mumps.CmdId.TRESTART)] = 228;
+    if (@hasField(mumps.CmdId, "ZWRITE")) arr[@intFromEnum(mumps.CmdId.ZWRITE)] = 229;
+    if (@hasField(mumps.CmdId, "ZBREAK")) arr[@intFromEnum(mumps.CmdId.ZBREAK)] = 233;
+    if (@hasField(mumps.CmdId, "ZHALT")) arr[@intFromEnum(mumps.CmdId.ZHALT)] = 235;
+    if (@hasField(mumps.CmdId, "ZKILL")) arr[@intFromEnum(mumps.CmdId.ZKILL)] = 236;
+    if (@hasField(mumps.CmdId, "SSVN")) arr[@intFromEnum(mumps.CmdId.SSVN)] = 271;
+    if (@hasField(mumps.CmdId, "REAL")) arr[@intFromEnum(mumps.CmdId.REAL)] = 272;
+    if (@hasField(mumps.CmdId, "TEXT")) arr[@intFromEnum(mumps.CmdId.TEXT)] = 273;
+    if (@hasField(mumps.CmdId, "SELECT")) arr[@intFromEnum(mumps.CmdId.SELECT)] = 274;
+    if (@hasField(mumps.CmdId, "JUSTIFY")) arr[@intFromEnum(mumps.CmdId.JUSTIFY)] = 275;
+    if (@hasField(mumps.CmdId, "INCREMENT")) arr[@intFromEnum(mumps.CmdId.INCREMENT)] = 276;
+    if (@hasField(mumps.CmdId, "FN")) arr[@intFromEnum(mumps.CmdId.FN)] = 277;
+    if (@hasField(mumps.CmdId, "ISV")) arr[@intFromEnum(mumps.CmdId.ISV)] = 278;
     break :blk arr;
 };
-const cmd_fallback_symbol: u16 = 0;
+const cmdFallbackSymbol: u16 = 0;
 
-// Mapping from mumps.fn_id to grammar symbol IDs (computed at comptime)
-const fn_to_symbol = blk: {
+// Mapping from mumps.FnId to grammar symbol IDs (computed at comptime)
+const fnToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.fn_id, "IDENT")) arr[@intFromEnum(mumps.fn_id.IDENT)] = 109;
-    if (@hasField(mumps.fn_id, "INTEGER")) arr[@intFromEnum(mumps.fn_id.INTEGER)] = 110;
-    if (@hasField(mumps.fn_id, "ZDIGITS")) arr[@intFromEnum(mumps.fn_id.ZDIGITS)] = 111;
-    if (@hasField(mumps.fn_id, "COMMENT")) arr[@intFromEnum(mumps.fn_id.COMMENT)] = 113;
-    if (@hasField(mumps.fn_id, "NEWLINE")) arr[@intFromEnum(mumps.fn_id.NEWLINE)] = 115;
-    if (@hasField(mumps.fn_id, "SPACES")) arr[@intFromEnum(mumps.fn_id.SPACES)] = 116;
-    if (@hasField(mumps.fn_id, "INDENT")) arr[@intFromEnum(mumps.fn_id.INDENT)] = 124;
-    if (@hasField(mumps.fn_id, "SET")) arr[@intFromEnum(mumps.fn_id.SET)] = 132;
-    if (@hasField(mumps.fn_id, "NEW")) arr[@intFromEnum(mumps.fn_id.NEW)] = 142;
-    if (@hasField(mumps.fn_id, "MERGE")) arr[@intFromEnum(mumps.fn_id.MERGE)] = 148;
-    if (@hasField(mumps.fn_id, "KILL")) arr[@intFromEnum(mumps.fn_id.KILL)] = 151;
-    if (@hasField(mumps.fn_id, "IF")) arr[@intFromEnum(mumps.fn_id.IF)] = 155;
-    if (@hasField(mumps.fn_id, "ELSE")) arr[@intFromEnum(mumps.fn_id.ELSE)] = 157;
-    if (@hasField(mumps.fn_id, "FOR")) arr[@intFromEnum(mumps.fn_id.FOR)] = 158;
-    if (@hasField(mumps.fn_id, "DO")) arr[@intFromEnum(mumps.fn_id.DO)] = 161;
-    if (@hasField(mumps.fn_id, "GOTO")) arr[@intFromEnum(mumps.fn_id.GOTO)] = 165;
-    if (@hasField(mumps.fn_id, "QUIT")) arr[@intFromEnum(mumps.fn_id.QUIT)] = 170;
-    if (@hasField(mumps.fn_id, "BREAK")) arr[@intFromEnum(mumps.fn_id.BREAK)] = 171;
-    if (@hasField(mumps.fn_id, "HANG")) arr[@intFromEnum(mumps.fn_id.HANG)] = 175;
-    if (@hasField(mumps.fn_id, "HALT")) arr[@intFromEnum(mumps.fn_id.HALT)] = 176;
-    if (@hasField(mumps.fn_id, "JOB")) arr[@intFromEnum(mumps.fn_id.JOB)] = 177;
-    if (@hasField(mumps.fn_id, "XECUTE")) arr[@intFromEnum(mumps.fn_id.XECUTE)] = 181;
-    if (@hasField(mumps.fn_id, "VIEW")) arr[@intFromEnum(mumps.fn_id.VIEW)] = 184;
-    if (@hasField(mumps.fn_id, "OPEN")) arr[@intFromEnum(mumps.fn_id.OPEN)] = 187;
-    if (@hasField(mumps.fn_id, "USE")) arr[@intFromEnum(mumps.fn_id.USE)] = 190;
-    if (@hasField(mumps.fn_id, "READ")) arr[@intFromEnum(mumps.fn_id.READ)] = 193;
-    if (@hasField(mumps.fn_id, "STRING")) arr[@intFromEnum(mumps.fn_id.STRING)] = 199;
-    if (@hasField(mumps.fn_id, "WRITE")) arr[@intFromEnum(mumps.fn_id.WRITE)] = 200;
-    if (@hasField(mumps.fn_id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.fn_id.EXCLAIM_WS)] = 205;
-    if (@hasField(mumps.fn_id, "HASH_WS")) arr[@intFromEnum(mumps.fn_id.HASH_WS)] = 206;
-    if (@hasField(mumps.fn_id, "PATEND")) arr[@intFromEnum(mumps.fn_id.PATEND)] = 208;
-    if (@hasField(mumps.fn_id, "QUESAT")) arr[@intFromEnum(mumps.fn_id.QUESAT)] = 212;
-    if (@hasField(mumps.fn_id, "CLOSE")) arr[@intFromEnum(mumps.fn_id.CLOSE)] = 213;
-    if (@hasField(mumps.fn_id, "LOCK")) arr[@intFromEnum(mumps.fn_id.LOCK)] = 214;
-    if (@hasField(mumps.fn_id, "TSTART")) arr[@intFromEnum(mumps.fn_id.TSTART)] = 221;
-    if (@hasField(mumps.fn_id, "COLON_WS")) arr[@intFromEnum(mumps.fn_id.COLON_WS)] = 222;
-    if (@hasField(mumps.fn_id, "TCOMMIT")) arr[@intFromEnum(mumps.fn_id.TCOMMIT)] = 226;
-    if (@hasField(mumps.fn_id, "TROLLBACK")) arr[@intFromEnum(mumps.fn_id.TROLLBACK)] = 227;
-    if (@hasField(mumps.fn_id, "TRESTART")) arr[@intFromEnum(mumps.fn_id.TRESTART)] = 228;
-    if (@hasField(mumps.fn_id, "ZWRITE")) arr[@intFromEnum(mumps.fn_id.ZWRITE)] = 229;
-    if (@hasField(mumps.fn_id, "ZBREAK")) arr[@intFromEnum(mumps.fn_id.ZBREAK)] = 233;
-    if (@hasField(mumps.fn_id, "ZHALT")) arr[@intFromEnum(mumps.fn_id.ZHALT)] = 235;
-    if (@hasField(mumps.fn_id, "ZKILL")) arr[@intFromEnum(mumps.fn_id.ZKILL)] = 236;
-    if (@hasField(mumps.fn_id, "SSVN")) arr[@intFromEnum(mumps.fn_id.SSVN)] = 271;
-    if (@hasField(mumps.fn_id, "REAL")) arr[@intFromEnum(mumps.fn_id.REAL)] = 272;
-    if (@hasField(mumps.fn_id, "TEXT")) arr[@intFromEnum(mumps.fn_id.TEXT)] = 273;
-    if (@hasField(mumps.fn_id, "SELECT")) arr[@intFromEnum(mumps.fn_id.SELECT)] = 274;
-    if (@hasField(mumps.fn_id, "JUSTIFY")) arr[@intFromEnum(mumps.fn_id.JUSTIFY)] = 275;
-    if (@hasField(mumps.fn_id, "INCREMENT")) arr[@intFromEnum(mumps.fn_id.INCREMENT)] = 276;
-    if (@hasField(mumps.fn_id, "FN")) arr[@intFromEnum(mumps.fn_id.FN)] = 277;
-    if (@hasField(mumps.fn_id, "ISV")) arr[@intFromEnum(mumps.fn_id.ISV)] = 278;
-    for (@typeInfo(mumps.fn_id).@"enum".fields) |field| {
+    if (@hasField(mumps.FnId, "IDENT")) arr[@intFromEnum(mumps.FnId.IDENT)] = 109;
+    if (@hasField(mumps.FnId, "INTEGER")) arr[@intFromEnum(mumps.FnId.INTEGER)] = 110;
+    if (@hasField(mumps.FnId, "ZDIGITS")) arr[@intFromEnum(mumps.FnId.ZDIGITS)] = 111;
+    if (@hasField(mumps.FnId, "COMMENT")) arr[@intFromEnum(mumps.FnId.COMMENT)] = 113;
+    if (@hasField(mumps.FnId, "NEWLINE")) arr[@intFromEnum(mumps.FnId.NEWLINE)] = 115;
+    if (@hasField(mumps.FnId, "SPACES")) arr[@intFromEnum(mumps.FnId.SPACES)] = 116;
+    if (@hasField(mumps.FnId, "INDENT")) arr[@intFromEnum(mumps.FnId.INDENT)] = 124;
+    if (@hasField(mumps.FnId, "SET")) arr[@intFromEnum(mumps.FnId.SET)] = 132;
+    if (@hasField(mumps.FnId, "NEW")) arr[@intFromEnum(mumps.FnId.NEW)] = 142;
+    if (@hasField(mumps.FnId, "MERGE")) arr[@intFromEnum(mumps.FnId.MERGE)] = 148;
+    if (@hasField(mumps.FnId, "KILL")) arr[@intFromEnum(mumps.FnId.KILL)] = 151;
+    if (@hasField(mumps.FnId, "IF")) arr[@intFromEnum(mumps.FnId.IF)] = 155;
+    if (@hasField(mumps.FnId, "ELSE")) arr[@intFromEnum(mumps.FnId.ELSE)] = 157;
+    if (@hasField(mumps.FnId, "FOR")) arr[@intFromEnum(mumps.FnId.FOR)] = 158;
+    if (@hasField(mumps.FnId, "DO")) arr[@intFromEnum(mumps.FnId.DO)] = 161;
+    if (@hasField(mumps.FnId, "GOTO")) arr[@intFromEnum(mumps.FnId.GOTO)] = 165;
+    if (@hasField(mumps.FnId, "QUIT")) arr[@intFromEnum(mumps.FnId.QUIT)] = 170;
+    if (@hasField(mumps.FnId, "BREAK")) arr[@intFromEnum(mumps.FnId.BREAK)] = 171;
+    if (@hasField(mumps.FnId, "HANG")) arr[@intFromEnum(mumps.FnId.HANG)] = 175;
+    if (@hasField(mumps.FnId, "HALT")) arr[@intFromEnum(mumps.FnId.HALT)] = 176;
+    if (@hasField(mumps.FnId, "JOB")) arr[@intFromEnum(mumps.FnId.JOB)] = 177;
+    if (@hasField(mumps.FnId, "XECUTE")) arr[@intFromEnum(mumps.FnId.XECUTE)] = 181;
+    if (@hasField(mumps.FnId, "VIEW")) arr[@intFromEnum(mumps.FnId.VIEW)] = 184;
+    if (@hasField(mumps.FnId, "OPEN")) arr[@intFromEnum(mumps.FnId.OPEN)] = 187;
+    if (@hasField(mumps.FnId, "USE")) arr[@intFromEnum(mumps.FnId.USE)] = 190;
+    if (@hasField(mumps.FnId, "READ")) arr[@intFromEnum(mumps.FnId.READ)] = 193;
+    if (@hasField(mumps.FnId, "STRING")) arr[@intFromEnum(mumps.FnId.STRING)] = 199;
+    if (@hasField(mumps.FnId, "WRITE")) arr[@intFromEnum(mumps.FnId.WRITE)] = 200;
+    if (@hasField(mumps.FnId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.FnId.EXCLAIM_WS)] = 205;
+    if (@hasField(mumps.FnId, "HASH_WS")) arr[@intFromEnum(mumps.FnId.HASH_WS)] = 206;
+    if (@hasField(mumps.FnId, "PATEND")) arr[@intFromEnum(mumps.FnId.PATEND)] = 208;
+    if (@hasField(mumps.FnId, "QUESAT")) arr[@intFromEnum(mumps.FnId.QUESAT)] = 212;
+    if (@hasField(mumps.FnId, "CLOSE")) arr[@intFromEnum(mumps.FnId.CLOSE)] = 213;
+    if (@hasField(mumps.FnId, "LOCK")) arr[@intFromEnum(mumps.FnId.LOCK)] = 214;
+    if (@hasField(mumps.FnId, "TSTART")) arr[@intFromEnum(mumps.FnId.TSTART)] = 221;
+    if (@hasField(mumps.FnId, "COLON_WS")) arr[@intFromEnum(mumps.FnId.COLON_WS)] = 222;
+    if (@hasField(mumps.FnId, "TCOMMIT")) arr[@intFromEnum(mumps.FnId.TCOMMIT)] = 226;
+    if (@hasField(mumps.FnId, "TROLLBACK")) arr[@intFromEnum(mumps.FnId.TROLLBACK)] = 227;
+    if (@hasField(mumps.FnId, "TRESTART")) arr[@intFromEnum(mumps.FnId.TRESTART)] = 228;
+    if (@hasField(mumps.FnId, "ZWRITE")) arr[@intFromEnum(mumps.FnId.ZWRITE)] = 229;
+    if (@hasField(mumps.FnId, "ZBREAK")) arr[@intFromEnum(mumps.FnId.ZBREAK)] = 233;
+    if (@hasField(mumps.FnId, "ZHALT")) arr[@intFromEnum(mumps.FnId.ZHALT)] = 235;
+    if (@hasField(mumps.FnId, "ZKILL")) arr[@intFromEnum(mumps.FnId.ZKILL)] = 236;
+    if (@hasField(mumps.FnId, "SSVN")) arr[@intFromEnum(mumps.FnId.SSVN)] = 271;
+    if (@hasField(mumps.FnId, "REAL")) arr[@intFromEnum(mumps.FnId.REAL)] = 272;
+    if (@hasField(mumps.FnId, "TEXT")) arr[@intFromEnum(mumps.FnId.TEXT)] = 273;
+    if (@hasField(mumps.FnId, "SELECT")) arr[@intFromEnum(mumps.FnId.SELECT)] = 274;
+    if (@hasField(mumps.FnId, "JUSTIFY")) arr[@intFromEnum(mumps.FnId.JUSTIFY)] = 275;
+    if (@hasField(mumps.FnId, "INCREMENT")) arr[@intFromEnum(mumps.FnId.INCREMENT)] = 276;
+    if (@hasField(mumps.FnId, "FN")) arr[@intFromEnum(mumps.FnId.FN)] = 277;
+    if (@hasField(mumps.FnId, "ISV")) arr[@intFromEnum(mumps.FnId.ISV)] = 278;
+    for (@typeInfo(mumps.FnId).@"enum".fields) |field| {
         if (arr[field.value] == 0) arr[field.value] = 277;
     }
     break :blk arr;
 };
-const fn_fallback_symbol: u16 = 277;
+const fnFallbackSymbol: u16 = 277;
 
-// Mapping from mumps.isv_id to grammar symbol IDs (computed at comptime)
-const isv_to_symbol = blk: {
+// Mapping from mumps.IsvId to grammar symbol IDs (computed at comptime)
+const isvToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.isv_id, "IDENT")) arr[@intFromEnum(mumps.isv_id.IDENT)] = 109;
-    if (@hasField(mumps.isv_id, "INTEGER")) arr[@intFromEnum(mumps.isv_id.INTEGER)] = 110;
-    if (@hasField(mumps.isv_id, "ZDIGITS")) arr[@intFromEnum(mumps.isv_id.ZDIGITS)] = 111;
-    if (@hasField(mumps.isv_id, "COMMENT")) arr[@intFromEnum(mumps.isv_id.COMMENT)] = 113;
-    if (@hasField(mumps.isv_id, "NEWLINE")) arr[@intFromEnum(mumps.isv_id.NEWLINE)] = 115;
-    if (@hasField(mumps.isv_id, "SPACES")) arr[@intFromEnum(mumps.isv_id.SPACES)] = 116;
-    if (@hasField(mumps.isv_id, "INDENT")) arr[@intFromEnum(mumps.isv_id.INDENT)] = 124;
-    if (@hasField(mumps.isv_id, "SET")) arr[@intFromEnum(mumps.isv_id.SET)] = 132;
-    if (@hasField(mumps.isv_id, "NEW")) arr[@intFromEnum(mumps.isv_id.NEW)] = 142;
-    if (@hasField(mumps.isv_id, "MERGE")) arr[@intFromEnum(mumps.isv_id.MERGE)] = 148;
-    if (@hasField(mumps.isv_id, "KILL")) arr[@intFromEnum(mumps.isv_id.KILL)] = 151;
-    if (@hasField(mumps.isv_id, "IF")) arr[@intFromEnum(mumps.isv_id.IF)] = 155;
-    if (@hasField(mumps.isv_id, "ELSE")) arr[@intFromEnum(mumps.isv_id.ELSE)] = 157;
-    if (@hasField(mumps.isv_id, "FOR")) arr[@intFromEnum(mumps.isv_id.FOR)] = 158;
-    if (@hasField(mumps.isv_id, "DO")) arr[@intFromEnum(mumps.isv_id.DO)] = 161;
-    if (@hasField(mumps.isv_id, "GOTO")) arr[@intFromEnum(mumps.isv_id.GOTO)] = 165;
-    if (@hasField(mumps.isv_id, "QUIT")) arr[@intFromEnum(mumps.isv_id.QUIT)] = 170;
-    if (@hasField(mumps.isv_id, "BREAK")) arr[@intFromEnum(mumps.isv_id.BREAK)] = 171;
-    if (@hasField(mumps.isv_id, "HANG")) arr[@intFromEnum(mumps.isv_id.HANG)] = 175;
-    if (@hasField(mumps.isv_id, "HALT")) arr[@intFromEnum(mumps.isv_id.HALT)] = 176;
-    if (@hasField(mumps.isv_id, "JOB")) arr[@intFromEnum(mumps.isv_id.JOB)] = 177;
-    if (@hasField(mumps.isv_id, "XECUTE")) arr[@intFromEnum(mumps.isv_id.XECUTE)] = 181;
-    if (@hasField(mumps.isv_id, "VIEW")) arr[@intFromEnum(mumps.isv_id.VIEW)] = 184;
-    if (@hasField(mumps.isv_id, "OPEN")) arr[@intFromEnum(mumps.isv_id.OPEN)] = 187;
-    if (@hasField(mumps.isv_id, "USE")) arr[@intFromEnum(mumps.isv_id.USE)] = 190;
-    if (@hasField(mumps.isv_id, "READ")) arr[@intFromEnum(mumps.isv_id.READ)] = 193;
-    if (@hasField(mumps.isv_id, "STRING")) arr[@intFromEnum(mumps.isv_id.STRING)] = 199;
-    if (@hasField(mumps.isv_id, "WRITE")) arr[@intFromEnum(mumps.isv_id.WRITE)] = 200;
-    if (@hasField(mumps.isv_id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.isv_id.EXCLAIM_WS)] = 205;
-    if (@hasField(mumps.isv_id, "HASH_WS")) arr[@intFromEnum(mumps.isv_id.HASH_WS)] = 206;
-    if (@hasField(mumps.isv_id, "PATEND")) arr[@intFromEnum(mumps.isv_id.PATEND)] = 208;
-    if (@hasField(mumps.isv_id, "QUESAT")) arr[@intFromEnum(mumps.isv_id.QUESAT)] = 212;
-    if (@hasField(mumps.isv_id, "CLOSE")) arr[@intFromEnum(mumps.isv_id.CLOSE)] = 213;
-    if (@hasField(mumps.isv_id, "LOCK")) arr[@intFromEnum(mumps.isv_id.LOCK)] = 214;
-    if (@hasField(mumps.isv_id, "TSTART")) arr[@intFromEnum(mumps.isv_id.TSTART)] = 221;
-    if (@hasField(mumps.isv_id, "COLON_WS")) arr[@intFromEnum(mumps.isv_id.COLON_WS)] = 222;
-    if (@hasField(mumps.isv_id, "TCOMMIT")) arr[@intFromEnum(mumps.isv_id.TCOMMIT)] = 226;
-    if (@hasField(mumps.isv_id, "TROLLBACK")) arr[@intFromEnum(mumps.isv_id.TROLLBACK)] = 227;
-    if (@hasField(mumps.isv_id, "TRESTART")) arr[@intFromEnum(mumps.isv_id.TRESTART)] = 228;
-    if (@hasField(mumps.isv_id, "ZWRITE")) arr[@intFromEnum(mumps.isv_id.ZWRITE)] = 229;
-    if (@hasField(mumps.isv_id, "ZBREAK")) arr[@intFromEnum(mumps.isv_id.ZBREAK)] = 233;
-    if (@hasField(mumps.isv_id, "ZHALT")) arr[@intFromEnum(mumps.isv_id.ZHALT)] = 235;
-    if (@hasField(mumps.isv_id, "ZKILL")) arr[@intFromEnum(mumps.isv_id.ZKILL)] = 236;
-    if (@hasField(mumps.isv_id, "SSVN")) arr[@intFromEnum(mumps.isv_id.SSVN)] = 271;
-    if (@hasField(mumps.isv_id, "REAL")) arr[@intFromEnum(mumps.isv_id.REAL)] = 272;
-    if (@hasField(mumps.isv_id, "TEXT")) arr[@intFromEnum(mumps.isv_id.TEXT)] = 273;
-    if (@hasField(mumps.isv_id, "SELECT")) arr[@intFromEnum(mumps.isv_id.SELECT)] = 274;
-    if (@hasField(mumps.isv_id, "JUSTIFY")) arr[@intFromEnum(mumps.isv_id.JUSTIFY)] = 275;
-    if (@hasField(mumps.isv_id, "INCREMENT")) arr[@intFromEnum(mumps.isv_id.INCREMENT)] = 276;
-    if (@hasField(mumps.isv_id, "FN")) arr[@intFromEnum(mumps.isv_id.FN)] = 277;
-    if (@hasField(mumps.isv_id, "ISV")) arr[@intFromEnum(mumps.isv_id.ISV)] = 278;
-    for (@typeInfo(mumps.isv_id).@"enum".fields) |field| {
+    if (@hasField(mumps.IsvId, "IDENT")) arr[@intFromEnum(mumps.IsvId.IDENT)] = 109;
+    if (@hasField(mumps.IsvId, "INTEGER")) arr[@intFromEnum(mumps.IsvId.INTEGER)] = 110;
+    if (@hasField(mumps.IsvId, "ZDIGITS")) arr[@intFromEnum(mumps.IsvId.ZDIGITS)] = 111;
+    if (@hasField(mumps.IsvId, "COMMENT")) arr[@intFromEnum(mumps.IsvId.COMMENT)] = 113;
+    if (@hasField(mumps.IsvId, "NEWLINE")) arr[@intFromEnum(mumps.IsvId.NEWLINE)] = 115;
+    if (@hasField(mumps.IsvId, "SPACES")) arr[@intFromEnum(mumps.IsvId.SPACES)] = 116;
+    if (@hasField(mumps.IsvId, "INDENT")) arr[@intFromEnum(mumps.IsvId.INDENT)] = 124;
+    if (@hasField(mumps.IsvId, "SET")) arr[@intFromEnum(mumps.IsvId.SET)] = 132;
+    if (@hasField(mumps.IsvId, "NEW")) arr[@intFromEnum(mumps.IsvId.NEW)] = 142;
+    if (@hasField(mumps.IsvId, "MERGE")) arr[@intFromEnum(mumps.IsvId.MERGE)] = 148;
+    if (@hasField(mumps.IsvId, "KILL")) arr[@intFromEnum(mumps.IsvId.KILL)] = 151;
+    if (@hasField(mumps.IsvId, "IF")) arr[@intFromEnum(mumps.IsvId.IF)] = 155;
+    if (@hasField(mumps.IsvId, "ELSE")) arr[@intFromEnum(mumps.IsvId.ELSE)] = 157;
+    if (@hasField(mumps.IsvId, "FOR")) arr[@intFromEnum(mumps.IsvId.FOR)] = 158;
+    if (@hasField(mumps.IsvId, "DO")) arr[@intFromEnum(mumps.IsvId.DO)] = 161;
+    if (@hasField(mumps.IsvId, "GOTO")) arr[@intFromEnum(mumps.IsvId.GOTO)] = 165;
+    if (@hasField(mumps.IsvId, "QUIT")) arr[@intFromEnum(mumps.IsvId.QUIT)] = 170;
+    if (@hasField(mumps.IsvId, "BREAK")) arr[@intFromEnum(mumps.IsvId.BREAK)] = 171;
+    if (@hasField(mumps.IsvId, "HANG")) arr[@intFromEnum(mumps.IsvId.HANG)] = 175;
+    if (@hasField(mumps.IsvId, "HALT")) arr[@intFromEnum(mumps.IsvId.HALT)] = 176;
+    if (@hasField(mumps.IsvId, "JOB")) arr[@intFromEnum(mumps.IsvId.JOB)] = 177;
+    if (@hasField(mumps.IsvId, "XECUTE")) arr[@intFromEnum(mumps.IsvId.XECUTE)] = 181;
+    if (@hasField(mumps.IsvId, "VIEW")) arr[@intFromEnum(mumps.IsvId.VIEW)] = 184;
+    if (@hasField(mumps.IsvId, "OPEN")) arr[@intFromEnum(mumps.IsvId.OPEN)] = 187;
+    if (@hasField(mumps.IsvId, "USE")) arr[@intFromEnum(mumps.IsvId.USE)] = 190;
+    if (@hasField(mumps.IsvId, "READ")) arr[@intFromEnum(mumps.IsvId.READ)] = 193;
+    if (@hasField(mumps.IsvId, "STRING")) arr[@intFromEnum(mumps.IsvId.STRING)] = 199;
+    if (@hasField(mumps.IsvId, "WRITE")) arr[@intFromEnum(mumps.IsvId.WRITE)] = 200;
+    if (@hasField(mumps.IsvId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.IsvId.EXCLAIM_WS)] = 205;
+    if (@hasField(mumps.IsvId, "HASH_WS")) arr[@intFromEnum(mumps.IsvId.HASH_WS)] = 206;
+    if (@hasField(mumps.IsvId, "PATEND")) arr[@intFromEnum(mumps.IsvId.PATEND)] = 208;
+    if (@hasField(mumps.IsvId, "QUESAT")) arr[@intFromEnum(mumps.IsvId.QUESAT)] = 212;
+    if (@hasField(mumps.IsvId, "CLOSE")) arr[@intFromEnum(mumps.IsvId.CLOSE)] = 213;
+    if (@hasField(mumps.IsvId, "LOCK")) arr[@intFromEnum(mumps.IsvId.LOCK)] = 214;
+    if (@hasField(mumps.IsvId, "TSTART")) arr[@intFromEnum(mumps.IsvId.TSTART)] = 221;
+    if (@hasField(mumps.IsvId, "COLON_WS")) arr[@intFromEnum(mumps.IsvId.COLON_WS)] = 222;
+    if (@hasField(mumps.IsvId, "TCOMMIT")) arr[@intFromEnum(mumps.IsvId.TCOMMIT)] = 226;
+    if (@hasField(mumps.IsvId, "TROLLBACK")) arr[@intFromEnum(mumps.IsvId.TROLLBACK)] = 227;
+    if (@hasField(mumps.IsvId, "TRESTART")) arr[@intFromEnum(mumps.IsvId.TRESTART)] = 228;
+    if (@hasField(mumps.IsvId, "ZWRITE")) arr[@intFromEnum(mumps.IsvId.ZWRITE)] = 229;
+    if (@hasField(mumps.IsvId, "ZBREAK")) arr[@intFromEnum(mumps.IsvId.ZBREAK)] = 233;
+    if (@hasField(mumps.IsvId, "ZHALT")) arr[@intFromEnum(mumps.IsvId.ZHALT)] = 235;
+    if (@hasField(mumps.IsvId, "ZKILL")) arr[@intFromEnum(mumps.IsvId.ZKILL)] = 236;
+    if (@hasField(mumps.IsvId, "SSVN")) arr[@intFromEnum(mumps.IsvId.SSVN)] = 271;
+    if (@hasField(mumps.IsvId, "REAL")) arr[@intFromEnum(mumps.IsvId.REAL)] = 272;
+    if (@hasField(mumps.IsvId, "TEXT")) arr[@intFromEnum(mumps.IsvId.TEXT)] = 273;
+    if (@hasField(mumps.IsvId, "SELECT")) arr[@intFromEnum(mumps.IsvId.SELECT)] = 274;
+    if (@hasField(mumps.IsvId, "JUSTIFY")) arr[@intFromEnum(mumps.IsvId.JUSTIFY)] = 275;
+    if (@hasField(mumps.IsvId, "INCREMENT")) arr[@intFromEnum(mumps.IsvId.INCREMENT)] = 276;
+    if (@hasField(mumps.IsvId, "FN")) arr[@intFromEnum(mumps.IsvId.FN)] = 277;
+    if (@hasField(mumps.IsvId, "ISV")) arr[@intFromEnum(mumps.IsvId.ISV)] = 278;
+    for (@typeInfo(mumps.IsvId).@"enum".fields) |field| {
         if (arr[field.value] == 0) arr[field.value] = 278;
     }
     break :blk arr;
 };
-const isv_fallback_symbol: u16 = 278;
+const isvFallbackSymbol: u16 = 278;
 
-// Mapping from mumps.ssvn_id to grammar symbol IDs (computed at comptime)
-const ssvn_to_symbol = blk: {
+// Mapping from mumps.SsvnId to grammar symbol IDs (computed at comptime)
+const ssvnToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.ssvn_id, "IDENT")) arr[@intFromEnum(mumps.ssvn_id.IDENT)] = 109;
-    if (@hasField(mumps.ssvn_id, "INTEGER")) arr[@intFromEnum(mumps.ssvn_id.INTEGER)] = 110;
-    if (@hasField(mumps.ssvn_id, "ZDIGITS")) arr[@intFromEnum(mumps.ssvn_id.ZDIGITS)] = 111;
-    if (@hasField(mumps.ssvn_id, "COMMENT")) arr[@intFromEnum(mumps.ssvn_id.COMMENT)] = 113;
-    if (@hasField(mumps.ssvn_id, "NEWLINE")) arr[@intFromEnum(mumps.ssvn_id.NEWLINE)] = 115;
-    if (@hasField(mumps.ssvn_id, "SPACES")) arr[@intFromEnum(mumps.ssvn_id.SPACES)] = 116;
-    if (@hasField(mumps.ssvn_id, "INDENT")) arr[@intFromEnum(mumps.ssvn_id.INDENT)] = 124;
-    if (@hasField(mumps.ssvn_id, "SET")) arr[@intFromEnum(mumps.ssvn_id.SET)] = 132;
-    if (@hasField(mumps.ssvn_id, "NEW")) arr[@intFromEnum(mumps.ssvn_id.NEW)] = 142;
-    if (@hasField(mumps.ssvn_id, "MERGE")) arr[@intFromEnum(mumps.ssvn_id.MERGE)] = 148;
-    if (@hasField(mumps.ssvn_id, "KILL")) arr[@intFromEnum(mumps.ssvn_id.KILL)] = 151;
-    if (@hasField(mumps.ssvn_id, "IF")) arr[@intFromEnum(mumps.ssvn_id.IF)] = 155;
-    if (@hasField(mumps.ssvn_id, "ELSE")) arr[@intFromEnum(mumps.ssvn_id.ELSE)] = 157;
-    if (@hasField(mumps.ssvn_id, "FOR")) arr[@intFromEnum(mumps.ssvn_id.FOR)] = 158;
-    if (@hasField(mumps.ssvn_id, "DO")) arr[@intFromEnum(mumps.ssvn_id.DO)] = 161;
-    if (@hasField(mumps.ssvn_id, "GOTO")) arr[@intFromEnum(mumps.ssvn_id.GOTO)] = 165;
-    if (@hasField(mumps.ssvn_id, "QUIT")) arr[@intFromEnum(mumps.ssvn_id.QUIT)] = 170;
-    if (@hasField(mumps.ssvn_id, "BREAK")) arr[@intFromEnum(mumps.ssvn_id.BREAK)] = 171;
-    if (@hasField(mumps.ssvn_id, "HANG")) arr[@intFromEnum(mumps.ssvn_id.HANG)] = 175;
-    if (@hasField(mumps.ssvn_id, "HALT")) arr[@intFromEnum(mumps.ssvn_id.HALT)] = 176;
-    if (@hasField(mumps.ssvn_id, "JOB")) arr[@intFromEnum(mumps.ssvn_id.JOB)] = 177;
-    if (@hasField(mumps.ssvn_id, "XECUTE")) arr[@intFromEnum(mumps.ssvn_id.XECUTE)] = 181;
-    if (@hasField(mumps.ssvn_id, "VIEW")) arr[@intFromEnum(mumps.ssvn_id.VIEW)] = 184;
-    if (@hasField(mumps.ssvn_id, "OPEN")) arr[@intFromEnum(mumps.ssvn_id.OPEN)] = 187;
-    if (@hasField(mumps.ssvn_id, "USE")) arr[@intFromEnum(mumps.ssvn_id.USE)] = 190;
-    if (@hasField(mumps.ssvn_id, "READ")) arr[@intFromEnum(mumps.ssvn_id.READ)] = 193;
-    if (@hasField(mumps.ssvn_id, "STRING")) arr[@intFromEnum(mumps.ssvn_id.STRING)] = 199;
-    if (@hasField(mumps.ssvn_id, "WRITE")) arr[@intFromEnum(mumps.ssvn_id.WRITE)] = 200;
-    if (@hasField(mumps.ssvn_id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.ssvn_id.EXCLAIM_WS)] = 205;
-    if (@hasField(mumps.ssvn_id, "HASH_WS")) arr[@intFromEnum(mumps.ssvn_id.HASH_WS)] = 206;
-    if (@hasField(mumps.ssvn_id, "PATEND")) arr[@intFromEnum(mumps.ssvn_id.PATEND)] = 208;
-    if (@hasField(mumps.ssvn_id, "QUESAT")) arr[@intFromEnum(mumps.ssvn_id.QUESAT)] = 212;
-    if (@hasField(mumps.ssvn_id, "CLOSE")) arr[@intFromEnum(mumps.ssvn_id.CLOSE)] = 213;
-    if (@hasField(mumps.ssvn_id, "LOCK")) arr[@intFromEnum(mumps.ssvn_id.LOCK)] = 214;
-    if (@hasField(mumps.ssvn_id, "TSTART")) arr[@intFromEnum(mumps.ssvn_id.TSTART)] = 221;
-    if (@hasField(mumps.ssvn_id, "COLON_WS")) arr[@intFromEnum(mumps.ssvn_id.COLON_WS)] = 222;
-    if (@hasField(mumps.ssvn_id, "TCOMMIT")) arr[@intFromEnum(mumps.ssvn_id.TCOMMIT)] = 226;
-    if (@hasField(mumps.ssvn_id, "TROLLBACK")) arr[@intFromEnum(mumps.ssvn_id.TROLLBACK)] = 227;
-    if (@hasField(mumps.ssvn_id, "TRESTART")) arr[@intFromEnum(mumps.ssvn_id.TRESTART)] = 228;
-    if (@hasField(mumps.ssvn_id, "ZWRITE")) arr[@intFromEnum(mumps.ssvn_id.ZWRITE)] = 229;
-    if (@hasField(mumps.ssvn_id, "ZBREAK")) arr[@intFromEnum(mumps.ssvn_id.ZBREAK)] = 233;
-    if (@hasField(mumps.ssvn_id, "ZHALT")) arr[@intFromEnum(mumps.ssvn_id.ZHALT)] = 235;
-    if (@hasField(mumps.ssvn_id, "ZKILL")) arr[@intFromEnum(mumps.ssvn_id.ZKILL)] = 236;
-    if (@hasField(mumps.ssvn_id, "SSVN")) arr[@intFromEnum(mumps.ssvn_id.SSVN)] = 271;
-    if (@hasField(mumps.ssvn_id, "REAL")) arr[@intFromEnum(mumps.ssvn_id.REAL)] = 272;
-    if (@hasField(mumps.ssvn_id, "TEXT")) arr[@intFromEnum(mumps.ssvn_id.TEXT)] = 273;
-    if (@hasField(mumps.ssvn_id, "SELECT")) arr[@intFromEnum(mumps.ssvn_id.SELECT)] = 274;
-    if (@hasField(mumps.ssvn_id, "JUSTIFY")) arr[@intFromEnum(mumps.ssvn_id.JUSTIFY)] = 275;
-    if (@hasField(mumps.ssvn_id, "INCREMENT")) arr[@intFromEnum(mumps.ssvn_id.INCREMENT)] = 276;
-    if (@hasField(mumps.ssvn_id, "FN")) arr[@intFromEnum(mumps.ssvn_id.FN)] = 277;
-    if (@hasField(mumps.ssvn_id, "ISV")) arr[@intFromEnum(mumps.ssvn_id.ISV)] = 278;
-    for (@typeInfo(mumps.ssvn_id).@"enum".fields) |field| {
+    if (@hasField(mumps.SsvnId, "IDENT")) arr[@intFromEnum(mumps.SsvnId.IDENT)] = 109;
+    if (@hasField(mumps.SsvnId, "INTEGER")) arr[@intFromEnum(mumps.SsvnId.INTEGER)] = 110;
+    if (@hasField(mumps.SsvnId, "ZDIGITS")) arr[@intFromEnum(mumps.SsvnId.ZDIGITS)] = 111;
+    if (@hasField(mumps.SsvnId, "COMMENT")) arr[@intFromEnum(mumps.SsvnId.COMMENT)] = 113;
+    if (@hasField(mumps.SsvnId, "NEWLINE")) arr[@intFromEnum(mumps.SsvnId.NEWLINE)] = 115;
+    if (@hasField(mumps.SsvnId, "SPACES")) arr[@intFromEnum(mumps.SsvnId.SPACES)] = 116;
+    if (@hasField(mumps.SsvnId, "INDENT")) arr[@intFromEnum(mumps.SsvnId.INDENT)] = 124;
+    if (@hasField(mumps.SsvnId, "SET")) arr[@intFromEnum(mumps.SsvnId.SET)] = 132;
+    if (@hasField(mumps.SsvnId, "NEW")) arr[@intFromEnum(mumps.SsvnId.NEW)] = 142;
+    if (@hasField(mumps.SsvnId, "MERGE")) arr[@intFromEnum(mumps.SsvnId.MERGE)] = 148;
+    if (@hasField(mumps.SsvnId, "KILL")) arr[@intFromEnum(mumps.SsvnId.KILL)] = 151;
+    if (@hasField(mumps.SsvnId, "IF")) arr[@intFromEnum(mumps.SsvnId.IF)] = 155;
+    if (@hasField(mumps.SsvnId, "ELSE")) arr[@intFromEnum(mumps.SsvnId.ELSE)] = 157;
+    if (@hasField(mumps.SsvnId, "FOR")) arr[@intFromEnum(mumps.SsvnId.FOR)] = 158;
+    if (@hasField(mumps.SsvnId, "DO")) arr[@intFromEnum(mumps.SsvnId.DO)] = 161;
+    if (@hasField(mumps.SsvnId, "GOTO")) arr[@intFromEnum(mumps.SsvnId.GOTO)] = 165;
+    if (@hasField(mumps.SsvnId, "QUIT")) arr[@intFromEnum(mumps.SsvnId.QUIT)] = 170;
+    if (@hasField(mumps.SsvnId, "BREAK")) arr[@intFromEnum(mumps.SsvnId.BREAK)] = 171;
+    if (@hasField(mumps.SsvnId, "HANG")) arr[@intFromEnum(mumps.SsvnId.HANG)] = 175;
+    if (@hasField(mumps.SsvnId, "HALT")) arr[@intFromEnum(mumps.SsvnId.HALT)] = 176;
+    if (@hasField(mumps.SsvnId, "JOB")) arr[@intFromEnum(mumps.SsvnId.JOB)] = 177;
+    if (@hasField(mumps.SsvnId, "XECUTE")) arr[@intFromEnum(mumps.SsvnId.XECUTE)] = 181;
+    if (@hasField(mumps.SsvnId, "VIEW")) arr[@intFromEnum(mumps.SsvnId.VIEW)] = 184;
+    if (@hasField(mumps.SsvnId, "OPEN")) arr[@intFromEnum(mumps.SsvnId.OPEN)] = 187;
+    if (@hasField(mumps.SsvnId, "USE")) arr[@intFromEnum(mumps.SsvnId.USE)] = 190;
+    if (@hasField(mumps.SsvnId, "READ")) arr[@intFromEnum(mumps.SsvnId.READ)] = 193;
+    if (@hasField(mumps.SsvnId, "STRING")) arr[@intFromEnum(mumps.SsvnId.STRING)] = 199;
+    if (@hasField(mumps.SsvnId, "WRITE")) arr[@intFromEnum(mumps.SsvnId.WRITE)] = 200;
+    if (@hasField(mumps.SsvnId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.SsvnId.EXCLAIM_WS)] = 205;
+    if (@hasField(mumps.SsvnId, "HASH_WS")) arr[@intFromEnum(mumps.SsvnId.HASH_WS)] = 206;
+    if (@hasField(mumps.SsvnId, "PATEND")) arr[@intFromEnum(mumps.SsvnId.PATEND)] = 208;
+    if (@hasField(mumps.SsvnId, "QUESAT")) arr[@intFromEnum(mumps.SsvnId.QUESAT)] = 212;
+    if (@hasField(mumps.SsvnId, "CLOSE")) arr[@intFromEnum(mumps.SsvnId.CLOSE)] = 213;
+    if (@hasField(mumps.SsvnId, "LOCK")) arr[@intFromEnum(mumps.SsvnId.LOCK)] = 214;
+    if (@hasField(mumps.SsvnId, "TSTART")) arr[@intFromEnum(mumps.SsvnId.TSTART)] = 221;
+    if (@hasField(mumps.SsvnId, "COLON_WS")) arr[@intFromEnum(mumps.SsvnId.COLON_WS)] = 222;
+    if (@hasField(mumps.SsvnId, "TCOMMIT")) arr[@intFromEnum(mumps.SsvnId.TCOMMIT)] = 226;
+    if (@hasField(mumps.SsvnId, "TROLLBACK")) arr[@intFromEnum(mumps.SsvnId.TROLLBACK)] = 227;
+    if (@hasField(mumps.SsvnId, "TRESTART")) arr[@intFromEnum(mumps.SsvnId.TRESTART)] = 228;
+    if (@hasField(mumps.SsvnId, "ZWRITE")) arr[@intFromEnum(mumps.SsvnId.ZWRITE)] = 229;
+    if (@hasField(mumps.SsvnId, "ZBREAK")) arr[@intFromEnum(mumps.SsvnId.ZBREAK)] = 233;
+    if (@hasField(mumps.SsvnId, "ZHALT")) arr[@intFromEnum(mumps.SsvnId.ZHALT)] = 235;
+    if (@hasField(mumps.SsvnId, "ZKILL")) arr[@intFromEnum(mumps.SsvnId.ZKILL)] = 236;
+    if (@hasField(mumps.SsvnId, "SSVN")) arr[@intFromEnum(mumps.SsvnId.SSVN)] = 271;
+    if (@hasField(mumps.SsvnId, "REAL")) arr[@intFromEnum(mumps.SsvnId.REAL)] = 272;
+    if (@hasField(mumps.SsvnId, "TEXT")) arr[@intFromEnum(mumps.SsvnId.TEXT)] = 273;
+    if (@hasField(mumps.SsvnId, "SELECT")) arr[@intFromEnum(mumps.SsvnId.SELECT)] = 274;
+    if (@hasField(mumps.SsvnId, "JUSTIFY")) arr[@intFromEnum(mumps.SsvnId.JUSTIFY)] = 275;
+    if (@hasField(mumps.SsvnId, "INCREMENT")) arr[@intFromEnum(mumps.SsvnId.INCREMENT)] = 276;
+    if (@hasField(mumps.SsvnId, "FN")) arr[@intFromEnum(mumps.SsvnId.FN)] = 277;
+    if (@hasField(mumps.SsvnId, "ISV")) arr[@intFromEnum(mumps.SsvnId.ISV)] = 278;
+    for (@typeInfo(mumps.SsvnId).@"enum".fields) |field| {
         if (arr[field.value] == 0) arr[field.value] = 271;
     }
     break :blk arr;
 };
-const ssvn_fallback_symbol: u16 = 271;
+const ssvnFallbackSymbol: u16 = 271;
 
-const rule_lhs = [_]u16{ 3, 3, 3, 112, 112, 4, 5, 6, 7, 8, 114, 114, 9, 9, 9, 117, 117, 10, 10, 10, 10, 10, 10, 120, 121, 121, 122, 122, 11, 12, 12, 12, 12, 126, 126, 127, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 128, 129, 129, 130, 15, 16, 133, 134, 134, 17, 17, 18, 18, 18, 137, 138, 138, 18, 140, 141, 141, 18, 18, 18, 19, 19, 143, 144, 144, 145, 145, 20, 20, 21, 21, 146, 147, 147, 21, 21, 149, 150, 150, 22, 22, 23, 23, 152, 153, 153, 154, 154, 24, 24, 25, 25, 25, 26, 26, 156, 156, 27, 28, 29, 29, 159, 160, 160, 30, 30, 31, 31, 31, 162, 163, 163, 164, 164, 32, 32, 7, 7, 7, 7, 7, 7, 7, 7, 7, 166, 167, 167, 33, 33, 8, 8, 8, 8, 8, 34, 34, 34, 34, 35, 35, 35, 36, 36, 36, 36, 172, 173, 173, 174, 174, 37, 37, 38, 38, 39, 39, 40, 40, 178, 179, 179, 41, 41, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 43, 43, 43, 43, 182, 183, 183, 44, 44, 45, 45, 185, 186, 186, 46, 46, 47, 47, 188, 189, 189, 48, 48, 49, 49, 49, 49, 49, 191, 192, 192, 50, 50, 194, 195, 195, 51, 51, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 201, 202, 202, 203, 203, 53, 53, 54, 54, 54, 54, 54, 55, 55, 55, 55, 209, 209, 56, 210, 210, 211, 57, 57, 57, 57, 58, 58, 59, 59, 60, 60, 61, 61, 62, 62, 62, 62, 63, 215, 216, 216, 217, 217, 64, 64, 65, 65, 65, 65, 65, 65, 219, 220, 220, 65, 65, 65, 65, 65, 65, 65, 66, 66, 67, 67, 67, 67, 68, 68, 68, 68, 223, 224, 224, 69, 69, 70, 225, 225, 70, 70, 71, 71, 72, 72, 73, 73, 74, 74, 230, 231, 231, 232, 232, 75, 75, 234, 234, 76, 76, 77, 77, 77, 77, 78, 78, 79, 79, 79, 79, 79, 79, 80, 80, 237, 237, 238, 239, 239, 240, 240, 81, 82, 82, 6, 83, 83, 84, 84, 84, 84, 84, 85, 85, 85, 85, 85, 85, 86, 86, 86, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 265, 265, 266, 88, 267, 267, 268, 89, 89, 89, 89, 89, 89, 269, 270, 270, 89, 90, 91, 91, 91, 91, 91, 92, 92, 93, 93, 93, 94, 94, 94, 95, 95, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 97, 97, 97, 97, 97, 98, 99, 99, 99, 100, 100, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 102, 102, 279, 280, 280, 103, 104, 105, 105, 105, 105, 105, 105, 105, 105, 106, 107, 108, 108, 108, 282, 284, 286, 288, 290 };
-const rule_len = [_]u8{ 1, 1, 1, 2, 0, 2, 2, 2, 2, 2, 1, 0, 3, 3, 2, 1, 0, 2, 3, 3, 4, 2, 3, 2, 3, 0, 1, 0, 3, 1, 2, 2, 3, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 0, 2, 1, 2, 2, 3, 0, 2, 3, 4, 2, 3, 2, 3, 0, 5, 2, 3, 0, 9, 7, 2, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 0, 3, 2, 2, 3, 0, 2, 3, 3, 2, 2, 3, 0, 1, 0, 2, 3, 1, 3, 2, 1, 2, 1, 0, 2, 1, 1, 2, 2, 3, 0, 3, 4, 5, 3, 1, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 2, 2, 3, 0, 2, 3, 1, 2, 1, 2, 2, 2, 4, 4, 6, 4, 6, 4, 1, 2, 2, 3, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 0, 2, 3, 4, 5, 5, 6, 4, 5, 5, 6, 1, 2, 2, 3, 1, 2, 2, 3, 2, 1, 2, 2, 3, 2, 3, 0, 2, 3, 1, 2, 2, 3, 0, 2, 3, 1, 3, 2, 3, 0, 2, 3, 7, 5, 5, 3, 1, 2, 3, 0, 2, 3, 2, 3, 0, 2, 3, 1, 5, 2, 4, 3, 3, 2, 4, 3, 2, 1, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 5, 2, 2, 1, 1, 1, 1, 1, 1, 0, 3, 2, 0, 2, 1, 2, 1, 2, 2, 3, 3, 1, 3, 1, 3, 1, 4, 2, 3, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 2, 3, 2, 3, 0, 4, 5, 4, 5, 3, 4, 2, 1, 1, 1, 2, 2, 3, 1, 3, 2, 2, 2, 3, 0, 3, 1, 1, 1, 0, 3, 1, 1, 3, 1, 2, 1, 2, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 0, 2, 3, 2, 3, 1, 2, 2, 3, 1, 3, 3, 5, 4, 2, 1, 2, 1, 0, 2, 3, 0, 1, 0, 3, 2, 1, 2, 2, 0, 2, 2, 2, 2, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 2, 2, 2, 0, 2, 5, 2, 4, 1, 5, 2, 2, 3, 0, 4, 1, 3, 2, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2, 4, 1, 3, 3, 2, 4, 5, 5, 6, 7, 8, 5, 6, 7, 8, 6, 6, 7, 3, 4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 5, 5, 2, 4, 1, 2, 3, 0, 5, 3, 5, 5, 7, 7, 9, 6, 8, 6, 5, 5, 3, 1, 2, 2, 2, 2, 2, 2 };
+const ruleLhs = [_]u16{ 3, 3, 3, 112, 112, 4, 5, 6, 7, 8, 114, 114, 9, 9, 9, 117, 117, 10, 10, 10, 10, 10, 10, 120, 121, 121, 122, 122, 11, 12, 12, 12, 12, 126, 126, 127, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 128, 129, 129, 130, 15, 16, 133, 134, 134, 17, 17, 18, 18, 18, 137, 138, 138, 18, 140, 141, 141, 18, 18, 18, 19, 19, 143, 144, 144, 145, 145, 20, 20, 21, 21, 146, 147, 147, 21, 21, 149, 150, 150, 22, 22, 23, 23, 152, 153, 153, 154, 154, 24, 24, 25, 25, 25, 26, 26, 156, 156, 27, 28, 29, 29, 159, 160, 160, 30, 30, 31, 31, 31, 162, 163, 163, 164, 164, 32, 32, 7, 7, 7, 7, 7, 7, 7, 7, 7, 166, 167, 167, 33, 33, 8, 8, 8, 8, 8, 34, 34, 34, 34, 35, 35, 35, 36, 36, 36, 36, 172, 173, 173, 174, 174, 37, 37, 38, 38, 39, 39, 40, 40, 178, 179, 179, 41, 41, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 43, 43, 43, 43, 182, 183, 183, 44, 44, 45, 45, 185, 186, 186, 46, 46, 47, 47, 188, 189, 189, 48, 48, 49, 49, 49, 49, 49, 191, 192, 192, 50, 50, 194, 195, 195, 51, 51, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 201, 202, 202, 203, 203, 53, 53, 54, 54, 54, 54, 54, 55, 55, 55, 55, 209, 209, 56, 210, 210, 211, 57, 57, 57, 57, 58, 58, 59, 59, 60, 60, 61, 61, 62, 62, 62, 62, 63, 215, 216, 216, 217, 217, 64, 64, 65, 65, 65, 65, 65, 65, 219, 220, 220, 65, 65, 65, 65, 65, 65, 65, 66, 66, 67, 67, 67, 67, 68, 68, 68, 68, 223, 224, 224, 69, 69, 70, 225, 225, 70, 70, 71, 71, 72, 72, 73, 73, 74, 74, 230, 231, 231, 232, 232, 75, 75, 234, 234, 76, 76, 77, 77, 77, 77, 78, 78, 79, 79, 79, 79, 79, 79, 80, 80, 237, 237, 238, 239, 239, 240, 240, 81, 82, 82, 6, 83, 83, 84, 84, 84, 84, 84, 85, 85, 85, 85, 85, 85, 86, 86, 86, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 265, 265, 266, 88, 267, 267, 268, 89, 89, 89, 89, 89, 89, 269, 270, 270, 89, 90, 91, 91, 91, 91, 91, 92, 92, 93, 93, 93, 94, 94, 94, 95, 95, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 97, 97, 97, 97, 97, 98, 99, 99, 99, 100, 100, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 102, 102, 279, 280, 280, 103, 104, 105, 105, 105, 105, 105, 105, 105, 105, 106, 107, 108, 108, 108, 282, 284, 286, 288, 290 };
+const ruleLen = [_]u8{ 1, 1, 1, 2, 0, 2, 2, 2, 2, 2, 1, 0, 3, 3, 2, 1, 0, 2, 3, 3, 4, 2, 3, 2, 3, 0, 1, 0, 3, 1, 2, 2, 3, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 0, 2, 1, 2, 2, 3, 0, 2, 3, 4, 2, 3, 2, 3, 0, 5, 2, 3, 0, 9, 7, 2, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 0, 3, 2, 2, 3, 0, 2, 3, 3, 2, 2, 3, 0, 1, 0, 2, 3, 1, 3, 2, 1, 2, 1, 0, 2, 1, 1, 2, 2, 3, 0, 3, 4, 5, 3, 1, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 2, 2, 3, 0, 2, 3, 1, 2, 1, 2, 2, 2, 4, 4, 6, 4, 6, 4, 1, 2, 2, 3, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 0, 2, 3, 4, 5, 5, 6, 4, 5, 5, 6, 1, 2, 2, 3, 1, 2, 2, 3, 2, 1, 2, 2, 3, 2, 3, 0, 2, 3, 1, 2, 2, 3, 0, 2, 3, 1, 3, 2, 3, 0, 2, 3, 7, 5, 5, 3, 1, 2, 3, 0, 2, 3, 2, 3, 0, 2, 3, 1, 5, 2, 4, 3, 3, 2, 4, 3, 2, 1, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 5, 2, 2, 1, 1, 1, 1, 1, 1, 0, 3, 2, 0, 2, 1, 2, 1, 2, 2, 3, 3, 1, 3, 1, 3, 1, 4, 2, 3, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 2, 2, 3, 2, 3, 2, 3, 0, 4, 5, 4, 5, 3, 4, 2, 1, 1, 1, 2, 2, 3, 1, 3, 2, 2, 2, 3, 0, 3, 1, 1, 1, 0, 3, 1, 1, 3, 1, 2, 1, 2, 1, 2, 2, 3, 0, 1, 0, 2, 3, 1, 0, 2, 3, 2, 3, 1, 2, 2, 3, 1, 3, 3, 5, 4, 2, 1, 2, 1, 0, 2, 3, 0, 1, 0, 3, 2, 1, 2, 2, 0, 2, 2, 2, 2, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 2, 2, 2, 0, 2, 5, 2, 4, 1, 5, 2, 2, 3, 0, 4, 1, 3, 2, 1, 2, 1, 1, 2, 1, 1, 1, 1, 2, 4, 1, 3, 3, 2, 4, 5, 5, 6, 7, 8, 5, 6, 7, 8, 6, 6, 7, 3, 4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 5, 5, 2, 4, 1, 2, 3, 0, 5, 3, 5, 5, 7, 7, 9, 6, 8, 6, 5, 5, 3, 1, 2, 2, 2, 2, 2, 2 };
 
 // Parse Table: 831 states × 291 symbols
-const NUM_STATES = 831;
-const NUM_SYMBOLS = 291;
+const numStates = 831;
+const numSymbols = 291;
 
-const sparse = [NUM_STATES][]const i16{
+const sparse = [numStates][]const i16{
     &.{4,5,281,6},
     &.{5,8,283,7},
     &.{6,25,85,28,86,21,93,31,94,17,95,30,96,11,97,36,99,32,100,22,101,35,103,29,105,12,106,19,107,10,109,9,110,13,111,27,118,34,135,23,139,20,168,16,169,14,199,26,218,24,242,18,272,33,285,15},
@@ -2498,9 +2498,9 @@ const sparse = [NUM_STATES][]const i16{
     &.{1,-90,113,-90,115,-90,116,-90,119,-90,132,-90,142,-90,148,-90,151,-90,155,-90,157,-90,158,-90,161,-90,165,-90,170,-90,171,-90,175,-90,176,-90,177,-90,181,-90,184,-90,187,-90,190,-90,193,-90,200,-90,213,-90,214,-90,221,-90,226,-90,227,-90,228,-90,229,-90,233,-90,235,-90,236,-90},
 };
 
-const parse_table = blk: {
+const parseTable = blk: {
     @setEvalBranchQuota(100000);
-    var t: [NUM_STATES][NUM_SYMBOLS]i16 = .{.{0} ** NUM_SYMBOLS} ** NUM_STATES;
+    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
         while (i < row.len) : (i += 2) {
@@ -2511,10 +2511,10 @@ const parse_table = blk: {
 };
 
 fn getAction(state: u16, sym: u16) i16 {
-    return parse_table[state][sym];
+    return parseTable[state][sym];
 }
 // X "c" excludes: shift instead of reduce when pre==0 and char matches
-const x_excludes = [_]struct { state: u16, char: u8, shift: u16 }{
+const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{
     .{ .state = 9, .char = '(', .shift = 127 },
     .{ .state = 131, .char = '(', .shift = 127 },
     .{ .state = 136, .char = '(', .shift = 364 },
@@ -2533,12 +2533,12 @@ const x_excludes = [_]struct { state: u16, char: u8, shift: u16 }{
 };
 
 fn getImmediateShift(state: u16, char: u8) ?i16 {
-    for (x_excludes) |x| {
+    for (xExcludes) |x| {
         if (x.state == state and x.char == char) return @intCast(x.shift);
     }
     return null;
 }
-const start_states = [_]struct { sym: u16, state: u16 }{
+const startStates = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 4, .state = 0 },
     .{ .sym = 5, .state = 1 },
     .{ .sym = 6, .state = 2 },
@@ -2546,16 +2546,16 @@ const start_states = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 8, .state = 4 },
 };
 
-fn getStartState(start_sym: u16) u16 {
-    for (start_states) |entry| {
-        if (entry.sym == start_sym) return entry.state;
+fn getStartState(startSym: u16) u16 {
+    for (startStates) |entry| {
+        if (entry.sym == startSym) return entry.state;
     }
     return 0;
 }
 
-const accept_rules = [_]u16{ 524, 525, 526, 527, 528 };
+const acceptRules = [_]u16{ 524, 525, 526, 527, 528 };
 
-fn isAcceptRule(rule_id: u16) bool {
-    for (accept_rules) |ar| if (rule_id == ar) return true;
+fn isAcceptRule(ruleId: u16) bool {
+    for (acceptRules) |ar| if (ruleId == ar) return true;
     return false;
 }
