@@ -51,52 +51,49 @@ pub const Lexer = struct {
     }
 
     pub fn next(self: *Lexer) Token {
+        const src = self.base.source;
         const wsStart: u32 = self.base.pos;
-        while (self.base.pos < self.base.source.len and isWs(self.base.source[self.base.pos])) {
+        while (self.base.pos < src.len and isWs(src[self.base.pos])) {
             self.base.pos += 1;
         }
         const wsCount: u8 = @intCast(@min(self.base.pos - wsStart, 255));
 
-        // --- Pattern mode exit on whitespace (HOLD) ---
-        // Emit patend and rewind so whitespace is re-lexed on the next call.
+        // Pattern mode exit on whitespace (HOLD): rewind so whitespace
+        // is re-lexed on the next call as indent/spaces/pre.
         if (self.base.pat != 0 and wsCount > 0) {
             self.base.pat = 0;
             self.base.pos = wsStart;
             return Token{ .cat = .@"patend", .pre = 0, .pos = wsStart, .len = 0 };
         }
 
-        // --- Indent with dot-counting at line start ---
+        // Indent with dot-counting at line start
         if (self.base.beg != 0 and wsCount >= 1) {
             self.base.beg = 0;
             var dotCount: u8 = 0;
-            while (self.base.pos < self.base.source.len and self.base.source[self.base.pos] == '.') {
+            while (self.base.pos < src.len and src[self.base.pos] == '.') {
                 self.base.pos += 1;
                 dotCount +|= 1;
-                while (self.base.pos < self.base.source.len and isWs(self.base.source[self.base.pos])) {
+                while (self.base.pos < src.len and isWs(src[self.base.pos])) {
                     self.base.pos += 1;
                 }
             }
             return Token{ .cat = .@"indent", .pre = dotCount, .pos = wsStart, .len = @intCast(self.base.pos - wsStart) };
         }
 
-        // --- Spaces with adjacency exclusion ---
-        // 2+ spaces mid-line signals an argumentless command, but NOT when
-        // adjacent to argument-list punctuation (comma, parens).
+        // Spaces with adjacency exclusion: 2+ spaces mid-line signals an
+        // argumentless command, but NOT when adjacent to arglist punctuation.
         if (self.base.beg == 0 and wsCount >= 2) {
-            const prevCh: u8 = if (wsStart > 0) self.base.source[wsStart - 1] else 0;
-            const nextCh: u8 = if (self.base.pos < self.base.source.len) self.base.source[self.base.pos] else 0;
+            const prevCh: u8 = if (wsStart > 0) src[wsStart - 1] else 0;
+            const nextCh: u8 = if (self.base.pos < src.len) src[self.base.pos] else 0;
             if (prevCh != ',' and prevCh != '(' and nextCh != ',' and nextCh != ')') {
                 return Token{ .cat = .@"spaces", .pre = 0, .pos = wsStart, .len = wsCount };
             }
-            // Excluded: let matchRules handle the next token, preserving
-            // whitespace as the token's pre field.
-            var tok = self.base.matchRules();
-            tok.pre = wsCount;
-            return tok;
+            // Excluded: whitespace absorbed into the next token's pre field.
+            // Don't rewind -- lex the next real token from current position.
         }
 
-        // --- EOF with pattern mode check ---
-        if (self.base.pos >= self.base.source.len) {
+        // EOF
+        if (self.base.pos >= src.len) {
             if (self.base.pat != 0) {
                 self.base.pat = 0;
                 return Token{ .cat = .@"patend", .pre = wsCount, .pos = self.base.pos, .len = 0 };
@@ -104,39 +101,28 @@ pub const Lexer = struct {
             return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.base.pos, .len = 0 };
         }
 
-        // --- Pattern mode exit on newline (HOLD) ---
-        // Emit patend without consuming the newline; next call produces the newline.
+        // Pattern mode: dedicated handler for all pattern-specific tokens
         if (self.base.pat != 0) {
-            const c = self.base.source[self.base.pos];
-            if (c == '\n' or c == '\r') {
-                self.base.pat = 0;
-                self.base.dep = 0;
-                return Token{ .cat = .@"patend", .pre = wsCount, .pos = self.base.pos, .len = 0 };
-            }
+            return self.lexPatternToken(wsCount);
         }
 
-        // --- Pattern mode exit on `!` when dep == 0 (HOLD) ---
-        if (self.base.pat != 0 and self.base.dep == 0) {
-            if (self.base.source[self.base.pos] == '!') {
-                self.base.pat = 0;
-                return Token{ .cat = .@"patend", .pre = wsCount, .pos = self.base.pos, .len = 0 };
-            }
+        // Normal lexing: delegate to generated BaseLexer.
+        // Rewind only when whitespace is 0-1 chars (normal pre field).
+        // When wsCount >= 2, we already decided not to emit SPACES (adjacency
+        // exclusion above), so don't rewind or matchRules would re-emit SPACES.
+        if (wsCount < 2) {
+            self.base.pos = wsStart;
+        }
+        var tok = self.base.matchRules();
+        if (wsCount >= 2) {
+            tok.pre = wsCount;
         }
 
-        // --- Normal lexing: delegate to generated BaseLexer ---
-        // Rewind so matchRules() can re-count whitespace for its own logic.
-        self.base.pos = wsStart;
-        const tok = self.base.matchRules();
-
-        // --- Pattern mode entry after ?, '?, and ' tokens ---
+        // Pattern mode entry after ?, '?, and ' tokens.
+        // checkPatternMode does lookahead to disambiguate pattern starts
+        // (like ?1N) from non-pattern uses (like ?1E+2 or bare ?).
         switch (tok.cat) {
-            .@"question", .@"notques" => {
-                if (self.base.pat == 0) {
-                    if (checkPatternMode(self.base.source, self.base.pos))
-                        self.base.pat = 1;
-                }
-            },
-            .@"not" => {
+            .@"question", .@"notques", .@"not" => {
                 if (self.base.pat == 0) {
                     if (checkPatternMode(self.base.source, self.base.pos))
                         self.base.pat = 1;
@@ -146,6 +132,88 @@ pub const Lexer = struct {
         }
 
         return tok;
+    }
+
+    /// Lex a token while in pattern mode. Handles all pattern-specific tokens
+    /// directly, avoiding BaseLexer issues with pattern-mode idents (must be
+    /// single-char), numbers (integer only, no decimal/exponent), and hold
+    /// semantics for pattern-terminating characters.
+    fn lexPatternToken(self: *Lexer, wsCount: u8) Token {
+        const src = self.base.source;
+        const pos = self.base.pos;
+        const c = src[pos];
+
+        // Newline: exit pattern mode without consuming (hold)
+        if (c == '\n' or c == '\r') {
+            self.base.pat = 0;
+            self.base.dep = 0;
+            return Token{ .cat = .@"patend", .pre = wsCount, .pos = pos, .len = 0 };
+        }
+
+        // Underscore: always exits pattern mode (hold)
+        if (c == '_') {
+            self.base.pat = 0;
+            return Token{ .cat = .@"patend", .pre = wsCount, .pos = pos, .len = 0 };
+        }
+
+        // At depth 0, these characters terminate the pattern (hold).
+        // They belong to the enclosing expression, not the pattern.
+        if (self.base.dep == 0) {
+            switch (c) {
+                '!', ')', ',', ':', '+' => {
+                    self.base.pat = 0;
+                    return Token{ .cat = .@"patend", .pre = wsCount, .pos = pos, .len = 0 };
+                },
+                else => {},
+            }
+        }
+
+        // Pattern-specific tokens
+        switch (c) {
+            // Single-char pattern code (A, C, E, L, N, P, U, etc.)
+            'A'...'Z', 'a'...'z' => {
+                self.base.pos += 1;
+                self.base.beg = 0;
+                return Token{ .cat = .@"ident", .pre = wsCount, .pos = pos, .len = 1 };
+            },
+            // Repetition count: digits only (no decimal/exponent)
+            '0'...'9' => {
+                while (self.base.pos < src.len and src[self.base.pos] >= '0' and src[self.base.pos] <= '9') {
+                    self.base.pos += 1;
+                }
+                self.base.beg = 0;
+                return Token{ .cat = .@"integer", .pre = wsCount, .pos = pos, .len = @intCast(self.base.pos - pos) };
+            },
+            // Dot is a range separator in patterns (1.3 = "1 to 3 of"),
+            // not a decimal point. Emit as dot to prevent number scanning.
+            '.' => {
+                self.base.pos += 1;
+                self.base.beg = 0;
+                return Token{ .cat = .@"dot", .pre = wsCount, .pos = pos, .len = 1 };
+            },
+            // Open paren: alternation group, track depth
+            '(' => {
+                self.base.dep += 1;
+                self.base.pos += 1;
+                self.base.beg = 0;
+                return Token{ .cat = .@"lparen", .pre = wsCount, .pos = pos, .len = 1 };
+            },
+            // Close paren at dep > 0 (dep == 0 handled above as patend)
+            ')' => {
+                self.base.dep -= 1;
+                self.base.pos += 1;
+                self.base.beg = 0;
+                return Token{ .cat = .@"rparen", .pre = wsCount, .pos = pos, .len = 1 };
+            },
+            // Fall through to matchRules for mode-invariant tokens:
+            // string literal, question mark, apostrophe
+            else => {
+                self.base.beg = 0;
+                var tok = self.base.matchRules();
+                tok.pre = wsCount;
+                return tok;
+            },
+        }
     }
 };
 
