@@ -103,6 +103,13 @@ state
     paren = 0       # parenthesis depth
 ```
 
+Inline form is also accepted:
+
+```
+state beg = 1
+state paren = 0
+```
+
 ### After (Post-Token Reset)
 
 Default actions applied after every token, unless a rule overrides:
@@ -255,6 +262,43 @@ Import a function from the `@lang` module into the generated lexer:
 
 The generated lexer emits a wrapper that calls into the language module. This
 handles complex, language-specific logic that doesn't fit declarative rules.
+
+### Rewriter-Classified Tokens
+
+The `@lang` module's `Lexer` wrapper (rewriter) can reclassify tokens based
+on context that the grammar alone cannot see. This is a core technique for
+resolving ambiguities without complicating the grammar.
+
+The rewriter sits between the generated `BaseLexer` and the parser. It sees
+every token and can change its category, fuse adjacent tokens, or inject
+synthetic tokens based on spacing, surrounding tokens, or lookahead.
+
+**Pattern**: when the same keyword or operator means different things in
+different contexts, the rewriter classifies it into distinct token types.
+The grammar sees different symbols and stays conflict-free.
+
+Examples from Zag:
+
+| Source token | Rewriter classifies as | When | Why grammar can't |
+|-------------|----------------------|------|-------------------|
+| `-` | `minus_prefix` | Tight (no space before) | Depends on spacing |
+| `-` | `minus` (infix) | Spaced | Depends on spacing |
+| `if` | `post_if` | After `return`/`break`/`continue` | Depends on preceding keyword |
+| `if` | `ternary_if` | Mid-expression with `else` ahead | Depends on lookahead for `else` |
+| `if` | `if` (prefix) | At statement start | Default |
+| `\|` | `bar_capture` | In `\|name\|` capture context | Depends on surrounding tokens |
+| `.{` | `dot_lbrace` | Dot immediately before `{` | Depends on adjacency |
+
+This technique is not Zag-specific. Any `@lang` module can implement a
+`Lexer` wrapper that reclassifies tokens for its language's needs. The
+grammar engine generates a `BaseLexer`; the `@lang` module optionally wraps
+it with context-sensitive logic.
+
+**When to use this pattern**:
+
+- Same operator means different things based on spacing (`-` prefix vs infix)
+- Same keyword means different things based on context (`if` as prefix, guard, or ternary)
+- Token meaning depends on lookahead the grammar can't express in SLR(1)
 
 ---
 
