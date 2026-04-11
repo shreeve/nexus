@@ -192,7 +192,7 @@ pub const BaseLexer = struct {
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
+        var wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
         if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
@@ -383,9 +383,6 @@ pub const BaseLexer = struct {
                 } else {
                     break :blk Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
-                self.pos -= 1;
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             '@' => Token{ .cat = .@"at", .pre = wsCount, .pos = start, .len = 1 },
             '[' => Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 },
@@ -412,7 +409,6 @@ pub const BaseLexer = struct {
                 } else {
                     break :blk Token{ .cat = .@"patend", .pre = wsCount, .pos = start, .len = 1 };
                 }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             '|' => Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 1 },
             else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },

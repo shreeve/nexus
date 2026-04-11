@@ -1042,6 +1042,7 @@ const LexerGenerator = struct {
         // If multi-char rules exist but no unguarded single-char fallback,
         // the blk: may not return. Add a fallback: rewind pos and route to
         // the appropriate scanner, or emit an error token.
+        // Skip if guarded rules form an exhaustive chain (2+ guards, no unguarded).
         if (multi_rules.items.len > 0) {
             const has_unguarded = blk: {
                 for (single_rules.items) |r| {
@@ -1049,7 +1050,12 @@ const LexerGenerator = struct {
                 }
                 break :blk false;
             };
-            if (!has_unguarded) {
+            var guarded_count: usize = 0;
+            for (single_rules.items) |r| {
+                if (r.guards.len > 0) guarded_count += 1;
+            }
+            const exhaustive = !has_unguarded and guarded_count >= 2;
+            if (!has_unguarded and !exhaustive) {
                 // Determine fallback based on what this character starts
                 const is_string_start = (first_char == '\'' or first_char == '"');
                 const is_digit = (first_char >= '0' and first_char <= '9');
@@ -1209,8 +1215,14 @@ const LexerGenerator = struct {
             try self.emitActions(r.actions, "                ");
             try self.emitTokenReturn("break :blk", r.token, r.char_count);
         } else if (guarded.items.len > 0) {
-            // All rules are guarded — emit error fallback when no guard matches
-            try self.write("\n                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
+            // If the last guarded rule was emitted as a bare `else`, the chain
+            // is already exhaustive — no fallback needed.
+            const exhaustive = guarded.items.len >= 2 and unguarded == null;
+            if (!exhaustive) {
+                try self.write("\n                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
+            } else {
+                try self.write("\n");
+            }
         }
     }
 
@@ -2308,7 +2320,7 @@ const LexerGenerator = struct {
             \\        while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             \\            self.pos += 1;
             \\        }
-            \\        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
+            \\        var wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
             \\        // EOF check
             \\        if (self.pos >= self.source.len) {
         );
