@@ -1715,10 +1715,30 @@ const LexerGenerator = struct {
             const lit = charToZigLiteral(prefixChar);
             const litStr = lit.buf[0..lit.len];
 
+            // Pre-scan: determine if any prefix rule will emit code that references nc
+            var needsNc = false;
+            for (prefixRules[0..prefixCount]) |pr| {
+                const prSuffix = std.mem.trimLeft(u8, pr.pattern[3..], " ");
+                if (prSuffix.len > 3 and prSuffix[0] == '\'') {
+                    // Literal second char: only emits nc if followed by [^ (scan-to-close pattern)
+                    if (std.mem.indexOf(u8, prSuffix[3..], "'")) |closeIdx| {
+                        const endPat = prSuffix[3..][0..closeIdx];
+                        if (endPat.len >= 3 and endPat[0] == ' ' and endPat[1] == '[' and endPat[2] == '^') {
+                            needsNc = true;
+                            break;
+                        }
+                    }
+                } else if (prSuffix.len >= 1 and prSuffix[0] == '[') {
+                    needsNc = true;
+                    break;
+                }
+            }
+
+            if (!needsNc) continue; // no checks would be emitted for this prefix
+
             try self.print("        if (c == '{s}') {{\n", .{litStr});
             try self.write("            const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;\n");
 
-            // Sort rules: longer patterns first for priority (literal sequences before classes)
             // Emit checks for each rule's second character condition
             for (prefixRules[0..prefixCount]) |pr| {
                 // Parse what follows the prefix literal in the pattern
@@ -2317,6 +2337,19 @@ const LexerGenerator = struct {
             }
         }
 
+        // Determine if any rule action assigns to wsCount (the grammar's "pre" variable)
+        var wsCountMutable = false;
+        outer: for (self.spec.rules.items) |rule| {
+            for (rule.actions) |action| {
+                if ((action.kind == .set or action.kind == .counted) and
+                    action.variable != null and std.mem.eql(u8, action.variable.?, "pre"))
+                {
+                    wsCountMutable = true;
+                    break :outer;
+                }
+            }
+        }
+
         try self.write(
             \\    /// Match lexer rules
             \\    pub fn matchRules(self: *Self) Token {
@@ -2325,7 +2358,10 @@ const LexerGenerator = struct {
             \\        while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             \\            self.pos += 1;
             \\        }
-            \\        var wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
+            \\
+        );
+        try self.print("        {s} wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));\n", .{if (wsCountMutable) "var" else "const"});
+        try self.write(
             \\        // EOF check
             \\        if (self.pos >= self.source.len) {
         );
@@ -5341,10 +5377,23 @@ const ParserGenerator = struct {
             \\        };
             \\    }
             \\
-            \\    fn tokenToSymbol(self: *Parser, token: Token) u16 {
-            \\        return switch (token.cat) {
-            \\
         );
+
+        // Check if we have @as directives for "ident" - if so, route through identToSymbol
+        var hasIdentAs = false;
+        for (self.asDirectives.items) |directive| {
+            if (std.mem.eql(u8, directive.token, "ident")) {
+                hasIdentAs = true;
+                break;
+            }
+        }
+
+        if (hasIdentAs) {
+            try writer.writeAll("\n    fn tokenToSymbol(self: *Parser, token: Token) u16 {\n");
+        } else {
+            try writer.writeAll("\n    fn tokenToSymbol(_: *Parser, token: Token) u16 {\n");
+        }
+        try writer.writeAll("        return switch (token.cat) {\n");
 
         // Generate token to symbol mapping
         try writer.print("            .@\"eof\" => {d},\n", .{self.endId});
@@ -5355,14 +5404,6 @@ const ParserGenerator = struct {
             emittedCats.deinit(self.allocator);
         }
 
-        // Check if we have @as directives for "ident" - if so, route through identToSymbol
-        var hasIdentAs = false;
-        for (self.asDirectives.items) |directive| {
-            if (std.mem.eql(u8, directive.token, "ident")) {
-                hasIdentAs = true;
-                break;
-            }
-        }
         if (hasIdentAs) {
             try writer.writeAll("            .@\"ident\" => self.identToSymbol(token),\n");
         }
@@ -5646,13 +5687,17 @@ const ParserGenerator = struct {
             @memcpy(fnameBuf[1..name.len], name[1..]);
             const fname = fnameBuf[0..name.len];
 
-            try writer.print(
-                \\
-                \\    pub fn parse{s}(self: *Parser) !Sexp {{
-                \\        self.injectedToken = SYM_{s}_START;
-                \\        return self.doParse(SYM_{s});
-                \\    }}
-            , .{ fname, name, name });
+            var markerBuf: [128]u8 = undefined;
+            const markerName = std.fmt.bufPrint(&markerBuf, "{s}!", .{name}) catch continue;
+            if (self.getSymbol(markerName) != null) {
+                try writer.print(
+                    \\
+                    \\    pub fn parse{s}(self: *Parser) !Sexp {{
+                    \\        self.injectedToken = SYM_{s}_START;
+                    \\        return self.doParse(SYM_{s});
+                    \\    }}
+                , .{ fname, name, name });
+            }
         }
 
         // Inject @code parser blocks

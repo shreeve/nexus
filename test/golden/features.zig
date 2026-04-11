@@ -146,7 +146,7 @@ pub const BaseLexer = struct {
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        var wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
+        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
         if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
@@ -494,7 +494,7 @@ pub const Parser = struct {
         };
     }
 
-    fn tokenToSymbol(self: *Parser, token: Token) u16 {
+    fn tokenToSymbol(_: *Parser, token: Token) u16 {
         return switch (token.cat) {
             .@"eof" => 1,
             .@"newline" => 9,

@@ -212,7 +212,7 @@ pub const BaseLexer = struct {
         while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
             self.pos += 1;
         }
-        var wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
+        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
         // EOF check
         if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
         }
@@ -293,9 +293,6 @@ pub const BaseLexer = struct {
                 self.pos += 2;
                 return Token{ .cat = .@"variable", .pre = wsCount, .pos = start, .len = 2 };
             }
-        }
-        if (c == '-') {
-            const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
         }
         // Comment (scan to end of line)
         if (c == '#') {
