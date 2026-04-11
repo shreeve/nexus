@@ -2,10 +2,10 @@
 # zag.grammar — Zag Language Lexer and Parser Grammar
 # ==============================================================================
 #
-# Defines the lexer and parser for Zag. Processed by nexus to
+# Defines the lexer and parser for Zag. Processed by src/grammar.zig to
 # generate src/parser.zig.
 #
-# Usage: nexus zag.grammar src/parser.zig
+# Usage: grammar zag.grammar src/parser.zig
 #
 # Zag is a high-performance systems language with elegant syntax that
 # compiles to Zig. This grammar defines the v0 bootstrap subset.
@@ -100,6 +100,7 @@ tokens
     outdent         # Indentation decrease
     newline         # Line terminator
     post_if         # if (postfix, after return/break/continue)
+    ternary_if      # if (mid-expression, before else — rewriter-classified)
     dot_lbrace      # .{ (anonymous struct/array init)
     bar_capture     # | (capture delimiter, rewriter-classified)
     comment         # # through end of line
@@ -209,7 +210,7 @@ tokens
 
 @parser
 
-@conflicts = 18
+@conflicts = 19
 
 @as = [ident, keyword]
 
@@ -332,7 +333,7 @@ expr     = if
 # --- Control flow ---
 
 cond     = expr
-         | expr AS  name                     → (as 1 3)
+         | expr AS  name                    → (as 1 3)
          | expr BAR_CAPTURE name BAR_CAPTURE → (as 1 3)
 
 if       = IF cond block ELSE AS name block → (if 2 3 6 7)
@@ -372,8 +373,9 @@ arm      = pattern AS name "=>" expr        → (arm 1 3 5)
 
 # --- Expression modifiers ---
 
-postif   = @infix IF expr ELSE expr         → (if 3 1 5)
-         | @infix IF expr                   → (if 3 1)
+postif   = @infix IF expr ELSE expr          → (ternary 3 1 5)
+         | @infix IF expr                    → (if 3 1)
+         | @infix TERNARY_IF expr ELSE expr  → (ternary 3 1 5)
 
 coalesce = @infix "??"          expr        → (?? 1 3)
 catch    = @infix CATCH AS name expr        → (catch 1 4 5)
@@ -430,12 +432,15 @@ unary    = "!" unary                        → (not 2)
 call     = call "." "*"                     → (deref 1)
          | call "." name                    → (. 1 3)
          | call "[" expr "]"                → (index 1 3)
-         | call L(term)                     → (call 1 ...2)
+         | call L(arg)                      → (call 1 ...2)
          | call "(" args ")"                → (call 1 ...3)
          | atom
 
 args     = L(expr)                          → (...1)
          |                                  → ()
+
+arg      = term TERNARY_IF expr ELSE arg    → (ternary 3 1 5)
+         | term
 
 term     = MINUS_PREFIX term                → (neg 2)
          | "!" term                         → (not 2)

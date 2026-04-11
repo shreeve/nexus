@@ -378,19 +378,14 @@ const LexerParser = struct {
     }
 
     fn parseStateDecl(self: *LexerParser) !void {
-        // Check for block form: `state` followed by newline + indented lines
         self.skipWhitespace();
-        if (self.peek() == '\n' or self.peek() == '#') {
-            self.skipToNextLine();
-            while (self.atIndentedLine()) {
-                try self.parseOneState();
-                self.skipWhitespace();
-                if (self.peek() == '\n' or self.peek() == '#') self.skipToNextLine();
-            }
-            return;
+        if (self.peek() != '\n' and self.peek() != '#') return error.ExpectedNewline;
+        self.skipToNextLine();
+        while (self.atIndentedLine()) {
+            try self.parseOneState();
+            self.skipWhitespace();
+            if (self.peek() == '\n' or self.peek() == '#') self.skipToNextLine();
         }
-        // Inline form: `state name = value`
-        try self.parseOneState();
     }
 
     fn parseOneState(self: *LexerParser) !void {

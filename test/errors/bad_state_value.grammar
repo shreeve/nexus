@@ -1,6 +1,7 @@
 # State variable with non-numeric value
 @lexer
-state beg = hello
+state
+    beg = hello
 tokens
     ident
     eof

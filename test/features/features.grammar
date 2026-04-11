@@ -2,8 +2,9 @@
 
 @lexer
 
-state beg   = 1
-state depth = 0
+state
+    beg   = 1
+    depth = 0
 
 after
     beg = 0

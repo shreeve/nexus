@@ -23,12 +23,13 @@
 #   math      - Math context (1 = after `=` or `+=`; cleared on newline or list_start)
 #   math_lhs  - Last token can be the left-hand side of an infix math op (^, /); set in lexer.zig
 
-state beg     = 1
-state heredoc = 0
-state paren   = 0
-state brace   = 0
-state math    = 0
-state math_lhs = 0
+state
+    beg      = 1
+    heredoc  = 0
+    paren    = 0
+    brace    = 0
+    math     = 0
+    math_lhs = 0
 
 # ==============================================================================
 # TOKEN TYPES

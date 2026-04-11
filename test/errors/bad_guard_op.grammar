@@ -1,6 +1,7 @@
 # Invalid guard operator
 @lexer
-state beg = 1
+state
+    beg = 1
 tokens
     ident
     eof

@@ -44,6 +44,7 @@ pub const Tag = enum(u8) {
     @"as",
     @"??",
     @"catch",
+    @"ternary",
     @"builtin",
     @"error_union",
 
@@ -403,6 +404,14 @@ pub const Lexer = struct {
                     self.last_cat = .post_if;
                     return post;
                 }
+                if (std.mem.eql(u8, ident_text, "if") and !self.flow_if_active and
+                    isValueCat(self.last_cat) and self.hasElseOnLine())
+                {
+                    var ternary = tok;
+                    ternary.cat = .ternary_if;
+                    self.last_cat = .ternary_if;
+                    return ternary;
+                }
                 if (std.mem.eql(u8, ident_text, "return") or
                     std.mem.eql(u8, ident_text, "break") or
                     std.mem.eql(u8, ident_text, "continue"))
@@ -513,6 +522,37 @@ pub const Lexer = struct {
         var probe = self.base;
         const tok = probe.matchRules();
         return tok.cat == .ident and std.mem.eql(u8, self.base.source[tok.pos..][0..tok.len], "else");
+    }
+
+    fn hasElseOnLine(self: *const Lexer) bool {
+        var probe = self.base;
+        var depth: i32 = 0;
+        while (true) {
+            const tok = probe.matchRules();
+            switch (tok.cat) {
+                .newline, .eof => return false,
+                .lparen => depth += 1,
+                .rparen => depth -= 1,
+                .lbracket => depth += 1,
+                .rbracket => depth -= 1,
+                .lbrace => depth += 1,
+                .rbrace => depth -= 1,
+                .ident => {
+                    if (depth == 0 and tok.len == 4 and
+                        std.mem.eql(u8, self.base.source[tok.pos..][0..4], "else"))
+                        return true;
+                },
+                else => {},
+            }
+        }
+    }
+
+    fn isValueCat(cat: TokenCat) bool {
+        return switch (cat) {
+            .ident, .integer, .real, .string_sq, .string_dq,
+            .true, .false, .rparen, .rbracket, .rbrace => true,
+            else => false,
+        };
     }
 
     fn isCapturePipe(self: *const Lexer) bool {

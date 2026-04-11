@@ -18,9 +18,10 @@
 # start of each matchRules() call and stored in the local `ws_count` variable.
 # This count becomes the `pre` field of each token.
 
-state beg = 1
-state pat = 0
-state dep = 0
+state
+    beg = 1
+    pat = 0
+    dep = 0
 
 # ==============================================================================
 # TOKEN TYPES

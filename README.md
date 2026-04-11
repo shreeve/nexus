@@ -103,13 +103,6 @@ state
     paren = 0       # parenthesis depth
 ```
 
-Inline form is also accepted:
-
-```
-state beg = 1
-state paren = 0
-```
-
 ### After (Post-Token Reset)
 
 Default actions applied after every token, unless a rule overrides:
