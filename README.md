@@ -22,7 +22,7 @@ language-specific code.
 
 ```bash
 zig build                                    # build nexus
-./bin/nexus zag.grammar src/parser.zig       # generate parser for Zag
+./bin/nexus zag.grammar   src/parser.zig     # generate parser for Zag
 ./bin/nexus slash.grammar src/parser.zig     # generate parser for Slash
 ./bin/nexus mumps.grammar src/parser.zig     # generate parser for MUMPS
 ```
@@ -33,11 +33,11 @@ for language-specific behavior.
 
 ## Validated Languages
 
-| Language | Grammar | Lang Module | Rules | SLR Conflicts |
-|----------|---------|-------------|-------|---------------|
-| Zag | `zag.grammar` | `zag.zig` | 56 | 18 |
-| Slash | `slash.grammar` | `slash.zig` | 53 | 16 |
-| em (MUMPS) | `mumps.grammar` | `mumps.zig` | 115 | 44 |
+| Language   | Grammar         | Lang Module | Rules | SLR Conflicts |
+|------------|-----------------|-------------|-------|---------------|
+| Zag        | `zag.grammar`   | `zag.zig`   |    56 |            18 |
+| Slash      | `slash.grammar` | `slash.zig` |    53 |            16 |
+| em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |            44 |
 
 ## Architecture
 
@@ -181,10 +181,10 @@ Examples:
 
 ```
 '#' [^\n]*                                  → comment
-'"' ([^"\\$\n] | '\\' . | '$')* '"'        → string_dq
+'"' ([^"\\$\n] | '\\' . | '$')* '"'         → string_dq
 "'" ([^'\n] | "''")* "'"                    → string_sq
 [0-9]+                                      → integer
-[a-zA-Z_][a-zA-Z0-9_]* '?'?                → ident
+[a-zA-Z_][a-zA-Z0-9_]* '?'?                 → ident
 "**"                                        → power
 .                                           → err
 ```
@@ -270,8 +270,8 @@ handles complex, language-specific logic that doesn't fit declarative rules.
 ### Rule Syntax
 
 ```
-rulename = element1 element2     → (action)
-         | alternative           → (action)
+rulename = element1 element2                → (action)
+         | alternative                      → (action)
 ```
 
 - **Lowercase** names = nonterminals (grammar rules)
@@ -283,8 +283,8 @@ rulename = element1 element2     → (action)
 Mark entry points with `!`:
 
 ```
-program! = body                  → (module ...1)
-expr!    = expr                  → 1
+program! = body                             → (module ...1)
+expr!    = expr                             → 1
 ```
 
 Each generates a `parseProgram()`, `parseExpr()`, etc. Multiple start symbols
@@ -303,8 +303,8 @@ Zero-cost redirect — `name` is treated as `IDENT` everywhere.
 `L(X)` matches a comma-separated list (one or more):
 
 ```
-params = L(field)                → (...1)
-args   = L(expr)                 → (...1)
+params = L(field)                           → (...1)
+args   = L(expr)                            → (...1)
 ```
 
 | Syntax | Meaning |
@@ -319,13 +319,13 @@ args   = L(expr)                 → (...1)
 time, keeping action positions stable:
 
 ```
-ref = label [offset] [routine]   → (ref 1 2 3)
+ref = label [offset] [routine]              → (ref 1 2 3)
 
 # Expands to:
-ref = label offset routine       → (ref 1 2 3)
-ref = label offset               → (ref 1 2)
-ref = label routine              → (ref 1 _ 2)
-ref = label                      → (ref 1)
+ref = label offset routine                  → (ref 1 2 3)
+ref = label offset                          → (ref 1 2)
+ref = label routine                         → (ref 1 _ 2)
+ref = label                                 → (ref 1)
 ```
 
 ### Quantifiers
@@ -342,7 +342,7 @@ Actions specify what S-expression to emit. Numbers reference matched elements
 by position (1-based):
 
 ```
-assign = name "=" expr           → (= 1 3)
+assign = name "=" expr                      → (= 1 3)
          ↑    ↑   ↑
          1    2   3
 ```
@@ -367,7 +367,7 @@ present produces `(ref 1)`, not `(ref 1 nil nil)`.
 On the left side, `!` parses an element but excludes it from position numbering:
 
 ```
-block = !INDENT body !OUTDENT    → (block ...2)
+block = !INDENT body !OUTDENT               → (block ...2)
 ```
 
 ### `~N` — Symbol Unwrap
@@ -376,7 +376,7 @@ Stores the resolved identity (enum value) of element N in `src.id`, enabling
 O(1) integer-switch dispatch without string comparison:
 
 ```
-binop = expr operator expr       → (binop ~2 1 3)
+binop = expr operator expr                  → (binop ~2 1 3)
 ```
 
 ### `<` — Tight Binding
@@ -385,8 +385,8 @@ Parser hint that forces reduce over shift on S/R conflicts. Makes a construct
 atomic:
 
 ```
-atom = "@" < atom                → (@name 2)    # @X+1 parses as (@X)+1
-atom = "(" expr ")" <           → 2             # parens are atomic
+atom = "@" < atom                           → (@name 2)    # @X+1 parses as (@X)+1
+atom = "(" expr ")" <                       → 2             # parens are atomic
 ```
 
 ### `X "c"` — Character Exclusion
@@ -394,8 +394,8 @@ atom = "(" expr ")" <           → 2             # parens are atomic
 Peek at the next raw character. If it matches, this alternative fails:
 
 ```
-nameind = "@" atom X "@"         → (@ name 2)   # not followed by @
-subsind = "@" atom "@" subs      → (@ subs 2 4) # followed by @
+nameind = "@" atom X "@"                    → (@ name 2)   # not followed by @
+subsind = "@" atom "@" subs                 → (@ subs 2 4) # followed by @
 ```
 
 ---
