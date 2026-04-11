@@ -6,7 +6,7 @@
 #   1. Golden file tests — generate parser.zig, diff against checked-in golden
 #   2. Compile checks — verify generated .zig is syntactically valid
 #   3. Determinism — same input produces identical output across runs
-#   4. Error tests — bad grammars must produce errors
+#   4. Adverse tests — bad grammars must produce errors
 #
 # Usage:
 #   ./test/run              — run all tests
@@ -103,15 +103,15 @@ run_determinism() {
     fi
 }
 
-# Error tests — bad grammars that must produce errors
-run_error() {
+# Adverse tests — bad grammars that must produce errors
+run_adverse() {
     local name=$1
     local grammar_file=$2
 
     local tmp="$TMPDIR/${name}.zig"
     local output
     local rc=0
-    output=$(cd test/errors && ../../$NEXUS "$grammar_file" "$tmp" 2>&1) || rc=$?
+    output=$(cd test/adverse && ../../$NEXUS "$grammar_file" "$tmp" 2>&1) || rc=$?
 
     if echo "$output" | grep -q '❌'; then
         echo "  PASS  $name (expected error)"
@@ -170,16 +170,16 @@ run_determinism "mumps"    "test/em"       "mumps.grammar"
 echo ""
 
 # =========================================================================
-# 4. Error Tests
+# 4. Adverse Tests
 # =========================================================================
 
-if [[ -d "test/errors" ]]; then
-    echo "=== Error Tests ==="
+if [[ -d "test/adverse" ]]; then
+    echo "=== Adverse Tests ==="
     echo ""
-    for f in test/errors/*.grammar; do
+    for f in test/adverse/*.grammar; do
         [[ -e "$f" ]] || continue
         name=$(basename "$f" .grammar)
-        run_error "$name" "$(basename $f)"
+        run_adverse "$name" "$(basename $f)"
     done
     echo ""
 fi

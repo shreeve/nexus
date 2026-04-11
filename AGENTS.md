@@ -1,0 +1,81 @@
+# Nexus — Universal Parser Generator
+
+Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer + SLR(1) parser). One tool, any language, zero language-specific code in the engine.
+
+## Architecture
+
+```
+{lang}.grammar + {lang}.zig  →  nexus (src/nexus.zig)  →  parser.zig
+```
+
+- `src/nexus.zig` — the generator engine (6400+ lines, single file)
+- `test/{lang}/` — grammar + lang module per language
+- `test/golden/` — byte-exact golden files for generated output
+- `test/adverse/` — bad grammars that must produce errors
+- `test/run` — 23 tests: golden, compile checks, determinism, adverse tests
+
+## Validated Languages
+
+| Language | Grammar | Lang Module | Lexer Wrapper |
+|----------|---------|-------------|---------------|
+| MUMPS (em) | `test/em/mumps.grammar` | `test/em/mumps.zig` | Yes — pattern mode, indent dots, spaces exclusion |
+| Zag | `test/zag/zag.grammar` | `test/zag/zag.zig` | Yes — indent/outdent, token reclassification |
+| Slash | `test/slash/slash.grammar` | `test/slash/slash.zig` | Yes — heredocs, regex, indent/outdent |
+
+## Extension Mechanism
+
+Generated `parser.zig` emits: `pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;`
+
+Lang modules can export a `pub const Lexer` struct wrapping `BaseLexer` for language-specific scanning. The wrapper has full access to `base.pos`, `base.source`, state variables, and `base.matchRules()`.
+
+## Key Grammar Features
+
+### `@as` — Context-Sensitive Keyword Resolution
+
+Unified syntax with ordered resolution and `self` priority checkpoint:
+
+```
+@as ident = [fn, isv, ssvn, self, cmd]
+```
+
+- Items before `self`: strict matching (`> 0`, shift only)
+- `self`: check if IDENT is valid in current parser state; if so, return it
+- Items after `self`: permissive matching (`!= 0`, any action)
+- Implicit IDENT fallback at end
+
+### `@code` — Lexer Function Import
+
+```
+@code = checkPatternMode
+```
+
+Imports a function from the lang module into the generated lexer.
+
+## Coding Standards
+
+Follow `/Users/shreeve/Data/Code/em/CODING.md`:
+- Functions/methods: camelCase
+- Variables/fields/parameters: camelCase
+- Constants: camelCase (not ALL_CAPS)
+- Types (structs, enums): PascalCase
+- File names: lowercase
+
+Both the generator internals AND generated output follow these conventions.
+
+## Downstream Deployments
+
+- **em** (`/Users/shreeve/Data/Code/em/`) — MUMPS engine. Copy `mumps.grammar` → `em/mumps.grammar`, `mumps.zig` → `em/src/mumps.zig`, run `nexus mumps.grammar src/parser.zig`
+- **Zag** (`/Users/shreeve/Data/Code/zag/`) — needs lang module naming update (snake→camelCase)
+- **Slash** (`/Users/shreeve/Data/Code/slash/`) — needs lang module naming update
+
+## String Literal Scanning
+
+The inline string scanner generator detects the escape convention from the grammar pattern. If the pattern contains a doubled delimiter literal (e.g., `'""'` or `"''"`), it generates doubled-quote escape handling. Otherwise, it generates backslash escape handling. This is a heuristic based on pattern text, not full structural parsing.
+
+## Test Workflow
+
+```bash
+zig build                    # build nexus
+zig build test               # run all 23 tests
+./test/run --update          # regenerate golden files after intentional changes
+```

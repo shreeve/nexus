@@ -245,9 +245,9 @@ pub const BaseLexer = struct {
                 const ch = self.source[self.pos];
                 if (ch == '"') {
                     self.pos += 1;
+                    if (self.pos < self.source.len and self.source[self.pos] == '"') { self.pos += 1; continue; }
                     return Token{ .cat = .@"string", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
-                if (ch == '\\') { self.pos += 2; continue; }
                 if (ch == '\n') break;
                 self.pos += 1;
             }

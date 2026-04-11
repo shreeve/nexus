@@ -1530,7 +1530,7 @@ const LexerGenerator = struct {
         var hasIdent = false;
 
         // Collect string patterns (heredocs are handled by the language wrapper, not the engine)
-        const StringInfo = struct { openChar: u8, token: []const u8 };
+        const StringInfo = struct { openChar: u8, token: []const u8, useDoubledEscape: bool };
         var stringInfos: [4]StringInfo = undefined;
         var stringInfoCount: usize = 0;
 
@@ -1541,14 +1541,19 @@ const LexerGenerator = struct {
                 std.mem.startsWith(u8, rule.token, "string_");
             if (isStringTok) {
                 if (rule.pattern.len >= 3 and (rule.pattern[0] == '\'' or rule.pattern[0] == '"')) {
-                    const delim = rule.pattern[0];
-                    if (rule.pattern[1] != delim) {
+                    if (rule.pattern[1] != rule.pattern[0]) {
                         if (stringInfoCount < stringInfos.len) {
+                            const delim = rule.pattern[0]; // grammar quote delimiter
+                            const openChar = rule.pattern[1]; // actual string delimiter in target language
+                            const quotedDoubled = [4]u8{ delim, openChar, openChar, delim };
                             stringInfos[stringInfoCount] = .{
-                                .openChar = rule.pattern[1],
+                                .openChar = openChar,
                                 .token = rule.token,
+                                .useDoubledEscape = std.mem.indexOf(u8, rule.pattern, &quotedDoubled) != null,
                             };
                             stringInfoCount += 1;
+                        } else {
+                            @panic("too many string token patterns (max 4)");
                         }
                     }
                 }
@@ -1579,10 +1584,10 @@ const LexerGenerator = struct {
                 \\        if (c == '{s}') {{
             , .{litStr});
 
-            // Detect escape mechanism from the grammar pattern
-            const isSq = (si.openChar == '\'');
-            if (isSq) {
-                // Single-quote: '' escape, stop on \n
+            // One escape strategy per string rule: doubled-delimiter or backslash.
+            // Grammars needing both should use a lang module Lexer wrapper.
+            if (si.useDoubledEscape) {
+                // Doubled-quote escape (e.g. '' or ""), stop on \n
                 try self.print(
                     \\            self.pos += 1;
                     \\            while (self.pos < self.source.len) {{
@@ -1600,7 +1605,7 @@ const LexerGenerator = struct {
                     \\
                 , .{ litStr, litStr, si.token });
             } else {
-                // Double-quote: backslash escape, stop on \n
+                // Backslash escape, stop on \n
                 try self.print(
                     \\            self.pos += 1;
                     \\            while (self.pos < self.source.len) {{

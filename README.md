@@ -77,7 +77,7 @@ tokens                         # token type declarations
 
 @lang = "name"                 # language module
 @conflicts = N                 # expected SLR conflict count
-@as = [ident, keyword]         # context-sensitive keyword promotion
+@as ident = [keyword]           # context-sensitive keyword promotion
 
 <rule> = <elements> → (action) # parser rules
 
@@ -443,7 +443,7 @@ subsind = "@" atom "@" subs                 → (@ subs 2 4) # followed by @
 |-----------|---------|
 | `@lang = "name"` | Import language module (`name.zig`) |
 | `@conflicts = N` | Declare expected SLR conflict count |
-| `@as = [ident, keyword]` | Context-sensitive keyword promotion |
+| `@as ident = [keyword]` | Context-sensitive keyword promotion |
 | `@op = [...]` | Operator literal-to-token mappings |
 | `@infix base` | Auto-generate precedence chain |
 | `@errors` | Human-readable rule names for diagnostics |
@@ -487,13 +487,35 @@ When the grammar uses `"'="` in a rule, the parser maps it to the lexer's
 ### `@as` — Context-Sensitive Keywords
 
 ```
-@as = [ident, keyword]
+@as ident = [keyword]
+@as ident = [fn, isv, ssvn, self, cmd]
 ```
 
-Enables the `@lang` module's `keyword_as()` function. Identifiers like `fun`,
-`if`, `return` are promoted to keyword terminals **only when the current parser
-state has a valid action for that keyword**. The same word can be a keyword in
-one context and an identifier in another.
+Defines ordered resolution for context-sensitive keyword promotion. When the
+lexer produces `ident`, the parser tries each candidate in list order. Each
+candidate calls the `@lang` module's lookup function (e.g., `keywordAs()`,
+`cmdAs()`) and checks if the current parser state accepts that keyword.
+
+`self` is a priority checkpoint: if plain `ident` is valid in the current
+parser state, return it immediately without trying later candidates. This
+controls disambiguation when both a keyword and an identifier are valid:
+
+- Candidates **before** `self`: strict matching (`> 0`, shift actions only)
+- Candidates **after** `self`: permissive matching (`!= 0`, any action)
+- Implicit `ident` fallback at the end if nothing matches
+
+For single-keyword languages (e.g., Zag), `self` is not needed:
+
+```
+@as ident = [keyword]
+```
+
+For languages where commands overlap with variable names (e.g., MUMPS),
+`self` ensures identifiers win over commands in expression contexts:
+
+```
+@as ident = [fn, isv, ssvn, self, cmd]
+```
 
 ### `@errors` — Human-Readable Rule Names
 
@@ -646,7 +668,7 @@ Otherwise it uses `BaseLexer` directly.
 | **Golden files** | 5 | Full pipeline: grammar → parser.zig, byte-exact diff |
 | **Compile checks** | 5 | `zig ast-check` on generated output |
 | **Determinism** | 5 | Same input → identical output across runs |
-| **Error tests** | 8 | Bad grammars produce errors, not silent failures |
+| **Adverse tests** | 8 | Bad grammars produce errors, not silent failures |
 
 ### Golden Grammars
 
