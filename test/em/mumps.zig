@@ -118,6 +118,11 @@ pub const Lexer = struct {
             tok.pre = wsCount;
         }
 
+        // Reclassify leading-zero integers (01, 007) as zdigits for labels
+        if (tok.cat == .@"integer" and tok.len > 1 and src[tok.pos] == '0') {
+            tok.cat = .@"zdigits";
+        }
+
         // Pattern mode entry after ?, '?, and ' tokens.
         // checkPatternMode does lookahead to disambiguate pattern starts
         // (like ?1N) from non-pattern uses (like ?1E+2 or bare ?).
