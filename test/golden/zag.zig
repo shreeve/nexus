@@ -1039,12 +1039,12 @@ pub const Parser = struct {
         if (zag.keywordAs(text)) |id| {
             const idIdx = @intFromEnum(id);
             const sym = keywordToSymbol[idIdx];
-            if (sym != 0 and getAction(state, sym) != 0) {
+            if (sym != 0 and getAction(state, sym) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
             const fallback = keywordFallbackSymbol;
-            if (fallback != 0 and getAction(state, fallback) != 0) {
+            if (fallback != 0 and getAction(state, fallback) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }

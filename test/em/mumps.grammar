@@ -398,10 +398,7 @@ after
 
 @conflicts = 44
 
-@as = [ident, cmd ]
-@as = [ident, fn  ]
-@as = [ident, isv ]
-@as = [ident, ssvn]
+@as ident = [fn, isv, ssvn, self, cmd]
 
 @op = [
   "'="                                      → "noteq"       , "'<" → "notlt"       , "'>"  → "notgt",

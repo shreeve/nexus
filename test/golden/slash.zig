@@ -1081,12 +1081,12 @@ pub const Parser = struct {
         if (slash.cmdAs(text)) |id| {
             const idIdx = @intFromEnum(id);
             const sym = cmdToSymbol[idIdx];
-            if (sym != 0 and getAction(state, sym) != 0) {
+            if (sym != 0 and getAction(state, sym) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
             const fallback = cmdFallbackSymbol;
-            if (fallback != 0 and getAction(state, fallback) != 0) {
+            if (fallback != 0 and getAction(state, fallback) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }

@@ -2869,17 +2869,37 @@ const ParserDSLParser = struct {
     }
 
     fn parseAsDirective(self: *ParserDSLParser) !void {
+        // Support both forms:
+        //   @as = [ident, cmd]                          (legacy: single pair)
+        //   @as ident = [fn, isv, ssvn, self, cmd]      (unified: ordered resolution)
+        var sourceTok: []const u8 = "";
+
+        if (self.current.kind == .ident) {
+            sourceTok = self.current.text;
+            self.advance();
+        }
+
         try self.expect(.eq, "Expected '=' after @as");
         try self.expect(.lbracket, "Expected '[' in @as directive");
 
-        const tok = try self.expectIdent("token type");
-        try self.expect(.comma, "Expected ',' after token");
-        const rule = try self.expectIdent("rule name");
-        try self.expect(.rbracket, "Expected ']' to close @as directive");
-
-        if (self.current.kind == .newline) self.advance();
-
-        try self.asDirectives.append(self.allocator, .{ .token = tok, .rule = rule });
+        if (sourceTok.len == 0) {
+            const tok = try self.expectIdent("token type");
+            try self.expect(.comma, "Expected ',' after token");
+            const rule = try self.expectIdent("rule name");
+            try self.expect(.rbracket, "Expected ']' to close @as directive");
+            if (self.current.kind == .newline) self.advance();
+            try self.asDirectives.append(self.allocator, .{ .token = tok, .rule = rule });
+        } else {
+            while (self.current.kind != .rbracket and self.current.kind != .eof) {
+                self.skipTrivia();
+                if (self.current.kind == .rbracket) break;
+                const rule = try self.expectIdent("resolution candidate");
+                try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
+                if (self.current.kind == .comma) self.advance();
+            }
+            try self.expect(.rbracket, "Expected ']' to close @as directive");
+            if (self.current.kind == .newline) self.advance();
+        }
     }
 
     fn parseOpDirective(self: *ParserDSLParser) !void {
@@ -5515,11 +5535,13 @@ const ParserGenerator = struct {
                 \\
             );
 
-            // Eager promotion: try all @as directives uniformly.
-            // Parser action table disambiguates (keyword only promoted when
-            // the parser state has a valid action for it).
+            // Ordered resolution: try @as candidates in declared order.
+            // "self" means check if plain IDENT is valid before continuing.
             for (self.asDirectives.items) |directive| {
-                if (std.mem.eql(u8, directive.token, "ident")) {
+                if (!std.mem.eql(u8, directive.token, "ident")) continue;
+                if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) {
+                    try writer.writeAll("        if (getAction(self.stateStack.getLast(), symIdent) != 0) return symIdent;\n");
+                } else {
                     const cap = capitalized(directive.rule);
                     const capName = cap[0..directive.rule.len];
                     try writer.print("        if (self.tryIdentAs{s}(token, text)) |sym| return sym;\n", .{capName});
@@ -5532,11 +5554,17 @@ const ParserGenerator = struct {
                 \\
             );
 
-            // Generate try_ident_as_* functions for each @as directive
+            // Generate tryIdentAs* functions for each @as directive (skip "self" entries)
+            // Directives before "self" use > 0 (shift only); after "self" use != 0 (any action)
             if (self.lang) |langName| {
-                // External module: reference lang.{rule}As(), lang.{Rule}Id, etc.
+                var seenSelf = false;
                 for (self.asDirectives.items) |directive| {
                     if (!std.mem.eql(u8, directive.token, "ident")) continue;
+                    if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) {
+                        seenSelf = true;
+                        continue;
+                    }
+                    const actionCheck: []const u8 = if (seenSelf) "!= 0" else "> 0";
 
                     const cap = capitalized(directive.rule);
                     const capName = cap[0..directive.rule.len];
@@ -5548,12 +5576,12 @@ const ParserGenerator = struct {
                         \\        if ({s}.{s}As(text)) |id| {{
                         \\            const idIdx = @intFromEnum(id);
                         \\            const sym = {s}ToSymbol[idIdx];
-                        \\            if (sym != 0 and getAction(state, sym) != 0) {{
+                        \\            if (sym != 0 and getAction(state, sym) {s}) {{
                         \\                self.lastMatchedId = @intCast(idIdx);
                         \\                return sym;
                         \\            }}
                         \\            const fallback = {s}FallbackSymbol;
-                        \\            if (fallback != 0 and getAction(state, fallback) != 0) {{
+                        \\            if (fallback != 0 and getAction(state, fallback) {s}) {{
                         \\                self.lastMatchedId = @intCast(idIdx);
                         \\                return fallback;
                         \\            }}
@@ -5561,12 +5589,18 @@ const ParserGenerator = struct {
                         \\        return null;
                         \\    }}
                         \\
-                    , .{ capName, langName, directive.rule, directive.rule, directive.rule });
+                    , .{ capName, langName, directive.rule, directive.rule, actionCheck, directive.rule, actionCheck });
                 }
             } else {
                 // Inline: generate simple exact-match keyword functions
+                var seenSelf2 = false;
                 for (self.asDirectives.items) |directive| {
                     if (!std.mem.eql(u8, directive.token, "ident")) continue;
+                    if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) {
+                        seenSelf2 = true;
+                        continue;
+                    }
+                    const actionCheck: []const u8 = if (seenSelf2) "!= 0" else "> 0";
 
                     const cap = capitalized(directive.rule);
                     const capName = cap[0..directive.rule.len];
@@ -5577,7 +5611,7 @@ const ParserGenerator = struct {
                         \\        const state = self.stateStack.getLast();
                         \\        if ({s}As(text)) |id| {{
                         \\            const sym = {s}ToSymbol[@intFromEnum(id)];
-                        \\            if (sym != 0 and getAction(state, sym) != 0) {{
+                        \\            if (sym != 0 and getAction(state, sym) {s}) {{
                         \\                self.lastMatchedId = @intFromEnum(id);
                         \\                return sym;
                         \\            }}
@@ -5585,7 +5619,7 @@ const ParserGenerator = struct {
                         \\        return null;
                         \\    }}
                         \\
-                    , .{ capName, directive.rule, directive.rule });
+                    , .{ capName, directive.rule, directive.rule, actionCheck });
                 }
             }
         } else {
@@ -5655,10 +5689,10 @@ const ParserGenerator = struct {
             try writer.print("const symIdent: u16 = {d};\n", .{self.errorId});
         }
 
-        // Generate *_to_symbol mapping arrays and keyword matchers for @as directives
+        // Generate *ToSymbol mapping arrays and keyword matchers for @as directives
         if (self.lang) |langName| {
-            // External module: reference lang.{Rule}Id, lang.{rule}As, etc.
             for (self.asDirectives.items) |directive| {
+                if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) continue;
                 var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
                 defer specificTerminals.deinit(self.allocator);
 
@@ -5723,6 +5757,7 @@ const ParserGenerator = struct {
             defer emittedRules.deinit();
 
             for (self.asDirectives.items) |directive| {
+                if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) continue;
                 if (emittedRules.contains(directive.rule)) continue;
                 emittedRules.put(directive.rule, {}) catch {};
 
@@ -5735,6 +5770,7 @@ const ParserGenerator = struct {
             }
 
             for (self.asDirectives.items) |directive| {
+                if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) continue;
                 var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
                 defer specificTerminals.deinit(self.allocator);
 
