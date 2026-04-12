@@ -12,6 +12,140 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ngp = @import("nexus_grammar_parser.zig");
+const ngl = @import("nexus_grammar.zig");
+
+// =============================================================================
+// Source Infrastructure — absolute byte offsets and span-based diagnostics
+// =============================================================================
+
+const Source = struct {
+    path: []const u8,
+    text: []const u8,
+    line_starts: []const u32,
+
+    fn init(allocator: Allocator, path: []const u8, text: []const u8) !Source {
+        var starts = std.ArrayListUnmanaged(u32){};
+        try starts.append(allocator, 0);
+        for (text, 0..) |c, i| {
+            if (c == '\n' and i + 1 < text.len) {
+                try starts.append(allocator, @intCast(i + 1));
+            }
+        }
+        return .{
+            .path = path,
+            .text = text,
+            .line_starts = try starts.toOwnedSlice(allocator),
+        };
+    }
+
+    fn deinit(self: *const Source, allocator: Allocator) void {
+        allocator.free(self.line_starts);
+    }
+
+    fn location(self: *const Source, offset: u32) Location {
+        var lo: usize = 0;
+        var hi: usize = self.line_starts.len;
+        while (lo + 1 < hi) {
+            const mid = (lo + hi) / 2;
+            if (self.line_starts[mid] <= offset) {
+                lo = mid;
+            } else {
+                hi = mid;
+            }
+        }
+        return .{
+            .line = @intCast(lo + 1),
+            .col = @intCast(offset - self.line_starts[lo] + 1),
+        };
+    }
+
+    fn lineText(self: *const Source, line: u32) []const u8 {
+        if (line == 0 or line > self.line_starts.len) return "";
+        const start = self.line_starts[line - 1];
+        var end = start;
+        while (end < self.text.len and self.text[end] != '\n') : (end += 1) {}
+        return self.text[start..end];
+    }
+};
+
+const Location = struct {
+    line: u32,
+    col: u32,
+};
+
+const Span = struct {
+    start: u32,
+    end: u32,
+
+    fn text(self: Span, source: *const Source) []const u8 {
+        const s: usize = @min(self.start, source.text.len);
+        const e: usize = @min(self.end, source.text.len);
+        return source.text[s..e];
+    }
+
+    fn location(self: Span, source: *const Source) Location {
+        return source.location(self.start);
+    }
+};
+
+const Diagnostic = struct {
+    span: Span,
+    message: []const u8,
+    severity: Severity,
+
+    const Severity = enum { err, warning, note };
+
+    fn print(self: *const Diagnostic, source: *const Source) void {
+        const loc = source.location(self.span.start);
+        const sev = switch (self.severity) {
+            .err => "error",
+            .warning => "warning",
+            .note => "note",
+        };
+        std.debug.print("{s}:{d}:{d}: {s}: {s}\n", .{
+            source.path, loc.line, loc.col, sev, self.message,
+        });
+        const line = source.lineText(loc.line);
+        if (line.len > 0) {
+            std.debug.print("  {s}\n", .{line});
+            var i: u32 = 0;
+            while (i + 1 < loc.col) : (i += 1) {
+                std.debug.print(" ", .{});
+            }
+            std.debug.print("  ^\n", .{});
+        }
+    }
+};
+
+const DiagnosticList = struct {
+    items: std.ArrayListUnmanaged(Diagnostic) = .{},
+
+    fn addError(self: *DiagnosticList, allocator: Allocator, span: Span, message: []const u8) void {
+        self.items.append(allocator, .{ .span = span, .message = message, .severity = .err }) catch {};
+    }
+
+    fn addWarning(self: *DiagnosticList, allocator: Allocator, span: Span, message: []const u8) void {
+        self.items.append(allocator, .{ .span = span, .message = message, .severity = .warning }) catch {};
+    }
+
+    fn printAll(self: *const DiagnosticList, source: *const Source) void {
+        for (self.items.items) |*d| {
+            d.print(source);
+        }
+    }
+
+    fn hasErrors(self: *const DiagnosticList) bool {
+        for (self.items.items) |d| {
+            if (d.severity == .err) return true;
+        }
+        return false;
+    }
+
+    fn deinit(self: *DiagnosticList, allocator: Allocator) void {
+        self.items.deinit(allocator);
+    }
+};
 
 // =============================================================================
 // Lexer DSL Data Structures
@@ -2607,6 +2741,536 @@ const ParsedElement = struct {
 };
 
 // =============================================================================
+// Self-Hosted Parser Bridge — converts generated Sexp AST to existing structs
+// =============================================================================
+
+const SelfHostedParser = struct {
+    allocator: Allocator,
+    sourceText: []const u8,
+
+    rules: std.ArrayListUnmanaged(ParsedRule) = .{},
+    startSymbols: std.ArrayListUnmanaged([]const u8) = .{},
+    asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
+    opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
+    errorNames: std.ArrayListUnmanaged(ErrorName) = .{},
+    infixOps: std.ArrayListUnmanaged(InfixOp) = .{},
+    infixBase: ?[]const u8 = null,
+    lang: ?[]const u8 = null,
+    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
+    expectConflicts: ?u32 = null,
+
+    fn init(allocator: Allocator, sourceText: []const u8) SelfHostedParser {
+        return .{
+            .allocator = allocator,
+            .sourceText = sourceText,
+        };
+    }
+
+    fn deinit(self: *SelfHostedParser) void {
+        for (self.rules.items) |*rule| {
+            for (rule.alternatives) |*alt| {
+                self.freeElements(alt.elements);
+                self.allocator.free(alt.elements);
+            }
+            self.allocator.free(rule.alternatives);
+        }
+        self.rules.deinit(self.allocator);
+        self.startSymbols.deinit(self.allocator);
+        self.asDirectives.deinit(self.allocator);
+        self.opMappings.deinit(self.allocator);
+        self.errorNames.deinit(self.allocator);
+        self.infixOps.deinit(self.allocator);
+        self.codeBlocks.deinit(self.allocator);
+    }
+
+    fn freeElements(self: *SelfHostedParser, elements: []const ParsedElement) void {
+        for (elements) |elem| {
+            if (elem.subElements.len > 0) {
+                self.freeElements(elem.subElements);
+                self.allocator.free(elem.subElements);
+            }
+        }
+    }
+
+    fn parse(self: *SelfHostedParser) !void {
+        var parser = ngp.Parser.init(self.allocator, self.sourceText);
+        defer parser.deinit();
+
+        const ast = parser.parseGrammar() catch {
+            parser.printError();
+            return error.ParseError;
+        };
+
+        try self.walkGrammar(ast);
+    }
+
+    fn getText(self: *SelfHostedParser, sexp: ngp.Sexp) []const u8 {
+        return sexp.getText(self.sourceText);
+    }
+
+    fn getListItems(self: *SelfHostedParser, sexp: ngp.Sexp) []const ngp.Sexp {
+        _ = self;
+        return switch (sexp) {
+            .list => |items| items,
+            else => &[_]ngp.Sexp{},
+        };
+    }
+
+    fn walkGrammar(self: *SelfHostedParser, ast: ngp.Sexp) !void {
+        const items = self.getListItems(ast);
+        if (items.len == 0) return;
+
+        // First item is the tag
+        for (items[1..]) |item| {
+            try self.walkEntry(item);
+        }
+    }
+
+    fn walkEntry(self: *SelfHostedParser, entry: ngp.Sexp) !void {
+        const items = self.getListItems(entry);
+        if (items.len == 0) {
+            if (entry == .nil) return; // NEWLINE or COMMENT entry
+            return;
+        }
+
+        const tag = switch (items[0]) {
+            .tag => |t| t,
+            else => return,
+        };
+
+        switch (tag) {
+            .lang => try self.handleLang(items),
+            .conflicts => try self.handleConflicts(items),
+            .as => try self.handleAs(items),
+            .op => try self.handleOp(items),
+            .code => try self.handleCode(items),
+            .errors => try self.handleErrors(items),
+            .infix => try self.handleInfix(items),
+            .rule => try self.handleRule(items),
+            else => {},
+        }
+    }
+
+    fn handleLang(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        if (items.len < 2) return;
+        const raw = self.getText(items[1]);
+        self.lang = if (raw.len >= 2 and raw[0] == '"') raw[1 .. raw.len - 1] else raw;
+    }
+
+    fn handleConflicts(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        if (items.len < 2) return;
+        const text = self.getText(items[1]);
+        self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch null;
+    }
+
+    fn handleAs(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        if (items.len < 3) return;
+
+        // Check if first data item is a list (unified form) or src token (legacy form)
+        const firstData = items[1];
+        const firstItems = self.getListItems(firstData);
+
+        if (firstItems.len >= 2) {
+            // Unified form: (as (source_tok entry1 entry2 ...))
+            const sourceTok = self.getText(firstItems[0]);
+            for (firstItems[1..]) |e| {
+                const rule = self.getText(e);
+                try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
+            }
+            // Also check remaining items
+            for (items[2..]) |item| {
+                const rule = self.getText(item);
+                if (rule.len > 0) {
+                    try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
+                }
+            }
+        } else {
+            // Legacy form: (as token_type rule_name) or flat entries
+            // items[1..] are raw src tokens: first is token type, rest are rule names
+            const tokenType = self.getText(items[1]);
+            for (items[2..]) |item| {
+                const rule = self.getText(item);
+                try self.asDirectives.append(self.allocator, .{ .token = tokenType, .rule = rule });
+            }
+        }
+    }
+
+    fn handleOp(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        for (items[1..]) |item| {
+            const sub = self.getListItems(item);
+            if (sub.len >= 3) {
+                const tag = switch (sub[0]) {
+                    .tag => |t| t,
+                    else => continue,
+                };
+                if (tag == .op_map) {
+                    const lit = self.stripQuotes(self.getText(sub[1]));
+                    const tok = self.stripQuotes(self.getText(sub[2]));
+                    try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
+                }
+            }
+        }
+    }
+
+    fn handleCode(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        if (items.len < 3) return;
+        const location = self.getText(items[1]);
+        const code = self.getText(items[2]);
+        try self.codeBlocks.append(self.allocator, .{ .location = location, .code = code });
+    }
+
+    fn handleErrors(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        for (items[1..]) |item| {
+            const sub = self.getListItems(item);
+            if (sub.len >= 3) {
+                const tag = switch (sub[0]) {
+                    .tag => |t| t,
+                    else => continue,
+                };
+                if (tag == .error_name) {
+                    const rule = self.getText(sub[1]);
+                    const name = self.stripQuotes(self.getText(sub[2]));
+                    try self.errorNames.append(self.allocator, .{ .rule = rule, .name = name });
+                }
+            }
+        }
+    }
+
+    fn handleInfix(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        if (items.len < 2) return;
+        self.infixBase = self.getText(items[1]);
+        var prec: u32 = 1;
+
+        // items[2..] are rows; each row is a list of (infix_op STRING ASSOC) nodes
+        for (items[2..]) |row| {
+            const rowItems = self.getListItems(row);
+            var foundOp = false;
+
+            for (rowItems) |opNode| {
+                const sub = self.getListItems(opNode);
+                if (sub.len < 3) continue;
+                const tag = switch (sub[0]) {
+                    .tag => |t| t,
+                    else => continue,
+                };
+                if (tag != .infix_op) continue;
+
+                const opRaw = self.getText(sub[1]);
+                const op = self.stripQuotes(opRaw);
+                const assocName = self.getText(sub[2]);
+                const assoc: InfixOp.Assoc = if (std.mem.eql(u8, assocName, "left"))
+                    .left
+                else if (std.mem.eql(u8, assocName, "right"))
+                    .right
+                else
+                    .none;
+
+                try self.infixOps.append(self.allocator, .{ .op = op, .assoc = assoc, .prec = prec });
+                foundOp = true;
+            }
+
+            if (foundOp) prec += 1;
+        }
+    }
+
+    fn handleRule(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+        if (items.len < 2) return;
+
+        // items[1] is rule_name: (start name) or (name name)
+        const nameItems = self.getListItems(items[1]);
+        if (nameItems.len < 2) return;
+
+        const nameTag = switch (nameItems[0]) {
+            .tag => |t| t,
+            else => return,
+        };
+        const name = self.getText(nameItems[1]);
+        const isStart = nameTag == .start;
+
+        if (isStart) {
+            try self.startSymbols.append(self.allocator, name);
+        }
+
+        var alternatives = std.ArrayListUnmanaged(ParsedAlternative){};
+
+        for (items[2..]) |altNode| {
+            const alt = try self.convertAlternative(altNode);
+            try alternatives.append(self.allocator, alt);
+        }
+
+        try self.rules.append(self.allocator, .{
+            .name = name,
+            .isStart = isStart,
+            .alternatives = try alternatives.toOwnedSlice(self.allocator),
+        });
+    }
+
+    fn convertAlternative(self: *SelfHostedParser, node: ngp.Sexp) !ParsedAlternative {
+        const items = self.getListItems(node);
+        if (items.len == 0) {
+            return .{ .elements = &[_]ParsedElement{}, .action = null };
+        }
+
+        var elements = std.ArrayListUnmanaged(ParsedElement){};
+        var action: ?[]const u8 = null;
+        var preferReduce = false;
+        var preferShift = false;
+        var excludeChar: u8 = 0;
+
+        const tag = switch (items[0]) {
+            .tag => |t| t,
+            else => return .{ .elements = &[_]ParsedElement{}, .action = null },
+        };
+
+        if (tag == .alt_reduce) preferReduce = true;
+        if (tag == .alt_shift) preferShift = true;
+
+        // (alt elements_group action_text?) or (alt_reduce elements_group action_text?)
+        if (items.len >= 2) try self.collectElements(items[1], &elements);
+        if (items.len >= 3) {
+            const rawAction = self.getText(items[2]);
+            if (rawAction.len > 0) {
+                action = self.parseActionHints(rawAction, &preferReduce, &preferShift, &excludeChar);
+            }
+        }
+
+        return .{
+            .elements = try elements.toOwnedSlice(self.allocator),
+            .action = action,
+            .excludeChar = excludeChar,
+            .preferReduce = preferReduce,
+            .preferShift = preferShift,
+        };
+    }
+
+    fn parseActionHints(self: *SelfHostedParser, raw: []const u8, preferReduce: *bool, preferShift: *bool, excludeChar: *u8) ?[]const u8 {
+        _ = self;
+        var text = std.mem.trim(u8, raw, " \t");
+
+        // Parse leading hints: < > X "c" ; (comments)
+        while (text.len > 0) {
+            if (text[0] == '<') {
+                preferReduce.* = true;
+                text = std.mem.trimLeft(u8, text[1..], " \t");
+            } else if (text[0] == '>') {
+                preferShift.* = true;
+                text = std.mem.trimLeft(u8, text[1..], " \t");
+            } else if (text[0] == 'X' and text.len > 2 and text[1] == ' ') {
+                // X "c" exclude hint
+                var i: usize = 2;
+                while (i < text.len and text[i] == ' ') : (i += 1) {}
+                if (i < text.len and text[i] == '"' and i + 2 < text.len) {
+                    excludeChar.* = text[i + 1];
+                    i += 3; // skip "c"
+                    text = std.mem.trimLeft(u8, text[i..], " \t");
+                } else break;
+            } else break;
+        }
+
+        if (text.len == 0) return null;
+        return text;
+    }
+
+    fn collectElements(self: *SelfHostedParser, node: ngp.Sexp, elements: *std.ArrayListUnmanaged(ParsedElement)) !void {
+        switch (node) {
+            .nil => {},
+            .list => |items| {
+                if (items.len == 0) return;
+                const tag = switch (items[0]) {
+                    .tag => |t| t,
+                    else => {
+                        for (items) |item| try self.collectElements(item, elements);
+                        return;
+                    },
+                };
+
+                switch (tag) {
+                    .ref => {
+                        if (items.len >= 2) {
+                            try elements.append(self.allocator, .{
+                                .kind = .ident,
+                                .value = self.getText(items[1]),
+                            });
+                        }
+                    },
+                    .tok => {
+                        if (items.len >= 2) {
+                            try elements.append(self.allocator, .{
+                                .kind = .token,
+                                .value = self.getText(items[1]),
+                            });
+                        }
+                    },
+                    .lit => {
+                        if (items.len >= 2) {
+                            try elements.append(self.allocator, .{
+                                .kind = .string,
+                                .value = self.getText(items[1]),
+                            });
+                        }
+                    },
+                    .at_ref => {
+                        if (items.len >= 2) {
+                            try elements.append(self.allocator, .{
+                                .kind = .ident,
+                                .value = self.getText(items[1]),
+                            });
+                        }
+                    },
+                    .quantified => {
+                        if (items.len >= 3) {
+                            var elem = try self.convertPrimary(items[1]);
+                            elem.quantifier = self.convertQuantifier(items[2]);
+                            try elements.append(self.allocator, elem);
+                        }
+                    },
+                    .skip => {
+                        if (items.len >= 2) {
+                            var elem = try self.convertPrimary(items[1]);
+                            elem.skip = true;
+                            try elements.append(self.allocator, elem);
+                        }
+                    },
+                    .skip_q => {
+                        if (items.len >= 3) {
+                            var elem = try self.convertPrimary(items[1]);
+                            elem.skip = true;
+                            elem.quantifier = self.convertQuantifier(items[2]);
+                            try elements.append(self.allocator, elem);
+                        }
+                    },
+                    .group => {
+                        var subElems = std.ArrayListUnmanaged(ParsedElement){};
+                        for (items[1..]) |sub| try self.collectElements(sub, &subElems);
+                        try elements.append(self.allocator, .{
+                            .kind = .group,
+                            .value = "",
+                            .subElements = try subElems.toOwnedSlice(self.allocator),
+                        });
+                    },
+                    .list => {
+                        if (items.len >= 2) {
+                            const tokenText = self.getText(items[1]);
+                            var elem = ParsedElement{
+                                .kind = .reqList,
+                                .value = if (items.len >= 3) self.getText(items[2]) else "",
+                            };
+                            _ = tokenText;
+                            if (items.len >= 3) {
+                                const innerItems = self.getListItems(items[2]);
+                                if (innerItems.len >= 1) {
+                                    const innerTag = switch (innerItems[0]) {
+                                        .tag => |t| t,
+                                        else => null,
+                                    };
+                                    if (innerTag) |it| {
+                                        switch (it) {
+                                            .opt_items => {
+                                                if (innerItems.len >= 3) {
+                                                    elem.value = self.getText(innerItems[1]);
+                                                    elem.optionalItems = true;
+                                                    elem.listSeparator = self.getText(innerItems[2]);
+                                                }
+                                            },
+                                            .opt_items_nosep => {
+                                                if (innerItems.len >= 2) {
+                                                    elem.value = self.getText(innerItems[1]);
+                                                    elem.optionalItems = true;
+                                                }
+                                            },
+                                            .sep_items => {
+                                                if (innerItems.len >= 3) {
+                                                    elem.value = self.getText(innerItems[1]);
+                                                    elem.listSeparator = self.getText(innerItems[2]);
+                                                }
+                                            },
+                                            else => {
+                                                elem.value = self.getText(items[2]);
+                                            },
+                                        }
+                                    }
+                                }
+                            }
+                            try elements.append(self.allocator, elem);
+                        }
+                    },
+                    .opt_list => {
+                        if (items.len >= 2) {
+                            var elem = try self.convertPrimary(items[1]);
+                            elem.kind = .optList;
+                            try elements.append(self.allocator, elem);
+                        }
+                    },
+                    .optional => {
+                        if (items.len == 2) {
+                            var elem = try self.convertPrimary(items[1]);
+                            elem.quantifier = .optional;
+                            try elements.append(self.allocator, elem);
+                        } else {
+                            var subElems = std.ArrayListUnmanaged(ParsedElement){};
+                            for (items[1..]) |sub| try self.collectElements(sub, &subElems);
+                            try elements.append(self.allocator, .{
+                                .kind = .optGroup,
+                                .value = if (subElems.items.len > 0) subElems.items[0].value else "",
+                                .subElements = try subElems.toOwnedSlice(self.allocator),
+                            });
+                        }
+                    },
+                    else => {
+                        for (items[1..]) |sub| try self.collectElements(sub, elements);
+                    },
+                }
+            },
+            else => {},
+        }
+    }
+
+    fn convertPrimary(self: *SelfHostedParser, node: ngp.Sexp) !ParsedElement {
+        const items = self.getListItems(node);
+        if (items.len >= 2) {
+            const tag = switch (items[0]) {
+                .tag => |t| t,
+                else => return .{ .kind = .ident, .value = self.getText(node) },
+            };
+            return switch (tag) {
+                .ref => .{ .kind = .ident, .value = self.getText(items[1]) },
+                .tok => .{ .kind = .token, .value = self.getText(items[1]) },
+                .lit => .{ .kind = .string, .value = self.getText(items[1]) },
+                .at_ref => .{ .kind = .ident, .value = self.getText(items[1]) },
+                else => .{ .kind = .ident, .value = "" },
+            };
+        }
+        return .{ .kind = .ident, .value = self.getText(node) };
+    }
+
+    fn convertQuantifier(self: *SelfHostedParser, node: ngp.Sexp) ParsedElement.Quantifier {
+        _ = self;
+        const items = switch (node) {
+            .list => |l| l,
+            else => return .one,
+        };
+        if (items.len == 0) return .one;
+        const tag = switch (items[0]) {
+            .tag => |t| t,
+            else => return .one,
+        };
+        return switch (tag) {
+            .opt => .optional,
+            .zero_plus => .zeroPlus,
+            .one_plus => .onePlus,
+            else => .one,
+        };
+    }
+
+
+    fn stripQuotes(self: *SelfHostedParser, s: []const u8) []const u8 {
+        _ = self;
+        if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') return s[1 .. s.len - 1];
+        return s;
+    }
+};
+
+// =============================================================================
 // Grammar Token (for parsing .grammar files)
 // =============================================================================
 
@@ -3938,7 +4602,7 @@ const ParserGenerator = struct {
     }
 
     /// Process parsed grammar into internal representation
-    fn processGrammar(self: *ParserGenerator, parser: *ParserDSLParser) !void {
+    fn processGrammar(self: *ParserGenerator, parser: anytype) !void {
         // Add special symbols
         self.acceptId = try self.addSymbol("$accept", .nonterminal);
         self.endId = try self.addSymbol("$end", .terminal);
@@ -6389,23 +7053,32 @@ pub fn main() !void {
     const outputFile = if (args.len > 2) args[2] else "src/parser.zig";
 
     // Read grammar file
-    const source = std.fs.cwd().readFileAlloc(allocator, grammarFile, 1024 * 1024) catch |err| {
+    const sourceText = std.fs.cwd().readFileAlloc(allocator, grammarFile, 1024 * 1024) catch |err| {
         std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
         return;
     };
-    defer allocator.free(source);
+    defer allocator.free(sourceText);
+
+    const source = Source.init(allocator, grammarFile, sourceText) catch {
+        std.debug.print("Error indexing source for {s}\n", .{grammarFile});
+        return;
+    };
+    defer source.deinit(allocator);
+
+    var diagnostics = DiagnosticList{};
+    defer diagnostics.deinit(allocator);
 
     std.debug.print("📖 Reading grammar from {s}\n", .{grammarFile});
 
     // Find @lexer section
-    const lexerStart = std.mem.indexOf(u8, source, "@lexer");
+    const lexerStart = std.mem.indexOf(u8, sourceText, "@lexer");
     if (lexerStart == null) {
         std.debug.print("❌ No @lexer section found in {s}\n", .{grammarFile});
         return;
     }
 
     // Parse lexer section
-    var lexerParser = LexerParser.init(allocator, source[lexerStart.? + 6 ..]);
+    var lexerParser = LexerParser.init(allocator, sourceText[lexerStart.? + 6 ..]);
     defer lexerParser.deinit();
 
     lexerParser.parseLexerSection() catch |err| {
@@ -6421,16 +7094,16 @@ pub fn main() !void {
 
     // Pre-scan for @lang directive (needed by lexer generator for @code imports)
     // Matches @lang at start of file or after a newline
-    const langPos = std.mem.indexOf(u8, source, "\n@lang") orelse
-        if (source.len >= 5 and std.mem.eql(u8, source[0..5], "@lang")) @as(?usize, 0) else null;
+    const langPos = std.mem.indexOf(u8, sourceText, "\n@lang") orelse
+        if (sourceText.len >= 5 and std.mem.eql(u8, sourceText[0..5], "@lang")) @as(?usize, 0) else null;
     if (langPos) |pos| {
         var i = pos + if (pos == 0) @as(usize, 5) else @as(usize, 6);
-        while (i < source.len and (source[i] == ' ' or source[i] == '=' or source[i] == '\t')) : (i += 1) {}
-        if (i < source.len and source[i] == '"') {
+        while (i < sourceText.len and (sourceText[i] == ' ' or sourceText[i] == '=' or sourceText[i] == '\t')) : (i += 1) {}
+        if (i < sourceText.len and sourceText[i] == '"') {
             i += 1;
             const nameStart = i;
-            while (i < source.len and source[i] != '"') : (i += 1) {}
-            if (i < source.len) lexerParser.spec.langName = source[nameStart..i];
+            while (i < sourceText.len and sourceText[i] != '"') : (i += 1) {}
+            if (i < sourceText.len) lexerParser.spec.langName = sourceText[nameStart..i];
         }
     }
 
@@ -6445,42 +7118,63 @@ pub fn main() !void {
     defer allocator.free(lexerCode);
 
     // Find @parser section
-    const parserStart = std.mem.indexOf(u8, source, "@parser");
+    const parserStart = std.mem.indexOf(u8, sourceText, "@parser");
     var finalCode: []const u8 = lexerCode;
     var parserGen: ?ParserGenerator = null;
 
     if (parserStart) |ps| {
         std.debug.print("   Parsing @parser section...\n", .{});
 
-        // Parse parser section
-        var parserDsl = ParserDSLParser.init(allocator, source[ps + 7 ..]);
-        defer parserDsl.deinit();
+        // Parse parser section (use hand-written parser for bootstrap, self-hosted for production)
+        const useSelfHosted = !std.mem.endsWith(u8, grammarFile, "nexus.grammar");
 
-        parserDsl.parse() catch |err| {
-            std.debug.print("❌ Parser parse error: {any}\n", .{err});
-            return;
+        var parserDsl: ?ParserDSLParser = null;
+        var selfHosted: ?SelfHostedParser = null;
+
+        const pRules = if (useSelfHosted) blk: {
+            selfHosted = SelfHostedParser.init(allocator, sourceText[ps + 7 ..]);
+            selfHosted.?.parse() catch |err| {
+                std.debug.print("❌ Parser parse error: {any}\n", .{err});
+                return;
+            };
+            if (selfHosted.?.lang == null) selfHosted.?.lang = lexerParser.spec.langName;
+            break :blk &selfHosted.?.rules;
+        } else blk: {
+            parserDsl = ParserDSLParser.init(allocator, sourceText[ps + 7 ..]);
+            parserDsl.?.parse() catch |err| {
+                std.debug.print("❌ Parser parse error: {any}\n", .{err});
+                return;
+            };
+            if (parserDsl.?.lang == null) parserDsl.?.lang = lexerParser.spec.langName;
+            break :blk &parserDsl.?.rules;
         };
+        defer if (parserDsl) |*p| p.deinit();
+        defer if (selfHosted) |*s| s.deinit();
 
-        // Propagate @lang from pre-scan if not set in @parser section
-        if (parserDsl.lang == null) {
-            parserDsl.lang = lexerParser.spec.langName;
-        }
+        const pStartSymbols = if (selfHosted) |*s| &s.startSymbols else &parserDsl.?.startSymbols;
 
         std.debug.print("   Parser: {d} rules, {d} start symbols\n", .{
-            parserDsl.rules.items.len,
-            parserDsl.startSymbols.items.len,
+            pRules.items.len,
+            pStartSymbols.items.len,
         });
 
         // Only generate parser if there are rules
-        if (parserDsl.rules.items.len > 0) {
+        if (pRules.items.len > 0) {
             // Generate parser
             parserGen = ParserGenerator.init(allocator);
             parserGen.?.lexerSpec = &lexerParser.spec;
 
-            parserGen.?.processGrammar(&parserDsl) catch |err| {
-                std.debug.print("❌ Grammar processing error: {any}\n", .{err});
-                return;
-            };
+            if (selfHosted) |*s| {
+                parserGen.?.processGrammar(s) catch |err| {
+                    std.debug.print("❌ Grammar processing error: {any}\n", .{err});
+                    return;
+                };
+            } else {
+                parserGen.?.processGrammar(&parserDsl.?) catch |err| {
+                    std.debug.print("❌ Grammar processing error: {any}\n", .{err});
+                    return;
+                };
+            }
 
             // Validate all referenced symbols are defined
             const validationErrors = parserGen.?.validateSymbols(&lexerParser.spec);
