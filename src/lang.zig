@@ -1,6 +1,6 @@
-// nexus_grammar.zig — Language module for the Nexus grammar DSL self-hosting parser
+// lang.zig — Language module for the Nexus grammar DSL self-hosting parser
 //
-// This module is imported by the generated parser (nexus_grammar_parser.zig).
+// This module is imported by the generated parser (parser.zig).
 // It provides the Tag enum and a custom Lexer wrapper that handles:
 //   - Unicode arrow characters (→ and ←)
 //   - Keyword reclassification (lang, conflicts, etc.)
@@ -50,7 +50,7 @@ pub const Tag = enum(u8) {
 
 pub const Lexer = struct {
     base: BaseLexer,
-    lastCat: TokenCat = .@"newline",
+    lastCat: TokenCat = .newline,
     captureAction: bool = false,
     bracketDepth: u16 = 0,
 
