@@ -77,6 +77,7 @@ pub const Lexer = struct {
                     self.base.pos += 1;
                 }
             }
+            self.base.aux = dotCount;
             return Token{ .cat = .@"indent", .pre = dotCount, .pos = wsStart, .len = @intCast(self.base.pos - wsStart) };
         }
 
