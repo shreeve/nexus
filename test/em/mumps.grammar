@@ -396,7 +396,7 @@ after
 
 @lang = "mumps"
 
-@conflicts = 44
+@conflicts = 46
 
 @as ident = [fn, isv, ssvn, self, cmd]
 
@@ -421,7 +421,7 @@ COLIND = QUESAT
 # ------------------------------------------------------------------------------
 
 routine!  = line*                           → (routine ...1)
-commands! = cmds                            → (commands ...1)
+commands! = cmds [COMMENT]                  → (commands ...1)
 expr!     = expr                            → 1
 doarg!    = doarg                           → 1
 gotoarg!  = gotoarg                         → 1
