@@ -898,9 +898,7 @@ const LexerGenerator = struct {
     }
 
     fn print(self: *LexerGenerator, comptime fmt: []const u8, args: anytype) !void {
-        const s = try std.fmt.allocPrint(self.allocator, fmt, args);
-        defer self.allocator.free(s);
-        try self.output.appendSlice(self.allocator, s);
+        try self.output.writer(self.allocator).print(fmt, args);
     }
 
     // =========================================================================
@@ -7068,6 +7066,21 @@ fn reportConflicts(pg: *ParserGenerator) void {
     }
 }
 
+fn findSection(text: []const u8, marker: []const u8) ?usize {
+    var pos: usize = 0;
+    while (pos < text.len) {
+        if ((pos == 0 or text[pos - 1] == '\n') and
+            pos + marker.len <= text.len and
+            std.mem.eql(u8, text[pos..][0..marker.len], marker))
+        {
+            return pos;
+        }
+        pos = std.mem.indexOfScalarPos(u8, text, pos, '\n') orelse text.len;
+        if (pos < text.len) pos += 1;
+    }
+    return null;
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
@@ -7075,8 +7088,8 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        std.debug.print("Usage: grammar <grammar-file> [output-file]\n", .{});
-        std.debug.print("       grammar --help\n", .{});
+        std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
+        std.debug.print("       nexus --help\n", .{});
         return;
     }
 
@@ -7093,7 +7106,7 @@ pub fn main() !void {
             \\  -h, --help     Show this help
             \\
             \\Examples:
-            \\  grammar lang.grammar src/parser.zig
+            \\  nexus lang.grammar src/parser.zig
             \\
         , .{});
         return;
@@ -7121,7 +7134,7 @@ pub fn main() !void {
     std.debug.print("📖 Reading grammar from {s}\n", .{grammarFile});
 
     // Find @lexer section
-    const lexerStart = std.mem.indexOf(u8, sourceText, "@lexer");
+    const lexerStart = findSection(sourceText, "@lexer");
     if (lexerStart == null) {
         std.debug.print("❌ No @lexer section found in {s}\n", .{grammarFile});
         return;
@@ -7144,10 +7157,9 @@ pub fn main() !void {
 
     // Pre-scan for @lang directive (needed by lexer generator for @code imports)
     // Matches @lang at start of file or after a newline
-    const langPos = std.mem.indexOf(u8, sourceText, "\n@lang") orelse
-        if (sourceText.len >= 5 and std.mem.eql(u8, sourceText[0..5], "@lang")) @as(?usize, 0) else null;
+    const langPos = findSection(sourceText, "@lang");
     if (langPos) |pos| {
-        var i = pos + if (pos == 0) @as(usize, 5) else @as(usize, 6);
+        var i = pos + 5;
         while (i < sourceText.len and (sourceText[i] == ' ' or sourceText[i] == '=' or sourceText[i] == '\t')) : (i += 1) {}
         if (i < sourceText.len and sourceText[i] == '"') {
             i += 1;
@@ -7168,7 +7180,11 @@ pub fn main() !void {
     defer allocator.free(lexerCode);
 
     // Find @parser section
-    const parserStart = std.mem.indexOf(u8, sourceText, "@parser");
+    const parserStart = findSection(sourceText, "@parser");
+    if (parserStart == null) {
+        std.debug.print("❌ No @parser section found in {s}\n", .{grammarFile});
+        return;
+    }
     var finalCode: []const u8 = lexerCode;
     var parserGen: ?ParserGenerator = null;
 
