@@ -104,10 +104,11 @@ pub const BaseLexer = struct {
 
     source: []const u8,
     pos: u32,
+    aux: u16 = 0,
     // State variables
-    beg: i32,
-    pat: i32,
-    dep: i32,
+    beg: i8,
+    pat: i8,
+    dep: i8,
 
     pub fn init(source: []const u8) Self {
         return .{
@@ -599,9 +600,10 @@ pub const Parser = struct {
                     try self.valueStack.append(self.allocator(), .{ .src = .{
                         .pos = self.current.pos,
                         .len = self.current.len,
-                        .id  = self.lastMatchedId,
+                        .id  = if (self.lastMatchedId != 0) self.lastMatchedId else self.lexer.base.aux,
                     } });
                     self.lastMatchedId = 0;
+                    self.lexer.base.aux = 0;
                     self.current = self.lexer.next();
                 }
                 try self.stateStack.append(self.allocator(), @intCast(action));
@@ -950,8 +952,8 @@ pub const Parser = struct {
             250 => self.list(pass),
             251 => self.sexpPosSpread(.@"/", pass[1], pass[3]),
             252 => self.sexp(.@"/", &.{pass[1]}),
-            253 => self.sexp(.@"char", &.{pass[2], pass[3]}),
-            254 => self.sexp(.@"char", &.{pass[2]}),
+            253 => self.sexp(.@"charindir", &.{pass[2], pass[3]}),
+            254 => self.sexp(.@"charindir", &.{pass[2]}),
             255 => self.sexp(.@"char", &.{pass[1], pass[2]}),
             256 => self.sexp(.@"char", &.{pass[1]}),
             257 => self.sexp(.@"#", &.{pass[0], pass[2], pass[3]}),

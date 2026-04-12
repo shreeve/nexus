@@ -2233,10 +2233,12 @@ const LexerGenerator = struct {
             \\
         );
 
+        try self.write("    aux: u16 = 0,\n");
+
         // State variables
         try self.write("    // State variables\n");
         for (self.spec.states.items) |state| {
-            try self.print("    {s}: i32,\n", .{state.name});
+            try self.print("    {s}: i8,\n", .{state.name});
         }
 
         // Init function
@@ -5264,9 +5266,10 @@ const ParserGenerator = struct {
             \\                    try self.valueStack.append(self.allocator(), .{ .src = .{
             \\                        .pos = self.current.pos,
             \\                        .len = self.current.len,
-            \\                        .id  = self.lastMatchedId,
+            \\                        .id  = if (self.lastMatchedId != 0) self.lastMatchedId else self.lexer.base.aux,
             \\                    } });
             \\                    self.lastMatchedId = 0;
+            \\                    self.lexer.base.aux = 0;
             \\                    self.current = self.lexer.next();
             \\                }
             \\                try self.stateStack.append(self.allocator(), @intCast(action));

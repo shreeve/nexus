@@ -64,9 +64,10 @@ pub const BaseLexer = struct {
 
     source: []const u8,
     pos: u32,
+    aux: u16 = 0,
     // State variables
-    beg: i32,
-    depth: i32,
+    beg: i8,
+    depth: i8,
 
     pub fn init(source: []const u8) Self {
         return .{
@@ -366,9 +367,10 @@ pub const Parser = struct {
                     try self.valueStack.append(self.allocator(), .{ .src = .{
                         .pos = self.current.pos,
                         .len = self.current.len,
-                        .id  = self.lastMatchedId,
+                        .id  = if (self.lastMatchedId != 0) self.lastMatchedId else self.lexer.base.aux,
                     } });
                     self.lastMatchedId = 0;
+                    self.lexer.base.aux = 0;
                     self.current = self.lexer.next();
                 }
                 try self.stateStack.append(self.allocator(), @intCast(action));
