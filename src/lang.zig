@@ -6,7 +6,7 @@
 //   - Keyword reclassification (lang, conflicts, etc.)
 
 const std = @import("std");
-const parser = @import("grammar.zig");
+const parser = @import("parser.zig");
 const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;

@@ -12,7 +12,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ngp = @import("grammar.zig");
+const ngp = @import("parser.zig");
 const ngl = @import("lang.zig");
 
 // =============================================================================
