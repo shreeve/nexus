@@ -104,7 +104,7 @@ tokens
 
 @parser
 
-@lang = "nexus_grammar"
+@lang = "lang"
 
 # S/R conflicts (all resolve correctly with default-shift):
 #   - bracket_body TOKEN "(": shift for L(...) list syntax (1)

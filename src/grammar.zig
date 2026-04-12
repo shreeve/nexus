@@ -5,7 +5,7 @@
 
 const std = @import("std");
 const maxArgs: usize = 32;
-const nexus_grammar = @import("nexus_grammar.zig");
+const lang = @import("lang.zig");
 
 // SIMD helpers (fallback if simd.zig not available)
 const simd = struct {
@@ -273,12 +273,12 @@ pub const BaseLexer = struct {
     }
 };
 
-pub const Lexer = if (@hasDecl(nexus_grammar, "Lexer")) nexus_grammar.Lexer else BaseLexer;
+pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 
 // =============================================================================
 // Tag Enum (re-exported from language module)
 // =============================================================================
-pub const Tag = nexus_grammar.Tag;
+pub const Tag = lang.Tag;
 
 // =============================================================================
 // S-Expression (AST Node) - 5 Clean Variants

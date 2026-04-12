@@ -12,8 +12,8 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ngp = @import("nexus_grammar_parser.zig");
-const ngl = @import("nexus_grammar.zig");
+const ngp = @import("grammar.zig");
+const ngl = @import("lang.zig");
 
 // =============================================================================
 // Source Infrastructure — absolute byte offsets and span-based diagnostics
@@ -2701,54 +2701,76 @@ const CodeBlock = struct {
     code: []const u8, // raw Zig code to inject
 };
 
-/// Parsed rule from grammar
-const ParsedRule = struct {
+// =============================================================================
+// GrammarIR — Semantic IR for grammar files (consumed by processGrammar)
+//
+// Both parser paths (SexpLowerer and ParserDSLParser) produce this IR.
+// processGrammar() is the sole consumer.
+// =============================================================================
+
+const GrammarIR = struct {
+    rules: []const RuleDecl,
+    startSymbols: []const []const u8,
+    asDirectives: []const AsDirective,
+    opMappings: []const OpMapping,
+    errorNames: []const ErrorName,
+    infix: ?InfixDecl = null,
+    lang: ?[]const u8 = null,
+    codeBlocks: []const CodeBlock,
+    expectConflicts: ?u32 = null,
+};
+
+const RuleDecl = struct {
     name: []const u8,
     isStart: bool,
-    alternatives: []const ParsedAlternative,
+    alternatives: []const Alternative,
 };
 
-/// Parsed alternative within a rule
-const ParsedAlternative = struct {
-    elements: []const ParsedElement,
-    action: ?[]const u8,
-    excludeChar: u8 = 0, // X "c" hint
-    preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
-    preferShift: bool = false, // > hint - prefer shift on S/R conflict
+const Alternative = struct {
+    elements: []const Element,
+    action: ?[]const u8 = null,
+    excludeChar: u8 = 0,
+    preferReduce: bool = false,
+    preferShift: bool = false,
 };
 
-/// Parsed element within an alternative
-const ParsedElement = struct {
+const Element = struct {
     kind: Kind,
-    value: []const u8,
+    value: []const u8 = "",
     quantifier: Quantifier = .one,
-    optionalItems: bool = false, // For L(X?): items can be empty
-    listSeparator: ?[]const u8 = null, // For L(X, sep): custom separator
-    subElements: []const ParsedElement = &[_]ParsedElement{}, // For groups
-    skip: bool = false, // For !element: parse but don't assign position
+    optionalItems: bool = false,
+    listSeparator: ?[]const u8 = null,
+    subElements: []const Element = &[_]Element{},
+    skip: bool = false,
 
     const Kind = enum {
-        ident, // rule reference
-        token, // UPPERCASE token
-        string, // "literal"
-        group, // (...)
-        optGroup, // [...] optional group
-        reqList, // L(X)
-        optList, // [L(X)]
+        ident,
+        token,
+        string,
+        group,
+        optGroup,
+        reqList,
+        optList,
     };
 
     const Quantifier = enum { one, optional, zeroPlus, onePlus };
 };
 
+const InfixDecl = struct {
+    baseRule: []const u8,
+    ops: []const InfixOp,
+};
+
+
 // =============================================================================
-// Self-Hosted Parser Bridge — converts generated Sexp AST to existing structs
+// SexpLowerer — lowers generated Sexp AST into GrammarIR
 // =============================================================================
 
-const SelfHostedParser = struct {
+const SexpLowerer = struct {
     allocator: Allocator,
     sourceText: []const u8,
 
-    rules: std.ArrayListUnmanaged(ParsedRule) = .{},
+    rules: std.ArrayListUnmanaged(RuleDecl) = .{},
     startSymbols: std.ArrayListUnmanaged([]const u8) = .{},
     asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
     opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
@@ -2759,14 +2781,14 @@ const SelfHostedParser = struct {
     codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
     expectConflicts: ?u32 = null,
 
-    fn init(allocator: Allocator, sourceText: []const u8) SelfHostedParser {
+    fn init(allocator: Allocator, sourceText: []const u8) SexpLowerer {
         return .{
             .allocator = allocator,
             .sourceText = sourceText,
         };
     }
 
-    fn deinit(self: *SelfHostedParser) void {
+    fn deinit(self: *SexpLowerer) void {
         for (self.rules.items) |*rule| {
             for (rule.alternatives) |*alt| {
                 self.freeElements(alt.elements);
@@ -2783,7 +2805,7 @@ const SelfHostedParser = struct {
         self.codeBlocks.deinit(self.allocator);
     }
 
-    fn freeElements(self: *SelfHostedParser, elements: []const ParsedElement) void {
+    fn freeElements(self: *SexpLowerer, elements: []const Element) void {
         for (elements) |elem| {
             if (elem.subElements.len > 0) {
                 self.freeElements(elem.subElements);
@@ -2792,7 +2814,7 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn parse(self: *SelfHostedParser) !void {
+    fn lower(self: *SexpLowerer) !GrammarIR {
         var parser = ngp.Parser.init(self.allocator, self.sourceText);
         defer parser.deinit();
 
@@ -2802,13 +2824,25 @@ const SelfHostedParser = struct {
         };
 
         try self.walkGrammar(ast);
+
+        return GrammarIR{
+            .rules = self.rules.items,
+            .startSymbols = self.startSymbols.items,
+            .asDirectives = self.asDirectives.items,
+            .opMappings = self.opMappings.items,
+            .errorNames = self.errorNames.items,
+            .infix = if (self.infixBase) |base| .{ .baseRule = base, .ops = self.infixOps.items } else null,
+            .lang = self.lang,
+            .codeBlocks = self.codeBlocks.items,
+            .expectConflicts = self.expectConflicts,
+        };
     }
 
-    fn getText(self: *SelfHostedParser, sexp: ngp.Sexp) []const u8 {
+    fn getText(self: *SexpLowerer, sexp: ngp.Sexp) []const u8 {
         return sexp.getText(self.sourceText);
     }
 
-    fn getListItems(self: *SelfHostedParser, sexp: ngp.Sexp) []const ngp.Sexp {
+    fn getListItems(self: *SexpLowerer, sexp: ngp.Sexp) []const ngp.Sexp {
         _ = self;
         return switch (sexp) {
             .list => |items| items,
@@ -2816,7 +2850,7 @@ const SelfHostedParser = struct {
         };
     }
 
-    fn walkGrammar(self: *SelfHostedParser, ast: ngp.Sexp) !void {
+    fn walkGrammar(self: *SexpLowerer, ast: ngp.Sexp) !void {
         const items = self.getListItems(ast);
         if (items.len == 0) return;
 
@@ -2826,7 +2860,7 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn walkEntry(self: *SelfHostedParser, entry: ngp.Sexp) !void {
+    fn walkEntry(self: *SexpLowerer, entry: ngp.Sexp) !void {
         const items = self.getListItems(entry);
         if (items.len == 0) {
             if (entry == .nil) return; // NEWLINE or COMMENT entry
@@ -2851,19 +2885,19 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn handleLang(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleLang(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 2) return;
         const raw = self.getText(items[1]);
         self.lang = if (raw.len >= 2 and raw[0] == '"') raw[1 .. raw.len - 1] else raw;
     }
 
-    fn handleConflicts(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleConflicts(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 2) return;
         const text = self.getText(items[1]);
         self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch null;
     }
 
-    fn handleAs(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleAs(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 3) return;
 
         // Check if first data item is a list (unified form) or src token (legacy form)
@@ -2895,7 +2929,7 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn handleOp(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleOp(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         for (items[1..]) |item| {
             const sub = self.getListItems(item);
             if (sub.len >= 3) {
@@ -2912,14 +2946,14 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn handleCode(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleCode(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 3) return;
         const location = self.getText(items[1]);
         const code = self.getText(items[2]);
         try self.codeBlocks.append(self.allocator, .{ .location = location, .code = code });
     }
 
-    fn handleErrors(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleErrors(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         for (items[1..]) |item| {
             const sub = self.getListItems(item);
             if (sub.len >= 3) {
@@ -2936,7 +2970,7 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn handleInfix(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleInfix(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 2) return;
         self.infixBase = self.getText(items[1]);
         var prec: u32 = 1;
@@ -2973,7 +3007,7 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn handleRule(self: *SelfHostedParser, items: []const ngp.Sexp) !void {
+    fn handleRule(self: *SexpLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 2) return;
 
         // items[1] is rule_name: (start name) or (name name)
@@ -2991,7 +3025,7 @@ const SelfHostedParser = struct {
             try self.startSymbols.append(self.allocator, name);
         }
 
-        var alternatives = std.ArrayListUnmanaged(ParsedAlternative){};
+        var alternatives = std.ArrayListUnmanaged(Alternative){};
 
         for (items[2..]) |altNode| {
             const alt = try self.convertAlternative(altNode);
@@ -3005,13 +3039,13 @@ const SelfHostedParser = struct {
         });
     }
 
-    fn convertAlternative(self: *SelfHostedParser, node: ngp.Sexp) !ParsedAlternative {
+    fn convertAlternative(self: *SexpLowerer, node: ngp.Sexp) !Alternative {
         const items = self.getListItems(node);
         if (items.len == 0) {
-            return .{ .elements = &[_]ParsedElement{}, .action = null };
+            return .{ .elements = &[_]Element{}, .action = null };
         }
 
-        var elements = std.ArrayListUnmanaged(ParsedElement){};
+        var elements = std.ArrayListUnmanaged(Element){};
         var action: ?[]const u8 = null;
         var preferReduce = false;
         var preferShift = false;
@@ -3019,7 +3053,7 @@ const SelfHostedParser = struct {
 
         const tag = switch (items[0]) {
             .tag => |t| t,
-            else => return .{ .elements = &[_]ParsedElement{}, .action = null },
+            else => return .{ .elements = &[_]Element{}, .action = null },
         };
 
         if (tag == .alt_reduce) preferReduce = true;
@@ -3043,7 +3077,7 @@ const SelfHostedParser = struct {
         };
     }
 
-    fn parseActionHints(self: *SelfHostedParser, raw: []const u8, preferReduce: *bool, preferShift: *bool, excludeChar: *u8) ?[]const u8 {
+    fn parseActionHints(self: *SexpLowerer, raw: []const u8, preferReduce: *bool, preferShift: *bool, excludeChar: *u8) ?[]const u8 {
         _ = self;
         var text = std.mem.trim(u8, raw, " \t");
 
@@ -3071,7 +3105,7 @@ const SelfHostedParser = struct {
         return text;
     }
 
-    fn collectElements(self: *SelfHostedParser, node: ngp.Sexp, elements: *std.ArrayListUnmanaged(ParsedElement)) !void {
+    fn collectElements(self: *SexpLowerer, node: ngp.Sexp, elements: *std.ArrayListUnmanaged(Element)) !void {
         switch (node) {
             .nil => {},
             .list => |items| {
@@ -3140,7 +3174,7 @@ const SelfHostedParser = struct {
                         }
                     },
                     .group => {
-                        var subElems = std.ArrayListUnmanaged(ParsedElement){};
+                        var subElems = std.ArrayListUnmanaged(Element){};
                         for (items[1..]) |sub| try self.collectElements(sub, &subElems);
                         try elements.append(self.allocator, .{
                             .kind = .group,
@@ -3151,7 +3185,7 @@ const SelfHostedParser = struct {
                     .list => {
                         if (items.len >= 2) {
                             const tokenText = self.getText(items[1]);
-                            var elem = ParsedElement{
+                            var elem = Element{
                                 .kind = .reqList,
                                 .value = if (items.len >= 3) self.getText(items[2]) else "",
                             };
@@ -3207,7 +3241,7 @@ const SelfHostedParser = struct {
                             elem.quantifier = .optional;
                             try elements.append(self.allocator, elem);
                         } else {
-                            var subElems = std.ArrayListUnmanaged(ParsedElement){};
+                            var subElems = std.ArrayListUnmanaged(Element){};
                             for (items[1..]) |sub| try self.collectElements(sub, &subElems);
                             try elements.append(self.allocator, .{
                                 .kind = .optGroup,
@@ -3225,7 +3259,7 @@ const SelfHostedParser = struct {
         }
     }
 
-    fn convertPrimary(self: *SelfHostedParser, node: ngp.Sexp) !ParsedElement {
+    fn convertPrimary(self: *SexpLowerer, node: ngp.Sexp) !Element {
         const items = self.getListItems(node);
         if (items.len >= 2) {
             const tag = switch (items[0]) {
@@ -3243,7 +3277,7 @@ const SelfHostedParser = struct {
         return .{ .kind = .ident, .value = self.getText(node) };
     }
 
-    fn convertQuantifier(self: *SelfHostedParser, node: ngp.Sexp) ParsedElement.Quantifier {
+    fn convertQuantifier(self: *SexpLowerer, node: ngp.Sexp) Element.Quantifier {
         _ = self;
         const items = switch (node) {
             .list => |l| l,
@@ -3263,7 +3297,7 @@ const SelfHostedParser = struct {
     }
 
 
-    fn stripQuotes(self: *SelfHostedParser, s: []const u8) []const u8 {
+    fn stripQuotes(self: *SexpLowerer, s: []const u8) []const u8 {
         _ = self;
         if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') return s[1 .. s.len - 1];
         return s;
@@ -3482,7 +3516,7 @@ const ParserDSLParser = struct {
     allocator: Allocator,
     current: GrammarToken,
 
-    rules: std.ArrayListUnmanaged(ParsedRule) = .{},
+    rules: std.ArrayListUnmanaged(RuleDecl) = .{},
     startSymbols: std.ArrayListUnmanaged([]const u8) = .{},
     asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
     opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
@@ -3520,7 +3554,7 @@ const ParserDSLParser = struct {
         self.codeBlocks.deinit(self.allocator);
     }
 
-    fn freeElements(self: *ParserDSLParser, elements: []const ParsedElement) void {
+    fn freeElements(self: *ParserDSLParser, elements: []const Element) void {
         for (elements) |elem| {
             if (elem.subElements.len > 0) {
                 self.freeElements(elem.subElements);
@@ -3817,7 +3851,7 @@ const ParserDSLParser = struct {
         }
         self.advance();
 
-        var alternatives: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+        var alternatives: std.ArrayListUnmanaged(Alternative) = .{};
         try self.parseAlternatives(&alternatives);
 
         try self.rules.append(self.allocator, .{
@@ -3827,7 +3861,7 @@ const ParserDSLParser = struct {
         });
     }
 
-    fn parseAlternatives(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(ParsedAlternative)) !void {
+    fn parseAlternatives(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(Alternative)) !void {
         try self.parseAlternative(alternatives);
         while (self.current.kind == .pipe) {
             self.advance();
@@ -3835,8 +3869,8 @@ const ParserDSLParser = struct {
         }
     }
 
-    fn parseAlternative(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(ParsedAlternative)) !void {
-        var elements: std.ArrayListUnmanaged(ParsedElement) = .{};
+    fn parseAlternative(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(Alternative)) !void {
+        var elements: std.ArrayListUnmanaged(Element) = .{};
         var action: ?[]const u8 = null;
         var excludeChar: u8 = 0;
         var preferReduce: bool = false;
@@ -3927,8 +3961,8 @@ const ParserDSLParser = struct {
         });
     }
 
-    fn parseElement(self: *ParserDSLParser) !ParsedElement {
-        var element: ParsedElement = .{ .kind = undefined, .value = undefined };
+    fn parseElement(self: *ParserDSLParser) !Element {
+        var element: Element = .{ .kind = undefined, .value = undefined };
 
         switch (self.current.kind) {
             .at => {
@@ -3985,7 +4019,7 @@ const ParserDSLParser = struct {
             },
             .lparen => {
                 self.advance();
-                var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+                var subElements: std.ArrayListUnmanaged(Element) = .{};
 
                 while (self.current.kind != .rparen and self.current.kind != .eof) {
                     if (self.current.kind == .comma or self.current.kind == .pipe) {
@@ -4047,9 +4081,9 @@ const ParserDSLParser = struct {
                 } else {
                     // Parse bracket contents
                     var hasDots = false;
-                    var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+                    var subElements: std.ArrayListUnmanaged(Element) = .{};
 
-                    var firstElem = ParsedElement{
+                    var firstElem = Element{
                         .kind = if (firstKind == .string) .string else if (firstKind == .ident) .ident else .token,
                         .value = firstToken,
                     };
@@ -4183,6 +4217,20 @@ const ParserDSLParser = struct {
         self.advance();
         return text;
     }
+
+    fn toIR(self: *ParserDSLParser) GrammarIR {
+        return .{
+            .rules = self.rules.items,
+            .startSymbols = self.startSymbols.items,
+            .asDirectives = self.asDirectives.items,
+            .opMappings = self.opMappings.items,
+            .errorNames = self.errorNames.items,
+            .infix = if (self.infixBase) |base| .{ .baseRule = base, .ops = self.infixOps.items } else null,
+            .lang = self.lang,
+            .codeBlocks = self.codeBlocks.items,
+            .expectConflicts = self.expectConflicts,
+        };
+    }
 };
 
 // =============================================================================
@@ -4308,7 +4356,7 @@ const ParserGenerator = struct {
         return false;
     }
 
-    fn isAliasRule(rule: ParsedRule) ?[]const u8 {
+    fn isAliasRule(rule: RuleDecl) ?[]const u8 {
         if (rule.alternatives.len != 1) return null;
         const alt = rule.alternatives[0];
         if (alt.elements.len != 1) return null;
@@ -4333,7 +4381,7 @@ const ParserGenerator = struct {
     ///   A B C     → adjusted_action
     ///   A D E     → adjusted_action
     ///   A         → adjusted_action
-    fn expandOptionalGroups(self: *ParserGenerator, alt: ParsedAlternative) ![]ParsedAlternative {
+    fn expandOptionalGroups(self: *ParserGenerator, alt: Alternative) ![]Alternative {
         // Find all bracket-optionals ([X] or [A B C]) - these need expansion for stable positions.
         // Note: X? quantifiers (like SPACES?) don't need expansion - they're typically not in actions.
         var optGroups: std.ArrayListUnmanaged(OptGroupInfo) = .{};
@@ -4366,7 +4414,7 @@ const ParserGenerator = struct {
         // If no opt_groups, no expansion needed
         // Note: Even single opt_groups need expansion for positionally stable output
         if (optGroups.items.len == 0) {
-            var result: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+            var result: std.ArrayListUnmanaged(Alternative) = .{};
             try result.append(self.allocator, alt);
             return result.toOwnedSlice(self.allocator);
         }
@@ -4375,12 +4423,12 @@ const ParserGenerator = struct {
         const n = optGroups.items.len;
         const combinations: usize = @as(usize, 1) << @intCast(n);
 
-        var expanded: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+        var expanded: std.ArrayListUnmanaged(Alternative) = .{};
 
         var combo: usize = 0;
         while (combo < combinations) : (combo += 1) {
             // Build elements for this combination
-            var newElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+            var newElements: std.ArrayListUnmanaged(Element) = .{};
 
             for (alt.elements, 0..) |elem, idx| {
                 // Check if this element is an optional (opt_group or single-element)
@@ -4445,7 +4493,7 @@ const ParserGenerator = struct {
     /// Build logical-to-actual position map for stable positions.
     /// Maps logical positions (1-based) to actual RHS positions, or NIL_POS for absent optionals.
     fn buildPositionMap(
-        altElements: []const ParsedElement,
+        altElements: []const Element,
         optGroups: []const OptGroupInfo,
         combo: usize,
     ) [maxPositions]u8 {
@@ -4561,7 +4609,7 @@ const ParserGenerator = struct {
     fn transformActionStable(
         self: *ParserGenerator,
         action: []const u8,
-        altElements: []const ParsedElement,
+        altElements: []const Element,
         optGroups: []const OptGroupInfo,
         combo: usize,
     ) ![]const u8 {
@@ -4602,28 +4650,28 @@ const ParserGenerator = struct {
     }
 
     /// Process parsed grammar into internal representation
-    fn processGrammar(self: *ParserGenerator, parser: anytype) !void {
+    fn processGrammar(self: *ParserGenerator, ir: *const GrammarIR) !void {
         // Add special symbols
         self.acceptId = try self.addSymbol("$accept", .nonterminal);
         self.endId = try self.addSymbol("$end", .terminal);
         self.errorId = try self.addSymbol("error", .terminal);
 
         // Pre-pass: detect aliases
-        for (parser.rules.items) |rule| {
+        for (ir.rules) |rule| {
             if (isAliasRule(rule)) |target| {
                 try self.aliases.put(self.allocator, rule.name, target);
             }
         }
 
         // First pass: add all nonterminal names (skip aliases)
-        for (parser.rules.items) |rule| {
+        for (ir.rules) |rule| {
             if (self.aliases.contains(rule.name)) continue;
             _ = try self.addSymbol(rule.name, .nonterminal);
         }
 
         // Second pass: process rules and add terminals
         // Expands consecutive optional groups to avoid LALR conflicts
-        for (parser.rules.items) |rule| {
+        for (ir.rules) |rule| {
             if (self.aliases.contains(rule.name)) continue;
 
             const lhsId = self.getSymbol(rule.name).?;
@@ -4661,8 +4709,8 @@ const ParserGenerator = struct {
         }
 
         // Create augmented rules for EACH start symbol
-        if (parser.startSymbols.items.len > 0) {
-            for (parser.startSymbols.items) |startName| {
+        if (ir.startSymbols.len > 0) {
+            for (ir.startSymbols) |startName| {
                 if (self.getSymbol(startName)) |startId| {
                     // Create marker terminal "X!"
                     const markerName = try std.fmt.allocPrint(self.allocator, "{s}!", .{startName});
@@ -4725,20 +4773,22 @@ const ParserGenerator = struct {
             try self.acceptRules.append(self.allocator, acceptRuleId);
         }
 
-        // Copy directives
-        for (parser.asDirectives.items) |d| try self.asDirectives.append(self.allocator, d);
-        for (parser.opMappings.items) |m| try self.opMappings.append(self.allocator, m);
-        for (parser.errorNames.items) |e| try self.errorNames.append(self.allocator, e);
-        for (parser.infixOps.items) |op| try self.infixOps.append(self.allocator, op);
-        self.infixBase = parser.infixBase;
-        self.lang = parser.lang;
-        self.expectConflicts = parser.expectConflicts;
+        // Copy directives from IR
+        for (ir.asDirectives) |d| try self.asDirectives.append(self.allocator, d);
+        for (ir.opMappings) |m| try self.opMappings.append(self.allocator, m);
+        for (ir.errorNames) |e| try self.errorNames.append(self.allocator, e);
+        if (ir.infix) |infix| {
+            for (infix.ops) |op| try self.infixOps.append(self.allocator, op);
+            self.infixBase = infix.baseRule;
+        }
+        self.lang = ir.lang;
+        self.expectConflicts = ir.expectConflicts;
 
         // Generate infix expression chain if @infix was declared
         if (self.infixOps.items.len > 0 and self.infixBase != null) {
             try self.generateInfixChain();
         }
-        for (parser.codeBlocks.items) |b| try self.codeBlocks.append(self.allocator, b);
+        for (ir.codeBlocks) |b| try self.codeBlocks.append(self.allocator, b);
     }
 
     /// Validate that all referenced symbols are defined.
@@ -4818,7 +4868,7 @@ const ParserGenerator = struct {
         return errors;
     }
 
-    fn processElement(self: *ParserGenerator, elem: ParsedElement) error{OutOfMemory}!u16 {
+    fn processElement(self: *ParserGenerator, elem: Element) error{OutOfMemory}!u16 {
         const baseId = try self.processBaseElement(elem);
 
         return switch (elem.quantifier) {
@@ -4829,7 +4879,7 @@ const ParserGenerator = struct {
         };
     }
 
-    fn processBaseElement(self: *ParserGenerator, elem: ParsedElement) error{OutOfMemory}!u16 {
+    fn processBaseElement(self: *ParserGenerator, elem: Element) error{OutOfMemory}!u16 {
         return switch (elem.kind) {
             .ident => blk: {
                 if (self.getSymbol(elem.value)) |symId| break :blk symId;
@@ -7125,56 +7175,48 @@ pub fn main() !void {
     if (parserStart) |ps| {
         std.debug.print("   Parsing @parser section...\n", .{});
 
-        // Parse parser section (use hand-written parser for bootstrap, self-hosted for production)
-        const useSelfHosted = !std.mem.endsWith(u8, grammarFile, "nexus.grammar");
+        // Parse parser section: both paths produce GrammarIR
+        const useBootstrap = std.mem.endsWith(u8, grammarFile, "nexus.grammar");
 
+        var lowerer: ?SexpLowerer = null;
         var parserDsl: ?ParserDSLParser = null;
-        var selfHosted: ?SelfHostedParser = null;
+        defer if (lowerer) |*l| l.deinit();
+        defer if (parserDsl) |*p| p.deinit();
 
-        const pRules = if (useSelfHosted) blk: {
-            selfHosted = SelfHostedParser.init(allocator, sourceText[ps + 7 ..]);
-            selfHosted.?.parse() catch |err| {
+        var ir: GrammarIR = undefined;
+
+        if (!useBootstrap) {
+            lowerer = SexpLowerer.init(allocator, sourceText[ps + 7 ..]);
+            ir = lowerer.?.lower() catch |err| {
                 std.debug.print("❌ Parser parse error: {any}\n", .{err});
                 return;
             };
-            if (selfHosted.?.lang == null) selfHosted.?.lang = lexerParser.spec.langName;
-            break :blk &selfHosted.?.rules;
-        } else blk: {
+        } else {
             parserDsl = ParserDSLParser.init(allocator, sourceText[ps + 7 ..]);
             parserDsl.?.parse() catch |err| {
                 std.debug.print("❌ Parser parse error: {any}\n", .{err});
                 return;
             };
-            if (parserDsl.?.lang == null) parserDsl.?.lang = lexerParser.spec.langName;
-            break :blk &parserDsl.?.rules;
-        };
-        defer if (parserDsl) |*p| p.deinit();
-        defer if (selfHosted) |*s| s.deinit();
+            ir = parserDsl.?.toIR();
+        }
 
-        const pStartSymbols = if (selfHosted) |*s| &s.startSymbols else &parserDsl.?.startSymbols;
+        // Propagate @lang from lexer pre-scan if not set
+        if (ir.lang == null) ir.lang = lexerParser.spec.langName;
 
         std.debug.print("   Parser: {d} rules, {d} start symbols\n", .{
-            pRules.items.len,
-            pStartSymbols.items.len,
+            ir.rules.len,
+            ir.startSymbols.len,
         });
 
         // Only generate parser if there are rules
-        if (pRules.items.len > 0) {
-            // Generate parser
+        if (ir.rules.len > 0) {
             parserGen = ParserGenerator.init(allocator);
             parserGen.?.lexerSpec = &lexerParser.spec;
 
-            if (selfHosted) |*s| {
-                parserGen.?.processGrammar(s) catch |err| {
-                    std.debug.print("❌ Grammar processing error: {any}\n", .{err});
-                    return;
-                };
-            } else {
-                parserGen.?.processGrammar(&parserDsl.?) catch |err| {
-                    std.debug.print("❌ Grammar processing error: {any}\n", .{err});
-                    return;
-                };
-            }
+            parserGen.?.processGrammar(&ir) catch |err| {
+                std.debug.print("❌ Grammar processing error: {any}\n", .{err});
+                return;
+            };
 
             // Validate all referenced symbols are defined
             const validationErrors = parserGen.?.validateSymbols(&lexerParser.spec);
