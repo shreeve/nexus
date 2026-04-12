@@ -95,7 +95,7 @@ indentation. No braces or brackets. The arrow separator accepts both
 
 ### State Variables
 
-Track lexer mode and context across tokens. All variables are `i32`.
+Track lexer mode and context across tokens. All variables are `i8`.
 
 ```
 state
@@ -704,7 +704,7 @@ Languages with significant context-sensitivity use `@lang` wrapper support.
 
 ### State Variables
 
-All `i32`. Covers counters, booleans, and flags. Richer state (mode stacks,
+All `i8`. Covers counters, booleans, and flags. Richer state (mode stacks,
 delimiter stacks) requires `@lang` wrapper support.
 
 ---

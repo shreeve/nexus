@@ -26,7 +26,11 @@ Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer 
 
 Generated `parser.zig` emits: `pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;`
 
-Lang modules can export a `pub const Lexer` struct wrapping `BaseLexer` for language-specific scanning. The wrapper has full access to `base.pos`, `base.source`, state variables, and `base.matchRules()`.
+Lang modules can export a `pub const Lexer` struct wrapping `BaseLexer` for language-specific scanning. The wrapper has full access to `base.pos`, `base.source`, `base.aux`, state variables, and `base.matchRules()`.
+
+### `aux` — Lexer-to-Parser Metadata
+
+`BaseLexer` has an `aux: u16 = 0` field that language wrappers can set per-token. On shift, the parser copies `aux` into `src.id` (when `lastMatchedId` is 0), then resets it. This provides a generic channel for passing lexer-computed metadata (e.g., MUMPS dot-level count) through to the compiler without hand-patching `parser.zig`.
 
 ## Key Grammar Features
 
@@ -65,8 +69,8 @@ Both the generator internals AND generated output follow these conventions.
 ## Downstream Deployments
 
 - **em** (`/Users/shreeve/Data/Code/em/`) — MUMPS engine. Copy `mumps.grammar` → `em/mumps.grammar`, `mumps.zig` → `em/src/mumps.zig`, run `nexus mumps.grammar src/parser.zig`
-- **Zag** (`/Users/shreeve/Data/Code/zag/`) — needs lang module naming update (snake→camelCase)
-- **Slash** (`/Users/shreeve/Data/Code/slash/`) — needs lang module naming update
+- **Zag** (`/Users/shreeve/Data/Code/zag/`) — copy grammar + lang module, run `nexus zag.grammar src/parser.zig`
+- **Slash** (`/Users/shreeve/Data/Code/slash/`) — copy grammar + lang module, run `nexus slash.grammar src/parser.zig`
 
 ## String Literal Scanning
 
