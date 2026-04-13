@@ -8,7 +8,7 @@ Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer 
 {lang}.grammar + {lang}.zig  →  nexus (src/nexus.zig)  →  parser.zig
 ```
 
-- `src/nexus.zig` — the generator engine (~7300 lines, single file)
+- `src/nexus.zig` — the generator engine (~6300 lines, single file)
 - `src/parser.zig` — generated bootstrap parser (self-hosting artifact)
 - `src/lang.zig` — lang module for self-hosted grammar parsing
 - `nexus.grammar` — self-hosting grammar definition
