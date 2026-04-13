@@ -6148,15 +6148,14 @@ fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
         }
     }
 
-    // Check for unreachable rules (not reachable from any start symbol)
-    // Note: when @as directives are present, reachability analysis is
-    // incomplete because @as expands keyword resolution at parse time,
-    // making rules reachable that aren't directly referenced in the IR.
+    // Check for unreachable rules (skipped when @as directives are present
+    // because keyword expansion creates reachability edges not visible in the IR)
     if (ir.startSymbols.len > 0 and ir.asDirectives.len == 0) {
         var reachable = std.StringHashMap(void).init(allocator);
         defer reachable.deinit();
         for (ir.startSymbols) |s| markReachable(s, ir, &reachable);
         if (ir.infix) |infix| markReachable(infix.baseRule, ir, &reachable);
+        for (ir.asDirectives) |d| markReachable(d.rule, ir, &reachable);
 
         var seen = std.StringHashMap(void).init(allocator);
         defer seen.deinit();
