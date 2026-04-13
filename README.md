@@ -1,9 +1,11 @@
 # Nexus
 
-A universal, language-agnostic parser generator. One tool reads any `.grammar`
+A self-hosting, universal parser generator. One tool reads any `.grammar`
 file and produces a combined lexer + SLR(1) parser module in Zig.
 
 One tool. Any language. Install once, generate parsers for everything.
+
+Nexus parses its own grammar format using a parser it generated from itself.
 
 ## Why Nexus
 
@@ -35,9 +37,9 @@ for language-specific behavior.
 
 | Language   | Grammar         | Lang Module | Rules | SLR Conflicts |
 |------------|-----------------|-------------|-------|---------------|
-| Zag        | `zag.grammar`   | `zag.zig`   |    56 |            18 |
+| Zag        | `zag.grammar`   | `zag.zig`   |    56 |            19 |
 | Slash      | `slash.grammar` | `slash.zig` |    53 |            16 |
-| em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |            44 |
+| em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |            45 |
 
 ## Architecture
 
@@ -54,6 +56,39 @@ module containing a fast switch-based lexer, table-driven parser, `Tag` enum,
 `Sexp` type, and all reduction actions. The generated parser imports the
 `@lang` module for keyword lookup, tag definitions, and optional token
 rewriting.
+
+### Self-Hosting
+
+Nexus is self-hosting: it uses a generated SLR(1) parser to parse its own
+grammar format. The pipeline is:
+
+```
+nexus.grammar → parser.zig (generated, checked in) → Sexp → GrammarLowerer → GrammarIR → processGrammar
+```
+
+The checked-in `src/parser.zig` is the bootstrap artifact — the same kind of
+parser Nexus generates for any language, used to parse `.grammar` files
+themselves. There is no hand-written grammar parser.
+
+### Repository Structure
+
+```
+src/
+├── nexus.zig        # Generator engine (~6300 lines)
+├── parser.zig       # Generated bootstrap parser (self-hosting)
+└── lang.zig         # Lang module for grammar parsing
+nexus.grammar        # Self-hosting grammar definition
+build.zig            # Build configuration
+test/
+├── run              # Test runner (23 tests)
+├── basic/           # Expression grammar
+├── features/        # Feature-test grammar
+├── em/              # MUMPS language grammar
+├── zag/             # Zag language grammar
+├── slash/           # Slash language grammar
+├── golden/          # Byte-exact golden output files
+└── adverse/         # Error-case grammars
+```
 
 ---
 
@@ -713,10 +748,23 @@ delimiter stacks) requires `@lang` wrapper support.
 
 ```bash
 zig build                    # build nexus to bin/nexus
+zig build test               # run all 23 tests
 zig build run -- <args>      # run with arguments
 ```
 
 Requires Zig 0.15.x.
+
+### Regenerating the Bootstrap Parser
+
+When modifying `nexus.grammar`, regenerate the checked-in bootstrap parser:
+
+```bash
+./bin/nexus nexus.grammar src/parser.zig
+```
+
+Breaking grammar-language changes must be staged: first make a
+backward-compatible change, regenerate, then make the breaking change,
+regenerate again. This is standard self-hosting bootstrap discipline.
 
 ---
 
