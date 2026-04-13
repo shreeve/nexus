@@ -79,6 +79,17 @@ Both the generator internals AND generated output follow these conventions.
 
 The inline string scanner generator detects the escape convention from the grammar pattern. If the pattern contains a doubled delimiter literal (e.g., `'""'` or `"''"`), it generates doubled-quote escape handling. Otherwise, it generates backslash escape handling. This is a heuristic based on pattern text, not full structural parsing.
 
+## Self-Hosting Bootstrap
+
+`src/parser.zig` is a checked-in generated parser for `nexus.grammar`. Nexus uses this parser to parse ALL `.grammar` files, including `nexus.grammar` itself.
+
+Grammar-language changes must respect bootstrap discipline:
+
+1. **Backward-compatible changes** — edit `nexus.grammar`, regenerate with `./bin/nexus nexus.grammar src/parser.zig`, commit both.
+2. **Breaking grammar-language changes** — stage through a backward-compatible intermediate: first let the current parser accept both old and new syntax, regenerate, then switch to the new syntax, regenerate again.
+
+Do not reintroduce a handwritten parser for bootstrap. The checked-in generated parser is the canonical frontend.
+
 ## Test Workflow
 
 ```bash
