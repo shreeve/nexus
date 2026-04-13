@@ -5130,6 +5130,15 @@ const ParserGenerator = struct {
 
         // Generate per-rule semantic actions
         for (self.rules.items, 0..) |rule, ruleIdx| {
+            // Comment showing the grammar rule: lhs = rhs → action
+            try writer.print("            // {s} =", .{self.symbols.items[rule.lhs].name});
+            for (rule.rhs) |symId| {
+                try writer.print(" {s}", .{self.symbols.items[symId].name});
+            }
+            if (rule.action) |action| {
+                try writer.print(" → {s}", .{action.template});
+            }
+            try writer.writeAll("\n");
             try writer.print("            {d} => ", .{ruleIdx});
             try self.generateRuleAction(writer, rule);
             try writer.writeAll(",\n");
