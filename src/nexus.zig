@@ -6124,6 +6124,87 @@ fn findSection(text: []const u8, marker: []const u8) ?usize {
     return null;
 }
 
+fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
+    var errors: u32 = 0;
+    var warnings: u32 = 0;
+
+    // Build known rule name set (allow duplicate entries — grammar DSL merges alternatives)
+    var ruleNames = std.StringHashMap(void).init(allocator);
+    defer ruleNames.deinit();
+    for (ir.rules) |rule| {
+        ruleNames.put(rule.name, {}) catch {};
+    }
+    if (ir.infix != null) ruleNames.put("infix", {}) catch {};
+
+    // Check for undefined rule references
+    for (ir.rules) |rule| {
+        for (rule.alternatives) |alt| {
+            checkUndefinedRefs(alt.elements, rule.name, &ruleNames, &errors);
+        }
+    }
+
+    // Check for unreachable rules (not reachable from any start symbol)
+    if (ir.startSymbols.len > 0) {
+        var reachable = std.StringHashMap(void).init(allocator);
+        defer reachable.deinit();
+        for (ir.startSymbols) |s| markReachable(s, ir, &reachable);
+
+        var seen = std.StringHashMap(void).init(allocator);
+        defer seen.deinit();
+        for (ir.rules) |rule| {
+            if (seen.contains(rule.name)) continue;
+            seen.put(rule.name, {}) catch {};
+            if (!rule.isStart and !reachable.contains(rule.name)) {
+                std.debug.print("  warning: unreachable rule '{s}'\n", .{rule.name});
+                warnings += 1;
+            }
+        }
+    }
+
+    if (errors > 0 or warnings > 0) {
+        std.debug.print("\n  {d} error(s), {d} warning(s)\n", .{ errors, warnings });
+    } else {
+        std.debug.print("  ✅ No issues found\n", .{});
+    }
+
+    return errors;
+}
+
+fn checkUndefinedRefs(elements: []const Element, ruleName: []const u8, ruleNames: *std.StringHashMap(void), errors: *u32) void {
+    for (elements) |elem| {
+        if (elem.kind == .ident and elem.value.len > 0 and !ruleNames.contains(elem.value)) {
+            std.debug.print("  error: undefined rule '{s}' referenced in '{s}'\n", .{ elem.value, ruleName });
+            errors.* += 1;
+        }
+        if (elem.subElements.len > 0) checkUndefinedRefs(elem.subElements, ruleName, ruleNames, errors);
+    }
+}
+
+fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
+    if (reachable.contains(name)) return;
+    reachable.put(name, {}) catch return;
+    for (ir.rules) |rule| {
+        if (!std.mem.eql(u8, rule.name, name)) continue;
+        for (rule.alternatives) |alt| {
+            for (alt.elements) |elem| {
+                if (elem.kind == .ident or elem.kind == .reqList or elem.kind == .optList) {
+                    markReachable(elem.value, ir, reachable);
+                }
+                markReachableElements(elem.subElements, ir, reachable);
+            }
+        }
+    }
+}
+
+fn markReachableElements(elements: []const Element, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
+    for (elements) |elem| {
+        if (elem.kind == .ident or elem.kind == .reqList or elem.kind == .optList) {
+            markReachable(elem.value, ir, reachable);
+        }
+        markReachableElements(elem.subElements, ir, reachable);
+    }
+}
+
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
@@ -6132,6 +6213,7 @@ pub fn main() !void {
 
     if (args.len < 2) {
         std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
+        std.debug.print("       nexus check <grammar-file>\n", .{});
         std.debug.print("       nexus --help\n", .{});
         return;
     }
@@ -6155,8 +6237,9 @@ pub fn main() !void {
         return;
     }
 
-    const grammarFile = args[1];
-    const outputFile = if (args.len > 2) args[2] else "src/parser.zig";
+    const checkMode = std.mem.eql(u8, args[1], "check") or std.mem.eql(u8, args[1], "--check");
+    const grammarFile = if (checkMode and args.len > 2) args[2] else args[1];
+    const outputFile = if (!checkMode and args.len > 2) args[2] else "src/parser.zig";
 
     // Read grammar file
     const sourceText = std.fs.cwd().readFileAlloc(allocator, grammarFile, 1024 * 1024) catch |err| {
@@ -6246,6 +6329,14 @@ pub fn main() !void {
             ir.rules.len,
             ir.startSymbols.len,
         });
+
+        // Run semantic checks
+        if (checkMode) {
+            std.debug.print("\n🔍 Checking grammar...\n", .{});
+            const checkErrors = checkGrammar(allocator, &ir);
+            if (checkErrors > 0) return;
+            return;
+        }
 
         // Only generate parser if there are rules
         if (ir.rules.len > 0) {
