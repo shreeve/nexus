@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nexus — Universal Parser Generator</title>
+
+  <meta name="description" content="Define a grammar. Get a parser. Any language. Nexus is a self-hosting, universal parser generator that reads .grammar files and produces combined lexer + SLR(1) parser modules.">
+  <meta property="og:title" content="Nexus — Universal Parser Generator">
+  <meta property="og:description" content="Define a grammar. Get a parser. Any language.">
+  <meta property="og:image" content="https://shreeve.github.io/nexus/nexus-social.png">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Nexus — Universal Parser Generator">
+  <meta name="twitter:description" content="Define a grammar. Get a parser. Any language.">
+  <meta name="twitter:image" content="https://shreeve.github.io/nexus/nexus-social.png">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --bg:        #ffffff;
+      --surface:   #f6f8fa;
+      --border:    #d1d9e0;
+      --text:      #1f2328;
+      --text-dim:  #656d76;
+      --accent:    #0969da;
+      --accent2:   #1a7f76;
+      --highlight: #0969da;
+      --code-bg:   #f0f3f6;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Hero ─────────────────────────────────────────────────────── */
+
+    .hero {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 80px 24px 48px;
+      text-align: center;
+    }
+
+    .hero img {
+      height: 72px;
+      margin-bottom: 28px;
+    }
+
+    .hero h1 {
+      font-size: 2.8rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      margin-bottom: 16px;
+    }
+
+    .hero .tagline {
+      font-size: 1.25rem;
+      color: var(--text-dim);
+      max-width: 540px;
+      margin: 0 auto 36px;
+    }
+
+    .hero-buttons {
+      display: flex;
+      gap: 14px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      transition: background 0.15s, transform 0.1s;
+    }
+
+    .btn:hover { text-decoration: none; transform: translateY(-1px); }
+
+    .btn-primary {
+      background: var(--highlight);
+      color: #fff;
+    }
+    .btn-primary:hover { background: #0860ca; }
+
+    .btn-secondary {
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: #eaeef2; }
+
+    /* ── Divider ──────────────────────────────────────────────────── */
+
+    .divider {
+      max-width: 860px;
+      margin: 0 auto;
+      border: 0;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── Sections ─────────────────────────────────────────────────── */
+
+    section {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 56px 24px;
+    }
+
+    section h2 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+      letter-spacing: -0.02em;
+    }
+
+    section p {
+      color: var(--text-dim);
+      margin-bottom: 20px;
+      max-width: 640px;
+    }
+
+    /* ── Pipeline diagram ─────────────────────────────────────────── */
+
+    .pipeline {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin: 32px 0 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+    }
+
+    .pipeline .node {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      text-align: center;
+      line-height: 1.5;
+      color: var(--text);
+    }
+
+    .pipeline .node strong {
+      color: var(--text);
+      display: block;
+      font-weight: 600;
+    }
+
+    .pipeline .arrow {
+      color: var(--text-dim);
+      font-size: 1.3rem;
+      flex-shrink: 0;
+    }
+
+    /* ── Code blocks ──────────────────────────────────────────────── */
+
+    .code-block {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+      margin: 20px 0;
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .code-filename {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+    }
+
+    .code-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--accent2);
+    }
+
+    .code-block pre {
+      padding: 20px;
+      overflow-x: auto;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.84rem;
+      line-height: 1.7;
+      color: var(--text);
+      tab-size: 4;
+    }
+
+    /* syntax highlighting */
+    .kw  { color: #a626a4; }
+    .str { color: #0a3069; }
+    .sym { color: #953800; }
+    .cmt { color: #6e7781; font-style: italic; }
+    .op  { color: #0550ae; }
+    .tok { color: #8250df; }
+    .rul { color: #116329; }
+
+    /* ── Features grid ────────────────────────────────────────────── */
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px;
+    }
+
+    .feature-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+
+    .feature-card p {
+      font-size: 0.87rem;
+      color: var(--text-dim);
+      margin: 0;
+    }
+
+    /* ── Language table ────────────────────────────────────────────── */
+
+    .lang-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+      font-size: 0.9rem;
+    }
+
+    .lang-table th,
+    .lang-table td {
+      text-align: left;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .lang-table th {
+      color: var(--text-dim);
+      font-weight: 500;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .lang-table td { color: var(--text); }
+
+    .lang-table td:first-child {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .lang-table code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      background: var(--code-bg);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    /* ── Footer ───────────────────────────────────────────────────── */
+
+    footer {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 32px 24px 48px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+
+    footer a { color: var(--text-dim); }
+    footer a:hover { color: var(--accent); }
+
+    /* ── Responsive ───────────────────────────────────────────────── */
+
+    @media (max-width: 600px) {
+      .hero { padding: 56px 20px 36px; }
+      .hero h1 { font-size: 2rem; }
+      .hero .tagline { font-size: 1.05rem; }
+      .pipeline { flex-direction: column; }
+      .pipeline .arrow { transform: rotate(90deg); }
+      section { padding: 40px 20px; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Hero -->
+  <div class="hero">
+    <img src="nexus-logo-720w.png" alt="Nexus logo">
+    <h1>Universal Parser Generator</h1>
+    <p class="tagline">
+      One tool reads any <code>.grammar</code> file and produces a combined
+      lexer + SLR(1) parser. One tool, any language, zero language-specific code in the engine.
+    </p>
+    <div class="hero-buttons">
+      <a class="btn btn-primary" href="https://github.com/shreeve/nexus">
+        <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        View on GitHub
+      </a>
+      <a class="btn btn-secondary" href="https://github.com/shreeve/nexus#readme">
+        Read the Docs
+      </a>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <!-- How It Works -->
+  <section>
+    <h2>How It Works</h2>
+    <p>Write two files &mdash; a grammar and a language module &mdash; and Nexus generates a complete, production-ready parser.</p>
+
+    <div class="pipeline">
+      <div class="node"><strong>{lang}.grammar</strong>tokens + rules</div>
+      <span class="arrow">&rarr;</span>
+      <div class="node"><strong>nexus</strong>generator engine</div>
+      <span class="arrow">&rarr;</span>
+      <div class="node"><strong>parser.zig</strong>lexer + SLR(1) parser</div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Example Grammar -->
+  <section>
+    <h2>Example: Expression Grammar</h2>
+    <p>
+      A complete grammar for arithmetic expressions with operator precedence,
+      associativity, parentheses, and multiple start symbols &mdash; in 63 lines.
+    </p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-filename">basic.grammar</span>
+        <span class="code-label">Input</span>
+      </div>
+      <pre><span class="cmt"># Lexer: define tokens and patterns</span>
+
+<span class="kw">@lexer</span>
+
+<span class="kw">tokens</span>
+    <span class="tok">integer</span>
+    <span class="tok">ident</span>
+    <span class="tok">plus</span>
+    <span class="tok">minus</span>
+    <span class="tok">star</span>
+    <span class="tok">slash</span>
+    <span class="tok">power</span>
+    <span class="tok">lparen</span>
+    <span class="tok">rparen</span>
+    <span class="tok">newline</span>
+    <span class="tok">eof</span>
+    <span class="tok">err</span>
+
+<span class="str">'+'</span>                                         <span class="op">&rarr;</span> <span class="tok">plus</span>
+<span class="str">'-'</span>                                         <span class="op">&rarr;</span> <span class="tok">minus</span>
+<span class="str">'*'</span>                                         <span class="op">&rarr;</span> <span class="tok">star</span>
+<span class="str">'/'</span>                                         <span class="op">&rarr;</span> <span class="tok">slash</span>
+<span class="str">"**"</span>                                        <span class="op">&rarr;</span> <span class="tok">power</span>
+<span class="str">'('</span>                                         <span class="op">&rarr;</span> <span class="tok">lparen</span>
+<span class="str">')'</span>                                         <span class="op">&rarr;</span> <span class="tok">rparen</span>
+<span class="str">'\n'</span>                                        <span class="op">&rarr;</span> <span class="tok">newline</span>
+<span class="sym">[0-9]+</span>                                      <span class="op">&rarr;</span> <span class="tok">integer</span>
+<span class="sym">[a-zA-Z_][a-zA-Z0-9_]*</span>                      <span class="op">&rarr;</span> <span class="tok">ident</span>
+<span class="sym">.</span>                                           <span class="op">&rarr;</span> <span class="tok">err</span>
+
+<span class="cmt"># Parser: define grammar rules and actions</span>
+
+<span class="kw">@parser</span>
+
+<span class="kw">@lang</span> = <span class="str">"basic"</span>
+<span class="kw">@conflicts</span> = <span class="sym">0</span>
+
+<span class="rul">name</span>    = <span class="tok">IDENT</span>
+
+<span class="rul">program!</span> = <span class="rul">body</span>                             <span class="op">&rarr;</span> <span class="sym">(module ...1)</span>
+<span class="rul">expr!</span>    = <span class="rul">expr</span>                             <span class="op">&rarr;</span> <span class="sym">1</span>
+
+<span class="rul">body</span>     = <span class="rul">stmt</span>                             <span class="op">&rarr;</span> <span class="sym">(1)</span>
+         | <span class="rul">body</span> <span class="tok">NEWLINE</span> <span class="rul">stmt</span>                <span class="op">&rarr;</span> <span class="sym">(...1 3)</span>
+         | <span class="rul">body</span> <span class="tok">NEWLINE</span>                     <span class="op">&rarr;</span> <span class="sym">1</span>
+
+<span class="rul">stmt</span>     = <span class="rul">expr</span>
+
+<span class="rul">expr</span>     = <span class="kw">@infix</span>
+
+<span class="rul">unary</span>    = <span class="str">"-"</span> <span class="rul">unary</span>                        <span class="op">&rarr;</span> <span class="sym">(neg 2)</span>
+         | <span class="rul">atom</span>
+
+<span class="rul">atom</span>     = <span class="rul">name</span>
+         | <span class="tok">INTEGER</span>
+         | <span class="str">"("</span> <span class="rul">expr</span> <span class="str">")"</span>                     <span class="op">&rarr;</span> <span class="sym">2</span>
+
+<span class="kw">@infix</span> <span class="rul">unary</span>
+    <span class="str">"+"</span>  <span class="sym">left</span>, <span class="str">"-"</span>  <span class="sym">left</span>
+    <span class="str">"*"</span>  <span class="sym">left</span>, <span class="str">"/"</span>  <span class="sym">left</span>
+    <span class="str">"**"</span> <span class="sym">right</span></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-filename">terminal</span>
+        <span class="code-label">Generate</span>
+      </div>
+      <pre><span class="sym">$</span> zig build
+<span class="sym">$</span> ./bin/nexus basic.grammar src/parser.zig
+<span class="cmt"># produces a complete lexer + SLR(1) parser module</span></pre>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Key Features -->
+  <section>
+    <h2>Key Features</h2>
+    <div class="features">
+      <div class="feature-card">
+        <h3>Self-Hosting</h3>
+        <p>Nexus parses its own grammar format using a parser it generated from itself. No hand-written bootstrap parser.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Language-Agnostic</h3>
+        <p>The engine contains zero language-specific code. All language knowledge lives in your two input files.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Declarative Lexer</h3>
+        <p>Regex-like patterns, state guards, actions, and SIMD-accelerated scanning &mdash; all from grammar declarations.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Operator Precedence</h3>
+        <p><code>@infix</code> auto-generates a full precedence chain from a simple table of operators and associativity.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Context-Sensitive Keywords</h3>
+        <p><code>@as</code> resolves identifier-keyword ambiguity at parse time with ordered priority and state checks.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Zero-Copy Tokens</h3>
+        <p>8-byte packed tokens reference the original source. No string allocations during lexing.</p>
+      </div>
+    </div>
+  </section>
+
+  <hr class="divider">
+
+  <!-- Validated Languages -->
+  <section>
+    <h2>Validated Languages</h2>
+    <p>Nexus has been used to build parsers for three real-world languages, each with its own grammar and language module.</p>
+
+    <table class="lang-table">
+      <thead>
+        <tr>
+          <th>Language</th>
+          <th>Grammar</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Zag</td>
+          <td><code>zag.grammar</code></td>
+          <td>Systems language with indent-based blocks and token reclassification</td>
+        </tr>
+        <tr>
+          <td>Slash</td>
+          <td><code>slash.grammar</code></td>
+          <td>Scripting language with heredocs, regex literals, and indent/outdent</td>
+        </tr>
+        <tr>
+          <td>MUMPS</td>
+          <td><code>mumps.grammar</code></td>
+          <td>Legacy healthcare language with pattern mode, dot-level counting, and context-sensitive commands</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>
+      Nexus is open source under the MIT license.
+      <a href="https://github.com/shreeve/nexus">GitHub</a> &middot;
+      <a href="https://github.com/shreeve/nexus#readme">README</a>
+    </p>
+  </footer>
+
+</body>
+</html>
