@@ -21,7 +21,7 @@ Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer 
 
 | Language | Grammar | Lang Module | Lexer Wrapper |
 |----------|---------|-------------|---------------|
-| MUMPS (em) | `test/em/mumps.grammar` | `test/em/mumps.zig` | Yes — pattern mode, indent dots, spaces exclusion |
+| MUMPS | `test/mumps/mumps.grammar` | `test/mumps/mumps.zig` | Yes — pattern mode, indent dots, spaces exclusion |
 | Zag | `test/zag/zag.grammar` | `test/zag/zag.zig` | Yes — indent/outdent, token reclassification |
 | Slash | `test/slash/slash.grammar` | `test/slash/slash.zig` | Yes — heredocs, regex, indent/outdent |
 

@@ -136,7 +136,7 @@ run_golden "basic"    "test/basic"    "basic.grammar"    "test/golden/basic.zig"
 run_golden "features" "test/features" "features.grammar"  "test/golden/features.zig"
 run_golden "zag"      "test/zag"      "zag.grammar"      "test/golden/zag.zig"
 run_golden "slash"    "test/slash"    "slash.grammar"     "test/golden/slash.zig"
-run_golden "mumps"    "test/em"       "mumps.grammar"     "test/golden/mumps.zig"
+run_golden "mumps"    "test/mumps"    "mumps.grammar"     "test/golden/mumps.zig"
 
 echo ""
 
@@ -165,7 +165,7 @@ run_determinism "basic"    "test/basic"    "basic.grammar"
 run_determinism "features" "test/features" "features.grammar"
 run_determinism "zag"      "test/zag"      "zag.grammar"
 run_determinism "slash"    "test/slash"    "slash.grammar"
-run_determinism "mumps"    "test/em"       "mumps.grammar"
+run_determinism "mumps"    "test/mumps"    "mumps.grammar"
 
 echo ""
 
