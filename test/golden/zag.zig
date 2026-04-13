@@ -708,507 +708,256 @@ pub const Parser = struct {
 
     fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
         return switch (ruleId) {
-            // program = program! body → (module ...1)
             0 => self.sexpSpread(.@"module", pass[1]),
-            // expr = expr! expr → 1
             1 => pass[1],
-            // body = stmt → (1)
             2 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // body = body NEWLINE stmt → (...1 3)
             3 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // body = body NEWLINE → 1
             4 => pass[0],
-            // stmt = use
             5 => self.list(pass),
-            // stmt = decl
             6 => self.list(pass),
-            // stmt = zig
             7 => self.list(pass),
-            // stmt = extvar
             8 => self.list(pass),
-            // stmt = ":" IDENT stmt → (labeled 2 3)
             9 => self.sexp(.@"labeled", &.{pass[1], pass[2]}),
-            // stmt = expr
             10 => self.list(pass),
-            // extvar = EXTERN CONST IDENT ":" type → (extern_const 3 5)
             11 => self.sexp(.@"extern_const", &.{pass[2], pass[4]}),
-            // extvar = EXTERN IDENT ":" type → (extern_var 2 4)
             12 => self.sexp(.@"extern_var", &.{pass[1], pass[3]}),
-            // zig = ZIG STRING_SQ → (zig 2)
             13 => self.sexp(.@"zig", &.{pass[1]}),
-            // zig = ZIG STRING_DQ → (zig 2)
             14 => self.sexp(.@"zig", &.{pass[1]}),
-            // decl = defn
             15 => self.list(pass),
-            // decl = PUB decl → (pub 2)
             16 => self.sexp(.@"pub", &.{pass[1]}),
-            // decl = EXTERN decl → (extern 2)
             17 => self.sexp(.@"extern", &.{pass[1]}),
-            // decl = EXPORT decl → (export 2)
             18 => self.sexp(.@"export", &.{pass[1]}),
-            // decl = PACKED decl → (packed 2)
             19 => self.sexp(.@"packed", &.{pass[1]}),
-            // decl = CALLCONV IDENT decl → (callconv 2 3)
             20 => self.sexp(.@"callconv", &.{pass[1], pass[2]}),
-            // defn = fun
             21 => self.list(pass),
-            // defn = sub
             22 => self.list(pass),
-            // defn = enum
             23 => self.list(pass),
-            // defn = struct
             24 => self.list(pass),
-            // defn = errors
             25 => self.list(pass),
-            // defn = typedef
             26 => self.list(pass),
-            // defn = test
             27 => self.list(pass),
-            // defn = opaq
             28 => self.list(pass),
-            // block = INDENT body OUTDENT → (block ...2)
             29 => self.sexpSpread(.@"block", pass[1]),
-            // block = INDENT OUTDENT → (block)
             30 => self.sexp(.@"block", &.{}),
-            // fun = FUN IDENT params returns block → (fun 2 3 4 5)
             31 => self.sexp(.@"fun", &.{pass[1], pass[2], pass[3], pass[4]}),
-            // fun = FUN IDENT params block → (fun 2 3 _ 4)
             32 => self.sexp(.@"fun", &.{pass[1], pass[2], .nil, pass[3]}),
-            // fun = FUN IDENT returns block → (fun 2 _ 3 4)
             33 => self.sexp(.@"fun", &.{pass[1], .nil, pass[2], pass[3]}),
-            // fun = FUN IDENT block → (fun 2 _ _ 3)
             34 => self.sexp(.@"fun", &.{pass[1], .nil, .nil, pass[2]}),
-            // sub = SUB IDENT params block → (sub 2 3 _ 4)
             35 => self.sexp(.@"sub", &.{pass[1], pass[2], .nil, pass[3]}),
-            // sub = SUB IDENT block → (sub 2 _ _ 3)
             36 => self.sexp(.@"sub", &.{pass[1], .nil, .nil, pass[2]}),
-            // use = USE IDENT → (use 2)
             37 => self.sexp(.@"use", &.{pass[1]}),
-            // typedef = TYPE IDENT "=" type → (type 2 4)
             38 => self.sexp(.@"type", &.{pass[1], pass[3]}),
-            // test = TEST STRING_DQ block → (test 2 3)
             39 => self.sexp(.@"test", &.{pass[1], pass[2]}),
-            // opaq = OPAQUE IDENT → (opaque 2)
             40 => self.sexp(.@"opaque", &.{pass[1]}),
-            // enum = ENUM IDENT INDENT members OUTDENT → (enum 2 ...4)
             41 => self.sexpPosSpread(.@"enum", pass[1], pass[3]),
-            // errors = ERROR IDENT INDENT members OUTDENT → (errors 2 ...4)
             42 => self.sexpPosSpread(.@"errors", pass[1], pass[3]),
-            // struct = STRUCT IDENT INDENT members OUTDENT → (struct 2 ...4)
             43 => self.sexpPosSpread(.@"struct", pass[1], pass[3]),
-            // members = member → (1)
             44 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // members = members NEWLINE member → (...1 3)
             45 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // members = members NEWLINE → 1
             46 => pass[0],
-            // member = field
             47 => self.list(pass),
-            // member = IDENT "=" expr → (valued 1 3)
             48 => self.sexp(.@"valued", &.{pass[0], pass[2]}),
-            // member = fun
             49 => self.list(pass),
-            // member = sub
             50 => self.list(pass),
-            // field = COMPTIME IDENT ":" type → (comptime_param 2 4)
             51 => self.sexp(.@"comptime_param", &.{pass[1], pass[3]}),
-            // field = IDENT → 1
             52 => pass[0],
-            // field = IDENT ":" type → (: 1 3)
             53 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // field = IDENT ":" type ALIGN atom → (aligned 1 3 5)
             54 => self.sexp(.@"aligned", &.{pass[0], pass[2], pass[4]}),
-            // field = IDENT ":" type "=" expr → (default 1 3 5)
             55 => self.sexp(.@"default", &.{pass[0], pass[2], pass[4]}),
-            // _list_23 = field _tail_23 → (!1 ...2)
             56 => self.spreadList(pass[0], pass[1]),
-            // _tail_23 = "," field _tail_23 → (!2 ...3)
             57 => self.spreadList(pass[1], pass[2]),
-            // _tail_23 = → ()
             58 => .{ .list = &[_]Sexp{} },
-            // params = _list_23 → (...1)
             59 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // returns = "->" type → 2
             60 => pass[1],
-            // type = IDENT
             61 => self.list(pass),
-            // type = "!" type → (error_union 2)
             62 => self.sexp(.@"error_union", &.{pass[1]}),
-            // type = "?" type → (? 2)
             63 => self.sexp(.@"?", &.{pass[1]}),
-            // type = "*" type → (ptr 2)
             64 => self.sexp(.@"ptr", &.{pass[1]}),
-            // type = "*" CONST type → (const_ptr 3)
             65 => self.sexp(.@"const_ptr", &.{pass[2]}),
-            // type = "*" VOLATILE type → (volatile_ptr 3)
             66 => self.sexp(.@"volatile_ptr", &.{pass[2]}),
-            // type = "[" "]" type → (slice 3)
             67 => self.sexp(.@"slice", &.{pass[2]}),
-            // type = "[" ":" atom "]" type → (sentinel_slice 3 5)
             68 => self.sexp(.@"sentinel_slice", &.{pass[2], pass[4]}),
-            // type = "[" INTEGER "]" type → (array_type 2 4)
             69 => self.sexp(.@"array_type", &.{pass[1], pass[3]}),
-            // type = "[" "*" "]" type → (many_ptr 4)
             70 => self.sexp(.@"many_ptr", &.{pass[3]}),
-            // type = "[" "*" ":" atom "]" type → (sentinel_ptr 4 6)
             71 => self.sexp(.@"sentinel_ptr", &.{pass[3], pass[5]}),
-            // _list_26 = type _tail_26 → (!1 ...2)
             72 => self.spreadList(pass[0], pass[1]),
-            // _tail_26 = "," type _tail_26 → (!2 ...3)
             73 => self.spreadList(pass[1], pass[2]),
-            // _tail_26 = → ()
             74 => .{ .list = &[_]Sexp{} },
-            // type = FN "(" _list_26 ")" type → (fn_type 3 5)
             75 => self.sexp(.@"fn_type", &.{pass[2], pass[4]}),
-            // type = FN "(" ")" type → (fn_type _ 4)
             76 => self.sexp(.@"fn_type", &.{.nil, pass[3]}),
-            // expr = if
             77 => self.list(pass),
-            // expr = while
             78 => self.list(pass),
-            // expr = for
             79 => self.list(pass),
-            // expr = match
             80 => self.list(pass),
-            // expr = postif
             81 => self.list(pass),
-            // expr = coalesce
             82 => self.list(pass),
-            // expr = catch
             83 => self.list(pass),
-            // expr = return
             84 => self.list(pass),
-            // expr = break
             85 => self.list(pass),
-            // expr = continue
             86 => self.list(pass),
-            // expr = defer
             87 => self.list(pass),
-            // expr = errdefer
             88 => self.list(pass),
-            // expr = comptime
             89 => self.list(pass),
-            // expr = inline
             90 => self.list(pass),
-            // expr = assign
             91 => self.list(pass),
-            // expr = const
             92 => self.list(pass),
-            // expr = infix
             93 => self.list(pass),
-            // cond = expr
             94 => self.list(pass),
-            // cond = expr AS IDENT → (as 1 3)
             95 => self.sexp(.@"as", &.{pass[0], pass[2]}),
-            // cond = expr BAR_CAPTURE IDENT BAR_CAPTURE → (as 1 3)
             96 => self.sexp(.@"as", &.{pass[0], pass[2]}),
-            // if = IF cond block ELSE AS IDENT block → (if 2 3 6 7)
             97 => self.sexp(.@"if", &.{pass[1], pass[2], pass[5], pass[6]}),
-            // if = IF cond block ELSE AS IDENT if → (if 2 3 6 7)
             98 => self.sexp(.@"if", &.{pass[1], pass[2], pass[5], pass[6]}),
-            // if = IF cond block ELSE if → (if 2 3 5)
             99 => self.sexp(.@"if", &.{pass[1], pass[2], pass[4]}),
-            // if = IF cond block ELSE block → (if 2 3 5)
             100 => self.sexp(.@"if", &.{pass[1], pass[2], pass[4]}),
-            // if = IF cond block → (if 2 3)
             101 => self.sexp(.@"if", &.{pass[1], pass[2]}),
-            // while = WHILE cond block ELSE block → (while 2 _ 3 else:5)
             102 => self.sexp(.@"while", &.{pass[1], .nil, pass[2], pass[4]}),
-            // while = WHILE cond ":" expr block ELSE block → (while 2 4 5 else:7)
             103 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4], pass[6]}),
-            // while = WHILE cond block → (while 2 _ 3)
             104 => self.sexp(.@"while", &.{pass[1], .nil, pass[2]}),
-            // while = WHILE cond ":" expr block → (while 2 4 5)
             105 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4]}),
-            // for = FOR "*" IDENT IN expr block ELSE block → (for_ptr 3 _ 5 6 else:8)
             106 => self.sexp(.@"for_ptr", &.{pass[2], .nil, pass[4], pass[5], pass[7]}),
-            // for = FOR "*" IDENT "," IDENT IN expr block ELSE block → (for_ptr 3 5 7 8 else:10)
             107 => self.sexp(.@"for_ptr", &.{pass[2], pass[4], pass[6], pass[7], pass[0]}),
-            // for = FOR IDENT IN expr block ELSE block → (for 2 _ 4 5 else:7)
             108 => self.sexp(.@"for", &.{pass[1], .nil, pass[3], pass[4], pass[6]}),
-            // for = FOR IDENT "," IDENT IN expr block ELSE block → (for 2 4 6 7 else:9)
             109 => self.sexp(.@"for", &.{pass[1], pass[3], pass[5], pass[6], pass[8]}),
-            // for = FOR "*" IDENT IN expr block → (for_ptr 3 _ 5 6)
             110 => self.sexp(.@"for_ptr", &.{pass[2], .nil, pass[4], pass[5]}),
-            // for = FOR "*" IDENT "," IDENT IN expr block → (for_ptr 3 5 7 8)
             111 => self.sexp(.@"for_ptr", &.{pass[2], pass[4], pass[6], pass[7]}),
-            // for = FOR IDENT IN expr block → (for 2 _ 4 5)
             112 => self.sexp(.@"for", &.{pass[1], .nil, pass[3], pass[4]}),
-            // for = FOR IDENT "," IDENT IN expr block → (for 2 4 6 7)
             113 => self.sexp(.@"for", &.{pass[1], pass[3], pass[5], pass[6]}),
-            // match = MATCH expr INDENT arms OUTDENT → (match 2 ...4)
             114 => self.sexpPosSpread(.@"match", pass[1], pass[3]),
-            // arms = arm → (1)
             115 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // arms = arms NEWLINE arm → (...1 3)
             116 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // arms = arms NEWLINE → 1
             117 => pass[0],
-            // patatom = atom
             118 => self.list(pass),
-            // patatom = "." IDENT → (enum_pattern 2)
             119 => self.sexp(.@"enum_pattern", &.{pass[1]}),
-            // pattern = patatom
             120 => self.list(pass),
-            // pattern = patatom ".." patatom → (range_pattern 1 3)
             121 => self.sexp(.@"range_pattern", &.{pass[0], pass[2]}),
-            // arm = pattern AS IDENT "=>" expr → (arm 1 3 5)
             122 => self.sexp(.@"arm", &.{pass[0], pass[2], pass[4]}),
-            // arm = pattern AS IDENT block → (arm 1 3 4)
             123 => self.sexp(.@"arm", &.{pass[0], pass[2], pass[3]}),
-            // arm = pattern "=>" expr → (arm 1 _ 3)
             124 => self.sexp(.@"arm", &.{pass[0], .nil, pass[2]}),
-            // arm = pattern block → (arm 1 _ 2)
             125 => self.sexp(.@"arm", &.{pass[0], .nil, pass[1]}),
-            // postif = infix IF expr ELSE expr → (ternary 3 1 5)
             126 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-            // postif = infix IF expr → (if 3 1)
             127 => self.sexp(.@"if", &.{pass[2], pass[0]}),
-            // postif = infix TERNARY_IF expr ELSE expr → (ternary 3 1 5)
             128 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-            // coalesce = infix "??" expr → (?? 1 3)
             129 => self.sexp(.@"??", &.{pass[0], pass[2]}),
-            // catch = infix CATCH AS IDENT expr → (catch 1 4 5)
             130 => self.sexp(.@"catch", &.{pass[0], pass[3], pass[4]}),
-            // catch = infix CATCH expr → (catch 1 3)
             131 => self.sexp(.@"catch", &.{pass[0], pass[2]}),
-            // return = RETURN expr POST_IF expr → (return value:2 if:4)
             132 => self.sexp(.@"return", &.{pass[1], pass[3]}),
-            // return = RETURN POST_IF expr → (return value:_ if:3)
             133 => self.sexp(.@"return", &.{.nil, pass[2]}),
-            // return = RETURN expr → (return value:2)
             134 => self.sexp(.@"return", &.{pass[1]}),
-            // return = RETURN → (return)
             135 => self.sexp(.@"return", &.{}),
-            // break = BREAK ":" IDENT POST_IF expr → (break value:_ to:3 if:5)
             136 => self.sexp(.@"break", &.{.nil, pass[2], pass[4]}),
-            // break = BREAK ":" IDENT expr → (break value:4 to:3)
             137 => self.sexp(.@"break", &.{pass[3], pass[2]}),
-            // break = BREAK ":" IDENT → (break value:_ to:3)
             138 => self.sexp(.@"break", &.{.nil, pass[2]}),
-            // break = BREAK POST_IF expr → (break value:_ to:_ if:3)
             139 => self.sexp(.@"break", &.{.nil, .nil, pass[2]}),
-            // break = BREAK expr → (break value:2)
             140 => self.sexp(.@"break", &.{pass[1]}),
-            // break = BREAK → (break)
             141 => self.sexp(.@"break", &.{}),
-            // continue = CONTINUE ":" IDENT POST_IF expr → (continue to:3 if:5)
             142 => self.sexp(.@"continue", &.{pass[2], pass[4]}),
-            // continue = CONTINUE ":" IDENT → (continue to:3)
             143 => self.sexp(.@"continue", &.{pass[2]}),
-            // continue = CONTINUE POST_IF expr → (continue to:_ if:3)
             144 => self.sexp(.@"continue", &.{.nil, pass[2]}),
-            // continue = CONTINUE → (continue)
             145 => self.sexp(.@"continue", &.{}),
-            // defer = DEFER block → (defer 2)
             146 => self.sexp(.@"defer", &.{pass[1]}),
-            // defer = DEFER expr → (defer 2)
             147 => self.sexp(.@"defer", &.{pass[1]}),
-            // errdefer = ERRDEFER block → (errdefer 2)
             148 => self.sexp(.@"errdefer", &.{pass[1]}),
-            // errdefer = ERRDEFER expr → (errdefer 2)
             149 => self.sexp(.@"errdefer", &.{pass[1]}),
-            // comptime = COMPTIME expr → (comptime 2)
             150 => self.sexp(.@"comptime", &.{pass[1]}),
-            // inline = INLINE expr → (inline 2)
             151 => self.sexp(.@"inline", &.{pass[1]}),
-            // assign = call ":" type "=" expr → (typed_assign 1 3 5)
             152 => self.sexp(.@"typed_assign", &.{pass[0], pass[2], pass[4]}),
-            // assign = call "=" expr → ( = 1 3)
             153 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // assign = call "+=" expr → (+= 1 3)
             154 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // assign = call "-=" expr → (-= 1 3)
             155 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"-=" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // assign = call "*=" expr → (*= 1 3)
             156 => self.sexp(.@"*=", &.{pass[0], pass[2]}),
-            // assign = call "/=" expr → (/= 1 3)
             157 => self.sexp(.@"/=", &.{pass[0], pass[2]}),
-            // const = call ":" type "=!" expr → (typed_const 1 3 5)
             158 => self.sexp(.@"typed_const", &.{pass[0], pass[2], pass[4]}),
-            // const = call "=!" expr → (const 1 3)
             159 => self.sexp(.@"const", &.{pass[0], pass[2]}),
-            // unary = "!" unary → (not 2)
             160 => self.sexp(.@"not", &.{pass[1]}),
-            // unary = MINUS_PREFIX unary → (neg 2)
             161 => self.sexp(.@"neg", &.{pass[1]}),
-            // unary = TRY unary → (try 2)
             162 => self.sexp(.@"try", &.{pass[1]}),
-            // unary = "&" unary → (addr_of 2)
             163 => self.sexp(.@"addr_of", &.{pass[1]}),
-            // unary = "~" unary → (bit_not 2)
             164 => self.sexp(.@"bit_not", &.{pass[1]}),
-            // unary = call
             165 => self.list(pass),
-            // call = call "." "*" → (deref 1)
             166 => self.sexp(.@"deref", &.{pass[0]}),
-            // call = call "." IDENT → (. 1 3)
             167 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"." }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // call = call "[" expr "]" → (index 1 3)
             168 => self.sexp(.@"index", &.{pass[0], pass[2]}),
-            // _list_51 = arg _tail_51 → (!1 ...2)
             169 => self.spreadList(pass[0], pass[1]),
-            // _tail_51 = "," arg _tail_51 → (!2 ...3)
             170 => self.spreadList(pass[1], pass[2]),
-            // _tail_51 = → ()
             171 => .{ .list = &[_]Sexp{} },
-            // call = call _list_51 → (call 1 ...2)
             172 => self.sexpPosSpread(.@"call", pass[0], pass[1]),
-            // call = call "(" args ")" → (call 1 ...3)
             173 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-            // call = atom
             174 => self.list(pass),
-            // _list_4 = expr _tail_4 → (!1 ...2)
             175 => self.spreadList(pass[0], pass[1]),
-            // _tail_4 = "," expr _tail_4 → (!2 ...3)
             176 => self.spreadList(pass[1], pass[2]),
-            // _tail_4 = → ()
             177 => .{ .list = &[_]Sexp{} },
-            // args = _list_4 → (...1)
             178 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // args = → ()
             179 => .{ .list = &[_]Sexp{} },
-            // arg = term TERNARY_IF expr ELSE arg → (ternary 3 1 5)
             180 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-            // arg = term
             181 => self.list(pass),
-            // term = MINUS_PREFIX term → (neg 2)
             182 => self.sexp(.@"neg", &.{pass[1]}),
-            // term = "!" term → (not 2)
             183 => self.sexp(.@"not", &.{pass[1]}),
-            // term = atom
             184 => self.list(pass),
-            // atom = IDENT
             185 => self.list(pass),
-            // atom = INTEGER
             186 => self.list(pass),
-            // atom = REAL
             187 => self.list(pass),
-            // atom = STRING_SQ
             188 => self.list(pass),
-            // atom = STRING_DQ
             189 => self.list(pass),
-            // atom = TRUE
             190 => self.list(pass),
-            // atom = FALSE
             191 => self.list(pass),
-            // atom = NULL → (null)
             192 => self.sexp(.@"null", &.{}),
-            // atom = UNREACHABLE → (unreachable)
             193 => self.sexp(.@"unreachable", &.{}),
-            // atom = UNDEFINED → (undefined)
             194 => self.sexp(.@"undefined", &.{}),
-            // atom = "?" atom → (? 2)
             195 => self.sexp(.@"?", &.{pass[1]}),
-            // atom = "@" IDENT "(" args ")" → (builtin 2 ...4)
             196 => self.sexpPosSpread(.@"builtin", pass[1], pass[3]),
-            // atom = record
             197 => self.list(pass),
-            // atom = lambda
             198 => self.list(pass),
-            // atom = "[" args "]" → (array ...2)
             199 => self.sexpSpread(.@"array", pass[1]),
-            // atom = "(" expr ")" → 2
             200 => pass[1],
-            // _list_56 = dotpair _tail_56 → (!1 ...2)
             201 => self.spreadList(pass[0], pass[1]),
-            // _tail_56 = "," dotpair _tail_56 → (!2 ...3)
             202 => self.spreadList(pass[1], pass[2]),
-            // _tail_56 = → ()
             203 => .{ .list = &[_]Sexp{} },
-            // atom = DOT_LBRACE _list_56 "}" → (anon_init ...2)
             204 => self.sexpSpread(.@"anon_init", pass[1]),
-            // atom = DOT_LBRACE args "}" → (anon_init ...2)
             205 => self.sexpSpread(.@"anon_init", pass[1]),
-            // atom = DOT_LBRACE "}" → (anon_init)
             206 => self.sexp(.@"anon_init", &.{}),
-            // _list_55 = pair _tail_55 → (!1 ...2)
             207 => self.spreadList(pass[0], pass[1]),
-            // _tail_55 = "," pair _tail_55 → (!2 ...3)
             208 => self.spreadList(pass[1], pass[2]),
-            // _tail_55 = → ()
             209 => .{ .list = &[_]Sexp{} },
-            // record = IDENT "{" _list_55 "}" → (record 1 ...3)
             210 => self.sexpPosSpread(.@"record", pass[0], pass[2]),
-            // pair = IDENT ":" expr → (pair 1 3)
             211 => self.sexp(.@"pair", &.{pass[0], pass[2]}),
-            // dotpair = "." IDENT "=" expr → (pair 2 4)
             212 => self.sexp(.@"pair", &.{pass[1], pass[3]}),
-            // lambda = FN params block → (lambda 2 returns:_ 3)
             213 => self.sexp(.@"lambda", &.{pass[1], .nil, pass[2]}),
-            // lambda = FN block → (lambda params:_ returns:_ 2)
             214 => self.sexp(.@"lambda", &.{.nil, .nil, pass[1]}),
-            // $accept_program = program $end
             215 => self.list(pass),
-            // $accept_expr = expr $end
             216 => self.list(pass),
-            // _infix_1 = _infix_1 "|>" _infix_2 → (|> 1 3)
             217 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"|>" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_1 = _infix_2 → 1
             218 => pass[0],
-            // _infix_2 = _infix_2 "||" _infix_3 → (|| 1 3)
             219 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"||" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_2 = _infix_3 → 1
             220 => pass[0],
-            // _infix_3 = _infix_3 "&&" _infix_4 → (&& 1 3)
             221 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"&&" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_3 = _infix_4 → 1
             222 => pass[0],
-            // _infix_4 = _infix_4 "|" _infix_5 → (| 1 3)
             223 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"|" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_4 = _infix_5 → 1
             224 => pass[0],
-            // _infix_5 = _infix_5 "^" _infix_6 → (^ 1 3)
             225 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"^" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_5 = _infix_6 → 1
             226 => pass[0],
-            // _infix_6 = _infix_6 "&" _infix_7 → (& 1 3)
             227 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"&" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_6 = _infix_7 → 1
             228 => pass[0],
-            // _infix_7 = _infix_8 "==" _infix_8 → (== 1 3)
             229 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"==" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_7 = _infix_8 "!=" _infix_8 → (!= 1 3)
             230 => self.sexp(.@"!=", &.{pass[0], pass[2]}),
-            // _infix_7 = _infix_8 "<" _infix_8 → (< 1 3)
             231 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"<" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_7 = _infix_8 ">" _infix_8 → (> 1 3)
             232 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@">" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_7 = _infix_8 "<=" _infix_8 → (<= 1 3)
             233 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"<=" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_7 = _infix_8 ">=" _infix_8 → (>= 1 3)
             234 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@">=" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_7 = _infix_8 → 1
             235 => pass[0],
-            // _infix_8 = _infix_9 ".." _infix_9 → (.. 1 3)
             236 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@".." }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_8 = _infix_9 → 1
             237 => pass[0],
-            // _infix_9 = _infix_9 "<<" _infix_10 → (<< 1 3)
             238 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"<<" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_9 = _infix_9 ">>" _infix_10 → (>> 1 3)
             239 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@">>" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_9 = _infix_10 → 1
             240 => pass[0],
-            // _infix_10 = _infix_10 "+" _infix_11 → (+ 1 3)
             241 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_10 = _infix_10 "-" _infix_11 → (- 1 3)
             242 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_10 = _infix_11 → 1
             243 => pass[0],
-            // _infix_11 = _infix_11 "*" _infix_12 → (* 1 3)
             244 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-            // _infix_11 = _infix_11 "/" _infix_12 → (/ 1 3)
             245 => self.sexp(.@"/", &.{pass[0], pass[2]}),
-            // _infix_11 = _infix_11 "%" _infix_12 → (% 1 3)
             246 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"%" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // _infix_11 = _infix_12 → 1
             247 => pass[0],
-            // _infix_12 = unary "**" _infix_12 → (** 1 3)
             248 => self.sexp(.@"**", &.{pass[0], pass[2]}),
-            // _infix_12 = unary → 1
             249 => pass[0],
-            // infix = _infix_1 → 1
             250 => pass[0],
             else => .nil,
         };

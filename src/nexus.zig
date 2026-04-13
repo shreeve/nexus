@@ -3317,6 +3317,7 @@ const ParserGenerator = struct {
     conflicts: u32 = 0,
     expectConflicts: ?u32 = null,
     conflictDetails: std.ArrayListUnmanaged(ConflictDetail) = .{},
+    emitComments: bool = false,
 
     // Directives
     asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
@@ -5130,15 +5131,16 @@ const ParserGenerator = struct {
 
         // Generate per-rule semantic actions
         for (self.rules.items, 0..) |rule, ruleIdx| {
-            // Comment showing the grammar rule: lhs = rhs → action
-            try writer.print("            // {s} =", .{self.symbols.items[rule.lhs].name});
-            for (rule.rhs) |symId| {
-                try writer.print(" {s}", .{self.symbols.items[symId].name});
+            if (self.emitComments) {
+                try writer.print("            // {s} =", .{self.symbols.items[rule.lhs].name});
+                for (rule.rhs) |symId| {
+                    try writer.print(" {s}", .{self.symbols.items[symId].name});
+                }
+                if (rule.action) |action| {
+                    try writer.print(" \xe2\x86\x92 {s}", .{action.template});
+                }
+                try writer.writeAll("\n");
             }
-            if (rule.action) |action| {
-                try writer.print(" → {s}", .{action.template});
-            }
-            try writer.writeAll("\n");
             try writer.print("            {d} => ", .{ruleIdx});
             try self.generateRuleAction(writer, rule);
             try writer.writeAll(",\n");
@@ -6245,6 +6247,7 @@ pub fn main() !void {
             \\Usage: nexus <grammar-file> [output-file]
             \\
             \\Options:
+            \\  -c, --comments Include grammar-rule comments in generated code
             \\  -h, --help     Show this help
             \\
             \\Examples:
@@ -6255,8 +6258,22 @@ pub fn main() !void {
     }
 
     const checkMode = std.mem.eql(u8, args[1], "check") or std.mem.eql(u8, args[1], "--check");
-    const grammarFile = if (checkMode and args.len > 2) args[2] else args[1];
-    const outputFile = if (!checkMode and args.len > 2) args[2] else "src/parser.zig";
+
+    // Parse option flags from remaining args
+    var comments = false;
+    var positionalStart: usize = if (checkMode) 2 else 1;
+    for (args[positionalStart..]) |arg| {
+        if (std.mem.eql(u8, arg, "--comments") or std.mem.eql(u8, arg, "-c")) {
+            comments = true;
+            positionalStart += 1;
+        } else break;
+    }
+
+    const grammarFile = if (positionalStart < args.len) args[positionalStart] else {
+        std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
+        return;
+    };
+    const outputFile = if (positionalStart + 1 < args.len) args[positionalStart + 1] else "src/parser.zig";
 
     // Read grammar file
     const sourceText = std.fs.cwd().readFileAlloc(allocator, grammarFile, 1024 * 1024) catch |err| {
@@ -6359,6 +6376,7 @@ pub fn main() !void {
         if (ir.rules.len > 0) {
             parserGen = ParserGenerator.init(allocator);
             parserGen.?.lexerSpec = &lexerParser.spec;
+            parserGen.?.emitComments = comments;
 
             parserGen.?.processGrammar(&ir) catch |err| {
                 std.debug.print("❌ Grammar processing error: {any}\n", .{err});
