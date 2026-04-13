@@ -9,11 +9,15 @@
   <meta property="og:title" content="Nexus — Universal Parser Generator">
   <meta property="og:description" content="Define a grammar. Get a parser. Any language.">
   <meta property="og:image" content="https://shreeve.github.io/nexus/nexus-social.png">
+  <meta property="og:url" content="https://shreeve.github.io/nexus/">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Nexus — Universal Parser Generator">
   <meta name="twitter:description" content="Define a grammar. Get a parser. Any language.">
   <meta name="twitter:image" content="https://shreeve.github.io/nexus/nexus-social.png">
+
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="favicon.ico">
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -46,6 +50,14 @@
 
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88em;
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
 
     /* ── Hero ─────────────────────────────────────────────────────── */
 
@@ -353,6 +365,8 @@
 
     <div class="pipeline">
       <div class="node"><strong>{lang}.grammar</strong>tokens + rules</div>
+      <span class="arrow">+</span>
+      <div class="node"><strong>{lang}.zig</strong>lang module</div>
       <span class="arrow">&rarr;</span>
       <div class="node"><strong>nexus</strong>generator engine</div>
       <span class="arrow">&rarr;</span>
@@ -367,7 +381,7 @@
     <h2>Example: Expression Grammar</h2>
     <p>
       A complete grammar for arithmetic expressions with operator precedence,
-      associativity, parentheses, and multiple start symbols &mdash; in 63 lines.
+      associativity, parentheses, and multiple start symbols.
     </p>
 
     <div class="code-block">
@@ -375,66 +389,50 @@
         <span class="code-filename">basic.grammar</span>
         <span class="code-label">Input</span>
       </div>
-      <pre><span class="cmt"># Lexer: define tokens and patterns</span>
-
-<span class="kw">@lexer</span>
+      <pre><span class="kw">@lexer</span>
 
 <span class="kw">tokens</span>
-    <span class="tok">integer</span>
-    <span class="tok">ident</span>
-    <span class="tok">plus</span>
-    <span class="tok">minus</span>
-    <span class="tok">star</span>
-    <span class="tok">slash</span>
-    <span class="tok">power</span>
-    <span class="tok">lparen</span>
-    <span class="tok">rparen</span>
-    <span class="tok">newline</span>
-    <span class="tok">eof</span>
-    <span class="tok">err</span>
+    <span class="tok">integer</span>, <span class="tok">ident</span>, <span class="tok">plus</span>, <span class="tok">minus</span>, <span class="tok">star</span>, <span class="tok">slash</span>,
+    <span class="tok">power</span>, <span class="tok">lparen</span>, <span class="tok">rparen</span>, <span class="tok">newline</span>, <span class="tok">eof</span>, <span class="tok">err</span>
 
-<span class="str">'+'</span>                                         <span class="op">&rarr;</span> <span class="tok">plus</span>
-<span class="str">'-'</span>                                         <span class="op">&rarr;</span> <span class="tok">minus</span>
-<span class="str">'*'</span>                                         <span class="op">&rarr;</span> <span class="tok">star</span>
-<span class="str">'/'</span>                                         <span class="op">&rarr;</span> <span class="tok">slash</span>
-<span class="str">"**"</span>                                        <span class="op">&rarr;</span> <span class="tok">power</span>
-<span class="str">'('</span>                                         <span class="op">&rarr;</span> <span class="tok">lparen</span>
-<span class="str">')'</span>                                         <span class="op">&rarr;</span> <span class="tok">rparen</span>
-<span class="str">'\n'</span>                                        <span class="op">&rarr;</span> <span class="tok">newline</span>
-<span class="sym">[0-9]+</span>                                      <span class="op">&rarr;</span> <span class="tok">integer</span>
-<span class="sym">[a-zA-Z_][a-zA-Z0-9_]*</span>                      <span class="op">&rarr;</span> <span class="tok">ident</span>
-<span class="sym">.</span>                                           <span class="op">&rarr;</span> <span class="tok">err</span>
-
-<span class="cmt"># Parser: define grammar rules and actions</span>
+<span class="str">'+'</span>                              <span class="op">&rarr;</span> <span class="tok">plus</span>
+<span class="str">'-'</span>                              <span class="op">&rarr;</span> <span class="tok">minus</span>
+<span class="str">'*'</span>                              <span class="op">&rarr;</span> <span class="tok">star</span>
+<span class="str">'/'</span>                              <span class="op">&rarr;</span> <span class="tok">slash</span>
+<span class="str">"**"</span>                             <span class="op">&rarr;</span> <span class="tok">power</span>
+<span class="str">'('</span>                              <span class="op">&rarr;</span> <span class="tok">lparen</span>
+<span class="str">')'</span>                              <span class="op">&rarr;</span> <span class="tok">rparen</span>
+<span class="str">'\n'</span>                             <span class="op">&rarr;</span> <span class="tok">newline</span>
+<span class="sym">[0-9]+</span>                           <span class="op">&rarr;</span> <span class="tok">integer</span>
+<span class="sym">[a-zA-Z_][a-zA-Z0-9_]*</span>           <span class="op">&rarr;</span> <span class="tok">ident</span>
+<span class="sym">.</span>                                <span class="op">&rarr;</span> <span class="tok">err</span>
 
 <span class="kw">@parser</span>
 
 <span class="kw">@lang</span> = <span class="str">"basic"</span>
 <span class="kw">@conflicts</span> = <span class="sym">0</span>
 
-<span class="rul">name</span>    = <span class="tok">IDENT</span>
+<span class="rul">name</span>     = <span class="tok">IDENT</span>
+<span class="rul">program!</span> = <span class="rul">body</span>                  <span class="op">&rarr;</span> <span class="sym">(module ...1)</span>
+<span class="rul">expr!</span>    = <span class="rul">expr</span>                  <span class="op">&rarr;</span> <span class="sym">1</span>
 
-<span class="rul">program!</span> = <span class="rul">body</span>                             <span class="op">&rarr;</span> <span class="sym">(module ...1)</span>
-<span class="rul">expr!</span>    = <span class="rul">expr</span>                             <span class="op">&rarr;</span> <span class="sym">1</span>
-
-<span class="rul">body</span>     = <span class="rul">stmt</span>                             <span class="op">&rarr;</span> <span class="sym">(1)</span>
-         | <span class="rul">body</span> <span class="tok">NEWLINE</span> <span class="rul">stmt</span>                <span class="op">&rarr;</span> <span class="sym">(...1 3)</span>
-         | <span class="rul">body</span> <span class="tok">NEWLINE</span>                     <span class="op">&rarr;</span> <span class="sym">1</span>
+<span class="rul">body</span>     = <span class="rul">stmt</span>                  <span class="op">&rarr;</span> <span class="sym">(1)</span>
+         | <span class="rul">body</span> <span class="tok">NEWLINE</span> <span class="rul">stmt</span>     <span class="op">&rarr;</span> <span class="sym">(...1 3)</span>
+         | <span class="rul">body</span> <span class="tok">NEWLINE</span>          <span class="op">&rarr;</span> <span class="sym">1</span>
 
 <span class="rul">stmt</span>     = <span class="rul">expr</span>
-
 <span class="rul">expr</span>     = <span class="kw">@infix</span>
 
-<span class="rul">unary</span>    = <span class="str">"-"</span> <span class="rul">unary</span>                        <span class="op">&rarr;</span> <span class="sym">(neg 2)</span>
+<span class="rul">unary</span>    = <span class="str">"-"</span> <span class="rul">unary</span>             <span class="op">&rarr;</span> <span class="sym">(neg 2)</span>
          | <span class="rul">atom</span>
 
 <span class="rul">atom</span>     = <span class="rul">name</span>
          | <span class="tok">INTEGER</span>
-         | <span class="str">"("</span> <span class="rul">expr</span> <span class="str">")"</span>                     <span class="op">&rarr;</span> <span class="sym">2</span>
+         | <span class="str">"("</span> <span class="rul">expr</span> <span class="str">")"</span>          <span class="op">&rarr;</span> <span class="sym">2</span>
 
 <span class="kw">@infix</span> <span class="rul">unary</span>
-    <span class="str">"+"</span>  <span class="sym">left</span>, <span class="str">"-"</span>  <span class="sym">left</span>
-    <span class="str">"*"</span>  <span class="sym">left</span>, <span class="str">"/"</span>  <span class="sym">left</span>
+    <span class="str">"+"</span>  <span class="sym">left</span>,  <span class="str">"-"</span>  <span class="sym">left</span>
+    <span class="str">"*"</span>  <span class="sym">left</span>,  <span class="str">"/"</span>  <span class="sym">left</span>
     <span class="str">"**"</span> <span class="sym">right</span></pre>
     </div>
 
@@ -443,9 +441,10 @@
         <span class="code-filename">terminal</span>
         <span class="code-label">Generate</span>
       </div>
-      <pre><span class="sym">$</span> zig build
-<span class="sym">$</span> ./bin/nexus basic.grammar src/parser.zig
-<span class="cmt"># produces a complete lexer + SLR(1) parser module</span></pre>
+      <pre><span class="sym">$</span> ./bin/nexus basic.grammar src/parser.zig
+
+<span class="cmt">Generated parser.zig — switch-based lexer, SLR(1) parse tables,</span>
+<span class="cmt">Tag enum, Sexp output, and all reduction actions in one module.</span></pre>
     </div>
   </section>
 
@@ -520,7 +519,9 @@
   <!-- Footer -->
   <footer>
     <p>
-      Nexus is open source under the MIT license.
+      Nexus is open source under the MIT license. Built with Zig.
+    </p>
+    <p style="margin-top: 8px;">
       <a href="https://github.com/shreeve/nexus">GitHub</a> &middot;
       <a href="https://github.com/shreeve/nexus#readme">README</a>
     </p>
