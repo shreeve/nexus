@@ -206,8 +206,10 @@ after
 # ==============================================================================
 #
 # Pattern mode is tricky because ?1E+2 is NOT a pattern (it's E-notation).
-# We use the generic rewind(n) action to match long lookahead patterns while
-# consuming only the leading ? or '?.
+#
+# The rules below that use counting()/matching()/rewind() are handled by the
+# mumps.zig Lexer wrapper at runtime, not by the generated base lexer. The
+# generator skips them; they serve as documentation of the wrapper's logic.
 #
 # Pattern mode entry rules (most specific first):
 
