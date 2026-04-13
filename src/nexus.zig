@@ -476,9 +476,14 @@ const LexerParser = struct {
                 continue;
             }
 
-            // Skip unknown lines
+            // Unrecognized line — log and skip (may be wrapper-handled syntax)
+            const lineStart = self.pos;
             while (self.pos < self.source.len and self.source[self.pos] != '\n') {
                 self.pos += 1;
+            }
+            const content = std.mem.trim(u8, self.source[lineStart..self.pos], " \t\r");
+            if (content.len > 0) {
+                std.debug.print("   ⚠ Skipped lexer line {d} (handled by lang wrapper): {s}\n", .{ self.line, content });
             }
         }
     }
@@ -6144,10 +6149,14 @@ fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
     }
 
     // Check for unreachable rules (not reachable from any start symbol)
-    if (ir.startSymbols.len > 0) {
+    // Note: when @as directives are present, reachability analysis is
+    // incomplete because @as expands keyword resolution at parse time,
+    // making rules reachable that aren't directly referenced in the IR.
+    if (ir.startSymbols.len > 0 and ir.asDirectives.len == 0) {
         var reachable = std.StringHashMap(void).init(allocator);
         defer reachable.deinit();
         for (ir.startSymbols) |s| markReachable(s, ir, &reachable);
+        if (ir.infix) |infix| markReachable(infix.baseRule, ir, &reachable);
 
         var seen = std.StringHashMap(void).init(allocator);
         defer seen.deinit();
