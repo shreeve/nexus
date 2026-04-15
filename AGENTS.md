@@ -70,6 +70,24 @@ Unified syntax with ordered resolution and `self` priority checkpoint:
 - Items after `self`: permissive matching (`!= 0`, any action)
 - Implicit IDENT fallback at end
 
+#### Reduce-Aware Matching (`!` suffix)
+
+Append `!` to a group name for reduce-aware (permissive) matching:
+
+```
+@as ident = [keyword!]
+```
+
+This generates `getAction(state, sym) != 0` instead of `> 0`, allowing keyword promotion in states where only reduce actions exist. Required for languages with reserved keywords that appear after expressions (e.g., Ruby's `else`, `end`, `elsif`).
+
+Without `!`, those keywords fail to promote because the parser needs to reduce before shifting them. With `!`, promotion succeeds in reduce-only states.
+
+Mode resolution per group:
+- `group!` — always permissive (explicit)
+- `group` before `self` — strict (shift only)
+- `group` after `self` — permissive (positional default)
+- `self!` — syntax error (rejected)
+
 ### `@code` — Lexer Function Import
 
 ```

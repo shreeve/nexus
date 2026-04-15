@@ -2632,6 +2632,7 @@ const ParserTransition = struct {
 const AsDirective = struct {
     token: []const u8, // "ident"
     rule: []const u8, // "cmd" -> CmdId, cmdAs, cmdToSymbol
+    permissive: bool = false, // "cmd!" -> reduce-aware matching (action != 0)
 };
 
 /// Capitalize first letter of a rule name for building compound identifiers.
@@ -3067,7 +3068,16 @@ const ParserDSLParser = struct {
                 self.skipTrivia();
                 if (self.current.kind == .rbracket) break;
                 const rule = try self.expectIdent("resolution candidate");
-                try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
+                var permissive = false;
+                if (self.current.kind == .bang) {
+                    if (std.mem.eql(u8, rule, "self")) {
+                        std.debug.print("Error: self! is not valid in @as directive\n", .{});
+                        return error.ParseError;
+                    }
+                    permissive = true;
+                    self.advance();
+                }
+                try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule, .permissive = permissive });
                 if (self.current.kind == .comma) self.advance();
             }
             try self.expect(.rbracket, "Expected ']' to close @as directive");
@@ -5764,7 +5774,10 @@ const ParserGenerator = struct {
             );
 
             // Generate tryIdentAs* functions for each @as directive (skip "self" entries)
-            // Directives before "self" use > 0 (shift only); after "self" use != 0 (any action)
+            // Matching mode per group:
+            //   - Explicit "!" suffix (keyword!) -> permissive: action != 0 (reduce-aware)
+            //   - After "self" checkpoint       -> permissive: action != 0
+            //   - Before "self" (default)       -> strict: action > 0 (shift only)
             if (self.lang) |langName| {
                 var seenSelf = false;
                 for (self.asDirectives.items) |directive| {
@@ -5773,7 +5786,7 @@ const ParserGenerator = struct {
                         seenSelf = true;
                         continue;
                     }
-                    const actionCheck: []const u8 = if (seenSelf) "!= 0" else "> 0";
+                    const actionCheck: []const u8 = if (directive.permissive or seenSelf) "!= 0" else "> 0";
 
                     const cap = capitalized(directive.rule);
                     const capName = cap[0..directive.rule.len];
@@ -5809,7 +5822,7 @@ const ParserGenerator = struct {
                         seenSelf2 = true;
                         continue;
                     }
-                    const actionCheck: []const u8 = if (seenSelf2) "!= 0" else "> 0";
+                    const actionCheck: []const u8 = if (directive.permissive or seenSelf2) "!= 0" else "> 0";
 
                     const cap = capitalized(directive.rule);
                     const capName = cap[0..directive.rule.len];

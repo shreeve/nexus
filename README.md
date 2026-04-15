@@ -549,6 +549,7 @@ When the grammar uses `"'="` in a rule, the parser maps it to the lexer's
 ```
 @as ident = [keyword]
 @as ident = [fn, isv, ssvn, self, cmd]
+@as ident = [keyword!]
 ```
 
 Defines ordered resolution for context-sensitive keyword promotion. When the
@@ -564,6 +565,35 @@ controls disambiguation when both a keyword and an identifier are valid:
 - Candidates **after** `self`: permissive matching (`!= 0`, any action)
 - Implicit `ident` fallback at the end if nothing matches
 
+#### Reduce-Aware Matching (`!` suffix)
+
+Append `!` to any group name for reduce-aware matching:
+
+```
+@as ident = [keyword!]
+```
+
+By default, keyword promotion requires a **shift action** (`> 0`) in the
+current parser state. This fails for reserved keywords that appear after
+expressions, where the parser must reduce before the keyword becomes
+shiftable (e.g., Ruby's `else`, `end`, `elsif`, `when`).
+
+The `!` suffix enables **reduce-aware matching** (`!= 0`), which promotes
+the keyword whenever the parser has any valid action for it — shift or
+reduce. This eliminates the need for manual keyword force-classification
+in the lang module.
+
+Mode resolution per group:
+
+| Syntax | Mode | Condition |
+|--------|------|-----------|
+| `group!` | permissive | explicit, always `!= 0` |
+| `group` before `self` | strict | default, `> 0` (shift only) |
+| `group` after `self` | permissive | positional, `!= 0` |
+| `self!` | **rejected** | syntax error |
+
+#### Examples
+
 For single-keyword languages (e.g., Zag), `self` is not needed:
 
 ```
@@ -575,6 +605,13 @@ For languages where commands overlap with variable names (e.g., MUMPS),
 
 ```
 @as ident = [fn, isv, ssvn, self, cmd]
+```
+
+For languages with reserved keywords that appear in reduce states (e.g.,
+Ruby), use `!` for reduce-aware matching:
+
+```
+@as ident = [keyword!]
 ```
 
 ### `@errors` — Human-Readable Rule Names
