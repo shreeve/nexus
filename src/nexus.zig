@@ -2678,12 +2678,12 @@ const CodeBlock = struct {
 // =============================================================================
 // GrammarIR — Semantic IR for grammar files (consumed by processGrammar)
 //
-// Both parser paths (GrammarLowerer and ParserDSLParser) produce this IR.
+// ParserDSLParser (recursive descent) produces this IR from .grammar files.
 // processGrammar() is the sole consumer.
 // =============================================================================
 
 const GrammarIR = struct {
-    rules: []const RuleDecl,
+    rules: []const ParsedRule,
     startSymbols: []const []const u8,
     asDirectives: []const AsDirective,
     opMappings: []const OpMapping,
@@ -2694,27 +2694,27 @@ const GrammarIR = struct {
     expectConflicts: ?u32 = null,
 };
 
-const RuleDecl = struct {
+const ParsedRule = struct {
     name: []const u8,
     isStart: bool,
-    alternatives: []const Alternative,
+    alternatives: []const ParsedAlternative,
 };
 
-const Alternative = struct {
-    elements: []const Element,
+const ParsedAlternative = struct {
+    elements: []const ParsedElement,
     action: ?[]const u8 = null,
     excludeChar: u8 = 0,
     preferReduce: bool = false,
     preferShift: bool = false,
 };
 
-const Element = struct {
+const ParsedElement = struct {
     kind: Kind,
     value: []const u8 = "",
     quantifier: Quantifier = .one,
     optionalItems: bool = false,
     listSeparator: ?[]const u8 = null,
-    subElements: []const Element = &[_]Element{},
+    subElements: []const ParsedElement = &[_]ParsedElement{},
     skip: bool = false,
 
     const Kind = enum {
@@ -2737,14 +2737,218 @@ const InfixDecl = struct {
 
 
 // =============================================================================
-// Grammar Lowerer — lowers Sexp parse tree into GrammarIR
+// Grammar Token (for parsing .grammar files)
 // =============================================================================
 
-const GrammarLowerer = struct {
-    allocator: Allocator,
-    sourceText: []const u8,
+const GrammarToken = struct {
+    kind: Kind,
+    text: []const u8,
+    line: u32,
 
-    rules: std.ArrayListUnmanaged(RuleDecl) = .{},
+    const Kind = enum {
+        ident, // lowercase identifier
+        token, // UPPERCASE identifier
+        string, // "literal"
+        number, // numeric literal
+        eq, // =
+        pipe, // |
+        arrow, // → or ->
+        larrow, // ← (V annotation alias)
+        question, // ?
+        star, // *
+        plus, // +
+        lparen, // (
+        rparen, // )
+        lbracket, // [
+        rbracket, // ]
+        langle, // <
+        rangle, // >
+        comma, // ,
+        colon, // :
+        bang, // !
+        tilde, // ~
+        dots, // ...
+        at, // @
+        lbrace, // {
+        rbrace, // }
+        semicolon, // ; (inline comment start)
+        newline,
+        comment,
+        eof,
+        err,
+    };
+};
+
+// =============================================================================
+// Grammar Lexer (for parsing .grammar files)
+// =============================================================================
+
+const GrammarLexer = struct {
+    source: []const u8,
+    pos: u32 = 0,
+    line: u32 = 1,
+
+    fn init(source: []const u8) GrammarLexer {
+        return .{ .source = source };
+    }
+
+    fn next(self: *GrammarLexer) GrammarToken {
+        self.skipWhitespace();
+
+        if (self.pos >= self.source.len) {
+            return self.makeToken(.eof, "");
+        }
+
+        const startLine = self.line;
+        const start = self.pos;
+        const c = self.source[self.pos];
+
+        // Single character tokens
+        const single: ?GrammarToken.Kind = switch (c) {
+            '=' => .eq,
+            '|' => .pipe,
+            '?' => .question,
+            '*' => .star,
+            '+' => .plus,
+            '(' => .lparen,
+            ')' => .rparen,
+            '[' => .lbracket,
+            ']' => .rbracket,
+            '<' => .langle,
+            '>' => .rangle,
+            '{' => .lbrace,
+            '}' => .rbrace,
+            ',' => .comma,
+            ':' => .colon,
+            '!' => .bang,
+            '~' => .tilde,
+            '@' => .at,
+            ';' => .semicolon,
+            '\n' => .newline,
+            else => null,
+        };
+
+        if (single) |kind| {
+            self.advance();
+            if (kind == .newline) self.line += 1;
+            return .{ .kind = kind, .text = self.source[start..self.pos], .line = startLine };
+        }
+
+        // Multi-character tokens
+        switch (c) {
+            '#' => {
+                while (self.pos < self.source.len and self.source[self.pos] != '\n') {
+                    self.advance();
+                }
+                return .{ .kind = .comment, .text = self.source[start..self.pos], .line = startLine };
+            },
+            '-' => {
+                if (self.peek(1) == '>') {
+                    self.advance();
+                    self.advance();
+                    return .{ .kind = .arrow, .text = self.source[start..self.pos], .line = startLine };
+                }
+                self.advance();
+                return .{ .kind = .err, .text = self.source[start..self.pos], .line = startLine };
+            },
+            0xE2 => {
+                // UTF-8 arrows: → (0xE2 0x86 0x92) and ← (0xE2 0x86 0x90)
+                const kind: GrammarToken.Kind = if (self.peek(1) != 0x86) .err else switch (self.peek(2)) {
+                    0x92 => .arrow,
+                    0x90 => .larrow,
+                    else => .err,
+                };
+                self.advance();
+                self.advance();
+                if (kind != .err) self.advance();
+                return .{ .kind = kind, .text = self.source[start..self.pos], .line = startLine };
+            },
+            '.' => {
+                if (self.peek(1) == '.' and self.peek(2) == '.') {
+                    self.advance();
+                    self.advance();
+                    self.advance();
+                    return .{ .kind = .dots, .text = self.source[start..self.pos], .line = startLine };
+                }
+                self.advance();
+                return .{ .kind = .err, .text = self.source[start..self.pos], .line = startLine };
+            },
+            '"' => {
+                self.advance();
+                while (self.pos < self.source.len and self.source[self.pos] != '"') {
+                    if (self.source[self.pos] == '\\' and self.pos + 1 < self.source.len) {
+                        self.advance();
+                    }
+                    self.advance();
+                }
+                if (self.pos < self.source.len) self.advance();
+                return .{ .kind = .string, .text = self.source[start..self.pos], .line = startLine };
+            },
+            'a'...'z' => {
+                while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
+                    self.advance();
+                }
+                return .{ .kind = .ident, .text = self.source[start..self.pos], .line = startLine };
+            },
+            'A'...'Z' => {
+                while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
+                    self.advance();
+                }
+                return .{ .kind = .token, .text = self.source[start..self.pos], .line = startLine };
+            },
+            '0'...'9' => {
+                while (self.pos < self.source.len and self.source[self.pos] >= '0' and self.source[self.pos] <= '9') {
+                    self.advance();
+                }
+                return .{ .kind = .number, .text = self.source[start..self.pos], .line = startLine };
+            },
+            else => {
+                self.advance();
+                return .{ .kind = .err, .text = self.source[start..self.pos], .line = startLine };
+            },
+        }
+    }
+
+    fn makeToken(self: *GrammarLexer, kind: GrammarToken.Kind, text: []const u8) GrammarToken {
+        return .{ .kind = kind, .text = text, .line = self.line };
+    }
+
+    fn advance(self: *GrammarLexer) void {
+        if (self.pos < self.source.len) self.pos += 1;
+    }
+
+    fn peek(self: *GrammarLexer, offset: u32) u8 {
+        const idx = self.pos + offset;
+        return if (idx < self.source.len) self.source[idx] else 0;
+    }
+
+    fn skipWhitespace(self: *GrammarLexer) void {
+        while (self.pos < self.source.len) {
+            const ch = self.source[self.pos];
+            if (ch == ' ' or ch == '\t' or ch == '\r') {
+                self.advance();
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn isIdentChar(c: u8) bool {
+        return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
+            (c >= '0' and c <= '9') or c == '_';
+    }
+};
+
+// =============================================================================
+// Parser DSL Parser (parses @parser section of .grammar files)
+// =============================================================================
+
+const ParserDSLParser = struct {
+    lexer: GrammarLexer,
+    allocator: Allocator,
+    current: GrammarToken,
+
+    rules: std.ArrayListUnmanaged(ParsedRule) = .{},
     startSymbols: std.ArrayListUnmanaged([]const u8) = .{},
     asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
     opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
@@ -2755,14 +2959,17 @@ const GrammarLowerer = struct {
     codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
     expectConflicts: ?u32 = null,
 
-    fn init(allocator: Allocator, sourceText: []const u8) GrammarLowerer {
-        return .{
+    fn init(allocator: Allocator, source: []const u8) ParserDSLParser {
+        var p = ParserDSLParser{
+            .lexer = GrammarLexer.init(source),
             .allocator = allocator,
-            .sourceText = sourceText,
+            .current = undefined,
         };
+        p.current = p.lexer.next();
+        return p;
     }
 
-    fn deinit(self: *GrammarLowerer) void {
+    fn deinit(self: *ParserDSLParser) void {
         for (self.rules.items) |*rule| {
             for (rule.alternatives) |*alt| {
                 self.freeElements(alt.elements);
@@ -2779,7 +2986,7 @@ const GrammarLowerer = struct {
         self.codeBlocks.deinit(self.allocator);
     }
 
-    fn freeElements(self: *GrammarLowerer, elements: []const Element) void {
+    fn freeElements(self: *ParserDSLParser, elements: []const ParsedElement) void {
         for (elements) |elem| {
             if (elem.subElements.len > 0) {
                 self.freeElements(elem.subElements);
@@ -2788,17 +2995,662 @@ const GrammarLowerer = struct {
         }
     }
 
-    fn lower(self: *GrammarLowerer) !GrammarIR {
-        var parser = ngp.Parser.init(self.allocator, self.sourceText);
-        defer parser.deinit();
+    fn parse(self: *ParserDSLParser) !void {
+        while (self.current.kind != .eof) {
+            self.skipTrivia();
+            if (self.current.kind == .eof) break;
 
-        const ast = parser.parseGrammar() catch {
-            parser.printError();
+            if (self.current.kind == .at) {
+                try self.parseDirective();
+            } else {
+                try self.parseRule();
+            }
+        }
+    }
+
+    fn parseDirective(self: *ParserDSLParser) !void {
+        self.advance(); // skip '@'
+        const directiveName = try self.expectIdent("directive name after @");
+
+        if (std.mem.eql(u8, directiveName, "as")) {
+            try self.parseAsDirective();
+        } else if (std.mem.eql(u8, directiveName, "op")) {
+            try self.parseOpDirective();
+        } else if (std.mem.eql(u8, directiveName, "lang")) {
+            try self.parseLangDirective();
+        } else if (std.mem.eql(u8, directiveName, "code")) {
+            try self.parseCodeDirective();
+        } else if (std.mem.eql(u8, directiveName, "errors")) {
+            try self.parseErrorsDirective();
+        } else if (std.mem.eql(u8, directiveName, "infix")) {
+            try self.parseInfixDirective();
+        } else if (std.mem.eql(u8, directiveName, "conflicts")) {
+            try self.expect(.eq, "Expected '=' after @conflicts");
+            if (self.current.kind != .number) {
+                std.debug.print("Expected number after @conflicts = at line {d}\n", .{self.current.line});
+                return error.ParseError;
+            }
+            self.expectConflicts = std.fmt.parseInt(u32, self.current.text, 10) catch {
+                std.debug.print("Invalid @conflicts value: {s}\n", .{self.current.text});
+                return error.ParseError;
+            };
+            self.advance();
+        } else {
+            std.debug.print("Unknown directive @{s} at line {d}\n", .{ directiveName, self.current.line });
             return error.ParseError;
-        };
+        }
+    }
 
-        try self.walkGrammar(ast);
+    fn parseAsDirective(self: *ParserDSLParser) !void {
+        // Support both forms:
+        //   @as = [ident, cmd]                          (legacy: single pair)
+        //   @as ident = [fn, isv, ssvn, self, cmd]      (unified: ordered resolution)
+        var sourceTok: []const u8 = "";
 
+        if (self.current.kind == .ident) {
+            sourceTok = self.current.text;
+            self.advance();
+        }
+
+        try self.expect(.eq, "Expected '=' after @as");
+        try self.expect(.lbracket, "Expected '[' in @as directive");
+
+        if (sourceTok.len == 0) {
+            const tok = try self.expectIdent("token type");
+            try self.expect(.comma, "Expected ',' after token");
+            const rule = try self.expectIdent("rule name");
+            try self.expect(.rbracket, "Expected ']' to close @as directive");
+            if (self.current.kind == .newline) self.advance();
+            try self.asDirectives.append(self.allocator, .{ .token = tok, .rule = rule });
+        } else {
+            while (self.current.kind != .rbracket and self.current.kind != .eof) {
+                self.skipTrivia();
+                if (self.current.kind == .rbracket) break;
+                const rule = try self.expectIdent("resolution candidate");
+                try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
+                if (self.current.kind == .comma) self.advance();
+            }
+            try self.expect(.rbracket, "Expected ']' to close @as directive");
+            if (self.current.kind == .newline) self.advance();
+        }
+    }
+
+    fn parseOpDirective(self: *ParserDSLParser) !void {
+        try self.expect(.eq, "Expected '=' after @op");
+        try self.expect(.lbracket, "Expected '[' in @op directive");
+
+        while (self.current.kind != .rbracket and self.current.kind != .eof) {
+            self.skipTrivia();
+            if (self.current.kind == .rbracket) break;
+
+            const lit = try self.expectString("operator literal");
+            try self.expect(.arrow, "Expected '->' after literal");
+            const tok = try self.expectString("token type");
+
+            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
+            if (self.current.kind == .comma) self.advance();
+        }
+
+        try self.expect(.rbracket, "Expected ']' to close @op directive");
+        if (self.current.kind == .newline) self.advance();
+    }
+
+    fn parseLangDirective(self: *ParserDSLParser) !void {
+        try self.expect(.eq, "Expected '=' after @lang");
+        const name = try self.expectString("language name");
+        self.lang = name;
+        if (self.current.kind == .newline) self.advance();
+    }
+
+    fn parseCodeDirective(self: *ParserDSLParser) !void {
+        // Parse location identifier
+        const location = try self.expectIdent("code location (imports, sexp, parser, bottom)");
+
+        // Expect opening brace
+        if (self.current.kind != .lbrace) {
+            std.debug.print("Expected '{{' after @code {s} at line {d}\n", .{ location, self.current.line });
+            return error.ParseError;
+        }
+        self.advance();
+
+        // Find matching closing brace, counting nested braces while ignoring
+        // braces inside strings and comments.
+        const start = self.lexer.pos;
+        var depth: usize = 1;
+        var inString: u8 = 0;
+        var escaped = false;
+        var inLineComment = false;
+        var inBlockComment = false;
+        while (depth > 0 and self.lexer.pos < self.lexer.source.len) {
+            const c = self.lexer.source[self.lexer.pos];
+            const next = if (self.lexer.pos + 1 < self.lexer.source.len) self.lexer.source[self.lexer.pos + 1] else 0;
+
+            if (inLineComment) {
+                if (c == '\n') inLineComment = false;
+                self.lexer.pos += 1;
+                continue;
+            }
+            if (inBlockComment) {
+                if (c == '*' and next == '/') {
+                    inBlockComment = false;
+                    self.lexer.pos += 2;
+                    continue;
+                }
+                self.lexer.pos += 1;
+                continue;
+            }
+            if (inString != 0) {
+                if (escaped) {
+                    escaped = false;
+                    self.lexer.pos += 1;
+                    continue;
+                }
+                if (c == '\\') {
+                    escaped = true;
+                    self.lexer.pos += 1;
+                    continue;
+                }
+                if (c == inString) {
+                    inString = 0;
+                    self.lexer.pos += 1;
+                    continue;
+                }
+                self.lexer.pos += 1;
+                continue;
+            }
+
+            if (c == '/' and next == '/') {
+                inLineComment = true;
+                self.lexer.pos += 2;
+                continue;
+            }
+            if (c == '/' and next == '*') {
+                inBlockComment = true;
+                self.lexer.pos += 2;
+                continue;
+            }
+            if (c == '"' or c == '\'') {
+                inString = c;
+                self.lexer.pos += 1;
+                continue;
+            }
+
+            if (c == '{') {
+                depth += 1;
+            } else if (c == '}') {
+                depth -= 1;
+            }
+            if (depth > 0) self.lexer.pos += 1;
+        }
+
+        if (depth != 0) {
+            std.debug.print("Unclosed @code block at line {d}\n", .{self.current.line});
+            return error.ParseError;
+        }
+
+        const code = std.mem.trim(u8, self.lexer.source[start..self.lexer.pos], " \t\n\r");
+        self.lexer.pos += 1; // skip closing brace
+
+        try self.codeBlocks.append(self.allocator, .{ .location = location, .code = code });
+
+        // Advance to next token
+        self.current = self.lexer.next();
+        if (self.current.kind == .newline) self.advance();
+    }
+
+    fn parseErrorsDirective(self: *ParserDSLParser) !void {
+        if (self.current.kind == .newline) self.advance();
+        self.skipTrivia();
+
+        while ((self.current.kind == .ident or self.current.kind == .token) and self.peekKind() == .colon) {
+            const rule = self.current.text;
+            self.advance();
+            self.advance(); // skip :
+            const name = try self.expectString("error display name");
+            try self.errorNames.append(self.allocator, .{ .rule = rule, .name = name });
+            if (self.current.kind == .comma) self.advance();
+            if (self.current.kind == .newline) self.advance();
+            self.skipTrivia();
+        }
+    }
+
+    fn parseInfixDirective(self: *ParserDSLParser) !void {
+        // Syntax: @precedence base_expr
+        //   "op" assoc
+        //   "op" assoc, "op" assoc     (same precedence)
+        //   ...
+        // Line order determines precedence (first = lowest).
+        if (self.current.kind == .eq) self.advance();
+
+        const base = try self.expectIdent("base expression name for @precedence");
+        self.infixBase = base;
+
+        if (self.current.kind == .newline) self.advance();
+        self.skipTrivia();
+
+        var prec: u32 = 1;
+        while (self.current.kind == .string) {
+            const op = try self.expectString("operator literal");
+
+            const assocName = try self.expectIdent("associativity (left, right, none)");
+            const assoc: InfixOp.Assoc = if (std.mem.eql(u8, assocName, "left"))
+                .left
+            else if (std.mem.eql(u8, assocName, "right"))
+                .right
+            else if (std.mem.eql(u8, assocName, "none"))
+                .none
+            else {
+                std.debug.print("Invalid associativity '{s}' at line {d} (expected left, right, none)\n", .{ assocName, self.current.line });
+                return error.ParseError;
+            };
+
+            // Skip explicit precedence number if present (backward compat)
+            if (self.current.kind == .number) self.advance();
+
+            try self.infixOps.append(self.allocator, .{ .op = op, .assoc = assoc, .prec = prec });
+
+            if (self.current.kind == .comma) {
+                self.advance(); // same-line comma = same precedence level
+            } else if (self.current.kind == .newline) {
+                self.advance(); // newline = next precedence level
+                self.skipTrivia();
+                prec += 1;
+            }
+        }
+    }
+
+    fn parseRule(self: *ParserDSLParser) !void {
+        self.skipTrivia();
+        if (self.current.kind == .eof) return;
+
+        if (self.current.kind != .ident and self.current.kind != .token) {
+            std.debug.print("Expected rule name at line {d}, got {s}\n", .{ self.current.line, @tagName(self.current.kind) });
+            return error.ParseError;
+        }
+
+        const name = self.current.text;
+        self.advance();
+
+        const isStart = self.current.kind == .bang;
+        if (isStart) {
+            self.advance();
+            try self.startSymbols.append(self.allocator, name);
+        }
+
+        if (self.current.kind != .eq) {
+            std.debug.print("Expected '=' at line {d}\n", .{self.current.line});
+            return error.ParseError;
+        }
+        self.advance();
+
+        var alternatives: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+        try self.parseParsedAlternatives(&alternatives);
+
+        try self.rules.append(self.allocator, .{
+            .name = name,
+            .isStart = isStart,
+            .alternatives = try alternatives.toOwnedSlice(self.allocator),
+        });
+    }
+
+    fn parseParsedAlternatives(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(ParsedAlternative)) !void {
+        try self.parseParsedAlternative(alternatives);
+        while (self.current.kind == .pipe) {
+            self.advance();
+            try self.parseParsedAlternative(alternatives);
+        }
+    }
+
+    fn parseParsedAlternative(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(ParsedAlternative)) !void {
+        var elements: std.ArrayListUnmanaged(ParsedElement) = .{};
+        var action: ?[]const u8 = null;
+        var excludeChar: u8 = 0;
+        var preferReduce: bool = false;
+        var preferShift: bool = false;
+
+        while (true) {
+            if (self.current.kind == .comment) {
+                self.advance();
+                continue;
+            }
+
+            // Check for < (tight binding / prefer reduce) hint
+            if (self.current.kind == .langle) {
+                preferReduce = true;
+                self.advance();
+                continue;
+            }
+
+            // Check for > (prefer shift) hint
+            if (self.current.kind == .rangle) {
+                preferShift = true;
+                self.advance();
+                continue;
+            }
+
+            // Check for X "c" (exclude) hint
+            if (self.current.kind == .token and std.mem.eql(u8, self.current.text, "X")) {
+                self.advance();
+                if (self.current.kind == .string and self.current.text.len >= 2) {
+                    excludeChar = self.current.text[1];
+                    self.advance();
+                }
+                continue;
+            }
+
+            // Skip V annotation (documentation only)
+            const isVAnnotation = (self.current.kind == .token and std.mem.eql(u8, self.current.text, "V")) or
+                self.current.kind == .larrow;
+            if (isVAnnotation) {
+                while (self.current.kind != .arrow and
+                    self.current.kind != .pipe and
+                    self.current.kind != .newline and
+                    self.current.kind != .eof)
+                {
+                    self.advance();
+                }
+                continue;
+            }
+
+            // Skip inline comments: ; to → or end of line
+            if (self.current.kind == .semicolon) {
+                while (self.current.kind != .arrow and
+                    self.current.kind != .pipe and
+                    self.current.kind != .newline and
+                    self.current.kind != .eof)
+                {
+                    self.advance();
+                }
+                continue;
+            }
+
+            if (self.current.kind == .newline or self.current.kind == .pipe or self.current.kind == .eof) {
+                break;
+            }
+
+            if (self.current.kind == .arrow) {
+                self.advance();
+                action = try self.parseAction();
+                break;
+            }
+
+            const skipParsedElement = self.current.kind == .bang;
+            if (skipParsedElement) self.advance();
+
+            var element = try self.parseParsedElement();
+            element.skip = skipParsedElement;
+            try elements.append(self.allocator, element);
+        }
+
+        if (self.current.kind == .newline) self.advance();
+
+        try alternatives.append(self.allocator, .{
+            .elements = try elements.toOwnedSlice(self.allocator),
+            .action = action,
+            .excludeChar = excludeChar,
+            .preferReduce = preferReduce,
+            .preferShift = preferShift,
+        });
+    }
+
+    fn parseParsedElement(self: *ParserDSLParser) !ParsedElement {
+        var element: ParsedElement = .{ .kind = undefined, .value = undefined };
+
+        switch (self.current.kind) {
+            .at => {
+                // @infix reference — resolves to generated nonterminal
+                self.advance(); // skip @
+                const name = self.current.text;
+                self.advance();
+                element.kind = .ident;
+                element.value = name;
+            },
+            .ident => {
+                element.kind = .ident;
+                element.value = self.current.text;
+                self.advance();
+            },
+            .token => {
+                // Check for L(X) or L(X, sep) syntax (required list)
+                if (std.mem.eql(u8, self.current.text, "L") and self.peekKind() == .lparen) {
+                    self.advance(); // skip L
+                    self.advance(); // skip (
+                    if (self.current.kind == .ident or self.current.kind == .token) {
+                        element.kind = .reqList;
+                        element.value = self.current.text;
+                        self.advance();
+                        if (self.current.kind == .question) {
+                            element.optionalItems = true;
+                            self.advance();
+                        }
+                        // Check for custom separator: L(X, sep)
+                        if (self.current.kind == .comma) {
+                            self.advance(); // skip comma
+                            if (self.current.kind == .string or self.current.kind == .token) {
+                                element.listSeparator = self.current.text;
+                                self.advance();
+                            }
+                        }
+                        while (self.current.kind != .rparen and self.current.kind != .eof) {
+                            self.advance();
+                        }
+                        if (self.current.kind == .rparen) self.advance();
+                    } else {
+                        return error.ParseError;
+                    }
+                } else {
+                    element.kind = .token;
+                    element.value = self.current.text;
+                    self.advance();
+                }
+            },
+            .string => {
+                element.kind = .string;
+                element.value = self.current.text;
+                self.advance();
+            },
+            .lparen => {
+                self.advance();
+                var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+
+                while (self.current.kind != .rparen and self.current.kind != .eof) {
+                    if (self.current.kind == .comma or self.current.kind == .pipe) {
+                        self.advance();
+                        continue;
+                    }
+                    const skipSub = self.current.kind == .bang;
+                    if (skipSub) self.advance();
+
+                    if (self.current.kind == .ident or self.current.kind == .token or
+                        self.current.kind == .string or self.current.kind == .lparen or
+                        self.current.kind == .lbracket)
+                    {
+                        var sub = try self.parseParsedElement();
+                        sub.skip = skipSub;
+                        try subElements.append(self.allocator, sub);
+                    } else {
+                        self.advance();
+                    }
+                }
+                if (self.current.kind == .rparen) self.advance();
+
+                element.kind = .group;
+                element.value = "";
+                element.subElements = try subElements.toOwnedSlice(self.allocator);
+            },
+            .lbracket => {
+                self.advance();
+                const firstToken = self.current.text;
+                const firstKind = self.current.kind;
+
+                // Check for [L(X)] or [L(X, sep)] syntax
+                if (std.mem.eql(u8, firstToken, "L") and firstKind == .token and self.peekKind() == .lparen) {
+                    self.advance(); // skip L
+                    self.advance(); // skip (
+                    if (self.current.kind == .ident or self.current.kind == .token) {
+                        element.kind = .optList;
+                        element.value = self.current.text;
+                        self.advance();
+                        if (self.current.kind == .question) {
+                            element.optionalItems = true;
+                            self.advance();
+                        }
+                        // Check for custom separator: [L(X, sep)]
+                        if (self.current.kind == .comma) {
+                            self.advance(); // skip comma
+                            if (self.current.kind == .string or self.current.kind == .token) {
+                                element.listSeparator = self.current.text;
+                                self.advance();
+                            }
+                        }
+                        while (self.current.kind != .rbracket and self.current.kind != .eof) {
+                            self.advance();
+                        }
+                        if (self.current.kind == .rbracket) self.advance();
+                    } else {
+                        return error.ParseError;
+                    }
+                } else {
+                    // Parse bracket contents
+                    var hasDots = false;
+                    var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+
+                    var firstElem = ParsedElement{
+                        .kind = if (firstKind == .string) .string else if (firstKind == .ident) .ident else .token,
+                        .value = firstToken,
+                    };
+                    self.advance();
+                    if (self.current.kind == .question) {
+                        firstElem.quantifier = .optional;
+                        self.advance();
+                    } else if (self.current.kind == .star) {
+                        firstElem.quantifier = .zeroPlus;
+                        self.advance();
+                    } else if (self.current.kind == .plus) {
+                        firstElem.quantifier = .onePlus;
+                        self.advance();
+                    }
+                    try subElements.append(self.allocator, firstElem);
+
+                    while (self.current.kind != .rbracket and self.current.kind != .eof) {
+                        if (self.current.kind == .dots) {
+                            hasDots = true;
+                            self.advance();
+                            continue;
+                        }
+                        if (self.current.kind == .comma) {
+                            self.advance();
+                            continue;
+                        }
+                        if (self.current.kind == .ident or self.current.kind == .token or self.current.kind == .string) {
+                            const sub = try self.parseParsedElement();
+                            try subElements.append(self.allocator, sub);
+                        } else {
+                            self.advance();
+                        }
+                    }
+                    if (self.current.kind == .rbracket) self.advance();
+
+                    if (hasDots) {
+                        element.kind = .optList;
+                        element.value = firstToken;
+                    } else if (subElements.items.len == 1 and (firstKind == .ident or firstKind == .token)) {
+                        element.kind = if (firstKind == .ident) .ident else .token;
+                        element.value = firstToken;
+                        element.quantifier = .optional;
+                    } else {
+                        element.kind = .optGroup;
+                        element.value = firstToken;
+                        element.subElements = try subElements.toOwnedSlice(self.allocator);
+                    }
+                }
+            },
+            else => {
+                std.debug.print("Unexpected token {s} at line {d}\n", .{ @tagName(self.current.kind), self.current.line });
+                return error.ParseError;
+            },
+        }
+
+        // Check for quantifier
+        if (self.current.kind == .question) {
+            element.quantifier = .optional;
+            self.advance();
+        } else if (self.current.kind == .star) {
+            element.quantifier = .zeroPlus;
+            self.advance();
+        } else if (self.current.kind == .plus or self.current.kind == .dots) {
+            element.quantifier = .onePlus;
+            self.advance();
+        }
+
+        return element;
+    }
+
+    fn parseAction(self: *ParserDSLParser) ![]const u8 {
+        // Capture everything from current token to end of line
+        const textPtr = self.current.text.ptr;
+        const sourcePtr = self.lexer.source.ptr;
+        const start = @intFromPtr(textPtr) - @intFromPtr(sourcePtr);
+
+        while (self.current.kind != .newline and self.current.kind != .eof) {
+            self.advance();
+        }
+
+        const endPtr = self.current.text.ptr;
+        const end = @intFromPtr(endPtr) - @intFromPtr(sourcePtr);
+
+        return self.lexer.source[start..end];
+    }
+
+    fn advance(self: *ParserDSLParser) void {
+        self.current = self.lexer.next();
+    }
+
+    fn peekKind(self: *ParserDSLParser) GrammarToken.Kind {
+        const savedPos = self.lexer.pos;
+        const savedLine = self.lexer.line;
+        const tok = self.lexer.next();
+        self.lexer.pos = savedPos;
+        self.lexer.line = savedLine;
+        return tok.kind;
+    }
+
+    fn skipTrivia(self: *ParserDSLParser) void {
+        while (self.current.kind == .comment or self.current.kind == .newline) {
+            self.advance();
+        }
+    }
+
+    fn expect(self: *ParserDSLParser, kind: GrammarToken.Kind, msg: []const u8) !void {
+        if (self.current.kind != kind) {
+            std.debug.print("{s} at line {d}, got {s}\n", .{ msg, self.current.line, @tagName(self.current.kind) });
+            return error.ParseError;
+        }
+        self.advance();
+    }
+
+    fn expectIdent(self: *ParserDSLParser, what: []const u8) ![]const u8 {
+        if (self.current.kind != .ident) {
+            std.debug.print("Expected {s} at line {d}, got {s}\n", .{ what, self.current.line, @tagName(self.current.kind) });
+            return error.ParseError;
+        }
+        const text = self.current.text;
+        self.advance();
+        return text;
+    }
+
+    fn expectString(self: *ParserDSLParser, what: []const u8) ![]const u8 {
+        if (self.current.kind != .string) {
+            std.debug.print("Expected {s} at line {d}, got {s}\n", .{ what, self.current.line, @tagName(self.current.kind) });
+            return error.ParseError;
+        }
+        const raw = self.current.text;
+        const text = if (raw.len >= 2 and raw[0] == '"') raw[1 .. raw.len - 1] else raw;
+        self.advance();
+        return text;
+    }
+
+    fn lower(self: *ParserDSLParser) GrammarIR {
         return GrammarIR{
             .rules = self.rules.items,
             .startSymbols = self.startSymbols.items,
@@ -2810,475 +3662,6 @@ const GrammarLowerer = struct {
             .codeBlocks = self.codeBlocks.items,
             .expectConflicts = self.expectConflicts,
         };
-    }
-
-    fn getText(self: *GrammarLowerer, sexp: ngp.Sexp) []const u8 {
-        return sexp.getText(self.sourceText);
-    }
-
-    fn getListItems(self: *GrammarLowerer, sexp: ngp.Sexp) []const ngp.Sexp {
-        _ = self;
-        return switch (sexp) {
-            .list => |items| items,
-            else => &[_]ngp.Sexp{},
-        };
-    }
-
-    fn walkGrammar(self: *GrammarLowerer, ast: ngp.Sexp) !void {
-        const items = self.getListItems(ast);
-        if (items.len == 0) return;
-
-        // First item is the tag
-        for (items[1..]) |item| {
-            try self.walkEntry(item);
-        }
-    }
-
-    fn walkEntry(self: *GrammarLowerer, entry: ngp.Sexp) !void {
-        const items = self.getListItems(entry);
-        if (items.len == 0) {
-            if (entry == .nil) return; // NEWLINE or COMMENT entry
-            return;
-        }
-
-        const tag = switch (items[0]) {
-            .tag => |t| t,
-            else => return,
-        };
-
-        switch (tag) {
-            .lang => try self.handleLang(items),
-            .conflicts => try self.handleConflicts(items),
-            .as => try self.handleAs(items),
-            .op => try self.handleOp(items),
-            .code => try self.handleCode(items),
-            .errors => try self.handleErrors(items),
-            .infix => try self.handleInfix(items),
-            .rule => try self.handleRule(items),
-            else => {},
-        }
-    }
-
-    fn handleLang(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        if (items.len < 2) return;
-        const raw = self.getText(items[1]);
-        self.lang = if (raw.len >= 2 and raw[0] == '"') raw[1 .. raw.len - 1] else raw;
-    }
-
-    fn handleConflicts(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        if (items.len < 2) return;
-        const text = self.getText(items[1]);
-        self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch null;
-    }
-
-    /// Process `@as IDENT = [entries...]` directive. Lowered form:
-    ///   items[0] = tag(.as)
-    ///   items[1] = src:"ident"          ← the source token type (direct)
-    ///   items[2..] = entries from list   ← rule names (may be list-wrapped)
-    fn handleAs(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        if (items.len < 3) return;
-
-        const sourceTok = self.unwrapText(items[1]);
-        if (sourceTok.len == 0) return;
-
-        for (items[2..]) |item| {
-            const rule = self.unwrapText(item);
-            if (rule.len > 0) {
-                try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
-            }
-        }
-    }
-
-    /// Extract text from a Sexp that may be a raw src token or a single-element
-    /// list wrapping one (as produced by as_list grammar productions).
-    fn unwrapText(self: *GrammarLowerer, sexp: ngp.Sexp) []const u8 {
-        const direct = self.getText(sexp);
-        if (direct.len > 0) return direct;
-        const sub = self.getListItems(sexp);
-        if (sub.len == 1) return self.getText(sub[0]);
-        return "";
-    }
-
-    fn handleOp(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        for (items[1..]) |item| {
-            const sub = self.getListItems(item);
-            if (sub.len >= 3) {
-                const tag = switch (sub[0]) {
-                    .tag => |t| t,
-                    else => continue,
-                };
-                if (tag == .op_map) {
-                    const lit = self.stripQuotes(self.getText(sub[1]));
-                    const tok = self.stripQuotes(self.getText(sub[2]));
-                    try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
-                }
-            }
-        }
-    }
-
-    fn handleCode(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        if (items.len < 3) return;
-        const location = self.getText(items[1]);
-        const code = self.getText(items[2]);
-        try self.codeBlocks.append(self.allocator, .{ .location = location, .code = code });
-    }
-
-    fn handleErrors(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        for (items[1..]) |item| {
-            const sub = self.getListItems(item);
-            if (sub.len >= 3) {
-                const tag = switch (sub[0]) {
-                    .tag => |t| t,
-                    else => continue,
-                };
-                if (tag == .error_name) {
-                    const rule = self.getText(sub[1]);
-                    const name = self.stripQuotes(self.getText(sub[2]));
-                    try self.errorNames.append(self.allocator, .{ .rule = rule, .name = name });
-                }
-            }
-        }
-    }
-
-    fn handleInfix(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        if (items.len < 2) return;
-        self.infixBase = self.getText(items[1]);
-        var prec: u32 = 1;
-
-        // items[2..] are rows; each row is a list of (infix_op STRING ASSOC) nodes
-        for (items[2..]) |row| {
-            const rowItems = self.getListItems(row);
-            var foundOp = false;
-
-            for (rowItems) |opNode| {
-                const sub = self.getListItems(opNode);
-                if (sub.len < 3) continue;
-                const tag = switch (sub[0]) {
-                    .tag => |t| t,
-                    else => continue,
-                };
-                if (tag != .infix_op) continue;
-
-                const opRaw = self.getText(sub[1]);
-                const op = self.stripQuotes(opRaw);
-                const assocName = self.getText(sub[2]);
-                const assoc: InfixOp.Assoc = if (std.mem.eql(u8, assocName, "left"))
-                    .left
-                else if (std.mem.eql(u8, assocName, "right"))
-                    .right
-                else
-                    .none;
-
-                try self.infixOps.append(self.allocator, .{ .op = op, .assoc = assoc, .prec = prec });
-                foundOp = true;
-            }
-
-            if (foundOp) prec += 1;
-        }
-    }
-
-    fn handleRule(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
-        if (items.len < 2) return;
-
-        // items[1] is rule_name: (start name) or (name name)
-        const nameItems = self.getListItems(items[1]);
-        if (nameItems.len < 2) return;
-
-        const nameTag = switch (nameItems[0]) {
-            .tag => |t| t,
-            else => return,
-        };
-        const name = self.getText(nameItems[1]);
-        const isStart = nameTag == .start;
-
-        if (isStart) {
-            try self.startSymbols.append(self.allocator, name);
-        }
-
-        var alternatives = std.ArrayListUnmanaged(Alternative){};
-
-        for (items[2..]) |altNode| {
-            const alt = try self.convertAlternative(altNode);
-            try alternatives.append(self.allocator, alt);
-        }
-
-        try self.rules.append(self.allocator, .{
-            .name = name,
-            .isStart = isStart,
-            .alternatives = try alternatives.toOwnedSlice(self.allocator),
-        });
-    }
-
-    fn convertAlternative(self: *GrammarLowerer, node: ngp.Sexp) !Alternative {
-        const items = self.getListItems(node);
-        if (items.len == 0) {
-            return .{ .elements = &[_]Element{}, .action = null };
-        }
-
-        var elements = std.ArrayListUnmanaged(Element){};
-        var action: ?[]const u8 = null;
-        var preferReduce = false;
-        var preferShift = false;
-        var excludeChar: u8 = 0;
-
-        const tag = switch (items[0]) {
-            .tag => |t| t,
-            else => return .{ .elements = &[_]Element{}, .action = null },
-        };
-
-        if (tag == .alt_reduce) preferReduce = true;
-        if (tag == .alt_shift) preferShift = true;
-
-        // (alt elements_group action_text?) or (alt_reduce elements_group action_text?)
-        if (items.len >= 2) try self.collectElements(items[1], &elements);
-        if (items.len >= 3) {
-            const rawAction = self.getText(items[2]);
-            if (rawAction.len > 0) {
-                action = self.parseActionHints(rawAction, &preferReduce, &preferShift, &excludeChar);
-            }
-        }
-
-        return .{
-            .elements = try elements.toOwnedSlice(self.allocator),
-            .action = action,
-            .excludeChar = excludeChar,
-            .preferReduce = preferReduce,
-            .preferShift = preferShift,
-        };
-    }
-
-    fn parseActionHints(self: *GrammarLowerer, raw: []const u8, preferReduce: *bool, preferShift: *bool, excludeChar: *u8) ?[]const u8 {
-        _ = self;
-        var text = std.mem.trim(u8, raw, " \t");
-
-        // Parse leading hints: < > X "c" ; (comments)
-        while (text.len > 0) {
-            if (text[0] == '<') {
-                preferReduce.* = true;
-                text = std.mem.trimLeft(u8, text[1..], " \t");
-            } else if (text[0] == '>') {
-                preferShift.* = true;
-                text = std.mem.trimLeft(u8, text[1..], " \t");
-            } else if (text[0] == 'X' and text.len > 2 and text[1] == ' ') {
-                // X "c" exclude hint
-                var i: usize = 2;
-                while (i < text.len and text[i] == ' ') : (i += 1) {}
-                if (i < text.len and text[i] == '"' and i + 2 < text.len) {
-                    excludeChar.* = text[i + 1];
-                    i += 3; // skip "c"
-                    text = std.mem.trimLeft(u8, text[i..], " \t");
-                } else break;
-            } else break;
-        }
-
-        if (text.len == 0) return null;
-        return text;
-    }
-
-    fn collectElements(self: *GrammarLowerer, node: ngp.Sexp, elements: *std.ArrayListUnmanaged(Element)) !void {
-        switch (node) {
-            .nil => {},
-            .list => |items| {
-                if (items.len == 0) return;
-                const tag = switch (items[0]) {
-                    .tag => |t| t,
-                    else => {
-                        for (items) |item| try self.collectElements(item, elements);
-                        return;
-                    },
-                };
-
-                switch (tag) {
-                    .ref => {
-                        if (items.len >= 2) {
-                            try elements.append(self.allocator, .{
-                                .kind = .ident,
-                                .value = self.getText(items[1]),
-                            });
-                        }
-                    },
-                    .tok => {
-                        if (items.len >= 2) {
-                            try elements.append(self.allocator, .{
-                                .kind = .token,
-                                .value = self.getText(items[1]),
-                            });
-                        }
-                    },
-                    .lit => {
-                        if (items.len >= 2) {
-                            try elements.append(self.allocator, .{
-                                .kind = .string,
-                                .value = self.getText(items[1]),
-                            });
-                        }
-                    },
-                    .at_ref => {
-                        if (items.len >= 2) {
-                            try elements.append(self.allocator, .{
-                                .kind = .ident,
-                                .value = self.getText(items[1]),
-                            });
-                        }
-                    },
-                    .quantified => {
-                        if (items.len >= 3) {
-                            var elem = try self.convertPrimary(items[1]);
-                            elem.quantifier = self.convertQuantifier(items[2]);
-                            try elements.append(self.allocator, elem);
-                        }
-                    },
-                    .skip => {
-                        if (items.len >= 2) {
-                            var elem = try self.convertPrimary(items[1]);
-                            elem.skip = true;
-                            try elements.append(self.allocator, elem);
-                        }
-                    },
-                    .skip_q => {
-                        if (items.len >= 3) {
-                            var elem = try self.convertPrimary(items[1]);
-                            elem.skip = true;
-                            elem.quantifier = self.convertQuantifier(items[2]);
-                            try elements.append(self.allocator, elem);
-                        }
-                    },
-                    .group => {
-                        var subElems = std.ArrayListUnmanaged(Element){};
-                        for (items[1..]) |sub| try self.collectElements(sub, &subElems);
-                        try elements.append(self.allocator, .{
-                            .kind = .group,
-                            .value = "",
-                            .subElements = try subElems.toOwnedSlice(self.allocator),
-                        });
-                    },
-                    .list => {
-                        if (items.len >= 2) {
-                            const tokenText = self.getText(items[1]);
-                            var elem = Element{
-                                .kind = .reqList,
-                                .value = if (items.len >= 3) self.getText(items[2]) else "",
-                            };
-                            _ = tokenText;
-                            if (items.len >= 3) {
-                                const innerItems = self.getListItems(items[2]);
-                                if (innerItems.len >= 1) {
-                                    const innerTag = switch (innerItems[0]) {
-                                        .tag => |t| t,
-                                        else => null,
-                                    };
-                                    if (innerTag) |it| {
-                                        switch (it) {
-                                            .opt_items => {
-                                                if (innerItems.len >= 3) {
-                                                    elem.value = self.getText(innerItems[1]);
-                                                    elem.optionalItems = true;
-                                                    elem.listSeparator = self.getText(innerItems[2]);
-                                                }
-                                            },
-                                            .opt_items_nosep => {
-                                                if (innerItems.len >= 2) {
-                                                    elem.value = self.getText(innerItems[1]);
-                                                    elem.optionalItems = true;
-                                                }
-                                            },
-                                            .sep_items => {
-                                                if (innerItems.len >= 3) {
-                                                    elem.value = self.getText(innerItems[1]);
-                                                    elem.listSeparator = self.getText(innerItems[2]);
-                                                }
-                                            },
-                                            else => {
-                                                elem.value = self.getText(items[2]);
-                                            },
-                                        }
-                                    }
-                                }
-                            }
-                            try elements.append(self.allocator, elem);
-                        }
-                    },
-                    .opt_list => {
-                        if (items.len >= 2) {
-                            var elem = try self.convertPrimary(items[1]);
-                            elem.kind = .optList;
-                            try elements.append(self.allocator, elem);
-                        }
-                    },
-                    .optional => {
-                        if (items.len == 2) {
-                            var elem = try self.convertPrimary(items[1]);
-                            elem.quantifier = .optional;
-                            try elements.append(self.allocator, elem);
-                        } else {
-                            var subElems = std.ArrayListUnmanaged(Element){};
-                            for (items[1..]) |sub| try self.collectElements(sub, &subElems);
-                            try elements.append(self.allocator, .{
-                                .kind = .optGroup,
-                                .value = if (subElems.items.len > 0) subElems.items[0].value else "",
-                                .subElements = try subElems.toOwnedSlice(self.allocator),
-                            });
-                        }
-                    },
-                    else => {
-                        for (items[1..]) |sub| try self.collectElements(sub, elements);
-                    },
-                }
-            },
-            else => {},
-        }
-    }
-
-    fn convertPrimary(self: *GrammarLowerer, node: ngp.Sexp) !Element {
-        var items = self.getListItems(node);
-        // Unwrap single-element list wrappers (produced by grammar chains
-        // like alt_group → alt_elem → element → primary where each → (1)
-        // pass-through wraps the result in a 1-element list).
-        while (items.len == 1) {
-            const inner = self.getListItems(items[0]);
-            if (inner.len == 0) break;
-            items = inner;
-        }
-        if (items.len >= 2) {
-            const tag = switch (items[0]) {
-                .tag => |t| t,
-                else => return .{ .kind = .ident, .value = self.getText(node) },
-            };
-            return switch (tag) {
-                .ref => .{ .kind = .ident, .value = self.getText(items[1]) },
-                .tok => .{ .kind = .token, .value = self.getText(items[1]) },
-                .lit => .{ .kind = .string, .value = self.getText(items[1]) },
-                .at_ref => .{ .kind = .ident, .value = self.getText(items[1]) },
-                else => .{ .kind = .ident, .value = "" },
-            };
-        }
-        return .{ .kind = .ident, .value = self.getText(node) };
-    }
-
-    fn convertQuantifier(self: *GrammarLowerer, node: ngp.Sexp) Element.Quantifier {
-        _ = self;
-        const items = switch (node) {
-            .list => |l| l,
-            else => return .one,
-        };
-        if (items.len == 0) return .one;
-        const tag = switch (items[0]) {
-            .tag => |t| t,
-            else => return .one,
-        };
-        return switch (tag) {
-            .opt => .optional,
-            .zero_plus => .zeroPlus,
-            .one_plus => .onePlus,
-            else => .one,
-        };
-    }
-
-
-    fn stripQuotes(self: *GrammarLowerer, s: []const u8) []const u8 {
-        _ = self;
-        if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') return s[1 .. s.len - 1];
-        return s;
     }
 };
 
@@ -3406,7 +3789,7 @@ const ParserGenerator = struct {
         return false;
     }
 
-    fn isAliasRule(rule: RuleDecl) ?[]const u8 {
+    fn isAliasRule(rule: ParsedRule) ?[]const u8 {
         if (rule.alternatives.len != 1) return null;
         const alt = rule.alternatives[0];
         if (alt.elements.len != 1) return null;
@@ -3431,7 +3814,7 @@ const ParserGenerator = struct {
     ///   A B C     → adjusted_action
     ///   A D E     → adjusted_action
     ///   A         → adjusted_action
-    fn expandOptionalGroups(self: *ParserGenerator, alt: Alternative) ![]Alternative {
+    fn expandOptionalGroups(self: *ParserGenerator, alt: ParsedAlternative) ![]ParsedAlternative {
         // Find all bracket-optionals ([X] or [A B C]) - these need expansion for stable positions.
         // Note: X? quantifiers (like SPACES?) don't need expansion - they're typically not in actions.
         var optGroups: std.ArrayListUnmanaged(OptGroupInfo) = .{};
@@ -3464,7 +3847,7 @@ const ParserGenerator = struct {
         // If no opt_groups, no expansion needed
         // Note: Even single opt_groups need expansion for positionally stable output
         if (optGroups.items.len == 0) {
-            var result: std.ArrayListUnmanaged(Alternative) = .{};
+            var result: std.ArrayListUnmanaged(ParsedAlternative) = .{};
             try result.append(self.allocator, alt);
             return result.toOwnedSlice(self.allocator);
         }
@@ -3473,12 +3856,12 @@ const ParserGenerator = struct {
         const n = optGroups.items.len;
         const combinations: usize = @as(usize, 1) << @intCast(n);
 
-        var expanded: std.ArrayListUnmanaged(Alternative) = .{};
+        var expanded: std.ArrayListUnmanaged(ParsedAlternative) = .{};
 
         var combo: usize = 0;
         while (combo < combinations) : (combo += 1) {
             // Build elements for this combination
-            var newElements: std.ArrayListUnmanaged(Element) = .{};
+            var newParsedElements: std.ArrayListUnmanaged(ParsedElement) = .{};
 
             for (alt.elements, 0..) |elem, idx| {
                 // Check if this element is an optional (opt_group or single-element)
@@ -3493,30 +3876,30 @@ const ParserGenerator = struct {
                         if (elem.kind == .optGroup) {
                             // Multi-element optional: add sub-elements directly
                             for (elem.subElements) |sub| {
-                                try newElements.append(self.allocator, sub);
+                                try newParsedElements.append(self.allocator, sub);
                             }
                         } else {
                             // Single-element optional: add element without optional quantifier
                             var nonOpt = elem;
                             nonOpt.quantifier = .one;
-                            try newElements.append(self.allocator, nonOpt);
+                            try newParsedElements.append(self.allocator, nonOpt);
                         }
                     }
                     // If not present, skip this optional entirely
                 } else {
-                    try newElements.append(self.allocator, elem);
+                    try newParsedElements.append(self.allocator, elem);
                 }
             }
 
             // Transform action with stable positions (use original elements for position mapping)
-            const finalElements = try newElements.toOwnedSlice(self.allocator);
+            const finalParsedElements = try newParsedElements.toOwnedSlice(self.allocator);
             var newAction: ?[]const u8 = alt.action;
             if (alt.action) |action| {
                 newAction = try self.transformActionStable(action, alt.elements, optGroups.items, combo);
             }
 
             try expanded.append(self.allocator, .{
-                .elements = finalElements,
+                .elements = finalParsedElements,
                 .action = newAction,
                 .excludeChar = alt.excludeChar,
                 .preferReduce = alt.preferReduce,
@@ -3543,7 +3926,7 @@ const ParserGenerator = struct {
     /// Build logical-to-actual position map for stable positions.
     /// Maps logical positions (1-based) to actual RHS positions, or NIL_POS for absent optionals.
     fn buildPositionMap(
-        altElements: []const Element,
+        altParsedElements: []const ParsedElement,
         optGroups: []const OptGroupInfo,
         combo: usize,
     ) [maxPositions]u8 {
@@ -3551,7 +3934,7 @@ const ParserGenerator = struct {
         var logicalPos: usize = 1;
         var actualPos: usize = 0;
 
-        for (altElements, 0..) |_, elemIdx| {
+        for (altParsedElements, 0..) |_, elemIdx| {
             // Find if this element is an opt_group
             const optIdx = for (optGroups, 0..) |og, oi| {
                 if (og.index == elemIdx) break oi;
@@ -3659,11 +4042,11 @@ const ParserGenerator = struct {
     fn transformActionStable(
         self: *ParserGenerator,
         action: []const u8,
-        altElements: []const Element,
+        altParsedElements: []const ParsedElement,
         optGroups: []const OptGroupInfo,
         combo: usize,
     ) ![]const u8 {
-        const posMap = buildPositionMap(altElements, optGroups, combo);
+        const posMap = buildPositionMap(altParsedElements, optGroups, combo);
 
         var result: std.ArrayListUnmanaged(u8) = .{};
         var posRefs: std.ArrayListUnmanaged(PosRefInfo) = .{};
@@ -3918,7 +4301,7 @@ const ParserGenerator = struct {
         return errors;
     }
 
-    fn processElement(self: *ParserGenerator, elem: Element) error{OutOfMemory}!u16 {
+    fn processElement(self: *ParserGenerator, elem: ParsedElement) error{OutOfMemory}!u16 {
         const baseId = try self.processBaseElement(elem);
 
         return switch (elem.quantifier) {
@@ -3929,7 +4312,7 @@ const ParserGenerator = struct {
         };
     }
 
-    fn processBaseElement(self: *ParserGenerator, elem: Element) error{OutOfMemory}!u16 {
+    fn processBaseElement(self: *ParserGenerator, elem: ParsedElement) error{OutOfMemory}!u16 {
         return switch (elem.kind) {
             .ident => blk: {
                 if (self.getSymbol(elem.value)) |symId| break :blk symId;
@@ -6195,7 +6578,7 @@ fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
     return errors;
 }
 
-fn checkUndefinedRefs(elements: []const Element, ruleName: []const u8, ruleNames: *std.StringHashMap(void), errors: *u32) void {
+fn checkUndefinedRefs(elements: []const ParsedElement, ruleName: []const u8, ruleNames: *std.StringHashMap(void), errors: *u32) void {
     for (elements) |elem| {
         if (elem.kind == .ident and elem.value.len > 0 and !ruleNames.contains(elem.value)) {
             std.debug.print("  error: undefined rule '{s}' referenced in '{s}'\n", .{ elem.value, ruleName });
@@ -6221,7 +6604,7 @@ fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringH
     }
 }
 
-fn markReachableElements(elements: []const Element, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
+fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
     for (elements) |elem| {
         if (elem.kind == .ident or elem.kind == .reqList or elem.kind == .optList) {
             markReachable(elem.value, ir, reachable);
@@ -6354,14 +6737,16 @@ pub fn main() !void {
     if (parserStart) |ps| {
         std.debug.print("   Parsing @parser section...\n", .{});
 
-        // Parse parser section via self-hosted generated parser
-        var lowerer = GrammarLowerer.init(allocator, sourceText[ps + 7 ..]);
-        defer lowerer.deinit();
+        // Parse parser section via recursive descent parser
+        var dslParser = ParserDSLParser.init(allocator, sourceText[ps + 7 ..]);
+        defer dslParser.deinit();
 
-        var ir = lowerer.lower() catch {
+        dslParser.parse() catch {
             std.debug.print("❌ Parser parse error\n", .{});
             return;
         };
+
+        var ir = dslParser.lower();
 
         if (ir.lang == null) ir.lang = lexerParser.spec.langName;
 
