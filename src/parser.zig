@@ -503,202 +503,103 @@ pub const Parser = struct {
 
     fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
         return switch (ruleId) {
-            // grammar = grammar! entries → (grammar ...1)
             0 => self.sexpSpread(.@"grammar", pass[1]),
-            // entries = entries entry → (...1 2)
             1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // entries = entry → (1)
             2 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // entry = directive → 1
             3 => pass[0],
-            // entry = production → 1
             4 => pass[0],
-            // entry = NEWLINE → ()
             5 => .{ .list = &[_]Sexp{} },
-            // entry = COMMENT → ()
             6 => .{ .list = &[_]Sexp{} },
-            // directive = "@" KW_LANG "=" STRING → (lang 4)
             7 => self.sexp(.@"lang", &.{pass[3]}),
-            // directive = "@" KW_CONFLICTS "=" INTEGER → (conflicts 4)
             8 => self.sexp(.@"conflicts", &.{pass[3]}),
-            // directive = "@" KW_AS as_body → (as ...3)
             9 => self.sexpSpread(.@"as", pass[2]),
-            // directive = "@" KW_OP "=" "[" op_content "]" → (op ...5)
             10 => self.sexpSpread(.@"op", pass[4]),
-            // directive = "@" KW_CODE IDENT code_block → (code 3 4)
             11 => self.sexp(.@"code", &.{pass[2], pass[3]}),
-            // directive = "@" KW_ERRORS error_items → (errors ...3)
             12 => self.sexpSpread(.@"errors", pass[2]),
-            // directive = "@" KW_INFIX infix_body → (infix ...3)
             13 => self.sexpSpread(.@"infix", pass[2]),
-            // as_body = IDENT "=" "[" as_list "]" → (1 ...4)
             14 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[3] == .list) for (pass[3].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // as_body = "=" "[" as_list "]" → (...3)
-            15 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[2] == .list) for (pass[2].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // as_list = as_list "," as_entry → (...1 3)
-            16 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // as_list = as_entry → (1)
+            15 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            16 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             17 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // as_entry = IDENT → (1)
-            18 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // op_content = op_content op_item → (...1 2)
-            19 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // op_content = op_item → (1)
-            20 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // op_content = → ()
-            21 => .{ .list = &[_]Sexp{} },
-            // op_item = STRING ARROW STRING → (op_map 1 3)
-            22 => self.sexp(.@"op_map", &.{pass[0], pass[2]}),
-            // op_item = "," → ()
+            18 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            19 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            20 => .{ .list = &[_]Sexp{} },
+            21 => self.sexp(.@"op_map", &.{pass[0], pass[2]}),
+            22 => .{ .list = &[_]Sexp{} },
             23 => .{ .list = &[_]Sexp{} },
-            // op_item = NEWLINE → ()
             24 => .{ .list = &[_]Sexp{} },
-            // op_item = COMMENT → ()
-            25 => .{ .list = &[_]Sexp{} },
-            // error_items = error_items err_sep error_pair → (...1 3)
-            26 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // error_items = error_items NEWLINE → 1
+            25 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            26 => pass[0],
             27 => pass[0],
-            // error_items = error_items COMMENT → 1
-            28 => pass[0],
-            // error_items = error_pair → (1)
-            29 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // error_pair = IDENT ":" STRING → (error_name 1 3)
+            28 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            29 => self.sexp(.@"error_name", &.{pass[0], pass[2]}),
             30 => self.sexp(.@"error_name", &.{pass[0], pass[2]}),
-            // error_pair = TOKEN ":" STRING → (error_name 1 3)
-            31 => self.sexp(.@"error_name", &.{pass[0], pass[2]}),
-            // err_sep = ","
-            32 => self.list(pass),
-            // infix_body = IDENT nl_skip infix_rows → (1 ...3)
-            33 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[2] == .list) for (pass[2].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // nl_skip = nl_skip NEWLINE → 1
+            31 => self.list(pass),
+            32 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[2] == .list) for (pass[2].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            33 => pass[0],
             34 => pass[0],
-            // nl_skip = nl_skip COMMENT → 1
-            35 => pass[0],
-            // nl_skip = NEWLINE
+            35 => self.list(pass),
             36 => self.list(pass),
-            // nl_skip = COMMENT
-            37 => self.list(pass),
-            // infix_rows = infix_rows NEWLINE infix_row → (...1 3)
-            38 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // infix_rows = infix_rows NEWLINE → 1
+            37 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            38 => pass[0],
             39 => pass[0],
-            // infix_rows = infix_rows COMMENT → 1
-            40 => pass[0],
-            // infix_rows = infix_row → (1)
-            41 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // infix_row = infix_ops → (...1)
-            42 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // infix_ops = infix_ops "," infix_op → (...1 3)
-            43 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // infix_ops = infix_op → (1)
-            44 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // infix_op = STRING KW_LEFT → (infix_op 1 2)
+            40 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            41 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            42 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            43 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            44 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
             45 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-            // infix_op = STRING KW_RIGHT → (infix_op 1 2)
             46 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-            // infix_op = STRING KW_NONE → (infix_op 1 2)
             47 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-            // infix_op = STRING IDENT → (infix_op 1 2)
-            48 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-            // code_block = CODE_BLOCK → (1)
-            49 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // production = rule_name "=" alts prod_tail → (rule 1 ...3 ...4)
-            50 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"rule" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[2] == .list) for (pass[2].list) |item| out.append(self.allocator(), item) catch break :blk .nil; if (pass[3] == .list) for (pass[3].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // alts = alts "|" alt_line → (...1 3)
-            51 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // alts = alt_line → (1)
-            52 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // prod_tail = prod_tail NEWLINE "|" alts → (...1 ...4)
-            53 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; if (pass[3] == .list) for (pass[3].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // prod_tail = prod_tail NEWLINE COMMENT → 1
+            48 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            49 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), .{ .tag = .@"rule" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[2] == .list) for (pass[2].list) |item| out.append(self.allocator(), item) catch break :blk .nil; if (pass[3] == .list) for (pass[3].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            50 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            51 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            52 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; if (pass[3] == .list) for (pass[3].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            53 => pass[0],
             54 => pass[0],
-            // prod_tail = prod_tail NEWLINE → 1
-            55 => pass[0],
-            // prod_tail = → ()
-            56 => .{ .list = &[_]Sexp{} },
-            // rule_name = IDENT "!" → (start 1)
-            57 => self.sexp(.@"start", &.{pass[0]}),
-            // rule_name = IDENT → (name 1)
-            58 => self.sexp(.@"name", &.{pass[0]}),
-            // rule_name = TOKEN "!" → (start 1)
-            59 => self.sexp(.@"start", &.{pass[0]}),
-            // rule_name = TOKEN → (name 1)
-            60 => self.sexp(.@"name", &.{pass[0]}),
-            // alt_line = elements ARROW ACTION_TEXT → (alt 1 3)
-            61 => self.sexp(.@"alt", &.{pass[0], pass[2]}),
-            // alt_line = elements "<" ARROW ACTION_TEXT → (alt_reduce 1 4)
-            62 => self.sexp(.@"alt_reduce", &.{pass[0], pass[3]}),
-            // alt_line = elements ">" ARROW ACTION_TEXT → (alt_shift 1 4)
-            63 => self.sexp(.@"alt_shift", &.{pass[0], pass[3]}),
-            // alt_line = elements "<" → (alt_reduce 1)
-            64 => self.sexp(.@"alt_reduce", &.{pass[0]}),
-            // alt_line = elements ">" → (alt_shift 1)
-            65 => self.sexp(.@"alt_shift", &.{pass[0]}),
-            // alt_line = elements → (alt 1)
-            66 => self.sexp(.@"alt", &.{pass[0]}),
-            // elements = elements element → (...1 2)
-            67 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // elements = → ()
-            68 => .{ .list = &[_]Sexp{} },
-            // element = primary quantifier → (quantified 1 2)
-            69 => self.sexp(.@"quantified", &.{pass[0], pass[1]}),
-            // element = "!" primary quantifier → (skip_q 2 3)
-            70 => self.sexp(.@"skip_q", &.{pass[1], pass[2]}),
-            // element = "!" primary → (skip 2)
-            71 => self.sexp(.@"skip", &.{pass[1]}),
-            // element = primary
-            72 => self.list(pass),
-            // primary = IDENT → (ref 1)
-            73 => self.sexp(.@"ref", &.{pass[0]}),
-            // primary = TOKEN "(" bracket_inner ")" → (list 1 ...3)
-            74 => self.sexpPosSpread(.@"list", pass[0], pass[2]),
-            // primary = TOKEN → (tok 1)
-            75 => self.sexp(.@"tok", &.{pass[0]}),
-            // primary = STRING → (lit 1)
-            76 => self.sexp(.@"lit", &.{pass[0]}),
-            // primary = "@" IDENT → (at_ref 2)
+            55 => .{ .list = &[_]Sexp{} },
+            56 => self.sexp(.@"start", &.{pass[0]}),
+            57 => self.sexp(.@"name", &.{pass[0]}),
+            58 => self.sexp(.@"start", &.{pass[0]}),
+            59 => self.sexp(.@"name", &.{pass[0]}),
+            60 => self.sexp(.@"alt", &.{pass[0], pass[2]}),
+            61 => self.sexp(.@"alt_reduce", &.{pass[0], pass[3]}),
+            62 => self.sexp(.@"alt_shift", &.{pass[0], pass[3]}),
+            63 => self.sexp(.@"alt_reduce", &.{pass[0]}),
+            64 => self.sexp(.@"alt_shift", &.{pass[0]}),
+            65 => self.sexp(.@"alt", &.{pass[0]}),
+            66 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            67 => .{ .list = &[_]Sexp{} },
+            68 => self.sexp(.@"quantified", &.{pass[0], pass[1]}),
+            69 => self.sexp(.@"skip_q", &.{pass[1], pass[2]}),
+            70 => self.sexp(.@"skip", &.{pass[1]}),
+            71 => self.list(pass),
+            72 => self.sexp(.@"ref", &.{pass[0]}),
+            73 => self.sexpPosSpread(.@"list", pass[0], pass[2]),
+            74 => self.sexp(.@"tok", &.{pass[0]}),
+            75 => self.sexp(.@"lit", &.{pass[0]}),
+            76 => self.sexp(.@"at_ref", &.{pass[1]}),
             77 => self.sexp(.@"at_ref", &.{pass[1]}),
-            // primary = "@" KW_INFIX → (at_ref 2)
-            78 => self.sexp(.@"at_ref", &.{pass[1]}),
-            // primary = "(" alt_group ")" → (group ...2)
-            79 => self.sexpSpread(.@"group", pass[1]),
-            // primary = "[" bracket_body "]" → 2
-            80 => pass[1],
-            // bracket_body = TOKEN "(" bracket_inner ")" → (list 1 ...3)
-            81 => self.sexpPosSpread(.@"list", pass[0], pass[2]),
-            // bracket_body = alt_group "..." → (opt_list ...1)
-            82 => self.sexpSpread(.@"opt_list", pass[0]),
-            // bracket_body = alt_group → (optional ...1)
-            83 => self.sexpSpread(.@"optional", pass[0]),
-            // bracket_inner = IDENT "?" "," sep_term → (opt_items 1 4)
-            84 => self.sexp(.@"opt_items", &.{pass[0], pass[3]}),
-            // bracket_inner = IDENT "," sep_term → (sep_items 1 3)
-            85 => self.sexp(.@"sep_items", &.{pass[0], pass[2]}),
-            // bracket_inner = IDENT "?" → (opt_items_nosep 1)
-            86 => self.sexp(.@"opt_items_nosep", &.{pass[0]}),
-            // bracket_inner = IDENT → (1)
+            78 => self.sexpSpread(.@"group", pass[1]),
+            79 => pass[1],
+            80 => self.sexpPosSpread(.@"list", pass[0], pass[2]),
+            81 => self.sexpSpread(.@"opt_list", pass[0]),
+            82 => self.sexpSpread(.@"optional", pass[0]),
+            83 => self.sexp(.@"opt_items", &.{pass[0], pass[3]}),
+            84 => self.sexp(.@"sep_items", &.{pass[0], pass[2]}),
+            85 => self.sexp(.@"opt_items_nosep", &.{pass[0]}),
+            86 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             87 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // sep_term = STRING → (1)
             88 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // sep_term = TOKEN → (1)
-            89 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // alt_group = alt_group "|" alt_elem → (...1 3)
-            90 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // alt_group = alt_elem → (1)
-            91 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // alt_elem = alt_elem element → (...1 2)
-            92 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // alt_elem = element → (1)
-            93 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            // quantifier = "?" → (opt)
-            94 => self.sexp(.@"opt", &.{}),
-            // quantifier = "*" → (zero_plus)
-            95 => self.sexp(.@"zero_plus", &.{}),
-            // quantifier = "+" → (one_plus)
-            96 => self.sexp(.@"one_plus", &.{}),
-            // $accept_grammar = grammar $end
-            97 => self.list(pass),
+            89 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            90 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            91 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            92 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            93 => self.sexp(.@"opt", &.{}),
+            94 => self.sexp(.@"zero_plus", &.{}),
+            95 => self.sexp(.@"one_plus", &.{}),
+            96 => self.list(pass),
             else => .nil,
         };
     }
@@ -759,11 +660,11 @@ const SYM_grammar: u16 = 3;
 const SYM_grammar_START: u16 = 71;
 const symIdent: u16 = 49;
 
-const ruleLhs = [_]u16{ 3, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 9, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 16, 16, 16, 17, 17, 17, 17, 18, 19, 19, 20, 20, 20, 20, 21, 22, 23, 23, 24, 24, 24, 24, 25, 25, 25, 25, 26, 26, 26, 26, 26, 26, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29, 29, 29, 29, 29, 30, 30, 30, 31, 31, 31, 31, 32, 32, 33, 33, 34, 34, 35, 35, 35, 72 };
-const ruleLen = [_]u8{ 2, 2, 1, 1, 1, 1, 1, 4, 4, 3, 6, 4, 3, 3, 5, 4, 3, 1, 1, 2, 1, 0, 3, 1, 1, 1, 3, 2, 2, 1, 3, 3, 1, 3, 2, 2, 1, 1, 3, 2, 2, 1, 1, 3, 1, 2, 2, 2, 2, 1, 4, 3, 1, 4, 3, 2, 0, 2, 1, 2, 1, 3, 4, 4, 2, 2, 1, 2, 0, 2, 3, 2, 1, 1, 4, 1, 1, 2, 2, 3, 3, 4, 2, 1, 4, 3, 2, 1, 1, 1, 3, 1, 2, 1, 1, 1, 1, 2 };
+const ruleLhs = [_]u16{ 3, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 8, 8, 9, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 16, 16, 16, 17, 17, 17, 17, 18, 19, 19, 20, 20, 20, 20, 21, 22, 23, 23, 24, 24, 24, 24, 25, 25, 25, 25, 26, 26, 26, 26, 26, 26, 27, 27, 28, 28, 28, 28, 29, 29, 29, 29, 29, 29, 29, 29, 30, 30, 30, 31, 31, 31, 31, 32, 32, 33, 33, 34, 34, 35, 35, 35, 72 };
+const ruleLen = [_]u8{ 2, 2, 1, 1, 1, 1, 1, 4, 4, 3, 6, 4, 3, 3, 5, 3, 1, 1, 2, 1, 0, 3, 1, 1, 1, 3, 2, 2, 1, 3, 3, 1, 3, 2, 2, 1, 1, 3, 2, 2, 1, 1, 3, 1, 2, 2, 2, 2, 1, 4, 3, 1, 4, 3, 2, 0, 2, 1, 2, 1, 3, 4, 4, 2, 2, 1, 2, 0, 2, 3, 2, 1, 1, 4, 1, 1, 2, 2, 3, 3, 4, 2, 1, 4, 3, 2, 1, 1, 1, 3, 1, 2, 1, 1, 1, 1, 2 };
 
-// Parse Table: 153 states × 73 symbols
-const numStates = 153;
+// Parse Table: 149 states × 73 symbols
+const numStates = 149;
 const numSymbols = 73;
 
 const sparse = [numStates][]const i16{
@@ -771,155 +672,151 @@ const sparse = [numStates][]const i16{
     &.{1,-1},
     &.{4,11,5,8,6,5,22,13,25,7,36,9,37,12,38,6,49,4,55,10},
     &.{1,-1},
-    &.{40,-60,61,14},
+    &.{40,-59,61,14},
     &.{1,-5,36,-5,37,-5,38,-5,49,-5,55,-5},
     &.{39,15,42,20,44,18,45,21,48,17,50,19,51,16},
     &.{40,22},
     &.{1,-4,36,-4,37,-4,38,-4,49,-4,55,-4},
     &.{1,-7,36,-7,37,-7,38,-7,49,-7,55,-7},
-    &.{40,-62,61,23},
+    &.{40,-61,61,23},
     &.{1,-2,5,24,6,5,22,13,25,7,36,9,37,12,38,6,49,4,55,10},
     &.{1,-8,36,-8,37,-8,38,-8,49,-8,55,-8},
     &.{1,-6,36,-6,37,-6,38,-6,49,-6,55,-6},
-    &.{40,-59},
+    &.{40,-58},
     &.{40,25},
     &.{15,26,49,27},
     &.{49,28},
-    &.{7,31,40,29,49,30},
-    &.{12,33,13,34,49,32,55,35},
+    &.{7,30,49,29},
+    &.{12,32,13,33,49,31,55,34},
+    &.{40,35},
     &.{40,36},
-    &.{40,37},
-    &.{1,-70,23,39,26,38,27,40,36,-70,37,-70,38,-70,41,-70,46,-70,49,-70,53,-70,55,-70,60,-70,61,-70,63,-70,64,-70,65,-70},
-    &.{40,-61},
+    &.{1,-69,23,38,26,37,27,39,36,-69,37,-69,38,-69,41,-69,46,-69,49,-69,53,-69,55,-69,60,-69,61,-69,63,-69,64,-69,65,-69},
+    &.{40,-60},
     &.{1,-3,36,-3,37,-3,38,-3,49,-3,55,-3},
-    &.{41,41},
+    &.{41,40},
     &.{1,-15,36,-15,37,-15,38,-15,49,-15,55,-15},
-    &.{16,42,36,43,37,44},
-    &.{21,46,59,45},
-    &.{46,47},
-    &.{40,48},
+    &.{16,41,36,42,37,43},
+    &.{21,45,59,44},
+    &.{40,46},
     &.{1,-11,36,-11,37,-11,38,-11,49,-11,55,-11},
-    &.{54,49},
-    &.{1,-14,14,51,36,52,37,53,38,-14,49,-14,52,50,55,-14},
-    &.{1,-31,36,-31,37,-31,38,-31,49,-31,52,-31,55,-31},
-    &.{54,54},
-    &.{43,55},
-    &.{46,56},
-    &.{1,-54,36,-54,37,-54,38,-54,49,-54,55,-54,60,-54},
-    &.{1,-58,24,57,36,-58,37,-58,38,-58,49,-58,55,-58,60,58},
-    &.{1,-68,28,59,29,60,36,-68,37,-68,38,64,41,68,46,70,49,61,53,65,55,66,60,-68,61,62,63,67,64,63,65,69},
-    &.{1,-9,36,-9,37,-9,38,-9,49,-9,55,-9},
-    &.{17,76,18,71,19,75,20,73,36,72,37,77,41,74},
-    &.{36,-38,37,-38,41,-38},
-    &.{36,-39,37,-39,41,-39},
-    &.{1,-51,36,-51,37,-51,38,-51,49,-51,55,-51},
-    &.{1,-13,36,-13,37,-13,38,-13,49,-13,55,-13},
-    &.{8,78,9,80,49,79},
-    &.{46,81},
-    &.{41,82},
-    &.{49,-34,55,-34},
-    &.{13,83,49,32,55,35},
-    &.{1,-29,36,-29,37,-29,38,-29,49,-29,52,-29,55,-29},
+    &.{54,47},
+    &.{1,-14,14,49,36,50,37,51,38,-14,49,-14,52,48,55,-14},
     &.{1,-30,36,-30,37,-30,38,-30,49,-30,52,-30,55,-30},
-    &.{41,84},
-    &.{1,-10,36,-10,37,-10,38,-10,49,-10,55,-10},
-    &.{10,88,11,87,36,89,37,85,41,90,47,-23,52,86},
-    &.{1,-52,36,91,37,-52,38,-52,49,-52,55,-52},
-    &.{1,-70,26,92,27,40,36,-70,37,-70,38,-70,41,-70,46,-70,49,-70,53,-70,55,-70,60,-70,61,-70,63,-70,64,-70,65,-70},
-    &.{1,-69,36,-69,37,-69,38,-69,41,-69,46,-69,49,-69,53,-69,55,-69,60,-69,61,-69,63,-69,64,-69,65,-69},
-    &.{1,-74,35,95,36,-74,37,-74,38,-74,41,-74,46,-74,47,-74,49,-74,53,-74,55,-74,60,-74,61,-74,63,-74,64,-74,65,-74,66,-74,67,-74,68,94,69,96,70,93},
-    &.{1,-75,36,-75,37,-75,38,-75,41,-75,46,-75,47,-75,49,-75,53,-75,55,-75,60,-75,61,-75,63,-75,64,-75,65,-75,66,-75,67,-75,68,-75,69,-75,70,-75},
-    &.{29,97,38,64,41,68,46,70,49,61,55,66,65,69},
-    &.{1,-67,36,-67,37,-67,38,-67,49,-67,53,98,55,-67,60,-67},
-    &.{49,99,51,100},
-    &.{62,101},
-    &.{1,-77,36,-77,37,-77,38,-77,41,-77,46,-77,47,-77,49,-77,53,-77,55,-77,60,-77,61,-77,63,-77,64,-77,65,102,66,-77,67,-77,68,-77,69,-77,70,-77},
-    &.{1,-66,36,-66,37,-66,38,-66,49,-66,53,103,55,-66,60,-66},
-    &.{1,-78,36,-78,37,-78,38,-78,41,-78,46,-78,47,-78,49,-78,53,-78,55,-78,60,-78,61,-78,63,-78,64,-78,65,-78,66,-78,67,-78,68,-78,69,-78,70,-78},
-    &.{28,104,29,60,33,106,34,105,38,64,41,68,46,70,49,61,55,66,61,62,65,69},
-    &.{28,104,29,60,30,108,33,107,34,105,38,64,41,68,46,70,49,61,55,109,61,62,65,69},
-    &.{1,-43,36,-43,37,-43,38,-43,49,-43,55,-43},
-    &.{36,-36,37,-36,41,-36},
-    &.{1,-46,36,-46,37,-46,38,-46,49,-46,52,-46,55,-46},
-    &.{49,111,56,110,57,112,58,113},
-    &.{1,-44,36,-44,37,-44,38,-44,49,-44,52,114,55,-44},
-    &.{1,-35,36,116,37,115,38,-35,49,-35,55,-35},
-    &.{36,-37,37,-37,41,-37},
-    &.{47,117,52,118},
-    &.{47,-20,52,-20},
-    &.{47,-19,52,-19},
-    &.{8,119,9,80,49,79},
-    &.{1,-32,36,-32,37,-32,38,-32,49,-32,52,-32,55,-32},
-    &.{1,-28,36,-28,37,-28,38,-28,49,-28,52,-28,55,-28},
-    &.{1,-33,36,-33,37,-33,38,-33,49,-33,52,-33,55,-33},
-    &.{36,-27,37,-27,41,-27,47,-27,52,-27},
-    &.{36,-25,37,-25,41,-25,47,-25,52,-25},
-    &.{36,-22,37,-22,41,-22,47,-22,52,-22},
-    &.{11,121,36,89,37,85,41,90,47,120,52,86},
-    &.{36,-26,37,-26,41,-26,47,-26,52,-26},
-    &.{53,122},
-    &.{1,-57,36,-57,37,123,38,-57,49,-57,55,-57,60,124},
+    &.{54,52},
+    &.{43,53},
+    &.{46,54},
     &.{1,-53,36,-53,37,-53,38,-53,49,-53,55,-53,60,-53},
-    &.{1,-98,36,-98,37,-98,38,-98,41,-98,46,-98,47,-98,49,-98,53,-98,55,-98,60,-98,61,-98,63,-98,64,-98,65,-98,66,-98,67,-98},
-    &.{1,-96,36,-96,37,-96,38,-96,41,-96,46,-96,47,-96,49,-96,53,-96,55,-96,60,-96,61,-96,63,-96,64,-96,65,-96,66,-96,67,-96},
-    &.{1,-71,36,-71,37,-71,38,-71,41,-71,46,-71,47,-71,49,-71,53,-71,55,-71,60,-71,61,-71,63,-71,64,-71,65,-71,66,-71,67,-71},
-    &.{1,-97,36,-97,37,-97,38,-97,41,-97,46,-97,47,-97,49,-97,53,-97,55,-97,60,-97,61,-97,63,-97,64,-97,65,-97,66,-97,67,-97},
-    &.{1,-73,35,125,36,-73,37,-73,38,-73,41,-73,46,-73,47,-73,49,-73,53,-73,55,-73,60,-73,61,-73,63,-73,64,-73,65,-73,66,-73,67,-73,68,94,69,96,70,93},
-    &.{62,126},
-    &.{1,-79,36,-79,37,-79,38,-79,41,-79,46,-79,47,-79,49,-79,53,-79,55,-79,60,-79,61,-79,63,-79,64,-79,65,-79,66,-79,67,-79,68,-79,69,-79,70,-79},
-    &.{1,-80,36,-80,37,-80,38,-80,41,-80,46,-80,47,-80,49,-80,53,-80,55,-80,60,-80,61,-80,63,-80,64,-80,65,-80,66,-80,67,-80,68,-80,69,-80,70,-80},
-    &.{1,-63,36,-63,37,-63,38,-63,49,-63,55,-63,60,-63},
-    &.{31,128,49,127},
-    &.{62,129},
-    &.{38,-95,41,-95,46,-95,47,-95,49,-95,55,-95,60,-95,61,-95,65,-95,66,-95,67,-95},
-    &.{28,130,29,60,38,64,41,68,46,70,47,-93,49,61,55,66,60,-93,61,62,65,69,66,-93,67,-93},
-    &.{60,132,66,131},
-    &.{47,-85,60,132,67,133},
-    &.{47,134},
-    &.{1,-77,36,-77,37,-77,38,-77,41,-77,46,-77,47,-77,49,-77,53,-77,55,-77,60,-77,61,-77,63,-77,64,-77,65,135,66,-77,67,-77,68,-77,69,-77,70,-77},
-    &.{1,-47,36,-47,37,-47,38,-47,49,-47,52,-47,55,-47},
-    &.{1,-50,36,-50,37,-50,38,-50,49,-50,52,-50,55,-50},
-    &.{1,-48,36,-48,37,-48,38,-48,49,-48,52,-48,55,-48},
-    &.{1,-49,36,-49,37,-49,38,-49,49,-49,52,-49,55,-49},
-    &.{20,136,41,74},
+    &.{1,-57,24,55,36,-57,37,-57,38,-57,49,-57,55,-57,60,56},
+    &.{1,-67,28,57,29,58,36,-67,37,-67,38,62,41,66,46,68,49,59,53,63,55,64,60,-67,61,60,63,65,64,61,65,67},
+    &.{1,-9,36,-9,37,-9,38,-9,49,-9,55,-9},
+    &.{17,74,18,69,19,73,20,71,36,70,37,75,41,72},
+    &.{36,-37,37,-37,41,-37},
+    &.{36,-38,37,-38,41,-38},
+    &.{1,-50,36,-50,37,-50,38,-50,49,-50,55,-50},
+    &.{1,-13,36,-13,37,-13,38,-13,49,-13,55,-13},
+    &.{46,76},
+    &.{41,77},
+    &.{49,-33,55,-33},
+    &.{13,78,49,31,55,34},
+    &.{1,-28,36,-28,37,-28,38,-28,49,-28,52,-28,55,-28},
+    &.{1,-29,36,-29,37,-29,38,-29,49,-29,52,-29,55,-29},
+    &.{41,79},
+    &.{1,-10,36,-10,37,-10,38,-10,49,-10,55,-10},
+    &.{10,83,11,82,36,84,37,80,41,85,47,-22,52,81},
+    &.{1,-51,36,86,37,-51,38,-51,49,-51,55,-51},
+    &.{1,-69,26,87,27,39,36,-69,37,-69,38,-69,41,-69,46,-69,49,-69,53,-69,55,-69,60,-69,61,-69,63,-69,64,-69,65,-69},
+    &.{1,-68,36,-68,37,-68,38,-68,41,-68,46,-68,49,-68,53,-68,55,-68,60,-68,61,-68,63,-68,64,-68,65,-68},
+    &.{1,-73,35,90,36,-73,37,-73,38,-73,41,-73,46,-73,47,-73,49,-73,53,-73,55,-73,60,-73,61,-73,63,-73,64,-73,65,-73,66,-73,67,-73,68,89,69,91,70,88},
+    &.{1,-74,36,-74,37,-74,38,-74,41,-74,46,-74,47,-74,49,-74,53,-74,55,-74,60,-74,61,-74,63,-74,64,-74,65,-74,66,-74,67,-74,68,-74,69,-74,70,-74},
+    &.{29,92,38,62,41,66,46,68,49,59,55,64,65,67},
+    &.{1,-66,36,-66,37,-66,38,-66,49,-66,53,93,55,-66,60,-66},
+    &.{49,94,51,95},
+    &.{62,96},
+    &.{1,-76,36,-76,37,-76,38,-76,41,-76,46,-76,47,-76,49,-76,53,-76,55,-76,60,-76,61,-76,63,-76,64,-76,65,97,66,-76,67,-76,68,-76,69,-76,70,-76},
+    &.{1,-65,36,-65,37,-65,38,-65,49,-65,53,98,55,-65,60,-65},
+    &.{1,-77,36,-77,37,-77,38,-77,41,-77,46,-77,47,-77,49,-77,53,-77,55,-77,60,-77,61,-77,63,-77,64,-77,65,-77,66,-77,67,-77,68,-77,69,-77,70,-77},
+    &.{28,99,29,58,33,101,34,100,38,62,41,66,46,68,49,59,55,64,61,60,65,67},
+    &.{28,99,29,58,30,103,33,102,34,100,38,62,41,66,46,68,49,59,55,104,61,60,65,67},
     &.{1,-42,36,-42,37,-42,38,-42,49,-42,55,-42},
-    &.{1,-41,18,137,19,75,20,73,36,-41,37,-41,38,-41,41,74,49,-41,55,-41},
-    &.{1,-17,36,-17,37,-17,38,-17,49,-17,55,-17},
-    &.{9,138,49,79},
-    &.{47,139,52,118},
-    &.{1,-12,36,-12,37,-12,38,-12,49,-12,55,-12},
-    &.{36,-21,37,-21,41,-21,47,-21,52,-21},
-    &.{41,140},
-    &.{1,-56,36,-56,37,-56,38,-56,49,-56,55,-56},
-    &.{1,-70,23,141,26,38,27,40,36,-70,37,-70,38,-70,41,-70,46,-70,49,-70,53,-70,55,-70,60,-70,61,-70,63,-70,64,-70,65,-70},
-    &.{1,-72,36,-72,37,-72,38,-72,41,-72,46,-72,47,-72,49,-72,53,-72,55,-72,60,-72,61,-72,63,-72,64,-72,65,-72,66,-72,67,-72},
-    &.{1,-65,36,-65,37,-65,38,-65,49,-65,55,-65,60,-65},
-    &.{52,143,66,-89,68,142},
-    &.{66,144},
-    &.{1,-64,36,-64,37,-64,38,-64,49,-64,55,-64,60,-64},
-    &.{38,-94,41,-94,46,-94,47,-94,49,-94,55,-94,60,-94,61,-94,65,-94,66,-94,67,-94},
-    &.{1,-81,36,-81,37,-81,38,-81,41,-81,46,-81,47,-81,49,-81,53,-81,55,-81,60,-81,61,-81,63,-81,64,-81,65,-81,66,-81,67,-81,68,-81,69,-81,70,-81},
-    &.{28,104,29,60,34,145,38,64,41,68,46,70,49,61,55,66,61,62,65,69},
-    &.{47,-84},
-    &.{1,-82,36,-82,37,-82,38,-82,41,-82,46,-82,47,-82,49,-82,53,-82,55,-82,60,-82,61,-82,63,-82,64,-82,65,-82,66,-82,67,-82,68,-82,69,-82,70,-82},
-    &.{31,146,49,127},
+    &.{36,-35,37,-35,41,-35},
     &.{1,-45,36,-45,37,-45,38,-45,49,-45,52,-45,55,-45},
-    &.{1,-40,36,-40,37,-40,38,-40,49,-40,55,-40},
-    &.{47,-18,52,-18},
-    &.{1,-16,36,-16,37,-16,38,-16,49,-16,55,-16},
+    &.{49,106,56,105,57,107,58,108},
+    &.{1,-43,36,-43,37,-43,38,-43,49,-43,52,109,55,-43},
+    &.{1,-34,36,111,37,110,38,-34,49,-34,55,-34},
+    &.{36,-36,37,-36,41,-36},
+    &.{8,112,9,114,49,113},
+    &.{1,-31,36,-31,37,-31,38,-31,49,-31,52,-31,55,-31},
+    &.{1,-27,36,-27,37,-27,38,-27,49,-27,52,-27,55,-27},
+    &.{1,-32,36,-32,37,-32,38,-32,49,-32,52,-32,55,-32},
+    &.{36,-26,37,-26,41,-26,47,-26,52,-26},
     &.{36,-24,37,-24,41,-24,47,-24,52,-24},
-    &.{1,-55,36,-55,37,-55,38,-55,49,-55,55,-55,60,58},
-    &.{52,147,66,-88},
-    &.{32,148,41,150,55,149},
-    &.{1,-76,36,-76,37,-76,38,-76,41,-76,46,-76,47,-76,49,-76,53,-76,55,-76,60,-76,61,-76,63,-76,64,-76,65,-76,66,-76,67,-76,68,-76,69,-76,70,-76},
-    &.{28,130,29,60,38,64,41,68,46,70,47,-92,49,61,55,66,60,-92,61,62,65,69,66,-92,67,-92},
-    &.{66,151},
-    &.{32,152,41,150,55,149},
-    &.{66,-87},
-    &.{66,-91},
-    &.{66,-90},
-    &.{1,-76,36,-76,37,-76,38,-76,41,-76,46,-76,47,-76,49,-76,53,-76,55,-76,60,-76,61,-76,63,-76,64,-76,65,-76,66,-76,67,-76,68,-76,69,-76,70,-76},
+    &.{36,-21,37,-21,41,-21,47,-21,52,-21},
+    &.{11,116,36,84,37,80,41,85,47,115,52,81},
+    &.{36,-25,37,-25,41,-25,47,-25,52,-25},
+    &.{53,117},
+    &.{1,-56,36,-56,37,118,38,-56,49,-56,55,-56,60,119},
+    &.{1,-52,36,-52,37,-52,38,-52,49,-52,55,-52,60,-52},
+    &.{1,-97,36,-97,37,-97,38,-97,41,-97,46,-97,47,-97,49,-97,53,-97,55,-97,60,-97,61,-97,63,-97,64,-97,65,-97,66,-97,67,-97},
+    &.{1,-95,36,-95,37,-95,38,-95,41,-95,46,-95,47,-95,49,-95,53,-95,55,-95,60,-95,61,-95,63,-95,64,-95,65,-95,66,-95,67,-95},
+    &.{1,-70,36,-70,37,-70,38,-70,41,-70,46,-70,47,-70,49,-70,53,-70,55,-70,60,-70,61,-70,63,-70,64,-70,65,-70,66,-70,67,-70},
+    &.{1,-96,36,-96,37,-96,38,-96,41,-96,46,-96,47,-96,49,-96,53,-96,55,-96,60,-96,61,-96,63,-96,64,-96,65,-96,66,-96,67,-96},
+    &.{1,-72,35,120,36,-72,37,-72,38,-72,41,-72,46,-72,47,-72,49,-72,53,-72,55,-72,60,-72,61,-72,63,-72,64,-72,65,-72,66,-72,67,-72,68,89,69,91,70,88},
+    &.{62,121},
+    &.{1,-78,36,-78,37,-78,38,-78,41,-78,46,-78,47,-78,49,-78,53,-78,55,-78,60,-78,61,-78,63,-78,64,-78,65,-78,66,-78,67,-78,68,-78,69,-78,70,-78},
+    &.{1,-79,36,-79,37,-79,38,-79,41,-79,46,-79,47,-79,49,-79,53,-79,55,-79,60,-79,61,-79,63,-79,64,-79,65,-79,66,-79,67,-79,68,-79,69,-79,70,-79},
+    &.{1,-62,36,-62,37,-62,38,-62,49,-62,55,-62,60,-62},
+    &.{31,123,49,122},
+    &.{62,124},
+    &.{38,-94,41,-94,46,-94,47,-94,49,-94,55,-94,60,-94,61,-94,65,-94,66,-94,67,-94},
+    &.{28,125,29,58,38,62,41,66,46,68,47,-92,49,59,55,64,60,-92,61,60,65,67,66,-92,67,-92},
+    &.{60,127,66,126},
+    &.{47,-84,60,127,67,128},
+    &.{47,129},
+    &.{1,-76,36,-76,37,-76,38,-76,41,-76,46,-76,47,-76,49,-76,53,-76,55,-76,60,-76,61,-76,63,-76,64,-76,65,130,66,-76,67,-76,68,-76,69,-76,70,-76},
+    &.{1,-46,36,-46,37,-46,38,-46,49,-46,52,-46,55,-46},
+    &.{1,-49,36,-49,37,-49,38,-49,49,-49,52,-49,55,-49},
+    &.{1,-47,36,-47,37,-47,38,-47,49,-47,52,-47,55,-47},
+    &.{1,-48,36,-48,37,-48,38,-48,49,-48,52,-48,55,-48},
+    &.{20,131,41,72},
+    &.{1,-41,36,-41,37,-41,38,-41,49,-41,55,-41},
+    &.{1,-40,18,132,19,73,20,71,36,-40,37,-40,38,-40,41,72,49,-40,55,-40},
+    &.{47,133,52,134},
+    &.{47,-19,52,-19},
+    &.{47,-18,52,-18},
+    &.{1,-12,36,-12,37,-12,38,-12,49,-12,55,-12},
+    &.{36,-20,37,-20,41,-20,47,-20,52,-20},
+    &.{41,135},
+    &.{1,-55,36,-55,37,-55,38,-55,49,-55,55,-55},
+    &.{1,-69,23,136,26,37,27,39,36,-69,37,-69,38,-69,41,-69,46,-69,49,-69,53,-69,55,-69,60,-69,61,-69,63,-69,64,-69,65,-69},
+    &.{1,-71,36,-71,37,-71,38,-71,41,-71,46,-71,47,-71,49,-71,53,-71,55,-71,60,-71,61,-71,63,-71,64,-71,65,-71,66,-71,67,-71},
+    &.{1,-64,36,-64,37,-64,38,-64,49,-64,55,-64,60,-64},
+    &.{52,138,66,-88,68,137},
+    &.{66,139},
+    &.{1,-63,36,-63,37,-63,38,-63,49,-63,55,-63,60,-63},
+    &.{38,-93,41,-93,46,-93,47,-93,49,-93,55,-93,60,-93,61,-93,65,-93,66,-93,67,-93},
+    &.{1,-80,36,-80,37,-80,38,-80,41,-80,46,-80,47,-80,49,-80,53,-80,55,-80,60,-80,61,-80,63,-80,64,-80,65,-80,66,-80,67,-80,68,-80,69,-80,70,-80},
+    &.{28,99,29,58,34,140,38,62,41,66,46,68,49,59,55,64,61,60,65,67},
+    &.{47,-83},
+    &.{1,-81,36,-81,37,-81,38,-81,41,-81,46,-81,47,-81,49,-81,53,-81,55,-81,60,-81,61,-81,63,-81,64,-81,65,-81,66,-81,67,-81,68,-81,69,-81,70,-81},
+    &.{31,141,49,122},
+    &.{1,-44,36,-44,37,-44,38,-44,49,-44,52,-44,55,-44},
+    &.{1,-39,36,-39,37,-39,38,-39,49,-39,55,-39},
+    &.{1,-16,36,-16,37,-16,38,-16,49,-16,55,-16},
+    &.{9,142,49,113},
+    &.{36,-23,37,-23,41,-23,47,-23,52,-23},
+    &.{1,-54,36,-54,37,-54,38,-54,49,-54,55,-54,60,56},
+    &.{52,143,66,-87},
+    &.{32,144,41,146,55,145},
+    &.{1,-75,36,-75,37,-75,38,-75,41,-75,46,-75,47,-75,49,-75,53,-75,55,-75,60,-75,61,-75,63,-75,64,-75,65,-75,66,-75,67,-75,68,-75,69,-75,70,-75},
+    &.{28,125,29,58,38,62,41,66,46,68,47,-91,49,59,55,64,60,-91,61,60,65,67,66,-91,67,-91},
+    &.{66,147},
+    &.{47,-17,52,-17},
+    &.{32,148,41,146,55,145},
     &.{66,-86},
+    &.{66,-90},
+    &.{66,-89},
+    &.{1,-75,36,-75,37,-75,38,-75,41,-75,46,-75,47,-75,49,-75,53,-75,55,-75,60,-75,61,-75,63,-75,64,-75,65,-75,66,-75,67,-75,68,-75,69,-75,70,-75},
+    &.{66,-85},
 };
 
 const parseTable = blk: {
@@ -958,7 +855,7 @@ fn getStartState(startSym: u16) u16 {
     return 0;
 }
 
-const acceptRules = [_]u16{ 97 };
+const acceptRules = [_]u16{ 96 };
 
 fn isAcceptRule(ruleId: u16) bool {
     for (acceptRules) |ar| if (ruleId == ar) return true;

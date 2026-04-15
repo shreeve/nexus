@@ -378,7 +378,7 @@ after
 
 @conflicts = 16
 
-@as = [ident, cmd]
+@as ident = [cmd]
 
 # All keywords (if, unless, else, for, in, while, until, try, and, or, not,
 # xor, cmd, key, set, test, source, exit, break, continue, shift, exec)

@@ -212,7 +212,7 @@ tokens
 
 @conflicts = 19
 
-@as = [ident, keyword]
+@as ident = [keyword]
 
 # ==============================================================================
 # PROGRAM STRUCTURE

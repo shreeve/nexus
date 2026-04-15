@@ -142,7 +142,6 @@ directive = "@" KW_LANG "=" STRING          → (lang 4)
 # --- @as directive ---
 
 as_body  = IDENT "=" "[" as_list "]"        → (1 ...4)
-         | "=" "[" as_list "]"              → (...3)
 
 as_list  = as_list "," as_entry             → (...1 3)
          | as_entry                         → (1)

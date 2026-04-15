@@ -2872,36 +2872,34 @@ const GrammarLowerer = struct {
         self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch null;
     }
 
+    /// Process @as directive: `@as ident = [keyword]` or `@as ident = [fn, isv, self, cmd]`
+    ///
+    /// The long form `@as IDENT = [entries...]` produces:
+    ///   items[0] = tag(.as)
+    ///   items[1] = src:"ident"          ← the source token type (direct)
+    ///   items[2..] = entries from list   ← rule names (may be list-wrapped)
     fn handleAs(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
         if (items.len < 3) return;
 
-        // Check if first data item is a list (unified form) or src token (legacy form)
-        const firstData = items[1];
-        const firstItems = self.getListItems(firstData);
+        const sourceTok = self.unwrapText(items[1]);
+        if (sourceTok.len == 0) return;
 
-        if (firstItems.len >= 2) {
-            // Unified form: (as (source_tok entry1 entry2 ...))
-            const sourceTok = self.getText(firstItems[0]);
-            for (firstItems[1..]) |e| {
-                const rule = self.getText(e);
+        for (items[2..]) |item| {
+            const rule = self.unwrapText(item);
+            if (rule.len > 0) {
                 try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
             }
-            // Also check remaining items
-            for (items[2..]) |item| {
-                const rule = self.getText(item);
-                if (rule.len > 0) {
-                    try self.asDirectives.append(self.allocator, .{ .token = sourceTok, .rule = rule });
-                }
-            }
-        } else {
-            // Legacy form: (as token_type rule_name) or flat entries
-            // items[1..] are raw src tokens: first is token type, rest are rule names
-            const tokenType = self.getText(items[1]);
-            for (items[2..]) |item| {
-                const rule = self.getText(item);
-                try self.asDirectives.append(self.allocator, .{ .token = tokenType, .rule = rule });
-            }
         }
+    }
+
+    /// Extract text from a Sexp that may be a raw src token or a single-element
+    /// list wrapping one (as produced by as_list grammar productions).
+    fn unwrapText(self: *GrammarLowerer, sexp: ngp.Sexp) []const u8 {
+        const direct = self.getText(sexp);
+        if (direct.len > 0) return direct;
+        const sub = self.getListItems(sexp);
+        if (sub.len == 1) return self.getText(sub[0]);
+        return "";
     }
 
     fn handleOp(self: *GrammarLowerer, items: []const ngp.Sexp) !void {
