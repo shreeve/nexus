@@ -35,6 +35,26 @@ Lang modules can export a `pub const Lexer` struct wrapping `BaseLexer` for lang
 
 `BaseLexer` has an `aux: u16 = 0` field that language wrappers can set per-token. On shift, the parser copies `aux` into `src.id` (when `lastMatchedId` is 0), then resets it. This provides a generic channel for passing lexer-computed metadata (e.g., MUMPS dot-level count) through to the compiler without hand-patching `parser.zig`.
 
+## Token Classification (Critical for Grammar Authors)
+
+Every terminal symbol is classified as **direct** or **promoted**:
+
+- **Direct**: declared in `tokens` block → gets `tokenToSymbol` entry → lexer/rewriter emits it with its own `TokenCat`
+- **Promoted**: NOT in `tokens` → arrives as `ident` text → promoted via `@as` based on parser state
+
+**Rule**: If you declare it in `tokens`, the parser expects direct emission. If you don't, the parser expects `@as` promotion.
+
+Rewriter-classified tokens (e.g., `if_mod`, `then_sep`, `do_block`) MUST be in the `tokens` block even without lexer rules. Keywords used only through `@as` (e.g., `if`, `else`, `fn`) should NOT be in `tokens`.
+
+The classification logic in `nexus.zig` (`tokenToSymbol` generation) checks in order:
+1. Matches `@as` directive rule name? → promoted
+2. Declared in `tokens` block? → **direct** (this takes priority over name matching)
+3. Case-insensitive match with a nonterminal name? → promoted
+4. `@as` exists but no lexer token? → promoted
+5. Otherwise → direct
+
+Step 2 is the key gate: **explicit `tokens` declarations always win over name-based inference.** This prevents rewriter-classified tokens like `THEN_SEP` from being misclassified as keywords just because a nonterminal `then_sep` shares its name.
+
 ## Key Grammar Features
 
 ### `@as` — Context-Sensitive Keyword Resolution

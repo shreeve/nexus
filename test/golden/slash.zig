@@ -997,24 +997,14 @@ pub const Parser = struct {
         };
     }
 
-    fn tokenToSymbol(_: *Parser, token: Token) u16 {
+    fn tokenToSymbol(self: *Parser, token: Token) u16 {
         return switch (token.cat) {
             .@"eof" => 1,
+            .@"ident" => self.identToSymbol(token),
             .@"newline" => 53,
-            .@"ident" => 56,
-            .@"and" => 62,
-            .@"or" => 64,
             .@"xor" => 65,
-            .@"not" => 69,
-            .@"test" => 72,
             .@"flag" => 73,
-            .@"exit" => 74,
-            .@"break" => 75,
-            .@"continue" => 76,
-            .@"shift" => 77,
             .@"integer" => 78,
-            .@"source" => 79,
-            .@"exec" => 80,
             .@"string_sq" => 82,
             .@"string_dq" => 83,
             .@"real" => 84,
@@ -1030,22 +1020,11 @@ pub const Parser = struct {
             .@"heredoc_dq" => 105,
             .@"heredoc_bt" => 106,
             .@"heredoc_end" => 107,
-            .@"if" => 108,
-            .@"unless" => 109,
-            .@"else" => 110,
-            .@"for" => 117,
-            .@"in" => 118,
-            .@"while" => 119,
-            .@"until" => 120,
-            .@"try" => 123,
             .@"indent" => 128,
             .@"outdent" => 131,
             .@"comment" => 132,
-            .@"cmd" => 134,
             .@"missing" => 135,
             .@"lparen_tight" => 136,
-            .@"key" => 140,
-            .@"set" => 141,
             .@"list_start" => 148,
             .@"assign" => 55,
             .@"minus" => 57,
@@ -1092,7 +1071,27 @@ pub const Parser = struct {
     fn identToSymbol(self: *Parser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
         if (text.len == 0) return symIdent;
+        if (self.tryIdentAsCmd(token, text)) |sym| return sym;
         return symIdent;
+    }
+
+    fn tryIdentAsCmd(self: *Parser, token: Token, text: []const u8) ?u16 {
+        _ = token;
+        const state = self.stateStack.getLast();
+        if (slash.cmdAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = cmdToSymbol[idIdx];
+            if (sym != 0 and getAction(state, sym) > 0) {
+                self.lastMatchedId = @intCast(idIdx);
+                return sym;
+            }
+            const fallback = cmdFallbackSymbol;
+            if (fallback != 0 and getAction(state, fallback) > 0) {
+                self.lastMatchedId = @intCast(idIdx);
+                return fallback;
+            }
+        }
+        return null;
     }
 
     pub fn parseProgram(self: *Parser) !Sexp {
@@ -1111,6 +1110,63 @@ const SYM_program_START: u16 = 151;
 const SYM_oneline: u16 = 4;
 const SYM_oneline_START: u16 = 153;
 const symIdent: u16 = 56;
+
+// Mapping from slash.CmdId to grammar symbol IDs (computed at comptime)
+const cmdToSymbol = blk: {
+    var arr: [512]u16 = .{0} ** 512;
+    if (@hasField(slash.CmdId, "NEWLINE")) arr[@intFromEnum(slash.CmdId.NEWLINE)] = 53;
+    if (@hasField(slash.CmdId, "IDENT")) arr[@intFromEnum(slash.CmdId.IDENT)] = 56;
+    if (@hasField(slash.CmdId, "AND")) arr[@intFromEnum(slash.CmdId.AND)] = 62;
+    if (@hasField(slash.CmdId, "OR")) arr[@intFromEnum(slash.CmdId.OR)] = 64;
+    if (@hasField(slash.CmdId, "XOR")) arr[@intFromEnum(slash.CmdId.XOR)] = 65;
+    if (@hasField(slash.CmdId, "NOT")) arr[@intFromEnum(slash.CmdId.NOT)] = 69;
+    if (@hasField(slash.CmdId, "TEST")) arr[@intFromEnum(slash.CmdId.TEST)] = 72;
+    if (@hasField(slash.CmdId, "FLAG")) arr[@intFromEnum(slash.CmdId.FLAG)] = 73;
+    if (@hasField(slash.CmdId, "EXIT")) arr[@intFromEnum(slash.CmdId.EXIT)] = 74;
+    if (@hasField(slash.CmdId, "BREAK")) arr[@intFromEnum(slash.CmdId.BREAK)] = 75;
+    if (@hasField(slash.CmdId, "CONTINUE")) arr[@intFromEnum(slash.CmdId.CONTINUE)] = 76;
+    if (@hasField(slash.CmdId, "SHIFT")) arr[@intFromEnum(slash.CmdId.SHIFT)] = 77;
+    if (@hasField(slash.CmdId, "INTEGER")) arr[@intFromEnum(slash.CmdId.INTEGER)] = 78;
+    if (@hasField(slash.CmdId, "SOURCE")) arr[@intFromEnum(slash.CmdId.SOURCE)] = 79;
+    if (@hasField(slash.CmdId, "EXEC")) arr[@intFromEnum(slash.CmdId.EXEC)] = 80;
+    if (@hasField(slash.CmdId, "STRING_SQ")) arr[@intFromEnum(slash.CmdId.STRING_SQ)] = 82;
+    if (@hasField(slash.CmdId, "STRING_DQ")) arr[@intFromEnum(slash.CmdId.STRING_DQ)] = 83;
+    if (@hasField(slash.CmdId, "REAL")) arr[@intFromEnum(slash.CmdId.REAL)] = 84;
+    if (@hasField(slash.CmdId, "VARIABLE")) arr[@intFromEnum(slash.CmdId.VARIABLE)] = 85;
+    if (@hasField(slash.CmdId, "VAR_BRACED")) arr[@intFromEnum(slash.CmdId.VAR_BRACED)] = 86;
+    if (@hasField(slash.CmdId, "REGEX")) arr[@intFromEnum(slash.CmdId.REGEX)] = 87;
+    if (@hasField(slash.CmdId, "DOLLAR_PAREN")) arr[@intFromEnum(slash.CmdId.DOLLAR_PAREN)] = 90;
+    if (@hasField(slash.CmdId, "REDIR_FD_DUP")) arr[@intFromEnum(slash.CmdId.REDIR_FD_DUP)] = 98;
+    if (@hasField(slash.CmdId, "REDIR_FD_OUT")) arr[@intFromEnum(slash.CmdId.REDIR_FD_OUT)] = 99;
+    if (@hasField(slash.CmdId, "REDIR_FD_IN")) arr[@intFromEnum(slash.CmdId.REDIR_FD_IN)] = 100;
+    if (@hasField(slash.CmdId, "HEREDOC_SQ")) arr[@intFromEnum(slash.CmdId.HEREDOC_SQ)] = 102;
+    if (@hasField(slash.CmdId, "HEREDOC_BODY")) arr[@intFromEnum(slash.CmdId.HEREDOC_BODY)] = 103;
+    if (@hasField(slash.CmdId, "HEREDOC_DQ")) arr[@intFromEnum(slash.CmdId.HEREDOC_DQ)] = 105;
+    if (@hasField(slash.CmdId, "HEREDOC_BT")) arr[@intFromEnum(slash.CmdId.HEREDOC_BT)] = 106;
+    if (@hasField(slash.CmdId, "HEREDOC_END")) arr[@intFromEnum(slash.CmdId.HEREDOC_END)] = 107;
+    if (@hasField(slash.CmdId, "IF")) arr[@intFromEnum(slash.CmdId.IF)] = 108;
+    if (@hasField(slash.CmdId, "UNLESS")) arr[@intFromEnum(slash.CmdId.UNLESS)] = 109;
+    if (@hasField(slash.CmdId, "ELSE")) arr[@intFromEnum(slash.CmdId.ELSE)] = 110;
+    if (@hasField(slash.CmdId, "FOR")) arr[@intFromEnum(slash.CmdId.FOR)] = 117;
+    if (@hasField(slash.CmdId, "IN")) arr[@intFromEnum(slash.CmdId.IN)] = 118;
+    if (@hasField(slash.CmdId, "WHILE")) arr[@intFromEnum(slash.CmdId.WHILE)] = 119;
+    if (@hasField(slash.CmdId, "UNTIL")) arr[@intFromEnum(slash.CmdId.UNTIL)] = 120;
+    if (@hasField(slash.CmdId, "TRY")) arr[@intFromEnum(slash.CmdId.TRY)] = 123;
+    if (@hasField(slash.CmdId, "INDENT")) arr[@intFromEnum(slash.CmdId.INDENT)] = 128;
+    if (@hasField(slash.CmdId, "OUTDENT")) arr[@intFromEnum(slash.CmdId.OUTDENT)] = 131;
+    if (@hasField(slash.CmdId, "COMMENT")) arr[@intFromEnum(slash.CmdId.COMMENT)] = 132;
+    if (@hasField(slash.CmdId, "CMD")) arr[@intFromEnum(slash.CmdId.CMD)] = 134;
+    if (@hasField(slash.CmdId, "MISSING")) arr[@intFromEnum(slash.CmdId.MISSING)] = 135;
+    if (@hasField(slash.CmdId, "LPAREN_TIGHT")) arr[@intFromEnum(slash.CmdId.LPAREN_TIGHT)] = 136;
+    if (@hasField(slash.CmdId, "KEY")) arr[@intFromEnum(slash.CmdId.KEY)] = 140;
+    if (@hasField(slash.CmdId, "SET")) arr[@intFromEnum(slash.CmdId.SET)] = 141;
+    if (@hasField(slash.CmdId, "LIST_START")) arr[@intFromEnum(slash.CmdId.LIST_START)] = 148;
+    for (@typeInfo(slash.CmdId).@"enum".fields) |field| {
+        if (arr[field.value] == 0) arr[field.value] = 134;
+    }
+    break :blk arr;
+};
+const cmdFallbackSymbol: u16 = 134;
 
 const ruleLhs = [_]u16{ 52, 52, 3, 4, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 81, 81, 11, 11, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 16, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 104, 104, 18, 18, 18, 19, 19, 20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 26, 27, 121, 121, 122, 28, 29, 125, 125, 126, 30, 129, 129, 130, 30, 31, 31, 31, 32, 32, 32, 32, 33, 33, 33, 33, 33, 133, 133, 34, 34, 35, 35, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 138, 139, 139, 37, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 39, 39, 39, 39, 40, 40, 40, 40, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 45, 45, 45, 45, 46, 46, 46, 46, 46, 46, 46, 47, 48, 48, 48, 49, 49, 49, 149, 149, 50, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 152, 154 };
 const ruleLen = [_]u8{ 2, 0, 2, 2, 2, 3, 1, 2, 2, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 2, 2, 3, 3, 1, 2, 1, 1, 2, 1, 2, 2, 1, 2, 0, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 0, 3, 3, 3, 3, 4, 3, 2, 2, 1, 1, 3, 3, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 3, 3, 2, 0, 2, 1, 3, 2, 0, 2, 3, 2, 0, 2, 3, 1, 1, 1, 2, 3, 1, 2, 2, 2, 2, 2, 2, 2, 0, 3, 3, 1, 1, 1, 3, 4, 3, 4, 3, 2, 3, 4, 3, 4, 3, 2, 1, 2, 3, 0, 3, 3, 3, 3, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2 };

@@ -624,6 +624,7 @@ pub const Parser = struct {
             .@"kw_left" => 56,
             .@"kw_right" => 57,
             .@"kw_none" => 58,
+            .@"code_block" => 59,
             .@"action_text" => 62,
             .@"at" => 38,
             .@"eq" => 40,

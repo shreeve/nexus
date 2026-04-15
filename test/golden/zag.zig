@@ -963,40 +963,23 @@ pub const Parser = struct {
         };
     }
 
-    fn tokenToSymbol(_: *Parser, token: Token) u16 {
+    fn tokenToSymbol(self: *Parser, token: Token) u16 {
         return switch (token.cat) {
             .@"eof" => 1,
+            .@"ident" => self.identToSymbol(token),
             .@"newline" => 58,
-            .@"ident" => 60,
-            .@"extern" => 61,
             .@"string_sq" => 64,
             .@"string_dq" => 65,
-            .@"pub" => 66,
-            .@"export" => 67,
-            .@"packed" => 68,
-            .@"callconv" => 69,
             .@"indent" => 70,
             .@"outdent" => 71,
-            .@"opaque" => 78,
-            .@"error" => 80,
-            .@"align" => 83,
-            .@"volatile" => 91,
             .@"integer" => 94,
-            .@"fn" => 95,
-            .@"as" => 101,
             .@"bar_capture" => 102,
-            .@"else" => 104,
-            .@"in" => 107,
             .@"ternary_if" => 112,
             .@"post_if" => 116,
             .@"minus_prefix" => 127,
-            .@"try" => 128,
             .@"real" => 135,
             .@"true" => 136,
             .@"false" => 137,
-            .@"null" => 138,
-            .@"unreachable" => 139,
-            .@"undefined" => 140,
             .@"dot_lbrace" => 142,
             .@"colon" => 59,
             .@"assign" => 76,
@@ -1048,7 +1031,27 @@ pub const Parser = struct {
     fn identToSymbol(self: *Parser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
         if (text.len == 0) return symIdent;
+        if (self.tryIdentAsKeyword(token, text)) |sym| return sym;
         return symIdent;
+    }
+
+    fn tryIdentAsKeyword(self: *Parser, token: Token, text: []const u8) ?u16 {
+        _ = token;
+        const state = self.stateStack.getLast();
+        if (zag.keywordAs(text)) |id| {
+            const idIdx = @intFromEnum(id);
+            const sym = keywordToSymbol[idIdx];
+            if (sym != 0 and getAction(state, sym) > 0) {
+                self.lastMatchedId = @intCast(idIdx);
+                return sym;
+            }
+            const fallback = keywordFallbackSymbol;
+            if (fallback != 0 and getAction(state, fallback) > 0) {
+                self.lastMatchedId = @intCast(idIdx);
+                return fallback;
+            }
+        }
+        return null;
     }
 
     pub fn parseProgram(self: *Parser) !Sexp {
@@ -1067,6 +1070,66 @@ const SYM_program_START: u16 = 149;
 const SYM_expr: u16 = 4;
 const SYM_expr_START: u16 = 151;
 const symIdent: u16 = 60;
+
+// Mapping from zag.KeywordId to grammar symbol IDs (computed at comptime)
+const keywordToSymbol = blk: {
+    var arr: [512]u16 = .{0} ** 512;
+    if (@hasField(zag.KeywordId, "NEWLINE")) arr[@intFromEnum(zag.KeywordId.NEWLINE)] = 58;
+    if (@hasField(zag.KeywordId, "IDENT")) arr[@intFromEnum(zag.KeywordId.IDENT)] = 60;
+    if (@hasField(zag.KeywordId, "EXTERN")) arr[@intFromEnum(zag.KeywordId.EXTERN)] = 61;
+    if (@hasField(zag.KeywordId, "CONST")) arr[@intFromEnum(zag.KeywordId.CONST)] = 62;
+    if (@hasField(zag.KeywordId, "ZIG")) arr[@intFromEnum(zag.KeywordId.ZIG)] = 63;
+    if (@hasField(zag.KeywordId, "STRING_SQ")) arr[@intFromEnum(zag.KeywordId.STRING_SQ)] = 64;
+    if (@hasField(zag.KeywordId, "STRING_DQ")) arr[@intFromEnum(zag.KeywordId.STRING_DQ)] = 65;
+    if (@hasField(zag.KeywordId, "PUB")) arr[@intFromEnum(zag.KeywordId.PUB)] = 66;
+    if (@hasField(zag.KeywordId, "EXPORT")) arr[@intFromEnum(zag.KeywordId.EXPORT)] = 67;
+    if (@hasField(zag.KeywordId, "PACKED")) arr[@intFromEnum(zag.KeywordId.PACKED)] = 68;
+    if (@hasField(zag.KeywordId, "CALLCONV")) arr[@intFromEnum(zag.KeywordId.CALLCONV)] = 69;
+    if (@hasField(zag.KeywordId, "INDENT")) arr[@intFromEnum(zag.KeywordId.INDENT)] = 70;
+    if (@hasField(zag.KeywordId, "OUTDENT")) arr[@intFromEnum(zag.KeywordId.OUTDENT)] = 71;
+    if (@hasField(zag.KeywordId, "FUN")) arr[@intFromEnum(zag.KeywordId.FUN)] = 72;
+    if (@hasField(zag.KeywordId, "SUB")) arr[@intFromEnum(zag.KeywordId.SUB)] = 73;
+    if (@hasField(zag.KeywordId, "USE")) arr[@intFromEnum(zag.KeywordId.USE)] = 74;
+    if (@hasField(zag.KeywordId, "TYPE")) arr[@intFromEnum(zag.KeywordId.TYPE)] = 75;
+    if (@hasField(zag.KeywordId, "TEST")) arr[@intFromEnum(zag.KeywordId.TEST)] = 77;
+    if (@hasField(zag.KeywordId, "OPAQUE")) arr[@intFromEnum(zag.KeywordId.OPAQUE)] = 78;
+    if (@hasField(zag.KeywordId, "ENUM")) arr[@intFromEnum(zag.KeywordId.ENUM)] = 79;
+    if (@hasField(zag.KeywordId, "ERROR")) arr[@intFromEnum(zag.KeywordId.ERROR)] = 80;
+    if (@hasField(zag.KeywordId, "STRUCT")) arr[@intFromEnum(zag.KeywordId.STRUCT)] = 81;
+    if (@hasField(zag.KeywordId, "COMPTIME")) arr[@intFromEnum(zag.KeywordId.COMPTIME)] = 82;
+    if (@hasField(zag.KeywordId, "ALIGN")) arr[@intFromEnum(zag.KeywordId.ALIGN)] = 83;
+    if (@hasField(zag.KeywordId, "VOLATILE")) arr[@intFromEnum(zag.KeywordId.VOLATILE)] = 91;
+    if (@hasField(zag.KeywordId, "INTEGER")) arr[@intFromEnum(zag.KeywordId.INTEGER)] = 94;
+    if (@hasField(zag.KeywordId, "FN")) arr[@intFromEnum(zag.KeywordId.FN)] = 95;
+    if (@hasField(zag.KeywordId, "AS")) arr[@intFromEnum(zag.KeywordId.AS)] = 101;
+    if (@hasField(zag.KeywordId, "BAR_CAPTURE")) arr[@intFromEnum(zag.KeywordId.BAR_CAPTURE)] = 102;
+    if (@hasField(zag.KeywordId, "IF")) arr[@intFromEnum(zag.KeywordId.IF)] = 103;
+    if (@hasField(zag.KeywordId, "ELSE")) arr[@intFromEnum(zag.KeywordId.ELSE)] = 104;
+    if (@hasField(zag.KeywordId, "WHILE")) arr[@intFromEnum(zag.KeywordId.WHILE)] = 105;
+    if (@hasField(zag.KeywordId, "FOR")) arr[@intFromEnum(zag.KeywordId.FOR)] = 106;
+    if (@hasField(zag.KeywordId, "IN")) arr[@intFromEnum(zag.KeywordId.IN)] = 107;
+    if (@hasField(zag.KeywordId, "MATCH")) arr[@intFromEnum(zag.KeywordId.MATCH)] = 108;
+    if (@hasField(zag.KeywordId, "TERNARY_IF")) arr[@intFromEnum(zag.KeywordId.TERNARY_IF)] = 112;
+    if (@hasField(zag.KeywordId, "CATCH")) arr[@intFromEnum(zag.KeywordId.CATCH)] = 114;
+    if (@hasField(zag.KeywordId, "RETURN")) arr[@intFromEnum(zag.KeywordId.RETURN)] = 115;
+    if (@hasField(zag.KeywordId, "POST_IF")) arr[@intFromEnum(zag.KeywordId.POST_IF)] = 116;
+    if (@hasField(zag.KeywordId, "BREAK")) arr[@intFromEnum(zag.KeywordId.BREAK)] = 117;
+    if (@hasField(zag.KeywordId, "CONTINUE")) arr[@intFromEnum(zag.KeywordId.CONTINUE)] = 118;
+    if (@hasField(zag.KeywordId, "DEFER")) arr[@intFromEnum(zag.KeywordId.DEFER)] = 119;
+    if (@hasField(zag.KeywordId, "ERRDEFER")) arr[@intFromEnum(zag.KeywordId.ERRDEFER)] = 120;
+    if (@hasField(zag.KeywordId, "INLINE")) arr[@intFromEnum(zag.KeywordId.INLINE)] = 121;
+    if (@hasField(zag.KeywordId, "MINUS_PREFIX")) arr[@intFromEnum(zag.KeywordId.MINUS_PREFIX)] = 127;
+    if (@hasField(zag.KeywordId, "TRY")) arr[@intFromEnum(zag.KeywordId.TRY)] = 128;
+    if (@hasField(zag.KeywordId, "REAL")) arr[@intFromEnum(zag.KeywordId.REAL)] = 135;
+    if (@hasField(zag.KeywordId, "TRUE")) arr[@intFromEnum(zag.KeywordId.TRUE)] = 136;
+    if (@hasField(zag.KeywordId, "FALSE")) arr[@intFromEnum(zag.KeywordId.FALSE)] = 137;
+    if (@hasField(zag.KeywordId, "NULL")) arr[@intFromEnum(zag.KeywordId.NULL)] = 138;
+    if (@hasField(zag.KeywordId, "UNREACHABLE")) arr[@intFromEnum(zag.KeywordId.UNREACHABLE)] = 139;
+    if (@hasField(zag.KeywordId, "UNDEFINED")) arr[@intFromEnum(zag.KeywordId.UNDEFINED)] = 140;
+    if (@hasField(zag.KeywordId, "DOT_LBRACE")) arr[@intFromEnum(zag.KeywordId.DOT_LBRACE)] = 142;
+    break :blk arr;
+};
+const keywordFallbackSymbol: u16 = 0;
 
 const ruleLhs = [_]u16{ 3, 4, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 17, 18, 19, 20, 21, 21, 21, 22, 22, 22, 22, 23, 23, 23, 23, 23, 85, 86, 86, 24, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 97, 98, 98, 26, 26, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 27, 27, 27, 28, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30, 30, 30, 30, 30, 30, 30, 31, 32, 32, 32, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 37, 38, 38, 39, 39, 39, 39, 40, 40, 40, 40, 40, 40, 41, 41, 41, 41, 42, 42, 43, 43, 44, 45, 46, 46, 46, 46, 46, 46, 47, 47, 48, 48, 48, 48, 48, 48, 49, 49, 49, 131, 132, 132, 49, 49, 49, 133, 134, 134, 50, 50, 51, 51, 52, 52, 52, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 143, 144, 144, 53, 53, 53, 147, 148, 148, 54, 55, 56, 57, 57, 150, 152, 153, 153, 154, 154, 155, 155, 156, 156, 157, 157, 158, 158, 159, 159, 159, 159, 159, 159, 159, 160, 160, 161, 161, 161, 162, 162, 162, 163, 163, 163, 163, 164, 164, 100 };
 const ruleLen = [_]u8{ 2, 2, 1, 3, 2, 1, 1, 1, 1, 3, 1, 5, 4, 2, 2, 1, 2, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 5, 4, 4, 3, 4, 3, 2, 4, 3, 2, 5, 5, 5, 1, 3, 2, 1, 3, 1, 1, 4, 1, 3, 5, 5, 2, 3, 0, 1, 2, 1, 2, 2, 2, 3, 3, 3, 5, 4, 4, 6, 2, 3, 0, 5, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4, 7, 7, 5, 5, 3, 5, 7, 3, 5, 8, 10, 7, 9, 6, 8, 5, 7, 5, 1, 3, 2, 1, 2, 1, 3, 5, 4, 3, 2, 5, 3, 5, 3, 5, 3, 4, 3, 2, 1, 5, 4, 3, 3, 2, 1, 5, 3, 3, 1, 2, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 3, 5, 3, 2, 2, 2, 2, 2, 1, 3, 3, 4, 2, 3, 0, 2, 4, 1, 2, 3, 0, 1, 0, 5, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 1, 1, 3, 3, 2, 3, 0, 3, 3, 2, 2, 3, 0, 4, 3, 4, 3, 2, 2, 2, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 1 };

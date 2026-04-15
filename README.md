@@ -172,6 +172,31 @@ tokens
 
 Generates a `TokenCat` enum in the output.
 
+#### Token Classification Rule
+
+Every terminal symbol in the grammar is classified as either **direct** or
+**promoted**, which determines how the parser maps incoming tokens:
+
+- **Direct tokens** get a `tokenToSymbol` entry — the parser maps the token
+  category directly to a parser symbol. The lexer or rewriter emits these
+  with their own `TokenCat` value.
+
+- **Promoted tokens** go through the `@as` keyword promotion system — they
+  arrive as `ident` and the parser promotes them based on text and state.
+
+**The rule is simple: if you declare a token in the `tokens` block, the
+parser will expect the lexer/rewriter to emit it directly. If you don't
+declare it, the parser will expect it to arrive through `@as` promotion.**
+
+This means:
+- Rewriter-classified tokens (like `if_mod`, `then_sep`, `do_block`) must
+  be declared in `tokens` even though they have no lexer regex rule.
+- Keywords that exist only as grammar nonterminals (like `if`, `else`, `fn`
+  in languages using `@as ident = [keyword]`) should NOT be in `tokens`.
+
+If a terminal has no `tokens` declaration and no `@as` promotion path, it
+will be unreachable and should be treated as a grammar error.
+
 ### Token Structure
 
 The generated lexer produces 8-byte tokens:

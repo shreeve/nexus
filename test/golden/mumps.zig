@@ -1274,25 +1274,25 @@ pub const Parser = struct {
     fn identToSymbol(self: *Parser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
         if (text.len == 0) return symIdent;
-        if (self.tryIdentAs(token, text)) |sym| return sym;
-        if (self.tryIdentAs(token, text)) |sym| return sym;
-        if (self.tryIdentAs(token, text)) |sym| return sym;
-        if (self.tryIdentAs(token, text)) |sym| return sym;
-        if (self.tryIdentAs(token, text)) |sym| return sym;
+        if (self.tryIdentAsFn(token, text)) |sym| return sym;
+        if (self.tryIdentAsIsv(token, text)) |sym| return sym;
+        if (self.tryIdentAsSsvn(token, text)) |sym| return sym;
+        if (getAction(self.stateStack.getLast(), symIdent) != 0) return symIdent;
+        if (self.tryIdentAsCmd(token, text)) |sym| return sym;
         return symIdent;
     }
 
-    fn tryIdentAs(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsFn(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
         const state = self.stateStack.getLast();
-        if (mumps.As(text)) |id| {
+        if (mumps.fnAs(text)) |id| {
             const idIdx = @intFromEnum(id);
-            const sym = ToSymbol[idIdx];
+            const sym = fnToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = FallbackSymbol;
+            const fallback = fnFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
@@ -1301,17 +1301,17 @@ pub const Parser = struct {
         return null;
     }
 
-    fn tryIdentAs(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsIsv(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
         const state = self.stateStack.getLast();
-        if (mumps.As(text)) |id| {
+        if (mumps.isvAs(text)) |id| {
             const idIdx = @intFromEnum(id);
-            const sym = ToSymbol[idIdx];
+            const sym = isvToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = FallbackSymbol;
+            const fallback = isvFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
@@ -1320,17 +1320,17 @@ pub const Parser = struct {
         return null;
     }
 
-    fn tryIdentAs(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsSsvn(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
         const state = self.stateStack.getLast();
-        if (mumps.As(text)) |id| {
+        if (mumps.ssvnAs(text)) |id| {
             const idIdx = @intFromEnum(id);
-            const sym = ToSymbol[idIdx];
+            const sym = ssvnToSymbol[idIdx];
             if (sym != 0 and getAction(state, sym) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = FallbackSymbol;
+            const fallback = ssvnFallbackSymbol;
             if (fallback != 0 and getAction(state, fallback) > 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
@@ -1339,37 +1339,18 @@ pub const Parser = struct {
         return null;
     }
 
-    fn tryIdentAs(self: *Parser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsCmd(self: *Parser, token: Token, text: []const u8) ?u16 {
         _ = token;
         const state = self.stateStack.getLast();
-        if (mumps.As(text)) |id| {
+        if (mumps.cmdAs(text)) |id| {
             const idIdx = @intFromEnum(id);
-            const sym = ToSymbol[idIdx];
-            if (sym != 0 and getAction(state, sym) > 0) {
+            const sym = cmdToSymbol[idIdx];
+            if (sym != 0 and getAction(state, sym) != 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = FallbackSymbol;
-            if (fallback != 0 and getAction(state, fallback) > 0) {
-                self.lastMatchedId = @intCast(idIdx);
-                return fallback;
-            }
-        }
-        return null;
-    }
-
-    fn tryIdentAs(self: *Parser, token: Token, text: []const u8) ?u16 {
-        _ = token;
-        const state = self.stateStack.getLast();
-        if (mumps.As(text)) |id| {
-            const idIdx = @intFromEnum(id);
-            const sym = ToSymbol[idIdx];
-            if (sym != 0 and getAction(state, sym) > 0) {
-                self.lastMatchedId = @intCast(idIdx);
-                return sym;
-            }
-            const fallback = FallbackSymbol;
-            if (fallback != 0 and getAction(state, fallback) > 0) {
+            const fallback = cmdFallbackSymbol;
+            if (fallback != 0 and getAction(state, fallback) != 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
@@ -1412,290 +1393,242 @@ const SYM_gotoarg: u16 = 8;
 const SYM_gotoarg_START: u16 = 257;
 const symIdent: u16 = 109;
 
-// Mapping from mumps.Id to grammar symbol IDs (computed at comptime)
-const ToSymbol = blk: {
+// Mapping from mumps.FnId to grammar symbol IDs (computed at comptime)
+const fnToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.Id, "IDENT")) arr[@intFromEnum(mumps.Id.IDENT)] = 109;
-    if (@hasField(mumps.Id, "INTEGER")) arr[@intFromEnum(mumps.Id.INTEGER)] = 110;
-    if (@hasField(mumps.Id, "ZDIGITS")) arr[@intFromEnum(mumps.Id.ZDIGITS)] = 111;
-    if (@hasField(mumps.Id, "NEWLINE")) arr[@intFromEnum(mumps.Id.NEWLINE)] = 114;
-    if (@hasField(mumps.Id, "INDENT")) arr[@intFromEnum(mumps.Id.INDENT)] = 117;
-    if (@hasField(mumps.Id, "SET")) arr[@intFromEnum(mumps.Id.SET)] = 124;
-    if (@hasField(mumps.Id, "NEW")) arr[@intFromEnum(mumps.Id.NEW)] = 135;
-    if (@hasField(mumps.Id, "MERGE")) arr[@intFromEnum(mumps.Id.MERGE)] = 138;
-    if (@hasField(mumps.Id, "KILL")) arr[@intFromEnum(mumps.Id.KILL)] = 141;
-    if (@hasField(mumps.Id, "IF")) arr[@intFromEnum(mumps.Id.IF)] = 142;
-    if (@hasField(mumps.Id, "ELSE")) arr[@intFromEnum(mumps.Id.ELSE)] = 143;
-    if (@hasField(mumps.Id, "FOR")) arr[@intFromEnum(mumps.Id.FOR)] = 144;
-    if (@hasField(mumps.Id, "DO")) arr[@intFromEnum(mumps.Id.DO)] = 147;
-    if (@hasField(mumps.Id, "GOTO")) arr[@intFromEnum(mumps.Id.GOTO)] = 148;
-    if (@hasField(mumps.Id, "QUIT")) arr[@intFromEnum(mumps.Id.QUIT)] = 153;
-    if (@hasField(mumps.Id, "BREAK")) arr[@intFromEnum(mumps.Id.BREAK)] = 154;
-    if (@hasField(mumps.Id, "HANG")) arr[@intFromEnum(mumps.Id.HANG)] = 155;
-    if (@hasField(mumps.Id, "HALT")) arr[@intFromEnum(mumps.Id.HALT)] = 156;
-    if (@hasField(mumps.Id, "JOB")) arr[@intFromEnum(mumps.Id.JOB)] = 157;
-    if (@hasField(mumps.Id, "XECUTE")) arr[@intFromEnum(mumps.Id.XECUTE)] = 161;
-    if (@hasField(mumps.Id, "VIEW")) arr[@intFromEnum(mumps.Id.VIEW)] = 164;
-    if (@hasField(mumps.Id, "OPEN")) arr[@intFromEnum(mumps.Id.OPEN)] = 167;
-    if (@hasField(mumps.Id, "USE")) arr[@intFromEnum(mumps.Id.USE)] = 170;
-    if (@hasField(mumps.Id, "READ")) arr[@intFromEnum(mumps.Id.READ)] = 173;
-    if (@hasField(mumps.Id, "X")) arr[@intFromEnum(mumps.Id.X)] = 178;
-    if (@hasField(mumps.Id, "STRING")) arr[@intFromEnum(mumps.Id.STRING)] = 180;
-    if (@hasField(mumps.Id, "WRITE")) arr[@intFromEnum(mumps.Id.WRITE)] = 181;
-    if (@hasField(mumps.Id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.Id.EXCLAIM_WS)] = 183;
-    if (@hasField(mumps.Id, "HASH_WS")) arr[@intFromEnum(mumps.Id.HASH_WS)] = 184;
-    if (@hasField(mumps.Id, "PATEND")) arr[@intFromEnum(mumps.Id.PATEND)] = 186;
-    if (@hasField(mumps.Id, "QUESAT")) arr[@intFromEnum(mumps.Id.QUESAT)] = 190;
-    if (@hasField(mumps.Id, "CLOSE")) arr[@intFromEnum(mumps.Id.CLOSE)] = 191;
-    if (@hasField(mumps.Id, "LOCK")) arr[@intFromEnum(mumps.Id.LOCK)] = 192;
-    if (@hasField(mumps.Id, "TSTART")) arr[@intFromEnum(mumps.Id.TSTART)] = 196;
-    if (@hasField(mumps.Id, "COLON_WS")) arr[@intFromEnum(mumps.Id.COLON_WS)] = 197;
-    if (@hasField(mumps.Id, "TCOMMIT")) arr[@intFromEnum(mumps.Id.TCOMMIT)] = 200;
-    if (@hasField(mumps.Id, "TROLLBACK")) arr[@intFromEnum(mumps.Id.TROLLBACK)] = 201;
-    if (@hasField(mumps.Id, "TRESTART")) arr[@intFromEnum(mumps.Id.TRESTART)] = 202;
-    if (@hasField(mumps.Id, "ZWRITE")) arr[@intFromEnum(mumps.Id.ZWRITE)] = 203;
-    if (@hasField(mumps.Id, "ZBREAK")) arr[@intFromEnum(mumps.Id.ZBREAK)] = 204;
-    if (@hasField(mumps.Id, "ZHALT")) arr[@intFromEnum(mumps.Id.ZHALT)] = 205;
-    if (@hasField(mumps.Id, "ZKILL")) arr[@intFromEnum(mumps.Id.ZKILL)] = 206;
-    if (@hasField(mumps.Id, "SSVN")) arr[@intFromEnum(mumps.Id.SSVN)] = 239;
-    if (@hasField(mumps.Id, "REAL")) arr[@intFromEnum(mumps.Id.REAL)] = 240;
-    if (@hasField(mumps.Id, "TEXT")) arr[@intFromEnum(mumps.Id.TEXT)] = 241;
-    if (@hasField(mumps.Id, "SELECT")) arr[@intFromEnum(mumps.Id.SELECT)] = 242;
-    if (@hasField(mumps.Id, "JUSTIFY")) arr[@intFromEnum(mumps.Id.JUSTIFY)] = 243;
-    if (@hasField(mumps.Id, "INCREMENT")) arr[@intFromEnum(mumps.Id.INCREMENT)] = 244;
-    if (@hasField(mumps.Id, "FN")) arr[@intFromEnum(mumps.Id.FN)] = 245;
-    if (@hasField(mumps.Id, "ISV")) arr[@intFromEnum(mumps.Id.ISV)] = 246;
+    if (@hasField(mumps.FnId, "IDENT")) arr[@intFromEnum(mumps.FnId.IDENT)] = 109;
+    if (@hasField(mumps.FnId, "INTEGER")) arr[@intFromEnum(mumps.FnId.INTEGER)] = 110;
+    if (@hasField(mumps.FnId, "ZDIGITS")) arr[@intFromEnum(mumps.FnId.ZDIGITS)] = 111;
+    if (@hasField(mumps.FnId, "NEWLINE")) arr[@intFromEnum(mumps.FnId.NEWLINE)] = 114;
+    if (@hasField(mumps.FnId, "INDENT")) arr[@intFromEnum(mumps.FnId.INDENT)] = 117;
+    if (@hasField(mumps.FnId, "SET")) arr[@intFromEnum(mumps.FnId.SET)] = 124;
+    if (@hasField(mumps.FnId, "NEW")) arr[@intFromEnum(mumps.FnId.NEW)] = 135;
+    if (@hasField(mumps.FnId, "MERGE")) arr[@intFromEnum(mumps.FnId.MERGE)] = 138;
+    if (@hasField(mumps.FnId, "KILL")) arr[@intFromEnum(mumps.FnId.KILL)] = 141;
+    if (@hasField(mumps.FnId, "IF")) arr[@intFromEnum(mumps.FnId.IF)] = 142;
+    if (@hasField(mumps.FnId, "ELSE")) arr[@intFromEnum(mumps.FnId.ELSE)] = 143;
+    if (@hasField(mumps.FnId, "FOR")) arr[@intFromEnum(mumps.FnId.FOR)] = 144;
+    if (@hasField(mumps.FnId, "DO")) arr[@intFromEnum(mumps.FnId.DO)] = 147;
+    if (@hasField(mumps.FnId, "GOTO")) arr[@intFromEnum(mumps.FnId.GOTO)] = 148;
+    if (@hasField(mumps.FnId, "QUIT")) arr[@intFromEnum(mumps.FnId.QUIT)] = 153;
+    if (@hasField(mumps.FnId, "BREAK")) arr[@intFromEnum(mumps.FnId.BREAK)] = 154;
+    if (@hasField(mumps.FnId, "HANG")) arr[@intFromEnum(mumps.FnId.HANG)] = 155;
+    if (@hasField(mumps.FnId, "HALT")) arr[@intFromEnum(mumps.FnId.HALT)] = 156;
+    if (@hasField(mumps.FnId, "JOB")) arr[@intFromEnum(mumps.FnId.JOB)] = 157;
+    if (@hasField(mumps.FnId, "XECUTE")) arr[@intFromEnum(mumps.FnId.XECUTE)] = 161;
+    if (@hasField(mumps.FnId, "VIEW")) arr[@intFromEnum(mumps.FnId.VIEW)] = 164;
+    if (@hasField(mumps.FnId, "OPEN")) arr[@intFromEnum(mumps.FnId.OPEN)] = 167;
+    if (@hasField(mumps.FnId, "USE")) arr[@intFromEnum(mumps.FnId.USE)] = 170;
+    if (@hasField(mumps.FnId, "READ")) arr[@intFromEnum(mumps.FnId.READ)] = 173;
+    if (@hasField(mumps.FnId, "X")) arr[@intFromEnum(mumps.FnId.X)] = 178;
+    if (@hasField(mumps.FnId, "STRING")) arr[@intFromEnum(mumps.FnId.STRING)] = 180;
+    if (@hasField(mumps.FnId, "WRITE")) arr[@intFromEnum(mumps.FnId.WRITE)] = 181;
+    if (@hasField(mumps.FnId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.FnId.EXCLAIM_WS)] = 183;
+    if (@hasField(mumps.FnId, "HASH_WS")) arr[@intFromEnum(mumps.FnId.HASH_WS)] = 184;
+    if (@hasField(mumps.FnId, "PATEND")) arr[@intFromEnum(mumps.FnId.PATEND)] = 186;
+    if (@hasField(mumps.FnId, "QUESAT")) arr[@intFromEnum(mumps.FnId.QUESAT)] = 190;
+    if (@hasField(mumps.FnId, "CLOSE")) arr[@intFromEnum(mumps.FnId.CLOSE)] = 191;
+    if (@hasField(mumps.FnId, "LOCK")) arr[@intFromEnum(mumps.FnId.LOCK)] = 192;
+    if (@hasField(mumps.FnId, "TSTART")) arr[@intFromEnum(mumps.FnId.TSTART)] = 196;
+    if (@hasField(mumps.FnId, "COLON_WS")) arr[@intFromEnum(mumps.FnId.COLON_WS)] = 197;
+    if (@hasField(mumps.FnId, "TCOMMIT")) arr[@intFromEnum(mumps.FnId.TCOMMIT)] = 200;
+    if (@hasField(mumps.FnId, "TROLLBACK")) arr[@intFromEnum(mumps.FnId.TROLLBACK)] = 201;
+    if (@hasField(mumps.FnId, "TRESTART")) arr[@intFromEnum(mumps.FnId.TRESTART)] = 202;
+    if (@hasField(mumps.FnId, "ZWRITE")) arr[@intFromEnum(mumps.FnId.ZWRITE)] = 203;
+    if (@hasField(mumps.FnId, "ZBREAK")) arr[@intFromEnum(mumps.FnId.ZBREAK)] = 204;
+    if (@hasField(mumps.FnId, "ZHALT")) arr[@intFromEnum(mumps.FnId.ZHALT)] = 205;
+    if (@hasField(mumps.FnId, "ZKILL")) arr[@intFromEnum(mumps.FnId.ZKILL)] = 206;
+    if (@hasField(mumps.FnId, "SSVN")) arr[@intFromEnum(mumps.FnId.SSVN)] = 239;
+    if (@hasField(mumps.FnId, "REAL")) arr[@intFromEnum(mumps.FnId.REAL)] = 240;
+    if (@hasField(mumps.FnId, "TEXT")) arr[@intFromEnum(mumps.FnId.TEXT)] = 241;
+    if (@hasField(mumps.FnId, "SELECT")) arr[@intFromEnum(mumps.FnId.SELECT)] = 242;
+    if (@hasField(mumps.FnId, "JUSTIFY")) arr[@intFromEnum(mumps.FnId.JUSTIFY)] = 243;
+    if (@hasField(mumps.FnId, "INCREMENT")) arr[@intFromEnum(mumps.FnId.INCREMENT)] = 244;
+    if (@hasField(mumps.FnId, "FN")) arr[@intFromEnum(mumps.FnId.FN)] = 245;
+    if (@hasField(mumps.FnId, "ISV")) arr[@intFromEnum(mumps.FnId.ISV)] = 246;
+    for (@typeInfo(mumps.FnId).@"enum".fields) |field| {
+        if (arr[field.value] == 0) arr[field.value] = 245;
+    }
     break :blk arr;
 };
-const FallbackSymbol: u16 = 0;
+const fnFallbackSymbol: u16 = 245;
 
-// Mapping from mumps.Id to grammar symbol IDs (computed at comptime)
-const ToSymbol = blk: {
+// Mapping from mumps.IsvId to grammar symbol IDs (computed at comptime)
+const isvToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.Id, "IDENT")) arr[@intFromEnum(mumps.Id.IDENT)] = 109;
-    if (@hasField(mumps.Id, "INTEGER")) arr[@intFromEnum(mumps.Id.INTEGER)] = 110;
-    if (@hasField(mumps.Id, "ZDIGITS")) arr[@intFromEnum(mumps.Id.ZDIGITS)] = 111;
-    if (@hasField(mumps.Id, "NEWLINE")) arr[@intFromEnum(mumps.Id.NEWLINE)] = 114;
-    if (@hasField(mumps.Id, "INDENT")) arr[@intFromEnum(mumps.Id.INDENT)] = 117;
-    if (@hasField(mumps.Id, "SET")) arr[@intFromEnum(mumps.Id.SET)] = 124;
-    if (@hasField(mumps.Id, "NEW")) arr[@intFromEnum(mumps.Id.NEW)] = 135;
-    if (@hasField(mumps.Id, "MERGE")) arr[@intFromEnum(mumps.Id.MERGE)] = 138;
-    if (@hasField(mumps.Id, "KILL")) arr[@intFromEnum(mumps.Id.KILL)] = 141;
-    if (@hasField(mumps.Id, "IF")) arr[@intFromEnum(mumps.Id.IF)] = 142;
-    if (@hasField(mumps.Id, "ELSE")) arr[@intFromEnum(mumps.Id.ELSE)] = 143;
-    if (@hasField(mumps.Id, "FOR")) arr[@intFromEnum(mumps.Id.FOR)] = 144;
-    if (@hasField(mumps.Id, "DO")) arr[@intFromEnum(mumps.Id.DO)] = 147;
-    if (@hasField(mumps.Id, "GOTO")) arr[@intFromEnum(mumps.Id.GOTO)] = 148;
-    if (@hasField(mumps.Id, "QUIT")) arr[@intFromEnum(mumps.Id.QUIT)] = 153;
-    if (@hasField(mumps.Id, "BREAK")) arr[@intFromEnum(mumps.Id.BREAK)] = 154;
-    if (@hasField(mumps.Id, "HANG")) arr[@intFromEnum(mumps.Id.HANG)] = 155;
-    if (@hasField(mumps.Id, "HALT")) arr[@intFromEnum(mumps.Id.HALT)] = 156;
-    if (@hasField(mumps.Id, "JOB")) arr[@intFromEnum(mumps.Id.JOB)] = 157;
-    if (@hasField(mumps.Id, "XECUTE")) arr[@intFromEnum(mumps.Id.XECUTE)] = 161;
-    if (@hasField(mumps.Id, "VIEW")) arr[@intFromEnum(mumps.Id.VIEW)] = 164;
-    if (@hasField(mumps.Id, "OPEN")) arr[@intFromEnum(mumps.Id.OPEN)] = 167;
-    if (@hasField(mumps.Id, "USE")) arr[@intFromEnum(mumps.Id.USE)] = 170;
-    if (@hasField(mumps.Id, "READ")) arr[@intFromEnum(mumps.Id.READ)] = 173;
-    if (@hasField(mumps.Id, "X")) arr[@intFromEnum(mumps.Id.X)] = 178;
-    if (@hasField(mumps.Id, "STRING")) arr[@intFromEnum(mumps.Id.STRING)] = 180;
-    if (@hasField(mumps.Id, "WRITE")) arr[@intFromEnum(mumps.Id.WRITE)] = 181;
-    if (@hasField(mumps.Id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.Id.EXCLAIM_WS)] = 183;
-    if (@hasField(mumps.Id, "HASH_WS")) arr[@intFromEnum(mumps.Id.HASH_WS)] = 184;
-    if (@hasField(mumps.Id, "PATEND")) arr[@intFromEnum(mumps.Id.PATEND)] = 186;
-    if (@hasField(mumps.Id, "QUESAT")) arr[@intFromEnum(mumps.Id.QUESAT)] = 190;
-    if (@hasField(mumps.Id, "CLOSE")) arr[@intFromEnum(mumps.Id.CLOSE)] = 191;
-    if (@hasField(mumps.Id, "LOCK")) arr[@intFromEnum(mumps.Id.LOCK)] = 192;
-    if (@hasField(mumps.Id, "TSTART")) arr[@intFromEnum(mumps.Id.TSTART)] = 196;
-    if (@hasField(mumps.Id, "COLON_WS")) arr[@intFromEnum(mumps.Id.COLON_WS)] = 197;
-    if (@hasField(mumps.Id, "TCOMMIT")) arr[@intFromEnum(mumps.Id.TCOMMIT)] = 200;
-    if (@hasField(mumps.Id, "TROLLBACK")) arr[@intFromEnum(mumps.Id.TROLLBACK)] = 201;
-    if (@hasField(mumps.Id, "TRESTART")) arr[@intFromEnum(mumps.Id.TRESTART)] = 202;
-    if (@hasField(mumps.Id, "ZWRITE")) arr[@intFromEnum(mumps.Id.ZWRITE)] = 203;
-    if (@hasField(mumps.Id, "ZBREAK")) arr[@intFromEnum(mumps.Id.ZBREAK)] = 204;
-    if (@hasField(mumps.Id, "ZHALT")) arr[@intFromEnum(mumps.Id.ZHALT)] = 205;
-    if (@hasField(mumps.Id, "ZKILL")) arr[@intFromEnum(mumps.Id.ZKILL)] = 206;
-    if (@hasField(mumps.Id, "SSVN")) arr[@intFromEnum(mumps.Id.SSVN)] = 239;
-    if (@hasField(mumps.Id, "REAL")) arr[@intFromEnum(mumps.Id.REAL)] = 240;
-    if (@hasField(mumps.Id, "TEXT")) arr[@intFromEnum(mumps.Id.TEXT)] = 241;
-    if (@hasField(mumps.Id, "SELECT")) arr[@intFromEnum(mumps.Id.SELECT)] = 242;
-    if (@hasField(mumps.Id, "JUSTIFY")) arr[@intFromEnum(mumps.Id.JUSTIFY)] = 243;
-    if (@hasField(mumps.Id, "INCREMENT")) arr[@intFromEnum(mumps.Id.INCREMENT)] = 244;
-    if (@hasField(mumps.Id, "FN")) arr[@intFromEnum(mumps.Id.FN)] = 245;
-    if (@hasField(mumps.Id, "ISV")) arr[@intFromEnum(mumps.Id.ISV)] = 246;
+    if (@hasField(mumps.IsvId, "IDENT")) arr[@intFromEnum(mumps.IsvId.IDENT)] = 109;
+    if (@hasField(mumps.IsvId, "INTEGER")) arr[@intFromEnum(mumps.IsvId.INTEGER)] = 110;
+    if (@hasField(mumps.IsvId, "ZDIGITS")) arr[@intFromEnum(mumps.IsvId.ZDIGITS)] = 111;
+    if (@hasField(mumps.IsvId, "NEWLINE")) arr[@intFromEnum(mumps.IsvId.NEWLINE)] = 114;
+    if (@hasField(mumps.IsvId, "INDENT")) arr[@intFromEnum(mumps.IsvId.INDENT)] = 117;
+    if (@hasField(mumps.IsvId, "SET")) arr[@intFromEnum(mumps.IsvId.SET)] = 124;
+    if (@hasField(mumps.IsvId, "NEW")) arr[@intFromEnum(mumps.IsvId.NEW)] = 135;
+    if (@hasField(mumps.IsvId, "MERGE")) arr[@intFromEnum(mumps.IsvId.MERGE)] = 138;
+    if (@hasField(mumps.IsvId, "KILL")) arr[@intFromEnum(mumps.IsvId.KILL)] = 141;
+    if (@hasField(mumps.IsvId, "IF")) arr[@intFromEnum(mumps.IsvId.IF)] = 142;
+    if (@hasField(mumps.IsvId, "ELSE")) arr[@intFromEnum(mumps.IsvId.ELSE)] = 143;
+    if (@hasField(mumps.IsvId, "FOR")) arr[@intFromEnum(mumps.IsvId.FOR)] = 144;
+    if (@hasField(mumps.IsvId, "DO")) arr[@intFromEnum(mumps.IsvId.DO)] = 147;
+    if (@hasField(mumps.IsvId, "GOTO")) arr[@intFromEnum(mumps.IsvId.GOTO)] = 148;
+    if (@hasField(mumps.IsvId, "QUIT")) arr[@intFromEnum(mumps.IsvId.QUIT)] = 153;
+    if (@hasField(mumps.IsvId, "BREAK")) arr[@intFromEnum(mumps.IsvId.BREAK)] = 154;
+    if (@hasField(mumps.IsvId, "HANG")) arr[@intFromEnum(mumps.IsvId.HANG)] = 155;
+    if (@hasField(mumps.IsvId, "HALT")) arr[@intFromEnum(mumps.IsvId.HALT)] = 156;
+    if (@hasField(mumps.IsvId, "JOB")) arr[@intFromEnum(mumps.IsvId.JOB)] = 157;
+    if (@hasField(mumps.IsvId, "XECUTE")) arr[@intFromEnum(mumps.IsvId.XECUTE)] = 161;
+    if (@hasField(mumps.IsvId, "VIEW")) arr[@intFromEnum(mumps.IsvId.VIEW)] = 164;
+    if (@hasField(mumps.IsvId, "OPEN")) arr[@intFromEnum(mumps.IsvId.OPEN)] = 167;
+    if (@hasField(mumps.IsvId, "USE")) arr[@intFromEnum(mumps.IsvId.USE)] = 170;
+    if (@hasField(mumps.IsvId, "READ")) arr[@intFromEnum(mumps.IsvId.READ)] = 173;
+    if (@hasField(mumps.IsvId, "X")) arr[@intFromEnum(mumps.IsvId.X)] = 178;
+    if (@hasField(mumps.IsvId, "STRING")) arr[@intFromEnum(mumps.IsvId.STRING)] = 180;
+    if (@hasField(mumps.IsvId, "WRITE")) arr[@intFromEnum(mumps.IsvId.WRITE)] = 181;
+    if (@hasField(mumps.IsvId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.IsvId.EXCLAIM_WS)] = 183;
+    if (@hasField(mumps.IsvId, "HASH_WS")) arr[@intFromEnum(mumps.IsvId.HASH_WS)] = 184;
+    if (@hasField(mumps.IsvId, "PATEND")) arr[@intFromEnum(mumps.IsvId.PATEND)] = 186;
+    if (@hasField(mumps.IsvId, "QUESAT")) arr[@intFromEnum(mumps.IsvId.QUESAT)] = 190;
+    if (@hasField(mumps.IsvId, "CLOSE")) arr[@intFromEnum(mumps.IsvId.CLOSE)] = 191;
+    if (@hasField(mumps.IsvId, "LOCK")) arr[@intFromEnum(mumps.IsvId.LOCK)] = 192;
+    if (@hasField(mumps.IsvId, "TSTART")) arr[@intFromEnum(mumps.IsvId.TSTART)] = 196;
+    if (@hasField(mumps.IsvId, "COLON_WS")) arr[@intFromEnum(mumps.IsvId.COLON_WS)] = 197;
+    if (@hasField(mumps.IsvId, "TCOMMIT")) arr[@intFromEnum(mumps.IsvId.TCOMMIT)] = 200;
+    if (@hasField(mumps.IsvId, "TROLLBACK")) arr[@intFromEnum(mumps.IsvId.TROLLBACK)] = 201;
+    if (@hasField(mumps.IsvId, "TRESTART")) arr[@intFromEnum(mumps.IsvId.TRESTART)] = 202;
+    if (@hasField(mumps.IsvId, "ZWRITE")) arr[@intFromEnum(mumps.IsvId.ZWRITE)] = 203;
+    if (@hasField(mumps.IsvId, "ZBREAK")) arr[@intFromEnum(mumps.IsvId.ZBREAK)] = 204;
+    if (@hasField(mumps.IsvId, "ZHALT")) arr[@intFromEnum(mumps.IsvId.ZHALT)] = 205;
+    if (@hasField(mumps.IsvId, "ZKILL")) arr[@intFromEnum(mumps.IsvId.ZKILL)] = 206;
+    if (@hasField(mumps.IsvId, "SSVN")) arr[@intFromEnum(mumps.IsvId.SSVN)] = 239;
+    if (@hasField(mumps.IsvId, "REAL")) arr[@intFromEnum(mumps.IsvId.REAL)] = 240;
+    if (@hasField(mumps.IsvId, "TEXT")) arr[@intFromEnum(mumps.IsvId.TEXT)] = 241;
+    if (@hasField(mumps.IsvId, "SELECT")) arr[@intFromEnum(mumps.IsvId.SELECT)] = 242;
+    if (@hasField(mumps.IsvId, "JUSTIFY")) arr[@intFromEnum(mumps.IsvId.JUSTIFY)] = 243;
+    if (@hasField(mumps.IsvId, "INCREMENT")) arr[@intFromEnum(mumps.IsvId.INCREMENT)] = 244;
+    if (@hasField(mumps.IsvId, "FN")) arr[@intFromEnum(mumps.IsvId.FN)] = 245;
+    if (@hasField(mumps.IsvId, "ISV")) arr[@intFromEnum(mumps.IsvId.ISV)] = 246;
+    for (@typeInfo(mumps.IsvId).@"enum".fields) |field| {
+        if (arr[field.value] == 0) arr[field.value] = 246;
+    }
     break :blk arr;
 };
-const FallbackSymbol: u16 = 0;
+const isvFallbackSymbol: u16 = 246;
 
-// Mapping from mumps.Id to grammar symbol IDs (computed at comptime)
-const ToSymbol = blk: {
+// Mapping from mumps.SsvnId to grammar symbol IDs (computed at comptime)
+const ssvnToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.Id, "IDENT")) arr[@intFromEnum(mumps.Id.IDENT)] = 109;
-    if (@hasField(mumps.Id, "INTEGER")) arr[@intFromEnum(mumps.Id.INTEGER)] = 110;
-    if (@hasField(mumps.Id, "ZDIGITS")) arr[@intFromEnum(mumps.Id.ZDIGITS)] = 111;
-    if (@hasField(mumps.Id, "NEWLINE")) arr[@intFromEnum(mumps.Id.NEWLINE)] = 114;
-    if (@hasField(mumps.Id, "INDENT")) arr[@intFromEnum(mumps.Id.INDENT)] = 117;
-    if (@hasField(mumps.Id, "SET")) arr[@intFromEnum(mumps.Id.SET)] = 124;
-    if (@hasField(mumps.Id, "NEW")) arr[@intFromEnum(mumps.Id.NEW)] = 135;
-    if (@hasField(mumps.Id, "MERGE")) arr[@intFromEnum(mumps.Id.MERGE)] = 138;
-    if (@hasField(mumps.Id, "KILL")) arr[@intFromEnum(mumps.Id.KILL)] = 141;
-    if (@hasField(mumps.Id, "IF")) arr[@intFromEnum(mumps.Id.IF)] = 142;
-    if (@hasField(mumps.Id, "ELSE")) arr[@intFromEnum(mumps.Id.ELSE)] = 143;
-    if (@hasField(mumps.Id, "FOR")) arr[@intFromEnum(mumps.Id.FOR)] = 144;
-    if (@hasField(mumps.Id, "DO")) arr[@intFromEnum(mumps.Id.DO)] = 147;
-    if (@hasField(mumps.Id, "GOTO")) arr[@intFromEnum(mumps.Id.GOTO)] = 148;
-    if (@hasField(mumps.Id, "QUIT")) arr[@intFromEnum(mumps.Id.QUIT)] = 153;
-    if (@hasField(mumps.Id, "BREAK")) arr[@intFromEnum(mumps.Id.BREAK)] = 154;
-    if (@hasField(mumps.Id, "HANG")) arr[@intFromEnum(mumps.Id.HANG)] = 155;
-    if (@hasField(mumps.Id, "HALT")) arr[@intFromEnum(mumps.Id.HALT)] = 156;
-    if (@hasField(mumps.Id, "JOB")) arr[@intFromEnum(mumps.Id.JOB)] = 157;
-    if (@hasField(mumps.Id, "XECUTE")) arr[@intFromEnum(mumps.Id.XECUTE)] = 161;
-    if (@hasField(mumps.Id, "VIEW")) arr[@intFromEnum(mumps.Id.VIEW)] = 164;
-    if (@hasField(mumps.Id, "OPEN")) arr[@intFromEnum(mumps.Id.OPEN)] = 167;
-    if (@hasField(mumps.Id, "USE")) arr[@intFromEnum(mumps.Id.USE)] = 170;
-    if (@hasField(mumps.Id, "READ")) arr[@intFromEnum(mumps.Id.READ)] = 173;
-    if (@hasField(mumps.Id, "X")) arr[@intFromEnum(mumps.Id.X)] = 178;
-    if (@hasField(mumps.Id, "STRING")) arr[@intFromEnum(mumps.Id.STRING)] = 180;
-    if (@hasField(mumps.Id, "WRITE")) arr[@intFromEnum(mumps.Id.WRITE)] = 181;
-    if (@hasField(mumps.Id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.Id.EXCLAIM_WS)] = 183;
-    if (@hasField(mumps.Id, "HASH_WS")) arr[@intFromEnum(mumps.Id.HASH_WS)] = 184;
-    if (@hasField(mumps.Id, "PATEND")) arr[@intFromEnum(mumps.Id.PATEND)] = 186;
-    if (@hasField(mumps.Id, "QUESAT")) arr[@intFromEnum(mumps.Id.QUESAT)] = 190;
-    if (@hasField(mumps.Id, "CLOSE")) arr[@intFromEnum(mumps.Id.CLOSE)] = 191;
-    if (@hasField(mumps.Id, "LOCK")) arr[@intFromEnum(mumps.Id.LOCK)] = 192;
-    if (@hasField(mumps.Id, "TSTART")) arr[@intFromEnum(mumps.Id.TSTART)] = 196;
-    if (@hasField(mumps.Id, "COLON_WS")) arr[@intFromEnum(mumps.Id.COLON_WS)] = 197;
-    if (@hasField(mumps.Id, "TCOMMIT")) arr[@intFromEnum(mumps.Id.TCOMMIT)] = 200;
-    if (@hasField(mumps.Id, "TROLLBACK")) arr[@intFromEnum(mumps.Id.TROLLBACK)] = 201;
-    if (@hasField(mumps.Id, "TRESTART")) arr[@intFromEnum(mumps.Id.TRESTART)] = 202;
-    if (@hasField(mumps.Id, "ZWRITE")) arr[@intFromEnum(mumps.Id.ZWRITE)] = 203;
-    if (@hasField(mumps.Id, "ZBREAK")) arr[@intFromEnum(mumps.Id.ZBREAK)] = 204;
-    if (@hasField(mumps.Id, "ZHALT")) arr[@intFromEnum(mumps.Id.ZHALT)] = 205;
-    if (@hasField(mumps.Id, "ZKILL")) arr[@intFromEnum(mumps.Id.ZKILL)] = 206;
-    if (@hasField(mumps.Id, "SSVN")) arr[@intFromEnum(mumps.Id.SSVN)] = 239;
-    if (@hasField(mumps.Id, "REAL")) arr[@intFromEnum(mumps.Id.REAL)] = 240;
-    if (@hasField(mumps.Id, "TEXT")) arr[@intFromEnum(mumps.Id.TEXT)] = 241;
-    if (@hasField(mumps.Id, "SELECT")) arr[@intFromEnum(mumps.Id.SELECT)] = 242;
-    if (@hasField(mumps.Id, "JUSTIFY")) arr[@intFromEnum(mumps.Id.JUSTIFY)] = 243;
-    if (@hasField(mumps.Id, "INCREMENT")) arr[@intFromEnum(mumps.Id.INCREMENT)] = 244;
-    if (@hasField(mumps.Id, "FN")) arr[@intFromEnum(mumps.Id.FN)] = 245;
-    if (@hasField(mumps.Id, "ISV")) arr[@intFromEnum(mumps.Id.ISV)] = 246;
+    if (@hasField(mumps.SsvnId, "IDENT")) arr[@intFromEnum(mumps.SsvnId.IDENT)] = 109;
+    if (@hasField(mumps.SsvnId, "INTEGER")) arr[@intFromEnum(mumps.SsvnId.INTEGER)] = 110;
+    if (@hasField(mumps.SsvnId, "ZDIGITS")) arr[@intFromEnum(mumps.SsvnId.ZDIGITS)] = 111;
+    if (@hasField(mumps.SsvnId, "NEWLINE")) arr[@intFromEnum(mumps.SsvnId.NEWLINE)] = 114;
+    if (@hasField(mumps.SsvnId, "INDENT")) arr[@intFromEnum(mumps.SsvnId.INDENT)] = 117;
+    if (@hasField(mumps.SsvnId, "SET")) arr[@intFromEnum(mumps.SsvnId.SET)] = 124;
+    if (@hasField(mumps.SsvnId, "NEW")) arr[@intFromEnum(mumps.SsvnId.NEW)] = 135;
+    if (@hasField(mumps.SsvnId, "MERGE")) arr[@intFromEnum(mumps.SsvnId.MERGE)] = 138;
+    if (@hasField(mumps.SsvnId, "KILL")) arr[@intFromEnum(mumps.SsvnId.KILL)] = 141;
+    if (@hasField(mumps.SsvnId, "IF")) arr[@intFromEnum(mumps.SsvnId.IF)] = 142;
+    if (@hasField(mumps.SsvnId, "ELSE")) arr[@intFromEnum(mumps.SsvnId.ELSE)] = 143;
+    if (@hasField(mumps.SsvnId, "FOR")) arr[@intFromEnum(mumps.SsvnId.FOR)] = 144;
+    if (@hasField(mumps.SsvnId, "DO")) arr[@intFromEnum(mumps.SsvnId.DO)] = 147;
+    if (@hasField(mumps.SsvnId, "GOTO")) arr[@intFromEnum(mumps.SsvnId.GOTO)] = 148;
+    if (@hasField(mumps.SsvnId, "QUIT")) arr[@intFromEnum(mumps.SsvnId.QUIT)] = 153;
+    if (@hasField(mumps.SsvnId, "BREAK")) arr[@intFromEnum(mumps.SsvnId.BREAK)] = 154;
+    if (@hasField(mumps.SsvnId, "HANG")) arr[@intFromEnum(mumps.SsvnId.HANG)] = 155;
+    if (@hasField(mumps.SsvnId, "HALT")) arr[@intFromEnum(mumps.SsvnId.HALT)] = 156;
+    if (@hasField(mumps.SsvnId, "JOB")) arr[@intFromEnum(mumps.SsvnId.JOB)] = 157;
+    if (@hasField(mumps.SsvnId, "XECUTE")) arr[@intFromEnum(mumps.SsvnId.XECUTE)] = 161;
+    if (@hasField(mumps.SsvnId, "VIEW")) arr[@intFromEnum(mumps.SsvnId.VIEW)] = 164;
+    if (@hasField(mumps.SsvnId, "OPEN")) arr[@intFromEnum(mumps.SsvnId.OPEN)] = 167;
+    if (@hasField(mumps.SsvnId, "USE")) arr[@intFromEnum(mumps.SsvnId.USE)] = 170;
+    if (@hasField(mumps.SsvnId, "READ")) arr[@intFromEnum(mumps.SsvnId.READ)] = 173;
+    if (@hasField(mumps.SsvnId, "X")) arr[@intFromEnum(mumps.SsvnId.X)] = 178;
+    if (@hasField(mumps.SsvnId, "STRING")) arr[@intFromEnum(mumps.SsvnId.STRING)] = 180;
+    if (@hasField(mumps.SsvnId, "WRITE")) arr[@intFromEnum(mumps.SsvnId.WRITE)] = 181;
+    if (@hasField(mumps.SsvnId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.SsvnId.EXCLAIM_WS)] = 183;
+    if (@hasField(mumps.SsvnId, "HASH_WS")) arr[@intFromEnum(mumps.SsvnId.HASH_WS)] = 184;
+    if (@hasField(mumps.SsvnId, "PATEND")) arr[@intFromEnum(mumps.SsvnId.PATEND)] = 186;
+    if (@hasField(mumps.SsvnId, "QUESAT")) arr[@intFromEnum(mumps.SsvnId.QUESAT)] = 190;
+    if (@hasField(mumps.SsvnId, "CLOSE")) arr[@intFromEnum(mumps.SsvnId.CLOSE)] = 191;
+    if (@hasField(mumps.SsvnId, "LOCK")) arr[@intFromEnum(mumps.SsvnId.LOCK)] = 192;
+    if (@hasField(mumps.SsvnId, "TSTART")) arr[@intFromEnum(mumps.SsvnId.TSTART)] = 196;
+    if (@hasField(mumps.SsvnId, "COLON_WS")) arr[@intFromEnum(mumps.SsvnId.COLON_WS)] = 197;
+    if (@hasField(mumps.SsvnId, "TCOMMIT")) arr[@intFromEnum(mumps.SsvnId.TCOMMIT)] = 200;
+    if (@hasField(mumps.SsvnId, "TROLLBACK")) arr[@intFromEnum(mumps.SsvnId.TROLLBACK)] = 201;
+    if (@hasField(mumps.SsvnId, "TRESTART")) arr[@intFromEnum(mumps.SsvnId.TRESTART)] = 202;
+    if (@hasField(mumps.SsvnId, "ZWRITE")) arr[@intFromEnum(mumps.SsvnId.ZWRITE)] = 203;
+    if (@hasField(mumps.SsvnId, "ZBREAK")) arr[@intFromEnum(mumps.SsvnId.ZBREAK)] = 204;
+    if (@hasField(mumps.SsvnId, "ZHALT")) arr[@intFromEnum(mumps.SsvnId.ZHALT)] = 205;
+    if (@hasField(mumps.SsvnId, "ZKILL")) arr[@intFromEnum(mumps.SsvnId.ZKILL)] = 206;
+    if (@hasField(mumps.SsvnId, "SSVN")) arr[@intFromEnum(mumps.SsvnId.SSVN)] = 239;
+    if (@hasField(mumps.SsvnId, "REAL")) arr[@intFromEnum(mumps.SsvnId.REAL)] = 240;
+    if (@hasField(mumps.SsvnId, "TEXT")) arr[@intFromEnum(mumps.SsvnId.TEXT)] = 241;
+    if (@hasField(mumps.SsvnId, "SELECT")) arr[@intFromEnum(mumps.SsvnId.SELECT)] = 242;
+    if (@hasField(mumps.SsvnId, "JUSTIFY")) arr[@intFromEnum(mumps.SsvnId.JUSTIFY)] = 243;
+    if (@hasField(mumps.SsvnId, "INCREMENT")) arr[@intFromEnum(mumps.SsvnId.INCREMENT)] = 244;
+    if (@hasField(mumps.SsvnId, "FN")) arr[@intFromEnum(mumps.SsvnId.FN)] = 245;
+    if (@hasField(mumps.SsvnId, "ISV")) arr[@intFromEnum(mumps.SsvnId.ISV)] = 246;
+    for (@typeInfo(mumps.SsvnId).@"enum".fields) |field| {
+        if (arr[field.value] == 0) arr[field.value] = 239;
+    }
     break :blk arr;
 };
-const FallbackSymbol: u16 = 0;
+const ssvnFallbackSymbol: u16 = 239;
 
-// Mapping from mumps.Id to grammar symbol IDs (computed at comptime)
-const ToSymbol = blk: {
+// Mapping from mumps.CmdId to grammar symbol IDs (computed at comptime)
+const cmdToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.Id, "IDENT")) arr[@intFromEnum(mumps.Id.IDENT)] = 109;
-    if (@hasField(mumps.Id, "INTEGER")) arr[@intFromEnum(mumps.Id.INTEGER)] = 110;
-    if (@hasField(mumps.Id, "ZDIGITS")) arr[@intFromEnum(mumps.Id.ZDIGITS)] = 111;
-    if (@hasField(mumps.Id, "NEWLINE")) arr[@intFromEnum(mumps.Id.NEWLINE)] = 114;
-    if (@hasField(mumps.Id, "INDENT")) arr[@intFromEnum(mumps.Id.INDENT)] = 117;
-    if (@hasField(mumps.Id, "SET")) arr[@intFromEnum(mumps.Id.SET)] = 124;
-    if (@hasField(mumps.Id, "NEW")) arr[@intFromEnum(mumps.Id.NEW)] = 135;
-    if (@hasField(mumps.Id, "MERGE")) arr[@intFromEnum(mumps.Id.MERGE)] = 138;
-    if (@hasField(mumps.Id, "KILL")) arr[@intFromEnum(mumps.Id.KILL)] = 141;
-    if (@hasField(mumps.Id, "IF")) arr[@intFromEnum(mumps.Id.IF)] = 142;
-    if (@hasField(mumps.Id, "ELSE")) arr[@intFromEnum(mumps.Id.ELSE)] = 143;
-    if (@hasField(mumps.Id, "FOR")) arr[@intFromEnum(mumps.Id.FOR)] = 144;
-    if (@hasField(mumps.Id, "DO")) arr[@intFromEnum(mumps.Id.DO)] = 147;
-    if (@hasField(mumps.Id, "GOTO")) arr[@intFromEnum(mumps.Id.GOTO)] = 148;
-    if (@hasField(mumps.Id, "QUIT")) arr[@intFromEnum(mumps.Id.QUIT)] = 153;
-    if (@hasField(mumps.Id, "BREAK")) arr[@intFromEnum(mumps.Id.BREAK)] = 154;
-    if (@hasField(mumps.Id, "HANG")) arr[@intFromEnum(mumps.Id.HANG)] = 155;
-    if (@hasField(mumps.Id, "HALT")) arr[@intFromEnum(mumps.Id.HALT)] = 156;
-    if (@hasField(mumps.Id, "JOB")) arr[@intFromEnum(mumps.Id.JOB)] = 157;
-    if (@hasField(mumps.Id, "XECUTE")) arr[@intFromEnum(mumps.Id.XECUTE)] = 161;
-    if (@hasField(mumps.Id, "VIEW")) arr[@intFromEnum(mumps.Id.VIEW)] = 164;
-    if (@hasField(mumps.Id, "OPEN")) arr[@intFromEnum(mumps.Id.OPEN)] = 167;
-    if (@hasField(mumps.Id, "USE")) arr[@intFromEnum(mumps.Id.USE)] = 170;
-    if (@hasField(mumps.Id, "READ")) arr[@intFromEnum(mumps.Id.READ)] = 173;
-    if (@hasField(mumps.Id, "X")) arr[@intFromEnum(mumps.Id.X)] = 178;
-    if (@hasField(mumps.Id, "STRING")) arr[@intFromEnum(mumps.Id.STRING)] = 180;
-    if (@hasField(mumps.Id, "WRITE")) arr[@intFromEnum(mumps.Id.WRITE)] = 181;
-    if (@hasField(mumps.Id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.Id.EXCLAIM_WS)] = 183;
-    if (@hasField(mumps.Id, "HASH_WS")) arr[@intFromEnum(mumps.Id.HASH_WS)] = 184;
-    if (@hasField(mumps.Id, "PATEND")) arr[@intFromEnum(mumps.Id.PATEND)] = 186;
-    if (@hasField(mumps.Id, "QUESAT")) arr[@intFromEnum(mumps.Id.QUESAT)] = 190;
-    if (@hasField(mumps.Id, "CLOSE")) arr[@intFromEnum(mumps.Id.CLOSE)] = 191;
-    if (@hasField(mumps.Id, "LOCK")) arr[@intFromEnum(mumps.Id.LOCK)] = 192;
-    if (@hasField(mumps.Id, "TSTART")) arr[@intFromEnum(mumps.Id.TSTART)] = 196;
-    if (@hasField(mumps.Id, "COLON_WS")) arr[@intFromEnum(mumps.Id.COLON_WS)] = 197;
-    if (@hasField(mumps.Id, "TCOMMIT")) arr[@intFromEnum(mumps.Id.TCOMMIT)] = 200;
-    if (@hasField(mumps.Id, "TROLLBACK")) arr[@intFromEnum(mumps.Id.TROLLBACK)] = 201;
-    if (@hasField(mumps.Id, "TRESTART")) arr[@intFromEnum(mumps.Id.TRESTART)] = 202;
-    if (@hasField(mumps.Id, "ZWRITE")) arr[@intFromEnum(mumps.Id.ZWRITE)] = 203;
-    if (@hasField(mumps.Id, "ZBREAK")) arr[@intFromEnum(mumps.Id.ZBREAK)] = 204;
-    if (@hasField(mumps.Id, "ZHALT")) arr[@intFromEnum(mumps.Id.ZHALT)] = 205;
-    if (@hasField(mumps.Id, "ZKILL")) arr[@intFromEnum(mumps.Id.ZKILL)] = 206;
-    if (@hasField(mumps.Id, "SSVN")) arr[@intFromEnum(mumps.Id.SSVN)] = 239;
-    if (@hasField(mumps.Id, "REAL")) arr[@intFromEnum(mumps.Id.REAL)] = 240;
-    if (@hasField(mumps.Id, "TEXT")) arr[@intFromEnum(mumps.Id.TEXT)] = 241;
-    if (@hasField(mumps.Id, "SELECT")) arr[@intFromEnum(mumps.Id.SELECT)] = 242;
-    if (@hasField(mumps.Id, "JUSTIFY")) arr[@intFromEnum(mumps.Id.JUSTIFY)] = 243;
-    if (@hasField(mumps.Id, "INCREMENT")) arr[@intFromEnum(mumps.Id.INCREMENT)] = 244;
-    if (@hasField(mumps.Id, "FN")) arr[@intFromEnum(mumps.Id.FN)] = 245;
-    if (@hasField(mumps.Id, "ISV")) arr[@intFromEnum(mumps.Id.ISV)] = 246;
+    if (@hasField(mumps.CmdId, "IDENT")) arr[@intFromEnum(mumps.CmdId.IDENT)] = 109;
+    if (@hasField(mumps.CmdId, "INTEGER")) arr[@intFromEnum(mumps.CmdId.INTEGER)] = 110;
+    if (@hasField(mumps.CmdId, "ZDIGITS")) arr[@intFromEnum(mumps.CmdId.ZDIGITS)] = 111;
+    if (@hasField(mumps.CmdId, "NEWLINE")) arr[@intFromEnum(mumps.CmdId.NEWLINE)] = 114;
+    if (@hasField(mumps.CmdId, "INDENT")) arr[@intFromEnum(mumps.CmdId.INDENT)] = 117;
+    if (@hasField(mumps.CmdId, "SET")) arr[@intFromEnum(mumps.CmdId.SET)] = 124;
+    if (@hasField(mumps.CmdId, "NEW")) arr[@intFromEnum(mumps.CmdId.NEW)] = 135;
+    if (@hasField(mumps.CmdId, "MERGE")) arr[@intFromEnum(mumps.CmdId.MERGE)] = 138;
+    if (@hasField(mumps.CmdId, "KILL")) arr[@intFromEnum(mumps.CmdId.KILL)] = 141;
+    if (@hasField(mumps.CmdId, "IF")) arr[@intFromEnum(mumps.CmdId.IF)] = 142;
+    if (@hasField(mumps.CmdId, "ELSE")) arr[@intFromEnum(mumps.CmdId.ELSE)] = 143;
+    if (@hasField(mumps.CmdId, "FOR")) arr[@intFromEnum(mumps.CmdId.FOR)] = 144;
+    if (@hasField(mumps.CmdId, "DO")) arr[@intFromEnum(mumps.CmdId.DO)] = 147;
+    if (@hasField(mumps.CmdId, "GOTO")) arr[@intFromEnum(mumps.CmdId.GOTO)] = 148;
+    if (@hasField(mumps.CmdId, "QUIT")) arr[@intFromEnum(mumps.CmdId.QUIT)] = 153;
+    if (@hasField(mumps.CmdId, "BREAK")) arr[@intFromEnum(mumps.CmdId.BREAK)] = 154;
+    if (@hasField(mumps.CmdId, "HANG")) arr[@intFromEnum(mumps.CmdId.HANG)] = 155;
+    if (@hasField(mumps.CmdId, "HALT")) arr[@intFromEnum(mumps.CmdId.HALT)] = 156;
+    if (@hasField(mumps.CmdId, "JOB")) arr[@intFromEnum(mumps.CmdId.JOB)] = 157;
+    if (@hasField(mumps.CmdId, "XECUTE")) arr[@intFromEnum(mumps.CmdId.XECUTE)] = 161;
+    if (@hasField(mumps.CmdId, "VIEW")) arr[@intFromEnum(mumps.CmdId.VIEW)] = 164;
+    if (@hasField(mumps.CmdId, "OPEN")) arr[@intFromEnum(mumps.CmdId.OPEN)] = 167;
+    if (@hasField(mumps.CmdId, "USE")) arr[@intFromEnum(mumps.CmdId.USE)] = 170;
+    if (@hasField(mumps.CmdId, "READ")) arr[@intFromEnum(mumps.CmdId.READ)] = 173;
+    if (@hasField(mumps.CmdId, "X")) arr[@intFromEnum(mumps.CmdId.X)] = 178;
+    if (@hasField(mumps.CmdId, "STRING")) arr[@intFromEnum(mumps.CmdId.STRING)] = 180;
+    if (@hasField(mumps.CmdId, "WRITE")) arr[@intFromEnum(mumps.CmdId.WRITE)] = 181;
+    if (@hasField(mumps.CmdId, "EXCLAIM_WS")) arr[@intFromEnum(mumps.CmdId.EXCLAIM_WS)] = 183;
+    if (@hasField(mumps.CmdId, "HASH_WS")) arr[@intFromEnum(mumps.CmdId.HASH_WS)] = 184;
+    if (@hasField(mumps.CmdId, "PATEND")) arr[@intFromEnum(mumps.CmdId.PATEND)] = 186;
+    if (@hasField(mumps.CmdId, "QUESAT")) arr[@intFromEnum(mumps.CmdId.QUESAT)] = 190;
+    if (@hasField(mumps.CmdId, "CLOSE")) arr[@intFromEnum(mumps.CmdId.CLOSE)] = 191;
+    if (@hasField(mumps.CmdId, "LOCK")) arr[@intFromEnum(mumps.CmdId.LOCK)] = 192;
+    if (@hasField(mumps.CmdId, "TSTART")) arr[@intFromEnum(mumps.CmdId.TSTART)] = 196;
+    if (@hasField(mumps.CmdId, "COLON_WS")) arr[@intFromEnum(mumps.CmdId.COLON_WS)] = 197;
+    if (@hasField(mumps.CmdId, "TCOMMIT")) arr[@intFromEnum(mumps.CmdId.TCOMMIT)] = 200;
+    if (@hasField(mumps.CmdId, "TROLLBACK")) arr[@intFromEnum(mumps.CmdId.TROLLBACK)] = 201;
+    if (@hasField(mumps.CmdId, "TRESTART")) arr[@intFromEnum(mumps.CmdId.TRESTART)] = 202;
+    if (@hasField(mumps.CmdId, "ZWRITE")) arr[@intFromEnum(mumps.CmdId.ZWRITE)] = 203;
+    if (@hasField(mumps.CmdId, "ZBREAK")) arr[@intFromEnum(mumps.CmdId.ZBREAK)] = 204;
+    if (@hasField(mumps.CmdId, "ZHALT")) arr[@intFromEnum(mumps.CmdId.ZHALT)] = 205;
+    if (@hasField(mumps.CmdId, "ZKILL")) arr[@intFromEnum(mumps.CmdId.ZKILL)] = 206;
+    if (@hasField(mumps.CmdId, "SSVN")) arr[@intFromEnum(mumps.CmdId.SSVN)] = 239;
+    if (@hasField(mumps.CmdId, "REAL")) arr[@intFromEnum(mumps.CmdId.REAL)] = 240;
+    if (@hasField(mumps.CmdId, "TEXT")) arr[@intFromEnum(mumps.CmdId.TEXT)] = 241;
+    if (@hasField(mumps.CmdId, "SELECT")) arr[@intFromEnum(mumps.CmdId.SELECT)] = 242;
+    if (@hasField(mumps.CmdId, "JUSTIFY")) arr[@intFromEnum(mumps.CmdId.JUSTIFY)] = 243;
+    if (@hasField(mumps.CmdId, "INCREMENT")) arr[@intFromEnum(mumps.CmdId.INCREMENT)] = 244;
+    if (@hasField(mumps.CmdId, "FN")) arr[@intFromEnum(mumps.CmdId.FN)] = 245;
+    if (@hasField(mumps.CmdId, "ISV")) arr[@intFromEnum(mumps.CmdId.ISV)] = 246;
     break :blk arr;
 };
-const FallbackSymbol: u16 = 0;
-
-// Mapping from mumps.Id to grammar symbol IDs (computed at comptime)
-const ToSymbol = blk: {
-    var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(mumps.Id, "IDENT")) arr[@intFromEnum(mumps.Id.IDENT)] = 109;
-    if (@hasField(mumps.Id, "INTEGER")) arr[@intFromEnum(mumps.Id.INTEGER)] = 110;
-    if (@hasField(mumps.Id, "ZDIGITS")) arr[@intFromEnum(mumps.Id.ZDIGITS)] = 111;
-    if (@hasField(mumps.Id, "NEWLINE")) arr[@intFromEnum(mumps.Id.NEWLINE)] = 114;
-    if (@hasField(mumps.Id, "INDENT")) arr[@intFromEnum(mumps.Id.INDENT)] = 117;
-    if (@hasField(mumps.Id, "SET")) arr[@intFromEnum(mumps.Id.SET)] = 124;
-    if (@hasField(mumps.Id, "NEW")) arr[@intFromEnum(mumps.Id.NEW)] = 135;
-    if (@hasField(mumps.Id, "MERGE")) arr[@intFromEnum(mumps.Id.MERGE)] = 138;
-    if (@hasField(mumps.Id, "KILL")) arr[@intFromEnum(mumps.Id.KILL)] = 141;
-    if (@hasField(mumps.Id, "IF")) arr[@intFromEnum(mumps.Id.IF)] = 142;
-    if (@hasField(mumps.Id, "ELSE")) arr[@intFromEnum(mumps.Id.ELSE)] = 143;
-    if (@hasField(mumps.Id, "FOR")) arr[@intFromEnum(mumps.Id.FOR)] = 144;
-    if (@hasField(mumps.Id, "DO")) arr[@intFromEnum(mumps.Id.DO)] = 147;
-    if (@hasField(mumps.Id, "GOTO")) arr[@intFromEnum(mumps.Id.GOTO)] = 148;
-    if (@hasField(mumps.Id, "QUIT")) arr[@intFromEnum(mumps.Id.QUIT)] = 153;
-    if (@hasField(mumps.Id, "BREAK")) arr[@intFromEnum(mumps.Id.BREAK)] = 154;
-    if (@hasField(mumps.Id, "HANG")) arr[@intFromEnum(mumps.Id.HANG)] = 155;
-    if (@hasField(mumps.Id, "HALT")) arr[@intFromEnum(mumps.Id.HALT)] = 156;
-    if (@hasField(mumps.Id, "JOB")) arr[@intFromEnum(mumps.Id.JOB)] = 157;
-    if (@hasField(mumps.Id, "XECUTE")) arr[@intFromEnum(mumps.Id.XECUTE)] = 161;
-    if (@hasField(mumps.Id, "VIEW")) arr[@intFromEnum(mumps.Id.VIEW)] = 164;
-    if (@hasField(mumps.Id, "OPEN")) arr[@intFromEnum(mumps.Id.OPEN)] = 167;
-    if (@hasField(mumps.Id, "USE")) arr[@intFromEnum(mumps.Id.USE)] = 170;
-    if (@hasField(mumps.Id, "READ")) arr[@intFromEnum(mumps.Id.READ)] = 173;
-    if (@hasField(mumps.Id, "X")) arr[@intFromEnum(mumps.Id.X)] = 178;
-    if (@hasField(mumps.Id, "STRING")) arr[@intFromEnum(mumps.Id.STRING)] = 180;
-    if (@hasField(mumps.Id, "WRITE")) arr[@intFromEnum(mumps.Id.WRITE)] = 181;
-    if (@hasField(mumps.Id, "EXCLAIM_WS")) arr[@intFromEnum(mumps.Id.EXCLAIM_WS)] = 183;
-    if (@hasField(mumps.Id, "HASH_WS")) arr[@intFromEnum(mumps.Id.HASH_WS)] = 184;
-    if (@hasField(mumps.Id, "PATEND")) arr[@intFromEnum(mumps.Id.PATEND)] = 186;
-    if (@hasField(mumps.Id, "QUESAT")) arr[@intFromEnum(mumps.Id.QUESAT)] = 190;
-    if (@hasField(mumps.Id, "CLOSE")) arr[@intFromEnum(mumps.Id.CLOSE)] = 191;
-    if (@hasField(mumps.Id, "LOCK")) arr[@intFromEnum(mumps.Id.LOCK)] = 192;
-    if (@hasField(mumps.Id, "TSTART")) arr[@intFromEnum(mumps.Id.TSTART)] = 196;
-    if (@hasField(mumps.Id, "COLON_WS")) arr[@intFromEnum(mumps.Id.COLON_WS)] = 197;
-    if (@hasField(mumps.Id, "TCOMMIT")) arr[@intFromEnum(mumps.Id.TCOMMIT)] = 200;
-    if (@hasField(mumps.Id, "TROLLBACK")) arr[@intFromEnum(mumps.Id.TROLLBACK)] = 201;
-    if (@hasField(mumps.Id, "TRESTART")) arr[@intFromEnum(mumps.Id.TRESTART)] = 202;
-    if (@hasField(mumps.Id, "ZWRITE")) arr[@intFromEnum(mumps.Id.ZWRITE)] = 203;
-    if (@hasField(mumps.Id, "ZBREAK")) arr[@intFromEnum(mumps.Id.ZBREAK)] = 204;
-    if (@hasField(mumps.Id, "ZHALT")) arr[@intFromEnum(mumps.Id.ZHALT)] = 205;
-    if (@hasField(mumps.Id, "ZKILL")) arr[@intFromEnum(mumps.Id.ZKILL)] = 206;
-    if (@hasField(mumps.Id, "SSVN")) arr[@intFromEnum(mumps.Id.SSVN)] = 239;
-    if (@hasField(mumps.Id, "REAL")) arr[@intFromEnum(mumps.Id.REAL)] = 240;
-    if (@hasField(mumps.Id, "TEXT")) arr[@intFromEnum(mumps.Id.TEXT)] = 241;
-    if (@hasField(mumps.Id, "SELECT")) arr[@intFromEnum(mumps.Id.SELECT)] = 242;
-    if (@hasField(mumps.Id, "JUSTIFY")) arr[@intFromEnum(mumps.Id.JUSTIFY)] = 243;
-    if (@hasField(mumps.Id, "INCREMENT")) arr[@intFromEnum(mumps.Id.INCREMENT)] = 244;
-    if (@hasField(mumps.Id, "FN")) arr[@intFromEnum(mumps.Id.FN)] = 245;
-    if (@hasField(mumps.Id, "ISV")) arr[@intFromEnum(mumps.Id.ISV)] = 246;
-    break :blk arr;
-};
-const FallbackSymbol: u16 = 0;
+const cmdFallbackSymbol: u16 = 0;
 
 const ruleLhs = [_]u16{ 3, 3, 3, 112, 112, 4, 5, 5, 6, 7, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 119, 119, 120, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 121, 121, 122, 15, 16, 126, 127, 127, 17, 17, 18, 18, 18, 130, 131, 131, 18, 133, 134, 134, 18, 18, 18, 19, 19, 20, 20, 20, 20, 21, 21, 136, 137, 137, 21, 21, 139, 140, 140, 22, 22, 23, 23, 24, 24, 24, 24, 25, 25, 25, 26, 26, 27, 27, 28, 29, 29, 145, 146, 146, 30, 30, 31, 31, 31, 32, 32, 32, 32, 7, 7, 7, 7, 7, 7, 7, 7, 7, 149, 150, 150, 33, 33, 8, 8, 8, 8, 8, 34, 34, 34, 34, 35, 35, 35, 36, 36, 36, 36, 37, 37, 37, 37, 38, 38, 39, 39, 39, 39, 40, 40, 158, 159, 159, 41, 41, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 42, 43, 43, 43, 43, 162, 163, 163, 44, 44, 45, 45, 165, 166, 166, 46, 46, 47, 47, 168, 169, 169, 48, 48, 49, 49, 49, 49, 49, 171, 172, 172, 50, 50, 174, 175, 175, 51, 51, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 53, 53, 53, 53, 54, 54, 54, 54, 54, 55, 55, 55, 55, 187, 187, 56, 188, 188, 189, 57, 57, 57, 57, 58, 58, 59, 59, 60, 60, 61, 61, 62, 62, 62, 62, 63, 64, 64, 64, 64, 65, 65, 65, 65, 65, 65, 194, 195, 195, 65, 65, 65, 65, 65, 65, 65, 66, 66, 67, 67, 67, 67, 68, 68, 68, 68, 198, 199, 199, 69, 69, 70, 70, 70, 70, 71, 71, 72, 72, 73, 73, 74, 74, 75, 75, 75, 75, 76, 76, 76, 76, 77, 77, 77, 77, 207, 208, 208, 78, 78, 79, 79, 79, 79, 79, 79, 80, 80, 81, 81, 82, 82, 6, 83, 83, 84, 84, 84, 84, 84, 85, 85, 85, 85, 85, 85, 86, 86, 86, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 87, 233, 233, 234, 88, 235, 235, 236, 89, 89, 89, 89, 89, 89, 237, 238, 238, 89, 90, 91, 91, 91, 91, 91, 92, 92, 93, 93, 93, 94, 94, 94, 95, 95, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 96, 97, 97, 97, 97, 97, 98, 99, 99, 99, 100, 100, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 101, 102, 102, 102, 247, 248, 248, 103, 104, 105, 105, 105, 105, 105, 105, 105, 105, 106, 106, 107, 107, 108, 108, 108, 250, 252, 254, 256, 258 };
 const ruleLen = [_]u8{ 1, 1, 1, 2, 0, 2, 2, 2, 2, 2, 2, 2, 3, 2, 3, 1, 2, 1, 2, 2, 3, 2, 3, 3, 4, 2, 3, 2, 3, 1, 2, 2, 3, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 2, 1, 2, 2, 3, 0, 2, 3, 4, 2, 3, 2, 3, 0, 5, 2, 3, 0, 9, 7, 2, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 0, 3, 2, 2, 3, 0, 2, 3, 3, 2, 1, 2, 2, 3, 1, 3, 2, 1, 2, 1, 2, 1, 1, 2, 2, 3, 0, 3, 4, 5, 3, 1, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2, 2, 3, 2, 2, 3, 0, 2, 3, 1, 2, 1, 2, 2, 2, 3, 3, 4, 4, 5, 4, 1, 2, 2, 3, 1, 2, 2, 3, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 0, 2, 3, 4, 5, 5, 6, 4, 5, 5, 6, 1, 2, 2, 3, 1, 2, 2, 3, 2, 1, 2, 2, 3, 2, 3, 0, 2, 3, 1, 2, 2, 3, 0, 2, 3, 1, 2, 2, 3, 0, 2, 3, 7, 5, 5, 3, 1, 2, 3, 0, 2, 3, 2, 3, 0, 2, 3, 1, 5, 2, 4, 5, 3, 4, 4, 5, 2, 5, 1, 2, 1, 2, 2, 3, 1, 5, 2, 2, 1, 1, 1, 1, 1, 1, 0, 3, 2, 0, 2, 1, 2, 1, 2, 2, 3, 3, 1, 3, 1, 3, 1, 4, 2, 3, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 2, 3, 0, 4, 5, 4, 5, 3, 4, 2, 1, 1, 1, 2, 2, 3, 1, 2, 2, 2, 2, 3, 0, 3, 1, 1, 2, 3, 1, 1, 2, 1, 2, 1, 2, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 1, 2, 2, 3, 0, 2, 3, 3, 4, 4, 5, 6, 4, 1, 2, 2, 3, 2, 1, 2, 2, 0, 2, 2, 2, 2, 3, 3, 2, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 2, 2, 2, 0, 2, 5, 2, 4, 1, 5, 2, 2, 3, 0, 4, 1, 3, 2, 1, 2, 1, 1, 2, 1, 1, 1, 3, 2, 4, 1, 5, 3, 4, 4, 5, 5, 6, 7, 8, 5, 6, 7, 8, 6, 8, 7, 5, 4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4, 4, 4, 4, 4, 2, 4, 5, 4, 5, 4, 3, 4, 3, 2, 3, 0, 5, 3, 5, 5, 6, 6, 7, 6, 7, 6, 4, 5, 4, 5, 3, 3, 2, 2, 2, 2, 2, 2 };

@@ -5202,31 +5202,25 @@ const ParserGenerator = struct {
 
                 // Determine if this terminal is an @as keyword (handled by identToSymbol)
                 // vs a real lexer token (needs tokenToSymbol mapping).
+                //
+                // A terminal is keyword-only if it has no declared lexer token.
+                // Terminals declared in the tokens block (including rewriter-classified
+                // tokens like if_mod, then_sep) always get direct tokenToSymbol entries,
+                // even if a nonterminal shares the same name (case-insensitive).
                 var isAsKeyword = false;
-                if (sym.name[0] >= 'A' and sym.name[0] <= 'Z') {
-                    // Check if there's a corresponding lowercase nonterminal (e.g., IF↔if)
-                    for (self.symbols.items) |other| {
-                        if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(sym.name, other.name)) {
+                if (sym.name.len > 0 and sym.name[0] >= 'A' and sym.name[0] <= 'Z') {
+                    // Check if it matches an @as directive rule name (e.g., CMD↔cmd)
+                    for (self.asDirectives.items) |directive| {
+                        if (std.ascii.eqlIgnoreCase(sym.name, directive.rule)) {
                             isAsKeyword = true;
                             break;
                         }
                     }
-                    // Check if it matches an @as directive rule name (e.g., CMD↔cmd)
+                    // Check if there's a corresponding lowercase nonterminal (e.g., IF↔if)
+                    // but only if the terminal is NOT a declared lexer token.
                     if (!isAsKeyword) {
-                        for (self.asDirectives.items) |directive| {
-                            var upperBuf: [64]u8 = undefined;
-                            const upperRule = std.ascii.upperString(upperBuf[0..directive.rule.len], directive.rule);
-                            if (std.mem.eql(u8, sym.name, upperRule)) {
-                                isAsKeyword = true;
-                                break;
-                            }
-                        }
-                    }
-                    // When @as directives exist: if this terminal has no matching
-                    // lexer token, it must be a keyword terminal (e.g., IF, UNLESS)
-                    if (!isAsKeyword and hasIdentAs) {
+                        var hasLexerToken = false;
                         if (self.lexerSpec) |spec| {
-                            var hasLexerToken = false;
                             for (spec.tokens.items) |tok| {
                                 if (std.ascii.eqlIgnoreCase(tok.name, sym.name)) {
                                     hasLexerToken = true;
@@ -5241,7 +5235,19 @@ const ParserGenerator = struct {
                                     }
                                 }
                             }
-                            if (!hasLexerToken) isAsKeyword = true;
+                        }
+                        if (!hasLexerToken) {
+                            // No lexer token: check nonterminal name match
+                            for (self.symbols.items) |other| {
+                                if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(sym.name, other.name)) {
+                                    isAsKeyword = true;
+                                    break;
+                                }
+                            }
+                            // Final fallback: if @as exists and no lexer token, it's a keyword
+                            if (!isAsKeyword and hasIdentAs) {
+                                isAsKeyword = true;
+                            }
                         }
                     }
                 }
