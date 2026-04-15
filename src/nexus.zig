@@ -2872,9 +2872,7 @@ const GrammarLowerer = struct {
         self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch null;
     }
 
-    /// Process @as directive: `@as ident = [keyword]` or `@as ident = [fn, isv, self, cmd]`
-    ///
-    /// The long form `@as IDENT = [entries...]` produces:
+    /// Process `@as IDENT = [entries...]` directive. Lowered form:
     ///   items[0] = tag(.as)
     ///   items[1] = src:"ident"          ← the source token type (direct)
     ///   items[2..] = entries from list   ← rule names (may be list-wrapped)
