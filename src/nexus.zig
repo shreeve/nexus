@@ -3230,7 +3230,15 @@ const GrammarLowerer = struct {
     }
 
     fn convertPrimary(self: *GrammarLowerer, node: ngp.Sexp) !Element {
-        const items = self.getListItems(node);
+        var items = self.getListItems(node);
+        // Unwrap single-element list wrappers (produced by grammar chains
+        // like alt_group → alt_elem → element → primary where each → (1)
+        // pass-through wraps the result in a 1-element list).
+        while (items.len == 1) {
+            const inner = self.getListItems(items[0]);
+            if (inner.len == 0) break;
+            items = inner;
+        }
         if (items.len >= 2) {
             const tag = switch (items[0]) {
                 .tag => |t| t,
