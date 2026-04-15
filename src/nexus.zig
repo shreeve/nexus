@@ -15,7 +15,7 @@ const Allocator = std.mem.Allocator;
 const ngp = @import("parser.zig");
 const ngl = @import("lang.zig");
 
-const version = "0.6.0";
+const version = "0.7.0";
 
 // =============================================================================
 // Source Infrastructure — absolute byte offsets and span-based diagnostics
@@ -2515,6 +2515,8 @@ const LexerGenerator = struct {
 // =============================================================================
 
 /// Terminal or nonterminal symbol
+const ParseMode = enum { lalr, slr };
+
 const ParserSymbol = struct {
     id: u16,
     name: []const u8,
@@ -3676,7 +3678,7 @@ const ParserDSLParser = struct {
 };
 
 // =============================================================================
-// SLR(1) Parser Generator
+// LALR(1) Parser Generator
 // =============================================================================
 
 const ConflictDetail = struct {
@@ -3710,6 +3712,7 @@ const ParserGenerator = struct {
     startStates: std.ArrayListUnmanaged(u16) = .{},
     acceptRules: std.ArrayListUnmanaged(u16) = .{},
 
+    parseMode: ParseMode = .lalr,
     conflicts: u32 = 0,
     expectConflicts: ?u32 = null,
     conflictDetails: std.ArrayListUnmanaged(ConflictDetail) = .{},
@@ -3724,6 +3727,9 @@ const ParserGenerator = struct {
     lang: ?[]const u8 = null,
     lexerSpec: ?*const LexerSpec = null,
     codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
+
+    // LALR(1) per-item lookaheads (indexed by [state.id][reductionIndex])
+    lalrLookaheads: []const []const ParserSymbolSet = &[_][]const ParserSymbolSet{},
 
     // Tags for enum generation
     collectedTags: std.StringHashMapUnmanaged(u16) = .{},
@@ -3755,6 +3761,16 @@ const ParserGenerator = struct {
             self.allocator.free(state.reductions);
         }
         self.states.deinit(self.allocator);
+
+        if (self.lalrLookaheads.len > 0) {
+            for (self.lalrLookaheads) |stateRow| {
+                for (stateRow) |*set| {
+                    @constCast(set).deinit(self.allocator);
+                }
+                self.allocator.free(stateRow);
+            }
+            self.allocator.free(self.lalrLookaheads);
+        }
 
         self.startSymbols.deinit(self.allocator);
         self.startStates.deinit(self.allocator);
@@ -4885,7 +4901,9 @@ const ParserGenerator = struct {
     // FIRST/FOLLOW Set Computation
     // =========================================================================
     //
-    // FIRST and FOLLOW sets determine when to reduce in SLR(1) parsing.
+    // FIRST and FOLLOW sets are used in parse table construction.
+    // FIRST sets are always needed (for LALR(1) closure and SLR(1) alike).
+    // FOLLOW sets are only needed in SLR(1) mode.
     //
     // FIRST(α) = set of terminals that can begin strings derived from α
     //   - FIRST(terminal) = { terminal }
@@ -4896,14 +4914,15 @@ const ParserGenerator = struct {
     //   - If S → αAβ, then FIRST(β) ⊆ FOLLOW(A)
     //   - If S → αA or S → αAβ where β is nullable, then FOLLOW(S) ⊆ FOLLOW(A)
     //
-    // SLR(1) reduces A → α when lookahead ∈ FOLLOW(A).
-    //
     // =========================================================================
 
     fn computeLookaheads(self: *ParserGenerator) !void {
         try self.computeNullable();
         try self.computeFirst();
-        try self.computeFollow();
+        switch (self.parseMode) {
+            .slr => try self.computeFollow(),
+            .lalr => try self.computeLalrLookaheads(),
+        }
     }
 
     /// Compute which symbols can derive the empty string (ε).
@@ -5052,6 +5071,220 @@ const ParserGenerator = struct {
     }
 
     // =========================================================================
+    // LALR(1) Construction — DeRemer & Pennello Lookahead Propagation
+    // =========================================================================
+    //
+    // LALR(1) computes per-item per-state lookahead sets for reductions,
+    // eliminating spurious conflicts that arise from SLR(1)'s global FOLLOW.
+    //
+    // Algorithm (works directly from the LR(0) automaton):
+    //   1. For each kernel item occurrence (state, item), probe with a
+    //      sentinel lookahead and compute LR(1) closure
+    //   2. From the closure, extract:
+    //      - Spontaneous lookaheads: real terminals for reductions/successors
+    //      - Propagation edges: sentinel survived → inherits source lookaheads
+    //   3. Fixed-point: seed spontaneous, propagate along edges until stable
+    //
+    // This avoids building the canonical LR(1) automaton (which can have
+    // exponentially more states) and runs in time proportional to the
+    // LR(0) automaton size.
+    //
+    // =========================================================================
+
+    const Lr1Item = struct {
+        ruleId: u16,
+        dot: u8,
+        lookahead: u16,
+
+        fn key(self: Lr1Item) u64 {
+            return (@as(u64, self.ruleId) << 24) |
+                (@as(u64, self.dot) << 16) |
+                self.lookahead;
+        }
+    };
+
+    fn firstOfSuffix(self: *ParserGenerator, rhs: []const u16, startDot: usize, lookahead: u16) !ParserSymbolSet {
+        var result = ParserSymbolSet{};
+        var allNullable = true;
+
+        for (rhs[startDot..]) |symId| {
+            const sym = &self.symbols.items[symId];
+            if (sym.kind == .terminal) {
+                try result.add(self.allocator, symId);
+                allNullable = false;
+                break;
+            } else {
+                _ = try result.addAll(self.allocator, &sym.firsts);
+                if (!sym.nullable) {
+                    allNullable = false;
+                    break;
+                }
+            }
+        }
+
+        if (allNullable) {
+            try result.add(self.allocator, lookahead);
+        }
+
+        return result;
+    }
+
+    fn probeClosure(self: *ParserGenerator, seedItem: Lr1Item, items: *std.ArrayListUnmanaged(Lr1Item), seen: *std.AutoHashMap(u64, void)) !void {
+        seen.clearRetainingCapacity();
+
+        items.clearRetainingCapacity();
+        try items.append(self.allocator, seedItem);
+        try seen.put(seedItem.key(), {});
+
+        var workIdx: usize = 0;
+        while (workIdx < items.items.len) : (workIdx += 1) {
+            const item = items.items[workIdx];
+            const rule = self.rules.items[item.ruleId];
+
+            if (item.dot >= rule.rhs.len) continue;
+
+            const nextSym = rule.rhs[item.dot];
+            const symbol = self.symbols.items[nextSym];
+
+            if (symbol.kind == .nonterminal) {
+                var firstSet = try self.firstOfSuffix(rule.rhs, item.dot + 1, item.lookahead);
+                defer firstSet.deinit(self.allocator);
+
+                for (symbol.rules.items) |ruleId| {
+                    for (firstSet.slice()) |la| {
+                        const newItem = Lr1Item{ .ruleId = ruleId, .dot = 0, .lookahead = la };
+                        if (!seen.contains(newItem.key())) {
+                            try seen.put(newItem.key(), {});
+                            try items.append(self.allocator, newItem);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    fn computeLalrLookaheads(self: *ParserGenerator) !void {
+        const a = self.allocator;
+        const numStates = self.states.items.len;
+        const sentinel: u16 = std.math.maxInt(u16);
+        std.debug.assert(self.symbols.items.len < sentinel);
+
+        // Build offset tables for flat node indexing
+        const kernelOffsets = try a.alloc(u32, numStates + 1);
+        defer a.free(kernelOffsets);
+        const reductionOffsets = try a.alloc(u32, numStates + 1);
+        defer a.free(reductionOffsets);
+
+        kernelOffsets[0] = 0;
+        reductionOffsets[0] = 0;
+        for (0..numStates) |s| {
+            kernelOffsets[s + 1] = kernelOffsets[s] + @as(u32, @intCast(self.states.items[s].kernel.len));
+            reductionOffsets[s + 1] = reductionOffsets[s] + @as(u32, @intCast(self.states.items[s].reductions.len));
+        }
+
+        const totalKernelNodes = kernelOffsets[numStates];
+        const totalReductionNodes = reductionOffsets[numStates];
+        const totalNodes = totalKernelNodes + totalReductionNodes;
+
+        // Lookahead sets for each node (kernel nodes first, then reduction nodes)
+        const nodeSets = try a.alloc(ParserSymbolSet, totalNodes);
+        errdefer {
+            for (nodeSets) |*s| s.deinit(a);
+            a.free(nodeSets);
+        }
+        for (nodeSets) |*s| s.* = .{};
+
+        // Propagation edges
+        const Edge = struct { source: u32, target: u32 };
+        var edges = std.ArrayListUnmanaged(Edge){};
+        defer edges.deinit(a);
+
+        // Reusable buffers for probing
+        var closureItems = std.ArrayListUnmanaged(Lr1Item){};
+        defer closureItems.deinit(a);
+        var seen = std.AutoHashMap(u64, void).init(a);
+        defer seen.deinit();
+
+        // Phase 1: Probe each kernel item, discover spontaneous + propagation
+        for (self.states.items, 0..) |state, si| {
+            for (state.kernel, 0..) |kernelItem, ki| {
+                const sourceNode: u32 = kernelOffsets[si] + @as(u32, @intCast(ki));
+
+                const seed = Lr1Item{
+                    .ruleId = kernelItem.ruleId,
+                    .dot = kernelItem.dot,
+                    .lookahead = sentinel,
+                };
+                try self.probeClosure(seed, &closureItems, &seen);
+
+                for (closureItems.items) |cItem| {
+                    const rule = self.rules.items[cItem.ruleId];
+
+                    if (cItem.dot >= rule.rhs.len) {
+                        // Completed item → contributes to a reduction in this state
+                        const ri = for (state.reductions, 0..) |red, ri| {
+                            if (red.ruleId == cItem.ruleId) break @as(u32, @intCast(ri));
+                        } else unreachable;
+                        const targetNode: u32 = totalKernelNodes + reductionOffsets[si] + ri;
+                        if (cItem.lookahead == sentinel) {
+                            try edges.append(a, .{ .source = sourceNode, .target = targetNode });
+                        } else {
+                            try nodeSets[targetNode].add(a, cItem.lookahead);
+                        }
+                    } else {
+                        // Item with symbol after dot → contributes to kernel item in successor
+                        const nextSym = rule.rhs[cItem.dot];
+                        const transTarget = for (state.transitions) |trans| {
+                            if (trans.symbol == nextSym) break trans.target;
+                        } else unreachable;
+                        const advancedItem = ParserItem{ .ruleId = cItem.ruleId, .dot = cItem.dot + 1 };
+                        const targetKernel = &self.states.items[transTarget];
+                        const tkiIdx = for (targetKernel.kernel, 0..) |tki, idx| {
+                            if (tki.eql(advancedItem)) break @as(u32, @intCast(idx));
+                        } else unreachable;
+                        const targetNode: u32 = kernelOffsets[transTarget] + tkiIdx;
+                        if (cItem.lookahead == sentinel) {
+                            try edges.append(a, .{ .source = sourceNode, .target = targetNode });
+                        } else {
+                            try nodeSets[targetNode].add(a, cItem.lookahead);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Phase 2: Fixed-point propagation
+        var changed = true;
+        while (changed) {
+            changed = false;
+            for (edges.items) |edge| {
+                if (try nodeSets[edge.target].addAll(a, &nodeSets[edge.source])) {
+                    changed = true;
+                }
+            }
+        }
+
+        // Phase 3: Extract reduction lookaheads into lalrLookaheads
+        const lalrLookaheads = try a.alloc([]const ParserSymbolSet, numStates);
+        for (0..numStates) |si| {
+            const nr = self.states.items[si].reductions.len;
+            const sets = try a.alloc(ParserSymbolSet, nr);
+            for (0..nr) |ri| {
+                const nodeId = totalKernelNodes + reductionOffsets[si] + @as(u32, @intCast(ri));
+                sets[ri] = nodeSets[nodeId];
+                nodeSets[nodeId] = .{}; // moved, prevent double-free
+            }
+            lalrLookaheads[si] = sets;
+        }
+
+        // Clean up kernel node sets
+        for (0..totalKernelNodes) |n| nodeSets[n].deinit(a);
+        a.free(nodeSets);
+
+        self.lalrLookaheads = lalrLookaheads;
+    }
+
+    // =========================================================================
     // Parse Table Generation
     // =========================================================================
     //
@@ -5060,9 +5293,11 @@ const ParserGenerator = struct {
     //   ACTION[state, terminal] = shift s  | reduce r | accept | error
     //   GOTO[state, nonterminal] = state s | error
     //
-    // SLR(1) table construction:
+    // LALR(1) / SLR(1) table construction:
     //   1. SHIFT: If state has A → α • a β (a = terminal), ACTION[state, a] = shift
-    //   2. REDUCE: If state has A → α • and a ∈ FOLLOW(A), ACTION[state, a] = reduce
+    //   2. REDUCE: If state has A → α • and a ∈ lookahead(state, item), reduce
+    //      - LALR: lookahead = per-item set from merged LR(1) states
+    //      - SLR:  lookahead = FOLLOW(A)
     //   3. GOTO: If GOTO(state, A) = s for nonterminal A, GOTO[state, A] = s
     //   4. ACCEPT: If state has S' → S • $, ACTION[state, $] = accept
     //
@@ -5086,7 +5321,6 @@ const ParserGenerator = struct {
         err: void,
     };
 
-    /// Build the SLR(1) parse table from the LR(0) automaton and FOLLOW sets.
     fn buildParseTable(self: *ParserGenerator) ![][]ParseAction {
         const numStates = self.states.items.len;
         const numSymbols = self.symbols.items.len;
@@ -5119,7 +5353,7 @@ const ParserGenerator = struct {
             }
 
             // Reduce actions
-            for (state.reductions) |item| {
+            for (state.reductions, 0..) |item, ri| {
                 const rule = &self.rules.items[item.ruleId];
 
                 if (self.isAcceptRuleId(item.ruleId)) {
@@ -5129,7 +5363,12 @@ const ParserGenerator = struct {
 
                 const lhsSym = &self.symbols.items[rule.lhs];
 
-                for (lhsSym.follows.slice()) |followId| {
+                const reduceTerminals = switch (self.parseMode) {
+                    .slr => lhsSym.follows.slice(),
+                    .lalr => self.lalrLookaheads[i][ri].slice(),
+                };
+
+                for (reduceTerminals) |followId| {
                     const current = &row.*[followId];
                     const fname = self.symbols.items[followId].name;
                     const xChar = if (fname.len == 3) fname[1] else 0;
@@ -5138,7 +5377,6 @@ const ParserGenerator = struct {
                         .err => current.* = .{ .reduce = item.ruleId },
                         .shift => |s| {
                             if (rule.excludeChar != 0 and xChar == rule.excludeChar) {
-                                // X "c": reduce in table, shift at runtime when pre==0
                                 current.* = .{ .reduce = item.ruleId };
                                 try self.xExcludes.append(self.allocator, .{
                                     .state = @intCast(i),
@@ -5146,12 +5384,10 @@ const ParserGenerator = struct {
                                     .shift = s,
                                 });
                             } else if (rule.preferReduce) {
-                                // < hint: prefer reduce (tight binding)
                                 current.* = .{ .reduce = item.ruleId };
                             } else if (rule.preferShift) {
                                 // > hint: keep shift
                             } else {
-                                // Default: shift wins
                                 self.conflicts += 1;
                                 try self.conflictDetails.append(self.allocator, .{
                                     .kind = .shiftReduce,
@@ -6650,6 +6886,7 @@ pub fn main() !void {
             \\
             \\Options:
             \\  -c, --comments Include grammar-rule comments in generated code
+            \\      --slr      Use SLR(1) instead of LALR(1) for parse tables
             \\  -h, --help     Show this help
             \\
             \\Examples:
@@ -6663,10 +6900,14 @@ pub fn main() !void {
 
     // Parse option flags from remaining args
     var comments = false;
+    var parseMode: ParseMode = .lalr;
     var positionalStart: usize = if (checkMode) 2 else 1;
     for (args[positionalStart..]) |arg| {
         if (std.mem.eql(u8, arg, "--comments") or std.mem.eql(u8, arg, "-c")) {
             comments = true;
+            positionalStart += 1;
+        } else if (std.mem.eql(u8, arg, "--slr")) {
+            parseMode = .slr;
             positionalStart += 1;
         } else break;
     }
@@ -6781,6 +7022,7 @@ pub fn main() !void {
             parserGen = ParserGenerator.init(allocator);
             parserGen.?.lexerSpec = &lexerParser.spec;
             parserGen.?.emitComments = comments;
+            parserGen.?.parseMode = parseMode;
 
             parserGen.?.processGrammar(&ir) catch |err| {
                 std.debug.print("❌ Grammar processing error: {any}\n", .{err});

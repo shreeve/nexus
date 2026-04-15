@@ -398,7 +398,7 @@ after
 
 @lang = "mumps"
 
-@conflicts = 67
+@conflicts = 44
 
 @as ident = [fn, isv, ssvn, self, cmd]
 

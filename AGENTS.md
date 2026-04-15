@@ -1,6 +1,6 @@
 # Nexus — Universal Parser Generator
 
-Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer + SLR(1) parser). One tool, any language, zero language-specific code in the engine.
+Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer + LALR(1) parser). One tool, any language, zero language-specific code in the engine.
 
 ## Architecture
 

@@ -1,7 +1,7 @@
 # Nexus
 
 A self-hosting, universal parser generator. One tool reads any `.grammar`
-file and produces a combined lexer + SLR(1) parser module in Zig.
+file and produces a combined lexer + LALR(1) parser module in Zig.
 
 One tool. Any language. Install once, generate parsers for everything.
 
@@ -29,17 +29,17 @@ zig build                                    # build nexus
 ./bin/nexus mumps.grammar src/parser.zig     # generate parser for MUMPS
 ```
 
-Each generated `parser.zig` contains both the lexer and SLR(1) parser, ready
+Each generated `parser.zig` contains both the lexer and LALR(1) parser, ready
 to compile into your project. The generated code imports the `@lang` module
 for language-specific behavior.
 
 ## Validated Languages
 
-| Language   | Grammar         | Lang Module | Rules | SLR Conflicts |
-|------------|-----------------|-------------|-------|---------------|
-| Zag        | `zag.grammar`   | `zag.zig`   |    56 |            19 |
-| Slash      | `slash.grammar` | `slash.zig` |    53 |            16 |
-| em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |            45 |
+| Language   | Grammar         | Lang Module | Rules | Conflicts |
+|------------|-----------------|-------------|-------|-----------|
+| Zag        | `zag.grammar`   | `zag.zig`   |    56 |        19 |
+| Slash      | `slash.grammar` | `slash.zig` |    53 |        16 |
+| em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |        44 |
 
 ## Architecture
 
@@ -48,10 +48,10 @@ for language-specific behavior.
          ↓
     nexus (src/nexus.zig)
          ↓
-    parser.zig (generated lexer + SLR(1) parser)
+    parser.zig (generated lexer + LALR(1) parser)
 ```
 
-Nexus reads the grammar, builds SLR(1) parse tables, and emits a single Zig
+Nexus reads the grammar, builds LALR(1) parse tables, and emits a single Zig
 module containing a fast switch-based lexer, table-driven parser, `Tag` enum,
 `Sexp` type, and all reduction actions. The generated parser imports the
 `@lang` module for keyword lookup, tag definitions, and optional token
@@ -59,7 +59,7 @@ rewriting.
 
 ### Self-Hosting
 
-Nexus is self-hosting: it uses a generated SLR(1) parser to parse its own
+Nexus is self-hosting: it uses a generated LALR(1) parser to parse its own
 grammar format. The pipeline is:
 
 ```
@@ -358,7 +358,7 @@ it with context-sensitive logic.
 
 - Same operator means different things based on spacing (`-` prefix vs infix)
 - Same keyword means different things based on context (`if` as prefix, guard, or ternary)
-- Token meaning depends on lookahead the grammar can't express in SLR(1)
+- Token meaning depends on lookahead the grammar can't express declaratively
 
 ---
 
@@ -502,7 +502,7 @@ subsind = "@" atom "@" subs                 → (@ subs 2 4) # followed by @
 | Directive | Purpose |
 |-----------|---------|
 | `@lang = "name"` | Import language module (`name.zig`) |
-| `@conflicts = N` | Declare expected SLR conflict count |
+| `@conflicts = N` | Declare expected conflict count |
 | `@as ident = [keyword]` | Context-sensitive keyword promotion |
 | `@op = [...]` | Operator literal-to-token mappings |
 | `@infix base` | Auto-generate precedence chain |
@@ -773,7 +773,7 @@ Otherwise it uses `BaseLexer` directly.
 |---------|---------|
 | `basic` | Expression grammar (precedence, associativity, multiple start symbols) |
 | `features` | State vars, after, guards, actions, strings, comments, lists |
-| `zag` | Real-world: 56 rules, 18 conflicts |
+| `zag` | Real-world: 56 rules, 19 conflicts |
 | `slash` | Real-world: 53 rules, 16 conflicts |
 | `mumps` | Real-world: 115 rules, 44 conflicts, @code, counted, empty-pattern guards |
 
@@ -789,8 +789,8 @@ Otherwise it uses `BaseLexer` directly.
 
 ### Parser Algorithm
 
-SLR(1). Weaker than LALR(1) or LR(1) but sufficient for practical grammars.
-Languages with significant context-sensitivity use `@lang` wrapper support.
+LALR(1). Provides precise per-state per-item lookaheads for reduction
+decisions. SLR(1) mode is available via `--slr` for diagnostics.
 
 ### Token Limits
 
