@@ -1523,7 +1523,8 @@ const LexerGenerator = struct {
         if (pattern.len == 0 or pattern[0] != '[') return null;
         var chars: [256]bool = @splat(false);
         var i: usize = 1;
-        if (i < pattern.len and pattern[i] == '^') i += 1;
+        const negated = i < pattern.len and pattern[i] == '^';
+        if (negated) i += 1;
         while (i < pattern.len and pattern[i] != ']') {
             const first = resolveEscape(pattern, i);
             if (first.next < pattern.len and pattern[first.next] == '-' and
@@ -1538,8 +1539,11 @@ const LexerGenerator = struct {
                 i = first.next;
             }
         }
-        if (i < pattern.len and pattern[i] == ']') return .{ .chars = chars, .endPos = i + 1 };
-        return null;
+        if (i >= pattern.len or pattern[i] != ']') return null;
+        if (negated) for (0..256) |c| {
+            chars[c] = !chars[c];
+        };
+        return .{ .chars = chars, .endPos = i + 1 };
     }
 
     const IdentInfo = struct {
