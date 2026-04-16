@@ -2404,6 +2404,10 @@ const LexerGenerator = struct {
                 i += 1;
             }
         }
+        if (rangeCount == 0) {
+            try self.write("false");
+            return;
+        }
         for (ranges[0..rangeCount], 0..) |rng, ri| {
             if (ri > 0) try self.write(" or ");
             if (rng.lo == rng.hi) {
