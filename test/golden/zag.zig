@@ -471,6 +471,8 @@ pub const BaseLexer = struct {
         while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
             self.pos += 1;
         }
+        if (self.pos < self.source.len and self.source[self.pos] == '?')
+            self.pos += 1;
         return Token{ .cat = .@"ident", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
     }
 };

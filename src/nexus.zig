@@ -1506,19 +1506,36 @@ const LexerGenerator = struct {
         }
     }
 
+    fn resolveEscape(pattern: []const u8, pos: usize) struct { ch: u8, next: usize } {
+        if (pos < pattern.len and pattern[pos] == '\\' and pos + 1 < pattern.len) {
+            return .{ .ch = switch (pattern[pos + 1]) {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                '\\' => '\\',
+                else => pattern[pos + 1],
+            }, .next = pos + 2 };
+        }
+        return .{ .ch = pattern[pos], .next = pos + 1 };
+    }
+
     fn parseCharClass(pattern: []const u8) ?struct { chars: [256]bool, endPos: usize } {
         if (pattern.len == 0 or pattern[0] != '[') return null;
         var chars: [256]bool = @splat(false);
         var i: usize = 1;
         if (i < pattern.len and pattern[i] == '^') i += 1;
         while (i < pattern.len and pattern[i] != ']') {
-            if (i + 2 < pattern.len and pattern[i + 1] == '-') {
-                var c: u16 = pattern[i];
-                while (c <= pattern[i + 2]) : (c += 1) chars[@intCast(c)] = true;
-                i += 3;
+            const first = resolveEscape(pattern, i);
+            if (first.next < pattern.len and pattern[first.next] == '-' and
+                first.next + 1 < pattern.len and pattern[first.next + 1] != ']')
+            {
+                const second = resolveEscape(pattern, first.next + 1);
+                var c: u16 = first.ch;
+                while (c <= second.ch) : (c += 1) chars[@intCast(c)] = true;
+                i = second.next;
             } else {
-                chars[pattern[i]] = true;
-                i += 1;
+                chars[first.ch] = true;
+                i = first.next;
             }
         }
         if (i < pattern.len and pattern[i] == ']') return .{ .chars = chars, .endPos = i + 1 };
@@ -1530,20 +1547,45 @@ const LexerGenerator = struct {
         var letterChars: [256]bool = @splat(false);
         var digitChars: [256]bool = @splat(false);
 
+        // Track which token names we've already processed (first occurrence wins)
+        var seenTokens: [16][]const u8 = undefined;
+        var seenCount: usize = 0;
+
         for (self.spec.rules.items) |rule| {
             if (rule.guards.len > 0) continue;
             if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
 
-            if (std.mem.eql(u8, rule.token, "ident")) {
-                if (parseCharClass(rule.pattern)) |cc| {
-                    for (0..256) |c| {
-                        if (cc.chars[c]) letterChars[c] = true;
-                    }
-                }
-            } else if (std.mem.eql(u8, rule.token, "integer")) {
+            if (std.mem.eql(u8, rule.token, "integer") or std.mem.eql(u8, rule.token, "real")) {
                 if (parseCharClass(rule.pattern)) |cc| {
                     for (0..256) |c| {
                         if (cc.chars[c]) digitChars[c] = true;
+                    }
+                }
+            } else if (!std.mem.eql(u8, rule.token, "err")) {
+                // Only process the first rule for each token name
+                var seen = false;
+                for (seenTokens[0..seenCount]) |st| {
+                    if (std.mem.eql(u8, st, rule.token)) { seen = true; break; }
+                }
+                if (seen) continue;
+                if (seenCount < seenTokens.len) {
+                    seenTokens[seenCount] = rule.token;
+                    seenCount += 1;
+                }
+
+                // Identifier-like rules (ident, constant, etc.) — must have alpha/underscore in start class
+                if (parseCharClass(rule.pattern)) |cc| {
+                    var hasAlpha = false;
+                    for (0..256) |c| {
+                        if (cc.chars[c] and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_')) {
+                            hasAlpha = true;
+                            break;
+                        }
+                    }
+                    if (hasAlpha) {
+                        for (0..256) |c| {
+                            if (cc.chars[c]) letterChars[c] = true;
+                        }
                     }
                 }
             }
@@ -2182,6 +2224,93 @@ const LexerGenerator = struct {
     }
 
     fn generateIdentScanner(self: *LexerGenerator) !void {
+        const IdentInfo = struct {
+            token: []const u8,
+            startChars: [256]bool,
+            suffixChars: [256]bool,
+            hasSuffix: bool,
+        };
+        var identRules: [8]IdentInfo = undefined;
+        var identCount: usize = 0;
+
+        for (self.spec.rules.items) |rule| {
+            if (rule.guards.len > 0) continue;
+            if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
+            if (std.mem.eql(u8, rule.token, "integer") or
+                std.mem.eql(u8, rule.token, "real") or
+                std.mem.eql(u8, rule.token, "err")) continue;
+
+            var dup = false;
+            for (identRules[0..identCount]) |existing| {
+                if (std.mem.eql(u8, existing.token, rule.token)) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (dup or identCount >= identRules.len) continue;
+
+            const cc = parseCharClass(rule.pattern) orelse continue;
+
+            // Start class must contain alpha/underscore to be identifier-like
+            var hasAlpha = false;
+            for (0..256) |c| {
+                if (cc.chars[c] and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_')) {
+                    hasAlpha = true;
+                    break;
+                }
+            }
+            if (!hasAlpha) continue;
+
+            // Detect trailing suffix: parse past body classes, look for [chars]? or 'c'?
+            var suffixChars: [256]bool = @splat(false);
+            var hasSuffix = false;
+            var pos = cc.endPos;
+
+            while (pos < rule.pattern.len) {
+                if (rule.pattern[pos] == '[') {
+                    if (parseCharClass(rule.pattern[pos..])) |cls| {
+                        pos += cls.endPos;
+                        if (pos < rule.pattern.len and rule.pattern[pos] == '?') {
+                            suffixChars = cls.chars;
+                            hasSuffix = true;
+                            pos += 1;
+                        } else if (pos < rule.pattern.len and
+                            (rule.pattern[pos] == '*' or rule.pattern[pos] == '+'))
+                        {
+                            hasSuffix = false;
+                            pos += 1;
+                        } else {
+                            hasSuffix = false;
+                        }
+                    } else break;
+                } else if (pos + 2 < rule.pattern.len and rule.pattern[pos] == '\'' and
+                    rule.pattern[pos + 2] == '\'')
+                {
+                    const ch = rule.pattern[pos + 1];
+                    pos += 3;
+                    if (pos < rule.pattern.len and rule.pattern[pos] == '?') {
+                        suffixChars = @splat(false);
+                        suffixChars[ch] = true;
+                        hasSuffix = true;
+                        pos += 1;
+                    } else {
+                        hasSuffix = false;
+                    }
+                } else if (rule.pattern[pos] == ' ') {
+                    pos += 1;
+                } else break;
+            }
+
+            identRules[identCount] = .{
+                .token = rule.token,
+                .startChars = cc.chars,
+                .suffixChars = suffixChars,
+                .hasSuffix = hasSuffix,
+            };
+            identCount += 1;
+        }
+
+        // Emit body loop
         try self.write(
             \\
             \\    /// Scan identifier (generated from grammar)
@@ -2189,10 +2318,102 @@ const LexerGenerator = struct {
             \\        while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
             \\            self.pos += 1;
             \\        }
+            \\
+        );
+
+        // Check for non-ident tokens that need first-char discrimination
+        var hasAltTokens = false;
+        for (identRules[0..identCount]) |r| {
+            if (!std.mem.eql(u8, r.token, "ident")) {
+                hasAltTokens = true;
+                break;
+            }
+        }
+
+        if (hasAltTokens) {
+            try self.write("        const first = self.source[start];\n");
+            for (identRules[0..identCount]) |r| {
+                if (std.mem.eql(u8, r.token, "ident")) continue;
+
+                try self.write("        if (");
+                try emitCharSetCondition(self, r.startChars, "first");
+
+                try self.write(") {\n");
+                if (r.hasSuffix) try self.emitIdentSuffix(r.suffixChars, "            ");
+
+                try self.print("            return Token{{ .cat = .@\"{s}\", .pre = ws, .pos = start, .len = @intCast(self.pos - start) }};\n", .{r.token});
+                try self.write("        }\n");
+            }
+        }
+
+        // Suffix handling for the ident rule
+        for (identRules[0..identCount]) |r| {
+            if (std.mem.eql(u8, r.token, "ident") and r.hasSuffix) {
+                try self.emitIdentSuffix(r.suffixChars, "        ");
+                break;
+            }
+        }
+
+        try self.write(
             \\        return Token{ .cat = .@"ident", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
             \\    }
             \\
         );
+    }
+
+    fn emitIdentSuffix(self: *LexerGenerator, suffixChars: [256]bool, indent: []const u8) !void {
+        var chars: [8]u8 = undefined;
+        var n: usize = 0;
+        for (0..256) |c| {
+            if (suffixChars[c] and n < chars.len) {
+                chars[n] = @intCast(c);
+                n += 1;
+            }
+        }
+        if (n == 0) return;
+
+        try self.print("{s}if (self.pos < self.source.len and ", .{indent});
+        if (n == 1) {
+            const lit = charToZigLiteral(chars[0]);
+            try self.print("self.source[self.pos] == '{s}')\n", .{lit.buf[0..lit.len]});
+        } else {
+            try self.write("(");
+            for (0..n) |i| {
+                if (i > 0) try self.write(" or ");
+                const lit = charToZigLiteral(chars[i]);
+                try self.print("self.source[self.pos] == '{s}'", .{lit.buf[0..lit.len]});
+            }
+            try self.write("))\n");
+        }
+        try self.print("{s}    self.pos += 1;\n", .{indent});
+    }
+
+    fn emitCharSetCondition(self: *LexerGenerator, chars: [256]bool, varName: []const u8) !void {
+        var ranges: [128]struct { lo: u8, hi: u8 } = undefined;
+        var rangeCount: usize = 0;
+        var i: u16 = 0;
+        while (i < 256) {
+            if (chars[i]) {
+                const lo: u8 = @intCast(i);
+                while (i < 256 and chars[i]) i += 1;
+                const hi: u8 = @intCast(i - 1);
+                ranges[rangeCount] = .{ .lo = lo, .hi = hi };
+                rangeCount += 1;
+            } else {
+                i += 1;
+            }
+        }
+        for (ranges[0..rangeCount], 0..) |rng, ri| {
+            if (ri > 0) try self.write(" or ");
+            if (rng.lo == rng.hi) {
+                const lit = charToZigLiteral(rng.lo);
+                try self.print("{s} == '{s}'", .{ varName, lit.buf[0..lit.len] });
+            } else {
+                const loLit = charToZigLiteral(rng.lo);
+                const hiLit = charToZigLiteral(rng.hi);
+                try self.print("({s} >= '{s}' and {s} <= '{s}')", .{ varName, loLit.buf[0..loLit.len], varName, hiLit.buf[0..hiLit.len] });
+            }
+        }
     }
 
     fn generateCommentHandling(self: *LexerGenerator) !void {
