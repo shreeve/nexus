@@ -1542,54 +1542,119 @@ const LexerGenerator = struct {
         return null;
     }
 
+    const IdentInfo = struct {
+        token: []const u8,
+        startChars: [256]bool,
+        suffixChars: [256]bool,
+        hasSuffix: bool,
+    };
+
+    fn collectIdentRules(spec: *const LexerSpec) !struct { rules: [8]IdentInfo, count: usize } {
+        var result: [8]IdentInfo = undefined;
+        var count: usize = 0;
+
+        for (spec.rules.items) |rule| {
+            if (rule.guards.len > 0) continue;
+            if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
+            if (std.mem.eql(u8, rule.token, "integer") or
+                std.mem.eql(u8, rule.token, "real") or
+                std.mem.eql(u8, rule.token, "err")) continue;
+
+            var dup = false;
+            for (result[0..count]) |existing| {
+                if (std.mem.eql(u8, existing.token, rule.token)) {
+                    dup = true;
+                    break;
+                }
+            }
+            if (dup) continue;
+
+            const cc = parseCharClass(rule.pattern) orelse continue;
+
+            var hasAlpha = false;
+            for (0..256) |c| {
+                if (cc.chars[c] and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_')) {
+                    hasAlpha = true;
+                    break;
+                }
+            }
+            if (!hasAlpha) continue;
+
+            // Detect trailing suffix: parse past body classes, look for [chars]? or 'c'?
+            var suffixChars: [256]bool = @splat(false);
+            var hasSuffix = false;
+            var pos = cc.endPos;
+
+            while (pos < rule.pattern.len) {
+                if (rule.pattern[pos] == '[') {
+                    if (parseCharClass(rule.pattern[pos..])) |cls| {
+                        pos += cls.endPos;
+                        if (pos < rule.pattern.len and rule.pattern[pos] == '?') {
+                            suffixChars = cls.chars;
+                            hasSuffix = true;
+                            pos += 1;
+                        } else if (pos < rule.pattern.len and
+                            (rule.pattern[pos] == '*' or rule.pattern[pos] == '+'))
+                        {
+                            hasSuffix = false;
+                            pos += 1;
+                        } else {
+                            hasSuffix = false;
+                        }
+                    } else break;
+                } else if (pos + 2 < rule.pattern.len and rule.pattern[pos] == '\'' and
+                    rule.pattern[pos + 2] == '\'')
+                {
+                    const ch = rule.pattern[pos + 1];
+                    pos += 3;
+                    if (pos < rule.pattern.len and rule.pattern[pos] == '?') {
+                        suffixChars = @splat(false);
+                        suffixChars[ch] = true;
+                        hasSuffix = true;
+                        pos += 1;
+                    } else {
+                        hasSuffix = false;
+                    }
+                } else if (rule.pattern[pos] == ' ') {
+                    pos += 1;
+                } else break;
+            }
+
+            if (count >= result.len) {
+                std.debug.print("error: too many identifier-like token types (max {d})\n", .{result.len});
+                return error.Overflow;
+            }
+            result[count] = .{
+                .token = rule.token,
+                .startChars = cc.chars,
+                .suffixChars = suffixChars,
+                .hasSuffix = hasSuffix,
+            };
+            count += 1;
+        }
+        return .{ .rules = result, .count = count };
+    }
+
     fn generateCharClassification(self: *LexerGenerator) !void {
-        // Derive LETTER and DIGIT sets from grammar patterns
         var letterChars: [256]bool = @splat(false);
         var digitChars: [256]bool = @splat(false);
-
-        // Track which token names we've already processed (first occurrence wins)
-        var seenTokens: [16][]const u8 = undefined;
-        var seenCount: usize = 0;
 
         for (self.spec.rules.items) |rule| {
             if (rule.guards.len > 0) continue;
             if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
-
             if (std.mem.eql(u8, rule.token, "integer") or std.mem.eql(u8, rule.token, "real")) {
                 if (parseCharClass(rule.pattern)) |cc| {
                     for (0..256) |c| {
                         if (cc.chars[c]) digitChars[c] = true;
                     }
                 }
-            } else if (!std.mem.eql(u8, rule.token, "err")) {
-                // Only process the first rule for each token name
-                var seen = false;
-                for (seenTokens[0..seenCount]) |st| {
-                    if (std.mem.eql(u8, st, rule.token)) { seen = true; break; }
-                }
-                if (seen) continue;
-                if (seenCount >= seenTokens.len) {
-                    std.debug.print("error: too many identifier-like token types (max {d})\n", .{seenTokens.len});
-                    return error.Overflow;
-                }
-                seenTokens[seenCount] = rule.token;
-                seenCount += 1;
+            }
+        }
 
-                // Identifier-like rules (ident, constant, etc.) — must have alpha/underscore in start class
-                if (parseCharClass(rule.pattern)) |cc| {
-                    var hasAlpha = false;
-                    for (0..256) |c| {
-                        if (cc.chars[c] and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_')) {
-                            hasAlpha = true;
-                            break;
-                        }
-                    }
-                    if (hasAlpha) {
-                        for (0..256) |c| {
-                            if (cc.chars[c]) letterChars[c] = true;
-                        }
-                    }
-                }
+        const ident = try collectIdentRules(self.spec);
+        for (ident.rules[0..ident.count]) |r| {
+            for (0..256) |c| {
+                if (r.startChars[c]) letterChars[c] = true;
             }
         }
 
@@ -2226,95 +2291,9 @@ const LexerGenerator = struct {
     }
 
     fn generateIdentScanner(self: *LexerGenerator) !void {
-        const IdentInfo = struct {
-            token: []const u8,
-            startChars: [256]bool,
-            suffixChars: [256]bool,
-            hasSuffix: bool,
-        };
-        var identRules: [8]IdentInfo = undefined;
-        var identCount: usize = 0;
-
-        for (self.spec.rules.items) |rule| {
-            if (rule.guards.len > 0) continue;
-            if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
-            if (std.mem.eql(u8, rule.token, "integer") or
-                std.mem.eql(u8, rule.token, "real") or
-                std.mem.eql(u8, rule.token, "err")) continue;
-
-            var dup = false;
-            for (identRules[0..identCount]) |existing| {
-                if (std.mem.eql(u8, existing.token, rule.token)) {
-                    dup = true;
-                    break;
-                }
-            }
-            if (dup) continue;
-            if (identCount >= identRules.len) {
-                std.debug.print("error: too many identifier-like token types (max {d})\n", .{identRules.len});
-                return error.Overflow;
-            }
-
-            const cc = parseCharClass(rule.pattern) orelse continue;
-
-            // Start class must contain alpha/underscore to be identifier-like
-            var hasAlpha = false;
-            for (0..256) |c| {
-                if (cc.chars[c] and ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_')) {
-                    hasAlpha = true;
-                    break;
-                }
-            }
-            if (!hasAlpha) continue;
-
-            // Detect trailing suffix: parse past body classes, look for [chars]? or 'c'?
-            var suffixChars: [256]bool = @splat(false);
-            var hasSuffix = false;
-            var pos = cc.endPos;
-
-            while (pos < rule.pattern.len) {
-                if (rule.pattern[pos] == '[') {
-                    if (parseCharClass(rule.pattern[pos..])) |cls| {
-                        pos += cls.endPos;
-                        if (pos < rule.pattern.len and rule.pattern[pos] == '?') {
-                            suffixChars = cls.chars;
-                            hasSuffix = true;
-                            pos += 1;
-                        } else if (pos < rule.pattern.len and
-                            (rule.pattern[pos] == '*' or rule.pattern[pos] == '+'))
-                        {
-                            hasSuffix = false;
-                            pos += 1;
-                        } else {
-                            hasSuffix = false;
-                        }
-                    } else break;
-                } else if (pos + 2 < rule.pattern.len and rule.pattern[pos] == '\'' and
-                    rule.pattern[pos + 2] == '\'')
-                {
-                    const ch = rule.pattern[pos + 1];
-                    pos += 3;
-                    if (pos < rule.pattern.len and rule.pattern[pos] == '?') {
-                        suffixChars = @splat(false);
-                        suffixChars[ch] = true;
-                        hasSuffix = true;
-                        pos += 1;
-                    } else {
-                        hasSuffix = false;
-                    }
-                } else if (rule.pattern[pos] == ' ') {
-                    pos += 1;
-                } else break;
-            }
-
-            identRules[identCount] = .{
-                .token = rule.token,
-                .startChars = cc.chars,
-                .suffixChars = suffixChars,
-                .hasSuffix = hasSuffix,
-            };
-            identCount += 1;
-        }
+        const ident = try collectIdentRules(self.spec);
+        const identRules = ident.rules;
+        const identCount = ident.count;
 
         // Emit body loop
         try self.write(
