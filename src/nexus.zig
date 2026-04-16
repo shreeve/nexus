@@ -1568,10 +1568,12 @@ const LexerGenerator = struct {
                     if (std.mem.eql(u8, st, rule.token)) { seen = true; break; }
                 }
                 if (seen) continue;
-                if (seenCount < seenTokens.len) {
-                    seenTokens[seenCount] = rule.token;
-                    seenCount += 1;
+                if (seenCount >= seenTokens.len) {
+                    std.debug.print("error: too many identifier-like token types (max {d})\n", .{seenTokens.len});
+                    return error.Overflow;
                 }
+                seenTokens[seenCount] = rule.token;
+                seenCount += 1;
 
                 // Identifier-like rules (ident, constant, etc.) — must have alpha/underscore in start class
                 if (parseCharClass(rule.pattern)) |cc| {
@@ -2247,7 +2249,11 @@ const LexerGenerator = struct {
                     break;
                 }
             }
-            if (dup or identCount >= identRules.len) continue;
+            if (dup) continue;
+            if (identCount >= identRules.len) {
+                std.debug.print("error: too many identifier-like token types (max {d})\n", .{identRules.len});
+                return error.Overflow;
+            }
 
             const cc = parseCharClass(rule.pattern) orelse continue;
 
@@ -2365,7 +2371,11 @@ const LexerGenerator = struct {
         var chars: [8]u8 = undefined;
         var n: usize = 0;
         for (0..256) |c| {
-            if (suffixChars[c] and n < chars.len) {
+            if (suffixChars[c]) {
+                if (n >= chars.len) {
+                    std.debug.print("error: too many suffix characters (max {d})\n", .{chars.len});
+                    return error.Overflow;
+                }
                 chars[n] = @intCast(c);
                 n += 1;
             }
