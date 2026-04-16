@@ -1526,6 +1526,14 @@ const LexerGenerator = struct {
         const negated = i < pattern.len and pattern[i] == '^';
         if (negated) i += 1;
         while (i < pattern.len and pattern[i] != ']') {
+            if (pattern[i] == '\\' and i + 1 < pattern.len) {
+                switch (pattern[i + 1]) {
+                    'w' => { for ('a'..('z' + 1)) |c| chars[c] = true; for ('A'..('Z' + 1)) |c| chars[c] = true; for ('0'..('9' + 1)) |c| chars[c] = true; chars['_'] = true; i += 2; continue; },
+                    'd' => { for ('0'..('9' + 1)) |c| chars[c] = true; i += 2; continue; },
+                    's' => { chars[' '] = true; chars['\t'] = true; chars['\n'] = true; chars['\r'] = true; i += 2; continue; },
+                    else => {},
+                }
+            }
             const first = resolveEscape(pattern, i);
             if (first.next < pattern.len and pattern[first.next] == '-' and
                 first.next + 1 < pattern.len and pattern[first.next + 1] != ']')
