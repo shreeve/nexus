@@ -34,7 +34,7 @@
 # OP_MAP:     (op_map STRING-src STRING-src)
 # ERROR_NAME: (error_name IDENT-or-TOKEN-src STRING-src)
 # LEVEL:      (level INFIX_OP INFIX_OP ...)
-# INFIX_OP:   (infix_op STRING-src KW-src)    # KW ∈ left | right | none
+# INFIX_OP:   (infix_op STRING-src ASSOC-src)     # ASSOC ∈ left | right | none
 #
 # --- Rules ---
 #
@@ -91,11 +91,13 @@
 #
 # --- Exclusion hint (X "c") ---
 #
-# When an alternative's trailing elements are exactly `(tok X) (lit "c")`, the
-# lowerer strips that pair and records `c` as the alternative's excludeChar.
-# The recognition is by element tag and position, not by string-scanning
-# action text. This is the only structural transformation the lowerer performs
-# beyond direct translation of the schema above.
+# When an alternative's element list ends in one or more `(tok X) (lit "c")`
+# pairs, the lowerer strips every such pair from the list and records the
+# rightmost `c` as the alternative's excludeChar. (Multiple pairs are legal;
+# compare MUMPS's `glvn X "#" X ":"`.) Recognition is by element tag and
+# position, not by string-scanning the action text. This is the only
+# structural transformation the lowerer performs beyond direct translation of
+# the schema above.
 #
 # --- Invariants ---
 #
@@ -213,15 +215,20 @@ tokens
 
 @lang = "lang"
 
-# S/R conflicts (all resolve correctly with default-shift):
-#   - bracket_body TOKEN "(": shift for L(...) list syntax (1)
-#   - infix_rows vs {NEWLINE, COMMENT}: shift to absorb trailing trivia (2)
-#   - error_items vs {NEWLINE, COMMENT, COMMA}: same absorption pattern (3)
-#   - op_content vs {NEWLINE, COMMENT, COMMA}: same absorption pattern (3)
-#   - production vs continuation NEWLINE: shift to inspect for '|' (1)
-#   - primary vs "(" lookahead in bracket body: shift for L(X) (1)
-#   - alt_line vs trailing TOKEN / "@" / STRING: shift for continuation (3)
-#   - R/R: primary vs bracket_body on shared prefix (1)
+# The grammar reports 16 shift/reduce conflicts, all resolved correctly by
+# default-shift. They fall into three families:
+#
+#   - Trivia absorption in repeating directive bodies (shift the next
+#     NEWLINE / COMMENT / STRING into the pending list): op_content,
+#     infix_body, prod_tail (4).
+#   - Continuation lookahead after an alt_line (shift the next IDENT /
+#     TOKEN / "@" to stay in the element list before reducing): alt_line
+#     and production (4).
+#   - Top-level entry continuation (shift IDENT / TOKEN / "@" / NEWLINE /
+#     COMMENT to extend entries or start the next directive / rule):
+#     entries and directive (7).
+#   - L(X) disambiguation (shift "(" after TOKEN when the grammar-author
+#     wrote a list construct): primary (1).
 @conflicts = 16
 
 # ===========================================================================

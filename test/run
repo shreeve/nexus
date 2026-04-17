@@ -212,8 +212,6 @@ run_bootstrap_fp() {
     fi
 }
 
-
-
 run_bootstrap_fp
 
 run_sexp_snapshot() {

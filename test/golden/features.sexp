@@ -1,82 +1,82 @@
 (grammar
-  (lang "features")
-  (conflicts 0)
+  (lang `"features"`)
+  (conflicts `0`)
   (rule
-    (name name)
+    (name `name`)
     (alt
-      ((tok IDENT))))
+      ((tok `IDENT`))))
   (rule
-    (start program)
+    (start `program`)
     (alt
-      ((ref body))
-      (module ...1)))
+      ((ref `body`))
+      `(module ...1)`))
   (rule
-    (start expr)
+    (start `expr`)
     (alt
-      ((ref expr))
-      1))
+      ((ref `expr`))
+      `1`))
   (rule
-    (name body)
+    (name `body`)
     (alt
-      ((ref stmt))
-      (1))
+      ((ref `stmt`))
+      `(1)`)
     (alt
-      ((ref body)
-        (tok NEWLINE)
-        (ref stmt))
-      (...1 3))
+      ((ref `body`)
+        (tok `NEWLINE`)
+        (ref `stmt`))
+      `(...1 3)`)
     (alt
-      ((ref body)
-        (tok NEWLINE))
-      1))
+      ((ref `body`)
+        (tok `NEWLINE`))
+      `1`))
   (rule
-    (name stmt)
+    (name `stmt`)
     (alt
-      ((ref expr))))
+      ((ref `expr`))))
   (rule
-    (name expr)
+    (name `expr`)
     (alt
-      ((ref call)
-        (lit "=")
-        (ref expr))
-      (assign 1 3))
+      ((ref `call`)
+        (lit `"="`)
+        (ref `expr`))
+      `(assign 1 3)`)
     (alt
-      ((at_ref infix))))
+      ((at_ref `infix`))))
   (rule
-    (name call)
+    (name `call`)
     (alt
-      ((ref call)
-        (lit "(")
-        (ref args)
-        (lit ")"))
-      (call 1 ...3))
+      ((ref `call`)
+        (lit `"("`)
+        (ref `args`)
+        (lit `")"`))
+      `(call 1 ...3)`)
     (alt
-      ((ref atom))))
+      ((ref `atom`))))
   (rule
-    (name args)
+    (name `args`)
     (alt
       ((list_req
-          L
-          (plain expr)))
-      (...1))
-    (alt () ()))
+          `L`
+          (plain `expr`)))
+      `(...1)`)
+    (alt () `()`))
   (rule
-    (name atom)
+    (name `atom`)
     (alt
-      ((ref name)))
+      ((ref `name`)))
     (alt
-      ((tok INTEGER)))
+      ((tok `INTEGER`)))
     (alt
-      ((tok STRING_DQ)))
+      ((tok `STRING_DQ`)))
     (alt
-      ((lit "(")
-        (ref expr)
-        (lit ")"))
-      2))
+      ((lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      `2`))
   (infix
-    call
+    `call`
     (level
-      (infix_op "+" left)
-      (infix_op "-" left))
+      (infix_op `"+"` `left`)
+      (infix_op `"-"` `left`))
     (level
-      (infix_op "*" left))))
+      (infix_op `"*"` `left`))))

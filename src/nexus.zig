@@ -3386,8 +3386,8 @@ const GrammarLowerer = struct {
         if (items.len < 2) return self.shapeError(node, "group with ≥1 ALT_BODY");
 
         if (items.len == 2) {
-            const bodyElements = try self.lowerAltBody(items[1]);
-            defer @constCast(&bodyElements).deinit(self.allocator);
+            var bodyElements = try self.lowerAltBody(items[1]);
+            defer bodyElements.deinit(self.allocator);
 
             if (asMany) {
                 // [X, ...] with a single simple element collapses to an optList
@@ -3451,8 +3451,8 @@ const GrammarLowerer = struct {
         // that downstream emitters see a list of distinct alternatives.
         var subElems: std.ArrayListUnmanaged(ParsedElement) = .empty;
         for (items[1..]) |altBody| {
-            const body = try self.lowerAltBody(altBody);
-            defer @constCast(&body).deinit(self.allocator);
+            var body = try self.lowerAltBody(altBody);
+            defer body.deinit(self.allocator);
             if (body.items.len == 0) continue;
             try subElems.append(self.allocator, .{
                 .kind = .group,
@@ -6686,13 +6686,21 @@ fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringH
 // form suitable for golden-file comparison. Lists that contain no nested lists
 // stay on a single line; any list with a nested list child breaks across
 // lines with two-space indentation per level.
+//
+// Syntactic forms — each Sexp variant prints in an unmistakable wrapper:
+//   .nil        → _
+//   .tag        → bare tagName  (only ever appears as the first child of a
+//                 non-empty list, so it never collides with src content)
+//   .src        → `text`        backticks with `\\` and `` \` `` escaping
+//   .str        → "text"        double-quoted
+//   .list       → (child child ...)
 // =============================================================================
 
 fn dumpSexp(writer: anytype, sexp: ngp.Sexp, source: []const u8, indent: usize) !void {
     switch (sexp) {
         .nil => try writer.writeAll("_"),
         .tag => |t| try writer.writeAll(@tagName(t)),
-        .src => |s| try writer.writeAll(source[s.pos..][0..s.len]),
+        .src => |s| try dumpSrcText(writer, source[s.pos..][0..s.len]),
         .str => |s| try writer.print("\"{s}\"", .{s}),
         .list => |items| {
             if (items.len == 0) {
@@ -6701,12 +6709,13 @@ fn dumpSexp(writer: anytype, sexp: ngp.Sexp, source: []const u8, indent: usize) 
             }
 
             var hasNestedList = false;
-            for (items) |item| {
-                if (item == .list and item.list.len > 0) {
+            for (items) |item| switch (item) {
+                .list => |sub| if (sub.len > 0) {
                     hasNestedList = true;
                     break;
-                }
-            }
+                },
+                else => {},
+            };
 
             try writer.writeAll("(");
             if (!hasNestedList) {
@@ -6725,6 +6734,15 @@ fn dumpSexp(writer: anytype, sexp: ngp.Sexp, source: []const u8, indent: usize) 
             try writer.writeAll(")");
         },
     }
+}
+
+fn dumpSrcText(writer: anytype, text: []const u8) !void {
+    try writer.writeByte('`');
+    for (text) |c| {
+        if (c == '`' or c == '\\') try writer.writeByte('\\');
+        try writer.writeByte(c);
+    }
+    try writer.writeByte('`');
 }
 
 // Parse the @parser section of a grammar file through the generated frontend
@@ -6948,18 +6966,18 @@ pub fn main(init: std.process.Init) !void {
         // Parse the @parser section through the self-hosted frontend and
         // lower the resulting S-expression tree into GrammarIR. The lowerer
         // extracts text from .src nodes into slices backed by sourceText
-        // (which outlives main), so the parser's arena is safe to tear
-        // down immediately after lowering.
+        // (which outlives main), so the parser's arena is freed as soon as
+        // lowering returns.
         var parsed = parseGrammarSexp(allocator, sourceText) catch |err| {
             std.debug.print("❌ Failed to parse @parser section: {any}\n", .{err});
             return;
         };
+        defer parsed.parser.deinit();
+
         var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
-            parsed.parser.deinit();
             std.debug.print("❌ Lowerer error: {any}\n", .{err});
             return;
         };
-        parsed.parser.deinit();
 
         if (ir.lang == null) ir.lang = lexerParser.spec.langName;
 

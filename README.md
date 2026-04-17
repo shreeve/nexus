@@ -931,9 +931,9 @@ If the AST shape changes, also refresh the canonical S-expression golden:
 ./test/run --update
 ```
 
-The bootstrap fixed-point test and the cross-frontend oracle both run on
-every `zig build test` — a broken invariant fails the build with a
-pointer to what drifted.
+The bootstrap fixed-point test and the six canonical S-expression
+snapshots all run on every `zig build test` — a broken invariant fails
+the build with a pointer to what drifted.
 
 For debugging the frontend, the binary can print its canonical
 S-expression tree for any grammar:
