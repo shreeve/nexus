@@ -216,38 +216,53 @@ run_bootstrap_fp() {
 
 run_bootstrap_fp
 
-SEXP_GOLDEN="test/golden/nexus.sexp"
-SEXP_TMP="$TMPDIR/nexus.sexp"
+run_sexp_snapshot() {
+    local name=$1
+    local grammar=$2
+    local golden="test/golden/${name}.sexp"
+    local tmp="$TMPDIR/${name}.sexp"
 
-if $NEXUS --dump-sexp nexus.grammar "$SEXP_TMP" >/dev/null 2>&1; then
+    if ! $NEXUS --dump-sexp "$grammar" "$tmp" >/dev/null 2>&1; then
+        FAIL=$((FAIL + 1))
+        ERRORS="${ERRORS}\n  FAIL  ${name}-sexp — dump failed"
+        return
+    fi
+
     if $UPDATE; then
-        cp "$SEXP_TMP" "$SEXP_GOLDEN"
-        echo "  UPDATE  nexus-sexp"
+        cp "$tmp" "$golden"
+        echo "  UPDATE  ${name}-sexp"
         PASS=$((PASS + 1))
-    elif diff -q "$SEXP_GOLDEN" "$SEXP_TMP" >/dev/null 2>&1; then
-        echo "  PASS  nexus-sexp (canonical tree stable)"
+        return
+    fi
+
+    if diff -q "$golden" "$tmp" >/dev/null 2>&1; then
+        echo "  PASS  ${name}-sexp (canonical tree stable)"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
-        lines=$(diff "$SEXP_GOLDEN" "$SEXP_TMP" | grep -c '^[<>]' || true)
-        ERRORS="${ERRORS}\n  FAIL  nexus-sexp — $lines lines differ"
+        local lines=$(diff "$golden" "$tmp" | grep -c '^[<>]' || true)
+        ERRORS="${ERRORS}\n  FAIL  ${name}-sexp — $lines lines differ"
     fi
-else
-    FAIL=$((FAIL + 1))
-    ERRORS="${ERRORS}\n  FAIL  nexus-sexp — dump failed"
-fi
+}
 
-# Determinism for the sexp dump (same input, two runs, identical output)
-SEXP_A="$TMPDIR/nexus_a.sexp"
-SEXP_B="$TMPDIR/nexus_b.sexp"
+run_sexp_snapshot "nexus"    "nexus.grammar"
+run_sexp_snapshot "basic"    "test/basic/basic.grammar"
+run_sexp_snapshot "features" "test/features/features.grammar"
+run_sexp_snapshot "zag"      "test/zag/zag.grammar"
+run_sexp_snapshot "slash"    "test/slash/slash.grammar"
+run_sexp_snapshot "mumps"    "test/mumps/mumps.grammar"
+
+# Determinism: same input, two runs, identical S-expression output.
+SEXP_A="$TMPDIR/determ_a.sexp"
+SEXP_B="$TMPDIR/determ_b.sexp"
 $NEXUS --dump-sexp nexus.grammar "$SEXP_A" >/dev/null 2>&1 || true
 $NEXUS --dump-sexp nexus.grammar "$SEXP_B" >/dev/null 2>&1 || true
 if diff -q "$SEXP_A" "$SEXP_B" >/dev/null 2>&1; then
-    echo "  PASS  nexus-sexp (deterministic)"
+    echo "  PASS  sexp-dump (deterministic)"
     PASS=$((PASS + 1))
 else
     FAIL=$((FAIL + 1))
-    ERRORS="${ERRORS}\n  FAIL  nexus-sexp — nondeterministic dump"
+    ERRORS="${ERRORS}\n  FAIL  sexp-dump — nondeterministic"
 fi
 
 echo ""

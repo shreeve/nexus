@@ -84,7 +84,8 @@ error pointing at the source line; there is no heuristic shape inference.
 
 Three CI guards protect the pipeline:
 
-- `test/golden/nexus.sexp` pins the canonical AST of `nexus.grammar`.
+- `test/golden/*.sexp` pins the canonical AST for every in-repo grammar
+  (nexus, basic, features, zag, slash, mumps). A drift fails the golden.
 - A bootstrap fixed-point test regenerates `src/parser.zig` from
   `nexus.grammar` on every run and diffs it against the checked-in file.
 
@@ -98,7 +99,7 @@ src/
 nexus.grammar        # Grammar DSL described in its own grammar format
 build.zig            # Build configuration
 test/
-├── run              # Test runner (26 tests)
+├── run              # Test runner (31 tests)
 ├── basic/           # Expression grammar
 ├── features/        # Feature-test grammar
 ├── mumps/           # MUMPS language grammar
@@ -889,7 +890,7 @@ delimiter stacks) requires `@lang` wrapper support.
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # fast + safety-checked (recommended)
 zig build -Doptimize=ReleaseFast       # fast, safety checks stripped
-zig build test                         # run all 26 tests
+zig build test                         # run all 31 tests
 zig build run -- <args>                # run with arguments
 ```
 

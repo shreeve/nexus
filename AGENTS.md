@@ -12,11 +12,11 @@ Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer 
 - `src/parser.zig` — Nexus's own frontend parser, generated from `nexus.grammar` by running Nexus
 - `src/lang.zig` — lang module consumed by `src/parser.zig` (Tag enum + lexer wrapper)
 - `nexus.grammar` — the grammar DSL described in its own grammar format; begins with the canonical S-expression schema block comment
-- `test/golden/nexus.sexp` — canonical S-expression tree of `nexus.grammar`, refreshed on every test run
+- `test/golden/*.sexp` — canonical S-expression tree for each in-repo grammar; any AST drift fails the golden
 - `test/{lang}/` — grammar + lang module per language
 - `test/golden/` — byte-exact golden files for generated output
 - `test/adverse/` — bad grammars that must produce errors
-- `test/run` — 26 tests: golden parsers, compile checks, determinism, adverse grammars, self-hosted Sexp golden, bootstrap fixed point
+- `test/run` — 31 tests: golden parsers, compile checks, determinism, adverse grammars, self-hosted Sexp golden across every in-repo grammar, bootstrap fixed point
 
 ## Validated Languages
 
@@ -128,7 +128,7 @@ The S-expression shape the frontend emits is governed by the canonical schema do
 
 Two CI checks guard the pipeline end-to-end:
 
-1. `test/golden/nexus.sexp` — the canonical S-expression tree of `nexus.grammar` itself. Any AST drift fails the golden.
+1. `test/golden/*.sexp` — canonical S-expression snapshots for every in-repo grammar (nexus, basic, features, zag, slash, mumps). Any AST drift fails the golden with a line-count diff.
 2. Bootstrap fixed point — regenerating `src/parser.zig` from `nexus.grammar` with the current binary must reproduce the checked-in file exactly.
 
 ### Making a grammar change
@@ -145,7 +145,7 @@ Debugging a frontend issue? Run `./bin/nexus --dump-sexp <grammar>` to inspect t
 ```bash
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # ~8x faster runtime, safety kept (recommended)
-zig build test                         # run all 26 tests
+zig build test                         # run all 31 tests
 ./test/run --update                    # regenerate golden files after intentional changes
 ```
 
