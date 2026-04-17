@@ -16,7 +16,7 @@ Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer 
 - `test/{lang}/` — grammar + lang module per language
 - `test/golden/` — byte-exact golden files for generated output
 - `test/adverse/` — bad grammars that must produce errors
-- `test/run` — 32 tests: golden parsers, compile checks, determinism, adverse grammars, cross-frontend equivalence, self-hosted Sexp golden, bootstrap fixed point
+- `test/run` — 26 tests: golden parsers, compile checks, determinism, adverse grammars, self-hosted Sexp golden, bootstrap fixed point
 
 ## Validated Languages
 
@@ -126,11 +126,10 @@ The S-expression shape the frontend emits is governed by the canonical schema do
 
 ### Trust ladder
 
-Three CI checks guard the pipeline end-to-end:
+Two CI checks guard the pipeline end-to-end:
 
 1. `test/golden/nexus.sexp` — the canonical S-expression tree of `nexus.grammar` itself. Any AST drift fails the golden.
-2. Cross-frontend equivalence — every in-repo grammar is parsed twice (once through the self-hosted frontend, once through the hand-written `ParserDSLParser` available via `--legacy`) and their GrammarIRs are serialized to a stable textual form and compared byte-for-byte.
-3. Bootstrap fixed point — regenerating `src/parser.zig` from `nexus.grammar` with the current binary must reproduce the checked-in file exactly.
+2. Bootstrap fixed point — regenerating `src/parser.zig` from `nexus.grammar` with the current binary must reproduce the checked-in file exactly.
 
 ### Making a grammar change
 
@@ -139,14 +138,14 @@ Three CI checks guard the pipeline end-to-end:
 3. Run `zig build test`. If `nexus-sexp` drifted, run `./test/run --update` to refresh the golden, then commit.
 4. Commit grammar, parser, and golden together.
 
-Debugging a frontend issue? Run `./bin/nexus --dump-sexp <grammar>` to inspect the S-expression tree, or `./bin/nexus --cross-check <grammar>` to diff both frontends' IRs.
+Debugging a frontend issue? Run `./bin/nexus --dump-sexp <grammar>` to inspect the S-expression tree the frontend emits.
 
 ## Test Workflow
 
 ```bash
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # ~8x faster runtime, safety kept (recommended)
-zig build test                         # run all 32 tests
+zig build test                         # run all 26 tests
 ./test/run --update                    # regenerate golden files after intentional changes
 ```
 

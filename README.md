@@ -85,11 +85,8 @@ error pointing at the source line; there is no heuristic shape inference.
 Three CI guards protect the pipeline:
 
 - `test/golden/nexus.sexp` pins the canonical AST of `nexus.grammar`.
-- A cross-frontend oracle parses every in-repo grammar through both the
-  self-hosted frontend and a hand-written recursive-descent backup
-  (available via `--legacy`) and demands byte-identical `GrammarIR` output.
-- A bootstrap fixed-point test regenerates `src/parser.zig` on every run
-  and diffs it against the checked-in file.
+- A bootstrap fixed-point test regenerates `src/parser.zig` from
+  `nexus.grammar` on every run and diffs it against the checked-in file.
 
 ### Repository Structure
 
@@ -101,7 +98,7 @@ src/
 nexus.grammar        # Grammar DSL described in its own grammar format
 build.zig            # Build configuration
 test/
-├── run              # Test runner (32 tests)
+├── run              # Test runner (26 tests)
 ├── basic/           # Expression grammar
 ├── features/        # Feature-test grammar
 ├── mumps/           # MUMPS language grammar
@@ -892,7 +889,7 @@ delimiter stacks) requires `@lang` wrapper support.
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # fast + safety-checked (recommended)
 zig build -Doptimize=ReleaseFast       # fast, safety checks stripped
-zig build test                         # run all 32 tests
+zig build test                         # run all 26 tests
 zig build run -- <args>                # run with arguments
 ```
 
@@ -937,13 +934,11 @@ The bootstrap fixed-point test and the cross-frontend oracle both run on
 every `zig build test` — a broken invariant fails the build with a
 pointer to what drifted.
 
-For debugging, the binary has two built-in lenses into the self-hosted
-path:
+For debugging the frontend, the binary can print its canonical
+S-expression tree for any grammar:
 
 ```bash
 ./bin/nexus --dump-sexp <grammar>       # print the canonical Sexp tree
-./bin/nexus --cross-check <grammar>     # diff both frontends' IRs
-./bin/nexus --legacy <grammar> <out>    # use the hand-written frontend as a fallback oracle
 ```
 
 ---
