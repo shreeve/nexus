@@ -9,7 +9,7 @@
 # Nexus
 
 A self-hosting, universal parser generator. One tool reads any `.grammar`
-file and produces a combined lexer + LALR(1) parser module in Zig.
+file and produces a combined lexer + LALR(1)/SLR(1) parser module in Zig.
 
 One tool. Any language. Install once, generate parsers for everything.
 
