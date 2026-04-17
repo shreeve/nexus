@@ -2,3 +2,4 @@
 zig-out/
 bin/
 *.o
+notes.txt
