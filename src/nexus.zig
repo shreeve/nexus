@@ -3088,17 +3088,22 @@ const GrammarLowerer = struct {
     }
 
     fn shapeError(self: *const GrammarLowerer, node: ngp.Sexp, expected: []const u8) LoweringError {
-        const off = nodeOffset(node);
-        var line: u32 = 1;
-        var col: u32 = 1;
-        var i: usize = 0;
-        while (i < off and i < self.source.len) : (i += 1) {
-            if (self.source[i] == '\n') {
-                line += 1;
-                col = 1;
-            } else col += 1;
+        // The negative-test suite fires this path by design; silencing the
+        // diagnostic during `zig test` keeps the test runner's output clean
+        // without losing real diagnostics in production runs.
+        if (!@import("builtin").is_test) {
+            const off = nodeOffset(node);
+            var line: u32 = 1;
+            var col: u32 = 1;
+            var i: usize = 0;
+            while (i < off and i < self.source.len) : (i += 1) {
+                if (self.source[i] == '\n') {
+                    line += 1;
+                    col = 1;
+                } else col += 1;
+            }
+            std.debug.print("❌ shape error at line {d}, col {d}: expected {s}\n", .{ line, col, expected });
         }
-        std.debug.print("❌ shape error at line {d}, col {d}: expected {s}\n", .{ line, col, expected });
         return error.ShapeError;
     }
 
@@ -6765,271 +6770,227 @@ fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
 // =============================================================================
 // Negative shape tests for the lowerer
 //
-// Each case constructs a deliberately malformed S-expression tree by hand and
-// asserts that GrammarLowerer.lower rejects it with error.ShapeError. The
-// goal is to mechanically prove the lowerer's "exact shape or hard error"
-// contract — no test relies on the downstream parser to produce the bad
-// shape, because a well-formed grammar can't produce malformed Sexps by
-// construction.
+// Each `test` block constructs a deliberately malformed S-expression tree by
+// hand and asserts that GrammarLowerer.lower rejects it with
+// error.ShapeError. The goal is to mechanically prove the lowerer's "exact
+// shape or hard error" contract — the downstream parser cannot produce
+// malformed Sexps by construction, so these shapes can only be built
+// directly.
 //
-// The cases cover every lowering entry point: root dispatch, each directive,
-// rule/alt structure, every element variant, list inner shapes, quantifiers,
-// and the exclude hint. A successful run is "N/N rejected"; a regression
-// shows exactly which shape slipped through as a silent accept.
+// The suite covers every lowering entry point: root dispatch, each
+// directive, rule/alt structure, every element variant, list inner shapes,
+// quantifiers, and the exclude hint. Collectively they pin down every
+// dispatch site in GrammarLowerer against a known-bad shape.
+//
+// These `test` blocks are compiled only when Zig's test runner is invoked
+// (`zig build test-lowerer` or `zig test src/nexus.zig`). They add zero
+// bytes to the shipped binary.
 // =============================================================================
 
-const NegativeCase = struct {
-    name: []const u8,
-    sexp: ngp.Sexp,
-};
+const testing = std.testing;
 
-fn runLowererNegativeTests(allocator: Allocator) !u32 {
-    // Reusable leaves. All .src nodes point into a shared source buffer so
-    // the line/col reporter and stripQuotes have valid slices to work with.
-    // Byte layout of the source:
-    //   0..1  -> "x"   (a harmless one-char token for most tests)
-    //   1..5  -> "\"ab\""  (a multi-char string literal for the exclude-too-long test)
-    const source = "x\"ab\"";
-    const src0: ngp.Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
-    const srcMulti: ngp.Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
+// Shared source buffer used by every negative-shape test. Byte layout:
+//   0..1  -> "x"         (harmless one-char src for most cases)
+//   1..5  -> "\"ab\""    (a multi-char string literal for the exclude-too-long case)
+const negSource = "x\"ab\"";
+const negSrc0: ngp.Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
+const negSrcMulti: ngp.Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
 
-    const S = struct {
-        fn tag(t: ngp.Tag) ngp.Sexp {
-            return .{ .tag = t };
-        }
-    };
-
-    const cases = [_]NegativeCase{
-        // Root dispatch
-        .{
-            .name = "root is not a list",
-            .sexp = src0,
-        },
-        .{
-            .name = "root list has wrong tag",
-            .sexp = .{ .list = &[_]ngp.Sexp{ S.tag(.alt) } },
-        },
-        .{
-            .name = "entry is not a tagged list",
-            .sexp = .{ .list = &[_]ngp.Sexp{ S.tag(.grammar), src0 } },
-        },
-        .{
-            .name = "entry has unknown tag",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{ S.tag(.opt) } },
-            } },
-        },
-
-        // Directives
-        .{
-            .name = "(lang) with no STRING",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{S.tag(.lang)} },
-            } },
-        },
-        .{
-            .name = "(conflicts) with non-numeric src",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{ S.tag(.conflicts), .{ .src = .{ .pos = 0, .len = 1, .id = 0 } } } },
-            } },
-        },
-        .{
-            .name = "(as) with no entries",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{ S.tag(.as), src0 } },
-            } },
-        },
-        .{
-            .name = "(as) entry has wrong tag",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{
-                    S.tag(.as),
-                    src0,
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-                } },
-            } },
-        },
-        .{
-            .name = "(op_map) wrong arity",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{
-                    S.tag(.op),
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.op_map), src0 } },
-                } },
-            } },
-        },
-        .{
-            .name = "(infix) level with non-infix_op child",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{
-                    S.tag(.infix),
-                    src0,
-                    .{ .list = &[_]ngp.Sexp{
-                        S.tag(.level),
-                        .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-                    } },
-                } },
-            } },
-        },
-
-        // Rules
-        .{
-            .name = "(rule) with no alts",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{
-                    S.tag(.rule),
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.name), src0 } },
-                } },
-            } },
-        },
-        .{
-            .name = "rule_name tag is neither start nor name",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{
-                    S.tag(.rule),
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.alt), .{ .list = &[_]ngp.Sexp{} } } },
-                } },
-            } },
-        },
-        .{
-            .name = "alt child is not list",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                S.tag(.grammar),
-                .{ .list = &[_]ngp.Sexp{
-                    S.tag(.rule),
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.name), src0 } },
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.alt), src0 } },
-                } },
-            } },
-        },
-
-        // Elements
-        .{
-            .name = "element is a bare src (not tagged)",
-            .sexp = ruleWithElements(&.{src0}),
-        },
-        .{
-            .name = "(ref) with wrong arity",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{S.tag(.ref)} }}),
-        },
-        .{
-            .name = "(list_req) missing inner",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{ S.tag(.list_req), src0 } }}),
-        },
-        .{
-            .name = "(list_req) inner has unknown tag",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{
-                S.tag(.list_req),
-                src0,
-                .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-            } }}),
-        },
-        .{
-            .name = "(group) with no ALT_BODY",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{S.tag(.group)} }}),
-        },
-        .{
-            .name = "(quantified) missing quant",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{
-                S.tag(.quantified),
-                .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-            } }}),
-        },
-        .{
-            .name = "(quantified) quant child has wrong tag",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{
-                S.tag(.quantified),
-                .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-                .{ .list = &[_]ngp.Sexp{ S.tag(.skip) } },
-            } }}),
-        },
-        .{
-            .name = "(skip_q) missing quant",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{
-                S.tag(.skip_q),
-                .{ .list = &[_]ngp.Sexp{ S.tag(.ref), src0 } },
-            } }}),
-        },
-        .{
-            .name = "(exclude) with wrong arity",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{S.tag(.exclude)} }}),
-        },
-        .{
-            .name = "(exclude) with multi-char literal",
-            .sexp = .{ .list = &[_]ngp.Sexp{
-                .{ .tag = .grammar },
-                .{ .list = &[_]ngp.Sexp{
-                    .{ .tag = .rule },
-                    .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, src0 } },
-                    .{ .list = &[_]ngp.Sexp{
-                        .{ .tag = .alt },
-                        .{ .list = &[_]ngp.Sexp{
-                            .{ .list = &[_]ngp.Sexp{ .{ .tag = .exclude }, srcMulti } },
-                        } },
-                    } },
-                } },
-            } },
-        },
-        .{
-            .name = "(exclude) appearing inside a group body",
-            .sexp = ruleWithElements(&.{.{ .list = &[_]ngp.Sexp{
-                S.tag(.group),
-                .{ .list = &[_]ngp.Sexp{
-                    .{ .list = &[_]ngp.Sexp{ S.tag(.exclude), src0 } },
-                } },
-            } }}),
-        },
-    };
-
-    var pass: u32 = 0;
-    var fail: u32 = 0;
-    for (cases) |case| {
-        const result = GrammarLowerer.lower(allocator, case.sexp, source);
-        if (result) |_| {
-            std.debug.print("  ✗ {s}: unexpectedly succeeded\n", .{case.name});
-            fail += 1;
-        } else |err| switch (err) {
-            error.ShapeError => pass += 1,
-            else => {
-                std.debug.print("  ✗ {s}: wrong error {any}\n", .{ case.name, err });
-                fail += 1;
-            },
-        }
-    }
-
-    std.debug.print("  lowerer negative suite: {d} passed, {d} failed of {d} cases\n", .{ pass, fail, cases.len });
-    return fail;
-}
-
-// Helper: wrap an element list as a complete
-//   (grammar (rule (name SRC) (alt (elements...))))
-// tree so the lowerer reaches the element dispatch for the element under
-// test. Must be comptime so all the intermediate `&[_]Sexp{...}` slices
-// resolve into static memory rather than stack references that die when
-// the function returns.
-fn ruleWithElements(comptime elems: []const ngp.Sexp) ngp.Sexp {
-    const src0: ngp.Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
+// Wrap an element list as (grammar (rule (name SRC) (alt (elems...)))) so
+// the lowerer reaches the element dispatch. Must be comptime so the nested
+// `&[_]Sexp{...}` literals resolve into static memory.
+fn negRule(comptime elems: []const ngp.Sexp) ngp.Sexp {
     return comptime .{ .list = &[_]ngp.Sexp{
         .{ .tag = .grammar },
         .{ .list = &[_]ngp.Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, src0 } },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, negSrc0 } },
             .{ .list = &[_]ngp.Sexp{
                 .{ .tag = .alt },
                 .{ .list = elems },
             } },
         } },
     } };
+}
+
+// Every test below creates its own arena so shape-error bailouts from the
+// lowerer don't trip std.testing.allocator's leak detector — the lowerer
+// doesn't clean up partially-built IR on early return (processGrammar
+// owns the final IR in production).
+fn expectShapeError(sexp: ngp.Sexp) !void {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    try testing.expectError(error.ShapeError, GrammarLowerer.lower(arena.allocator(), sexp, negSource));
+}
+
+test "lowerer rejects non-list root" {
+    try expectShapeError(negSrc0);
+}
+
+test "lowerer rejects root list with wrong tag" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{.{ .tag = .alt }} });
+}
+
+test "lowerer rejects entry that is not a tagged list" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{ .{ .tag = .grammar }, negSrc0 } });
+}
+
+test "lowerer rejects entry with unknown tag" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{.{ .tag = .opt }} },
+    } });
+}
+
+test "lowerer rejects (lang) with no STRING" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{.{ .tag = .lang }} },
+    } });
+}
+
+test "lowerer rejects (conflicts) with non-numeric src" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{ .{ .tag = .conflicts }, negSrc0 } },
+    } });
+}
+
+test "lowerer rejects (as) with no entries" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{ .{ .tag = .as }, negSrc0 } },
+    } });
+}
+
+test "lowerer rejects (as) entry with wrong tag" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .tag = .as },
+            negSrc0,
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+        } },
+    } });
+}
+
+test "lowerer rejects (op_map) with wrong arity" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .tag = .op },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .op_map }, negSrc0 } },
+        } },
+    } });
+}
+
+test "lowerer rejects (level) containing non-infix_op child" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .tag = .infix },
+            negSrc0,
+            .{ .list = &[_]ngp.Sexp{
+                .{ .tag = .level },
+                .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+            } },
+        } },
+    } });
+}
+
+test "lowerer rejects (rule) with no alts" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .tag = .rule },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, negSrc0 } },
+        } },
+    } });
+}
+
+test "lowerer rejects rule_name tag that is neither start nor name" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .tag = .rule },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .alt }, .{ .list = &[_]ngp.Sexp{} } } },
+        } },
+    } });
+}
+
+test "lowerer rejects alt child that is not list" {
+    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .grammar },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .tag = .rule },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, negSrc0 } },
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .alt }, negSrc0 } },
+        } },
+    } });
+}
+
+test "lowerer rejects bare src as an element" {
+    try expectShapeError(negRule(&.{negSrc0}));
+}
+
+test "lowerer rejects (ref) with wrong arity" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{.{ .tag = .ref }} }}));
+}
+
+test "lowerer rejects (list_req) missing inner" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{ .{ .tag = .list_req }, negSrc0 } }}));
+}
+
+test "lowerer rejects (list_req) inner with unknown tag" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .list_req },
+        negSrc0,
+        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+    } }}));
+}
+
+test "lowerer rejects (group) with no ALT_BODY" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{.{ .tag = .group }} }}));
+}
+
+test "lowerer rejects (quantified) missing quant" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .quantified },
+        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+    } }}));
+}
+
+test "lowerer rejects (quantified) quant child with wrong tag" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .quantified },
+        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+        .{ .list = &[_]ngp.Sexp{.{ .tag = .skip }} },
+    } }}));
+}
+
+test "lowerer rejects (skip_q) missing quant" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .skip_q },
+        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+    } }}));
+}
+
+test "lowerer rejects (exclude) with wrong arity" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{.{ .tag = .exclude }} }}));
+}
+
+test "lowerer rejects (exclude) with multi-char literal" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{ .{ .tag = .exclude }, negSrcMulti } }}));
+}
+
+test "lowerer rejects (exclude) appearing inside a group body" {
+    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+        .{ .tag = .group },
+        .{ .list = &[_]ngp.Sexp{
+            .{ .list = &[_]ngp.Sexp{ .{ .tag = .exclude }, negSrc0 } },
+        } },
+    } }}));
 }
 
 fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
@@ -7091,14 +7052,6 @@ pub fn main(init: std.process.Init) !void {
             \\
         , .{});
         return;
-    }
-
-    if (std.mem.eql(u8, args[1], "--test-lowerer")) {
-        const failures = runLowererNegativeTests(allocator) catch |err| {
-            std.debug.print("❌ negative test harness error: {any}\n", .{err});
-            std.process.exit(1);
-        };
-        std.process.exit(if (failures == 0) 0 else 1);
     }
 
     if (std.mem.eql(u8, args[1], "--dump-sexp")) {

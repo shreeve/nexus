@@ -268,23 +268,25 @@ fi
 echo ""
 
 # =========================================================================
-# 6. Lowerer Negative Shape Tests
+# 6. Lowerer Negative Shape Tests (Zig-native test blocks)
 #
-# Hand-crafted malformed Sexps fed directly to GrammarLowerer. Each case
-# asserts a hard error with a useful diagnostic, proving the lowerer's
-# "exact shape or hard error" contract rather than inferring it from the
-# fact that well-formed grammars happen to produce well-formed trees.
+# Hand-crafted malformed Sexps fed directly to GrammarLowerer via Zig's
+# built-in `test "..."` blocks in src/nexus.zig. Each case asserts
+# error.ShapeError, proving the lowerer's "exact shape or hard error"
+# contract directly rather than inferring it from well-formed grammars.
+# The test binary is a separate compile from ./bin/nexus and contains no
+# production code paths.
 # =========================================================================
 
 echo "=== Lowerer Negative Shape Tests ==="
 echo ""
 
-if $NEXUS --test-lowerer >/dev/null 2>&1; then
+if zig build test-lowerer >/dev/null 2>&1; then
     echo "  PASS  lowerer-negative (every malformed shape rejected)"
     PASS=$((PASS + 1))
 else
     FAIL=$((FAIL + 1))
-    ERRORS="${ERRORS}\n  FAIL  lowerer-negative — at least one case failed; run ./bin/nexus --test-lowerer to see details"
+    ERRORS="${ERRORS}\n  FAIL  lowerer-negative — run \`zig build test-lowerer\` to see details"
 fi
 
 echo ""

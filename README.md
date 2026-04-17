@@ -88,11 +88,13 @@ Three CI guards protect the pipeline:
   (nexus, basic, features, zag, slash, mumps). A drift fails the golden.
 - A bootstrap fixed-point test regenerates `src/parser.zig` from
   `nexus.grammar` on every run and diffs it against the checked-in file.
-- A lowerer negative-shape suite feeds hand-crafted malformed Sexps to
-  `GrammarLowerer` and asserts each one is rejected with a precise
-  shape-error diagnostic — proving the "exact shape or hard error"
+- A lowerer negative-shape suite (Zig `test "..."` blocks in
+  `src/nexus.zig`) feeds hand-crafted malformed Sexps to
+  `GrammarLowerer` and asserts each one is rejected with
+  `error.ShapeError` — proving the "exact shape or hard error"
   contract directly, independent of what well-formed grammars happen to
-  produce.
+  produce. These tests compile into a separate test binary via
+  `zig build test-lowerer` and are absent from the shipped `./bin/nexus`.
 
 ### Repository Structure
 

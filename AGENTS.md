@@ -130,7 +130,7 @@ Three CI checks guard the pipeline end-to-end:
 
 1. `test/golden/*.sexp` — canonical S-expression snapshots for every in-repo grammar (nexus, basic, features, zag, slash, mumps). Any AST drift fails the golden with a line-count diff.
 2. Bootstrap fixed point — regenerating `src/parser.zig` from `nexus.grammar` with the current binary must reproduce the checked-in file exactly.
-3. Lowerer negative-shape tests — 24 hand-crafted malformed S-expression trees fed directly to `GrammarLowerer`, each asserted to be rejected with `error.ShapeError` and a precise diagnostic. This proves the lowerer's strictness claim independent of what the frontend can actually emit. Invoke directly with `./bin/nexus --test-lowerer`.
+3. Lowerer negative-shape tests — 24 hand-crafted malformed S-expression trees fed directly to `GrammarLowerer`, each asserted to be rejected with `error.ShapeError`. Implemented as Zig `test "..."` blocks in `src/nexus.zig`; the compiled test binary is separate from `./bin/nexus` and contains no production code paths. Invoke directly with `zig build test-lowerer` or `zig test src/nexus.zig`. Proves the lowerer's strictness claim independent of what the frontend can actually emit.
 
 ### Making a grammar change
 

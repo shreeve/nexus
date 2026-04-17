@@ -37,9 +37,22 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run nexus");
     run_step.dependOn(&run_cmd.step);
 
+    // Zig-native unit tests (currently only the lowerer negative-shape
+    // suite). Runs in a separate test binary compiled by `zig test`; the
+    // production `nexus` executable never links this code.
+    const lowerer_tests = b.addTest(.{ .root_module = nexus_mod });
+    const run_lowerer_tests = b.addRunArtifact(lowerer_tests);
+
+    const test_lowerer_step = b.step("test-lowerer", "Run lowerer negative-shape tests");
+    test_lowerer_step.dependOn(&run_lowerer_tests.step);
+
+    // Integration tests: shells out to test/run which drives ./bin/nexus
+    // on the in-repo grammars, diffs goldens, and runs the bootstrap
+    // fixed-point check.
     const test_cmd = b.addSystemCommand(&.{ "bash", "test/run" });
     test_cmd.step.dependOn(b.getInstallStep());
 
-    const test_step = b.step("test", "Run tests");
+    const test_step = b.step("test", "Run all tests");
+    test_step.dependOn(&run_lowerer_tests.step);
     test_step.dependOn(&test_cmd.step);
 }
