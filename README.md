@@ -3,43 +3,58 @@
 </p>
 
 <div align="center">
-  <strong>Universal grammar engine for language-agnostic lexer + LALR(1)/SLR(1) parser generation.</strong>
+  <strong>Generate a standalone Zig lexer + LR parser from one grammar file. Self-hosting, no runtime.</strong>
 </div>
 
 # Nexus
 
-A self-hosting, universal parser generator. One tool reads any `.grammar`
-file and produces a combined lexer + LALR(1)/SLR(1) parser module in Zig.
+Nexus reads a `.grammar` file and emits a single Zig module containing a
+combined lexer and LR parser — LALR(1) by default, SLR(1) via `--slr`. Drop
+the generated `parser.zig` into your project and build. No parser runtime,
+no extra support library, no language-specific code in the engine.
 
-One tool. Any language. Install once, generate parsers for everything.
-
-Nexus parses its own grammar format using a parser it generated from itself.
+Nexus is self-hosting: it parses its own grammar format with a parser
+generated from `nexus.grammar` itself. The bootstrap is guarded by three
+CI checks — golden AST snapshots, a fixed-point regeneration test, and a
+lowerer negative-shape suite — which catch accidental pipeline drift early.
 
 ## Why Nexus
 
-Most parser generators are tightly coupled to a single language or ecosystem.
-Nexus takes a different approach: the **engine** is universal and the
-**language** lives entirely in two files that you write:
+Nexus is for language tools that want their entire frontend in Zig without
+gluing together separate lexer and parser generators or shipping a parser
+runtime.
 
-- `{lang}.grammar` — declares tokens, patterns, guards, parser rules, actions
-- `{lang}.zig` — provides language-specific helpers (keywords, tags, rewriter)
+You write two files:
 
-The grammar file is the single source of truth. The language module handles
-anything too complex for declarative rules. Nexus itself contains zero
-language-specific code.
+- `{lang}.grammar` — tokens, lexer states, parser rules, precedence, actions
+- `{lang}.zig` — only the language-specific helpers that don't fit declarative rules
+
+Nexus emits one combined parser module. The grammar stays the source of
+truth; the Zig side is an escape hatch, not the center of the design.
+
+### What you get
+
+- **Single generated Zig file** — vendor it, audit it, ship it
+- **Combined lexer + LR parser** — one grammar drives both
+- **LALR(1) default, SLR(1) via `--slr`** — ~3× faster generation when you need it, no measured runtime speed difference
+- **Zero-copy 8-byte tokens** — no allocations during lexing
+- **S-expression output** — tag-based O(1) dispatch built in
+- **Small, readable codebase** — ~7,300 lines of Zig you can read end to end
+- **Proven by self-hosting** — Nexus's own frontend is Nexus-generated
 
 ## Quick Start
 
 ```bash
-zig build                                    # build nexus
+zig build -Doptimize=ReleaseSafe             # build nexus (recommended)
 ./bin/nexus zag.grammar   src/parser.zig     # generate parser for Zag
 ./bin/nexus slash.grammar src/parser.zig     # generate parser for Slash
 ./bin/nexus mumps.grammar src/parser.zig     # generate parser for MUMPS
 ```
 
-Each generated `parser.zig` contains both the lexer and LALR(1) parser, ready
-to compile into your project. The generated code imports the `@lang` module
-for language-specific behavior.
+Each generated `parser.zig` contains the lexer, LR parse tables, `Tag` enum,
+`Sexp` type, and reduction actions — ready to compile into your project.
+The generated code imports the `@lang` module for keyword lookup, tag
+definitions, and optional token rewriting.
 
 ## Validated Languages
 
