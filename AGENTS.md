@@ -131,7 +131,24 @@ Do not reintroduce a handwritten parser for bootstrap. The checked-in generated 
 ## Test Workflow
 
 ```bash
-zig build                    # build nexus
-zig build test               # run all 23 tests
-./test/run --update          # regenerate golden files after intentional changes
+zig build                              # Debug build (fast compile, slow runtime)
+zig build -Doptimize=ReleaseSafe       # ~8x faster runtime, safety kept (recommended)
+zig build test                         # run all 23 tests
+./test/run --update                    # regenerate golden files after intentional changes
 ```
+
+## Performance Notes
+
+- **Generation time scales with grammar complexity.** Small grammars
+  finish in a couple ms; MUMPS (529 rules, 832 states) takes ~30ms in
+  ReleaseSafe and ~190ms in Debug.
+- **`--slr` is ~3× faster than the default LALR(1)** and produces
+  identical conflict counts on 5 of 6 repo grammars. Only MUMPS
+  benefits from LALR's extra precision (2 fewer conflicts). See
+  README's "Parser Algorithm: LALR(1) vs SLR(1)" section for the data.
+- **ReleaseSafe ≈ ReleaseFast** for this workload (~2% apart). Use
+  ReleaseSafe for shipped binaries — the safety checks are essentially
+  free here.
+- **Runtime parsers produced by LALR and SLR run at identical speed.**
+  The only difference is generation time and (occasionally) conflict
+  count.

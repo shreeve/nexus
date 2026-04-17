@@ -787,10 +787,69 @@ Otherwise it uses `BaseLexer` directly.
 - Double-quote delimiters use `\` backslash escaping
 - Both stop on newline (no multiline strings)
 
-### Parser Algorithm
+### Parser Algorithm: LALR(1) vs SLR(1)
 
-LALR(1). Provides precise per-state per-item lookaheads for reduction
-decisions. SLR(1) mode is available via `--slr` for diagnostics.
+Nexus defaults to **LALR(1)**, with SLR(1) available via `--slr`. Both
+algorithms produce the *same parser states* and the *same runtime parse
+speed* — they differ only in how lookahead sets are computed, which
+affects generation time and (occasionally) conflict counts.
+
+**Two things matter when choosing a mode:**
+
+#### 1. Generation-time cost (LALR is ~3× slower)
+
+Wall-clock time to generate a parser, averaged over 5 runs after 2
+warmups (ReleaseSafe build, Apple Silicon):
+
+| Grammar | Rules | States | LALR time | SLR time | LALR/SLR |
+|---------|------:|-------:|----------:|---------:|---------:|
+| basic    |  20  |   33  |   3.2 ms  |   2.4 ms |   1.32× |
+| features |  26  |   42  |   2.2 ms  |   2.1 ms |   1.06× |
+| nexus    |  97  |  149  |   2.2 ms  |   2.1 ms |   1.05× |
+| slash    | 230  |  351  |   4.5 ms  |   2.8 ms |   1.59× |
+| zag      | 251  |  478  |  14.9 ms  |   3.8 ms |   3.96× |
+| mumps    | 529  |  832  |  28.0 ms  |   5.1 ms |   5.45× |
+| **total**|      |       | **54.9 ms** | **18.3 ms** | **3.01×** |
+
+The penalty scales with grammar complexity. Small grammars see ~5-10%
+overhead; large grammars see 5×+ slowdowns. The root cause is LALR's
+per-state per-item lookahead propagation, which grows super-linearly
+with state count.
+
+The *runtime* parser built from either mode runs at identical speed.
+The output tables have the same shape; only the lookahead entries
+used during conflict resolution at generation-time differ.
+
+#### 2. Conflict count (LALR occasionally resolves more)
+
+Conflict counts per grammar:
+
+| Grammar | LALR conflicts | SLR conflicts | LALR wins? |
+|---------|---------------:|--------------:|:---------- |
+| basic    |  0  |  0  | — (both conflict-free) |
+| features |  0  |  0  | — (both conflict-free) |
+| nexus    | 16  | 16  | — (identical) |
+| slash    | 16  | 16  | — (identical) |
+| zag      | 19  | 19  | — (identical) |
+| mumps    | **44**  | **46**  | **2 fewer** (the win) |
+
+**On 5 of 6 grammars in this repo, LALR and SLR produce the same
+number of conflicts.** LALR's extra precision only resolved 2 additional
+conflicts in MUMPS.
+
+#### Recommendation
+
+- **Default `zig build test` iteration:** `--slr` is fine for fast
+  feedback (3× faster generation, same runtime parsers, same conflict
+  count on most grammars).
+- **When LALR matters:** if your grammar reports conflicts that turn
+  out to be spurious (resolvable by more precise lookahead), try LALR
+  and see if the count drops. MUMPS is the repo's current example.
+- **Absolute numbers are small.** Even MUMPS LALR (the slowest case)
+  is ~28ms in ReleaseSafe. Pick the mode that gives you the cleanest
+  grammar and don't over-optimize generation time.
+
+---
 
 ### Token Limits
 
@@ -809,12 +868,34 @@ delimiter stacks) requires `@lang` wrapper support.
 ## Building
 
 ```bash
-zig build                    # build nexus to bin/nexus
-zig build test               # run all 23 tests
-zig build run -- <args>      # run with arguments
+zig build                              # Debug build (fast compile, slow runtime)
+zig build -Doptimize=ReleaseSafe       # fast + safety-checked (recommended)
+zig build -Doptimize=ReleaseFast       # fast, safety checks stripped
+zig build test                         # run all 23 tests
+zig build run -- <args>                # run with arguments
 ```
 
-Requires Zig 0.15.x.
+Requires Zig 0.16.0.
+
+### Which optimize mode to use
+
+Generation time varies **~8× between Debug and Release** modes. Totals
+for generating all 6 in-repo parsers (LALR + SLR combined, 12 runs):
+
+| Mode | Binary size | Total time | Speedup vs Debug |
+|------|-----------:|-----------:|-----------------:|
+| Debug        | 3.1 M | ~540 ms | 1.0× (baseline) |
+| ReleaseSafe  | 795 K |  ~73 ms | **7.7× faster** |
+| ReleaseFast  | 813 K |  ~72 ms | **7.7× faster** |
+
+**ReleaseSafe and ReleaseFast are indistinguishable** (~2% apart, well
+within noise). This workload is dominated by hashmap operations, string
+allocation, and LR automaton construction — none of which are
+bounds-check-heavy, so the checks ReleaseFast strips are already cheap.
+
+**Recommendation:** use `ReleaseSafe` for any shipped binary. You get
+the full ~8× speedup over Debug while keeping runtime safety. Use
+`Debug` only when actively debugging nexus itself.
 
 ### Regenerating the Bootstrap Parser
 
