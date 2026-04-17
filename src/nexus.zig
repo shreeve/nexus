@@ -3278,8 +3278,25 @@ const GrammarLowerer = struct {
         }
         if (t.items.len < 2 or t.items.len > 3) return self.shapeError(altNode, "(alt ELEMENT-list ACTION?)");
 
-        var elements = try self.lowerAltBody(t.items[1]);
-        const excludeChar = try stripExcludeTail(self, altNode, &elements);
+        // Children of the element list are either regular ELEMENT sexps or
+        // (exclude STRING) hints. Exclude elements are consumed here: they
+        // set the alternative's excludeChar (last-seen wins, matching
+        // legacy semantics) and never reach the element list that
+        // processGrammar sees.
+        const rawChildren = try self.requireList(t.items[1], "element list");
+        var elements: std.ArrayListUnmanaged(ParsedElement) = .empty;
+        var excludeChar: u8 = 0;
+        for (rawChildren) |child| {
+            if (taggedItems(child)) |ct| if (ct.tag == .exclude) {
+                if (ct.items.len != 2) return self.shapeError(child, "(exclude STRING)");
+                const raw = try self.requireSrc(ct.items[1], "exclusion literal");
+                const inner = stripQuotes(raw);
+                if (inner.len != 1) return self.shapeError(child, "exclude \"c\" — c must be a one-char literal");
+                excludeChar = inner[0];
+                continue;
+            };
+            try elements.append(self.allocator, try self.lowerElement(child));
+        }
 
         var action: ?[]const u8 = null;
         if (t.items.len == 3) action = try self.requireSrc(t.items[2], "action text");
@@ -3293,33 +3310,15 @@ const GrammarLowerer = struct {
         };
     }
 
+    // Lowers a list of element sexps. Used only for group bodies (inside
+    // parenthesized groups and bracket groups) where (exclude ...) is not
+    // legal — an exclude there will fall through lowerElement's switch and
+    // emit a shape error, which is the correct behavior.
     fn lowerAltBody(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!std.ArrayListUnmanaged(ParsedElement) {
         const items = try self.requireList(node, "element list");
         var out: std.ArrayListUnmanaged(ParsedElement) = .empty;
         for (items) |child| try out.append(self.allocator, try self.lowerElement(child));
         return out;
-    }
-
-    // The generated parser emits `(tok X) (lit "c")` for the surface syntax
-    // `X "c"` exclusion hint. When one or more such pairs terminate an
-    // alternative's element list, strip them all and record the rightmost
-    // character as the exclusion char (matching the hand-written frontend's
-    // left-to-right "last one wins" semantics). Recognition is by tag and
-    // position — no string scanning of action text.
-    fn stripExcludeTail(self: *GrammarLowerer, altNode: ngp.Sexp, elements: *std.ArrayListUnmanaged(ParsedElement)) LoweringError!u8 {
-        var excludeChar: u8 = 0;
-        while (elements.items.len >= 2) {
-            const last = elements.items[elements.items.len - 1];
-            const prev = elements.items[elements.items.len - 2];
-            if (prev.kind != .token or !std.mem.eql(u8, prev.value, "X")) break;
-            if (last.kind != .string) break;
-            const inner = stripQuotes(last.value);
-            if (inner.len != 1) return self.shapeError(altNode, "X \"c\" — c must be a one-char literal");
-            if (excludeChar == 0) excludeChar = inner[0];
-            _ = elements.pop();
-            _ = elements.pop();
-        }
-        return excludeChar;
     }
 
     // --- Elements ---

@@ -54,6 +54,7 @@ pub const Tag = enum(u8) {
     quantified,
     skip,
     skip_q,
+    exclude,
 
     // List-inner shapes
     plain,
@@ -166,6 +167,10 @@ pub const Lexer = struct {
 
     fn classifyIdent(self: *Lexer, tok: Token) TokenCat {
         const t = self.base.source[tok.pos..][0..tok.len];
+        // Bare `X` is the reserved exclusion marker in grammar alternatives
+        // (surface form `X "c"` means "not followed by c"). Reclassify it
+        // here so the parser grammar can match `KW_X STRING` structurally.
+        if (t.len == 1 and t[0] == 'X') return .@"kw_x";
         if (t.len > 0 and t[0] >= 'A' and t[0] <= 'Z') return .@"token";
         return classify(t, self.afterAt);
     }

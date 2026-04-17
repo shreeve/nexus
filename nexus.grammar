@@ -74,6 +74,7 @@
 #     (quantified ELEMENT QUANT)               # X?, X*, X+
 #     (skip       ELEMENT)                     # !X
 #     (skip_q     ELEMENT QUANT)               # !X?, !X*, !X+
+#     (exclude    STRING-src)                  # X "c"   next-char exclusion hint
 #
 # Group-like nodes always contain at least one ALT_BODY child, even when the
 # source has exactly one alternative. Each ALT_BODY is a .list of ELEMENT
@@ -91,13 +92,13 @@
 #
 # --- Exclusion hint (X "c") ---
 #
-# When an alternative's element list ends in one or more `(tok X) (lit "c")`
-# pairs, the lowerer strips every such pair from the list and records the
-# rightmost `c` as the alternative's excludeChar. (Multiple pairs are legal;
-# compare MUMPS's `glvn X "#" X ":"`.) Recognition is by element tag and
-# position, not by string-scanning the action text. This is the only
-# structural transformation the lowerer performs beyond direct translation of
-# the schema above.
+# The surface syntax `X "c"` inside an alternative is lexed as the dedicated
+# KW_X token followed by a STRING, which the parser grammar emits as
+# (exclude STRING-src). Any number of such elements may appear in an
+# alternative; the lowerer removes them from the element list and records
+# the last-seen character as the alternative's excludeChar (matching the
+# legal "rightmost wins" semantics used by MUMPS constructs like
+# `glvn X "#" X ":"`).
 #
 # --- Invariants ---
 #
@@ -121,6 +122,7 @@
 tokens
     ident
     token
+    kw_x
     string
     integer
     eq
@@ -362,6 +364,7 @@ elements   = elements element               → (...1 2)
 element    = primary quantifier             → (quantified 1 2)
            | "!" primary quantifier         → (skip_q 2 3)
            | "!" primary                    → (skip 2)
+           | KW_X STRING                    → (exclude 2)
            | primary
 
 primary    = IDENT                          → (ref 1)

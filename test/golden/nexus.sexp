@@ -347,6 +347,10 @@
         (ref `primary`))
       `(skip 2)`)
     (alt
+      ((tok `KW_X`)
+        (tok `STRING`))
+      `(exclude 2)`)
+    (alt
       ((ref `primary`))))
   (rule
     (name `primary`)

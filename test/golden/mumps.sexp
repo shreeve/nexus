@@ -737,8 +737,7 @@
       ((lit `"*"`)
         (lit `"@"`)
         (ref `atom`)
-        (tok `X`)
-        (lit `":"`))
+        (exclude `":"`))
       `(charindir 3)`)
     (alt
       ((lit `"*"`)
@@ -748,8 +747,7 @@
     (alt
       ((lit `"*"`)
         (ref `glvn`)
-        (tok `X`)
-        (lit `":"`))
+        (exclude `":"`))
       `(char 2)`)
     (alt
       ((ref `glvn`)
@@ -761,8 +759,7 @@
       ((ref `glvn`)
         (lit `"#"`)
         (ref `expr`)
-        (tok `X`)
-        (lit `":"`))
+        (exclude `":"`))
       `(# 1 3)`)
     (alt
       ((ref `glvn`)
@@ -770,10 +767,8 @@
       `(1 2)`)
     (alt
       ((ref `glvn`)
-        (tok `X`)
-        (lit `"#"`)
-        (tok `X`)
-        (lit `":"`))
+        (exclude `"#"`)
+        (exclude `":"`))
       `1`)
     (alt
       ((tok `STRING`))
@@ -1121,22 +1116,19 @@
         (group_opt
           ((lit `"^"`)
             (ref `routineref`)))
-        (tok `X`)
-        (lit `":"`))
+        (exclude `":"`))
       `(ref 1 3 5)`)
     (alt
       ((lit `"+"`)
         (ref `entryoffset`)
         (lit `"^"`)
         (ref `routineref`)
-        (tok `X`)
-        (lit `":"`))
+        (exclude `":"`))
       `(ref _ 2 4)`)
     (alt
       ((lit `"^"`)
         (ref `routineref`)
-        (tok `X`)
-        (lit `":"`))
+        (exclude `":"`))
       `(ref _ _ 2)`))
   (rule
     (name `entryoffset`)
@@ -1218,8 +1210,7 @@
     (alt
       ((lit `"@"`)
         (ref `atom`)
-        (tok `X`)
-        (lit `"@"`))
+        (exclude `"@"`))
       `(@name 2)`)
     (alt
       ((ref `glvn`)))
@@ -1402,8 +1393,7 @@
     (name `rlvn`)
     (alt
       ((ref `name`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(lvar 1)`)
     (alt
       ((ref `name`)
@@ -1423,8 +1413,7 @@
       ((lit `"^"`)
         (lit `"@"`)
         (ref `atom`)
-        (tok `X`)
-        (lit `"@"`))
+        (exclude `"@"`))
       `(@name 3)`))
   (rule
     (name `rgvn`)
@@ -1436,8 +1425,7 @@
     (alt
       ((lit `"^"`)
         (ref `name`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(gvar 2)`)
     (alt
       ((lit `"^"`)
@@ -1511,8 +1499,7 @@
         (lit `"|"`)
         (lit `"$"`)
         (tok `SSVN`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(ssvn ~6 env:3)`)
     (alt
       ((lit `"^"`)
@@ -1527,8 +1514,7 @@
       ((lit `"^"`)
         (lit `"$"`)
         (tok `SSVN`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(ssvn ~3)`)
     (alt
       ((lit `"^"`)
@@ -1579,32 +1565,27 @@
     (alt
       ((lit `"$"`)
         (tok `TEXT`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(intrinsic ~2)    # $T alone = $TEST ISV`)
     (alt
       ((lit `"$"`)
         (tok `SELECT`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(intrinsic ~2)    # $S alone = $STORAGE ISV`)
     (alt
       ((lit `"$"`)
         (tok `JUSTIFY`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(intrinsic ~2)    # $J alone = $JOB ISV`)
     (alt
       ((lit `"$"`)
         (tok `INCREMENT`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(intrinsic ~2)    # $I alone = $IO ISV`)
     (alt
       ((lit `"$"`)
         (tok `FN`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(intrinsic ~2)    # $Q=$QUIT, $TR=$TRESTART, etc.`)
     (alt
       ((lit `"$"`)
@@ -1633,8 +1614,7 @@
     (alt
       ((lit `"$"`)
         (ref `name`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `(intrinsic 2)     # unknown ISV (not if ( follows)`))
   (rule
     (name `extrinsicref`)
@@ -1649,8 +1629,7 @@
       `(1 args:3)        # $$FOO() or $$FOO(a,b)`)
     (alt
       ((ref `labelref`)
-        (tok `X`)
-        (lit `"("`))
+        (exclude `"("`))
       `1                 # $$FOO`))
   (rule
     (name `select`)
@@ -1744,8 +1723,7 @@
       `(1 routine:3)`)
     (alt
       ((ref `label`)
-        (tok `X`)
-        (lit `"^"`))
+        (exclude `"^"`))
       `1`)
     (alt
       ((lit `"^"`)
