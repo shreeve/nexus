@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="docs/nexus-logo-720w.png" alt="Nexus Logo" width="400">
+</p>
+
+<div align="center">
+  <strong>Universal grammar engine for language-agnostic lexer + SLR(1) parser generation.</strong>
+</div>
+
 # Nexus
 
 A self-hosting, universal parser generator. One tool reads any `.grammar`
