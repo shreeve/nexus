@@ -18,7 +18,7 @@ const Allocator = std.mem.Allocator;
 // driven machinery it emits for downstream languages.
 const ngp = @import("parser.zig");
 
-const version = "0.8.0";
+const version = "0.9.0";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
