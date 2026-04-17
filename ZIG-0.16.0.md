@@ -358,9 +358,12 @@ error.RenameAcrossMountPoints    → error.CrossDevice
 error.NotSameFileSystem          → error.CrossDevice
 error.SharingViolation           → error.FileBusy
 error.EnvironmentVariableNotFound → error.EnvironmentVariableMissing
+error.FileTooBig                  → error.StreamTooLong  (for readFileAlloc and friends)
 ```
 
-Notable behavior change: `std.Io.Dir.rename` now returns `error.DirNotEmpty` rather than `error.PathAlreadyExists`.
+Notable behavior changes:
+- `std.Io.Dir.rename` now returns `error.DirNotEmpty` rather than `error.PathAlreadyExists`.
+- `readFileAlloc` and similar limited-read APIs now signal "hit the limit" with `error.StreamTooLong` (not `error.FileTooBig`). The error type is part of `ReadFileAllocError` and the new error semantics unify "file exceeded limit" and "stream exceeded limit" into one error name.
 
 ### `Io.Writer` / `Io.Reader` Conveniences
 
@@ -376,6 +379,139 @@ LEB128:
 ```
 std.leb.readUleb128 → std.Io.Reader.takeLeb128
 std.leb.readIleb128 → std.Io.Reader.takeLeb128
+```
+
+### `Io.Limit` — the new "how many bytes" primitive
+
+Many 0.16 APIs that used to take a bare `usize` max-size now take an `Io.Limit` instead (e.g., `readFileAlloc`, `streamDelimiterLimit`, `sendFileAll`, etc.). `Io.Limit` is an `enum(usize)` with open discriminants:
+
+```zig
+pub const Limit = enum(usize) {
+    nothing = 0,
+    unlimited = math.maxInt(usize),
+    _,
+
+    pub fn limited(n: usize) Limit { ... }
+    pub fn limited64(n: u64) Limit { ... }       // clamps to maxInt(usize)
+    pub fn countVec(data: []const []const u8) Limit { ... }
+    pub fn min(a: Limit, b: Limit) Limit { ... }
+    pub fn max(a: Limit, b: Limit) Limit { ... }
+    pub fn minInt(l: Limit, n: usize) usize { ... }
+    pub fn slice(l: Limit, s: []u8) []u8 { ... }
+    pub fn sliceConst(l: Limit, s: []const u8) []const u8 { ... }
+};
+```
+
+Common spellings at call sites:
+
+```zig
+.limited(1 << 20)   // at most 1 MiB (enum-literal method-call syntax)
+.unlimited          // no cap
+.nothing            // zero-byte cap (useful for "don't read anything")
+```
+
+Because the method is named `limited`, `.limited(N)` works wherever `Io.Limit` is the inferred target type. If the target type is ambiguous, write `std.Io.Limit.limited(N)` explicitly.
+
+### `std.Io.Writer.Allocating` — the `ArrayList(u8).writer()` replacement
+
+This is one of the most important 0.16 APIs in practice. If you had any 0.15-era code using the `ArrayList(u8).writer(allocator)` idiom for building strings, code-generating, or accumulating formatted output, this is your migration target.
+
+**Struct shape (from `std/Io/Writer.zig`):**
+
+```zig
+pub const Allocating = struct {
+    allocator: Allocator,
+    writer: Writer,           // <-- FIELD (not a method). Use `alloc.writer.print(...)` directly.
+
+    // Initializers
+    pub fn init(allocator: Allocator) Allocating;
+    pub fn initAligned(allocator: Allocator, alignment: std.mem.Alignment) Allocating;
+    pub fn initCapacity(allocator: Allocator, capacity: usize) error{OutOfMemory}!Allocating;
+    pub fn initOwnedSlice(allocator: Allocator, slice: []u8) Allocating;
+    pub fn initOwnedSliceAligned(allocator: Allocator, slice: []u8, alignment: std.mem.Alignment) Allocating;
+    pub fn fromArrayList(allocator: Allocator, array_list: *ArrayList(u8)) Allocating;
+
+    // Teardown
+    pub fn deinit(a: *Allocating) void;
+    pub fn toArrayList(a: *Allocating) ArrayList(u8);   // resets Allocating to empty
+
+    // Byte access
+    pub fn toOwnedSlice(a: *Allocating) Allocator.Error![]u8;
+    pub fn toOwnedSliceSentinel(a: *Allocating, comptime sentinel: u8) Allocator.Error![:sentinel]u8;
+    pub fn written(a: *Allocating) []u8;                // borrowed view; slice invalidates on next write
+
+    // Capacity / shape
+    pub fn ensureUnusedCapacity(a: *Allocating, additional_count: usize) Allocator.Error!void;
+    pub fn ensureTotalCapacity(a: *Allocating, new_capacity: usize) Allocator.Error!void;
+    pub fn ensureTotalCapacityPrecise(a: *Allocating, new_capacity: usize) Allocator.Error!void;
+    pub fn shrinkRetainingCapacity(a: *Allocating, new_len: usize) void;
+    pub fn clearRetainingCapacity(a: *Allocating) void;
+};
+```
+
+**Canonical migration pattern:**
+
+```zig
+// ❌ 0.15 style
+var out: std.ArrayListUnmanaged(u8) = .{};
+defer out.deinit(allocator);
+const w = out.writer(allocator);
+try w.print("hello {s}\n", .{name});
+try w.writeAll("world");
+const bytes = try out.toOwnedSlice(allocator);
+
+// ✅ 0.16 style
+var out: std.Io.Writer.Allocating = .init(allocator);
+// Note: no `defer out.deinit()` if you return ownership via toOwnedSlice.
+try out.writer.print("hello {s}\n", .{name});
+try out.writer.writeAll("world");
+const bytes = try out.toOwnedSlice();
+```
+
+**Passing the writer to helpers that expect `*std.Io.Writer`:**
+
+```zig
+fn emitHeader(w: *std.Io.Writer, name: []const u8) !void {
+    try w.print("// {s}\n", .{name});
+}
+
+var out: std.Io.Writer.Allocating = .init(allocator);
+try emitHeader(&out.writer, "mymodule");        // take address of the field
+// or for `writer: anytype` helpers, either `&out.writer` or `out.writer` works
+// depending on what the body does with it.
+```
+
+**Key facts to remember:**
+
+1. `writer` is a **field, not a method**. Don't write `out.writer()` — that fails to compile. Write `out.writer.print(...)` or `&out.writer` when you need a pointer.
+2. `.toOwnedSlice()` transfers ownership — the `Allocating` resets to empty and no `deinit` is needed afterward.
+3. `.written()` returns a borrowed view into the current buffer. **The returned slice invalidates on the next write** — do not hold it across further `writer.print`/`writeAll` calls.
+4. `.fromArrayList(allocator, *ArrayList(u8))` wraps an existing ArrayList so you can migrate incrementally without rebuilding accumulated state.
+5. Under the hood, `Allocating.drain` / `sendFile` are the vtable hooks; you rarely touch them directly.
+
+**Mid-build inspection (use with care):**
+
+```zig
+var out: std.Io.Writer.Allocating = .init(allocator);
+try out.writer.writeAll("abcdef");
+const view = out.written();       // "abcdef", borrowed
+std.debug.assert(view.len == 6);
+try out.writer.writeAll("ghi");
+// view is NOW POTENTIALLY INVALID — do not use `view` past this line.
+// Call out.written() again to get a fresh slice.
+```
+
+**Use case: streaming into an existing ArrayList and back:**
+
+```zig
+var list: std.ArrayList(u8) = .empty;
+defer list.deinit(allocator);
+
+var out = std.Io.Writer.Allocating.fromArrayList(allocator, &list);
+try out.writer.print("appended: {d}\n", .{42});
+list = out.toArrayList();          // resets Allocating, gives back the ArrayList
+
+// or just toOwnedSlice() if you want the bytes detached from the list.
 ```
 
 ### `heap.ArenaAllocator` Now Threadsafe & Lock-Free
@@ -561,7 +697,12 @@ Juicy:
 
 ```zig
 const args = try init.minimal.args.toSlice(init.arena.allocator());
+// Return type: ![]const [:0]const u8 — slice of null-terminated slices.
+// args[0] is the executable path; args[1..] are user arguments.
+// Safe to pass elements to std.mem.eql(u8, arg, "--flag"), std.debug.print("{s}", .{arg}), etc.
 ```
+
+Note: `toSlice` is fallible (allocates into the arena). Prefer `init.args.iterate()` on the `Minimal` path if you want a zero-allocation iterator.
 
 ---
 
@@ -1172,6 +1313,8 @@ A concentrated "what do I grep for?" table:
 | `@cImport({ ... })` | `b.addTranslateC(...)` |
 | `std.io.fixedBufferStream(x).reader()` | `std.Io.Reader.fixed(x)` |
 | `std.io.fixedBufferStream(x).writer()` | `std.Io.Writer.fixed(x)` |
+| `var out: std.ArrayList(u8) = ...; out.writer(allocator)` | `var out: std.Io.Writer.Allocating = .init(allocator); &out.writer` |
+| `out.toOwnedSlice(allocator)` (on ArrayList(u8)) | `out.toOwnedSlice()` (on `Writer.Allocating`) |
 | `std.fs.cwd()` | `std.Io.Dir.cwd()` |
 | `std.fs.File.read` | `std.Io.File.readStreaming` |
 | `std.fs.File.pread` | `std.Io.File.readPositional` |
@@ -1360,6 +1503,10 @@ Common 0.16 errors when porting from 0.15.x and what they usually mean:
 | `use of undeclared identifier '@Type'` | `@Type` removed | Use `@Int`/`@Struct`/`@Union`/`@Enum`/`@Pointer`/`@Fn`/`@Tuple`/`@EnumLiteral` |
 | `no field or declaration 'ArrayHashMap'` | Managed hash maps removed | Use `std.array_hash_map.{Custom, Auto, String}` |
 | `expected *std.testing.Smith, found []const u8` | Fuzz test signature changed | `fn fuzzTest(_: void, smith: *std.testing.Smith) !void` |
+| `tried to invoke non-function 'std.Io.Writer.Allocating.writer'` | `.writer` is a field, not a method | Use `alloc.writer.print(...)` or `&alloc.writer` (no parens) |
+| `expected type 'std.Io.Limit', found 'comptime_int'` | Passing bare integer where `Io.Limit` expected | Use `.limited(N)` — enum literal method call |
+| `unable to find error 'FileTooBig'` | Error renamed for limited reads | Switch to `error.StreamTooLong` |
+| `type 'std.Io.File' has no member 'writeAll' with 1 argument` | 0.15-style one-arg writeAll | Use `file.writeStreamingAll(io, bytes)` |
 
 ---
 
@@ -1379,6 +1526,8 @@ Things that *were* true in 0.15 and are **no longer** true in 0.16 — these are
 10. **"`@Type(.{.int=...})` is how I make an integer type at comptime."** — Use `@Int(.unsigned, N)`.
 11. **"Custom `format` uses a comptime format-string parameter."** — That was 0.14 and earlier; since 0.15, the signature is `pub fn format(self, writer: *std.Io.Writer) !void`, invoked via `{f}`.
 12. **"`*T` and `*align(1) T` are the same type."** — They coerce freely, but compare as distinct.
+13. **"`std.Io.Writer.Allocating.writer()` is a method."** — It's a **field**. Use `alloc.writer.print(...)` or `&alloc.writer`, not `alloc.writer()`. (This is one of the easiest 0.16 compile errors to trigger when porting.)
+14. **"`readFileAlloc`'s size cap is still a `usize`."** — No — it's now `Io.Limit`. Write `.limited(N)` at the call site, not a bare integer. The error for hitting the cap is now `error.StreamTooLong`, not `error.FileTooBig`.
 
 ---
 
