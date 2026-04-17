@@ -88,6 +88,11 @@ Three CI guards protect the pipeline:
   (nexus, basic, features, zag, slash, mumps). A drift fails the golden.
 - A bootstrap fixed-point test regenerates `src/parser.zig` from
   `nexus.grammar` on every run and diffs it against the checked-in file.
+- A lowerer negative-shape suite feeds hand-crafted malformed Sexps to
+  `GrammarLowerer` and asserts each one is rejected with a precise
+  shape-error diagnostic — proving the "exact shape or hard error"
+  contract directly, independent of what well-formed grammars happen to
+  produce.
 
 ### Repository Structure
 
@@ -99,7 +104,7 @@ src/
 nexus.grammar        # Grammar DSL described in its own grammar format
 build.zig            # Build configuration
 test/
-├── run              # Test runner (31 tests)
+├── run              # Test runner (32 tests)
 ├── basic/           # Expression grammar
 ├── features/        # Feature-test grammar
 ├── mumps/           # MUMPS language grammar
@@ -890,7 +895,7 @@ delimiter stacks) requires `@lang` wrapper support.
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # fast + safety-checked (recommended)
 zig build -Doptimize=ReleaseFast       # fast, safety checks stripped
-zig build test                         # run all 31 tests
+zig build test                         # run all 32 tests
 zig build run -- <args>                # run with arguments
 ```
 

@@ -16,7 +16,7 @@ Nexus reads `.grammar` files and generates combined `parser.zig` modules (lexer 
 - `test/{lang}/` — grammar + lang module per language
 - `test/golden/` — byte-exact golden files for generated output
 - `test/adverse/` — bad grammars that must produce errors
-- `test/run` — 31 tests: golden parsers, compile checks, determinism, adverse grammars, self-hosted Sexp golden across every in-repo grammar, bootstrap fixed point
+- `test/run` — 32 tests: golden parsers, compile checks, determinism, adverse grammars, self-hosted Sexp golden across every in-repo grammar, bootstrap fixed point, and a lowerer negative-shape suite that feeds hand-crafted malformed Sexps and asserts each is rejected with error.ShapeError
 
 ## Validated Languages
 
@@ -126,10 +126,11 @@ The S-expression shape the frontend emits is governed by the canonical schema do
 
 ### Trust ladder
 
-Two CI checks guard the pipeline end-to-end:
+Three CI checks guard the pipeline end-to-end:
 
 1. `test/golden/*.sexp` — canonical S-expression snapshots for every in-repo grammar (nexus, basic, features, zag, slash, mumps). Any AST drift fails the golden with a line-count diff.
 2. Bootstrap fixed point — regenerating `src/parser.zig` from `nexus.grammar` with the current binary must reproduce the checked-in file exactly.
+3. Lowerer negative-shape tests — 24 hand-crafted malformed S-expression trees fed directly to `GrammarLowerer`, each asserted to be rejected with `error.ShapeError` and a precise diagnostic. This proves the lowerer's strictness claim independent of what the frontend can actually emit. Invoke directly with `./bin/nexus --test-lowerer`.
 
 ### Making a grammar change
 
@@ -145,7 +146,7 @@ Debugging a frontend issue? Run `./bin/nexus --dump-sexp <grammar>` to inspect t
 ```bash
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # ~8x faster runtime, safety kept (recommended)
-zig build test                         # run all 31 tests
+zig build test                         # run all 32 tests
 ./test/run --update                    # regenerate golden files after intentional changes
 ```
 

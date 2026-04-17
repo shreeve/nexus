@@ -11,6 +11,8 @@
 #      generated frontend and diff canonical S-exp dump against
 #      test/golden/nexus.sexp; regenerate src/parser.zig and verify the
 #      bootstrap fixed point
+#   6. Lowerer negative shape tests — feed hand-crafted malformed Sexps
+#      to GrammarLowerer and assert each rejects with error.ShapeError
 #
 # Usage:
 #   ./test/run              — run all tests
@@ -261,6 +263,28 @@ if diff -q "$SEXP_A" "$SEXP_B" >/dev/null 2>&1; then
 else
     FAIL=$((FAIL + 1))
     ERRORS="${ERRORS}\n  FAIL  sexp-dump — nondeterministic"
+fi
+
+echo ""
+
+# =========================================================================
+# 6. Lowerer Negative Shape Tests
+#
+# Hand-crafted malformed Sexps fed directly to GrammarLowerer. Each case
+# asserts a hard error with a useful diagnostic, proving the lowerer's
+# "exact shape or hard error" contract rather than inferring it from the
+# fact that well-formed grammars happen to produce well-formed trees.
+# =========================================================================
+
+echo "=== Lowerer Negative Shape Tests ==="
+echo ""
+
+if $NEXUS --test-lowerer >/dev/null 2>&1; then
+    echo "  PASS  lowerer-negative (every malformed shape rejected)"
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1))
+    ERRORS="${ERRORS}\n  FAIL  lowerer-negative — at least one case failed; run ./bin/nexus --test-lowerer to see details"
 fi
 
 echo ""
