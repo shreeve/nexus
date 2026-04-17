@@ -38,7 +38,7 @@ truth; the Zig side is an escape hatch, not the center of the design.
 - **Combined lexer + LR parser** — one grammar drives both
 - **LALR(1) default, SLR(1) via `--slr`** — ~3× faster generation when you need it, no measured runtime speed difference
 - **Zero-copy 8-byte tokens** — no allocations during lexing
-- **S-expression output** — tag-based O(1) dispatch built in
+- **Declarative S-expression output** — write `(assign 1 3)` next to a grammar rule and that's the tree the parser emits. No visitor classes, no AST type file, no builder boilerplate. Uniform `Sexp` union with tag-based O(1) dispatch, ready for compiler passes
 - **Small, readable codebase** — ~7,300 lines of Zig you can read end to end
 - **Proven by self-hosting** — Nexus's own frontend is Nexus-generated
 
@@ -681,7 +681,11 @@ The generated `parser.zig` imports `zag.zig` and uses it for:
 
 ## S-Expression Output
 
-The parser produces S-expressions (Sexp) — a uniform, inspectable representation.
+The grammar file is also the AST spec. An action like `(assign 1 3)` next to
+a rule *is* the tree the parser emits — no visitor classes, no separate AST
+type file, no builder boilerplate. You get a uniform `Sexp` algebra with
+tag-based O(1) dispatch, stable positional access, and trivially composable
+compiler passes.
 
 ### Sexp Variants
 
