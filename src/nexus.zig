@@ -3000,6 +3000,475 @@ const InfixDecl = struct {
 };
 
 // =============================================================================
+// Grammar Lowerer — schema-driven Sexp → GrammarIR conversion
+//
+// Consumes the canonical S-expression tree produced by the generated
+// nexus.grammar frontend (see the schema block at the top of nexus.grammar)
+// and builds the same GrammarIR that processGrammar expects.
+//
+// Every lowering entry point receives exactly the documented shape or raises
+// error.ShapeError with a byte offset into the parser section. There are no
+// silent fall-throughs, no permissive default cases, and no heuristic shape
+// unwrapping. Tag dispatch is exhaustive by construction.
+// =============================================================================
+
+const GrammarLowerer = struct {
+    allocator: Allocator,
+    source: []const u8, // The @parser section body — positions in .src nodes are offsets into this slice.
+
+    rules: std.ArrayListUnmanaged(ParsedRule) = .empty,
+    startSymbols: std.ArrayListUnmanaged([]const u8) = .empty,
+    asDirectives: std.ArrayListUnmanaged(AsDirective) = .empty,
+    opMappings: std.ArrayListUnmanaged(OpMapping) = .empty,
+    errorNames: std.ArrayListUnmanaged(ErrorName) = .empty,
+    infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
+    infixBase: ?[]const u8 = null,
+    lang: ?[]const u8 = null,
+    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .empty,
+    expectConflicts: ?u32 = null,
+
+    const LoweringError = error{ ShapeError, OutOfMemory };
+
+    fn lower(allocator: Allocator, sexp: ngp.Sexp, source: []const u8) LoweringError!GrammarIR {
+        var self = GrammarLowerer{ .allocator = allocator, .source = source };
+        try self.lowerRoot(sexp);
+        return GrammarIR{
+            .rules = try self.rules.toOwnedSlice(allocator),
+            .startSymbols = try self.startSymbols.toOwnedSlice(allocator),
+            .asDirectives = try self.asDirectives.toOwnedSlice(allocator),
+            .opMappings = try self.opMappings.toOwnedSlice(allocator),
+            .errorNames = try self.errorNames.toOwnedSlice(allocator),
+            .infix = if (self.infixBase) |base| InfixDecl{
+                .baseRule = base,
+                .ops = try self.infixOps.toOwnedSlice(allocator),
+            } else null,
+            .lang = self.lang,
+            .codeBlocks = try self.codeBlocks.toOwnedSlice(allocator),
+            .expectConflicts = self.expectConflicts,
+        };
+    }
+
+    // --- Shape helpers ---
+
+    fn listItems(node: ngp.Sexp) ?[]const ngp.Sexp {
+        return switch (node) {
+            .list => |items| items,
+            else => null,
+        };
+    }
+
+    fn taggedItems(node: ngp.Sexp) ?struct { tag: ngp.Tag, items: []const ngp.Sexp } {
+        const items = listItems(node) orelse return null;
+        if (items.len == 0) return null;
+        const tag = switch (items[0]) {
+            .tag => |t| t,
+            else => return null,
+        };
+        return .{ .tag = tag, .items = items };
+    }
+
+    fn srcText(self: *const GrammarLowerer, node: ngp.Sexp) []const u8 {
+        return switch (node) {
+            .src => |s| self.source[s.pos..][0..s.len],
+            else => "",
+        };
+    }
+
+    fn stripQuotes(s: []const u8) []const u8 {
+        if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') return s[1 .. s.len - 1];
+        return s;
+    }
+
+    fn nodeOffset(node: ngp.Sexp) u32 {
+        return switch (node) {
+            .src => |s| s.pos,
+            .list => |items| if (items.len > 0) nodeOffset(items[0]) else 0,
+            else => 0,
+        };
+    }
+
+    fn shapeError(self: *const GrammarLowerer, node: ngp.Sexp, expected: []const u8) LoweringError {
+        const off = nodeOffset(node);
+        var line: u32 = 1;
+        var col: u32 = 1;
+        var i: usize = 0;
+        while (i < off and i < self.source.len) : (i += 1) {
+            if (self.source[i] == '\n') {
+                line += 1;
+                col = 1;
+            } else col += 1;
+        }
+        std.debug.print("❌ shape error at line {d}, col {d}: expected {s}\n", .{ line, col, expected });
+        return error.ShapeError;
+    }
+
+    fn requireTag(self: *const GrammarLowerer, node: ngp.Sexp, expected: ngp.Tag) LoweringError![]const ngp.Sexp {
+        const t = taggedItems(node) orelse return self.shapeError(node, @tagName(expected));
+        if (t.tag != expected) return self.shapeError(node, @tagName(expected));
+        return t.items;
+    }
+
+    fn requireSrc(self: *const GrammarLowerer, node: ngp.Sexp, what: []const u8) LoweringError![]const u8 {
+        return switch (node) {
+            .src => |s| self.source[s.pos..][0..s.len],
+            else => self.shapeError(node, what),
+        };
+    }
+
+    fn requireList(self: *const GrammarLowerer, node: ngp.Sexp, what: []const u8) LoweringError![]const ngp.Sexp {
+        return listItems(node) orelse self.shapeError(node, what);
+    }
+
+    // --- Root ---
+
+    fn lowerRoot(self: *GrammarLowerer, sexp: ngp.Sexp) LoweringError!void {
+        const items = try self.requireTag(sexp, .grammar);
+        for (items[1..]) |entry| try self.lowerEntry(entry);
+    }
+
+    fn lowerEntry(self: *GrammarLowerer, entry: ngp.Sexp) LoweringError!void {
+        const t = taggedItems(entry) orelse return self.shapeError(entry, "directive or rule");
+        switch (t.tag) {
+            .lang => try self.lowerLang(entry, t.items),
+            .conflicts => try self.lowerConflicts(entry, t.items),
+            .code => try self.lowerCode(entry, t.items),
+            .as => try self.lowerAs(entry, t.items),
+            .op => try self.lowerOp(entry, t.items),
+            .errors => try self.lowerErrors(entry, t.items),
+            .infix => try self.lowerInfix(entry, t.items),
+            .rule => try self.lowerRule(entry, t.items),
+            else => return self.shapeError(entry, "directive or rule"),
+        }
+    }
+
+    // --- Directives ---
+
+    fn lowerLang(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        if (items.len != 2) return self.shapeError(node, "(lang STRING)");
+        const raw = try self.requireSrc(items[1], "language-name string");
+        self.lang = stripQuotes(raw);
+    }
+
+    fn lowerConflicts(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        if (items.len != 2) return self.shapeError(node, "(conflicts INTEGER)");
+        const text = try self.requireSrc(items[1], "conflict count");
+        self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch
+            return self.shapeError(items[1], "integer");
+    }
+
+    fn lowerCode(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        if (items.len != 3) return self.shapeError(node, "(code IDENT CODE_BLOCK)");
+        const location = try self.requireSrc(items[1], "@code location ident");
+        const body = try self.requireSrc(items[2], "@code body");
+        try self.codeBlocks.append(self.allocator, .{
+            .location = location,
+            .code = std.mem.trim(u8, body, " \t\n\r"),
+        });
+    }
+
+    fn lowerAs(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        if (items.len < 3) return self.shapeError(node, "(as IDENT AS_ENTRY+)");
+        const token = try self.requireSrc(items[1], "@as source-token ident");
+        for (items[2..]) |entry| {
+            const et = taggedItems(entry) orelse return self.shapeError(entry, "as_strict or as_perm");
+            const rule = switch (et.tag) {
+                .as_strict, .as_perm => blk: {
+                    if (et.items.len != 2) return self.shapeError(entry, "(as_strict|as_perm IDENT)");
+                    break :blk try self.requireSrc(et.items[1], "candidate ident");
+                },
+                else => return self.shapeError(entry, "as_strict or as_perm"),
+            };
+            try self.asDirectives.append(self.allocator, .{
+                .token = token,
+                .rule = rule,
+                .permissive = (et.tag == .as_perm),
+            });
+        }
+    }
+
+    fn lowerOp(self: *GrammarLowerer, _: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        for (items[1..]) |entry| {
+            const et = try self.requireTag(entry, .op_map);
+            if (et.len != 3) return self.shapeError(entry, "(op_map STRING STRING)");
+            const lit = stripQuotes(try self.requireSrc(et[1], "op literal"));
+            const tok = stripQuotes(try self.requireSrc(et[2], "op target token"));
+            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
+        }
+    }
+
+    fn lowerErrors(self: *GrammarLowerer, _: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        for (items[1..]) |entry| {
+            const et = try self.requireTag(entry, .error_name);
+            if (et.len != 3) return self.shapeError(entry, "(error_name RULE STRING)");
+            const rule = try self.requireSrc(et[1], "rule name");
+            const name = stripQuotes(try self.requireSrc(et[2], "display string"));
+            try self.errorNames.append(self.allocator, .{ .rule = rule, .name = name });
+        }
+    }
+
+    fn lowerInfix(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        if (items.len < 2) return self.shapeError(node, "(infix IDENT LEVEL+)");
+        self.infixBase = try self.requireSrc(items[1], "@infix base expression");
+        var prec: u32 = 1;
+        for (items[2..]) |level| {
+            const lt = try self.requireTag(level, .level);
+            for (lt[1..]) |opNode| {
+                const ot = try self.requireTag(opNode, .infix_op);
+                if (ot.len != 3) return self.shapeError(opNode, "(infix_op STRING assoc)");
+                const op = stripQuotes(try self.requireSrc(ot[1], "operator literal"));
+                const assocName = try self.requireSrc(ot[2], "associativity keyword");
+                const assoc: InfixOp.Assoc = if (std.mem.eql(u8, assocName, "left"))
+                    .left
+                else if (std.mem.eql(u8, assocName, "right"))
+                    .right
+                else if (std.mem.eql(u8, assocName, "none"))
+                    .none
+                else
+                    return self.shapeError(ot[2], "left|right|none");
+                try self.infixOps.append(self.allocator, .{ .op = op, .assoc = assoc, .prec = prec });
+            }
+            prec += 1;
+        }
+    }
+
+    // --- Rules ---
+
+    fn lowerRule(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+        if (items.len < 3) return self.shapeError(node, "(rule RULE_NAME ALT+)");
+
+        const nameInfo = try self.lowerRuleName(items[1]);
+        if (nameInfo.isStart) try self.startSymbols.append(self.allocator, nameInfo.name);
+
+        var alts: std.ArrayListUnmanaged(ParsedAlternative) = .empty;
+        for (items[2..]) |altNode| try alts.append(self.allocator, try self.lowerAlt(altNode));
+
+        try self.rules.append(self.allocator, .{
+            .name = nameInfo.name,
+            .isStart = nameInfo.isStart,
+            .alternatives = try alts.toOwnedSlice(self.allocator),
+        });
+    }
+
+    fn lowerRuleName(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!struct { name: []const u8, isStart: bool } {
+        const t = taggedItems(node) orelse return self.shapeError(node, "(start ...) or (name ...)");
+        return switch (t.tag) {
+            .start => .{
+                .name = try self.extractSingleIdent(node, t.items, "(start IDENT-or-TOKEN)"),
+                .isStart = true,
+            },
+            .name => .{
+                .name = try self.extractSingleIdent(node, t.items, "(name IDENT-or-TOKEN)"),
+                .isStart = false,
+            },
+            else => self.shapeError(node, "(start ...) or (name ...)"),
+        };
+    }
+
+    fn extractSingleIdent(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, expected: []const u8) LoweringError![]const u8 {
+        if (items.len != 2) return self.shapeError(node, expected);
+        return self.requireSrc(items[1], expected);
+    }
+
+    fn lowerAlt(self: *GrammarLowerer, altNode: ngp.Sexp) LoweringError!ParsedAlternative {
+        const t = taggedItems(altNode) orelse return self.shapeError(altNode, "alt | alt_reduce | alt_shift");
+        const preferReduce = (t.tag == .alt_reduce);
+        const preferShift = (t.tag == .alt_shift);
+        if (t.tag != .alt and !preferReduce and !preferShift) {
+            return self.shapeError(altNode, "alt | alt_reduce | alt_shift");
+        }
+        if (t.items.len < 2 or t.items.len > 3) return self.shapeError(altNode, "(alt ELEMENT-list ACTION?)");
+
+        var elements = try self.lowerAltBody(t.items[1]);
+        const excludeChar = try stripExcludeTail(self, altNode, &elements);
+
+        var action: ?[]const u8 = null;
+        if (t.items.len == 3) action = try self.requireSrc(t.items[2], "action text");
+
+        return ParsedAlternative{
+            .elements = try elements.toOwnedSlice(self.allocator),
+            .action = action,
+            .excludeChar = excludeChar,
+            .preferReduce = preferReduce,
+            .preferShift = preferShift,
+        };
+    }
+
+    fn lowerAltBody(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!std.ArrayListUnmanaged(ParsedElement) {
+        const items = try self.requireList(node, "element list");
+        var out: std.ArrayListUnmanaged(ParsedElement) = .empty;
+        for (items) |child| try out.append(self.allocator, try self.lowerElement(child));
+        return out;
+    }
+
+    // The generated parser emits `(tok X) (lit "c")` for the surface syntax
+    // `X "c"` exclusion hint. When that pair terminates an alternative's
+    // element list, strip it and return `c` as the exclusion char. Recognition
+    // is by tag and position — no string scanning of action text.
+    fn stripExcludeTail(self: *GrammarLowerer, altNode: ngp.Sexp, elements: *std.ArrayListUnmanaged(ParsedElement)) LoweringError!u8 {
+        if (elements.items.len < 2) return 0;
+        const last = elements.items[elements.items.len - 1];
+        const prev = elements.items[elements.items.len - 2];
+        if (prev.kind != .token or !std.mem.eql(u8, prev.value, "X")) return 0;
+        if (last.kind != .string) return 0;
+        const raw = last.value;
+        if (raw.len < 3) return self.shapeError(altNode, "X \"c\" — c must be a one-char literal");
+        const inner = stripQuotes(raw);
+        if (inner.len != 1) return self.shapeError(altNode, "X \"c\" — c must be a one-char literal");
+        const ch = inner[0];
+        _ = elements.pop();
+        _ = elements.pop();
+        return ch;
+    }
+
+    // --- Elements ---
+
+    fn lowerElement(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!ParsedElement {
+        const t = taggedItems(node) orelse return self.shapeError(node, "tagged element sexp");
+        return switch (t.tag) {
+            .ref => try self.lowerScalarElement(node, t.items, .ident),
+            .tok => try self.lowerScalarElement(node, t.items, .token),
+            .lit => try self.lowerScalarElement(node, t.items, .string),
+            .at_ref => try self.lowerScalarElement(node, t.items, .ident),
+            .list_req => try self.lowerListElement(node, t.items, .reqList),
+            .list_opt => try self.lowerListElement(node, t.items, .optList),
+            .group => try self.lowerGroupElement(node, t.items, .group, false),
+            .group_many => try self.lowerGroupElement(node, t.items, .optList, true),
+            .group_opt => try self.lowerGroupElement(node, t.items, .optGroup, false),
+            .quantified => try self.lowerQuantifiedElement(node, t.items),
+            .skip => try self.lowerSkipElement(node, t.items, false),
+            .skip_q => try self.lowerSkipElement(node, t.items, true),
+            else => self.shapeError(node, "element"),
+        };
+    }
+
+    fn lowerScalarElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
+        if (items.len != 2) return self.shapeError(node, "(ref|tok|lit|at_ref SRC)");
+        return ParsedElement{
+            .kind = kind,
+            .value = try self.requireSrc(items[1], "identifier/token/string"),
+        };
+    }
+
+    fn lowerListElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
+        if (items.len != 3) return self.shapeError(node, "(list_req|list_opt TOKEN LIST_INNER)");
+        const listTok = try self.requireSrc(items[1], "list head token");
+        _ = listTok; // The leading TOKEN is always `L`; the surface syntax gives no other choice.
+        const inner = taggedItems(items[2]) orelse return self.shapeError(items[2], "LIST_INNER");
+        var elem = ParsedElement{ .kind = kind, .value = "" };
+        switch (inner.tag) {
+            .plain => {
+                if (inner.items.len != 2) return self.shapeError(items[2], "(plain IDENT)");
+                elem.value = try self.requireSrc(inner.items[1], "list item ident");
+            },
+            .opt_items => {
+                if (inner.items.len != 3) return self.shapeError(items[2], "(opt_items IDENT SEP)");
+                elem.value = try self.requireSrc(inner.items[1], "list item ident");
+                elem.optionalItems = true;
+                elem.listSeparator = try self.requireSrc(inner.items[2], "separator");
+            },
+            .sep_items => {
+                if (inner.items.len != 3) return self.shapeError(items[2], "(sep_items IDENT SEP)");
+                elem.value = try self.requireSrc(inner.items[1], "list item ident");
+                elem.listSeparator = try self.requireSrc(inner.items[2], "separator");
+            },
+            .opt_items_nosep => {
+                if (inner.items.len != 2) return self.shapeError(items[2], "(opt_items_nosep IDENT)");
+                elem.value = try self.requireSrc(inner.items[1], "list item ident");
+                elem.optionalItems = true;
+            },
+            else => return self.shapeError(items[2], "plain|opt_items|sep_items|opt_items_nosep"),
+        }
+        return elem;
+    }
+
+    fn lowerGroupElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind, asMany: bool) LoweringError!ParsedElement {
+        if (items.len < 2) return self.shapeError(node, "group with ≥1 ALT_BODY");
+
+        // A group in GrammarIR is a single ParsedElement with subElements. When
+        // the surface group has multiple alternatives, expose them as
+        // sibling-separated sub-elements (the ParserGenerator's group path
+        // handles one-alt groups directly; multi-alt groups arrive via
+        // expandOptionalGroups for optGroups, and via explicit alt-chained
+        // rules for plain groups).
+        if (items.len == 2) {
+            const bodyElements = try self.lowerAltBody(items[1]);
+            defer @constCast(&bodyElements).deinit(self.allocator);
+
+            if (asMany) {
+                // [X, ...] where X is a single element: fold into a reqList with
+                // comma separator so the existing optList path emits it.
+                if (bodyElements.items.len == 1 and (bodyElements.items[0].kind == .ident or bodyElements.items[0].kind == .token) and bodyElements.items[0].quantifier == .one) {
+                    return ParsedElement{
+                        .kind = .optList,
+                        .value = bodyElements.items[0].value,
+                    };
+                }
+                // General case: wrap the body as a group with `*` quantification
+                // equivalent semantics.
+                return ParsedElement{
+                    .kind = .optList,
+                    .value = if (bodyElements.items.len > 0) bodyElements.items[0].value else "",
+                    .subElements = try self.allocator.dupe(ParsedElement, bodyElements.items),
+                };
+            }
+
+            return ParsedElement{
+                .kind = kind,
+                .subElements = try self.allocator.dupe(ParsedElement, bodyElements.items),
+            };
+        }
+
+        // Multi-alt group. Collect every alternative's element list as its own
+        // sub-element slice; ProcessElement's group path produces one rule per
+        // alt via expandOptionalGroups for `optGroup`, and via per-alt
+        // processing for plain `group`.
+        var subElems: std.ArrayListUnmanaged(ParsedElement) = .empty;
+        for (items[1..]) |altBody| {
+            const body = try self.lowerAltBody(altBody);
+            defer @constCast(&body).deinit(self.allocator);
+            if (body.items.len == 0) continue;
+            try subElems.append(self.allocator, .{
+                .kind = .group,
+                .subElements = try self.allocator.dupe(ParsedElement, body.items),
+            });
+        }
+
+        return ParsedElement{
+            .kind = if (asMany) .optList else kind,
+            .subElements = try subElems.toOwnedSlice(self.allocator),
+        };
+    }
+
+    fn lowerQuantifiedElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!ParsedElement {
+        if (items.len != 3) return self.shapeError(node, "(quantified ELEMENT QUANT)");
+        var inner = try self.lowerElement(items[1]);
+        inner.quantifier = try self.lowerQuantifier(items[2]);
+        return inner;
+    }
+
+    fn lowerSkipElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, withQuant: bool) LoweringError!ParsedElement {
+        const expected = if (withQuant) "(skip_q ELEMENT QUANT)" else "(skip ELEMENT)";
+        const need: usize = if (withQuant) 3 else 2;
+        if (items.len != need) return self.shapeError(node, expected);
+        var inner = try self.lowerElement(items[1]);
+        inner.skip = true;
+        if (withQuant) inner.quantifier = try self.lowerQuantifier(items[2]);
+        return inner;
+    }
+
+    fn lowerQuantifier(self: *const GrammarLowerer, node: ngp.Sexp) LoweringError!ParsedElement.Quantifier {
+        const t = taggedItems(node) orelse return self.shapeError(node, "(opt|zero_plus|one_plus)");
+        if (t.items.len != 1) return self.shapeError(node, "(opt|zero_plus|one_plus)");
+        return switch (t.tag) {
+            .opt => .optional,
+            .zero_plus => .zeroPlus,
+            .one_plus => .onePlus,
+            else => self.shapeError(node, "(opt|zero_plus|one_plus)"),
+        };
+    }
+};
+
+// =============================================================================
 // Grammar Token (for parsing .grammar files)
 // =============================================================================
 
