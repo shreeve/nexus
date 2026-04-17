@@ -3,7 +3,7 @@
 </p>
 
 <div align="center">
-  <strong>Universal grammar engine for language-agnostic lexer + SLR(1) parser generation.</strong>
+  <strong>Universal grammar engine for language-agnostic lexer + LALR(1)/SLR(1) parser generation.</strong>
 </div>
 
 # Nexus
