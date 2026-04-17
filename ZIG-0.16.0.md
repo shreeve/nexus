@@ -527,6 +527,55 @@ list = out.toArrayList();          // resets Allocating, gives back the ArrayLis
 - Certificate auto-fetching on Windows is now triggered automatically.
 - `PriorityQueue` / `PriorityDequeue`: `init` → `.empty`, `add*` → `push*`, `remove*OrNull` → `pop*`.
 
+### `ArrayList(Unmanaged)` lost its field defaults — use `.empty`
+
+This is one of the highest-impact-per-character 0.16 changes, and one I originally missed documenting. `std.ArrayListUnmanaged(T)` and `std.ArrayList(T)` no longer have default values for their `items` and `capacity` fields. That means every 0.15-era pattern like this stops compiling:
+
+```zig
+// ❌ 0.15 style — no longer works in 0.16
+var list: std.ArrayListUnmanaged(T) = .{};
+var list = std.ArrayListUnmanaged(T){};
+const MyStruct = struct {
+    items: std.ArrayListUnmanaged(T) = .{},   // field default
+};
+```
+
+The 0.16 replacement is the `.empty` decl literal (consistent with `BitSet`, `EnumSet`, `PriorityQueue`, etc.):
+
+```zig
+// ✅ 0.16 style
+var list: std.ArrayListUnmanaged(T) = .empty;
+const MyStruct = struct {
+    items: std.ArrayListUnmanaged(T) = .empty,
+};
+```
+
+Definition in stdlib (`std/array_list.zig:591`):
+
+```zig
+pub const empty: Self = .{
+    .items = &.{},
+    .capacity = 0,
+};
+```
+
+Also affects:
+
+- `@splat(.{})` filling an array of ArrayListUnmanaged → `@splat(.empty)`.
+- User-defined wrapper structs that hold an ArrayListUnmanaged field. If the wrapper previously worked with `Wrapper = .{}` (because all its fields had defaults), you need to either add `pub const empty: Wrapper = .{}` on the wrapper and switch callers to `.empty`, **or** update callers to write out the fields explicitly.
+
+**Migration tactic:** `sed -i 's/= \.{}/= .empty/g' yourfile.zig` is usually safe because `= .{}` almost exclusively refers to container initialization. The few places it's not (e.g., `fn foo() .{} {}` return types) will compile-error loudly and can be hand-fixed.
+
+### `std.mem.trimLeft` / `trimRight` renamed to `trimStart` / `trimEnd`
+
+```
+std.mem.trimLeft   → std.mem.trimStart
+std.mem.trimRight  → std.mem.trimEnd
+std.mem.trim       → std.mem.trim       (unchanged)
+```
+
+Mechanical sed: `sed -i -e 's/std\.mem\.trimLeft/std.mem.trimStart/g' -e 's/std\.mem\.trimRight/std.mem.trimEnd/g' yourfile.zig`.
+
 ---
 
 ## I/O as an Interface (Deep Dive)
@@ -703,6 +752,24 @@ const args = try init.minimal.args.toSlice(init.arena.allocator());
 ```
 
 Note: `toSlice` is fallible (allocates into the arena). Prefer `init.args.iterate()` on the `Minimal` path if you want a zero-allocation iterator.
+
+### ⚠️ `init.gpa` is `DebugAllocator` in Debug — expect latent leaks to surface
+
+If you migrate a pre-0.16 program from `std.heap.page_allocator` (or any allocator that didn't track frees) to `init.gpa`, **expect new stderr leak reports on every run** in Debug builds. `init.gpa` is a `std.heap.DebugAllocator` that performs leak detection at process exit. It doesn't fail the process (exit code stays 0), but it will dump a stack trace for every un-freed allocation.
+
+These leaks are almost always **pre-existing bugs** that `page_allocator` silently masked. Common culprits:
+
+- `const owned = try allocator.dupe(u8, s);` stored in a hashmap and never freed.
+- `try xs.toOwnedSlice(allocator)` where the source `ArrayListUnmanaged` wasn't `deinit`-ed.
+- Arena-style ad-hoc allocators layered over page_allocator that relied on process-exit cleanup.
+
+**Three ways to handle this during a migration:**
+
+1. **Leave the leaks, document them, fix in a follow-up.** Recommended for migration PRs — keeps scope bounded. The tests still pass (stderr redirected in most harnesses), and DebugAllocator has now given you a concrete leak inventory.
+2. **Switch the entrypoint from `init.gpa` to `init.arena.allocator()`.** One-line change, silences all leak reports (arena frees on process exit), but **masks the bugs** and weakens debug signal. Not recommended except for genuinely short-lived CLIs where you don't care.
+3. **Actually fix every leak.** Correct but scope-bloats a migration PR.
+
+**Corollary:** if your existing code relied on `page_allocator`'s "never fails" behavior, `init.gpa` may also surface OOM error paths that were previously dead code. That's generally good, but it's a real behavioral difference to watch for.
 
 ---
 
@@ -1315,6 +1382,12 @@ A concentrated "what do I grep for?" table:
 | `std.io.fixedBufferStream(x).writer()` | `std.Io.Writer.fixed(x)` |
 | `var out: std.ArrayList(u8) = ...; out.writer(allocator)` | `var out: std.Io.Writer.Allocating = .init(allocator); &out.writer` |
 | `out.toOwnedSlice(allocator)` (on ArrayList(u8)) | `out.toOwnedSlice()` (on `Writer.Allocating`) |
+| `var list: std.ArrayListUnmanaged(T) = .{}` | `var list: std.ArrayListUnmanaged(T) = .empty` |
+| `std.ArrayListUnmanaged(T){}` | `std.ArrayListUnmanaged(T){ .items = &.{}, .capacity = 0 }` or `.empty` via type annotation |
+| `field: std.ArrayListUnmanaged(T) = .{}` (struct field default) | `field: std.ArrayListUnmanaged(T) = .empty` |
+| `@splat(.{})` filling `[N]std.ArrayListUnmanaged(T)` | `@splat(.empty)` |
+| `std.mem.trimLeft(u8, s, " ")` | `std.mem.trimStart(u8, s, " ")` |
+| `std.mem.trimRight(u8, s, " ")` | `std.mem.trimEnd(u8, s, " ")` |
 | `std.fs.cwd()` | `std.Io.Dir.cwd()` |
 | `std.fs.File.read` | `std.Io.File.readStreaming` |
 | `std.fs.File.pread` | `std.Io.File.readPositional` |
@@ -1507,6 +1580,10 @@ Common 0.16 errors when porting from 0.15.x and what they usually mean:
 | `expected type 'std.Io.Limit', found 'comptime_int'` | Passing bare integer where `Io.Limit` expected | Use `.limited(N)` — enum literal method call |
 | `unable to find error 'FileTooBig'` | Error renamed for limited reads | Switch to `error.StreamTooLong` |
 | `type 'std.Io.File' has no member 'writeAll' with 1 argument` | 0.15-style one-arg writeAll | Use `file.writeStreamingAll(io, bytes)` |
+| `missing struct field: items` (and/or `capacity`) on `std.ArrayListUnmanaged(T)` | `ArrayListUnmanaged` lost field defaults | Replace `= .{}` / `T(){}` with `= .empty` (decl literal) |
+| `root source file struct 'mem' has no member named 'trimLeft'` | renamed in 0.16 | `std.mem.trimStart(...)` / `std.mem.trimEnd(...)` |
+| `struct 'MyWrapper' has no member named 'empty'` | You ran a blanket `= .{}` → `= .empty` sed that hit a user-defined struct | Either add `pub const empty: MyWrapper = .{};` to the struct, or revert those specific sites to `= .{}` with explicit sub-field defaults |
+| Stderr dump: `error(DebugAllocator): memory address 0x... leaked:` after process exit | `init.gpa` is DebugAllocator in Debug, surfacing pre-existing leaks | See the "⚠️ `init.gpa` is `DebugAllocator`" section under Juicy Main. Exit code stays 0; tests still pass. Fix in a follow-up PR. |
 
 ---
 
@@ -1528,6 +1605,9 @@ Things that *were* true in 0.15 and are **no longer** true in 0.16 — these are
 12. **"`*T` and `*align(1) T` are the same type."** — They coerce freely, but compare as distinct.
 13. **"`std.Io.Writer.Allocating.writer()` is a method."** — It's a **field**. Use `alloc.writer.print(...)` or `&alloc.writer`, not `alloc.writer()`. (This is one of the easiest 0.16 compile errors to trigger when porting.)
 14. **"`readFileAlloc`'s size cap is still a `usize`."** — No — it's now `Io.Limit`. Write `.limited(N)` at the call site, not a bare integer. The error for hitting the cap is now `error.StreamTooLong`, not `error.FileTooBig`.
+15. **"`std.ArrayListUnmanaged(T) = .{}` still works for an empty list."** — Gone. Use `.empty`. Same for `ArrayList(T)`. Affects direct locals, struct-field defaults, and `@splat(.{})`.
+16. **"`std.mem.trimLeft` / `trimRight` are still the names."** — They were renamed to `trimStart` / `trimEnd` in 0.16. Plain `trim` is unchanged.
+17. **"If I migrate `page_allocator` → `init.gpa`, nothing runtime-visible changes."** — Wrong. `init.gpa` is `DebugAllocator` in Debug, which dumps leak traces to stderr at exit for any allocation you didn't free. Exit code stays 0, but you'll suddenly see a wall of stderr output that never existed before. Those leaks are real — just pre-existing.
 
 ---
 
