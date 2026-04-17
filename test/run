@@ -41,6 +41,39 @@ PASS=0
 FAIL=0
 ERRORS=""
 
+# --- Color output ---
+# Honor NO_COLOR (https://no-color.org) and skip colors when stdout is not a TTY.
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    C_GREEN=$'\033[32m'
+    C_RED=$'\033[31m'
+    C_YELLOW=$'\033[33m'
+    C_DIM=$'\033[2m'
+    C_BOLD=$'\033[1m'
+    C_RESET=$'\033[0m'
+else
+    C_GREEN=''
+    C_RED=''
+    C_YELLOW=''
+    C_DIM=''
+    C_BOLD=''
+    C_RESET=''
+fi
+
+say_pass()   { printf "  %sPASS%s  %s\n"   "$C_GREEN"  "$C_RESET" "$*"; }
+say_fail()   { printf "  %sFAIL%s  %s\n"   "$C_RED"    "$C_RESET" "$*"; }
+say_warn()   { printf "  %sWARN%s  %s\n"   "$C_YELLOW" "$C_RESET" "$*"; }
+say_update() { printf "  %sUPDATE%s  %s\n" "$C_GREEN"  "$C_RESET" "$*"; }
+say_section_done() {
+    local elapsed=$1
+    if (( elapsed > 0 )); then
+        printf "  %s(%ds)%s\n\n" "$C_DIM" "$elapsed" "$C_RESET"
+    else
+        printf "\n"
+    fi
+}
+
+SUITE_START=$SECONDS
+
 # Golden file tests
 run_golden() {
     local name=$1
@@ -52,24 +85,24 @@ run_golden() {
 
     if ! (cd "$dir" && ../../$NEXUS "$grammar" "$tmp") >/dev/null 2>&1; then
         FAIL=$((FAIL + 1))
-        ERRORS="${ERRORS}\n  FAIL  $name — generation failed"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  $name — generation failed"
         return
     fi
 
     if $UPDATE; then
         cp "$tmp" "test/golden/${name}.zig"
-        echo "  UPDATE  $name"
+        say_update "$name"
         PASS=$((PASS + 1))
         return
     fi
 
     if diff -q "$golden" "$tmp" >/dev/null 2>&1; then
-        echo "  PASS  $name"
+        say_pass "$name"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
         local lines=$(diff "$golden" "$tmp" | grep -c '^[<>]' || true)
-        ERRORS="${ERRORS}\n  FAIL  $name — $lines lines differ"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  $name — $lines lines differ"
     fi
 }
 
@@ -79,11 +112,11 @@ run_compile_check() {
     local zigfile=$2
 
     if zig ast-check "$zigfile" >/dev/null 2>&1; then
-        echo "  PASS  $name (valid zig)"
+        say_pass "$name (valid zig)"
         PASS=$((PASS + 1))
     else
         local errs=$(zig ast-check "$zigfile" 2>&1 | grep -c 'error:' || true)
-        echo "  WARN  $name ($errs zig syntax issues)"
+        say_warn "$name ($errs zig syntax issues)"
         PASS=$((PASS + 1))
     fi
 }
@@ -101,11 +134,11 @@ run_determinism() {
     (cd "$dir" && ../../$NEXUS "$grammar" "$b") >/dev/null 2>&1 || true
 
     if diff -q "$a" "$b" >/dev/null 2>&1; then
-        echo "  PASS  $name (deterministic)"
+        say_pass "$name (deterministic)"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
-        ERRORS="${ERRORS}\n  FAIL  $name — nondeterministic output"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  $name — nondeterministic output"
     fi
 }
 
@@ -120,14 +153,14 @@ run_adverse() {
     output=$(cd test/adverse && ../../$NEXUS "$grammar_file" "$tmp" 2>&1) || rc=$?
 
     if echo "$output" | grep -q '❌'; then
-        echo "  PASS  $name (expected error)"
+        say_pass "$name (expected error)"
         PASS=$((PASS + 1))
     elif [[ $rc -ne 0 ]]; then
-        echo "  PASS  $name (non-zero exit)"
+        say_pass "$name (non-zero exit)"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
-        ERRORS="${ERRORS}\n  FAIL  $name — expected error but tool succeeded cleanly"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  $name — expected error but tool succeeded cleanly"
     fi
 }
 
@@ -135,8 +168,8 @@ run_adverse() {
 # 1. Golden File Tests
 # =========================================================================
 
-echo "=== Golden File Tests ==="
-echo ""
+printf "%s=== Golden File Tests ===%s\n\n" "$C_BOLD" "$C_RESET"
+SECTION_START=$SECONDS
 
 run_golden "basic"    "test/basic"    "basic.grammar"    "test/golden/basic.zig"
 run_golden "features" "test/features" "features.grammar"  "test/golden/features.zig"
@@ -144,28 +177,28 @@ run_golden "zag"      "test/zag"      "zag.grammar"      "test/golden/zag.zig"
 run_golden "slash"    "test/slash"    "slash.grammar"     "test/golden/slash.zig"
 run_golden "mumps"    "test/mumps"    "mumps.grammar"     "test/golden/mumps.zig"
 
-echo ""
+say_section_done $(( SECONDS - SECTION_START ))
 
 # =========================================================================
 # 2. Compile Checks
 # =========================================================================
 
-echo "=== Compile Checks ==="
-echo ""
+printf "%s=== Compile Checks ===%s\n\n" "$C_BOLD" "$C_RESET"
+SECTION_START=$SECONDS
 
 for f in test/golden/*.zig; do
     name=$(basename "$f" .zig)
     run_compile_check "$name" "$f"
 done
 
-echo ""
+say_section_done $(( SECONDS - SECTION_START ))
 
 # =========================================================================
 # 3. Determinism
 # =========================================================================
 
-echo "=== Determinism ==="
-echo ""
+printf "%s=== Determinism ===%s\n\n" "$C_BOLD" "$C_RESET"
+SECTION_START=$SECONDS
 
 run_determinism "basic"    "test/basic"    "basic.grammar"
 run_determinism "features" "test/features" "features.grammar"
@@ -173,44 +206,44 @@ run_determinism "zag"      "test/zag"      "zag.grammar"
 run_determinism "slash"    "test/slash"    "slash.grammar"
 run_determinism "mumps"    "test/mumps"    "mumps.grammar"
 
-echo ""
+say_section_done $(( SECONDS - SECTION_START ))
 
 # =========================================================================
 # 4. Adverse Tests
 # =========================================================================
 
 if [[ -d "test/adverse" ]]; then
-    echo "=== Adverse Tests ==="
-    echo ""
+    printf "%s=== Adverse Tests ===%s\n\n" "$C_BOLD" "$C_RESET"
+    SECTION_START=$SECONDS
     for f in test/adverse/*.grammar; do
         [[ -e "$f" ]] || continue
         name=$(basename "$f" .grammar)
         run_adverse "$name" "$(basename $f)"
     done
-    echo ""
+    say_section_done $(( SECONDS - SECTION_START ))
 fi
 
 # =========================================================================
 # 5. Self-Host S-Expression Golden & Bootstrap Fixed Point
 # =========================================================================
 
-echo "=== Self-Host S-Expression Golden ==="
-echo ""
+printf "%s=== Self-Host S-Expression Golden ===%s\n\n" "$C_BOLD" "$C_RESET"
+SECTION_START=$SECONDS
 
 run_bootstrap_fp() {
     local tmp="$TMPDIR/parser_regen.zig"
     if ! $NEXUS nexus.grammar "$tmp" >/dev/null 2>&1; then
         FAIL=$((FAIL + 1))
-        ERRORS="${ERRORS}\n  FAIL  bootstrap-fp — regen failed"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  bootstrap-fp — regen failed"
         return
     fi
     if diff -q src/parser.zig "$tmp" >/dev/null 2>&1; then
-        echo "  PASS  bootstrap-fp (src/parser.zig is a fixed point)"
+        say_pass "bootstrap-fp (src/parser.zig is a fixed point)"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
         local lines=$(diff src/parser.zig "$tmp" | grep -c '^[<>]' || true)
-        ERRORS="${ERRORS}\n  FAIL  bootstrap-fp — $lines lines drifted (run ./bin/nexus nexus.grammar src/parser.zig and commit)"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  bootstrap-fp — $lines lines drifted (run ./bin/nexus nexus.grammar src/parser.zig and commit)"
     fi
 }
 
@@ -224,24 +257,24 @@ run_sexp_snapshot() {
 
     if ! $NEXUS --dump-sexp "$grammar" "$tmp" >/dev/null 2>&1; then
         FAIL=$((FAIL + 1))
-        ERRORS="${ERRORS}\n  FAIL  ${name}-sexp — dump failed"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  ${name}-sexp — dump failed"
         return
     fi
 
     if $UPDATE; then
         cp "$tmp" "$golden"
-        echo "  UPDATE  ${name}-sexp"
+        say_update "${name}-sexp"
         PASS=$((PASS + 1))
         return
     fi
 
     if diff -q "$golden" "$tmp" >/dev/null 2>&1; then
-        echo "  PASS  ${name}-sexp (canonical tree stable)"
+        say_pass "${name}-sexp (canonical tree stable)"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
         local lines=$(diff "$golden" "$tmp" | grep -c '^[<>]' || true)
-        ERRORS="${ERRORS}\n  FAIL  ${name}-sexp — $lines lines differ"
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  ${name}-sexp — $lines lines differ"
     fi
 }
 
@@ -258,14 +291,14 @@ SEXP_B="$TMPDIR/determ_b.sexp"
 $NEXUS --dump-sexp nexus.grammar "$SEXP_A" >/dev/null 2>&1 || true
 $NEXUS --dump-sexp nexus.grammar "$SEXP_B" >/dev/null 2>&1 || true
 if diff -q "$SEXP_A" "$SEXP_B" >/dev/null 2>&1; then
-    echo "  PASS  sexp-dump (deterministic)"
+    say_pass "sexp-dump (deterministic)"
     PASS=$((PASS + 1))
 else
     FAIL=$((FAIL + 1))
-    ERRORS="${ERRORS}\n  FAIL  sexp-dump — nondeterministic"
+    ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  sexp-dump — nondeterministic"
 fi
 
-echo ""
+say_section_done $(( SECONDS - SECTION_START ))
 
 # =========================================================================
 # 6. Lowerer Negative Shape Tests (Zig-native test blocks)
@@ -278,29 +311,32 @@ echo ""
 # production code paths.
 # =========================================================================
 
-echo "=== Lowerer Negative Shape Tests ==="
-echo ""
+printf "%s=== Lowerer Negative Shape Tests ===%s\n\n" "$C_BOLD" "$C_RESET"
+SECTION_START=$SECONDS
 
 if zig build test-lowerer >/dev/null 2>&1; then
-    echo "  PASS  lowerer-negative (every malformed shape rejected)"
+    say_pass "lowerer-negative (every malformed shape rejected)"
     PASS=$((PASS + 1))
 else
     FAIL=$((FAIL + 1))
-    ERRORS="${ERRORS}\n  FAIL  lowerer-negative — run \`zig build test-lowerer\` to see details"
+    ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  lowerer-negative — run \`zig build test-lowerer\` to see details"
 fi
 
-echo ""
+say_section_done $(( SECONDS - SECTION_START ))
 
 # =========================================================================
 # Summary
 # =========================================================================
 
-echo "=== Results ==="
-echo ""
-echo "  $PASS passed, $FAIL failed"
+SUITE_ELAPSED=$(( SECONDS - SUITE_START ))
 
-if [[ $FAIL -gt 0 ]]; then
-    echo -e "$ERRORS"
-    echo ""
+printf "%s=== Results ===%s\n\n" "$C_BOLD" "$C_RESET"
+if (( FAIL == 0 )); then
+    printf "  %s%d passed%s, %d failed  %s(total %ds)%s\n\n" \
+        "$C_GREEN" "$PASS" "$C_RESET" "$FAIL" "$C_DIM" "$SUITE_ELAPSED" "$C_RESET"
+else
+    printf "  %d passed, %s%d failed%s  %s(total %ds)%s\n" \
+        "$PASS" "$C_RED" "$FAIL" "$C_RESET" "$C_DIM" "$SUITE_ELAPSED" "$C_RESET"
+    printf "%b\n\n" "$ERRORS"
     exit 1
 fi
