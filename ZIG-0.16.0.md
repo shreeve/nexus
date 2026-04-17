@@ -26,7 +26,8 @@ Zig 0.16.0 represents **8 months of work**, 244 contributors, and 1183 commits. 
 16. [Migration Cheat Sheet](#migration-cheat-sheet)
 17. [Compile-Error Decoder](#compile-error-decoder)
 18. [Common Bad Assumptions from 0.15.x](#common-bad-assumptions-from-015x)
-19. [Roadmap](#roadmap)
+19. [Migration Workflow Tactics (lessons from a real port)](#migration-workflow-tactics-lessons-from-a-real-0152--0160-port)
+20. [Roadmap](#roadmap)
 
 ---
 
@@ -753,23 +754,70 @@ const args = try init.minimal.args.toSlice(init.arena.allocator());
 
 Note: `toSlice` is fallible (allocates into the arena). Prefer `init.args.iterate()` on the `Minimal` path if you want a zero-allocation iterator.
 
-### ⚠️ `init.gpa` is `DebugAllocator` in Debug — expect latent leaks to surface
+### ⚠️ `init.gpa` is `DebugAllocator` in Debug — TWO big surprises
 
-If you migrate a pre-0.16 program from `std.heap.page_allocator` (or any allocator that didn't track frees) to `init.gpa`, **expect new stderr leak reports on every run** in Debug builds. `init.gpa` is a `std.heap.DebugAllocator` that performs leak detection at process exit. It doesn't fail the process (exit code stays 0), but it will dump a stack trace for every un-freed allocation.
+This is one of the most impactful 0.16 behavioral changes for programs migrating from `std.heap.page_allocator`. There are **two independent surprises**:
 
-These leaks are almost always **pre-existing bugs** that `page_allocator` silently masked. Common culprits:
+#### Surprise 1: Latent leaks now dump to stderr
+
+`init.gpa` in Debug is a `std.heap.DebugAllocator` that performs leak detection at process exit. Exit code stays 0, but every un-freed allocation prints a stack trace. These are almost always **pre-existing bugs** that `page_allocator` silently masked. Common culprits:
 
 - `const owned = try allocator.dupe(u8, s);` stored in a hashmap and never freed.
 - `try xs.toOwnedSlice(allocator)` where the source `ArrayListUnmanaged` wasn't `deinit`-ed.
 - Arena-style ad-hoc allocators layered over page_allocator that relied on process-exit cleanup.
 
-**Three ways to handle this during a migration:**
+#### Surprise 2 (much bigger): catastrophic slowdown on allocator-heavy workloads
 
-1. **Leave the leaks, document them, fix in a follow-up.** Recommended for migration PRs — keeps scope bounded. The tests still pass (stderr redirected in most harnesses), and DebugAllocator has now given you a concrete leak inventory.
-2. **Switch the entrypoint from `init.gpa` to `init.arena.allocator()`.** One-line change, silences all leak reports (arena frees on process exit), but **masks the bugs** and weakens debug signal. Not recommended except for genuinely short-lived CLIs where you don't care.
-3. **Actually fix every leak.** Correct but scope-bloats a migration PR.
+**DebugAllocator's per-allocation bookkeeping is O(n) in the live-allocation count.** When that count grows — because your program has long-lived allocations, or (worse) leaks that don't free until exit — every subsequent allocation does a lookup against a larger tracking set. In practice this translates to **up to 1400× slowdown** for programs that do many small allocations and retain most of them.
 
-**Corollary:** if your existing code relied on `page_allocator`'s "never fails" behavior, `init.gpa` may also surface OOM error paths that were previously dead code. That's generally good, but it's a real behavioral difference to watch for.
+Concrete data from a real migration (the `nexus` parser generator, 0.15.2 → 0.16.0):
+
+| Workload | page_allocator (0.15) | init.gpa (0.16 Debug) | init.arena (0.16 Debug) | slowdown vs arena |
+|---|---|---|---|---|
+| Small grammar (basic) | ~instant | 0.55s | 0.34s | 1.6× |
+| Medium grammar (features) | ~instant | 0.67s | 0.014s | **48×** |
+| MUMPS grammar | ~instant | 23s | 0.28s | **82×** |
+| `slash` grammar | ~instant | 8s | 0.05s | **160×** |
+| `zag` grammar | ~instant | 27s | 0.20s | **1,421×** |
+| Full test suite | ~5s | 187s | 1.73s | **108×** |
+
+**A `ReleaseSafe` build of the same code**: MUMPS generation drops from 23s (Debug+init.gpa) to **0.033s** (ReleaseSafe+smp_allocator) — a 700× swing purely from the allocator change. So the slowdown is not "generally Zig 0.16" — it's specifically `DebugAllocator` in Debug.
+
+#### Three handling strategies
+
+1. **`init.arena.allocator()` at the top of `main()`.** Best choice for **short-lived CLIs**: read input, compute, emit output, exit. Nexus, code generators, grammar compilers, most build-time tools fit this shape. Arena has zero leak-tracking overhead and individual `.free()` calls become harmless no-ops. Silences both surprises.
+
+   ```zig
+   pub fn main(init: std.process.Init) !void {
+       const allocator = init.arena.allocator();
+       const io = init.io;
+       // ... rest of main ...
+   }
+   ```
+
+2. **Keep `init.gpa`; fix every leak.** Correct answer for **long-lived programs** (servers, LSPs, interactive tools, libraries). Large scope but delivers the right signal: leaks now have behavioral consequences.
+
+3. **`init.gpa` with tests, `init.arena` in production.** Hybrid: keep the DebugAllocator signal for leak-hunting sessions and CI auditing, but default to arena for speed. Simplest implementation is a CLI flag or env var that swaps the allocator at startup.
+
+#### How to decide which strategy applies
+
+| If your program is… | Use |
+|---|---|
+| A one-shot CLI that reads input, computes, writes output, exits | **arena** |
+| A long-running server, LSP, daemon, or REPL | **fix leaks** |
+| A library consumed by other code | **fix leaks** (callers don't want your leaks) |
+| A code generator / compiler with allocator-heavy codegen | **arena** |
+| A build-time tool (e.g. build.zig scripts) | **arena** |
+
+#### The migration-authoring heuristic
+
+Post-mortem observation from a real migration: **allocator-behavior changes are invisible from release notes alone.** The 0.16 release notes tell you `std.heap.page_allocator` is no longer the recommended default and that `init.gpa` is a `DebugAllocator`. What they *cannot* tell you is how that interacts with your program's specific allocation pattern — and for allocation-heavy programs, the interaction can be catastrophic.
+
+**Lesson:** when migrating, time a representative real workload in Debug mode before calling the migration "done." Cheap to do (`time ./your-tool <real-input>`), cheap to spot (any 10×+ regression vs 0.15 is almost certainly this).
+
+#### Corollary: OOM paths may wake up
+
+If your existing code relied on `page_allocator`'s "never fails" behavior, `init.gpa` may also surface OOM error paths that were previously dead code. That's generally good, but it's a real behavioral difference to watch for.
 
 ---
 
@@ -1607,7 +1655,130 @@ Things that *were* true in 0.15 and are **no longer** true in 0.16 — these are
 14. **"`readFileAlloc`'s size cap is still a `usize`."** — No — it's now `Io.Limit`. Write `.limited(N)` at the call site, not a bare integer. The error for hitting the cap is now `error.StreamTooLong`, not `error.FileTooBig`.
 15. **"`std.ArrayListUnmanaged(T) = .{}` still works for an empty list."** — Gone. Use `.empty`. Same for `ArrayList(T)`. Affects direct locals, struct-field defaults, and `@splat(.{})`.
 16. **"`std.mem.trimLeft` / `trimRight` are still the names."** — They were renamed to `trimStart` / `trimEnd` in 0.16. Plain `trim` is unchanged.
-17. **"If I migrate `page_allocator` → `init.gpa`, nothing runtime-visible changes."** — Wrong. `init.gpa` is `DebugAllocator` in Debug, which dumps leak traces to stderr at exit for any allocation you didn't free. Exit code stays 0, but you'll suddenly see a wall of stderr output that never existed before. Those leaks are real — just pre-existing.
+17. **"If I migrate `page_allocator` → `init.gpa`, nothing runtime-visible changes."** — Wrong on **two** dimensions. (a) `init.gpa` is `DebugAllocator` in Debug and dumps leak traces to stderr at exit. Exit code stays 0 but stderr fills up. (b) DebugAllocator tracking is O(n) in live allocations, which can make allocation-heavy programs **hundreds to thousands of times slower** in Debug. For short-lived CLIs, `init.arena.allocator()` is the correct default. See the ⚠️ section under Juicy Main.
+18. **"My short-lived CLI should use `init.gpa` because it's the idiomatic 0.16 default."** — Only if you actually need leak tracking. `init.arena.allocator()` is both **faster in Debug** (no per-allocation bookkeeping) and **cleaner** (no leak spam) for programs that do one computation and exit.
+
+---
+
+## Migration Workflow Tactics (lessons from a real 0.15.2 → 0.16.0 port)
+
+This section captures the execution playbook for actually *doing* a 0.15 → 0.16 migration, informed by an end-to-end port of a ~7,300-line parser generator. It's aimed at a future AI (or human) undertaking the same work.
+
+### Phase 0 — Empirical baseline before any edits
+
+Don't trust release notes alone for exact API spellings. Before touching code:
+
+```bash
+zig build 2>&1 | tee /tmp/migration-baseline.log
+```
+
+Zig 0.16 compiles lazily and typically reports one error at a time, so this is a **probe, not a census**. That's fine — it tells you the first thing that breaks, which drives Phase 1.
+
+### Phase 1 — Fix one API family at a time, compile between each
+
+Going wide on multiple API families simultaneously makes error attribution hard. The sequence that worked best:
+
+1. **`main()` signature + argv** (Juicy Main: `pub fn main(init: std.process.Init) !void`). Smallest diff, unblocks everything.
+2. **File I/O** (`std.fs.*` → `std.Io.Dir` / `std.Io.File`, add `io` parameter). Mechanical.
+3. **Writer-allocating pattern** (`ArrayListUnmanaged(u8).writer(alloc)` → `std.Io.Writer.Allocating`). Medium size.
+4. **Misc renames** (`trimLeft`/`trimRight` → `trimStart`/`trimEnd`, etc.). Trivial.
+
+Between each: `zig build`, read the next error, proceed. Don't batch.
+
+### Phase 2 — Verify with compiler before trusting your memory of the API
+
+0.16 has enough subtle API-shape changes (e.g., `Allocating.writer` is a field, not a method; `ArrayListUnmanaged(T){}` no longer works) that **even the release notes can mislead**. Before mass-editing, read the actual stdlib:
+
+```bash
+zig env  # find std_dir
+# then for each API you'll touch, grep or read the actual source:
+# e.g., /opt/homebrew/Cellar/zig/0.16.0/lib/zig/std/Io/Writer.zig
+grep -n "pub const Allocating" <std_dir>/Io/Writer.zig
+```
+
+This is a 5-minute investment that eliminates ~3-5 compile-fix-recompile cycles.
+
+### Phase 3 — Test with real workloads, not just "does it build"
+
+After getting a green build, run the program on its **largest realistic input in Debug mode** and time it. If you see 10×+ regression vs 0.15:
+
+- Check for `init.gpa` in a workload that allocates heavily or retains most allocations — this is the DebugAllocator slowdown (see the ⚠️ section under Juicy Main).
+- Swap in `init.arena.allocator()` for short-lived CLIs; for long-running programs, actually fix the leaks.
+
+### Useful grep-level safety nets
+
+Before claiming a migration is complete, sweep for stragglers:
+
+```bash
+# Old APIs that should have no callers left:
+rg "std\.fs\." --type zig                        # → should be 0
+rg "std\.mem\.(trimLeft|trimRight)\b" --type zig  # → should be 0
+rg "std\.io\.(fixedBufferStream|GenericWriter|GenericReader|AnyReader|AnyWriter)\b" --type zig
+rg "std\.process\.argsAlloc\b" --type zig
+rg "std\.heap\.ThreadSafeAllocator\b" --type zig
+rg "std\.Thread\.Pool\b" --type zig
+
+# Old container initialization syntax:
+rg "ArrayListUnmanaged\([^)]*\) = \.\{\}" --type zig
+rg "ArrayListUnmanaged\([^)]*\)\{\}" --type zig
+
+# Old comments/docs (code may be migrated but comments stale):
+rg "// .*std\.fs\." --type zig
+rg "// .*std\.io\.(GenericWriter|GenericReader|fixedBufferStream)" --type zig
+```
+
+Zero matches on all = high confidence the diff is complete.
+
+### Sed tactics that worked
+
+For mass-migratable patterns, `sed` sweeps saved ~100 StrReplace calls:
+
+```bash
+# The big one - container default initialization:
+sed -i '' 's/= \.{}/= .empty/g' yourfile.zig
+
+# Specific renames:
+sed -i '' -e 's/std\.mem\.trimLeft/std.mem.trimStart/g' \
+          -e 's/std\.mem\.trimRight/std.mem.trimEnd/g' yourfile.zig
+```
+
+**Important caveats:**
+
+- `= .{}` → `= .empty` is *nearly* always correct, but breaks if a non-container struct also uses `= .{}` as a default. Fix by adding `pub const empty: MyStruct = .{};` to the wrapper struct.
+- After any sed sweep: `git diff` before recompiling, visually scan for obvious mistakes in the diff.
+- `.{}` WITHOUT `= ` (e.g., in `@splat(.{})`, `createFile(path, .{})`, `std.debug.print("...", .{})`) is safe to leave as-is — only `= .{}` assignment form is the problem. The above sed only matches `= .{}` so it won't touch the others.
+
+### Handling generated/vendored files
+
+If your project contains code generated from some source (e.g., parser generators, protobuf output), think carefully about regeneration vs manual editing:
+
+- **Templates in the generator must emit 0.16-compatible code** so regenerated files are correct.
+- **Checked-in generated files may have 0.15 patterns** that won't compile standalone under 0.16. If the generator imports them lazily (via `@import` without field-level access), **Zig 0.16's lazy field analysis lets them coexist** — you don't need to edit the generated file, just fix the generator's templates and regenerate.
+- After regeneration, diff against git. Diffs should be **exclusively the expected migrations** (e.g., `.{}` → `.empty`). Any unexpected drift is a bug.
+
+### What release notes reliably *do* tell you
+
+- API renames and signature shapes (trust them as starting points, verify exact argument order against stdlib).
+- Removed items.
+- Philosophy changes (e.g., "I/O as an Interface").
+
+### What release notes *don't* tell you reliably
+
+- Performance characteristics of new default allocators under specific workloads.
+- Field-default removals on widely-used types (release notes often focus on APIs, not data-layout changes on heavily-used structs).
+- Ergonomic papercuts like "this works in all cases *except* inside a template string for generated code."
+- Which 0.15 program patterns that worked "by accident" will now break (e.g., page_allocator's never-fail behavior hiding OOM paths).
+
+The migration heuristic: **release notes tell you what changed; real workloads tell you what matters.**
+
+### Recommended peer-review hygiene
+
+Migrations benefit from having a second AI or human review at least once **after initial drafting** and again **after execution**:
+
+- Pre-execution review catches over-confident claims (e.g., "this API is definitely spelled X") and forces empirical verification.
+- Post-execution review catches issues the executor was too close to notice (silent-failure `catch` blocks, dead imports, scope creep into unrelated cleanup).
+
+Tools: the `user-ai` MCP's `discuss` conversation is a good fit — it preserves context across multiple rounds, so pre-migration critique, mid-migration status checks, and post-migration review can all share the same conversation thread.
 
 ---
 
