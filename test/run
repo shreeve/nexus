@@ -227,6 +227,27 @@ echo ""
 echo "=== Self-Host S-Expression Golden ==="
 echo ""
 
+run_bootstrap_fp() {
+    local tmp="$TMPDIR/parser_regen.zig"
+    if ! $NEXUS nexus.grammar "$tmp" >/dev/null 2>&1; then
+        FAIL=$((FAIL + 1))
+        ERRORS="${ERRORS}\n  FAIL  bootstrap-fp — regen failed"
+        return
+    fi
+    if diff -q src/parser.zig "$tmp" >/dev/null 2>&1; then
+        echo "  PASS  bootstrap-fp (src/parser.zig is a fixed point)"
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        local lines=$(diff src/parser.zig "$tmp" | grep -c '^[<>]' || true)
+        ERRORS="${ERRORS}\n  FAIL  bootstrap-fp — $lines lines drifted (run ./bin/nexus nexus.grammar src/parser.zig and commit)"
+    fi
+}
+
+
+
+run_bootstrap_fp
+
 SEXP_GOLDEN="test/golden/nexus.sexp"
 SEXP_TMP="$TMPDIR/nexus.sexp"
 
