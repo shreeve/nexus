@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Nexus — Universal Parser Generator</title>
 
-  <meta name="description" content="Define a grammar. Get a parser. Any language. Nexus is a self-hosting, universal parser generator that reads .grammar files and produces combined lexer + SLR(1) parser modules.">
+  <meta name="description" content="Define a grammar. Get a parser. Any language. Nexus is a self-hosting, universal parser generator that reads .grammar files and produces combined lexer + LALR(1)/SLR(1) parser modules.">
   <meta property="og:title" content="Nexus — Universal Parser Generator">
   <meta property="og:description" content="Define a grammar. Get a parser. Any language.">
   <meta property="og:image" content="https://shreeve.github.io/nexus/nexus-social.png">
@@ -343,7 +343,7 @@
     <h1>Universal Parser Generator</h1>
     <p class="tagline">
       One tool reads any <code>.grammar</code> file and produces a combined
-      lexer + SLR(1) parser. One tool, any language, zero language-specific code in the engine.
+      lexer + LALR(1)/SLR(1) parser. One tool, any language, zero language-specific code in the engine.
     </p>
     <div class="hero-buttons">
       <a class="btn btn-primary" href="https://github.com/shreeve/nexus">
@@ -370,7 +370,7 @@
       <span class="arrow">&rarr;</span>
       <div class="node"><strong>nexus</strong>generator engine</div>
       <span class="arrow">&rarr;</span>
-      <div class="node"><strong>parser.zig</strong>lexer + SLR(1) parser</div>
+      <div class="node"><strong>parser.zig</strong>lexer + parser</div>
     </div>
   </section>
 
@@ -443,7 +443,7 @@
       </div>
       <pre><span class="sym">$</span> ./bin/nexus basic.grammar src/parser.zig
 
-<span class="cmt">Generated parser.zig — switch-based lexer, SLR(1) parse tables,</span>
+<span class="cmt">Generated parser.zig — switch-based lexer, LALR(1) parse tables,</span>
 <span class="cmt">Tag enum, Sexp output, and all reduction actions in one module.</span></pre>
     </div>
   </section>
