@@ -67,34 +67,47 @@ rewriting.
 
 ### Self-Hosting
 
-Nexus is self-hosting: it uses a generated LALR(1) parser to parse its own
-grammar format. The pipeline is:
+Nexus eats its own dog food. The frontend parser it uses to read every
+`.grammar` file — including `nexus.grammar` itself — is a Nexus-generated
+LALR(1) parser. The pipeline is:
 
 ```
-nexus.grammar → parser.zig (generated, checked in) → Sexp → GrammarLowerer → GrammarIR → processGrammar
+nexus.grammar → parser.zig (generated, checked in)
+              → Sexp → GrammarLowerer → GrammarIR → ParserGenerator → parser.zig
 ```
 
-The checked-in `src/parser.zig` is the bootstrap artifact — the same kind of
-parser Nexus generates for any language, used to parse `.grammar` files
-themselves. There is no hand-written grammar parser.
+The canonical S-expression schema the frontend emits is documented as a
+block comment at the top of `nexus.grammar` and serves as the authoritative
+contract with the strict `GrammarLowerer` in `src/nexus.zig`. Every lowering
+entry point either receives exactly the documented shape or raises a hard
+error pointing at the source line; there is no heuristic shape inference.
+
+Three CI guards protect the pipeline:
+
+- `test/golden/nexus.sexp` pins the canonical AST of `nexus.grammar`.
+- A cross-frontend oracle parses every in-repo grammar through both the
+  self-hosted frontend and a hand-written recursive-descent backup
+  (available via `--legacy`) and demands byte-identical `GrammarIR` output.
+- A bootstrap fixed-point test regenerates `src/parser.zig` on every run
+  and diffs it against the checked-in file.
 
 ### Repository Structure
 
 ```
 src/
-├── nexus.zig        # Generator engine (~6300 lines)
-├── parser.zig       # Generated bootstrap parser (self-hosting)
-└── lang.zig         # Lang module for grammar parsing
-nexus.grammar        # Self-hosting grammar definition
+├── nexus.zig        # Generator engine
+├── parser.zig       # Self-hosted frontend, generated from nexus.grammar
+└── lang.zig         # Lang module for the frontend (Tag enum + lexer wrapper)
+nexus.grammar        # Grammar DSL described in its own grammar format
 build.zig            # Build configuration
 test/
-├── run              # Test runner (23 tests)
+├── run              # Test runner (32 tests)
 ├── basic/           # Expression grammar
 ├── features/        # Feature-test grammar
-├── em/              # MUMPS language grammar
+├── mumps/           # MUMPS language grammar
 ├── zag/             # Zag language grammar
 ├── slash/           # Slash language grammar
-├── golden/          # Byte-exact golden output files
+├── golden/          # Byte-exact golden output files, including nexus.sexp
 └── adverse/         # Error-case grammars
 ```
 
@@ -879,7 +892,7 @@ delimiter stacks) requires `@lang` wrapper support.
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # fast + safety-checked (recommended)
 zig build -Doptimize=ReleaseFast       # fast, safety checks stripped
-zig build test                         # run all 23 tests
+zig build test                         # run all 32 tests
 zig build run -- <args>                # run with arguments
 ```
 
@@ -905,17 +918,33 @@ bounds-check-heavy, so the checks ReleaseFast strips are already cheap.
 the full ~8× speedup over Debug while keeping runtime safety. Use
 `Debug` only when actively debugging nexus itself.
 
-### Regenerating the Bootstrap Parser
+### Regenerating the Self-Hosted Frontend
 
-When modifying `nexus.grammar`, regenerate the checked-in bootstrap parser:
+When modifying `nexus.grammar`, regenerate the checked-in frontend parser
+and commit both:
 
 ```bash
 ./bin/nexus nexus.grammar src/parser.zig
 ```
 
-Breaking grammar-language changes must be staged: first make a
-backward-compatible change, regenerate, then make the breaking change,
-regenerate again. This is standard self-hosting bootstrap discipline.
+If the AST shape changes, also refresh the canonical S-expression golden:
+
+```bash
+./test/run --update
+```
+
+The bootstrap fixed-point test and the cross-frontend oracle both run on
+every `zig build test` — a broken invariant fails the build with a
+pointer to what drifted.
+
+For debugging, the binary has two built-in lenses into the self-hosted
+path:
+
+```bash
+./bin/nexus --dump-sexp <grammar>       # print the canonical Sexp tree
+./bin/nexus --cross-check <grammar>     # diff both frontends' IRs
+./bin/nexus --legacy <grammar> <out>    # use the hand-written frontend as a fallback oracle
+```
 
 ---
 
