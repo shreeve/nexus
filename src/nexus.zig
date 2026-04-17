@@ -13,6 +13,11 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+// The generated frontend parser for nexus.grammar itself. It lives alongside
+// nexus.zig so the tool can load its own grammar DSL through the same table-
+// driven machinery it emits for downstream languages.
+const ngp = @import("parser.zig");
+
 const version = "0.8.0";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
@@ -7108,6 +7113,72 @@ fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringH
     }
 }
 
+// =============================================================================
+// S-expression pretty-printer
+//
+// Renders the output of the generated frontend parser in a canonical textual
+// form suitable for golden-file comparison. Lists that contain no nested lists
+// stay on a single line; any list with a nested list child breaks across
+// lines with two-space indentation per level.
+// =============================================================================
+
+fn dumpSexp(writer: anytype, sexp: ngp.Sexp, source: []const u8, indent: usize) !void {
+    switch (sexp) {
+        .nil => try writer.writeAll("_"),
+        .tag => |t| try writer.writeAll(@tagName(t)),
+        .src => |s| try writer.writeAll(source[s.pos..][0..s.len]),
+        .str => |s| try writer.print("\"{s}\"", .{s}),
+        .list => |items| {
+            if (items.len == 0) {
+                try writer.writeAll("()");
+                return;
+            }
+
+            var hasNestedList = false;
+            for (items) |item| {
+                if (item == .list and item.list.len > 0) {
+                    hasNestedList = true;
+                    break;
+                }
+            }
+
+            try writer.writeAll("(");
+            if (!hasNestedList) {
+                for (items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(" ");
+                    try dumpSexp(writer, item, source, 0);
+                }
+            } else {
+                try dumpSexp(writer, items[0], source, indent + 2);
+                for (items[1..]) |item| {
+                    try writer.writeAll("\n");
+                    try writer.splatByteAll(' ', indent + 2);
+                    try dumpSexp(writer, item, source, indent + 2);
+                }
+            }
+            try writer.writeAll(")");
+        },
+    }
+}
+
+// Parse the @parser section of a grammar file through the generated frontend
+// and return the S-expression tree. Callers own the parser's arena lifetime
+// via the returned Parser; deinit it when finished with the tree.
+fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
+    parser: ngp.Parser,
+    sexp: ngp.Sexp,
+    parserBody: []const u8,
+} {
+    const parserStart = findSection(sourceText, "@parser") orelse {
+        return error.MissingParserSection;
+    };
+    const parserBody = sourceText[parserStart + 7 ..];
+    var parser = ngp.Parser.init(allocator, parserBody);
+    errdefer parser.deinit();
+    const sexp = try parser.parseGrammar();
+    return .{ .parser = parser, .sexp = sexp, .parserBody = parserBody };
+}
+
 fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
     for (elements) |elem| {
         if (elem.kind == .ident or elem.kind == .reqList or elem.kind == .optList) {
@@ -7150,16 +7221,65 @@ pub fn main(init: std.process.Init) !void {
             \\a combined parser.zig module containing both lexer and parser.
             \\
             \\Usage: nexus <grammar-file> [output-file]
+            \\       nexus check <grammar-file>
+            \\       nexus --dump-sexp <grammar-file> [output-file]
             \\
             \\Options:
-            \\  -c, --comments Include grammar-rule comments in generated code
-            \\      --slr      Use SLR(1) instead of LALR(1) for parse tables
-            \\  -h, --help     Show this help
+            \\  -c, --comments  Include grammar-rule comments in generated code
+            \\      --slr       Use SLR(1) instead of LALR(1) for parse tables
+            \\      --dump-sexp Parse the @parser section via the self-hosted
+            \\                  frontend and write its canonical S-expression
+            \\                  tree to the output file (or stdout)
+            \\  -h, --help      Show this help
             \\
             \\Examples:
             \\  nexus lang.grammar src/parser.zig
+            \\  nexus --dump-sexp nexus.grammar test/golden/nexus.sexp
             \\
         , .{});
+        return;
+    }
+
+    if (std.mem.eql(u8, args[1], "--dump-sexp")) {
+        if (args.len < 3) {
+            std.debug.print("Usage: nexus --dump-sexp <grammar-file> [output-file]\n", .{});
+            return;
+        }
+        const grammarFile = args[2];
+        const outputPath: ?[]const u8 = if (args.len >= 4) args[3] else null;
+
+        const sourceText = std.Io.Dir.cwd().readFileAlloc(io, grammarFile, allocator, .limited(max_grammar_bytes)) catch |err| {
+            std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
+            return err;
+        };
+
+        var parsed = parseGrammarSexp(allocator, sourceText) catch |err| {
+            std.debug.print("❌ Failed to parse {s}: {any}\n", .{ grammarFile, err });
+            if (err == error.ParseError) {
+                std.debug.print("  (hint: run `./bin/nexus {s} /tmp/out.zig` for parser-generator diagnostics)\n", .{grammarFile});
+            }
+            return;
+        };
+        defer parsed.parser.deinit();
+
+        var output: std.Io.Writer.Allocating = .init(allocator);
+        defer output.deinit();
+        const writer = &output.writer;
+        try dumpSexp(writer, parsed.sexp, parsed.parserBody, 0);
+        try writer.writeByte('\n');
+        const bytes = writer.buffered();
+
+        if (outputPath) |path| {
+            const file = std.Io.Dir.cwd().createFile(io, path, .{}) catch |err| {
+                std.debug.print("Error creating {s}: {any}\n", .{ path, err });
+                return err;
+            };
+            defer file.close(io);
+            try file.writeStreamingAll(io, bytes);
+            std.debug.print("✅ Wrote S-expression dump to {s} ({d} bytes)\n", .{ path, bytes.len });
+        } else {
+            std.debug.print("{s}", .{bytes});
+        }
         return;
     }
 

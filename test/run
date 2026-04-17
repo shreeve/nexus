@@ -7,6 +7,9 @@
 #   2. Compile checks — verify generated .zig is syntactically valid
 #   3. Determinism — same input produces identical output across runs
 #   4. Adverse tests — bad grammars must produce errors
+#   5. Self-host S-expression golden — parse nexus.grammar through the
+#      generated frontend and diff canonical S-exp dump against
+#      test/golden/nexus.sexp
 #
 # Usage:
 #   ./test/run              — run all tests
@@ -183,6 +186,49 @@ if [[ -d "test/adverse" ]]; then
     done
     echo ""
 fi
+
+# =========================================================================
+# 5. Self-Host S-Expression Golden
+# =========================================================================
+
+echo "=== Self-Host S-Expression Golden ==="
+echo ""
+
+SEXP_GOLDEN="test/golden/nexus.sexp"
+SEXP_TMP="$TMPDIR/nexus.sexp"
+
+if $NEXUS --dump-sexp nexus.grammar "$SEXP_TMP" >/dev/null 2>&1; then
+    if $UPDATE; then
+        cp "$SEXP_TMP" "$SEXP_GOLDEN"
+        echo "  UPDATE  nexus-sexp"
+        PASS=$((PASS + 1))
+    elif diff -q "$SEXP_GOLDEN" "$SEXP_TMP" >/dev/null 2>&1; then
+        echo "  PASS  nexus-sexp (canonical tree stable)"
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        lines=$(diff "$SEXP_GOLDEN" "$SEXP_TMP" | grep -c '^[<>]' || true)
+        ERRORS="${ERRORS}\n  FAIL  nexus-sexp — $lines lines differ"
+    fi
+else
+    FAIL=$((FAIL + 1))
+    ERRORS="${ERRORS}\n  FAIL  nexus-sexp — dump failed"
+fi
+
+# Determinism for the sexp dump (same input, two runs, identical output)
+SEXP_A="$TMPDIR/nexus_a.sexp"
+SEXP_B="$TMPDIR/nexus_b.sexp"
+$NEXUS --dump-sexp nexus.grammar "$SEXP_A" >/dev/null 2>&1 || true
+$NEXUS --dump-sexp nexus.grammar "$SEXP_B" >/dev/null 2>&1 || true
+if diff -q "$SEXP_A" "$SEXP_B" >/dev/null 2>&1; then
+    echo "  PASS  nexus-sexp (deterministic)"
+    PASS=$((PASS + 1))
+else
+    FAIL=$((FAIL + 1))
+    ERRORS="${ERRORS}\n  FAIL  nexus-sexp — nondeterministic dump"
+fi
+
+echo ""
 
 # =========================================================================
 # Summary
