@@ -7954,6 +7954,7 @@ pub fn main(init: std.process.Init) !void {
     // Parse option flags from remaining args
     var comments = false;
     var parseMode: ParseMode = .lalr;
+    var legacyFrontend = false;
     var positionalStart: usize = if (checkMode) 2 else 1;
     for (args[positionalStart..]) |arg| {
         if (std.mem.eql(u8, arg, "--comments") or std.mem.eql(u8, arg, "-c")) {
@@ -7961,6 +7962,9 @@ pub fn main(init: std.process.Init) !void {
             positionalStart += 1;
         } else if (std.mem.eql(u8, arg, "--slr")) {
             parseMode = .slr;
+            positionalStart += 1;
+        } else if (std.mem.eql(u8, arg, "--legacy")) {
+            legacyFrontend = true;
             positionalStart += 1;
         } else break;
     }
@@ -8044,16 +8048,38 @@ pub fn main(init: std.process.Init) !void {
     if (parserStart) |ps| {
         std.debug.print("   Parsing @parser section...\n", .{});
 
-        // Parse parser section via recursive descent parser
-        var dslParser = ParserDSLParser.init(allocator, sourceText[ps + 7 ..]);
-        defer dslParser.deinit();
+        // The self-hosted path is the default: the checked-in generated
+        // parser.zig parses nexus.grammar into S-expressions, and the
+        // strict GrammarLowerer lowers them into GrammarIR. The hand-
+        // written ParserDSLParser is kept available via --legacy as a
+        // cross-frontend oracle for the duration of the transition.
+        _ = ps;
+        var ir: GrammarIR = undefined;
+        var dslParser: ?ParserDSLParser = null;
+        defer if (dslParser) |*p| p.deinit();
 
-        dslParser.parse() catch {
-            std.debug.print("❌ Parser parse error\n", .{});
-            return;
-        };
-
-        var ir = dslParser.lower();
+        if (legacyFrontend) {
+            dslParser = ParserDSLParser.init(allocator, sourceText[parserStart.? + 7 ..]);
+            dslParser.?.parse() catch {
+                std.debug.print("❌ Parser parse error\n", .{});
+                return;
+            };
+            ir = dslParser.?.lower();
+        } else {
+            var parsed = parseGrammarSexp(allocator, sourceText) catch |err| {
+                std.debug.print("❌ Failed to parse @parser section: {any}\n", .{err});
+                return;
+            };
+            // The lowerer extracts text from .src nodes into slices backed by
+            // sourceText (which outlives main), so the parser's arena is safe
+            // to tear down immediately after lowering.
+            ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
+                parsed.parser.deinit();
+                std.debug.print("❌ Lowerer error: {any}\n", .{err});
+                return;
+            };
+            parsed.parser.deinit();
+        }
 
         if (ir.lang == null) ir.lang = lexerParser.spec.langName;
 
