@@ -3301,23 +3301,25 @@ const GrammarLowerer = struct {
     }
 
     // The generated parser emits `(tok X) (lit "c")` for the surface syntax
-    // `X "c"` exclusion hint. When that pair terminates an alternative's
-    // element list, strip it and return `c` as the exclusion char. Recognition
-    // is by tag and position — no string scanning of action text.
+    // `X "c"` exclusion hint. When one or more such pairs terminate an
+    // alternative's element list, strip them all and record the rightmost
+    // character as the exclusion char (matching the hand-written frontend's
+    // left-to-right "last one wins" semantics). Recognition is by tag and
+    // position — no string scanning of action text.
     fn stripExcludeTail(self: *GrammarLowerer, altNode: ngp.Sexp, elements: *std.ArrayListUnmanaged(ParsedElement)) LoweringError!u8 {
-        if (elements.items.len < 2) return 0;
-        const last = elements.items[elements.items.len - 1];
-        const prev = elements.items[elements.items.len - 2];
-        if (prev.kind != .token or !std.mem.eql(u8, prev.value, "X")) return 0;
-        if (last.kind != .string) return 0;
-        const raw = last.value;
-        if (raw.len < 3) return self.shapeError(altNode, "X \"c\" — c must be a one-char literal");
-        const inner = stripQuotes(raw);
-        if (inner.len != 1) return self.shapeError(altNode, "X \"c\" — c must be a one-char literal");
-        const ch = inner[0];
-        _ = elements.pop();
-        _ = elements.pop();
-        return ch;
+        var excludeChar: u8 = 0;
+        while (elements.items.len >= 2) {
+            const last = elements.items[elements.items.len - 1];
+            const prev = elements.items[elements.items.len - 2];
+            if (prev.kind != .token or !std.mem.eql(u8, prev.value, "X")) break;
+            if (last.kind != .string) break;
+            const inner = stripQuotes(last.value);
+            if (inner.len != 1) return self.shapeError(altNode, "X \"c\" — c must be a one-char literal");
+            if (excludeChar == 0) excludeChar = inner[0];
+            _ = elements.pop();
+            _ = elements.pop();
+        }
+        return excludeChar;
     }
 
     // --- Elements ---
@@ -3330,7 +3332,6 @@ const GrammarLowerer = struct {
             .lit => try self.lowerScalarElement(node, t.items, .string),
             .at_ref => try self.lowerScalarElement(node, t.items, .ident),
             .list_req => try self.lowerListElement(node, t.items, .reqList),
-            .list_opt => try self.lowerListElement(node, t.items, .optList),
             .group => try self.lowerGroupElement(node, t.items, .group, false),
             .group_many => try self.lowerGroupElement(node, t.items, .optList, true),
             .group_opt => try self.lowerGroupElement(node, t.items, .optGroup, false),
@@ -3350,7 +3351,7 @@ const GrammarLowerer = struct {
     }
 
     fn lowerListElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
-        if (items.len != 3) return self.shapeError(node, "(list_req|list_opt TOKEN LIST_INNER)");
+        if (items.len != 3) return self.shapeError(node, "(list_req TOKEN LIST_INNER)");
         const listTok = try self.requireSrc(items[1], "list head token");
         _ = listTok; // The leading TOKEN is always `L`; the surface syntax gives no other choice.
         const inner = taggedItems(items[2]) orelse return self.shapeError(items[2], "LIST_INNER");
@@ -3384,27 +3385,20 @@ const GrammarLowerer = struct {
     fn lowerGroupElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind, asMany: bool) LoweringError!ParsedElement {
         if (items.len < 2) return self.shapeError(node, "group with ≥1 ALT_BODY");
 
-        // A group in GrammarIR is a single ParsedElement with subElements. When
-        // the surface group has multiple alternatives, expose them as
-        // sibling-separated sub-elements (the ParserGenerator's group path
-        // handles one-alt groups directly; multi-alt groups arrive via
-        // expandOptionalGroups for optGroups, and via explicit alt-chained
-        // rules for plain groups).
         if (items.len == 2) {
             const bodyElements = try self.lowerAltBody(items[1]);
             defer @constCast(&bodyElements).deinit(self.allocator);
 
             if (asMany) {
-                // [X, ...] where X is a single element: fold into a reqList with
-                // comma separator so the existing optList path emits it.
-                if (bodyElements.items.len == 1 and (bodyElements.items[0].kind == .ident or bodyElements.items[0].kind == .token) and bodyElements.items[0].quantifier == .one) {
+                // [X, ...] with a single simple element collapses to an optList
+                // carrying the item name directly; the parser generator emits a
+                // comma-separated list rule for it.
+                if (isSingleSimpleElem(bodyElements.items)) {
                     return ParsedElement{
                         .kind = .optList,
                         .value = bodyElements.items[0].value,
                     };
                 }
-                // General case: wrap the body as a group with `*` quantification
-                // equivalent semantics.
                 return ParsedElement{
                     .kind = .optList,
                     .value = if (bodyElements.items.len > 0) bodyElements.items[0].value else "",
@@ -3412,16 +3406,49 @@ const GrammarLowerer = struct {
                 };
             }
 
+            // [L(X)]: single alt body containing exactly one required-list
+            // element collapses to an optional-list element carrying the same
+            // list fields (item name, separator, per-item optionality).
+            if (kind == .optGroup and bodyElements.items.len == 1 and bodyElements.items[0].kind == .reqList and bodyElements.items[0].quantifier == .one and !bodyElements.items[0].skip) {
+                const inner = bodyElements.items[0];
+                return ParsedElement{
+                    .kind = .optList,
+                    .value = inner.value,
+                    .optionalItems = inner.optionalItems,
+                    .listSeparator = inner.listSeparator,
+                };
+            }
+
+            // [X] with a single simple element collapses to the base element with
+            // an optional quantifier. Multiple elements or complex bodies keep
+            // the optGroup shape, which is expanded into explicit alternatives
+            // downstream by expandOptionalGroups.
+            if (kind == .optGroup and isSingleSimpleElem(bodyElements.items)) {
+                return ParsedElement{
+                    .kind = bodyElements.items[0].kind,
+                    .value = bodyElements.items[0].value,
+                    .quantifier = .optional,
+                };
+            }
+
+            // For optGroup, downstream expansion labels the generated
+            // alternatives with the first sub-element's text; mirror the
+            // hand-written frontend by carrying it in `value`. Plain groups
+            // don't need it.
+            const firstValue: []const u8 = if (kind == .optGroup and bodyElements.items.len > 0)
+                bodyElements.items[0].value
+            else
+                "";
+
             return ParsedElement{
                 .kind = kind,
+                .value = firstValue,
                 .subElements = try self.allocator.dupe(ParsedElement, bodyElements.items),
             };
         }
 
-        // Multi-alt group. Collect every alternative's element list as its own
-        // sub-element slice; ProcessElement's group path produces one rule per
-        // alt via expandOptionalGroups for `optGroup`, and via per-alt
-        // processing for plain `group`.
+        // Multi-alt group. Each alternative contributes a sub-group element so
+        // that downstream emitters see a list of distinct alternatives.
         var subElems: std.ArrayListUnmanaged(ParsedElement) = .empty;
         for (items[1..]) |altBody| {
             const body = try self.lowerAltBody(altBody);
@@ -3437,6 +3464,14 @@ const GrammarLowerer = struct {
             .kind = if (asMany) .optList else kind,
             .subElements = try subElems.toOwnedSlice(self.allocator),
         };
+    }
+
+    fn isSingleSimpleElem(elements: []const ParsedElement) bool {
+        if (elements.len != 1) return false;
+        const e = elements[0];
+        if (e.skip) return false;
+        if (e.quantifier != .one) return false;
+        return e.kind == .ident or e.kind == .token;
     }
 
     fn lowerQuantifiedElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!ParsedElement {
@@ -7648,6 +7683,106 @@ fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
     return .{ .parser = parser, .sexp = sexp, .parserBody = parserBody };
 }
 
+// =============================================================================
+// GrammarIR textual form — stable serialization for cross-frontend checks.
+//
+// The format is line-oriented, deterministic, and independent of pointer
+// identity. Two GrammarIRs serialize to identical strings iff they describe
+// the same grammar in every observable field. The cross-check oracle uses
+// this to compare the hand-written ParserDSLParser's output to the
+// self-hosted frontend's output byte-for-byte.
+// =============================================================================
+
+fn formatIR(allocator: Allocator, ir: *const GrammarIR) ![]u8 {
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    errdefer output.deinit();
+    const w = &output.writer;
+
+    if (ir.lang) |l| try w.print("lang: \"{s}\"\n", .{l});
+    if (ir.expectConflicts) |c| try w.print("conflicts: {d}\n", .{c});
+
+    for (ir.startSymbols) |s| try w.print("start: {s}\n", .{s});
+
+    for (ir.asDirectives) |d| {
+        const mode: []const u8 = if (d.permissive) "perm" else "strict";
+        try w.print("as: {s} -> {s} [{s}]\n", .{ d.token, d.rule, mode });
+    }
+
+    for (ir.opMappings) |m| try w.print("op: {s} -> {s}\n", .{ m.lit, m.tok });
+
+    for (ir.errorNames) |e| try w.print("error: {s} \"{s}\"\n", .{ e.rule, e.name });
+
+    if (ir.infix) |inf| {
+        try w.print("infix: {s}\n", .{inf.baseRule});
+        for (inf.ops) |op| {
+            const a: []const u8 = switch (op.assoc) {
+                .left => "left",
+                .right => "right",
+                .none => "none",
+            };
+            try w.print("  op {s} {s} {d}\n", .{ op.op, a, op.prec });
+        }
+    }
+
+    for (ir.codeBlocks) |b| {
+        try w.print("code: {s}\n", .{b.location});
+        try w.print("  {s}\n", .{b.code});
+    }
+
+    for (ir.rules) |rule| {
+        try w.print("rule {s}{s}:\n", .{ rule.name, if (rule.isStart) "!" else "" });
+        for (rule.alternatives) |alt| {
+            try w.writeAll("  alt");
+            if (alt.preferReduce) try w.writeAll("<");
+            if (alt.preferShift) try w.writeAll(">");
+            if (alt.excludeChar != 0) try w.print(" X\"{c}\"", .{alt.excludeChar});
+            try w.writeAll(": ");
+            try formatElements(w, alt.elements);
+            if (alt.action) |a| try w.print(" -> {s}", .{a});
+            try w.writeByte('\n');
+        }
+    }
+
+    return output.toOwnedSlice();
+}
+
+fn formatElements(w: *std.Io.Writer, elements: []const ParsedElement) std.Io.Writer.Error!void {
+    try w.writeByte('[');
+    for (elements, 0..) |elem, i| {
+        if (i > 0) try w.writeAll(", ");
+        try formatElement(w, elem);
+    }
+    try w.writeByte(']');
+}
+
+fn formatElement(w: *std.Io.Writer, elem: ParsedElement) std.Io.Writer.Error!void {
+    if (elem.skip) try w.writeByte('!');
+    const kind: []const u8 = switch (elem.kind) {
+        .ident => "ref",
+        .token => "tok",
+        .string => "lit",
+        .group => "group",
+        .optGroup => "opt_group",
+        .reqList => "list_req",
+        .optList => "list_opt",
+    };
+    try w.print("{s}:{s}", .{ kind, elem.value });
+    if (elem.optionalItems) try w.writeAll("?");
+    if (elem.listSeparator) |s| try w.print("/sep={s}", .{s});
+    if (elem.subElements.len > 0) {
+        try w.writeByte('{');
+        try formatElements(w, elem.subElements);
+        try w.writeByte('}');
+    }
+    const q: []const u8 = switch (elem.quantifier) {
+        .one => "",
+        .optional => "?",
+        .zeroPlus => "*",
+        .onePlus => "+",
+    };
+    try w.writeAll(q);
+}
+
 fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {
     for (elements) |elem| {
         if (elem.kind == .ident or elem.kind == .reqList or elem.kind == .optList) {
@@ -7707,6 +7842,68 @@ pub fn main(init: std.process.Init) !void {
             \\
         , .{});
         return;
+    }
+
+    if (std.mem.eql(u8, args[1], "--cross-check")) {
+        if (args.len < 3) {
+            std.debug.print("Usage: nexus --cross-check <grammar-file>\n", .{});
+            return;
+        }
+        const grammarFile = args[2];
+        const sourceText = std.Io.Dir.cwd().readFileAlloc(io, grammarFile, allocator, .limited(max_grammar_bytes)) catch |err| {
+            std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
+            return err;
+        };
+
+        // Frontend A: hand-written recursive descent.
+        const parserStart = findSection(sourceText, "@parser") orelse {
+            std.debug.print("❌ No @parser section in {s}\n", .{grammarFile});
+            return;
+        };
+        var dslParser = ParserDSLParser.init(allocator, sourceText[parserStart + 7 ..]);
+        defer dslParser.deinit();
+        dslParser.parse() catch |err| {
+            std.debug.print("❌ hand-written frontend failed: {any}\n", .{err});
+            return;
+        };
+        const irA = dslParser.lower();
+
+        // Frontend B: self-hosted Sexp → GrammarLowerer.
+        var parsed = parseGrammarSexp(allocator, sourceText) catch |err| {
+            std.debug.print("❌ self-hosted frontend failed to parse: {any}\n", .{err});
+            return;
+        };
+        defer parsed.parser.deinit();
+        const irB = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
+            std.debug.print("❌ self-hosted lowerer failed: {any}\n", .{err});
+            return;
+        };
+
+        const textA = try formatIR(allocator, &irA);
+        const textB = try formatIR(allocator, &irB);
+
+        if (std.mem.eql(u8, textA, textB)) {
+            std.debug.print("✅ cross-check: IR identical ({d} bytes)\n", .{textA.len});
+            return;
+        }
+
+        std.debug.print("❌ cross-check: IRs differ ({d} vs {d} bytes)\n", .{ textA.len, textB.len });
+        // Dump both to /tmp for inspection.
+        const aPath = "/tmp/nexus_cross_a.ir";
+        const bPath = "/tmp/nexus_cross_b.ir";
+        {
+            const f = try std.Io.Dir.cwd().createFile(io, aPath, .{});
+            defer f.close(io);
+            try f.writeStreamingAll(io, textA);
+        }
+        {
+            const f = try std.Io.Dir.cwd().createFile(io, bPath, .{});
+            defer f.close(io);
+            try f.writeStreamingAll(io, textB);
+        }
+        std.debug.print("   hand-written IR: {s}\n", .{aPath});
+        std.debug.print("   self-hosted IR:  {s}\n", .{bPath});
+        std.process.exit(1);
     }
 
     if (std.mem.eql(u8, args[1], "--dump-sexp")) {

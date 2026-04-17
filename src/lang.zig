@@ -48,7 +48,6 @@ pub const Tag = enum(u8) {
     lit,
     at_ref,
     list_req,
-    list_opt,
     group,
     group_many,
     group_opt,

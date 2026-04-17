@@ -188,7 +188,40 @@ if [[ -d "test/adverse" ]]; then
 fi
 
 # =========================================================================
-# 5. Self-Host S-Expression Golden
+# 5. Cross-Frontend Equivalence Oracle
+#
+# Every in-repo grammar is parsed through both the hand-written
+# ParserDSLParser and the self-hosted Sexp→GrammarIR path. The two
+# GrammarIRs must serialize to byte-identical canonical text; any
+# divergence is a failure.
+# =========================================================================
+
+echo "=== Cross-Frontend Equivalence ==="
+echo ""
+
+run_cross() {
+    local name=$1
+    local grammar=$2
+    if $NEXUS --cross-check "$grammar" >/dev/null 2>&1; then
+        echo "  PASS  $name (both frontends produce identical IR)"
+        PASS=$((PASS + 1))
+    else
+        FAIL=$((FAIL + 1))
+        ERRORS="${ERRORS}\n  FAIL  $name — frontends diverge (see /tmp/nexus_cross_{a,b}.ir)"
+    fi
+}
+
+run_cross "nexus"    "nexus.grammar"
+run_cross "basic"    "test/basic/basic.grammar"
+run_cross "features" "test/features/features.grammar"
+run_cross "zag"      "test/zag/zag.grammar"
+run_cross "slash"    "test/slash/slash.grammar"
+run_cross "mumps"    "test/mumps/mumps.grammar"
+
+echo ""
+
+# =========================================================================
+# 6. Self-Host S-Expression Golden
 # =========================================================================
 
 echo "=== Self-Host S-Expression Golden ==="

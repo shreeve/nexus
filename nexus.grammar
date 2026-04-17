@@ -62,11 +62,14 @@
 #     (at_ref IDENT-or-KW_INFIX-src)
 #
 #     (list_req TOKEN-src LIST_INNER)          # L(...)   required
-#     (list_opt TOKEN-src LIST_INNER)          # [L(...)] optional list
 #
 #     (group      ALT_BODY ALT_BODY ...)       # ( a | b | c )
 #     (group_many ALT_BODY ALT_BODY ...)       # [ a | b | c , ... ]
 #     (group_opt  ALT_BODY ALT_BODY ...)       # [ a | b | c ]
+#
+# The surface form `[L(X)]` parses as a single-alternative group_opt whose
+# one ALT_BODY contains exactly one list_req element; the lowerer recognizes
+# that shape and folds it into an optional comma-separated list.
 #
 #     (quantified ELEMENT QUANT)               # X?, X*, X+
 #     (skip       ELEMENT)                     # !X
@@ -219,7 +222,7 @@ tokens
 #   - primary vs "(" lookahead in bracket body: shift for L(X) (1)
 #   - alt_line vs trailing TOKEN / "@" / STRING: shift for continuation (3)
 #   - R/R: primary vs bracket_body on shared prefix (1)
-@conflicts = 18
+@conflicts = 16
 
 # ===========================================================================
 # Top-level structure — entries separated by newlines/comments
@@ -363,8 +366,7 @@ primary    = IDENT                          → (ref 1)
            | "(" alt_group ")"              → (group ...2)
            | "[" bracket_body "]"           → 2
 
-bracket_body = TOKEN "(" bracket_inner ")"  → (list_opt 1 3)
-             | alt_group "..."              → (group_many ...1)
+bracket_body = alt_group "..."              → (group_many ...1)
              | alt_group                    → (group_opt ...1)
 
 bracket_inner = IDENT "?" "," sep_term      → (opt_items 1 4)

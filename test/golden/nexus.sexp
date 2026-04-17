@@ -1,6 +1,6 @@
 (grammar
   (lang "lang")
-  (conflicts 18)
+  (conflicts 16)
   (rule
     (start grammar)
     (alt
@@ -385,12 +385,6 @@
       2))
   (rule
     (name bracket_body)
-    (alt
-      ((tok TOKEN)
-        (lit "(")
-        (ref bracket_inner)
-        (lit ")"))
-      (list_opt 1 3))
     (alt
       ((ref alt_group)
         (lit "..."))
