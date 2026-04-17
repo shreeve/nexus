@@ -599,7 +599,7 @@ pub const Lexer = struct {
 };
 
 pub fn lineNeedsContinuation(line: []const u8) bool {
-    const trimmed = std.mem.trimRight(u8, line, " \t");
+    const trimmed = std.mem.trimEnd(u8, line, " \t");
     if (trimmed.len == 0) return false;
 
     var lex = Lexer.init(trimmed);

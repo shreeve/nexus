@@ -12,10 +12,9 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const ngp = @import("parser.zig");
-const ngl = @import("lang.zig");
 
-const version = "0.7.0";
+const version = "0.8.0";
+const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
 // Source Infrastructure — absolute byte offsets and span-based diagnostics
@@ -27,7 +26,7 @@ const Source = struct {
     line_starts: []const u32,
 
     fn init(allocator: Allocator, path: []const u8, text: []const u8) !Source {
-        var starts = std.ArrayListUnmanaged(u32){};
+        var starts: std.ArrayListUnmanaged(u32) = .empty;
         try starts.append(allocator, 0);
         for (text, 0..) |c, i| {
             if (c == '\n' and i + 1 < text.len) {
@@ -120,7 +119,6 @@ const Diagnostic = struct {
     }
 };
 
-
 // =============================================================================
 // Lexer DSL Data Structures
 // =============================================================================
@@ -201,11 +199,11 @@ const LexerSpec = struct {
     fn init(allocator: Allocator) LexerSpec {
         return .{
             .allocator = allocator,
-            .states = .{},
-            .defaults = .{},
-            .tokens = .{},
-            .rules = .{},
-            .codeFunctions = .{},
+            .states = .empty,
+            .defaults = .empty,
+            .tokens = .empty,
+            .rules = .empty,
+            .codeFunctions = .empty,
         };
     }
 
@@ -299,7 +297,10 @@ const LexerParser = struct {
         var p = self.pos;
         while (p < self.source.len) {
             if (self.source[p] == ' ' or self.source[p] == '\t') return true;
-            if (self.source[p] == '\n') { p += 1; continue; }
+            if (self.source[p] == '\n') {
+                p += 1;
+                continue;
+            }
             if (self.source[p] == '#') {
                 while (p < self.source.len and self.source[p] != '\n') p += 1;
                 if (p < self.source.len) p += 1;
@@ -313,14 +314,24 @@ const LexerParser = struct {
     /// Skip to the end of the current line (past the newline).
     fn skipToNextLine(self: *LexerParser) void {
         while (self.pos < self.source.len and self.source[self.pos] != '\n') self.pos += 1;
-        if (self.pos < self.source.len) { self.line += 1; self.pos += 1; }
+        if (self.pos < self.source.len) {
+            self.line += 1;
+            self.pos += 1;
+        }
     }
 
     /// Skip blank lines and comment-only lines at column 0.
     fn skipBlankLines(self: *LexerParser) void {
         while (self.pos < self.source.len) {
-            if (self.source[self.pos] == '\n') { self.line += 1; self.pos += 1; continue; }
-            if (self.source[self.pos] == '#') { self.skipToNextLine(); continue; }
+            if (self.source[self.pos] == '\n') {
+                self.line += 1;
+                self.pos += 1;
+                continue;
+            }
+            if (self.source[self.pos] == '#') {
+                self.skipToNextLine();
+                continue;
+            }
             break;
         }
     }
@@ -555,7 +566,7 @@ const LexerParser = struct {
         const pattern = try self.parsePattern();
 
         // Parse optional guards (@ condition & condition & ...)
-        var guards: std.ArrayListUnmanaged(Guard) = .{};
+        var guards: std.ArrayListUnmanaged(Guard) = .empty;
         defer guards.deinit(self.allocator);
 
         self.skipWhitespace();
@@ -578,7 +589,7 @@ const LexerParser = struct {
         const token = self.parseIdentifier() orelse return error.ExpectedTokenName;
 
         // Parse optional actions
-        var actions: std.ArrayListUnmanaged(Action) = .{};
+        var actions: std.ArrayListUnmanaged(Action) = .empty;
         defer actions.deinit(self.allocator);
 
         var isSimd = false;
@@ -854,7 +865,7 @@ fn findTokenForLiteral(spec: *const LexerSpec, literal: []const u8) ?[]const u8 
 const LexerGenerator = struct {
     allocator: Allocator,
     spec: *const LexerSpec,
-    output: std.ArrayListUnmanaged(u8),
+    output: std.Io.Writer.Allocating,
 
     fn structName(self: *const LexerGenerator) []const u8 {
         return if (self.spec.langName != null) "BaseLexer" else "Lexer";
@@ -864,20 +875,20 @@ const LexerGenerator = struct {
         return .{
             .allocator = allocator,
             .spec = spec,
-            .output = .{},
+            .output = .init(allocator),
         };
     }
 
     fn deinit(self: *LexerGenerator) void {
-        self.output.deinit(self.allocator);
+        self.output.deinit();
     }
 
     fn write(self: *LexerGenerator, s: []const u8) !void {
-        try self.output.appendSlice(self.allocator, s);
+        try self.output.writer.writeAll(s);
     }
 
     fn print(self: *LexerGenerator, comptime fmt: []const u8, args: anytype) !void {
-        try self.output.writer(self.allocator).print(fmt, args);
+        try self.output.writer.print(fmt, args);
     }
 
     // =========================================================================
@@ -1016,7 +1027,7 @@ const LexerGenerator = struct {
     };
 
     fn generateOperatorSwitch(self: *LexerGenerator) !void {
-        var groups: [256]std.ArrayListUnmanaged(OpRule) = @splat(.{});
+        var groups: [256]std.ArrayListUnmanaged(OpRule) = @splat(.empty);
         defer for (&groups) |*g| g.deinit(self.allocator);
 
         // Build set of characters that start string literal patterns
@@ -1061,7 +1072,6 @@ const LexerGenerator = struct {
             });
         }
 
-
         try self.write(
             \\        // Single/multi-char operators
             \\        self.pos += 1;
@@ -1084,9 +1094,9 @@ const LexerGenerator = struct {
     }
 
     fn emitSwitchArm(self: *LexerGenerator, firstChar: u8, rules: []const OpRule, codeFn: ?[]const u8) !void {
-        var singleRules = std.ArrayListUnmanaged(OpRule){};
+        var singleRules: std.ArrayListUnmanaged(OpRule) = .empty;
         defer singleRules.deinit(self.allocator);
-        var multiRules = std.ArrayListUnmanaged(OpRule){};
+        var multiRules: std.ArrayListUnmanaged(OpRule) = .empty;
         defer multiRules.deinit(self.allocator);
 
         for (rules) |rule| {
@@ -1209,7 +1219,7 @@ const LexerGenerator = struct {
         }
 
         for (secondChars[0..secondCount]) |sc| {
-            var matching = std.ArrayListUnmanaged(OpRule){};
+            var matching: std.ArrayListUnmanaged(OpRule) = .empty;
             defer matching.deinit(self.allocator);
             for (rules) |r| {
                 if (r.charCount > depth and r.chars[depth] == sc)
@@ -1288,7 +1298,7 @@ const LexerGenerator = struct {
         if (rules.len == 0) return;
 
         // Separate guarded from unguarded
-        var guarded = std.ArrayListUnmanaged(OpRule){};
+        var guarded: std.ArrayListUnmanaged(OpRule) = .empty;
         defer guarded.deinit(self.allocator);
         var unguarded: ?OpRule = null;
 
@@ -1407,11 +1417,11 @@ const LexerGenerator = struct {
             actions: []const Action,
         };
 
-        var crlfRules = std.ArrayListUnmanaged(NlRule){};
+        var crlfRules: std.ArrayListUnmanaged(NlRule) = .empty;
         defer crlfRules.deinit(self.allocator);
-        var lfRules = std.ArrayListUnmanaged(NlRule){};
+        var lfRules: std.ArrayListUnmanaged(NlRule) = .empty;
         defer lfRules.deinit(self.allocator);
-        var crRules = std.ArrayListUnmanaged(NlRule){};
+        var crRules: std.ArrayListUnmanaged(NlRule) = .empty;
         defer crRules.deinit(self.allocator);
 
         for (self.spec.rules.items) |rule| {
@@ -1472,7 +1482,7 @@ const LexerGenerator = struct {
     }
 
     fn emitNewlineRules(self: *LexerGenerator, rules: anytype, charCount: u8) !void {
-        var guarded = std.ArrayListUnmanaged(@TypeOf(rules[0])){};
+        var guarded: std.ArrayListUnmanaged(@TypeOf(rules[0])) = .empty;
         defer guarded.deinit(self.allocator);
         var unguarded: ?@TypeOf(rules[0]) = null;
 
@@ -1528,9 +1538,27 @@ const LexerGenerator = struct {
         while (i < pattern.len and pattern[i] != ']') {
             if (pattern[i] == '\\' and i + 1 < pattern.len) {
                 switch (pattern[i + 1]) {
-                    'w' => { for ('a'..('z' + 1)) |c| chars[c] = true; for ('A'..('Z' + 1)) |c| chars[c] = true; for ('0'..('9' + 1)) |c| chars[c] = true; chars['_'] = true; i += 2; continue; },
-                    'd' => { for ('0'..('9' + 1)) |c| chars[c] = true; i += 2; continue; },
-                    's' => { chars[' '] = true; chars['\t'] = true; chars['\n'] = true; chars['\r'] = true; i += 2; continue; },
+                    'w' => {
+                        for ('a'..('z' + 1)) |c| chars[c] = true;
+                        for ('A'..('Z' + 1)) |c| chars[c] = true;
+                        for ('0'..('9' + 1)) |c| chars[c] = true;
+                        chars['_'] = true;
+                        i += 2;
+                        continue;
+                    },
+                    'd' => {
+                        for ('0'..('9' + 1)) |c| chars[c] = true;
+                        i += 2;
+                        continue;
+                    },
+                    's' => {
+                        chars[' '] = true;
+                        chars['\t'] = true;
+                        chars['\n'] = true;
+                        chars['\r'] = true;
+                        i += 2;
+                        continue;
+                    },
                     else => {},
                 }
             }
@@ -1919,7 +1947,7 @@ const LexerGenerator = struct {
 
             // Must have a 2nd part that's a character class or literal (not just [^\n]*)
             const rest = rule.pattern[3..];
-            const trimmed = std.mem.trimLeft(u8, rest, " ");
+            const trimmed = std.mem.trimStart(u8, rest, " ");
             if (trimmed.len == 0) continue;
             if (trimmed[0] == '[' and trimmed.len > 1 and trimmed[1] == '^') continue; // negated class like [^\n]
 
@@ -1950,7 +1978,7 @@ const LexerGenerator = struct {
             // Pre-scan: determine if any prefix rule will emit code that references nc
             var needsNc = false;
             for (prefixRules[0..prefixCount]) |pr| {
-                const prSuffix = std.mem.trimLeft(u8, pr.pattern[3..], " ");
+                const prSuffix = std.mem.trimStart(u8, pr.pattern[3..], " ");
                 if (prSuffix.len > 3 and prSuffix[0] == '\'') {
                     // Literal second char: only emits nc if followed by [^ (scan-to-close pattern)
                     if (std.mem.indexOf(u8, prSuffix[3..], "'")) |closeIdx| {
@@ -1975,7 +2003,7 @@ const LexerGenerator = struct {
             for (prefixRules[0..prefixCount]) |pr| {
                 // Parse what follows the prefix literal in the pattern
                 const prRest = pr.pattern[3..]; // after 'X'
-                const prTrimmed = std.mem.trimLeft(u8, prRest, " ");
+                const prTrimmed = std.mem.trimStart(u8, prRest, " ");
 
                 if (prTrimmed.len >= 3 and prTrimmed[0] == '\'') {
                     // Second literal: '$' '{' → scan until matching close
@@ -2242,11 +2270,11 @@ const LexerGenerator = struct {
                 rule.pattern[1] != '0' or rule.pattern[2] != '\'') continue;
 
             // Parse: '0' [xXbBoO] [digit-class]+
-            const rest = std.mem.trimLeft(u8, rule.pattern[3..], " ");
+            const rest = std.mem.trimStart(u8, rule.pattern[3..], " ");
             if (rest.len < 3 or rest[0] != '[') continue;
             const close = std.mem.indexOfScalar(u8, rest, ']') orelse continue;
             const charClass = rest[1..close];
-            const digitPart = std.mem.trimLeft(u8, rest[close + 1 ..], " ");
+            const digitPart = std.mem.trimStart(u8, rest[close + 1 ..], " ");
 
             // Build condition for prefix char
             if (!first) {
@@ -2495,7 +2523,7 @@ const LexerGenerator = struct {
         // Generate Lexer struct
         try self.generateLexerStruct();
 
-        return self.output.toOwnedSlice(self.allocator);
+        return self.output.toOwnedSlice();
     }
 
     fn generateTokenCat(self: *LexerGenerator) !void {
@@ -2750,9 +2778,9 @@ const ParserSymbol = struct {
 
     // For nonterminals only
     nullable: bool = false,
-    firsts: ParserSymbolSet = .{},
-    follows: ParserSymbolSet = .{},
-    rules: std.ArrayListUnmanaged(u16) = .{}, // Rule IDs that define this nonterminal
+    firsts: ParserSymbolSet = .empty,
+    follows: ParserSymbolSet = .empty,
+    rules: std.ArrayListUnmanaged(u16) = .empty, // Rule IDs that define this nonterminal
 
     const Kind = enum { terminal, nonterminal };
 
@@ -2769,7 +2797,9 @@ const ParserSymbol = struct {
 
 /// A set of symbol IDs (for FIRST/FOLLOW sets)
 const ParserSymbolSet = struct {
-    items: std.ArrayListUnmanaged(u16) = .{},
+    items: std.ArrayListUnmanaged(u16) = .empty,
+
+    pub const empty: ParserSymbolSet = .{};
 
     fn deinit(self: *ParserSymbolSet, allocator: Allocator) void {
         self.items.deinit(allocator);
@@ -2814,7 +2844,7 @@ const ParserRule = struct {
     action: ?ParserAction, // Semantic action
     actionOffset: u8 = 0, // Position offset for start rules with marker tokens
     nullable: bool = false,
-    firsts: ParserSymbolSet = .{},
+    firsts: ParserSymbolSet = .empty,
     excludeChar: u8 = 0, // X "c" - exclude rule when next char matches
     preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
     preferShift: bool = false, // > hint - prefer shift on S/R conflict
@@ -2963,7 +2993,6 @@ const InfixDecl = struct {
     baseRule: []const u8,
     ops: []const InfixOp,
 };
-
 
 // =============================================================================
 // Grammar Token (for parsing .grammar files)
@@ -3177,15 +3206,15 @@ const ParserDSLParser = struct {
     allocator: Allocator,
     current: GrammarToken,
 
-    rules: std.ArrayListUnmanaged(ParsedRule) = .{},
-    startSymbols: std.ArrayListUnmanaged([]const u8) = .{},
-    asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
-    opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
-    errorNames: std.ArrayListUnmanaged(ErrorName) = .{},
-    infixOps: std.ArrayListUnmanaged(InfixOp) = .{},
+    rules: std.ArrayListUnmanaged(ParsedRule) = .empty,
+    startSymbols: std.ArrayListUnmanaged([]const u8) = .empty,
+    asDirectives: std.ArrayListUnmanaged(AsDirective) = .empty,
+    opMappings: std.ArrayListUnmanaged(OpMapping) = .empty,
+    errorNames: std.ArrayListUnmanaged(ErrorName) = .empty,
+    infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
     infixBase: ?[]const u8 = null,
     lang: ?[]const u8 = null,
-    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
+    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .empty,
     expectConflicts: ?u32 = null,
 
     fn init(allocator: Allocator, source: []const u8) ParserDSLParser {
@@ -3521,7 +3550,7 @@ const ParserDSLParser = struct {
         }
         self.advance();
 
-        var alternatives: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+        var alternatives: std.ArrayListUnmanaged(ParsedAlternative) = .empty;
         try self.parseParsedAlternatives(&alternatives);
 
         try self.rules.append(self.allocator, .{
@@ -3540,7 +3569,7 @@ const ParserDSLParser = struct {
     }
 
     fn parseParsedAlternative(self: *ParserDSLParser, alternatives: *std.ArrayListUnmanaged(ParsedAlternative)) !void {
-        var elements: std.ArrayListUnmanaged(ParsedElement) = .{};
+        var elements: std.ArrayListUnmanaged(ParsedElement) = .empty;
         var action: ?[]const u8 = null;
         var excludeChar: u8 = 0;
         var preferReduce: bool = false;
@@ -3689,7 +3718,7 @@ const ParserDSLParser = struct {
             },
             .lparen => {
                 self.advance();
-                var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+                var subElements: std.ArrayListUnmanaged(ParsedElement) = .empty;
 
                 while (self.current.kind != .rparen and self.current.kind != .eof) {
                     if (self.current.kind == .comma or self.current.kind == .pipe) {
@@ -3751,7 +3780,7 @@ const ParserDSLParser = struct {
                 } else {
                     // Parse bracket contents
                     var hasDots = false;
-                    var subElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+                    var subElements: std.ArrayListUnmanaged(ParsedElement) = .empty;
 
                     var firstElem = ParsedElement{
                         .kind = if (firstKind == .string) .string else if (firstKind == .ident) .ident else .token,
@@ -3917,16 +3946,16 @@ const ParserGenerator = struct {
     allocator: Allocator,
 
     // Symbol management
-    symbols: std.ArrayListUnmanaged(ParserSymbol) = .{},
-    symbolMap: std.StringHashMapUnmanaged(u16) = .{},
-    aliases: std.StringHashMapUnmanaged([]const u8) = .{},
+    symbols: std.ArrayListUnmanaged(ParserSymbol) = .empty,
+    symbolMap: std.StringHashMapUnmanaged(u16) = .empty,
+    aliases: std.StringHashMapUnmanaged([]const u8) = .empty,
     nextSymbolId: u16 = 0,
 
     // Rules
-    rules: std.ArrayListUnmanaged(ParserRule) = .{},
+    rules: std.ArrayListUnmanaged(ParserRule) = .empty,
 
     // LR automaton
-    states: std.ArrayListUnmanaged(ParserState) = .{},
+    states: std.ArrayListUnmanaged(ParserState) = .empty,
 
     // Special symbol IDs
     acceptId: u16 = 0,
@@ -3934,35 +3963,35 @@ const ParserGenerator = struct {
     errorId: u16 = 0,
 
     // Multiple start symbol support
-    startSymbols: std.ArrayListUnmanaged(u16) = .{},
-    startStates: std.ArrayListUnmanaged(u16) = .{},
-    acceptRules: std.ArrayListUnmanaged(u16) = .{},
+    startSymbols: std.ArrayListUnmanaged(u16) = .empty,
+    startStates: std.ArrayListUnmanaged(u16) = .empty,
+    acceptRules: std.ArrayListUnmanaged(u16) = .empty,
 
     parseMode: ParseMode = .lalr,
     conflicts: u32 = 0,
     expectConflicts: ?u32 = null,
-    conflictDetails: std.ArrayListUnmanaged(ConflictDetail) = .{},
+    conflictDetails: std.ArrayListUnmanaged(ConflictDetail) = .empty,
     emitComments: bool = false,
 
     // Directives
-    asDirectives: std.ArrayListUnmanaged(AsDirective) = .{},
-    opMappings: std.ArrayListUnmanaged(OpMapping) = .{},
-    errorNames: std.ArrayListUnmanaged(ErrorName) = .{},
-    infixOps: std.ArrayListUnmanaged(InfixOp) = .{},
+    asDirectives: std.ArrayListUnmanaged(AsDirective) = .empty,
+    opMappings: std.ArrayListUnmanaged(OpMapping) = .empty,
+    errorNames: std.ArrayListUnmanaged(ErrorName) = .empty,
+    infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
     infixBase: ?[]const u8 = null,
     lang: ?[]const u8 = null,
     lexerSpec: ?*const LexerSpec = null,
-    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .{},
+    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .empty,
 
     // LALR(1) per-item lookaheads (indexed by [state.id][reductionIndex])
     lalrLookaheads: []const []const ParserSymbolSet = &[_][]const ParserSymbolSet{},
 
     // Tags for enum generation
-    collectedTags: std.StringHashMapUnmanaged(u16) = .{},
-    tagList: std.ArrayListUnmanaged([]const u8) = .{},
+    collectedTags: std.StringHashMapUnmanaged(u16) = .empty,
+    tagList: std.ArrayListUnmanaged([]const u8) = .empty,
 
     // X "c" exclusions
-    xExcludes: std.ArrayListUnmanaged(struct { state: u16, char: u8, shift: u16 }) = .{},
+    xExcludes: std.ArrayListUnmanaged(struct { state: u16, char: u8, shift: u16 }) = .empty,
 
     fn init(allocator: Allocator) ParserGenerator {
         return .{ .allocator = allocator };
@@ -4069,7 +4098,7 @@ const ParserGenerator = struct {
     fn expandOptionalGroups(self: *ParserGenerator, alt: ParsedAlternative) ![]ParsedAlternative {
         // Find all bracket-optionals ([X] or [A B C]) - these need expansion for stable positions.
         // Note: X? quantifiers (like SPACES?) don't need expansion - they're typically not in actions.
-        var optGroups: std.ArrayListUnmanaged(OptGroupInfo) = .{};
+        var optGroups: std.ArrayListUnmanaged(OptGroupInfo) = .empty;
         defer optGroups.deinit(self.allocator);
 
         var pos: usize = 1;
@@ -4099,7 +4128,7 @@ const ParserGenerator = struct {
         // If no opt_groups, no expansion needed
         // Note: Even single opt_groups need expansion for positionally stable output
         if (optGroups.items.len == 0) {
-            var result: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+            var result: std.ArrayListUnmanaged(ParsedAlternative) = .empty;
             try result.append(self.allocator, alt);
             return result.toOwnedSlice(self.allocator);
         }
@@ -4108,12 +4137,12 @@ const ParserGenerator = struct {
         const n = optGroups.items.len;
         const combinations: usize = @as(usize, 1) << @intCast(n);
 
-        var expanded: std.ArrayListUnmanaged(ParsedAlternative) = .{};
+        var expanded: std.ArrayListUnmanaged(ParsedAlternative) = .empty;
 
         var combo: usize = 0;
         while (combo < combinations) : (combo += 1) {
             // Build elements for this combination
-            var newParsedElements: std.ArrayListUnmanaged(ParsedElement) = .{};
+            var newParsedElements: std.ArrayListUnmanaged(ParsedElement) = .empty;
 
             for (alt.elements, 0..) |elem, idx| {
                 // Check if this element is an optional (opt_group or single-element)
@@ -4300,8 +4329,8 @@ const ParserGenerator = struct {
     ) ![]const u8 {
         const posMap = buildPositionMap(altParsedElements, optGroups, combo);
 
-        var result: std.ArrayListUnmanaged(u8) = .{};
-        var posRefs: std.ArrayListUnmanaged(PosRefInfo) = .{};
+        var result: std.ArrayListUnmanaged(u8) = .empty;
+        var posRefs: std.ArrayListUnmanaged(PosRefInfo) = .empty;
         defer posRefs.deinit(self.allocator);
 
         var i: usize = 0;
@@ -4366,7 +4395,7 @@ const ParserGenerator = struct {
                 const expandedAlts = try self.expandOptionalGroups(alt);
 
                 for (expandedAlts) |expandedAlt| {
-                    var rhs: std.ArrayListUnmanaged(u16) = .{};
+                    var rhs: std.ArrayListUnmanaged(u16) = .empty;
 
                     for (expandedAlt.elements) |elem| {
                         const symId = try self.processElement(elem);
@@ -4404,7 +4433,7 @@ const ParserGenerator = struct {
                     // Prepend marker to start rule
                     for (self.rules.items) |*rule| {
                         if (rule.lhs == startId) {
-                            var newRhs: std.ArrayListUnmanaged(u16) = .{};
+                            var newRhs: std.ArrayListUnmanaged(u16) = .empty;
                             try newRhs.append(self.allocator, markerId);
                             for (rule.rhs) |sym| {
                                 try newRhs.append(self.allocator, sym);
@@ -4420,7 +4449,7 @@ const ParserGenerator = struct {
                     const uniqueAcceptId = try self.addSymbol(acceptName, .nonterminal);
 
                     // Create augmented rule: $accept_X → startSymbol EOF
-                    var acceptRhs: std.ArrayListUnmanaged(u16) = .{};
+                    var acceptRhs: std.ArrayListUnmanaged(u16) = .empty;
                     try acceptRhs.append(self.allocator, startId);
                     try acceptRhs.append(self.allocator, self.endId);
 
@@ -4441,7 +4470,7 @@ const ParserGenerator = struct {
             // Fallback: use first rule as start symbol
             const startSymbol = self.rules.items[0].lhs;
 
-            var acceptRhs: std.ArrayListUnmanaged(u16) = .{};
+            var acceptRhs: std.ArrayListUnmanaged(u16) = .empty;
             try acceptRhs.append(self.allocator, startSymbol);
             try acceptRhs.append(self.allocator, self.endId);
 
@@ -4589,7 +4618,7 @@ const ParserGenerator = struct {
                 const grpName = try std.fmt.allocPrint(self.allocator, "_grp_{d}", .{self.rules.items.len});
                 const grpId = try self.addSymbol(grpName, .nonterminal);
 
-                var rhs: std.ArrayListUnmanaged(u16) = .{};
+                var rhs: std.ArrayListUnmanaged(u16) = .empty;
                 for (elem.subElements) |sub| {
                     try rhs.append(self.allocator, try self.processElement(sub));
                 }
@@ -4597,7 +4626,7 @@ const ParserGenerator = struct {
                 // Build action that excludes skipped elements
                 // If element has skip=true, don't include its position in the action
                 var actionTemplate: ?[]const u8 = null;
-                var nonSkipped: std.ArrayListUnmanaged(u8) = .{};
+                var nonSkipped: std.ArrayListUnmanaged(u8) = .empty;
                 defer nonSkipped.deinit(self.allocator);
 
                 for (elem.subElements, 0..) |sub, i| {
@@ -4614,7 +4643,7 @@ const ParserGenerator = struct {
                     actionTemplate = try std.fmt.allocPrint(self.allocator, "{d}", .{nonSkipped.items[0]});
                 } else if (nonSkipped.items.len < elem.subElements.len) {
                     // Multiple non-skipped but some skipped: build explicit list
-                    var buf: std.ArrayListUnmanaged(u8) = .{};
+                    var buf: std.ArrayListUnmanaged(u8) = .empty;
                     defer buf.deinit(self.allocator);
                     try buf.append(self.allocator, '(');
                     for (nonSkipped.items, 0..) |pos, j| {
@@ -4679,7 +4708,7 @@ const ParserGenerator = struct {
 
         // Rule: _list → item _tail → (!1 ...2)
         const listRuleId: u16 = @intCast(self.rules.items.len);
-        var listRhs: std.ArrayListUnmanaged(u16) = .{};
+        var listRhs: std.ArrayListUnmanaged(u16) = .empty;
         try listRhs.append(self.allocator, effectiveItemId);
         try listRhs.append(self.allocator, tailId);
         try self.rules.append(self.allocator, .{
@@ -4692,7 +4721,7 @@ const ParserGenerator = struct {
 
         // Rule: _tail → sep item _tail → (!2 ...3)
         const tailRule1Id: u16 = @intCast(self.rules.items.len);
-        var tailRhs1: std.ArrayListUnmanaged(u16) = .{};
+        var tailRhs1: std.ArrayListUnmanaged(u16) = .empty;
         try tailRhs1.append(self.allocator, sepId);
         try tailRhs1.append(self.allocator, effectiveItemId);
         try tailRhs1.append(self.allocator, tailId);
@@ -4777,7 +4806,7 @@ const ParserGenerator = struct {
 
                 const actionStr = try std.fmt.allocPrint(self.allocator, "({s} 1 3)", .{op.op});
 
-                var rhs: std.ArrayListUnmanaged(u16) = .{};
+                var rhs: std.ArrayListUnmanaged(u16) = .empty;
                 switch (op.assoc) {
                     .left => {
                         try rhs.append(self.allocator, thisId);
@@ -4808,7 +4837,7 @@ const ParserGenerator = struct {
 
             // Passthrough rule: this_level → next_level
             const passthroughId: u16 = @intCast(self.rules.items.len);
-            var passRhs: std.ArrayListUnmanaged(u16) = .{};
+            var passRhs: std.ArrayListUnmanaged(u16) = .empty;
             try passRhs.append(self.allocator, nextId);
             try self.rules.append(self.allocator, .{
                 .id = passthroughId,
@@ -4822,7 +4851,7 @@ const ParserGenerator = struct {
         // Create the `infix` entry point that aliases to the lowest-precedence level
         const infixId = try self.addSymbol("infix", .nonterminal);
         const infixRuleId: u16 = @intCast(self.rules.items.len);
-        var infixRhs: std.ArrayListUnmanaged(u16) = .{};
+        var infixRhs: std.ArrayListUnmanaged(u16) = .empty;
         try infixRhs.append(self.allocator, levelIds[0]);
         try self.rules.append(self.allocator, .{
             .id = infixRuleId,
@@ -4841,7 +4870,7 @@ const ParserGenerator = struct {
 
         // Rule 1: opt → sym
         const rule1Id: u16 = @intCast(self.rules.items.len);
-        var rhs1: std.ArrayListUnmanaged(u16) = .{};
+        var rhs1: std.ArrayListUnmanaged(u16) = .empty;
         try rhs1.append(self.allocator, symId);
         try self.rules.append(self.allocator, .{
             .id = rule1Id,
@@ -4874,7 +4903,7 @@ const ParserGenerator = struct {
 
         // Rule 1: star → sym star → (!1 ...2)
         const rule1Id: u16 = @intCast(self.rules.items.len);
-        var rhs1: std.ArrayListUnmanaged(u16) = .{};
+        var rhs1: std.ArrayListUnmanaged(u16) = .empty;
         try rhs1.append(self.allocator, symId);
         try rhs1.append(self.allocator, starId);
         try self.rules.append(self.allocator, .{
@@ -4909,7 +4938,7 @@ const ParserGenerator = struct {
 
         // Rule: plus → sym star → (!1 ...2)
         const ruleId: u16 = @intCast(self.rules.items.len);
-        var rhs: std.ArrayListUnmanaged(u16) = .{};
+        var rhs: std.ArrayListUnmanaged(u16) = .empty;
         try rhs.append(self.allocator, symId);
         try rhs.append(self.allocator, starId);
         try self.rules.append(self.allocator, .{
@@ -4955,7 +4984,7 @@ const ParserGenerator = struct {
 
         // Create initial state for EACH accept rule
         for (self.acceptRules.items) |acceptRuleId| {
-            var initialItems: std.ArrayListUnmanaged(ParserItem) = .{};
+            var initialItems: std.ArrayListUnmanaged(ParserItem) = .empty;
             try initialItems.append(self.allocator, .{ .ruleId = acceptRuleId, .dot = 0 });
 
             const kernel = try initialItems.toOwnedSlice(self.allocator);
@@ -4993,8 +5022,8 @@ const ParserGenerator = struct {
     ///   If F → id, closure adds: { F → • id }
     ///   Result: { E → • T, T → • F, T → • T * F, F → • id }
     fn closure(self: *ParserGenerator, kernel: []const ParserItem) !ParserState {
-        var allItems: std.ArrayListUnmanaged(ParserItem) = .{};
-        var reductions: std.ArrayListUnmanaged(ParserItem) = .{};
+        var allItems: std.ArrayListUnmanaged(ParserItem) = .empty;
+        var reductions: std.ArrayListUnmanaged(ParserItem) = .empty;
         var seen = std.AutoHashMap(u32, void).init(self.allocator);
         defer seen.deinit();
 
@@ -5053,7 +5082,7 @@ const ParserGenerator = struct {
     /// If the target state already exists (same kernel), reuse it.
     fn processTransitions(self: *ParserGenerator, stateIdx: usize, stateMap: *std.StringHashMapUnmanaged(u16)) !void {
         const state = &self.states.items[stateIdx];
-        var transitions: std.ArrayListUnmanaged(ParserTransition) = .{};
+        var transitions: std.ArrayListUnmanaged(ParserTransition) = .empty;
 
         // Group items by the symbol after the dot
         var symbolItems = std.AutoHashMap(u16, std.ArrayListUnmanaged(ParserItem)).init(self.allocator);
@@ -5069,7 +5098,7 @@ const ParserGenerator = struct {
 
             const nextSym = rule.rhs[item.dot];
             const entry = try symbolItems.getOrPut(nextSym);
-            if (!entry.found_existing) entry.value_ptr.* = .{};
+            if (!entry.found_existing) entry.value_ptr.* = .empty;
             // Advance dot: A → α • X β becomes A → α X • β
             try entry.value_ptr.append(self.allocator, .{ .ruleId = item.ruleId, .dot = item.dot + 1 });
         }
@@ -5101,7 +5130,7 @@ const ParserGenerator = struct {
     /// Generate a unique signature for a kernel (set of items).
     /// States with identical kernels are merged to avoid duplication.
     fn kernelSignature(self: *ParserGenerator, kernel: []const ParserItem) ![]const u8 {
-        var sig: std.ArrayListUnmanaged(u8) = .{};
+        var sig: std.ArrayListUnmanaged(u8) = .empty;
 
         const sorted = try self.allocator.dupe(ParserItem, kernel);
         defer self.allocator.free(sorted);
@@ -5418,15 +5447,15 @@ const ParserGenerator = struct {
             for (nodeSets) |*s| s.deinit(a);
             a.free(nodeSets);
         }
-        for (nodeSets) |*s| s.* = .{};
+        for (nodeSets) |*s| s.* = .empty;
 
         // Propagation edges
         const Edge = struct { source: u32, target: u32 };
-        var edges = std.ArrayListUnmanaged(Edge){};
+        var edges: std.ArrayListUnmanaged(Edge) = .empty;
         defer edges.deinit(a);
 
         // Reusable buffers for probing
-        var closureItems = std.ArrayListUnmanaged(Lr1Item){};
+        var closureItems: std.ArrayListUnmanaged(Lr1Item) = .empty;
         defer closureItems.deinit(a);
         var seen = std.AutoHashMap(u64, void).init(a);
         defer seen.deinit();
@@ -5498,7 +5527,7 @@ const ParserGenerator = struct {
             for (0..nr) |ri| {
                 const nodeId = totalKernelNodes + reductionOffsets[si] + @as(u32, @intCast(ri));
                 sets[ri] = nodeSets[nodeId];
-                nodeSets[nodeId] = .{}; // moved, prevent double-free
+                nodeSets[nodeId] = .empty; // moved, prevent double-free
             }
             lalrLookaheads[si] = sets;
         }
@@ -5648,8 +5677,8 @@ const ParserGenerator = struct {
     // =========================================================================
 
     fn generateParserCode(self: *ParserGenerator, lexerCode: []const u8) ![]const u8 {
-        var output: std.ArrayListUnmanaged(u8) = .{};
-        const writer = output.writer(self.allocator);
+        var output: std.Io.Writer.Allocating = .init(self.allocator);
+        const writer = &output.writer;
 
         // Build parse table
         const table = try self.buildParseTable();
@@ -5809,8 +5838,8 @@ const ParserGenerator = struct {
             \\    injectedToken: ?u16 = null,
             \\    lastMatchedId: u16 = 0,
             \\
-            \\    stateStack: std.ArrayListUnmanaged(u16) = .{},
-            \\    valueStack: std.ArrayListUnmanaged(Sexp) = .{},
+            \\    stateStack: std.ArrayListUnmanaged(u16) = .empty,
+            \\    valueStack: std.ArrayListUnmanaged(Sexp) = .empty,
             \\
             \\    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
             \\        var p = Parser{
@@ -5915,7 +5944,7 @@ const ParserGenerator = struct {
             \\
             \\    /// Spread list helper: [head, ...tail]
             \\    fn spreadList(self: *Parser, head: Sexp, tail: Sexp) Sexp {
-            \\        var out: std.ArrayListUnmanaged(Sexp) = .{};
+            \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
             \\        out.append(self.allocator(), head) catch return .nil;
             \\        if (tail == .list) for (tail.list) |item| out.append(self.allocator(), item) catch return .nil;
             \\        return .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} };
@@ -5923,7 +5952,7 @@ const ParserGenerator = struct {
             \\
             \\    /// Spread only: [...tail]
             \\    fn spreadOnly(self: *Parser, tail: Sexp) Sexp {
-            \\        var out: std.ArrayListUnmanaged(Sexp) = .{};
+            \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
             \\        if (tail == .list) for (tail.list) |item| out.append(self.allocator(), item) catch return .nil;
             \\        return .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} };
             \\    }
@@ -5932,7 +5961,7 @@ const ParserGenerator = struct {
             \\    fn list(self: *Parser, pass: []Sexp) Sexp {
             \\        if (pass.len == 0) return .nil;
             \\        if (pass.len == 1) return pass[0];
-            \\        var out: std.ArrayListUnmanaged(Sexp) = .{};
+            \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
             \\        for (pass) |v| out.append(self.allocator(), v) catch return .nil;
             \\        return .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} };
             \\    }
@@ -6026,7 +6055,7 @@ const ParserGenerator = struct {
 
         // Generate token to symbol mapping
         try writer.print("            .@\"eof\" => {d},\n", .{self.endId});
-        var emittedCats: std.StringHashMapUnmanaged(void) = .{};
+        var emittedCats: std.StringHashMapUnmanaged(void) = .empty;
         defer {
             var it = emittedCats.keyIterator();
             while (it.next()) |key| self.allocator.free(key.*);
@@ -6381,7 +6410,7 @@ const ParserGenerator = struct {
         if (self.lang) |langName| {
             for (self.asDirectives.items) |directive| {
                 if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) continue;
-                var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
+                var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .empty;
                 defer specificTerminals.deinit(self.allocator);
 
                 // Collect ALL uppercase terminals as potential keyword targets.
@@ -6459,7 +6488,7 @@ const ParserGenerator = struct {
 
             for (self.asDirectives.items) |directive| {
                 if (std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token)) continue;
-                var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .{};
+                var specificTerminals: std.ArrayListUnmanaged(struct { name: []const u8, id: u16 }) = .empty;
                 defer specificTerminals.deinit(self.allocator);
 
                 for (self.symbols.items) |sym| {
@@ -6646,7 +6675,7 @@ const ParserGenerator = struct {
             }
         }
 
-        return try output.toOwnedSlice(self.allocator);
+        return try output.toOwnedSlice();
     }
 
     fn generateRuleAction(self: *ParserGenerator, writer: anytype, rule: ParserRule) !void {
@@ -6699,7 +6728,7 @@ const ParserGenerator = struct {
     fn generateParenAction(self: *ParserGenerator, writer: anytype, template: []const u8, offset: u8) !void {
         // Parse (tag elem1 elem2 ...) and generate build code
         var i: usize = 1; // Skip opening paren
-        var elements: std.ArrayListUnmanaged([]const u8) = .{};
+        var elements: std.ArrayListUnmanaged([]const u8) = .empty;
         defer elements.deinit(self.allocator);
 
         // Skip whitespace and parse elements
@@ -6817,7 +6846,7 @@ const ParserGenerator = struct {
         }
 
         // Complex case: inline list building (spreads, tilde transforms)
-        try writer.writeAll("blk: { var out: std.ArrayListUnmanaged(Sexp) = .{}; ");
+        try writer.writeAll("blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; ");
         for (elements.items) |elem| {
             if (elem.len == 0) continue;
             const work = self.stripKeyAndSuffix(elem);
@@ -7088,11 +7117,23 @@ fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, 
     }
 }
 
-pub fn main() !void {
-    const allocator = std.heap.page_allocator;
+pub fn main(init: std.process.Init) !void {
+    // Nexus is a short-lived CLI: read one grammar, emit one parser, exit.
+    // The process-wide arena is the idiomatic allocator for this shape:
+    //
+    //   - Avoids `std.heap.DebugAllocator`'s O(n) per-alloc tracking overhead,
+    //     which made MUMPS generation ~700x slower in Debug (23s vs 33ms).
+    //   - Keeps stderr clean (arena doesn't leak-check; previous `init.gpa` usage
+    //     surfaced ~400 pre-existing "leaks" that only matter if nexus is ever
+    //     embedded in a long-running process — not the current use case).
+    //   - Individual `.free()` / `.deinit()` calls become harmless no-ops.
+    //
+    // If you ever need to hunt allocation bugs (e.g., before refactoring nexus
+    // into a library), swap `init.arena.allocator()` → `init.gpa` below.
+    const allocator = init.arena.allocator();
+    const io = init.io;
 
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    const args = try init.minimal.args.toSlice(allocator);
 
     if (args.len < 2) {
         std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
@@ -7145,9 +7186,9 @@ pub fn main() !void {
     const outputFile = if (positionalStart + 1 < args.len) args[positionalStart + 1] else "src/parser.zig";
 
     // Read grammar file
-    const sourceText = std.fs.cwd().readFileAlloc(allocator, grammarFile, 1024 * 1024) catch |err| {
+    const sourceText = std.Io.Dir.cwd().readFileAlloc(io, grammarFile, allocator, .limited(max_grammar_bytes)) catch |err| {
         std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
-        return;
+        return err;
     };
     defer allocator.free(sourceText);
 
@@ -7296,13 +7337,13 @@ pub fn main() !void {
     };
 
     // Write output
-    const file = std.fs.cwd().createFile(outputFile, .{}) catch |err| {
+    const file = std.Io.Dir.cwd().createFile(io, outputFile, .{}) catch |err| {
         std.debug.print("Error creating {s}: {any}\n", .{ outputFile, err });
-        return;
+        return err;
     };
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll(finalCode);
+    try file.writeStreamingAll(io, finalCode);
 
     std.debug.print("✅ Generated: {s}\n", .{outputFile});
 }
