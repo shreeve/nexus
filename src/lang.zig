@@ -13,38 +13,56 @@ const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
 
+// Tag enum mirrors the canonical S-expression schema documented at the top of
+// nexus.grammar. Every variant here corresponds to a tagged sexp the generated
+// parser emits; the strict lowerer in nexus.zig consumes exactly this set.
 pub const Tag = enum(u8) {
     grammar,
+
+    // Directives
     lang,
     conflicts,
+    code,
     as,
+    as_strict,
+    as_perm,
     op,
     op_map,
-    code,
     errors,
     error_name,
     infix,
+    level,
     infix_op,
+
+    // Rules and alternatives
     rule,
     start,
     name,
     alt,
     alt_reduce,
     alt_shift,
-    quantified,
-    skip,
-    skip_q,
+
+    // Elements
     ref,
     tok,
     lit,
     at_ref,
+    list_req,
+    list_opt,
     group,
-    list,
-    opt_list,
-    optional,
+    group_many,
+    group_opt,
+    quantified,
+    skip,
+    skip_q,
+
+    // List-inner shapes
+    plain,
     opt_items,
     sep_items,
     opt_items_nosep,
+
+    // Quantifiers
     opt,
     zero_plus,
     one_plus,
