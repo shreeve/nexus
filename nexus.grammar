@@ -219,7 +219,7 @@ tokens
 #   - primary vs "(" lookahead in bracket body: shift for L(X) (1)
 #   - alt_line vs trailing TOKEN / "@" / STRING: shift for continuation (3)
 #   - R/R: primary vs bracket_body on shared prefix (1)
-@conflicts = 15
+@conflicts = 18
 
 # ===========================================================================
 # Top-level structure — entries separated by newlines/comments
@@ -228,12 +228,13 @@ tokens
 grammar! = entries                          → (grammar ...1)
 
 entries  = entries entry                    → (...1 2)
+         | entries NEWLINE                  → 1
+         | entries COMMENT                  → 1
          | entry                            → (1)
+         |                                  → ()
 
 entry    = directive                        → 1
          | production                       → 1
-         | NEWLINE                          → ()
-         | COMMENT                          → ()
 
 # ===========================================================================
 # Directives
