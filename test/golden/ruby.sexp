@@ -1,6 +1,6 @@
 (grammar
   (lang `"ruby"`)
-  (conflicts `60`)
+  (conflicts `54`)
   (as
     `ident`
     (as_perm `keyword`))
@@ -286,7 +286,9 @@
       ((ref `call`)
         (lit `"["`)
         (group_opt
-          ((ref `arg_list`)))
+          ((list_req
+              `L`
+              (plain `arg`))))
         (lit `"]"`))
       `(indexasgn 1 3)`))
   (rule
@@ -393,7 +395,9 @@
       ((ref `call`)
         (lit `"["`)
         (group_opt
-          ((ref `arg_list`)))
+          ((list_req
+              `L`
+              (plain `arg`))))
         (lit `"]"`))
       `(index 1 3)`)
     (alt
@@ -435,21 +439,13 @@
       `(args)`)
     (alt
       ((lit `"("`)
-        (ref `arg_list`)
+        (list_req
+          `L`
+          (plain `arg`))
         (lit `")"`))
       `(args ...2)`))
   (rule
-    (name `arg_list`)
-    (alt
-      ((ref `arg_item`))
-      `(1)`)
-    (alt
-      ((ref `arg_list`)
-        (lit `","`)
-        (ref `arg_item`))
-      `(...1 3)`))
-  (rule
-    (name `arg_item`)
+    (name `arg`)
     (alt
       ((ref `expr`)))
     (alt
@@ -485,13 +481,10 @@
   (rule
     (name `cmd_args`)
     (alt
-      ((ref `cmd_arg`))
-      `(args 1)`)
-    (alt
-      ((ref `cmd_args`)
-        (lit `","`)
-        (ref `cmd_arg`))
-      `(...1 3)`))
+      ((list_req
+          `L`
+          (plain `cmd_arg`)))
+      `(args ...1)`))
   (rule
     (name `cmd_arg`)
     (alt
@@ -530,7 +523,9 @@
     (name `block_params`)
     (alt
       ((lit `"|"`)
-        (ref `param_list`)
+        (list_req
+          `L`
+          (plain `param`))
         (lit `"|"`))
       `(params ...2)`)
     (alt
@@ -609,22 +604,15 @@
     (name `dstring`)
     (alt
       ((tok `DSTR_BEG`)
-        (ref `dstr_parts`)
+        (quantified
+          (ref `dstr_part`)
+          (one_plus))
         (tok `DSTR_END`))
       `(dstr ...2)`)
     (alt
       ((tok `DSTR_BEG`)
         (tok `DSTR_END`))
       `(dstr)`))
-  (rule
-    (name `dstr_parts`)
-    (alt
-      ((ref `dstr_part`))
-      `(1)`)
-    (alt
-      ((ref `dstr_parts`)
-        (ref `dstr_part`))
-      `(...1 2)`))
   (rule
     (name `dstr_part`)
     (alt
@@ -639,19 +627,11 @@
     (alt
       ((lit `"["`)
         (group_opt
-          ((ref `elems`)))
+          ((list_req
+              `L`
+              (plain `elem`))))
         (lit `"]"`))
       `(array ...2)`))
-  (rule
-    (name `elems`)
-    (alt
-      ((ref `elem`))
-      `(1)`)
-    (alt
-      ((ref `elems`)
-        (lit `","`)
-        (ref `elem`))
-      `(...1 3)`))
   (rule
     (name `elem`)
     (alt
@@ -665,19 +645,11 @@
     (alt
       ((tok `LBRACE`)
         (group_opt
-          ((ref `pairs`)))
+          ((list_req
+              `L`
+              (plain `pair`))))
         (lit `"}"`))
       `(hash ...2)`))
-  (rule
-    (name `pairs`)
-    (alt
-      ((ref `pair`))
-      `(1)`)
-    (alt
-      ((ref `pairs`)
-        (lit `","`)
-        (ref `pair`))
-      `(...1 3)`))
   (rule
     (name `pair`)
     (alt
@@ -779,59 +751,43 @@
       ((tok `CASE`)
         (ref `expr`)
         (ref `then_sep`)
-        (ref `when_clauses`)
+        (quantified
+          (ref `when_clause`)
+          (one_plus))
         (ref `opt_else`)
         (tok `END`))
       `(case 2 ...4 5)`)
     (alt
       ((tok `CASE`)
         (ref `then_sep`)
-        (ref `when_clauses`)
+        (quantified
+          (ref `when_clause`)
+          (one_plus))
         (ref `opt_else`)
         (tok `END`))
       `(case _ ...3 4)`))
   (rule
-    (name `when_clauses`)
-    (alt
-      ((ref `when_clause`))
-      `(1)`)
-    (alt
-      ((ref `when_clauses`)
-        (ref `when_clause`))
-      `(...1 2)`))
-  (rule
     (name `when_clause`)
     (alt
       ((tok `WHEN`)
-        (ref `when_args`)
+        (list_req
+          `L`
+          (plain `arg`))
         (ref `then_sep`)
         (ref `stmts`))
       `(when ...2 4)`))
-  (rule
-    (name `when_args`)
-    (alt
-      ((ref `arg_list`))
-      `(...1)`))
   (rule
     (name `begin_stmt`)
     (alt
       ((tok `BEGIN_KW`)
         (ref `sep`)
         (ref `stmts`)
-        (ref `rescues`)
+        (quantified
+          (ref `rescue_cl`)
+          (zero_plus))
         (ref `ensure_cl`)
         (tok `END`))
       `(begin 3 4 5)`))
-  (rule
-    (name `rescues`)
-    (alt
-      ((ref `rescue_cl`))
-      `(1)`)
-    (alt
-      ((ref `rescues`)
-        (ref `rescue_cl`))
-      `(...1 2)`)
-    (alt () `()`))
   (rule
     (name `rescue_cl`)
     (alt
@@ -841,28 +797,22 @@
       `(rescue _ _ 3)`)
     (alt
       ((tok `RESCUE`)
-        (ref `exc_list`)
+        (list_req
+          `L`
+          (plain `const_path`))
         (ref `then_sep`)
         (ref `stmts`))
       `(rescue 2 _ 4)`)
     (alt
       ((tok `RESCUE`)
-        (ref `exc_list`)
+        (list_req
+          `L`
+          (plain `const_path`))
         (lit `"=>"`)
         (tok `IDENT`)
         (ref `then_sep`)
         (ref `stmts`))
       `(rescue 2 4 6)`))
-  (rule
-    (name `exc_list`)
-    (alt
-      ((ref `const_path`))
-      `(1)`)
-    (alt
-      ((ref `exc_list`)
-        (lit `","`)
-        (ref `const_path`))
-      `(...1 3)`))
   (rule
     (name `ensure_cl`)
     (alt
@@ -880,7 +830,9 @@
           ((ref `params`)))
         (ref `sep`)
         (ref `stmts`)
-        (ref `rescues`)
+        (quantified
+          (ref `rescue_cl`)
+          (zero_plus))
         (ref `ensure_cl`)
         (tok `END`))
       `(def 2 3 5 6 7)`)
@@ -893,7 +845,9 @@
           ((ref `params`)))
         (ref `sep`)
         (ref `stmts`)
-        (ref `rescues`)
+        (quantified
+          (ref `rescue_cl`)
+          (zero_plus))
         (ref `ensure_cl`)
         (tok `END`))
       `(defs 2 4 5 7 8 9)`))
@@ -905,19 +859,11 @@
       `(params)`)
     (alt
       ((lit `"("`)
-        (ref `param_list`)
+        (list_req
+          `L`
+          (plain `param`))
         (lit `")"`))
       `(params ...2)`))
-  (rule
-    (name `param_list`)
-    (alt
-      ((ref `param`))
-      `(1)`)
-    (alt
-      ((ref `param_list`)
-        (lit `","`)
-        (ref `param`))
-      `(...1 3)`))
   (rule
     (name `param`)
     (alt
@@ -1000,18 +946,10 @@
     (name `undef_stmt`)
     (alt
       ((tok `UNDEF`)
-        (ref `undef_list`))
+        (list_req
+          `L`
+          (plain `alias_name`)))
       `(undef ...2)`))
-  (rule
-    (name `undef_list`)
-    (alt
-      ((ref `alias_name`))
-      `(1)`)
-    (alt
-      ((ref `undef_list`)
-        (lit `","`)
-        (ref `alias_name`))
-      `(...1 3)`))
   (rule
     (name `alias_name`)
     (alt

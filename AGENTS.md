@@ -146,6 +146,142 @@ Mode resolution per group:
 
 Imports a function from the lang module into the generated lexer.
 
+## Grammar Authoring Patterns
+
+Before reaching for a new DSL feature, check this list. These idioms use only
+constructs Nexus already supports and collectively absorb the most common
+grammar boilerplate. Every pattern below was measured on the in-repo grammars:
+the Ruby refactor that inspired this section cut 31 grammar lines and 6 LALR
+conflicts without any generator change.
+
+### Comma-separated lists — `L(X)`, `L(X, sep)`, `L(X?)`, `L(X?, sep)`
+
+Anywhere you are tempted to write the cons/append cascade:
+
+```
+arg_list = arg_item                   → (1)
+         | arg_list "," arg_item      → (...1 3)
+```
+
+use `L(arg_item)` inline at the call site instead:
+
+```
+call_args = "(" L(arg_item) ")"       → (args ...2)
+```
+
+Variants:
+
+- `L(X)` — one or more `X`, comma-separated.
+- `L(X, sep)` — custom separator (token or string literal).
+- `L(X?)` — optional items allowed in the list (trailing/empty slots).
+- `L(X?, sep)` — both.
+- `[L(X)]` — optional list (zero or more). Folded by the lowerer as a single
+  unit; no intermediate rule needed.
+
+If the call site needs the list to arrive *wrapped* in a tag, do the wrapping
+at the definition site instead of inlining at every caller:
+
+```
+cmd_args = L(cmd_arg)                 → (args ...1)     # always (args ...)
+```
+
+### Repetition without separators — `X+`, `X*`
+
+For juxtaposed one-or-more or zero-or-more sequences (no comma, no separator
+token), use the quantifiers directly on the called element:
+
+```
+dstring  = DSTR_BEG dstr_part+ DSTR_END        → (dstr ...2)
+routine! = line*                               → (routine ...1)
+case_stmt = CASE expr then_sep when_clause+ opt_else END → (case 2 ...4 5)
+```
+
+`X*` handles the empty case inside the spread automatically; you rarely need
+a sibling "empty" alternative. Only add one if the surrounding tokens differ
+in the zero-element case.
+
+### Optionals — `[X]`
+
+`[X]` is a first-class element and occupies one action position whether it
+matched or not. When absent, it contributes nothing in a spread and `_` in
+a positional reference:
+
+```
+def_stmt = DEF methodname [params] sep stmts → (def 2 3 5)
+                                     # position 3 is params or absent
+```
+
+Combine freely with `L()`: `[L(arg_item)]` is the correct spelling for an
+optional comma-separated list.
+
+### Keyword-atom cascades — named rule or inline?
+
+When several keyword tokens each self-reduce to a lowercase tag — Ruby has
+`TRUE → (true) | FALSE → (false) | NIL → (nil) | ...` — you have two valid
+options. Pick based on reuse:
+
+- **Inline cascade** (status quo). Fine when the cascade appears in exactly
+  one rule and doesn't need to be shared.
+- **Extract to a named rule** when the same atom set is referenced from two
+  or more places, or when naming the concept adds real clarity:
+
+  ```
+  literal_kw = TRUE           → (true)
+             | FALSE          → (false)
+             | NIL            → (nil)
+             | SELF           → (self)
+
+  primary = ... | literal_kw | ...
+  other   = ... | literal_kw | ...
+  ```
+
+There is no `@atom` directive. The cascade-vs-named-rule choice is a style
+call on a per-grammar basis; extracting a named rule is the heavy hammer and
+earns its keep only with reuse. Do not create single-use helper rules purely
+for aesthetics — the LALR table pays the cost in extra states.
+
+### Flow-like cascades — `KW [args]` pairs
+
+For the repeated "`KW` alone, or `KW args`" pattern (`return`, `break`,
+`yield`, `super`, etc.), write the keyword with an optional-args tail:
+
+```
+flow_stmt = RETURN cmd_args       → (return 2)
+          | RETURN                → (return)
+          | BREAK  cmd_args       → (break 2)
+          | BREAK                 → (break)
+```
+
+Both forms must be emitted today — `[cmd_args]` with `→ (return 2)` would
+leave position 2 empty when absent, producing `(return _)` instead of
+`(return)`. Keep the two-line-per-keyword shape until that is revisited.
+
+### Trivia absorbers — `X NEWLINE → 1`, `X COMMENT → 1`
+
+The recurring idiom in list-like rules:
+
+```
+op_content = op_content op_item   → (...1 2)
+           | op_content ","       → 1
+           | op_content NEWLINE   → 1
+           | op_content COMMENT   → 1
+           | op_item              → (1)
+           |                      → ()
+```
+
+is Nexus's canonical way to eat trailing/interleaved trivia tokens without
+them appearing in the AST. It is intentionally explicit — there is no
+`@trivia` directive and no global threading. Copy this shape when you need
+it; don't try to shorten it with `*` over heterogeneous tokens.
+
+### One more rule: don't generalize prematurely
+
+If a pattern appears once, inline it. If it appears twice, consider a named
+rule. If it appears three or more times across grammars *and* costs more than
+a handful of lines each, come back and measure before proposing a new
+directive. The measurement bar for adding DSL features is high: the
+generator is the most expensive surface to grow.
+
 ## Coding Standards
 
 Follow `/Users/shreeve/Data/Code/em/CODING.md`:
