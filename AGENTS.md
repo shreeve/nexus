@@ -48,7 +48,7 @@ Self-hosting: `nexus.grammar` is parsed by `src/parser.zig`, which was itself ge
 ```bash
 zig build -Doptimize=ReleaseSafe          # recommended for running nexus: ~8× faster than Debug, safety checks kept
 zig build                                 # Debug (fast compile, slow runtime)
-zig build test                            # full 32-test suite
+zig build test                            # full 36-test suite
 zig build test-lowerer                    # lowerer negative-shape suite only
 ./test/run --update                       # regenerate goldens after intentional changes
 ./bin/nexus --dump-sexp <grammar>         # inspect the frontend's Sexp tree
@@ -61,10 +61,10 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 - `src/parser.zig` — self-hosted frontend (generated)
 - `src/lang.zig` — lang module for `src/parser.zig`
 - `nexus.grammar` — grammar DSL in its own format; opens with the canonical Sexp schema
-- `test/{basic,features,zag,slash,mumps}/` — grammar + lang module per language
+- `test/{basic,features,zag,slash,mumps,ruby}/` — grammar + lang module per language
 - `test/golden/` — byte-exact golden files (`*.zig` and `*.sexp`) including `nexus.sexp`
 - `test/adverse/` — bad grammars that must produce errors
-- `test/run` — orchestrator for 32 tests: goldens, compile checks, determinism, adverse, self-hosted Sexp goldens across every in-repo grammar, bootstrap fixed point, and the lowerer negative-shape suite
+- `test/run` — orchestrator for 36 tests: goldens, compile checks, determinism, adverse, self-hosted Sexp goldens across every in-repo grammar, bootstrap fixed point, and the lowerer negative-shape suite
 
 ## Validated Languages
 
@@ -73,6 +73,7 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 | MUMPS | `test/mumps/mumps.grammar` | `test/mumps/mumps.zig` | Yes — pattern mode, indent dots, spaces exclusion |
 | Zag | `test/zag/zag.grammar` | `test/zag/zag.zig` | Yes — indent/outdent, token reclassification |
 | Slash | `test/slash/slash.grammar` | `test/slash/slash.zig` | Yes — heredocs, regex, indent/outdent |
+| Nanoruby | `test/ruby/ruby.grammar` | `test/ruby/ruby.zig` | Yes — newline significance, modifier/do/brace reclassification, labels, symbols |
 
 ## Extension Mechanism
 
@@ -161,6 +162,7 @@ Both the generator internals AND generated output follow these conventions.
 - **em** (`/Users/shreeve/Data/Code/em/`) — MUMPS engine. Copy `mumps.grammar` → `em/mumps.grammar`, `mumps.zig` → `em/src/mumps.zig`, run `nexus mumps.grammar src/parser.zig`
 - **Zag** (`/Users/shreeve/Data/Code/zag/`) — copy grammar + lang module, run `nexus zag.grammar src/parser.zig`
 - **Slash** (`/Users/shreeve/Data/Code/slash/`) — copy grammar + lang module, run `nexus slash.grammar src/parser.zig`
+- **Nanoruby** (`/Users/shreeve/Data/Code/nanoruby/`) — copy `ruby.grammar` → `nanoruby/ruby.grammar`, `ruby.zig` → `nanoruby/src/ruby.zig`, run `nexus ruby.grammar src/parser.zig`
 
 ## String Literal Scanning
 
@@ -176,7 +178,7 @@ The S-expression shape the frontend emits is governed by the canonical schema do
 
 Three CI checks guard the pipeline end-to-end:
 
-1. `test/golden/*.sexp` — canonical S-expression snapshots for every in-repo grammar (nexus, basic, features, zag, slash, mumps). Any AST drift fails the golden with a line-count diff.
+1. `test/golden/*.sexp` — canonical S-expression snapshots for every in-repo grammar (nexus, basic, features, zag, slash, mumps, ruby). Any AST drift fails the golden with a line-count diff.
 2. Bootstrap fixed point — regenerating `src/parser.zig` from `nexus.grammar` with the current binary must reproduce the checked-in file exactly.
 3. Lowerer negative-shape tests — 24 hand-crafted malformed S-expression trees fed directly to `GrammarLowerer`, each asserted to be rejected with `error.ShapeError`. Implemented as Zig `test "..."` blocks in `src/nexus.zig`; the compiled test binary is separate from `./bin/nexus` and contains no production code paths. Invoke directly with `zig build test-lowerer` or `zig test src/nexus.zig`. Proves the lowerer's strictness claim independent of what the frontend can actually emit.
 
@@ -194,7 +196,7 @@ Debugging a frontend issue? Run `./bin/nexus --dump-sexp <grammar>` to inspect t
 ```bash
 zig build                              # Debug build (fast compile, slow runtime)
 zig build -Doptimize=ReleaseSafe       # ~8x faster runtime, safety kept (recommended)
-zig build test                         # run all 32 tests
+zig build test                         # run all 36 tests
 ./test/run --update                    # regenerate golden files after intentional changes
 ```
 

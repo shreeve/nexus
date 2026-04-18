@@ -1,0 +1,743 @@
+# ==============================================================================
+# ruby.grammar — Nanoruby Language Lexer and Parser Grammar
+# ==============================================================================
+#
+# A Ruby subset for embedded scripting on microcontrollers.
+# Processed by Nexus to generate src/parser.zig.
+#
+# Usage: nexus ruby.grammar src/parser.zig
+#
+# Design: newlines are significant statement separators, suppressed inside
+# grouping delimiters by the rewriter. The rewriter also handles context-
+# sensitive token reclassification (modifier keywords, do/brace forms,
+# unary operators, command calls, labels, and symbols).
+# ==============================================================================
+
+@lexer
+
+# ==============================================================================
+# STATE VARIABLES
+# ==============================================================================
+
+state
+    paren = 0       # parenthesis depth
+    brack = 0       # bracket depth
+    brace = 0       # brace depth
+
+# ==============================================================================
+# TOKEN TYPES
+# ==============================================================================
+
+tokens
+    # Atoms
+    ident           # local variable / method name (may end with ? or !)
+    constant        # Capitalized identifier: Foo, String, IO
+    ivar            # @instance_variable
+    cvar            # @@class_variable
+    gvar            # $global_variable
+    integer         # 42, 0xFF, 0b1010, 0o77
+    float           # 3.14, 1.0e10
+    rational        # 3r, 1.5r
+    imaginary       # 2i, 3.0i
+    string_sq       # 'single-quoted string'
+    string_dq       # "double-quoted string"
+    symbol          # :name (rewriter-fused from colon + ident)
+    label           # name: (hash label, rewriter-fused from ident + colon)
+
+    # Operators — arithmetic
+    plus            # + (binary, infix)
+    minus           # - (binary, infix)
+    star            # * (binary, multiply)
+    slash           # /
+    percent         # %
+    power           # **
+
+    # Operators — comparison / equality
+    eq              # ==
+    ne              # !=
+    eqq             # ===
+    cmp             # <=>
+    match_op        # =~
+    nmatch          # !~
+    lt              # <
+    gt              # >
+    le              # <=
+    ge              # >=
+
+    # Operators — logical
+    oror            # ||
+    andand          # &&
+    bang            # !
+
+    # Operators — bitwise
+    ampersand       # &
+    pipe            # |
+    caret           # ^
+    tilde           # ~
+    lshift          # <<
+    rshift          # >>
+
+    # Assignment operators
+    assign          # =
+    plus_eq         # +=
+    minus_eq        # -=
+    star_eq         # *=
+    slash_eq        # /=
+    percent_eq      # %=
+    power_eq        # **=
+    pipe_eq         # |=
+    amp_eq          # &=
+    caret_eq        # ^=
+    lshift_eq       # <<=
+    rshift_eq       # >>=
+    oror_eq         # ||=
+    andand_eq       # &&=
+
+    # Punctuation
+    lparen          # (
+    rparen          # )
+    lbracket        # [
+    rbracket        # ]
+    lbrace          # { (hash literal context)
+    rbrace          # }
+    comma           # ,
+    dot             # .
+    dotdot          # ..
+    dotdotdot       # ...
+    colon           # :
+    semicolon       # ;
+    question        # ?
+    fat_arrow       # =>
+    arrow           # ->
+    scope           # ::
+    safe_nav        # &.
+
+    # String interpolation tokens (rewriter-synthesized)
+    dstr_beg        # opening " of interpolated string
+    str_content     # literal string segment between interpolations
+    embexpr_beg     # #{
+    embexpr_end     # } closing interpolation
+    dstr_end        # closing " of interpolated string
+
+    # Rewriter-classified tokens (never emitted directly by lexer)
+    plus_u          # + (unary, rewriter-classified)
+    minus_u         # - (unary, rewriter-classified)
+    star_splat      # * (splat, rewriter-classified)
+    amp_block       # & (block pass, rewriter-classified)
+    cmd_ident       # identifier in command position (rewriter-classified)
+    lbrace_block    # { as block start (rewriter-classified)
+    then_sep        # then/newline/; after if/unless/elsif/when condition (rewriter-classified)
+    do_sep          # do/newline/; after while/until/for condition (rewriter-classified)
+    if_mod          # if (modifier, rewriter-classified)
+    unless_mod      # unless (modifier, rewriter-classified)
+    while_mod       # while (modifier, rewriter-classified)
+    until_mod       # until (modifier, rewriter-classified)
+    rescue_mod      # rescue (modifier, rewriter-classified)
+    do_block        # do (block start, rewriter-classified)
+    do_cond         # do (loop body, rewriter-classified)
+
+    # Keywords (promoted from ident by @as keyword system)
+    not_kw          # not
+    or_kw           # or
+    and_kw          # and
+    begin_kw        # begin (keyword form)
+    if              # if
+    unless          # unless
+    elsif           # elsif
+    else            # else
+    end             # end
+    while           # while
+    until           # until
+    for             # for
+    in              # in
+    case            # case
+    when            # when
+    then            # then
+    def             # def
+    class           # class
+    module          # module
+    rescue          # rescue
+    ensure          # ensure
+    return          # return
+    break           # break
+    next            # next
+    yield           # yield
+    super           # super
+    defined         # defined?
+    alias           # alias
+    undef           # undef
+    retry           # retry
+    redo            # redo
+    self            # self
+    true            # true
+    false           # false
+    nil             # nil
+    kw__file__      # __FILE__
+    kw__line__      # __LINE__
+    kw__encoding__  # __ENCODING__
+
+    # Structure
+    newline         # line terminator (statement separator)
+    comment         # # through end of line
+    eof             # end of input
+    err             # lexer error
+
+# ==============================================================================
+# WHITESPACE
+# ==============================================================================
+
+[ \t\r]+                                    → skip
+"\\\n"                                      → skip
+
+# ==============================================================================
+# COMMENTS
+# ==============================================================================
+
+'#' [^\n]*                                  → comment
+
+# ==============================================================================
+# NEWLINES
+# ==============================================================================
+
+'\n'                                        → newline
+
+# ==============================================================================
+# STRINGS
+# ==============================================================================
+
+'"' ([^"\\] | '\\' .)* '"'                 → string_dq
+"'" ([^'\\] | '\\' .)* "'"                 → string_sq
+
+# ==============================================================================
+# NUMBERS
+# ==============================================================================
+
+'0' [xX] [0-9a-fA-F] [0-9a-fA-F_]*        → integer
+'0' [bB] [01] [01_]*                        → integer
+'0' [oO] [0-7] [0-7_]*                      → integer
+[0-9] [0-9_]* '.' [0-9] [0-9_]* 'ri'       → imaginary
+[0-9] [0-9_]* '.' [0-9] [0-9_]* 'r'        → rational
+[0-9] [0-9_]* '.' [0-9] [0-9_]* 'i'        → imaginary
+[0-9] [0-9_]* '.' [0-9] [0-9_]*            → float
+[0-9] [0-9_]* 'ri'                          → imaginary
+[0-9] [0-9_]* 'r'                           → rational
+[0-9] [0-9_]* 'i'                           → imaginary
+[0-9] [0-9_]*                               → integer
+
+# ==============================================================================
+# MULTI-CHARACTER OPERATORS — 3+ chars (longest match first)
+# ==============================================================================
+
+"==="                                       → eqq
+"<=>"                                       → cmp
+"..."                                       → dotdotdot
+"**="                                       → power_eq
+"<<="                                       → lshift_eq
+">>="                                       → rshift_eq
+"||="                                       → oror_eq
+"&&="                                       → andand_eq
+
+# ==============================================================================
+# MULTI-CHARACTER OPERATORS — 2 chars
+# ==============================================================================
+
+"**"                                        → power
+"=~"                                        → match_op
+"!~"                                        → nmatch
+"=="                                        → eq
+"!="                                        → ne
+"<="                                        → le
+">="                                        → ge
+"||"                                        → oror
+"&&"                                        → andand
+"<<"                                        → lshift
+">>"                                        → rshift
+"+="                                        → plus_eq
+"-="                                        → minus_eq
+"*="                                        → star_eq
+"/="                                        → slash_eq
+"%="                                        → percent_eq
+"|="                                        → pipe_eq
+"&="                                        → amp_eq
+"^="                                        → caret_eq
+"=>"                                        → fat_arrow
+"->"                                        → arrow
+"::"                                        → scope
+"&."                                        → safe_nav
+".."                                        → dotdot
+
+# ==============================================================================
+# SINGLE-CHARACTER OPERATORS AND PUNCTUATION
+# ==============================================================================
+
+'+'                                         → plus
+'-'                                         → minus
+'*'                                         → star
+'/'                                         → slash
+'%'                                         → percent
+'<'                                         → lt
+'>'                                         → gt
+'!'                                         → bang
+'?'                                         → question
+'|'                                         → pipe
+'&'                                         → ampersand
+'^'                                         → caret
+'~'                                         → tilde
+'='                                         → assign
+'('                                         → lparen, {paren++}
+')'                                         → rparen, {paren--}
+'{'                                         → lbrace, {brace++}
+'}'                                         → rbrace, {brace--}
+'['                                         → lbracket, {brack++}
+']'                                         → rbracket, {brack--}
+','                                         → comma
+':'                                         → colon
+';'                                         → semicolon
+'.'                                         → dot
+
+# ==============================================================================
+# IDENTIFIERS AND INSTANCE VARIABLES
+# ==============================================================================
+
+"@@" [a-zA-Z_][a-zA-Z0-9_]*                → cvar
+'$' [a-zA-Z_][a-zA-Z0-9_]*                 → gvar
+'$' [0-9]+                                 → gvar
+'@' [a-zA-Z_][a-zA-Z0-9_]*                 → ivar
+[A-Z][a-zA-Z0-9_]*                          → constant
+[a-z_][a-zA-Z0-9_]* [?!]?                  → ident
+
+# ==============================================================================
+# FALLBACK
+# ==============================================================================
+
+.                                           → err
+
+# ==============================================================================
+# PARSER
+# ==============================================================================
+
+@parser
+
+@lang = "ruby"
+@conflicts = 60
+
+@as ident = [keyword!]
+
+# ==============================================================================
+# TOP-LEVEL — start symbols
+# ==============================================================================
+
+program! = stmts                            → (program ...1)
+expr!    = expr                             → 1
+
+# ==============================================================================
+# STATEMENT LISTS — newline / semicolon separated
+# ==============================================================================
+
+stmts    = stmt_list                         → 1
+         |                                  → (stmts)
+
+stmt_list = stmt_list sep stmt              → (...1 3)
+          | stmt_list sep                   → 1
+          | sep stmt_list                   → 2
+          | stmt                            → (stmts 1)
+          | sep                             → (stmts)
+
+sep      = NEWLINE                          → ()
+         | SEMICOLON                        → ()
+
+# ==============================================================================
+# STATEMENTS
+# ==============================================================================
+
+stmt     = if_stmt
+         | unless_stmt
+         | while_stmt
+         | until_stmt
+         | for_stmt
+         | case_stmt
+         | def_stmt
+         | class_stmt
+         | module_stmt
+         | begin_stmt
+         | alias_stmt
+         | undef_stmt
+         | flow_stmt
+         | cmd_stmt
+         | mod_stmt
+         | expr
+
+# ==============================================================================
+# MODIFIER STATEMENTS — postfix control flow
+# ==============================================================================
+
+mod_stmt = expr IF_MOD expr                 → (if 3 1 _)
+         | expr UNLESS_MOD expr             → (unless 3 1 _)
+         | expr WHILE_MOD expr              → (while 3 1)
+         | expr UNTIL_MOD expr              → (until 3 1)
+         | expr RESCUE_MOD expr             → (rescue 1 3)
+
+# ==============================================================================
+# EXPRESSIONS — precedence hierarchy (lowest to highest)
+# ==============================================================================
+
+expr     = kw_not
+
+# --- Keyword not / or / and (very low precedence) ---
+
+kw_not   = NOT_KW kw_not                   → (not 2)
+         | kw_or
+
+kw_or    = kw_or OR_KW kw_and              → (or 1 3)
+         | kw_and
+
+kw_and   = kw_and AND_KW asgn              → (and 1 3)
+         | asgn
+
+# --- Assignment (right-associative) ---
+
+asgn     = mlhs ASSIGN mrhs              → (masgn 1 3)
+         | lhs ASSIGN asgn               → (assign 1 3)
+         | lhs PLUS_EQ asgn              → (+= 1 3)
+         | lhs MINUS_EQ asgn             → (-= 1 3)
+         | lhs STAR_EQ asgn              → (*= 1 3)
+         | lhs SLASH_EQ asgn             → (/= 1 3)
+         | lhs PERCENT_EQ asgn           → (%= 1 3)
+         | lhs POWER_EQ asgn             → (**= 1 3)
+         | lhs PIPE_EQ asgn              → (|= 1 3)
+         | lhs AMP_EQ asgn               → (&= 1 3)
+         | lhs CARET_EQ asgn             → (^= 1 3)
+         | lhs LSHIFT_EQ asgn            → (<<= 1 3)
+         | lhs RSHIFT_EQ asgn            → (>>= 1 3)
+         | lhs OROR_EQ asgn              → (||= 1 3)
+         | lhs ANDAND_EQ asgn            → (&&= 1 3)
+         | ternary
+
+# --- Multiple assignment LHS: a, b, *c ---
+
+mlhs     = lhs "," lhs                    → (mlhs 1 3)
+         | mlhs "," lhs                   → (...1 3)
+         | mlhs "," splat_lhs             → (...1 3)
+
+splat_lhs = STAR_SPLAT lhs                → (splat 2)
+
+# --- Multiple assignment RHS: 1, 2, *rest ---
+
+mrhs     = ternary "," ternary            → (mrhs 1 3)
+         | mrhs "," ternary               → (...1 3)
+         | mrhs "," splat_val             → (...1 3)
+
+splat_val = STAR_SPLAT ternary            → (splat 2)
+
+lhs      = IDENT
+         | IVAR
+         | CVAR
+         | GVAR
+         | CONSTANT
+         | call "." IDENT                 → (attrasgn 1 3)
+         | call "[" [arg_list] "]"        → (indexasgn 1 3)
+
+# --- Ternary (right-associative, reuses if node) ---
+
+ternary  = @infix QUESTION ternary COLON ternary → (if 1 3 5)
+         | @infix
+
+# ==============================================================================
+# INFIX OPERATORS — binary, lowest to highest (** excluded)
+# ==============================================================================
+
+@infix unary
+    ".."  none, "..." none
+    "||"  left
+    "&&"  left
+    "=="  none, "!=" none, "===" none, "<=>" none, "=~" none, "!~" none
+    ">"   none, ">=" none, "<"  none, "<="  none
+    "|"   left, "^"  left
+    "&"   left
+    "<<"  left, ">>" left
+    "+"   left, "-"  left
+    "*"   left, "/"  left, "%"  left
+
+# ==============================================================================
+# UNARY — prefix operators
+# ==============================================================================
+
+unary    = MINUS_U unary                    → (u- 2)
+         | PLUS_U unary                     → (u+ 2)
+         | BANG unary                       → (! 2)
+         | TILDE unary                      → (~ 2)
+         | DEFINED unary                    → (defined 2)
+         | power
+
+# ==============================================================================
+# POWER — ** binds tighter than unary (Ruby: -1**2 == -(1**2))
+# ==============================================================================
+
+power    = call POWER unary                 → (** 1 3)
+         | call
+
+# ==============================================================================
+# CALL EXPRESSIONS — method chains, indexing, scoping
+# ==============================================================================
+
+call     = call "." methodname [call_args] [block] → (send 1 3 4 5)
+         | call "&." methodname [call_args] [block] → (csend 1 3 4 5)
+         | call "[" [arg_list] "]"          → (index 1 3)
+         | call "::" CONSTANT               → (scope 1 3)
+         | "::" CONSTANT                    → (scope _ 2)
+         | IDENT call_args [block]          → (send _ 1 2 3)
+         | SUPER [call_args]                → (super 2)
+         | YIELD [call_args]                → (yield 2)
+         | primary
+
+methodname = IDENT
+
+# ==============================================================================
+# ARGUMENTS — parenthesized argument lists
+# ==============================================================================
+
+call_args = "(" ")"                         → (args)
+          | "(" arg_list ")"                → (args ...2)
+
+arg_list = arg_item                         → (1)
+         | arg_list "," arg_item            → (...1 3)
+
+arg_item = expr
+         | STAR_SPLAT expr                  → (splat 2)
+         | "**" expr                        → (kwsplat 2)
+         | AMP_BLOCK expr                   → (block_pass 2)
+         | pair
+
+# ==============================================================================
+# COMMAND CALLS — no-paren calls at statement position
+# ==============================================================================
+
+cmd_stmt = CMD_IDENT cmd_args [block]       → (send _ 1 2 3)
+         | call "." IDENT cmd_args [block]  → (send 1 3 4 5)
+
+cmd_args = cmd_arg                          → (args 1)
+         | cmd_args "," cmd_arg             → (...1 3)
+
+cmd_arg  = expr
+         | STAR_SPLAT expr                  → (splat 2)
+         | "**" expr                        → (kwsplat 2)
+         | AMP_BLOCK expr                   → (block_pass 2)
+         | pair
+
+# ==============================================================================
+# BLOCKS — do...end and {... }
+# ==============================================================================
+
+block    = DO_BLOCK [block_params] stmts END → (block 2 3)
+         | LBRACE_BLOCK [block_params] stmts "}" → (block 2 3)
+
+block_params = "|" param_list "|"            → (params ...2)
+             | "|" "|"                      → (params)
+
+# ==============================================================================
+# PRIMARY EXPRESSIONS — atoms and grouping
+# ==============================================================================
+
+primary  = IDENT
+         | CONSTANT
+         | IVAR
+         | CVAR
+         | GVAR
+         | INTEGER
+         | FLOAT
+         | RATIONAL
+         | IMAGINARY
+         | STRING_SQ
+         | STRING_DQ
+         | dstring
+         | SYMBOL
+         | TRUE                             → (true)
+         | FALSE                            → (false)
+         | NIL                              → (nil)
+         | SELF                             → (self)
+         | KW__FILE__                       → (__FILE__)
+         | KW__LINE__                       → (__LINE__)
+         | KW__ENCODING__                   → (__ENCODING__)
+         | lambda
+         | array
+         | hash
+         | "(" expr ")"                     → 2
+
+# ==============================================================================
+# LAMBDA — -> { } and ->(params) { }
+# ==============================================================================
+
+lambda   = ARROW [params] block             → (lambda 2 3)
+
+# ==============================================================================
+# INTERPOLATED STRINGS — "hello #{expr} world"
+# ==============================================================================
+
+dstring  = DSTR_BEG dstr_parts DSTR_END    → (dstr ...2)
+         | DSTR_BEG DSTR_END               → (dstr)
+
+dstr_parts = dstr_part                      → (1)
+           | dstr_parts dstr_part           → (...1 2)
+
+dstr_part = STR_CONTENT
+          | EMBEXPR_BEG stmts EMBEXPR_END  → (evstr 2)
+
+# ==============================================================================
+# ARRAY — [elements]
+# ==============================================================================
+
+array    = "[" [elems] "]"                  → (array ...2)
+
+elems    = elem                             → (1)
+         | elems "," elem                   → (...1 3)
+
+elem     = expr
+         | STAR_SPLAT expr                  → (splat 2)
+
+# ==============================================================================
+# HASH — {pairs}
+# ==============================================================================
+
+hash     = LBRACE [pairs] "}"              → (hash ...2)
+
+pairs    = pair                             → (1)
+         | pairs "," pair                   → (...1 3)
+
+pair     = LABEL expr                       → (pair 1 2)
+         | expr "=>" expr                   → (pair 1 3)
+         | "**" expr                        → (kwsplat 2)
+
+# ==============================================================================
+# CONTROL FLOW — if / elsif / else / end
+# ==============================================================================
+
+if_stmt  = IF expr then_sep stmts else_clause END → (if 2 4 5)
+
+else_clause =                               → ()
+            | ELSE stmts                    → 2
+            | ELSIF expr then_sep stmts else_clause → (if 2 4 5)
+
+then_sep = THEN_SEP                          → ()
+
+# ==============================================================================
+# CONTROL FLOW — unless
+# ==============================================================================
+
+unless_stmt = UNLESS expr then_sep stmts opt_else END → (unless 2 4 5)
+
+opt_else =                                  → ()
+         | ELSE stmts                       → 2
+
+# ==============================================================================
+# CONTROL FLOW — while / until
+# ==============================================================================
+
+while_stmt = WHILE expr do_sep stmts END    → (while 2 4)
+
+until_stmt = UNTIL expr do_sep stmts END    → (until 2 4)
+
+do_sep   = DO_SEP                            → ()
+
+# ==============================================================================
+# CONTROL FLOW — for
+# ==============================================================================
+
+for_stmt = FOR IDENT IN expr do_sep stmts END → (for 2 4 6)
+
+# ==============================================================================
+# CONTROL FLOW — case / when
+# ==============================================================================
+
+case_stmt  = CASE expr then_sep when_clauses opt_else END → (case 2 ...4 5)
+           | CASE then_sep when_clauses opt_else END      → (case _ ...3 4)
+
+when_clauses = when_clause                  → (1)
+             | when_clauses when_clause     → (...1 2)
+
+when_clause = WHEN when_args then_sep stmts → (when ...2 4)
+
+when_args = arg_list                        → (...1)
+
+# ==============================================================================
+# BEGIN / RESCUE / ENSURE
+# ==============================================================================
+
+begin_stmt = BEGIN_KW sep stmts rescues ensure_cl END → (begin 3 4 5)
+
+rescues  = rescue_cl                        → (1)
+         | rescues rescue_cl                → (...1 2)
+         |                                  → ()
+
+rescue_cl = RESCUE then_sep stmts                       → (rescue _ _ 3)
+          | RESCUE exc_list then_sep stmts              → (rescue 2 _ 4)
+          | RESCUE exc_list "=>" IDENT then_sep stmts   → (rescue 2 4 6)
+
+exc_list = const_path                       → (1)
+         | exc_list "," const_path          → (...1 3)
+
+ensure_cl = ENSURE sep stmts               → (ensure 3)
+          |                                 → ()
+
+# ==============================================================================
+# METHOD DEFINITIONS
+# ==============================================================================
+
+def_stmt = DEF methodname [params] sep stmts rescues ensure_cl END → (def 2 3 5 6 7)
+         | DEF primary "." methodname [params] sep stmts rescues ensure_cl END → (defs 2 4 5 7 8 9)
+
+params   = "(" ")"                          → (params)
+         | "(" param_list ")"               → (params ...2)
+
+param_list = param                          → (1)
+           | param_list "," param           → (...1 3)
+
+param    = IDENT
+         | IDENT "=" expr                   → (optarg 1 3)
+         | LABEL                            → (kwarg 1)
+         | LABEL expr                       → (kwoptarg 1 2)
+         | STAR_SPLAT IDENT                 → (restarg 2)
+         | "**" IDENT                       → (kwrestarg 2)
+         | AMP_BLOCK IDENT                  → (blockarg 2)
+
+# ==============================================================================
+# CLASS / MODULE
+# ==============================================================================
+
+class_stmt = CLASS const_path [superclass] sep stmts END → (class 2 3 5)
+           | CLASS "<<" expr sep stmts END  → (sclass 3 5)
+
+superclass = "<" const_path                 → 2
+
+module_stmt = MODULE const_path sep stmts END → (module 2 4)
+
+const_path = CONSTANT
+           | const_path "::" CONSTANT       → (scope 1 3)
+
+# ==============================================================================
+# ALIAS / UNDEF
+# ==============================================================================
+
+alias_stmt = ALIAS alias_name alias_name    → (alias 2 3)
+
+undef_stmt = UNDEF undef_list              → (undef ...2)
+
+undef_list = alias_name                     → (1)
+           | undef_list "," alias_name      → (...1 3)
+
+alias_name = IDENT
+           | SYMBOL
+
+# ==============================================================================
+# FLOW STATEMENTS — return / break / next
+# ==============================================================================
+
+flow_stmt = RETURN cmd_args                 → (return 2)
+          | RETURN                          → (return)
+          | BREAK cmd_args                  → (break 2)
+          | BREAK                           → (break)
+          | NEXT cmd_args                   → (next 2)
+          | NEXT                            → (next)
+          | YIELD cmd_args                  → (yield 2)
+          | SUPER cmd_args                  → (super 2)
+          | RETRY                           → (retry)
+          | REDO                            → (redo)
