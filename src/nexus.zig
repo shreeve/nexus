@@ -1590,9 +1590,80 @@ const LexerGenerator = struct {
     const IdentInfo = struct {
         token: []const u8,
         startChars: [256]bool,
+        contChars: [256]bool,     // Main-loop continuation class (from [class]* or [class]+ after start)
+        hasCont: bool,             // True if the rule had an explicit continuation class
         suffixChars: [256]bool,
         hasSuffix: bool,
     };
+
+    const PunctIdentInfo = struct {
+        token: []const u8,
+        startChars: [256]bool,
+        contChars: [256]bool,
+        guards: []const Guard,
+    };
+
+    /// Collect rules of shape `[punct_class][cont_class]* → token` where the
+    /// start class contains no letters/underscore (pure punctuation start).
+    /// Examples: Slash's `[./~][\w./-]* → ident` (path-ident) and globs.
+    /// These rules cannot use the alpha-led ident fast-path and need their
+    /// own pre-switch dispatch so the start char doesn't get consumed as a
+    /// standalone operator. Guards are preserved verbatim.
+    fn collectPunctIdentRules(spec: *const LexerSpec) !struct {
+        rules: [16]PunctIdentInfo,
+        count: usize,
+    } {
+        var result: [16]PunctIdentInfo = undefined;
+        var count: usize = 0;
+
+        for (spec.rules.items) |rule| {
+            if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
+            if (std.mem.eql(u8, rule.token, "integer") or
+                std.mem.eql(u8, rule.token, "real") or
+                std.mem.eql(u8, rule.token, "err")) continue;
+
+            const cc = parseCharClass(rule.pattern) orelse continue;
+
+            // Must contain at least one non-alnum-non-underscore char in the
+            // start class (e.g. `.`, `/`, `~`, `*`, `?`) AND have no alpha.
+            // This is the marker of a genuine punct-start rule: rules that
+            // begin with `[0-9]` are number-suffixed idents, not paths.
+            var hasAlpha = false;
+            var hasPunct = false;
+            for (0..256) |c| {
+                if (!cc.chars[c]) continue;
+                if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_') {
+                    hasAlpha = true;
+                } else if (c >= 0x20 and c < 0x7f and !(c >= '0' and c <= '9')) {
+                    hasPunct = true;
+                }
+            }
+            if (hasAlpha) continue;
+            if (!hasPunct) continue;
+
+            // Must have [class]* or [class]+ continuation.
+            var pos = cc.endPos;
+            while (pos < rule.pattern.len and rule.pattern[pos] == ' ') pos += 1;
+            if (pos >= rule.pattern.len or rule.pattern[pos] != '[') continue;
+            const cont = parseCharClass(rule.pattern[pos..]) orelse continue;
+            pos += cont.endPos;
+            if (pos >= rule.pattern.len or
+                (rule.pattern[pos] != '*' and rule.pattern[pos] != '+')) continue;
+
+            if (count >= result.len) {
+                std.debug.print("error: too many punct-ident rules (max {d})\n", .{result.len});
+                return error.Overflow;
+            }
+            result[count] = .{
+                .token = rule.token,
+                .startChars = cc.chars,
+                .contChars = cont.chars,
+                .guards = rule.guards,
+            };
+            count += 1;
+        }
+        return .{ .rules = result, .count = count };
+    }
 
     fn collectIdentRules(spec: *const LexerSpec) !struct { rules: [8]IdentInfo, count: usize } {
         var result: [8]IdentInfo = undefined;
@@ -1625,7 +1696,11 @@ const LexerGenerator = struct {
             }
             if (!hasAlpha) continue;
 
-            // Detect trailing suffix: parse past body classes, look for [chars]? or 'c'?
+            // Detect continuation + trailing suffix: parse past body classes.
+            //   [class]* / [class]+          → main-loop continuation class
+            //   [chars]? / 'c'?              → optional suffix after main loop
+            var contChars: [256]bool = @splat(false);
+            var hasCont = false;
             var suffixChars: [256]bool = @splat(false);
             var hasSuffix = false;
             var pos = cc.endPos;
@@ -1641,6 +1716,8 @@ const LexerGenerator = struct {
                         } else if (pos < rule.pattern.len and
                             (rule.pattern[pos] == '*' or rule.pattern[pos] == '+'))
                         {
+                            contChars = cls.chars;
+                            hasCont = true;
                             hasSuffix = false;
                             pos += 1;
                         } else {
@@ -1672,6 +1749,8 @@ const LexerGenerator = struct {
             result[count] = .{
                 .token = rule.token,
                 .startChars = cc.chars,
+                .contChars = contChars,
+                .hasCont = hasCont,
                 .suffixChars = suffixChars,
                 .hasSuffix = hasSuffix,
             };
@@ -1683,6 +1762,7 @@ const LexerGenerator = struct {
     fn generateCharClassification(self: *LexerGenerator) !void {
         var letterChars: [256]bool = @splat(false);
         var digitChars: [256]bool = @splat(false);
+        var identExtraChars: [256]bool = @splat(false);
 
         for (self.spec.rules.items) |rule| {
             if (rule.guards.len > 0) continue;
@@ -1703,12 +1783,55 @@ const LexerGenerator = struct {
             }
         }
 
+        // IDENT_EXTRA = continuation chars that aren't letters or digits.
+        // E.g. Slash's `[\w./-]` yields extras `{'.', '/', '-'}`. Grammars
+        // whose continuation is `[\w]` yield an empty extra set.
+        for (ident.rules[0..ident.count]) |r| {
+            if (!r.hasCont) continue;
+            for (0..256) |c| {
+                if (!r.contChars[c]) continue;
+                if (letterChars[c]) continue;
+                if (digitChars[c]) continue;
+                identExtraChars[c] = true;
+            }
+        }
+        // Also absorb punct-ident rule continuation chars — but only for
+        // UNGUARDED rules. Guarded rules (e.g. Slash's globs with
+        // `@ math == 0`) introduce chars like `*` and `?` that must not
+        // leak into the globally-shared isIdentChar helper. Those rules
+        // emit their own per-rule continuation checks in the pre-switch
+        // dispatch.
+        const punctIdent = try collectPunctIdentRules(self.spec);
+        for (punctIdent.rules[0..punctIdent.count]) |r| {
+            if (r.guards.len > 0) continue;
+            for (0..256) |c| {
+                if (!r.contChars[c]) continue;
+                if (letterChars[c]) continue;
+                if (digitChars[c]) continue;
+                identExtraChars[c] = true;
+            }
+        }
+        var hasIdentExtra = false;
+        for (0..256) |c| {
+            if (identExtraChars[c]) {
+                hasIdentExtra = true;
+                break;
+            }
+        }
+
         // Emit the char_flags table
         try self.write(
             \\    // Character classification flags (generated from grammar patterns)
             \\    const DIGIT: u8 = 1 << 0;
             \\    const LETTER: u8 = 1 << 1;
             \\    const WHITESPACE: u8 = 1 << 2;
+        );
+        if (hasIdentExtra) try self.write(
+            \\
+            \\    const IDENT_EXTRA: u8 = 1 << 3;
+        );
+        try self.write(
+            \\
             \\
             \\    const charFlags: [256]u8 = blk: {
             \\        var table: [256]u8 = [_]u8{0} ** 256;
@@ -1762,6 +1885,15 @@ const LexerGenerator = struct {
             try self.print("        table['{s}'] = LETTER;\n", .{lit.buf[0..lit.len]});
         }
 
+        // Emit IDENT_EXTRA entries for continuation chars outside letter/digit.
+        // These are the `./–` in `[\w./-]` that mainline isIdentChar doesn't cover.
+        for (0..256) |c| {
+            if (identExtraChars[c]) {
+                const lit = charToZigLiteral(@intCast(c));
+                try self.print("        table['{s}'] = IDENT_EXTRA;\n", .{lit.buf[0..lit.len]});
+            }
+        }
+
         // Whitespace is always space + tab
         try self.write(
             \\        table[' '] = WHITESPACE;
@@ -1781,11 +1913,23 @@ const LexerGenerator = struct {
             \\        return (charFlags[c] & WHITESPACE) != 0;
             \\    }
             \\
-            \\    inline fn isIdentChar(c: u8) bool {
-            \\        return isLetter(c) or isDigit(c);
-            \\    }
             \\
         );
+        if (hasIdentExtra) {
+            try self.write(
+                \\    inline fn isIdentChar(c: u8) bool {
+                \\        return (charFlags[c] & (LETTER | DIGIT | IDENT_EXTRA)) != 0;
+                \\    }
+                \\
+            );
+        } else {
+            try self.write(
+                \\    inline fn isIdentChar(c: u8) bool {
+                \\        return isLetter(c) or isDigit(c);
+                \\    }
+                \\
+            );
+        }
     }
 
     fn generateScannerDispatch(self: *LexerGenerator) !void {
@@ -1890,24 +2034,66 @@ const LexerGenerator = struct {
             }
         }
 
+        // Compound-literal rules like Slash's `flag` (`'-' '-'? [a-zA-Z]...`).
+        // The leading literal overlaps with a single-char operator (`-` =>
+        // minus), so these must dispatch first and restore pos on no-match.
+        try self.generateCompoundLiteralDispatch();
+
+        // Punctuation-start ident rules (paths, globs) — must dispatch BEFORE
+        // the number/ident/operator layers so the start char doesn't get
+        // consumed by a single-char operator arm. Each rule has its own start
+        // class, continuation class, and guards. Falls through cleanly when
+        // guards fail or the continuation doesn't match.
+        try self.generatePunctIdentDispatch();
+
         if (hasNumber) {
-            if (numberHasLeadingDot) {
-                try self.write(
-                    \\        // Number (digit or leading dot followed by digit)
-                    \\        if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-                    \\            return self.scanNumber(start, wsCount);
-                    \\        }
-                    \\
-                );
-            } else {
-                try self.write(
-                    \\        // Number
-                    \\        if (isDigit(c)) {
-                    \\            return self.scanNumber(start, wsCount);
-                    \\        }
-                    \\
-                );
+            // Detect digits that also start multi-char operator rules (e.g. '2>' in slash).
+            // Without this, the digit fast-path consumes '2' into scanNumber before the
+            // operator switch gets a chance to dispatch the '2>' family.
+            var digitHasOpArm: [10]bool = @splat(false);
+            var anyDigitOpArm = false;
+            for (self.spec.rules.items) |rule| {
+                const info = parseLiteralPattern(rule.pattern) orelse continue;
+                if (info.len <= 1) continue; // single-char digit token is fine; fast-path handles it
+                const fc = info.chars[0];
+                if (fc >= '0' and fc <= '9') {
+                    digitHasOpArm[fc - '0'] = true;
+                    anyDigitOpArm = true;
+                }
             }
+
+            // Header comment
+            if (numberHasLeadingDot) {
+                try self.write("        // Number (digit or leading dot followed by digit)\n");
+            } else {
+                try self.write("        // Number\n");
+            }
+
+            // Fast-path guard. If any digit is also the start of a multi-char
+            // operator rule (e.g. '2>' in slash), exclude those digits from
+            // the fast-path so the operator switch's arm gets to dispatch.
+            // The switch's digit arm has a `self.pos -= 1; scanNumber()`
+            // fallback, so a bare digit still reaches number scanning.
+            try self.write("        if (");
+            if (anyDigitOpArm) try self.write("(");
+            try self.write("isDigit(c)");
+            if (anyDigitOpArm) {
+                for (0..10) |i| {
+                    if (digitHasOpArm[i]) {
+                        try self.print(" and c != '{d}'", .{i});
+                    }
+                }
+                try self.write(")");
+            }
+            if (numberHasLeadingDot) {
+                try self.write(" or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))");
+            }
+            try self.write(
+                \\) {
+                \\            return self.scanNumber(start, wsCount);
+                \\        }
+                \\
+            );
         }
 
         if (hasIdent) {
@@ -1925,6 +2111,193 @@ const LexerGenerator = struct {
         // These must dispatch before the operator switch to avoid the prefix char being
         // consumed as a standalone operator token.
         try self.generatePrefixScanners();
+    }
+
+    /// Emit pre-switch dispatch for rules of shape:
+    ///     'X' 'X'? [class] [class]* ('=' [class]*)?  → token
+    /// Example: Slash's flag rule `'-' '-'? [a-zA-Z][a-zA-Z0-9_-]* ('=' [\w./:@,+-]*)?`.
+    /// The leading literal is required; the second literal is optional;
+    /// what follows must be an alpha-class char then a continuation class;
+    /// the tail `('=' [class]*)?` is optional. On no-match, pos is restored
+    /// and control falls through cleanly.
+    fn generateCompoundLiteralDispatch(self: *LexerGenerator) !void {
+        for (self.spec.rules.items) |rule| {
+            if (rule.guards.len > 0) continue; // only unguarded for now
+            const p = rule.pattern;
+            if (p.len < 11) continue; // minimum: 'X' 'X'? [A][B]*
+            if (p[0] != '\'' or p[2] != '\'') continue;
+            const firstChar = p[1];
+
+            // Skip chars handled elsewhere (string delimiters, comment, etc).
+            if (firstChar == '\'' or firstChar == '"') continue;
+            if ((firstChar >= '0' and firstChar <= '9')) continue;
+            if ((firstChar >= 'a' and firstChar <= 'z') or
+                (firstChar >= 'A' and firstChar <= 'Z') or firstChar == '_') continue;
+
+            var pos: usize = 3;
+            while (pos < p.len and p[pos] == ' ') pos += 1;
+
+            // Optional second literal: 'X'?
+            var hasSecondLit = false;
+            var secondChar: u8 = 0;
+            if (pos + 3 < p.len and p[pos] == '\'' and p[pos + 2] == '\'' and p[pos + 3] == '?') {
+                secondChar = p[pos + 1];
+                hasSecondLit = true;
+                pos += 4;
+                while (pos < p.len and p[pos] == ' ') pos += 1;
+            }
+            if (!hasSecondLit) continue; // this function handles compound-literal only
+
+            // First char class [alpha_class]
+            if (pos >= p.len or p[pos] != '[') continue;
+            const startCC = parseCharClass(p[pos..]) orelse continue;
+            pos += startCC.endPos;
+            while (pos < p.len and p[pos] == ' ') pos += 1;
+
+            // Continuation class [cont_class]* or [cont_class]+
+            if (pos >= p.len or p[pos] != '[') continue;
+            const contCC = parseCharClass(p[pos..]) orelse continue;
+            pos += contCC.endPos;
+            if (pos >= p.len or (p[pos] != '*' and p[pos] != '+')) continue;
+            pos += 1;
+            while (pos < p.len and p[pos] == ' ') pos += 1;
+
+            // Optional tail group: ('=' [val_class]*)?
+            var hasTail = false;
+            var tailSep: u8 = 0;
+            var tailCC: ?struct { chars: [256]bool, endPos: usize } = null;
+            if (pos < p.len and p[pos] == '(') {
+                pos += 1;
+                while (pos < p.len and p[pos] == ' ') pos += 1;
+                if (pos + 2 < p.len and p[pos] == '\'' and p[pos + 2] == '\'') {
+                    tailSep = p[pos + 1];
+                    pos += 3;
+                    while (pos < p.len and p[pos] == ' ') pos += 1;
+                    if (pos < p.len and p[pos] == '[') {
+                        if (parseCharClass(p[pos..])) |tcc| {
+                            pos += tcc.endPos;
+                            if (pos < p.len and (p[pos] == '*' or p[pos] == '+')) {
+                                pos += 1;
+                                while (pos < p.len and p[pos] == ' ') pos += 1;
+                                if (pos < p.len and p[pos] == ')') {
+                                    pos += 1;
+                                    if (pos < p.len and p[pos] == '?') {
+                                        hasTail = true;
+                                        tailCC = .{ .chars = tcc.chars, .endPos = 0 };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Emit the dispatch
+            const lit = charToZigLiteral(firstChar);
+            const litStr = lit.buf[0..lit.len];
+            try self.print(
+                \\        // Compound-literal rule for .@"{s}"
+                \\        if (c == '{s}') {{
+                \\            const save = self.pos;
+                \\            self.pos += 1;
+                \\
+            , .{ rule.token, litStr });
+
+            if (hasSecondLit) {
+                const sl = charToZigLiteral(secondChar);
+                try self.print(
+                    \\            if (self.pos < self.source.len and self.source[self.pos] == '{s}') self.pos += 1;
+                    \\
+                , .{sl.buf[0..sl.len]});
+            }
+
+            // Require at least one char from the start class
+            try self.write("            if (self.pos < self.source.len and (");
+            try emitCharSetCondition(self, startCC.chars, "self.source[self.pos]");
+            try self.write(")) {\n");
+            try self.write("                self.pos += 1;\n");
+            try self.write("                while (self.pos < self.source.len and (");
+            try emitCharSetCondition(self, contCC.chars, "self.source[self.pos]");
+            try self.write(")) self.pos += 1;\n");
+
+            if (hasTail) {
+                const ts = charToZigLiteral(tailSep);
+                try self.print(
+                    \\                if (self.pos < self.source.len and self.source[self.pos] == '{s}') {{
+                    \\                    self.pos += 1;
+                    \\                    while (self.pos < self.source.len and (
+                , .{ts.buf[0..ts.len]});
+                try emitCharSetCondition(self, tailCC.?.chars, "self.source[self.pos]");
+                try self.write(
+                    \\)) self.pos += 1;
+                    \\                }
+                    \\
+                );
+            }
+
+            try self.print(
+                \\                return Token{{ .cat = .@"{s}", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};
+                \\            }}
+                \\            self.pos = save;
+                \\        }}
+                \\
+            , .{rule.token});
+        }
+    }
+
+    /// Emit pre-switch dispatch for punct-start ident rules. Each rule peeks
+    /// the next char for continuation-class membership before committing. If
+    /// guards or continuation check fails, control falls through to the
+    /// remaining scanner stages without consuming any input.
+    fn generatePunctIdentDispatch(self: *LexerGenerator) !void {
+        const punct = try collectPunctIdentRules(self.spec);
+        if (punct.count == 0) return;
+
+        try self.write(
+            \\        // Punct-start ident rules (paths, globs)
+            \\
+        );
+
+        for (punct.rules[0..punct.count]) |r| {
+            // Emit start-char test: `if (c == x or c == y or ...)`
+            try self.write("        if (");
+            var first = true;
+            for (0..256) |c| {
+                if (!r.startChars[c]) continue;
+                if (!first) try self.write(" or ");
+                const lit = charToZigLiteral(@intCast(c));
+                try self.print("c == '{s}'", .{lit.buf[0..lit.len]});
+                first = false;
+            }
+            try self.write(") {\n");
+
+            // Optional guards. Emitted as a nested `if` that falls through
+            // (does nothing, no consumption) when the guard evaluates false.
+            if (r.guards.len > 0) {
+                try self.write("            if (");
+                try self.emitAllGuards(r.guards);
+                try self.write(") {\n");
+            }
+
+            // Continuation peek. Must have at least one char matching the
+            // per-rule continuation class after the start char; otherwise
+            // fall through. We emit a literal membership check rather than
+            // using isIdentChar, so guarded rules with rare continuation
+            // chars (e.g. globs with '*', '?') don't pollute the shared
+            // helper.
+            const inner = if (r.guards.len > 0) "                " else "            ";
+            try self.print("{s}const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;\n", .{inner});
+            try self.print("{s}if (", .{inner});
+            try emitCharSetCondition(self, r.contChars, "nc");
+            try self.print(") {{\n{s}    self.pos += 1;\n{s}    while (self.pos < self.source.len and (", .{ inner, inner });
+            try emitCharSetCondition(self, r.contChars, "self.source[self.pos]");
+            try self.print(")) self.pos += 1;\n{s}    return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};\n{s}}}\n", .{ inner, r.token, inner });
+
+            // Close guard block if present
+            if (r.guards.len > 0) try self.write("            }\n");
+            // Close outer start-char block
+            try self.write("        }\n");
+        }
     }
 
     fn generatePrefixScanners(self: *LexerGenerator) !void {

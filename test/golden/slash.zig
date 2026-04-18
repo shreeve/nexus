@@ -176,6 +176,7 @@ pub const BaseLexer = struct {
     const DIGIT: u8 = 1 << 0;
     const LETTER: u8 = 1 << 1;
     const WHITESPACE: u8 = 1 << 2;
+    const IDENT_EXTRA: u8 = 1 << 3;
 
     const charFlags: [256]u8 = blk: {
         var table: [256]u8 = [_]u8{0} ** 256;
@@ -183,6 +184,9 @@ pub const BaseLexer = struct {
         for ('A'..'Z' + 1) |c| table[c] = LETTER;
         for ('a'..'z' + 1) |c| table[c] = LETTER;
         table['_'] = LETTER;
+        table['-'] = IDENT_EXTRA;
+        table['.'] = IDENT_EXTRA;
+        table['/'] = IDENT_EXTRA;
         table[' '] = WHITESPACE;
         table['\t'] = WHITESPACE;
         break :blk table;
@@ -201,7 +205,7 @@ pub const BaseLexer = struct {
     }
 
     inline fn isIdentChar(c: u8) bool {
-        return isLetter(c) or isDigit(c);
+        return (charFlags[c] & (LETTER | DIGIT | IDENT_EXTRA)) != 0;
     }
     /// Match lexer rules
     pub fn matchRules(self: *Self) Token {
@@ -258,8 +262,55 @@ pub const BaseLexer = struct {
             }
             return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
+        // Compound-literal rule for .@"flag"
+        if (c == '-') {
+            const save = self.pos;
+            self.pos += 1;
+            if (self.pos < self.source.len and self.source[self.pos] == '-') self.pos += 1;
+            if (self.pos < self.source.len and ((self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) {
+                self.pos += 1;
+                while (self.pos < self.source.len and (self.source[self.pos] == '-' or (self.source[self.pos] >= '0' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                if (self.pos < self.source.len and self.source[self.pos] == '=') {
+                    self.pos += 1;
+                    while (self.pos < self.source.len and ((self.source[self.pos] >= '+' and self.source[self.pos] <= ':') or (self.source[self.pos] >= '@' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                }
+                return Token{ .cat = .@"flag", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+            self.pos = save;
+        }
+        // Punct-start ident rules (paths, globs)
+        if (c == '.' or c == '/' or c == '~') {
+            if (self.math == 0) {
+                const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+                if ((nc >= '-' and nc <= '9') or (nc >= 'A' and nc <= 'Z') or nc == '_' or (nc >= 'a' and nc <= 'z')) {
+                    self.pos += 1;
+                    while (self.pos < self.source.len and ((self.source[self.pos] >= '-' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                    return Token{ .cat = .@"ident", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+            }
+        }
+        if (c == '.' or c == '/' or c == '~') {
+            if (self.math != 0 and self.math_lhs == 0) {
+                const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+                if ((nc >= '-' and nc <= '9') or (nc >= 'A' and nc <= 'Z') or nc == '_' or (nc >= 'a' and nc <= 'z')) {
+                    self.pos += 1;
+                    while (self.pos < self.source.len and ((self.source[self.pos] >= '-' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                    return Token{ .cat = .@"ident", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+            }
+        }
+        if (c == '*' or c == '?') {
+            if (self.math == 0) {
+                const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
+                if (nc == '*' or (nc >= '-' and nc <= '9') or nc == '?' or (nc >= 'A' and nc <= 'Z') or nc == '_' or (nc >= 'a' and nc <= 'z')) {
+                    self.pos += 1;
+                    while (self.pos < self.source.len and (self.source[self.pos] == '*' or (self.source[self.pos] >= '-' and self.source[self.pos] <= '9') or self.source[self.pos] == '?' or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                    return Token{ .cat = .@"ident", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+            }
+        }
         // Number (digit or leading dot followed by digit)
-        if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
+        if ((isDigit(c) and c != '2') or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
             return self.scanNumber(start, wsCount);
         }
         // Identifier
