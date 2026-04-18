@@ -1,6 +1,6 @@
 # Zig 0.15.x → 0.16.0 Migration — Quickstart Kit
 
-This file is a **turn-key quickstart** for pointing an AI (or yourself) at a Zig codebase that needs a 0.15.x → 0.16.0 migration. It's small on purpose. The actual reference material lives in `ZIG-0.16.0.md` (1,800+ lines of changelog, patterns, decoder tables, and workflow playbook distilled from a real end-to-end port).
+This file is a **turn-key quickstart** for pointing an AI (or yourself) at a Zig codebase that needs a 0.15.x → 0.16.0 migration. It's small on purpose. The actual reference material lives in `ZIG-0.16.0-REFERENCE.md` (1,800+ lines of changelog, patterns, decoder tables, and workflow playbook distilled from a real end-to-end port).
 
 ---
 
@@ -19,12 +19,12 @@ This file is a **turn-key quickstart** for pointing an AI (or yourself) at a Zig
    - Check with `zig version` — should print `0.16.0`.
    - Install via your package manager (`brew install zig` on macOS, etc.).
 3. **A shell the AI can run** (`zig build`, `zig build test`, `rg`, `sed`).
-4. **This file (`ZIG-0.16.0-QUICKSTART.md`) and its companion (`ZIG-0.16.0.md`).**
+4. **This file (`ZIG-0.16.0-QUICKSTART.md`) and its companion (`ZIG-0.16.0-REFERENCE.md`).**
 
 ## Optional inputs (helpful but not required)
 
-- **`ZIG-0.15.2.md`** — only if your code is *pre-0.15* (e.g., still uses `usingnamespace`, `async`/`await` keywords, old format string `{}` without `{f}`/`{any}`). If your code already compiled under 0.15.x, you don't need this.
 - **A peer AI for review rounds** — the nexus migration benefited materially from pre-execution critique and post-execution review via the `user-ai` MCP's `discuss` tool. Not required; scales the quality bar.
+- **Pre-0.15 code?** If your codebase predates 0.15.x (still uses `usingnamespace`, `async`/`await` keywords, old format string `{}` without `{f}`/`{any}`, or managed `ArrayList.init(alloc)` patterns), do a 0.15 → 0.15.x pass first. This kit assumes your code already compiled under 0.15.x.
 
 ---
 
@@ -37,7 +37,7 @@ I need to migrate a Zig codebase from 0.15.x to 0.16.0.
 
 Reference files (both attached/available in this workspace):
 - ZIG-0.16.0-QUICKSTART.md  (start here; this is the protocol)
-- ZIG-0.16.0.md             (full changelog + decoder + playbook)
+- ZIG-0.16.0-REFERENCE.md   (full changelog + decoder + playbook)
 
 Codebase:
 - Path: <absolute path to the project root>
@@ -49,7 +49,7 @@ Codebase:
 Zig 0.16.0 is installed locally (verified with `zig version`).
 
 Please follow the "Migration Workflow Tactics" section at the end of
-ZIG-0.16.0.md. Specifically:
+ZIG-0.16.0-REFERENCE.md. Specifically:
 1. Start with Phase 0 (empirical baseline — `zig build`, capture errors,
    do not edit code yet).
 2. Migrate one API family at a time, compiling between each step.
@@ -64,7 +64,37 @@ Red flags specific to 0.16 I want you to check for:
   use `.empty`).
 - `std.mem.trimLeft` / `trimRight` (renamed to trimStart/trimEnd).
 - `std.fs.*` (gone; use `std.Io.Dir`/`std.Io.File` with a threaded `io`).
-- `std.process.argsAlloc` (gone; use `init.minimal.args.toSlice`).
+- `std.process.argsAlloc` / `std.process.argsWithAllocator` (both
+  gone; use `init.minimal.args.toSlice(arena)` or `init.args.iterate()`).
+- `std.heap.GeneralPurposeAllocator(.{}){}` (removed entirely; for
+  long-lived programs use `std.heap.DebugAllocator(.{})`, for CLIs
+  use `init.arena.allocator()`, for servers use `init.gpa`).
+- `std.Thread.Futex.*` (type removed; replacements are the free
+  functions `std.Io.futexWait` / `futexWaitTimeout` / `futexWake`,
+  each taking `io: Io` as the first argument). There is no
+  `std.Io.Futex` type — don't be misled by the cheat sheet's old row.
+- `std.Thread.sleep` (gone; use `std.Io.sleep(io, duration, clock)`
+  or construct a `std.Io.Threaded` locally if no `io` is on hand).
+- `std.time.Timer` / `std.time.Instant` / `std.time.timestamp` /
+  `std.time.milliTimestamp` (all gone; `std.time` is now just unit
+  constants + `epoch`. Use `std.Io.Clock.Timestamp.now(io, .awake)`).
+- `std.posix.close` / `fstat` / `ftruncate` / `fsync` / `unlink`
+  (all removed; `std.posix` is thinner in 0.16 — the mid-level
+  wrappers moved. Use `std.c.*` at the low end or `std.Io.File.*`
+  at the high end. Note: `fdatasync`, `mmap`, `munmap`, `msync`,
+  `madvise`, `openatZ` all survived.)
+- `std.posix.PROT.READ` as a decl / integer OR'ing (gone; `PROT`
+  is now a packed struct on most platforms — `macho.vm_prot_t` on
+  macOS. Use struct-literal form: `.{ .READ = true, .WRITE = true }`.
+  And `posix.mmap`'s `prot` parameter is now the struct type, not
+  `u32`.)
+- `std.posix.kill(pid, 0)` (kill's `sig` parameter is now the `SIG`
+  enum type; on macOS the enum has no named `0` variant. For the
+  POSIX null-signal existence check, use `std.c.kill(pid, @enumFromInt(0))`
+  which takes `c_int` at the ABI boundary.)
+- `/// doc-comment preceding a \`test "..."\` block` (rejected in 0.16
+  with "documentation comments cannot be attached to tests" — use
+  plain `//` comments instead).
 - `ArrayList(u8).writer(allocator)` code-gen pattern (gone; use
   `std.Io.Writer.Allocating`).
 - `init.gpa` in a short-lived CLI (consider `init.arena.allocator()`).
@@ -94,10 +124,17 @@ Go.
 
 | Symptom | Likely cause | Where to look |
 |---|---|---|
-| `missing struct field: items` on `ArrayListUnmanaged(T)` | Lost field defaults | "Common Bad Assumptions #15" in ZIG-0.16.0.md |
+| `missing struct field: items` on `ArrayListUnmanaged(T)` | Lost field defaults | "Common Bad Assumptions #15" in ZIG-0.16.0-REFERENCE.md |
 | `tried to invoke non-function 'writer'` on `Allocating` | It's a field, not a method | "Common Bad Assumptions #13" |
 | `expected type 'std.Io.Limit'` with integer | `.limited(N)` needed | "Common Bad Assumptions #14" |
 | `root source file struct 'mem' has no member 'trimLeft'` | Renamed 0.16 | "Std lib trim rename" subsection |
+| `has no member named 'GeneralPurposeAllocator'` | Removed in 0.16 | Pick one: `std.heap.DebugAllocator(.{})` for leak tracking, `init.arena.allocator()` for short-lived CLIs, `init.gpa` for long-lived programs |
+| `has no member named 'Futex'` under `std.Thread` | Moved and reshaped | Use free functions `std.Io.futexWait` / `futexWaitTimeout` / `futexWake`. There is no `std.Io.Futex` type. Library code without an `Io` to thread through can use `std.Io.Threaded.global_single_threaded.io()`. |
+| `has no member named 'Timer'` / `'Instant'` / `'milliTimestamp'` under `std.time` | All removed | Use `std.Io.Clock.Timestamp.now(io, .awake)` + `.durationTo(...)` for stopwatch timing. `std.time` is now just unit constants + `epoch`. |
+| `has no member named 'close'` / `'fstat'` / `'ftruncate'` / `'fsync'` / `'unlink'` under `std.posix` | Mid-level wrappers moved | Low-level: call `std.c.*` directly (returns `c_int`, POSIX 0/−1 contract). High-level: use `std.Io.File.*` / `std.Io.Dir.*` with an `io` parameter. |
+| `struct '...vm_prot_t' has no member named 'READ'` | `std.posix.PROT` is a packed struct type, not a decl namespace | Use the struct-literal form where the API accepts it: `.{ .READ = true, .WRITE = true }`. `posix.mmap`'s `prot` arg is now the struct type itself, not `u32`. |
+| `expected type 'c.SIG__enum_...', found 'comptime_int'` on `std.posix.kill(pid, 0)` | `sig` parameter is now the typed `SIG` enum with no named `0` variant | For null-signal process-existence checks: `std.c.kill(pid, @enumFromInt(0))` at the FFI boundary. |
+| `documentation comments cannot be attached to tests` | 0.16 tightened the rule | Replace `///` with `//` on comments immediately preceding a `test "..."` block. Module-level `//!` is still fine. |
 | `zig build` was fast on 0.15 but now takes 3+ minutes | DebugAllocator perf trap | ⚠️ section under Juicy Main |
 | 400+ stderr lines on every `./my-program` run | `init.gpa` leak-checking | Same ⚠️ section; consider arena |
 | Generated file has old `.{}` patterns but source doesn't | Fix generator's emit templates, then regenerate | "Handling generated/vendored files" in Workflow Tactics |
@@ -121,4 +158,4 @@ If all six are true, the migration is done.
 
 This kit was written from exactly one real migration. It worked for that project. It will probably work for yours with minor adaptations. But every codebase has its own quirks, and 0.16 made enough changes that something novel will almost certainly surface.
 
-**When you hit something this kit doesn't cover:** log it, fix it, and if you feel generous, open a PR against this file (or its parent `ZIG-0.16.0.md`) to help the next person.
+**When you hit something this kit doesn't cover:** log it, fix it, and if you feel generous, open a PR against this file (or its parent `ZIG-0.16.0-REFERENCE.md`) to help the next person.

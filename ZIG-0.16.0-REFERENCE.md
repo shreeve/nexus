@@ -6,6 +6,75 @@ Zig 0.16.0 represents **8 months of work**, 244 contributors, and 1183 commits. 
 
 ---
 
+## ⚠️ For AI assistants: read this BEFORE writing any Zig code
+
+Most LLMs' training data is **pre-0.15**. If you are an AI tool writing Zig code and you have not read this document, you will almost certainly produce code that does not compile. These are the top patterns you will reflexively reach for that are **wrong** in 0.16:
+
+| Your reflex (pre-0.15) | What actually works in 0.16 |
+|---|---|
+| `std.ArrayList(T){}` / `= .{}` | `= .empty` — both managed and unmanaged lost field defaults |
+| `std.fs.cwd()` | `std.Io.Dir.cwd()` — and almost every method now takes `io: Io` as the first arg |
+| `std.fs.File` / `std.fs.Dir` | `std.Io.File` / `std.Io.Dir` |
+| `file.readToEndAlloc(gpa, max)` | `var fr = file.reader(io, &.{}); try fr.interface.allocRemaining(gpa, .limited(max))` |
+| `file.writeAll(bytes)` | `file.writeStreamingAll(io, bytes)` |
+| `std.time.Timer.start()` / `timer.read()` | `const t = std.Io.Clock.Timestamp.now(io, .awake); ... t.raw.durationTo(...).toNanoseconds()` |
+| `std.time.timestamp()` / `milliTimestamp()` / `nanoTimestamp()` | `std.Io.Clock.Timestamp.now(io, .real).raw.toSeconds() / .toMilliseconds() / .toNanoseconds()` |
+| `std.Thread.sleep(ns)` | `std.Io.sleep(io, std.Io.Duration.fromNanoseconds(ns), .awake)` |
+| `std.Thread.Futex.wait / wake / timedWait` | Free functions: `std.Io.futexWait(io, T, ptr, expected)` / `futexWake(io, T, ptr, n)` / `futexWaitTimeout(io, T, ptr, expected, timeout)`. **There is no `std.Io.Futex` type.** Timeout expiry returns success (void), not `error.Timeout` — caller re-reads the word. |
+| `std.Thread.{Mutex, Condition, ResetEvent, Semaphore, RwLock, WaitGroup, Pool}` | Moved under `std.Io.*` (`Event` for `ResetEvent`, `Group` for `WaitGroup`). `Pool` is gone — use `Io.async` / `Io.Group`. |
+| `std.process.argsAlloc(gpa)` / `argsWithAllocator(gpa)` | `pub fn main(init: std.process.Init) !void` then `try init.minimal.args.toSlice(init.arena.allocator())` or `init.minimal.args.iterate()` |
+| `std.heap.GeneralPurposeAllocator(.{}){}` | **Removed.** Use `init.gpa` (Debug = `DebugAllocator`), `init.arena.allocator()` (short-lived CLIs), or `std.heap.DebugAllocator(.{})` directly |
+| `std.heap.ThreadSafeAllocator` | **Removed.** `std.heap.ArenaAllocator` is now threadsafe by default |
+| `std.os.environ` (global) | **Gone.** Use `init.environ_map` (Juicy) or `init.minimal.environ` (raw). `std.posix.getenv` also gone — fall back to `std.c.getenv(name_cstr)` if you need a bridge. |
+| `std.crypto.random.bytes(&buf)` / `std.posix.getrandom(&buf)` | `io.random(&buf)` (non-crypto) or `try io.randomSecure(&buf)` (crypto-grade) |
+| `std.process.Child.init(argv, gpa).spawn()` | `var child = try std.process.spawn(io, .{ .argv = argv, .stdin = .pipe, ... })`. For capturing output use `std.process.run(gpa, io, .{ ... })`. |
+| `std.fs.selfExePathAlloc(gpa)` | `std.process.executablePathAlloc(io, gpa)` |
+| `std.posix.close(fd)` / `fstat` / `ftruncate` / `fsync` / `unlink` / `open` / `write` / `isatty` / `pipe` / `fork` / `waitpid` / `exit` | **All removed from `std.posix`.** Drop to `std.c.*` with `std.c.errno(rc)` switches, or use `std.Io.File` / `std.Io.Dir` for the high-level form. (`std.posix.read`, `mmap`, `munmap`, `msync`, `madvise`, `openatZ`, `kill` with `SIG` enum, `fdatasync`, `poll`, `tcgetattr`, `tcsetattr`, `sigaction` all survive.) |
+| `std.posix.PROT.READ \| std.posix.PROT.WRITE` | `.{ .READ = true, .WRITE = true }` — PROT is now a packed struct type (`macho.vm_prot_t` on macOS); `std.posix.mmap`'s `prot` parameter accepts the struct directly, not `u32` |
+| `std.posix.kill(pid, 0)` for existence check | `std.c.kill(pid, @enumFromInt(0))` — `std.posix.kill`'s `sig` parameter is a typed `SIG` enum with no named `0` variant on macOS. Distinguish `.PERM` (alive, no permission) from `.SRCH` (dead) via `std.c.errno(rc)`. |
+| `std.mem.trimLeft(u8, s, " ")` / `trimRight` | `std.mem.trimStart` / `trimEnd`. Plain `std.mem.trim` unchanged. |
+| `std.io.fixedBufferStream(buf).writer()` / `.reader()` | `std.Io.Writer.fixed(buf)` / `std.Io.Reader.fixed(buf)` |
+| `std.io.GenericReader` / `AnyReader` / `GenericWriter` / `AnyWriter` | All removed. Use `std.Io.Reader` / `std.Io.Writer` (interface types). |
+| `ArrayList(u8).writer(gpa)` pattern for string building | `var out: std.Io.Writer.Allocating = .init(gpa); try out.writer.print(...);` — note: `writer` is a **field**, not a method (no `()`). Pass `&out.writer` to helpers that take `*std.Io.Writer`. |
+| `@Type(.{ .int = .{ .signedness = ..., .bits = ... } })` | `@Int(.signed, N)` / `@Int(.unsigned, N)`. Also `@Struct`/`@Union`/`@Enum`/`@Pointer`/`@Fn`/`@Tuple`/`@EnumLiteral` — `@Type` is gone. |
+| `@intFromFloat(f)` | `@trunc(f)` / `@floor(f)` / `@ceil(f)` / `@round(f)` — picks your rounding mode explicitly |
+| `pub fn format(self, comptime fmt, options, writer)` | `pub fn format(self, writer: *std.Io.Writer) std.Io.Writer.Error!void` — single-arg signature, invoked via `{f}` format specifier. `{any}` skips the custom method. |
+| `readFileAlloc(gpa, path, max_usize)` | `readFileAlloc(dir, io, path, gpa, .limited(max))` — cap is `std.Io.Limit`, not `usize`; the cap-breach error is `error.StreamTooLong` (not `error.FileTooBig`). |
+| `/// doc comment` preceding a `test "..."` block | Rejected in 0.16 — use plain `//` comments before tests. Module-level `//!` at the top of the file is still fine. |
+| `packed struct { ptr: *T }` | **Pointers in packed structs are no longer allowed.** Store as `usize` and convert with `@ptrFromInt` / `@intFromPtr`. Packed union fields must also all have the same `@bitSizeOf`. |
+| `File.seekTo(0)` / `seekBy` / `seekFromEnd` / `getPos` | Moved to `Reader.seekTo` / `Reader.seekBy` / `Writer.seekTo` / `Reader.logicalPos` / `Writer.logicalPos`. For raw seek, drop to `std.c.lseek(fd, offset, whence)` where `SEEK_SET=0`, `SEEK_CUR=1`, `SEEK_END=2`. |
+| `std.net.Stream` / `std.net.Server` / `std.net.Address` | `std.Io.net.Stream` / `std.Io.net.Server` / `std.Io.net.IpAddress` (with `.ip4` and `.ip6` union variants). `Ip4Address` is a plain struct: `.{ .bytes = .{ 0, 0, 0, 0 }, .port = p }`. `Stream` has no direct `read`/`writeAll`; use `stream.reader(io, buf)` / `stream.writer(io, buf)` or operate on `stream.socket.handle` directly. |
+| `std.Io.File.Stat.atime` as `Timestamp` | Now `?Timestamp` (nullable — some filesystems don't track it). `.mtime` and `.ctime` are still non-null `Timestamp`; read the nanoseconds with `stat.mtime.nanoseconds`. |
+
+### Why this list exists
+
+Those are the ~30 traps a real migration of a 32k-line Zig codebase surfaced. All of them are mechanical if you know about them, and all of them will waste a compile-fix-recompile cycle per occurrence if you don't.
+
+### ⚠️ One post-migration trap that doesn't surface at compile time
+
+**`std.Io.Threaded.global_single_threaded.io()` is backed by an `Io` whose `allocator` field is `Allocator.failing`.** The stdlib doc comment says it "does not support concurrency or cancelation" — the less-obvious corollary is that **any Io vtable operation that allocates internally will return `error.OutOfMemory`**, even when the program has plenty of memory.
+
+The singleton is appropriate for:
+- clock ops (`Clock.Timestamp.now`, `Duration.fromMilliseconds`)
+- sleep (`std.Io.sleep`)
+- futex (`std.Io.futexWait`/`WaitTimeout`/`Wake`)
+- entropy (`io.random`)
+- simple syscall-ish `std.Io.Dir` / `std.Io.File` ops where the caller passes an explicit allocator parameter (`openFile`, `createFile`, `createDirPath`, `statFile`, `deleteFile`, `readFileAlloc(io, path, gpa, limit)`) — the vtable impls dispatch straight to syscalls
+
+The singleton is **NOT** appropriate for:
+- `std.process.spawn` / `run` / `replace` — these allocate argv/envp marshalling buffers through `io.allocator` and silently fail with `OutOfMemory` on the singleton
+- Any `Io`-aware helper whose internals marshal into C-style pointer arrays or temp buffers through the `Io` allocator surface
+
+**The lesson:** treat the singleton as "safe for leaf syscalls, not safe as a general `Io`". App-boundary code (anything that spawns, async-launches, or does networking of any real complexity) should thread a real `init.io` from Juicy Main through the call chain. Rule of thumb: if the `Io` operation you're calling returns `error.OutOfMemory` as a possible error, it allocates — don't hand it the singleton.
+
+### What to do next
+
+1. If you're about to write Zig code for this codebase, skim this document's **Migration Cheat Sheet** (section near the end) and **Common Bad Assumptions from 0.15.x** (final content section) for any patterns not covered above. Both are denser than this summary.
+2. When in doubt, read the installed stdlib directly. `zig env` prints `std_dir`; grep or read the actual source. No amount of prose documentation is as authoritative as the types the compiler actually sees.
+3. If you hit an API shape not covered anywhere in this document, it's probably still correct to just use the pre-0.15 shape — but verify against stdlib first.
+
+---
+
 ## Table of Contents
 
 1. [The One Big Theme: I/O as an Interface](#the-one-big-theme-io-as-an-interface)
@@ -78,6 +147,38 @@ const io = threaded.io();
 ```
 
 …but prefer to accept `io: Io` as a parameter (like `allocator: Allocator`). For tests, use `std.testing.io` (like `std.testing.allocator`).
+
+### Library leaf-code escape hatch: `std.Io.Threaded.global_single_threaded`
+
+If you're library code that needs `Io` only for a few narrow calls (a single futex, a one-off timestamp read, a stat) and threading an `io: Io` parameter through your public API would be architectural damage, stdlib provides its own process-wide singleton at `Io/Threaded.zig:1704`:
+
+```zig
+pub const global_single_threaded: *Threaded = &global_single_threaded_instance;
+```
+
+With the doc comment explicitly sanctioning this use case:
+
+> In general, the application is responsible for choosing the `Io` implementation and library code should accept an `Io` parameter rather than accessing this declaration. …However, in some cases such as debugging, it is desirable to hardcode a reference to this `Io` implementation. This instance does not support concurrency or cancelation.
+
+Usage:
+
+```zig
+const io = std.Io.Threaded.global_single_threaded.io();
+std.Io.futexWake(io, u32, futex_ptr, 1);
+```
+
+**What "does not support concurrency or cancelation" actually means:** no async submission queue, no internal worker pool, no cancel-safe operation tracking. It does **not** mean "unsafe to call from multiple OS threads." The vtable functions for futex/file/timestamp dispatch through to plain syscalls — `Threaded.futexWait` at `Io/Threaded.zig:2515` uses the `Threaded` pointer only to rebuild the `Io` struct for `Timeout` duration conversion, then drops straight to a bare `Thread.futexWait(ptr, expected, timeout_ns)` syscall. No `Threaded` state is touched across concurrent callers.
+
+**When to use it:**
+- Library code needing `Io` for narrow leaf operations (futex, stat, mkdir, timestamp) and not wanting to inflate its public API
+- Debug / init-time code where threading `io` through would be noise
+- Tests that need an `io` but don't want to set up their own `Threaded` (though `std.testing.io` is usually nicer)
+
+**When NOT to use it:**
+- Anywhere you need async/await, concurrent, or cancel-safe semantics
+- Anywhere the library could plausibly be consumed by code that wants to swap in a different `Io` implementation — use a parameter instead
+
+**Lifecycle:** no `deinit` required. The singleton's backing `init_single_threaded` is a pure const struct literal — `allocator = .failing`, `async_limit = .nothing`, `have_signal_handler = false`. The doc explicitly says `deinit` is safe but unnecessary to call.
 
 ---
 
@@ -342,6 +443,28 @@ std.ArrayHashMapUnmanaged     → std.array_hash_map.Custom
 std.AutoArrayHashMapUnmanaged → std.array_hash_map.Auto
 std.StringArrayHashMapUnmanaged → std.array_hash_map.String
 ```
+
+**Migrating managed → unmanaged is not a pure rename.** If your code used the managed variant, callers must also:
+
+- initialize with the `.empty` decl literal (not `.init(allocator)`)
+- pass the allocator to every mutating op (`put`, `remove`, `ensureTotalCapacity`, …)
+- pass the allocator to `deinit`
+
+```zig
+// 0.15 — managed
+var m = std.StringArrayHashMap(V).init(allocator);
+defer m.deinit();
+try m.put("k", v);
+_ = m.remove("k");
+
+// 0.16 — unmanaged + rename
+var m: std.array_hash_map.String(V) = .empty;
+defer m.deinit(allocator);
+try m.put(allocator, "k", v);
+_ = m.orderedRemove(m.getIndex("k").?);
+```
+
+Read-only ops (`get`, `contains`, `count`, `keys`, `values`, `iterator`) do not require the allocator. The regular (non-array) hashmap family (`std.StringHashMap`, `std.AutoHashMap`) is **not** removed and still offers managed variants.
 
 `fmt` module renames:
 
@@ -1417,6 +1540,10 @@ A concentrated "what do I grep for?" table:
 
 | 0.15 symbol | 0.16 replacement |
 |---|---|
+| `std.heap.GeneralPurposeAllocator(.{}){}` | `std.heap.DebugAllocator(.{})` (still does leak detection) or `init.gpa` from Juicy Main |
+| `std.process.argsAlloc(allocator)` | `init.minimal.args.toSlice(arena)` or `init.args.iterate()` |
+| `std.process.argsWithAllocator(allocator)` | same as above — both 0.15 spellings are gone |
+| `file.readToEndAlloc(allocator, max)` | `var fr = file.reader(io, &.{}); try fr.interface.allocRemaining(allocator, .limited(max))` (caps via `Io.Limit`; cap-breach error is `error.StreamTooLong`) |
 | `@Type(.{ .int = .{ ... } })` | `@Int(sign, bits)` |
 | `@Type(.{ .@"struct" = .{...} })` | `@Struct(...)` |
 | `@Type(.{ .@"union" = .{...} })` | `@Union(...)` |
@@ -1445,23 +1572,36 @@ A concentrated "what do I grep for?" table:
 | `std.process.getCwd` | `std.process.currentPath(io, ...)` |
 | `std.process.Child.run(...)` | `std.process.run(allocator, io, .{ ... })` |
 | `std.process.execv(arena, argv)` | `std.process.replace(io, .{ .argv = argv })` |
+Note: in 0.16, **`std.time` is just unit constants** (`ns_per_ms`, `ns_per_s`, `us_per_ms`, `ms_per_s`, etc.) plus the `epoch` submodule. `Instant`, `Timer`, `timestamp()`, `milliTimestamp()`, `nanoTimestamp()` — all gone. And `std.Thread` no longer exports sync primitives: `Mutex`, `Condition`, `ResetEvent`, `Semaphore`, `RwLock`, `WaitGroup`, `Pool`, **`Futex`** — all removed from `std.Thread`. The replacements live under `std.Io` (and `std.Io.futex*` for futex ops — see the Futex rows below; there is no `std.Io.Futex` type).
+
 | `std.Thread.Mutex` | `std.Io.Mutex` |
 | `std.Thread.Condition` | `std.Io.Condition` |
 | `std.Thread.ResetEvent` | `std.Io.Event` |
 | `std.Thread.WaitGroup` | `std.Io.Group` |
 | `std.Thread.Semaphore` | `std.Io.Semaphore` |
 | `std.Thread.RwLock` | `std.Io.RwLock` |
-| `std.Thread.Futex` | `std.Io.Futex` |
+| `std.Thread.Futex.wait(ptr, expected)` | `std.Io.futexWait(io, T, ptr, expected)` (free fn; no `std.Io.Futex` type) |
+| `std.Thread.Futex.timedWait(ptr, expected, ns)` | `std.Io.futexWaitTimeout(io, T, ptr, expected, Timeout)` |
+| `std.Thread.Futex.wake(ptr, n)` | `std.Io.futexWake(io, T, ptr, n)` |
 | `std.Thread.Pool` | `std.Io.async` / `std.Io.Group` |
-| `std.time.Instant` | `std.Io.Timestamp` |
-| `std.time.Timer` | `std.Io.Timestamp` |
-| `std.time.timestamp` | `std.Io.Timestamp.now` |
+| `std.Thread.sleep(ns)` | `std.Io.sleep(io, Clock.Duration.fromMilliseconds(N), .awake)` — sleep moved to the Io interface along with the sync primitives |
+| `std.time.Instant.now()` + `.since(other)` | `std.Io.Clock.Timestamp.now(io, .awake)` + `.durationTo(other).raw.toNanoseconds()` |
+| `std.time.Timer.start()` + `timer.read()` | same as `Instant` above |
+| `std.time.timestamp()` | `std.Io.Clock.Timestamp.now(io, .real).raw.toSeconds()` |
+| `std.time.milliTimestamp()` | `std.Io.Clock.Timestamp.now(io, .real).raw.toMilliseconds()` |
+| `std.time.nanoTimestamp()` | `std.Io.Clock.Timestamp.now(io, .real).raw.toNanoseconds()` |
 | `std.crypto.random.bytes(&buf)` | `io.random(&buf)` |
 | `std.posix.getrandom(&buf)` | `io.random(&buf)` |
 | `std.crypto.random` (interface) | `std.Random.IoSource{.io = io}.interface()` |
 | `std.posix.mlock(slice)` | `std.process.lockMemory(slice, .{})` |
 | `std.posix.mlockall(...)` | `std.process.lockMemoryAll(...)` |
-| `std.posix.PROT.READ | std.posix.PROT.WRITE` | `.{ .READ = true, .WRITE = true }` |
+| `std.posix.PROT.READ \| std.posix.PROT.WRITE` | `.{ .READ = true, .WRITE = true }` — **type change, not syntax rename**: `PROT` is now a packed struct (`macho.vm_prot_t` on macOS), not a namespace of integer decls. `posix.mmap`'s `prot` parameter is the struct type, not `u32`. |
+| `std.posix.close(fd)` | Low-level: `_ = std.c.close(fd)` (returns `c_int`, ignored for the usual void contract). High-level: `std.Io.File.close(io, file)`. |
+| `std.posix.fstat(fd)` | Low-level: `var st: std.c.Stat = undefined; if (std.c.fstat(fd, &st) != 0) return err;`. High-level: `file.stat(io)`. |
+| `std.posix.ftruncate(fd, len)` | Low-level: `if (std.c.ftruncate(fd, len) != 0) return err;`. High-level: `file.setLength(io, len)`. |
+| `std.posix.fsync(fd)` | Low-level: `if (std.c.fsync(fd) != 0) return err;`. High-level: `file.sync(io)`. (Note: `std.posix.fdatasync` **did** survive — Linux-optimized path.) |
+| `std.posix.unlink(path)` | Low-level: `_ = std.c.unlink(path)` — takes `[*:0]const u8`, so `[:0]`-terminated slices work via `.ptr`. High-level: `std.Io.Dir.cwd().deleteFile(io, path)`. |
+| `std.posix.kill(pid, 0)` | Low-level: `std.c.kill(pid, @enumFromInt(0))` — `std.posix.kill`'s `sig` parameter is the typed `SIG` enum with no named `0` variant on macOS; the `c.kill` extern takes the enum value by ABI so `@enumFromInt(0)` works for the POSIX null-signal existence check. |
 | `std.ArrayHashMap(...)` | *(removed; use unmanaged)* |
 | `std.AutoArrayHashMapUnmanaged` | `std.array_hash_map.Auto` |
 | `std.StringArrayHashMapUnmanaged` | `std.array_hash_map.String` |
@@ -1594,7 +1734,7 @@ Naming changes you may encounter in helper code:
 - `std.fmt.format` → `std.Io.Writer.print`
 - `std.fmt.FormatOptions` → `std.fmt.Options`
 
-The format specifier grammar (`{[pos][spec]:[fill][align][width].[prec]}`) and the set of specifiers (`{s} {c} {d} {x} {X} {o} {b} {e} {E} {u} {any} {f} {*}`) is unchanged from 0.15. See the "Zig Format Specifiers Guide" at the bottom of `ZIG-0.15.2.md` — it still applies verbatim in 0.16, except:
+The format specifier grammar (`{[pos][spec]:[fill][align][width].[prec]}`) and the set of specifiers (`{s} {c} {d} {x} {X} {o} {b} {e} {E} {u} {any} {f} {*}`) is unchanged from 0.15. Differences in 0.16:
 
 - If you were using `std.io.fixedBufferStream`, switch to `std.Io.Reader.fixed` / `std.Io.Writer.fixed`.
 - If you were using `std.fmt.format` to a writer, that's `std.Io.Writer.print` now.
@@ -1657,6 +1797,11 @@ Things that *were* true in 0.15 and are **no longer** true in 0.16 — these are
 16. **"`std.mem.trimLeft` / `trimRight` are still the names."** — They were renamed to `trimStart` / `trimEnd` in 0.16. Plain `trim` is unchanged.
 17. **"If I migrate `page_allocator` → `init.gpa`, nothing runtime-visible changes."** — Wrong on **two** dimensions. (a) `init.gpa` is `DebugAllocator` in Debug and dumps leak traces to stderr at exit. Exit code stays 0 but stderr fills up. (b) DebugAllocator tracking is O(n) in live allocations, which can make allocation-heavy programs **hundreds to thousands of times slower** in Debug. For short-lived CLIs, `init.arena.allocator()` is the correct default. See the ⚠️ section under Juicy Main.
 18. **"My short-lived CLI should use `init.gpa` because it's the idiomatic 0.16 default."** — Only if you actually need leak tracking. `init.arena.allocator()` is both **faster in Debug** (no per-allocation bookkeeping) and **cleaner** (no leak spam) for programs that do one computation and exit.
+19. **"`std.Thread.Futex` just got renamed to `std.Io.Futex`."** — No — `std.Thread.Futex` was **removed**, and `std.Io.Futex` does not exist. The replacements are three **free functions** on `std.Io`: `futexWait`, `futexWaitTimeout`, `futexWake`. Each takes `io: Io` as the first argument and a `*align(@alignOf(u32)) const T` where `T` is 4 bytes. Library code without an `Io` to thread through can use `std.Io.Threaded.global_single_threaded.io()` for the futex call — stdlib's blessed singleton for exactly this purpose.
+20. **"`std.posix.PROT.READ` still works, I just have to use struct syntax at the call site."** — The syntax change is the visible part, but the underlying story is a **type change**: on macOS `PROT` is now `macho.vm_prot_t = packed struct(u32) { READ: bool, WRITE: bool, ... }`. `PROT.READ` was a decl constant in 0.15; in 0.16 it's a field access on a struct type, which doesn't compile as a decl reference. And `std.posix.mmap`'s `prot` parameter is now the struct type itself, not `u32`, so `@intCast(PROT.READ)` no longer works either. The working form is `.{ .READ = true, .WRITE = true }` passed directly.
+21. **"A bunch of `std.posix.*` functions just got renamed."** — No — several mid-level wrappers were **removed entirely**. Specifically: `close`, `fstat`, `ftruncate`, `fsync`, `unlink`, `kill`'s integer-sig form. `std.posix` in 0.16 is deliberately thinner. The two migration paths are: **high-level** — move the caller to `std.Io.File.*` / `std.Io.Dir.*` with an `io: Io` parameter (the idiomatic 0.16 shape), or **low-level** — drop to `std.c.*` externs (return `c_int` with POSIX 0/−1 contract, caller checks). The low-level path is appropriate when an OS-abstraction layer already exists and you don't want `io` plumbing to leak into it. Notably, **`std.posix.fdatasync`, `mmap`, `munmap`, `msync`, `madvise`, `openatZ`, and `kill` (with `SIG` enum)** survived as-is.
+22. **"`std.posix.kill(pid, 0)` still checks if a process is alive."** — The `sig: SIG` parameter is now a typed enum (on macOS an open `enum(u32) { _, ... }` with no named `0` variant). The POSIX null-signal semantics are still valid at the syscall, but Zig's type surface rejects the bare `0`. The idiomatic workaround for the process-existence check is `std.c.kill(pid, @enumFromInt(0))` — the libc extern takes the enum value via the C ABI, and signal number 0 remains the null signal.
+23. **"I can write `/// ...` documentation before a `test \"...\"` block."** — 0.15 allowed it; 0.16 rejects it with **"documentation comments cannot be attached to tests"**. Use plain `//` for comments preceding tests. Module-level `//!` at the top of a file is still fine. This is a small but common port regression — test files that had doc comments explaining each test block need a mechanical `///` → `//` on those lines only.
 
 ---
 
