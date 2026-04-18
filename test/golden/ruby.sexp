@@ -561,6 +561,21 @@
     (alt
       ((tok `SYMBOL`)))
     (alt
+      ((ref `literal_kw`)))
+    (alt
+      ((ref `lambda`)))
+    (alt
+      ((ref `array`)))
+    (alt
+      ((ref `hash`)))
+    (alt
+      ((lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      `2`))
+  (rule
+    (name `literal_kw`)
+    (alt
       ((tok `TRUE`))
       `(true)`)
     (alt
@@ -580,18 +595,7 @@
       `(__LINE__)`)
     (alt
       ((tok `KW__ENCODING__`))
-      `(__ENCODING__)`)
-    (alt
-      ((ref `lambda`)))
-    (alt
-      ((ref `array`)))
-    (alt
-      ((ref `hash`)))
-    (alt
-      ((lit `"("`)
-        (ref `expr`)
-        (lit `")"`))
-      `2`))
+      `(__ENCODING__)`))
   (rule
     (name `lambda`)
     (alt

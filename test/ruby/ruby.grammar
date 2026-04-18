@@ -547,17 +547,25 @@ primary  = IDENT
          | STRING_DQ
          | dstring
          | SYMBOL
-         | TRUE                             → (true)
-         | FALSE                            → (false)
-         | NIL                              → (nil)
-         | SELF                             → (self)
-         | KW__FILE__                       → (__FILE__)
-         | KW__LINE__                       → (__LINE__)
-         | KW__ENCODING__                   → (__ENCODING__)
+         | literal_kw
          | lambda
          | array
          | hash
          | "(" expr ")"                     → 2
+
+# --- Atomic keyword literals ---
+#
+# Each keyword stands on its own as a nullary Sexp. Grouped into a named
+# rule so the choice set has a single place to grow and `primary` reads
+# as one concept instead of a cascade.
+
+literal_kw = TRUE                           → (true)
+           | FALSE                          → (false)
+           | NIL                            → (nil)
+           | SELF                           → (self)
+           | KW__FILE__                     → (__FILE__)
+           | KW__LINE__                     → (__LINE__)
+           | KW__ENCODING__                 → (__ENCODING__)
 
 # ==============================================================================
 # LAMBDA — -> { } and ->(params) { }
