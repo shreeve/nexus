@@ -2119,6 +2119,292 @@ const LexerGenerator = struct {
         try self.generatePrefixScanners();
     }
 
+    /// Top-of-matchRules preemption for rules whose pattern begins with a
+    /// multi-char literal (optionally followed by a class-suffix continuation).
+    /// Runs BEFORE string scanners, punct-ident, compound-literal, number/ident
+    /// fast-paths, and the operator switch.
+    ///
+    /// Resolves two shadowing bugs surfaced by slash:
+    ///   - `"'''" → heredoc_sq` was silently dropped because the sq-string
+    ///     scanner (triggered by leader `'`) fired first and consumed the
+    ///     triple quotes as an escape-and-unterminated error.
+    ///   - `"???" → missing` was preempted by the `[*?]...` punct-ident
+    ///     dispatch consuming `?` as a len-1 ident.
+    ///
+    /// Also fills the shape gap left by `generatePrefixScanners` (single-char
+    /// literal prefix + class) for multi-char literal prefix + class:
+    /// e.g. `"```" [a-zA-Z][a-zA-Z0-9]* → heredoc_bt`.
+    ///
+    /// Emission rules:
+    ///   - Pattern must start with a literal of length >= 2.
+    ///   - Optional suffix: `[class]` (single char) or `[class1][class2]*` or
+    ///     `[class1][class2]+`. Single literal chars after the prefix are NOT
+    ///     supported here (those are operator-switch territory).
+    ///   - Per first-byte bucket: rules emitted longest-first (longer prefix
+    ///     wins; with-suffix wins over without at same prefix length; then
+    ///     source order). Matches the standard maximal-munch + source-order
+    ///     tiebreak rule for lexer alternatives.
+    ///   - Guards (if any) are emitted as an inner `if`; on guard-false,
+    ///     control falls through to the next candidate / next leader.
+    ///   - No match: pos is untouched; control falls through to the rest of
+    ///     matchRules.
+    fn generateMultiCharLiteralPreemption(self: *LexerGenerator) !void {
+        const Suffix = struct {
+            startChars: [256]bool,
+            contChars: [256]bool,
+            hasCont: bool,
+            contQuantPlus: bool, // true for +, false for *
+        };
+        const Rule = struct {
+            prefix: [8]u8,
+            prefixLen: u8,
+            hasSuffix: bool,
+            suffix: Suffix,
+            token: []const u8,
+            guards: []const Guard,
+        };
+
+        // Compute the "shadowing leader" set for this grammar — first-bytes
+        // where an earlier dispatch stage would preempt the operator switch:
+        //   - String scanner (first-byte of any string-token rule)
+        //   - Punct-ident dispatch (first-byte of any punct-ident rule)
+        //   - Compound-literal dispatch (first-byte of any compound rule:
+        //     `'X' 'X'? [class]...`)
+        // Multi-char literals on NON-shadowing leaders don't need preemption;
+        // the operator switch handles them correctly. We emit preemption only
+        // for shadowing leaders to avoid duplicating dispatch for every
+        // trivial multi-char operator.
+        var shadowing: [256]bool = @splat(false);
+        for (self.spec.rules.items) |gr| {
+            if (!std.mem.startsWith(u8, gr.token, "string")) continue;
+            if (gr.guards.len > 0) continue;
+            if (gr.pattern.len >= 3 and (gr.pattern[0] == '\'' or gr.pattern[0] == '"')) {
+                shadowing[gr.pattern[1]] = true;
+            }
+        }
+        {
+            var pir = try collectPunctIdentRules(self.spec);
+            const pirSlice = pir.rules[0..pir.count];
+            for (pirSlice) |*r| {
+                for (0..256) |c| {
+                    if (r.startChars[c]) shadowing[c] = true;
+                }
+            }
+        }
+        for (self.spec.rules.items) |gr| {
+            if (gr.pattern.len < 4) continue;
+            if (gr.pattern[0] != '\'' and gr.pattern[0] != '"') continue;
+
+            // Compound-literal leader: pattern starts with `'X' 'X'?`
+            // (handled by generateCompoundLiteralDispatch).
+            if (gr.pattern.len >= 7 and gr.pattern[0] == '\'' and gr.pattern[2] == '\'') {
+                var p: usize = 3;
+                while (p < gr.pattern.len and gr.pattern[p] == ' ') p += 1;
+                if (p + 3 < gr.pattern.len and gr.pattern[p] == '\'' and
+                    gr.pattern[p + 2] == '\'' and gr.pattern[p + 3] == '?')
+                {
+                    shadowing[gr.pattern[1]] = true;
+                }
+            }
+
+            // Multi-char literal prefix with class-suffix continuation:
+            // `"LIT" [class]...` shapes. The operator switch can't emit
+            // class-suffix consumption, so mark the leader as needing
+            // preemption even if no other dispatch shadows it.
+            const delim = gr.pattern[0];
+            var i: usize = 1;
+            var plen: u8 = 0;
+            while (i < gr.pattern.len and gr.pattern[i] != delim) : (i += 1) {
+                if (gr.pattern[i] == '\\' and i + 1 < gr.pattern.len) i += 1;
+                plen += 1;
+                if (plen > 8) break;
+            }
+            if (i >= gr.pattern.len or plen < 2) continue;
+            const after = std.mem.trimStart(u8, gr.pattern[i + 1 ..], " ");
+            if (after.len > 0 and after[0] == '[') {
+                // Multi-char literal followed by class: shadowing leader.
+                shadowing[gr.pattern[1]] = true;
+            }
+        }
+
+        var rules: std.ArrayListUnmanaged(Rule) = .empty;
+        defer rules.deinit(self.allocator);
+
+        for (self.spec.rules.items) |gr| {
+            // Parse literal prefix using the same rules as parseLiteralPattern,
+            // but accept trailing non-empty pattern content (a class suffix).
+            if (gr.pattern.len < 4) continue; // need at least delim + 2 prefix chars + delim
+            if (gr.pattern[0] != '\'' and gr.pattern[0] != '"') continue;
+            const delim = gr.pattern[0];
+
+            var prefixChars: [8]u8 = undefined;
+            var prefixLen: u8 = 0;
+            var i: usize = 1;
+            var closed = false;
+            while (i < gr.pattern.len) : (i += 1) {
+                if (gr.pattern[i] == delim) {
+                    closed = true;
+                    i += 1;
+                    break;
+                }
+                if (prefixLen >= 8) break;
+                if (gr.pattern[i] == '\\' and i + 1 < gr.pattern.len) {
+                    prefixChars[prefixLen] = switch (gr.pattern[i + 1]) {
+                        'n' => '\n',
+                        'r' => '\r',
+                        't' => '\t',
+                        '\\' => '\\',
+                        '\'' => '\'',
+                        '"' => '"',
+                        else => gr.pattern[i + 1],
+                    };
+                    i += 1; // consume second char; loop's +=1 handles the escape char
+                } else {
+                    prefixChars[prefixLen] = gr.pattern[i];
+                }
+                prefixLen += 1;
+            }
+            if (!closed or prefixLen < 2) continue;
+
+            // Selective filter: only emit preemption when the leader would
+            // actually be shadowed by an earlier dispatch.
+            if (!shadowing[prefixChars[0]]) continue;
+
+            // Skip rules with dedicated earlier dispatches or with actions
+            // that the preemption block wouldn't reproduce:
+            //   - "string"-token rules: delimiter-scan loops, not literals.
+            //   - "newline" / "skip" tokens: handled by generateNewlineHandling
+            //     and the operator-switch `\\` arm respectively, both of
+            //     which also execute state mutations.
+            //   - Rules with actions (state mutations) beyond token return:
+            //     preemption only emits the return, so action-bearing rules
+            //     must stay in their original dispatch.
+            if (std.mem.startsWith(u8, gr.token, "string")) continue;
+            if (std.mem.eql(u8, gr.token, "newline")) continue;
+            if (std.mem.eql(u8, gr.token, "skip")) continue;
+            if (gr.actions.len > 0) continue;
+
+            // Optional suffix: [class] (single required) or [class1][class2]* etc.
+            var rest = gr.pattern[i..];
+            rest = std.mem.trimStart(u8, rest, " ");
+            var suffix: Suffix = .{
+                .startChars = @splat(false),
+                .contChars = @splat(false),
+                .hasCont = false,
+                .contQuantPlus = false,
+            };
+            var hasSuffix = false;
+            if (rest.len > 0) {
+                if (rest[0] != '[') continue; // unsupported suffix shape
+                const sc = parseCharClass(rest) orelse continue;
+                suffix.startChars = sc.chars;
+                hasSuffix = true;
+                var p: usize = sc.endPos;
+                while (p < rest.len and rest[p] == ' ') p += 1;
+                // Optional continuation class with * or +
+                if (p < rest.len and rest[p] == '[') {
+                    const cc = parseCharClass(rest[p..]) orelse continue;
+                    p += cc.endPos;
+                    if (p >= rest.len or (rest[p] != '*' and rest[p] != '+')) continue;
+                    suffix.contChars = cc.chars;
+                    suffix.hasCont = true;
+                    suffix.contQuantPlus = rest[p] == '+';
+                    p += 1;
+                }
+                const trailing = std.mem.trimStart(u8, rest[p..], " ");
+                if (trailing.len != 0) continue; // disallow more elements
+            }
+
+            try rules.append(self.allocator, .{
+                .prefix = prefixChars,
+                .prefixLen = prefixLen,
+                .hasSuffix = hasSuffix,
+                .suffix = suffix,
+                .token = gr.token,
+                .guards = gr.guards,
+            });
+        }
+
+        if (rules.items.len == 0) return;
+
+        // Group by first byte
+        var groups: [256]std.ArrayListUnmanaged(Rule) = @splat(.empty);
+        defer for (&groups) |*g| g.deinit(self.allocator);
+        for (rules.items) |r| try groups[r.prefix[0]].append(self.allocator, r);
+
+        // Sort each group: longer prefix first, with-suffix before without at
+        // same prefix length, then stable (source) order.
+        const sortFn = struct {
+            fn lt(_: void, a: Rule, b: Rule) bool {
+                if (a.prefixLen != b.prefixLen) return a.prefixLen > b.prefixLen;
+                if (a.hasSuffix != b.hasSuffix) return a.hasSuffix and !b.hasSuffix;
+                return false; // preserve source order
+            }
+        }.lt;
+
+        try self.write(
+            \\        // Multi-char literal preemption (heredoc delimiters,
+            \\        // triple-bang operators, etc.) — longest-first; falls
+            \\        // through on no match.
+            \\
+        );
+
+        for (0..256) |bi| {
+            const b: u8 = @intCast(bi);
+            const grp = &groups[b];
+            if (grp.items.len == 0) continue;
+
+            // Zig's std.sort.block is stable-ish; use insertion for tiny groups.
+            std.mem.sort(Rule, grp.items, {}, sortFn);
+
+            const lit = charToZigLiteral(b);
+            try self.print("        if (c == '{s}') {{\n", .{lit.buf[0..lit.len]});
+
+            for (grp.items) |r| {
+                // Build the full match condition. The leader (pos 0) is
+                // already c == first char; we need the remaining prefix chars
+                // to match at pos+1..pos+prefixLen-1, and (if suffix) the
+                // suffix start class to match at pos+prefixLen.
+                const minLen: u32 = @as(u32, r.prefixLen) + (if (r.hasSuffix) @as(u32, 1) else @as(u32, 0));
+
+                try self.print("            if (self.pos + {d} <= self.source.len", .{minLen});
+                for (1..r.prefixLen) |pi| {
+                    const pl = charToZigLiteral(r.prefix[pi]);
+                    try self.print(" and self.source[self.pos + {d}] == '{s}'", .{ pi, pl.buf[0..pl.len] });
+                }
+                if (r.hasSuffix) {
+                    // Single-required-char suffix start class.
+                    var ix: [64]u8 = undefined;
+                    const ixStr = try std.fmt.bufPrint(&ix, "self.source[self.pos + {d}]", .{r.prefixLen});
+                    try self.write(" and (");
+                    try emitCharSetCondition(self, r.suffix.startChars, ixStr);
+                    try self.write(")");
+                }
+                try self.write(") {\n");
+
+                const bodyIndent = if (r.guards.len > 0) "                " else "                ";
+                if (r.guards.len > 0) {
+                    try self.write("                if (");
+                    try self.emitAllGuards(r.guards);
+                    try self.write(") {\n");
+                }
+
+                try self.print("{s}self.pos += {d};\n", .{ bodyIndent, minLen });
+                if (r.hasSuffix and r.suffix.hasCont) {
+                    try self.print("{s}while (self.pos < self.source.len and (", .{bodyIndent});
+                    try emitCharSetCondition(self, r.suffix.contChars, "self.source[self.pos]");
+                    try self.write(")) self.pos += 1;\n");
+                }
+                try self.print("{s}return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};\n", .{ bodyIndent, r.token });
+
+                if (r.guards.len > 0) try self.write("                }\n");
+                try self.write("            }\n");
+            }
+
+            try self.write("        }\n");
+        }
+    }
+
     /// Emit pre-switch dispatch for rules of shape:
     ///     'X' 'X'? [class] [class]* ('=' [class]*)?  → token
     /// Example: Slash's flag rule `'-' '-'? [a-zA-Z][a-zA-Z0-9_-]* ('=' [\w./:@,+-]*)?`.
@@ -3153,6 +3439,13 @@ const LexerGenerator = struct {
                 \\
             );
         }
+
+        // Top-of-matchRules preemption for multi-char literal rules that
+        // would otherwise be shadowed by string scanners, punct-ident
+        // dispatches, etc. Handles `"'''"`, `"???"`, `` "```"[alpha]...``,
+        // and similar maximal-munch cases. Falls through cleanly when no
+        // literal matches at the current position.
+        try self.generateMultiCharLiteralPreemption();
 
         try self.generateScannerDispatch();
 

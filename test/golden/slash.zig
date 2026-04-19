@@ -236,6 +236,48 @@ pub const BaseLexer = struct {
         }
         // From here, clear line-start flag
         self.beg = 0;
+        // Multi-char literal preemption (heredoc delimiters,
+        // triple-bang operators, etc.) — longest-first; falls
+        // through on no match.
+        if (c == '"') {
+            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '"' and self.source[self.pos + 2] == '"') {
+                self.pos += 3;
+                return Token{ .cat = .@"heredoc_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+        }
+        if (c == '\'') {
+            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '\'' and self.source[self.pos + 2] == '\'') {
+                self.pos += 3;
+                return Token{ .cat = .@"heredoc_sq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+        }
+        if (c == '*') {
+            if (self.pos + 2 <= self.source.len and self.source[self.pos + 1] == '*') {
+                self.pos += 2;
+                return Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+        }
+        if (c == '?') {
+            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '?' and self.source[self.pos + 2] == '?') {
+                self.pos += 3;
+                return Token{ .cat = .@"missing", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+            if (self.pos + 2 <= self.source.len and self.source[self.pos + 1] == '?') {
+                self.pos += 2;
+                return Token{ .cat = .@"default_op", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+        }
+        if (c == '`') {
+            if (self.pos + 4 <= self.source.len and self.source[self.pos + 1] == '`' and self.source[self.pos + 2] == '`' and ((self.source[self.pos + 3] >= 'A' and self.source[self.pos + 3] <= 'Z') or (self.source[self.pos + 3] >= 'a' and self.source[self.pos + 3] <= 'z'))) {
+                self.pos += 4;
+                while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                return Token{ .cat = .@"heredoc_bt", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '`' and self.source[self.pos + 2] == '`') {
+                self.pos += 3;
+                return Token{ .cat = .@"heredoc_end", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+        }
         if (c == '"') {            self.pos += 1;
             while (self.pos < self.source.len) {
                 const ch = self.source[self.pos];

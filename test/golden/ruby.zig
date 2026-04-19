@@ -274,6 +274,16 @@ pub const BaseLexer = struct {
                 self.pos += 1;
                 return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
         }
+        // Multi-char literal preemption (heredoc delimiters,
+        // triple-bang operators, etc.) — longest-first; falls
+        // through on no match.
+        if (c == '@') {
+            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '@' and ((self.source[self.pos + 2] >= 'A' and self.source[self.pos + 2] <= 'Z') or self.source[self.pos + 2] == '_' or (self.source[self.pos + 2] >= 'a' and self.source[self.pos + 2] <= 'z'))) {
+                self.pos += 3;
+                while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                return Token{ .cat = .@"cvar", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            }
+        }
         if (c == '"') {            self.pos += 1;
             while (self.pos < self.source.len) {
                 const ch = self.source[self.pos];
