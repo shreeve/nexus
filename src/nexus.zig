@@ -2094,17 +2094,27 @@ const LexerGenerator = struct {
             if (numberHasLeadingDot) {
                 try self.write(" or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))");
             }
-            try self.write(
-                \\) {
-                \\            const tok = self.scanNumber(start, wsCount);
-                \\
-            );
-            try self.emitNumericSuffixReclassify("            ");
-            try self.write(
-                \\            return tok;
-                \\        }
-                \\
-            );
+            const nsr = try collectNumericSuffixRules(self.spec);
+            if (nsr.count > 0) {
+                try self.write(
+                    \\) {
+                    \\            const tok = self.scanNumber(start, wsCount);
+                    \\
+                );
+                try self.emitNumericSuffixReclassify("            ");
+                try self.write(
+                    \\            return tok;
+                    \\        }
+                    \\
+                );
+            } else {
+                try self.write(
+                    \\) {
+                    \\            return self.scanNumber(start, wsCount);
+                    \\        }
+                    \\
+                );
+            }
         }
 
         if (hasIdent) {

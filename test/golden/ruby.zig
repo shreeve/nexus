@@ -312,8 +312,7 @@ pub const BaseLexer = struct {
         }
         // Number
         if (isDigit(c)) {
-            const tok = self.scanNumber(start, wsCount);
-            return tok;
+            return self.scanNumber(start, wsCount);
         }
         // Identifier
         if (isLetter(c)) {

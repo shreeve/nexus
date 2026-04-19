@@ -240,8 +240,7 @@ pub const BaseLexer = struct {
         }
         // Number (digit or leading dot followed by digit)
         if (isDigit(c) or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-            const tok = self.scanNumber(start, wsCount);
-            return tok;
+            return self.scanNumber(start, wsCount);
         }
         // Identifier
         if (isLetter(c)) {
