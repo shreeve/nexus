@@ -1600,6 +1600,7 @@ const LexerGenerator = struct {
         token: []const u8,
         startChars: [256]bool,
         contChars: [256]bool,
+        requireOne: bool, // true for `+` quantifier, false for `*`
         guards: []const Guard,
     };
 
@@ -1641,7 +1642,10 @@ const LexerGenerator = struct {
             if (hasAlpha) continue;
             if (!hasPunct) continue;
 
-            // Must have [class]* or [class]+ continuation.
+            // Must have [class]* or [class]+ continuation. `*` allows zero
+            // continuation chars (bare leader tokenizes as len-1 ident);
+            // `+` requires at least one, which becomes a pre-commit peek
+            // gate in the emitted dispatch.
             var pos = cc.endPos;
             while (pos < rule.pattern.len and rule.pattern[pos] == ' ') pos += 1;
             if (pos >= rule.pattern.len or rule.pattern[pos] != '[') continue;
@@ -1649,6 +1653,7 @@ const LexerGenerator = struct {
             pos += cont.endPos;
             if (pos >= rule.pattern.len or
                 (rule.pattern[pos] != '*' and rule.pattern[pos] != '+')) continue;
+            const requireOne = rule.pattern[pos] == '+';
 
             if (count >= result.len) {
                 std.debug.print("error: too many punct-ident rules (max {d})\n", .{result.len});
@@ -1658,6 +1663,7 @@ const LexerGenerator = struct {
                 .token = rule.token,
                 .startChars = cc.chars,
                 .contChars = cont.chars,
+                .requireOne = requireOne,
                 .guards = rule.guards,
             };
             count += 1;
@@ -2279,19 +2285,35 @@ const LexerGenerator = struct {
                 try self.write(") {\n");
             }
 
-            // Continuation peek. Must have at least one char matching the
-            // per-rule continuation class after the start char; otherwise
-            // fall through. We emit a literal membership check rather than
-            // using isIdentChar, so guarded rules with rare continuation
-            // chars (e.g. globs with '*', '?') don't pollute the shared
-            // helper.
             const inner = if (r.guards.len > 0) "                " else "            ";
-            try self.print("{s}const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;\n", .{inner});
-            try self.print("{s}if (", .{inner});
-            try emitCharSetCondition(self, r.contChars, "nc");
-            try self.print(") {{\n{s}    self.pos += 1;\n{s}    while (self.pos < self.source.len and (", .{ inner, inner });
+
+            // For `+` quantifier: require at least one continuation char
+            // before committing. Emit a pre-commit peek gate; if it fails,
+            // control falls through without consuming the leader.
+            // For `*` quantifier: commit unconditionally — the start-char
+            // match plus any guard is sufficient; the while-loop naturally
+            // handles zero-or-more continuation.
+            //
+            // We emit literal membership checks rather than using the shared
+            // isIdentChar helper, so guarded rules with rare continuation
+            // chars (e.g. globs with '*', '?') don't pollute the shared
+            // continuation set.
+            if (r.requireOne) {
+                try self.print("{s}const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;\n", .{inner});
+                try self.print("{s}if (", .{inner});
+                try emitCharSetCondition(self, r.contChars, "nc");
+                try self.print(") {{\n", .{});
+            }
+
+            const body = if (r.requireOne)
+                (if (r.guards.len > 0) "                    " else "                ")
+            else
+                inner;
+            try self.print("{s}self.pos += 1;\n{s}while (self.pos < self.source.len and (", .{ body, body });
             try emitCharSetCondition(self, r.contChars, "self.source[self.pos]");
-            try self.print(")) self.pos += 1;\n{s}    return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};\n{s}}}\n", .{ inner, r.token, inner });
+            try self.print(")) self.pos += 1;\n{s}return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};\n", .{ body, r.token });
+
+            if (r.requireOne) try self.print("{s}}}\n", .{inner});
 
             // Close guard block if present
             if (r.guards.len > 0) try self.write("            }\n");
