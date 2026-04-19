@@ -18,7 +18,7 @@ const Allocator = std.mem.Allocator;
 // driven machinery it emits for downstream languages.
 const ngp = @import("parser.zig");
 
-const version = "0.9.0";
+const version = "0.9.1";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
@@ -872,6 +872,11 @@ const LexerGenerator = struct {
     spec: *const LexerSpec,
     output: std.Io.Writer.Allocating,
 
+    // Rules whose tokenization is emitted at the top of matchRules by
+    // generateMultiCharLiteralPreemption. generateOperatorSwitch skips
+    // these so the same multi-char literal isn't handled twice.
+    preemptedRules: std.ArrayListUnmanaged(usize) = .empty,
+
     fn structName(self: *const LexerGenerator) []const u8 {
         return if (self.spec.langName != null) "BaseLexer" else "Lexer";
     }
@@ -886,6 +891,14 @@ const LexerGenerator = struct {
 
     fn deinit(self: *LexerGenerator) void {
         self.output.deinit();
+        self.preemptedRules.deinit(self.allocator);
+    }
+
+    fn isRulePreempted(self: *const LexerGenerator, ruleIndex: usize) bool {
+        for (self.preemptedRules.items) |idx| {
+            if (idx == ruleIndex) return true;
+        }
+        return false;
     }
 
     fn write(self: *LexerGenerator, s: []const u8) !void {
@@ -1060,13 +1073,17 @@ const LexerGenerator = struct {
             }
         }
 
-        for (self.spec.rules.items) |rule| {
+        for (self.spec.rules.items, 0..) |rule, ri| {
             const info = parseLiteralPattern(rule.pattern) orelse continue;
             if (info.len == 0) continue;
             const fc = info.chars[0];
             if (fc == '\n' or fc == '\r') continue;
             if (fc == commentStartChar) continue;
             if (stringStartChars[fc]) continue;
+            // Skip rules already emitted by generateMultiCharLiteralPreemption.
+            // Keeps the operator switch from redundantly re-handling multi-char
+            // literals like MUMPS's `'=`, `'<` or slash's `???`, `??`.
+            if (self.isRulePreempted(ri)) continue;
 
             try groups[fc].append(self.allocator, .{
                 .chars = info.chars,
@@ -2320,22 +2337,29 @@ const LexerGenerator = struct {
             guards: []const Guard,
         };
 
-        // Compute the "shadowing leader" set for this grammar — first-bytes
-        // where an earlier dispatch stage would preempt the operator switch:
-        //   - String scanner (first-byte of any string-token rule)
-        //   - Punct-ident dispatch (first-byte of any punct-ident rule)
-        //   - Compound-literal dispatch (first-byte of any compound rule:
-        //     `'X' 'X'? [class]...`)
-        // Multi-char literals on NON-shadowing leaders don't need preemption;
-        // the operator switch handles them correctly. We emit preemption only
-        // for shadowing leaders to avoid duplicating dispatch for every
-        // trivial multi-char operator.
-        var shadowing: [256]bool = @splat(false);
+        // Compute the set of leaders whose multi-char literal rules would be
+        // shadowed by a non-operator-switch dispatch that runs earlier in
+        // matchRules. For these leaders, ALL multi-char literal rules must
+        // be hoisted into the preemption block — otherwise the shadowing
+        // dispatch consumes the leader before the switch sees it.
+        //
+        // Sources of shadowing:
+        //   - String scanner (delimiter-led open-ended loop)
+        //   - Punct-ident dispatch (paths, globs)
+        //   - Compound-literal dispatch (`'X' 'X'? [class]...`)
+        //
+        // Note: class-suffix rules (e.g. `"```" [a-zA-Z]...`) are handled
+        // separately — those are emitted in preemption regardless of
+        // shadowing because the operator switch can't emit class-suffix
+        // consumption. Marking their LEADER as globally shadowed would
+        // over-preempt sibling pure-literal rules on that leader (the MUMPS
+        // bug em flagged).
+        var trulyShadowed: [256]bool = @splat(false);
         for (self.spec.rules.items) |gr| {
             if (!std.mem.startsWith(u8, gr.token, "string")) continue;
             if (gr.guards.len > 0) continue;
             if (gr.pattern.len >= 3 and (gr.pattern[0] == '\'' or gr.pattern[0] == '"')) {
-                shadowing[gr.pattern[1]] = true;
+                trulyShadowed[gr.pattern[1]] = true;
             }
         }
         {
@@ -2343,50 +2367,28 @@ const LexerGenerator = struct {
             const pirSlice = pir.rules[0..pir.count];
             for (pirSlice) |*r| {
                 for (0..256) |c| {
-                    if (r.startChars[c]) shadowing[c] = true;
+                    if (r.startChars[c]) trulyShadowed[c] = true;
                 }
             }
         }
         for (self.spec.rules.items) |gr| {
-            if (gr.pattern.len < 4) continue;
-            if (gr.pattern[0] != '\'' and gr.pattern[0] != '"') continue;
-
             // Compound-literal leader: pattern starts with `'X' 'X'?`
-            // (handled by generateCompoundLiteralDispatch).
-            if (gr.pattern.len >= 7 and gr.pattern[0] == '\'' and gr.pattern[2] == '\'') {
-                var p: usize = 3;
-                while (p < gr.pattern.len and gr.pattern[p] == ' ') p += 1;
-                if (p + 3 < gr.pattern.len and gr.pattern[p] == '\'' and
-                    gr.pattern[p + 2] == '\'' and gr.pattern[p + 3] == '?')
-                {
-                    shadowing[gr.pattern[1]] = true;
-                }
-            }
-
-            // Multi-char literal prefix with class-suffix continuation:
-            // `"LIT" [class]...` shapes. The operator switch can't emit
-            // class-suffix consumption, so mark the leader as needing
-            // preemption even if no other dispatch shadows it.
-            const delim = gr.pattern[0];
-            var i: usize = 1;
-            var plen: u8 = 0;
-            while (i < gr.pattern.len and gr.pattern[i] != delim) : (i += 1) {
-                if (gr.pattern[i] == '\\' and i + 1 < gr.pattern.len) i += 1;
-                plen += 1;
-                if (plen > 8) break;
-            }
-            if (i >= gr.pattern.len or plen < 2) continue;
-            const after = std.mem.trimStart(u8, gr.pattern[i + 1 ..], " ");
-            if (after.len > 0 and after[0] == '[') {
-                // Multi-char literal followed by class: shadowing leader.
-                shadowing[gr.pattern[1]] = true;
+            if (gr.pattern.len < 7) continue;
+            if (gr.pattern[0] != '\'' or gr.pattern[2] != '\'') continue;
+            var p: usize = 3;
+            while (p < gr.pattern.len and gr.pattern[p] == ' ') p += 1;
+            if (p + 3 < gr.pattern.len and gr.pattern[p] == '\'' and
+                gr.pattern[p + 2] == '\'' and gr.pattern[p + 3] == '?')
+            {
+                trulyShadowed[gr.pattern[1]] = true;
             }
         }
 
-        var rules: std.ArrayListUnmanaged(Rule) = .empty;
+        const Collected = struct { rule: Rule, ruleIndex: usize };
+        var rules: std.ArrayListUnmanaged(Collected) = .empty;
         defer rules.deinit(self.allocator);
 
-        for (self.spec.rules.items) |gr| {
+        for (self.spec.rules.items, 0..) |gr, gi| {
             // Parse literal prefix using the same rules as parseLiteralPattern,
             // but accept trailing non-empty pattern content (a class suffix).
             if (gr.pattern.len < 4) continue; // need at least delim + 2 prefix chars + delim
@@ -2421,10 +2423,6 @@ const LexerGenerator = struct {
                 prefixLen += 1;
             }
             if (!closed or prefixLen < 2) continue;
-
-            // Selective filter: only emit preemption when the leader would
-            // actually be shadowed by an earlier dispatch.
-            if (!shadowing[prefixChars[0]]) continue;
 
             // Skip rules with dedicated earlier dispatches or with actions
             // that the preemption block wouldn't reproduce:
@@ -2471,14 +2469,27 @@ const LexerGenerator = struct {
                 if (trailing.len != 0) continue; // disallow more elements
             }
 
+            // Per-rule preemption decision: a rule goes into preemption iff
+            //   - Its leader is truly shadowed by an earlier dispatch, OR
+            //   - It has a class suffix (operator switch can't emit that shape)
+            // Pure multi-char literals on non-shadowed leaders continue to
+            // flow through the operator switch where they're already handled
+            // correctly — avoids the MUMPS-style duplication em flagged.
+            const needsPreemption = trulyShadowed[prefixChars[0]] or hasSuffix;
+            if (!needsPreemption) continue;
+
             try rules.append(self.allocator, .{
-                .prefix = prefixChars,
-                .prefixLen = prefixLen,
-                .hasSuffix = hasSuffix,
-                .suffix = suffix,
-                .token = gr.token,
-                .guards = gr.guards,
+                .rule = .{
+                    .prefix = prefixChars,
+                    .prefixLen = prefixLen,
+                    .hasSuffix = hasSuffix,
+                    .suffix = suffix,
+                    .token = gr.token,
+                    .guards = gr.guards,
+                },
+                .ruleIndex = gi,
             });
+            try self.preemptedRules.append(self.allocator, gi);
         }
 
         if (rules.items.len == 0) return;
@@ -2486,7 +2497,7 @@ const LexerGenerator = struct {
         // Group by first byte
         var groups: [256]std.ArrayListUnmanaged(Rule) = @splat(.empty);
         defer for (&groups) |*g| g.deinit(self.allocator);
-        for (rules.items) |r| try groups[r.prefix[0]].append(self.allocator, r);
+        for (rules.items) |c| try groups[c.rule.prefix[0]].append(self.allocator, c.rule);
 
         // Sort each group: longer prefix first, with-suffix before without at
         // same prefix length, then stable (source) order.
