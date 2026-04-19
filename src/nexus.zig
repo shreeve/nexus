@@ -2096,7 +2096,12 @@ const LexerGenerator = struct {
             }
             try self.write(
                 \\) {
-                \\            return self.scanNumber(start, wsCount);
+                \\            const tok = self.scanNumber(start, wsCount);
+                \\
+            );
+            try self.emitNumericSuffixReclassify("            ");
+            try self.write(
+                \\            return tok;
                 \\        }
                 \\
             );
@@ -2117,6 +2122,147 @@ const LexerGenerator = struct {
         // These must dispatch before the operator switch to avoid the prefix char being
         // consumed as a standalone operator token.
         try self.generatePrefixScanners();
+    }
+
+    const NumericSuffixRule = struct {
+        firstClass: [256]bool,      // Consumed by scanNumber
+        middle: [8]u8,
+        middleLen: u8,
+        hasSuffix: bool,            // Optional [class]+ after the middle
+        suffixClass: [256]bool,
+        token: []const u8,
+    };
+
+    /// Detect rules of shape `[class1]+ 'X'... ( [class2]+ )? → token` where
+    /// class1 is consumed by scanNumber (e.g. `[0-9]+`). Examples from slash:
+    ///   `[0-9]+ '>' → redir_fd_out`
+    ///   `[0-9]+ '<' → redir_fd_in`
+    ///   `[0-9]+ '>' '&' [0-9]+ → redir_fd_dup`
+    /// After scanNumber consumes the digit run, the emitter peeks for the
+    /// literal middle (and optional class-suffix), extending the token and
+    /// reclassifying its category when the suffix matches.
+    fn collectNumericSuffixRules(spec: *const LexerSpec) !struct {
+        rules: [8]NumericSuffixRule,
+        count: usize,
+    } {
+        var result: [8]NumericSuffixRule = undefined;
+        var count: usize = 0;
+
+        for (spec.rules.items) |rule| {
+            if (rule.guards.len > 0) continue;
+            if (rule.actions.len > 0) continue;
+            if (rule.pattern.len == 0 or rule.pattern[0] != '[') continue;
+
+            const firstCC = parseCharClass(rule.pattern) orelse continue;
+            var pos = firstCC.endPos;
+            if (pos >= rule.pattern.len or rule.pattern[pos] != '+') continue;
+            pos += 1;
+            while (pos < rule.pattern.len and rule.pattern[pos] == ' ') pos += 1;
+
+            // Must be digit-like: first class contains a digit, no alpha.
+            var hasAlpha = false;
+            var hasDigit = false;
+            for (0..256) |c| {
+                if (!firstCC.chars[c]) continue;
+                if ((c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_') hasAlpha = true;
+                if (c >= '0' and c <= '9') hasDigit = true;
+            }
+            if (hasAlpha or !hasDigit) continue;
+
+            // Literal middle: one or more `'X'` chars.
+            var middle: [8]u8 = undefined;
+            var middleLen: u8 = 0;
+            while (pos < rule.pattern.len and rule.pattern[pos] == '\'') {
+                if (pos + 2 >= rule.pattern.len or rule.pattern[pos + 2] != '\'') break;
+                if (middleLen >= middle.len) break;
+                middle[middleLen] = rule.pattern[pos + 1];
+                middleLen += 1;
+                pos += 3;
+                while (pos < rule.pattern.len and rule.pattern[pos] == ' ') pos += 1;
+            }
+            if (middleLen == 0) continue;
+
+            // Optional suffix: [class]+
+            var hasSuffix = false;
+            var suffixClass: [256]bool = @splat(false);
+            if (pos < rule.pattern.len and rule.pattern[pos] == '[') {
+                const sc = parseCharClass(rule.pattern[pos..]) orelse continue;
+                pos += sc.endPos;
+                if (pos >= rule.pattern.len or rule.pattern[pos] != '+') continue;
+                pos += 1;
+                suffixClass = sc.chars;
+                hasSuffix = true;
+                while (pos < rule.pattern.len and rule.pattern[pos] == ' ') pos += 1;
+            }
+            if (pos != rule.pattern.len) continue;
+
+            if (count >= result.len) {
+                std.debug.print("error: too many numeric-suffix rules (max {d})\n", .{result.len});
+                return error.Overflow;
+            }
+            result[count] = .{
+                .firstClass = firstCC.chars,
+                .middle = middle,
+                .middleLen = middleLen,
+                .hasSuffix = hasSuffix,
+                .suffixClass = suffixClass,
+                .token = rule.token,
+            };
+            count += 1;
+        }
+        return .{ .rules = result, .count = count };
+    }
+
+    /// Emit post-scanNumber peek-and-reclassify for numeric-suffix rules.
+    /// Placed at the number fast-path call site: if scanNumber returns an
+    /// integer token and the following chars match the literal middle
+    /// (and optional class suffix) of a rule, extend pos and reclassify.
+    /// Longest-first so `[0-9]+ '>' '&' [0-9]+` beats `[0-9]+ '>'`.
+    fn emitNumericSuffixReclassify(self: *LexerGenerator, indent: []const u8) !void {
+        const nsr = try collectNumericSuffixRules(self.spec);
+        if (nsr.count == 0) return;
+
+        // Sort: longer middle first, with-suffix before without at same length
+        const sortFn = struct {
+            fn lt(_: void, a: NumericSuffixRule, b: NumericSuffixRule) bool {
+                if (a.middleLen != b.middleLen) return a.middleLen > b.middleLen;
+                if (a.hasSuffix != b.hasSuffix) return a.hasSuffix and !b.hasSuffix;
+                return false;
+            }
+        }.lt;
+
+        var sorted = nsr.rules;
+        std.mem.sort(NumericSuffixRule, sorted[0..nsr.count], {}, sortFn);
+
+        try self.print("{s}if (tok.cat == .@\"integer\") {{\n", .{indent});
+        for (sorted[0..nsr.count]) |r| {
+            const middleLen: u32 = r.middleLen;
+            const minLen: u32 = middleLen + (if (r.hasSuffix) @as(u32, 1) else @as(u32, 0));
+
+            try self.print("{s}    if (self.pos + {d} <= self.source.len", .{ indent, minLen });
+            for (0..r.middleLen) |mi| {
+                const ml = charToZigLiteral(r.middle[mi]);
+                try self.print(" and self.source[self.pos + {d}] == '{s}'", .{ mi, ml.buf[0..ml.len] });
+            }
+            if (r.hasSuffix) {
+                var ix: [64]u8 = undefined;
+                const ixStr = try std.fmt.bufPrint(&ix, "self.source[self.pos + {d}]", .{r.middleLen});
+                try self.write(" and (");
+                try emitCharSetCondition(self, r.suffixClass, ixStr);
+                try self.write(")");
+            }
+            try self.print(") {{\n{s}        self.pos += {d};\n", .{ indent, minLen });
+            if (r.hasSuffix) {
+                try self.print("{s}        while (self.pos < self.source.len and (", .{indent});
+                try emitCharSetCondition(self, r.suffixClass, "self.source[self.pos]");
+                try self.write(")) self.pos += 1;\n");
+            }
+            try self.print(
+                "{s}        return Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) }};\n{s}    }}\n",
+                .{ indent, r.token, indent },
+            );
+        }
+        try self.print("{s}}}\n", .{indent});
     }
 
     /// Top-of-matchRules preemption for rules whose pattern begins with a

@@ -344,7 +344,23 @@ pub const BaseLexer = struct {
         }
         // Number (digit or leading dot followed by digit)
         if ((isDigit(c) and c != '2') or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
-            return self.scanNumber(start, wsCount);
+            const tok = self.scanNumber(start, wsCount);
+            if (tok.cat == .@"integer") {
+                if (self.pos + 3 <= self.source.len and self.source[self.pos + 0] == '>' and self.source[self.pos + 1] == '&' and ((self.source[self.pos + 2] >= '0' and self.source[self.pos + 2] <= '9'))) {
+                    self.pos += 3;
+                    while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9'))) self.pos += 1;
+                    return Token{ .cat = .@"redir_fd_dup", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+                if (self.pos + 1 <= self.source.len and self.source[self.pos + 0] == '>') {
+                    self.pos += 1;
+                    return Token{ .cat = .@"redir_fd_out", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+                if (self.pos + 1 <= self.source.len and self.source[self.pos + 0] == '<') {
+                    self.pos += 1;
+                    return Token{ .cat = .@"redir_fd_in", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+            }
+            return tok;
         }
         // Identifier
         if (isLetter(c)) {
