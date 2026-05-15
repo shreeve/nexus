@@ -18,75 +18,45 @@ const simd = struct {
 
 pub const TokenCat = enum(u8) {
     @"ident",
-    @"missing",
-    @"flag",
     @"integer",
-    @"real",
     @"string_sq",
     @"string_dq",
-    @"regex",
     @"variable",
     @"var_braced",
-    @"heredoc_sq",
-    @"heredoc_dq",
-    @"heredoc_bt",
-    @"heredoc_end",
-    @"heredoc_body",
-    @"herestring",
-    @"pipe",
-    @"pipe_err",
-    @"redir_out",
-    @"redir_append",
-    @"redir_in",
-    @"redir_err",
-    @"redir_err_app",
-    @"redir_both",
-    @"redir_dup",
-    @"redir_fd_out",
-    @"redir_fd_in",
-    @"redir_fd_dup",
+    @"dollar_paren",
+    @"at_paren",
     @"proc_sub_in",
     @"proc_sub_out",
-    @"dollar_paren",
-    @"and_sym",
-    @"or_sym",
-    @"not_sym",
-    @"xor",
-    @"bg",
-    @"semi",
-    @"eq",
-    @"ne",
-    @"le",
-    @"ge",
-    @"match",
-    @"nomatch",
-    @"plus",
-    @"minus",
-    @"star",
-    @"slash",
-    @"percent",
-    @"power",
-    @"assign",
-    @"plus_assign",
-    @"default_op",
     @"lparen",
-    @"lparen_tight",
     @"rparen",
     @"lbrace",
     @"rbrace",
-    @"list_start",
     @"lbracket",
     @"rbracket",
-    @"question",
-    @"comma",
-    @"backslash",
-    @"dollar",
+    @"semi",
+    @"and_and",
+    @"or_or",
+    @"amp",
+    @"pipe",
+    @"lt",
+    @"gt",
+    @"gt_gt",
+    @"amp_gt",
+    @"amp_gt_gt",
+    @"fd_lt",
+    @"fd_gt",
+    @"fd_dup_out",
+    @"fd_dup_in",
+    @"heredoc_open",
+    @"heredoc_open_lit",
+    @"heredoc_body",
+    @"assign",
+    @"name_eq",
     @"indent",
     @"outdent",
-    @"newline",
     @"comment",
-    @"eof",
     @"err",
+    @"eof",
 
     // Internal (used by generator)
     @"skip",
@@ -117,23 +87,17 @@ pub const BaseLexer = struct {
     pos: u32,
     aux: u16 = 0,
     // State variables
-    beg: i8,
-    heredoc: i8,
     paren: i8,
     brace: i8,
-    math: i8,
-    math_lhs: i8,
+    bracket: i8,
 
     pub fn init(source: []const u8) Self {
         return .{
             .source = source,
             .pos = 0,
-            .beg = 1,
-            .heredoc = 0,
             .paren = 0,
             .brace = 0,
-            .math = 0,
-            .math_lhs = 0,
+            .bracket = 0,
         };
     }
 
@@ -148,12 +112,9 @@ pub const BaseLexer = struct {
     /// Reset lexer to beginning
     pub fn reset(self: *Self) void {
         self.pos = 0;
-        self.beg = 1;
-        self.heredoc = 0;
         self.paren = 0;
         self.brace = 0;
-        self.math = 0;
-        self.math_lhs = 0;
+        self.bracket = 0;
     }
 
     /// Peek at current character (0 if at end)
@@ -176,17 +137,26 @@ pub const BaseLexer = struct {
     const DIGIT: u8 = 1 << 0;
     const LETTER: u8 = 1 << 1;
     const WHITESPACE: u8 = 1 << 2;
-    const IDENT_EXTRA: u8 = 1 << 3;
 
     const charFlags: [256]u8 = blk: {
         var table: [256]u8 = [_]u8{0} ** 256;
         for ('0'..'9' + 1) |c| table[c] = DIGIT;
         for ('A'..'Z' + 1) |c| table[c] = LETTER;
         for ('a'..'z' + 1) |c| table[c] = LETTER;
+        table['!'] = LETTER;
+        table['%'] = LETTER;
+        table['*'] = LETTER;
+        table['+'] = LETTER;
+        table[','] = LETTER;
+        table['-'] = LETTER;
+        table['.'] = LETTER;
+        table['/'] = LETTER;
+        table[':'] = LETTER;
+        table['?'] = LETTER;
+        table['@'] = LETTER;
+        table['^'] = LETTER;
         table['_'] = LETTER;
-        table['-'] = IDENT_EXTRA;
-        table['.'] = IDENT_EXTRA;
-        table['/'] = IDENT_EXTRA;
+        table['~'] = LETTER;
         table[' '] = WHITESPACE;
         table['\t'] = WHITESPACE;
         break :blk table;
@@ -205,7 +175,7 @@ pub const BaseLexer = struct {
     }
 
     inline fn isIdentChar(c: u8) bool {
-        return (charFlags[c] & (LETTER | DIGIT | IDENT_EXTRA)) != 0;
+        return isLetter(c) or isDigit(c);
     }
     /// Match lexer rules
     pub fn matchRules(self: *Self) Token {
@@ -225,67 +195,10 @@ pub const BaseLexer = struct {
         if (c == '\n' or c == '\r') {
             if (c == '\r' and self.pos + 1 < self.source.len and self.source[self.pos + 1] == '\n') {
                 self.pos += 2;
-                self.beg = 1;
-                self.math = 0;
-                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 2 };
+                return Token{ .cat = .@"semi", .pre = wsCount, .pos = start, .len = 2 };
             }
                 self.pos += 1;
-                self.beg = 1;
-                self.math = 0;
-                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
-        }
-        // From here, clear line-start flag
-        self.beg = 0;
-        // Multi-char literal preemption (heredoc delimiters,
-        // triple-bang operators, etc.) — longest-first; falls
-        // through on no match.
-        if (c == '"') {
-            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '"' and self.source[self.pos + 2] == '"') {
-                self.pos += 3;
-                return Token{ .cat = .@"heredoc_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        if (c == '\'') {
-            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '\'' and self.source[self.pos + 2] == '\'') {
-                self.pos += 3;
-                return Token{ .cat = .@"heredoc_sq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        if (c == '*') {
-            if (self.pos + 2 <= self.source.len and self.source[self.pos + 1] == '*') {
-                self.pos += 2;
-                return Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        if (c == '?') {
-            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '?' and self.source[self.pos + 2] == '?') {
-                self.pos += 3;
-                return Token{ .cat = .@"missing", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-            if (self.pos + 2 <= self.source.len and self.source[self.pos + 1] == '?') {
-                self.pos += 2;
-                return Token{ .cat = .@"default_op", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        if (c == '`') {
-            if (self.pos + 4 <= self.source.len and self.source[self.pos + 1] == '`' and self.source[self.pos + 2] == '`' and ((self.source[self.pos + 3] >= 'A' and self.source[self.pos + 3] <= 'Z') or (self.source[self.pos + 3] >= 'a' and self.source[self.pos + 3] <= 'z'))) {
-                self.pos += 4;
-                while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
-                return Token{ .cat = .@"heredoc_bt", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        if (c == '"') {            self.pos += 1;
-            while (self.pos < self.source.len) {
-                const ch = self.source[self.pos];
-                if (ch == '"') {
-                    self.pos += 1;
-                    return Token{ .cat = .@"string_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-                }
-                if (ch == '\\') { self.pos += 2; continue; }
-                if (ch == '\n') break;
-                self.pos += 1;
-            }
-            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                return Token{ .cat = .@"semi", .pre = wsCount, .pos = start, .len = 1 };
         }
         if (c == '\'') {            self.pos += 1;
             while (self.pos < self.source.len) {
@@ -300,60 +213,40 @@ pub const BaseLexer = struct {
             }
             return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
-        // Compound-literal rule for .@"flag"
-        if (c == '-') {
-            const save = self.pos;
-            self.pos += 1;
-            if (self.pos < self.source.len and self.source[self.pos] == '-') self.pos += 1;
-            if (self.pos < self.source.len and ((self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) {
-                self.pos += 1;
-                while (self.pos < self.source.len and (self.source[self.pos] == '-' or (self.source[self.pos] >= '0' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
-                if (self.pos < self.source.len and self.source[self.pos] == '=') {
+        if (c == '"') {            self.pos += 1;
+            while (self.pos < self.source.len) {
+                const ch = self.source[self.pos];
+                if (ch == '"') {
                     self.pos += 1;
-                    while (self.pos < self.source.len and ((self.source[self.pos] >= '+' and self.source[self.pos] <= ':') or (self.source[self.pos] >= '@' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
+                    return Token{ .cat = .@"string_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
-                return Token{ .cat = .@"flag", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-            self.pos = save;
-        }
-        // Punct-start ident rules (paths, globs)
-        if (c == '.' or c == '/' or c == '~') {
-            if (self.math == 0) {
+                if (ch == '\\') { self.pos += 2; continue; }
+                if (ch == '\n') break;
                 self.pos += 1;
-                while (self.pos < self.source.len and ((self.source[self.pos] >= '-' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
-                return Token{ .cat = .@"ident", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
             }
+            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
         }
-        if (c == '.' or c == '/' or c == '~') {
-            if (self.math != 0 and self.math_lhs == 0) {
-                self.pos += 1;
-                while (self.pos < self.source.len and ((self.source[self.pos] >= '-' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
-                return Token{ .cat = .@"ident", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        if (c == '*' or c == '?') {
-            if (self.math == 0) {
-                self.pos += 1;
-                while (self.pos < self.source.len and (self.source[self.pos] == '*' or (self.source[self.pos] >= '-' and self.source[self.pos] <= '9') or self.source[self.pos] == '?' or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
-                return Token{ .cat = .@"ident", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        // Number (digit or leading dot followed by digit)
-        if ((isDigit(c) and c != '2') or (c == '.' and self.pos + 1 < self.source.len and isDigit(self.source[self.pos + 1]))) {
+        // Number
+        if (isDigit(c)) {
             const tok = self.scanNumber(start, wsCount);
             if (tok.cat == .@"integer") {
                 if (self.pos + 3 <= self.source.len and self.source[self.pos + 0] == '>' and self.source[self.pos + 1] == '&' and ((self.source[self.pos + 2] >= '0' and self.source[self.pos + 2] <= '9'))) {
                     self.pos += 3;
                     while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9'))) self.pos += 1;
-                    return Token{ .cat = .@"redir_fd_dup", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"fd_dup_out", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                }
+                if (self.pos + 3 <= self.source.len and self.source[self.pos + 0] == '<' and self.source[self.pos + 1] == '&' and ((self.source[self.pos + 2] >= '0' and self.source[self.pos + 2] <= '9'))) {
+                    self.pos += 3;
+                    while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9'))) self.pos += 1;
+                    return Token{ .cat = .@"fd_dup_in", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (self.pos + 1 <= self.source.len and self.source[self.pos + 0] == '>') {
                     self.pos += 1;
-                    return Token{ .cat = .@"redir_fd_out", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"fd_gt", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
                 if (self.pos + 1 <= self.source.len and self.source[self.pos + 0] == '<') {
                     self.pos += 1;
-                    return Token{ .cat = .@"redir_fd_in", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+                    return Token{ .cat = .@"fd_lt", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
                 }
             }
             return tok;
@@ -383,10 +276,6 @@ pub const BaseLexer = struct {
                 self.pos += 2;
                 return Token{ .cat = .@"variable", .pre = wsCount, .pos = start, .len = 2 };
             }
-            if (nc == '?' or nc == '$' or nc == '!' or nc == '#' or nc == '*') {
-                self.pos += 2;
-                return Token{ .cat = .@"variable", .pre = wsCount, .pos = start, .len = 2 };
-            }
         }
         // Comment (scan to end of line)
         if (c == '#') {
@@ -398,36 +287,28 @@ pub const BaseLexer = struct {
         // Single/multi-char operators
         self.pos += 1;
         return switch (c) {
-            '!' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"ne", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '~') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"nomatch", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"not_sym", .pre = wsCount, .pos = start, .len = 1 };
-            },
             '$' => blk: {
                 if (self.peek() == '(') {
                     self.pos += 1;
                 self.paren += 1;
                     break :blk Token{ .cat = .@"dollar_paren", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"dollar", .pre = wsCount, .pos = start, .len = 1 };
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '%' => Token{ .cat = .@"percent", .pre = wsCount, .pos = start, .len = 1 },
             '&' => blk: {
                 if (self.peek() == '&') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"and_sym", .pre = wsCount, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"and_and", .pre = wsCount, .pos = start, .len = 2 };
                 }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_both", .pre = wsCount, .pos = start, .len = 2 };
+                    if (self.peek() == '>') {
+                        self.pos += 1;
+                    break :blk Token{ .cat = .@"amp_gt_gt", .pre = wsCount, .pos = start, .len = 3 };
+                    }
+                    break :blk Token{ .cat = .@"amp_gt", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"bg", .pre = wsCount, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"amp", .pre = wsCount, .pos = start, .len = 1 };
             },
             '(' => blk: {
                 self.paren += 1;
@@ -437,130 +318,52 @@ pub const BaseLexer = struct {
                 self.paren -= 1;
                     break :blk Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '*' => Token{ .cat = .@"star", .pre = wsCount, .pos = start, .len = 1 },
-            '+' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                self.math = 1;
-                    break :blk Token{ .cat = .@"plus_assign", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"plus", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ',' => Token{ .cat = .@"comma", .pre = wsCount, .pos = start, .len = 1 },
-            '-' => Token{ .cat = .@"minus", .pre = wsCount, .pos = start, .len = 1 },
-            '/' => Token{ .cat = .@"slash", .pre = wsCount, .pos = start, .len = 1 },
-            '2' => blk: {
-                if (self.peek() == '>') {
-                    self.pos += 1;
-                    if (self.peek() == '>') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_err_app", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    if (self.peek() == '&') {
-                        self.pos += 1;
-                        if (self.peek() == '1') {
-                            self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_dup", .pre = wsCount, .pos = start, .len = 4 };
-                        }
-                        self.pos -= 1;
-                    }
-                    break :blk Token{ .cat = .@"redir_err", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                self.pos -= 1;
-                break :blk self.scanNumber(start, wsCount);
-            },
             ';' => Token{ .cat = .@"semi", .pre = wsCount, .pos = start, .len = 1 },
             '<' => blk: {
-                if (self.peek() == '<') {
-                    self.pos += 1;
-                    if (self.peek() == '<') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"herestring", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    self.pos -= 1;
-                }
                 if (self.peek() == '(') {
                     self.pos += 1;
+                self.paren += 1;
                     break :blk Token{ .cat = .@"proc_sub_in", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"le", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"redir_in", .pre = wsCount, .pos = start, .len = 1 };
+                    break :blk Token{ .cat = .@"lt", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '=' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '~') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"match", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                self.math = 1;
-                    break :blk Token{ .cat = .@"assign", .pre = wsCount, .pos = start, .len = 1 };
-            },
+            '=' => Token{ .cat = .@"assign", .pre = wsCount, .pos = start, .len = 1 },
             '>' => blk: {
-                if (self.peek() == '(') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"proc_sub_out", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"ge", .pre = wsCount, .pos = start, .len = 2 };
-                }
                 if (self.peek() == '>') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"redir_append", .pre = wsCount, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"gt_gt", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                    break :blk Token{ .cat = .@"redir_out", .pre = wsCount, .pos = start, .len = 1 };
+                if (self.peek() == '(') {
+                    self.pos += 1;
+                self.paren += 1;
+                    break :blk Token{ .cat = .@"proc_sub_out", .pre = wsCount, .pos = start, .len = 2 };
+                }
+                    break :blk Token{ .cat = .@"gt", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '?' => Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 },
-            '[' => blk: {
-                if (self.math != 0) {
-                    self.math = 0;
-                    break :blk Token{ .cat = .@"list_start", .pre = wsCount, .pos = start, .len = 1 };
+            '@' => blk: {
+                if (self.peek() == '(') {
+                    self.pos += 1;
+                self.paren += 1;
+                    break :blk Token{ .cat = .@"at_paren", .pre = wsCount, .pos = start, .len = 2 };
                 }
+                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
+            },
+            '[' => blk: {
+                self.bracket += 1;
                     break :blk Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 };
             },
-            '\\' => blk: {
-                if (self.peek() == '\n') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"skip", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"backslash", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ']' => Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 },
-            '^' => blk: {
-                if (self.math != 0 and self.math_lhs != 0) {
-                    break :blk Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = 1 };
-                }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '`' => blk: {
-                if (self.peek() == '`') {
-                    self.pos += 1;
-                    if (self.peek() == '`') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"heredoc_end", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    self.pos -= 1;
-                }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
+            ']' => blk: {
+                self.bracket -= 1;
+                    break :blk Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 };
             },
             '{' => blk: {
                 self.brace += 1;
                     break :blk Token{ .cat = .@"lbrace", .pre = wsCount, .pos = start, .len = 1 };
             },
             '|' => blk: {
-                if (self.peek() == '&') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"pipe_err", .pre = wsCount, .pos = start, .len = 2 };
-                }
                 if (self.peek() == '|') {
                     self.pos += 1;
-                    break :blk Token{ .cat = .@"or_sym", .pre = wsCount, .pos = start, .len = 2 };
+                    break :blk Token{ .cat = .@"or_or", .pre = wsCount, .pos = start, .len = 2 };
                 }
                     break :blk Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 1 };
             },
@@ -573,30 +376,13 @@ pub const BaseLexer = struct {
     }
 
     /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var hasDecimal = false;        const startsWithDot = self.source[self.pos] == '.';        // Decimal integer
+    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        // Decimal integer
         if (isDigit(self.source[self.pos])) {
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                 self.pos += 1;
             }
         }
-        // Decimal part
-        if (self.pos < self.source.len and self.source[self.pos] == '.') {
-            const nextC = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-            if (isDigit(nextC)) {
-                hasDecimal = true;
-                self.pos += 1;
-                while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
-                    self.pos += 1;
-                }
-            }
-        }
-        // Classify
-        const tokenCat: TokenCat = if (hasDecimal or startsWithDot)
-            .@"real"
-        else
-            .@"integer";
-
-        return Token{ .cat = tokenCat, .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
+        return Token{ .cat = .@"integer", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
     }
 
     /// Scan identifier (generated from grammar)
@@ -838,236 +624,105 @@ pub const BaseParser = struct {
 
     fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         return switch (ruleId) {
-            0 => self.spreadList(pass[0], pass[1]),
-            1 => .{ .list = &[_]Sexp{} },
-            2 => self.sexpSpread(.@"program", pass[1]),
-            3 => pass[1],
+            0 => pass[1],
+            1 => self.spreadList(pass[0], pass[1]),
+            2 => .{ .list = &[_]Sexp{} },
+            3 => self.sexpPosSpread(.@"sequence", pass[0], pass[1]),
             4 => self.list(pass),
             5 => self.list(pass),
-            6 => pass[0],
-            7 => .nil,
-            8 => self.sexp(.@"display", &.{pass[1]}),
-            9 => self.sexp(.@"unset", &.{pass[0]}),
-            10 => self.sexp(.@"assign_argv", &.{pass[0], pass[2]}),
-            11 => self.sexp(.@"append_argv", &.{pass[0], pass[2]}),
-            12 => self.sexp(.@"assign", &.{pass[0], pass[2]}),
-            13 => pass[0],
-            14 => pass[0],
-            15 => pass[0],
-            16 => pass[0],
-            17 => pass[0],
+            6 => self.list(pass),
+            7 => self.list(pass),
+            8 => self.list(pass),
+            9 => self.list(pass),
+            10 => self.list(pass),
+            11 => self.list(pass),
+            12 => self.sexp(.@"seq_always", &.{pass[1]}),
+            13 => self.sexp(.@"seq_always", &.{.nil}),
+            14 => self.sexp(.@"seq_and", &.{pass[1]}),
+            15 => self.sexp(.@"seq_or", &.{pass[1]}),
+            16 => self.sexp(.@"seq_bg", &.{pass[1]}),
+            17 => self.sexp(.@"seq_bg", &.{.nil}),
             18 => pass[0],
-            19 => pass[0],
-            20 => pass[0],
-            21 => pass[0],
-            22 => pass[0],
-            23 => self.sexp(.@"seq", &.{pass[0], pass[2]}),
-            24 => self.sexp(.@"bg", &.{pass[0], pass[2]}),
-            25 => self.sexp(.@"bg", &.{pass[0]}),
-            26 => pass[0],
-            27 => self.sexp(.@"and", &.{pass[0], pass[2]}),
-            28 => self.sexp(.@"and", &.{pass[0], pass[2]}),
-            29 => self.sexp(.@"or", &.{pass[0], pass[2]}),
-            30 => self.sexp(.@"or", &.{pass[0], pass[2]}),
-            31 => self.sexp(.@"xor", &.{pass[0], pass[2]}),
-            32 => self.list(pass),
-            33 => self.sexp(.@"pipe_err", &.{pass[0], pass[2]}),
-            34 => self.sexp(.@"pipe", &.{pass[0], pass[2]}),
-            35 => self.list(pass),
-            36 => self.sexp(.@"not", &.{pass[1]}),
-            37 => self.sexp(.@"not", &.{pass[1]}),
-            38 => self.sexp(.@"subshell", &.{pass[1]}),
-            39 => self.sexp(.@"test", &.{pass[1], pass[2]}),
-            40 => self.list(pass),
-            41 => self.list(pass),
-            42 => self.sexp(.@"exit", &.{pass[1]}),
-            43 => self.sexp(.@"break", &.{}),
-            44 => self.sexp(.@"continue", &.{}),
-            45 => self.sexp(.@"shift", &.{pass[1]}),
-            46 => self.sexp(.@"shift", &.{}),
-            47 => self.sexp(.@"source", &.{pass[1]}),
-            48 => self.sexp(.@"exec", &.{pass[1]}),
+            19 => self.spreadList(pass[0], pass[1]),
+            20 => .{ .list = &[_]Sexp{} },
+            21 => self.spreadList(pass[0], pass[1]),
+            22 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
+            23 => pass[1],
+            24 => self.list(pass),
+            25 => self.list(pass),
+            26 => self.sexp(.@"subshell", &.{pass[1]}),
+            27 => self.sexp(.@"subshell", &.{pass[1], pass[3]}),
+            28 => self.sexp(.@"block", &.{pass[1]}),
+            29 => self.sexp(.@"block", &.{pass[1], pass[3]}),
+            30 => self.spreadList(pass[0], pass[1]),
+            31 => .{ .list = &[_]Sexp{} },
+            32 => self.spreadList(pass[0], pass[1]),
+            33 => self.sexpSpread(.@"redirects", pass[0]),
+            34 => self.spreadList(pass[0], pass[1]),
+            35 => .{ .list = &[_]Sexp{} },
+            36 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk .nil; out.append(self.allocator(), .nil) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[1] == .list) for (pass[1].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            37 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[1]) catch break :blk .nil; if (pass[2] == .list) for (pass[2].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            38 => self.spreadList(pass[0], pass[1]),
+            39 => .{ .list = &[_]Sexp{} },
+            40 => self.spreadList(pass[0], pass[1]),
+            41 => self.sexpSpread(.@"env_binds", pass[0]),
+            42 => self.sexpSpread(.@"assigns", pass[0]),
+            43 => self.sexp(.@"env_bind", &.{pass[0], pass[1]}),
+            44 => self.sexp(.@"scalar", &.{pass[0]}),
+            45 => self.sexpSpread(.@"list", pass[1]),
+            46 => self.spreadList(pass[0], pass[1]),
+            47 => .{ .list = &[_]Sexp{} },
+            48 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; if (pass[0] == .list) for (pass[0].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             49 => self.list(pass),
-            50 => self.spreadList(pass[0], pass[1]),
-            51 => .{ .list = &[_]Sexp{} },
-            52 => self.sexpPosSpread(.@"cmd", pass[0], pass[1]),
-            53 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"cmd" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[1] == .list) for (pass[1].list) |item| out.append(self.allocator(), item) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            54 => self.list(pass),
-            55 => self.list(pass),
-            56 => self.list(pass),
-            57 => self.list(pass),
-            58 => self.list(pass),
-            59 => self.list(pass),
-            60 => self.list(pass),
+            50 => self.list(pass),
+            51 => self.sexp(.@"word", &.{pass[0]}),
+            52 => self.sexp(.@"word", &.{pass[0]}),
+            53 => self.sexp(.@"word", &.{pass[0]}),
+            54 => self.sexp(.@"word", &.{pass[0]}),
+            55 => self.sexp(.@"var", &.{pass[0]}),
+            56 => self.sexp(.@"var_braced", &.{pass[0]}),
+            57 => self.sexp(.@"cmd_subst", &.{pass[1]}),
+            58 => self.sexp(.@"list_capture", &.{pass[1]}),
+            59 => self.sexp(.@"proc_sub_in", &.{pass[1]}),
+            60 => self.sexp(.@"proc_sub_out", &.{pass[1]}),
             61 => self.list(pass),
-            62 => self.list(pass),
-            63 => self.list(pass),
-            64 => self.list(pass),
-            65 => self.list(pass),
-            66 => self.list(pass),
-            67 => self.list(pass),
-            68 => self.list(pass),
-            69 => self.list(pass),
-            70 => self.list(pass),
-            71 => self.list(pass),
-            72 => self.list(pass),
-            73 => self.list(pass),
-            74 => self.list(pass),
-            75 => self.list(pass),
-            76 => self.sexp(.@"procsub_in", &.{pass[1]}),
-            77 => self.sexp(.@"procsub_out", &.{pass[1]}),
-            78 => self.sexp(.@"capture", &.{pass[1]}),
-            79 => self.sexp(.@"redir_out", &.{pass[1]}),
-            80 => self.sexp(.@"redir_append", &.{pass[1]}),
-            81 => self.sexp(.@"redir_in", &.{pass[1]}),
-            82 => self.sexp(.@"redir_err", &.{pass[1]}),
-            83 => self.sexp(.@"redir_err_app", &.{pass[1]}),
-            84 => self.sexp(.@"redir_both", &.{pass[1]}),
-            85 => self.sexp(.@"redir_dup", &.{}),
-            86 => self.sexp(.@"redir_fd_dup", &.{pass[0]}),
-            87 => self.sexp(.@"redir_fd_out", &.{pass[0], pass[1]}),
-            88 => self.sexp(.@"redir_fd_in", &.{pass[0], pass[1]}),
-            89 => self.sexp(.@"herestring", &.{pass[1]}),
-            90 => self.spreadList(pass[0], pass[1]),
-            91 => .{ .list = &[_]Sexp{} },
-            92 => self.sexpSpread(.@"heredoc_literal", pass[1]),
-            93 => self.sexpSpread(.@"heredoc_interp", pass[1]),
-            94 => self.sexpPosSpread(.@"heredoc_lang", pass[0], pass[1]),
-            95 => self.sexp(.@"if", &.{pass[1], pass[2]}),
-            96 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
-            97 => self.sexp(.@"unless", &.{pass[1], pass[2]}),
-            98 => pass[1],
-            99 => self.sexp(.@"else", &.{pass[1]}),
-            100 => self.list(pass),
-            101 => pass[0],
-            102 => self.sexp(.@"and", &.{pass[0], pass[2]}),
-            103 => self.sexp(.@"or", &.{pass[0], pass[2]}),
-            104 => self.list(pass),
-            105 => self.sexp(.@"eq", &.{pass[0], pass[2]}),
-            106 => self.sexp(.@"ne", &.{pass[0], pass[2]}),
-            107 => self.sexp(.@"lt", &.{pass[0], pass[2]}),
-            108 => self.sexp(.@"gt", &.{pass[0], pass[2]}),
-            109 => self.sexp(.@"le", &.{pass[0], pass[2]}),
-            110 => self.sexp(.@"ge", &.{pass[0], pass[2]}),
-            111 => self.sexp(.@"match", &.{pass[0], pass[2]}),
-            112 => self.sexp(.@"nomatch", &.{pass[0], pass[2]}),
-            113 => self.sexp(.@"match", &.{pass[0], pass[2]}),
-            114 => self.sexp(.@"nomatch", &.{pass[0], pass[2]}),
-            115 => self.sexp(.@"not", &.{pass[1]}),
-            116 => pass[1],
-            117 => self.sexp(.@"for", &.{pass[1], pass[3], pass[4]}),
-            118 => self.sexp(.@"while", &.{pass[1], pass[2]}),
-            119 => self.sexp(.@"until", &.{pass[1], pass[2]}),
-            120 => self.spreadList(pass[0], pass[1]),
-            121 => .{ .list = &[_]Sexp{} },
-            122 => self.spreadList(pass[0], pass[1]),
-            123 => self.sexpSpread(.@"list", pass[0]),
-            124 => self.sexp(.@"try", &.{pass[1], pass[2]}),
-            125 => self.spreadList(pass[0], pass[1]),
-            126 => .{ .list = &[_]Sexp{} },
-            127 => self.spreadList(pass[0], pass[1]),
-            128 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; if (pass[1] == .list) for (pass[1].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            129 => self.spreadList(pass[0], pass[1]),
-            130 => .{ .list = &[_]Sexp{} },
-            131 => self.spreadList(pass[0], pass[1]),
-            132 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; if (pass[1] == .list) for (pass[1].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            133 => pass[0],
-            134 => .nil,
-            135 => .nil,
-            136 => pass[0],
-            137 => .nil,
-            138 => self.sexp(.@"arm", &.{pass[0], pass[1]}),
-            139 => self.sexp(.@"arm", &.{pass[0], pass[1]}),
-            140 => self.sexp(.@"arm", &.{pass[0], pass[1]}),
-            141 => self.sexp(.@"arm", &.{pass[0], pass[1]}),
-            142 => self.sexp(.@"arm_else", &.{pass[1]}),
-            143 => self.spreadList(pass[0], pass[1]),
-            144 => .{ .list = &[_]Sexp{} },
-            145 => self.sexpSpread(.@"block", pass[1]),
-            146 => self.sexpSpread(.@"block", pass[1]),
-            147 => pass[0],
-            148 => .nil,
-            149 => .nil,
-            150 => self.sexp(.@"cmd_missing", &.{.nil, pass[2]}),
-            151 => self.sexp(.@"cmd_missing", &.{pass[2], pass[3]}),
-            152 => self.sexp(.@"cmd_missing", &.{.nil, pass[2]}),
-            153 => self.sexp(.@"cmd_missing", &.{pass[2], pass[3]}),
-            154 => self.sexp(.@"cmd_missing_del", &.{}),
-            155 => self.sexp(.@"cmd_missing_show", &.{}),
-            156 => self.sexp(.@"cmd_def", &.{pass[1], .nil, pass[2]}),
-            157 => self.sexp(.@"cmd_def", &.{pass[1], pass[2], pass[3]}),
-            158 => self.sexp(.@"cmd_def", &.{pass[1], .nil, pass[2]}),
-            159 => self.sexp(.@"cmd_def", &.{pass[1], pass[2], pass[3]}),
-            160 => self.sexp(.@"cmd_del", &.{pass[1]}),
-            161 => self.sexp(.@"cmd_show", &.{pass[1]}),
-            162 => self.sexp(.@"cmd_list", &.{}),
-            163 => self.spreadList(pass[0], pass[1]),
-            164 => self.spreadList(pass[1], pass[2]),
-            165 => .{ .list = &[_]Sexp{} },
-            166 => pass[1],
-            167 => self.sexp(.@"key", &.{pass[1], pass[2]}),
-            168 => self.sexp(.@"key", &.{pass[1], pass[2]}),
-            169 => self.sexp(.@"key", &.{pass[1], pass[2]}),
-            170 => self.sexp(.@"key_del", &.{pass[1]}),
-            171 => self.sexp(.@"key_list", &.{}),
-            172 => self.sexp(.@"key_combo_eq", &.{pass[0]}),
-            173 => self.list(pass),
-            174 => self.list(pass),
-            175 => self.list(pass),
-            176 => self.list(pass),
-            177 => self.list(pass),
-            178 => self.list(pass),
-            179 => self.list(pass),
-            180 => self.list(pass),
-            181 => self.sexp(.@"set_reset", &.{pass[1]}),
-            182 => self.sexp(.@"set", &.{pass[1], pass[2]}),
-            183 => self.sexp(.@"set_show", &.{pass[1]}),
-            184 => self.sexp(.@"set_list", &.{}),
-            185 => self.sexp(.@"default", &.{pass[0], pass[2]}),
-            186 => self.list(pass),
-            187 => self.sexp(.@"add", &.{pass[0], pass[2]}),
-            188 => self.sexp(.@"sub", &.{pass[0], pass[2]}),
-            189 => self.list(pass),
-            190 => self.sexp(.@"mul", &.{pass[0], pass[2]}),
-            191 => self.sexp(.@"div", &.{pass[0], pass[2]}),
-            192 => self.sexp(.@"mod", &.{pass[0], pass[2]}),
-            193 => self.list(pass),
-            194 => self.sexp(.@"pow", &.{pass[0], pass[2]}),
-            195 => self.list(pass),
-            196 => pass[1],
-            197 => self.sexp(.@"neg", &.{pass[1]}),
-            198 => pass[1],
-            199 => self.list(pass),
-            200 => self.list(pass),
-            201 => self.list(pass),
-            202 => self.list(pass),
-            203 => self.list(pass),
-            204 => self.list(pass),
-            205 => self.list(pass),
-            206 => self.list(pass),
-            207 => self.sexp(.@"shift_value", &.{}),
-            208 => self.list(pass),
-            209 => self.list(pass),
-            210 => self.list(pass),
-            211 => self.list(pass),
-            212 => self.list(pass),
-            213 => self.list(pass),
-            214 => self.spreadList(pass[0], pass[1]),
-            215 => .{ .list = &[_]Sexp{} },
-            216 => self.sexpSpread(.@"list", pass[1]),
-            217 => self.list(pass),
-            218 => self.list(pass),
-            219 => self.list(pass),
-            220 => self.list(pass),
-            221 => self.list(pass),
-            222 => self.list(pass),
-            223 => self.list(pass),
-            224 => self.list(pass),
-            225 => self.list(pass),
-            226 => self.list(pass),
-            227 => self.list(pass),
-            228 => self.list(pass),
-            229 => self.list(pass),
+            62 => self.sexp(.@"word", &.{pass[0]}),
+            63 => self.sexp(.@"word", &.{pass[0]}),
+            64 => self.sexp(.@"if", &.{pass[1], pass[2], .nil}),
+            65 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
+            66 => pass[0],
+            67 => self.sexp(.@"cond_and", &.{pass[0], pass[2]}),
+            68 => self.sexp(.@"cond_or", &.{pass[0], pass[2]}),
+            69 => self.sexp(.@"else", &.{pass[1]}),
+            70 => self.sexp(.@"elif", &.{pass[1]}),
+            71 => self.sexp(.@"body", &.{pass[1]}),
+            72 => self.sexp(.@"body", &.{pass[1]}),
+            73 => self.sexp(.@"while", &.{pass[1], pass[2]}),
+            74 => self.sexp(.@"for", &.{pass[1], pass[3], pass[4]}),
+            75 => self.sexp(.@"match", &.{pass[1], pass[2]}),
+            76 => self.sexpSpread(.@"match_arms", pass[1]),
+            77 => self.sexpSpread(.@"match_arms", pass[1]),
+            78 => self.spreadList(pass[0], pass[1]),
+            79 => .{ .list = &[_]Sexp{} },
+            80 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk .nil; if (pass[1] == .list) for (pass[1].list) |item| out.append(self.allocator(), item) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            81 => pass[1],
+            82 => .nil,
+            83 => self.sexp(.@"match_arm", &.{pass[0], pass[1]}),
+            84 => self.sexp(.@"cmd_def", &.{pass[1], pass[2]}),
+            85 => self.spreadList(pass[0], pass[1]),
+            86 => self.sexpSpread(.@"words", pass[0]),
+            87 => self.sexp(.@"redir_read", &.{pass[1]}),
+            88 => self.sexp(.@"redir_read_fd", &.{pass[0], pass[1]}),
+            89 => self.sexp(.@"redir_write", &.{pass[1]}),
+            90 => self.sexp(.@"redir_write_fd", &.{pass[0], pass[1]}),
+            91 => self.sexp(.@"redir_append", &.{pass[1]}),
+            92 => self.sexp(.@"redir_both", &.{pass[1]}),
+            93 => self.sexp(.@"redir_both_append", &.{pass[1]}),
+            94 => self.sexp(.@"redir_dup_out", &.{pass[0]}),
+            95 => self.sexp(.@"redir_dup_in", &.{pass[0]}),
+            96 => self.sexp(.@"redir_heredoc", &.{pass[0], pass[1]}),
+            97 => self.sexp(.@"redir_heredoc_lit", &.{pass[0], pass[1]}),
+            98 => self.list(pass),
             else => .nil,
         };
     }
@@ -1076,69 +731,42 @@ pub const BaseParser = struct {
         return switch (token.cat) {
             .@"eof" => 1,
             .@"ident" => self.identToSymbol(token),
-            .@"comment" => 53,
-            .@"newline" => 55,
-            .@"xor" => 66,
-            .@"flag" => 74,
-            .@"integer" => 76,
-            .@"string_sq" => 84,
-            .@"string_dq" => 85,
-            .@"real" => 86,
-            .@"variable" => 87,
-            .@"var_braced" => 88,
-            .@"regex" => 89,
-            .@"dollar_paren" => 92,
-            .@"redir_fd_dup" => 100,
-            .@"redir_fd_out" => 101,
-            .@"redir_fd_in" => 102,
-            .@"heredoc_sq" => 104,
-            .@"heredoc_body" => 105,
-            .@"heredoc_dq" => 107,
-            .@"heredoc_bt" => 108,
-            .@"heredoc_end" => 109,
-            .@"indent" => 130,
-            .@"outdent" => 133,
-            .@"missing" => 136,
-            .@"lparen_tight" => 137,
-            .@"list_start" => 149,
-            .@"assign" => 56,
-            .@"minus" => 58,
-            .@"semi" => 60,
-            .@"bg" => 61,
-            .@"pipe" => 68,
-            .@"not_sym" => 69,
-            .@"lparen" => 71,
-            .@"rparen" => 72,
-            .@"redir_out" => 93,
-            .@"redir_in" => 95,
-            .@"lbrace" => 126,
-            .@"rbrace" => 129,
-            .@"comma" => 138,
-            .@"plus" => 144,
-            .@"star" => 145,
-            .@"slash" => 146,
-            .@"percent" => 147,
-            .@"rbracket" => 151,
-            .@"plus_assign" => 59,
-            .@"and_sym" => 62,
-            .@"or_sym" => 64,
-            .@"pipe_err" => 67,
-            .@"proc_sub_in" => 90,
-            .@"proc_sub_out" => 91,
-            .@"redir_append" => 94,
-            .@"redir_err" => 96,
-            .@"redir_err_app" => 97,
-            .@"redir_both" => 98,
-            .@"redir_dup" => 99,
-            .@"herestring" => 103,
-            .@"eq" => 113,
-            .@"ne" => 114,
-            .@"le" => 115,
-            .@"ge" => 116,
-            .@"match" => 117,
-            .@"nomatch" => 118,
-            .@"default_op" => 143,
-            .@"power" => 148,
+            .@"semi" => 37,
+            .@"and_and" => 38,
+            .@"or_or" => 39,
+            .@"amp" => 40,
+            .@"pipe" => 43,
+            .@"lparen" => 44,
+            .@"rparen" => 45,
+            .@"lbrace" => 46,
+            .@"rbrace" => 47,
+            .@"name_eq" => 53,
+            .@"lbracket" => 54,
+            .@"rbracket" => 55,
+            .@"integer" => 58,
+            .@"string_sq" => 59,
+            .@"string_dq" => 60,
+            .@"variable" => 61,
+            .@"var_braced" => 62,
+            .@"dollar_paren" => 63,
+            .@"at_paren" => 64,
+            .@"proc_sub_in" => 65,
+            .@"proc_sub_out" => 66,
+            .@"assign" => 67,
+            .@"indent" => 70,
+            .@"outdent" => 71,
+            .@"lt" => 79,
+            .@"fd_lt" => 80,
+            .@"gt" => 81,
+            .@"fd_gt" => 82,
+            .@"gt_gt" => 83,
+            .@"amp_gt" => 84,
+            .@"amp_gt_gt" => 85,
+            .@"fd_dup_out" => 86,
+            .@"fd_dup_in" => 87,
+            .@"heredoc_open" => 88,
+            .@"heredoc_body" => 89,
+            .@"heredoc_open_lit" => 90,
             else => 2, // error
         };
     }
@@ -1146,22 +774,22 @@ pub const BaseParser = struct {
     fn identToSymbol(self: *BaseParser, token: Token) u16 {
         const text = self.source[token.pos..][0..token.len];
         if (text.len == 0) return symIdent;
-        if (self.tryIdentAsCmd(token, text)) |sym| return sym;
+        if (self.tryIdentAsKeyword(token, text)) |sym| return sym;
         return symIdent;
     }
 
-    fn tryIdentAsCmd(self: *BaseParser, token: Token, text: []const u8) ?u16 {
+    fn tryIdentAsKeyword(self: *BaseParser, token: Token, text: []const u8) ?u16 {
         _ = token;
         const state = self.stateStack.getLast();
-        if (slash.cmdAs(text)) |id| {
+        if (slash.keywordAs(text)) |id| {
             const idIdx = @intFromEnum(id);
-            const sym = cmdToSymbol[idIdx];
-            if (sym != 0 and getAction(state, sym) > 0) {
+            const sym = keywordToSymbol[idIdx];
+            if (sym != 0 and getAction(state, sym) != 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return sym;
             }
-            const fallback = cmdFallbackSymbol;
-            if (fallback != 0 and getAction(state, fallback) > 0) {
+            const fallback = keywordFallbackSymbol;
+            if (fallback != 0 and getAction(state, fallback) != 0) {
                 self.lastMatchedId = @intCast(idIdx);
                 return fallback;
             }
@@ -1172,10 +800,6 @@ pub const BaseParser = struct {
     pub fn parseProgram(self: *BaseParser) !Sexp {
         self.injectedToken = SYM_program_START;
         return self.doParse(SYM_program);
-    }
-    pub fn parseOneline(self: *BaseParser) !Sexp {
-        self.injectedToken = SYM_oneline_START;
-        return self.doParse(SYM_oneline);
     }
 };
 
@@ -1201,445 +825,232 @@ pub fn parseProgram(allocator: std.mem.Allocator, source: []const u8) !struct { 
     return .{ .parser = p, .sexp = sexp };
 }
 
-/// Convenience: instantiate the (lang-extended) parser and parse a whole
-/// oneline. Caller owns `result.parser` and must call `result.parser.deinit()`
-/// when done with the returned tree (the tree references arena-allocated
-/// memory owned by the parser).
-///
-/// The parser is returned by value, so the underlying type
-/// must be safely movable (no self-referential storage).
-/// `BaseParser` is movable by construction; custom `lang.Parser`
-/// wrappers must preserve this invariant.
-pub fn parseOneline(allocator: std.mem.Allocator, source: []const u8) !struct { parser: Parser, sexp: Sexp } {
-    var p = Parser.init(allocator, source);
-    errdefer p.deinit();
-    const sexp = try p.parseOneline();
-    return .{ .parser = p, .sexp = sexp };
-}
-
 // Symbol IDs
 const SYM_program: u16 = 3;
-const SYM_program_START: u16 = 152;
-const SYM_oneline: u16 = 4;
-const SYM_oneline_START: u16 = 154;
+const SYM_program_START: u16 = 91;
 const symIdent: u16 = 57;
 
-// Mapping from slash.CmdId to grammar symbol IDs (computed at comptime)
-const cmdToSymbol = blk: {
+// Mapping from slash.KeywordId to grammar symbol IDs (computed at comptime)
+const keywordToSymbol = blk: {
     var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(slash.CmdId, "COMMENT")) arr[@intFromEnum(slash.CmdId.COMMENT)] = 53;
-    if (@hasField(slash.CmdId, "NEWLINE")) arr[@intFromEnum(slash.CmdId.NEWLINE)] = 55;
-    if (@hasField(slash.CmdId, "IDENT")) arr[@intFromEnum(slash.CmdId.IDENT)] = 57;
-    if (@hasField(slash.CmdId, "AND")) arr[@intFromEnum(slash.CmdId.AND)] = 63;
-    if (@hasField(slash.CmdId, "OR")) arr[@intFromEnum(slash.CmdId.OR)] = 65;
-    if (@hasField(slash.CmdId, "XOR")) arr[@intFromEnum(slash.CmdId.XOR)] = 66;
-    if (@hasField(slash.CmdId, "NOT")) arr[@intFromEnum(slash.CmdId.NOT)] = 70;
-    if (@hasField(slash.CmdId, "TEST")) arr[@intFromEnum(slash.CmdId.TEST)] = 73;
-    if (@hasField(slash.CmdId, "FLAG")) arr[@intFromEnum(slash.CmdId.FLAG)] = 74;
-    if (@hasField(slash.CmdId, "EXIT")) arr[@intFromEnum(slash.CmdId.EXIT)] = 75;
-    if (@hasField(slash.CmdId, "INTEGER")) arr[@intFromEnum(slash.CmdId.INTEGER)] = 76;
-    if (@hasField(slash.CmdId, "BREAK")) arr[@intFromEnum(slash.CmdId.BREAK)] = 78;
-    if (@hasField(slash.CmdId, "CONTINUE")) arr[@intFromEnum(slash.CmdId.CONTINUE)] = 79;
-    if (@hasField(slash.CmdId, "SHIFT")) arr[@intFromEnum(slash.CmdId.SHIFT)] = 80;
-    if (@hasField(slash.CmdId, "SOURCE")) arr[@intFromEnum(slash.CmdId.SOURCE)] = 81;
-    if (@hasField(slash.CmdId, "EXEC")) arr[@intFromEnum(slash.CmdId.EXEC)] = 82;
-    if (@hasField(slash.CmdId, "STRING_SQ")) arr[@intFromEnum(slash.CmdId.STRING_SQ)] = 84;
-    if (@hasField(slash.CmdId, "STRING_DQ")) arr[@intFromEnum(slash.CmdId.STRING_DQ)] = 85;
-    if (@hasField(slash.CmdId, "REAL")) arr[@intFromEnum(slash.CmdId.REAL)] = 86;
-    if (@hasField(slash.CmdId, "VARIABLE")) arr[@intFromEnum(slash.CmdId.VARIABLE)] = 87;
-    if (@hasField(slash.CmdId, "VAR_BRACED")) arr[@intFromEnum(slash.CmdId.VAR_BRACED)] = 88;
-    if (@hasField(slash.CmdId, "REGEX")) arr[@intFromEnum(slash.CmdId.REGEX)] = 89;
-    if (@hasField(slash.CmdId, "DOLLAR_PAREN")) arr[@intFromEnum(slash.CmdId.DOLLAR_PAREN)] = 92;
-    if (@hasField(slash.CmdId, "REDIR_FD_DUP")) arr[@intFromEnum(slash.CmdId.REDIR_FD_DUP)] = 100;
-    if (@hasField(slash.CmdId, "REDIR_FD_OUT")) arr[@intFromEnum(slash.CmdId.REDIR_FD_OUT)] = 101;
-    if (@hasField(slash.CmdId, "REDIR_FD_IN")) arr[@intFromEnum(slash.CmdId.REDIR_FD_IN)] = 102;
-    if (@hasField(slash.CmdId, "HEREDOC_SQ")) arr[@intFromEnum(slash.CmdId.HEREDOC_SQ)] = 104;
-    if (@hasField(slash.CmdId, "HEREDOC_BODY")) arr[@intFromEnum(slash.CmdId.HEREDOC_BODY)] = 105;
-    if (@hasField(slash.CmdId, "HEREDOC_DQ")) arr[@intFromEnum(slash.CmdId.HEREDOC_DQ)] = 107;
-    if (@hasField(slash.CmdId, "HEREDOC_BT")) arr[@intFromEnum(slash.CmdId.HEREDOC_BT)] = 108;
-    if (@hasField(slash.CmdId, "HEREDOC_END")) arr[@intFromEnum(slash.CmdId.HEREDOC_END)] = 109;
-    if (@hasField(slash.CmdId, "IF")) arr[@intFromEnum(slash.CmdId.IF)] = 110;
-    if (@hasField(slash.CmdId, "UNLESS")) arr[@intFromEnum(slash.CmdId.UNLESS)] = 111;
-    if (@hasField(slash.CmdId, "ELSE")) arr[@intFromEnum(slash.CmdId.ELSE)] = 112;
-    if (@hasField(slash.CmdId, "FOR")) arr[@intFromEnum(slash.CmdId.FOR)] = 119;
-    if (@hasField(slash.CmdId, "IN")) arr[@intFromEnum(slash.CmdId.IN)] = 120;
-    if (@hasField(slash.CmdId, "WHILE")) arr[@intFromEnum(slash.CmdId.WHILE)] = 121;
-    if (@hasField(slash.CmdId, "UNTIL")) arr[@intFromEnum(slash.CmdId.UNTIL)] = 122;
-    if (@hasField(slash.CmdId, "TRY")) arr[@intFromEnum(slash.CmdId.TRY)] = 125;
-    if (@hasField(slash.CmdId, "INDENT")) arr[@intFromEnum(slash.CmdId.INDENT)] = 130;
-    if (@hasField(slash.CmdId, "OUTDENT")) arr[@intFromEnum(slash.CmdId.OUTDENT)] = 133;
-    if (@hasField(slash.CmdId, "CMD")) arr[@intFromEnum(slash.CmdId.CMD)] = 135;
-    if (@hasField(slash.CmdId, "MISSING")) arr[@intFromEnum(slash.CmdId.MISSING)] = 136;
-    if (@hasField(slash.CmdId, "LPAREN_TIGHT")) arr[@intFromEnum(slash.CmdId.LPAREN_TIGHT)] = 137;
-    if (@hasField(slash.CmdId, "KEY")) arr[@intFromEnum(slash.CmdId.KEY)] = 141;
-    if (@hasField(slash.CmdId, "SET")) arr[@intFromEnum(slash.CmdId.SET)] = 142;
-    if (@hasField(slash.CmdId, "LIST_START")) arr[@intFromEnum(slash.CmdId.LIST_START)] = 149;
-    for (@typeInfo(slash.CmdId).@"enum".fields) |field| {
-        if (arr[field.value] == 0) arr[field.value] = 135;
-    }
+    if (@hasField(slash.KeywordId, "SEMI")) arr[@intFromEnum(slash.KeywordId.SEMI)] = 37;
+    if (@hasField(slash.KeywordId, "AND_AND")) arr[@intFromEnum(slash.KeywordId.AND_AND)] = 38;
+    if (@hasField(slash.KeywordId, "OR_OR")) arr[@intFromEnum(slash.KeywordId.OR_OR)] = 39;
+    if (@hasField(slash.KeywordId, "AMP")) arr[@intFromEnum(slash.KeywordId.AMP)] = 40;
+    if (@hasField(slash.KeywordId, "PIPE")) arr[@intFromEnum(slash.KeywordId.PIPE)] = 43;
+    if (@hasField(slash.KeywordId, "LPAREN")) arr[@intFromEnum(slash.KeywordId.LPAREN)] = 44;
+    if (@hasField(slash.KeywordId, "RPAREN")) arr[@intFromEnum(slash.KeywordId.RPAREN)] = 45;
+    if (@hasField(slash.KeywordId, "LBRACE")) arr[@intFromEnum(slash.KeywordId.LBRACE)] = 46;
+    if (@hasField(slash.KeywordId, "RBRACE")) arr[@intFromEnum(slash.KeywordId.RBRACE)] = 47;
+    if (@hasField(slash.KeywordId, "NAME_EQ")) arr[@intFromEnum(slash.KeywordId.NAME_EQ)] = 53;
+    if (@hasField(slash.KeywordId, "LBRACKET")) arr[@intFromEnum(slash.KeywordId.LBRACKET)] = 54;
+    if (@hasField(slash.KeywordId, "RBRACKET")) arr[@intFromEnum(slash.KeywordId.RBRACKET)] = 55;
+    if (@hasField(slash.KeywordId, "IDENT")) arr[@intFromEnum(slash.KeywordId.IDENT)] = 57;
+    if (@hasField(slash.KeywordId, "INTEGER")) arr[@intFromEnum(slash.KeywordId.INTEGER)] = 58;
+    if (@hasField(slash.KeywordId, "STRING_SQ")) arr[@intFromEnum(slash.KeywordId.STRING_SQ)] = 59;
+    if (@hasField(slash.KeywordId, "STRING_DQ")) arr[@intFromEnum(slash.KeywordId.STRING_DQ)] = 60;
+    if (@hasField(slash.KeywordId, "VARIABLE")) arr[@intFromEnum(slash.KeywordId.VARIABLE)] = 61;
+    if (@hasField(slash.KeywordId, "VAR_BRACED")) arr[@intFromEnum(slash.KeywordId.VAR_BRACED)] = 62;
+    if (@hasField(slash.KeywordId, "DOLLAR_PAREN")) arr[@intFromEnum(slash.KeywordId.DOLLAR_PAREN)] = 63;
+    if (@hasField(slash.KeywordId, "AT_PAREN")) arr[@intFromEnum(slash.KeywordId.AT_PAREN)] = 64;
+    if (@hasField(slash.KeywordId, "PROC_SUB_IN")) arr[@intFromEnum(slash.KeywordId.PROC_SUB_IN)] = 65;
+    if (@hasField(slash.KeywordId, "PROC_SUB_OUT")) arr[@intFromEnum(slash.KeywordId.PROC_SUB_OUT)] = 66;
+    if (@hasField(slash.KeywordId, "ASSIGN")) arr[@intFromEnum(slash.KeywordId.ASSIGN)] = 67;
+    if (@hasField(slash.KeywordId, "IF")) arr[@intFromEnum(slash.KeywordId.IF)] = 68;
+    if (@hasField(slash.KeywordId, "ELSE")) arr[@intFromEnum(slash.KeywordId.ELSE)] = 69;
+    if (@hasField(slash.KeywordId, "INDENT")) arr[@intFromEnum(slash.KeywordId.INDENT)] = 70;
+    if (@hasField(slash.KeywordId, "OUTDENT")) arr[@intFromEnum(slash.KeywordId.OUTDENT)] = 71;
+    if (@hasField(slash.KeywordId, "WHILE")) arr[@intFromEnum(slash.KeywordId.WHILE)] = 72;
+    if (@hasField(slash.KeywordId, "FOR")) arr[@intFromEnum(slash.KeywordId.FOR)] = 73;
+    if (@hasField(slash.KeywordId, "IN")) arr[@intFromEnum(slash.KeywordId.IN)] = 74;
+    if (@hasField(slash.KeywordId, "MATCH")) arr[@intFromEnum(slash.KeywordId.MATCH)] = 75;
+    if (@hasField(slash.KeywordId, "CMD")) arr[@intFromEnum(slash.KeywordId.CMD)] = 77;
+    if (@hasField(slash.KeywordId, "LT")) arr[@intFromEnum(slash.KeywordId.LT)] = 79;
+    if (@hasField(slash.KeywordId, "FD_LT")) arr[@intFromEnum(slash.KeywordId.FD_LT)] = 80;
+    if (@hasField(slash.KeywordId, "GT")) arr[@intFromEnum(slash.KeywordId.GT)] = 81;
+    if (@hasField(slash.KeywordId, "FD_GT")) arr[@intFromEnum(slash.KeywordId.FD_GT)] = 82;
+    if (@hasField(slash.KeywordId, "GT_GT")) arr[@intFromEnum(slash.KeywordId.GT_GT)] = 83;
+    if (@hasField(slash.KeywordId, "AMP_GT")) arr[@intFromEnum(slash.KeywordId.AMP_GT)] = 84;
+    if (@hasField(slash.KeywordId, "AMP_GT_GT")) arr[@intFromEnum(slash.KeywordId.AMP_GT_GT)] = 85;
+    if (@hasField(slash.KeywordId, "FD_DUP_OUT")) arr[@intFromEnum(slash.KeywordId.FD_DUP_OUT)] = 86;
+    if (@hasField(slash.KeywordId, "FD_DUP_IN")) arr[@intFromEnum(slash.KeywordId.FD_DUP_IN)] = 87;
+    if (@hasField(slash.KeywordId, "HEREDOC_OPEN")) arr[@intFromEnum(slash.KeywordId.HEREDOC_OPEN)] = 88;
+    if (@hasField(slash.KeywordId, "HEREDOC_BODY")) arr[@intFromEnum(slash.KeywordId.HEREDOC_BODY)] = 89;
+    if (@hasField(slash.KeywordId, "HEREDOC_OPEN_LIT")) arr[@intFromEnum(slash.KeywordId.HEREDOC_OPEN_LIT)] = 90;
     break :blk arr;
 };
-const cmdFallbackSymbol: u16 = 135;
+const keywordFallbackSymbol: u16 = 0;
 
-const ruleLhs = [_]u16{ 52, 52, 3, 4, 54, 54, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 10, 10, 10, 10, 77, 77, 10, 10, 10, 10, 10, 10, 10, 10, 83, 83, 11, 11, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 15, 15, 16, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 106, 106, 18, 18, 18, 19, 19, 20, 21, 21, 22, 22, 23, 23, 23, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 24, 25, 26, 27, 123, 123, 124, 28, 29, 127, 127, 128, 30, 131, 131, 132, 30, 31, 31, 31, 32, 32, 33, 33, 33, 33, 33, 134, 134, 34, 34, 35, 35, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 139, 140, 140, 37, 38, 38, 38, 38, 38, 39, 39, 39, 39, 39, 39, 39, 39, 39, 40, 40, 40, 40, 41, 41, 42, 42, 42, 43, 43, 43, 43, 44, 44, 45, 45, 45, 45, 46, 46, 46, 46, 46, 46, 46, 47, 48, 48, 48, 49, 49, 49, 150, 150, 50, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 51, 153, 155 };
-const ruleLen = [_]u8{ 2, 0, 2, 2, 1, 0, 3, 2, 2, 3, 3, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 2, 2, 3, 3, 1, 0, 2, 1, 1, 2, 1, 2, 2, 1, 2, 0, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2, 2, 0, 3, 3, 3, 3, 4, 3, 2, 2, 1, 1, 3, 3, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 2, 3, 5, 3, 3, 2, 0, 2, 1, 3, 2, 0, 2, 3, 2, 0, 2, 3, 1, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 0, 3, 3, 1, 1, 1, 3, 4, 3, 4, 3, 2, 3, 4, 3, 4, 3, 2, 1, 2, 3, 0, 3, 3, 3, 3, 3, 1, 2, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 0, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2 };
+const ruleLhs = [_]u16{ 3, 36, 36, 4, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 41, 41, 42, 7, 8, 9, 9, 10, 10, 11, 11, 48, 48, 49, 12, 50, 50, 13, 13, 51, 51, 52, 14, 15, 16, 17, 17, 56, 56, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 76, 76, 30, 31, 31, 32, 33, 78, 34, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 35, 92 };
+const ruleLen = [_]u8{ 2, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 2, 0, 2, 2, 2, 1, 1, 3, 4, 3, 4, 2, 0, 2, 1, 2, 0, 2, 3, 2, 0, 2, 1, 1, 2, 1, 3, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 2, 0, 2, 2, 1, 2, 3, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 2 };
 
-// Parse Table: 351 states × 156 symbols
-const numStates = 351;
-const numSymbols = 156;
+// Parse Table: 162 states × 93 symbols
+const numStates = 162;
+const numSymbols = 93;
 
 const sparse = [numStates][]const i16{
-    &.{3,2,152,3},
-    &.{4,4,154,5},
+    &.{3,1,91,2},
     &.{1,-1},
-    &.{1,-3,5,27,6,24,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,36,10,38,25,40,37,52,39,53,30,54,46,55,-7,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,135,22,141,7,142,36},
+    &.{4,37,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
     &.{1,-1},
-    &.{6,48,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,36,10,38,25,40,37,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,135,22,141,7,142,36},
-    &.{1,-1},
-    &.{1,-173,39,49,53,-173,55,-173,56,-173,57,52,69,-173,70,-173,71,-173,73,-173,74,55,75,-173,76,56,78,-173,79,-173,80,-173,81,-173,82,-173,84,57,85,54,86,53,87,50,88,51,110,-173,111,-173,119,-173,121,-173,122,-173,125,-173,129,-173,135,-173,141,-173,142,-173},
-    &.{1,-34,53,-34,55,-34,56,-34,57,-34,60,-34,61,-34,62,-34,63,-34,64,-34,65,-34,66,-34,69,-34,70,-34,71,-34,72,-34,73,-34,75,-34,78,-34,79,-34,80,-34,81,-34,82,-34,110,-34,111,-34,119,-34,121,-34,122,-34,125,-34,126,-34,129,-34,130,-34,135,-34,141,-34,142,-34},
-    &.{1,-53,12,68,14,76,15,72,16,60,17,64,53,-53,55,-53,56,71,57,59,58,61,59,79,60,-53,61,-53,62,-53,63,-53,64,-53,65,-53,66,-53,67,-53,68,-53,69,-53,70,-53,71,-53,73,-53,74,75,75,-53,76,63,78,-53,79,-53,80,-53,81,-53,82,-53,83,58,84,77,85,81,86,73,87,78,88,66,89,65,90,67,91,70,92,88,93,84,94,69,95,83,96,62,97,89,98,86,99,85,100,74,101,87,102,80,103,82,104,-53,107,-53,108,-53,110,-53,111,-53,119,-53,121,-53,122,-53,125,-53,129,-53,135,-53,141,-53,142,-53},
-    &.{1,-15,53,-15,55,-15,56,-15,57,-15,69,-15,70,-15,71,-15,73,-15,75,-15,78,-15,79,-15,80,-15,81,-15,82,-15,110,-15,111,-15,119,-15,121,-15,122,-15,125,-15,129,-15,135,-15,141,-15,142,-15},
-    &.{1,-37,53,-37,55,-37,56,-37,57,-37,60,-37,61,-37,62,-37,63,-37,64,-37,65,-37,66,-37,67,90,68,91,69,-37,70,-37,71,-37,72,-37,73,-37,75,-37,78,-37,79,-37,80,-37,81,-37,82,-37,110,-37,111,-37,119,-37,121,-37,122,-37,125,-37,126,-37,129,-37,130,-37,135,-37,141,-37,142,-37},
-    &.{16,98,41,96,42,110,43,106,44,108,45,102,46,101,47,107,49,104,57,93,58,97,71,94,76,103,80,95,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{7,114,8,18,9,8,10,11,11,45,16,98,22,115,23,119,24,118,41,113,42,110,43,106,44,108,45,102,46,101,57,112,58,97,69,19,70,117,71,116,73,20,75,21,76,103,78,14,79,42,80,41,81,43,82,44,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-45,53,-45,55,-45,56,-45,57,-45,60,-45,61,-45,62,-45,63,-45,64,-45,65,-45,66,-45,67,-45,68,-45,69,-45,70,-45,71,-45,72,-45,73,-45,75,-45,78,-45,79,-45,80,-45,81,-45,82,-45,110,-45,111,-45,119,-45,121,-45,122,-45,125,-45,126,-45,129,-45,130,-45,135,-45,141,-45,142,-45},
-    &.{1,-24,53,-24,55,-24,56,-24,57,-24,69,-24,70,-24,71,-24,73,-24,75,-24,78,-24,79,-24,80,-24,81,-24,82,-24,110,-24,111,-24,119,-24,121,-24,122,-24,125,-24,129,-24,135,-24,141,-24,142,-24},
-    &.{1,-19,53,-19,55,-19,56,-19,57,-19,69,-19,70,-19,71,-19,73,-19,75,-19,78,-19,79,-19,80,-19,81,-19,82,-19,110,-19,111,-19,119,-19,121,-19,122,-19,125,-19,129,-19,135,-19,141,-19,142,-19},
-    &.{16,98,41,120,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-28,53,-28,55,-28,56,-28,57,-28,60,127,61,121,62,126,63,124,64,122,65,125,66,123,69,-28,70,-28,71,-28,72,-28,73,-28,75,-28,78,-28,79,-28,80,-28,81,-28,82,-28,110,-28,111,-28,119,-28,121,-28,122,-28,125,-28,126,-28,129,-28,130,-28,135,-28,141,-28,142,-28},
-    &.{10,128,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{74,129},
-    &.{1,-43,53,-43,55,-43,56,-43,57,-43,60,-43,61,-43,62,-43,63,-43,64,-43,65,-43,66,-43,67,-43,68,-43,69,-43,70,-43,71,-43,72,-43,73,-43,75,-43,76,131,77,130,78,-43,79,-43,80,-43,81,-43,82,-43,110,-43,111,-43,119,-43,121,-43,122,-43,125,-43,126,-43,129,-43,130,-43,135,-43,141,-43,142,-43},
-    &.{1,-164,53,-164,55,-164,56,-164,57,133,69,-164,70,-164,71,-164,73,-164,75,-164,78,-164,79,-164,80,-164,81,-164,82,-164,110,-164,111,-164,119,-164,121,-164,122,-164,125,-164,129,-164,135,-164,136,132,141,-164,142,-164},
-    &.{7,114,8,18,9,8,10,11,11,45,16,98,22,134,23,119,24,118,41,113,42,110,43,106,44,108,45,102,46,101,57,112,58,97,69,19,70,117,71,116,73,20,75,21,76,103,78,14,79,42,80,41,81,43,82,44,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{53,30,54,135,55,-7},
-    &.{1,-16,53,-16,55,-16,56,-16,57,-16,69,-16,70,-16,71,-16,73,-16,75,-16,78,-16,79,-16,80,-16,81,-16,82,-16,110,-16,111,-16,119,-16,121,-16,122,-16,125,-16,129,-16,135,-16,141,-16,142,-16},
-    &.{1,-20,53,-20,55,-20,56,-20,57,-20,69,-20,70,-20,71,-20,73,-20,75,-20,78,-20,79,-20,80,-20,81,-20,82,-20,110,-20,111,-20,119,-20,121,-20,122,-20,125,-20,129,-20,135,-20,141,-20,142,-20},
-    &.{1,-3,5,27,6,24,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,36,10,38,25,40,37,52,136,53,30,54,46,55,-7,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,133,-3,135,22,141,7,142,36},
-    &.{1,-21,53,-21,55,-21,56,-21,57,-21,69,-21,70,-21,71,-21,73,-21,75,-21,78,-21,79,-21,80,-21,81,-21,82,-21,110,-21,111,-21,119,-21,121,-21,122,-21,125,-21,129,-21,135,-21,141,-21,142,-21},
-    &.{1,-22,53,-22,55,-22,56,-22,57,-22,69,-22,70,-22,71,-22,73,-22,75,-22,78,-22,79,-22,80,-22,81,-22,82,-22,110,-22,111,-22,119,-22,121,-22,122,-22,125,-22,129,-22,135,-22,141,-22,142,-22},
-    &.{55,-6},
-    &.{7,114,8,18,9,8,10,11,11,45,16,98,22,137,23,119,24,118,41,113,42,110,43,106,44,108,45,102,46,101,57,112,58,97,69,19,70,117,71,116,73,20,75,21,76,103,78,14,79,42,80,41,81,43,82,44,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{10,138,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{1,-18,53,-18,55,-18,56,-18,57,-18,69,-18,70,-18,71,-18,73,-18,75,-18,78,-18,79,-18,80,-18,81,-18,82,-18,110,-18,111,-18,119,-18,121,-18,122,-18,125,-18,129,-18,135,-18,141,-18,142,-18},
-    &.{7,114,8,18,9,8,10,11,11,45,16,98,22,139,23,119,24,118,41,113,42,110,43,106,44,108,45,102,46,101,57,112,58,97,69,19,70,117,71,116,73,20,75,21,76,103,78,14,79,42,80,41,81,43,82,44,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{7,140,8,18,9,8,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{1,-186,53,-186,55,-186,56,-186,57,141,69,-186,70,-186,71,-186,73,-186,75,-186,78,-186,79,-186,80,-186,81,-186,82,-186,110,-186,111,-186,119,-186,121,-186,122,-186,125,-186,129,-186,135,-186,141,-186,142,-186},
-    &.{1,-17,53,-17,55,-17,56,-17,57,-17,69,-17,70,-17,71,-17,73,-17,75,-17,78,-17,79,-17,80,-17,81,-17,82,-17,110,-17,111,-17,119,-17,121,-17,122,-17,125,-17,129,-17,135,-17,141,-17,142,-17},
-    &.{1,-23,53,-23,55,-23,56,-23,57,-23,69,-23,70,-23,71,-23,73,-23,75,-23,78,-23,79,-23,80,-23,81,-23,82,-23,110,-23,111,-23,119,-23,121,-23,122,-23,125,-23,129,-23,135,-23,141,-23,142,-23},
-    &.{1,-4},
-    &.{57,142},
-    &.{1,-48,53,-48,55,-48,56,-48,57,-48,60,-48,61,-48,62,-48,63,-48,64,-48,65,-48,66,-48,67,-48,68,-48,69,-48,70,-48,71,-48,72,-48,73,-48,75,-48,76,143,78,-48,79,-48,80,-48,81,-48,82,-48,110,-48,111,-48,119,-48,121,-48,122,-48,125,-48,126,-48,129,-48,130,-48,135,-48,141,-48,142,-48},
-    &.{1,-46,53,-46,55,-46,56,-46,57,-46,60,-46,61,-46,62,-46,63,-46,64,-46,65,-46,66,-46,67,-46,68,-46,69,-46,70,-46,71,-46,72,-46,73,-46,75,-46,78,-46,79,-46,80,-46,81,-46,82,-46,110,-46,111,-46,119,-46,121,-46,122,-46,125,-46,126,-46,129,-46,130,-46,135,-46,141,-46,142,-46},
-    &.{13,146,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{11,153,57,112},
-    &.{1,-51,53,-51,55,-51,56,-51,57,-51,60,-51,61,-51,62,-51,63,-51,64,-51,65,-51,66,-51,67,-51,68,-51,69,-51,70,-51,71,-51,72,-51,73,-51,75,-51,78,-51,79,-51,80,-51,81,-51,82,-51,110,-51,111,-51,119,-51,121,-51,122,-51,125,-51,126,-51,129,-51,130,-51,135,-51,141,-51,142,-51},
-    &.{55,154},
-    &.{1,-1},
-    &.{1,-5},
-    &.{7,157,8,18,9,8,10,11,11,45,57,112,58,155,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,84,158,85,156},
-    &.{57,-180,58,-180,69,-180,70,-180,71,-180,73,-180,75,-180,78,-180,79,-180,80,-180,81,-180,82,-180,84,-180,85,-180},
-    &.{57,-181,58,-181,69,-181,70,-181,71,-181,73,-181,75,-181,78,-181,79,-181,80,-181,81,-181,82,-181,84,-181,85,-181},
-    &.{56,159,57,-175,58,-175,69,-175,70,-175,71,-175,73,-175,75,-175,78,-175,79,-175,80,-175,81,-175,82,-175,84,-175,85,-175},
-    &.{57,-179,58,-179,69,-179,70,-179,71,-179,73,-179,75,-179,78,-179,79,-179,80,-179,81,-179,82,-179,84,-179,85,-179},
-    &.{57,-177,58,-177,69,-177,70,-177,71,-177,73,-177,75,-177,78,-177,79,-177,80,-177,81,-177,82,-177,84,-177,85,-177},
-    &.{57,-182,58,-182,69,-182,70,-182,71,-182,73,-182,75,-182,78,-182,79,-182,80,-182,81,-182,82,-182,84,-182,85,-182},
-    &.{57,-178,58,-178,69,-178,70,-178,71,-178,73,-178,75,-178,78,-178,79,-178,80,-178,81,-178,82,-178,84,-178,85,-178},
-    &.{57,-176,58,-176,69,-176,70,-176,71,-176,73,-176,75,-176,78,-176,79,-176,80,-176,81,-176,82,-176,84,-176,85,-176},
-    &.{1,-54,18,160,53,-54,55,-54,56,-54,57,-54,60,-54,61,-54,62,-54,63,-54,64,-54,65,-54,66,-54,67,-54,68,-54,69,-54,70,-54,71,-54,72,-54,73,-54,75,-54,78,-54,79,-54,80,-54,81,-54,82,-54,104,162,107,161,108,163,110,-54,111,-54,119,-54,121,-54,122,-54,125,-54,126,-54,129,-54,130,-54,135,-54,141,-54,142,-54},
-    &.{1,-66,53,-66,55,-66,56,-66,57,-66,58,-66,60,-66,61,-66,62,-66,63,-66,64,-66,65,-66,66,-66,67,-66,68,-66,69,-66,70,-66,71,-66,72,-66,73,-66,74,-66,75,-66,76,-66,78,-66,79,-66,80,-66,81,-66,82,-66,84,-66,85,-66,86,-66,87,-66,88,-66,89,-66,90,-66,91,-66,92,-66,93,-66,94,-66,95,-66,96,-66,97,-66,98,-66,99,-66,100,-66,101,-66,102,-66,103,-66,104,-66,107,-66,108,-66,110,-66,111,-66,119,-66,121,-66,122,-66,125,-66,126,-66,129,-66,130,-66,135,-66,141,-66,142,-66},
-    &.{1,-77,53,-77,55,-77,56,-77,57,-77,58,-77,60,-77,61,-77,62,-77,63,-77,64,-77,65,-77,66,-77,67,-77,68,-77,69,-77,70,-77,71,-77,72,-77,73,-77,74,-77,75,-77,76,-77,78,-77,79,-77,80,-77,81,-77,82,-77,84,-77,85,-77,86,-77,87,-77,88,-77,89,-77,90,-77,91,-77,92,-77,93,-77,94,-77,95,-77,96,-77,97,-77,98,-77,99,-77,100,-77,101,-77,102,-77,103,-77,104,-77,107,-77,108,-77,110,-77,111,-77,119,-77,121,-77,122,-77,125,-77,126,-77,129,-77,130,-77,135,-77,141,-77,142,-77},
-    &.{1,-75,53,-75,55,-75,56,-75,57,-75,58,-75,60,-75,61,-75,62,-75,63,-75,64,-75,65,-75,66,-75,67,-75,68,-75,69,-75,70,-75,71,-75,72,-75,73,-75,74,-75,75,-75,76,-75,78,-75,79,-75,80,-75,81,-75,82,-75,84,-75,85,-75,86,-75,87,-75,88,-75,89,-75,90,-75,91,-75,92,-75,93,-75,94,-75,95,-75,96,-75,97,-75,98,-75,99,-75,100,-75,101,-75,102,-75,103,-75,104,-75,107,-75,108,-75,110,-75,111,-75,119,-75,121,-75,122,-75,125,-75,126,-75,129,-75,130,-75,135,-75,141,-75,142,-75},
-    &.{13,164,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{1,-69,53,-69,55,-69,56,-69,57,-69,58,-69,60,-69,61,-69,62,-69,63,-69,64,-69,65,-69,66,-69,67,-69,68,-69,69,-69,70,-69,71,-69,72,-69,73,-69,74,-69,75,-69,76,-69,78,-69,79,-69,80,-69,81,-69,82,-69,84,-69,85,-69,86,-69,87,-69,88,-69,89,-69,90,-69,91,-69,92,-69,93,-69,94,-69,95,-69,96,-69,97,-69,98,-69,99,-69,100,-69,101,-69,102,-69,103,-69,104,-69,107,-69,108,-69,110,-69,111,-69,119,-69,121,-69,122,-69,125,-69,126,-69,129,-69,130,-69,135,-69,141,-69,142,-69},
-    &.{1,-57,53,-57,55,-57,56,-57,57,-57,58,-57,60,-57,61,-57,62,-57,63,-57,64,-57,65,-57,66,-57,67,-57,68,-57,69,-57,70,-57,71,-57,72,-57,73,-57,74,-57,75,-57,76,-57,78,-57,79,-57,80,-57,81,-57,82,-57,84,-57,85,-57,86,-57,87,-57,88,-57,89,-57,90,-57,91,-57,92,-57,93,-57,94,-57,95,-57,96,-57,97,-57,98,-57,99,-57,100,-57,101,-57,102,-57,103,-57,104,-57,107,-57,108,-57,110,-57,111,-57,119,-57,121,-57,122,-57,125,-57,126,-57,129,-57,130,-57,135,-57,141,-57,142,-57},
-    &.{1,-74,53,-74,55,-74,56,-74,57,-74,58,-74,60,-74,61,-74,62,-74,63,-74,64,-74,65,-74,66,-74,67,-74,68,-74,69,-74,70,-74,71,-74,72,-74,73,-74,74,-74,75,-74,76,-74,78,-74,79,-74,80,-74,81,-74,82,-74,84,-74,85,-74,86,-74,87,-74,88,-74,89,-74,90,-74,91,-74,92,-74,93,-74,94,-74,95,-74,96,-74,97,-74,98,-74,99,-74,100,-74,101,-74,102,-74,103,-74,104,-74,107,-74,108,-74,110,-74,111,-74,119,-74,121,-74,122,-74,125,-74,126,-74,129,-74,130,-74,135,-74,141,-74,142,-74},
-    &.{1,-72,53,-72,55,-72,56,-72,57,-72,58,-72,60,-72,61,-72,62,-72,63,-72,64,-72,65,-72,66,-72,67,-72,68,-72,69,-72,70,-72,71,-72,72,-72,73,-72,74,-72,75,-72,76,-72,78,-72,79,-72,80,-72,81,-72,82,-72,84,-72,85,-72,86,-72,87,-72,88,-72,89,-72,90,-72,91,-72,92,-72,93,-72,94,-72,95,-72,96,-72,97,-72,98,-72,99,-72,100,-72,101,-72,102,-72,103,-72,104,-72,107,-72,108,-72,110,-72,111,-72,119,-72,121,-72,122,-72,125,-72,126,-72,129,-72,130,-72,135,-72,141,-72,142,-72},
-    &.{9,165,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{1,-53,12,68,14,76,15,72,16,60,17,64,53,-53,55,-53,56,-53,57,59,58,61,60,-53,61,-53,62,-53,63,-53,64,-53,65,-53,66,-53,67,-53,68,-53,69,-53,70,-53,71,-53,72,-53,73,-53,74,75,75,-53,76,63,78,-53,79,-53,80,-53,81,-53,82,-53,83,166,84,77,85,81,86,73,87,78,88,66,89,65,90,67,91,70,92,88,93,84,94,69,95,83,96,62,97,89,98,86,99,85,100,74,101,87,102,80,103,82,104,-53,107,-53,108,-53,110,-53,111,-53,119,-53,121,-53,122,-53,125,-53,126,-53,129,-53,130,-53,135,-53,141,-53,142,-53},
-    &.{13,167,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{9,168,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{16,98,41,171,42,110,43,106,44,108,45,102,46,101,47,175,48,174,50,172,57,169,58,170,71,94,76,103,80,95,84,111,85,99,86,109,87,92,88,105,92,88,144,100,149,173},
-    &.{1,-76,53,-76,55,-76,56,-76,57,-76,58,-76,60,-76,61,-76,62,-76,63,-76,64,-76,65,-76,66,-76,67,-76,68,-76,69,-76,70,-76,71,-76,72,-76,73,-76,74,-76,75,-76,76,-76,78,-76,79,-76,80,-76,81,-76,82,-76,84,-76,85,-76,86,-76,87,-76,88,-76,89,-76,90,-76,91,-76,92,-76,93,-76,94,-76,95,-76,96,-76,97,-76,98,-76,99,-76,100,-76,101,-76,102,-76,103,-76,104,-76,107,-76,108,-76,110,-76,111,-76,119,-76,121,-76,122,-76,125,-76,126,-76,129,-76,130,-76,135,-76,141,-76,142,-76},
-    &.{1,-70,53,-70,55,-70,56,-70,57,-70,58,-70,60,-70,61,-70,62,-70,63,-70,64,-70,65,-70,66,-70,67,-70,68,-70,69,-70,70,-70,71,-70,72,-70,73,-70,74,-70,75,-70,76,-70,78,-70,79,-70,80,-70,81,-70,82,-70,84,-70,85,-70,86,-70,87,-70,88,-70,89,-70,90,-70,91,-70,92,-70,93,-70,94,-70,95,-70,96,-70,97,-70,98,-70,99,-70,100,-70,101,-70,102,-70,103,-70,104,-70,107,-70,108,-70,110,-70,111,-70,119,-70,121,-70,122,-70,125,-70,126,-70,129,-70,130,-70,135,-70,141,-70,142,-70},
-    &.{1,-88,53,-88,55,-88,56,-88,57,-88,58,-88,60,-88,61,-88,62,-88,63,-88,64,-88,65,-88,66,-88,67,-88,68,-88,69,-88,70,-88,71,-88,72,-88,73,-88,74,-88,75,-88,76,-88,78,-88,79,-88,80,-88,81,-88,82,-88,84,-88,85,-88,86,-88,87,-88,88,-88,89,-88,90,-88,91,-88,92,-88,93,-88,94,-88,95,-88,96,-88,97,-88,98,-88,99,-88,100,-88,101,-88,102,-88,103,-88,104,-88,107,-88,108,-88,110,-88,111,-88,119,-88,121,-88,122,-88,125,-88,126,-88,129,-88,130,-88,135,-88,141,-88,142,-88},
-    &.{1,-73,53,-73,55,-73,56,-73,57,-73,58,-73,60,-73,61,-73,62,-73,63,-73,64,-73,65,-73,66,-73,67,-73,68,-73,69,-73,70,-73,71,-73,72,-73,73,-73,74,-73,75,-73,76,-73,78,-73,79,-73,80,-73,81,-73,82,-73,84,-73,85,-73,86,-73,87,-73,88,-73,89,-73,90,-73,91,-73,92,-73,93,-73,94,-73,95,-73,96,-73,97,-73,98,-73,99,-73,100,-73,101,-73,102,-73,103,-73,104,-73,107,-73,108,-73,110,-73,111,-73,119,-73,121,-73,122,-73,125,-73,126,-73,129,-73,130,-73,135,-73,141,-73,142,-73},
-    &.{1,-56,53,-56,55,-56,56,-56,57,-56,58,-56,60,-56,61,-56,62,-56,63,-56,64,-56,65,-56,66,-56,67,-56,68,-56,69,-56,70,-56,71,-56,72,-56,73,-56,74,-56,75,-56,76,-56,78,-56,79,-56,80,-56,81,-56,82,-56,84,-56,85,-56,86,-56,87,-56,88,-56,89,-56,90,-56,91,-56,92,-56,93,-56,94,-56,95,-56,96,-56,97,-56,98,-56,99,-56,100,-56,101,-56,102,-56,103,-56,104,-56,107,-56,108,-56,110,-56,111,-56,119,-56,121,-56,122,-56,125,-56,126,-56,129,-56,130,-56,135,-56,141,-56,142,-56},
-    &.{1,-67,53,-67,55,-67,56,-67,57,-67,58,-67,60,-67,61,-67,62,-67,63,-67,64,-67,65,-67,66,-67,67,-67,68,-67,69,-67,70,-67,71,-67,72,-67,73,-67,74,-67,75,-67,76,-67,78,-67,79,-67,80,-67,81,-67,82,-67,84,-67,85,-67,86,-67,87,-67,88,-67,89,-67,90,-67,91,-67,92,-67,93,-67,94,-67,95,-67,96,-67,97,-67,98,-67,99,-67,100,-67,101,-67,102,-67,103,-67,104,-67,107,-67,108,-67,110,-67,111,-67,119,-67,121,-67,122,-67,125,-67,126,-67,129,-67,130,-67,135,-67,141,-67,142,-67},
-    &.{1,-71,53,-71,55,-71,56,-71,57,-71,58,-71,60,-71,61,-71,62,-71,63,-71,64,-71,65,-71,66,-71,67,-71,68,-71,69,-71,70,-71,71,-71,72,-71,73,-71,74,-71,75,-71,76,-71,78,-71,79,-71,80,-71,81,-71,82,-71,84,-71,85,-71,86,-71,87,-71,88,-71,89,-71,90,-71,91,-71,92,-71,93,-71,94,-71,95,-71,96,-71,97,-71,98,-71,99,-71,100,-71,101,-71,102,-71,103,-71,104,-71,107,-71,108,-71,110,-71,111,-71,119,-71,121,-71,122,-71,125,-71,126,-71,129,-71,130,-71,135,-71,141,-71,142,-71},
-    &.{50,176,149,173},
-    &.{13,177,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{1,-68,53,-68,55,-68,56,-68,57,-68,58,-68,60,-68,61,-68,62,-68,63,-68,64,-68,65,-68,66,-68,67,-68,68,-68,69,-68,70,-68,71,-68,72,-68,73,-68,74,-68,75,-68,76,-68,78,-68,79,-68,80,-68,81,-68,82,-68,84,-68,85,-68,86,-68,87,-68,88,-68,89,-68,90,-68,91,-68,92,-68,93,-68,94,-68,95,-68,96,-68,97,-68,98,-68,99,-68,100,-68,101,-68,102,-68,103,-68,104,-68,107,-68,108,-68,110,-68,111,-68,119,-68,121,-68,122,-68,125,-68,126,-68,129,-68,130,-68,135,-68,141,-68,142,-68},
-    &.{13,178,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{13,179,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{13,180,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{1,-87,53,-87,55,-87,56,-87,57,-87,58,-87,60,-87,61,-87,62,-87,63,-87,64,-87,65,-87,66,-87,67,-87,68,-87,69,-87,70,-87,71,-87,72,-87,73,-87,74,-87,75,-87,76,-87,78,-87,79,-87,80,-87,81,-87,82,-87,84,-87,85,-87,86,-87,87,-87,88,-87,89,-87,90,-87,91,-87,92,-87,93,-87,94,-87,95,-87,96,-87,97,-87,98,-87,99,-87,100,-87,101,-87,102,-87,103,-87,104,-87,107,-87,108,-87,110,-87,111,-87,119,-87,121,-87,122,-87,125,-87,126,-87,129,-87,130,-87,135,-87,141,-87,142,-87},
-    &.{13,181,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{13,182,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{9,183,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{13,184,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{9,185,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{9,186,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{1,-202,53,-202,55,-202,56,-202,57,-202,58,-202,63,-202,65,-202,69,-202,70,-202,71,-202,72,-202,73,-202,75,-202,78,-202,79,-202,80,-202,81,-202,82,-202,93,-202,95,-202,110,-202,111,-202,113,-202,114,-202,115,-202,116,-202,117,-202,118,-202,119,-202,121,-202,122,-202,125,-202,126,-202,129,-202,130,-202,135,-202,141,-202,142,-202,143,-202,144,-202,145,-202,146,-202,147,-202,148,-202},
-    &.{126,-214,130,-214},
-    &.{16,98,41,187,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-209,53,-209,55,-209,56,-209,57,-209,69,-209,70,-209,71,-209,73,-209,75,-209,78,-209,79,-209,80,-209,81,-209,82,-209,110,-209,111,-209,119,-209,121,-209,122,-209,125,-209,126,-209,129,-209,130,-209,135,-209,141,-209,142,-209},
-    &.{126,-215,130,-215},
-    &.{16,98,45,188,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-208,53,-208,55,-208,56,-208,57,-208,58,-208,63,-208,65,-208,69,-208,70,-208,71,-208,72,-208,73,-208,75,-208,78,-208,79,-208,80,-208,81,-208,82,-208,93,-208,95,-208,110,-208,111,-208,113,-208,114,-208,115,-208,116,-208,117,-208,118,-208,119,-208,121,-208,122,-208,125,-208,126,-208,129,-208,130,-208,135,-208,141,-208,142,-208,143,-208,144,-208,145,-208,146,-208,147,-208,148,-208},
-    &.{1,-206,53,-206,55,-206,56,-206,57,-206,58,-206,63,-206,65,-206,69,-206,70,-206,71,-206,72,-206,73,-206,75,-206,78,-206,79,-206,80,-206,81,-206,82,-206,93,-206,95,-206,110,-206,111,-206,113,-206,114,-206,115,-206,116,-206,117,-206,118,-206,119,-206,121,-206,122,-206,125,-206,126,-206,129,-206,130,-206,135,-206,141,-206,142,-206,143,-206,144,-206,145,-206,146,-206,147,-206,148,-206},
-    &.{16,98,45,189,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-201,53,-201,55,-201,56,-201,57,-201,58,-201,63,-201,65,-201,69,-201,70,-201,71,-201,72,-201,73,-201,75,-201,78,-201,79,-201,80,-201,81,-201,82,-201,93,-201,95,-201,110,-201,111,-201,113,-201,114,-201,115,-201,116,-201,117,-201,118,-201,119,-201,121,-201,122,-201,125,-201,126,-201,129,-201,130,-201,135,-201,141,-201,142,-201,143,-201,144,-201,145,-201,146,-201,147,-201,148,-201},
-    &.{1,-197,53,-197,55,-197,56,-197,57,-197,58,-197,63,-197,65,-197,69,-197,70,-197,71,-197,72,-197,73,-197,75,-197,78,-197,79,-197,80,-197,81,-197,82,-197,93,-197,95,-197,110,-197,111,-197,113,-197,114,-197,115,-197,116,-197,117,-197,118,-197,119,-197,121,-197,122,-197,125,-197,126,-197,129,-197,130,-197,135,-197,141,-197,142,-197,143,-197,144,-197,145,-197,146,-197,147,-197,148,190},
-    &.{1,-204,53,-204,55,-204,56,-204,57,-204,58,-204,63,-204,65,-204,69,-204,70,-204,71,-204,72,-204,73,-204,75,-204,78,-204,79,-204,80,-204,81,-204,82,-204,93,-204,95,-204,110,-204,111,-204,113,-204,114,-204,115,-204,116,-204,117,-204,118,-204,119,-204,121,-204,122,-204,125,-204,126,-204,129,-204,130,-204,135,-204,141,-204,142,-204,143,-204,144,-204,145,-204,146,-204,147,-204,148,-204},
-    &.{30,191,126,192,130,193},
-    &.{1,-203,53,-203,55,-203,56,-203,57,-203,58,-203,63,-203,65,-203,69,-203,70,-203,71,-203,72,-203,73,-203,75,-203,78,-203,79,-203,80,-203,81,-203,82,-203,93,-203,95,-203,110,-203,111,-203,113,-203,114,-203,115,-203,116,-203,117,-203,118,-203,119,-203,121,-203,122,-203,125,-203,126,-203,129,-203,130,-203,135,-203,141,-203,142,-203,143,-203,144,-203,145,-203,146,-203,147,-203,148,-203},
-    &.{1,-191,53,-191,55,-191,56,-191,57,-191,58,-191,63,-191,65,-191,69,-191,70,-191,71,-191,72,-191,73,-191,75,-191,78,-191,79,-191,80,-191,81,-191,82,-191,93,-191,95,-191,110,-191,111,-191,113,-191,114,-191,115,-191,116,-191,117,-191,118,-191,119,-191,121,-191,122,-191,125,-191,126,-191,129,-191,130,-191,135,-191,141,-191,142,-191,143,-191,144,-191,145,194,146,195,147,196},
-    &.{126,-213,130,-213},
-    &.{1,-195,53,-195,55,-195,56,-195,57,-195,58,-195,63,-195,65,-195,69,-195,70,-195,71,-195,72,-195,73,-195,75,-195,78,-195,79,-195,80,-195,81,-195,82,-195,93,-195,95,-195,110,-195,111,-195,113,-195,114,-195,115,-195,116,-195,117,-195,118,-195,119,-195,121,-195,122,-195,125,-195,126,-195,129,-195,130,-195,135,-195,141,-195,142,-195,143,-195,144,-195,145,-195,146,-195,147,-195},
-    &.{1,-205,53,-205,55,-205,56,-205,57,-205,58,-205,63,-205,65,-205,69,-205,70,-205,71,-205,72,-205,73,-205,75,-205,78,-205,79,-205,80,-205,81,-205,82,-205,93,-205,95,-205,110,-205,111,-205,113,-205,114,-205,115,-205,116,-205,117,-205,118,-205,119,-205,121,-205,122,-205,125,-205,126,-205,129,-205,130,-205,135,-205,141,-205,142,-205,143,-205,144,-205,145,-205,146,-205,147,-205,148,-205},
-    &.{1,-188,53,-188,55,-188,56,-188,57,-188,58,199,63,-188,65,-188,69,-188,70,-188,71,-188,72,-188,73,-188,75,-188,78,-188,79,-188,80,-188,81,-188,82,-188,93,-188,95,-188,110,-188,111,-188,113,-188,114,-188,115,-188,116,-188,117,-188,118,-188,119,-188,121,-188,122,-188,125,-188,126,-188,129,-188,130,-188,135,-188,141,-188,142,-188,143,198,144,197},
-    &.{1,-207,53,-207,55,-207,56,-207,57,-207,58,-207,63,-207,65,-207,69,-207,70,-207,71,-207,72,-207,73,-207,75,-207,78,-207,79,-207,80,-207,81,-207,82,-207,93,-207,95,-207,110,-207,111,-207,113,-207,114,-207,115,-207,116,-207,117,-207,118,-207,119,-207,121,-207,122,-207,125,-207,126,-207,129,-207,130,-207,135,-207,141,-207,142,-207,143,-207,144,-207,145,-207,146,-207,147,-207,148,-207},
-    &.{1,-53,12,68,14,76,15,72,16,60,17,64,53,-53,55,-53,56,-53,57,59,58,61,60,-53,61,-53,62,-53,63,-53,64,-53,65,-53,66,-53,67,-53,68,-53,69,-53,70,-53,71,-53,72,-53,73,-53,74,75,75,-53,76,63,78,-53,79,-53,80,-53,81,-53,82,-53,83,58,84,77,85,81,86,73,87,78,88,66,89,65,90,67,91,70,92,88,93,84,94,69,95,83,96,62,97,89,98,86,99,85,100,74,101,87,102,80,103,82,104,-53,107,-53,108,-53,110,-53,111,-53,119,-53,121,-53,122,-53,125,-53,126,-53,129,-53,130,-53,135,-53,141,-53,142,-53},
-    &.{93,207,95,206,113,204,114,200,115,202,116,201,117,205,118,203},
-    &.{126,-103,130,-103},
-    &.{34,208,126,209,130,210},
-    &.{7,140,8,18,9,8,10,11,11,45,16,98,23,212,24,118,41,211,42,110,43,106,44,108,45,102,46,101,57,112,58,97,69,19,70,117,71,116,73,20,75,21,76,103,78,14,79,42,80,41,81,43,82,44,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{10,138,11,45,16,98,24,213,41,113,42,110,43,106,44,108,45,102,46,101,57,112,58,97,69,19,70,117,71,116,73,20,75,21,76,103,78,14,79,42,80,41,81,43,82,44,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{63,214,65,215,72,-106,126,-106,130,-106},
-    &.{126,-102,130,-102},
-    &.{1,-10,53,-10,55,-10,56,-10,57,-10,69,-10,70,-10,71,-10,73,-10,75,-10,78,-10,79,-10,80,-10,81,-10,82,-10,110,-10,111,-10,119,-10,121,-10,122,-10,125,-10,129,-10,135,-10,141,-10,142,-10},
-    &.{1,-27,7,216,8,18,9,8,10,11,11,45,53,-27,55,-27,56,-27,57,112,69,19,70,32,71,35,72,-27,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,-27,111,-27,119,-27,121,-27,122,-27,125,-27,126,-27,129,-27,130,-27,135,-27,141,-27,142,-27},
-    &.{9,217,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{9,218,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{9,219,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{9,220,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{9,221,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{7,222,8,18,9,8,10,11,11,45,57,112,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44},
-    &.{1,-38,53,-38,55,-38,56,-38,57,-38,60,-38,61,-38,62,-38,63,-38,64,-38,65,-38,66,-38,67,-38,68,-38,69,-38,70,-38,71,-38,72,-38,73,-38,75,-38,78,-38,79,-38,80,-38,81,-38,82,-38,110,-38,111,-38,119,-38,121,-38,122,-38,125,-38,126,-38,129,-38,130,-38,135,-38,141,-38,142,-38},
-    &.{13,223,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144},
-    &.{1,-44,53,-44,55,-44,56,-44,57,-44,60,-44,61,-44,62,-44,63,-44,64,-44,65,-44,66,-44,67,-44,68,-44,69,-44,70,-44,71,-44,72,-44,73,-44,75,-44,78,-44,79,-44,80,-44,81,-44,82,-44,110,-44,111,-44,119,-44,121,-44,122,-44,125,-44,126,-44,129,-44,130,-44,135,-44,141,-44,142,-44},
-    &.{1,-42,53,-42,55,-42,56,-42,57,-42,60,-42,61,-42,62,-42,63,-42,64,-42,65,-42,66,-42,67,-42,68,-42,69,-42,70,-42,71,-42,72,-42,73,-42,75,-42,78,-42,79,-42,80,-42,81,-42,82,-42,110,-42,111,-42,119,-42,121,-42,122,-42,125,-42,126,-42,129,-42,130,-42,135,-42,141,-42,142,-42},
-    &.{1,-157,6,226,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,34,225,36,10,37,228,38,25,40,37,53,-157,55,-157,56,17,57,9,58,224,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,126,209,129,-157,130,210,135,22,137,227,141,7,142,36},
-    &.{1,-163,6,231,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,34,230,36,10,37,232,38,25,40,37,53,-163,55,-163,56,17,57,9,58,229,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,126,209,129,-163,130,210,135,22,137,227,141,7,142,36},
-    &.{34,233,126,209,130,210},
-    &.{55,234},
-    &.{1,-2,133,-2},
-    &.{34,235,126,209,130,210},
-    &.{1,-39,53,-39,55,-39,56,-39,57,-39,60,-39,61,-39,62,-39,63,-39,64,-39,65,-39,66,-39,67,-39,68,-39,69,-39,70,-39,71,-39,72,-39,73,-39,75,-39,78,-39,79,-39,80,-39,81,-39,82,-39,110,-39,111,-39,119,-39,121,-39,122,-39,125,-39,126,-39,129,-39,130,-39,135,-39,141,-39,142,-39},
-    &.{34,236,126,209,130,210},
-    &.{72,237},
-    &.{1,-185,13,238,53,-185,55,-185,56,-185,57,147,58,239,69,-185,70,-185,71,-185,73,-185,74,150,75,-185,76,151,78,-185,79,-185,80,-185,81,-185,82,-185,84,152,85,149,86,148,87,145,88,144,110,-185,111,-185,119,-185,121,-185,122,-185,125,-185,129,-185,135,-185,141,-185,142,-185},
-    &.{120,240},
-    &.{1,-47,53,-47,55,-47,56,-47,57,-47,60,-47,61,-47,62,-47,63,-47,64,-47,65,-47,66,-47,67,-47,68,-47,69,-47,70,-47,71,-47,72,-47,73,-47,75,-47,78,-47,79,-47,80,-47,81,-47,82,-47,110,-47,111,-47,119,-47,121,-47,122,-47,125,-47,126,-47,129,-47,130,-47,135,-47,141,-47,142,-47},
-    &.{1,-64,53,-64,55,-64,56,-64,57,-64,58,-64,60,-64,61,-64,62,-64,63,-64,64,-64,65,-64,66,-64,67,-64,68,-64,69,-64,70,-64,71,-64,72,-64,73,-64,74,-64,75,-64,76,-64,78,-64,79,-64,80,-64,81,-64,82,-64,84,-64,85,-64,86,-64,87,-64,88,-64,89,-64,90,-64,91,-64,92,-64,93,-64,94,-64,95,-64,96,-64,97,-64,98,-64,99,-64,100,-64,101,-64,102,-64,103,-64,104,-64,107,-64,108,-64,110,-64,111,-64,119,-64,121,-64,122,-64,125,-64,126,-64,129,-64,130,-64,135,-64,141,-64,142,-64},
-    &.{1,-63,53,-63,55,-63,56,-63,57,-63,58,-63,60,-63,61,-63,62,-63,63,-63,64,-63,65,-63,66,-63,67,-63,68,-63,69,-63,70,-63,71,-63,72,-63,73,-63,74,-63,75,-63,76,-63,78,-63,79,-63,80,-63,81,-63,82,-63,84,-63,85,-63,86,-63,87,-63,88,-63,89,-63,90,-63,91,-63,92,-63,93,-63,94,-63,95,-63,96,-63,97,-63,98,-63,99,-63,100,-63,101,-63,102,-63,103,-63,104,-63,107,-63,108,-63,110,-63,111,-63,119,-63,121,-63,122,-63,125,-63,126,-63,129,-63,130,-63,135,-63,141,-63,142,-63},
-    &.{1,-49,53,-49,55,-49,56,-49,57,-49,60,-49,61,-49,62,-49,63,-49,64,-49,65,-49,66,-49,67,-49,68,-49,69,-49,70,-49,71,-49,72,-49,73,-49,75,-49,78,-49,79,-49,80,-49,81,-49,82,-49,110,-49,111,-49,119,-49,121,-49,122,-49,125,-49,126,-49,129,-49,130,-49,135,-49,141,-49,142,-49},
-    &.{1,-58,53,-58,55,-58,56,-58,57,-58,58,-58,60,-58,61,-58,62,-58,63,-58,64,-58,65,-58,66,-58,67,-58,68,-58,69,-58,70,-58,71,-58,72,-58,73,-58,74,-58,75,-58,76,-58,78,-58,79,-58,80,-58,81,-58,82,-58,84,-58,85,-58,86,-58,87,-58,88,-58,89,-58,90,-58,91,-58,92,-58,93,-58,94,-58,95,-58,96,-58,97,-58,98,-58,99,-58,100,-58,101,-58,102,-58,103,-58,104,-58,107,-58,108,-58,110,-58,111,-58,119,-58,121,-58,122,-58,125,-58,126,-58,129,-58,130,-58,135,-58,141,-58,142,-58},
-    &.{1,-62,53,-62,55,-62,56,-62,57,-62,58,-62,60,-62,61,-62,62,-62,63,-62,64,-62,65,-62,66,-62,67,-62,68,-62,69,-62,70,-62,71,-62,72,-62,73,-62,74,-62,75,-62,76,-62,78,-62,79,-62,80,-62,81,-62,82,-62,84,-62,85,-62,86,-62,87,-62,88,-62,89,-62,90,-62,91,-62,92,-62,93,-62,94,-62,95,-62,96,-62,97,-62,98,-62,99,-62,100,-62,101,-62,102,-62,103,-62,104,-62,107,-62,108,-62,110,-62,111,-62,119,-62,121,-62,122,-62,125,-62,126,-62,129,-62,130,-62,135,-62,141,-62,142,-62},
-    &.{1,-60,53,-60,55,-60,56,-60,57,-60,58,-60,60,-60,61,-60,62,-60,63,-60,64,-60,65,-60,66,-60,67,-60,68,-60,69,-60,70,-60,71,-60,72,-60,73,-60,74,-60,75,-60,76,-60,78,-60,79,-60,80,-60,81,-60,82,-60,84,-60,85,-60,86,-60,87,-60,88,-60,89,-60,90,-60,91,-60,92,-60,93,-60,94,-60,95,-60,96,-60,97,-60,98,-60,99,-60,100,-60,101,-60,102,-60,103,-60,104,-60,107,-60,108,-60,110,-60,111,-60,119,-60,121,-60,122,-60,125,-60,126,-60,129,-60,130,-60,135,-60,141,-60,142,-60},
-    &.{1,-65,53,-65,55,-65,56,-65,57,-65,58,-65,60,-65,61,-65,62,-65,63,-65,64,-65,65,-65,66,-65,67,-65,68,-65,69,-65,70,-65,71,-65,72,-65,73,-65,74,-65,75,-65,76,-65,78,-65,79,-65,80,-65,81,-65,82,-65,84,-65,85,-65,86,-65,87,-65,88,-65,89,-65,90,-65,91,-65,92,-65,93,-65,94,-65,95,-65,96,-65,97,-65,98,-65,99,-65,100,-65,101,-65,102,-65,103,-65,104,-65,107,-65,108,-65,110,-65,111,-65,119,-65,121,-65,122,-65,125,-65,126,-65,129,-65,130,-65,135,-65,141,-65,142,-65},
-    &.{1,-61,53,-61,55,-61,56,-61,57,-61,58,-61,60,-61,61,-61,62,-61,63,-61,64,-61,65,-61,66,-61,67,-61,68,-61,69,-61,70,-61,71,-61,72,-61,73,-61,74,-61,75,-61,76,-61,78,-61,79,-61,80,-61,81,-61,82,-61,84,-61,85,-61,86,-61,87,-61,88,-61,89,-61,90,-61,91,-61,92,-61,93,-61,94,-61,95,-61,96,-61,97,-61,98,-61,99,-61,100,-61,101,-61,102,-61,103,-61,104,-61,107,-61,108,-61,110,-61,111,-61,119,-61,121,-61,122,-61,125,-61,126,-61,129,-61,130,-61,135,-61,141,-61,142,-61},
-    &.{1,-59,53,-59,55,-59,56,-59,57,-59,58,-59,60,-59,61,-59,62,-59,63,-59,64,-59,65,-59,66,-59,67,-59,68,-59,69,-59,70,-59,71,-59,72,-59,73,-59,74,-59,75,-59,76,-59,78,-59,79,-59,80,-59,81,-59,82,-59,84,-59,85,-59,86,-59,87,-59,88,-59,89,-59,90,-59,91,-59,92,-59,93,-59,94,-59,95,-59,96,-59,97,-59,98,-59,99,-59,100,-59,101,-59,102,-59,103,-59,104,-59,107,-59,108,-59,110,-59,111,-59,119,-59,121,-59,122,-59,125,-59,126,-59,129,-59,130,-59,135,-59,141,-59,142,-59},
-    &.{1,-50,53,-50,55,-50,56,-50,57,-50,60,-50,61,-50,62,-50,63,-50,64,-50,65,-50,66,-50,67,-50,68,-50,69,-50,70,-50,71,-50,72,-50,73,-50,75,-50,78,-50,79,-50,80,-50,81,-50,82,-50,110,-50,111,-50,119,-50,121,-50,122,-50,125,-50,126,-50,129,-50,130,-50,135,-50,141,-50,142,-50},
-    &.{1,-9,53,-9,55,-9,56,-9,57,-9,69,-9,70,-9,71,-9,73,-9,75,-9,78,-9,79,-9,80,-9,81,-9,82,-9,110,-9,111,-9,119,-9,121,-9,122,-9,125,-9,133,-9,135,-9,141,-9,142,-9},
-    &.{1,-172,53,-172,55,-172,56,-172,57,-172,69,-172,70,-172,71,-172,73,-172,75,-172,78,-172,79,-172,80,-172,81,-172,82,-172,110,-172,111,-172,119,-172,121,-172,122,-172,125,-172,129,-172,135,-172,141,-172,142,-172},
-    &.{1,-171,53,-171,55,-171,56,-171,57,-171,69,-171,70,-171,71,-171,73,-171,75,-171,78,-171,79,-171,80,-171,81,-171,82,-171,110,-171,111,-171,119,-171,121,-171,122,-171,125,-171,129,-171,135,-171,141,-171,142,-171},
-    &.{1,-169,53,-169,55,-169,56,-169,57,-169,69,-169,70,-169,71,-169,73,-169,75,-169,78,-169,79,-169,80,-169,81,-169,82,-169,110,-169,111,-169,119,-169,121,-169,122,-169,125,-169,129,-169,135,-169,141,-169,142,-169},
-    &.{1,-170,53,-170,55,-170,56,-170,57,-170,69,-170,70,-170,71,-170,73,-170,75,-170,78,-170,79,-170,80,-170,81,-170,82,-170,110,-170,111,-170,119,-170,121,-170,122,-170,125,-170,129,-170,135,-170,141,-170,142,-170},
-    &.{57,-174,58,-174,69,-174,70,-174,71,-174,73,-174,75,-174,78,-174,79,-174,80,-174,81,-174,82,-174,84,-174,85,-174},
-    &.{1,-55,53,-55,55,-55,56,-55,57,-55,60,-55,61,-55,62,-55,63,-55,64,-55,65,-55,66,-55,67,-55,68,-55,69,-55,70,-55,71,-55,72,-55,73,-55,75,-55,78,-55,79,-55,80,-55,81,-55,82,-55,110,-55,111,-55,119,-55,121,-55,122,-55,125,-55,126,-55,129,-55,130,-55,135,-55,141,-55,142,-55},
-    &.{105,241,106,242,107,-93},
-    &.{104,-93,105,241,106,243},
-    &.{105,241,106,244,109,-93},
-    &.{1,-84,53,-84,55,-84,56,-84,57,-84,58,-84,60,-84,61,-84,62,-84,63,-84,64,-84,65,-84,66,-84,67,-84,68,-84,69,-84,70,-84,71,-84,72,-84,73,-84,74,-84,75,-84,76,-84,78,-84,79,-84,80,-84,81,-84,82,-84,84,-84,85,-84,86,-84,87,-84,88,-84,89,-84,90,-84,91,-84,92,-84,93,-84,94,-84,95,-84,96,-84,97,-84,98,-84,99,-84,100,-84,101,-84,102,-84,103,-84,104,-84,107,-84,108,-84,110,-84,111,-84,119,-84,121,-84,122,-84,125,-84,126,-84,129,-84,130,-84,135,-84,141,-84,142,-84},
-    &.{72,245},
-    &.{1,-52,53,-52,55,-52,56,-52,57,-52,60,-52,61,-52,62,-52,63,-52,64,-52,65,-52,66,-52,67,-52,68,-52,69,-52,70,-52,71,-52,72,-52,73,-52,75,-52,78,-52,79,-52,80,-52,81,-52,82,-52,104,-52,107,-52,108,-52,110,-52,111,-52,119,-52,121,-52,122,-52,125,-52,126,-52,129,-52,130,-52,135,-52,141,-52,142,-52},
-    &.{1,-82,53,-82,55,-82,56,-82,57,-82,58,-82,60,-82,61,-82,62,-82,63,-82,64,-82,65,-82,66,-82,67,-82,68,-82,69,-82,70,-82,71,-82,72,-82,73,-82,74,-82,75,-82,76,-82,78,-82,79,-82,80,-82,81,-82,82,-82,84,-82,85,-82,86,-82,87,-82,88,-82,89,-82,90,-82,91,-82,92,-82,93,-82,94,-82,95,-82,96,-82,97,-82,98,-82,99,-82,100,-82,101,-82,102,-82,103,-82,104,-82,107,-82,108,-82,110,-82,111,-82,119,-82,121,-82,122,-82,125,-82,126,-82,129,-82,130,-82,135,-82,141,-82,142,-82},
-    &.{72,246},
-    &.{1,-211,53,-211,55,-211,56,-211,57,-211,69,-211,70,-211,71,-211,73,-211,75,-211,78,-211,79,-211,80,-211,81,-211,82,-211,110,-211,111,-211,119,-211,121,-211,122,-211,125,-211,129,-211,135,-211,141,-211,142,-211},
-    &.{1,-11,16,98,45,188,46,101,53,-11,55,-11,56,-11,57,-11,58,97,69,-11,70,-11,71,94,73,-11,75,-11,76,103,78,-11,79,-11,80,-11,81,-11,82,-11,84,111,85,99,86,109,87,92,88,105,92,88,110,-11,111,-11,119,-11,121,-11,122,-11,125,-11,129,-11,135,-11,141,-11,142,-11,144,100},
-    &.{1,-212,53,-212,55,-212,56,-212,57,-212,69,-212,70,-212,71,-212,73,-212,75,-212,78,-212,79,-212,80,-212,81,-212,82,-212,110,-212,111,-212,119,-212,121,-212,122,-212,125,-212,129,-212,135,-212,141,-212,142,-212},
-    &.{1,-12,53,-12,55,-12,56,-12,57,-12,69,-12,70,-12,71,-12,73,-12,75,-12,78,-12,79,-12,80,-12,81,-12,82,-12,110,-12,111,-12,119,-12,121,-12,122,-12,125,-12,129,-12,135,-12,141,-12,142,-12},
-    &.{16,249,51,256,57,248,58,250,74,258,76,252,84,259,85,251,86,257,87,247,88,254,89,253,92,88,150,255,151,-217},
-    &.{1,-14,53,-14,55,-14,56,-14,57,-14,69,-14,70,-14,71,-14,73,-14,75,-14,78,-14,79,-14,80,-14,81,-14,82,-14,110,-14,111,-14,119,-14,121,-14,122,-14,125,-14,129,-14,135,-14,141,-14,142,-14},
-    &.{1,-210,53,-210,55,-210,56,-210,57,-210,69,-210,70,-210,71,-210,73,-210,75,-210,78,-210,79,-210,80,-210,81,-210,82,-210,110,-210,111,-210,119,-210,121,-210,122,-210,125,-210,129,-210,135,-210,141,-210,142,-210},
-    &.{1,-13,53,-13,55,-13,56,-13,57,-13,69,-13,70,-13,71,-13,73,-13,75,-13,78,-13,79,-13,80,-13,81,-13,82,-13,110,-13,111,-13,119,-13,121,-13,122,-13,125,-13,129,-13,135,-13,141,-13,142,-13},
-    &.{1,-90,53,-90,55,-90,56,-90,57,-90,58,-90,60,-90,61,-90,62,-90,63,-90,64,-90,65,-90,66,-90,67,-90,68,-90,69,-90,70,-90,71,-90,72,-90,73,-90,74,-90,75,-90,76,-90,78,-90,79,-90,80,-90,81,-90,82,-90,84,-90,85,-90,86,-90,87,-90,88,-90,89,-90,90,-90,91,-90,92,-90,93,-90,94,-90,95,-90,96,-90,97,-90,98,-90,99,-90,100,-90,101,-90,102,-90,103,-90,104,-90,107,-90,108,-90,110,-90,111,-90,119,-90,121,-90,122,-90,125,-90,126,-90,129,-90,130,-90,135,-90,141,-90,142,-90},
-    &.{1,-91,53,-91,55,-91,56,-91,57,-91,58,-91,60,-91,61,-91,62,-91,63,-91,64,-91,65,-91,66,-91,67,-91,68,-91,69,-91,70,-91,71,-91,72,-91,73,-91,74,-91,75,-91,76,-91,78,-91,79,-91,80,-91,81,-91,82,-91,84,-91,85,-91,86,-91,87,-91,88,-91,89,-91,90,-91,91,-91,92,-91,93,-91,94,-91,95,-91,96,-91,97,-91,98,-91,99,-91,100,-91,101,-91,102,-91,103,-91,104,-91,107,-91,108,-91,110,-91,111,-91,119,-91,121,-91,122,-91,125,-91,126,-91,129,-91,130,-91,135,-91,141,-91,142,-91},
-    &.{1,-83,53,-83,55,-83,56,-83,57,-83,58,-83,60,-83,61,-83,62,-83,63,-83,64,-83,65,-83,66,-83,67,-83,68,-83,69,-83,70,-83,71,-83,72,-83,73,-83,74,-83,75,-83,76,-83,78,-83,79,-83,80,-83,81,-83,82,-83,84,-83,85,-83,86,-83,87,-83,88,-83,89,-83,90,-83,91,-83,92,-83,93,-83,94,-83,95,-83,96,-83,97,-83,98,-83,99,-83,100,-83,101,-83,102,-83,103,-83,104,-83,107,-83,108,-83,110,-83,111,-83,119,-83,121,-83,122,-83,125,-83,126,-83,129,-83,130,-83,135,-83,141,-83,142,-83},
-    &.{1,-81,53,-81,55,-81,56,-81,57,-81,58,-81,60,-81,61,-81,62,-81,63,-81,64,-81,65,-81,66,-81,67,-81,68,-81,69,-81,70,-81,71,-81,72,-81,73,-81,74,-81,75,-81,76,-81,78,-81,79,-81,80,-81,81,-81,82,-81,84,-81,85,-81,86,-81,87,-81,88,-81,89,-81,90,-81,91,-81,92,-81,93,-81,94,-81,95,-81,96,-81,97,-81,98,-81,99,-81,100,-81,101,-81,102,-81,103,-81,104,-81,107,-81,108,-81,110,-81,111,-81,119,-81,121,-81,122,-81,125,-81,126,-81,129,-81,130,-81,135,-81,141,-81,142,-81},
-    &.{1,-86,53,-86,55,-86,56,-86,57,-86,58,-86,60,-86,61,-86,62,-86,63,-86,64,-86,65,-86,66,-86,67,-86,68,-86,69,-86,70,-86,71,-86,72,-86,73,-86,74,-86,75,-86,76,-86,78,-86,79,-86,80,-86,81,-86,82,-86,84,-86,85,-86,86,-86,87,-86,88,-86,89,-86,90,-86,91,-86,92,-86,93,-86,94,-86,95,-86,96,-86,97,-86,98,-86,99,-86,100,-86,101,-86,102,-86,103,-86,104,-86,107,-86,108,-86,110,-86,111,-86,119,-86,121,-86,122,-86,125,-86,126,-86,129,-86,130,-86,135,-86,141,-86,142,-86},
-    &.{1,-89,53,-89,55,-89,56,-89,57,-89,58,-89,60,-89,61,-89,62,-89,63,-89,64,-89,65,-89,66,-89,67,-89,68,-89,69,-89,70,-89,71,-89,72,-89,73,-89,74,-89,75,-89,76,-89,78,-89,79,-89,80,-89,81,-89,82,-89,84,-89,85,-89,86,-89,87,-89,88,-89,89,-89,90,-89,91,-89,92,-89,93,-89,94,-89,95,-89,96,-89,97,-89,98,-89,99,-89,100,-89,101,-89,102,-89,103,-89,104,-89,107,-89,108,-89,110,-89,111,-89,119,-89,121,-89,122,-89,125,-89,126,-89,129,-89,130,-89,135,-89,141,-89,142,-89},
-    &.{72,260},
-    &.{1,-85,53,-85,55,-85,56,-85,57,-85,58,-85,60,-85,61,-85,62,-85,63,-85,64,-85,65,-85,66,-85,67,-85,68,-85,69,-85,70,-85,71,-85,72,-85,73,-85,74,-85,75,-85,76,-85,78,-85,79,-85,80,-85,81,-85,82,-85,84,-85,85,-85,86,-85,87,-85,88,-85,89,-85,90,-85,91,-85,92,-85,93,-85,94,-85,95,-85,96,-85,97,-85,98,-85,99,-85,100,-85,101,-85,102,-85,103,-85,104,-85,107,-85,108,-85,110,-85,111,-85,119,-85,121,-85,122,-85,125,-85,126,-85,129,-85,130,-85,135,-85,141,-85,142,-85},
-    &.{1,-35,53,-35,55,-35,56,-35,57,-35,60,-35,61,-35,62,-35,63,-35,64,-35,65,-35,66,-35,69,-35,70,-35,71,-35,72,-35,73,-35,75,-35,78,-35,79,-35,80,-35,81,-35,82,-35,110,-35,111,-35,119,-35,121,-35,122,-35,125,-35,126,-35,129,-35,130,-35,135,-35,141,-35,142,-35},
-    &.{1,-36,53,-36,55,-36,56,-36,57,-36,60,-36,61,-36,62,-36,63,-36,64,-36,65,-36,66,-36,69,-36,70,-36,71,-36,72,-36,73,-36,75,-36,78,-36,79,-36,80,-36,81,-36,82,-36,110,-36,111,-36,119,-36,121,-36,122,-36,125,-36,126,-36,129,-36,130,-36,135,-36,141,-36,142,-36},
-    &.{72,261},
-    &.{1,-199,53,-199,55,-199,56,-199,57,-199,58,-199,63,-199,65,-199,69,-199,70,-199,71,-199,72,-199,73,-199,75,-199,78,-199,79,-199,80,-199,81,-199,82,-199,93,-199,95,-199,110,-199,111,-199,113,-199,114,-199,115,-199,116,-199,117,-199,118,-199,119,-199,121,-199,122,-199,125,-199,126,-199,129,-199,130,-199,135,-199,141,-199,142,-199,143,-199,144,-199,145,-199,146,-199,147,-199,148,-199},
-    &.{1,-200,53,-200,55,-200,56,-200,57,-200,58,-200,63,-200,65,-200,69,-200,70,-200,71,-200,72,-200,73,-200,75,-200,78,-200,79,-200,80,-200,81,-200,82,-200,93,-200,95,-200,110,-200,111,-200,113,-200,114,-200,115,-200,116,-200,117,-200,118,-200,119,-200,121,-200,122,-200,125,-200,126,-200,129,-200,130,-200,135,-200,141,-200,142,-200,143,-200,144,-200,145,-200,146,-200,147,-200,148,-200},
-    &.{16,98,44,262,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-126,53,-126,55,-126,56,-126,57,-126,69,-126,70,-126,71,-126,73,-126,75,-126,78,-126,79,-126,80,-126,81,-126,82,-126,110,-126,111,-126,119,-126,121,-126,122,-126,125,-126,129,-126,135,-126,141,-126,142,-126},
-    &.{13,263,31,271,33,269,53,264,55,265,57,147,74,150,76,151,84,272,85,267,86,148,87,145,88,144,89,268,112,266,128,270},
-    &.{13,263,32,275,33,274,53,30,54,276,55,-7,57,147,74,150,76,151,84,272,85,267,86,148,87,145,88,144,89,268,112,266,132,273},
-    &.{16,98,44,277,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,44,278,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,44,279,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,43,280,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,281,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,43,282,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,283,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,284,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,285,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,286,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,89,287,92,88,144,100},
-    &.{16,98,41,288,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,289,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,89,290,92,88,144,100},
-    &.{16,98,41,291,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,41,292,42,110,43,106,44,108,45,102,46,101,58,97,71,94,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-97,21,294,53,-97,55,-97,56,-97,57,-97,69,-97,70,-97,71,-97,73,-97,75,-97,78,-97,79,-97,80,-97,81,-97,82,-97,110,-97,111,-97,112,293,119,-97,121,-97,122,-97,125,-97,129,-97,135,-97,141,-97,142,-97},
-    &.{6,297,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,35,295,36,10,38,25,40,37,53,298,55,299,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,129,-146,134,296,135,22,141,7,142,36},
-    &.{5,27,6,24,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,36,10,38,25,40,37,52,300,53,30,54,46,55,-7,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,133,-3,135,22,141,7,142,36},
-    &.{72,261,93,207,95,206,113,204,114,200,115,202,116,201,117,205,118,203},
-    &.{72,301},
-    &.{63,-117,65,-117,72,-117,126,-117,130,-117},
-    &.{16,98,23,304,24,118,41,113,42,110,43,106,44,108,45,102,46,101,58,97,70,303,71,302,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,23,305,24,118,41,113,42,110,43,106,44,108,45,102,46,101,58,97,70,303,71,302,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{1,-26,53,-26,55,-26,56,-26,57,-26,69,-26,70,-26,71,-26,72,-26,73,-26,75,-26,78,-26,79,-26,80,-26,81,-26,82,-26,110,-26,111,-26,119,-26,121,-26,122,-26,125,-26,126,-26,129,-26,130,-26,135,-26,141,-26,142,-26},
-    &.{1,-31,53,-31,55,-31,56,-31,57,-31,60,-31,61,-31,62,-31,63,-31,64,-31,65,-31,66,-31,69,-31,70,-31,71,-31,72,-31,73,-31,75,-31,78,-31,79,-31,80,-31,81,-31,82,-31,110,-31,111,-31,119,-31,121,-31,122,-31,125,-31,126,-31,129,-31,130,-31,135,-31,141,-31,142,-31},
-    &.{1,-33,53,-33,55,-33,56,-33,57,-33,60,-33,61,-33,62,-33,63,-33,64,-33,65,-33,66,-33,69,-33,70,-33,71,-33,72,-33,73,-33,75,-33,78,-33,79,-33,80,-33,81,-33,82,-33,110,-33,111,-33,119,-33,121,-33,122,-33,125,-33,126,-33,129,-33,130,-33,135,-33,141,-33,142,-33},
-    &.{1,-30,53,-30,55,-30,56,-30,57,-30,60,-30,61,-30,62,-30,63,-30,64,-30,65,-30,66,-30,69,-30,70,-30,71,-30,72,-30,73,-30,75,-30,78,-30,79,-30,80,-30,81,-30,82,-30,110,-30,111,-30,119,-30,121,-30,122,-30,125,-30,126,-30,129,-30,130,-30,135,-30,141,-30,142,-30},
-    &.{1,-32,53,-32,55,-32,56,-32,57,-32,60,-32,61,-32,62,-32,63,-32,64,-32,65,-32,66,-32,69,-32,70,-32,71,-32,72,-32,73,-32,75,-32,78,-32,79,-32,80,-32,81,-32,82,-32,110,-32,111,-32,119,-32,121,-32,122,-32,125,-32,126,-32,129,-32,130,-32,135,-32,141,-32,142,-32},
-    &.{1,-29,53,-29,55,-29,56,-29,57,-29,60,-29,61,-29,62,-29,63,-29,64,-29,65,-29,66,-29,69,-29,70,-29,71,-29,72,-29,73,-29,75,-29,78,-29,79,-29,80,-29,81,-29,82,-29,110,-29,111,-29,119,-29,121,-29,122,-29,125,-29,126,-29,129,-29,130,-29,135,-29,141,-29,142,-29},
-    &.{1,-25,53,-25,55,-25,56,-25,57,-25,69,-25,70,-25,71,-25,72,-25,73,-25,75,-25,78,-25,79,-25,80,-25,81,-25,82,-25,110,-25,111,-25,119,-25,121,-25,122,-25,125,-25,126,-25,129,-25,130,-25,135,-25,141,-25,142,-25},
-    &.{1,-41,53,-41,55,-41,56,-41,57,-41,60,-41,61,-41,62,-41,63,-41,64,-41,65,-41,66,-41,67,-41,68,-41,69,-41,70,-41,71,-41,72,-41,73,-41,75,-41,78,-41,79,-41,80,-41,81,-41,82,-41,110,-41,111,-41,119,-41,121,-41,122,-41,125,-41,126,-41,129,-41,130,-41,135,-41,141,-41,142,-41},
-    &.{1,-156,53,-156,55,-156,56,-156,57,-156,69,-156,70,-156,71,-156,73,-156,75,-156,78,-156,79,-156,80,-156,81,-156,82,-156,110,-156,111,-156,119,-156,121,-156,122,-156,125,-156,129,-156,135,-156,141,-156,142,-156},
-    &.{1,-152,53,-152,55,-152,56,-152,57,-152,69,-152,70,-152,71,-152,73,-152,75,-152,78,-152,79,-152,80,-152,81,-152,82,-152,110,-152,111,-152,119,-152,121,-152,122,-152,125,-152,129,-152,135,-152,141,-152,142,-152},
-    &.{1,-154,53,-154,55,-154,56,-154,57,-154,69,-154,70,-154,71,-154,73,-154,75,-154,78,-154,79,-154,80,-154,81,-154,82,-154,110,-154,111,-154,119,-154,121,-154,122,-154,125,-154,129,-154,135,-154,141,-154,142,-154},
-    &.{57,307,139,306},
-    &.{6,309,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,34,308,36,10,38,25,40,37,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,126,209,130,210,135,22,141,7,142,36},
-    &.{1,-162,53,-162,55,-162,56,-162,57,-162,69,-162,70,-162,71,-162,73,-162,75,-162,78,-162,79,-162,80,-162,81,-162,82,-162,110,-162,111,-162,119,-162,121,-162,122,-162,125,-162,129,-162,135,-162,141,-162,142,-162},
-    &.{1,-158,53,-158,55,-158,56,-158,57,-158,69,-158,70,-158,71,-158,73,-158,75,-158,78,-158,79,-158,80,-158,81,-158,82,-158,110,-158,111,-158,119,-158,121,-158,122,-158,125,-158,129,-158,135,-158,141,-158,142,-158},
-    &.{1,-160,53,-160,55,-160,56,-160,57,-160,69,-160,70,-160,71,-160,73,-160,75,-160,78,-160,79,-160,80,-160,81,-160,82,-160,110,-160,111,-160,119,-160,121,-160,122,-160,125,-160,129,-160,135,-160,141,-160,142,-160},
-    &.{6,311,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,34,310,36,10,38,25,40,37,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,126,209,130,210,135,22,141,7,142,36},
-    &.{1,-120,53,-120,55,-120,56,-120,57,-120,69,-120,70,-120,71,-120,73,-120,75,-120,78,-120,79,-120,80,-120,81,-120,82,-120,110,-120,111,-120,119,-120,121,-120,122,-120,125,-120,129,-120,135,-120,141,-120,142,-120},
-    &.{1,-8,53,-8,55,-8,56,-8,57,-8,69,-8,70,-8,71,-8,73,-8,75,-8,78,-8,79,-8,80,-8,81,-8,82,-8,110,-8,111,-8,119,-8,121,-8,122,-8,125,-8,133,-8,135,-8,141,-8,142,-8},
-    &.{1,-99,53,-99,55,-99,56,-99,57,-99,69,-99,70,-99,71,-99,73,-99,75,-99,78,-99,79,-99,80,-99,81,-99,82,-99,110,-99,111,-99,119,-99,121,-99,122,-99,125,-99,129,-99,135,-99,141,-99,142,-99},
-    &.{1,-121,53,-121,55,-121,56,-121,57,-121,69,-121,70,-121,71,-121,73,-121,75,-121,78,-121,79,-121,80,-121,81,-121,82,-121,110,-121,111,-121,119,-121,121,-121,122,-121,125,-121,129,-121,135,-121,141,-121,142,-121},
-    &.{1,-40,53,-40,55,-40,56,-40,57,-40,60,-40,61,-40,62,-40,63,-40,64,-40,65,-40,66,-40,67,-40,68,-40,69,-40,70,-40,71,-40,72,-40,73,-40,75,-40,78,-40,79,-40,80,-40,81,-40,82,-40,110,-40,111,-40,119,-40,121,-40,122,-40,125,-40,126,-40,129,-40,130,-40,135,-40,141,-40,142,-40},
-    &.{1,-184,53,-184,55,-184,56,-184,57,-184,69,-184,70,-184,71,-184,73,-184,75,-184,78,-184,79,-184,80,-184,81,-184,82,-184,110,-184,111,-184,119,-184,121,-184,122,-184,125,-184,129,-184,135,-184,141,-184,142,-184},
-    &.{1,-183,53,-183,55,-183,56,-183,57,-183,69,-183,70,-183,71,-183,73,-183,75,-183,78,-183,79,-183,80,-183,81,-183,82,-183,110,-183,111,-183,119,-183,121,-183,122,-183,125,-183,129,-183,135,-183,141,-183,142,-183},
-    &.{13,313,28,312,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144,124,314},
-    &.{104,-93,105,241,106,315,107,-93,109,-93},
-    &.{107,316},
-    &.{104,317},
-    &.{109,318},
-    &.{1,-78,53,-78,55,-78,56,-78,57,-78,58,-78,60,-78,61,-78,62,-78,63,-78,64,-78,65,-78,66,-78,67,-78,68,-78,69,-78,70,-78,71,-78,72,-78,73,-78,74,-78,75,-78,76,-78,78,-78,79,-78,80,-78,81,-78,82,-78,84,-78,85,-78,86,-78,87,-78,88,-78,89,-78,90,-78,91,-78,92,-78,93,-78,94,-78,95,-78,96,-78,97,-78,98,-78,99,-78,100,-78,101,-78,102,-78,103,-78,104,-78,107,-78,108,-78,110,-78,111,-78,119,-78,121,-78,122,-78,125,-78,126,-78,129,-78,130,-78,135,-78,141,-78,142,-78},
-    &.{1,-79,53,-79,55,-79,56,-79,57,-79,58,-79,60,-79,61,-79,62,-79,63,-79,64,-79,65,-79,66,-79,67,-79,68,-79,69,-79,70,-79,71,-79,72,-79,73,-79,74,-79,75,-79,76,-79,78,-79,79,-79,80,-79,81,-79,82,-79,84,-79,85,-79,86,-79,87,-79,88,-79,89,-79,90,-79,91,-79,92,-79,93,-79,94,-79,95,-79,96,-79,97,-79,98,-79,99,-79,100,-79,101,-79,102,-79,103,-79,104,-79,107,-79,108,-79,110,-79,111,-79,119,-79,121,-79,122,-79,125,-79,126,-79,129,-79,130,-79,135,-79,141,-79,142,-79},
-    &.{57,-224,58,-224,74,-224,76,-224,84,-224,85,-224,86,-224,87,-224,88,-224,89,-224,92,-224,151,-224},
-    &.{57,-219,58,-219,74,-219,76,-219,84,-219,85,-219,86,-219,87,-219,88,-219,89,-219,92,-219,151,-219},
-    &.{57,-229,58,-229,74,-229,76,-229,84,-229,85,-229,86,-229,87,-229,88,-229,89,-229,92,-229,151,-229},
-    &.{57,-228,58,-228,74,-228,76,-228,84,-228,85,-228,86,-228,87,-228,88,-228,89,-228,92,-228,151,-228},
-    &.{57,-221,58,-221,74,-221,76,-221,84,-221,85,-221,86,-221,87,-221,88,-221,89,-221,92,-221,151,-221},
-    &.{57,-222,58,-222,74,-222,76,-222,84,-222,85,-222,86,-222,87,-222,88,-222,89,-222,92,-222,151,-222},
-    &.{57,-227,58,-227,74,-227,76,-227,84,-227,85,-227,86,-227,87,-227,88,-227,89,-227,92,-227,151,-227},
-    &.{57,-225,58,-225,74,-225,76,-225,84,-225,85,-225,86,-225,87,-225,88,-225,89,-225,92,-225,151,-225},
-    &.{151,319},
-    &.{16,249,51,256,57,248,58,250,74,258,76,252,84,259,85,251,86,257,87,247,88,254,89,253,92,88,150,320,151,-217},
-    &.{57,-223,58,-223,74,-223,76,-223,84,-223,85,-223,86,-223,87,-223,88,-223,89,-223,92,-223,151,-223},
-    &.{57,-226,58,-226,74,-226,76,-226,84,-226,85,-226,86,-226,87,-226,88,-226,89,-226,92,-226,151,-226},
-    &.{57,-220,58,-220,74,-220,76,-220,84,-220,85,-220,86,-220,87,-220,88,-220,89,-220,92,-220,151,-220},
-    &.{1,-80,53,-80,55,-80,56,-80,57,-80,58,-80,60,-80,61,-80,62,-80,63,-80,64,-80,65,-80,66,-80,67,-80,68,-80,69,-80,70,-80,71,-80,72,-80,73,-80,74,-80,75,-80,76,-80,78,-80,79,-80,80,-80,81,-80,82,-80,84,-80,85,-80,86,-80,87,-80,88,-80,89,-80,90,-80,91,-80,92,-80,93,-80,94,-80,95,-80,96,-80,97,-80,98,-80,99,-80,100,-80,101,-80,102,-80,103,-80,104,-80,107,-80,108,-80,110,-80,111,-80,113,-80,114,-80,115,-80,116,-80,117,-80,118,-80,119,-80,121,-80,122,-80,125,-80,126,-80,129,-80,130,-80,135,-80,141,-80,142,-80,143,-80,144,-80,145,-80,146,-80,147,-80,148,-80,151,-80},
-    &.{1,-198,53,-198,55,-198,56,-198,57,-198,58,-198,63,-198,65,-198,69,-198,70,-198,71,-198,72,-198,73,-198,75,-198,78,-198,79,-198,80,-198,81,-198,82,-198,93,-198,95,-198,110,-198,111,-198,113,-198,114,-198,115,-198,116,-198,117,-198,118,-198,119,-198,121,-198,122,-198,125,-198,126,-198,129,-198,130,-198,135,-198,141,-198,142,-198,143,-198,144,-198,145,-198,146,-198,147,-198,148,-198},
-    &.{1,-196,53,-196,55,-196,56,-196,57,-196,58,-196,63,-196,65,-196,69,-196,70,-196,71,-196,72,-196,73,-196,75,-196,78,-196,79,-196,80,-196,81,-196,82,-196,93,-196,95,-196,110,-196,111,-196,113,-196,114,-196,115,-196,116,-196,117,-196,118,-196,119,-196,121,-196,122,-196,125,-196,126,-196,129,-196,130,-196,135,-196,141,-196,142,-196,143,-196,144,-196,145,-196,146,-196,147,-196},
-    &.{34,321,126,209,130,210},
-    &.{53,-137,55,-137,57,-137,74,-137,76,-137,84,-137,85,-137,86,-137,87,-137,88,-137,89,-137,112,-137,129,-137},
-    &.{53,-136,55,-136,57,-136,74,-136,76,-136,84,-136,85,-136,86,-136,87,-136,88,-136,89,-136,112,-136,129,-136},
-    &.{34,322,126,209,130,210},
-    &.{34,323,126,-60,130,-60},
-    &.{34,324,126,209,130,210},
-    &.{53,-135,55,-135,57,-135,74,-135,76,-135,84,-135,85,-135,86,-135,87,-135,88,-135,89,-135,112,-135,129,-135},
-    &.{129,325},
-    &.{13,263,31,327,33,269,53,264,55,265,57,147,74,150,76,151,84,272,85,267,86,148,87,145,88,144,89,268,112,266,127,326,129,-128},
-    &.{34,328,126,-59,130,-59},
-    &.{133,329},
-    &.{53,30,54,330,55,-7},
-    &.{13,263,32,331,33,274,53,30,54,276,55,-7,57,147,74,150,76,151,84,272,85,267,86,148,87,145,88,144,89,268,112,266,131,332,133,-132},
-    &.{55,333},
-    &.{1,-192,53,-192,55,-192,56,-192,57,-192,58,-192,63,-192,65,-192,69,-192,70,-192,71,-192,72,-192,73,-192,75,-192,78,-192,79,-192,80,-192,81,-192,82,-192,93,-192,95,-192,110,-192,111,-192,113,-192,114,-192,115,-192,116,-192,117,-192,118,-192,119,-192,121,-192,122,-192,125,-192,126,-192,129,-192,130,-192,135,-192,141,-192,142,-192,143,-192,144,-192,145,-192,146,-192,147,-192},
-    &.{1,-193,53,-193,55,-193,56,-193,57,-193,58,-193,63,-193,65,-193,69,-193,70,-193,71,-193,72,-193,73,-193,75,-193,78,-193,79,-193,80,-193,81,-193,82,-193,93,-193,95,-193,110,-193,111,-193,113,-193,114,-193,115,-193,116,-193,117,-193,118,-193,119,-193,121,-193,122,-193,125,-193,126,-193,129,-193,130,-193,135,-193,141,-193,142,-193,143,-193,144,-193,145,-193,146,-193,147,-193},
-    &.{1,-194,53,-194,55,-194,56,-194,57,-194,58,-194,63,-194,65,-194,69,-194,70,-194,71,-194,72,-194,73,-194,75,-194,78,-194,79,-194,80,-194,81,-194,82,-194,93,-194,95,-194,110,-194,111,-194,113,-194,114,-194,115,-194,116,-194,117,-194,118,-194,119,-194,121,-194,122,-194,125,-194,126,-194,129,-194,130,-194,135,-194,141,-194,142,-194,143,-194,144,-194,145,-194,146,-194,147,-194},
-    &.{1,-189,53,-189,55,-189,56,-189,57,-189,58,-189,63,-189,65,-189,69,-189,70,-189,71,-189,72,-189,73,-189,75,-189,78,-189,79,-189,80,-189,81,-189,82,-189,93,-189,95,-189,110,-189,111,-189,113,-189,114,-189,115,-189,116,-189,117,-189,118,-189,119,-189,121,-189,122,-189,125,-189,126,-189,129,-189,130,-189,135,-189,141,-189,142,-189,143,-189,144,-189,145,194,146,195,147,196},
-    &.{1,-187,53,-187,55,-187,56,-187,57,-187,63,-187,65,-187,69,-187,70,-187,71,-187,72,-187,73,-187,75,-187,78,-187,79,-187,80,-187,81,-187,82,-187,93,-187,95,-187,110,-187,111,-187,113,-187,114,-187,115,-187,116,-187,117,-187,118,-187,119,-187,121,-187,122,-187,125,-187,126,-187,129,-187,130,-187,135,-187,141,-187,142,-187},
-    &.{1,-190,53,-190,55,-190,56,-190,57,-190,58,-190,63,-190,65,-190,69,-190,70,-190,71,-190,72,-190,73,-190,75,-190,78,-190,79,-190,80,-190,81,-190,82,-190,93,-190,95,-190,110,-190,111,-190,113,-190,114,-190,115,-190,116,-190,117,-190,118,-190,119,-190,121,-190,122,-190,125,-190,126,-190,129,-190,130,-190,135,-190,141,-190,142,-190,143,-190,144,-190,145,194,146,195,147,196},
-    &.{63,-108,65,-108,72,-108,126,-108,130,-108},
-    &.{63,-112,65,-112,72,-112,126,-112,130,-112},
-    &.{63,-111,65,-111,72,-111,126,-111,130,-111},
-    &.{63,-116,65,-116,72,-116,126,-116,130,-116},
-    &.{63,-114,65,-114,72,-114,126,-114,130,-114},
-    &.{63,-107,65,-107,72,-107,126,-107,130,-107},
-    &.{63,-115,65,-115,72,-115,126,-115,130,-115},
-    &.{63,-113,65,-113,72,-113,126,-113,130,-113},
-    &.{63,-109,65,-109,72,-109,126,-109,130,-109},
-    &.{63,-110,65,-110,72,-110,126,-110,130,-110},
-    &.{19,335,34,334,110,13,126,209,130,210},
-    &.{1,-98,53,-98,55,-98,56,-98,57,-98,69,-98,70,-98,71,-98,73,-98,75,-98,78,-98,79,-98,80,-98,81,-98,82,-98,110,-98,111,-98,119,-98,121,-98,122,-98,125,-98,129,-98,135,-98,141,-98,142,-98},
-    &.{6,297,7,15,8,18,9,8,10,11,11,45,19,33,20,16,25,26,26,28,27,29,29,38,35,295,36,10,38,25,40,37,53,298,55,299,56,17,57,9,69,19,70,32,71,35,73,20,75,21,78,14,79,42,80,41,81,43,82,44,110,13,111,31,119,40,121,23,122,34,125,12,129,-146,134,336,135,22,141,7,142,36},
-    &.{129,337},
-    &.{53,-149,55,-149,56,-149,57,-149,69,-149,70,-149,71,-149,73,-149,75,-149,78,-149,79,-149,80,-149,81,-149,82,-149,110,-149,111,-149,119,-149,121,-149,122,-149,125,-149,129,-149,135,-149,141,-149,142,-149},
-    &.{53,-151,55,-151,56,-151,57,-151,69,-151,70,-151,71,-151,73,-151,75,-151,78,-151,79,-151,80,-151,81,-151,82,-151,110,-151,111,-151,119,-151,121,-151,122,-151,125,-151,129,-151,135,-151,141,-151,142,-151},
-    &.{53,-150,55,-150,56,-150,57,-150,69,-150,70,-150,71,-150,73,-150,75,-150,78,-150,79,-150,80,-150,81,-150,82,-150,110,-150,111,-150,119,-150,121,-150,122,-150,125,-150,129,-150,135,-150,141,-150,142,-150},
-    &.{133,338},
-    &.{63,-118,65,-118,72,-118,126,-118,130,-118},
-    &.{16,98,23,212,24,118,41,211,42,110,43,106,44,108,45,102,46,101,58,97,70,303,71,302,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{16,98,24,213,41,113,42,110,43,106,44,108,45,102,46,101,58,97,70,303,71,302,76,103,84,111,85,99,86,109,87,92,88,105,92,88,144,100},
-    &.{72,-104,126,-104,130,-104},
-    &.{72,-105,126,-105,130,-105},
-    &.{72,339},
-    &.{72,-167,138,340,140,341},
-    &.{1,-153,53,-153,55,-153,56,-153,57,-153,69,-153,70,-153,71,-153,73,-153,75,-153,78,-153,79,-153,80,-153,81,-153,82,-153,110,-153,111,-153,119,-153,121,-153,122,-153,125,-153,129,-153,135,-153,141,-153,142,-153},
-    &.{1,-155,53,-155,55,-155,56,-155,57,-155,69,-155,70,-155,71,-155,73,-155,75,-155,78,-155,79,-155,80,-155,81,-155,82,-155,110,-155,111,-155,119,-155,121,-155,122,-155,125,-155,129,-155,135,-155,141,-155,142,-155},
-    &.{1,-159,53,-159,55,-159,56,-159,57,-159,69,-159,70,-159,71,-159,73,-159,75,-159,78,-159,79,-159,80,-159,81,-159,82,-159,110,-159,111,-159,119,-159,121,-159,122,-159,125,-159,129,-159,135,-159,141,-159,142,-159},
-    &.{1,-161,53,-161,55,-161,56,-161,57,-161,69,-161,70,-161,71,-161,73,-161,75,-161,78,-161,79,-161,80,-161,81,-161,82,-161,110,-161,111,-161,119,-161,121,-161,122,-161,125,-161,129,-161,135,-161,141,-161,142,-161},
-    &.{34,342,126,209,130,210},
-    &.{13,343,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144,123,344,126,-123,130,-123},
-    &.{126,-125,130,-125},
-    &.{104,-92,107,-92,109,-92},
-    &.{1,-95,53,-95,55,-95,56,-95,57,-95,60,-95,61,-95,62,-95,63,-95,64,-95,65,-95,66,-95,67,-95,68,-95,69,-95,70,-95,71,-95,72,-95,73,-95,75,-95,78,-95,79,-95,80,-95,81,-95,82,-95,110,-95,111,-95,119,-95,121,-95,122,-95,125,-95,126,-95,129,-95,130,-95,135,-95,141,-95,142,-95},
-    &.{1,-94,53,-94,55,-94,56,-94,57,-94,60,-94,61,-94,62,-94,63,-94,64,-94,65,-94,66,-94,67,-94,68,-94,69,-94,70,-94,71,-94,72,-94,73,-94,75,-94,78,-94,79,-94,80,-94,81,-94,82,-94,110,-94,111,-94,119,-94,121,-94,122,-94,125,-94,126,-94,129,-94,130,-94,135,-94,141,-94,142,-94},
-    &.{1,-96,53,-96,55,-96,56,-96,57,-96,60,-96,61,-96,62,-96,63,-96,64,-96,65,-96,66,-96,67,-96,68,-96,69,-96,70,-96,71,-96,72,-96,73,-96,75,-96,78,-96,79,-96,80,-96,81,-96,82,-96,110,-96,111,-96,119,-96,121,-96,122,-96,125,-96,126,-96,129,-96,130,-96,135,-96,141,-96,142,-96},
-    &.{1,-218,53,-218,55,-218,56,-218,57,-218,69,-218,70,-218,71,-218,73,-218,75,-218,78,-218,79,-218,80,-218,81,-218,82,-218,110,-218,111,-218,119,-218,121,-218,122,-218,125,-218,129,-218,135,-218,141,-218,142,-218},
-    &.{151,-216},
-    &.{53,-143,55,-143,57,-143,74,-143,76,-143,84,-143,85,-143,86,-143,87,-143,88,-143,89,-143,112,-143,129,-143},
-    &.{53,-144,55,-144,57,-144,74,-144,76,-144,84,-144,85,-144,86,-144,87,-144,88,-144,89,-144,112,-144,129,-144},
-    &.{53,-141,55,-141,57,-141,74,-141,76,-141,84,-141,85,-141,86,-141,87,-141,88,-141,89,-141,112,-141,129,-141},
-    &.{53,-140,55,-140,57,-140,74,-140,76,-140,84,-140,85,-140,86,-140,87,-140,88,-140,89,-140,112,-140,129,-140},
-    &.{1,-130,53,-130,55,-130,56,-130,57,-130,69,-130,70,-130,71,-130,73,-130,75,-130,78,-130,79,-130,80,-130,81,-130,82,-130,110,-130,111,-130,119,-130,121,-130,122,-130,125,-130,129,-130,135,-130,141,-130,142,-130},
-    &.{129,-129},
-    &.{13,263,31,327,33,269,53,264,55,265,57,147,74,150,76,151,84,272,85,267,86,148,87,145,88,144,89,268,112,266,127,345,129,-128},
-    &.{53,-142,55,-142,57,-142,74,-142,76,-142,84,-142,85,-142,86,-142,87,-142,88,-142,89,-142,112,-142,129,-142},
-    &.{1,-134,53,-134,55,-134,56,-134,57,-134,69,-134,70,-134,71,-134,73,-134,75,-134,78,-134,79,-134,80,-134,81,-134,82,-134,110,-134,111,-134,119,-134,121,-134,122,-134,125,-134,129,-134,135,-134,141,-134,142,-134},
-    &.{55,346},
-    &.{13,263,32,331,33,274,53,30,54,276,55,-7,57,147,74,150,76,151,84,272,85,267,86,148,87,145,88,144,89,268,112,266,131,347,133,-132},
-    &.{133,-133},
-    &.{53,-139,55,-139,57,-139,74,-139,76,-139,84,-139,85,-139,86,-139,87,-139,88,-139,89,-139,112,-139,133,-139},
-    &.{1,-101,53,-101,55,-101,56,-101,57,-101,69,-101,70,-101,71,-101,73,-101,75,-101,78,-101,79,-101,80,-101,81,-101,82,-101,110,-101,111,-101,119,-101,121,-101,122,-101,125,-101,129,-101,135,-101,141,-101,142,-101},
-    &.{1,-100,53,-100,55,-100,56,-100,57,-100,69,-100,70,-100,71,-100,73,-100,75,-100,78,-100,79,-100,80,-100,81,-100,82,-100,110,-100,111,-100,119,-100,121,-100,122,-100,125,-100,129,-100,135,-100,141,-100,142,-100},
-    &.{129,-145},
-    &.{1,-147,53,-147,55,-147,56,-147,57,-147,69,-147,70,-147,71,-147,73,-147,74,-147,75,-147,76,-147,78,-147,79,-147,80,-147,81,-147,82,-147,84,-147,85,-147,86,-147,87,-147,88,-147,89,-147,110,-147,111,-147,112,-147,119,-147,121,-147,122,-147,125,-147,129,-147,135,-147,141,-147,142,-147},
-    &.{1,-148,53,-148,55,-148,56,-148,57,-148,69,-148,70,-148,71,-148,73,-148,74,-148,75,-148,76,-148,78,-148,79,-148,80,-148,81,-148,82,-148,84,-148,85,-148,86,-148,87,-148,88,-148,89,-148,110,-148,111,-148,112,-148,119,-148,121,-148,122,-148,125,-148,129,-148,135,-148,141,-148,142,-148},
-    &.{56,-168,57,-168,69,-168,70,-168,71,-168,73,-168,75,-168,78,-168,79,-168,80,-168,81,-168,82,-168,110,-168,111,-168,119,-168,121,-168,122,-168,125,-168,126,-168,130,-168,135,-168,141,-168,142,-168},
-    &.{57,348},
-    &.{72,-165},
-    &.{1,-119,53,-119,55,-119,56,-119,57,-119,69,-119,70,-119,71,-119,73,-119,75,-119,78,-119,79,-119,80,-119,81,-119,82,-119,110,-119,111,-119,119,-119,121,-119,122,-119,125,-119,129,-119,135,-119,141,-119,142,-119},
-    &.{13,343,57,147,74,150,76,151,84,152,85,149,86,148,87,145,88,144,123,349,126,-123,130,-123},
-    &.{126,-124,130,-124},
-    &.{129,-127},
-    &.{53,-138,55,-138,57,-138,74,-138,76,-138,84,-138,85,-138,86,-138,87,-138,88,-138,89,-138,112,-138,133,-138},
-    &.{133,-131},
-    &.{72,-167,138,340,140,350},
-    &.{126,-122,130,-122},
-    &.{72,-166},
+    &.{7,40,9,5,10,7,13,6,14,19,16,8,20,16,23,41,44,38,52,39,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32},
+    &.{1,-20,8,42,37,-20,38,-20,39,-20,40,-20,42,43,43,44,45,-20,46,-20,47,-20,70,-20,71,-20},
+    &.{1,-26,37,-26,38,-26,39,-26,40,-26,43,-26,45,-26,46,-26,47,-26,70,-26,71,-26},
+    &.{1,-27,37,-27,38,-27,39,-27,40,-27,43,-27,45,-27,46,-27,47,-27,70,-27,71,-27},
+    &.{1,-41,16,46,37,-41,38,-41,39,-41,40,-41,45,-41,47,-41,51,45,53,30,57,-41,58,-41,59,-41,60,-41,61,-41,62,-41,63,-41,64,-41,65,-41,66,-41,71,-41},
+    &.{1,-53,37,-53,38,-53,39,-53,40,-53,43,-53,45,-53,46,-53,47,-53,53,-53,55,-53,57,-53,58,-53,59,-53,60,-53,61,-53,62,-53,63,-53,64,-53,65,-53,66,-53,67,-53,70,-53,71,-53,79,-53,80,-53,81,-53,82,-53,83,-53,84,-53,85,-53,86,-53,87,-53,88,-53,90,-53},
+    &.{1,-54,37,-54,38,-54,39,-54,40,-54,43,-54,45,-54,46,-54,47,-54,53,-54,55,-54,57,-54,58,-54,59,-54,60,-54,61,-54,62,-54,63,-54,64,-54,65,-54,66,-54,67,-54,70,-54,71,-54,79,-54,80,-54,81,-54,82,-54,83,-54,84,-54,85,-54,86,-54,87,-54,88,-54,90,-54},
+    &.{4,47,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{4,48,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{4,49,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{1,-56,37,-56,38,-56,39,-56,40,-56,43,-56,45,-56,46,-56,47,-56,53,-56,55,-56,57,-56,58,-56,59,-56,60,-56,61,-56,62,-56,63,-56,64,-56,65,-56,66,-56,67,-56,70,-56,71,-56,79,-56,80,-56,81,-56,82,-56,83,-56,84,-56,85,-56,86,-56,87,-56,88,-56,90,-56},
+    &.{1,-6,37,-6,38,-6,39,-6,40,-6,45,-6,47,-6,71,-6},
+    &.{1,-37,19,65,20,56,21,53,35,52,37,-37,38,-37,39,-37,40,-37,43,-37,45,-37,46,-37,47,-37,50,64,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,70,-37,71,-37,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{1,-12,37,-12,38,-12,39,-12,40,-12,45,-12,47,-12,71,-12},
+    &.{7,40,9,5,10,7,13,6,14,19,16,8,20,16,23,68,44,38,52,39,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32},
+    &.{20,69,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32},
+    &.{1,-7,37,-7,38,-7,39,-7,40,-7,45,-7,47,-7,71,-7},
+    &.{57,70},
+    &.{1,-10,37,-10,38,-10,39,-10,40,-10,45,-10,47,-10,71,-10},
+    &.{20,56,21,71,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{1,-55,37,-55,38,-55,39,-55,40,-55,43,-55,45,-55,46,-55,47,-55,53,-55,55,-55,57,-55,58,-55,59,-55,60,-55,61,-55,62,-55,63,-55,64,-55,65,-55,66,-55,67,-55,70,-55,71,-55,79,-55,80,-55,81,-55,82,-55,83,-55,84,-55,85,-55,86,-55,87,-55,88,-55,90,-55},
+    &.{1,-11,37,-11,38,-11,39,-11,40,-11,45,-11,47,-11,71,-11},
+    &.{1,-9,37,-9,38,-9,39,-9,40,-9,45,-9,47,-9,71,-9},
+    &.{1,-4,6,74,36,76,37,77,38,75,39,73,40,72,45,-4,47,-4,71,-4},
+    &.{1,-8,37,-8,38,-8,39,-8,40,-8,45,-8,47,-8,71,-8},
+    &.{57,78},
+    &.{17,79,20,56,21,80,53,60,54,81,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{1,-57,37,-57,38,-57,39,-57,40,-57,43,-57,45,-57,46,-57,47,-57,53,-57,55,-57,57,-57,58,-57,59,-57,60,-57,61,-57,62,-57,63,-57,64,-57,65,-57,66,-57,67,-57,70,-57,71,-57,79,-57,80,-57,81,-57,82,-57,83,-57,84,-57,85,-57,86,-57,87,-57,88,-57,90,-57},
+    &.{4,82,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{1,-58,37,-58,38,-58,39,-58,40,-58,43,-58,45,-58,46,-58,47,-58,53,-58,55,-58,57,-58,58,-58,59,-58,60,-58,61,-58,62,-58,63,-58,64,-58,65,-58,66,-58,67,-58,70,-58,71,-58,79,-58,80,-58,81,-58,82,-58,83,-58,84,-58,85,-58,86,-58,87,-58,88,-58,90,-58},
+    &.{4,83,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{1,-13,37,-13,38,-13,39,-13,40,-13,45,-13,47,-13,71,-13},
+    &.{1,-44,37,-44,38,-44,39,-44,40,-44,45,-44,47,-44,57,-43,58,-43,59,-43,60,-43,61,-43,62,-43,63,-43,64,-43,65,-43,66,-43,71,-44},
+    &.{1,-2},
+    &.{4,84,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{57,-43,58,-43,59,-43,60,-43,61,-43,62,-43,63,-43,64,-43,65,-43,66,-43},
+    &.{38,-68,39,-68,46,-68,70,-68},
+    &.{25,86,38,87,39,85,46,88,70,89},
+    &.{1,-22,8,90,37,-22,38,-22,39,-22,40,-22,41,91,43,44,45,-22,46,-22,47,-22,70,-22,71,-22},
+    &.{1,-24,37,-24,38,-24,39,-24,40,-24,45,-24,46,-24,47,-24,70,-24,71,-24},
+    &.{9,92,10,7,13,6,14,19,16,8,20,16,44,38,52,39,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32},
+    &.{1,-42,37,-42,38,-42,39,-42,40,-42,45,-42,47,-42,57,-42,58,-42,59,-42,60,-42,61,-42,62,-42,63,-42,64,-42,65,-42,66,-42,71,-42},
+    &.{1,-41,16,46,37,-41,38,-41,39,-41,40,-41,45,-41,47,-41,51,93,53,30,57,-41,58,-41,59,-41,60,-41,61,-41,62,-41,63,-41,64,-41,65,-41,66,-41,71,-41},
+    &.{45,94},
+    &.{45,95},
+    &.{45,96},
+    &.{20,56,21,97,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{1,-65,37,-65,38,-65,39,-65,40,-65,43,-65,45,-65,46,-65,47,-65,53,-65,55,-65,57,-65,58,-65,59,-65,60,-65,61,-65,62,-65,63,-65,64,-65,65,-65,66,-65,67,-65,70,-65,71,-65,79,-65,80,-65,81,-65,82,-65,83,-65,84,-65,85,-65,86,-65,87,-65,88,-65,90,-65},
+    &.{1,-52,37,-52,38,-52,39,-52,40,-52,43,-52,45,-52,46,-52,47,-52,53,-52,57,-52,58,-52,59,-52,60,-52,61,-52,62,-52,63,-52,64,-52,65,-52,66,-52,67,-52,70,-52,71,-52,79,-52,80,-52,81,-52,82,-52,83,-52,84,-52,85,-52,86,-52,87,-52,88,-52,90,-52},
+    &.{1,-51,37,-51,38,-51,39,-51,40,-51,43,-51,45,-51,46,-51,47,-51,53,-51,57,-51,58,-51,59,-51,60,-51,61,-51,62,-51,63,-51,64,-51,65,-51,66,-51,67,-51,70,-51,71,-51,79,-51,80,-51,81,-51,82,-51,83,-51,84,-51,85,-51,86,-51,87,-51,88,-51,90,-51},
+    &.{89,98},
+    &.{89,99},
+    &.{1,-63,37,-63,38,-63,39,-63,40,-63,43,-63,45,-63,46,-63,47,-63,53,-63,55,-63,57,-63,58,-63,59,-63,60,-63,61,-63,62,-63,63,-63,64,-63,65,-63,66,-63,67,-63,70,-63,71,-63,79,-63,80,-63,81,-63,82,-63,83,-63,84,-63,85,-63,86,-63,87,-63,88,-63,90,-63},
+    &.{1,-96,37,-96,38,-96,39,-96,40,-96,43,-96,45,-96,46,-96,47,-96,53,-96,57,-96,58,-96,59,-96,60,-96,61,-96,62,-96,63,-96,64,-96,65,-96,66,-96,67,-96,70,-96,71,-96,79,-96,80,-96,81,-96,82,-96,83,-96,84,-96,85,-96,86,-96,87,-96,88,-96,90,-96},
+    &.{20,56,21,100,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{1,-97,37,-97,38,-97,39,-97,40,-97,43,-97,45,-97,46,-97,47,-97,53,-97,57,-97,58,-97,59,-97,60,-97,61,-97,62,-97,63,-97,64,-97,65,-97,66,-97,67,-97,70,-97,71,-97,79,-97,80,-97,81,-97,82,-97,83,-97,84,-97,85,-97,86,-97,87,-97,88,-97,90,-97},
+    &.{1,-64,37,-64,38,-64,39,-64,40,-64,43,-64,45,-64,46,-64,47,-64,53,-64,55,-64,57,-64,58,-64,59,-64,60,-64,61,-64,62,-64,63,-64,64,-64,65,-64,66,-64,67,-64,70,-64,71,-64,79,-64,80,-64,81,-64,82,-64,83,-64,84,-64,85,-64,86,-64,87,-64,88,-64,90,-64},
+    &.{20,56,21,101,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{20,56,21,102,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{20,56,21,103,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{1,-38,37,-38,38,-38,39,-38,40,-38,43,-38,45,-38,46,-38,47,-38,70,-38,71,-38},
+    &.{1,-37,19,65,20,56,21,53,35,52,37,-37,38,-37,39,-37,40,-37,43,-37,45,-37,46,-37,47,-37,50,104,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,70,-37,71,-37,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{20,56,21,105,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{20,56,21,106,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{25,107,38,87,39,85,46,88,70,89},
+    &.{1,-37,19,65,20,56,21,53,35,52,37,-37,38,-37,39,-37,40,-37,43,-37,45,-37,46,-37,47,-37,50,108,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,70,-37,71,-37,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{74,109},
+    &.{29,110,46,111,70,112},
+    &.{1,-19,5,113,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,37,-19,38,-19,39,-19,40,-19,44,38,45,-19,46,34,47,-19,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,71,-19,72,4,73,21,75,23,77,29},
+    &.{5,114,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{1,-4,6,74,36,115,37,77,38,75,39,73,40,72,45,-4,47,-4,71,-4},
+    &.{5,116,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{1,-5,45,-5,47,-5,71,-5},
+    &.{1,-15,5,117,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,37,-15,38,-15,39,-15,40,-15,44,38,45,-15,46,34,47,-15,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,71,-15,72,4,73,21,75,23,77,29},
+    &.{25,118,46,88,70,89},
+    &.{1,-45,37,-45,38,-45,39,-45,40,-45,45,-45,47,-45,53,-45,57,-45,58,-45,59,-45,60,-45,61,-45,62,-45,63,-45,64,-45,65,-45,66,-45,71,-45},
+    &.{1,-46,37,-46,38,-46,39,-46,40,-46,45,-46,47,-46,53,-46,57,-46,58,-46,59,-46,60,-46,61,-46,62,-46,63,-46,64,-46,65,-46,66,-46,71,-46},
+    &.{18,120,20,56,21,119,53,60,55,-49,56,121,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51},
+    &.{45,122},
+    &.{47,123},
+    &.{45,124},
+    &.{7,125,9,5,10,7,13,6,14,19,16,8,20,16,44,38,52,39,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32},
+    &.{1,-75,37,-75,38,-75,39,-75,40,-75,45,-75,47,-75,71,-75},
+    &.{7,126,9,5,10,7,13,6,14,19,16,8,20,16,44,38,52,39,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32},
+    &.{4,127,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{4,128,5,27,7,15,9,5,10,7,11,25,13,6,14,19,15,17,16,8,20,16,22,20,26,28,27,26,28,22,33,35,44,38,46,34,52,36,53,30,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,68,18,72,4,73,21,75,23,77,29},
+    &.{1,-22,8,90,37,-22,38,-22,39,-22,40,-22,41,129,43,44,45,-22,46,-22,47,-22,70,-22,71,-22},
+    &.{1,-23,37,-23,38,-23,39,-23,40,-23,45,-23,46,-23,47,-23,70,-23,71,-23},
+    &.{1,-25,37,-25,38,-25,39,-25,40,-25,43,-25,45,-25,46,-25,47,-25,70,-25,71,-25},
+    &.{1,-40,37,-40,38,-40,39,-40,40,-40,45,-40,47,-40,57,-40,58,-40,59,-40,60,-40,61,-40,62,-40,63,-40,64,-40,65,-40,66,-40,71,-40},
+    &.{1,-59,37,-59,38,-59,39,-59,40,-59,43,-59,45,-59,46,-59,47,-59,53,-59,55,-59,57,-59,58,-59,59,-59,60,-59,61,-59,62,-59,63,-59,64,-59,65,-59,66,-59,67,-59,70,-59,71,-59,79,-59,80,-59,81,-59,82,-59,83,-59,84,-59,85,-59,86,-59,87,-59,88,-59,90,-59},
+    &.{1,-60,37,-60,38,-60,39,-60,40,-60,43,-60,45,-60,46,-60,47,-60,53,-60,55,-60,57,-60,58,-60,59,-60,60,-60,61,-60,62,-60,63,-60,64,-60,65,-60,66,-60,67,-60,70,-60,71,-60,79,-60,80,-60,81,-60,82,-60,83,-60,84,-60,85,-60,86,-60,87,-60,88,-60,90,-60},
+    &.{1,-61,37,-61,38,-61,39,-61,40,-61,43,-61,45,-61,46,-61,47,-61,53,-61,55,-61,57,-61,58,-61,59,-61,60,-61,61,-61,62,-61,63,-61,64,-61,65,-61,66,-61,67,-61,70,-61,71,-61,79,-61,80,-61,81,-61,82,-61,83,-61,84,-61,85,-61,86,-61,87,-61,88,-61,90,-61},
+    &.{1,-93,37,-93,38,-93,39,-93,40,-93,43,-93,45,-93,46,-93,47,-93,53,-93,57,-93,58,-93,59,-93,60,-93,61,-93,62,-93,63,-93,64,-93,65,-93,66,-93,67,-93,70,-93,71,-93,79,-93,80,-93,81,-93,82,-93,83,-93,84,-93,85,-93,86,-93,87,-93,88,-93,90,-93},
+    &.{1,-98,37,-98,38,-98,39,-98,40,-98,43,-98,45,-98,46,-98,47,-98,53,-98,57,-98,58,-98,59,-98,60,-98,61,-98,62,-98,63,-98,64,-98,65,-98,66,-98,67,-98,70,-98,71,-98,79,-98,80,-98,81,-98,82,-98,83,-98,84,-98,85,-98,86,-98,87,-98,88,-98,90,-98},
+    &.{1,-99,37,-99,38,-99,39,-99,40,-99,43,-99,45,-99,46,-99,47,-99,53,-99,57,-99,58,-99,59,-99,60,-99,61,-99,62,-99,63,-99,64,-99,65,-99,66,-99,67,-99,70,-99,71,-99,79,-99,80,-99,81,-99,82,-99,83,-99,84,-99,85,-99,86,-99,87,-99,88,-99,90,-99},
+    &.{1,-94,37,-94,38,-94,39,-94,40,-94,43,-94,45,-94,46,-94,47,-94,53,-94,57,-94,58,-94,59,-94,60,-94,61,-94,62,-94,63,-94,64,-94,65,-94,66,-94,67,-94,70,-94,71,-94,79,-94,80,-94,81,-94,82,-94,83,-94,84,-94,85,-94,86,-94,87,-94,88,-94,90,-94},
+    &.{1,-90,37,-90,38,-90,39,-90,40,-90,43,-90,45,-90,46,-90,47,-90,53,-90,57,-90,58,-90,59,-90,60,-90,61,-90,62,-90,63,-90,64,-90,65,-90,66,-90,67,-90,70,-90,71,-90,79,-90,80,-90,81,-90,82,-90,83,-90,84,-90,85,-90,86,-90,87,-90,88,-90,90,-90},
+    &.{1,-91,37,-91,38,-91,39,-91,40,-91,43,-91,45,-91,46,-91,47,-91,53,-91,57,-91,58,-91,59,-91,60,-91,61,-91,62,-91,63,-91,64,-91,65,-91,66,-91,67,-91,70,-91,71,-91,79,-91,80,-91,81,-91,82,-91,83,-91,84,-91,85,-91,86,-91,87,-91,88,-91,90,-91},
+    &.{1,-95,37,-95,38,-95,39,-95,40,-95,43,-95,45,-95,46,-95,47,-95,53,-95,57,-95,58,-95,59,-95,60,-95,61,-95,62,-95,63,-95,64,-95,65,-95,66,-95,67,-95,70,-95,71,-95,79,-95,80,-95,81,-95,82,-95,83,-95,84,-95,85,-95,86,-95,87,-95,88,-95,90,-95},
+    &.{1,-36,37,-36,38,-36,39,-36,40,-36,43,-36,45,-36,46,-36,47,-36,70,-36,71,-36},
+    &.{1,-92,37,-92,38,-92,39,-92,40,-92,43,-92,45,-92,46,-92,47,-92,53,-92,57,-92,58,-92,59,-92,60,-92,61,-92,62,-92,63,-92,64,-92,65,-92,66,-92,67,-92,70,-92,71,-92,79,-92,80,-92,81,-92,82,-92,83,-92,84,-92,85,-92,86,-92,87,-92,88,-92,90,-92},
+    &.{1,-89,37,-89,38,-89,39,-89,40,-89,43,-89,45,-89,46,-89,47,-89,53,-89,57,-89,58,-89,59,-89,60,-89,61,-89,62,-89,63,-89,64,-89,65,-89,66,-89,67,-89,70,-89,71,-89,79,-89,80,-89,81,-89,82,-89,83,-89,84,-89,85,-89,86,-89,87,-89,88,-89,90,-89},
+    &.{1,-66,24,130,37,-66,38,-66,39,-66,40,-66,45,-66,47,-66,69,131,71,-66},
+    &.{1,-39,37,-39,38,-39,39,-39,40,-39,43,-39,45,-39,46,-39,47,-39,70,-39,71,-39},
+    &.{20,56,21,133,34,132,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,78,134},
+    &.{1,-77,37,-77,38,-77,39,-77,40,-77,45,-77,47,-77,71,-77},
+    &.{20,56,21,133,30,136,32,137,34,135,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,78,134},
+    &.{20,56,21,133,30,138,32,137,34,135,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,78,134},
+    &.{1,-18,37,-18,38,-18,39,-18,40,-18,45,-18,47,-18,71,-18},
+    &.{1,-17,37,-17,38,-17,39,-17,40,-17,45,-17,47,-17,71,-17},
+    &.{1,-3,45,-3,47,-3,71,-3},
+    &.{1,-16,37,-16,38,-16,39,-16,40,-16,45,-16,47,-16,71,-16},
+    &.{1,-14,37,-14,38,-14,39,-14,40,-14,45,-14,47,-14,71,-14},
+    &.{1,-86,37,-86,38,-86,39,-86,40,-86,45,-86,47,-86,71,-86},
+    &.{20,56,21,119,46,-49,53,60,55,-49,56,139,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,70,-49},
+    &.{55,140},
+    &.{55,-50},
+    &.{1,-62,37,-62,38,-62,39,-62,40,-62,43,-62,45,-62,46,-62,47,-62,53,-62,55,-62,57,-62,58,-62,59,-62,60,-62,61,-62,62,-62,63,-62,64,-62,65,-62,66,-62,67,-62,70,-62,71,-62,79,-62,80,-62,81,-62,82,-62,83,-62,84,-62,85,-62,86,-62,87,-62,88,-62,90,-62},
+    &.{1,-30,12,143,35,141,37,-30,38,-30,39,-30,40,-30,45,-30,47,-30,49,142,71,-30,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{1,-28,12,144,35,141,37,-28,38,-28,39,-28,40,-28,43,-28,45,-28,46,-28,47,-28,49,142,70,-28,71,-28,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{38,-70,39,-70,46,-70,70,-70},
+    &.{38,-69,39,-69,46,-69,70,-69},
+    &.{47,145},
+    &.{71,146},
+    &.{1,-21,37,-21,38,-21,39,-21,40,-21,45,-21,46,-21,47,-21,70,-21,71,-21},
+    &.{1,-67,37,-67,38,-67,39,-67,40,-67,45,-67,47,-67,71,-67},
+    &.{22,148,25,147,46,88,68,18,70,89},
+    &.{25,149,46,88,70,89},
+    &.{20,56,21,119,46,-49,53,60,56,150,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,70,-49},
+    &.{46,-88,70,-88},
+    &.{25,151,46,88,70,89},
+    &.{47,152},
+    &.{31,153,37,155,47,-81,71,-81,76,154},
+    &.{71,156},
+    &.{46,-48,55,-48,70,-48},
+    &.{1,-47,37,-47,38,-47,39,-47,40,-47,45,-47,47,-47,53,-47,57,-47,58,-47,59,-47,60,-47,61,-47,62,-47,63,-47,64,-47,65,-47,66,-47,71,-47},
+    &.{1,-33,35,157,37,-33,38,-33,39,-33,40,-33,43,-33,45,-33,46,-33,47,-33,48,158,70,-33,71,-33,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{1,-35,37,-35,38,-35,39,-35,40,-35,43,-35,45,-35,46,-35,47,-35,70,-35,71,-35},
+    &.{1,-31,37,-31,38,-31,39,-31,40,-31,45,-31,47,-31,71,-31},
+    &.{1,-29,37,-29,38,-29,39,-29,40,-29,43,-29,45,-29,46,-29,47,-29,70,-29,71,-29},
+    &.{1,-73,37,-73,38,-73,39,-73,40,-73,45,-73,47,-73,69,-73,71,-73},
+    &.{1,-74,37,-74,38,-74,39,-74,40,-74,45,-74,47,-74,69,-74,71,-74},
+    &.{1,-71,37,-71,38,-71,39,-71,40,-71,45,-71,47,-71,71,-71},
+    &.{1,-72,37,-72,38,-72,39,-72,40,-72,45,-72,47,-72,71,-72},
+    &.{1,-76,37,-76,38,-76,39,-76,40,-76,45,-76,47,-76,71,-76},
+    &.{46,-87,70,-87},
+    &.{37,-85,47,-85,71,-85},
+    &.{1,-78,37,-78,38,-78,39,-78,40,-78,45,-78,47,-78,71,-78},
+    &.{31,153,37,155,47,-81,71,-81,76,159},
+    &.{47,-82,71,-82},
+    &.{20,56,21,133,32,160,34,135,37,-84,47,-84,53,60,57,9,58,10,59,24,60,14,61,31,62,33,63,11,64,12,65,13,66,32,67,51,71,-84,78,134},
+    &.{1,-79,37,-79,38,-79,39,-79,40,-79,45,-79,47,-79,71,-79},
+    &.{1,-33,35,157,37,-33,38,-33,39,-33,40,-33,43,-33,45,-33,46,-33,47,-33,48,161,70,-33,71,-33,79,67,80,61,81,62,82,66,83,50,84,58,85,63,86,57,87,59,88,54,90,55},
+    &.{1,-34,37,-34,38,-34,39,-34,40,-34,43,-34,45,-34,46,-34,47,-34,70,-34,71,-34},
+    &.{47,-80,71,-80},
+    &.{37,-83,47,-83,71,-83},
+    &.{1,-32,37,-32,38,-32,39,-32,40,-32,43,-32,45,-32,46,-32,47,-32,70,-32,71,-32},
 };
 
 const parseTable = blk: {
@@ -1669,7 +1080,6 @@ fn getImmediateShift(state: u16, char: u8) ?i16 {
 }
 const startStates = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 3, .state = 0 },
-    .{ .sym = 4, .state = 1 },
 };
 
 fn getStartState(startSym: u16) u16 {
@@ -1679,7 +1089,7 @@ fn getStartState(startSym: u16) u16 {
     return 0;
 }
 
-const acceptRules = [_]u16{ 228, 229 };
+const acceptRules = [_]u16{ 98 };
 
 fn isAcceptRule(ruleId: u16) bool {
     for (acceptRules) |ar| if (ruleId == ar) return true;

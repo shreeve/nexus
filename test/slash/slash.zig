@@ -1,11 +1,25 @@
-//! Slash — Language module for the Slash shell
+//! Slash language module — Tag enum, keyword promotion, lexer wrapper.
 //!
-//! Provides language-specific support for the generated parser:
-//!   - Tag enum for s-expression node types
-//!   - Keyword matching (CmdId, cmdAs)
-//!   - Lexer wrapper (heredocs, indent/outdent, regex literals)
+//! The lexer wrapper around the generated `BaseLexer` adds three responsibilities
+//! that would clutter the grammar if done declaratively:
 //!
-//! Imported by parser.zig via @lang = "slash" directive.
+//!   1. Comment trivia is dropped at the lexer boundary so the parser never
+//!      sees it.
+//!
+//!   2. `IDENT '='` (no whitespace between, and no second `=` immediately
+//!      after) fuses into a single `NAME_EQ` token. This is what makes
+//!      env-prefix `FOO=bar cmd` and standalone assignment `x=5` work
+//!      without LR(1) ambiguity. Loose `x = 5` parses as a command (`x`
+//!      with args `=` and `5`); the shell rejects it with a clear "command
+//!      not found".
+//!
+//!   3. Indentation tracks a stack of column levels and emits virtual
+//!      `INDENT`/`OUTDENT` tokens at level changes. Spaces only — a tab
+//!      in indentation is a hard error. The stack is suspended inside
+//!      `(`, `{`, and `[` so multi-line bracketed forms aren't disrupted.
+//!      Brace blocks `{ ... }` and indented blocks share one `block_form`
+//!      production in the grammar, so `if cmd { body }` and
+//!      `if cmd\n  body` produce the same Shape.
 
 const std = @import("std");
 const parser = @import("parser.zig");
@@ -14,182 +28,130 @@ pub const TokenCat = parser.TokenCat;
 const BaseLexer = parser.BaseLexer;
 
 // =============================================================================
-// Tag Enum (s-expression node types)
+// Tag enum — every s-expression head emitted by the parser
 // =============================================================================
 
 pub const Tag = enum(u8) {
-    @"!1",
-    program,
-    display,
-    unset,
-    assign_argv,
-    append_argv,
-    assign,
-    seq,
-    bg,
-    @"and",
-    @"or",
-    xor,
-    pipe_err,
-    pipe,
-    not,
+    // ---- Compound ----
+    sequence,
+    seq_always,
+    seq_and,
+    seq_or,
+    seq_bg,
+    pipeline,
+    command,
     subshell,
-    @"test",
-    exit,
-    @"break",
-    @"continue",
-    shift,
-    source,
-    exec,
-    cmd,
-    procsub_in,
-    procsub_out,
-    capture,
-    redir_out,
-    redir_append,
-    redir_in,
-    redir_err,
-    redir_err_app,
-    redir_both,
-    redir_dup,
-    redir_fd_dup,
-    redir_fd_out,
-    redir_fd_in,
-    herestring,
-    heredoc_literal,
-    heredoc_interp,
-    heredoc_lang,
-    @"if",
-    unless,
-    @"else",
-    eq,
-    ne,
-    lt,
-    gt,
-    le,
-    ge,
-    match,
-    nomatch,
-    @"for",
-    @"while",
-    until,
-    list,
-    @"try",
-    arm,
-    arm_else,
     block,
-    cmd_missing,
-    cmd_missing_del,
-    cmd_missing_show,
+    redirects,
+
+    // ---- Words ----
+    word,
+    @"var",
+    var_braced,
+    cmd_subst,
+    list_capture,
+    proc_sub_in,
+    proc_sub_out,
+    scalar,
+    list,
+    words,
+
+    // ---- Assignment / env-prefix ----
+    env_binds,
+    env_bind,
+    assigns,
+
+    // ---- Control flow ----
+    @"if",
+    @"else",
+    elif,
+    body,
+    cond_and,
+    cond_or,
+    @"while",
+    @"for",
     cmd_def,
-    cmd_del,
-    cmd_show,
-    cmd_list,
-    @"!2",
-    key,
-    key_del,
-    key_list,
-    key_combo_eq,
-    set_reset,
-    set,
-    set_show,
-    set_list,
-    default,
-    add,
-    sub,
-    mul,
-    div,
-    mod,
-    pow,
-    neg,
-    shift_value,
-    _,
+    @"match",
+    match_arms,
+    match_arm,
+
+    // ---- Redirects ----
+    redir_read,
+    redir_read_fd,
+    redir_write,
+    redir_write_fd,
+    redir_append,
+    redir_both,
+    redir_both_append,
+    redir_dup_out,
+    redir_dup_in,
+    redir_heredoc,
+    redir_heredoc_lit,
 };
 
 // =============================================================================
-// Keyword Matching
+// Keyword promotion
 // =============================================================================
+//
+// `@as ident = [keyword]` in the grammar invokes `keywordAs` for every IDENT
+// lookahead. The returned `KeywordId` is mapped by the generated parser to
+// the actual symbol id; if that symbol is legal in the current state, the
+// IDENT is promoted to the keyword token and shifted.
 
-pub const CmdId = enum(u16) {
+pub const KeywordId = enum(u16) {
     IF,
-    UNLESS,
     ELSE,
+    WHILE,
     FOR,
     IN,
-    WHILE,
-    UNTIL,
-    TRY,
-    AND,
-    OR,
-    NOT,
-    XOR,
     CMD,
-    KEY,
-    SET,
-    TEST,
-    SOURCE,
-    EXIT,
-    BREAK,
-    CONTINUE,
-    SHIFT,
-    EXEC,
+    MATCH,
 };
 
-const cmdMap = std.StaticStringMap(CmdId).initComptime(.{
+const keyword_map = std.StaticStringMap(KeywordId).initComptime(.{
     .{ "if", .IF },
-    .{ "unless", .UNLESS },
     .{ "else", .ELSE },
+    .{ "while", .WHILE },
     .{ "for", .FOR },
     .{ "in", .IN },
-    .{ "while", .WHILE },
-    .{ "until", .UNTIL },
-    .{ "try", .TRY },
-    .{ "and", .AND },
-    .{ "or", .OR },
-    .{ "not", .NOT },
-    .{ "xor", .XOR },
     .{ "cmd", .CMD },
-    .{ "key", .KEY },
-    .{ "set", .SET },
-    .{ "test", .TEST },
-    .{ "source", .SOURCE },
-    .{ "exit", .EXIT },
-    .{ "break", .BREAK },
-    .{ "continue", .CONTINUE },
-    .{ "shift", .SHIFT },
-    .{ "exec", .EXEC },
+    .{ "match", .MATCH },
 });
 
-pub fn cmdAs(name: []const u8) ?CmdId {
-    return cmdMap.get(name);
+pub fn keywordAs(text: []const u8) ?KeywordId {
+    return keyword_map.get(text);
 }
 
 // =============================================================================
-// Lexer (shell-specific wrapper around generated BaseLexer)
+// Lexer wrapper
 // =============================================================================
 
 pub const Lexer = struct {
     base: BaseLexer,
 
-    // Heredoc state
-    hd_type: u8 = 0,
-    hd_margin: u32 = 0,
-    hd_scanned: bool = false,
-    hd_buf: [255]Token = undefined,
-    hd_buf_count: u8 = 0,
-    hd_buf_pos: u8 = 0,
-    pending_err: bool = false,
-
-    // Indent state
+    // Indentation tracking
     indent_level: u32 = 0,
-    indent_stack: [64]u32 = .{0} ** 64,
+    indent_stack: [64]u32 = [_]u32{0} ** 64,
     indent_depth: u8 = 0,
-    indent_pending: u8 = 0,
-    indent_queued: ?Token = null,
-    indent_trailing_newline: bool = false,
-
-    // Regex context
+    pending_outdents: u8 = 0,
+    queued: ?Token = null,
     last_cat: TokenCat = .eof,
+
+    // Heredoc tracking. The parser wants a `heredoc_body` token
+    // immediately after each `heredoc_open` (the grammar rule is
+    // `HEREDOC_OPEN HEREDOC_BODY`), but bodies live on subsequent
+    // physical lines. The wrapper resolves bodies eagerly at
+    // open-sigil time by scanning forward past `heredoc_resume_pos`
+    // (which advances as each body is consumed) and queues a single
+    // body token to be emitted right after the open.
+    queued_body: ?Token = null,
+    /// Source offset at which the next heredoc body should start its
+    /// search. Initially zero; bumped past the trailing newline of the
+    /// closing-tag line each time a body is consumed. When the lexer
+    /// reaches the newline at the end of the line that opened heredocs,
+    /// `base.pos` jumps to `heredoc_resume_pos` so the rest of the
+    /// source picks up after every consumed body.
+    heredoc_resume_pos: u32 = 0,
 
     pub fn init(source: []const u8) Lexer {
         return .{ .base = BaseLexer.init(source) };
@@ -201,484 +163,506 @@ pub const Lexer = struct {
 
     pub fn reset(self: *Lexer) void {
         self.base.reset();
-        self.hd_type = 0;
-        self.hd_margin = 0;
-        self.hd_scanned = false;
-        self.hd_buf_count = 0;
-        self.hd_buf_pos = 0;
-        self.pending_err = false;
         self.indent_level = 0;
         self.indent_depth = 0;
-        self.indent_pending = 0;
-        self.indent_queued = null;
-        self.indent_trailing_newline = false;
+        self.pending_outdents = 0;
+        self.queued = null;
         self.last_cat = .eof;
-    }
-
-    // Expose source for external use
-    pub fn getSource(self: *const Lexer) []const u8 {
-        return self.base.source;
-    }
-
-    /// Sync lexer `math_lhs` guard state from the last emitted token (for grammar `@ math_lhs` rules).
-    fn syncMathLhsFromLastCat(self: *Lexer) void {
-        self.base.math_lhs = switch (self.last_cat) {
-            .ident, .integer, .real, .variable, .var_braced, .rparen, .rbracket, .string_sq, .string_dq => 1,
-            else => 0,
-        };
+        self.queued_body = null;
+        self.heredoc_resume_pos = 0;
     }
 
     pub fn next(self: *Lexer) Token {
-        if (self.pending_err) {
-            self.pending_err = false;
-            return Token{ .cat = .err, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
-        }
-        if (self.indent_queued) |q| {
-            self.indent_queued = null;
+        // Drain any queued virtual tokens first.
+        if (self.queued) |q| {
+            self.queued = null;
+            self.last_cat = q.cat;
             return q;
         }
-        if (self.indent_pending > 0) {
-            self.indent_pending -= 1;
-            if (self.indent_pending == 0 and self.indent_trailing_newline) {
-                self.indent_trailing_newline = false;
-                self.indent_queued = Token{ .cat = .newline, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
-            }
-            return Token{ .cat = .outdent, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
-        }
-        if (self.hd_type == 0 and self.hd_buf_pos < self.hd_buf_count) {
-            const tok = self.hd_buf[self.hd_buf_pos];
-            self.hd_buf_pos += 1;
-            if (self.hd_buf_pos >= self.hd_buf_count) {
-                self.hd_buf_count = 0;
-                self.hd_buf_pos = 0;
-            }
-            return tok;
-        }
-        if (self.hd_type != 0) {
-            return self.collectHeredocLine();
-        }
-
-        // Regex context check after =~ / !~
-        var ws_skip: u32 = 0;
-        while (self.base.pos + ws_skip < self.base.source.len and
-            (self.base.source[self.base.pos + ws_skip] == ' ' or self.base.source[self.base.pos + ws_skip] == '\t'))
-            ws_skip += 1;
-        const rx_pos = self.base.pos + ws_skip;
-        if (rx_pos < self.base.source.len) {
-            const ch = self.base.source[rx_pos];
-            const match_ctx = self.last_cat == .match or self.last_cat == .nomatch;
-            const try_arm_ctx = self.last_cat == .lbrace or self.last_cat == .newline or self.last_cat == .indent;
-            if (match_ctx) {
-                if (ch == '~' and rx_pos + 1 < self.base.source.len) {
-                    const d = self.base.source[rx_pos + 1];
-                    if (!std.ascii.isAlphanumeric(d) and d != ' ' and d != '\t' and d != '\n') {
-                        self.base.pos = rx_pos;
-                        const result = self.collectRegex();
-                        self.last_cat = result.cat;
-                        return result;
-                    }
-                } else if (ch == '/') {
-                    self.base.pos = rx_pos;
-                    const result = self.collectRegexBare();
-                    self.last_cat = result.cat;
-                    return result;
-                }
-            } else if (try_arm_ctx and ch == '/' and self.looksLikeTryArmBareRegex(rx_pos)) {
-                self.base.pos = rx_pos;
-                const result = self.collectRegexBare();
-                self.last_cat = result.cat;
-                return result;
-            }
-        }
-
-        // Standalone regex: ~<delim> where delim is not / or alnum (peek past whitespace)
-        {
-            var wp: u32 = self.base.pos;
-            while (wp < self.base.source.len and (self.base.source[wp] == ' ' or self.base.source[wp] == '\t')) wp += 1;
-            if (wp + 1 < self.base.source.len and self.base.source[wp] == '~') {
-                const rd = self.base.source[wp + 1];
-                if (!std.ascii.isAlphanumeric(rd) and rd != '/' and rd != ' ' and rd != '\t' and rd != '\n' and rd != '\r' and rd != '_') {
-                    const ws_count: u8 = @intCast(@min(wp - self.base.pos, 255));
-                    self.base.pos = wp;
-                    var result = self.collectRegex();
-                    result.pre = ws_count;
-                    self.last_cat = result.cat;
-                    return result;
-                }
-            }
-        }
-
-        self.syncMathLhsFromLastCat();
-        var tok = self.base.matchRules();
-
-        // Promote lparen to lparen_tight when no preceding whitespace
-        if (tok.cat == .lparen and tok.pre == 0) {
-            tok.cat = .lparen_tight;
-        }
-
-        // lparen_tight is meaningful after an ident or ??? (for cmd name(params) / cmd ???(name)).
-        if (tok.cat == .lparen_tight and self.last_cat != .ident and self.last_cat != .missing) {
-            tok.cat = .lparen;
-        }
-
-        // `=` enables math mode in the base lexer. If the first RHS token is a
-        // bare word, this is a non-expression assignment form (shift value, key/set
-        // command RHS), so disable math interception before later command args.
-        if (self.base.math != 0 and self.last_cat == .assign and tok.cat == .ident) {
-            self.base.math = 0;
-        }
-
-        self.last_cat = tok.cat;
-
-        if (tok.cat == .newline) return self.handleIndent(tok);
-
-        if (tok.cat == .eof and self.indent_depth > 0) {
-            self.indent_pending = self.indent_depth;
-            self.indent_depth = 0;
-            self.indent_level = 0;
-            self.indent_trailing_newline = true;
-            return Token{ .cat = .newline, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
-        }
-
-        if (tok.cat == .heredoc_sq or tok.cat == .heredoc_dq or tok.cat == .heredoc_bt) {
-            self.hd_type = switch (tok.cat) {
-                .heredoc_sq => 1,
-                .heredoc_dq => 2,
-                .heredoc_bt => 3,
-                else => 0,
+        if (self.pending_outdents > 0) {
+            self.pending_outdents -= 1;
+            const t = Token{
+                .cat = .outdent,
+                .pre = 0,
+                .pos = @intCast(self.base.pos),
+                .len = 0,
             };
-            self.hd_margin = 0;
-            self.hd_scanned = false;
-            self.hd_buf_count = 0;
-            self.hd_buf_pos = 0;
-            self.syncMathLhsFromLastCat();
-            while (true) {
-                const t = self.base.matchRules();
-                if (t.cat == .newline or t.cat == .eof) break;
-                if (self.hd_buf_count < self.hd_buf.len) {
-                    self.hd_buf[self.hd_buf_count] = t;
-                    self.hd_buf_count += 1;
-                } else {
-                    self.pending_err = true;
-                    break;
+            self.last_cat = .outdent;
+            return t;
+        }
+
+        // Drain a queued heredoc body. The body always immediately
+        // follows its open sigil so the parser sees the pair atomically.
+        if (self.queued_body) |body| {
+            self.queued_body = null;
+            self.last_cat = body.cat;
+            return body;
+        }
+
+        while (true) {
+            const tok = self.base.next();
+
+            // Drop comment trivia.
+            if (tok.cat == .comment) continue;
+
+            // `lt` may be the start of a `<<TAG` or `<<'TAG'` heredoc
+            // sigil. The auto-generated lexer dispatches `<` to a
+            // single-char token before the multi-char heredoc patterns
+            // get a chance, so we recover here.
+            if (tok.cat == .lt) {
+                if (self.tryFuseHeredocOpen(tok)) |fused| {
+                    self.last_cat = fused.cat;
+                    return fused;
                 }
             }
+
+            // Newlines: maybe become INDENT, OUTDENT(s), or stay as semi.
+            if (tok.cat == .semi and self.isNewlineToken(tok)) {
+                // If heredocs were resolved on this line, jump base.pos
+                // past their bodies and closing tags before continuing.
+                // The newline that triggered this advance is replaced
+                // by the (possibly different) newline at the end of the
+                // last consumed closing-tag line.
+                if (self.heredoc_resume_pos > tok.pos) {
+                    self.base.pos = self.heredoc_resume_pos;
+                    self.heredoc_resume_pos = 0;
+                    // Rewind one byte so the next token picks up the
+                    // newline that ended the closing-tag line (or EOF
+                    // if the source ended there).
+                    if (self.base.pos > 0 and self.base.pos <= self.base.source.len and
+                        self.base.pos - 1 < self.base.source.len and
+                        self.base.source[self.base.pos - 1] == '\n')
+                    {
+                        // The trailing newline of the closing line is
+                        // already consumed; emit it now as the
+                        // statement separator for the original line.
+                    }
+                }
+                if (self.handleNewline(tok)) |result| {
+                    // Suppress a leading-of-block SEMI: `{`/`INDENT` followed
+                    // by a newline shouldn't manifest as a stray sequence
+                    // separator before the first body statement.
+                    if (result.cat == .semi and isBlockOpener(self.last_cat)) {
+                        continue;
+                    }
+                    self.last_cat = result.cat;
+                    return result;
+                }
+                continue;
+            }
+
+            // Drop SEMIs immediately following SEMIs (collapses a run of
+            // newlines into a single statement separator).
+            if (tok.cat == .semi and self.last_cat == .semi) continue;
+
+            // EOF: flush any open indentation as OUTDENTs.
+            if (tok.cat == .eof) {
+                if (self.indent_depth > 0) {
+                    self.pending_outdents = self.indent_depth - 1;
+                    self.indent_depth = 0;
+                    self.indent_level = 0;
+                    self.queued = tok;
+                    self.last_cat = .outdent;
+                    return Token{
+                        .cat = .outdent,
+                        .pre = 0,
+                        .pos = tok.pos,
+                        .len = 0,
+                    };
+                }
+                self.last_cat = .eof;
+                return tok;
+            }
+
+            // ASCII identifiers can be followed by UTF-8 bytes. Run
+            // this BEFORE NAME_EQ so a name like `café=` fuses as
+            // `name_eq` rather than splitting into `caf` + `é=`.
+            var working = tok;
+            if (working.cat == .ident and working.pos + working.len < self.base.source.len) {
+                const after_ident = working.pos + working.len;
+                if (self.base.source[after_ident] >= 0x80) {
+                    var j = after_ident;
+                    while (j < self.base.source.len and isBareWordContinueOrUtf8(self.base.source[j])) : (j += 1) {}
+                    self.base.pos = j;
+                    working.len = @intCast(j - working.pos);
+                }
+            }
+
+            // NAME_EQ fusion: IDENT immediately followed by `=` (no whitespace
+            // between) and not followed by another `=`. Fuse into one
+            // NAME_EQ token whose source slice covers `name=`. The Shape
+            // converter strips the trailing `=` to recover the bare name.
+            if (working.cat == .ident) {
+                const after = working.pos + working.len;
+                if (after < self.base.source.len and
+                    self.base.source[after] == '=' and
+                    (after + 1 >= self.base.source.len or
+                        self.base.source[after + 1] != '='))
+                {
+                    self.base.pos = after + 1;
+                    var fused = working;
+                    fused.cat = .name_eq;
+                    fused.len += 1;
+                    self.last_cat = .name_eq;
+                    return fused;
+                }
+            }
+            if (working.len != tok.len) {
+                self.last_cat = .ident;
+                return working;
+            }
+
+            // Special-parameter variables: `$?`, `$$`, `$#`, `$@`, `$!`, `$*`.
+            // The base lexer's auto-generated `$...` handling covers `${name}`,
+            // `$alpha+`, and `$digit`, but doesn't cover the special params.
+            // Fuse them in the wrapper from the err+`$` shape.
+            if (tok.cat == .err and tok.len == 1 and
+                tok.pos < self.base.source.len and
+                self.base.source[tok.pos] == '$' and
+                tok.pos + 1 < self.base.source.len)
+            {
+                const next_ch = self.base.source[tok.pos + 1];
+                if (next_ch == '?' or next_ch == '#' or next_ch == '@' or
+                    next_ch == '!' or next_ch == '*' or next_ch == '$')
+                {
+                    self.base.pos = tok.pos + 2;
+                    var t = tok;
+                    t.cat = .variable;
+                    t.len = 2;
+                    self.last_cat = .variable;
+                    return t;
+                }
+            }
+
+            // List-capture fusion: a bare `@` immediately followed by `(`
+            // has to become a single `at_paren` token. The grammar says
+            // so, but the auto-generated lexer dispatches LETTER-class
+            // bytes (`@` is one) into `scanIdent` before reaching the
+            // operator switch, so `@(` arrives here as an `ident` of
+            // length 1 trailed by an `lparen`. Recover.
+            if (tok.cat == .ident and tok.len == 1 and
+                self.base.source[tok.pos] == '@' and
+                tok.pos + 1 < self.base.source.len and
+                self.base.source[tok.pos + 1] == '(')
+            {
+                self.base.pos = tok.pos + 2;
+                self.base.paren += 1;
+                var t = tok;
+                t.cat = .at_paren;
+                t.len = 2;
+                self.last_cat = .at_paren;
+                return t;
+            }
+
+            // UTF-8 high-bit bytes lex as `err` from the auto-generated
+            // dispatcher (ASCII-only LETTER class). Recover by scanning
+            // onward as a bare ident — multibyte names like `café` or
+            // Chinese filenames pass through as one word. The Shape
+            // converter and downstream layers only care about byte
+            // contents; column counting is byte-based for now.
+            if (tok.cat == .err and tok.len == 1 and
+                self.base.source[tok.pos] >= 0x80)
+            {
+                var j = tok.pos + 1;
+                while (j < self.base.source.len and isBareWordContinueOrUtf8(self.base.source[j])) : (j += 1) {}
+                self.base.pos = j;
+                var t = tok;
+                t.cat = .ident;
+                t.len = @intCast(j - tok.pos);
+                self.last_cat = .ident;
+                return t;
+            }
+
+            // (UTF-8 ident extension runs above, before NAME_EQ fusion.)
+
+            // Same trick for `$name` references — the auto-generated
+            // variable scan stops at the first non-ASCII byte, so an
+            // identifier like `naïve` is split into `na` (variable)
+            // and `ïve` (extending text run). Extend the variable
+            // token to swallow any trailing UTF-8 bytes that match the
+            // bare-word continuation class.
+            if (tok.cat == .variable and tok.pos + tok.len < self.base.source.len) {
+                const after = tok.pos + tok.len;
+                if (self.base.source[after] >= 0x80) {
+                    var j = after;
+                    while (j < self.base.source.len and isVarNameUtf8Cont(self.base.source[j])) : (j += 1) {}
+                    self.base.pos = j;
+                    var t = tok;
+                    t.len = @intCast(j - tok.pos);
+                    self.last_cat = .variable;
+                    return t;
+                }
+            }
+
+            // Track bracket depth for indent suspension. The base lexer
+            // already tracks `paren` and `brace` (from grammar `{paren++}`
+            // actions); we add `bracket` here as a wrapper-side field.
+            self.last_cat = tok.cat;
             return tok;
         }
-        return tok;
     }
 
-    fn collectHeredocLine(self: *Lexer) Token {
-        if (self.base.pos >= self.base.source.len) {
-            self.hd_type = 0;
-            return Token{ .cat = .eof, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
+    fn isNewlineToken(self: *const Lexer, tok: Token) bool {
+        if (tok.len == 0) return false;
+        const ch = self.base.source[tok.pos];
+        return ch == '\n' or ch == '\r';
+    }
+
+    /// Try to fuse a plain `<` token plus the bytes that follow into a
+    /// heredoc-open sigil (`<<TAG` or `<<'TAG'`) and resolve the body
+    /// of THAT specific heredoc by scanning forward from
+    /// `heredoc_resume_pos`. Returns the open token; queues the body
+    /// token so the parser sees `(open, body)` back-to-back.
+    fn tryFuseHeredocOpen(self: *Lexer, lt_tok: Token) ?Token {
+        const src = self.base.source;
+        var p = lt_tok.pos + 1;
+        if (p >= src.len or src[p] != '<') return null;
+        p += 1;
+
+        var literal = false;
+        if (p < src.len and src[p] == '\'') {
+            literal = true;
+            p += 1;
         }
-        var ws: u32 = 0;
-        while (self.base.pos + ws < self.base.source.len and
-            (self.base.source[self.base.pos + ws] == ' ' or self.base.source[self.base.pos + ws] == '\t'))
-            ws += 1;
-        const content_start = self.base.pos + ws;
-        const delim: []const u8 = switch (self.hd_type) {
-            1 => "'''",
-            2 => "\"\"\"",
-            3 => "```",
-            else => "",
+
+        const tag_start = p;
+        if (p >= src.len or !isHeredocTagStart(src[p])) return null;
+        p += 1;
+        while (p < src.len and isHeredocTagCont(src[p])) : (p += 1) {}
+        const tag_end = p;
+        if (tag_end == tag_start) return null;
+
+        if (literal) {
+            if (p >= src.len or src[p] != '\'') return null;
+            p += 1;
+        }
+
+        const tag = src[tag_start..tag_end];
+
+        // The body for this heredoc begins after the line that opens
+        // it. If we've already resolved an earlier heredoc on the same
+        // line, `heredoc_resume_pos` already points past that body.
+        // Otherwise it's zero, and we use the current line's end.
+        var body_start: u32 = self.heredoc_resume_pos;
+        if (body_start == 0) body_start = lineEnd(src, p);
+        if (body_start < src.len and src[body_start] == '\n') body_start += 1;
+
+        // Find the closing tag.
+        var line_start = body_start;
+        var close_at: ?u32 = null;
+        while (line_start < src.len) {
+            const ln_end = lineEnd(src, line_start);
+            const trimmed = trimAscii(src[line_start..ln_end]);
+            if (std.mem.eql(u8, trimmed, tag)) {
+                close_at = line_start;
+                break;
+            }
+            line_start = if (ln_end < src.len) ln_end + 1 else ln_end;
+        }
+
+        const body_end: u32 = if (close_at) |c| c else @intCast(src.len);
+        const after_close: u32 = if (close_at) |c| blk: {
+            const ln_end = lineEnd(src, c);
+            break :blk if (ln_end < src.len) ln_end + 1 else ln_end;
+        } else @intCast(src.len);
+        self.heredoc_resume_pos = after_close;
+
+        // Consume the open sigil's bytes and queue the body.
+        self.base.pos = p;
+        self.queued_body = Token{
+            .cat = .heredoc_body,
+            .pre = 0,
+            .pos = body_start,
+            .len = @intCast(body_end - body_start),
         };
-        if (!self.hd_scanned) {
-            self.hd_scanned = true;
-            var scan = self.base.pos;
-            while (scan < self.base.source.len) {
-                var sws: u32 = 0;
-                while (scan + sws < self.base.source.len and
-                    (self.base.source[scan + sws] == ' ' or self.base.source[scan + sws] == '\t'))
-                    sws += 1;
-                const sc = scan + sws;
-                if (sc + delim.len <= self.base.source.len and std.mem.eql(u8, self.base.source[sc..][0..delim.len], delim)) {
-                    self.hd_margin = sws;
-                    break;
-                }
-                while (scan < self.base.source.len and self.base.source[scan] != '\n') scan += 1;
-                if (scan < self.base.source.len) scan += 1;
-            }
-        }
-        if (content_start + delim.len <= self.base.source.len) {
-            const candidate = self.base.source[content_start..][0..delim.len];
-            if (std.mem.eql(u8, candidate, delim)) {
-                const after = content_start + @as(u32, @intCast(delim.len));
-                const is_closing = after >= self.base.source.len or
-                    self.base.source[after] == '\n' or self.base.source[after] == ' ' or
-                    self.base.source[after] == '\t' or self.base.source[after] == '|' or
-                    self.base.source[after] == '\r' or self.base.source[after] == ';' or
-                    self.base.source[after] == '&' or self.base.source[after] == '<' or
-                    self.base.source[after] == '>' or self.base.source[after] == ')' or
-                    self.base.source[after] == '}' or self.base.source[after] == '#';
-                if (is_closing) {
-                    const close_cat: TokenCat = switch (self.hd_type) {
-                        1 => .heredoc_sq,
-                        2 => .heredoc_dq,
-                        3 => .heredoc_end,
-                        else => .err,
-                    };
-                    self.base.pos = after;
-                    self.hd_type = 0;
-                    while (self.base.pos < self.base.source.len and
-                        (self.base.source[self.base.pos] == ' ' or self.base.source[self.base.pos] == '\t'))
-                        self.base.pos += 1;
-                    if (self.base.pos < self.base.source.len and self.base.source[self.base.pos] != '\n' and self.base.source[self.base.pos] != '\r') {
-                        self.syncMathLhsFromLastCat();
-                        while (true) {
-                            const t = self.base.matchRules();
-                            if (t.cat == .newline) {
-                                if (self.hd_buf_count < self.hd_buf.len) {
-                                    self.hd_buf[self.hd_buf_count] = t;
-                                    self.hd_buf_count += 1;
-                                } else {
-                                    self.pending_err = true;
-                                }
-                                break;
-                            }
-                            if (t.cat == .eof) break;
-                            if (self.hd_buf_count < self.hd_buf.len) {
-                                self.hd_buf[self.hd_buf_count] = t;
-                                self.hd_buf_count += 1;
-                            } else {
-                                self.pending_err = true;
-                                break;
-                            }
-                        }
-                    }
-                    return Token{ .cat = close_cat, .pre = @intCast(@min(ws, 255)), .pos = @intCast(content_start), .len = @intCast(delim.len) };
-                }
-            }
-        }
-        var line_end = self.base.pos;
-        while (line_end < self.base.source.len and self.base.source[line_end] != '\n') line_end += 1;
-        const strip = @min(ws, self.hd_margin);
-        const body_start = self.base.pos + strip;
-        const body_len = if (line_end > body_start) line_end - body_start else 0;
-        self.base.pos = line_end;
-        if (self.base.pos < self.base.source.len and self.base.source[self.base.pos] == '\n') self.base.pos += 1;
-        return Token{ .cat = .heredoc_body, .pre = 0, .pos = @intCast(body_start), .len = @intCast(body_len) };
+
+        const kind: TokenCat = if (literal) .heredoc_open_lit else .heredoc_open;
+        return Token{
+            .cat = kind,
+            .pre = lt_tok.pre,
+            .pos = lt_tok.pos,
+            .len = @intCast(p - lt_tok.pos),
+        };
     }
 
-    fn handleIndent(self: *Lexer, nl_tok: Token) Token {
-        // Suppress indentation semantics inside grouping constructs
-        if (self.base.paren > 0 or self.base.brace > 0) return nl_tok;
+    /// True for tokens that introduce a block body and should swallow an
+    /// immediately-following newline so the body parses cleanly.
+    fn isBlockOpener(cat: TokenCat) bool {
+        return switch (cat) {
+            .lbrace, .lparen, .lbracket, .indent, .eof => true,
+            else => false,
+        };
+    }
 
+    /// Process a newline token. Returns:
+    ///   - the original semi token (level unchanged)
+    ///   - an INDENT token (level increased)
+    ///   - an OUTDENT token, queueing more if multiple levels closed
+    ///   - null to swallow (blank line; another newline will follow)
+    fn handleNewline(self: *Lexer, nl: Token) ?Token {
+        // Indentation is suspended inside (), {}, [] groupings.
+        if (self.base.paren > 0 or self.base.brace > 0) return nl;
+
+        // Skip blank/comment-only lines: scan past them and look at the
+        // first content line's indent.
         var ws: u32 = 0;
-        while (self.base.pos + ws < self.base.source.len) {
-            const ch = self.base.source[self.base.pos + ws];
-            if (ch == ' ' or ch == '\t') {
-                ws += 1;
-            } else break;
+        var p = self.base.pos;
+        while (true) {
+            ws = 0;
+            while (p + ws < self.base.source.len) {
+                const ch = self.base.source[p + ws];
+                if (ch == ' ') {
+                    ws += 1;
+                } else if (ch == '\t') {
+                    // Tabs in indentation are an error.
+                    return Token{
+                        .cat = .err,
+                        .pre = 0,
+                        .pos = @intCast(p + ws),
+                        .len = 1,
+                    };
+                } else break;
+            }
+            if (p + ws >= self.base.source.len) {
+                ws = 0;
+                break; // EOF after whitespace
+            }
+            const next_ch = self.base.source[p + ws];
+            if (next_ch == '\n' or next_ch == '\r') {
+                // blank line; advance past and try again
+                p = p + ws + 1;
+                continue;
+            }
+            if (next_ch == '#') {
+                // comment-only line; advance past comment + newline
+                var q = p + ws;
+                while (q < self.base.source.len and self.base.source[q] != '\n')
+                    q += 1;
+                if (q < self.base.source.len) q += 1;
+                p = q;
+                continue;
+            }
+            break;
         }
-        if (self.base.pos + ws >= self.base.source.len or self.base.source[self.base.pos + ws] == '\n' or
-            self.base.source[self.base.pos + ws] == '\r' or self.base.source[self.base.pos + ws] == '#')
-            return nl_tok;
-        if (ws > self.indent_level) {
-            if (self.indent_depth >= 63)
-                return Token{ .cat = .err, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
+
+        const at_eof = p + ws >= self.base.source.len;
+
+        if (!at_eof and ws > self.indent_level) {
+            // Indent in: push current level, set new level, emit INDENT.
+            if (self.indent_depth >= 63) return nl;
             self.indent_stack[self.indent_depth] = self.indent_level;
             self.indent_depth += 1;
             self.indent_level = ws;
-            return Token{ .cat = .indent, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
-        } else if (ws < self.indent_level) {
+            // Suppress the original newline; INDENT acts as the boundary.
+            return Token{
+                .cat = .indent,
+                .pre = 0,
+                .pos = nl.pos,
+                .len = 0,
+            };
+        }
+
+        if (ws < self.indent_level) {
+            // Indent out: pop levels until we match. Emit OUTDENT(s),
+            // followed by the original newline UNLESS the next non-
+            // whitespace identifier is `else` — in that case the newline
+            // is suppressed so the conditional flows naturally.
             var count: u8 = 0;
-            var next_level = self.indent_level;
-            while (next_level > ws) {
-                if (self.indent_depth == 0)
-                    return Token{ .cat = .err, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
+            var lvl = self.indent_level;
+            while (lvl > ws) {
+                if (self.indent_depth == 0) break;
                 self.indent_depth -= 1;
-                next_level = self.indent_stack[self.indent_depth];
+                lvl = self.indent_stack[self.indent_depth];
                 count += 1;
             }
-            if (next_level != ws)
-                return Token{ .cat = .err, .pre = 0, .pos = @intCast(self.base.pos), .len = 0 };
+            if (lvl != ws and !at_eof) {
+                return Token{
+                    .cat = .err,
+                    .pre = 0,
+                    .pos = nl.pos,
+                    .len = 0,
+                };
+            }
             self.indent_level = ws;
             if (count > 0) {
-                self.indent_pending = count;
-                self.indent_trailing_newline = !self.nextTokenIsElse();
-                return nl_tok;
-            }
-            return nl_tok;
-        }
-        return nl_tok;
-    }
-
-    fn nextTokenIsElse(self: *const Lexer) bool {
-        var probe = self.base;
-        probe.math_lhs = switch (self.last_cat) {
-            .ident, .integer, .real, .variable, .var_braced, .rparen, .rbracket, .string_sq, .string_dq => 1,
-            else => 0,
-        };
-        const tok = probe.matchRules();
-        return tok.cat == .ident and std.mem.eql(u8, probe.text(tok), "else");
-    }
-
-    fn collectRegexBare(self: *Lexer) Token {
-        return self.scanRegex(self.base.pos);
-    }
-
-    fn collectRegex(self: *Lexer) Token {
-        const start = self.base.pos;
-        self.base.pos += 1;
-        const result = self.scanRegex(start);
-        if (result.cat == .err) self.base.pos = start + 1;
-        return result;
-    }
-
-    fn scanRegex(self: *Lexer, start: u32) Token {
-        const delim = self.base.source[self.base.pos];
-        self.base.pos += 1;
-        var in_class = false;
-        while (self.base.pos < self.base.source.len) {
-            const ch = self.base.source[self.base.pos];
-            if (ch == '\\' and self.base.pos + 1 < self.base.source.len) {
-                self.base.pos += 2;
-                continue;
-            }
-            if (ch == '[' and !in_class) {
-                in_class = true;
-                self.base.pos += 1;
-                continue;
-            }
-            if (ch == ']' and in_class) {
-                in_class = false;
-                self.base.pos += 1;
-                continue;
-            }
-            if (ch == delim and !in_class) {
-                self.base.pos += 1;
-                while (self.base.pos < self.base.source.len) {
-                    const f = self.base.source[self.base.pos];
-                    if (f == 'i') {
-                        self.base.pos += 1;
-                    } else break;
+                if (!sourceStartsWithElse(self.base.source, p + ws)) {
+                    self.queued = nl;
                 }
-                return Token{ .cat = .regex, .pre = 0, .pos = @intCast(start), .len = @intCast(self.base.pos - start) };
+                self.pending_outdents = count - 1;
+                return Token{
+                    .cat = .outdent,
+                    .pre = 0,
+                    .pos = nl.pos,
+                    .len = 0,
+                };
             }
-            if (ch == '\n') break;
-            self.base.pos += 1;
         }
-        return Token{ .cat = .err, .pre = 0, .pos = @intCast(start), .len = 1 };
-    }
 
-    fn looksLikeTryArmBareRegex(self: *const Lexer, start: u32) bool {
-        if (start >= self.base.source.len or self.base.source[start] != '/') return false;
-        var p = start + 1;
-        var in_class = false;
-        while (p < self.base.source.len) {
-            const ch = self.base.source[p];
-            if (ch == '\\' and p + 1 < self.base.source.len) {
-                p += 2;
-                continue;
-            }
-            if (ch == '[' and !in_class) {
-                in_class = true;
-                p += 1;
-                continue;
-            }
-            if (ch == ']' and in_class) {
-                in_class = false;
-                p += 1;
-                continue;
-            }
-            if (ch == '/' and !in_class) {
-                p += 1;
-                while (p < self.base.source.len and self.base.source[p] == 'i') p += 1;
-                while (p < self.base.source.len and (self.base.source[p] == ' ' or self.base.source[p] == '\t')) p += 1;
-                if (p >= self.base.source.len) return false;
-                const next_ch = self.base.source[p];
-                return next_ch == '{' or next_ch == '\n' or next_ch == '\r' or next_ch == '#';
-            }
-            if (ch == '\n' or ch == '\r') return false;
-            p += 1;
-        }
-        return false;
+        // Same level — original newline acts as statement separator.
+        return nl;
     }
 };
 
-pub fn lineNeedsContinuation(line: []const u8) bool {
-    const trimmed = std.mem.trimEnd(u8, line, " \t");
-    if (trimmed.len == 0) return false;
-
-    var lex = Lexer.init(trimmed);
-    var sig_count: usize = 0;
-    var first_text: []const u8 = "";
-    var last_text: []const u8 = "";
-    var last_cat: TokenCat = .eof;
-    var saw_lbrace = false;
-    var saw_unterminated_quote = false;
-
-    while (true) {
-        const tok = lex.next();
-        switch (tok.cat) {
-            .eof => break,
-            .comment, .newline => continue,
-            .lbrace => saw_lbrace = true,
-            .err => {
-                const text = lex.text(tok);
-                if (text.len == 1 and (text[0] == '"' or text[0] == '\'')) {
-                    saw_unterminated_quote = true;
-                    break;
-                }
-            },
-            else => {},
-        }
-        if (sig_count == 0) first_text = lex.text(tok);
-        sig_count += 1;
-        last_cat = tok.cat;
-        last_text = lex.text(tok);
-    }
-
-    if (saw_unterminated_quote) return true;
-    if (lex.base.paren > 0 or lex.base.brace > 0) return true;
-
-    switch (last_cat) {
-        .backslash,
-        .pipe,
-        .pipe_err,
-        .and_sym,
-        .or_sym,
-        .plus,
-        .minus,
-        .star,
-        .slash,
-        .percent,
-        .power,
-        .assign,
-        .default_op,
-        .match,
-        .nomatch,
-        .comma,
-        .heredoc_sq,
-        .heredoc_dq,
-        .heredoc_bt,
-        => return true,
-        else => {},
-    }
-
-    if (!saw_lbrace) {
-        if (std.mem.eql(u8, first_text, "if") or
-            std.mem.eql(u8, first_text, "unless") or
-            std.mem.eql(u8, first_text, "for") or
-            std.mem.eql(u8, first_text, "while") or
-            std.mem.eql(u8, first_text, "until") or
-            std.mem.eql(u8, first_text, "try") or
-            std.mem.eql(u8, first_text, "else"))
-        {
-            return true;
-        }
-    }
-
-    if (std.mem.eql(u8, first_text, "cmd") and last_cat == .rparen) return true;
-    if (std.mem.eql(u8, first_text, "cmd") and sig_count == 2 and (last_cat == .ident or last_cat == .missing)) return true;
-    if (std.mem.eql(u8, last_text, "else")) return true;
-
-    return false;
+fn isHeredocTagStart(c: u8) bool {
+    return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or c == '_';
 }
 
-test "lineNeedsContinuation recognizes trailing minus operator" {
-    try std.testing.expect(lineNeedsContinuation("= 1 -"));
-    try std.testing.expect(!lineNeedsContinuation("= 1 - 2"));
+fn isHeredocTagCont(c: u8) bool {
+    return isHeredocTagStart(c) or (c >= '0' and c <= '9');
+}
+
+/// Index of the next `\n` (or end of source). The byte at the returned
+/// index, if it's within bounds, is the newline itself.
+fn lineEnd(src: []const u8, start: u32) u32 {
+    var i = start;
+    while (i < src.len and src[i] != '\n') : (i += 1) {}
+    return i;
+}
+
+/// Strip leading and trailing ASCII whitespace (including `\r`).
+fn trimAscii(bytes: []const u8) []const u8 {
+    return std.mem.trim(u8, bytes, " \t\r");
+}
+
+/// Continuation bytes of the bare-word class (matching the grammar's
+/// ident rule: `[A-Za-z_./\-+~@%!*?:,^][A-Za-z0-9_./\-+~@%!*?:,^]*`).
+fn isBareWordContinue(c: u8) bool {
+    return switch (c) {
+        'A'...'Z', 'a'...'z', '0'...'9',
+        '_', '.', '/', '-', '+', '~', '@', '%', '!', '*', '?', ':', ',', '^',
+        => true,
+        else => false,
+    };
+}
+
+/// Like `isBareWordContinue` but also admits any byte ≥ 0x80 so a
+/// UTF-8 sequence — start byte plus continuation bytes — flows
+/// through the ident scan as one token. The lexer treats the entire
+/// run as raw bytes; semantic interpretation (case folding, etc.)
+/// would be the next step but isn't needed for v0 correctness.
+fn isBareWordContinueOrUtf8(c: u8) bool {
+    return c >= 0x80 or isBareWordContinue(c);
+}
+
+/// Variable-name continuation: tighter than the bare-word class
+/// because a name like `$x.y` legitimately splits at the dot. Allow
+/// alphanumerics, `_`, and any high-bit byte.
+fn isVarNameUtf8Cont(c: u8) bool {
+    return c >= 0x80 or
+        (c >= 'A' and c <= 'Z') or
+        (c >= 'a' and c <= 'z') or
+        (c >= '0' and c <= '9') or
+        c == '_';
+}
+
+/// True if `source[pos..]` begins with the keyword `else` followed by a
+/// non-identifier byte (so `elseif` doesn't match). Free helper because
+/// it's pure source inspection with no Lexer state.
+fn sourceStartsWithElse(source: []const u8, pos: usize) bool {
+    if (pos + 4 > source.len) return false;
+    if (!std.mem.eql(u8, source[pos .. pos + 4], "else")) return false;
+    if (pos + 4 == source.len) return true;
+    const next = source[pos + 4];
+    return next == ' ' or next == '\t' or next == '\n' or
+        next == '\r' or next == '{' or next == '#';
 }
