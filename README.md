@@ -769,32 +769,29 @@ The generated parser uses:
 - **Semantic actions** — tag-based dispatch builds Sexp from matched elements
 - **Multiple start symbols** — each gets a unique accept rule and marker token
 
-### Two-Stage Architecture: Lex / Sex
+### Two-Stage Architecture
 
-Every Nexus-generated `parser.zig` is two symmetric stages:
+Every Nexus-generated `parser.zig` has two stages, each with a
+Nexus-generated raw producer and an optional language-specific wrapper
+supplied by the `@lang` module:
 
 ```
-           ┌─────────────────────────────────────────────┐
-"the       │  BaseLexer  →  Lexer    →  BaseSexer  →  Sexer
- parser" = │  (Nexus)       (lang)      (Nexus)       (lang)
-           │  ──────────────────         ──────────────────
-           │     lex stage                   sex stage
-           └─────────────────────────────────────────────┘
-            source text                       semantic Sexp
+BaseLexer  →  Lexer       BaseParser  →  Parser
+(Nexus)       (lang, opt)  (Nexus)        (lang, opt)
+───────────────────        ──────────────────────
+   lex stage                    parse stage
 ```
 
-- **Lex stage** (`BaseLexer` + optional `Lexer` wrapper) turns source text
-  into a token stream.
-- **Sex stage** (`BaseSexer` + optional `Sexer` wrapper) turns tokens into
-  an S-expression tree.
+- **Lex stage** (`BaseLexer` + optional `Lexer` wrapper) turns source
+  text into a token stream.
+- **Parse stage** (`BaseParser` + optional `Parser` wrapper) turns
+  tokens into an S-expression tree.
 
-The `Base*` types are emitted by Nexus and language-agnostic. The wrapping
-`Lexer` and `Sexer` types are optional escape hatches the `@lang` module
-can supply when declarative grammar rules aren't enough.
-
-The conceptual word "parser" survives — `parser.zig` is the filename and
-the term still applies to the whole composition — but the emitted Zig
-types are named to reflect what they actually do.
+The `Base*` types are emitted by Nexus and language-agnostic. The
+wrapping `Lexer` and `Parser` types are optional escape hatches the
+`@lang` module can supply when declarative grammar rules aren't enough.
+The composition is referred to as "the parser" in prose; the two type
+names reflect what each stage actually produces.
 
 ### Top-Level Entry Points
 
@@ -804,18 +801,18 @@ The generated `parser.zig` exports a convenience helper per start symbol:
 const parser = @import("parser.zig");
 
 var result = try parser.parseProgram(allocator, source);
-defer result.sexer.deinit();
+defer result.parser.deinit();
 
-// result.sexp references arena memory owned by result.sexer
+// result.sexp references arena memory owned by result.parser
 processTree(result.sexp);
 ```
 
 The returned `Sexp` references arena-allocated memory owned by the
-returned `sexer`; the caller must keep the sexer alive for the lifetime
-of the tree.
+returned `parser`; the caller must keep the parser alive for the
+lifetime of the tree.
 
-If you need finer control, instantiate `Sexer` directly — the helper is
-just sugar for `Sexer.init(...) + parse{Start}()`.
+If you need finer control, instantiate `Parser` directly — the helper
+is just sugar for `Parser.init(...) + parse{Start}()`.
 
 ### Performance
 
@@ -838,13 +835,13 @@ The `@lang` module (e.g., `zag.zig`) provides:
 1. **`Tag` enum** — `pub const Tag = enum(u8) { module, fun, ... }` for S-expression node types
 2. **`keyword_as(text, symbol) -> ?u16`** — maps identifier text to keyword token IDs when the parser state expects them
 3. **`Lexer` wrapper** (optional) — `pub const Lexer = ...` that wraps `BaseLexer` for indentation tracking, token reclassification, or other rewriting
-4. **`Sexer` wrapper** (optional) — `pub const Sexer = ...` that wraps `BaseSexer` for post-parse rewriting (lowering, desugaring, semantic normalization)
+4. **`Parser` wrapper** (optional) — `pub const Parser = ...` that wraps `BaseParser` for post-parse rewriting (lowering, desugaring, semantic normalization)
 
 If the `@lang` module exports a `Lexer` type, the generated code uses it.
 Otherwise it uses `BaseLexer` directly. The same auto-wire applies to
-`Sexer` / `BaseSexer`.
+`Parser` / `BaseParser`.
 
-### Lexer (token rewriter)
+### Lexer wrapper (token rewriter)
 
 A custom `Lexer` is a drop-in replacement for `BaseLexer`. It must
 expose the same surface — `init(source) -> Self`, `next() Token`,
@@ -853,23 +850,23 @@ delegating, while reclassifying tokens, injecting synthetic ones, or
 tracking indentation state on the way through. Token-level rewriting
 that can't be expressed in `@as`, `@op`, or guards belongs here.
 
-### Sexer (sexp rewriter)
+### Parser wrapper (sexp rewriter)
 
-A custom `Sexer` is a drop-in replacement for `BaseSexer`. It must
+A custom `Parser` is a drop-in replacement for `BaseParser`. It must
 expose the same surface — `init(allocator, source) -> Self`, `deinit`,
 and one `parse{Start}() !Sexp` method per declared start symbol —
-typically by wrapping a `BaseSexer`, calling its `parse{Start}`, and
+typically by wrapping a `BaseParser`, calling its `parse{Start}`, and
 rewriting the returned tree before handing it back. Use this when the
 S-expressions emitted by the grammar are convenient to *produce* but
 inconvenient to *consume* (e.g., flattening nested groups, attaching
 inferred types, hoisting block scopes). Top-level helpers like
-`parser.parseProgram(allocator, source)` route through `Sexer`
+`parser.parseProgram(allocator, source)` route through `Parser`
 automatically when defined.
 
-The top-level helpers return the sexer by value paired with the
-resulting tree, so a custom `Sexer` must be **safely movable** — no
+The top-level helpers return the parser by value paired with the
+resulting tree, so a custom `Parser` must be **safely movable** — no
 self-referential storage (no pointers into its own fields). The
-straightforward `BaseSexer`-wrapping shape used in this repo's
+straightforward `BaseParser`-wrapping shape used in this repo's
 language modules satisfies this automatically; just don't introduce
 fields whose values point at sibling fields of the same struct.
 

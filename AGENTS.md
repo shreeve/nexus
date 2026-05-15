@@ -77,43 +77,43 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 
 ## Extension Mechanism
 
-Generated `parser.zig` is two symmetric stages, each with a Nexus-generated
-raw producer and an optional language-specific wrapper from the `@lang`
+Generated `parser.zig` has two stages, each with a Nexus-generated raw
+producer and an optional language-specific wrapper from the `@lang`
 module:
 
 ```
-BaseLexer → Lexer    →    BaseSexer → Sexer
-(Nexus)     (lang, opt)   (Nexus)     (lang, opt)
-─────────────────         ─────────────────
-   lex stage                 sex stage
+BaseLexer → Lexer       BaseParser → Parser
+(Nexus)     (lang, opt)  (Nexus)      (lang, opt)
+───────────────────      ───────────────────────
+   lex stage                parse stage
 ```
 
 Both stages auto-wire from the `@lang` module:
 
 ```zig
-pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
-pub const Sexer = if (@hasDecl(lang, "Sexer")) lang.Sexer else BaseSexer;
+pub const Lexer  = if (@hasDecl(lang, "Lexer"))  lang.Lexer  else BaseLexer;
+pub const Parser = if (@hasDecl(lang, "Parser")) lang.Parser else BaseParser;
 ```
 
 A custom `Lexer` rewrites the token stream (indentation, keyword
-reclassification, synthetic tokens). A custom `Sexer` rewrites the
+reclassification, synthetic tokens). A custom `Parser` rewrites the
 S-expression tree returned by `parse{Start}` (lowering, desugaring,
 semantic normalization). The wrappers have full access to the underlying
 Base type's internals — `base.pos`, `base.source`, `base.aux`, state
 variables, `base.matchRules()` on the lex side; arena, current token,
-state/value stacks on the sex side.
+state/value stacks on the parse side.
 
 For each declared start symbol Nexus also emits a top-level convenience
-helper: `parser.parse{Start}(allocator, source) !struct { sexer: Sexer, sexp: Sexp }`.
-The returned `Sexp` references arena memory owned by `result.sexer`; the
-caller must `defer result.sexer.deinit()` to keep the tree alive for the
-needed lifetime. Because the sexer is returned by value, custom
-`lang.Sexer` wrappers must be safely movable (no self-referential
-storage). `BaseSexer` already satisfies this.
+helper: `parser.parse{Start}(allocator, source) !struct { parser: Parser, sexp: Sexp }`.
+The returned `Sexp` references arena memory owned by `result.parser`;
+the caller must `defer result.parser.deinit()` to keep the tree alive
+for the needed lifetime. Because the parser is returned by value,
+custom `lang.Parser` wrappers must be safely movable (no
+self-referential storage). `BaseParser` already satisfies this.
 
-### `aux` — Lexer-to-Sexer Metadata
+### `aux` — Lexer-to-Parser Metadata
 
-`BaseLexer` has an `aux: u16 = 0` field that language wrappers can set per-token. On shift, `BaseSexer` copies `aux` into `src.id` (when `lastMatchedId` is 0), then resets it. This provides a generic channel for passing lexer-computed metadata (e.g., MUMPS dot-level count) through to the compiler without hand-patching `parser.zig`.
+`BaseLexer` has an `aux: u16 = 0` field that language wrappers can set per-token. On shift, `BaseParser` copies `aux` into `src.id` (when `lastMatchedId` is 0), then resets it. This provides a generic channel for passing lexer-computed metadata (e.g., MUMPS dot-level count) through to the compiler without hand-patching `parser.zig`.
 
 ## Token Classification (Critical for Grammar Authors)
 
