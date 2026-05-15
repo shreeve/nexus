@@ -77,13 +77,41 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 
 ## Extension Mechanism
 
-Generated `parser.zig` emits: `pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;`
+Generated `parser.zig` is two symmetric stages, each with a Nexus-generated
+raw producer and an optional language-specific wrapper from the `@lang`
+module:
 
-Lang modules can export a `pub const Lexer` struct wrapping `BaseLexer` for language-specific scanning. The wrapper has full access to `base.pos`, `base.source`, `base.aux`, state variables, and `base.matchRules()`.
+```
+BaseLexer → Lexer    →    BaseSexer → Sexer
+(Nexus)     (lang, opt)   (Nexus)     (lang, opt)
+─────────────────         ─────────────────
+   lex stage                 sex stage
+```
 
-### `aux` — Lexer-to-Parser Metadata
+Both stages auto-wire from the `@lang` module:
 
-`BaseLexer` has an `aux: u16 = 0` field that language wrappers can set per-token. On shift, the parser copies `aux` into `src.id` (when `lastMatchedId` is 0), then resets it. This provides a generic channel for passing lexer-computed metadata (e.g., MUMPS dot-level count) through to the compiler without hand-patching `parser.zig`.
+```zig
+pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
+pub const Sexer = if (@hasDecl(lang, "Sexer")) lang.Sexer else BaseSexer;
+```
+
+A custom `Lexer` rewrites the token stream (indentation, keyword
+reclassification, synthetic tokens). A custom `Sexer` rewrites the
+S-expression tree returned by `parse{Start}` (lowering, desugaring,
+semantic normalization). The wrappers have full access to the underlying
+Base type's internals — `base.pos`, `base.source`, `base.aux`, state
+variables, `base.matchRules()` on the lex side; arena, current token,
+state/value stacks on the sex side.
+
+For each declared start symbol Nexus also emits a top-level convenience
+helper: `parser.parse{Start}(allocator, source) !struct { sexer: Sexer, sexp: Sexp }`.
+The returned `Sexp` references arena memory owned by `result.sexer`; the
+caller must `defer result.sexer.deinit()` to keep the tree alive for the
+needed lifetime.
+
+### `aux` — Lexer-to-Sexer Metadata
+
+`BaseLexer` has an `aux: u16 = 0` field that language wrappers can set per-token. On shift, `BaseSexer` copies `aux` into `src.id` (when `lastMatchedId` is 0), then resets it. This provides a generic channel for passing lexer-computed metadata (e.g., MUMPS dot-level count) through to the compiler without hand-patching `parser.zig`.
 
 ## Token Classification (Critical for Grammar Authors)
 
