@@ -178,6 +178,7 @@ run_golden "slash"    "test/slash"    "slash.grammar"     "test/golden/slash.zig
 run_golden "mumps"    "test/mumps"    "mumps.grammar"     "test/golden/mumps.zig"
 run_golden "ruby"     "test/ruby"     "ruby.grammar"      "test/golden/ruby.zig"
 run_golden "rig"      "test/rig"      "rig.grammar"      "test/golden/rig.zig"
+run_golden "nexis"    "test/nexis"    "nexis.grammar"    "test/golden/nexis.zig"
 
 say_section_done $(( SECONDS - SECTION_START ))
 
@@ -209,6 +210,7 @@ run_determinism "slash"    "test/slash"    "slash.grammar"
 run_determinism "mumps"    "test/mumps"    "mumps.grammar"
 run_determinism "ruby"     "test/ruby"     "ruby.grammar"
 run_determinism "rig"      "test/rig"      "rig.grammar"
+run_determinism "nexis"    "test/nexis"    "nexis.grammar"
 
 say_section_done $(( SECONDS - SECTION_START ))
 
@@ -290,6 +292,7 @@ run_sexp_snapshot "slash"    "test/slash/slash.grammar"
 run_sexp_snapshot "mumps"    "test/mumps/mumps.grammar"
 run_sexp_snapshot "ruby"     "test/ruby/ruby.grammar"
 run_sexp_snapshot "rig"      "test/rig/rig.grammar"
+run_sexp_snapshot "nexis"    "test/nexis/nexis.grammar"
 
 # Determinism: same input, two runs, identical S-expression output.
 SEXP_A="$TMPDIR/determ_a.sexp"

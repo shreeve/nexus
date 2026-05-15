@@ -65,6 +65,7 @@ definitions, and optional token rewriting.
 | em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |        44 |
 | Nanoruby   | `ruby.grammar`  | `ruby.zig`  |    65 |        66 |
 | Rig        | `rig.grammar`   | `rig.zig`   |    65 |        20 |
+| Nexis      | `nexis.grammar` | `nexis.zig` |    17 |       114 |
 
 ## Architecture
 
@@ -901,6 +902,7 @@ fields whose values point at sibling fields of the same struct.
 | `mumps` | Real-world: 115 rules, 44 conflicts, @code, counted, empty-pattern guards |
 | `ruby` | Real-world (nanoruby): 65 rules, 66 conflicts, modifier/do reclassification, interpolation, symbols |
 | `rig` | Real-world: 65 rules, 20 conflicts; exercises the v0.10.1 `Parser` auto-wire end-to-end (lang module exports `pub const Parser` that bakes semantic IR normalization into `parseProgram`) |
+| `nexis` | Real-world: 17-rule reader grammar for a Clojure-flavored Lisp dialect, 114 conflicts (wide alternation between forms — anon-fns, syntax-quote, metadata) |
 
 ---
 

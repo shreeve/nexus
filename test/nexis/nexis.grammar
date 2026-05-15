@@ -1,0 +1,195 @@
+# nexis.grammar — reader grammar for nexis.
+#
+# Produces a raw `Sexp` tree that `src/reader.zig` normalizes into the canonical
+# `Form` tree documented in `docs/FORMS.md` (Appendix C of PLAN.md).
+#
+# Stage boundary (PLAN §11.2, §28.4):
+#
+#   source.nx ──[this grammar via nexus]──► raw Sexp ──[src/reader.zig]──► Form
+#
+# The grammar performs NO semantic normalization. In particular:
+#   - `^meta target` emits `(with-meta-raw target meta)`; the reader merges
+#     stacked metadata and rejects attachability violations.
+#   - `#(body)` emits `(anon-fn body)`; the reader rewrites the head of this
+#     form to the reserved symbol `#%anon-fn` and rejects nested anon-fns.
+#   - `` `x `` emits `(syntax-quote x)`; expansion (auto-qualify, auto-gensym,
+#     unquote handling) is the macroexpander's job, not the reader's.
+#   - `#_ x` emits `(discard x)`; the reader drops it.
+#   - `nil`, `true`, `false` arrive as ordinary symbols; the reader converts
+#     them to nil/bool atoms based on their textual form.
+#   - Duplicate literal keys / odd-map-arity / nested anon-fn / bare unquote
+#     detection is the reader's responsibility.
+#
+# Whitespace, newlines, and commas are insignificant (Clojure convention).
+# Line comments `; ...` are dropped by the lexer.
+
+@lexer
+
+tokens
+    integer
+    real
+    string
+    char
+    keyword
+    ident
+    lparen
+    rparen
+    lbracket
+    rbracket
+    lbrace
+    rbrace
+    hash_lbrace
+    hash_lparen
+    hash_discard
+    quote_tok
+    syntax_quote_tok
+    unquote_splicing_tok
+    unquote_tok
+    deref_tok
+    caret
+    eof
+    err
+
+# Whitespace and commas (commas are whitespace in Clojure-family Lisps).
+[ \t\r\n,]+                                      → skip
+
+# Line comments (to end of line; newline itself is whitespace).
+';' [^\n]*                                       → skip
+
+# Strings: double-quoted, with backslash escapes. The reader validates the
+# escape language (PLAN §7.2 / §23 decision 26); the lexer only counts bytes.
+'"' ([^"\\\n] | '\\' .)* '"'                     → string
+
+# Character literals. Three shapes, longest-match order:
+#   \u{HEX}      unicode scalar
+#   \named       named set (\newline, \space, \tab, \return, \formfeed, \backspace)
+#   \a           any single character
+'\\' 'u{' [0-9a-fA-F]+ '}'                       → char
+'\\' [a-zA-Z][a-zA-Z]*                           → char
+'\\' .                                           → char
+
+# Numbers. Order matters: reals before integers, with optional leading minus.
+# The reader decodes the textual representation (§28.2 / §28.5 example 10
+# pins `-1` as a single numeric token; this lexer does the same).
+'-'? [0-9]+ '.' [0-9]+ ([eE] ('+'|'-')? [0-9]+)? → real
+'-'? [0-9]+ [eE] ('+'|'-')? [0-9]+               → real
+'-'? '0x' [0-9a-fA-F]+                           → integer
+'-'? '0b' [01]+                                  → integer
+'-'? [0-9]+                                      → integer
+
+# Reader sugar — multi-char dispatch tokens must appear before the single-char
+# versions so longest-match wins.
+'~@'                                             → unquote_splicing_tok
+'#{'                                             → hash_lbrace
+'#('                                             → hash_lparen
+'#_'                                             → hash_discard
+
+"'"                                              → quote_tok
+'`'                                              → syntax_quote_tok
+'~'                                              → unquote_tok
+'@'                                              → deref_tok
+'^'                                              → caret
+
+# Collection brackets.
+'('                                              → lparen
+')'                                              → rparen
+'['                                              → lbracket
+']'                                              → rbracket
+'{'                                              → lbrace
+'}'                                              → rbrace
+
+# Keywords. Must include at least one character after the leading `:`.
+# Namespace separator `/` is allowed as part of the keyword body; the reader
+# validates the exact shape (`:foo`, `:ns/foo`, but not `::foo`, etc.).
+':' [a-zA-Z_*+!?<>=&$.%/-][a-zA-Z0-9_*+!?<>=&$.%'/-]* → keyword
+
+# Identifier / symbol. Nexus hardcodes the token name `ident` as the
+# discriminator for whether the main lexer dispatcher routes letter-start
+# characters to scanIdent; the token is named `ident` here purely to make
+# that dispatcher fire. The grammar rules wrap every IDENT into the
+# Appendix C canonical `(symbol ...)` tag, so downstream consumers never
+# see the word "ident". Namespace separator `/` is allowed inside the body;
+# the reader validates `ns/name` shape and splits as needed.
+[a-zA-Z_*+!?<>=&$.%-][a-zA-Z0-9_*+!?<>=&$.%'/-]* → ident
+'/'                                              → ident
+
+# Fallback — unknown byte. Reader turns this into a structured error.
+.                                                → err
+
+
+@parser
+
+@lang = "nexis"
+
+# Literal-to-token mapping for multi-char reader sugar. Nexus automatically
+# maps single-char literals like "(" and "'" to their lexer-declared tokens
+# via the lexer rule; multi-char literals such as "~@", "#{", "#(", "#_"
+# need an explicit @op entry because the literal-to-symbol resolver doesn't
+# walk the lexer's multi-char rules. Without this block, rules referring
+# to "~@" / "#{" / "#(" / "#_" yield tokenToSymbol-less terminals and the
+# parser fails to shift them.
+@op = [
+  "~@" → "unquote_splicing_tok",
+  "#{" → "hash_lbrace",
+  "#(" → "hash_lparen",
+  "#_" → "hash_discard",
+]
+
+# Shift/reduce conflicts: 114. All are "forms vs <form-start terminal>":
+# after recognizing one form the parser must decide whether to reduce the
+# `forms` production or shift the next form-start terminal to extend it.
+# Default-shift always wins, which yields the obviously-correct "keep
+# consuming until the enclosing close token" behavior — the same resolution
+# Clojure's reader uses. These conflicts are inherent to left-recursive list
+# accumulation and are resolved identically across all form-start tokens.
+@conflicts = 114
+
+# Start symbols:
+#   program — a full file (zero or more top-level forms)
+#   form    — a single form (REPL / -x / read-string)
+program! = forms                                 → (program ...1)
+form!    = form                                  → 1
+
+forms    = forms form                            → (...1 2)
+         | form                                  → (1)
+         |                                       → ()
+
+form     = atom
+         | list_form
+         | vector_form
+         | map_form
+         | set_form
+         | quote_form
+         | syntax_quote_form
+         | unquote_form
+         | unquote_splicing_form
+         | deref_form
+         | anon_fn_form
+         | discard_form
+         | meta_form
+
+atom     = INTEGER                               → (int 1)
+         | REAL                                  → (real 1)
+         | STRING                                → (string 1)
+         | CHAR                                  → (char 1)
+         | KEYWORD                               → (keyword 1)
+         | IDENT                                 → (symbol 1)
+
+list_form            = "(" forms ")"             → (list ...2)
+vector_form          = "[" forms "]"             → (vector ...2)
+map_form             = "{" forms "}"             → (map ...2)
+set_form             = "#{" forms "}"            → (set ...2)
+
+quote_form           = "'"  form                 → (quote 2)
+syntax_quote_form    = "`"  form                 → (syntax-quote 2)
+unquote_form         = "~"  form                 → (unquote 2)
+unquote_splicing_form = "~@" form                → (unquote-splicing 2)
+deref_form           = "@"  form                 → (deref 2)
+anon_fn_form         = "#(" forms ")"            → (anon-fn ...2)
+discard_form         = "#_" form                 → (discard 2)
+
+# Metadata sugar. `^M T` in source produces `(with-meta-raw T M)` in Sexp;
+# the reader normalizes stacked metadata (right-to-left) into a single
+# `(with-meta TARGET META-MAP)` Form and converts keyword/symbol shorthand
+# into a map (see FORMS.md §3).
+meta_form            = "^" form form             → (with-meta-raw 3 2)

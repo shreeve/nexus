@@ -75,6 +75,7 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 | Slash | `test/slash/slash.grammar` | `test/slash/slash.zig` | Yes — heredocs, regex, indent/outdent, `str` block bodies |
 | Nanoruby | `test/ruby/ruby.grammar` | `test/ruby/ruby.zig` | Yes — newline significance, modifier/do/brace reclassification, labels, symbols |
 | Rig | `test/rig/rig.grammar` | `test/rig/rig.zig` | Yes — indent/outdent, ownership-prefix reclassification; also exports a Parser wrapper that bakes semantic IR normalization into `parseProgram` (first downstream to use the v0.10.1 Parser auto-wire end-to-end) |
+| Nexis | `test/nexis/nexis.grammar` | `test/nexis/nexis.zig` | Yes — Clojure-flavored Lisp reader (anon-fns, syntax-quote, metadata); raw Sexps are normalized in `src/reader.zig` downstream rather than via a `Parser` wrapper |
 
 ## Extension Mechanism
 
@@ -331,6 +332,7 @@ Both the generator internals AND generated output follow these conventions.
 - **Slash** (`/Users/shreeve/Data/Code/slash/`) — copy grammar + lang module, run `nexus slash.grammar src/parser.zig`
 - **Nanoruby** (`/Users/shreeve/Data/Code/nanoruby/`) — copy `ruby.grammar` → `nanoruby/ruby.grammar`, `ruby.zig` → `nanoruby/src/ruby.zig`, run `nexus ruby.grammar src/parser.zig`
 - **Rig** (`/Users/shreeve/Data/Code/rig/`) — copy grammar + lang module, run `nexus rig.grammar src/parser.zig`
+- **Nexis** (`/Users/shreeve/Data/Code/nexis/`) — copy grammar + lang module, run `nexus nexis.grammar src/parser.zig`
 
 ## String Literal Scanning
 
