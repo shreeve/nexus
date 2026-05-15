@@ -220,7 +220,6 @@ pub const BaseLexer = struct {
                     self.pos += 1;
                     break :blk Token{ .cat = .@"arrow", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                self.pos -= 1;
                 break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             '.' => blk: {
@@ -232,7 +231,6 @@ pub const BaseLexer = struct {
                     }
                     self.pos -= 1;
                 }
-                self.pos -= 1;
                 break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             ':' => Token{ .cat = .@"colon", .pre = wsCount, .pos = start, .len = 1 },

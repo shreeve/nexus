@@ -524,7 +524,6 @@ pub const BaseLexer = struct {
                     self.pos += 1;
                     break :blk Token{ .cat = .@"skip", .pre = wsCount, .pos = start, .len = 2 };
                 }
-                self.pos -= 1;
                 break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             ']' => blk: {

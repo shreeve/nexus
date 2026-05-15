@@ -1203,12 +1203,21 @@ const LexerGenerator = struct {
                 const isStringStart = (firstChar == '\'' or firstChar == '"');
                 const isDigit = (firstChar >= '0' and firstChar <= '9');
 
-                try self.write("                self.pos -= 1;\n");
                 if (isStringStart) {
+                    // scanString re-reads from start, so rewind pos.
+                    try self.write("                self.pos -= 1;\n");
                     try self.write("                break :blk self.scanString(start, wsCount);\n");
                 } else if (isDigit) {
+                    // scanNumber re-reads from start, so rewind pos.
+                    try self.write("                self.pos -= 1;\n");
                     try self.write("                break :blk self.scanNumber(start, wsCount);\n");
                 } else {
+                    // Err fallback: pos was already advanced by the outer
+                    // consumer; emit `len=1` covering the offending byte and
+                    // keep `pos` advanced so the next call moves on. (The
+                    // previous `self.pos -= 1` here caused an infinite loop in
+                    // BaseLexer-only callers such as the syntax highlighter
+                    // when the buffer ended mid-token, e.g. `echo $!`.)
                     try self.write("                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
                 }
             }
