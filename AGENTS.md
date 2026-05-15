@@ -107,7 +107,9 @@ For each declared start symbol Nexus also emits a top-level convenience
 helper: `parser.parse{Start}(allocator, source) !struct { sexer: Sexer, sexp: Sexp }`.
 The returned `Sexp` references arena memory owned by `result.sexer`; the
 caller must `defer result.sexer.deinit()` to keep the tree alive for the
-needed lifetime.
+needed lifetime. Because the sexer is returned by value, custom
+`lang.Sexer` wrappers must be safely movable (no self-referential
+storage). `BaseSexer` already satisfies this.
 
 ### `aux` — Lexer-to-Sexer Metadata
 

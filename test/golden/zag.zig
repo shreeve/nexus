@@ -1082,6 +1082,11 @@ pub const Sexer = if (@hasDecl(zag, "Sexer")) zag.Sexer else BaseSexer;
 /// program. Caller owns `result.sexer` and must call `result.sexer.deinit()`
 /// when done with the returned tree (the tree references arena-allocated
 /// memory owned by the sexer).
+///
+/// The sexer is returned by value, so the underlying type
+/// must be safely movable (no self-referential storage).
+/// `BaseSexer` is movable by construction; custom `lang.Sexer`
+/// wrappers must preserve this invariant.
 pub fn parseProgram(allocator: std.mem.Allocator, source: []const u8) !struct { sexer: Sexer, sexp: Sexp } {
     var s = Sexer.init(allocator, source);
     errdefer s.deinit();
@@ -1093,6 +1098,11 @@ pub fn parseProgram(allocator: std.mem.Allocator, source: []const u8) !struct { 
 /// expr. Caller owns `result.sexer` and must call `result.sexer.deinit()`
 /// when done with the returned tree (the tree references arena-allocated
 /// memory owned by the sexer).
+///
+/// The sexer is returned by value, so the underlying type
+/// must be safely movable (no self-referential storage).
+/// `BaseSexer` is movable by construction; custom `lang.Sexer`
+/// wrappers must preserve this invariant.
 pub fn parseExpr(allocator: std.mem.Allocator, source: []const u8) !struct { sexer: Sexer, sexp: Sexp } {
     var s = Sexer.init(allocator, source);
     errdefer s.deinit();

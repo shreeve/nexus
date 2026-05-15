@@ -866,6 +866,13 @@ inferred types, hoisting block scopes). Top-level helpers like
 `parser.parseProgram(allocator, source)` route through `Sexer`
 automatically when defined.
 
+The top-level helpers return the sexer by value paired with the
+resulting tree, so a custom `Sexer` must be **safely movable** — no
+self-referential storage (no pointers into its own fields). The
+straightforward `BaseSexer`-wrapping shape used in this repo's
+language modules satisfies this automatically; just don't introduce
+fields whose values point at sibling fields of the same struct.
+
 ---
 
 ## Testing

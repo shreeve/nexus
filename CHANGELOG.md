@@ -66,7 +66,9 @@ For a downstream project vendoring a generated `parser.zig`:
 4. (Optional) Add a custom `Sexer` to your `@lang` module if you want
    post-parse rewriting. It must mirror the `BaseSexer` surface:
    `init(allocator, source) -> Self`, `deinit`, and one
-   `parse{Start}() !Sexp` method per start symbol.
+   `parse{Start}() !Sexp` method per start symbol. Because the
+   top-level helpers return the sexer by value, the custom type must
+   also be safely movable (no self-referential storage).
 
 ### What did *not* change
 
