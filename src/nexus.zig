@@ -7678,9 +7678,13 @@ fn dumpSrcText(writer: anytype, text: []const u8) !void {
 
 // Parse the @parser section of a grammar file through the generated frontend
 // and return the S-expression tree. Callers own the parser's arena lifetime
-// via the returned BaseParser; deinit it when finished with the tree.
+// via the returned Parser; deinit it when finished with the tree.
+//
+// Uses the top-level `frontend.parseGrammar` convenience helper that
+// every Nexus-generated parser.zig now exports, so the generator
+// dogfoods the same entry point downstream callers are expected to use.
 fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
-    parser: frontend.BaseParser,
+    parser: frontend.Parser,
     sexp: frontend.Sexp,
     parserBody: []const u8,
 } {
@@ -7688,10 +7692,8 @@ fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
         return error.MissingParserSection;
     };
     const parserBody = sourceText[parserStart + 7 ..];
-    var parser = frontend.BaseParser.init(allocator, parserBody);
-    errdefer parser.deinit();
-    const sexp = try parser.parseGrammar();
-    return .{ .parser = parser, .sexp = sexp, .parserBody = parserBody };
+    const result = try frontend.parseGrammar(allocator, parserBody);
+    return .{ .parser = result.parser, .sexp = result.sexp, .parserBody = parserBody };
 }
 
 // =============================================================================
