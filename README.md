@@ -60,9 +60,11 @@ definitions, and optional token rewriting.
 
 | Language   | Grammar         | Lang Module | Rules | Conflicts |
 |------------|-----------------|-------------|-------|-----------|
-| Zag        | `zag.grammar`   | `zag.zig`   |    56 |        19 |
-| Slash      | `slash.grammar` | `slash.zig` |    53 |        16 |
+| Zag        | `zag.grammar`   | `zag.zig`   |    57 |        19 |
+| Slash      | `slash.grammar` | `slash.zig` |    34 |         0 |
 | em (MUMPS) | `mumps.grammar` | `mumps.zig` |   115 |        44 |
+| Nanoruby   | `ruby.grammar`  | `ruby.zig`  |    65 |        66 |
+| Rig        | `rig.grammar`   | `rig.zig`   |    65 |        20 |
 
 ## Architecture
 
@@ -894,9 +896,11 @@ fields whose values point at sibling fields of the same struct.
 |---------|---------|
 | `basic` | Expression grammar (precedence, associativity, multiple start symbols) |
 | `features` | State vars, after, guards, actions, strings, comments, lists |
-| `zag` | Real-world: 56 rules, 19 conflicts |
-| `slash` | Real-world: 53 rules, 16 conflicts |
+| `zag` | Real-world: 57 rules, 19 conflicts |
+| `slash` | Real-world: 34 rules, conflict-free (declares `@conflicts = 0`); `str` block bodies, indent/outdent |
 | `mumps` | Real-world: 115 rules, 44 conflicts, @code, counted, empty-pattern guards |
+| `ruby` | Real-world (nanoruby): 65 rules, 66 conflicts, modifier/do reclassification, interpolation, symbols |
+| `rig` | Real-world: 65 rules, 20 conflicts; exercises the v0.10.1 `Parser` auto-wire end-to-end (lang module exports `pub const Parser` that bakes semantic IR normalization into `parseProgram`) |
 
 ---
 
