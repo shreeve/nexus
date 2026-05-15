@@ -912,6 +912,7 @@ pub const Lexer = struct {
             .ident, .constant, .ivar, .cvar, .gvar,
             .integer, .float, .string_sq, .string_dq,
             .symbol, .label,
+            .pct_w, .pct_i,
             .rparen, .rbracket, .rbrace,
             => true,
             else => false,

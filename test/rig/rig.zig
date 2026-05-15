@@ -40,13 +40,19 @@ const Sexp = parser.Sexp;
 //
 // Inherited from Zag with renames per SPEC:
 //   - `comptime` paths are renamed to `pre`
-//   - `=!` Tag renamed `fixed_bind` (was `const_assign` in Zag)
 // Added by Rig:
 //   - ownership: move, read, write, clone, drop, share, weak, pin, raw
-//   - bindings:  fixed_bind, move_assign, shadow
+//   - bindings:  the unified `(set <kind> name type-or-_ expr)` head
 //   - control:   try_block, catch_block, propagate
-//   - iteration: for_read, for_write, for_move
+//   - iteration: for-mode tags `iter`, `read`, `write`, `move`, `ptr`
+//                in the unified `(for <mode> binding1 binding2-or-_ source body)` shape
 //   - meta:      pre, pre_param, pre_block
+//
+// The grammar now emits the normalized IR shape directly via Nexus's
+// tag-literal-at-child-position support (Nexus 0.10.x+), so the Tag
+// enum is sized to the **normalized** vocabulary — not the historical
+// raw-vs-normalized union. See docs/SEMANTIC-SEXP.md for the full
+// emitted-shape catalog.
 
 pub const Tag = enum(u8) {
     // Module structure
@@ -61,8 +67,6 @@ pub const Tag = enum(u8) {
     @"extern",
     @"export",
     @"callconv",
-    @"extern_var",
-    @"extern_const",
     @"opaque",
     @"generic_type",    // type Box(T) ...
     @"fixed",           // generic "fixed/immutable" kind marker (used in extern, etc.)
@@ -91,7 +95,8 @@ pub const Tag = enum(u8) {
 
     // Bindings (Rig)
     //
-    // ALL normalized binding forms share a single uniform 5-child shape:
+    // ALL binding forms share a single uniform 5-child shape, emitted
+    // directly by the grammar via Nexus tag-literal-at-child support:
     //
     //   (set <kind> name type-or-_ expr)
     //
@@ -102,17 +107,12 @@ pub const Tag = enum(u8) {
     //   move    — `x <- expr` (move-assign sugar)
     //   +=, -=, *=, /=  — compound assignment (op as kind tag)
     //
-    // The `shadow` Tag enum entry serves dual purposes: as a kind tag in
-    // the set's slot, AND as a generic "explicit shadowing" marker.
-    // `move` likewise doubles as both an ownership-wrapper Tag and a
-    // kind tag — context (position 1 of `set` vs head of an expression)
-    // disambiguates.
-    @"set",             // NORMALIZED universal binding head; see kind discriminator above
-    @"shadow",          // RAW from parser; also serves as kind tag in normalized `set`
-    @"fixed_bind",      // RAW from parser: x =! expr        (folded to `set fixed` by normalize)
-    @"typed_assign",    // RAW from parser: name : T = expr  (folded to `set _` by normalize)
-    @"typed_fixed",     // RAW from parser: name : T =! expr (folded to `set fixed` by normalize)
-    @"move_assign",     // RAW from parser: x <- expr        (folded to `set move` by normalize)
+    // `shadow` and `move` Tag entries serve dual purposes: as kind tags
+    // in the set's slot, AND as ownership-wrapper / shadow-marker Tags
+    // in their other contexts. Position disambiguates (items[1] of `set`
+    // is a kind; everywhere else it's the wrapper meaning).
+    @"set",
+    @"shadow",
     @"=",
     @"+=",
     @"-=",
@@ -122,12 +122,10 @@ pub const Tag = enum(u8) {
     // Control flow
     @"if",
     @"while",
-    // for: (for <mode> binding source body else?)
-    //   mode is one of `read`, `write`, `move`, `none`
-    // SPEC §"Semantic IR Nodes" specifies the (for mode ...) shape.
+    // for: (for <mode> binding1 binding2-or-_ source body else?)
+    //   mode is one of `iter` (default), `read`, `write`, `move`, `ptr`
+    // The grammar emits the unified shape directly (no separate `for_ptr`).
     @"for",
-    @"for_ptr",         // Zag-inherited pointer iteration, kept separate
-                        // because it has an extra binding
     @"match",
     @"arm",
     @"range_pattern",
@@ -147,14 +145,12 @@ pub const Tag = enum(u8) {
     // Calls and access
     @"addr_of",
     @"call",
-    @".",               // raw member access from parser
-    @"member",          // normalized `.` (cosmetic rename)
+    @"member",          // obj.name (grammar emits this directly)
     @"deref",
     @"index",
     @"array",
     @"record",
-    @"pair",            // raw `name: expr` from parser
-    @"kwarg",           // normalized `pair` (cosmetic rename)
+    @"kwarg",           // name: value (kwarg / record-field; grammar emits directly)
 
     // Operators — arithmetic
     @"+",
@@ -194,9 +190,11 @@ pub const Tag = enum(u8) {
     @"valued",
     @"default",
     @":",
-    @"?",               // raw optional type from parser (type position)
-    @"optional",        // normalized `?T` (cosmetic rename)
+    @"optional",        // `T?` (suffix optional; grammar emits directly)
+    @"borrow_read",     // `?T` in type position — read-borrowed parameter/return
+    @"borrow_write",    // `!T` in type position — write-borrowed parameter/return
     @"ptr",
+    @"iter",            // for-mode: default value iteration (no sigil, no `*`)
     @"const_ptr",
     @"sentinel_slice",
     @"fn_type",
@@ -403,7 +401,7 @@ pub fn keywordAs(name: []const u8) ?KeywordId {
 //                                                  builtin call `@name(...)` stays `at`)
 //   -x   tight + statement-start   → drop_stmt    (else `minus_prefix` per Zag rule
 //                                                  or infix `minus`)
-//   x?   tight + value-ender prev  → prop_q       (else `question`)
+//   x?   tight + value-ender prev  → suffix_q     (else `question`)
 //
 // Ownership prefixes that ALSO need rewriter classification (because
 // the bare token is also infix or has a type-rule role that would
@@ -616,16 +614,20 @@ pub const Lexer = struct {
                 }
             }
 
-            // ? → question | prop_q | read_pfx
+            // ? → question | suffix_q | read_pfx
             //
-            //   tight + value-ender preceding   → prop_q     (postfix propagation `expr?`)
+            //   tight + value-ender preceding   → suffix_q   (T? optional suffix in type
+            //                                                 context; reserved for future
+            //                                                 optional-propagation in expr
+            //                                                 context — `?` family is
+            //                                                 optional / null)
             //   isPrefixSigil                   → read_pfx   (`?T`, `?x`, `?user`)
             //   else                            → question
             if (tok.cat == .question) {
                 if (tok.pre == 0 and isValueCat(self.last_cat)) {
                     var prop = tok;
-                    prop.cat = .prop_q;
-                    self.last_cat = .prop_q;
+                    prop.cat = .suffix_q;
+                    self.last_cat = .suffix_q;
                     return prop;
                 }
                 if (self.isPrefixSigil(tok)) {
@@ -636,11 +638,21 @@ pub const Lexer = struct {
                 }
             }
 
-            // ! → not_sym | write_pfx
+            // ! → not_sym | write_pfx | suffix_bang
             //
-            //   isPrefixSigil  → write_pfx   (`!user`, `!T`)
-            //   else           → not_sym
+            //   tight + value-ender preceding   → suffix_bang   (T! fallible type;
+            //                                                    parser-state-dispatched
+            //                                                    so this is type-only — see
+            //                                                    grammar's `type SUFFIX_BANG`)
+            //   isPrefixSigil                   → write_pfx     (`!user`, `!T` write borrow)
+            //   else                            → not_sym
             if (tok.cat == .not_sym) {
+                if (tok.pre == 0 and isValueCat(self.last_cat)) {
+                    var sb = tok;
+                    sb.cat = .suffix_bang;
+                    self.last_cat = .suffix_bang;
+                    return sb;
+                }
                 if (self.isPrefixSigil(tok)) {
                     var wp = tok;
                     wp.cat = .write_pfx;
@@ -801,7 +813,7 @@ pub const Lexer = struct {
             .ident, .integer, .real, .string_sq, .string_dq,
             .true, .false,
             .rparen, .rbracket, .rbrace,
-            .prop_q,
+            .suffix_q,
             => true,
             else => false,
         };
@@ -819,7 +831,7 @@ pub const Lexer = struct {
             .ident, .integer, .real, .string_sq, .string_dq,
             .true, .false,
             .rparen, .rbracket, .rbrace,
-            .prop_q,
+            .suffix_q,
             => true,
             else => false,
         };
@@ -1028,34 +1040,25 @@ pub const Parser = struct {
         return self.base.arena.allocator();
     }
 
+    /// The grammar emits the normalized IR shape directly for nearly
+    /// everything (using the tag-literal-at-child-position feature added
+    /// in Nexus 0.10.x+). The Parser's only remaining responsibility is
+    /// **inspection-requiring transforms** that can't be expressed in a
+    /// declarative grammar action — currently just one: consuming the
+    /// `for` source's outer ownership-wrapper (`(read xs)` etc.) into
+    /// the `for` form's mode slot.
+    ///
+    /// Walks children for everything else so cosmetic renames in nested
+    /// positions still work consistently.
     fn walk(self: *Parser, sexp: Sexp) std.mem.Allocator.Error!Sexp {
         switch (sexp) {
             .nil, .tag, .src, .str => return sexp,
             .list => |items| {
                 if (items.len == 0) return sexp;
-                if (items[0] != .tag) return self.walkChildren(sexp);
-
-                return switch (items[0].tag) {
-                    // All bindings collapse into (set <kind> name type-or-_ expr).
-                    .@"=" => try self.normBind(items, .nil, null, false),
-                    .@"+=" => try self.normBind(items, .{ .tag = .@"+=" }, null, false),
-                    .@"-=" => try self.normBind(items, .{ .tag = .@"-=" }, null, false),
-                    .@"*=" => try self.normBind(items, .{ .tag = .@"*=" }, null, false),
-                    .@"/=" => try self.normBind(items, .{ .tag = .@"/=" }, null, false),
-                    .@"fixed_bind" => try self.normBind(items, .{ .tag = .fixed }, null, false),
-                    .@"shadow" => try self.normBind(items, .{ .tag = .shadow }, null, false),
-                    .@"move_assign" => try self.normBind(items, .{ .tag = .@"move" }, null, false),
-                    .@"typed_assign" => try self.normBind(items, .nil, items[2], true),
-                    .@"typed_fixed" => try self.normBind(items, .{ .tag = .fixed }, items[2], true),
-                    .@"extern_var" => try self.normExternDecl(items, false),
-                    .@"extern_const" => try self.normExternDecl(items, true),
-                    .@"." => try self.rewriteHead(items, .member),
-                    .@"pair" => try self.rewriteHead(items, .kwarg),
-                    .@"?" => try self.rewriteHead(items, .optional),
-                    .@"for" => try self.normFor(items, false),
-                    .@"for_ptr" => try self.normFor(items, true),
-                    else => try self.walkChildren(sexp),
-                };
+                if (items[0] == .tag and items[0].tag == .@"for") {
+                    return try self.normFor(items);
+                }
+                return self.walkChildren(sexp);
             },
         }
     }
@@ -1069,63 +1072,35 @@ pub const Parser = struct {
         return Sexp{ .list = out };
     }
 
-    /// Universal binding rewriter. Every raw binding form folds into:
+    /// Consume the source's outer ownership wrapper into the for-mode slot.
     ///
-    ///   (set <kind> name type-or-_ expr)
-    fn normBind(
-        self: *Parser,
-        items: []const Sexp,
-        kind: Sexp,
-        type_node_in: ?Sexp,
-        typed: bool,
-    ) !Sexp {
-        const min_arity: usize = if (typed) 4 else 3;
-        if (items.len < min_arity) return self.walkChildren(.{ .list = items });
+    /// Raw from grammar:    (for <mode> binding1 binding2 source body else?)
+    /// where mode is one of:
+    ///   `iter` — default value iteration, no sigil and no `*`
+    ///   `ptr`  — `for *x in xs`
+    /// When mode is `iter`, the source MAY be a `(read X)` / `(write X)`
+    /// / `(move X)` wrapper from the source's `?xs` / `!xs` / `<xs`
+    /// sigil. We promote that wrapper into the mode slot and unwrap
+    /// the source to its inner expression — the one transform Nexus
+    /// can't do declaratively (it requires inspecting a child).
+    ///
+    /// `ptr` mode is left alone (V1 doesn't combine `*` and sigil).
+    fn normFor(self: *Parser, items: []const Sexp) !Sexp {
+        if (items.len < 6) return self.walkChildren(.{ .list = items });
 
-        const target = try self.walk(items[1]);
-        const expr_raw = if (typed) items[3] else items[2];
-        const expr = try self.walk(expr_raw);
-        const type_node = if (type_node_in) |t| try self.walk(t) else Sexp{ .nil = {} };
-
-        const out = try self.allocator().alloc(Sexp, 5);
-        out[0] = .{ .tag = .set };
-        out[1] = kind;
-        out[2] = target;
-        out[3] = type_node;
-        out[4] = expr;
-        return Sexp{ .list = out };
-    }
-
-    /// (extern_var name type)   → (extern _     name type)
-    /// (extern_const name type) → (extern fixed name type)
-    fn normExternDecl(self: *Parser, items: []const Sexp, fixed: bool) !Sexp {
-        if (items.len < 3) return self.walkChildren(.{ .list = items });
-        const name = try self.walk(items[1]);
-        const t = try self.walk(items[2]);
-        const out = try self.allocator().alloc(Sexp, 4);
-        out[0] = .{ .tag = .@"extern" };
-        out[1] = if (fixed) Sexp{ .tag = .fixed } else Sexp{ .nil = {} };
-        out[2] = name;
-        out[3] = t;
-        return Sexp{ .list = out };
-    }
-
-    /// Per SPEC §"Semantic IR Nodes":
-    ///   (for binding _ source body else?) →
-    ///     (for <mode> binding source' body else?)
-    /// where mode is one of `read`, `write`, `move`, or `_` (nil) for "no
-    /// mode" (default iteration).
-    fn normFor(self: *Parser, items: []const Sexp, is_ptr: bool) !Sexp {
-        if (is_ptr) return self.walkChildren(.{ .list = items });
-        if (items.len < 4) return self.walkChildren(.{ .list = items });
-
-        const binding = try self.walk(items[1]);
-        const raw_source = items[3];
+        const raw_mode = items[1];
+        const binding1 = try self.walk(items[2]);
+        const binding2 = try self.walk(items[3]);
+        const raw_source = items[4];
         const source = try self.walk(raw_source);
 
-        var mode: Sexp = .{ .nil = {} };
+        var mode: Sexp = raw_mode;
         var unwrapped_source = source;
-        if (source == .list and source.list.len >= 2 and source.list[0] == .tag) {
+
+        const mode_is_iter = (raw_mode == .tag and raw_mode.tag == .iter);
+        if (mode_is_iter and source == .list and source.list.len >= 2 and
+            source.list[0] == .tag)
+        {
             switch (source.list[0].tag) {
                 .@"read" => {
                     mode = .{ .tag = .@"read" };
@@ -1143,29 +1118,19 @@ pub const Parser = struct {
             }
         }
 
-        const body = try self.walk(items[4]);
-        const has_else = items.len >= 6;
-        const else_body = if (has_else) try self.walk(items[5]) else Sexp{ .nil = {} };
+        const body = try self.walk(items[5]);
+        const has_else = items.len >= 7;
+        const else_body = if (has_else) try self.walk(items[6]) else Sexp{ .nil = {} };
 
-        const out_len: usize = if (has_else) 6 else 5;
+        const out_len: usize = if (has_else) 7 else 6;
         const out = try self.allocator().alloc(Sexp, out_len);
         out[0] = .{ .tag = .@"for" };
         out[1] = mode;
-        out[2] = binding;
-        out[3] = unwrapped_source;
-        out[4] = body;
-        if (has_else) out[5] = else_body;
-        return Sexp{ .list = out };
-    }
-
-    /// Replace head tag, walk children. Used by simple cosmetic renames
-    /// (`(. obj name)` → `(member obj name)`, etc.).
-    fn rewriteHead(self: *Parser, items: []const Sexp, new_tag: Tag) !Sexp {
-        var out = try self.allocator().alloc(Sexp, items.len);
-        out[0] = .{ .tag = new_tag };
-        for (items[1..], 1..) |child, i| {
-            out[i] = try self.walk(child);
-        }
+        out[2] = binding1;
+        out[3] = binding2;
+        out[4] = unwrapped_source;
+        out[5] = body;
+        if (has_else) out[6] = else_body;
         return Sexp{ .list = out };
     }
 };
@@ -1227,50 +1192,84 @@ test "keywordAs - non-keywords" {
 // tree, and `Parser.deinit` frees it.
 // -----------------------------------------------------------------------------
 
-test "rewrite: = becomes (set _ ...)" {
-    const tag_eq = Sexp{ .tag = .@"=" };
-    const x = Sexp{ .str = "x" };
-    const one = Sexp{ .str = "1" };
-    var raw_items = [_]Sexp{ tag_eq, x, one };
+// The Parser (sexp rewriter) now does ONE inspection-requiring
+// transform: consuming the `for` source's outer ownership wrapper
+// into the for's mode slot. Everything else (binding renames,
+// kind-tagging, cosmetic renames like `.` → `member`, `pair` → `kwarg`)
+// is done by the grammar directly via the tag-literal-at-child-position
+// feature in Nexus 0.10.x+.
+
+test "parser: for-sigil consumption (iter → read)" {
+    // Raw from grammar: (for iter x _ (read xs) body)
+    // Expected after rewrite: (for read x _ xs body)
+    const xs_src = Sexp{ .str = "xs" };
+    var read_items = [_]Sexp{ .{ .tag = .@"read" }, xs_src };
+    const read_wrap = Sexp{ .list = &read_items };
+
+    const x_src = Sexp{ .str = "x" };
+    const body = Sexp{ .str = "body" };
+    var raw_items = [_]Sexp{
+        .{ .tag = .@"for" },
+        .{ .tag = .iter }, // mode = iter (default from grammar)
+        x_src,
+        .{ .nil = {} },
+        read_wrap,
+        body,
+    };
     const raw = Sexp{ .list = &raw_items };
 
     var p = Parser.init(std.testing.allocator, "");
     defer p.deinit();
     const out = try p.rewrite(raw);
 
-    try std.testing.expect(out == .list);
-    try std.testing.expect(out.list[0] == .tag);
-    try std.testing.expectEqual(Tag.set, out.list[0].tag);
-    try std.testing.expect(out.list[1] == .nil);   // default kind
-}
-
-test "rewrite: move_assign folds into (set move ...)" {
-    const tag_ma = Sexp{ .tag = .move_assign };
-    const a = Sexp{ .str = "a" };
-    const b = Sexp{ .str = "b" };
-    var raw_items = [_]Sexp{ tag_ma, a, b };
-    const raw = Sexp{ .list = &raw_items };
-
-    var p = Parser.init(std.testing.allocator, "");
-    defer p.deinit();
-    const out = try p.rewrite(raw);
-
-    try std.testing.expectEqual(Tag.set, out.list[0].tag);
+    try std.testing.expectEqual(Tag.@"for", out.list[0].tag);
     try std.testing.expect(out.list[1] == .tag);
-    try std.testing.expectEqual(Tag.@"move", out.list[1].tag);
-    try std.testing.expect(out.list[3] == .nil);   // type slot
+    try std.testing.expectEqual(Tag.@"read", out.list[1].tag); // mode promoted to read
+    try std.testing.expect(out.list[4] == .str);                // source unwrapped to xs
 }
 
-test "rewrite: pair becomes kwarg" {
-    const tag_p = Sexp{ .tag = .pair };
-    const n_node = Sexp{ .str = "name" };
-    const v = Sexp{ .str = "Steve" };
-    var raw_items = [_]Sexp{ tag_p, n_node, v };
+test "parser: for with no sigil keeps iter mode" {
+    const x_src = Sexp{ .str = "x" };
+    const xs_src = Sexp{ .str = "xs" };
+    const body = Sexp{ .str = "body" };
+    var raw_items = [_]Sexp{
+        .{ .tag = .@"for" },
+        .{ .tag = .iter },
+        x_src,
+        .{ .nil = {} },
+        xs_src,
+        body,
+    };
     const raw = Sexp{ .list = &raw_items };
 
     var p = Parser.init(std.testing.allocator, "");
     defer p.deinit();
     const out = try p.rewrite(raw);
 
-    try std.testing.expectEqual(Tag.kwarg, out.list[0].tag);
+    try std.testing.expectEqual(Tag.@"for", out.list[0].tag);
+    try std.testing.expectEqual(Tag.iter, out.list[1].tag); // mode stays iter
+}
+
+test "parser: for ptr leaves source alone" {
+    // (for ptr p _ items body) — when grammar already set ptr mode,
+    // the Parser should NOT inspect/unwrap the source.
+    const p_src = Sexp{ .str = "p" };
+    const items_src = Sexp{ .str = "items" };
+    const body = Sexp{ .str = "body" };
+    var raw_items = [_]Sexp{
+        .{ .tag = .@"for" },
+        .{ .tag = .@"ptr" }, // mode = ptr (set by grammar)
+        p_src,
+        .{ .nil = {} },
+        items_src,
+        body,
+    };
+    const raw = Sexp{ .list = &raw_items };
+
+    var par = Parser.init(std.testing.allocator, "");
+    defer par.deinit();
+    const out = try par.rewrite(raw);
+
+    try std.testing.expectEqual(Tag.@"for", out.list[0].tag);
+    try std.testing.expectEqual(Tag.@"ptr", out.list[1].tag); // mode preserved
 }

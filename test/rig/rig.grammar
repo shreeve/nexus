@@ -288,17 +288,17 @@ stmt     = use
 # Typed binding (statement-only). SPEC: `user: Int = loadUser(id)?`,
 # `count: Int =! 0`. Moved out of `expr` so it doesn't collide with the
 # kwarg `name: expr` form inside call argument lists.
-typed    = name ":" type "="  expr          → (typed_assign 1 3 5)
-         | name ":" type "=!" expr          → (typed_fixed 1 3 5)
+typed    = name ":" type "="  expr          → (set _     1 3 5)
+         | name ":" type "=!" expr          → (set fixed 1 3 5)
 
 # Drop is statement-only per SPEC: -user (NOT y = -x)
 drop     = DROP_STMT name                   → (drop 2)
 
 # Explicit shadowing is statement-only per SPEC: new x = expr
-shadow   = NEW name "=" expr                → (shadow 2 4)
+shadow   = NEW name "=" expr                → (set shadow 2 _ 4)
 
-extvar   = EXTERN CONST name ":" type       → (extern_const 3 5)
-         | EXTERN name ":" type             → (extern_var 2 4)
+extvar   = EXTERN CONST name ":" type       → (extern fixed 3 5)
+         | EXTERN name ":" type             → (extern _     2 4)
 
 zig      = ZIG STRING_SQ                    → (zig 2)
          | ZIG STRING_DQ                    → (zig 2)
@@ -437,14 +437,19 @@ while    = WHILE cond          block ELSE block → (while 2 _ 3 else:5)
          | WHILE cond          block        → (while 2 _ 3)
          | WHILE cond ":" expr block        → (while 2 4 5)
 
-for      = FOR SHARE_PFX name          IN expr block ELSE block → (for_ptr 3 _ 5 6 else:8)
-         | FOR SHARE_PFX name "," name IN expr block ELSE block → (for_ptr 3 5 7 8 else:10)
-         | FOR          name     IN expr block ELSE block → (for 2 _ 4 5 else:7)
-         | FOR name "," name     IN expr block ELSE block → (for 2 4 6 7 else:9)
-         | FOR SHARE_PFX name          IN expr block  → (for_ptr 3 _ 5 6)
-         | FOR SHARE_PFX name "," name IN expr block  → (for_ptr 3 5 7 8)
-         | FOR          name     IN expr block  → (for 2 _ 4 5)
-         | FOR name "," name     IN expr block  → (for 2 4 6 7)
+# Unified shape from the grammar: (for <mode> binding1 binding2-or-_ source body else?)
+# `<mode>` is one of: `ptr` (`for *x`), `iter` (default), `read`/`write`/`move`
+# (the Parser sexp rewriter may promote `iter` to `read`/`write`/`move`
+# if the source has an outer ownership wrapper — that's the one
+# inspection-requiring transform the grammar can't express).
+for      = FOR SHARE_PFX name          IN expr block ELSE block → (for ptr  3 _ 5 6 else:8)
+         | FOR SHARE_PFX name "," name IN expr block ELSE block → (for ptr  3 5 7 8 else:10)
+         | FOR          name           IN expr block ELSE block → (for iter 2 _ 4 5 else:7)
+         | FOR          name "," name  IN expr block ELSE block → (for iter 2 4 6 7 else:9)
+         | FOR SHARE_PFX name          IN expr block            → (for ptr  3 _ 5 6)
+         | FOR SHARE_PFX name "," name IN expr block            → (for ptr  3 5 7 8)
+         | FOR          name           IN expr block            → (for iter 2 _ 4 5)
+         | FOR          name "," name  IN expr block            → (for iter 2 4 6 7)
 
 match    = MATCH expr INDENT arms OUTDENT   → (match 2 ...4)
 arms     = arm                              → (1)
@@ -516,15 +521,18 @@ inline   = INLINE   expr                    → (inline 2)
 
 # --- Bindings ---
 
-assign     = call "="           expr        → ( = 1 3)
-           | call "+="          expr        → (+= 1 3)
-           | call "-="          expr        → (-= 1 3)
-           | call "*="          expr        → (*= 1 3)
-           | call "/="          expr        → (/= 1 3)
+# All bindings collapse into a single `set` head with a kind discriminator
+# at items[1]. The grammar emits the normalized shape directly using the
+# tag-literal-at-child-position feature (Nexus 0.10.x+).
+assign     = call "="           expr        → (set _      1 _ 3)
+           | call "+="          expr        → (set +=     1 _ 3)
+           | call "-="          expr        → (set -=     1 _ 3)
+           | call "*="          expr        → (set *=     1 _ 3)
+           | call "/="          expr        → (set /=     1 _ 3)
 
-fixed      = call          "=!" expr        → (fixed_bind 1 3)
+fixed      = call          "=!" expr        → (set fixed  1 _ 3)
 
-moveassign = call          "<-" expr        → (move_assign 1 3)
+moveassign = call          "<-" expr        → (set move   1 _ 3)
 
 # ==============================================================================
 # CALLS AND ATOMS
@@ -544,7 +552,7 @@ unary    = MINUS_PREFIX unary               → (neg 2)
          | call
 
 call     = call "." "*"                     → (deref 1)
-         | call "." name                    → (. 1 3)
+         | call "." name                    → (member 1 3)
          | call "[" expr "]"                → (index 1 3)
          | call L(arg)                      → (call 1 ...2)
          | call "(" args ")"                → (call 1 ...3)
@@ -560,7 +568,7 @@ args     = L(callarg)                       → (...1)
 # `name: expr` (constructor sugar). The rewriter promotes IDENT to
 # KWARG_NAME inside parens when immediately followed by `:`, so the
 # pair form is unambiguous to the parser.
-callarg  = KWARG_NAME ":" expr              → (pair 1 3)
+callarg  = KWARG_NAME ":" expr              → (kwarg 1 3)
          | expr
 
 arg      = term TERNARY_IF expr ELSE arg    → (ternary 3 1 5)
@@ -598,8 +606,8 @@ atom     = name
          | DOT_LBRACE "}"                   → (anon_init)
 
 record   = name "{" L(pair) "}"             → (record 1 ...3)
-pair     = name ":" expr                    → (pair 1 3)
-dotpair  = "." name "=" expr                → (pair 2 4)
+pair     = name ":" expr                    → (kwarg 1 3)
+dotpair  = "." name "=" expr                → (kwarg 2 4)
 
 lambda   = FN params block                  → (lambda 2 returns:_ 3)
          | FN        block                  → (lambda params:_ returns:_ 2)

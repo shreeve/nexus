@@ -78,7 +78,7 @@
         (ref `type`)
         (lit `"="`)
         (ref `expr`))
-      `(typed_assign 1 3 5)`)
+      `(set _     1 3 5)`)
     (alt
       _
       ((ref `name`)
@@ -86,7 +86,7 @@
         (ref `type`)
         (lit `"=!"`)
         (ref `expr`))
-      `(typed_fixed 1 3 5)`))
+      `(set fixed 1 3 5)`))
   (rule
     (name `drop`)
     (alt
@@ -102,7 +102,7 @@
         (ref `name`)
         (lit `"="`)
         (ref `expr`))
-      `(shadow 2 4)`))
+      `(set shadow 2 _ 4)`))
   (rule
     (name `extvar`)
     (alt
@@ -112,14 +112,14 @@
         (ref `name`)
         (lit `":"`)
         (ref `type`))
-      `(extern_const 3 5)`)
+      `(extern fixed 3 5)`)
     (alt
       _
       ((tok `EXTERN`)
         (ref `name`)
         (lit `":"`)
         (ref `type`))
-      `(extern_var 2 4)`))
+      `(extern _     2 4)`))
   (rule
     (name `zig`)
     (alt
@@ -701,7 +701,7 @@
         (ref `block`)
         (tok `ELSE`)
         (ref `block`))
-      `(for_ptr 3 _ 5 6 else:8)`)
+      `(for ptr  3 _ 5 6 else:8)`)
     (alt
       _
       ((tok `FOR`)
@@ -714,7 +714,7 @@
         (ref `block`)
         (tok `ELSE`)
         (ref `block`))
-      `(for_ptr 3 5 7 8 else:10)`)
+      `(for ptr  3 5 7 8 else:10)`)
     (alt
       _
       ((tok `FOR`)
@@ -724,7 +724,7 @@
         (ref `block`)
         (tok `ELSE`)
         (ref `block`))
-      `(for 2 _ 4 5 else:7)`)
+      `(for iter 2 _ 4 5 else:7)`)
     (alt
       _
       ((tok `FOR`)
@@ -736,7 +736,7 @@
         (ref `block`)
         (tok `ELSE`)
         (ref `block`))
-      `(for 2 4 6 7 else:9)`)
+      `(for iter 2 4 6 7 else:9)`)
     (alt
       _
       ((tok `FOR`)
@@ -745,7 +745,7 @@
         (tok `IN`)
         (ref `expr`)
         (ref `block`))
-      `(for_ptr 3 _ 5 6)`)
+      `(for ptr  3 _ 5 6)`)
     (alt
       _
       ((tok `FOR`)
@@ -756,7 +756,7 @@
         (tok `IN`)
         (ref `expr`)
         (ref `block`))
-      `(for_ptr 3 5 7 8)`)
+      `(for ptr  3 5 7 8)`)
     (alt
       _
       ((tok `FOR`)
@@ -764,7 +764,7 @@
         (tok `IN`)
         (ref `expr`)
         (ref `block`))
-      `(for 2 _ 4 5)`)
+      `(for iter 2 _ 4 5)`)
     (alt
       _
       ((tok `FOR`)
@@ -774,7 +774,7 @@
         (tok `IN`)
         (ref `expr`)
         (ref `block`))
-      `(for 2 4 6 7)`))
+      `(for iter 2 4 6 7)`))
   (rule
     (name `match`)
     (alt
@@ -1076,31 +1076,31 @@
       ((ref `call`)
         (lit `"="`)
         (ref `expr`))
-      `( = 1 3)`)
+      `(set _      1 _ 3)`)
     (alt
       _
       ((ref `call`)
         (lit `"+="`)
         (ref `expr`))
-      `(+= 1 3)`)
+      `(set +=     1 _ 3)`)
     (alt
       _
       ((ref `call`)
         (lit `"-="`)
         (ref `expr`))
-      `(-= 1 3)`)
+      `(set -=     1 _ 3)`)
     (alt
       _
       ((ref `call`)
         (lit `"*="`)
         (ref `expr`))
-      `(*= 1 3)`)
+      `(set *=     1 _ 3)`)
     (alt
       _
       ((ref `call`)
         (lit `"/="`)
         (ref `expr`))
-      `(/= 1 3)`))
+      `(set /=     1 _ 3)`))
   (rule
     (name `fixed`)
     (alt
@@ -1108,7 +1108,7 @@
       ((ref `call`)
         (lit `"=!"`)
         (ref `expr`))
-      `(fixed_bind 1 3)`))
+      `(set fixed  1 _ 3)`))
   (rule
     (name `moveassign`)
     (alt
@@ -1116,7 +1116,7 @@
       ((ref `call`)
         (lit `"<-"`)
         (ref `expr`))
-      `(move_assign 1 3)`))
+      `(set move   1 _ 3)`))
   (rule
     (name `unary`)
     (alt
@@ -1190,7 +1190,7 @@
       ((ref `call`)
         (lit `"."`)
         (ref `name`))
-      `(. 1 3)`)
+      `(member 1 3)`)
     (alt
       _
       ((ref `call`)
@@ -1236,7 +1236,7 @@
       ((tok `KWARG_NAME`)
         (lit `":"`)
         (ref `expr`))
-      `(pair 1 3)`)
+      `(kwarg 1 3)`)
     (alt
       _
       ((ref `expr`))))
@@ -1406,7 +1406,7 @@
       ((ref `name`)
         (lit `":"`)
         (ref `expr`))
-      `(pair 1 3)`))
+      `(kwarg 1 3)`))
   (rule
     (name `dotpair`)
     (alt
@@ -1415,7 +1415,7 @@
         (ref `name`)
         (lit `"="`)
         (ref `expr`))
-      `(pair 2 4)`))
+      `(kwarg 2 4)`))
   (rule
     (name `lambda`)
     (alt
