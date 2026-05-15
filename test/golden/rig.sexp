@@ -1,5 +1,5 @@
 (grammar
-  (conflicts `44`)
+  (conflicts `34`)
   (as
     `ident`
     (as_entry _ `keyword`))
@@ -459,23 +459,6 @@
       `(borrow_write 2) # !T  write-borrowed type (param/return)`)
     (alt
       _
-      ((tok `SHARE_PFX`)
-        (ref `type`))
-      `(ptr 2)`)
-    (alt
-      _
-      ((tok `SHARE_PFX`)
-        (tok `CONST`)
-        (ref `type`))
-      `(const_ptr 3)`)
-    (alt
-      _
-      ((tok `SHARE_PFX`)
-        (tok `VOLATILE`)
-        (ref `type`))
-      `(volatile_ptr 3)`)
-    (alt
-      _
       ((lit `"("`)
         (ref `type`)
         (lit `")"`))
@@ -501,22 +484,6 @@
         (lit `"]"`)
         (ref `type`))
       `(array_type 2 4)`)
-    (alt
-      _
-      ((lit `"["`)
-        (tok `SHARE_PFX`)
-        (lit `"]"`)
-        (ref `type`))
-      `(many_ptr 4)`)
-    (alt
-      _
-      ((lit `"["`)
-        (tok `SHARE_PFX`)
-        (lit `":"`)
-        (ref `atom`)
-        (lit `"]"`)
-        (ref `type`))
-      `(sentinel_ptr 4 6)`)
     (alt
       _
       ((tok `FN`)

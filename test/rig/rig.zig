@@ -70,9 +70,6 @@ pub const Tag = enum(u8) {
     @"opaque",
     @"generic_type",    // type Box(T) ...
     @"fixed",           // generic "fixed/immutable" kind marker (used in extern, etc.)
-    @"volatile_ptr",
-    @"many_ptr",
-    @"sentinel_ptr",
     @"array_type",
     @"aligned",
     @"errors",
@@ -193,9 +190,8 @@ pub const Tag = enum(u8) {
     @"optional",        // `T?` (suffix optional; grammar emits directly)
     @"borrow_read",     // `?T` in type position — read-borrowed parameter/return
     @"borrow_write",    // `!T` in type position — write-borrowed parameter/return
-    @"ptr",
+    @"ptr",             // for-mode: `for *x in xs` (Zag-style pointer iter)
     @"iter",            // for-mode: default value iteration (no sigil, no `*`)
-    @"const_ptr",
     @"sentinel_slice",
     @"fn_type",
     @"error_merge",
@@ -436,8 +432,11 @@ pub const Lexer = struct {
     bracket_depth: u8 = 0,
 
     // After classifying an opening `|` as bar_capture, expect the closing
-    // `|` (after one ident) to also be bar_capture. Cleared on any other
-    // structural token.
+    // `|` (after the captured ident) to also be bar_capture. Cleared on
+    // any structural / break token before the closing `|` is seen, so a
+    // malformed input like `| 1 + 2 |` doesn't bleed bar_capture into a
+    // later unrelated `|`. Tokens that DON'T clear it: `.bar` (the close
+    // we're looking for) and `.ident` (the captured name).
     pending_close_bar: bool = false,
 
     pub fn init(source: []const u8) Lexer {
@@ -700,6 +699,11 @@ pub const Lexer = struct {
                     self.pending_close_bar = true;
                     return cap;
                 }
+            } else if (self.pending_close_bar and tok.cat != .ident) {
+                // Anything that isn't the captured name itself or the
+                // closing `|` invalidates capture context — clear the
+                // flag so a later unrelated `|` isn't misclassified.
+                self.pending_close_bar = false;
             }
 
             // if → if | post_if | ternary_if (Zag classification, kept verbatim)
@@ -817,7 +821,9 @@ pub const Lexer = struct {
             .ident, .integer, .real, .string_sq, .string_dq,
             .true, .false,
             .rparen, .rbracket, .rbrace,
-            .suffix_q,
+            // Both type/expression suffixes are value-enders so chained
+            // suffixes (`T?`, `T!`, `expr!.bar`) parse correctly.
+            .suffix_q, .suffix_bang,
             => true,
             else => false,
         };
@@ -835,7 +841,7 @@ pub const Lexer = struct {
             .ident, .integer, .real, .string_sq, .string_dq,
             .true, .false,
             .rparen, .rbracket, .rbrace,
-            .suffix_q,
+            .suffix_q, .suffix_bang,
             => true,
             else => false,
         };

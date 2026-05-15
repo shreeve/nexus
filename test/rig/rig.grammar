@@ -63,8 +63,8 @@ tokens
     # Operators — logical / bitwise / misc
     and_sym         # &&
     or_sym          # ||
-    not_sym         # !
-    question        # ?  (also: optional type, read borrow, error in error_union)
+    not_sym         # !  (also: write borrow via write_pfx, fallible type via suffix_bang)
+    question        # ?  (also: read borrow via read_pfx, optional type via suffix_q)
     nullish         # ??
     bar             # |
     ampersand       # &
@@ -114,9 +114,9 @@ tokens
     clone_pfx       # +x   clone
     pin_pfx         # @x   pin (only when not @name(...))
     raw_pfx         # %x   raw / unsafe
-    read_pfx        # ?x   read borrow (also ?T optional type via the rewriter)
-    write_pfx       # !x   write borrow (also !T error union via the rewriter)
-    share_pfx       # *x   share ownership (also *T pointer type via the rewriter)
+    read_pfx        # ?x   read borrow (also ?T read-borrowed type via the parser)
+    write_pfx       # !x   write borrow (also !T write-borrowed type via the parser)
+    share_pfx       # *x   share ownership
     drop_stmt       # -x   drop (statement-only)
     suffix_q        # T?  optional type (suffix on type, in type rule)
                     # x?  RESERVED — future optional-propagation
@@ -258,7 +258,7 @@ tokens
 # (12 each for SUFFIX_Q and SUFFIX_BANG suffixes); shift-prefer
 # correctly extends the type with more suffixes (e.g., `T?!` parses as
 # `(error_union (optional T))`).
-@conflicts = 44
+@conflicts = 34
 
 @as ident = [keyword]
 
@@ -285,7 +285,7 @@ stmt     = use
          | ":" name stmt                    → (labeled 2 3)
          | expr
 
-# Typed binding (statement-only). SPEC: `user: Int = loadUser(id)?`,
+# Typed binding (statement-only). SPEC: `user: User = loadUser(id)!`,
 # `count: Int =! 0`. Moved out of `expr` so it doesn't collide with the
 # kwarg `name: expr` form inside call argument lists.
 typed    = name ":" type "="  expr          → (set _     1 3 5)
@@ -384,17 +384,22 @@ type     = name
          | type SUFFIX_BANG                 → (error_union 1)  # T!  fallible type (error union)
          | READ_PFX             type        → (borrow_read 2)  # ?T  read-borrowed type (param/return)
          | WRITE_PFX            type        → (borrow_write 2) # !T  write-borrowed type (param/return)
-         | SHARE_PFX            type        → (ptr 2)
-         | SHARE_PFX CONST      type        → (const_ptr 3)
-         | SHARE_PFX VOLATILE   type        → (volatile_ptr 3)
          | "(" type ")"                     → 2                # parens for grouping (e.g., ([]T)?)
          | "["              "]" type        → (slice 3)
          | "[" ":" atom     "]" type        → (sentinel_slice 3 5)
          | "[" INTEGER      "]" type        → (array_type 2 4)
-         | "[" SHARE_PFX    "]" type        → (many_ptr 4)
-         | "[" SHARE_PFX ":" atom "]" type  → (sentinel_ptr 4 6)
          | FN "(" L(type)   ")" type        → (fn_type 3 5)
          | FN "("           ")" type        → (fn_type _ 4)
+         #
+         # Pointer type forms (`*T`, `* const T`, `* volatile T`, `[*]T`,
+         # `[*:s]T`) inherited from Zag are NOT in Rig V1's surface — Rig
+         # V1 expresses sharing semantics via `?T` / `!T` (borrowed types)
+         # and `*x` / `<x` (expression-position sigils). The Zag-inherited
+         # spellings also tokenize incorrectly (lexer's `share_pfx` rule
+         # requires an operand-start char after `*`, which `]` and space
+         # don't satisfy). Real pointer types come back in M5+ via the
+         # stdlib (e.g., a `Box(T)` with explicit ABI). Removed for now
+         # to keep the grammar honest and the conflict surface smaller.
 
 # ==============================================================================
 # EXPRESSIONS
