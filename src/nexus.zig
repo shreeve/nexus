@@ -18,7 +18,7 @@ const Allocator = std.mem.Allocator;
 // driven machinery it emits for downstream languages.
 const frontend = @import("parser.zig");
 
-const version = "0.10.1";
+const version = "0.10.2";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
@@ -7339,8 +7339,21 @@ const ParserGenerator = struct {
                     try writer.print("pass[{d}]", .{work[0] - '1' + offset});
                 } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
                     try writer.writeAll(".nil");
+                } else if (self.isTagLiteral(work)) {
+                    // Tag literal at child position — kind-discriminator
+                    // pattern used by Rig and any grammar that wants the
+                    // grammar action to emit normalized shapes directly
+                    // (e.g., `(set move 1 _ 3)` puts the Tag `.move` in
+                    // slot 2). Previously silent-dropped; now emitted as
+                    // a literal-Tag Sexp.
+                    try writer.print(".{{ .tag = .@\"{s}\" }}", .{work});
                 } else {
-                    // Must be a tag literal - skip (already have main tag)
+                    std.debug.print(
+                        "❌ Unknown action element '{s}' in template: {s}\n" ++
+                        "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
+                        .{ work, template },
+                    );
+                    return error.UnknownActionElement;
                 }
             }
             try writer.writeAll("})");
@@ -7365,8 +7378,22 @@ const ParserGenerator = struct {
                 try writer.print("if (pass[{d}] == .list) for (pass[{d}].list) |item| out.append(self.allocator(), item) catch break :blk .nil; ", .{ pos, pos });
             } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
                 try writer.writeAll("out.append(self.allocator(), .nil) catch break :blk .nil; ");
+            } else if (self.isLikelyTagName(work)) {
+                // Tag literal at child position. The complex-case path
+                // already emitted this for unrecognized elements, but
+                // (a) using `elem` instead of `work` let `key:` prefixes
+                // leak into the emitted Tag name, and (b) any garbage
+                // element silently became a (broken) Tag literal. Both
+                // are tightened here: strip via `work`, validate via
+                // `isLikelyTagName`, error on anything else.
+                try writer.print("out.append(self.allocator(), .{{ .tag = .@\"{s}\" }}) catch break :blk .nil; ", .{work});
             } else {
-                try writer.print("out.append(self.allocator(), .{{ .tag = .@\"{s}\" }}) catch break :blk .nil; ", .{elem});
+                std.debug.print(
+                    "❌ Unknown action element '{s}' in template: {s}\n" ++
+                    "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
+                    .{ work, template },
+                );
+                return error.UnknownActionElement;
             }
         }
         try writer.writeAll("while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); ");
@@ -7398,6 +7425,37 @@ const ParserGenerator = struct {
             c == '!' or c == '#' or c == '?' or c == '@' or c == '$' or c == '*' or c == '/';
     }
 
+    // Permissive recognizer for action elements that look like a Tag-enum
+    // member name. Used at child positions (where the dispatcher routes
+    // letter-start tags through the simple case and operator-name tags
+    // through the complex case). Rejects only the forms the action
+    // language has dedicated syntax for: position refs (digit-start),
+    // symbol-id refs (`~`-start), spreads (`...`), nil/`_`, and the
+    // `key:value` annotation sugar (`:` strictly between two non-empty
+    // halves — a bare `:` or leading-colon operator like `:=` is a
+    // valid Tag name and passes through).
+    fn isLikelyTagName(self: *ParserGenerator, name: []const u8) bool {
+        _ = self;
+        if (name.len == 0) return false;
+        if (std.mem.eql(u8, name, "nil") or std.mem.eql(u8, name, "_")) return false;
+        const c = name[0];
+        // Single-digit position ref `1`-`9`. (Multi-digit names and `0`
+        // are valid Tag names and pass through.)
+        if (c >= '1' and c <= '9' and name.len == 1) return false;
+        // Symbol-id ref `~N` (tilde + digit). A bare `~` is a valid Tag.
+        if (c == '~' and name.len >= 2 and name[1] >= '1' and name[1] <= '9') return false;
+        // Spread `...N` (3 dots + digit). Shorter dot-starts like `.`, `..`,
+        // `.member` are valid Tag names.
+        if (c == '.' and name.len >= 4 and name[1] == '.' and name[2] == '.'
+            and name[3] >= '1' and name[3] <= '9') return false;
+        // `key:value` annotation sugar requires content on BOTH sides of the
+        // colon. A bare `:` or leading-colon operator (`:=`) passes through.
+        if (std.mem.indexOfScalar(u8, name, ':')) |colonPos| {
+            if (colonPos > 0 and colonPos + 1 < name.len) return false;
+        }
+        return true;
+    }
+
     fn registerTag(self: *ParserGenerator, tag: []const u8) !void {
         if (!self.collectedTags.contains(tag)) {
             const owned = try self.allocator.dupe(u8, tag);
@@ -7407,15 +7465,29 @@ const ParserGenerator = struct {
     }
 
     fn collectTagsFromAction(self: *ParserGenerator, template: []const u8) !void {
-        // For paren-style: (tag ...) - first element after ( is the tag
-        if (template.len > 1 and template[0] == '(') {
-            var i: usize = 1;
+        // For paren-style: (tag elem1 elem2 ...) — register the head as
+        // a Tag, AND walk every child element to register any tag literal
+        // found at a child position (e.g., `(set move 1 _ 3)` registers
+        // both `set` and `move`). The head and child semantics differ
+        // in how `key:value` sugar is interpreted:
+        //   * head `tag:N` registers `tag` (key part)
+        //   * child `key:val` registers `val` (value part, via stripKeyAndSuffix)
+        if (template.len <= 1 or template[0] != '(') return;
+
+        var i: usize = 1;
+        var first_element = true;
+        while (i < template.len and template[i] != ')') {
             while (i < template.len and (template[i] == ' ' or template[i] == '\t')) i += 1;
+            if (i >= template.len or template[i] == ')') break;
             const start = i;
             while (i < template.len and template[i] != ' ' and template[i] != '\t' and template[i] != ')') i += 1;
-            if (i > start) {
-                var tag = template[start..i];
-                // Strip key:value suffix (key:N? -> key)
+            if (i <= start) break;
+            const raw = template[start..i];
+
+            var tag: []const u8 = "";
+            if (first_element) {
+                // Head: strip `:value` suffix, keep the `key` part as the tag.
+                tag = raw;
                 if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
                     const after = tag[colonPos + 1 ..];
                     if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
@@ -7424,14 +7496,15 @@ const ParserGenerator = struct {
                         tag = tag[0..colonPos];
                     }
                 }
-                // Register tags - includes letters and special chars like ?, !, #
-                // Skip numeric refs (1, 2), spreads (...1), and nil/_
-                if (tag.len > 0 and !(tag[0] >= '0' and tag[0] <= '9') and tag[0] != '.' and
-                    !std.mem.eql(u8, tag, "nil") and !std.mem.eql(u8, tag, "_"))
-                {
-                    try self.registerTag(tag);
-                }
+            } else {
+                // Child: strip `key:` prefix, keep the value part.
+                tag = self.stripKeyAndSuffix(raw);
             }
+
+            if (self.isLikelyTagName(tag)) {
+                try self.registerTag(tag);
+            }
+            first_element = false;
         }
     }
 

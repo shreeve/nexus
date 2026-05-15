@@ -1,0 +1,56 @@
+# lit_tags.grammar — exercises literal Tag values at action child positions.
+#
+# Two scenarios proven here:
+#
+#   1. Letter-start child Tag literal (`fixed`, `move`) — flows through the
+#      generator's "simple case" emit path. Before the v0.10.2 fix this
+#      silently dropped the child Tag and produced malformed Zig (a leading
+#      empty slot in `&.{...}`). After the fix it emits
+#      `.{ .tag = .@"fixed" }` correctly.
+#
+#   2. Operator-name child Tag literal (`+=`) — flows through the generator's
+#      "complex case" emit path. The fix tightens that path to validate via
+#      `isLikelyTagName` (rejecting garbage with a clean error rather than
+#      blindly emitting `.@"garbage"`) and uses the stripped form so
+#      `key:val` annotations don't leak into the emitted Tag name.
+#
+# Grammar has no @lang, so the Tag enum is auto-extracted from action
+# templates — exercising the third fix (collectTagsFromAction walks all
+# elements at every position, registering child-position Tag literals too).
+
+@lexer
+
+tokens
+    ident
+    integer
+    assign
+    plus_assign
+    arrow
+    newline
+    eof
+    err
+
+'+='                                        → plus_assign
+'='                                         → assign
+'->'                                        → arrow
+'\n'                                        → newline
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+
+@conflicts = 0
+
+program! = body                             → (module ...1)
+
+body     = stmt                             → (1)
+         | body NEWLINE stmt                → (...1 3)
+         | body NEWLINE                     → 1
+
+# Letter-start child Tag literals route through the simple-case emit path.
+# Operator-name child Tag literal routes through the complex-case path
+# (because the dispatcher classifies `+=` as `hasOther`, forcing complex).
+stmt     = IDENT "=" INTEGER                → (set fixed 1 _ 3)
+         | IDENT "->" INTEGER               → (set move 1 _ 3)
+         | IDENT "+=" INTEGER               → (set += 1 _ 3)

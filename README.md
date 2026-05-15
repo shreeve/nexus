@@ -903,6 +903,7 @@ fields whose values point at sibling fields of the same struct.
 | `ruby` | Real-world (nanoruby): 65 rules, 66 conflicts, modifier/do reclassification, interpolation, symbols |
 | `rig` | Real-world: 65 rules, 20 conflicts; exercises the v0.10.1 `Parser` auto-wire end-to-end (lang module exports `pub const Parser` that bakes semantic IR normalization into `parseProgram`) |
 | `nexis` | Real-world: 17-rule reader grammar for a Clojure-flavored Lisp dialect, 114 conflicts (wide alternation between forms — anon-fns, syntax-quote, metadata) |
+| `lit_tags` | Synthetic — exercises literal Tag values at action child positions (both letter-start via simple-case emit and operator-name via complex-case emit), plus auto-extraction of child-position Tags into the emitted Tag enum |
 
 ---
 
