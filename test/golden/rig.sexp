@@ -1,5 +1,5 @@
 (grammar
-  (conflicts `20`)
+  (conflicts `44`)
   (as
     `ident`
     (as_strict `keyword`))
@@ -365,13 +365,21 @@
     (alt
       ((ref `name`)))
     (alt
-      ((tok `WRITE_PFX`)
-        (ref `type`))
-      `(error_union 2)`)
+      ((ref `type`)
+        (tok `SUFFIX_Q`))
+      `(optional 1)     # T?  optional type (suffix binds tightest)`)
+    (alt
+      ((ref `type`)
+        (tok `SUFFIX_BANG`))
+      `(error_union 1)  # T!  fallible type (error union)`)
     (alt
       ((tok `READ_PFX`)
         (ref `type`))
-      `(? 2)`)
+      `(borrow_read 2)  # ?T  read-borrowed type (param/return)`)
+    (alt
+      ((tok `WRITE_PFX`)
+        (ref `type`))
+      `(borrow_write 2) # !T  write-borrowed type (param/return)`)
     (alt
       ((tok `SHARE_PFX`)
         (ref `type`))
@@ -386,6 +394,11 @@
         (tok `VOLATILE`)
         (ref `type`))
       `(volatile_ptr 3)`)
+    (alt
+      ((lit `"("`)
+        (ref `type`)
+        (lit `")"`))
+      `2                # parens for grouping (e.g., ([]T)?)`)
     (alt
       ((lit `"["`)
         (lit `"]"`)
@@ -561,7 +574,7 @@
     (name `for`)
     (alt
       ((tok `FOR`)
-        (lit `"*"`)
+        (tok `SHARE_PFX`)
         (ref `name`)
         (tok `IN`)
         (ref `expr`)
@@ -571,7 +584,7 @@
       `(for_ptr 3 _ 5 6 else:8)`)
     (alt
       ((tok `FOR`)
-        (lit `"*"`)
+        (tok `SHARE_PFX`)
         (ref `name`)
         (lit `","`)
         (ref `name`)
@@ -603,7 +616,7 @@
       `(for 2 4 6 7 else:9)`)
     (alt
       ((tok `FOR`)
-        (lit `"*"`)
+        (tok `SHARE_PFX`)
         (ref `name`)
         (tok `IN`)
         (ref `expr`)
@@ -611,7 +624,7 @@
       `(for_ptr 3 _ 5 6)`)
     (alt
       ((tok `FOR`)
-        (lit `"*"`)
+        (tok `SHARE_PFX`)
         (ref `name`)
         (lit `","`)
         (ref `name`)
@@ -1006,8 +1019,8 @@
       `(call 1 ...3)`)
     (alt
       ((ref `call`)
-        (tok `PROP_Q`))
-      `(propagate 1)   # x?  postfix propagation`)
+        (tok `SUFFIX_BANG`))
+      `(propagate 1)   # x!  propagate failure (suffix on expression);`)
     (alt
       ((ref `atom`))))
   (rule

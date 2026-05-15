@@ -118,7 +118,14 @@ tokens
     write_pfx       # !x   write borrow (also !T error union via the rewriter)
     share_pfx       # *x   share ownership (also *T pointer type via the rewriter)
     drop_stmt       # -x   drop (statement-only)
-    prop_q          # x?   propagate failure (postfix, tight)
+    suffix_q        # T?  optional type (suffix on type, in type rule)
+                    # x?  RESERVED — future optional-propagation
+                    #     (rewriter classifies `?` after a value-ender;
+                    #     the `?` family is optional / null)
+    suffix_bang     # T!  fallible type / error union (suffix on type)
+                    # x!  propagate failure (suffix on expression)
+                    #     (rewriter classifies `!` after a value-ender;
+                    #     the `!` family is errors / failure)
     kwarg_name      # name in `Type(name: value)` constructor sugar
                     # (rewriter promotes IDENT to KWARG_NAME inside parens
                     # when immediately followed by `:`)
@@ -221,7 +228,17 @@ tokens
 # IDENTIFIERS
 # ==============================================================================
 
-[a-zA-Z_][a-zA-Z0-9_]* '?'?                 → ident
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+                                            #
+                                            # Note: Rig drops the Ruby/Zag
+                                            # predicate-name convention
+                                            # (trailing `?` in ident, e.g.,
+                                            # `valid?`) because suffix `?`
+                                            # on types means optional in
+                                            # Rig — `Bool?` would otherwise
+                                            # collide with `valid?`.
+                                            # Convention: use `is_valid` for
+                                            # boolean-returning functions.
 
 # ==============================================================================
 # FALLBACK
@@ -236,9 +253,12 @@ tokens
 @parser
 
 # Conflict budget — Rig adds sigil prefixes + propagation + new bindings
-# on top of Zag's 19. After moving share/read/write to dedicated rewriter
-# tokens, we're at 19 (parity with Zag).
-@conflicts = 20
+# on top of Zag's 19. After type-suffix `T?` / `T!` syntax was added,
+# the `type` non-terminal grew 24 expected shift/reduce conflicts
+# (12 each for SUFFIX_Q and SUFFIX_BANG suffixes); shift-prefer
+# correctly extends the type with more suffixes (e.g., `T?!` parses as
+# `(error_union (optional T))`).
+@conflicts = 44
 
 @as ident = [keyword]
 
@@ -360,11 +380,14 @@ params   = "(" L(field) ")"                 → (...2)
 returns  = "->" type                        → 2
 
 type     = name
-         | WRITE_PFX            type        → (error_union 2)
-         | READ_PFX             type        → (? 2)
+         | type SUFFIX_Q                    → (optional 1)     # T?  optional type (suffix binds tightest)
+         | type SUFFIX_BANG                 → (error_union 1)  # T!  fallible type (error union)
+         | READ_PFX             type        → (borrow_read 2)  # ?T  read-borrowed type (param/return)
+         | WRITE_PFX            type        → (borrow_write 2) # !T  write-borrowed type (param/return)
          | SHARE_PFX            type        → (ptr 2)
          | SHARE_PFX CONST      type        → (const_ptr 3)
          | SHARE_PFX VOLATILE   type        → (volatile_ptr 3)
+         | "(" type ")"                     → 2                # parens for grouping (e.g., ([]T)?)
          | "["              "]" type        → (slice 3)
          | "[" ":" atom     "]" type        → (sentinel_slice 3 5)
          | "[" INTEGER      "]" type        → (array_type 2 4)
@@ -414,12 +437,12 @@ while    = WHILE cond          block ELSE block → (while 2 _ 3 else:5)
          | WHILE cond          block        → (while 2 _ 3)
          | WHILE cond ":" expr block        → (while 2 4 5)
 
-for      = FOR "*" name          IN expr block ELSE block → (for_ptr 3 _ 5 6 else:8)
-         | FOR "*" name "," name IN expr block ELSE block → (for_ptr 3 5 7 8 else:10)
+for      = FOR SHARE_PFX name          IN expr block ELSE block → (for_ptr 3 _ 5 6 else:8)
+         | FOR SHARE_PFX name "," name IN expr block ELSE block → (for_ptr 3 5 7 8 else:10)
          | FOR          name     IN expr block ELSE block → (for 2 _ 4 5 else:7)
          | FOR name "," name     IN expr block ELSE block → (for 2 4 6 7 else:9)
-         | FOR "*" name          IN expr block  → (for_ptr 3 _ 5 6)
-         | FOR "*" name "," name IN expr block  → (for_ptr 3 5 7 8)
+         | FOR SHARE_PFX name          IN expr block  → (for_ptr 3 _ 5 6)
+         | FOR SHARE_PFX name "," name IN expr block  → (for_ptr 3 5 7 8)
          | FOR          name     IN expr block  → (for 2 _ 4 5)
          | FOR name "," name     IN expr block  → (for 2 4 6 7)
 
@@ -525,7 +548,9 @@ call     = call "." "*"                     → (deref 1)
          | call "[" expr "]"                → (index 1 3)
          | call L(arg)                      → (call 1 ...2)
          | call "(" args ")"                → (call 1 ...3)
-         | call PROP_Q                      → (propagate 1)   # x?  postfix propagation
+         | call SUFFIX_BANG                 → (propagate 1)   # x!  propagate failure (suffix on expression);
+                                                              #     same SUFFIX_BANG token as `T!` fallible type
+                                                              #     (parser disambiguates by non-terminal state)
          | atom
 
 args     = L(callarg)                       → (...1)
