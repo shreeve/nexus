@@ -74,7 +74,7 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 | Zag | `test/zag/zag.grammar` | `test/zag/zag.zig` | Yes — indent/outdent, token reclassification |
 | Slash | `test/slash/slash.grammar` | `test/slash/slash.zig` | Yes — heredocs, regex, indent/outdent, `str` block bodies |
 | Nanoruby | `test/ruby/ruby.grammar` | `test/ruby/ruby.zig` | Yes — newline significance, modifier/do/brace reclassification, labels, symbols |
-| Rig | `test/rig/rig.grammar` | `test/rig/rig.zig` | Yes — indent/outdent, ownership-prefix reclassification; also exports a Parser wrapper that bakes semantic IR normalization into `parseProgram` (first downstream to use the v0.10.1 Parser auto-wire end-to-end) |
+| Rig | `test/rig/rig.grammar` | `test/rig/rig.zig` | Yes — indent/outdent, ownership-prefix reclassification, value-ender-aware `?`/`!` suffix tokenization (`T?`/`T!`/`x!`); also exports a Parser wrapper that bakes semantic IR normalization into `parseProgram` (first downstream to use the v0.10.1 Parser auto-wire end-to-end) |
 | Nexis | `test/nexis/nexis.grammar` | `test/nexis/nexis.zig` | Yes — Clojure-flavored Lisp reader (anon-fns, syntax-quote, metadata); raw Sexps are normalized in `src/reader.zig` downstream rather than via a `Parser` wrapper |
 
 ## Extension Mechanism
