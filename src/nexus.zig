@@ -16,7 +16,7 @@ const Allocator = std.mem.Allocator;
 // The generated frontend parser for nexus.grammar itself. It lives alongside
 // nexus.zig so the tool can load its own grammar DSL through the same table-
 // driven machinery it emits for downstream languages.
-const ngp = @import("parser.zig");
+const frontend = @import("parser.zig");
 
 const version = "0.10.1";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
@@ -3893,7 +3893,7 @@ const GrammarLowerer = struct {
 
     const LoweringError = error{ ShapeError, OutOfMemory };
 
-    fn lower(allocator: Allocator, sexp: ngp.Sexp, source: []const u8) LoweringError!GrammarIR {
+    fn lower(allocator: Allocator, sexp: frontend.Sexp, source: []const u8) LoweringError!GrammarIR {
         var self = GrammarLowerer{ .allocator = allocator, .source = source };
         try self.lowerRoot(sexp);
         return GrammarIR{
@@ -3914,14 +3914,14 @@ const GrammarLowerer = struct {
 
     // --- Shape helpers ---
 
-    fn listItems(node: ngp.Sexp) ?[]const ngp.Sexp {
+    fn listItems(node: frontend.Sexp) ?[]const frontend.Sexp {
         return switch (node) {
             .list => |items| items,
             else => null,
         };
     }
 
-    fn taggedItems(node: ngp.Sexp) ?struct { tag: ngp.Tag, items: []const ngp.Sexp } {
+    fn taggedItems(node: frontend.Sexp) ?struct { tag: frontend.Tag, items: []const frontend.Sexp } {
         const items = listItems(node) orelse return null;
         if (items.len == 0) return null;
         const tag = switch (items[0]) {
@@ -3931,7 +3931,7 @@ const GrammarLowerer = struct {
         return .{ .tag = tag, .items = items };
     }
 
-    fn srcText(self: *const GrammarLowerer, node: ngp.Sexp) []const u8 {
+    fn srcText(self: *const GrammarLowerer, node: frontend.Sexp) []const u8 {
         return switch (node) {
             .src => |s| self.source[s.pos..][0..s.len],
             else => "",
@@ -3943,7 +3943,7 @@ const GrammarLowerer = struct {
         return s;
     }
 
-    fn nodeOffset(node: ngp.Sexp) u32 {
+    fn nodeOffset(node: frontend.Sexp) u32 {
         return switch (node) {
             .src => |s| s.pos,
             .list => |items| if (items.len > 0) nodeOffset(items[0]) else 0,
@@ -3951,7 +3951,7 @@ const GrammarLowerer = struct {
         };
     }
 
-    fn shapeError(self: *const GrammarLowerer, node: ngp.Sexp, expected: []const u8) LoweringError {
+    fn shapeError(self: *const GrammarLowerer, node: frontend.Sexp, expected: []const u8) LoweringError {
         // The negative-test suite fires this path by design; silencing the
         // diagnostic during `zig test` keeps the test runner's output clean
         // without losing real diagnostics in production runs.
@@ -3971,31 +3971,31 @@ const GrammarLowerer = struct {
         return error.ShapeError;
     }
 
-    fn requireTag(self: *const GrammarLowerer, node: ngp.Sexp, expected: ngp.Tag) LoweringError![]const ngp.Sexp {
+    fn requireTag(self: *const GrammarLowerer, node: frontend.Sexp, expected: frontend.Tag) LoweringError![]const frontend.Sexp {
         const t = taggedItems(node) orelse return self.shapeError(node, @tagName(expected));
         if (t.tag != expected) return self.shapeError(node, @tagName(expected));
         return t.items;
     }
 
-    fn requireSrc(self: *const GrammarLowerer, node: ngp.Sexp, what: []const u8) LoweringError![]const u8 {
+    fn requireSrc(self: *const GrammarLowerer, node: frontend.Sexp, what: []const u8) LoweringError![]const u8 {
         return switch (node) {
             .src => |s| self.source[s.pos..][0..s.len],
             else => self.shapeError(node, what),
         };
     }
 
-    fn requireList(self: *const GrammarLowerer, node: ngp.Sexp, what: []const u8) LoweringError![]const ngp.Sexp {
+    fn requireList(self: *const GrammarLowerer, node: frontend.Sexp, what: []const u8) LoweringError![]const frontend.Sexp {
         return listItems(node) orelse self.shapeError(node, what);
     }
 
     // --- Root ---
 
-    fn lowerRoot(self: *GrammarLowerer, sexp: ngp.Sexp) LoweringError!void {
+    fn lowerRoot(self: *GrammarLowerer, sexp: frontend.Sexp) LoweringError!void {
         const items = try self.requireTag(sexp, .grammar);
         for (items[1..]) |entry| try self.lowerEntry(entry);
     }
 
-    fn lowerEntry(self: *GrammarLowerer, entry: ngp.Sexp) LoweringError!void {
+    fn lowerEntry(self: *GrammarLowerer, entry: frontend.Sexp) LoweringError!void {
         const t = taggedItems(entry) orelse return self.shapeError(entry, "directive or rule");
         switch (t.tag) {
             .lang => try self.lowerLang(entry, t.items),
@@ -4012,20 +4012,20 @@ const GrammarLowerer = struct {
 
     // --- Directives ---
 
-    fn lowerLang(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerLang(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         if (items.len != 2) return self.shapeError(node, "(lang STRING)");
         const raw = try self.requireSrc(items[1], "language-name string");
         self.lang = stripQuotes(raw);
     }
 
-    fn lowerConflicts(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerConflicts(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         if (items.len != 2) return self.shapeError(node, "(conflicts INTEGER)");
         const text = try self.requireSrc(items[1], "conflict count");
         self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch
             return self.shapeError(items[1], "integer");
     }
 
-    fn lowerCode(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerCode(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         if (items.len != 3) return self.shapeError(node, "(code IDENT CODE_BLOCK)");
         const location = try self.requireSrc(items[1], "@code location ident");
         const body = try self.requireSrc(items[2], "@code body");
@@ -4035,7 +4035,7 @@ const GrammarLowerer = struct {
         });
     }
 
-    fn lowerAs(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerAs(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         if (items.len < 3) return self.shapeError(node, "(as IDENT AS_ENTRY+)");
         const token = try self.requireSrc(items[1], "@as source-token ident");
         for (items[2..]) |entry| {
@@ -4055,7 +4055,7 @@ const GrammarLowerer = struct {
         }
     }
 
-    fn lowerOp(self: *GrammarLowerer, _: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerOp(self: *GrammarLowerer, _: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         for (items[1..]) |entry| {
             const et = try self.requireTag(entry, .op_map);
             if (et.len != 3) return self.shapeError(entry, "(op_map STRING STRING)");
@@ -4065,7 +4065,7 @@ const GrammarLowerer = struct {
         }
     }
 
-    fn lowerErrors(self: *GrammarLowerer, _: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerErrors(self: *GrammarLowerer, _: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         for (items[1..]) |entry| {
             const et = try self.requireTag(entry, .error_name);
             if (et.len != 3) return self.shapeError(entry, "(error_name RULE STRING)");
@@ -4075,7 +4075,7 @@ const GrammarLowerer = struct {
         }
     }
 
-    fn lowerInfix(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerInfix(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         if (items.len < 2) return self.shapeError(node, "(infix IDENT LEVEL+)");
         self.infixBase = try self.requireSrc(items[1], "@infix base expression");
         var prec: u32 = 1;
@@ -4102,7 +4102,7 @@ const GrammarLowerer = struct {
 
     // --- Rules ---
 
-    fn lowerRule(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!void {
+    fn lowerRule(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
         if (items.len < 3) return self.shapeError(node, "(rule RULE_NAME ALT+)");
 
         const nameInfo = try self.lowerRuleName(items[1]);
@@ -4118,7 +4118,7 @@ const GrammarLowerer = struct {
         });
     }
 
-    fn lowerRuleName(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!struct { name: []const u8, isStart: bool } {
+    fn lowerRuleName(self: *GrammarLowerer, node: frontend.Sexp) LoweringError!struct { name: []const u8, isStart: bool } {
         const t = taggedItems(node) orelse return self.shapeError(node, "(start ...) or (name ...)");
         return switch (t.tag) {
             .start => .{
@@ -4133,12 +4133,12 @@ const GrammarLowerer = struct {
         };
     }
 
-    fn extractSingleIdent(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, expected: []const u8) LoweringError![]const u8 {
+    fn extractSingleIdent(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp, expected: []const u8) LoweringError![]const u8 {
         if (items.len != 2) return self.shapeError(node, expected);
         return self.requireSrc(items[1], expected);
     }
 
-    fn lowerAlt(self: *GrammarLowerer, altNode: ngp.Sexp) LoweringError!ParsedAlternative {
+    fn lowerAlt(self: *GrammarLowerer, altNode: frontend.Sexp) LoweringError!ParsedAlternative {
         const t = taggedItems(altNode) orelse return self.shapeError(altNode, "alt | alt_reduce | alt_shift");
         const preferReduce = (t.tag == .alt_reduce);
         const preferShift = (t.tag == .alt_shift);
@@ -4183,7 +4183,7 @@ const GrammarLowerer = struct {
     // parenthesized groups and bracket groups) where (exclude ...) is not
     // legal — an exclude there will fall through lowerElement's switch and
     // emit a shape error, which is the correct behavior.
-    fn lowerAltBody(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!std.ArrayListUnmanaged(ParsedElement) {
+    fn lowerAltBody(self: *GrammarLowerer, node: frontend.Sexp) LoweringError!std.ArrayListUnmanaged(ParsedElement) {
         const items = try self.requireList(node, "element list");
         var out: std.ArrayListUnmanaged(ParsedElement) = .empty;
         for (items) |child| try out.append(self.allocator, try self.lowerElement(child));
@@ -4192,7 +4192,7 @@ const GrammarLowerer = struct {
 
     // --- Elements ---
 
-    fn lowerElement(self: *GrammarLowerer, node: ngp.Sexp) LoweringError!ParsedElement {
+    fn lowerElement(self: *GrammarLowerer, node: frontend.Sexp) LoweringError!ParsedElement {
         const t = taggedItems(node) orelse return self.shapeError(node, "tagged element sexp");
         return switch (t.tag) {
             .ref => try self.lowerScalarElement(node, t.items, .ident),
@@ -4210,7 +4210,7 @@ const GrammarLowerer = struct {
         };
     }
 
-    fn lowerScalarElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
+    fn lowerScalarElement(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
         if (items.len != 2) return self.shapeError(node, "(ref|tok|lit|at_ref SRC)");
         return ParsedElement{
             .kind = kind,
@@ -4218,7 +4218,7 @@ const GrammarLowerer = struct {
         };
     }
 
-    fn lowerListElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
+    fn lowerListElement(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp, kind: ParsedElement.Kind) LoweringError!ParsedElement {
         if (items.len != 3) return self.shapeError(node, "(list_req TOKEN LIST_INNER)");
         const listTok = try self.requireSrc(items[1], "list head token");
         _ = listTok; // The leading TOKEN is always `L`; the surface syntax gives no other choice.
@@ -4250,7 +4250,7 @@ const GrammarLowerer = struct {
         return elem;
     }
 
-    fn lowerGroupElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, kind: ParsedElement.Kind, asMany: bool) LoweringError!ParsedElement {
+    fn lowerGroupElement(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp, kind: ParsedElement.Kind, asMany: bool) LoweringError!ParsedElement {
         if (items.len < 2) return self.shapeError(node, "group with ≥1 ALT_BODY");
 
         if (items.len == 2) {
@@ -4342,14 +4342,14 @@ const GrammarLowerer = struct {
         return e.kind == .ident or e.kind == .token;
     }
 
-    fn lowerQuantifiedElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp) LoweringError!ParsedElement {
+    fn lowerQuantifiedElement(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!ParsedElement {
         if (items.len != 3) return self.shapeError(node, "(quantified ELEMENT QUANT)");
         var inner = try self.lowerElement(items[1]);
         inner.quantifier = try self.lowerQuantifier(items[2]);
         return inner;
     }
 
-    fn lowerSkipElement(self: *GrammarLowerer, node: ngp.Sexp, items: []const ngp.Sexp, withQuant: bool) LoweringError!ParsedElement {
+    fn lowerSkipElement(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp, withQuant: bool) LoweringError!ParsedElement {
         const expected = if (withQuant) "(skip_q ELEMENT QUANT)" else "(skip ELEMENT)";
         const need: usize = if (withQuant) 3 else 2;
         if (items.len != need) return self.shapeError(node, expected);
@@ -4359,7 +4359,7 @@ const GrammarLowerer = struct {
         return inner;
     }
 
-    fn lowerQuantifier(self: *const GrammarLowerer, node: ngp.Sexp) LoweringError!ParsedElement.Quantifier {
+    fn lowerQuantifier(self: *const GrammarLowerer, node: frontend.Sexp) LoweringError!ParsedElement.Quantifier {
         const t = taggedItems(node) orelse return self.shapeError(node, "(opt|zero_plus|one_plus)");
         if (t.items.len != 1) return self.shapeError(node, "(opt|zero_plus|one_plus)");
         return switch (t.tag) {
@@ -7627,7 +7627,7 @@ fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringH
 //   .list       → (child child ...)
 // =============================================================================
 
-fn dumpSexp(writer: anytype, sexp: ngp.Sexp, source: []const u8, indent: usize) !void {
+fn dumpSexp(writer: anytype, sexp: frontend.Sexp, source: []const u8, indent: usize) !void {
     switch (sexp) {
         .nil => try writer.writeAll("_"),
         .tag => |t| try writer.writeAll(@tagName(t)),
@@ -7680,15 +7680,15 @@ fn dumpSrcText(writer: anytype, text: []const u8) !void {
 // and return the S-expression tree. Callers own the parser's arena lifetime
 // via the returned BaseParser; deinit it when finished with the tree.
 fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
-    parser: ngp.BaseParser,
-    sexp: ngp.Sexp,
+    parser: frontend.BaseParser,
+    sexp: frontend.Sexp,
     parserBody: []const u8,
 } {
     const parserStart = findSection(sourceText, "@parser") orelse {
         return error.MissingParserSection;
     };
     const parserBody = sourceText[parserStart + 7 ..];
-    var parser = ngp.BaseParser.init(allocator, parserBody);
+    var parser = frontend.BaseParser.init(allocator, parserBody);
     errdefer parser.deinit();
     const sexp = try parser.parseGrammar();
     return .{ .parser = parser, .sexp = sexp, .parserBody = parserBody };
@@ -7720,19 +7720,19 @@ const testing = std.testing;
 //   0..1  -> "x"         (harmless one-char src for most cases)
 //   1..5  -> "\"ab\""    (a multi-char string literal for the exclude-too-long case)
 const negSource = "x\"ab\"";
-const negSrc0: ngp.Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
-const negSrcMulti: ngp.Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
+const negSrc0: frontend.Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
+const negSrcMulti: frontend.Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
 
 // Wrap an element list as (grammar (rule (name SRC) (alt (elems...)))) so
 // the lowerer reaches the element dispatch. Must be comptime so the nested
 // `&[_]Sexp{...}` literals resolve into static memory.
-fn negRule(comptime elems: []const ngp.Sexp) ngp.Sexp {
-    return comptime .{ .list = &[_]ngp.Sexp{
+fn negRule(comptime elems: []const frontend.Sexp) frontend.Sexp {
+    return comptime .{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, negSrc0 } },
-            .{ .list = &[_]ngp.Sexp{
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .name }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{
                 .{ .tag = .alt },
                 .{ .list = elems },
             } },
@@ -7744,7 +7744,7 @@ fn negRule(comptime elems: []const ngp.Sexp) ngp.Sexp {
 // lowerer don't trip std.testing.allocator's leak detector — the lowerer
 // doesn't clean up partially-built IR on early return (processGrammar
 // owns the final IR in production).
-fn expectShapeError(sexp: ngp.Sexp) !void {
+fn expectShapeError(sexp: frontend.Sexp) !void {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     try testing.expectError(error.ShapeError, GrammarLowerer.lower(arena.allocator(), sexp, negSource));
@@ -7755,104 +7755,104 @@ test "lowerer rejects non-list root" {
 }
 
 test "lowerer rejects root list with wrong tag" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{.{ .tag = .alt }} });
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{.{ .tag = .alt }} });
 }
 
 test "lowerer rejects entry that is not a tagged list" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{ .{ .tag = .grammar }, negSrc0 } });
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{ .{ .tag = .grammar }, negSrc0 } });
 }
 
 test "lowerer rejects entry with unknown tag" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{.{ .tag = .opt }} },
+        .{ .list = &[_]frontend.Sexp{.{ .tag = .opt }} },
     } });
 }
 
 test "lowerer rejects (lang) with no STRING" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{.{ .tag = .lang }} },
+        .{ .list = &[_]frontend.Sexp{.{ .tag = .lang }} },
     } });
 }
 
 test "lowerer rejects (conflicts) with non-numeric src" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{ .{ .tag = .conflicts }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{ .{ .tag = .conflicts }, negSrc0 } },
     } });
 }
 
 test "lowerer rejects (as) with no entries" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{ .{ .tag = .as }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{ .{ .tag = .as }, negSrc0 } },
     } });
 }
 
 test "lowerer rejects (as) entry with wrong tag" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .as },
             negSrc0,
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
         } },
     } });
 }
 
 test "lowerer rejects (op_map) with wrong arity" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .op },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .op_map }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .op_map }, negSrc0 } },
         } },
     } });
 }
 
 test "lowerer rejects (level) containing non-infix_op child" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .infix },
             negSrc0,
-            .{ .list = &[_]ngp.Sexp{
+            .{ .list = &[_]frontend.Sexp{
                 .{ .tag = .level },
-                .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+                .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
             } },
         } },
     } });
 }
 
 test "lowerer rejects (rule) with no alts" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .name }, negSrc0 } },
         } },
     } });
 }
 
 test "lowerer rejects rule_name tag that is neither start nor name" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .alt }, .{ .list = &[_]ngp.Sexp{} } } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .alt }, .{ .list = &[_]frontend.Sexp{} } } },
         } },
     } });
 }
 
 test "lowerer rejects alt child that is not list" {
-    try expectShapeError(.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(.{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]ngp.Sexp{
+        .{ .list = &[_]frontend.Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .name }, negSrc0 } },
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .alt }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .name }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .alt }, negSrc0 } },
         } },
     } });
 }
@@ -7862,60 +7862,60 @@ test "lowerer rejects bare src as an element" {
 }
 
 test "lowerer rejects (ref) with wrong arity" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{.{ .tag = .ref }} }}));
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{.{ .tag = .ref }} }}));
 }
 
 test "lowerer rejects (list_req) missing inner" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{ .{ .tag = .list_req }, negSrc0 } }}));
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{ .{ .tag = .list_req }, negSrc0 } }}));
 }
 
 test "lowerer rejects (list_req) inner with unknown tag" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{
         .{ .tag = .list_req },
         negSrc0,
-        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
     } }}));
 }
 
 test "lowerer rejects (group) with no ALT_BODY" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{.{ .tag = .group }} }}));
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{.{ .tag = .group }} }}));
 }
 
 test "lowerer rejects (quantified) missing quant" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{
         .{ .tag = .quantified },
-        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
     } }}));
 }
 
 test "lowerer rejects (quantified) quant child with wrong tag" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{
         .{ .tag = .quantified },
-        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
-        .{ .list = &[_]ngp.Sexp{.{ .tag = .skip }} },
+        .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{.{ .tag = .skip }} },
     } }}));
 }
 
 test "lowerer rejects (skip_q) missing quant" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{
         .{ .tag = .skip_q },
-        .{ .list = &[_]ngp.Sexp{ .{ .tag = .ref }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
     } }}));
 }
 
 test "lowerer rejects (exclude) with wrong arity" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{.{ .tag = .exclude }} }}));
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{.{ .tag = .exclude }} }}));
 }
 
 test "lowerer rejects (exclude) with multi-char literal" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{ .{ .tag = .exclude }, negSrcMulti } }}));
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{ .{ .tag = .exclude }, negSrcMulti } }}));
 }
 
 test "lowerer rejects (exclude) appearing inside a group body" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]ngp.Sexp{
+    try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{
         .{ .tag = .group },
-        .{ .list = &[_]ngp.Sexp{
-            .{ .list = &[_]ngp.Sexp{ .{ .tag = .exclude }, negSrc0 } },
+        .{ .list = &[_]frontend.Sexp{
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .exclude }, negSrc0 } },
         } },
     } }}));
 }
