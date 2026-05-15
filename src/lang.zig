@@ -24,8 +24,7 @@ pub const Tag = enum(u8) {
     conflicts,
     code,
     as,
-    as_strict,
-    as_perm,
+    as_entry,
     op,
     op_map,
     errors,
@@ -39,8 +38,12 @@ pub const Tag = enum(u8) {
     start,
     name,
     alt,
-    alt_reduce,
-    alt_shift,
+
+    // Kind discriminators (children of as_entry, alt, group)
+    perm,    // (as_entry perm IDENT)            permissive @as
+    reduce,  // (alt reduce ELEMENTS ACTION?)    `<` tight-binding hint
+    shift,   // (alt shift  ELEMENTS ACTION?)    `>` prefer-shift hint
+    many,    // (group many ALT_BODY...)         `[X, ...]` optional comma list
 
     // Elements
     ref,
@@ -49,8 +52,6 @@ pub const Tag = enum(u8) {
     at_ref,
     list_req,
     group,
-    group_many,
-    group_opt,
     quantified,
     skip,
     skip_q,
@@ -62,7 +63,7 @@ pub const Tag = enum(u8) {
     sep_items,
     opt_items_nosep,
 
-    // Quantifiers
+    // Quantifiers (opt is reused as the GROUP kind for `[X]`)
     opt,
     zero_plus,
     one_plus,

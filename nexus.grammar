@@ -27,9 +27,10 @@
 #     (errors    ERROR_NAME ERROR_NAME ...)
 #     (infix     IDENT-src LEVEL LEVEL ...)
 #
-# AS_ENTRY is one of:
-#     (as_strict IDENT-src)          #  bare IDENT
-#     (as_perm   IDENT-src)          #  IDENT!   permissive (reduce-aware)
+# AS_ENTRY:
+#     (as_entry KIND IDENT-src)      # KIND ∈ _ | perm
+#                                    #   _    bare IDENT  (strict / shift-only)
+#                                    #   perm IDENT!      permissive (reduce-aware)
 #
 # OP_MAP:     (op_map STRING-src STRING-src)
 # ERROR_NAME: (error_name IDENT-or-TOKEN-src STRING-src)
@@ -44,13 +45,15 @@
 #     (start IDENT-or-TOKEN-src)        # trailing '!' marks a start symbol
 #     (name  IDENT-or-TOKEN-src)
 #
-# ALT is one of:
-#     (alt        ELEMENT-list ACTION_TEXT-src?)     # plain
-#     (alt_reduce ELEMENT-list ACTION_TEXT-src?)     # '<' tight-binding hint
-#     (alt_shift  ELEMENT-list ACTION_TEXT-src?)     # '>' prefer-shift hint
+# ALT:
+#     (alt KIND ELEMENT-list ACTION_TEXT-src?)
+#     # KIND ∈ _ | reduce | shift
+#     #   _      plain
+#     #   reduce '<' tight-binding hint (prefer reduce on S/R conflict)
+#     #   shift  '>' prefer-shift hint  (prefer shift  on S/R conflict)
 #
 # ELEMENT-list is always a .list (possibly empty). An empty alternative is
-# encoded as (alt () ...) — never by omitting the child.
+# encoded as (alt _ () ...) — never by omitting the element-list child.
 #
 # --- Elements ---
 #
@@ -63,13 +66,15 @@
 #
 #     (list_req TOKEN-src LIST_INNER)          # L(...)   required
 #
-#     (group      ALT_BODY ALT_BODY ...)       # ( a | b | c )
-#     (group_many ALT_BODY ALT_BODY ...)       # [ a | b | c , ... ]
-#     (group_opt  ALT_BODY ALT_BODY ...)       # [ a | b | c ]
+#     (group KIND ALT_BODY ALT_BODY ...)
+#     # KIND ∈ _ | many | opt
+#     #   _    ( a | b | c )           parens group
+#     #   many [ a | b | c , ... ]     optional comma-separated list
+#     #   opt  [ a | b | c ]           optional group
 #
-# The surface form `[L(X)]` parses as a single-alternative group_opt whose
-# one ALT_BODY contains exactly one list_req element; the lowerer recognizes
-# that shape and folds it into an optional comma-separated list.
+# The surface form `[L(X)]` parses as a single-alternative `(group opt ...)`
+# whose one ALT_BODY contains exactly one list_req element; the lowerer
+# recognizes that shape and folds it into an optional comma-separated list.
 #
 #     (quantified ELEMENT QUANT)               # X?, X*, X+
 #     (skip       ELEMENT)                     # !X
@@ -106,7 +111,10 @@
 #    a hard error with source position. No silent defaults, no fallback
 #    wrappers.
 # 2. Tags are non-overlapping. `list_req` means required list and nothing else.
-#    `group_many` is [X, ...] and nothing else. Etc.
+#    A `(group many ...)` is [X, ...] and nothing else; `(group opt ...)` is
+#    [X] and nothing else. The kind-discriminator child slot (slot 1 in alt /
+#    group / as_entry) is the canonical way to distinguish near-identical
+#    shapes without proliferating head Tags.
 # 3. No position admits a bare .src where a tagged list is documented, and
 #    vice versa.
 # 4. Discarded trivia (comments, newlines, commas inside directive bodies) is
@@ -267,8 +275,8 @@ as_body  = IDENT "=" "[" as_list "]"        → (1 ...4)
 as_list  = as_list "," as_entry             → (...1 3)
          | as_entry                         → (1)
 
-as_entry = IDENT "!"                        → (as_perm 1)
-         | IDENT                            → (as_strict 1)
+as_entry = IDENT "!"                        → (as_entry perm 1)
+         | IDENT                            → (as_entry _ 1)
 
 # --- @op directive (commas/newlines/comments are absorbed between pairs) ---
 
@@ -351,12 +359,12 @@ rule_name  = IDENT "!"                      → (start 1)
            | TOKEN "!"                      → (start 1)
            | TOKEN                          → (name 1)
 
-alt_line   = elements ARROW ACTION_TEXT      → (alt 1 3)
-           | elements "<" ARROW ACTION_TEXT → (alt_reduce 1 4)
-           | elements ">" ARROW ACTION_TEXT → (alt_shift 1 4)
-           | elements "<"                   → (alt_reduce 1)
-           | elements ">"                   → (alt_shift 1)
-           | elements                       → (alt 1)
+alt_line   = elements ARROW ACTION_TEXT      → (alt _      1 3)
+           | elements "<" ARROW ACTION_TEXT → (alt reduce 1 4)
+           | elements ">" ARROW ACTION_TEXT → (alt shift  1 4)
+           | elements "<"                   → (alt reduce 1)
+           | elements ">"                   → (alt shift  1)
+           | elements                       → (alt _      1)
 
 elements   = elements element               → (...1 2)
            |                                → ()
@@ -373,11 +381,11 @@ primary    = IDENT                          → (ref 1)
            | STRING                         → (lit 1)
            | "@" IDENT                      → (at_ref 2)
            | "@" KW_INFIX                   → (at_ref 2)
-           | "(" alt_group ")"              → (group ...2)
+           | "(" alt_group ")"              → (group _ ...2)
            | "[" bracket_body "]"           → 2
 
-bracket_body = alt_group "..."              → (group_many ...1)
-             | alt_group                    → (group_opt ...1)
+bracket_body = alt_group "..."              → (group many ...1)
+             | alt_group                    → (group opt  ...1)
 
 bracket_inner = IDENT "?" "," sep_term      → (opt_items 1 4)
               | IDENT "," sep_term          → (sep_items 1 3)

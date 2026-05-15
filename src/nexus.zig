@@ -18,7 +18,7 @@ const Allocator = std.mem.Allocator;
 // driven machinery it emits for downstream languages.
 const frontend = @import("parser.zig");
 
-const version = "0.10.2";
+const version = "0.10.3";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
@@ -4039,18 +4039,18 @@ const GrammarLowerer = struct {
         if (items.len < 3) return self.shapeError(node, "(as IDENT AS_ENTRY+)");
         const token = try self.requireSrc(items[1], "@as source-token ident");
         for (items[2..]) |entry| {
-            const et = taggedItems(entry) orelse return self.shapeError(entry, "as_strict or as_perm");
-            const rule = switch (et.tag) {
-                .as_strict, .as_perm => blk: {
-                    if (et.items.len != 2) return self.shapeError(entry, "(as_strict|as_perm IDENT)");
-                    break :blk try self.requireSrc(et.items[1], "candidate ident");
-                },
-                else => return self.shapeError(entry, "as_strict or as_perm"),
+            const et = try self.requireTag(entry, .as_entry);
+            if (et.len != 3) return self.shapeError(entry, "(as_entry KIND IDENT)");
+            const permissive = switch (et[1]) {
+                .nil => false,
+                .tag => |t| t == .perm,
+                else => return self.shapeError(entry, "(as_entry KIND IDENT) — KIND must be _ or perm"),
             };
+            const rule = try self.requireSrc(et[2], "candidate ident");
             try self.asDirectives.append(self.allocator, .{
                 .token = token,
                 .rule = rule,
-                .permissive = (et.tag == .as_perm),
+                .permissive = permissive,
             });
         }
     }
@@ -4139,20 +4139,25 @@ const GrammarLowerer = struct {
     }
 
     fn lowerAlt(self: *GrammarLowerer, altNode: frontend.Sexp) LoweringError!ParsedAlternative {
-        const t = taggedItems(altNode) orelse return self.shapeError(altNode, "alt | alt_reduce | alt_shift");
-        const preferReduce = (t.tag == .alt_reduce);
-        const preferShift = (t.tag == .alt_shift);
-        if (t.tag != .alt and !preferReduce and !preferShift) {
-            return self.shapeError(altNode, "alt | alt_reduce | alt_shift");
+        const items = try self.requireTag(altNode, .alt);
+        if (items.len < 3 or items.len > 4) return self.shapeError(altNode, "(alt KIND ELEMENT-list ACTION?)");
+        const kind: ?frontend.Tag = switch (items[1]) {
+            .nil => null,
+            .tag => |t| t,
+            else => return self.shapeError(altNode, "(alt KIND ...) — KIND must be _, reduce, or shift"),
+        };
+        const preferReduce = kind != null and kind.? == .reduce;
+        const preferShift = kind != null and kind.? == .shift;
+        if (kind != null and !preferReduce and !preferShift) {
+            return self.shapeError(altNode, "(alt KIND ...) — KIND must be _, reduce, or shift");
         }
-        if (t.items.len < 2 or t.items.len > 3) return self.shapeError(altNode, "(alt ELEMENT-list ACTION?)");
 
         // Children of the element list are either regular ELEMENT sexps or
         // (exclude STRING) hints. Exclude elements are consumed here: they
         // set the alternative's excludeChar (last-seen wins, matching
         // legacy semantics) and never reach the element list that
         // processGrammar sees.
-        const rawChildren = try self.requireList(t.items[1], "element list");
+        const rawChildren = try self.requireList(items[2], "element list");
         var elements: std.ArrayListUnmanaged(ParsedElement) = .empty;
         var excludeChar: u8 = 0;
         for (rawChildren) |child| {
@@ -4168,7 +4173,7 @@ const GrammarLowerer = struct {
         }
 
         var action: ?[]const u8 = null;
-        if (t.items.len == 3) action = try self.requireSrc(t.items[2], "action text");
+        if (items.len == 4) action = try self.requireSrc(items[3], "action text");
 
         return ParsedAlternative{
             .elements = try elements.toOwnedSlice(self.allocator),
@@ -4200,9 +4205,7 @@ const GrammarLowerer = struct {
             .lit => try self.lowerScalarElement(node, t.items, .string),
             .at_ref => try self.lowerScalarElement(node, t.items, .ident),
             .list_req => try self.lowerListElement(node, t.items, .reqList),
-            .group => try self.lowerGroupElement(node, t.items, .group, false),
-            .group_many => try self.lowerGroupElement(node, t.items, .optList, true),
-            .group_opt => try self.lowerGroupElement(node, t.items, .optGroup, false),
+            .group => try self.lowerGroupKinded(node, t.items),
             .quantified => try self.lowerQuantifiedElement(node, t.items),
             .skip => try self.lowerSkipElement(node, t.items, false),
             .skip_q => try self.lowerSkipElement(node, t.items, true),
@@ -4250,11 +4253,28 @@ const GrammarLowerer = struct {
         return elem;
     }
 
-    fn lowerGroupElement(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp, kind: ParsedElement.Kind, asMany: bool) LoweringError!ParsedElement {
-        if (items.len < 2) return self.shapeError(node, "group with ≥1 ALT_BODY");
+    // Decodes the kind discriminator in `(group KIND ALT_BODY ALT_BODY ...)`
+    // and dispatches to lowerGroupElement with the appropriate parameters.
+    // KIND ∈ _ (plain group), many ([X, ...] optional list), opt ([X] optional).
+    fn lowerGroupKinded(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!ParsedElement {
+        if (items.len < 3) return self.shapeError(node, "(group KIND ALT_BODY...)");
+        const bodies = items[2..];
+        return switch (items[1]) {
+            .nil => self.lowerGroupElement(node, bodies, .group, false),
+            .tag => |t| switch (t) {
+                .many => self.lowerGroupElement(node, bodies, .optList, true),
+                .opt => self.lowerGroupElement(node, bodies, .optGroup, false),
+                else => self.shapeError(node, "(group KIND ...) — KIND must be _, many, or opt"),
+            },
+            else => self.shapeError(node, "(group KIND ...) — KIND must be _, many, or opt"),
+        };
+    }
 
-        if (items.len == 2) {
-            var bodyElements = try self.lowerAltBody(items[1]);
+    fn lowerGroupElement(self: *GrammarLowerer, node: frontend.Sexp, bodies: []const frontend.Sexp, kind: ParsedElement.Kind, asMany: bool) LoweringError!ParsedElement {
+        if (bodies.len < 1) return self.shapeError(node, "group with ≥1 ALT_BODY");
+
+        if (bodies.len == 1) {
+            var bodyElements = try self.lowerAltBody(bodies[0]);
             defer bodyElements.deinit(self.allocator);
 
             if (asMany) {
@@ -4318,7 +4338,7 @@ const GrammarLowerer = struct {
         // Multi-alt group. Each alternative contributes a sub-group element so
         // that downstream emitters see a list of distinct alternatives.
         var subElems: std.ArrayListUnmanaged(ParsedElement) = .empty;
-        for (items[1..]) |altBody| {
+        for (bodies) |altBody| {
             var body = try self.lowerAltBody(altBody);
             defer body.deinit(self.allocator);
             if (body.items.len == 0) continue;
@@ -7271,6 +7291,14 @@ const ParserGenerator = struct {
         var hasTilde = false;
         var hasOther = false;
         var hasNil = false;
+        // Track child-position Tag literals separately. The dispatcher's
+        // sexpSpread / sexpPosSpread fast paths emit (tag ...spread) and
+        // (tag pos ...spread) shapes, neither of which has a slot for a
+        // kind-discriminator child Tag — so routing a mixed (Tag + spread)
+        // template through either would silently drop the Tag. Force such
+        // templates to the complex case, which can place tag literals at
+        // arbitrary positions.
+        var hasChildTagLiteral = false;
 
         for (elements.items[1..]) |elem| {
             const work = self.stripKeyAndSuffix(elem);
@@ -7285,19 +7313,21 @@ const ParserGenerator = struct {
                 posCount += 1;
             } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
                 hasNil = true; // track nil separately for pattern matching
-            } else if (!self.isTagLiteral(work)) {
+            } else if (self.isTagLiteral(work)) {
+                hasChildTagLiteral = true;
+            } else {
                 hasOther = true;
             }
         }
 
-        // Pattern: (tag ...N) - use sexpSpread (only if no nil elements)
-        if (firstIsTag and spreadCount == 1 and posCount == 0 and !hasTilde and !hasOther and !hasNil) {
+        // Pattern: (tag ...N) - use sexpSpread (only if no nil elements and no child tag literals)
+        if (firstIsTag and spreadCount == 1 and posCount == 0 and !hasTilde and !hasOther and !hasNil and !hasChildTagLiteral) {
             try writer.print("self.sexpSpread(.@\"{s}\", pass[{d}])", .{ tagName, spreadPos });
             return;
         }
 
-        // Pattern: (tag N ...M) - use sexpPosSpread (only if no nil elements)
-        if (firstIsTag and spreadCount == 1 and posCount == 1 and !hasTilde and !hasOther and !hasNil) {
+        // Pattern: (tag N ...M) - use sexpPosSpread (only if no nil elements and no child tag literals)
+        if (firstIsTag and spreadCount == 1 and posCount == 1 and !hasTilde and !hasOther and !hasNil and !hasChildTagLiteral) {
             try writer.print("self.sexpPosSpread(.@\"{s}\", pass[{d}], pass[{d}])", .{ tagName, firstPos, spreadPos });
             return;
         }
@@ -7798,9 +7828,11 @@ const negSource = "x\"ab\"";
 const negSrc0: frontend.Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
 const negSrcMulti: frontend.Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
 
-// Wrap an element list as (grammar (rule (name SRC) (alt (elems...)))) so
-// the lowerer reaches the element dispatch. Must be comptime so the nested
-// `&[_]Sexp{...}` literals resolve into static memory.
+// Wrap an element list as (grammar (rule (name SRC) (alt _ (elems...)))) so
+// the lowerer reaches the element dispatch. The `_` (nil) at slot 1 of the
+// alt is the "plain alternative — no precedence kind" discriminator per the
+// v0.10.3 schema. Must be comptime so the nested `&[_]Sexp{...}` literals
+// resolve into static memory.
 fn negRule(comptime elems: []const frontend.Sexp) frontend.Sexp {
     return comptime .{ .list = &[_]frontend.Sexp{
         .{ .tag = .grammar },
@@ -7809,6 +7841,7 @@ fn negRule(comptime elems: []const frontend.Sexp) frontend.Sexp {
             .{ .list = &[_]frontend.Sexp{ .{ .tag = .name }, negSrc0 } },
             .{ .list = &[_]frontend.Sexp{
                 .{ .tag = .alt },
+                .nil,
                 .{ .list = elems },
             } },
         } },
@@ -7916,7 +7949,7 @@ test "lowerer rejects rule_name tag that is neither start nor name" {
         .{ .list = &[_]frontend.Sexp{
             .{ .tag = .rule },
             .{ .list = &[_]frontend.Sexp{ .{ .tag = .ref }, negSrc0 } },
-            .{ .list = &[_]frontend.Sexp{ .{ .tag = .alt }, .{ .list = &[_]frontend.Sexp{} } } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .alt }, .nil, .{ .list = &[_]frontend.Sexp{} } } },
         } },
     } });
 }
@@ -7927,7 +7960,7 @@ test "lowerer rejects alt child that is not list" {
         .{ .list = &[_]frontend.Sexp{
             .{ .tag = .rule },
             .{ .list = &[_]frontend.Sexp{ .{ .tag = .name }, negSrc0 } },
-            .{ .list = &[_]frontend.Sexp{ .{ .tag = .alt }, negSrc0 } },
+            .{ .list = &[_]frontend.Sexp{ .{ .tag = .alt }, .nil, negSrc0 } },
         } },
     } });
 }
@@ -7989,6 +8022,7 @@ test "lowerer rejects (exclude) with multi-char literal" {
 test "lowerer rejects (exclude) appearing inside a group body" {
     try expectShapeError(negRule(&.{.{ .list = &[_]frontend.Sexp{
         .{ .tag = .group },
+        .nil, // KIND slot — `_` for plain group
         .{ .list = &[_]frontend.Sexp{
             .{ .list = &[_]frontend.Sexp{ .{ .tag = .exclude }, negSrc0 } },
         } },
