@@ -250,15 +250,19 @@ pub const BindingKind = enum {
     @"/=",      // compound div-assign
 };
 
+pub const BindingKindError = error{InvalidBindingKind};
+
 /// Decode the kind slot of a normalized binding form `(set <kind> ...)`
 /// into the exhaustive `BindingKind` enum.
 ///
-/// A kind slot we don't recognize falls through to `.default` rather
-/// than panicking; in practice the normalizer only ever emits the
-/// kinds listed above, so an unknown kind would indicate IR corruption.
-pub fn bindingKindOf(kind_slot: Sexp) BindingKind {
+/// Errors on any kind slot we don't recognize. The grammar emits only
+/// the kinds listed in `BindingKind`, so an unknown kind always
+/// indicates either a grammar/parser bug or a corrupt IR — silently
+/// defaulting to `.default` would mask both. Consumers must propagate
+/// or explicitly handle the error.
+pub fn bindingKindOf(kind_slot: Sexp) BindingKindError!BindingKind {
     if (kind_slot == .nil) return .default;
-    if (kind_slot != .tag) return .default;
+    if (kind_slot != .tag) return error.InvalidBindingKind;
     return switch (kind_slot.tag) {
         .fixed => .fixed,
         .shadow => .shadow,
@@ -267,7 +271,7 @@ pub fn bindingKindOf(kind_slot: Sexp) BindingKind {
         .@"-=" => .@"-=",
         .@"*=" => .@"*=",
         .@"/=" => .@"/=",
-        else => .default,
+        else => error.InvalidBindingKind,
     };
 }
 
