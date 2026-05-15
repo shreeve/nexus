@@ -43,6 +43,8 @@ tokens
     string_dq       # "double-quoted string"
     symbol          # :name (rewriter-fused from colon + ident)
     label           # name: (hash label, rewriter-fused from ident + colon)
+    pct_w           # %w[foo bar] / %w(a b) / %w{x y} / %w<p q>  word array
+    pct_i           # %i[foo bar] / %i(a b) / %i{x y} / %i<p q>  symbol array
 
     # Operators — arithmetic
     plus            # + (binary, infix)
@@ -556,6 +558,8 @@ primary  = IDENT
          | IMAGINARY
          | STRING_SQ
          | STRING_DQ
+         | PCT_W
+         | PCT_I
          | dstring
          | SYMBOL
          | literal_kw

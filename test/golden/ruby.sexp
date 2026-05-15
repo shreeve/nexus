@@ -574,6 +574,10 @@
     (alt
       ((tok `STRING_DQ`)))
     (alt
+      ((tok `PCT_W`)))
+    (alt
+      ((tok `PCT_I`)))
+    (alt
       ((ref `dstring`)))
     (alt
       ((tok `SYMBOL`)))
