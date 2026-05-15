@@ -18,7 +18,7 @@ const Allocator = std.mem.Allocator;
 // driven machinery it emits for downstream languages.
 const ngp = @import("parser.zig");
 
-const version = "0.9.1";
+const version = "0.10.0";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
@@ -6266,10 +6266,10 @@ const ParserGenerator = struct {
             \\};
             \\
             \\// =============================================================================
-            \\// Parser
+            \\// BaseSexer (raw parser: tokens → S-expressions)
             \\// =============================================================================
             \\
-            \\pub const Parser = struct {
+            \\pub const BaseSexer = struct {
             \\    arena: std.heap.ArenaAllocator,
             \\    lexer: Lexer,
             \\    source: []const u8,
@@ -6280,8 +6280,8 @@ const ParserGenerator = struct {
             \\    stateStack: std.ArrayListUnmanaged(u16) = .empty,
             \\    valueStack: std.ArrayListUnmanaged(Sexp) = .empty,
             \\
-            \\    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) Parser {
-            \\        var p = Parser{
+            \\    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) BaseSexer {
+            \\        var p = BaseSexer{
             \\            .arena = std.heap.ArenaAllocator.init(backingAllocator),
             \\            .lexer = Lexer.init(source),
             \\            .source = source,
@@ -6291,15 +6291,15 @@ const ParserGenerator = struct {
             \\        return p;
             \\    }
             \\
-            \\    pub fn deinit(self: *Parser) void {
+            \\    pub fn deinit(self: *BaseSexer) void {
             \\        self.arena.deinit();
             \\    }
             \\
-            \\    fn allocator(self: *Parser) std.mem.Allocator {
+            \\    fn allocator(self: *BaseSexer) std.mem.Allocator {
             \\        return self.arena.allocator();
             \\    }
             \\
-            \\    pub fn printError(self: *Parser) void {
+            \\    pub fn printError(self: *BaseSexer) void {
             \\        const pos: usize = @min(self.current.pos, self.source.len);
             \\        var line: usize = 1;
             \\        var col: usize = 1;
@@ -6319,7 +6319,7 @@ const ParserGenerator = struct {
             \\        });
             \\    }
             \\
-            \\    fn doParse(self: *Parser, startSym: u16) !Sexp {
+            \\    fn doParse(self: *BaseSexer, startSym: u16) !Sexp {
             \\        const startState = getStartState(startSym);
             \\        self.stateStack.clearRetainingCapacity();
             \\        self.valueStack.clearRetainingCapacity();
@@ -6382,7 +6382,7 @@ const ParserGenerator = struct {
             \\    }
             \\
             \\    /// Spread list helper: [head, ...tail]
-            \\    fn spreadList(self: *Parser, head: Sexp, tail: Sexp) Sexp {
+            \\    fn spreadList(self: *BaseSexer, head: Sexp, tail: Sexp) Sexp {
             \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
             \\        out.append(self.allocator(), head) catch return .nil;
             \\        if (tail == .list) for (tail.list) |item| out.append(self.allocator(), item) catch return .nil;
@@ -6390,14 +6390,14 @@ const ParserGenerator = struct {
             \\    }
             \\
             \\    /// Spread only: [...tail]
-            \\    fn spreadOnly(self: *Parser, tail: Sexp) Sexp {
+            \\    fn spreadOnly(self: *BaseSexer, tail: Sexp) Sexp {
             \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
             \\        if (tail == .list) for (tail.list) |item| out.append(self.allocator(), item) catch return .nil;
             \\        return .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} };
             \\    }
             \\
             \\    /// Default list handler
-            \\    fn list(self: *Parser, pass: []Sexp) Sexp {
+            \\    fn list(self: *BaseSexer, pass: []Sexp) Sexp {
             \\        if (pass.len == 0) return .nil;
             \\        if (pass.len == 1) return pass[0];
             \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
@@ -6406,7 +6406,7 @@ const ParserGenerator = struct {
             \\    }
             \\
             \\    /// Build S-expression: (tag items...) with trailing nil trimming
-            \\    inline fn sexp(self: *Parser, comptime tag: Tag, items: []const Sexp) Sexp {
+            \\    inline fn sexp(self: *BaseSexer, comptime tag: Tag, items: []const Sexp) Sexp {
             \\        if (items.len == 0) {
             \\            const result = self.allocator().alloc(Sexp, 1) catch return .nil;
             \\            result[0] = .{ .tag = tag };
@@ -6421,7 +6421,7 @@ const ParserGenerator = struct {
             \\    }
             \\
             \\    /// Build S-expression: (tag ...spread) - tag + spread items
-            \\    inline fn sexpSpread(self: *Parser, comptime tag: Tag, spread: Sexp) Sexp {
+            \\    inline fn sexpSpread(self: *BaseSexer, comptime tag: Tag, spread: Sexp) Sexp {
             \\        const items = if (spread == .list) spread.list else &[_]Sexp{};
             \\        var len = items.len;
             \\        while (len > 0 and items[len - 1] == .nil) len -= 1;
@@ -6432,7 +6432,7 @@ const ParserGenerator = struct {
             \\    }
             \\
             \\    /// Build S-expression: (tag pos ...spread) - tag + position + spread items
-            \\    inline fn sexpPosSpread(self: *Parser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+            \\    inline fn sexpPosSpread(self: *BaseSexer, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
             \\        const items = if (spread == .list) spread.list else &[_]Sexp{};
             \\        var len = items.len;
             \\        while (len > 0 and items[len - 1] == .nil) len -= 1;
@@ -6447,7 +6447,7 @@ const ParserGenerator = struct {
             \\        return .{ .list = result };
             \\    }
             \\
-            \\    fn executeAction(self: *Parser, ruleId: u16, pass: []Sexp) Sexp {
+            \\    fn executeAction(self: *BaseSexer, ruleId: u16, pass: []Sexp) Sexp {
             \\        return switch (ruleId) {
             \\
         );
@@ -6486,9 +6486,9 @@ const ParserGenerator = struct {
         }
 
         if (hasIdentAs) {
-            try writer.writeAll("\n    fn tokenToSymbol(self: *Parser, token: Token) u16 {\n");
+            try writer.writeAll("\n    fn tokenToSymbol(self: *BaseSexer, token: Token) u16 {\n");
         } else {
-            try writer.writeAll("\n    fn tokenToSymbol(_: *Parser, token: Token) u16 {\n");
+            try writer.writeAll("\n    fn tokenToSymbol(_: *BaseSexer, token: Token) u16 {\n");
         }
         try writer.writeAll("        return switch (token.cat) {\n");
 
@@ -6678,7 +6678,7 @@ const ParserGenerator = struct {
         if (self.asDirectives.items.len > 0) {
             try writer.writeAll(
                 \\
-                \\    fn identToSymbol(self: *Parser, token: Token) u16 {
+                \\    fn identToSymbol(self: *BaseSexer, token: Token) u16 {
                 \\        const text = self.source[token.pos..][0..token.len];
                 \\        if (text.len == 0) return symIdent;
                 \\
@@ -6722,11 +6722,11 @@ const ParserGenerator = struct {
                     const capName = cap[0..directive.rule.len];
                     try writer.print(
                         \\
-                        \\    fn tryIdentAs{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
+                        \\    fn tryIdentAs{s}(self: *BaseSexer, token: Token, text: []const u8) ?u16 {{
                         \\        _ = token;
                         \\        const state = self.stateStack.getLast();
                         \\        if ({s}.{s}As(text)) |id| {{
-                        \\            const idIdx = @intFromEnum(id);
+                                                    \\            const idIdx = @intFromEnum(id);
                         \\            const sym = {s}ToSymbol[idIdx];
                         \\            if (sym != 0 and getAction(state, sym) {s}) {{
                         \\                self.lastMatchedId = @intCast(idIdx);
@@ -6758,7 +6758,7 @@ const ParserGenerator = struct {
                     const capName = cap[0..directive.rule.len];
                     try writer.print(
                         \\
-                        \\    fn tryIdentAs{s}(self: *Parser, token: Token, text: []const u8) ?u16 {{
+                        \\    fn tryIdentAs{s}(self: *BaseSexer, token: Token, text: []const u8) ?u16 {{
                         \\        _ = token;
                         \\        const state = self.stateStack.getLast();
                         \\        if ({s}As(text)) |id| {{
@@ -6778,7 +6778,7 @@ const ParserGenerator = struct {
             // No @as directives - simple passthrough
             try writer.writeAll(
                 \\
-                \\    fn identToSymbol(_: *Parser, _: Token) u16 {
+                \\    fn identToSymbol(_: *BaseSexer, _: Token) u16 {
                 \\        return symIdent;
                 \\    }
                 \\
@@ -6798,7 +6798,7 @@ const ParserGenerator = struct {
             if (self.getSymbol(markerName) != null) {
                 try writer.print(
                     \\
-                    \\    pub fn parse{s}(self: *Parser) !Sexp {{
+                    \\    pub fn parse{s}(self: *BaseSexer) !Sexp {{
                     \\        self.injectedToken = SYM_{s}_START;
                     \\        return self.doParse(SYM_{s});
                     \\    }}
@@ -6823,6 +6823,74 @@ const ParserGenerator = struct {
         }
 
         try writer.writeAll("\n};\n\n");
+
+        // Sexer auto-wire: when @lang is set, allow the lang module to wrap
+        // BaseSexer with semantic rewriting. Mirrors the Lexer auto-wire.
+        if (self.lang) |langName| {
+            try writer.print(
+                \\// =============================================================================
+                \\// Sexer (sexp rewriter)
+                \\//
+                \\// Optional wrapper supplied by the @lang module. When `{s}.zig` exports a
+                \\// `pub const Sexer = struct {{ ... }}` whose surface matches BaseSexer
+                \\// (`init(allocator, source) -> Self`, `deinit`, `parse{{Start}}() !Sexp`),
+                \\// the generated parser routes through it. Otherwise Sexer aliases
+                \\// BaseSexer directly and there is no behavioral change.
+                \\// =============================================================================
+                \\
+                \\pub const Sexer = if (@hasDecl({s}, "Sexer")) {s}.Sexer else BaseSexer;
+                \\
+                \\
+            , .{ langName, langName, langName });
+        }
+
+        // Top-level parse{Start}(allocator, source) convenience helpers.
+        //
+        // The returned Sexp references arena-allocated memory owned by the
+        // returned `sexer`; the caller must keep the sexer alive for the
+        // lifetime of the tree and call `result.sexer.deinit()` when done.
+        // This mirrors the convention already used inside the generator
+        // (`parseGrammarSexp` in src/nexus.zig).
+        var hasTopLevelHelpers = false;
+        for (self.startSymbols.items) |symId| {
+            const name = self.symbols.items[symId].name;
+            var markerBuf: [128]u8 = undefined;
+            const markerName = std.fmt.bufPrint(&markerBuf, "{s}!", .{name}) catch continue;
+            if (self.getSymbol(markerName) == null) continue;
+
+            if (!hasTopLevelHelpers) {
+                hasTopLevelHelpers = true;
+                try writer.writeAll(
+                    \\// =============================================================================
+                    \\// Top-level convenience helpers (one per start symbol)
+                    \\// =============================================================================
+                    \\
+                );
+            }
+
+            var fnameBuf: [64]u8 = undefined;
+            fnameBuf[0] = if (name[0] >= 'a' and name[0] <= 'z') name[0] - 32 else name[0];
+            @memcpy(fnameBuf[1..name.len], name[1..]);
+            const fname = fnameBuf[0..name.len];
+
+            const sexerType: []const u8 = if (self.lang != null) "Sexer" else "BaseSexer";
+
+            try writer.print(
+                \\
+                \\/// Convenience: instantiate the (lang-extended) sexer and parse a whole
+                \\/// {s}. Caller owns `result.sexer` and must call `result.sexer.deinit()`
+                \\/// when done with the returned tree (the tree references arena-allocated
+                \\/// memory owned by the sexer).
+                \\pub fn parse{s}(allocator: std.mem.Allocator, source: []const u8) !struct {{ sexer: {s}, sexp: Sexp }} {{
+                \\    var s = {s}.init(allocator, source);
+                \\    errdefer s.deinit();
+                \\    const sexp = try s.parse{s}();
+                \\    return .{{ .sexer = s, .sexp = sexp }};
+                \\}}
+                \\
+            , .{ name, fname, sexerType, sexerType, fname });
+        }
+        if (hasTopLevelHelpers) try writer.writeAll("\n");
 
         // Generate symbol constants
         try writer.writeAll("// Symbol IDs\n");
@@ -7614,10 +7682,10 @@ fn dumpSrcText(writer: anytype, text: []const u8) !void {
 }
 
 // Parse the @parser section of a grammar file through the generated frontend
-// and return the S-expression tree. Callers own the parser's arena lifetime
-// via the returned Parser; deinit it when finished with the tree.
+// and return the S-expression tree. Callers own the sexer's arena lifetime
+// via the returned BaseSexer; deinit it when finished with the tree.
 fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
-    parser: ngp.Parser,
+    sexer: ngp.BaseSexer,
     sexp: ngp.Sexp,
     parserBody: []const u8,
 } {
@@ -7625,10 +7693,10 @@ fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8) !struct {
         return error.MissingParserSection;
     };
     const parserBody = sourceText[parserStart + 7 ..];
-    var parser = ngp.Parser.init(allocator, parserBody);
-    errdefer parser.deinit();
-    const sexp = try parser.parseGrammar();
-    return .{ .parser = parser, .sexp = sexp, .parserBody = parserBody };
+    var sexer = ngp.BaseSexer.init(allocator, parserBody);
+    errdefer sexer.deinit();
+    const sexp = try sexer.parseGrammar();
+    return .{ .sexer = sexer, .sexp = sexp, .parserBody = parserBody };
 }
 
 // =============================================================================
@@ -7938,7 +8006,7 @@ pub fn main(init: std.process.Init) !void {
             }
             return;
         };
-        defer parsed.parser.deinit();
+        defer parsed.sexer.deinit();
 
         var output: std.Io.Writer.Allocating = .init(allocator);
         defer output.deinit();
@@ -8060,13 +8128,13 @@ pub fn main(init: std.process.Init) !void {
         // Parse the @parser section through the self-hosted frontend and
         // lower the resulting S-expression tree into GrammarIR. The lowerer
         // extracts text from .src nodes into slices backed by sourceText
-        // (which outlives main), so the parser's arena is freed as soon as
+        // (which outlives main), so the sexer's arena is freed as soon as
         // lowering returns.
         var parsed = parseGrammarSexp(allocator, sourceText) catch |err| {
             std.debug.print("❌ Failed to parse @parser section: {any}\n", .{err});
             return;
         };
-        defer parsed.parser.deinit();
+        defer parsed.sexer.deinit();
 
         var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
             std.debug.print("❌ Lowerer error: {any}\n", .{err});
