@@ -222,6 +222,8 @@ pub const KeywordId = enum(u16) {
     STRING_SQ,
     STRING_DQ,
     SYMBOL,
+    PCT_W,
+    PCT_I,
     LABEL,
     CMD_IDENT,
     LBRACE_BLOCK,
@@ -376,6 +378,34 @@ pub const Lexer = struct {
 
         while (true) {
             var tok = self.base.matchRules();
+
+            // ── 0a. Float extension ─────────────────────────────────
+            // BaseLexer.scanNumber is hand-rolled and only emits
+            // `.integer` — so we post-process here: if the integer is
+            // followed by `.digit(s)` or an exponent marker, consume
+            // those and re-emit as `.float`. Keeps the generated
+            // lexer regen-safe (Nexus overwrites parser.zig on
+            // regeneration; this lives in the hand-maintained
+            // companion).
+            if (tok.cat == .integer) {
+                if (self.tryExtendFloat(&tok)) {
+                    self.last_cat = .float;
+                    return tok;
+                }
+            }
+
+            // ── 0b. %w[…] / %i[…] array literals ────────────────────
+            // The grammar defines the `pct_w` / `pct_i` token cats and
+            // uses them in `primary`, but the base lexer's hand-rolled
+            // matchRules doesn't scan their bodies. Detect the `%w` /
+            // `%i` prefix in a `.percent` token's position and
+            // synthesize the full literal.
+            if (tok.cat == .percent) {
+                if (self.tryScanPctArray(&tok)) |pct_tok| {
+                    self.last_cat = pct_tok.cat;
+                    return pct_tok;
+                }
+            }
 
             // ── 1. Skip comments ────────────────────────────────────
             if (tok.cat == .comment) continue;
@@ -673,6 +703,122 @@ pub const Lexer = struct {
         }
     }
 
+    // ── Float-extension post-processor ──────────────────────────
+    // The base lexer's scanNumber is generated-simple and only
+    // produces `.integer` tokens. Ruby float literals
+    // (`3.14`, `1_000.5`, `1.5e3`, `2e-9`) need a second pass:
+    // after a `.integer` token, peek at the bytes immediately
+    // after it and — if they form either `.digit(+)` or
+    // `[eE][+-]?digit+` — widen the token's `len` to cover those
+    // bytes and flip `cat` to `.float`. Speculative: `3.times`
+    // must stay `.integer` + `.dot` + `.ident`, so we only
+    // commit `.digit` consumption when a digit actually follows.
+    fn tryExtendFloat(self: *Lexer, tok: *Token) bool {
+        const src = self.base.source;
+        var end: u32 = tok.pos + tok.len;
+
+        // Consume any trailing `[0-9_]*` continuation the base lexer
+        // didn't (scanNumber is generated-simple and stops at `_`).
+        // This keeps the integer contiguous across underscore
+        // separators even when we don't promote to float.
+        const int_end_before = end;
+        while (end < src.len and (isDigitByte(src[end]) or src[end] == '_')) : (end += 1) {}
+        const extended_integer = end != int_end_before;
+
+        var is_float = false;
+
+        if (end + 1 < src.len and src[end] == '.' and isDigitByte(src[end + 1])) {
+            is_float = true;
+            end += 1; // consume '.'
+            while (end < src.len and (isDigitByte(src[end]) or src[end] == '_')) : (end += 1) {}
+        }
+
+        if (end < src.len and (src[end] == 'e' or src[end] == 'E')) {
+            var look: u32 = end + 1;
+            if (look < src.len and (src[look] == '+' or src[look] == '-')) look += 1;
+            if (look < src.len and isDigitByte(src[look])) {
+                is_float = true;
+                end = look;
+                while (end < src.len and (isDigitByte(src[end]) or src[end] == '_')) : (end += 1) {}
+            }
+        }
+
+        if (!is_float and !extended_integer) return false;
+        self.base.pos = end;
+        if (is_float) tok.cat = .float;
+        tok.len = @intCast(end - tok.pos);
+        return is_float; // only report "re-emit now" when widened to float
+    }
+
+    // ── `%w[…]` / `%i[…]` scanner ───────────────────────────────
+    // Called when the base lexer just emitted a lone `.percent`
+    // token (no `=` / `w[...]` extension). Checks whether the
+    // next bytes form a Ruby word-array literal: `%w` or `%i`
+    // followed by a delimiter and matching close. Supports the
+    // four paired-delimiter shapes (`[] () {} <>`) which cover
+    // the vast majority of idiomatic Ruby. Returns a synthesized
+    // `.pct_w` / `.pct_i` token whose `pos`/`len` span the
+    // entire literal including delimiters; the codegen strips
+    // them when splitting into words.
+    fn tryScanPctArray(self: *Lexer, tok: *Token) ?Token {
+        const src = self.base.source;
+        const start = tok.pos;
+        // `%` already consumed — base.pos is just past it. Need
+        // two more bytes: the w/i selector and the opening delim.
+        if (self.base.pos + 1 >= src.len) return null;
+        const sel = src[self.base.pos];
+        if (sel != 'w' and sel != 'i') return null;
+        const open = src[self.base.pos + 1];
+        const close: u8 = switch (open) {
+            '[' => ']',
+            '(' => ')',
+            '{' => '}',
+            '<' => '>',
+            else => return null,
+        };
+
+        // No `canEndExpr` gate here: the structural signature
+        // `%[wi][<paired-delim>]` is distinctive enough that `%w[`
+        // or `%i[` after an ident still means array literal in
+        // practice. `3 % 2` still hits this code path with a lone
+        // `%`-then-digit, which the switch above rejects. The
+        // narrow case where this differs from MRI is `3%w[x]`
+        // without whitespace, which nobody writes.
+
+        // Once we've committed on the `%[wi]<paired>` signature, any
+        // failure to find the matching close is a lex error — fall-back
+        // to a plain `.percent` would cascade confusing downstream
+        // errors as the rest of the file is (mis)interpreted with `%`
+        // as the modulo operator. Ruby's `%w` / `%i` don't honor
+        // nested opens of the same paired delimiter (unlike heredocs),
+        // so a plain scan is correct.
+        var p: u32 = self.base.pos + 2;
+        while (p < src.len and src[p] != close) : (p += 1) {}
+        if (p >= src.len) {
+            // Unterminated. Synthesize an error token spanning
+            // everything from the `%` through end-of-source; the
+            // parser will surface this as a parse error with the
+            // right location rather than a misleading modulo error
+            // much later in the file.
+            self.base.pos = p;
+            tok.cat = .err;
+            tok.pos = start;
+            tok.len = @intCast(p - start);
+            return tok.*;
+        }
+        p += 1; // consume close
+
+        self.base.pos = p;
+        tok.cat = if (sel == 'w') .pct_w else .pct_i;
+        tok.pos = start;
+        tok.len = @intCast(p - start);
+        return tok.*;
+    }
+
+    fn isDigitByte(c: u8) bool {
+        return c >= '0' and c <= '9';
+    }
+
     // ── Head-separator rewriting ────────────────────────────────
     // When in a control-flow head, the first non-suppressed
     // newline or semicolon ends the condition and becomes
@@ -718,13 +864,43 @@ pub const Lexer = struct {
         if (ch == '(') return false;
         if (ch == '\n' or ch == '\r' or ch == ';') return false;
 
+        // `a[i]` with NO whitespace between ident and `[` is indexed
+        // read, not a command call with array literal arg. With space,
+        // `a [i]` stays ambiguous and we let the grammar continue as
+        // cmd_ident (array literal as a single positional arg).
+        if (ch == '[' and p == self.base.pos) return false;
+
+        // `{` never starts a command argument — it's either a hash
+        // literal (which Ruby requires to be parenthesized as an arg:
+        // `f({a: 1})`) or a brace-block. Leaving `foo` as plain ident
+        // lets canEndExpr-triggered reclassification turn `{` into
+        // lbrace_block so the grammar's `IDENT block` rule matches.
+        if (ch == '{') return false;
+
         // Binary operators preceded by space are not command arguments.
         // E.g., `a + b` is addition, not `a(+b)`.
         if (p > self.base.pos) {
             if (ch == '+' or ch == '-' or ch == '*' or ch == '/' or
-                ch == '%' or ch == '<' or ch == '>' or ch == '|' or
+                ch == '<' or ch == '>' or ch == '|' or
                 ch == '&' or ch == '^')
                 return false;
+            // `%` is special: `%w[…]`/`%i[…]` is an array literal and
+            // IS a valid command argument (e.g., `puts %w[foo bar]`).
+            // Only treat `%` as a binary modulo operator when NOT
+            // followed by a percent-literal prefix.
+            if (ch == '%') {
+                const pw = p + 1;
+                if (pw + 1 < self.base.source.len) {
+                    const sel = self.base.source[pw];
+                    const open = self.base.source[pw + 1];
+                    if ((sel == 'w' or sel == 'i') and
+                        (open == '[' or open == '(' or open == '{' or open == '<'))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
         }
 
         return isExprStartChar(ch);

@@ -1414,7 +1414,7 @@
         (lit `"@"`)
         (ref `atom`)
         (exclude `"@"`))
-      `(@name 3)`))
+      `(@gname 3)`))
   (rule
     (name `rgvn`)
     (alt
@@ -1630,7 +1630,11 @@
     (alt
       ((ref `labelref`)
         (exclude `"("`))
-      `1                 # $$FOO`))
+      `1                 # $$FOO`)
+    (alt
+      ((lit `"@"`)
+        (ref `atom`))
+      `(@name 2)          # $$@var (args via @-string only;`))
   (rule
     (name `select`)
     (alt

@@ -479,6 +479,11 @@ newarg  = name
 merge    = MERGE [postcond] L(mergearg)     → (merge 2 ...3)
 mergearg = glvn "=" glvn                    → (= 1 3)
          | "@" atom                         → (@args 2)
+# Note: the grammar's action language doesn't easily support producing
+# nested s-expressions like `(= (@name X) Y)` from a single rule, so the
+# specialized forms `M @x=@y`, `M @x=Y`, `M X=@y` aren't directly
+# expressible here. Workaround: use `M @args` where `args` holds
+# the comma-separated list, e.g. `S a="x=y" M @a`.
 
 kill    = KILL [postcond] [L(killarg)]      → (kill 2 ...3)
 killarg = glvn
@@ -793,7 +798,7 @@ rlvn = name X "("                           → (lvar 1)
 
 # Global variable: ^X, ^X(1,2), ^@expr
 gvn = rgvn
-    | "^" "@" atom X "@"                    → (@name 3)
+    | "^" "@" atom X "@"                    → (@gname 3)
 
 # Real (non-indirected) global variable
 # Includes naked reference: ^(subs), name indirection: ^@X@(subs), and extended refs
@@ -853,6 +858,10 @@ fn = select
 # Extrinsic reference: label with optional routine and args
 extrinsicref = labelref   "(" [L(actual?)] ")" → (1 args:3)        # $$FOO() or $$FOO(a,b)
              | labelref X "("               → 1                 # $$FOO
+             | "@" atom                     → (@name 2)          # $$@var (args via @-string only;
+                                                                   # use the workaround of building the
+                                                                   # full call string in the var: e.g.
+                                                                   # S t="HELP(5)" $$@t)
 
 # $SELECT is special - takes condition:value pairs (must have parens)
 select = "$" SELECT "(" L(selectarg) ")"    → (select ...4)

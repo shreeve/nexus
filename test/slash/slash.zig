@@ -71,6 +71,7 @@ pub const Tag = enum(u8) {
     @"while",
     @"for",
     cmd_def,
+    str_def,
     @"match",
     match_arms,
     match_arm,
@@ -153,6 +154,14 @@ pub const Lexer = struct {
     /// source picks up after every consumed body.
     heredoc_resume_pos: u32 = 0,
 
+    // `str NAME { body }` lookahead. When the wrapper detects this
+    // pattern at a command-starter position, it emits a single
+    // `str_open` token covering "str", then queues an IDENT (the name)
+    // and a `str_body` (raw bytes between the matched braces) so the
+    // parser sees `STR_OPEN IDENT STR_BODY` back-to-back.
+    queued_str_name: ?Token = null,
+    queued_str_body: ?Token = null,
+
     pub fn init(source: []const u8) Lexer {
         return .{ .base = BaseLexer.init(source) };
     }
@@ -170,6 +179,8 @@ pub const Lexer = struct {
         self.last_cat = .eof;
         self.queued_body = null;
         self.heredoc_resume_pos = 0;
+        self.queued_str_name = null;
+        self.queued_str_body = null;
     }
 
     pub fn next(self: *Lexer) Token {
@@ -195,6 +206,19 @@ pub const Lexer = struct {
         // follows its open sigil so the parser sees the pair atomically.
         if (self.queued_body) |body| {
             self.queued_body = null;
+            self.last_cat = body.cat;
+            return body;
+        }
+
+        // Drain a queued `str_def` name + body. After emitting STR_OPEN,
+        // the parser expects IDENT then STR_BODY back-to-back.
+        if (self.queued_str_name) |name| {
+            self.queued_str_name = null;
+            self.last_cat = name.cat;
+            return name;
+        }
+        if (self.queued_str_body) |body| {
+            self.queued_str_body = null;
             self.last_cat = body.cat;
             return body;
         }
@@ -307,6 +331,22 @@ pub const Lexer = struct {
                     return fused;
                 }
             }
+
+            // `str NAME { body }` definition form. Run AFTER NAME_EQ so
+            // a hypothetical `str=value` (variable assignment) takes
+            // precedence; in practice `str` is a 3-letter ident and the
+            // pattern needs a space between `str` and the name, so the
+            // two paths don't conflict in real source.
+            if (working.cat == .ident and
+                isStrDefStartCat(self.last_cat) and
+                identTextEquals(self.base.source, working, "str"))
+            {
+                if (self.tryFuseStrDef(working)) |open_tok| {
+                    self.last_cat = open_tok.cat;
+                    return open_tok;
+                }
+            }
+
             if (working.len != tok.len) {
                 self.last_cat = .ident;
                 return working;
@@ -494,6 +534,102 @@ pub const Lexer = struct {
         };
     }
 
+    /// Detect `str NAME { body }` and emit a single `str_open` token,
+    /// queuing the IDENT name and the raw `str_body` so the parser
+    /// sees `STR_OPEN IDENT STR_BODY` back-to-back. Returns null (and
+    /// leaves all wrapper state untouched) if the pattern doesn't
+    /// match — the caller falls through to emitting `working` as a
+    /// regular IDENT, so the `str` builtin's bare-args / list /
+    /// query / -e surfaces still parse normally.
+    ///
+    /// The body capture is brace-counted: `{` increments depth, `}`
+    /// decrements; the body ends when depth returns to zero. Inside,
+    /// no other lexing happens — quotes, dollar signs, pipes, etc.
+    /// are all just bytes. The body must fit on the same physical
+    /// line as the open brace; an embedded newline aborts the match
+    /// (rather than swallowing the rest of the file). The closing
+    /// `}` must also be on that same line.
+    ///
+    /// Byte validation (UTF-8, no NUL/CR/LF/DEL/C0-except-tab) is
+    /// deferred to the eval-time `str_def` runner so that diagnostics
+    /// at that layer can be emitted via the standard sink.
+    fn tryFuseStrDef(self: *Lexer, str_tok: Token) ?Token {
+        const src = self.base.source;
+        const open_start = str_tok.pos;
+        const open_end = str_tok.pos + str_tok.len;
+        std.debug.assert(open_end - open_start == 3);
+
+        // Skip horizontal whitespace after `str`.
+        var p: u32 = open_end;
+        const name_start = p;
+        while (p < src.len and (src[p] == ' ' or src[p] == '\t')) : (p += 1) {}
+        if (p == name_start or p == open_end) {
+            // Either no whitespace, or no whitespace consumed — same
+            // thing. Without a separator between `str` and the name,
+            // this isn't the keyword form.
+            // (open_end == name_start always; the real check is that
+            // the loop advanced.)
+            if (p == open_end) return null;
+        }
+        const name_pos = p;
+
+        // Expect an IDENT-shaped name (initial char from the bare-
+        // word class).
+        if (p >= src.len or !isBareWordStart(src[p])) return null;
+        p += 1;
+        while (p < src.len and isBareWordContinueOrUtf8(src[p])) : (p += 1) {}
+        const name_end = p;
+
+        // Skip horizontal whitespace after the name.
+        const before_brace = p;
+        while (p < src.len and (src[p] == ' ' or src[p] == '\t')) : (p += 1) {}
+        if (p == before_brace) return null; // need at least one space
+        if (p >= src.len or src[p] != '{') return null;
+
+        // Body collection: brace-counted, single-line.
+        const body_start = p + 1;
+        var depth: u32 = 1;
+        var q: u32 = body_start;
+        while (q < src.len) : (q += 1) {
+            const ch = src[q];
+            if (ch == '\n' or ch == '\r') return null; // multi-line aborts the match
+            if (ch == '{') {
+                depth += 1;
+            } else if (ch == '}') {
+                depth -= 1;
+                if (depth == 0) break;
+            }
+        }
+        if (depth != 0) return null; // unclosed body — fall through
+        const body_end = q;
+        const close_pos = q;
+
+        // Commit. Advance the base lexer past the closing `}`.
+        self.base.pos = close_pos + 1;
+
+        // Queue the name IDENT and the raw body for the parser's next
+        // two requests.
+        self.queued_str_name = Token{
+            .cat = .ident,
+            .pre = 0,
+            .pos = name_pos,
+            .len = @intCast(name_end - name_pos),
+        };
+        self.queued_str_body = Token{
+            .cat = .str_body,
+            .pre = 0,
+            .pos = body_start,
+            .len = @intCast(body_end - body_start),
+        };
+
+        return Token{
+            .cat = .str_open,
+            .pre = str_tok.pre,
+            .pos = open_start,
+            .len = 3,
+        };
+    }
+
     /// Process a newline token. Returns:
     ///   - the original semi token (level unchanged)
     ///   - an INDENT token (level increased)
@@ -633,6 +769,51 @@ fn isBareWordContinue(c: u8) bool {
         => true,
         else => false,
     };
+}
+
+/// Bare-word start class. Matches the grammar's IDENT lexer rule
+/// (`[A-Za-z_./\-+~@%!*?:,^]...`), excluding digits which are only
+/// allowed in continuation positions (a leading digit makes the
+/// token an INTEGER instead).
+fn isBareWordStart(c: u8) bool {
+    return switch (c) {
+        'A'...'Z', 'a'...'z',
+        '_', '.', '/', '-', '+', '~', '@', '%', '!', '*', '?', ':', ',', '^',
+        => true,
+        else => c >= 0x80,
+    };
+}
+
+/// Categories after which the next IDENT could begin a `str NAME { ... }`
+/// definition. `str_def` is a `sequence_item` alternative — it doesn't
+/// accept an env-prefix (the grammar's env-prefix is exclusive to
+/// `simple_command` / `assigns`), so `name_eq` is deliberately NOT
+/// included here. Including it would let `echo FOO= str x { y }`
+/// wrongly fuse into a `str_def`, producing a confusing parse error
+/// downstream.
+fn isStrDefStartCat(cat: TokenCat) bool {
+    return switch (cat) {
+        .eof,
+        .pipe,
+        .semi,
+        .and_and,
+        .or_or,
+        .amp,
+        .lbrace,
+        .lparen,
+        .lbracket,
+        .indent,
+        => true,
+        else => false,
+    };
+}
+
+/// Compare an IDENT token's text to a literal byte string. The token
+/// has already had any UTF-8 trailing bytes folded into its `len`, so
+/// a slice of `[pos..pos+len]` is the full ident text.
+fn identTextEquals(source: []const u8, tok: Token, want: []const u8) bool {
+    if (tok.len != want.len) return false;
+    return std.mem.eql(u8, source[tok.pos .. tok.pos + tok.len], want);
 }
 
 /// Like `isBareWordContinue` but also admits any byte ≥ 0x80 so a

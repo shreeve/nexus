@@ -355,6 +355,7 @@ pub const Tag = enum(u8) {
 
     // Indirection
     @"@name",
+    @"@gname", // Global name indirection: ^@X (resolves to ^<value of X>)
     @"@args",
     @"@ref",
     @"@subs",
@@ -470,7 +471,9 @@ pub const FnId = enum(u16) {
     VIEW,
 
     // Z functions
+    ZCONVERT,
     ZDATE,
+    ZDATEH,
     ZDATETIME,
     ZLENGTH,
     ZMESSAGE,
@@ -523,6 +526,7 @@ pub const IsvId = enum(u16) {
     ZSTATUS,
     ZSYSTEM,
     ZTRAP,
+    ZUT,
     ZVERSION,
 };
 
@@ -714,9 +718,11 @@ pub fn fnAs(name: []const u8) ?FnId {
         'Z' => {
             if (name.len < 2) return null;
             return switch (std.ascii.toUpper(name[1])) {
+                'C' => if (match(name, "ZCONVERT", 3)) .ZCONVERT else null,
                 'D' => {
-                    // ZDATETIME min=9, ZD[ATE] min=2
+                    // ZDATETIME min=9, ZDATEH min=6, ZD[ATE] min=2
                     if (match(name, "ZDATETIME", 9)) return .ZDATETIME;
+                    if (match(name, "ZDATEH", 6)) return .ZDATEH;
                     if (match(name, "ZDATE", 2)) return .ZDATE;
                     return null;
                 },
@@ -830,6 +836,7 @@ pub fn isvAs(name: []const u8) ?IsvId {
                     return if (match(name, "ZSTATUS", 2)) .ZSTATUS else null;
                 },
                 'T' => if (match(name, "ZTRAP", 2)) .ZTRAP else null,
+                'U' => if (match(name, "ZUT", 3)) .ZUT else null,
                 'V' => if (match(name, "ZVERSION", 2)) .ZVERSION else null,
                 else => null,
             };

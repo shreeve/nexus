@@ -1,6 +1,6 @@
 (grammar
   (lang `"ruby"`)
-  (conflicts `54`)
+  (conflicts `66`)
   (as
     `ident`
     (as_perm `keyword`))
@@ -109,7 +109,17 @@
       ((ref `expr`)
         (tok `RESCUE_MOD`)
         (ref `expr`))
-      `(rescue 1 3)`))
+      `(rescue 1 3)`)
+    (alt
+      ((ref `flow_stmt`)
+        (tok `IF_MOD`)
+        (ref `expr`))
+      `(if 3 1 _)`)
+    (alt
+      ((ref `flow_stmt`)
+        (tok `UNLESS_MOD`)
+        (ref `expr`))
+      `(unless 3 1 _)`))
   (rule
     (name `expr`)
     (alt
@@ -286,9 +296,7 @@
       ((ref `call`)
         (lit `"["`)
         (group_opt
-          ((list_req
-              `L`
-              (plain `arg`))))
+          ((ref `index_args`)))
         (lit `"]"`))
       `(indexasgn 1 3)`))
   (rule
@@ -395,9 +403,7 @@
       ((ref `call`)
         (lit `"["`)
         (group_opt
-          ((list_req
-              `L`
-              (plain `arg`))))
+          ((ref `index_args`)))
         (lit `"]"`))
       `(index 1 3)`)
     (alt
@@ -416,6 +422,10 @@
           ((ref `block`))))
       `(send _ 1 2 3)`)
     (alt
+      ((tok `IDENT`)
+        (ref `block`))
+      `(send _ 1 _ 2)`)
+    (alt
       ((tok `SUPER`)
         (group_opt
           ((ref `call_args`))))
@@ -427,6 +437,13 @@
       `(yield 2)`)
     (alt
       ((ref `primary`))))
+  (rule
+    (name `index_args`)
+    (alt
+      ((list_req
+          `L`
+          (plain `arg`)))
+      `(args ...1)`))
   (rule
     (name `methodname`)
     (alt
@@ -786,12 +803,20 @@
       ((tok `BEGIN_KW`)
         (ref `sep`)
         (ref `stmts`)
-        (quantified
-          (ref `rescue_cl`)
-          (zero_plus))
+        (ref `rescues`)
         (ref `ensure_cl`)
         (tok `END`))
       `(begin 3 4 5)`))
+  (rule
+    (name `rescues`)
+    (alt
+      ((ref `rescue_cl`))
+      `1`)
+    (alt
+      ((ref `rescues`)
+        (ref `rescue_cl`))
+      `(...1 2)`)
+    (alt () `()`))
   (rule
     (name `rescue_cl`)
     (alt
@@ -799,6 +824,13 @@
         (ref `then_sep`)
         (ref `stmts`))
       `(rescue _ _ 3)`)
+    (alt
+      ((tok `RESCUE`)
+        (lit `"=>"`)
+        (tok `IDENT`)
+        (ref `then_sep`)
+        (ref `stmts`))
+      `(rescue _ 3 5)`)
     (alt
       ((tok `RESCUE`)
         (list_req
@@ -834,9 +866,7 @@
           ((ref `params`)))
         (ref `sep`)
         (ref `stmts`)
-        (quantified
-          (ref `rescue_cl`)
-          (zero_plus))
+        (ref `rescues`)
         (ref `ensure_cl`)
         (tok `END`))
       `(def 2 3 5 6 7)`)
@@ -849,9 +879,7 @@
           ((ref `params`)))
         (ref `sep`)
         (ref `stmts`)
-        (quantified
-          (ref `rescue_cl`)
-          (zero_plus))
+        (ref `rescues`)
         (ref `ensure_cl`)
         (tok `END`))
       `(defs 2 4 5 7 8 9)`))

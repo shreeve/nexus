@@ -73,6 +73,14 @@ tokens
     heredoc_open_lit    # <<'TAG'   (literal — no expansion)
     heredoc_body        # cooked body bytes (emitted by lexer wrapper)
 
+    # `str NAME { body }` definition form. Both tokens are emitted by
+    # the lexer wrapper after a 3-token lookahead (`str IDENT {`). The
+    # body is captured as raw bytes — no inner lexing, brace counting
+    # only — so quoting / escaping is unnecessary inside the body.
+    # PLAN §12.
+    str_open            # the literal "str" keyword in str_def context
+    str_body            # raw bytes between { and matching }
+
     # Assignment
     assign          # =       (loose form, e.g. inside ${var = default})
     name_eq         # NAME=   (tight form, fused by lexer wrapper)
@@ -189,6 +197,7 @@ sequence_item   = pipeline
                 | block_stmt
                 | assigns
                 | cmd_def
+                | str_def
 
 sequence_tail   = SEMI    sequence_item                 → (seq_always 2)
                 | SEMI                                  → (seq_always _)
@@ -342,6 +351,21 @@ match_arm       = word_atoms block_form                → (match_arm 1 2)
 # flow builtin) the call frame catches and propagates `N` as exit status.
 
 cmd_def         = CMD IDENT block_form                  → (cmd_def 2 3)
+
+# ------------------------------------------------------------------------------
+# Editor-only literal-text rewrites
+# ------------------------------------------------------------------------------
+#
+# `str NAME { body }` registers an editor-time abbreviation. The body
+# is captured as opaque raw bytes by the lexer wrapper (brace-counted,
+# no inner lexing) — quoting and escaping are unnecessary inside.
+# `STR_OPEN` and `STR_BODY` are wrapper-emitted tokens; the wrapper
+# only emits them when it sees `str IDENT {` at a command-starter
+# position. Plain `str` in any other context stays a regular IDENT
+# (`simple_command`'s leading word) so the `str` builtin's bare-args
+# / list / query / -e surfaces still work.
+
+str_def         = STR_OPEN IDENT STR_BODY               → (str_def 2 3)
 
 word_atoms      = word_atom+                            → (words ...1)
 

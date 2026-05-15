@@ -34,7 +34,9 @@
     (alt
       ((ref `assigns`)))
     (alt
-      ((ref `cmd_def`))))
+      ((ref `cmd_def`)))
+    (alt
+      ((ref `str_def`))))
   (rule
     (name `sequence_tail`)
     (alt
@@ -332,6 +334,13 @@
         (tok `IDENT`)
         (ref `block_form`))
       `(cmd_def 2 3)`))
+  (rule
+    (name `str_def`)
+    (alt
+      ((tok `STR_OPEN`)
+        (tok `IDENT`)
+        (tok `STR_BODY`))
+      `(str_def 2 3)`))
   (rule
     (name `word_atoms`)
     (alt
