@@ -28,6 +28,7 @@ const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
     _ = @import("frontend/lower.zig");
+    _ = @import("semantics.zig");
     _ = @import("lr/lr.zig");
 }
 
@@ -215,7 +216,13 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     if (opts.checkMode) {
         diag.info("\nChecking grammar...", .{});
-        _ = check.checkGrammar(allocator, &ir);
+        var failed = check.checkGrammar(allocator, &ir) > 0;
+        if (ir.schema != null) {
+            _ = semantics.resolve(allocator, &ir, &lexerParser.spec, grammarFile) catch {
+                failed = true;
+            };
+        }
+        if (failed) fail();
         return;
     }
 

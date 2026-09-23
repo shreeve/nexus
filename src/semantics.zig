@@ -106,10 +106,11 @@ const Resolver = struct {
     drift: std.ArrayListUnmanaged(u8) = .empty,
     /// Heads and tag literals used but not declared, in first-seen order.
     undeclaredKinds: std.ArrayListUnmanaged(Use) = .empty,
-    undeclaredTags: std.ArrayListUnmanaged([]const u8) = .empty,
+    undeclaredTags: std.ArrayListUnmanaged(TagUse) = .empty,
 
     /// One construction of an undeclared kind, for the inventory printout.
-    const Use = struct { tag: []const u8, list: ActionList };
+    const Use = struct { tag: []const u8, list: ActionList, ctx: Ctx };
+    const TagUse = struct { tag: []const u8, ctx: Ctx };
 
     const Ctx = struct { rule: []const u8, line: u32, col: u32 };
 
@@ -231,7 +232,7 @@ const Resolver = struct {
             },
         };
         const ki = self.kindIndex.get(tag) orelse {
-            try self.undeclaredKind(tag, l);
+            try self.undeclaredKinds.append(self.a, .{ .tag = tag, .list = l, .ctx = ctx });
             for (l.items) |item| try self.noteTag(ctx, item.elem, null);
             return l;
         };
@@ -362,11 +363,8 @@ const Resolver = struct {
             },
         };
         if (self.declaredTags.contains(t) or self.kindIndex.contains(t) or containsName(self.markers.items, t)) return;
-        if (!containsName(self.undeclaredTags.items, t)) try self.undeclaredTags.append(self.a, t);
-    }
-
-    fn undeclaredKind(self: *Resolver, tag: []const u8, l: ActionList) !void {
-        try self.undeclaredKinds.append(self.a, .{ .tag = tag, .list = l });
+        for (self.undeclaredTags.items) |u| if (std.mem.eql(u8, u.tag, t)) return;
+        try self.undeclaredTags.append(self.a, .{ .tag = t, .ctx = ctx });
     }
 
     fn checkInventory(self: *Resolver) Error!void {
@@ -377,16 +375,20 @@ const Resolver = struct {
         if (self.undeclaredKinds.items.len == 0 and self.undeclaredTags.items.len == 0 and unbuilt.items.len == 0) return;
         self.failed = true;
 
-        var out: std.Io.Writer.Allocating = .init(self.a);
-        const w = &out.writer;
         var seen: std.StringHashMapUnmanaged(void) = .empty;
         for (self.undeclaredKinds.items) |u| {
             if (seen.contains(u.tag)) continue;
             try seen.put(self.a, u.tag, {});
-            w.print("{s}: error: undeclared kind '{s}' (an action builds it; @schema does not declare it)\n", .{ self.path, u.tag }) catch return error.OutOfMemory;
+            self.err(u.ctx, "undeclared kind '{s}' (the action builds it; @schema does not declare it)", .{u.tag});
         }
-        for (unbuilt.items) |t| w.print("{s}: error: kind '{s}' is declared but no rule builds it (mark it @wrapper if a lang Parser does)\n", .{ self.path, t }) catch return error.OutOfMemory;
-        for (self.undeclaredTags.items) |t| w.print("{s}: error: undeclared tag '{s}' (list it in @tags or as a tag(...) value)\n", .{ self.path, t }) catch return error.OutOfMemory;
+        for (unbuilt.items) |t| {
+            const k = self.schema.kinds[self.kindIndex.get(t).?];
+            diag.errLine(self.path, k.line, k.col, "kind '{s}' is declared but no rule builds it (mark it @wrapper if a lang Parser does)", .{t});
+        }
+        for (self.undeclaredTags.items) |u| self.err(u.ctx, "undeclared tag '{s}' (list it in @tags or as a tag(...) value)", .{u.tag});
+
+        var out: std.Io.Writer.Allocating = .init(self.a);
+        const w = &out.writer;
 
         w.writeAll("the actions' inventory, ready to paste:\n\n@schema\n") catch return error.OutOfMemory;
         for (self.schema.kinds) |k| {
@@ -402,7 +404,7 @@ const Resolver = struct {
         if (self.schema.extraTags.len > 0 or self.undeclaredTags.items.len > 0) {
             w.writeAll("@tags") catch return error.OutOfMemory;
             for (self.schema.extraTags) |t| writeName(w, " ", t) catch return error.OutOfMemory;
-            for (self.undeclaredTags.items) |t| writeName(w, " ", t) catch return error.OutOfMemory;
+            for (self.undeclaredTags.items) |u| writeName(w, " ", u.tag) catch return error.OutOfMemory;
             w.writeByte('\n') catch return error.OutOfMemory;
         }
         std.debug.print("{s}", .{out.written()});
@@ -891,10 +893,13 @@ const TypeChecker = struct {
                 try writeSymbol(w, g, sym(rule, p));
                 try w.writeAll(")");
             },
+            .nil => try w.writeAll(", but the action gives nil there (`_`, or an absent [opt] element)"),
             else => try w.writeAll(", but the action"),
         }
         if (what) |s| {
             try w.print(" is {s}", .{s});
+        } else if (e == .nil) {
+            return;
         } else {
             try w.writeAll(" can be ");
             try self.writeTypes(w, bad);
@@ -975,3 +980,164 @@ const TypeChecker = struct {
         }
     }
 };
+
+// =============================================================================
+// Tests: grammar text through the frontend, semantics and expansion
+// =============================================================================
+
+const testing = std.testing;
+
+fn expandText(a: Allocator, text: []const u8) !Grammar {
+    const frontend = @import("frontend/frontend.zig");
+    const parsed = try frontend.parseGrammarSexp(a, text, "t.grammar");
+    const ir = try frontend.GrammarLowerer.lower(a, parsed.sexp, parsed.source);
+    var g = Grammar.init(a);
+    const sem: ?Result = if (ir.schema != null) try resolve(a, &ir, null, "t.grammar") else null;
+    try expand.processGrammar(&g, &ir, .{
+        .path = "t.grammar",
+        .resolved = if (sem) |s| s.resolved else null,
+        .infix = if (sem) |s| s.infix else null,
+    });
+    if (sem) |s| {
+        g.schema = s.schema;
+        try checkTypes(a, &g, "t.grammar");
+    }
+    return g;
+}
+
+/// The rendered actions of the rules of nonterminal `lhs`, in order.
+fn actionsOf(a: Allocator, g: *const Grammar, lhs: []const u8) ![]const []const u8 {
+    var out: std.ArrayListUnmanaged([]const u8) = .empty;
+    const id = g.getSymbol(lhs).?;
+    for (g.symbols.items[id].rules.items) |ri| {
+        const r = g.rules.items[ri];
+        try out.append(a, if (r.actionTree) |t| try grammar.renderAction(a, t) else "-");
+    }
+    return out.toOwnedSlice(a);
+}
+
+fn expectActions(g: *const Grammar, a: Allocator, lhs: []const u8, expected: []const []const u8) !void {
+    const got = try actionsOf(a, g, lhs);
+    try testing.expectEqual(expected.len, got.len);
+    for (expected, got) |e, x| try testing.expectEqualStrings(e, x);
+}
+
+test "labels fill roles in schema order, side-band labels become sideLabels" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\@schema
+        \\    set   op:tag? target value | eq
+        \\top! = target:IDENT eq:"=" value:IDENT     → (set)
+        \\
+    );
+    try expectActions(&g, a, "top", &.{"(set op:_ target:1 value:3)"});
+    const rule = g.rules.items[g.symbols.items[g.getSymbol("top").?].rules.items[0]];
+    try testing.expectEqual(@as(usize, 1), rule.sideLabels.len);
+    try testing.expectEqualStrings("eq", rule.sideLabels[0].role);
+    try testing.expectEqual(@as(u16, 2), rule.sideLabels[0].pos);
+    try testing.expectEqual(@as(?u16, 0), rule.kind);
+}
+
+test "an absent [opt] label is nil in a slot and drops out of a rest role" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\@schema
+        \\    call   callee:leaf note:leaf? ...args
+        \\top! = callee:IDENT [note:name] "(" args:[L(IDENT)] ")"   → (call)
+        \\name = STRING
+        \\
+    );
+    // `[note:name]` (a rule) expands into two variants; `[L(IDENT)]` is an
+    // optional list (nil when empty, which a spread skips).
+    try expectActions(&g, a, "top", &.{
+        "(call callee:1 note:_ args:...3)",
+        "(call callee:1 note:2 args:...4)",
+    });
+}
+
+test "choices expand one rule per alternative; an optional choice adds an absent variant first" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\top! = (A | B) C                → (p 1 2)
+        \\     | (A | B)? C               → (q 1 2)
+        \\
+    );
+    try expectActions(&g, a, "top", &.{ "(p 1 2)", "(p 1 2)", "(q _ 1)", "(q 1 2)", "(q 1 2)" });
+    const rules = g.symbols.items[g.getSymbol("top").?].rules.items;
+    try testing.expectEqual(g.getSymbol("A").?, g.rules.items[rules[0]].rhs[0]);
+    try testing.expectEqual(g.getSymbol("B").?, g.rules.items[rules[1]].rhs[0]);
+    try testing.expectEqual(@as(usize, 1), g.rules.items[rules[2]].rhs.len);
+}
+
+test "labels inside choice alternatives fill roles in the variants that have them" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\@schema
+        \\    ret   value:leaf? end:leaf
+        \\top! = (RETURN value:IDENT | YIELD) end:END   → (ret) ~ "no lexer: keywords count as values"
+        \\
+    );
+    try expectActions(&g, a, "top", &.{ "(ret value:2 end:3)", "(ret value:_ end:2)" });
+}
+
+test "result types flow through pass-through rules and lists" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // `body` accepts only `stmt` nodes; stmts arrive through a plumbing
+    // list and a pass-through, which the type check follows.
+    const g = try expandText(a,
+        \\@parser
+        \\@schema
+        \\    block  ...body:stmt
+        \\    stmt   name:leaf
+        \\top!  = items                   → (block ...1)
+        \\items = item                    → (1)
+        \\      | items item              → (...1 2)
+        \\item  = wrap                    → 1
+        \\wrap  = IDENT                   → (stmt 1)
+        \\
+    );
+    try expectActions(&g, a, "top", &.{"(block body:...1)"});
+}
+
+test "without a schema, expanded actions keep the 0.10 trailing-nil cut" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\top! = A [b] [c] D   → (p 1 2 3 ...4 x)
+        \\b = B
+        \\c = C
+        \\
+    );
+    // Absent positions become nil; the action is cut at the first absent
+    // position that no present one follows (here never: ...4 is present).
+    try expectActions(&g, a, "top", &.{
+        "(p 1 _ _ ...2 x)",
+        "(p 1 2 _ ...3 x)",
+        "(p 1 _ 2 ...3 x)",
+        "(p 1 2 3 ...4 x)",
+    });
+    const g2 = try expandText(a,
+        \\@parser
+        \\top! = A [b] [c]     → (p 1 2 x 3)
+        \\b = B
+        \\c = C
+        \\
+    );
+    try expectActions(&g2, a, "top", &.{ "(p 1)", "(p 1 2 x)", "(p 1 _ x 2)", "(p 1 2 x 3)" });
+}

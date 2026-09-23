@@ -1,0 +1,50 @@
+(grammar
+  (schema
+    (kind_decl (kinds `module`) (roles (role rest `decls`)))
+    (kind_decl
+      (kinds `set`)
+      (roles
+        (role _ `op` (type `tag`) opt)
+        (role _ `target` (type `name` `member`))
+        (role _ `value`))
+      (sides `eq`))
+    (kind_decl (kinds `"+"` `"-"`) (roles (role _ `left`) (role _ `right`)))
+    (kind_decl
+      (kinds `for`)
+      (roles
+        (role _ `mode` (type (tagset `tag` `iter` `ptr`)) opt)
+        (role _ `var` (type `leaf`))
+        (role _ `body` (type `node`) opt)
+        (role rest `rest` (type `group`))))
+    (kind_decl (kinds `note`) (roles (role _ `text` (type `leaf`))) _ wrapper)
+    (kind_decl (kinds `mark`) (roles) (sides `at`) wrapper))
+  (tags `flag` `"=>"` `extra`)
+  (display
+    (name_pair `IDENT` `"a name"`)
+    (name_pair `"="` `"'='"`)
+    (name_pair `STRING` `"a string"`))
+  (errors (name_pair `expr` `"an expression"`) (name_pair `stmt` `"a statement"`))
+  (trivia `COMMENT` `BLANK`)
+  (repair (repair_line `holes` `IDENT`) (repair_line `structure` `NEWLINE` `INDENT` `OUTDENT`))
+  (manifest
+    (conflict
+      `shift`
+      (crule `stmt` `IF` `expr` `THEN` `stmt`)
+      _
+      `2`
+      `# else binds to the nearest if`)
+    (conflict
+      `reduce`
+      (crule `lname` `name`)
+      (crule `targs` `name`)
+      `34`
+      `# names win over arguments`)
+    (conflict `shift` (crule `opt` `ε`) _ `1` `# an empty rhs`))
+  (as
+    `IDENT`
+    _
+    (as_entry _ `fn` `fnAs`)
+    (as_entry perm `isv`)
+    (as_entry _ `self`)
+    (as_entry perm `cmd` `cmdAs`))
+  (as `IDENT` `keywordAs` (as_entry _ `keyword`)))

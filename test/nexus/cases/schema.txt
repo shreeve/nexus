@@ -1,0 +1,32 @@
+@schema
+    module     ...decls
+    set        op:tag? target:name|member value | eq
+    "+", "-"   left right
+    for        mode:tag(iter|ptr)? var:leaf body:node? ...rest:group
+    note       text:leaf @wrapper
+    mark       | at @wrapper
+
+@tags  flag "=>"
+    extra
+
+@display
+    IDENT: "a name", "=": "'='"
+    STRING: "a string"
+
+@errors
+    expr: "an expression"
+    stmt: "a statement"
+
+@trivia COMMENT BLANK
+
+@repair
+    holes      IDENT
+    structure  NEWLINE INDENT OUTDENT
+
+@conflicts
+    shift   stmt → IF expr THEN stmt           2   # else binds to the nearest if
+    reduce  lname → name over targs → name     34  # names win over arguments
+    shift   opt → ε                            1   # an empty rhs
+
+@as IDENT = [fn via fnAs, isv!, self, cmd! via cmdAs]
+@as IDENT via keywordAs = [keyword]

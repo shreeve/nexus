@@ -1,0 +1,76 @@
+(grammar
+  (rule
+    (name `for`)
+    (alt
+      _
+      ((tok `FOR`)
+        (label `mode` (group opt ((tok `FOR_MODE`))))
+        (label `var` (ref `name`))
+        (group opt ((lit `","`) (label `index` (ref `name`))))
+        (tok `IN`)
+        (label `iter` (ref `expr`))
+        (label `body` (ref `block`))
+        (group opt ((tok `ELSE`) (label `else` (ref `block`)))))
+      (node `for`)))
+  (rule
+    (name `cond`)
+    (alt
+      _
+      ((label `kw` (group _ ((tok `IF`)) ((tok `UNLESS`))))
+        (label `test` (ref `expr`))
+        (label `body` (ref `block`)))
+      (node `if`))
+    (alt
+      _
+      ((label `kw` (quantified (group _ ((tok `IF`)) ((tok `UNLESS`))) (opt)))
+        (label `test` (ref `expr`)))
+      (node `if`)))
+  (rule
+    (name `set`)
+    (alt
+      _
+      ((label `target` (ref `name`)) (label `eq` (lit `"="`)) (label `value` (ref `expr`)))
+      (node `set` (named `op` (null))))
+    (alt
+      _
+      ((ref `name`) (lit `"+="`) (ref `expr`))
+      (node `set` (named `op` (tag `+=`)) (named `target` (pos `1`)) (named `value` (pos `3`))))
+    (alt
+      _
+      ((ref `name`) (lit `":"`) (ref `type`) (lit `"="`) (ref `expr`))
+      (node `set` (named `target` (pos `1`)) (named `type` (pos `3`)) (named `value` (pos `5`))))
+    (alt
+      _
+      ((label `_` (ref `name`)) (skip (lit `"::"`)) (ref `expr`))
+      (node `drop` (pos `3`))
+      `"the name is only a comment"`))
+  (rule
+    (name `nest`)
+    (alt
+      _
+      ((tok `IDENT`) (tok `IDENT`))
+      (node
+        `assign`
+        (named `target` (node `@name` (pos `1`)))
+        (named `value` (node `num` (pos `2`)))))
+    (alt _ ((exclude `"("`) (tok `IDENT`) (exclude `":"`)) (node `hint` (symid `1`) (tag `!keep`))))
+  (rule
+    (name `many`)
+    (alt _ ((group many ((ref `item`)))) (node `many` (spread `1`)))
+    (alt _ ((list_req `L` (sep_items `item` `";"`))) (node `semi` (spread `1`)))
+    (alt _ ((tok `X`) (tok `Y`)) (node `xy` (pos `1`) (pos `2`)))
+    (alt
+      _
+      ((tok `A`)
+        (tok `B`)
+        (tok `C`)
+        (tok `D`)
+        (tok `E`)
+        (tok `F`)
+        (tok `G`)
+        (tok `H`)
+        (tok `I`)
+        (tok `J`)
+        (tok `K`))
+      (node `p` (pos `1`) (pos `11`) (pos `10`)))
+    (alt _ ((tok `A`) (tok `B`)) (keep `1` (spread `2`)))))
