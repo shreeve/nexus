@@ -1,0 +1,11 @@
+# leading comment
+
+program! = stmt                     → (module 1)   # trailing comment
+
+# between rules
+
+
+stmt = A                            → (a 1)
+     # between alternatives
+     | B                            → (b 1)
+

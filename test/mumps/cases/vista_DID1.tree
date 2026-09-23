@@ -1,0 +1,992 @@
+(routine
+  (label `DID1`)
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DJ` ((expr (lvar `Z`)))) (expr (lvar `D0`)))
+      (= (lvar `DDL1`) (expr (num `14`)))
+      (= (lvar `DDL2`) (expr (num `32`))))
+    (goto _ ((ref `B`))))
+  (` `)
+  (label `L` _ ((set _ (= (lvar `DJ` ((expr (lvar `Z`)))) (expr (num `0`))))))
+  (label
+    `A`
+    _
+    ((set
+       _
+       (=
+         (lvar `DJ` ((expr (lvar `Z`))))
+         (expr
+           (intrinsic
+             `O`#211
+             ((expr
+                (gvar
+                  `DD`
+                  ((expr (lvar `F` ((expr (lvar `Z`))))) (expr (lvar `DJ` ((expr (lvar `Z`)))))))))))))
+      (if (expr (lvar `DJ` ((expr (lvar `Z`)))) (`'>` (num `0`))))
+      (set
+        (postcond (expr (lvar `DJ` ((expr (lvar `Z`)))) (`=` (str `""`))))
+        (= (lvar `DJ` ((expr (lvar `Z`)))) (expr (`-` (num `1`)))))
+      (write _ (posformat `!` `!`))
+      (set _ (= (lvar `Z`) (expr (lvar `Z`) (`-` (num `1`)))))
+      (quit)))
+  (label
+    `B`
+    _
+    ((set
+       _
+       (=
+         (lvar `N`)
+         (expr
+           (gvar
+             `DD`
+             ((expr (lvar `F` ((expr (lvar `Z`)))))
+               (expr (lvar `DJ` ((expr (lvar `Z`)))))
+               (expr (num `0`)))))))
+      (kill _ (lvar `DDF`))
+      (if
+        (expr (intrinsic `D`#202 ((expr (lvar `DIGR`)))))
+        (expr
+          (lvar `Z`)
+          (`<` (num `2`))
+          (`!` (expr (lvar `DJ` ((expr (lvar `Z`)))) (`-` (num `.01`))))))
+      (xecute _ ((expr (lvar `DIGR`))))
+      (else)
+      (goto _ ((ref `ND`)))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `HD`) _ (postcond (expr (intrinsic `Y`#318) (`+` (num `6`)) (`>` (lvar `IOSL`))))))
+    (quit (postcond (expr (lvar `M`) (`=` (lvar `U`)))))
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (lvar `F` ((expr (lvar `Z`)))))
+      (expr (str `","`))
+      (expr (lvar `DJ` ((expr (lvar `Z`)))))))
+  (` `
+    _
+    (write
+      _
+      (? (expr (expr (lvar `Z`) (`+` (lvar `Z`)) (`+` (num `12`)))))
+      (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `1`)))))
+      (? (expr (lvar `DDL2`) (`+` (num `4`))))
+      (expr
+        (str `" "`)
+        (`_` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `4`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `2`))))))))
+  (label
+    `WP`
+    _
+    ((if
+       (expr (lvar `X`))
+       (expr
+         (intrinsic
+           `D`#202
+           ((expr (gvar `DD` ((expr (`+` (lvar `X`))) (expr (num `.01`)) (expr (num `0`)))))))))
+      (set
+        _
+        (=
+          (lvar `W`)
+          (expr
+            (intrinsic `P`#212 ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `2`)))))))
+      (if (expr (lvar `W`) (`[` (str `"W"`))))
+      (do)))
+  (` .`#1
+    _
+    (set _ (= (lvar `X`) (expr (str `"WORD-PROCESSING #"`) (`_` (`+` (lvar `X`))))))
+    (do)
+    (set _ (= (lvar `X`) (expr (str `"(NOWRAP)"`))))
+    (do (postcond (expr (lvar `W`) (`[` (str `"L"`)))))
+    (set _ (= (lvar `X`) (expr (str `"(IGNORE ""|"")"`))))
+    (do (postcond (expr (lvar `W`) (`[` (str `"X"`)) (`!` (expr (lvar `W`) (`[` (str `"x"`)))))))
+    (set _ (= (lvar `X`) (expr (str `"(UNEDITABLE)"`))))
+    (do (postcond (expr (lvar `W`) (`[` (str `"I"`)))))
+    (set _ (= (lvar `X`) (expr (str `""`)))))
+  (` ..`#2
+    _
+    (write
+      (postcond
+        (expr
+          (intrinsic `L`#209 ((expr (lvar `X`))))
+          (`+` (intrinsic `X`#317))
+          (`+` (num `5`))
+          (`>` (lvar `IOM`))))
+      (posformat (? (expr (num `18`))) `!`))
+    (write _ (expr (str `"   "`)) (expr (lvar `X`))))
+  (` `
+    _
+    (for
+      (lvar `W`)
+      (expr (str `"BOOLEAN"`))
+      (expr (str `"COMPUTED"`))
+      (expr (str `"FREE TEXT"`))
+      (expr (str `"SET"`))
+      (expr (str `"DATE"`))
+      (expr (str `"NUMBER"`))
+      (expr (str `"POINTER"`))
+      (expr (str `"K"`))
+      (expr (str `"VARIABLE POINTER"`))
+      (expr (str `"p"`)))
+    (if (expr (lvar `X`) (`[` (intrinsic `E`#203 ((expr (lvar `W`)))))))
+    (do
+      _
+      (call
+        (ref `VP` _ `DIDX`)
+        _
+        (postcond (expr (intrinsic `E`#203 ((expr (lvar `W`)))) (`=` (str `"V"`))))))
+    (set (postcond (expr (lvar `W`) (`=` (str `"K"`)))) (= (lvar `W`) (expr (str `"MUMPS"`))))
+    (set (postcond (expr (lvar `W`) (`=` (str `"p"`)))) (= (lvar `W`) (expr (str `"POINTER"`))))
+    (write _ (? (expr (num `40`))) (expr (str `" "`) (`_` (lvar `W`))))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`)))))))
+  (` `
+    _
+    (if (expr (`+` (lvar `X`))))
+    (set _ (= (lvar `W`) (expr (str `" Multiple"`))))
+    (set _ (= (lvar `W`) (expr (lvar `W`) (`_` (str `" #"`)) (`_` (`+` (lvar `X`))))))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`)))))))
+  (` `
+    _
+    (if (expr (lvar `X`) (`[` (str `"V"`))))
+    (set _ (= (lvar `I`) (expr (num `0`))))
+    (for)
+    (set
+      _
+      (=
+        (lvar `I`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `DD`
+                 ((expr (lvar `F` ((expr (lvar `Z`)))))
+                   (expr (lvar `D0`))
+                   (expr (str `"V"`))
+                   (expr (lvar `I`))))))))))
+    (quit (postcond (expr (lvar `I`) (`'>` (num `0`)))))
+    (set
+      _
+      (=
+        (lvar `%Y`)
+        (expr
+          (intrinsic `P`#212 ((expr (naked (expr (lvar `I`)) (expr (num `0`)))) (expr (lvar `U`)))))))
+    (if
+      (expr (intrinsic `D`#202 ((expr (gvar `DIC` ((expr (lvar `%Y`)) (expr (num `0`))))))))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (@name (expr (naked (expr (num `0`)) (expr (str `"GL"`))) (`_` (str `"0)"`)))))))))
+    (set
+      _
+      (=
+        (gvar
+          `UTILITY`
+          ((expr (intrinsic `J`#208))
+            (expr (str `"P"`))
+            (expr
+              (intrinsic
+                `E`#203
+                ((expr (intrinsic `P`#212 ((expr (naked (expr (num `0`)))) (expr (lvar `U`)))))
+                  (expr (num `1`))
+                  (expr (num `30`)))))
+            (expr (num `0`))))
+        (expr (lvar `%Y`)))
+      (=
+        (naked (expr (lvar `F` ((expr (lvar `Z`))))) (expr (lvar `DJ` ((expr (lvar `Z`))))))
+        (expr (num `0`)))))
+  (` `
+    _
+    (set (postcond (expr (lvar `I`) (`=` (str `""`)))) (= (lvar `I`) (expr (`-` (num `1`)))))
+    (goto _ ((ref `MP`) (postcond (expr (lvar `X`) (`'[` (str `"P"`)) (`!` (lvar `X`))))))
+    (set
+      _
+      (=
+        (lvar `Y`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `3`)))))))
+    (if
+      (expr (lvar `Y`) (`]` (str `""`)))
+      (expr
+        (intrinsic `D`#202 ((expr (@name (expr (str `"^"`) (`_` (lvar `Y`)) (`_` (str `"0)"`)))))))))
+    (set
+      _
+      (=
+        (lvar `%Y`)
+        (expr (`+` (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `"P"`)) (expr (num `2`)))))))
+      (=
+        (lvar `W`)
+        (expr
+          (str `" TO "`)
+          (`_`
+            (intrinsic `P`#212 ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `1`)))))
+          (`_` (str `" FILE (#"`))
+          (`_` (lvar `%Y`))
+          (`_` (str `")"`))))
+      (=
+        (gvar
+          `UTILITY`
+          ((expr (intrinsic `J`#208))
+            (expr (str `"P"`))
+            (expr
+              (intrinsic
+                `E`#203
+                ((expr
+                   (intrinsic
+                     `P`#212
+                     ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `1`)))))
+                  (expr (num `1`))
+                  (expr (num `30`)))))
+            (expr (num `0`))))
+        (expr (lvar `%Y`)))
+      (=
+        (naked (expr (lvar `F` ((expr (lvar `Z`))))) (expr (lvar `DJ` ((expr (lvar `Z`))))))
+        (expr (num `0`))))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))) ((ref `MP`))))
+  (` `
+    _
+    (set _ (= (lvar `W`) (expr (str `" ** TO AN UNDEFINED FILE ** "`))))
+    (write
+      (postcond
+        (expr
+          (expr (intrinsic `L`#209 ((expr (lvar `W`)))) (`+` (intrinsic `X`#317)))
+          (`'<` (lvar `IOM`))))
+      (posformat `!`))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`)))))))
+  (label
+    `MP`
+    _
+    ((if (expr (lvar `X`) (`'[` (str `"V"`))))
+      (do _ (call (ref `RT` _ `DIDX`)))
+      (goto (postcond (expr (lvar `M`) (`=` (lvar `U`)))) ((ref `ND`)))))
+  (label
+    `S`
+    _
+    ((if (expr (lvar `X`) (`[` (str `"S"`))))
+      (do)
+      (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))))
+  (` . `#1 _ (new _ `N1`))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `N1`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `3`)))))))
+    (for (lvar `%1`) (range (expr (num `1`)) (expr (num `1`))))
+    (set
+      _
+      (=
+        (lvar `Y`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N1`)) (expr (str `";"`)) (expr (lvar `%1`)))))))
+    (quit (postcond (expr (lvar `Y`) (`=` (str `""`)))))
+    (write _ (posformat `!`))
+    (set
+      _
+      (=
+        (lvar `W`)
+        (expr
+          (str `"'"`)
+          (`_` (intrinsic `P`#212 ((expr (lvar `Y`)) (expr (str `":"`)) (expr (num `1`)))))
+          (`_` (str `"' FOR "`))
+          (`_` (intrinsic `P`#212 ((expr (lvar `Y`)) (expr (str `":"`)) (expr (num `2`)))))
+          (`_` (str `"; "`)))))
+    (do _ (call (ref `W`)))
+    (quit (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+  (` `
+    _
+    (goto _ ((ref `RD`) (postcond (expr (intrinsic `D`#202 ((expr (lvar `DINM`))))))))
+    (if (expr (lvar `X`) (`[` (str `"C"`))))
+    (set
+      _
+      (=
+        (lvar `W`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `5`)) (expr (num `99`)))))))
+    (write _ (posformat (? (expr (lvar `DDL1`))) `!`) (expr (str `"MUMPS CODE: "`)))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+    (goto _ ((ref `RD`))))
+  (` `
+    _
+    (if
+      (expr
+        (str `"Q"`)
+        (`'[` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `5`)))))))
+    (write _ (posformat (? (expr (lvar `DDL1`))) `!`) (expr (str `"INPUT TRANSFORM:"`)))
+    (set
+      _
+      (=
+        (lvar `W`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `5`)) (expr (num `99`)))))))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`)))))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `DD`
+               ((expr (lvar `F` ((expr (lvar `Z`)))))
+                 (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                 (expr (num `2`)))))))
+        (`#` (num `2`))))
+    (write _ (posformat (? (expr (lvar `DDL1`))) `!`) (expr (str `"OUTPUT TRANSFORM:"`)))
+    (set
+      _
+      (=
+        (lvar `W`)
+        (expr
+          (select
+            ((expr
+               (intrinsic
+                 `D`#202
+                 ((expr
+                    (gvar
+                      `DD`
+                      ((expr (lvar `F` ((expr (lvar `Z`)))))
+                        (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                        (expr (num `2.1`))))))))
+              (expr (naked (expr (num `2.1`)))))
+            ((expr (num `1`)) (expr (naked (expr (num `2`)))))))))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`)))))))
+  (label
+    `RD`
+    _
+    ((do
+       _
+       (call
+         (ref _ _ `DID2`)
+         _
+         (postcond
+           (expr
+             (intrinsic
+               `O`#211
+               ((expr
+                  (gvar
+                    `DD`
+                    ((expr (lvar `F` ((expr (lvar `Z`)))))
+                      (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                      (expr (num `2.99`)))))))
+             (`]` (str `""`))))))
+      (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+      (if (expr (`'` (lvar `X`))))
+      (set _ (= (lvar `W`) (expr (str `"UNEDITABLE"`))))
+      (write (postcond (expr (lvar `X`) (`[` (str `"I"`)))) (posformat `!`))
+      (do _ (call (ref `W`) _ (postcond (expr (lvar `X`) (`[` (str `"I"`))))))
+      (goto _ ((ref `N`)))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `O`#211
+          ((expr
+             (gvar
+               `DD`
+               ((expr (`+` (lvar `X`))) (expr (num `0`)) (expr (str `"ID"`)) (expr (str `""`)))))))
+        (`]` (str `""`))))
+    (write _ (posformat (? (expr (lvar `DDL1`))) `!`) (expr (str `"IDENTIFIED BY:"`)))
+    (set _ (= (lvar `W`) (expr (str `""`))))
+    (for (lvar `%`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `%`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `DD`
+                 ((expr (`+` (lvar `X`))) (expr (num `0`)) (expr (str `"ID"`)) (expr (lvar `%`))))))))))
+    (set
+      (postcond (expr (lvar `%`) (`>` (num `0`))))
+      (=
+        (lvar `W`)
+        (expr
+          (lvar `W`)
+          (`_`
+            (intrinsic
+              `P`#212
+              ((expr (gvar `DD` ((expr (`+` (lvar `X`))) (expr (lvar `%`)) (expr (num `0`)))))
+                (expr (lvar `U`)))))
+          (`_` (str `"(#"`))
+          (`_` (lvar `%`))
+          (`_` (str `")"`))
+          (`_`
+            (select
+              ((expr
+                 (intrinsic
+                   `P`#212
+                   ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `2`))))
+                 (`[` (str `"R"`)))
+                (expr (str `"[R]"`)))
+              ((expr (num `1`)) (expr (str `""`)))))
+          (`_` (str `", "`)))))
+    (if (expr (lvar `%`) (`'>` (num `0`))))
+    (set
+      (postcond (expr (lvar `W`) (? ((pat () (`E`)) (pat (`1` `1`) (_ `", "`))))))
+      (=
+        (lvar `W`)
+        (expr
+          (intrinsic
+            `E`#203
+            ((expr (lvar `W`))
+              (expr (num `1`))
+              (expr (intrinsic `L`#209 ((expr (lvar `W`)))) (`-` (num `2`))))))))
+    (do _ (call (ref `W`)))
+    (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+    (quit))
+  (` `)
+  (` `)
+  (` `
+    _
+    (if (expr (`'` (intrinsic `D`#202 ((expr (lvar `DINM`)))))))
+    (set _ (= (lvar `%`) (expr (str `" "`))))
+    (for)
+    (set
+      _
+      (=
+        (lvar `%`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `DD`
+                 ((expr (`+` (lvar `X`))) (expr (num `0`)) (expr (str `"ID"`)) (expr (lvar `%`))))))))))
+    (quit (postcond (expr (lvar `%`) (`=` (str `""`)))))
+    (do)
+    (quit (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+  (` . `#1 _ (new _ `DIDLN` `DIDPG`))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDLN` ((expr (num `1`))))
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (gvar
+                 `DD`
+                 ((expr (`+` (lvar `X`))) (expr (num `0`)) (expr (str `"ID"`)) (expr (lvar `%`))))))))))
+    (quit (postcond (expr (lvar `DIDLN` ((expr (num `1`)))) (? ((pat () (_ `"^"`))))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDLN` ((expr (num `0`))))
+        (expr (str `""""`) (`_` (lvar `%`)) (`_` (str `""":    "`))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDLN` ((expr (num `0`))))
+        (expr
+          (intrinsic
+            `J`#208
+            ((expr (str `""`))
+              (expr
+                (lvar `DDL2`)
+                (`-` (lvar `DDL1`))
+                (`-` (intrinsic `L`#209 ((expr (lvar `DIDLN` ((expr (num `0`)))))))))))
+          (`_` (lvar `DIDLN` ((expr (num `0`)))))))))
+  (` . `#1
+    _
+    (set _ (= (lvar `DIDPG` ((expr (str `"H"`)))) (expr (str `"W """" D H^DIDH S:M=U PAGE(U)=1"`)))))
+  (` . `#1
+    _
+    (do
+      _
+      (call
+        (ref `WRPHI` _ `DIKCP1`)
+        ((byref `DIDLN`)
+          (expr (lvar `IOM`) (`-` (num `1`)) (`-` (lvar `DDL2`)))
+          (expr (lvar `DDL1`))
+          (expr (lvar `DDL2`) (`-` (lvar `DDL1`)))
+          (expr (num `1`))
+          (byref `DIDPG`)))))
+  (` ` _ (goto (postcond (expr (lvar `M`) (`=` (lvar `U`)))) ((ref `ND`))))
+  (` `)
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `DD` ((expr (str `"KEY"`)) (expr (str `"B"`)) (expr (`+` (lvar `X`))))))))))
+    (do)
+    (goto (postcond (expr (lvar `M`) (`=` (lvar `U`)))) ((ref `ND`))))
+  (` . `#1 _ (new _ `DIDPG`))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDPG` ((expr (str `"H"`))))
+        (expr (str `"W """" S DC=DC+1 D ^DIDH1 S:M=U PAGE(U)=1"`)))))
+  (` . `#1
+    _
+    (do
+      _
+      (call
+        (ref `PRINT` _ `DIKKP`)
+        ((expr (`+` (lvar `X`)))
+          (expr (str `""`))
+          (expr
+            (str `"L"`)
+            (`_` (lvar `DDL1`))
+            (`_` (str `"C"`))
+            (`_` (expr (lvar `DDL2`) (`-` (lvar `DDL1`)))))
+          (byref `DIDPG`)))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `DD` ((expr (str `"IX"`)) (expr (str `"B"`)) (expr (`+` (lvar `X`))))))))))
+    (do)
+    (goto (postcond (expr (lvar `M`) (`=` (lvar `U`)))) ((ref `ND`))))
+  (` . `#1 _ (new _ `DIDPG`))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDPG` ((expr (str `"H"`))))
+        (expr (str `"W """" S DC=DC+1 D ^DIDH1 S:M=U PAGE(U)=1"`)))))
+  (` . `#1
+    _
+    (do
+      _
+      (call
+        (ref `LIST` _ `DIKCP`)
+        ((expr (`+` (lvar `X`)))
+          (expr (str `""`))
+          (expr
+            (str `"L"`)
+            (`_` (lvar `DDL1`))
+            (`_` (str `"C"`))
+            (`_` (expr (lvar `DDL2`) (`-` (lvar `DDL1`)))))
+          (byref `DIDPG`)))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `Z`) (expr (lvar `Z`) (`+` (num `1`))))
+      (= (lvar `DDL1`) (expr (lvar `DDL1`) (`+` (num `2`))))
+      (= (lvar `DDL2`) (expr (lvar `DDL2`) (`+` (num `2`))))
+      (= (lvar `F` ((expr (lvar `Z`)))) (expr (`+` (lvar `X`))))))
+  (` ` _ (do _ (call (ref `L`))))
+  (label
+    `N`
+    _
+    ((kill _ (lvar `DDN1`))
+      (if (expr (lvar `X`) (`[` (str `"X"`))))
+      (set _ (= (lvar `DDN1`) (expr (num `1`))))
+      (write
+        _
+        (posformat `!`)
+        (? (expr (lvar `DDL1`)))
+        (expr (str `"NOTES:"`))
+        (? (expr (lvar `DDL2`)))
+        (expr (str `"XXXX--CAN'T BE ALTERED EXCEPT BY PROGRAMMER"`)))
+      (write _ (posformat `!`))
+      (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))))
+  (` `
+    _
+    (set _ (= (lvar `W`) (expr (num `0`))))
+    (if
+      (expr
+        (intrinsic
+          `O`#211
+          ((expr
+             (gvar
+               `DD`
+               ((expr (lvar `F` ((expr (lvar `Z`)))))
+                 (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                 (expr (num `5`))
+                 (expr (lvar `W`)))))))
+        (`'=` (str `""`)))
+      (expr (`'` (intrinsic `D`#202 ((expr (lvar `DDN1`)))))))
+    (write _ (posformat (? (expr (lvar `DDL1`))) `!`) (expr (str `"NOTES:"`))))
+  (label
+    `TR`
+    _
+    ((set
+       _
+       (=
+         (lvar `W`)
+         (expr
+           (intrinsic
+             `O`#211
+             ((expr
+                (gvar
+                  `DD`
+                  ((expr (lvar `F` ((expr (lvar `Z`)))))
+                    (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                    (expr (num `5`))
+                    (expr (lvar `W`))))))))))
+      (set (postcond (expr (lvar `W`) (`=` (str `""`)))) (= (lvar `W`) (expr (`-` (num `1`)))))
+      (goto _ ((ref `IX`) (postcond (expr (lvar `W`) (`'>` (num `0`))))))
+      (set
+        _
+        (= (lvar `I`) (expr (naked (expr (lvar `W`)) (expr (num `0`)))))
+        (= (lvar `%`) (expr (`+` (lvar `I`)))))
+      (if
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `DD`
+                   ((expr (lvar `%`))
+                     (expr
+                       (intrinsic `P`#212 ((expr (lvar `I`)) (expr (lvar `U`)) (expr (num `2`)))))
+                     (expr (num `0`))))))))
+          (`!` (intrinsic `D`#202 ((expr (lvar `W` ((expr (lvar `I`))))))))))
+      (kill
+        _
+        (gvar
+          `DD`
+          ((expr (lvar `F` ((expr (lvar `Z`)))))
+            (expr (lvar `DJ` ((expr (lvar `Z`)))))
+            (expr (num `5`))
+            (expr (lvar `W`)))))
+      (goto _ ((ref `TR`)))))
+  (` `
+    _
+    (set _ (= (lvar `W` ((expr (lvar `I`)))) (expr (num `0`))))
+    (set _ (= (lvar `WS`) (expr (lvar `W`))))
+    (do _ (call (ref `WR` _ `DIDH1`)))
+    (write _ (posformat `!`))
+    (set _ (= (lvar `W`) (expr (lvar `WS`))))
+    (kill _ (lvar `WS`))
+    (goto _ ((ref `TR`))))
+  (label
+    `IX`
+    _
+    ((set _ (= (lvar `F`) (expr (num `0`))))
+      (for)
+      (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+      (set
+        _
+        (=
+          (lvar `F`)
+          (expr
+            (intrinsic
+              `O`#211
+              ((expr
+                 (gvar
+                   `DD`
+                   ((expr (lvar `F` ((expr (lvar `Z`)))))
+                     (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                     (expr (num `1`))
+                     (expr (lvar `F`))))))))))
+      (quit (postcond (expr (lvar `F`) (`'>` (num `0`)))))
+      (write _ (posformat (? (expr (lvar `DDL1`))) `!`) (expr (str `"CROSS-REFERENCE:"`)))
+      (do _ (call (ref `IX1`)))))
+  (` ` _ (set (postcond (expr (lvar `F`) (`=` (str `""`)))) (= (lvar `F`) (expr (`-` (num `1`))))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `DD`
+               ((expr (str `"IX"`))
+                 (expr (str `"F"`))
+                 (expr (lvar `F` ((expr (lvar `Z`)))))
+                 (expr (lvar `DJ` ((expr (lvar `Z`))))))))))))
+    (do)
+    (set (postcond (expr (lvar `M`) (`=` (lvar `U`)))) (= (lvar `DN`) (expr (num `0`)))))
+  (` . `#1 _ (new _ `DIDPG` `DIDFLAG`))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDPG` ((expr (str `"H"`))))
+        (expr (str `"W """" S DC=DC+1 D ^DIDH1 S:M=U PAGE(U)=1"`)))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DIDFLAG`)
+        (expr
+          (str `"L"`)
+          (`_` (lvar `DDL1`))
+          (`_` (str `"C"`))
+          (`_` (expr (lvar `DDL2`) (`-` (lvar `DDL1`))))
+          (`_` (str `"T1"`))))))
+  (` . `#1
+    _
+    (do
+      _
+      (call
+        (ref `PRINT` _ `DIKCP`)
+        ((expr (lvar `F` ((expr (lvar `Z`)))))
+          (expr (lvar `DJ` ((expr (lvar `Z`)))))
+          (expr
+            (intrinsic
+              `E`#203
+              ((expr (str `"R"`)) (expr (intrinsic `G`#206 ((expr (lvar `DIDRANGE`)))))))
+            (`_` (str `"FS"`))
+            (`_` (lvar `DIDFLAG`))
+            (`_`
+              (intrinsic
+                `E`#203
+                ((expr (str `"N"`))
+                  (expr (intrinsic `D`#202 ((expr (lvar `DINM`)))) (`#` (num `2`)))))))
+          (byref `DIDPG`))))
+    (quit (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+  (` . `#1
+    _
+    (do
+      (postcond (expr (`'` (intrinsic `G`#206 ((expr (lvar `DIDRANGE`)))))))
+      (call
+        (ref `LIST` _ `DIKCP`)
+        ((expr (lvar `F` ((expr (lvar `Z`)))))
+          (expr (lvar `DJ` ((expr (lvar `Z`)))))
+          (expr (str `"RS"`) (`_` (lvar `DIDFLAG`)))
+          (byref `DIDPG`)))))
+  (label
+    `ND`
+    _
+    ((set _ (= (lvar `X`) (expr (str `""`))))
+      (goto
+        (postcond (expr (lvar `M`) (`'=` (lvar `U`))))
+        ((ref `A`) (postcond (expr (lvar `Z`) (`>` (num `1`))))))
+      (quit)))
+  (label
+    `IX1`
+    _
+    ((set _ (= (lvar `W`) (expr (naked (expr (lvar `F`)) (expr (num `0`))) (`_` (str `" "`)))))
+      (kill _ (lvar `DDF`))
+      (write _ (? (expr (lvar `DDL2`))) (expr (lvar `W`)) (posformat `!`))
+      (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))
+      (do
+        _
+        (call
+          (ref `TP`)
+          _
+          (postcond
+            (expr
+              (intrinsic `P`#212 ((expr (lvar `W`)) (expr (lvar `U`)) (expr (num `3`))))
+              (`[` (str `"TRIG"`))))))
+      (if (expr (`'` (intrinsic `D`#202 ((expr (lvar `DINM`)))))))
+      (set _ (= (lvar `X`) (expr (num `0`))))
+      (for (lvar `%`) (range (expr (num `0`)) (expr (num `0`))))
+      (set
+        _
+        (=
+          (lvar `X`)
+          (expr
+            (intrinsic
+              `O`#211
+              ((expr
+                 (gvar
+                   `DD`
+                   ((expr (lvar `F` ((expr (lvar `Z`)))))
+                     (expr (lvar `DJ` ((expr (lvar `Z`)))))
+                     (expr (num `1`))
+                     (expr (lvar `F`))
+                     (expr (lvar `X`))))))))))
+      (quit (postcond (expr (lvar `X`) (`=` (str `""`)))))
+      (if (expr (lvar `X`) (`'=` (str `"%D"`))) (expr (lvar `X`) (`'=` (str `"DT"`))))
+      (set _ (= (lvar `W`) (expr (naked (expr (lvar `X`))))))
+      (set
+        (postcond (expr (intrinsic `L`#209 ((expr (lvar `W`)))) (`<` (num `248`))))
+        (= (lvar `W`) (expr (lvar `X`) (`_` (str `")= "`)) (`_` (lvar `W`)))))
+      (kill (postcond (expr (lvar `X`) (`=` (num `3`)))) (lvar `DDF`))
+      (do _ (call (ref `W`)))
+      (write _ (posformat `!`))
+      (goto _ ((ref `ND`) (postcond (expr (lvar `M`) (`=` (lvar `U`))))))))
+  (` ` _ (quit (postcond (expr (`'` (intrinsic `D`#202 ((expr (naked (expr (str `"%D"`)))))))))))
+  (` `)
+  (` ` _ (new _ `DIDI` `DIDN` `DIDZ` `DIWF` `DIWL` `DIWR` `X`))
+  (` ` _ (kill _ (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"W"`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DIWF`) (expr (str `"W"`)))
+      (= (lvar `DIWL`) (expr (lvar `DDL2`) (`+` (num `1`))))
+      (= (lvar `DIWR`) (expr (lvar `IOM`)))
+      (= (lvar `DIDZ`) (expr (lvar `Z`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DIDN`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (intrinsic
+                 `G`#206
+                 ((expr
+                    (gvar
+                      `DD`
+                      ((expr (lvar `F` ((expr (lvar `DIDZ`)))))
+                        (expr (lvar `DJ` ((expr (lvar `DIDZ`)))))
+                        (expr (num `1`))
+                        (expr (lvar `F`))
+                        (expr (str `"%D"`))
+                        (expr (num `0`))))))))
+              (expr (lvar `U`))
+              (expr (num `3`))))))
+      (= (lvar `DIDI`) (expr (num `0`)))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `DIDI`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `DD`
+                 ((expr (lvar `F` ((expr (lvar `DIDZ`)))))
+                   (expr (lvar `DJ` ((expr (lvar `DIDZ`)))))
+                   (expr (num `1`))
+                   (expr (lvar `F`))
+                   (expr (str `"%D"`))
+                   (expr (lvar `DIDI`))))))))))
+    (quit
+      (postcond
+        (expr
+          (`'` (lvar `DIDI`))
+          (`!` (expr (lvar `DIDN`) (`&` (expr (lvar `DIDI`) (`>` (lvar `DIDN`)))))))))
+    (set _ (= (lvar `X`) (expr (naked (expr (lvar `DIDI`)) (expr (num `0`))))))
+    (do _ (call (ref _ _ `DIWP`)))
+    (if (expr (intrinsic `D`#202 ((expr (lvar `DN`))))) (expr (`'` (lvar `DN`))))
+    (set _ (= (lvar `M`) (expr (lvar `U`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `M`) (`'=` (lvar `U`))))
+    (do _ (call (ref _ _ `DIWW`)))
+    (if (expr (intrinsic `D`#202 ((expr (lvar `DN`))))) (expr (`'` (lvar `DN`))))
+    (set _ (= (lvar `M`) (expr (lvar `U`)))))
+  (` ` _ (if (expr (lvar `M`) (`'=` (lvar `U`)))) (write _ (posformat `!`)))
+  (` ` _ (else) (kill _ (lvar `DIOEND`)))
+  (` ` _ (set _ (= (lvar `Z`) (expr (lvar `DIDZ`)))))
+  (` ` _ (kill _ (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"W"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `TP`
+    _
+    ((set
+       _
+       (=
+         (lvar `X`)
+         (expr
+           (`+`
+             (intrinsic
+               `P`#212
+               ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `4`))))))))
+      (if
+        (expr (lvar `F` ((expr (lvar `Z`)))) (`-` (lvar `X`)))
+        (expr
+          (intrinsic `D`#202 ((expr (gvar `DIC` ((expr (lvar `X`)) (expr (num `0`)))))))
+          (`#` (num `2`))))
+      (set
+        _
+        (=
+          (gvar
+            `UTILITY`
+            ((expr (intrinsic `J`#208))
+              (expr (str `"P"`))
+              (expr
+                (intrinsic
+                  `E`#203
+                  ((expr
+                     (intrinsic
+                       `P`#212
+                       ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `1`)))))
+                    (expr (num `1`))
+                    (expr (num `30`)))))
+              (expr (num `0`))))
+          (expr (lvar `X`)))
+        (=
+          (naked (expr (lvar `F` ((expr (lvar `Z`))))) (expr (lvar `DJ` ((expr (lvar `Z`))))))
+          (expr (num `6`))))))
+  (` ` _ (quit))
+  (label
+    `W`
+    _
+    ((for (lvar `K`) (range (expr (num `0`)) (expr (num `0`))))
+      (write (postcond (expr (intrinsic `D`#202 ((expr (lvar `DDF`)))))) (posformat `!`))
+      (set
+        (postcond
+          (expr
+            (expr
+              (expr (intrinsic `L`#209 ((expr (lvar `W`)))) (`+` (lvar `DDL2`)))
+              (`>` (lvar `IOM`)))))
+        (= (lvar `DDL2`) (expr (num `32`))))
+      (write _ (? (expr (lvar `DDL2`))))
+      (set
+        _
+        (=
+          (lvar `%Y`)
+          (expr
+            (intrinsic
+              `E`#203
+              ((expr (lvar `W`)) (expr (lvar `IOM`) (`-` (intrinsic `X`#317))) (expr (num `999`)))))))
+      (write
+        _
+        (expr
+          (intrinsic
+            `E`#203
+            ((expr (lvar `W`))
+              (expr (num `1`))
+              (expr (lvar `IOM`) (`-` (intrinsic `X`#317)) (`-` (num `1`)))))))
+      (quit (postcond (expr (lvar `%Y`) (`=` (str `""`)))))
+      (set _ (= (lvar `W`) (expr (lvar `%Y`))) (= (lvar `DDF`) (expr (num `1`))))))
+  (` `
+    _
+    (kill (postcond (expr (`'` (lvar `X`)))) (lvar `DDF`))
+    (quit (postcond (expr (intrinsic `Y`#318) (`+` (num `6`)) (`<` (lvar `IOSL`))))))
+  (label
+    `HD`
+    _
+    ((set _ (= (lvar `DC`) (expr (lvar `DC`) (`+` (num `1`)))))
+      (do _ (call (ref _ _ `DIDH`)))
+      (quit))))

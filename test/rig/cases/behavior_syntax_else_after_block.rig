@@ -1,0 +1,35 @@
+# A line starting with `else` continues the `if` (or `while` / `for`)
+# whose block just closed; after a match arm's block it is the default
+# arm.
+
+enum Kind
+  one
+  two
+  three
+
+sub show(k: Kind, flag: Bool)
+  match k
+    .one
+      if flag
+        print "one, flagged"
+      else
+        print "one"
+    else
+      print "not one"
+
+sub main()
+  show(.one, true)
+  show(.one, false)
+  show(.three, true)
+  if false
+    print "no"
+  else if true
+    print "else if"
+  else
+    print "else"
+
+# expect:
+# one, flagged
+# one
+# not one
+# else if

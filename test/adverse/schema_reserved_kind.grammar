@@ -1,0 +1,19 @@
+# A kind whose accessor namespace would shadow a name the generated `ir`
+# namespace itself uses (`ir.Sexp`) is rejected where it is declared.
+# error: schema_reserved_kind.grammar:17:5:
+# error: 'ir.Sexp' is reserved
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@schema
+    name        id:leaf
+    "ir.Sexp"   id:leaf @wrapper
+
+top! = IDENT                                → (name 1)

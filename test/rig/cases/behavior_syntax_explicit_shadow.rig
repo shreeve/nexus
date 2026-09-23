@@ -1,0 +1,9 @@
+# `new x = ...` explicitly shadows an existing binding.
+
+sub main()
+  x = 1
+  new x = 2
+  print x
+
+# expect:
+# 2

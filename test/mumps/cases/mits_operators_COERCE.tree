@@ -1,0 +1,267 @@
+(routine
+  (label `COERCE`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/operators/COERCE"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ on plain digit"`)) (expr (num `5`)) (expr (str `"+""5"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ leading sign"`)) (expr (`-` (num `5`))) (expr (str `"+""-5"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ leading + ignored"`)) (expr (num `5`)) (expr (str `"+""+5"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ leading zeros stripped"`)) (expr (num `5`)) (expr (str `"+""005"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ trailing junk"`)) (expr (num `5`)) (expr (str `"+""5abc"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ numeric in middle ignores trailing"`))
+          (expr (num `5`))
+          (expr (str `"+""5 6"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ leading whitespace = 0 (per spec)"`))
+          (expr (num `0`))
+          (expr (str `"+"" 5"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ scientific"`)) (expr (num `100`)) (expr (str `"+""1E2"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ neg scientific"`)) (expr (num `.01`)) (expr (str `"+""1E-2"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ decimal"`)) (expr (num `3.14`)) (expr (str `"+""3.14"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ leading dot"`)) (expr (num `.5`)) (expr (str `"+"".5"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ trailing dot ignored"`)) (expr (num `5`)) (expr (str `"+""5."""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ all junk = 0"`)) (expr (num `0`)) (expr (str `"+""xyz"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ empty = 0"`)) (expr (num `0`)) (expr (str `"+"""""`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"1.5 in concat"`)) (expr (str `"val=1.5"`)) (expr (str `"""val=""_1.5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"trailing zeros stripped"`))
+          (expr (str `"val=1.5"`))
+          (expr (str `"""val=""_1.50"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"leading zeros stripped"`))
+          (expr (str `"val=5"`))
+          (expr (str `"""val=""_05"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"scientific normalized"`))
+          (expr (str `"val=100"`))
+          (expr (str `"""val=""_1E2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"negative zero is just 0"`))
+          (expr (str `"val=0"`))
+          (expr (str `"""val=""_(-0)"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"string non-canon != canonical"`)) (expr (num `0`)) (expr (str `"""05""=5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"decimal-form string != canon"`)) (expr (num `0`)) (expr (str `"""5.0""=5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"string with garbage != number"`))
+          (expr (num `0`))
+          (expr (str `"""5abc""=5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"non-numeric string != zero"`)) (expr (num `0`)) (expr (str `"""abc""=0"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"""abc""<1 coerces to 0"`)) (expr (num `1`)) (expr (str `"""abc""<1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"""5abc""<10 coerces to 5"`)) (expr (num `1`)) (expr (str `"""5abc""<10"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"""5abc"">4 coerces to 5"`)) (expr (num `1`)) (expr (str `"""5abc"">4"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ on true (1)"`)) (expr (num `1`)) (expr (str `"+1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"+ on false (0)"`)) (expr (num `0`)) (expr (str `"+0"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$L of number = digits in canonical"`))
+          (expr (num `1`))
+          (expr (str `"$L(05)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$L of negative"`)) (expr (num `2`)) (expr (str `"$L(-5)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$L of decimal"`)) (expr (num `3`)) (expr (str `"$L(1.5)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$L of scientific normalized"`)) (expr (num `3`)) (expr (str `"$L(1E2)"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/operators/COERCE"`))))))
+  (` ` _ (quit)))

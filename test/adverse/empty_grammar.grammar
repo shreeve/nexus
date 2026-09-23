@@ -1,1 +1,3 @@
-# Completely empty — nothing useful
+# A grammar file without sections is rejected at its start.
+# error: empty_grammar.grammar:1:1:
+# error: no @lexer section

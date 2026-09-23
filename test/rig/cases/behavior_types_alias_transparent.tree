@@ -1,0 +1,4 @@
+(module
+  (type `UserId` `Int`)
+  (fun `next` ((: `a` `UserId`)) `Int` (block (+ `a` `1`)))
+  (sub `main` () _ (block (set _ `x` `UserId` `5`) (call `print` (call `next` `x`)))))

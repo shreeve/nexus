@@ -1,0 +1,17 @@
+# Two @lang directives: the second would silently replace the first.
+# error: duplicate_lang.grammar:16:9:
+# error: duplicate @lang
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "a"
+@lang = "b"
+top! = IDENT                                → (t 1)

@@ -1,0 +1,18 @@
+(module
+  (fun
+    `first_big`
+    ((: `limit` `Int`))
+    `Int`
+    (block
+      (set _ `i` _ `0`)
+      (while (< `i` `100`) _ (block (set += `i` _ `1`) (if (> `i` `limit`) (block (break)))))
+      (return `i`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` _ `5`)
+      (if (> `x` `3`) (block (call `print` `x`)))
+      (if (> `x` `9`) (block (call `print` `99`)))
+      (call `print` (call `first_big` `3`)))))

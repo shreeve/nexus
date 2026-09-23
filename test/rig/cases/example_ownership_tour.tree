@@ -1,0 +1,18 @@
+(module
+  (struct `Account` (: `owner` `String`) (: `balance` `Int`))
+  (fun `balance_of` ((: `a` (borrow_read `Account`))) `Int` (block (member `a` `balance`)))
+  (sub `close` ((: `a` `Account`)) _ (block (call `print` (member `a` `balance`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `acct` _ (call `Account` (kwarg `owner` `"ada"`) (kwarg `balance` `100`)))
+      (call `print` (call `balance_of` (read `acct`)))
+      (set _ `moved` _ (move `acct`))
+      (call `print` (call `balance_of` (read `moved`)))
+      (set _ `shared` _ (share (call `Account` (kwarg `owner` `"bob"`) (kwarg `balance` `7`))))
+      (set _ `other` _ (clone `shared`))
+      (drop `shared`)
+      (call `print` (member `other` `balance`))
+      (call `close` (move `moved`)))))

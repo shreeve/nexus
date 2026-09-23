@@ -1,0 +1,12 @@
+# A state variable is declared once.
+# error: lexer_state_twice.grammar:7:5:
+# error: state variable 'a' is declared twice
+@lexer
+state
+    a = 1
+    a = 2
+tokens
+    eof, err
+. → err
+@parser
+top! = ERR → 1

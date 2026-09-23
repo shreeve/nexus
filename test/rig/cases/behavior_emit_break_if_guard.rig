@@ -1,0 +1,14 @@
+# `break if c` leaves the loop only when `c` holds.
+
+sub main()
+  i = 0
+  while i < 10
+    i += 1
+    print(i)
+    break if i > 3
+
+# expect:
+# 1
+# 2
+# 3
+# 4

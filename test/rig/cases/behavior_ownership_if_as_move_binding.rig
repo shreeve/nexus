@@ -1,0 +1,25 @@
+# A resource bound by `as` may be moved out of the branch; then it is not
+# dropped there.
+
+struct Noisy
+  id: Int
+
+  drop self: !Noisy
+    print("drop", self.id)
+
+sub eat(n: *Noisy)
+  print("eat", n.id)
+
+sub main()
+  rc = *Noisy(id: 1)
+  w = ~rc
+  if w.upgrade() as n
+    eat(<n)
+    print("after eat")
+  print("end")
+
+# expect:
+# eat 1
+# after eat
+# end
+# drop 1

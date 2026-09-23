@@ -1,0 +1,13 @@
+# A variant named `sub` collides with the `sub` keyword; the parse error
+# is reported as a diagnostic.
+enum Op
+  add
+  sub
+
+fun apply(op: Op, a: Int, b: Int) -> Int
+  match op
+    .add => a + b
+    .sub => a - b
+
+sub main()
+  print(apply(.add, 3, 4))

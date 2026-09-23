@@ -1,0 +1,84 @@
+# One alternative with 70 optional rule references would expand into 2^70
+# rules (the generator overflowed); the expansion limit is reported.
+# error: opt_explosion.grammar:14:8:
+# error: expand into more than 32766 rules
+@lexer
+tokens
+    a
+    eof
+    err
+'a' → a
+. → err
+
+@parser
+top! = A [r1] [r2] [r3] [r4] [r5] [r6] [r7] [r8] [r9] [r10] [r11] [r12] [r13] [r14] [r15] [r16] [r17] [r18] [r19] [r20] [r21] [r22] [r23] [r24] [r25] [r26] [r27] [r28] [r29] [r30] [r31] [r32] [r33] [r34] [r35] [r36] [r37] [r38] [r39] [r40] [r41] [r42] [r43] [r44] [r45] [r46] [r47] [r48] [r49] [r50] [r51] [r52] [r53] [r54] [r55] [r56] [r57] [r58] [r59] [r60] [r61] [r62] [r63] [r64] [r65] [r66] [r67] [r68] [r69] [r70]
+r1 = A A
+r2 = A A
+r3 = A A
+r4 = A A
+r5 = A A
+r6 = A A
+r7 = A A
+r8 = A A
+r9 = A A
+r10 = A A
+r11 = A A
+r12 = A A
+r13 = A A
+r14 = A A
+r15 = A A
+r16 = A A
+r17 = A A
+r18 = A A
+r19 = A A
+r20 = A A
+r21 = A A
+r22 = A A
+r23 = A A
+r24 = A A
+r25 = A A
+r26 = A A
+r27 = A A
+r28 = A A
+r29 = A A
+r30 = A A
+r31 = A A
+r32 = A A
+r33 = A A
+r34 = A A
+r35 = A A
+r36 = A A
+r37 = A A
+r38 = A A
+r39 = A A
+r40 = A A
+r41 = A A
+r42 = A A
+r43 = A A
+r44 = A A
+r45 = A A
+r46 = A A
+r47 = A A
+r48 = A A
+r49 = A A
+r50 = A A
+r51 = A A
+r52 = A A
+r53 = A A
+r54 = A A
+r55 = A A
+r56 = A A
+r57 = A A
+r58 = A A
+r59 = A A
+r60 = A A
+r61 = A A
+r62 = A A
+r63 = A A
+r64 = A A
+r65 = A A
+r66 = A A
+r67 = A A
+r68 = A A
+r69 = A A
+r70 = A A

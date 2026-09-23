@@ -1,0 +1,13 @@
+# A guard is followed by & or an arrow.
+# error: lexer_guard_syntax.grammar:10:12:
+# error: expected "→", "&" or a comparison
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' @ mode ~~ 1 → plus
+. → err
+@parser
+top! = WORD → 1

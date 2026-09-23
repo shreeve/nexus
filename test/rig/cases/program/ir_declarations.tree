@@ -1,0 +1,32 @@
+(module
+  (use `math`)
+  (pub
+    (struct
+      `User`
+      (: `name` `String`)
+      (default `age` `Int` `0`)
+      (fun `greet` ((read `self`)) `String` (block (member `self` `name`)))
+      (sub `birthday` ((write `self`)) _ (block (call `print` (member `self` `age`))))
+      (fun `new` ((: `name` `String`)) `User` (block (call `User` (kwarg `name` `name`))))))
+  (enum `Color` `red` `green` `blue`)
+  (enum `Status` (valued `ok` `200`) (valued `missing` `404`))
+  (enum
+    `Shape`
+    (variant `circle` ((: `radius` `Int`)))
+    (variant `rect` ((: `w` `Int`) (: `h` `Int`)))
+    `point`)
+  (errors `NetworkError` `timeout` `refused`)
+  (generic_type
+    `Box`
+    (`T`)
+    (: `value` `T`)
+    (fun `get` ((read `self`)) `T` (block (member `self` `value`))))
+  (generic_type `Maybe` (`T`) (variant `some` ((: `value` `T`))) `none`)
+  (struct
+    `Guard`
+    (: `id` `Int`)
+    (drop_decl ((: `self` (borrow_write `Guard`))) (block (call `print` (member `self` `id`)))))
+  (extern_fun `abs` ((: `x` `Int`)) `Int`)
+  (extern_sub `log_msg` ((: `msg` `String`)))
+  (fun `add` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ `a` `b`)))
+  (sub `main` () _ (block (call `print` (call `add` `1` `2`)))))

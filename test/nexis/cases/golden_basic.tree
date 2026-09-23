@@ -1,0 +1,37 @@
+(program
+  (list
+    (symbol `ns`)
+    (symbol `nexis.example`)
+    (list (keyword `:require`) (vector (symbol `nexis.core`) (keyword `:as`) (symbol `core`))))
+  (list (symbol `def`) (symbol `answer`) (int `42`))
+  (list (symbol `def`) (symbol `pi`) (real `3.14`))
+  (list
+    (symbol `defn`)
+    (symbol `greet`)
+    (string `"Return a friendly greeting."`)
+    (vector (symbol `who`))
+    (list (symbol `str`) (string `"hello, "`) (symbol `who`)))
+  (list
+    (symbol `let`)
+    (vector
+      (symbol `xs`)
+      (vector (int `1`) (int `2`) (int `3`))
+      (symbol `ys`)
+      (map (keyword `:a`) (int `1`) (keyword `:b`) (int `2`))
+      (symbol `zs`)
+      (set (keyword `:alpha`) (keyword `:beta`)))
+    (list (symbol `reduce`) (symbol `+`) (symbol `xs`)))
+  (list
+    (symbol `when`)
+    (list (symbol `pos?`) (symbol `answer`))
+    (list (symbol `println`) (list (symbol `greet`) (string `"nexis"`))))
+  (list
+    (symbol `with-tx`)
+    (vector (symbol `tx`) (symbol `conn`))
+    (list
+      (symbol `db/alter!`)
+      (symbol `tx`)
+      (symbol `alice`)
+      (symbol `update`)
+      (keyword `:age`)
+      (symbol `inc`))))

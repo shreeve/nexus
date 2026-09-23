@@ -1,0 +1,25 @@
+(module
+  (enum `Kind` `one` `two` `three`)
+  (sub
+    `show`
+    ((: `k` `Kind`) (: `flag` `Bool`))
+    _
+    (block
+      (match
+        `k`
+        (arm
+          (enum_lit `one`)
+          (block (if `flag` (block (call `print` `"one, flagged"`)) (block (call `print` `"one"`)))))
+        (arm `else` (block (call `print` `"not one"`))))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `show` (enum_lit `one`) `true`)
+      (call `show` (enum_lit `one`) `false`)
+      (call `show` (enum_lit `three`) `true`)
+      (if
+        `false`
+        (block (call `print` `"no"`))
+        (if `true` (block (call `print` `"else if"`)) (block (call `print` `"else"`)))))))

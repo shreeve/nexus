@@ -1,0 +1,21 @@
+# A view holding a borrow keeps it until the view's last use.
+
+struct Box
+  n: Int
+
+  sub bump(!self)
+    self.n += 1
+
+  drop self: !Box
+    print("drop", self.n)
+
+struct View
+  box: ?Box
+
+sub main()
+  x = Box(n: 1)
+  v = View(box: ?x)
+  (!x).bump()
+  print(v.box.n)
+
+# error: cannot write-borrow `x` while a read borrow is live

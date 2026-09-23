@@ -1,0 +1,39 @@
+(program
+  (list
+    (symbol `defmacro`)
+    (symbol `unless`)
+    (vector (symbol `test`) (symbol `body`))
+    (syntax-quote
+      (list (symbol `if`) (unquote (symbol `test`)) (symbol `nil`) (unquote (symbol `body`)))))
+  (list
+    (symbol `defmacro`)
+    (symbol `my-when`)
+    (vector (symbol `test`) (symbol `&`) (symbol `body`))
+    (syntax-quote
+      (list
+        (symbol `if`)
+        (unquote (symbol `test`))
+        (list (symbol `do`) (unquote-splicing (symbol `body`)))
+        (symbol `nil`))))
+  (list
+    (symbol `defmacro`)
+    (symbol `safe-div`)
+    (vector (symbol `a`) (symbol `b`))
+    (syntax-quote
+      (list
+        (symbol `if`)
+        (list (symbol `<`) (int `0`) (unquote (symbol `b`)))
+        (list
+          (symbol `let`)
+          (vector (symbol `x#`) (list (symbol `/`) (unquote (symbol `a`)) (unquote (symbol `b`))))
+          (symbol `x#`))
+        (keyword `:div-by-zero`))))
+  (list
+    (symbol `println`)
+    (list (symbol `safe-div`) (int `6`) (int `3`))
+    (list (symbol `safe-div`) (int `1`) (int `0`)))
+  (list
+    (symbol `my-when`)
+    (list (symbol `unless`) (symbol `false`) (symbol `true`))
+    (keyword `:all-the-macros-work`)
+    (keyword `:and-the-do-block-returns-this-last-one`)))

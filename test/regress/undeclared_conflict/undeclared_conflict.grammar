@@ -1,0 +1,27 @@
+# error: undeclared_conflict.grammar:
+# error: conflict
+#
+# An unresolved conflict that the grammar does not declare fails generation
+# with a non-zero exit (warnings are errors).
+#
+# (architecture.md §1.1; SPEC §6, §8.11)
+
+@lexer
+tokens
+    ident
+    kw_if
+    kw_else
+    eof
+    err
+'?'                                         → kw_if
+':'                                         → kw_else
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "undeclared_conflict"
+
+top! = stmt                                 → 1
+stmt = KW_IF IDENT stmt                     → (if 2 3)
+     | KW_IF IDENT stmt KW_ELSE stmt        → (if 2 3 5)
+     | IDENT

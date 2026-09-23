@@ -1,0 +1,13 @@
+# A @lexer line is a block, @code, or a rule.
+# error: lexer_unrecognized_line.grammar:10:1:
+# error: unrecognized line in the @lexer section
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+abc → word
+. → err
+@parser
+top! = WORD → 1

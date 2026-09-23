@@ -1,0 +1,1 @@
+(toks (str `"a\\"b"`) (sstr `'it''s'`#1) (err `"`#1) (word `open`) (newline `\n`) (word `next`))

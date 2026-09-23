@@ -1,0 +1,15 @@
+# A grammar with no `name!` start symbol parses from its first rule: the
+# generated parser has a parse method for it.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "no_start_symbol"
+
+top  = IDENT+                               → (top ...1)

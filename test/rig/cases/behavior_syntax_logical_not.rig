@@ -1,0 +1,12 @@
+# `not a` is logical negation of a Bool.
+
+sub main()
+  a = false
+  if not a
+    print(1)
+  b = not a
+  print(b)
+
+# expect:
+# 1
+# true

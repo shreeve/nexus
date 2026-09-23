@@ -1,0 +1,9 @@
+# A token is declared once.
+# error: lexer_token_twice.grammar:6:15:
+# error: token 'eof' is declared twice
+@lexer
+tokens
+    eof, err, eof
+. → err
+@parser
+top! = ERR → 1

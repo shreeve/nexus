@@ -1,0 +1,54 @@
+(module
+  (struct `Button` (: `label` `String`) (: `on_click` (shared (fun_type (`Int`)))))
+  (fun
+    `apply`
+    ((: `f` (shared (fun_type (`Int`) `Int`))) (: `x` `Int`))
+    `Int`
+    (block (call `f` `x`)))
+  (fun
+    `adder`
+    ((: `n` `Int`))
+    (shared (fun_type (`Int`) `Int`))
+    (block (share (lambda ((cap_clone `n`) `a`) _ _ (block (+ `a` `n`))))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `add` (fun_type (`Int` `Int`) `Int`) (lambda (`a` `b`) _ _ (block (+ `a` `b`))))
+      (call `print` (call `add` `2` `3`))
+      (call `print` (call `apply` (share (lambda (`a`) _ _ (block (* `a` `10`)))) `4`))
+      (set _ `total` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set _ `handlers` (generic_inst `Vec` (shared (fun_type (`Int`)))) (call `Vec`))
+      (call
+        (member (write `handlers`) `push`)
+        (share
+          (lambda
+            ((cap_clone `total`) `n`)
+            _
+            _
+            (block (call (member `total` `set`) (+ (call (member `total` `get`)) `n`))))))
+      (call
+        (member (write `handlers`) `push`)
+        (share
+          (lambda
+            ((cap_clone `total`) `n`)
+            _
+            _
+            (block (call (member `total` `set`) (+ (call (member `total` `get`)) (* `n` `100`)))))))
+      (for iter `h` _ (read `handlers`) (block (call `h` `2`)))
+      (call `print` (call (member `total` `get`)))
+      (set
+        _
+        `b`
+        _
+        (call
+          `Button`
+          (kwarg `label` `"ok"`)
+          (kwarg
+            `on_click`
+            (share (lambda ((cap_clone `total`) `n`) _ _ (block (call (member `total` `set`) `n`)))))))
+      (call (member `b` `on_click`) `7`)
+      (call `print` (member `b` `label`) (call (member `total` `get`)))
+      (set _ `plus5` _ (call `adder` `5`))
+      (call `print` (call `plus5` `1`)))))

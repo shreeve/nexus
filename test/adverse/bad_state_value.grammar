@@ -1,4 +1,6 @@
 # State variable with non-numeric value
+# error: bad_state_value.grammar:6:
+# error: hello
 @lexer
 state
     beg = hello
@@ -9,5 +11,5 @@ tokens
 [a-zA-Z]+ → ident
 . → err
 @parser
-@conflicts = 0
+# (no @conflicts block: the grammar must be conflict-free)
 program! = IDENT → (module 1)

@@ -1,0 +1,15 @@
+# Cloning a `*sub()` handle shares one environment: dropping the
+# original handle early leaves the clone callable, and the captured
+# cell is released only when the last handle drops.
+
+sub main()
+  count: *Cell(Int) = *Cell(value: 0)
+  cb: *sub() = *|+count| count.set(count.get() + 1)
+  cb2 = +cb
+  -cb
+  cb2()
+  cb2()
+  print(count.get())                # 2
+
+# expect:
+# 2

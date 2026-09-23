@@ -1,0 +1,76 @@
+# Blocks may nest 64 deep; deeper is a diagnostic, not a crash.
+
+sub main()
+  if true
+    if true
+      if true
+        if true
+          if true
+            if true
+              if true
+                if true
+                  if true
+                    if true
+                      if true
+                        if true
+                          if true
+                            if true
+                              if true
+                                if true
+                                  if true
+                                    if true
+                                      if true
+                                        if true
+                                          if true
+                                            if true
+                                              if true
+                                                if true
+                                                  if true
+                                                    if true
+                                                      if true
+                                                        if true
+                                                          if true
+                                                            if true
+                                                              if true
+                                                                if true
+                                                                  if true
+                                                                    if true
+                                                                      if true
+                                                                        if true
+                                                                          if true
+                                                                            if true
+                                                                              if true
+                                                                                if true
+                                                                                  if true
+                                                                                    if true
+                                                                                      if true
+                                                                                        if true
+                                                                                          if true
+                                                                                            if true
+                                                                                              if true
+                                                                                                if true
+                                                                                                  if true
+                                                                                                    if true
+                                                                                                      if true
+                                                                                                        if true
+                                                                                                          if true
+                                                                                                            if true
+                                                                                                              if true
+                                                                                                                if true
+                                                                                                                  if true
+                                                                                                                    if true
+                                                                                                                      if true
+                                                                                                                        if true
+                                                                                                                          if true
+                                                                                                                            if true
+                                                                                                                              if true
+                                                                                                                                if true
+                                                                                                                                  if true
+                                                                                                                                    if true
+                                                                                                                                      if true
+                                                                                                                                        if true
+                                                                                                                                          if true
+                                                                                                                                            if true
+                                                                                                                                              print(1)
+
+# error: indentation is nested too deeply

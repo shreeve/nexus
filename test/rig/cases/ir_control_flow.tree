@@ -1,0 +1,48 @@
+(module
+  (enum
+    `Shape`
+    (variant `circle` ((: `radius` `Int`)))
+    (variant `rect` ((: `w` `Int`) (: `h` `Int`)))
+    `point`)
+  (fun
+    `sign`
+    ((: `x` `Int`))
+    `Int`
+    (block (if (> `x` `0`) (block `1`) (if (< `x` `0`) (block (neg `1`)) (block `0`)))))
+  (fun
+    `area`
+    ((: `s` (borrow_read `Shape`)))
+    `Int`
+    (block
+      (match
+        `s`
+        (arm (variant_pattern `circle` `r`) (return (* (* `3` `r`) `r`)))
+        (arm (variant_pattern `rect` `w` `h`) (return (* `w` `h`)))
+        (arm (enum_lit `point`) (return `0`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `i` _ `0`)
+      (while
+        (< `i` `3`)
+        _
+        (block (set _ `i` _ (+ `i` `1`)) (if (== `i` `2`) (block (continue))) (call `print` `i`)))
+      (for iter `n` _ (read `items`) (block (if (> `n` `10`) (block (break))) (call `print` `n`)))
+      (set _ `size` _ `5`)
+      (match
+        `size`
+        (arm (range_pattern `1` `3`) (call `print` `"small"`))
+        (arm (range_pattern `4` `6`) (call `print` `"medium"`))
+        (arm `else` (call `print` `"large"`)))
+      (set _ `label` _ (if (> `size` `3`) (block `"big"`) (block `"small"`)))
+      (set _ `word` _ (match `size` (arm `5` `"five"`) (arm `else` `"other"`)))
+      (if (> `size` `0`) (block (return)))))
+  (sub
+    `optionals`
+    ((: `m` (optional `Int`)) (: `v` (borrow_write (generic_inst `Vec` `Int`))))
+    _
+    (block
+      (if (as `m` `x`) (block (call `print` `x`)))
+      (while (as (call (member `v` `pop`)) `y`) _ (block (call `print` `y`))))))

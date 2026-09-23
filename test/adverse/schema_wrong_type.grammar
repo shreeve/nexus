@@ -1,0 +1,46 @@
+# A role is filled from a rule that can produce a node of the wrong kind; the error names the production.
+# error: schema_wrong_type.grammar:46:12:
+# error: role 'target' of 'set' takes name
+# error: can be a 'num' node, a 'call' node
+# error: (from expr → INTEGER, line 44)
+@lexer
+tokens
+    ident
+    integer
+    newline
+    eq
+    colon
+    lparen
+    rparen
+    comma
+    plus
+    eof
+    err
+# (spaces and tabs are consumed by the lexer as leading whitespace)
+'\n'                                        → newline
+'='                                         → eq
+':'                                         → colon
+'('                                         → lparen
+')'                                         → rparen
+','                                         → comma
+'+'                                         → plus
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@schema
+    module   ...stmts
+    set      target:name value
+    name     id:leaf
+    num      value:leaf
+    call     callee:leaf ...args
+
+program! = stmts                            → (module ...1)
+stmts    = stmt                             → (1)
+         | stmts NEWLINE stmt               → (...1 3)
+name     = IDENT                            → (name 1)
+expr     = name                             → 1
+         | INTEGER                          → (num 1)
+         | IDENT "(" expr ")"               → (call 1 3)
+stmt     = expr "=" expr                  → (set 1 3)

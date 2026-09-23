@@ -1,0 +1,13 @@
+# A quoted literal in a pattern must close on its line.
+# error: lexer_unterminated_literal.grammar:10:1:
+# error: unterminated quoted literal
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'abc → word
+. → err
+@parser
+top! = WORD → 1

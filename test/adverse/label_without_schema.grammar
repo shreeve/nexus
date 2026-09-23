@@ -1,0 +1,30 @@
+# Pattern labels fill schema roles; without @schema they are an error.
+# error: label_without_schema.grammar:30:12:
+# error: pattern label 'x' needs an @schema
+@lexer
+tokens
+    ident
+    integer
+    newline
+    eq
+    colon
+    lparen
+    rparen
+    comma
+    plus
+    eof
+    err
+# (spaces and tabs are consumed by the lexer as leading whitespace)
+'\n'                                        → newline
+'='                                         → eq
+':'                                         → colon
+'('                                         → lparen
+')'                                         → rparen
+','                                         → comma
+'+'                                         → plus
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+program! = x:IDENT                          → (p 1)

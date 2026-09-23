@@ -1,0 +1,40 @@
+# Frontend syntax that 0.10 could not read: a token named X, `[X, ...]`
+# (with the comma), an indented @errors block, L(X, sep), an alternative
+# continued on an indented line, and trailing comments after actions (the
+# comment is not part of the action).
+
+@lexer
+tokens
+    ident
+    x
+    semi
+    comma
+    lbracket
+    rbracket
+    eof
+    err
+# (spaces and tabs are consumed by the lexer as leading whitespace)
+'!'                                         → x
+';'                                         → semi
+','                                         → comma
+'['                                         → lbracket
+']'                                         → rbracket
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "frontend_syntax"
+
+@errors
+    top: "a list"
+    item: "an item"
+
+top!  = X items                             → (top 1 2)     # X is a token here
+      | "[" [item, ...] "]"                 → (opt ...2)    # an optional comma list
+      | "[" "[" item                        # the pattern continues
+          "]" "]"                           → 3             # a pass-through
+
+items = L(item, ";")                        → (items ...1)
+
+item  = IDENT
+      | IDENT IDENT                         → (pair 1 2)

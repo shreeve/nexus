@@ -1,0 +1,15 @@
+# A generic enum `Option(T)`: the variant payload `value: T` is checked
+# against the expected `Option(Int)`, and a match selects the arm.
+
+enum Option(T)
+  some(value: T)
+  none
+
+sub main()
+  o: Option(Int) = .some(value: 5)
+  match o
+    .some(v) => print(v)
+    .none => print("nothing")
+
+# expect:
+# 5

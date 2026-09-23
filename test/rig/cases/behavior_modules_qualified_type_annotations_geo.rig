@@ -1,0 +1,8 @@
+pub struct Point
+  x: Int
+  y: Int
+
+  fun sum(self: ?Point) -> Int
+    self.x + self.y
+
+pub type Meters = Int

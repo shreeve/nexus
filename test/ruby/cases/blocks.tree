@@ -1,0 +1,12 @@
+(program
+  stmts
+  (send
+    (array `1` `2` `3`)
+    `each`
+    _
+    (block (params `n`) (stmts (send _ `puts` (args (* `n` `2`))))))
+  (send `list` `map` _ (block (params `x`) (stmts (+ `x` `1`))))
+  (assign `h` (hash (pair `a` `1`) (pair `"b"` `2`) (pair `c` (array `3` `4`))))
+  (assign `sq` (lambda (params `x`) (block _ (stmts (* `x` `x`)))))
+  (send `File` `open` (args `path`) (block (params `f`) (stmts (send `f` `read`))))
+  (def `run` (params (restarg `args`) (blockarg `blk`)) (stmts (yield (args `1` `2`))) () ()))

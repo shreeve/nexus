@@ -1,0 +1,9 @@
+(module
+  (fun
+    `first_over`
+    ((: `limit` `Int`))
+    `Int`
+    (block
+      (set _ `x` _ `0`)
+      (while `true` (set += `x` _ `1`) (block (if (> (* `x` `x`) `limit`) (block (return `x`)))))))
+  (sub `main` () _ (block (call `print` (call `first_over` `50`)))))

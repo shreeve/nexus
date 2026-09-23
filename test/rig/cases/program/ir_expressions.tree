@@ -1,0 +1,29 @@
+(module
+  (struct `Point` (: `x` `Int`) (: `y` `Int`))
+  (fun
+    `scale`
+    ((: `p` (borrow_read `Point`)) (: `by` `Int`))
+    `Int`
+    (block (+ (* (member `p` `x`) `by`) (* (member `p` `y`) `by`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ (- (+ `1` (* `2` `3`)) (/ `4` `2`)))
+      (set _ `b` _ (% (* (+ `1` `2`) `3`) `4`))
+      (set _ `c` _ (or (and (== `a` `b`) (!= `a` `0`)) (not (< `a` `b`))))
+      (set _ `d` _ (<= `a` `b`))
+      (set _ `e` _ (neg `a`))
+      (set _ `f` _ `0xff`)
+      (set _ `g` _ `1.5`)
+      (set _ `h` _ `"double"`)
+      (set _ `i` _ `'single'`)
+      (set _ `j` _ `true`)
+      (set _ `k` _ `false`)
+      (set _ `p` _ (call `Point` (kwarg `x` `1`) (kwarg `y` `2`)))
+      (call `print` (call `scale` (read `p`) `3`))
+      (call `print` (member `p` `x`))
+      (set _ `q` _ (member `Point` `new`))
+      (set _ `v` (generic_inst `Vec` `Int`) (call `Vec` (kwarg `capacity` `4`)))
+      (call (member (write `v`) `push`) `1`))))

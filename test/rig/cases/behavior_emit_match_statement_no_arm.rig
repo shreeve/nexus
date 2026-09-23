@@ -1,0 +1,10 @@
+# A statement `match` whose arms do not cover the value runs no arm.
+
+sub main()
+  n = 5
+  match n
+    1 => print("one")
+  print("end")
+
+# expect:
+# end

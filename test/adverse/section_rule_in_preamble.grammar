@@ -1,0 +1,11 @@
+# Directives may precede @lexer; rules belong in the @parser section.
+# error: section_rule_in_preamble.grammar:5:1:
+# error: rules belong in the @parser section
+@lang = "section_rule_in_preamble"
+top! = IDENT                                → (top 1)
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+@parser

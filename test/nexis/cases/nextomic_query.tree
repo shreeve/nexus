@@ -1,0 +1,2678 @@
+(program
+  (list (symbol `require`) (quote (vector (symbol `nextomic`) (keyword `:as`) (symbol `d`))))
+  (list (symbol `require`) (quote (vector (symbol `prelude`) (keyword `:as`) (symbol `t`))))
+  (list (symbol `require`) (quote (vector (symbol `nexis.string`) (keyword `:as`) (symbol `s`))))
+  (list
+    (symbol `defn`)
+    (symbol `rows`)
+    (vector (symbol `res`))
+    (list (symbol `sort`) (symbol `res`)))
+  (list (symbol `def`) (symbol `c`) (list (symbol `d/connect`) (string `"query.edb"`)))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/name`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/index`)
+        (symbol `true`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/email`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/unique`)
+        (keyword `:db.unique/identity`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/age`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/long`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/height`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/double`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/active`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/boolean`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/tags`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/keyword`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/friend`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/boss`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/role`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/keyword`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:order/number`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/long`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/unique`)
+        (keyword `:db.unique/value`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:order/customer`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:order/total`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/double`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/index`)
+        (symbol `true`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:order/status`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/keyword`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/index`)
+        (symbol `true`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:order/items`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`))
+      (map (keyword `:db/ident`) (keyword `:role/admin`))
+      (map (keyword `:db/ident`) (keyword `:role/user`))))
+  (list
+    (symbol `def`)
+    (symbol `people`)
+    (list
+      (symbol `d/transact!`)
+      (symbol `c`)
+      (vector
+        (map
+          (keyword `:db/id`)
+          (string `"ann"`)
+          (keyword `:person/name`)
+          (string `"Ann"`)
+          (keyword `:person/email`)
+          (string `"ann@x"`)
+          (keyword `:person/age`)
+          (int `30`)
+          (keyword `:person/height`)
+          (real `1.7`)
+          (keyword `:person/active`)
+          (symbol `true`)
+          (keyword `:person/tags`)
+          (vector (keyword `:red`) (keyword `:blue`))
+          (keyword `:person/role`)
+          (keyword `:role/admin`))
+        (map
+          (keyword `:db/id`)
+          (string `"bob"`)
+          (keyword `:person/name`)
+          (string `"Bob"`)
+          (keyword `:person/email`)
+          (string `"bob@x"`)
+          (keyword `:person/age`)
+          (int `25`)
+          (keyword `:person/height`)
+          (real `1.8`)
+          (keyword `:person/active`)
+          (symbol `false`)
+          (keyword `:person/tags`)
+          (vector (keyword `:blue`))
+          (keyword `:person/friend`)
+          (vector (string `"ann"`))
+          (keyword `:person/boss`)
+          (string `"ann"`)
+          (keyword `:person/role`)
+          (keyword `:role/user`))
+        (map
+          (keyword `:db/id`)
+          (string `"cy"`)
+          (keyword `:person/name`)
+          (string `"Cy"`)
+          (keyword `:person/email`)
+          (string `"cy@x"`)
+          (keyword `:person/age`)
+          (int `41`)
+          (keyword `:person/height`)
+          (real `1.65`)
+          (keyword `:person/active`)
+          (symbol `true`)
+          (keyword `:person/tags`)
+          (vector (keyword `:red`) (keyword `:green`))
+          (keyword `:person/friend`)
+          (vector (string `"ann"`) (string `"bob"`))
+          (keyword `:person/boss`)
+          (string `"ann"`))
+        (map
+          (keyword `:db/id`)
+          (string `"di"`)
+          (keyword `:person/name`)
+          (string `"Di"`)
+          (keyword `:person/email`)
+          (string `"di@x"`)
+          (keyword `:person/age`)
+          (int `30`)
+          (keyword `:person/active`)
+          (symbol `true`)
+          (keyword `:person/friend`)
+          (vector (string `"cy"`))
+          (keyword `:person/boss`)
+          (string `"cy"`))
+        (map
+          (keyword `:db/id`)
+          (string `"ed"`)
+          (keyword `:person/name`)
+          (string `"Ed"`)
+          (keyword `:person/email`)
+          (string `"ed@x"`)
+          (keyword `:person/age`)
+          (int `55`)
+          (keyword `:person/tags`)
+          (vector (keyword `:green`))
+          (keyword `:person/role`)
+          (keyword `:role/admin`)))))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (map
+        (keyword `:order/number`)
+        (int `1`)
+        (keyword `:order/customer`)
+        (vector (keyword `:person/email`) (string `"ann@x"`))
+        (keyword `:order/total`)
+        (real `10.5`)
+        (keyword `:order/status`)
+        (keyword `:status/open`)
+        (keyword `:order/items`)
+        (vector (string `"apple"`) (string `"pear"`)))
+      (map
+        (keyword `:order/number`)
+        (int `2`)
+        (keyword `:order/customer`)
+        (vector (keyword `:person/email`) (string `"bob@x"`))
+        (keyword `:order/total`)
+        (real `99.0`)
+        (keyword `:order/status`)
+        (keyword `:status/shipped`)
+        (keyword `:order/items`)
+        (vector (string `"fig"`)))
+      (map
+        (keyword `:order/number`)
+        (int `3`)
+        (keyword `:order/customer`)
+        (vector (keyword `:person/email`) (string `"ann@x"`))
+        (keyword `:order/total`)
+        (real `5.25`)
+        (keyword `:order/status`)
+        (keyword `:status/shipped`))
+      (map
+        (keyword `:order/number`)
+        (int `4`)
+        (keyword `:order/customer`)
+        (vector (keyword `:person/email`) (string `"cy@x"`))
+        (keyword `:order/total`)
+        (real `42.0`)
+        (keyword `:order/status`)
+        (keyword `:status/open`)
+        (keyword `:order/items`)
+        (vector (string `"apple"`)))))
+  (list
+    (symbol `def`)
+    (symbol `update`)
+    (list
+      (symbol `d/transact!`)
+      (symbol `c`)
+      (vector
+        (vector
+          (keyword `:db/add`)
+          (vector (keyword `:person/email`) (string `"bob@x"`))
+          (keyword `:person/age`)
+          (int `26`))
+        (vector
+          (keyword `:db/retract`)
+          (vector (keyword `:person/email`) (string `"ann@x"`))
+          (keyword `:person/tags`)
+          (keyword `:red`))
+        (map
+          (keyword `:db/id`)
+          (vector (keyword `:person/email`) (string `"ed@x"`))
+          (keyword `:person/name`)
+          (string `"Edward"`))
+        (map
+          (keyword `:db/id`)
+          (string `"flo"`)
+          (keyword `:person/name`)
+          (string `"Flo"`)
+          (keyword `:person/email`)
+          (string `"flo@x"`)
+          (keyword `:person/age`)
+          (int `33`)
+          (keyword `:person/friend`)
+          (vector (vector (keyword `:person/email`) (string `"bob@x"`))))
+        (vector
+          (keyword `:db/retract`)
+          (vector (keyword `:person/email`) (string `"cy@x"`))
+          (keyword `:person/friend`)
+          (vector (keyword `:person/email`) (string `"bob@x"`))))))
+  (list (symbol `def`) (symbol `db`) (list (symbol `d/db`) (symbol `c`)))
+  (list
+    (symbol `def`)
+    (symbol `ann`)
+    (list (symbol `d/entid`) (symbol `db`) (vector (keyword `:person/email`) (string `"ann@x"`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (int `30`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/height`) (real `1.8`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/active`) (symbol `true`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/role`) (keyword `:role/admin`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (vector (keyword `:person/email`) (string `"ann@x"`))
+              (keyword `:person/name`)
+              (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (symbol `?e`)
+              (keyword `:person/boss`)
+              (vector (keyword `:person/email`) (string `"ann@x"`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?t`)
+            (keyword `:where`)
+            (vector (symbol `_`) (keyword `:person/tags`) (symbol `?t`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `_`))
+            (vector (symbol `?e`) (keyword `:person/tags`) (symbol `_`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?f`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/friend`) (symbol `?x`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?x`) (keyword `:person/name`) (symbol `?f`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?item`)
+            (keyword `:where`)
+            (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?e`))
+            (vector (symbol `?o`) (keyword `:order/items`) (symbol `?item`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `t/check`)
+    (string `"a constant that names nothing matches nothing"`)
+    (list
+      (symbol `=`)
+      (set)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:nope/tag`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `t/check`)
+    (string `"a lookup ref that names nothing matches nothing"`)
+    (list
+      (symbol `=`)
+      (set)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (symbol `?e`)
+              (keyword `:person/boss`)
+              (vector (keyword `:person/email`) (string `"nobody@x"`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `t/check`)
+    (string `"the tx position binds the transaction entity"`)
+    (list
+      (symbol `=`)
+      (int `1`)
+      (list
+        (symbol `count`)
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (symbol `?tx`)
+              (keyword `:where`)
+              (vector (symbol `?e`) (keyword `:person/name`) (string `"Flo"`) (symbol `?tx`))))
+          (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?n`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `?age`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?age`))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+      (symbol `db`)
+      (int `41`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:in`)
+            (symbol `$`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+        (symbol `db`)
+        (vector (string `"Ann"`) (string `"Di"`) (string `"Nobody"`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?e`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `$`)
+          (vector (symbol `?n`) (symbol `?a`))
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)
+      (vector (string `"Ann"`) (int `30`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (symbol `?e`)
+            (keyword `:in`)
+            (symbol `$`)
+            (vector (vector (symbol `?n`) (symbol `?a`)))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+        (symbol `db`)
+        (vector
+          (vector (string `"Ann"`) (int `30`))
+          (vector (string `"Bob"`) (int `26`))
+          (vector (string `"Bob"`) (int `25`))))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `ann`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?total`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?status`)
+            (symbol `?min`)
+            (keyword `:where`)
+            (vector (symbol `?o`) (keyword `:order/status`) (symbol `?status`))
+            (vector (symbol `?o`) (keyword `:order/total`) (symbol `?total`))
+            (vector (list (symbol `>`) (symbol `?total`) (symbol `?min`)))
+            (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?e`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (keyword `:status/open`)
+        (real `20.0`))))
+  (list
+    (symbol `defn`)
+    (symbol `adult?`)
+    (vector (symbol `age`))
+    (list (symbol `>=`) (symbol `age`) (int `30`)))
+  (list
+    (symbol `defn`)
+    (symbol `boom`)
+    (vector (symbol `x`))
+    (list (symbol `throw`) (keyword `:boom`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `<`) (int `26`) (symbol `?a`) (int `41`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `not=`) (symbol `?n`) (string `"Ann"`)))
+            (vector (symbol `?e`) (keyword `:person/role`) (symbol `_`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `missing?`) (symbol `$`) (symbol `?e`) (keyword `:person/tags`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `adult?`) (symbol `?a`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `even?`) (symbol `?a`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `string?`) (symbol `?n`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `s/lower-case`) (symbol `?n`)) (symbol `?l`))
+            (vector (list (symbol `=`) (symbol `?l`) (string `"ann"`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?pred`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `?pred`) (symbol `?a`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `adult?`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?next`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?f`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `?f`) (symbol `?a`)) (symbol `?next`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `inc`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?f`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `?f`) (symbol `?n`)) (symbol `?len`))
+            (vector (list (symbol `<`) (symbol `?len`) (int `3`)))))
+        (symbol `db`)
+        (symbol `count`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?v`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?k`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `ground`) (map (keyword `:x`) (int `1`))) (symbol `?m`))
+            (vector (list (symbol `?k`) (symbol `?m`)) (symbol `?v`))))
+        (symbol `db`)
+        (keyword `:x`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?v`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?m`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `?m`) (symbol `?n`)) (symbol `?v`))))
+        (symbol `db`)
+        (map (string `"Ann"`) (int `1`) (string `"Bob"`) (int `2`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (vector (symbol `?f`) (symbol `...`))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `?f`) (symbol `?a`)) (symbol `?r`))
+            (vector (list (symbol `>`) (symbol `?r`) (int `41`)))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (vector (symbol `inc`) (symbol `identity`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?s`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector
+              (list (symbol `str`) (symbol `?n`) (string `" is "`) (symbol `?a`))
+              (symbol `?s`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?next`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `+`) (symbol `?a`) (int `1`)) (symbol `?next`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?u`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `nexis.string/upper-case`) (symbol `?n`)) (symbol `?u`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector
+              (list
+                (symbol `get-else`)
+                (symbol `$`)
+                (symbol `?e`)
+                (keyword `:person/age`)
+                (int `-1`))
+              (symbol `?a`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector
+              (list
+                (symbol `get-some`)
+                (symbol `$`)
+                (symbol `?e`)
+                (keyword `:person/height`)
+                (keyword `:person/age`))
+              (vector (symbol `?a`) (symbol `?v`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?i`)
+            (symbol `?s`)
+            (symbol `?l`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `!=`) (symbol `?n`) (string `"Ann"`)))
+            (vector (list (symbol `identity`) (symbol `?n`)) (symbol `?i`))
+            (vector (list (symbol `subs`) (symbol `?n`) (int `0`) (int `1`)) (symbol `?s`))
+            (vector (list (symbol `count`) (symbol `?n`)) (symbol `?l`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?t`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `ground`) (vector (keyword `:red`) (keyword `:green`)))
+              (vector (symbol `?t`) (symbol `...`)))
+            (vector (symbol `?e`) (keyword `:person/tags`) (symbol `?t`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?pair`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector (list (symbol `tuple`) (symbol `?n`) (symbol `?a`)) (symbol `?pair`))))
+        (symbol `db`))))
+  (list
+    (symbol `defn`)
+    (symbol `name-and-length`)
+    (vector (symbol `n`))
+    (vector (symbol `n`) (list (symbol `count`) (symbol `n`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?len`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?x`))
+            (vector
+              (list (symbol `name-and-length`) (symbol `?x`))
+              (vector (symbol `?n`) (symbol `?len`)))))
+        (symbol `db`))))
+  (list
+    (symbol `defn`)
+    (symbol `twice`)
+    (vector (symbol `n`))
+    (vector (vector (symbol `n`) (int `1`)) (vector (symbol `n`) (int `2`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?k`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (string `"Ann"`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?x`))
+            (vector
+              (list (symbol `twice`) (symbol `?x`))
+              (vector (vector (symbol `?n`) (symbol `?k`))))))
+        (symbol `db`))))
+  (list
+    (symbol `defn`)
+    (symbol `maybe-name`)
+    (vector (symbol `n`))
+    (list (symbol `when`) (list (symbol `=`) (symbol `n`) (string `"Cy"`)) (symbol `n`)))
+  (list
+    (symbol `t/check`)
+    (string `"a nil function result drops the row"`)
+    (list
+      (symbol `=`)
+      (set (vector (string `"Cy"`)))
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?m`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `maybe-name`) (symbol `?n`)) (symbol `?m`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (vector
+            (list (symbol `min`) (symbol `?a`))
+            (list (symbol `max`) (symbol `?a`))
+            (list (symbol `sum`) (symbol `?a`))
+            (list (symbol `avg`) (symbol `?a`))
+            (list (symbol `count-distinct`) (symbol `?a`))
+            (list (symbol `count`) (symbol `?e`)))
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (list (symbol `sum`) (symbol `?a`))
+          (symbol `.`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (list (symbol `sum`) (symbol `?a`))
+          (symbol `.`)
+          (keyword `:with`)
+          (symbol `?e`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?b`)
+            (list (symbol `count`) (symbol `?e`))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?x`))
+            (vector (symbol `?x`) (keyword `:person/name`) (symbol `?b`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (vector
+            (list (symbol `median`) (symbol `?a`))
+            (list (symbol `variance`) (symbol `?a`))
+            (list (symbol `stddev`) (symbol `?a`))
+            (list (symbol `max`) (int `2`) (symbol `?a`))
+            (list (symbol `min`) (int `2`) (symbol `?a`)))
+          (keyword `:with`)
+          (symbol `?e`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (list (symbol `median`) (symbol `?a`))
+          (symbol `.`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+          (vector (list (symbol `<`) (symbol `?a`) (int `41`)))))
+      (symbol `db`)))
+  (list
+    (symbol `defn`)
+    (symbol `total`)
+    (vector (symbol `xs`))
+    (list (symbol `reduce`) (symbol `+`) (int `0`) (symbol `xs`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (list (symbol `total`) (symbol `?num`))
+            (keyword `:with`)
+            (symbol `?o`)
+            (keyword `:where`)
+            (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?c`))
+            (vector (symbol `?c`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?o`) (keyword `:order/number`) (symbol `?num`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `map`)
+      (symbol `count`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector
+              (list (symbol `sample`) (int `3`) (symbol `?a`))
+              (list (symbol `rand`) (int `8`) (symbol `?a`))
+              (list (symbol `sample`) (int `100`) (symbol `?a`)))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (list (symbol `variance`) (symbol `?n`))
+            (keyword `:where`)
+            (vector (symbol `_`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (list (symbol `distinct`) (symbol `?t`))
+            (symbol `.`)
+            (keyword `:where`)
+            (vector (symbol `_`) (keyword `:person/tags`) (symbol `?t`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?n`)
+          (symbol `.`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (int `55`))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?n`)
+          (symbol `.`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (int `99`))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/boss`) (symbol `_`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (vector (symbol `?n`) (symbol `?a`))
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (vector (symbol `?n`) (symbol `?a`))
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/email`) (string `"nobody@x"`))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (list
+            (symbol `pull`)
+            (symbol `?e`)
+            (vector (keyword `:person/name`) (keyword `:person/age`)))
+          (symbol `.`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`))))
+      (symbol `db`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `map`)
+        (keyword `:person/name`)
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (vector
+                (list (symbol `pull`) (symbol `?e`) (vector (keyword `:person/name`)))
+                (symbol `...`))
+              (keyword `:where`)
+              (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:green`))))
+          (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `map`)
+        (list
+          (symbol `fn`)
+          (vector (vector (symbol `m`) (symbol `n`)))
+          (vector (list (keyword `:person/name`) (symbol `m`)) (symbol `n`)))
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (list (symbol `pull`) (symbol `?c`) (vector (keyword `:person/name`)))
+              (list (symbol `count`) (symbol `?o`))
+              (keyword `:where`)
+              (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?c`))))
+          (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `map`)
+        (keyword `:name`)
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (symbol `?n`)
+              (symbol `?a`)
+              (keyword `:keys`)
+              (symbol `name`)
+              (symbol `age`)
+              (keyword `:where`)
+              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+              (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+          (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `map`)
+        (list
+          (symbol `fn`)
+          (vector (symbol `m`))
+          (list (symbol `get`) (symbol `m`) (string `"name"`)))
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (symbol `?n`)
+              (keyword `:strs`)
+              (symbol `name`)
+              (keyword `:where`)
+              (vector (symbol `?e`) (keyword `:person/age`) (int `30`))
+              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+          (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `map`)
+        (list
+          (symbol `fn`)
+          (vector (symbol `m`))
+          (list (symbol `get`) (symbol `m`) (quote (symbol `n`))))
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (symbol `?n`)
+              (list (symbol `count`) (symbol `?e`))
+              (keyword `:syms`)
+              (symbol `n`)
+              (symbol `c`)
+              (keyword `:where`)
+              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+          (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:keys`)
+            (symbol `name`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (list (symbol `pull`) (symbol `?e`) (vector (keyword `:nope/attr`)))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (int `30`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (list (symbol `pull`) (symbol `?e`) (vector (keyword `:person/name`)))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/age`) (int `30`))))
+        (list (symbol `d/history`) (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list (symbol `not`) (vector (symbol `?e`) (keyword `:person/tags`) (symbol `_`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list
+              (symbol `or`)
+              (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:green`))
+              (vector (symbol `?e`) (keyword `:person/age`) (int `30`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `_`))
+            (list
+              (symbol `not-join`)
+              (vector (symbol `?e`))
+              (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?e`))
+              (vector (symbol `?o`) (keyword `:order/status`) (keyword `:status/open`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list
+              (symbol `or-join`)
+              (vector (symbol `?e`))
+              (vector (symbol `?e`) (keyword `:person/role`) (keyword `:role/admin`))
+              (list
+                (symbol `and`)
+                (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?b`))
+                (vector (symbol `?b`) (keyword `:person/role`) (keyword `:role/admin`))))))
+        (symbol `db`))))
+  (list
+    (symbol `def`)
+    (symbol `before`)
+    (list (symbol `d/as-of`) (symbol `db`) (list (keyword `:tx`) (symbol `people`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?then`)
+            (symbol `?now`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?now`))
+            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (symbol `?then`))
+            (vector (list (symbol `not=`) (symbol `?then`) (symbol `?now`)))))
+        (symbol `db`)
+        (symbol `before`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list
+              (symbol `not`)
+              (vector (symbol `$2`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`)))))
+        (symbol `db`)
+        (symbol `before`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `missing?`) (symbol `$2`) (symbol `?e`) (keyword `:person/name`)))))
+        (symbol `db`)
+        (symbol `before`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$db`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `$db`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `$`) (symbol `?e`) (keyword `:person/age`) (symbol `?now`))
+            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (symbol `?then`))
+            (vector (list (symbol `not=`) (symbol `?then`) (symbol `?now`)))))
+        (symbol `db`)
+        (symbol `before`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$hist`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector
+              (symbol `$hist`)
+              (symbol `?e`)
+              (keyword `:person/tags`)
+              (keyword `:red`)
+              (symbol `_`)
+              (symbol `false`))))
+        (symbol `db`)
+        (list (symbol `d/history`) (symbol `db`)))))
+  (list (symbol `def`) (symbol `c2`) (list (symbol `d/connect`) (string `"query2.edb"`)))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c2`)
+    (vector
+      (map
+        (keyword `:db/ident`)
+        (keyword `:city/name`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/unique`)
+        (keyword `:db.unique/identity`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:city/mayor`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:city/size`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/keyword`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c2`)
+    (vector
+      (map
+        (keyword `:city/name`)
+        (string `"Ann Arbor"`)
+        (keyword `:city/mayor`)
+        (string `"Ann"`)
+        (keyword `:city/size`)
+        (keyword `:size/small`))
+      (map
+        (keyword `:city/name`)
+        (string `"Cyprus"`)
+        (keyword `:city/mayor`)
+        (string `"Cy"`)
+        (keyword `:city/size`)
+        (keyword `:size/large`))
+      (map
+        (keyword `:city/name`)
+        (string `"Nowhere"`)
+        (keyword `:city/mayor`)
+        (string `"Zed"`)
+        (keyword `:city/size`)
+        (keyword `:size/small`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?city`)
+            (symbol `?size`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/mayor`) (symbol `?n`))
+            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/name`) (symbol `?city`))
+            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/size`) (symbol `?size`))))
+        (symbol `db`)
+        (list (symbol `d/db`) (symbol `c2`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?size`)
+            (list (symbol `count`) (symbol `?e`))
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/mayor`) (symbol `?n`))
+            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/size`) (symbol `?size`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (list (symbol `d/db`) (symbol `c2`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `$3`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `before`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (int `7`))))
+  (list
+    (symbol `t/check`)
+    (string `"explain names a scan's source"`)
+    (list
+      (symbol `string?`)
+      (list
+        (symbol `d/explain`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (int `25`))))
+        (symbol `db`)
+        (symbol `before`))))
+  (list (symbol `d/release`) (symbol `c2`))
+  (list
+    (symbol `def`)
+    (symbol `rules`)
+    (quote
+      (vector
+        (vector
+          (list (symbol `responsible`) (symbol `?boss`) (symbol `?e`))
+          (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?boss`)))
+        (vector
+          (list (symbol `responsible`) (symbol `?boss`) (symbol `?e`))
+          (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?mid`))
+          (list (symbol `responsible`) (symbol `?boss`) (symbol `?mid`))))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
+            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `rules`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector (symbol `?b`) (keyword `:person/email`) (string `"cy@x"`))
+            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `rules`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?b`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (list (symbol `responsible`) (symbol `?x`) (symbol `?e`))
+            (vector (symbol `?x`) (keyword `:person/name`) (symbol `?b`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `rules`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `sort`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$2`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
+            (list (symbol `$2`) (symbol `responsible`) (symbol `?b`) (symbol `?e`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `before`)
+        (symbol `rules`))))
+  (list
+    (symbol `t/check`)
+    (string `"a repeated query and rule set are served from the caches"`)
+    (list
+      (symbol `=`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
+            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `rules`))
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (vector (symbol `?n`) (symbol `...`))
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
+            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`)
+        (symbol `rules`))))
+  (list (symbol `def`) (symbol `t-people`) (list (keyword `:tx`) (symbol `people`)))
+  (list
+    (symbol `def`)
+    (symbol `ages`)
+    (quote
+      (vector
+        (keyword `:find`)
+        (symbol `?n`)
+        (symbol `?a`)
+        (keyword `:where`)
+        (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+        (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (symbol `ages`)
+        (list (symbol `d/as-of`) (symbol `db`) (symbol `t-people`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (symbol `ages`)
+        (list (symbol `d/since`) (symbol `db`) (symbol `t-people`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?a`)
+            (symbol `?added`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/email`) (string `"bob@x"`))
+            (vector
+              (symbol `?e`)
+              (keyword `:person/age`)
+              (symbol `?a`)
+              (symbol `_`)
+              (symbol `?added`))))
+        (list (symbol `d/history`) (symbol `db`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?added`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/email`) (string `"ed@x"`))
+            (vector
+              (symbol `?e`)
+              (keyword `:person/name`)
+              (symbol `?n`)
+              (symbol `_`)
+              (symbol `?added`))))
+        (list (symbol `d/history`) (symbol `db`)))))
+  (list
+    (symbol `def`)
+    (symbol `plan`)
+    (list
+      (symbol `d/explain`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?n`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `%`)
+          (keyword `:where`)
+          (vector (symbol `?e`) (keyword `:person/age`) (int `30`))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+          (list (symbol `not`) (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:red`)))
+          (list (symbol `responsible`) (symbol `?e`) (symbol `?x`))
+          (vector (list (symbol `<`) (int `1`) (int `2`)))))
+      (symbol `db`)
+      (symbol `rules`)))
+  (list
+    (symbol `t/check`)
+    (string `"explain returns the plan as text"`)
+    (list
+      (symbol `and`)
+      (list (symbol `string?`) (symbol `plan`))
+      (list (symbol `>`) (list (symbol `count`) (symbol `plan`)) (int `0`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (symbol `bogus`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?x`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?a`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `nope`) (symbol `?n`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?pred`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `?pred`) (symbol `?n`)))))
+        (symbol `db`)
+        (int `42`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `?pred`) (symbol `?n`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list (symbol `not`) (vector (symbol `?x`) (keyword `:person/tags`) (keyword `:blue`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list
+              (symbol `or`)
+              (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:blue`))
+              (vector (symbol `?x`) (keyword `:person/tags`) (keyword `:green`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list
+              (symbol `or-join`)
+              (vector (symbol `?e`) (symbol `?w`))
+              (vector (symbol `?e`) (keyword `:person/tags`) (symbol `?w`))
+              (vector (symbol `?e`) (keyword `:person/age`) (int `30`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (symbol `?a`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (symbol `?a`) (symbol `?v`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:nope/attr`) (symbol `?v`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector
+              (symbol `?e`)
+              (keyword `:person/boss`)
+              (vector (keyword `:nope/attr`) (int `1`)))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (list (symbol `sum`) (symbol `?n`))
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/explain`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (symbol `bogus`))))
+        (symbol `db`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector (list (symbol `boom`) (symbol `?n`)))))
+        (symbol `db`))))
+  (list
+    (symbol `t/check`)
+    (string `"the store still works after a predicate threw"`)
+    (list
+      (symbol `=`)
+      (list (symbol `inc`) (list (symbol `d/basis-t`) (symbol `db`)))
+      (list
+        (keyword `:tx`)
+        (list
+          (symbol `d/transact!`)
+          (symbol `c`)
+          (vector
+            (map
+              (keyword `:person/email`)
+              (string `"gil@x"`)
+              (keyword `:person/name`)
+              (string `"Gil"`)))))))
+  (list
+    (symbol `t/check`)
+    (string `"results are ordinary sets"`)
+    (list
+      (symbol `let`)
+      (vector
+        (symbol `res`)
+        (list
+          (symbol `d/q`)
+          (quote
+            (vector
+              (keyword `:find`)
+              (symbol `?n`)
+              (symbol `?a`)
+              (keyword `:where`)
+              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+              (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+          (list (symbol `d/db`) (symbol `c`))))
+      (list
+        (symbol `and`)
+        (list (symbol `set?`) (symbol `res`))
+        (list (symbol `=`) (int `6`) (list (symbol `count`) (symbol `res`)))
+        (list
+          (symbol `=`)
+          (vector
+            (string `"Ann"`)
+            (string `"Bob"`)
+            (string `"Cy"`)
+            (string `"Di"`)
+            (string `"Edward"`)
+            (string `"Flo"`))
+          (list (symbol `sort`) (list (symbol `map`) (symbol `first`) (symbol `res`))))
+        (list (symbol `contains?`) (symbol `res`) (vector (string `"Bob"`) (int `26`))))))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/bio`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/fulltext`)
+        (symbol `true`))))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (map
+        (keyword `:person/email`)
+        (string `"ann@x"`)
+        (keyword `:person/bio`)
+        (string `"Ann runs the red team; loves Café Noir."`))
+      (map
+        (keyword `:person/email`)
+        (string `"bob@x"`)
+        (keyword `:person/bio`)
+        (string `"Bob, the Red Baron of billing"`))
+      (map
+        (keyword `:person/email`)
+        (string `"cy@x"`)
+        (keyword `:person/bio`)
+        (string `"Cy: blue-team lead, x2"`))))
+  (list (symbol `def`) (symbol `before-items`) (list (symbol `d/db`) (symbol `c`)))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (vector (keyword `:db/add`) (keyword `:order/items`) (keyword `:db/fulltext`) (symbol `true`))))
+  (list (symbol `def`) (symbol `ft`) (list (symbol `d/db`) (symbol `c`)))
+  (list
+    (symbol `println`)
+    (vector
+      (list
+        (keyword `:db/fulltext`)
+        (list
+          (symbol `get`)
+          (list (symbol `d/schema`) (symbol `before-items`))
+          (keyword `:order/items`)))
+      (list
+        (keyword `:db/fulltext`)
+        (list (symbol `get`) (list (symbol `d/schema`) (symbol `ft`)) (keyword `:order/items`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"RED team"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"café"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?needle`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (symbol `?needle`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (symbol `ft`)
+        (string `"team blue x2"`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?e`)
+          (keyword `:where`)
+          (vector
+            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red green"`))
+            (vector (vector (symbol `?e`) (symbol `?v`))))))
+      (symbol `ft`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?e`)
+          (keyword `:where`)
+          (vector
+            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"..."`))
+            (vector (vector (symbol `?e`) (symbol `?v`))))))
+      (symbol `ft`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?o`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:order/items`) (string `"apple"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:order/number`) (symbol `?o`))))
+        (symbol `ft`))))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (vector
+        (keyword `:db/retract`)
+        (vector (keyword `:person/email`) (string `"bob@x"`))
+        (keyword `:person/bio`)
+        (string `"Bob, the Red Baron of billing"`))
+      (map
+        (keyword `:person/email`)
+        (string `"bob@x"`)
+        (keyword `:person/bio`)
+        (string `"Bob now bills in blue"`))
+      (vector
+        (keyword `:db/retract`)
+        (vector (keyword `:order/number`) (int `1`))
+        (keyword `:order/items`)
+        (string `"apple"`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (list (symbol `d/db`) (symbol `c`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?o`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:order/items`) (string `"apple"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:order/number`) (symbol `?o`))))
+        (list (symbol `d/db`) (symbol `c`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `rows`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))
+            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+        (list
+          (symbol `d/as-of`)
+          (list (symbol `d/db`) (symbol `c`))
+          (list (symbol `d/basis-t`) (symbol `ft`))))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?v`)
+          (keyword `:where`)
+          (vector
+            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"blue"`))
+            (vector (vector (symbol `?e`) (symbol `?v`))))))
+      (list
+        (symbol `d/since`)
+        (list (symbol `d/db`) (symbol `c`))
+        (list (symbol `d/basis-t`) (symbol `ft`)))))
+  (list
+    (symbol `d/excise!`)
+    (symbol `c`)
+    (list (symbol `d/entid`) (symbol `ft`) (vector (keyword `:person/email`) (string `"ann@x"`)))
+    (keyword `:person/bio`))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/q`)
+      (quote
+        (vector
+          (keyword `:find`)
+          (symbol `?n`)
+          (keyword `:where`)
+          (vector
+            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
+            (vector (vector (symbol `?e`) (symbol `?v`))))
+          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+      (list (symbol `d/db`) (symbol `c`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:order/items`) (string `"apple"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))))
+        (symbol `before-items`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/name`) (string `"ann"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/nope`) (string `"ann"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (int `42`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/q`)
+        (quote
+          (vector
+            (keyword `:find`)
+            (symbol `?v`)
+            (keyword `:where`)
+            (vector
+              (list (symbol `fulltext`) (keyword `:person/bio`) (string `"ann"`))
+              (vector (vector (symbol `?e`) (symbol `?v`))))))
+        (symbol `ft`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/transact!`)
+        (symbol `c`)
+        (vector
+          (vector
+            (keyword `:db/add`)
+            (keyword `:person/age`)
+            (keyword `:db/fulltext`)
+            (symbol `true`))))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/transact!`)
+        (symbol `c`)
+        (vector
+          (map
+            (keyword `:db/ident`)
+            (keyword `:person/nick`)
+            (keyword `:db/valueType`)
+            (keyword `:db.type/keyword`)
+            (keyword `:db/cardinality`)
+            (keyword `:db.cardinality/one`)
+            (keyword `:db/fulltext`)
+            (symbol `true`))))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/transact!`)
+        (symbol `c`)
+        (vector
+          (vector
+            (keyword `:db/retract`)
+            (keyword `:person/bio`)
+            (keyword `:db/fulltext`)
+            (symbol `true`))))))
+  (list
+    (symbol `t/check`)
+    (string `":db/fulltext is a bootstrap attribute"`)
+    (list (symbol `=`) (int `22`) (list (symbol `d/entid`) (symbol `ft`) (keyword `:db/fulltext`))))
+  (list (symbol `d/release`) (symbol `c`))
+  (list
+    (symbol `println`)
+    (list (symbol `t/caught`) (list (symbol `d/q`) (symbol `ages`) (symbol `db`))))
+  (keyword `:query-done`))

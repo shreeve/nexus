@@ -1,0 +1,7 @@
+struct User
+  name: Str
+  age: Int
+
+sub main()
+  u = User(name:)
+  print(u.name)

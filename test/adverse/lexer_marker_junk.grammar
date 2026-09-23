@@ -1,0 +1,9 @@
+# @lexer stands alone on its line.
+# error: lexer_marker_junk.grammar:4:8:
+# error: unexpected name 'junk'
+@lexer junk
+tokens
+    eof, err
+. → err
+@parser
+top! = ERR → 1

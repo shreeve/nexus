@@ -1,0 +1,14 @@
+# A type alias is transparent: `UserId` is `Int`, so an Int literal
+# initializes it and it takes part in arithmetic.
+
+type UserId = Int
+
+fun next(a: UserId) -> Int
+  a + 1
+
+sub main()
+  x: UserId = 5
+  print(next(x))
+
+# expect:
+# 6

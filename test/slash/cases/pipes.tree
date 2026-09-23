@@ -1,0 +1,19 @@
+(sequence
+  (pipeline
+    (command _ (word `ls`) (word `-la`))
+    (command _ (word `grep`) (word `foo`))
+    (command _ (word `wc`) (word `-l`)))
+  (seq_always (command _ (word `echo`) (word `hello`) (redir_write (word `out.txt`))))
+  (seq_always
+    (command
+      _
+      (word `cat`)
+      (redir_read (word `in.txt`))
+      (redir_append (word `log.txt`))
+      (redir_dup_out `2>&1`)))
+  (seq_always (command _ (word `make`)))
+  (seq_and (command _ (word `make`) (word `test`)))
+  (seq_or (command _ (word `echo`) (word `failed`)))
+  (seq_always (command _ (word `sleep`) (word `10`)))
+  (seq_bg)
+  (seq_always))

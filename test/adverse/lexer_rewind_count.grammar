@@ -1,0 +1,13 @@
+# rewind takes a byte count.
+# error: lexer_rewind_count.grammar:10:23:
+# error: unexpected name 'x'
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'ab' → word, rewind(x)
+. → err
+@parser
+top! = WORD → 1

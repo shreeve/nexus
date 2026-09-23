@@ -1,0 +1,54 @@
+(module
+  (generic_type `W` (`T`) (: `v` `T`))
+  (enum `E` (variant `held` ((: `c` (borrow_read (generic_inst `Cell` `Int`))))) `empty`)
+  (struct `View` (: `c` (borrow_read (generic_inst `Cell` `Int`))))
+  (struct
+    `H`
+    (: `c` (generic_inst `Cell` `Int`))
+    (fun
+      `cell`
+      ((read `self`))
+      (borrow_read (generic_inst `Cell` `Int`))
+      (block (read (member `self` `c`)))))
+  (type `C` (generic_inst `Cell` `Int`))
+  (fun `id` ((: `c` (borrow_read `C`))) (borrow_read `C`) (block `c`))
+  (fun
+    `inner`
+    ((: `h` (borrow_read `H`)))
+    (borrow_read (generic_inst `Cell` `Int`))
+    (block (read (member `h` `c`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `cell` (generic_inst `Cell` `Int`) (call `Cell` (kwarg `value` `1`)))
+      (set _ `r` _ (call `id` (read `cell`)))
+      (set _ `v` _ (call `View` (kwarg `c` (read `cell`))))
+      (set _ `o` (optional (borrow_read (generic_inst `Cell` `Int`))) (read `cell`))
+      (set _ `xs` _ (array (read `cell`)))
+      (set
+        _
+        `w`
+        (generic_inst `W` (borrow_read (generic_inst `Cell` `Int`)))
+        (call `W` (kwarg `v` (read `cell`))))
+      (set _ `e` `E` (call (enum_lit `held`) (kwarg `c` (read `cell`))))
+      (set _ `f` _ (lambda ((: `c` (borrow_read (generic_inst `Cell` `Int`)))) _ _ (block `c`)))
+      (set _ `k` _ (call `f` (read `cell`)))
+      (call (member `cell` `set`) `5`)
+      (call
+        `print`
+        (call (member `r` `get`))
+        (call (member (member `v` `c`) `get`))
+        (call (member (index `xs` `0`) `get`))
+        (call (member (member `w` `v`) `get`))
+        (call (member `k` `get`)))
+      (if (as `o` `p`) (block (call `print` (call (member `p` `get`)))))
+      (match
+        `e`
+        (arm (variant_pattern `held` `c`) (call `print` (call (member `c` `get`))))
+        (arm (enum_lit `empty`) (call `print` `0`)))
+      (set _ `h` _ (call `H` (kwarg `c` (call `Cell` (kwarg `value` `3`)))))
+      (set _ `a` _ (call `inner` (read `h`)))
+      (set _ `b` _ (call (member `h` `cell`)))
+      (call `print` (call (member `a` `get`)) (call (member `b` `get`))))))

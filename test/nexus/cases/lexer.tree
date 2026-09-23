@@ -1,0 +1,40 @@
+(grammar
+  (lang `"demo"`)@77..91
+  (section `lexer`)@93..99
+  (state `state` (assign `inline` `-1`)@107..118)@101..118
+  (state
+    `state`
+    (assign `beg` `1`)@129..136
+    (assign `flag` `true`)@161..172
+    (assign `paren` `0`)@177..186)@119..186
+  (after `after` (assign `beg` `0`)@198..205)@188..205
+  (tokens `tokens` `ident` `number` `string` `eof` `err` `comment`)@207..262
+  (code `checkMode`)@264..281
+  (lex_rule `[ \\t]+` _ `skip` (lex_action `skip` _)@329..333)@283..333
+  (lex_rule `'#' [^\\n]*` _ `comment` (lex_action `simd_to` `'\\n'`)@383..395)@334..395
+  (lex_rule `'\\n'` _ `ident` (set_action `beg` `1`)@443..452)@396..452
+  (lex_rule `'('` _ `ident` (step_action `paren` `++`)@500..509)@453..509
+  (lex_rule
+    `')'`
+    (guards `@` (guard _ `paren` `>` `0`)@516..525)@514..525
+    `ident`
+    (step_action `paren` `--`)@557..566)@510..566
+  (lex_rule
+    `'.'+`
+    (guards `@` (guard _ `beg` _ _)@574..577 (guard `!` `flag` _ _)@580..585)@572..585
+    `ident`
+    (counted `beg` `counted` `'.'`)@614..634
+    (lex_action `hold` _)@636..640)@567..640
+  (lex_rule
+    _
+    (guards `@` (guard _ `pre` `>=` `2`)@643..651 (guard _ `beg` `==` `1`)@654..662)@641..662
+    `ident`
+    (set_action `flag` `false`)@688..702)@641..702
+  (lex_rule `"<=>"` _ `ident` (lex_action `rewind` `1`)@749..758)@703..758
+  (lex_rule `[0-9]+ / '.' [a-z]` _ `number`)@759..804
+  (lex_rule `'"' ([^"\\\\\\n] | '\\\\' .)* '"'` _ `string`)@805..851
+  (lex_rule `.` _ `err`)@852..895
+  (section `parser`)@897..904
+  (rule
+    (start `top`)@906..910
+    (alt _ ((tok `IDENT`)@913..918)@913..918 (node `top` (pos `1`)@951..952)@946..953 _)@913..953)@906..953)@77..954

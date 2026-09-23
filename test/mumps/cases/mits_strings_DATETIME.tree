@@ -1,0 +1,204 @@
+(routine
+  (label `DATETIME`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/strings/DATETIME"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD epoch fmt 1"`)) (expr (str `"01/01/70"`)) (expr (str `"$ZD(47117,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD epoch fmt 2"`)) (expr (str `"01/01/1970"`)) (expr (str `"$ZD(47117,2)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD epoch fmt 3"`)) (expr (str `"01-01-1970"`)) (expr (str `"$ZD(47117,3)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD numeric arg works"`))
+          (expr (str `"01/01/1970"`))
+          (expr (str `"$ZD(47117,2)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD string arg works"`))
+          (expr (str `"01/01/1970"`))
+          (expr (str `"$ZD(""47117"",2)"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD MUMPS day 0"`)) (expr (str `"12/31/40"`)) (expr (str `"$ZD(0,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD MUMPS day 1"`)) (expr (str `"01/01/41"`)) (expr (str `"$ZD(1,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD MUMPS day 0 long"`))
+          (expr (str `"12/31/1840"`))
+          (expr (str `"$ZD(0,2)"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT 0 (midnight)"`)) (expr (str `"00:00:00"`)) (expr (str `"$ZT(0,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT 1 (00:00:01)"`)) (expr (str `"00:00:01"`)) (expr (str `"$ZT(1,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT noon"`)) (expr (str `"12:00:00"`)) (expr (str `"$ZT(43200,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT one minute"`)) (expr (str `"00:01:00"`)) (expr (str `"$ZT(60,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT one hour"`)) (expr (str `"01:00:00"`)) (expr (str `"$ZT(3600,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT 23:59:59"`)) (expr (str `"23:59:59"`)) (expr (str `"$ZT(86399,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZT format 2 HH:MM"`)) (expr (str `"12:00"`)) (expr (str `"$ZT(43200,2)"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZDATETIME epoch noon"`))
+          (expr (str `"01/01/1970 12:00:00"`))
+          (expr (str `"$ZDATETIME(""47117,43200"",2,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZDATETIME epoch midnight"`))
+          (expr (str `"01/01/1970 00:00:00"`))
+          (expr (str `"$ZDATETIME(""47117,0"",2,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZDATETIME with $ZH 4-field horolog"`))
+          (expr (str `"01/01/1970 12:00:00"`))
+          (expr (str `"$ZDATETIME(""47117,43200,12345,21600"",2,1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZDATETIME numeric date arg"`))
+          (expr (str `"12/31/1840 00:00:00"`))
+          (expr (str `"$$ZDTNUM^DATETIME()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD day-after epoch"`))
+          (expr (str `"01/02/1970"`))
+          (expr (str `"$ZD(47117+1,2)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZD year boundary"`))
+          (expr (str `"12/31/1970"`))
+          (expr (str `"$ZD(47117+364,2)"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/strings/DATETIME"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `ZDTNUM`
+    _
+    ((quit
+       _
+       (expr (intrinsic `ZDATETIME`#227 ((expr (str `"0,0"`)) (expr (num `2`)) (expr (num `1`)))))))))

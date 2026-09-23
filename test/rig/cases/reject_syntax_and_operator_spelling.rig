@@ -1,0 +1,9 @@
+# The boolean operators are `and`, `or`, `not`; `&&` is rejected with a
+# pointer to the Rig spelling.
+
+sub main()
+  a = true
+  b = false
+  print(a && b)
+
+# error: `&&` is not a Rig operator; use `and`

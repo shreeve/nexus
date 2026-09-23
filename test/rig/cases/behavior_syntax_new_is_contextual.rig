@@ -1,0 +1,20 @@
+# `new` is a keyword only at the start of a statement (`new x = ...`
+# explicitly shadows); elsewhere it is an ordinary name, so a type can
+# have a `new` constructor.
+
+struct Point
+  x: Int
+
+  fun new(x: Int) -> Point
+    Point(x: x)
+
+sub main()
+  p = Point.new(3)
+  print p.x
+  x = 1
+  new x = 20
+  print x
+
+# expect:
+# 3
+# 20

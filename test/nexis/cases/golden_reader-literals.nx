@@ -1,0 +1,125 @@
+; test/golden/reader-literals.nx — exhaustive coverage of every reader
+; construct from PLAN §7.2. Each top-level form exercises one feature.
+
+; ----------------------------------------------------------------------
+; Numbers — decimal, hex, binary, negative, real, exponent
+
+42
+-7
+0xCAFE
+0b10110
+3.14
+-2.5
+1e9
+1.5e-3
+1.5E+10
+9223372036854775807
+18446744073709551616
+-0x10000000000000000
+
+; ----------------------------------------------------------------------
+; Strings — escapes and unicode
+
+"hello"
+"tab\there"
+"newline\n"
+"quote\"inside"
+"snowman \u{2603}"
+
+; ----------------------------------------------------------------------
+; Characters — single, named, and unicode-escaped
+
+\a
+\Z
+\0
+\newline
+\space
+\tab
+\return
+\formfeed
+\backspace
+\u{2603}
+
+; ----------------------------------------------------------------------
+; Keywords and symbols — plain and namespaced
+
+:plain
+:ns/name
+:some-kw
+:?pred
+:a.b.c
+:-minus
+:->>
+:-
+
+nexis
+nexis.core/foo
+->>
+<=
+set!
++
+-foo
+*earmuffs*
+
+nil
+true
+false
+
+; ----------------------------------------------------------------------
+; Collections
+
+(a b c)
+[1 2 3]
+{:a 1 :b 2}
+#{:x :y :z}
+()
+[]
+{}
+#{}
+
+; ----------------------------------------------------------------------
+; Reader macros
+
+'x
+'(1 2)
+`(inc ~x)
+`(inc ~@xs)
+@r
+#(+ %1 %2)
+#(+ % 1)
+
+; ----------------------------------------------------------------------
+; Metadata — all three shapes, stacked
+
+^:private x
+^{:doc "hello"} y
+^String z
+^:dynamic ^{:doc "stacked"} *out*
+
+; Metadata on collections — same code path as symbols, but exercised
+; explicitly so the coverage is visible.
+
+^:frozen [1 2 3]
+^{:origin :user} {:a 1}
+^:sorted #{:x :y}
+^:annotated (fn [x] x)
+
+; ----------------------------------------------------------------------
+; Discard and commas-as-whitespace
+
+(+ #_(expensive-thing) 1 2)
+(+ #_ #_ x y 3 4)
+#_ #_ #_ a b c d
+[1,2,3,4]
+
+; Anon-fn shapes — placeholder rewriting happens in the macroexpander;
+; the reader only produces the (#%anon-fn ...) form.
+
+#(%)
+#(inc %)
+#(+ %1 %2 %&)
+
+; Unquote / unquote-splice inside syntax-quote at multiple depths.
+
+`(a ~b ~@cs)
+`(outer `(inner ~x))

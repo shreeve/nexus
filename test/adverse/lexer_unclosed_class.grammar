@@ -1,0 +1,13 @@
+# A class in a pattern must close on its line.
+# error: lexer_unclosed_class.grammar:10:1:
+# error: unclosed '['
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+[a-z → word
+. → err
+@parser
+top! = WORD → 1

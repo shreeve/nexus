@@ -1,0 +1,536 @@
+(routine
+  (label `PSOARCF5`)
+  (` `)
+  (` `
+    _
+    (set _ (= (lvar `PSOACP`) (expr (num `0`))))
+    (do _ (call (ref `CLOSE`)))
+    (kill (postcond (expr (`'` (intrinsic `D`#202 ((expr (lvar `PSOACP`))))))) (lvar `PSOAP`))
+    (kill (postcond (expr (`'` (intrinsic `D`#202 ((expr (lvar `PSOACT`))))))) (lvar `PSOAT`)))
+  (label
+    `END`
+    _
+    ((kill
+       _
+       (lvar `PSABS`)
+       (lvar `PSOAC`)
+       (lvar `PSOACP`)
+       (lvar `PSOACT`)
+       (lvar `PSOAF`)
+       (lvar `PSOAM`)
+       (lvar `PSOAPAR`)
+       (lvar `PSOAT`)
+       (lvar `ZI`)
+       (lvar `ZII`)
+       (lvar `J`)
+       (lvar `JJ`)
+       (lvar `K`)
+       (lvar `IOP`)
+       (lvar `PSOACPF`)
+       (lvar `X`)
+       (lvar `X1`)
+       (lvar `X2`)
+       (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (str `"ZRX"`))))
+       (lvar `PSOACPL`)
+       (lvar `PSOACPM`)
+       (lvar `PSPRNP`)
+       (lvar `RFDATE`)
+       (lvar `RFL`)
+       (lvar `RM`)
+       (lvar `ST`)
+       (lvar `ST0`)
+       (lvar `LL`)
+       (lvar `KK`)
+       (lvar `NM`)
+       (lvar `PG`)
+       (lvar `PHYS`)
+       (lvar `PI`)
+       (lvar `PSDIS`)
+       (lvar `PSLC`)
+       (lvar `PSOACRS`)
+       (lvar `PSPRCNT`)
+       (lvar `RFL1`)
+       (lvar `PSOAPG`)
+       (lvar `T`)
+       (lvar `PSOAP`))))
+  (` `
+    _
+    (kill
+      _
+      (lvar `%MT`)
+      (lvar `C`)
+      (lvar `POP`)
+      (lvar `SS`)
+      (lvar `TZ`)
+      (lvar `XNEW`)
+      (lvar `XNM`)
+      (lvar `XSS`)
+      (lvar `IOUPAR`)
+      (lvar `IOPAR`)
+      (lvar `IOXY`)
+      (lvar `%`)
+      (lvar `DUSYS`)
+      (lvar `DIRUT`)
+      (lvar `SSN`)
+      (lvar `PSRST`)
+      (lvar `PSOATNM`)
+      (lvar `XX`)
+      (lvar `PSOAPF`)
+      (lvar `IOBS`)
+      (lvar `IOHG`)))
+  (` `
+    _
+    (kill
+      _
+      (lvar `%DT`)
+      (lvar `%Y`)
+      (lvar `D0`)
+      (lvar `D1`)
+      (lvar `D2`)
+      (lvar `DA`)
+      (lvar `DI`)
+      (lvar `DIE`)
+      (lvar `DIR`)
+      (lvar `DLAYGO`)
+      (lvar `DQ`)
+      (lvar `DR`)
+      (lvar `PAT`)
+      (lvar `PSOACD`)
+      (lvar `PSOK`)
+      (lvar `RX`)
+      (lvar `RX0`)
+      (lvar `ZZI`)
+      (lvar `IK`)
+      (lvar `STOP`)
+      (lvar `PSOAIO`)
+      (lvar `PSOAIOT`)
+      (lvar `PSOAPAR`)))
+  (` ` _ (do _ (call (ref `KILLARC` _ `PSOARCCO`))) (lock _ (lock- (gvar `PSOARC`))))
+  (` ` _ (quit))
+  (label
+    `CLOSE`
+    _
+    ((if (expr (intrinsic `D`#202 ((expr (lvar `PSOAT`))))))
+      (use _ ((expr (lvar `IO` ((expr (num `0`)))))))
+      (set _ (= (lvar `IOP`) (expr (lvar `PSOAT`))))
+      (do _ (call (ref _ _ `%ZIS`)))
+      (do _ (call (ref _ _ `%ZISC`)))
+      (kill _ (lvar `IOP`))))
+  (` `
+    _
+    (if
+      (expr (intrinsic `D`#202 ((expr (lvar `PSOAP`)))))
+      (expr (lvar `IO` ((expr (num `0`)))) (`'=` (lvar `PSOAP`))))
+    (use _ ((expr (lvar `PSOAP`))))
+    (write _ (expr (@name (lvar `PSOACPF`))))
+    (use _ ((expr (lvar `IO` ((expr (num `0`)))))))
+    (set _ (= (lvar `IOP`) (expr (lvar `PSOAP`))))
+    (do _ (call (ref _ _ `%ZIS`)))
+    (do _ (call (ref _ _ `%ZISC`)))
+    (kill _ (lvar `IOP`)))
+  (` ` _ (lock _ (lock- (gvar `PSOARC`))) (quit))
+  (label `ARC`)
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!` `!`)
+      (expr (str `"Are you sure you're ready to PURGE your ARCHIVED PRESCRIPTIONS"`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DIR` ((expr (str `"A"`))))
+        (expr (str `"from your on-line prescription global? Y/N "`)))
+      (= (lvar `DIR` ((expr (str `"T"`)))) (expr (lvar `DTIME`)))
+      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"YO"`))))
+    (do _ (call (ref _ _ `DIR`)))
+    (kill _ (lvar `DIR`))
+    (quit (postcond (expr (lvar `Y`) (`=` (num `0`)))))
+    (quit (postcond (expr (intrinsic `G`#206 ((expr (lvar `DIRUT`))))))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"If you do not have a current backup, exit and perform the backup"`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DIR` ((expr (str `"A"`))))
+        (expr (str `"operation !!!  'Y' to continue   'N' to exit"`)))
+      (= (lvar `DIR` ((expr (str `"T"`)))) (expr (lvar `DTIME`)))
+      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"Y"`))))
+    (do _ (call (ref _ _ `DIR`)))
+    (kill _ (lvar `DIR`))
+    (quit (postcond (expr (lvar `Y`) (`=` (num `0`)))))
+    (quit (postcond (expr (intrinsic `G`#206 ((expr (lvar `DIRUT`))))))))
+  (` `
+    _
+    (if (expr (gvar `%ZOSF` ((expr (str `"OS"`)))) (`'[` (str `"MSM"`))))
+    (write _ (posformat `!` `!`))
+    (set
+      _
+      (=
+        (lvar `DIR` ((expr (str `"A"`))))
+        (expr (str `"Is JOURNALING DISABLED on the prescription global (^PSRX)? Y/N "`)))
+      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"YO"`)))
+      (= (lvar `DIR` ((expr (str `"T"`)))) (expr (lvar `DTIME`))))
+    (do _ (call (ref _ _ `DIR`)))
+    (kill _ (lvar `DIR`))
+    (quit (postcond (expr (lvar `Y`) (`=` (num `0`)))))
+    (quit (postcond (expr (intrinsic `G`#206 ((expr (lvar `DIRUT`))))))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"Deleting entries from the PENDING file"`))
+      (posformat `!`)))
+  (` `
+    _
+    (set _ (= (lvar `PDRX`) (expr (num `0`))))
+    (for)
+    (set
+      _
+      (=
+        (lvar `PDRX`)
+        (expr (intrinsic `O`#211 ((expr (gvar `PS` ((expr (num `52.41`)) (expr (lvar `PDRX`))))))))))
+    (quit (postcond (expr (`'` (lvar `PDRX`)))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `STAT`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (gvar `PS` ((expr (num `52.41`)) (expr (lvar `PDRX`)) (expr (num `0`)))))
+              (expr (str `"^"`))
+              (expr (num `3`)))))))
+    (if
+      (expr
+        (intrinsic `G`#206 ((expr (lvar `STAT`))))
+        (`=` (str `"DC"`))
+        (`!` (expr (intrinsic `G`#206 ((expr (lvar `STAT`)))) (`=` (str `"DE"`))))))
+    (do))
+  (` ..`#2
+    _
+    (do
+      _
+      (call
+        (ref `EN` _ `PSOHLSN`)
+        ((expr
+           (intrinsic
+             `P`#212
+             ((expr (gvar `PS` ((expr (num `52.41`)) (expr (lvar `PDRX`)) (expr (num `0`)))))
+               (expr (str `"^"`)))))
+          (expr (str `"Z@"`))
+          (expr (str `"PURGE ORDER"`))
+          (expr (str `""""`))))))
+  (` ..`#2
+    _
+    (set _ (= (lvar `DIK`) (expr (str `"^PS(52.41,"`))) (= (lvar `DA`) (expr (lvar `PDRX`))))
+    (do _ (call (ref _ _ `DIK`)))
+    (kill _ (lvar `DA`) (lvar `DIK`) (lvar `STAT`))
+    (write _ (expr (str `"."`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"Deleting entries from the PRESCRIPTION file"`))
+      (posformat `!`)))
+  (` `
+    _
+    (set _ (setmulti (expr (num `0`)) (lvar `RX`) (lvar `RX1`)))
+    (for)
+    (set _ (= (lvar `RX`) (expr (intrinsic `O`#211 ((expr (gvar `PSRX` ((expr (lvar `RX`))))))))))
+    (quit (postcond (expr (`'` (lvar `RX`)))))
+    (set
+      _
+      (=
+        (lvar `PSOACD`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (gvar `PSRX` ((expr (lvar `RX`)) (expr (num `0`)))))
+              (expr (str `"^"`))
+              (expr (num `2`))))))
+      (=
+        (lvar `RX1`)
+        (expr (intrinsic `P`#212 ((expr (naked (expr (num `0`)))) (expr (str `"^"`)))))))
+    (if
+      (expr
+        (intrinsic `G`#206 ((expr (gvar `PSRX` ((expr (lvar `RX`)) (expr (str `"ARC"`)))))))
+        (`>` (num `0`))))
+    (do _ (call (ref _ _ `PSOARCDE`)) (call (ref `MES`)))
+    (write _ (expr (str `"."`))))
+  (` `
+    _
+    (write
+      _
+      (expr (intrinsic `C`#201 ((expr (num `7`)))))
+      (posformat `!` `!` `!`)
+      (expr (str `"Finished purging old prescriptions"`))))
+  (` `
+    _
+    (kill
+      _
+      (lvar `%DT`)
+      (lvar `%Y`)
+      (lvar `D0`)
+      (lvar `D1`)
+      (lvar `D2`)
+      (lvar `DA`)
+      (lvar `DI`)
+      (lvar `DIE`)
+      (lvar `DIR`)
+      (lvar `DLAYGO`)
+      (lvar `DQ`)
+      (lvar `DR`)
+      (lvar `PAT`)
+      (lvar `IK`)
+      (lvar `LL`)
+      (lvar `LST`)
+      (lvar `PNODE`)
+      (lvar `PLGTH`)
+      (lvar `PDRX`)
+      (lvar `PSOACD`)
+      (lvar `PSOK`)
+      (lvar `RX`)
+      (lvar `RX1`)
+      (lvar `ZZI`)))
+  (` ` _ (quit))
+  (label `MES`)
+  (` ` _ (set _ (= (lvar `LL`) (expr (num `0`))) (= (lvar `LST`) (expr (str `""`)))))
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `PS`
+                 ((expr (num `55`)) (expr (lvar `PSOACD`)) (expr (str `"ARC"`)) (expr (lvar `DT`))))))))))
+    (set
+      _
+      (= (lvar `DA`) (expr (lvar `PSOACD`)))
+      (= (lvar `DIE`) (expr (num `55`)))
+      (= (lvar `DR`) (expr (str `"101///"`) (`_` (lvar `DT`))))
+      (=
+        (lvar `DR` ((expr (num `2`)) (expr (num `55.13`))))
+        (expr (str `"1///"`) (`_` (intrinsic `G`#206 ((expr (lvar `RX1`))))))))
+    (do _ (call (ref _ _ `DIE`)))
+    (kill _ (lvar `DIE`))
+    (goto _ ((ref `QMES`))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `LL`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `PS`
+                 ((expr (num `55`))
+                   (expr (lvar `PSOACD`))
+                   (expr (str `"ARC"`))
+                   (expr (lvar `DT`))
+                   (expr (num `1`))
+                   (expr (lvar `LL`))))))))))
+    (quit (postcond (expr (`'` (lvar `LL`)))))
+    (set _ (= (lvar `LST`) (expr (lvar `LL`)))))
+  (` `
+    _
+    (if
+      (expr (intrinsic `G`#206 ((expr (lvar `LST`)))))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `PS`
+               ((expr (num `55`))
+                 (expr (lvar `PSOACD`))
+                 (expr (str `"ARC"`))
+                 (expr (lvar `DT`))
+                 (expr (num `1`))
+                 (expr (lvar `LST`))
+                 (expr (num `0`)))))))))
+    (set
+      _
+      (=
+        (lvar `PNODE`)
+        (expr
+          (gvar
+            `PS`
+            ((expr (num `55`))
+              (expr (lvar `PSOACD`))
+              (expr (str `"ARC"`))
+              (expr (lvar `DT`))
+              (expr (num `1`))
+              (expr (lvar `LST`))
+              (expr (num `0`)))))))
+    (set _ (= (lvar `PLGTH`) (expr (intrinsic `L`#209 ((expr (lvar `PNODE`)))))))
+    (if (expr (intrinsic `G`#206 ((expr (lvar `PLGTH`))))) (expr (lvar `PLGTH`) (`<` (num `220`))))
+    (set
+      _
+      (=
+        (gvar
+          `PS`
+          ((expr (num `55`))
+            (expr (lvar `PSOACD`))
+            (expr (str `"ARC"`))
+            (expr (lvar `DT`))
+            (expr (num `1`))
+            (expr (lvar `LST`))
+            (expr (num `0`))))
+        (expr
+          (lvar `PNODE`)
+          (`_`
+            (select
+              ((expr
+                 (intrinsic `E`#203 ((expr (lvar `PNODE`)) (expr (lvar `PLGTH`))))
+                 (`'=` (str `"*"`)))
+                (expr (str `"*"`)))
+              ((expr (num `1`)) (expr (str `""`)))))
+          (`_` (lvar `RX1`)))))
+    (goto _ ((ref `QMES`))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DA`) (expr (lvar `PSOACD`)))
+      (= (lvar `DIE`) (expr (num `55`)))
+      (= (lvar `DR`) (expr (str `"101///"`) (`_` (lvar `DT`))))
+      (=
+        (lvar `DR` ((expr (num `2`)) (expr (num `55.13`))))
+        (expr (str `"1///"`) (`_` (intrinsic `G`#206 ((expr (lvar `RX1`))))))))
+    (do _ (call (ref _ _ `DIE`)))
+    (kill _ (lvar `DIE`)))
+  (label `QMES` _ ((quit)))
+  (label `TAPE1`)
+  (` `
+    _
+    (do _ (call (ref `PSOAT`)))
+    (write
+      _
+      (expr (str `"!"`))
+      (posformat `!`)
+      (expr (lvar `T` ((expr (num `1`)))))
+      (posformat `!`)
+      (expr (lvar `T` ((expr (num `2`)))))
+      (posformat `!`))
+    (set
+      _
+      (=
+        (lvar `D`)
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `T` ((expr (num `2`))))) (expr (str `"^"`)) (expr (num `2`)))))))
+      (=
+        (lvar `A`)
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `T` ((expr (num `2`))))) (expr (str `"^"`)) (expr (num `3`)))))))
+      (=
+        (lvar `DG`)
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `T` ((expr (num `2`))))) (expr (str `"^"`)) (expr (num `4`)))))))
+      (=
+        (lvar `GD`)
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `T` ((expr (num `2`))))) (expr (str `"^"`)) (expr (num `5`)))))))))
+  (` `
+    _
+    (if (expr (lvar `D`) (`>` (num `0`))))
+    (for (lvar `TI`) (range (expr (num `1`)) (expr (num `1`)) (expr (lvar `D`))))
+    (write
+      (postcond
+        (expr (intrinsic `D`#202 ((expr (lvar `T` ((expr (num `2`)) (expr (lvar `TI`)))))))))
+      (expr (lvar `T` ((expr (num `2`)) (expr (lvar `TI`)))))
+      (posformat `!`)))
+  (` `
+    _
+    (if (expr (lvar `A`) (`>` (num `0`))))
+    (for (lvar `TI`) (range (expr (num `1`)) (expr (num `1`)) (expr (lvar `A`))))
+    (write
+      (postcond
+        (expr (intrinsic `D`#202 ((expr (lvar `T` ((expr (num `3`)) (expr (lvar `TI`)))))))))
+      (expr (lvar `T` ((expr (num `3`)) (expr (lvar `TI`)))))
+      (posformat `!`)))
+  (` `
+    _
+    (if (expr (lvar `DG`) (`>` (num `0`))))
+    (for (lvar `TI`) (range (expr (num `1`)) (expr (num `1`)) (expr (lvar `DG`))))
+    (write
+      (postcond
+        (expr (intrinsic `D`#202 ((expr (lvar `T` ((expr (num `4`)) (expr (lvar `TI`)))))))))
+      (expr (lvar `T` ((expr (num `4`)) (expr (lvar `TI`)))))
+      (posformat `!`)))
+  (` `
+    _
+    (if (expr (lvar `GD`) (`>` (num `0`))))
+    (for (lvar `TI`) (range (expr (num `1`)) (expr (num `1`)) (expr (lvar `GD`))))
+    (write
+      (postcond
+        (expr (intrinsic `D`#202 ((expr (lvar `T` ((expr (num `5`)) (expr (lvar `TI`)))))))))
+      (expr (lvar `T` ((expr (num `5`)) (expr (lvar `TI`)))))
+      (posformat `!`)))
+  (` ` _ (kill _ (lvar `TI`) (lvar `D`) (lvar `A`) (lvar `DG`) (lvar `GD`)) (quit))
+  (label `PSOAT`)
+  (` `
+    _
+    (use _ ((expr (lvar `PSOAT`))))
+    (set
+      (postcond (expr (extrinsic (`STATUS` `%ZISH`))))
+      (=
+        (lvar `PSORWND`)
+        (expr
+          (extrinsic
+            ((`REWIND` `%ZIS`)
+              ((expr (lvar `PSOAIO`)) (expr (lvar `PSOAIOT`)) (expr (lvar `PSOAPAR`))))))))
+    (if (expr (intrinsic `G`#206 ((expr (lvar `PSORWND`)))) (`=` (num `0`))))
+    (use _ ((expr (lvar `IO` ((expr (num `0`)))))))
+    (write _ (posformat `!` `!`) (expr (str `"HFS file failed to rewind"`)))
+    (goto _ ((ref `CLOSE`))))
+  (` ` _ (use _ ((expr (lvar `PSOAT`)))))
+  (` ` _ (quit))
+  (label `VAR`)
+  (` ` _ (set _ (= (lvar `STOP`) (expr (num `0`)))) (quit))
+  (` `
+    _
+    (write
+      _
+      (posformat `!`)
+      (expr (str `"  Check both the 'OPEN PARAMETERS' and 'ASK RIGHT MARGIN' fields of"`))
+      (posformat `!`)
+      (expr (str `"  your device file"`))))
+  (` `
+    _
+    (set _ (= (lvar `STOP`) (expr (num `1`))))
+    (do _ (call (ref _ _ `%ZISC`)))
+    (kill _ (lvar `IOP`))
+    (quit)))

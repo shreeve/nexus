@@ -1,0 +1,12 @@
+# Literals take the sized type of the other operand.
+
+sub main()
+  a: U8 = 200
+  b = a + 55
+  c: I64 = 5000000000
+  print(b)
+  print(c * 2)
+
+# expect:
+# 255
+# 10000000000

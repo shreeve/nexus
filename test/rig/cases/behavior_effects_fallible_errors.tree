@@ -1,0 +1,78 @@
+(module
+  (errors `ParseError` `empty` `too_long`)
+  (errors `NetError` `timeout`)
+  (fun
+    `parse_len`
+    ((: `s` `String`))
+    (error_union `Int`)
+    (block
+      (if (== `s` `""`) (block (return (member `ParseError` `empty`))))
+      (if (> (member `s` `len`) `5`) (block (return (enum_lit `too_long`))))
+      (member `s` `len`)))
+  (fun
+    `fetch`
+    ((: `n` `Int`))
+    (error_union `Int`)
+    (block
+      (set _ `e` `NetError` (enum_lit `timeout`))
+      (if (< `n` `0`) (block (return `e`)))
+      (+ (propagate (call `parse_len` `"ab"`)) `n`)))
+  (fun
+    `describe`
+    ((: `s` `String`))
+    `String`
+    (block
+      (set
+        _
+        `n`
+        _
+        (catch
+          (call `parse_len` `s`)
+          `err`
+          (block
+            (match
+              `err`
+              (arm (enum_lit `empty`) (return `"empty"`))
+              (arm (enum_lit `too_long`) (return `"too long"`))
+              (arm `else` (return `"other"`))))))
+      (if (> `n` `2`) (block `"long enough"`) (block `"short"`))))
+  (fun
+    `retry`
+    ((: `n` `Int`))
+    (error_union `Int`)
+    (block
+      (catch
+        (call `fetch` `n`)
+        `err`
+        (block (if (== `err` (member `NetError` `timeout`)) (block (return `err`))) `0`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` (catch (call `parse_len` `"abc"`) _ (neg `1`)))
+      (call `print` (catch (call `parse_len` `""`) _ (neg `1`)))
+      (call
+        `print`
+        (catch
+          (call `parse_len` `"abcdefg"`)
+          `err`
+          (if (== `err` (enum_lit `too_long`)) `100` `200`)))
+      (call
+        `print`
+        (call `describe` `""`)
+        (call `describe` `"abcdefgh"`)
+        (call `describe` `"abcd"`)
+        (call `describe` `"a"`))
+      (call
+        `print`
+        (catch (call `fetch` `3`) _ `0`)
+        (catch (call `fetch` (neg `1`)) `e` (if (== `e` (enum_lit `timeout`)) (neg `9`) (neg `8`))))
+      (call `print` (catch (call `retry` `1`) _ `7`) (catch (call `retry` (neg `1`)) _ `7`))
+      (set
+        _
+        `x`
+        _
+        (catch (call `parse_len` `""`) `err` (block (call `print` `"failed with"` `err`) `0`)))
+      (call `print` `x`)
+      (call `print` (propagate (call `fetch` `1`))))))

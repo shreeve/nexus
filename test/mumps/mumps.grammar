@@ -130,6 +130,10 @@ after
 # fire (no leading whitespace), so dots remain in the stream and `dotlevel`
 # parses them structurally.
 
+# Whitespace in pattern mode ends the pattern: PATEND is zero-width (hold), so
+# the whitespace is lexed again, as INDENT/SPACES/pre, once pattern mode is off.
+@ pat & pre > 0                             → patend, hold, {pat = 0}, {pre = 0}
+
 # Emit INDENT when we have leading whitespace at the start of a command line.
 # Empty-pattern rules are zero-width: they use the generic `pre` count that was
 # already consumed before token matching and then leave the current input
@@ -188,15 +192,19 @@ after
 #
 # Order matters: longer patterns first.
 
+# Numbers in pattern mode: positive integers only (repcounts)
+# No decimals - the '.' is a range separator (1.5 = "1 to 5 of")
+[0-9]+    @ pat                             → integer
+
 # Real with exponent: 1E5, 1.5E-3, .5E+2
-[0-9]* '.' [0-9]+ [Ee] [+-]? [0-9]+         → real
-[0-9]+ [Ee] [+-]? [0-9]+                    → real
+[0-9]* '.' [0-9]+ [Ee] [+-]? [0-9]+ @ !pat  → real
+[0-9]+ [Ee] [+-]? [0-9]+            @ !pat  → real
 
 # Real without exponent: 3.14, .5
-[0-9]* '.' [0-9]+                           → real
+[0-9]* '.' [0-9]+                   @ !pat  → real
 
 # Leading-zero integer (preserved for labels): 01, 007
-'0' [0-9]+                                  → zdigits
+'0' [0-9]+                          @ !pat  → zdigits
 
 # Canonical integer: 0, 1, 123
 [0-9]+                                      → integer
@@ -206,29 +214,29 @@ after
 # ==============================================================================
 #
 # Pattern mode is tricky because ?1E+2 is NOT a pattern (it's E-notation).
+# The `/` rules below look ahead without consuming: the token is just the
+# `?` (or `'?`, `'`), and the longest lookahead decides whether pattern mode
+# starts. A pattern begins with a repcount ([0-9.]+) and then a pattern code,
+# a string, a group, or `'` (negated string, but not `'?`):
 #
-# The rules below that use counting()/matching()/rewind() are handled by the
-# mumps.zig Lexer wrapper at runtime, not by the generated base lexer. The
-# generator skips them; they serve as documentation of the wrapper's logic.
+#   ?1N  ?.N  ?3"x"  ?1(…)  ?1'"x"   pattern        ?1E+2  ?1E2   E-notation
+#   ?1E  ?1E2A  ?1E2.                pattern        ?1'?   ?X  ?  not a pattern
 #
-# Pattern mode entry rules (most specific first):
+# These mirror checkPatternMode in mumps.zig (which the Lexer wrapper also
+# applies after `?`, `'?` and `'`). `?(` never starts a pattern.
 
 # ?@ (pattern/column indirection) - always indirection, never pattern start
-'?@'                @ !pat                  → quesat
+'?@'                                             @ !pat → quesat
 
-# E-notation lookahead: ?1E+2 or ?(((1E+2))) - NOT pattern mode
-# Match balanced parens around E-notation, consume only the ?
-'?' counting('(') [0-9.]+ [Ee] [+-]? [0-9]+ matching(')')   @ !pat → question, rewind(1)
-
-# Pattern start with E-notation that continues to patcode: ?1E2A -> pattern mode
-# (E followed by digits followed by pattern code = pattern mode)
-'?' counting('(') [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'(] matching(')')  @ !pat → question, rewind(1), {pat = 1}
-
-# Standard pattern start: ?1N or ?1. or ?.N -> pattern mode
-'?' [0-9.]+ [ACELNPUacelnpu"'(] @ !pat      → question, rewind(1), {pat = 1}
+'?' / [0-9.]+ [Ee] [+-]                          @ !pat → question
+'?' / [0-9.]+ [Ee] [0-9]+                        @ !pat → question
+'?' / [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'.(]   @ !pat → question, {pat = 1}
+'?' / [0-9.]+ [ACELNPUacelnpu"(]                 @ !pat → question, {pat = 1}
+'?' / [0-9.]+ "'"                                @ !pat → question, {pat = 1}
+'?' / [0-9.]+ "'?"                               @ !pat → question
 
 # Fallback: just a question mark (comparison operator)
-'?'                 @ !pat                  → question
+'?'                                              @ !pat → question
 
 # ==============================================================================
 # NEGATED PATTERN: '?
@@ -236,17 +244,28 @@ after
 #
 # Same lookahead logic as ?, but for negated pattern match.
 
-# E-notation lookahead: '?1E+2 - NOT pattern mode
-"'?" counting('(') [0-9.]+ [Ee] [+-]? [0-9]+ matching(')')  @ !pat → notques, rewind(2)
-
-# Pattern start with E-notation continuing to patcode
-"'?" counting('(') [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'(] matching(')')  @ !pat → notques, rewind(2), {pat = 1}
-
-# Standard negated pattern start
-"'?" [0-9.]+ [ACELNPUacelnpu"'(]  @ !pat    → notques, rewind(2), {pat = 1}
+"'?" / [0-9.]+ [Ee] [+-]                         @ !pat → notques
+"'?" / [0-9.]+ [Ee] [0-9]+                       @ !pat → notques
+"'?" / [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'.(]  @ !pat → notques, {pat = 1}
+"'?" / [0-9.]+ [ACELNPUacelnpu"(]                @ !pat → notques, {pat = 1}
+"'?" / [0-9.]+ "'"                               @ !pat → notques, {pat = 1}
+"'?" / [0-9.]+ "'?"                              @ !pat → notques
 
 # Fallback: '? as operator sequence
-"'?"                @ !pat                  → notques
+"'?"                                             @ !pat → notques
+
+# ==============================================================================
+# NOT: '
+# ==============================================================================
+#
+# The same lookahead applies after a lone ' (as checkPatternMode does).
+
+"'" / [0-9.]+ [Ee] [+-]                          @ !pat → not
+"'" / [0-9.]+ [Ee] [0-9]+                        @ !pat → not
+"'" / [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'.(]   @ !pat → not, {pat = 1}
+"'" / [0-9.]+ [ACELNPUacelnpu"(]                 @ !pat → not, {pat = 1}
+"'" / [0-9.]+ "'"                                @ !pat → not, {pat = 1}
+"'" / [0-9.]+ "'?"                               @ !pat → not
 
 # ==============================================================================
 # PATTERN MODE TOKENS
@@ -268,18 +287,11 @@ after
 # Each letter becomes its own token - no multi-char identifiers in pattern mode
 [A-Za-z]  @ pat                             → ident
 
-# Numbers in pattern mode: positive integers only (repcounts)
-# No decimals - the '.' is a range separator (1.5 = "1 to 5 of")
-[0-9]+    @ pat                             → integer
-
 # Comma at depth 0 in pattern mode: exit pattern mode
 ','       @ pat & !dep                      → patend, hold, {pat = 0}
 
 # Colon at depth 0 in pattern mode: exit pattern mode
 ':'       @ pat & !dep                      → patend, hold, {pat = 0}
-
-# Whitespace in pattern mode: exit and emit PATEND
-[ \t]     @ pat                             → patend, hold, {pat = 0}
 
 # ==============================================================================
 # IDENTIFIERS (Normal Mode)
@@ -398,7 +410,17 @@ after
 
 @lang = "mumps"
 
-@conflicts = 44
+@conflicts
+    shift  L(expr).tail → ε                             2  # a comma after a list item continues the list
+    shift  deviceparam → expr                           1  # USE dev:(x): the parentheses group an expression, the same value as a one-parameter list
+    shift  IDENT* → ε                                   2  # pattern code letters after a repeat count run as far as they go
+    shift  rlvn → IDENT                                 1  # name= after USE dev: is a keyword device parameter
+    shift  rgvn → "^" "|" expr "|" IDENT                1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "|" expr "," expr "|" IDENT       1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "[" expr "]" IDENT                1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "[" expr "," expr "]" IDENT       1  # ( after an extended global name starts its subscripts
+    reduce lname → "@" atom over tstartargs → "@" atom  34  # TSTART @x: the indirect argument is a local-name list
+    reduce actual? → ε over L(actual?)? → ε             2  # an empty () argument list holds one absent actual
 
 @as ident = [fn, isv, ssvn, self, cmd]
 
@@ -463,7 +485,7 @@ set     = SET [postcond] L(setarg)          → (set 2 ...3)
 setarg  = "@" atom "=" expr                 → (@name 2 value:4)
         | "@" atom                          → (@args 2)
         | glvn "=" expr                     → (= 1 3)
-        | "(" L(setglvn) ")" "=" expr       → (setmulti ...2 value:5)
+        | "(" L(setglvn) ")" "=" expr       → (setmulti value:5 ...2)
         | "$" name "(" setglvn "," L(expr) ")" "=" expr → (setfn 2 4 ...6 value:9)
         | "$" name "(" setglvn ")" "=" expr → (setfn 2 4 value:7)
         | "$" name                          → (setisv 2)
@@ -571,13 +593,13 @@ readarg = posformat
         | "/" name "(" L(expr) ")"          → (/ 2 ...4)
         | "/" name                          → (/ 2)
         | "*" "@" atom timeout              → (charindir 3 4)
-        | "*" "@" atom X ":"                → (charindir 3)
+        | "*" "@" atom                      → (charindir 3)
         | "*" glvn timeout                  → (char 2 3)
-        | "*" glvn X ":"                    → (char 2)
+        | "*" glvn                          → (char 2)
         | glvn "#" expr timeout             → (# 1 3 4)
-        | glvn "#" expr X ":"               → (# 1 3)
+        | glvn "#" expr                     → (# 1 3)
         | glvn timeout                      → (1 2)
-        | glvn X "#" X ":"                  → 1
+        | glvn                              → 1
         | STRING                            → (prompt 1)
         | "@" atom                          → (@args 2)
 
@@ -590,7 +612,8 @@ writearg = posformat
 
 banghash  = "!" | "#" | EXCLAIM_WS | HASH_WS
 tabcol    = "?" expr PATEND?                → (? 2)
-posformat = banghash+ [tabcol]              → (posformat ...1 2)
+posformat = banghash+                       → (posformat ...1)
+          | banghash+ tabcol                → (posformat 2 ...1)
           | tabcol                          → 1
           | COLIND atom                     → (?@ 2)
 
@@ -679,9 +702,9 @@ zkill = ZKILL [postcond] L(glvn)            → (zkill 2 ...3)
 
 # Entry reference: TAG, TAG^RTN, TAG+offset^RTN, ^RTN
 # Positionally stable: (ref label offset routine) - trailing nils stripped
-entryref = label ["+" entryoffset] ["^" routineref] X ":" → (ref 1 3 5)
-         |        "+" entryoffset   "^" routineref  X ":" → (ref _ 2 4)
-         |                          "^" routineref  X ":" → (ref _ _ 2)
+entryref = label ["+" entryoffset] ["^" routineref] → (ref 1 3 5)
+         |        "+" entryoffset   "^" routineref  → (ref _ 2 4)
+         |                          "^" routineref  → (ref _ _ 2)
 
 entryoffset = expr
 
@@ -730,7 +753,7 @@ unaryop = "'" | "+" | "-"
 binop = "_" | "+"  | "-"  | "*"  | "/"  | "\\" | "#"  | "**"
       | "=" | "==" | "'=" | "<"  | ">"  | "'<" | "'>" | "<=" | ">="
       | "[" | "]"  | "'[" | "']" | "]=" | "]]" | "]]="
-      | "&" | "!"  | "'&" | "'!" | "!!"
+      | "&" | "!"  | "'&" | "'!"
 
 # ==============================================================================
 # PATTERN MATCHING

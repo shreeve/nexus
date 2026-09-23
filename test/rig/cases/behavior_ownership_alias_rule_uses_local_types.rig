@@ -1,0 +1,22 @@
+# The shared-handle alias rule classifies each name by its own scope:
+# `rc` is a handle in `holder` but a plain Int in `consumer`, where the
+# bare `print(rc)` is fine.
+
+struct Box
+  value: Int
+
+sub holder(rc: *Box)
+  print(rc.value)
+  -rc
+
+sub consumer(rc: Int)
+  print(rc)
+
+sub main()
+  b = *Box(value: 1)
+  holder(<b)
+  consumer(42)
+
+# expect:
+# 1
+# 42

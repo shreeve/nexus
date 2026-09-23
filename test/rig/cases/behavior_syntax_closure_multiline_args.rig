@@ -1,0 +1,74 @@
+# A closure passed inside parentheses or brackets may have a multi-line
+# body: when its bar list ends the line, the body below is laid out in
+# blocks as anywhere else. The body ends where the bracket around it
+# closes, or where a line comes back to the closure's own indentation.
+# A paren-free call takes a trailing closure the same way.
+
+sub each_n(n: Int, f: *sub(Int))
+  i = 0
+  while i < n : i += 1
+    f(i)
+
+sub twice(f: *sub())
+  f()
+  f()
+
+sub main()
+  sig: *Signal(Int) = *Signal(value: 0)
+  sig.subscribe(*|~sig|
+    if sig.upgrade() as s
+      print("got", s.get()))
+  sig.set(4)
+
+  total: *Cell(Int) = *Cell(value: 0)
+  each_n(3, *|+total, i|   # the body starts on the next line
+    total.set(total.get() + i)
+    print("seen", i)
+  )
+  print(total.get())
+
+  each_n(2, *|i|
+    if i == 0
+      print("zero")
+    else
+      print("one"))
+
+  twice(*||
+    each_n(2, *|i|
+      print("inner", i))
+    print("outer"))
+
+  handlers: Vec(*sub()) = Vec()
+  (!handlers).push(*|+total|
+    n = total.get()
+    print("handler", n))
+  for h in ?handlers
+    h()
+
+  n = 3
+  r = (|+n|
+    m = n * 2
+    m + 1)()
+  print(r)
+
+  each_n 2, *|i|
+    print("trailing", i)
+
+# expect:
+# got 4
+# seen 0
+# seen 1
+# seen 2
+# 3
+# zero
+# one
+# inner 0
+# inner 1
+# outer
+# inner 0
+# inner 1
+# outer
+# handler 3
+# 7
+# trailing 0
+# trailing 1

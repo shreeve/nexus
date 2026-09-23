@@ -1,0 +1,12 @@
+# Indexing an array past its end with an index known only when the
+# program runs panics.
+
+fun three() -> Int
+  3
+
+sub main()
+  xs = [1, 2, 3]
+  i = three()
+  print(xs[i])
+
+# expect-panic: index out of bounds

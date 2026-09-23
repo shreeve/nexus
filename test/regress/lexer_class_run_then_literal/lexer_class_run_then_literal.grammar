@@ -1,0 +1,15 @@
+# The pattern '<' [a-z]+ '>' matches exactly that: `<abc>` is one token.
+# (architecture.md Appendix A: lexprobe.grammar; SPEC §5)
+
+@lexer
+tokens
+    tag
+    eof
+    err
+'<' [a-z]+ '>'                              → tag
+.                                           → err
+
+@parser
+@lang = "lexer_class_run_then_literal"
+
+top! = TAG                                  → (tag 1)

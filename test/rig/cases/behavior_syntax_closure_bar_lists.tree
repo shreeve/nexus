@@ -1,0 +1,47 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `n` _ `10`)
+      (set _ `cell` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set _ `v` (generic_inst `Vec` `Int`) (call `Vec`))
+      (call (member (write `v`) `push`) `1`)
+      (set _ `copy` _ (lambda ((cap_clone `n`)) _ _ (block (+ `n` `1`))))
+      (set _ `clone` _ (lambda ((cap_clone `cell`)) _ _ (block (call (member `cell` `get`)))))
+      (set _ `moved` _ (lambda ((cap_move `v`)) _ _ (block (call (member `v` `length`)))))
+      (set
+        _
+        `weak`
+        _
+        (lambda
+          ((cap_weak `cell`))
+          _
+          _
+          (block
+            (if
+              (as (call (member `cell` `upgrade`)) `c`)
+              (block (call `print` `"alive"` (call (member `c` `get`))))))))
+      (set _ `param` _ (lambda ((: `a` `Int`)) _ _ (block (* `a` `2`))))
+      (set
+        _
+        `both`
+        _
+        (lambda ((cap_clone `n`) (: `a` `Int`) (: `b` `Int`)) _ _ (block (+ (+ `n` `a`) `b`))))
+      (set _ `nothing` _ (lambda () _ _ (block (call `print` `"nothing"`))))
+      (set
+        _
+        `owned`
+        (shared (fun_type))
+        (share (lambda () _ _ (block (call `print` `"owned nothing"`)))))
+      (call
+        `print`
+        (call `copy`)
+        (call `clone`)
+        (call `moved`)
+        (call `param` `4`)
+        (call `both` `1` `2`))
+      (call `weak`)
+      (call `nothing`)
+      (call `owned`))))

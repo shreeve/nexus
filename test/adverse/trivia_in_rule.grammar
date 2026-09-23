@@ -1,0 +1,23 @@
+# A @trivia token never reaches the parser, so no rule may use it.
+# error: trivia_in_rule.grammar:23:9:
+# error: is used by rule stmts
+@lexer
+tokens
+    ident
+    newline
+    comment
+    eof
+    err
+'\n'                                        → newline
+'#' [^\n]*                                  → comment
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+program! = stmts                            → (program ...1)
+stmts    = IDENT                            → (1)
+         | stmts NEWLINE IDENT              → (...1 3)
+         | stmts COMMENT                    → 1
+
+@trivia COMMENT

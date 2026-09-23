@@ -1,0 +1,11 @@
+(program
+  stmts
+  (begin
+    (stmts `risky`)
+    (rescue
+      (`ArgumentError`)
+      `e`
+      (stmts (send _ `puts` (args (send `e` `message`))))
+      (rescue _ _ (stmts (retry))))
+    (ensure (stmts `cleanup`)))
+  (rescue (assign `x` `risky`) `0`))

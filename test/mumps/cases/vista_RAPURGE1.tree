@@ -1,0 +1,914 @@
+(routine
+  (label `RAPURGE1`)
+  (` `)
+  (label
+    `START`
+    _
+    ((if (expr (intrinsic `G`#206 ((expr (lvar `RAPURTYP`)))) (`=` (str `""`))))
+      (use _ ((expr (lvar `IO`))))
+      (write _ (posformat `!`) (expr (str `"RAPURTYP undefined or null, Purge Not Done."`)))
+      (goto _ ((ref `EXIT`)))))
+  (` `
+    _
+    (use _ ((expr (lvar `IO`))))
+    (do _ (call (ref `NOW` _ `%DTC`)))
+    (set
+      _
+      (= (lvar `Y`) (expr (lvar `%`)))
+      (=
+        (lvar `RACRT`)
+        (expr
+          (intrinsic `E`#203 ((expr (lvar `IOST`)) (expr (num `1`)) (expr (num `2`))))
+          (`=` (str `"C-"`)))))
+    (kill _ (lvar `%`) (lvar `%H`) (lvar `%I`))
+    (write _ (posformat `!` `!`) (expr (str `"Purge data routine started at "`)))
+    (do _ (call (ref `D` _ `RAUTL`)))
+    (write _ (expr (lvar `Y`)) (expr (str `"."`))))
+  (` `)
+  (` `
+    _
+    (goto
+      _
+      ((ref `EXIT`)
+        (postcond (expr (`'` (intrinsic `O`#211 ((expr (lvar `RAPUR` ((expr (num `0`)))))))))))))
+  (` `
+    _
+    (set _ (setmulti (expr (num `0`)) (lvar `RADT`) (lvar `RAODT`) (lvar `RAIEN`)))
+    (for)
+    (set
+      _
+      (= (lvar `RAIEN`) (expr (intrinsic `O`#211 ((expr (lvar `RAPUR` ((expr (lvar `RAIEN`))))))))))
+    (quit (postcond (expr (`'` (lvar `RAIEN`)))))
+    (set
+      _
+      (=
+        (lvar `RAX`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `RA` ((expr (num `79.2`)) (expr (lvar `RAIEN`)) (expr (num `.1`))))))))))
+    (do))
+  (` .`#1
+    _
+    (for (lvar `RAI`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `4`))))
+    (set
+      _
+      (=
+        (lvar `X2`)
+        (expr
+          (`-`
+            (select
+              ((expr
+                 (intrinsic `P`#212 ((expr (lvar `RAX`)) (expr (lvar `U`)) (expr (lvar `RAI`))))
+                 (`>` (num `89`)))
+                (expr
+                  (intrinsic `P`#212 ((expr (lvar `RAX`)) (expr (lvar `U`)) (expr (lvar `RAI`))))))
+              ((expr (num `1`)) (expr (num `27393`)))))))
+      (= (lvar `X1`) (expr (lvar `DT`))))
+    (do _ (call (ref `C` _ `%DTC`)))
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `RAPUR` ((expr (lvar `RAIEN`))))
+        (expr (str `"^"`))
+        (expr (lvar `RAI`))
+        (expr (lvar `X`))))
+    (set (postcond (expr (lvar `X`) (`>` (lvar `RADT`)))) (= (lvar `RADT`) (expr (lvar `X`)))))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `X2`)
+        (expr
+          (`-`
+            (select
+              ((expr
+                 (intrinsic `P`#212 ((expr (lvar `RAX`)) (expr (lvar `U`)) (expr (num `6`))))
+                 (`>` (num `29`)))
+                (expr (intrinsic `P`#212 ((expr (lvar `RAX`)) (expr (lvar `U`)) (expr (num `6`))))))
+              ((expr (num `1`)) (expr (num `27393`)))))))
+      (= (lvar `X1`) (expr (lvar `DT`))))
+    (do _ (call (ref `C` _ `%DTC`)))
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `RAPUR` ((expr (lvar `RAIEN`))))
+        (expr (str `"^"`))
+        (expr (num `5`))
+        (expr (lvar `X`))))
+    (set (postcond (expr (lvar `X`) (`>` (lvar `RAODT`)))) (= (lvar `RAODT`) (expr (lvar `X`)))))
+  (` .`#1
+    _
+    (for (lvar `RAI`) (range (expr (num `6`)) (expr (num `1`)) (expr (num `8`))))
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `RAPUR` ((expr (lvar `RAIEN`))))
+        (expr (str `"^"`))
+        (expr (lvar `RAI`))
+        (expr (num `0`)))))
+  (` `)
+  (label `EXAM`)
+  (` ` _ (if (expr (lvar `RAPURTYP`) (`=` (str `"O"`)))) (goto _ ((ref `ORDER`))))
+  (` ` _ (write _ (posformat `!` `!`) (expr (str `"Purging exams/reports."`)) (posformat `!`)))
+  (` `
+    _
+    (for (lvar `RADTE`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `RADTE`)
+        (expr
+          (intrinsic `O`#211 ((expr (gvar `RADPT` ((expr (str `"AR"`)) (expr (lvar `RADTE`))))))))))
+    (quit
+      (postcond
+        (expr (lvar `RADTE`) (`'>` (num `0`)) (`!` (expr (lvar `RADTE`) (`>` (lvar `RADT`)))))))
+    (set _ (= (lvar `RADTI`) (expr (num `9999999.9999`) (`-` (lvar `RADTE`)))))
+    (for (lvar `RADFN`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `RADFN`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `RADPT` ((expr (str `"AR"`)) (expr (lvar `RADTE`)) (expr (lvar `RADFN`))))))))))
+    (quit (postcond (expr (lvar `RADFN`) (`'>` (num `0`)))))
+    (do))
+  (` .`#1
+    _
+    (for (lvar `RACN`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `RACN`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `RADPT`
+                 ((expr (lvar `RADFN`))
+                   (expr (str `"DT"`))
+                   (expr (lvar `RADTI`))
+                   (expr (str `"P"`))
+                   (expr (str `"B"`))
+                   (expr (lvar `RACN`))))))))))
+    (quit (postcond (expr (lvar `RACN`) (`'>` (num `0`)))))
+    (set
+      _
+      (=
+        (lvar `RACNI`)
+        (expr (`+` (intrinsic `O`#211 ((expr (naked (expr (lvar `RACN`)) (expr (num `0`)))))))))
+      (=
+        (lvar `RA0`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (gvar
+                 `RADPT`
+                 ((expr (lvar `RADFN`))
+                   (expr (str `"DT"`))
+                   (expr (lvar `RADTI`))
+                   (expr (str `"P"`))
+                   (expr (lvar `RACNI`))
+                   (expr (num `0`)))))))))
+      (=
+        (lvar `RARPT`)
+        (expr (`+` (intrinsic `P`#212 ((expr (lvar `RA0`)) (expr (str `"^"`)) (expr (num `17`))))))))
+    (do
+      (postcond
+        (expr
+          (select
+            ((expr (`'` (intrinsic `D`#202 ((expr (naked (expr (str `"NOPURGE"`))))))))
+              (expr (num `1`)))
+            ((expr (naked (expr (str `"NOPURGE"`))) (`'=` (str `"n"`))) (expr (num `1`)))
+            ((expr (num `1`)) (expr (num `0`))))))))
+  (` ..`#2
+    _
+    (set
+      _
+      (=
+        (lvar `RAIMAG`)
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr
+                 (intrinsic
+                   `G`#206
+                   ((expr
+                      (gvar
+                        `RAMIS`
+                        ((expr (num `71`))
+                          (expr
+                            (`+`
+                              (intrinsic
+                                `P`#212
+                                ((expr (lvar `RA0`)) (expr (str `"^"`)) (expr (num `2`))))))
+                          (expr (num `0`))))))))
+                (expr (str `"^"`))
+                (expr (num `12`))))))))
+    (quit
+      (postcond (expr (`'` (intrinsic `D`#202 ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`)))))))))))
+    (write (postcond (expr (lvar `RACRT`))) (expr (str `"."`))))
+  (` ..`#2
+    _
+    (kill _ (lvar `RARP`))
+    (set
+      _
+      (=
+        (lvar `RARPTNP`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (str `"NOPURGE"`))))))))))
+    (if
+      (expr
+        (select
+          ((expr
+             (`'`
+               (intrinsic `D`#202 ((expr (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (num `0`)))))))))
+            (expr (num `0`)))
+          ((expr (lvar `RAREPURG`)) (expr (num `1`)))
+          ((expr (`'` (intrinsic `D`#202 ((expr (naked (expr (str `"PURGE"`))))))))
+            (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))
+      (expr (lvar `RARPTNP`) (`'=` (str `"n"`)))
+      (expr (str `"RBA"`) (`[` (lvar `RAPURTYP`))))
+    (do))
+  (` ... `#3
+    _
+    (quit
+      (postcond
+        (expr
+          (`+`
+            (intrinsic
+              `O`#211
+              ((expr (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (str `"ERR"`)) (expr (num `0`))))))))))))
+  (` ...`#3
+    _
+    (if
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `2`))))
+        (`>` (lvar `RADTE`)))
+      (expr (intrinsic `D`#202 ((expr (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (str `"R"`)))))))))
+    (kill _ (naked (expr (str `"R"`))))
+    (set _ (= (lvar `RARP`) (expr (str `""`)))))
+  (` ...`#3
+    _
+    (if
+      (expr
+        (intrinsic `P`#212 ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`))))
+        (`>` (lvar `RADTE`)))
+      (expr (intrinsic `D`#202 ((expr (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (str `"L"`)))))))))
+    (kill _ (naked (expr (str `"L"`))))
+    (set _ (= (lvar `RARP`) (expr (str `""`)))))
+  (` ...`#3
+    _
+    (if
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `3`))))
+        (`>` (lvar `RADTE`)))
+      (expr (intrinsic `D`#202 ((expr (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (str `"H"`)))))))))
+    (kill _ (naked (expr (str `"H"`))))
+    (set _ (= (lvar `RARP`) (expr (str `""`)))))
+  (` ..`#2
+    _
+    (set
+      (postcond (expr (intrinsic `D`#202 ((expr (lvar `RARP`))))))
+      (= (gvar `RARPT` ((expr (lvar `RARPT`)) (expr (str `"PURGE"`)))) (expr (lvar `DT`)))
+      (setfn
+        `P`
+        (lvar `RAPUR` ((expr (lvar `RAIMAG`))))
+        (expr (str `"^"`))
+        (expr (num `7`))
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `7`))))
+          (`+` (num `1`))))))
+  (` ..`#2
+    _
+    (kill _ (lvar `RAEX`))
+    (if
+      (expr
+        (select
+          ((expr (lvar `RAREPURG`)) (expr (num `1`)))
+          ((expr
+             (`'`
+               (intrinsic
+                 `D`#202
+                 ((expr
+                    (gvar
+                      `RADPT`
+                      ((expr (lvar `RADFN`))
+                        (expr (str `"DT"`))
+                        (expr (lvar `RADTI`))
+                        (expr (str `"P"`))
+                        (expr (lvar `RACNI`))
+                        (expr (str `"PURGE"`)))))))))
+            (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))
+      (expr (str `"EBA"`) (`[` (lvar `RAPURTYP`))))
+    (do))
+  (` ...`#3
+    _
+    (if
+      (expr
+        (intrinsic `P`#212 ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`))))
+        (`>` (lvar `RADTE`)))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `RADPT`
+               ((expr (lvar `RADFN`))
+                 (expr (str `"DT"`))
+                 (expr (lvar `RADTI`))
+                 (expr (str `"P"`))
+                 (expr (lvar `RACNI`))
+                 (expr (str `"L"`)))))))))
+    (kill _ (naked (expr (str `"L"`))))
+    (set _ (= (lvar `RAEX`) (expr (str `""`)))))
+  (` ...`#3
+    _
+    (if
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `3`))))
+        (`>` (lvar `RADTE`)))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `RADPT`
+               ((expr (lvar `RADFN`))
+                 (expr (str `"DT"`))
+                 (expr (lvar `RADTI`))
+                 (expr (str `"P"`))
+                 (expr (lvar `RACNI`))
+                 (expr (str `"H"`)))))))))
+    (kill _ (naked (expr (str `"H"`))))
+    (set _ (= (lvar `RAEX`) (expr (str `""`)))))
+  (` ...`#3
+    _
+    (if
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `4`))))
+        (`>` (lvar `RADTE`)))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `RADPT`
+               ((expr (lvar `RADFN`))
+                 (expr (str `"DT"`))
+                 (expr (lvar `RADTI`))
+                 (expr (str `"P"`))
+                 (expr (lvar `RACNI`))
+                 (expr (str `"T"`)))))))))
+    (kill _ (naked (expr (str `"T"`))))
+    (set _ (= (lvar `RAEX`) (expr (str `""`)))))
+  (` ..`#2
+    _
+    (set
+      (postcond (expr (intrinsic `D`#202 ((expr (lvar `RAEX`))))))
+      (=
+        (gvar
+          `RADPT`
+          ((expr (lvar `RADFN`))
+            (expr (str `"DT"`))
+            (expr (lvar `RADTI`))
+            (expr (str `"P"`))
+            (expr (lvar `RACNI`))
+            (expr (str `"PURGE"`))))
+        (expr (lvar `DT`)))
+      (setfn
+        `P`
+        (lvar `RAPUR` ((expr (lvar `RAIMAG`))))
+        (expr (str `"^"`))
+        (expr (num `6`))
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `6`))))
+          (`+` (num `1`))))))
+  (` `)
+  (label `ORDER`)
+  (` ` _ (if (expr (str `"OA"`) (`'[` (lvar `RAPURTYP`)))) (goto _ ((ref `STAT`))))
+  (` ` _ (write _ (posformat `!`) (expr (str `"Purging orders/requests."`)) (posformat `!`)))
+  (` `
+    _
+    (set _ (= (lvar `RAPKG`) (expr (str `""`))))
+    (for (lvar `RAODTE`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `RAODTE`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `RAO` ((expr (num `75.1`)) (expr (str `"AO"`)) (expr (lvar `RAODTE`))))))))))
+    (quit (postcond (expr (`'` (lvar `RAODTE`)) (`!` (expr (lvar `RAODTE`) (`>` (lvar `RAODT`)))))))
+    (for (lvar `RAOIFN`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `RAOIFN`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `RAO`
+                 ((expr (num `75.1`))
+                   (expr (str `"AO"`))
+                   (expr (lvar `RAODTE`))
+                   (expr (lvar `RAOIFN`))))))))))
+    (quit (postcond (expr (`'` (lvar `RAOIFN`)))))
+    (set
+      _
+      (=
+        (lvar `RAORD0`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `RAO` ((expr (num `75.1`)) (expr (lvar `RAOIFN`)) (expr (num `0`)))))))))
+      (=
+        (lvar `RAIMAG`)
+        (expr
+          (`+` (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `3`))))))))
+    (do))
+  (` .`#1
+    _
+    (if
+      (expr (intrinsic `D`#202 ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))))))
+      (expr
+        (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `5`))))
+        (`<` (num `6`))))
+    (set
+      _
+      (= (lvar `RAPUROK`) (expr (extrinsic (`PUROK` ((expr (lvar `RAORD0`)) (expr (lvar `DT`))))))))
+    (do (postcond (expr (lvar `RAPUROK`))) (call (ref `ENPUR`))))
+  (` `)
+  (` `)
+  (label
+    `STAT`
+    _
+    ((do _ (call (ref `NOW` _ `%DTC`)))
+      (set _ (= (lvar `Y`) (expr (lvar `%`))))
+      (kill _ (lvar `%`) (lvar `%H`) (lvar `%I`))
+      (write _ (posformat `!`) (expr (str `"Data purge completed at "`)))
+      (do _ (call (ref `D` _ `RAUTL`)))
+      (write
+        _
+        (expr (lvar `Y`))
+        (expr (str `"."`))
+        (posformat `!` `!`)
+        (expr (str `"The following purge statistics were compiled:"`)))))
+  (` `
+    _
+    (kill _ (lvar `RAX`))
+    (set _ (= (lvar `RAX`) (expr (str `""`))))
+    (for)
+    (set
+      _
+      (= (lvar `RAX`) (expr (intrinsic `O`#211 ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))))))))
+    (quit (postcond (expr (`'` (lvar `RAX`)))))
+    (set
+      _
+      (= (lvar `DA`) (expr (lvar `RAX`)))
+      (= (lvar `DIE`) (expr (str `"^RA(79.2,"`)))
+      (= (lvar `DR`) (expr (str `"100///""NOW"""`)))
+      (=
+        (lvar `DR` ((expr (num `2`)) (expr (num `79.23`))))
+        (expr
+          (str `"2///P;3////"`)
+          (`_` (lvar `DUZ`))
+          (`_` (str `";4///"`))
+          (`_`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))) (expr (lvar `U`)) (expr (num `6`)))))
+          (`_` (str `";5///"`))
+          (`_`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))) (expr (str `"^"`)) (expr (num `7`)))))
+          (`_` (str `";6///"`))
+          (`_`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))) (expr (str `"^"`)) (expr (num `8`))))))))
+    (do _ (call (ref _ _ `DIE`)))
+    (do))
+  (` .`#1
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"Imaging Type: "`))
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr
+             (intrinsic
+               `G`#206
+               ((expr (gvar `RA` ((expr (num `79.2`)) (expr (lvar `RAX`)) (expr (num `0`))))))))
+            (expr (str `"^"`)))))
+      (posformat `!`)))
+  (` .`#1
+    _
+    (write
+      _
+      (posformat (? (expr (num `5`))) `!`)
+      (expr (str `"No. of exam records processed      : "`))
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))) (expr (str `"^"`)) (expr (num `6`)))))))
+  (` .`#1
+    _
+    (write
+      _
+      (posformat (? (expr (num `5`))) `!`)
+      (expr (str `"No. of reports processed           : "`))
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))) (expr (str `"^"`)) (expr (num `7`)))))))
+  (` .`#1
+    _
+    (write
+      _
+      (posformat (? (expr (num `5`))) `!`)
+      (expr (str `"No. of requests processed          : "`))
+      (expr
+        (intrinsic
+          `P`#212
+          ((expr (lvar `RAPUR` ((expr (lvar `RAX`))))) (expr (str `"^"`)) (expr (num `8`)))))))
+  (label
+    `EXIT`
+    _
+    ((kill
+       _
+       (lvar `%DT`)
+       (lvar `%T`)
+       (lvar `D`)
+       (lvar `D0`)
+       (lvar `D1`)
+       (lvar `DA`)
+       (lvar `DDER`)
+       (lvar `DE`)
+       (lvar `DI`)
+       (lvar `DIC`)
+       (lvar `DIE`)
+       (lvar `DQ`)
+       (lvar `DR`)
+       (lvar `DLAYGO`)
+       (lvar `POP`)
+       (lvar `RA0`)
+       (lvar `RACN`)
+       (lvar `RACNI`))))
+  (` `
+    _
+    (kill
+      _
+      (lvar `RACRT`)
+      (lvar `RADFN`)
+      (lvar `RADT`)
+      (lvar `RADTE`)
+      (lvar `RADTI`)
+      (lvar `RAEX`)
+      (lvar `RAI`)
+      (lvar `RAIEN`)
+      (lvar `RAIMAG`)
+      (lvar `RAODT`)
+      (lvar `RAODTE`)))
+  (` `
+    _
+    (kill
+      _
+      (lvar `RAOIFN`)
+      (lvar `RAORD0`)
+      (lvar `RAPKG`)
+      (lvar `RAPOP`)
+      (lvar `RAPUR`)
+      (lvar `RAREPURG`)
+      (lvar `RARP`)
+      (lvar `RARPT`)
+      (lvar `RARPTNP`)
+      (lvar `RAX`)
+      (lvar `X`)))
+  (` ` _ (kill _ (lvar `RAGO`) (lvar `RAPURTYP`)))
+  (` `
+    _
+    (kill _ (lvar `X1`) (lvar `X2`) (lvar `Y`))
+    (kill
+      (postcond (expr (intrinsic `G`#206 ((expr (lvar `RAORD`)))) (`'=` (str `"Z@"`))))
+      (lvar `RAPUROK`)))
+  (` `)
+  (` ` _ (do _ (call (ref `CLOSE` _ `RAUTL`))))
+  (` ` _ (quit))
+  (` `)
+  (label `ENPUR`)
+  (` `
+    _
+    (if
+      (expr (`'` (intrinsic `D`#202 ((expr (lvar `RAPKG`))))))
+      (expr (expr (extrinsic ((`ORVR` `RAORDU`) (_))) (`=` (num `2.5`)))))
+    (quit
+      (postcond
+        (expr
+          (`'` (intrinsic `D`#202 ((expr (lvar `ORPK`)))))
+          (`!` (expr (`'` (intrinsic `D`#202 ((expr (lvar `ORSTS`))))))))))
+    (set
+      _
+      (=
+        (lvar `OREND`)
+        (expr
+          (select
+            ((expr (lvar `ORSTS`) (`<` (num `6`))) (expr (num `0`)))
+            ((expr (num `1`)) (expr (num `1`)))))))
+    (quit (postcond (expr (lvar `OREND`) (`!` (expr (lvar `ORPK`) (`'>` (num `0`)))))))
+    (set _ (= (lvar `RAOIFN`) (expr (`+` (lvar `ORPK`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `DELORD`)
+        ((expr (lvar `RAOIFN`)) (expr (`+` (intrinsic `G`#206 ((expr (lvar `RAORD0`))))))))))
+  (` ` _ (if (expr (intrinsic `D`#202 ((expr (lvar `RAPKG`)))))) (do))
+  (` . `#1
+    _
+    (write (postcond (expr (lvar `RACRT`))) (expr (str `"."`)))
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `RAPUR` ((expr (lvar `RAIMAG`))))
+        (expr (str `"^"`))
+        (expr (num `8`))
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `RAPUR` ((expr (lvar `RAIMAG`))))) (expr (str `"^"`)) (expr (num `8`))))
+          (`+` (num `1`))))))
+  (` . `#1 _ (quit))
+  (` ` _ (if (expr (extrinsic ((`ORVR` `RAORDU`) (_))) (`=` (num `2.5`)))) (do))
+  (` . `#1
+    _
+    (if (expr (intrinsic `D`#202 ((expr (lvar `RAPKG`))))))
+    (set
+      _
+      (=
+        (lvar `ORIFN`)
+        (expr
+          (`+` (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `7`)))))))
+      (= (lvar `ORSTS`) (expr (str `"K"`))))
+    (do (postcond (expr (lvar `ORIFN`))) (call (ref `ST` _ `ORX`)))
+    (kill _ (lvar `ORIFN`) (lvar `ORSTS`)))
+  (` . `#1
+    _
+    (if (expr (`'` (intrinsic `D`#202 ((expr (lvar `RAPKG`)))))))
+    (set _ (= (lvar `ORSTS`) (expr (str `"K"`))))
+    (do (postcond (expr (lvar `ORIFN`))) (call (ref `ST` _ `ORX`)))
+    (kill _ (lvar `ORIFN`) (lvar `ORSTS`)))
+  (` . `#1 _ (quit))
+  (` ` _ (kill _ (lvar `%`) (lvar `DA`) (lvar `DIC`) (lvar `DIK`)))
+  (` `
+    _
+    (do
+      (postcond
+        (expr
+          (extrinsic ((`ORVR` `RAORDU`) (_)))
+          (`'<` (num `3`))
+          (`&` (expr (intrinsic `G`#206 ((expr (lvar `RAORD`)))) (`'=` (str `"Z@"`))))))
+      (call (ref `EN1` _ `RAO7PURG`) ((expr (lvar `RAOIFN`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set _ (= (lvar `DA`) (expr (lvar `RAOIFN`))) (= (lvar `DIK`) (expr (str `"^RAO(75.1,"`))))
+    (do _ (call (ref _ _ `DIK`))))
+  (` ` _ (kill _ (lvar `%`) (lvar `DA`) (lvar `DIC`) (lvar `DIK`)))
+  (` ` _ (quit))
+  (label `DELORD` (`RAOIFN` `RADFN`))
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (new _ `RACNI` `RADTI` `X` `Y`) (set _ (= (lvar `RADTI`) (expr (num `0`)))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `RADTI`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `RADPT`
+                 ((expr (str `"AO"`))
+                   (expr (lvar `RAOIFN`))
+                   (expr (lvar `RADFN`))
+                   (expr (lvar `RADTI`))))))))))
+    (quit (postcond (expr (lvar `RADTI`) (`'>` (num `0`)))))
+    (do))
+  (` . `#1 _ (set _ (= (lvar `RACNI`) (expr (num `0`)))))
+  (` . `#1
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `RACNI`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `RADPT`
+                 ((expr (str `"AO"`))
+                   (expr (lvar `RAOIFN`))
+                   (expr (lvar `RADFN`))
+                   (expr (lvar `RADTI`))
+                   (expr (lvar `RACNI`))))))))))
+    (quit (postcond (expr (lvar `RACNI`) (`'>` (num `0`)))))
+    (do))
+  (` .. `#2
+    _
+    (kill
+      _
+      (lvar `%`)
+      (lvar `D`)
+      (lvar `D0`)
+      (lvar `DA`)
+      (lvar `DIC`)
+      (lvar `DIE`)
+      (lvar `DQ`)
+      (lvar `DR`)))
+  (` .. `#2
+    _
+    (set
+      _
+      (= (lvar `DA` ((expr (num `2`)))) (expr (lvar `RADFN`)))
+      (= (lvar `DA` ((expr (num `1`)))) (expr (lvar `RADTI`)))
+      (= (lvar `DA`) (expr (lvar `RACNI`)))
+      (= (lvar `DR`) (expr (str `"11///@"`)))))
+  (` .. `#2
+    _
+    (set
+      _
+      (=
+        (lvar `DIE`)
+        (expr
+          (str `"^RADPT("`)
+          (`_` (lvar `DA` ((expr (num `2`)))))
+          (`_` (str `",""DT"","`))
+          (`_` (lvar `DA` ((expr (num `1`)))))
+          (`_` (str `",""P"","`))))))
+  (` .. `#2
+    _
+    (do _ (call (ref _ _ `DIE`)))
+    (kill
+      _
+      (lvar `%`)
+      (lvar `D`)
+      (lvar `D0`)
+      (lvar `DA`)
+      (lvar `DIC`)
+      (lvar `DIE`)
+      (lvar `DQ`)
+      (lvar `DR`)))
+  (` .. `#2 _ (quit))
+  (` . `#1 _ (quit))
+  (` ` _ (quit))
+  (label `PUROK` (`RAORD0` `RATDAY`))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (new _ `RAOSTAT`)
+    (set
+      _
+      (=
+        (lvar `RAOSTAT`)
+        (expr (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `5`))))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `RAOSTAT`)
+          (`=` (num `5`))
+          (`&`
+            (expr
+              (expr
+                (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `21`))))
+                (`\\` (num `1`)))
+              (`'<` (lvar `RATDAY`))))))
+      (expr (num `0`))))
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `RAOSTAT`)
+          (`=` (num `5`))
+          (`&`
+            (expr
+              (expr
+                (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `23`))))
+                (`\\` (num `1`)))
+              (`'<` (lvar `RATDAY`))))))
+      (expr (num `0`))))
+  (` `)
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `RAOSTAT`)
+          (`=` (num `3`))
+          (`&`
+            (expr
+              (expr
+                (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `21`))))
+                (`\\` (num `1`)))
+              (`'<` (lvar `RATDAY`))))))
+      (expr (num `0`))))
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `RAOSTAT`)
+          (`=` (num `3`))
+          (`&`
+            (expr
+              (expr
+                (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `23`))))
+                (`\\` (num `1`)))
+              (`'<` (lvar `RATDAY`))))))
+      (expr (num `0`))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (if
+      (expr (lvar `RAOSTAT`) (`=` (num `5`)))
+      (expr
+        (expr (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `16`)))))))
+    (quit
+      (postcond
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `16`))))
+          (`'<`
+            (expr (extrinsic ((`FMADD` `XLFDT`) ((expr (lvar `RATDAY`)) (expr (`-` (num `365`))))))))))
+      (expr (num `0`))))
+  (` `)
+  (` `
+    _
+    (if
+      (expr (lvar `RAOSTAT`) (`=` (num `3`)))
+      (expr
+        (expr (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `16`)))))))
+    (quit
+      (postcond
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `RAORD0`)) (expr (str `"^"`)) (expr (num `16`))))
+          (`'<`
+            (expr (extrinsic ((`FMADD` `XLFDT`) ((expr (lvar `RATDAY`)) (expr (`-` (num `365`))))))))))
+      (expr (num `0`))))
+  (` `)
+  (` `)
+  (` ` _ (quit _ (expr (num `1`)))))

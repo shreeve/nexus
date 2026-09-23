@@ -1,0 +1,17 @@
+# A `!self` method mutates the receiver in place.
+
+struct Bag
+  items: Vec(Int)
+
+  sub add(!self, x: Int)
+    (!self.items).push(x)
+
+sub main()
+  v: Vec(Int) = Vec()
+  b = Bag(items: <v)
+  (!b).add(4)
+  (!b).add(5)
+  print(b.items.length())
+
+# expect:
+# 2

@@ -1,0 +1,13 @@
+# A held rule cannot skip.
+# error: lexer_hold_skip.grammar:10:1:
+# error: cannot also skip
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'ab' → word, hold, skip
+. → err
+@parser
+top! = WORD → 1

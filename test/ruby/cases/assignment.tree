@@ -1,0 +1,9 @@
+(program
+  stmts
+  (masgn (mlhs `a` `b`) (mrhs `1` `2`))
+  (||= `x` `5`)
+  (&&= `y` (+ `y` `1`))
+  (assign (attrasgn `obj` `attr`) `3`)
+  (assign (indexasgn `arr` (args `0`)) (** (index `arr` (args `1`)) `2`))
+  (assign `z` (if `cond` `1` `2`))
+  (assign `$glob` `@@cvar`))

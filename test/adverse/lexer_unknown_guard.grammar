@@ -1,0 +1,12 @@
+# Guards test declared state variables or pre
+# error: lexer_unknown_guard.grammar:9:1:
+# error: not a declared state variable
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'+' @ foo → plus
+. → err
+@parser
+top! = WORD → 1

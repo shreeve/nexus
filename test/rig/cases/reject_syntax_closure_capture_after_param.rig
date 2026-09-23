@@ -1,0 +1,7 @@
+# In a closure's bar list the captures come first, then the parameters.
+
+sub main()
+  v: *Cell(Int) = *Cell(value: 0)
+  set: *sub(Int) = *|a, +v| v.set(a)
+
+# error: captures come before parameters in a closure's bar list

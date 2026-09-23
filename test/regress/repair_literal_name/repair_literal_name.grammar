@@ -1,0 +1,22 @@
+# generated-has: => .terminator,
+#
+# A @repair line may name a token by its literal, as the rules do (`";"`).
+
+@lexer
+tokens
+    ident
+    semi
+    eof
+    err
+';'                                         → semi
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "repair_literal_name"
+
+top!  = stmt+                               → (top ...1)
+stmt  = IDENT ";"                           → 1
+
+@repair
+    terminator ";"

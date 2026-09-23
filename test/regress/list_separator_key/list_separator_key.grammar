@@ -1,0 +1,30 @@
+# Two lists of the same item with different separators are different
+# lists: L(item, ",") and L(item, "|") each accept only their separator.
+#
+# (architecture.md §2.2.4 and §6 item 3; SPEC §8.5)
+
+@lexer
+tokens
+    ident
+    comma
+    bar
+    lbracket
+    rbracket
+    lbrace
+    rbrace
+    eof
+    err
+','                                         → comma
+'|'                                         → bar
+'['                                         → lbracket
+']'                                         → rbracket
+'{'                                         → lbrace
+'}'                                         → rbrace
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "list_separator_key"
+
+top! = "[" L(item, ",") "]" "{" L(item, "|") "}" → (p 2 5)
+item = IDENT                                → 1

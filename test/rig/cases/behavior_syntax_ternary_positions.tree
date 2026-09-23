@@ -1,0 +1,31 @@
+(module
+  (enum `Size` `small` `large`)
+  (fun
+    `sign`
+    ((: `n` `Int`))
+    `Int`
+    (block (return (if (> `n` `0`) `1` (if (< `n` `0`) (neg `1`) `0`)))))
+  (fun
+    `weight`
+    ((: `s` `Size`) (: `heavy` `Bool`))
+    `Int`
+    (block
+      (match
+        `s`
+        (arm (enum_lit `small`) (if `heavy` `10` `1`))
+        (arm (enum_lit `large`) (if `heavy` `100` `50`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` _ `5`)
+      (call `print` (if (> `x` `3`) `1` `2`))
+      (set _ `y` `Int` (if (< `x` `3`) `10` `20`))
+      (call `print` `y`)
+      (call `print` (call `sign` `7`))
+      (call `print` (call `sign` (neg `7`)))
+      (call `print` (call `sign` `0`))
+      (call `print` (call `weight` (enum_lit `small`) `true`))
+      (call `print` (call `weight` (enum_lit `large`) `false`))
+      (call `print` (if (> `x` `9`) `x` `0`)))))

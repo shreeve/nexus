@@ -1,0 +1,7 @@
+(program
+  (list
+    (symbol `defn`)
+    (symbol `point`)
+    (vector (symbol `x`) (symbol `y`))
+    (list (symbol `quote`) (list (symbol `point`) (symbol `x`) (symbol `y`))))
+  (list (symbol `point`) (int `3`) (int `4`)))

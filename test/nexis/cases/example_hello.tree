@@ -1,0 +1,3 @@
+(program
+  (list (symbol `defn`) (symbol `greet`) (vector (symbol `name`)) (symbol `name`))
+  (list (symbol `greet`) (quote (symbol `world`))))

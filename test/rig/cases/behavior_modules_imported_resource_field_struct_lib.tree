@@ -1,0 +1,9 @@
+(module
+  (pub
+    (struct
+      `Noisy`
+      (: `n` `Int`)
+      (drop_decl
+        ((: `self` (borrow_write `Noisy`)))
+        (block (call `print` `"drop"` (member `self` `n`))))))
+  (pub (struct `Holder` (: `b` (shared `Noisy`)))))

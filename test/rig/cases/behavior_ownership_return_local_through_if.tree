@@ -1,0 +1,16 @@
+(module
+  (struct
+    `Box`
+    (: `payload` `Int`)
+    (drop_decl
+      ((: `self` (borrow_write `Box`)))
+      (block (call `print` (* (member `self` `payload`) `10`)))))
+  (fun
+    `pick`
+    ((: `c` `Bool`))
+    (shared `Box`)
+    (block
+      (set _ `a` _ (share (call `Box` (kwarg `payload` `1`))))
+      (set _ `b` _ (share (call `Box` (kwarg `payload` `2`))))
+      (if `c` (block `a`) (block `b`))))
+  (sub `main` () _ (block (set _ `x` _ (call `pick` `true`)) (call `print` (member `x` `payload`)))))

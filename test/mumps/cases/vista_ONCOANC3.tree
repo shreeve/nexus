@@ -1,0 +1,521 @@
+(routine
+  (label `ONCOANC3`)
+  (` `)
+  (` `)
+  (label `TNM` (`PTCODE` `PNCODE` `PMCODE` `PGROUP` `CTCODE` `CNCODE` `CMCODE` `CGROUP`))
+  (` ` _ (new _ `TCODE` `NCODE` `MCODE` `GROUP` `BASIS`))
+  (label
+    `CLIN`
+    _
+    ((set
+       _
+       (=
+         (lvar `TCODE`)
+         (expr
+           (intrinsic
+             `P`#212
+             ((expr (lvar `AAS1655` ((expr (str `"N2"`))))) (expr (lvar `U`)) (expr (num `25`)))))))
+      (set
+        _
+        (=
+          (lvar `TCODE`)
+          (expr
+            (select
+              ((expr (lvar `TCODE`) (`=` (str `""`))) (expr (str `"  "`)))
+              ((expr (lvar `TCODE`) ('? ((pat (_ `2`) (`N` `A`))))) (expr (str `"  "`)))
+              ((expr (intrinsic `L`#209 ((expr (lvar `TCODE`)))) (`<` (num `2`)))
+                (expr
+                  (lvar `TCODE`)
+                  (`_`
+                    (intrinsic
+                      `E`#203
+                      ((expr (lvar `AASBLNK`))
+                        (expr (num `1`))
+                        (expr (num `2`) (`-` (intrinsic `L`#209 ((expr (lvar `TCODE`)))))))))))
+              ((expr (num `1`)) (expr (lvar `TCODE`))))))
+        (= (lvar `CTCODE`) (expr (lvar `TCODE`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `NCODE`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `AAS1655` ((expr (str `"N2"`))))) (expr (lvar `U`)) (expr (num `26`)))))))
+    (set
+      _
+      (=
+        (lvar `NCODE`)
+        (expr
+          (select
+            ((expr (lvar `NCODE`) (`=` (str `""`))) (expr (str `"  "`)))
+            ((expr (lvar `NCODE`) ('? ((pat (_ `2`) (`N` `A`))))) (expr (str `"  "`)))
+            ((expr (intrinsic `L`#209 ((expr (lvar `NCODE`)))) (`<` (num `2`)))
+              (expr
+                (lvar `NCODE`)
+                (`_`
+                  (intrinsic
+                    `E`#203
+                    ((expr (lvar `AASBLNK`))
+                      (expr (num `1`))
+                      (expr (num `2`) (`-` (intrinsic `L`#209 ((expr (lvar `NCODE`)))))))))))
+            ((expr (num `1`)) (expr (lvar `NCODE`))))))
+      (= (lvar `CNCODE`) (expr (lvar `NCODE`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `MCODE`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `AAS1655` ((expr (str `"N2"`))))) (expr (lvar `U`)) (expr (num `27`)))))))
+    (set
+      _
+      (=
+        (lvar `MCODE`)
+        (expr
+          (select
+            ((expr (lvar `MCODE`) (`=` (str `""`))) (expr (str `" "`)))
+            ((expr (lvar `MCODE`) ('? ((pat (_ `1`) (`N` `A`))))) (expr (str `" "`)))
+            ((expr (num `1`)) (expr (lvar `MCODE`))))))
+      (= (lvar `CMCODE`) (expr (lvar `MCODE`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `GROUP`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (lvar `AAS1655` ((expr (str `"N2"`))))) (expr (lvar `U`)) (expr (num `20`)))))))
+    (set
+      _
+      (=
+        (lvar `GROUP`)
+        (expr
+          (select
+            ((expr (lvar `GROUP`) (`=` (str `""`))) (expr (str `"  "`)))
+            ((expr (lvar `GROUP`) ('? ((pat (_ `2`) (`N` `A`))))) (expr (str `"  "`)))
+            ((expr (num `1`)) (expr (lvar `GROUP`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `GROUP`)
+        (expr
+          (select
+            ((expr
+               (str `"^0^0A^1^1A^1B^1C^2^2A^2B^2C^3^3A^3B^3C^4^4A^4B^4C^9^"`)
+               (`[` (expr (str `"^"`) (`_` (lvar `GROUP`)) (`_` (str `"^"`)))))
+              (expr (lvar `GROUP`)))
+            ((expr (lvar `GROUP`) (`[` (str `"0"`))) (expr (str `"0"`)))
+            ((expr (num `1`)) (expr (str `"9"`))))))))
+  (` `
+    _
+    (set
+      (postcond (expr (intrinsic `L`#209 ((expr (lvar `GROUP`)))) (`<` (num `2`))))
+      (=
+        (lvar `GROUP`)
+        (expr
+          (lvar `GROUP`)
+          (`_`
+            (intrinsic
+              `E`#203
+              ((expr (lvar `AASBLNK`))
+                (expr (num `1`))
+                (expr (num `2`) (`-` (intrinsic `L`#209 ((expr (lvar `GROUP`)))))))))))))
+  (` ` _ (set _ (= (lvar `CGROUP`) (expr (lvar `GROUP`)))))
+  (label
+    `PATH`
+    _
+    ((set
+       _
+       (=
+         (lvar `TCODE`)
+         (expr
+           (intrinsic
+             `P`#212
+             ((expr
+                (intrinsic
+                  `G`#206
+                  ((expr (gvar `ONCO` ((expr (num `165.5`)) (expr (lvar `D0`)) (expr (num `2.1`))))))))
+               (expr (lvar `U`))
+               (expr (num `1`)))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `TCODE`)
+        (expr
+          (select
+            ((expr (lvar `TCODE`) (`=` (str `""`))) (expr (str `"  "`)))
+            ((expr (lvar `TCODE`) ('? ((pat (_ `2`) (`N` `A`))))) (expr (str `"  "`)))
+            ((expr (intrinsic `L`#209 ((expr (lvar `TCODE`)))) (`<` (num `2`)))
+              (expr
+                (lvar `TCODE`)
+                (`_`
+                  (intrinsic
+                    `E`#203
+                    ((expr (lvar `AASBLNK`))
+                      (expr (num `1`))
+                      (expr (num `2`) (`-` (intrinsic `L`#209 ((expr (lvar `TCODE`)))))))))))
+            ((expr (num `1`)) (expr (lvar `TCODE`))))))))
+  (` ` _ (set _ (= (lvar `PTCODE`) (expr (lvar `TCODE`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `NCODE`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (intrinsic
+                 `G`#206
+                 ((expr (gvar `ONCO` ((expr (num `165.5`)) (expr (lvar `D0`)) (expr (num `2.1`))))))))
+              (expr (lvar `U`))
+              (expr (num `2`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `NCODE`)
+        (expr
+          (select
+            ((expr (lvar `NCODE`) (`=` (str `""`))) (expr (str `"  "`)))
+            ((expr (lvar `NCODE`) ('? ((pat (_ `2`) (`N` `A`))))) (expr (str `"  "`)))
+            ((expr (intrinsic `L`#209 ((expr (lvar `NCODE`)))) (`<` (num `2`)))
+              (expr
+                (lvar `NCODE`)
+                (`_`
+                  (intrinsic
+                    `E`#203
+                    ((expr (lvar `AASBLNK`))
+                      (expr (num `1`))
+                      (expr (num `2`) (`-` (intrinsic `L`#209 ((expr (lvar `NCODE`)))))))))))
+            ((expr (num `1`)) (expr (lvar `NCODE`))))))))
+  (` ` _ (set _ (= (lvar `PNCODE`) (expr (lvar `NCODE`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `MCODE`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (intrinsic
+                 `G`#206
+                 ((expr (gvar `ONCO` ((expr (num `165.5`)) (expr (lvar `D0`)) (expr (num `2.1`))))))))
+              (expr (lvar `U`))
+              (expr (num `3`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `MCODE`)
+        (expr
+          (select
+            ((expr (lvar `MCODE`) (`=` (str `""`))) (expr (str `" "`)))
+            ((expr (lvar `MCODE`) ('? ((pat (_ `1`) (`N` `A`))))) (expr (str `" "`)))
+            ((expr (num `1`)) (expr (lvar `MCODE`))))))
+      (= (lvar `PMCODE`) (expr (lvar `MCODE`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `GROUP`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (intrinsic
+                 `G`#206
+                 ((expr (gvar `ONCO` ((expr (num `165.5`)) (expr (lvar `D0`)) (expr (num `2.1`))))))))
+              (expr (lvar `U`))
+              (expr (num `4`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `GROUP`)
+        (expr
+          (select
+            ((expr (lvar `GROUP`) (`=` (str `""`))) (expr (str `"  "`)))
+            ((expr (lvar `GROUP`) ('? ((pat (_ `2`) (`N` `A`))))) (expr (str `"  "`)))
+            ((expr (num `1`)) (expr (lvar `GROUP`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `GROUP`)
+        (expr
+          (select
+            ((expr
+               (str `"^0^0A^1^1A^1B^1C^2^2A^2B^2C^3^3A^3B^3C^4^4A^4B^4C^9^"`)
+               (`[` (expr (str `"^"`) (`_` (lvar `GROUP`)) (`_` (str `"^"`)))))
+              (expr (lvar `GROUP`)))
+            ((expr (lvar `GROUP`) (`[` (str `"0"`))) (expr (str `"0"`)))
+            ((expr (num `1`)) (expr (str `"9"`))))))))
+  (` `
+    _
+    (set
+      (postcond (expr (intrinsic `L`#209 ((expr (lvar `GROUP`)))) (`<` (num `2`))))
+      (=
+        (lvar `GROUP`)
+        (expr
+          (lvar `GROUP`)
+          (`_`
+            (intrinsic
+              `E`#203
+              ((expr (lvar `AASBLNK`))
+                (expr (num `1`))
+                (expr (num `2`) (`-` (intrinsic `L`#209 ((expr (lvar `GROUP`)))))))))))))
+  (` ` _ (set _ (= (lvar `PGROUP`) (expr (lvar `GROUP`)))))
+  (` ` _ (quit))
+  (label `FOLLOW`)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `INIT` _ `ONCOANC4`)
+        ((expr (lvar `D0`))
+          (byref `AASRDSB1`)
+          (byref `AASRHSR1`)
+          (byref `AASRHRA1`)
+          (byref `AASRXCH1`)
+          (byref `AASRST1`)
+          (byref `AASRXBR1`)
+          (byref `AASROC1`)
+          (expr (num `1`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (lvar `D0`)) (expr (num `352`))))
+        (expr
+          (lvar `AASRXBDT`)
+          (`_` (lvar `AASRHSR`))
+          (`_` (lvar `AASRXREA`))
+          (`_` (lvar `AASRHRA`))
+          (`_` (lvar `AASRXCN`))
+          (`_` (lvar `AASRXSEQ`))
+          (`_` (lvar `AASRXCH`))
+          (`_` (lvar `AASRST`))
+          (`_` (lvar `AASRXBR`))
+          (`_` (lvar `AASROC`))
+          (`_` (intrinsic `E`#203 ((expr (lvar `AASBLNK`)) (expr (num `1`)) (expr (num `20`)))))
+          (`_` (lvar `AASRDSB1`))
+          (`_` (lvar `AASRHSR1`))
+          (`_` (lvar `AASRHRA1`))
+          (`_` (lvar `AASRXCH1`))
+          (`_` (lvar `AASRST1`))
+          (`_` (lvar `AASRXBR1`))
+          (`_` (lvar `AASROC1`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `INIT` _ `ONCOANC4`)
+        ((expr (lvar `D0`))
+          (byref `AASRDSB2`)
+          (byref `AASRHSR2`)
+          (byref `AASRHRA2`)
+          (byref `AASRXCH2`)
+          (byref `AASRST2`)
+          (byref `AASRXBR2`)
+          (byref `AASROC2`)
+          (expr (num `2`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (lvar `D0`)) (expr (num `425`))))
+        (expr
+          (lvar `AASRDSB2`)
+          (`_` (lvar `AASRHSR2`))
+          (`_` (lvar `AASRHRA2`))
+          (`_` (lvar `AASRXCH2`))
+          (`_` (lvar `AASRST2`))
+          (`_` (lvar `AASRXBR2`))
+          (`_` (lvar `AASROC2`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `INIT` _ `ONCOANC4`)
+        ((expr (lvar `D0`))
+          (byref `AASRDSB3`)
+          (byref `AASRHSR3`)
+          (byref `AASRHRA3`)
+          (byref `AASRXCH3`)
+          (byref `AASRST3`)
+          (byref `AASRXBR3`)
+          (byref `AASROC3`)
+          (expr (num `3`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (lvar `D0`)) (expr (num `425`))))
+        (expr
+          (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (lvar `D0`)) (expr (num `425`))))
+          (`_` (lvar `AASRDSB3`))
+          (`_` (lvar `AASRHSR3`))
+          (`_` (lvar `AASRHRA3`))
+          (`_` (lvar `AASRXCH3`))
+          (`_` (lvar `AASRST3`))
+          (`_` (lvar `AASRXBR3`))
+          (`_` (lvar `AASROC3`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `INIT` _ `ONCOANC4`)
+        ((expr (lvar `D0`))
+          (byref `AASRDSB4`)
+          (byref `AASRHSR4`)
+          (byref `AASRHRA4`)
+          (byref `AASRXCH4`)
+          (byref `AASRST4`)
+          (byref `AASRXBR4`)
+          (byref `AASROC4`)
+          (expr (num `4`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (lvar `D0`)) (expr (num `425`))))
+        (expr
+          (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (lvar `D0`)) (expr (num `425`))))
+          (`_` (lvar `AASRDSB4`))
+          (`_` (lvar `AASRHSR4`))
+          (`_` (lvar `AASRHRA4`))
+          (`_` (lvar `AASRXCH4`))
+          (`_` (lvar `AASRST4`))
+          (`_` (lvar `AASRXBR4`))
+          (`_` (lvar `AASROC4`))))))
+  (` ` _ (quit))
+  (label `HANG`)
+  (` ` _ (write _ (posformat `!` `!`)))
+  (` ` _ (set _ (= (lvar `DIR` ((expr (str `"T"`)))) (expr (num `30`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DIR` ((expr (str `"A"`)) (expr (num `1`))))
+        (expr
+          (str `"I will hang for "`)
+          (`_` (lvar `DIR` ((expr (str `"T"`)))))
+          (`_` (str `" seconds while you set up the log file."`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DIR` ((expr (str `"A"`))))
+        (expr (str `"(Hit <CR> to start sooner, or enter '^' to abort)"`)))))
+  (` `
+    _
+    (set _ (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"E"`))))
+    (do _ (call (ref _ _ `DIR`)))
+    (kill _ (lvar `DIR`)))
+  (` ` _ (quit))
+  (label `EDT` (`DOD`))
+  (` ` _ (new _ `CNT` `OSP`) (set _ (= (lvar `CNT`) (expr (num `0`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `OSP`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `ONCO`
+                 ((expr (num `160.1`))
+                   (expr (str `"C"`))
+                   (expr (lvar `DUZ` ((expr (num `2`)))))
+                   (expr (num `0`)))))))))))
+  (` `
+    _
+    (if (expr (lvar `OSP`) (`=` (str `""`))))
+    (set
+      _
+      (=
+        (lvar `OSP`)
+        (expr (intrinsic `O`#211 ((expr (gvar `ONCO` ((expr (num `160.1`)) (expr (num `0`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `CNT`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (intrinsic
+                 `G`#206
+                 ((expr (gvar `ONCO` ((expr (num `160.1`)) (expr (lvar `OSP`)) (expr (num `5`))))))))
+              (expr (lvar `U`))
+              (expr (num `1`))))))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `DOD`) (`<` (num `88`))) (expr (num `2`)))
+          ((expr (lvar `DOD`) (`<` (`+` (lvar `CNT`)))) (expr (num `3`)))
+          ((expr (lvar `DOD`) (`<` (num `93`))) (expr (num `3`)))
+          ((expr (num `1`)) (expr (num `4`)))))))
+  (label `MET` (`NODE`))
+  (` ` _ (new _ `PIECE` `VALUE`) (set _ (= (lvar `VALUE`) (expr (str `""`)))))
+  (` ` _ (for (lvar `PIECE`) (expr (num `14`)) (expr (num `15`)) (expr (num `16`))) (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `VALUE`)
+        (expr
+          (lvar `VALUE`)
+          (`_`
+            (select
+              ((expr
+                 (intrinsic
+                   `L`#209
+                   ((expr
+                      (intrinsic
+                        `P`#212
+                        ((expr (lvar `NODE`)) (expr (lvar `U`)) (expr (lvar `PIECE`))))))))
+                (expr
+                  (intrinsic `P`#212 ((expr (lvar `NODE`)) (expr (lvar `U`)) (expr (lvar `PIECE`))))))
+              ((expr (num `1`)) (expr (num `0`)))))))))
+  (` ` _ (quit _ (expr (lvar `VALUE`)))))

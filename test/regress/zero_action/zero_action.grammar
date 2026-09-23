@@ -1,0 +1,21 @@
+# error: zero_action.grammar:20:49:
+#
+# `0` is not an element position: `→ 0` and `→ (0 1 2)` are rejected with a
+# location.
+#
+# (architecture.md Appendix A: nest.grammar; SPEC §3.2, §8.11)
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "zero_action"
+
+top! = item                                 → 1
+item = IDENT IDENT                          → 0
+     | IDENT IDENT IDENT                    → (0 1 2)

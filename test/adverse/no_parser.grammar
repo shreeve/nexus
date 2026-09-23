@@ -1,4 +1,6 @@
-# Missing @parser section — lexer only, no rules
+# A grammar file needs an @parser section (an empty one generates a lexer).
+# error: no_parser.grammar:11:1:
+# error: no @parser section
 @lexer
 tokens
     ident

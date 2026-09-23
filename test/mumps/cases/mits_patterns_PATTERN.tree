@@ -1,0 +1,225 @@
+(routine
+  (label `PATTERN`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/patterns/PATTERN"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3N exact 3 digits"`)) (expr (num `1`)) (expr (str `"""123""?3N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3N reject 2 digits"`)) (expr (num `0`)) (expr (str `"""12""?3N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3N reject 4 digits"`)) (expr (num `0`)) (expr (str `"""1234""?3N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".N matches 0 digits"`)) (expr (num `1`)) (expr (str `"""""?.N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".N matches many digits"`)) (expr (num `1`)) (expr (str `"""123456789""?.N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".N rejects letters"`)) (expr (num `0`)) (expr (str `"""abc""?.N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"1.3N range 1-3 digits OK"`)) (expr (num `1`)) (expr (str `"""12""?1.3N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"1.3N range too many"`)) (expr (num `0`)) (expr (str `"""1234""?1.3N"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3A letters"`)) (expr (num `1`)) (expr (str `"""abc""?3A"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3U uppercase"`)) (expr (num `1`)) (expr (str `"""ABC""?3U"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3U rejects lowercase"`)) (expr (num `0`)) (expr (str `"""abc""?3U"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3L lowercase"`)) (expr (num `1`)) (expr (str `"""abc""?3L"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3L rejects uppercase"`)) (expr (num `0`)) (expr (str `"""ABC""?3L"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3N1.E1A digit-anychar-letter"`))
+          (expr (num `1`))
+          (expr (str `"""123 z""?3N1.E1A"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"phone-like 3N1""-""4N"`))
+          (expr (num `1`))
+          (expr (str `"""555-1234""?3N1""-""4N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"phone reject no dash"`))
+          (expr (num `0`))
+          (expr (str `"""5551234""?3N1""-""4N"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"literal exact match"`)) (expr (num `1`)) (expr (str `"""ABC""?1""ABC"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"literal reject differ"`)) (expr (num `0`)) (expr (str `"""XYZ""?1""ABC"""`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".A on empty matches"`)) (expr (num `1`)) (expr (str `"""""?.A"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"0N on empty"`)) (expr (num `1`)) (expr (str `"""""?0N"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3P punctuation"`)) (expr (num `1`)) (expr (str `"""!@#""?3P"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3P rejects letters"`)) (expr (num `0`)) (expr (str `"""abc""?3P"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".E matches anything"`)) (expr (num `1`)) (expr (str `"""whatever""?.E"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"simple email-like ID"`)) (expr (num `1`)) (expr (str `"""ab12""?2A2N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"US zip 5N"`)) (expr (num `1`)) (expr (str `"""12345""?5N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"US zip+4 like"`)) (expr (num `1`)) (expr (str `"""12345-6789""?5N1""-""4N"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/patterns/PATTERN"`))))))
+  (` ` _ (quit)))

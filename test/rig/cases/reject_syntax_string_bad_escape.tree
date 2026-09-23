@@ -1,0 +1,9 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` `"bad \\q escape"`)
+      (call `print` `"\\x4g"`)
+      (call `print` `"\\u{110000}"`))))

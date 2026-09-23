@@ -1,0 +1,207 @@
+(routine
+  (label `ADD`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/arith/ADD"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add basic positive"`)) (expr (num `3`)) (expr (str `"1+2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add identity left"`)) (expr (num `5`)) (expr (str `"0+5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add identity right"`)) (expr (num `5`)) (expr (str `"5+0"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add commutative"`)) (expr (num `1`)) (expr (str `"(3+4)=(4+3)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add associative"`)) (expr (num `1`)) (expr (str `"((1+2)+3)=(1+(2+3))"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add negative"`)) (expr (`-` (num `1`))) (expr (str `"1+-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add both negative"`)) (expr (`-` (num `3`))) (expr (str `"-1+-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add cancel to zero"`)) (expr (num `0`)) (expr (str `"5+-5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add neg cancel"`)) (expr (num `0`)) (expr (str `"-5+5"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add fraction simple"`)) (expr (num `1.5`)) (expr (str `"1+0.5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add fraction lossless"`)) (expr (num `.3`)) (expr (str `".1+.2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add fraction negative"`)) (expr (num `.5`)) (expr (str `"1.5+-1"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add large"`)) (expr (num `1000000`)) (expr (str `"999999+1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add large negative"`))
+          (expr (`-` (num `1000000`)))
+          (expr (str `"-999999+-1"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add at 18-digit boundary"`))
+          (expr (num `1000000000000000000`))
+          (expr (str `"999999999999999999+1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add crossing 18 digits"`))
+          (expr (num `1000000000000000000`))
+          (expr (str `"999999999999999999+2"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add scientific small"`)) (expr (num `.011`)) (expr (str `"1E-2+1E-3"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add scientific large"`)) (expr (num `2000`)) (expr (str `"1E3+1E3"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add big plus small"`))
+          (expr (num `1000000000.001`))
+          (expr (str `"1E9+.001"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add three"`)) (expr (num `6`)) (expr (str `"1+2+3"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add long chain"`)) (expr (num `55`)) (expr (str `"1+2+3+4+5+6+7+8+9+10"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add unary minus"`)) (expr (num `2`)) (expr (str `"3+-1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add double unary"`)) (expr (num `4`)) (expr (str `"3+--1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"add triple unary"`)) (expr (num `2`)) (expr (str `"3+---1"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/arith/ADD"`))))))
+  (` ` _ (quit)))

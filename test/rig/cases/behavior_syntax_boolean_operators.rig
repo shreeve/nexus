@@ -1,0 +1,26 @@
+# `and`, `or`, and `not` are the boolean operators. `not` binds looser
+# than comparisons (`not a == b` is `not (a == b)`), `and` binds tighter
+# than `or`, and both short-circuit.
+
+fun loud(v: Bool) -> Bool
+  print "evaluated"
+  v
+
+sub main()
+  a = 1
+  b = 2
+  print not a == b
+  print true or false and false
+  print (true or false) and false
+  print false and loud(true)
+  print true or loud(false)
+  print not false and loud(true)
+
+# expect:
+# true
+# true
+# false
+# false
+# true
+# evaluated
+# true

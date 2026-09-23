@@ -1,0 +1,27 @@
+# Dropping a 200,000-node `*Node` list does not overflow the stack: the
+# runtime queues boxes released too deep inside other drops. Every
+# node's drop still runs exactly once, in list order, head first.
+
+struct Node
+  value: Int
+  seen: *Cell(Int)
+  next: (*Node)?
+
+  drop self: !Node
+    if self.seen.get() != self.value + 1
+      print("out of order at", self.value)
+    self.seen.set(self.value)
+
+sub main()
+  n = 200000
+  seen: *Cell(Int) = *Cell(value: n)
+  head: (*Node)? = none
+  i = 0
+  while i < n
+    head = *Node(value: i, seen: +seen, next: <head)
+    i += 1
+  -head
+  print("dropped down to", seen.get())
+
+# expect:
+# dropped down to 0

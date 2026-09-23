@@ -1,0 +1,11 @@
+# A token before '/' that can be empty would be a zero-length token
+# error: lexer_trailing_empty_head.grammar:8:1:
+# error: before '/' can be empty
+@lexer
+tokens
+    word, eof, err
+[a-z]+ → word
+[0-9]* / ';' → word
+. → err
+@parser
+top! = WORD → 1

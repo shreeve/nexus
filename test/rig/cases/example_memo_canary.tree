@@ -1,0 +1,83 @@
+(module
+  (type `Listeners` (generic_inst `Vec` (shared (fun_type (`Int`)))))
+  (struct
+    `IntSource`
+    (: `value` (shared (generic_inst `Cell` `Int`)))
+    (: `listeners` (shared (generic_inst `Cell` `Listeners`)))
+    (fun
+      `new`
+      ((: `initial` `Int`))
+      (shared `IntSource`)
+      (block
+        (share
+          (call
+            `IntSource`
+            (kwarg `value` (share (call `Cell` (kwarg `value` `initial`))))
+            (kwarg `listeners` (share (call `Cell` (kwarg `value` (call `Vec`)))))))))
+    (fun
+      `get`
+      ((: `self` (borrow_read `IntSource`)))
+      `Int`
+      (block (call (member (member `self` `value`) `get`))))
+    (sub
+      `subscribe`
+      ((: `self` (borrow_read `IntSource`)) (: `listener` (shared (fun_type (`Int`)))))
+      _
+      (block
+        (set _ `listeners` _ (call (member (member `self` `listeners`) `replace`) (call `Vec`)))
+        (call (member (write `listeners`) `push`) (move `listener`))
+        (set _ `_` _ (call (member (member `self` `listeners`) `replace`) (move `listeners`)))))
+    (sub
+      `set`
+      ((: `self` (borrow_read `IntSource`)) (: `v` `Int`))
+      _
+      (block
+        (call (member (member `self` `value`) `set`) `v`)
+        (set _ `listeners` _ (call (member (member `self` `listeners`) `replace`) (call `Vec`)))
+        (for iter `listener` _ (read `listeners`) (block (call `listener` `v`)))
+        (set _ `_` _ (call (member (member `self` `listeners`) `replace`) (move `listeners`)))))
+    (fun
+      `map`
+      ((: `self` (borrow_read `IntSource`)) (: `f` (shared (fun_type (`Int`) `Int`))))
+      (shared `IntSource`)
+      (block
+        (set
+          _
+          `derived`
+          _
+          (call (member `IntSource` `new`) (call `f` (call (member `self` `get`)))))
+        (call
+          (member `self` `subscribe`)
+          (share
+            (lambda
+              ((cap_weak `derived`) (cap_clone `f`) `v`)
+              _
+              _
+              (block
+                (if
+                  (as (call (member `derived` `upgrade`)) `d`)
+                  (block (call (member `d` `set`) (call `f` `v`))))))))
+        `derived`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `count` _ (call (member `IntSource` `new`) `1`))
+      (set
+        _
+        `doubled`
+        _
+        (call (member `count` `map`) (share (lambda (`n`) _ _ (block (* `n` `2`))))))
+      (set
+        _
+        `squared`
+        _
+        (call (member `doubled` `map`) (share (lambda (`n`) _ _ (block (* `n` `n`))))))
+      (call
+        (member `squared` `subscribe`)
+        (share (lambda (`n`) _ _ (block (call `print` `"squared"` `n`)))))
+      (call `print` (call (member `doubled` `get`)) (call (member `squared` `get`)))
+      (call (member `count` `set`) `3`)
+      (call (member `count` `set`) `5`)
+      (call `print` (call (member `doubled` `get`)) (call (member `squared` `get`))))))

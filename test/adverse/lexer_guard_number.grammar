@@ -1,0 +1,13 @@
+# A guard comparison takes a number.
+# error: lexer_guard_number.grammar:10:15:
+# error: expected a number
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' @ mode == x → plus
+. → err
+@parser
+top! = WORD → 1

@@ -1,0 +1,20 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `count` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `f`
+        _
+        (lambda
+          ((cap_clone `count`))
+          _
+          _
+          (block
+            (set _ `y` _ (if `true` (block `count`) (block `count`)))
+            (call `print` (call (member `y` `get`))))))
+      (call `f`)
+      (call `f`))))

@@ -1,0 +1,22 @@
+# Type expressions in annotations.
+
+struct Node
+  value: Int
+
+fun maybe(n: Int) -> Int?
+  n
+
+fun fallible(n: Int) -> Int!
+  n
+
+sub types(a: ?Node, b: !Node, c: *Node, d: ~Node, e: Node?, f: (*Node)?, g: *Node?)
+  print "types"
+
+sub containers(v: Vec(Int), s: *Cell(Vec(*sub())), c: *sub(Int), d: *sub(Int, String))
+  print "containers"
+
+sub sized(a: U8, b: I64, c: U64, d: F64, e: Bool, f: String)
+  print "sized"
+
+fun generic(pre T: type, x: T) -> T
+  x

@@ -1,0 +1,16 @@
+(module
+  (struct `Box` (: `value` `Int`))
+  (sub
+    `holder`
+    ((: `rc` (shared `Box`)))
+    _
+    (block (call `print` (member `rc` `value`)) (drop `rc`)))
+  (sub `consumer` ((: `rc` `Int`)) _ (block (call `print` `rc`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `b` _ (share (call `Box` (kwarg `value` `1`))))
+      (call `holder` (move `b`))
+      (call `consumer` `42`))))

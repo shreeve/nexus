@@ -1,0 +1,31 @@
+# Ownership at a glance: each sigil makes a transfer visible.
+
+struct Account
+  owner: String
+  balance: Int
+
+fun balance_of(a: ?Account) -> Int
+  a.balance
+
+sub close(a: Account)
+  print(a.balance)
+
+sub main()
+  acct = Account(owner: "ada", balance: 100)
+  print(balance_of(?acct))    # read borrow: acct stays usable
+  moved = <acct               # move: `acct` is gone from here on
+  print(balance_of(?moved))
+
+  shared = *Account(owner: "bob", balance: 7)
+  other = +shared             # clone the handle: two owners, one value
+  -shared                     # drop our handle now; `other` keeps the value alive
+  print(other.balance)
+
+  close(<moved)
+  # `other` is dropped automatically at the end of main
+
+# expect:
+# 100
+# 100
+# 7
+# 100

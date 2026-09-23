@@ -1,0 +1,11 @@
+# after assigns declared state variables.
+# error: lexer_after_undeclared.grammar:6:5:
+# error: after block assigns 'a'
+@lexer
+after
+    a = 1
+tokens
+    eof, err
+. → err
+@parser
+top! = ERR → 1

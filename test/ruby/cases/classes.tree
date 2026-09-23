@@ -1,0 +1,19 @@
+(program
+  stmts
+  (module
+    `Geometry`
+    (stmts
+      (class
+        `Point`
+        _
+        (stmts
+          (send _ `attr_reader` (args `:x` `:y`))
+          (def `initialize` (params `x` `y`) (stmts (assign `@x` `x`) (assign `@y` `y`)) () ())
+          (def
+            `add`
+            (params `other`)
+            (stmts
+              (send `Point` `new` (args (+ `@x` (send `other` `x`)) (+ `@y` (send `other` `y`)))))
+            ()
+            ())
+          (defs (self) `origin` _ (stmts (send _ `new` (args `0` `0`))) () ()))))))

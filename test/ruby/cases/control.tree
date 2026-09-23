@@ -1,0 +1,16 @@
+(program
+  stmts
+  (if
+    (> `a` `1`)
+    (stmts (send _ `puts` (args `"big"`)))
+    (if
+      (== `a` `1`)
+      (stmts (send _ `puts` (args `"one"`)))
+      (stmts (send _ `puts` (args `"small"`)))))
+  (unless `done` (stmts `work`) ())
+  (while (< `i` `10`) (stmts (+= `i` `1`)))
+  (until (send `queue` `empty?`) (stmts (send `queue` `pop`)))
+  (for `x` (array `1` `2` `3`) (stmts (+= `total` `x`)))
+  (case `value` (when (stmts `:low`) `1` `2`) (when (stmts `:mid`) (.. `3` `5`)) (stmts `:high`))
+  (if `ready` (assign `x` `1`))
+  (unless `failed` (assign `y` `2`)))

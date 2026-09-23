@@ -1,0 +1,22 @@
+(module
+  (struct
+    `B`
+    (: `n` `Int`)
+    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
+  (enum `S` (variant `one` ((: `a` (shared `B`)) (: `k` `Int`))) `empty`)
+  (fun
+    `go`
+    ((: `s` `S`))
+    `Int`
+    (block (match `s` (arm (variant_pattern `one` `a` `k`) `k`) (arm (enum_lit `empty`) `0`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set
+        _
+        `s`
+        `S`
+        (call (enum_lit `one`) (kwarg `a` (share (call `B` (kwarg `n` `1`)))) (kwarg `k` `3`)))
+      (call `print` (call `go` (move `s`))))))

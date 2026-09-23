@@ -1,0 +1,41 @@
+# A weak handle to an owned closure (`~fun(...)`, `~sub()`) works as a
+# capture, an annotated local, a struct field, a parameter, and a Vec
+# element; it upgrades while the closure is alive.
+
+struct H
+  cb: ~sub()
+
+sub call(w: ?~sub())
+  if w.upgrade() as g
+    g()
+  else
+    print("gone")
+
+sub main()
+  f: *fun(Int) Int = *|a| a + 1
+  g: *fun(Int) Int = *|~f, a|
+    if f.upgrade() as h
+      return h(a) * 10
+    0
+  w: ~fun(Int) Int = ~f
+  if w.upgrade() as h
+    print(h(1), g(1))
+  -f
+  print(g(1))
+
+  s: *sub() = *|| print("hi")
+  holder = H(cb: ~s)
+  call(?holder.cb)
+  v: Vec(~sub()) = Vec()
+  (!v).push(~s)
+  for x in ?v
+    call(?x)
+  -s
+  call(?holder.cb)
+
+# expect:
+# 2 20
+# 0
+# hi
+# hi
+# gone

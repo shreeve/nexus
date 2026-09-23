@@ -1,0 +1,33 @@
+# A syntax error in an @schema line is reported at its token.
+# error: schema_syntax_error.grammar:31:11:
+# error: syntax error: unexpected symbol '='
+@lexer
+tokens
+    ident
+    integer
+    newline
+    eq
+    colon
+    lparen
+    rparen
+    comma
+    plus
+    eof
+    err
+# (spaces and tabs are consumed by the lexer as leading whitespace)
+'\n'                                        → newline
+'='                                         → eq
+':'                                         → colon
+'('                                         → lparen
+')'                                         → rparen
+','                                         → comma
+'+'                                         → plus
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@schema
+    p   a = b
+
+program! = IDENT                            → (p 1)

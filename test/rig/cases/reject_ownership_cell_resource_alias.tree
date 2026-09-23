@@ -1,0 +1,11 @@
+(module
+  (struct `User` (: `age` `Int`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `u` (shared `User`) (share (call `User` (kwarg `age` `30`))))
+      (set _ `c1` (generic_inst `Cell` (shared `User`)) (call `Cell` (kwarg `value` (move `u`))))
+      (set _ `c2` (generic_inst `Cell` (shared `User`)) `c1`)
+      (call `print` `0`))))

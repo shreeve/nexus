@@ -1,0 +1,15 @@
+(module
+  (fun `loud` ((: `v` `Bool`)) `Bool` (block (call `print` `"evaluated"`) `v`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ `1`)
+      (set _ `b` _ `2`)
+      (call `print` (not (== `a` `b`)))
+      (call `print` (or `true` (and `false` `false`)))
+      (call `print` (and (or `true` `false`) `false`))
+      (call `print` (and `false` (call `loud` `true`)))
+      (call `print` (or `true` (call `loud` `false`)))
+      (call `print` (and (not `false`) (call `loud` `true`))))))

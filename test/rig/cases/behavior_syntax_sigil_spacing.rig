@@ -1,0 +1,44 @@
+# The same character is an infix operator when spaced (`a < x`, `a * b`,
+# `a + b`, `a % b`, `a - b`) and an ownership sigil when tight against its
+# operand at expression start (`<s`, `*Box`, `+s`, `?box`). `-x` is
+# negation in an expression and a drop at statement start; `@name(...)`
+# is a builtin call.
+
+struct Box
+  v: Int
+
+fun show(b: ?Box) -> Int
+  b.v
+
+sub main()
+  a = 7
+  b = 2
+  x = 3
+  print(a < x)
+  print(a * b)
+  print(a + b)
+  print(a % b)
+  print(a - b)
+  y = -x              # negation
+  print(y)
+  print(@sizeOf(Box)) # builtin call
+  s = *Box(v: 10)     # share
+  t = +s              # clone
+  u = <s              # move
+  print(u.v)
+  -u                  # drop statement
+  print(t.v)
+  box = Box(v: 1)
+  print(show(?box))   # read borrow
+
+# expect:
+# false
+# 14
+# 9
+# 1
+# 5
+# -3
+# 8
+# 10
+# 10
+# 1

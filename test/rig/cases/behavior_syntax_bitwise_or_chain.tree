@@ -1,0 +1,11 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ `1`)
+      (set _ `b` _ `2`)
+      (set _ `c` _ `4`)
+      (set _ `x` _ (| (| `a` `b`) `c`))
+      (call `print` `x`))))

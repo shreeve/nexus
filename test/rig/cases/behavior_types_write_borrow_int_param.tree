@@ -1,0 +1,3 @@
+(module
+  (sub `bump` ((: `c` (borrow_write `Int`))) _ (block (set _ `c` _ (+ `c` `1`))))
+  (sub `main` () _ (block (set _ `n` _ `1`) (call `bump` (write `n`)) (call `print` `n`))))

@@ -1,0 +1,9 @@
+# Parameter names are unique.
+
+fun f(a: Int, a: Int) -> Int
+  a
+
+sub main()
+  print(f(1, 2))
+
+# error: duplicate parameter `a`

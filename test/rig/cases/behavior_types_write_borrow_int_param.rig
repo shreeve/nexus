@@ -1,0 +1,12 @@
+# A `!Int` parameter writes through to the caller's binding.
+
+sub bump(c: !Int)
+  c = c + 1
+
+sub main()
+  n = 1
+  bump(!n)
+  print(n)
+
+# expect:
+# 2

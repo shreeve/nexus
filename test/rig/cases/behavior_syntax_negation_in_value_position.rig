@@ -1,0 +1,38 @@
+# `-x` alone on a line drops `x` in a `sub`, but where the line's value
+# is used — the last line of a `fun`, of an `if` or `match` branch whose
+# value is used — it is negation.
+
+enum Sign
+  plus
+  minus
+
+fun pick(c: Bool, x: Int) -> Int
+  y = if c
+    -x
+  else
+    x
+  y
+
+fun apply(s: Sign, n: Int) -> Int
+  match s
+    .plus
+      n
+    .minus
+      -n
+
+fun tail(x: Int) -> Int
+  -x + 1
+
+sub main()
+  print pick(true, 4)
+  print pick(false, 4)
+  print apply(.minus, 5)
+  print apply(.plus, 5)
+  print tail(3)
+
+# expect:
+# -4
+# 4
+# -5
+# 5
+# -2

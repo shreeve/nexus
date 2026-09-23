@@ -1,0 +1,17 @@
+# A start symbol that is also used recursively parses the same language at
+# every level.
+
+@lexer
+tokens
+    lparen
+    rparen
+    eof
+    err
+'('                                         → lparen
+')'                                         → rparen
+.                                           → err
+
+@parser
+@lang = "start_marker_placement"
+
+nest! = "(" [nest] ")"                      → (n 2)

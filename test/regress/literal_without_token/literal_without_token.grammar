@@ -1,0 +1,20 @@
+# error: literal_without_token.grammar:20:8:
+# error: "go"
+#
+# A string literal in a rule must name a token: the lexer rule whose
+# pattern is exactly that text (or an @op mapping). A literal no lexer rule
+# produces is a located generation error naming it.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "literal_without_token"
+
+top! = IDENT                                → (top 1)
+     | "go" IDENT                           → (kw 2)

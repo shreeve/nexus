@@ -1,0 +1,27 @@
+# Operators, literals, calls, and member access.
+
+struct Point
+  x: Int
+  y: Int
+
+fun scale(p: ?Point, by: Int) -> Int
+  p.x * by + p.y * by
+
+sub main()
+  a = 1 + 2 * 3 - 4 / 2
+  b = (1 + 2) * 3 % 4
+  c = a == b and a != 0 or not (a < b)
+  d = a <= b
+  e = -a
+  f = 0xff
+  g = 1.5
+  h = "double"
+  i = 'single'
+  j = true
+  k = false
+  p = Point(x: 1, y: 2)
+  print(scale(?p, 3))
+  print(p.x)
+  q = Point.new
+  v: Vec(Int) = Vec(capacity: 4)
+  (!v).push(1)

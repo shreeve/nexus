@@ -1,0 +1,12 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `v` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `set`
+        (shared (fun_type (`Int`)))
+        (share (lambda (`a` (cap_clone `v`)) _ _ (block (call (member `v` `set`) `a`))))))))

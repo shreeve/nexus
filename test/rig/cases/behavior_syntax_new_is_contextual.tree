@@ -1,0 +1,15 @@
+(module
+  (struct
+    `Point`
+    (: `x` `Int`)
+    (fun `new` ((: `x` `Int`)) `Point` (block (call `Point` (kwarg `x` `x`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `p` _ (call (member `Point` `new`) `3`))
+      (call `print` (member `p` `x`))
+      (set _ `x` _ `1`)
+      (set shadow `x` _ `20`)
+      (call `print` `x`))))

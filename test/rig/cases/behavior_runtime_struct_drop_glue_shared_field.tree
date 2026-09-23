@@ -1,0 +1,14 @@
+(module
+  (struct
+    `Noisy`
+    (: `id` `Int`)
+    (drop_decl ((: `self` (borrow_write `Noisy`))) (block (call `print` (member `self` `id`)))))
+  (struct `Reactor` (: `count` (shared `Noisy`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `n` _ (share (call `Noisy` (kwarg `id` `9`))))
+      (set _ `r` `Reactor` (call `Reactor` (kwarg `count` (move `n`))))
+      (call `print` `"built"`))))

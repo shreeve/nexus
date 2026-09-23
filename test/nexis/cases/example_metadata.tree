@@ -1,0 +1,40 @@
+(program
+  (list
+    (symbol `defn`)
+    (symbol `area`)
+    (string `"The area of a w by h rectangle."`)
+    (map (keyword `:units`) (keyword `:cm2`))
+    (vector (symbol `w`) (symbol `h`))
+    (list (symbol `*`) (symbol `w`) (symbol `h`)))
+  (list (symbol `doc`) (symbol `area`))
+  (list
+    (symbol `println`)
+    (list (keyword `:units`) (list (symbol `meta`) (list (symbol `var`) (symbol `area`)))))
+  (list (symbol `def`) (with-meta-raw (symbol `secret`) (keyword `:private`)) (int `42`))
+  (list
+    (symbol `println`)
+    (list (keyword `:private`) (list (symbol `meta`) (list (symbol `var`) (symbol `secret`))))
+    (symbol `secret`))
+  (list
+    (symbol `let`)
+    (vector
+      (symbol `v`)
+      (vector (int `1`) (int `2`) (int `3`))
+      (symbol `tagged`)
+      (list (symbol `with-meta`) (symbol `v`) (map (keyword `:source`) (string `"example"`))))
+    (list
+      (symbol `println`)
+      (list (symbol `=`) (symbol `v`) (symbol `tagged`))
+      (list (symbol `meta`) (symbol `v`))
+      (list (symbol `meta`) (symbol `tagged`))
+      (symbol `tagged`))
+    (list
+      (symbol `println`)
+      (list
+        (symbol `meta`)
+        (list
+          (symbol `vary-meta`)
+          (symbol `tagged`)
+          (symbol `assoc`)
+          (keyword `:checked`)
+          (symbol `true`))))))

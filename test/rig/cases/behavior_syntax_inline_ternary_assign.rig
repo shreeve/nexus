@@ -1,0 +1,13 @@
+# `x = a if c else b` is the inline ternary expression.
+
+fun f(c: Bool) -> Int
+  x = 1 if c else 2
+  return x
+
+sub main()
+  print(f(true))
+  print(f(false))
+
+# expect:
+# 1
+# 2

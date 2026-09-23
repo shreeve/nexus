@@ -1,0 +1,40 @@
+; examples/typed-vectors.nx — typed vectors and the nexis.simd kernels.
+;
+; A typed vector is an unboxed, contiguous sequence of one numeric
+; element type (i64 or f64), built whole from any seqable of numbers.
+; It prints as #i64[...] / #f64[...]; the reader does not read that
+; syntax back. It is its own kind: never = to a persistent vector,
+; and it has no conj or assoc. docs/TYPED_VECTOR.md is the contract.
+
+(require '[nexis.simd :as tv])
+
+(def xs (i64-vector [1 2 3 4 5]))
+(def ys (f64-vector (range 1 6)))        ; integers widen to f64
+
+(println "xs =" xs "type" (typed-vector-type xs))
+(println "ys =" ys "type" (typed-vector-type ys))
+(println "count" (count xs) "nth 2" (nth xs 2) "get 9" (get xs 9 :none))
+
+; Generic sequence functions see a typed vector as a seq of numbers.
+(println "vec" (vec xs))
+(println "reduce" (reduce + xs) "into" (into #{} ys))
+(println "map" (map inc xs))
+
+; Kernels: sum, dot, scale, map (same element type in, same type out).
+(println "sum" (tv/sum xs) (tv/sum ys))
+(println "dot" (tv/dot xs xs) (tv/dot ys ys))
+(println "scale" (tv/scale xs 10) (tv/scale ys 0.5))
+(println "tv/map" (tv/map (fn [x] (* x x)) xs) (tv/map (fn [x] (/ x 2)) ys))
+
+; Equality is element-wise over the same element type.
+(println "= same" (= xs (i64-vector [1 2 3 4 5]))
+         "= f64" (= xs (f64-vector [1 2 3 4 5]))
+         "= vector" (= xs [1 2 3 4 5]))
+
+; No update operation, and every element must fit the type.
+(println "conj" (try (conj xs 6) (catch any e e)))
+(println "i64 of a float" (try (i64-vector [1.5]) (catch any e e)))
+(println "nth past the end" (try (nth xs 5) (catch any e e)))
+
+; The last form's value is the program's result: the i64 sum as an integer.
+(tv/sum (tv/scale xs 2))

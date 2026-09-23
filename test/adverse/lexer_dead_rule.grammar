@@ -1,0 +1,13 @@
+# A rule that every input gives to an earlier rule
+# error: lexer_dead_rule.grammar:10:1:
+# error: can never match
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+[a-z]+ → word
+[a-z]+ → num
+. → err
+@parser
+top! = WORD → 1

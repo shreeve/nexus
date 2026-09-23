@@ -1,0 +1,29 @@
+(module
+  (struct `Node` (: `value` `Int`))
+  (fun `maybe` ((: `n` `Int`)) (optional `Int`) (block `n`))
+  (fun `fallible` ((: `n` `Int`)) (error_union `Int`) (block `n`))
+  (sub
+    `types`
+    ((: `a` (borrow_read `Node`))
+      (: `b` (borrow_write `Node`))
+      (: `c` (shared `Node`))
+      (: `d` (weak `Node`))
+      (: `e` (optional `Node`))
+      (: `f` (optional (shared `Node`)))
+      (: `g` (shared (optional `Node`))))
+    _
+    (block (call `print` `"types"`)))
+  (sub
+    `containers`
+    ((: `v` (generic_inst `Vec` `Int`))
+      (: `s` (shared (generic_inst `Cell` (generic_inst `Vec` (shared (fun_type _ _))))))
+      (: `c` (shared (fun_type (`Int`) _)))
+      (: `d` (shared (fun_type (`Int` `String`) _))))
+    _
+    (block (call `print` `"containers"`)))
+  (sub
+    `sized`
+    ((: `a` `U8`) (: `b` `I64`) (: `c` `U64`) (: `d` `F64`) (: `e` `Bool`) (: `f` `String`))
+    _
+    (block (call `print` `"sized"`)))
+  (fun `generic` ((pre_param `T` `type`) (: `x` `T`)) `T` (block `x`)))

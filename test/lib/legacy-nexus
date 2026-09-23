@@ -1,0 +1,25 @@
+#!/bin/bash
+# Print the path of a Nexus 0.10.3 binary (the last release of the old
+# grammar format), building it from the v0.10.3 tag on first use.
+#
+# Looks, in order, at $NEXUS_LEGACY, .zig-cache/nexus-test/legacy/bin/nexus,
+# and /tmp/nexus-revamp/nexus-0.10.3.
+
+set -uo pipefail
+ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+DEST="$ROOT/.zig-cache/nexus-test/legacy"
+
+for c in "${NEXUS_LEGACY:-}" "$DEST/bin/nexus" /tmp/nexus-revamp/nexus-0.10.3; do
+    [[ -n "$c" && -x "$c" ]] && { echo "$c"; exit 0; }
+done
+
+rm -rf "$DEST" && mkdir -p "$DEST" || exit 1
+if ! git -C "$ROOT" archive v0.10.3 | tar -x -C "$DEST"; then
+    echo "cannot extract tag v0.10.3" >&2
+    exit 1
+fi
+if ! (cd "$DEST" && zig build -Doptimize=ReleaseSafe) >&2; then
+    echo "cannot build nexus v0.10.3" >&2
+    exit 1
+fi
+echo "$DEST/bin/nexus"

@@ -1,0 +1,16 @@
+(sequence
+  (assigns (env_bind `NAME=` (scalar (word `world`))))
+  (seq_always (command _ (word `echo`) (word `"hello $NAME"`)))
+  (seq_always (command _ (word `echo`) (var `$HOME`) (var_braced `${PATH}`) (var `$?`) (var `$1`)))
+  (seq_always
+    (command
+      (env_binds (env_bind `X=` (scalar (word `1`))) (env_bind `Y=` (scalar (word `2`))))
+      (word `cmd`)
+      (word `arg`)))
+  (seq_always
+    (command
+      _
+      (word `echo`)
+      (cmd_subst (sequence (command _ (word `date`))))
+      (list_capture (sequence (command _ (word `ls`))))))
+  (seq_always))

@@ -1,0 +1,23 @@
+# A schema whose every kind has a rest role, and a kind with no roles: the
+# generated slot tables are exhaustive switches without unreachable prongs
+# or unused parameters, and writeFacts compiles.
+
+@lexer
+tokens
+    ident
+    comma
+    eof
+    err
+','                                         → comma
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "schema_rest_roles_only"
+
+@schema
+    names   ...items:leaf
+    empty   ...none
+
+top! = L(IDENT)                             → (names ...1)
+     | ","                                  → (empty)

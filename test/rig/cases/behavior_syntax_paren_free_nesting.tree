@@ -1,0 +1,14 @@
+(module
+  (fun `add` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ `a` `b`)))
+  (fun `double` ((: `n` `Int`)) `Int` (block (* `n` `2`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` (call `add` `1` `2`))
+      (call `print` (call `double` (call `add` `3` `4`)))
+      (call `print` (call `add` `1` (call `double` `5`)))
+      (set _ `n` _ `6`)
+      (set _ `show` _ (lambda ((cap_clone `n`)) _ _ (block (call `print` `n`))))
+      (call `show`))))

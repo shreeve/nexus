@@ -1,0 +1,162 @@
+(module
+  (use `tcp`)
+  (use `console`)
+  (use `engine`)
+  (use `storage`)
+  (enum `Command` `upload` `run` `restart` `logs` `repl` `ping` `unknown`)
+  (const `MAX_SCRIPT_SIZE` (* `64` `1024`))
+  (= `script_len` `0`)
+  (= `pending_upload_size` `0`)
+  (enum `State` `idle` `receiving_upload`)
+  (= `proto_state` (. `State` `idle`))
+  (sub
+    `init`
+    _
+    _
+    (block (= `proto_state` (. `State` `idle`)) (= `script_len` `0`) (= `pending_upload_size` `0`)))
+  (sub
+    `poll`
+    _
+    _
+    (block
+      (return _ (not (call (. `tcp` `isConnected`))))
+      (return _ (== (call (. `tcp` `rxAvailable`)) `0`))
+      (match
+        `proto_state`
+        (arm `idle` _ (call `processCommand`))
+        (arm `receiving_upload` _ (call `receiveUpload`)))))
+  (sub
+    `processCommand`
+    _
+    _
+    (block
+      (= `n` (call (. `tcp` `rxConsume`) (addr_of `line_buf`)))
+      (return _ (== `n` `0`))
+      (= `line` (call `trimLine` (index `line_buf` (.. `0` `n`))))
+      (= `cmd` (call `parseCommand` `line`))
+      (match
+        `cmd`
+        (arm `ping` _ (call (. `tcp` `send`) `"PONG\\n"`))
+        (arm
+          `upload`
+          _
+          (block
+            (= `size` (?? (call `parseSizeArg` `line`) `0`))
+            (if (== `size` `0`) (block (call (. `tcp` `send`) `"ERR: bad size\\n"`) (return)))
+            (if
+              (> `size` `MAX_SCRIPT_SIZE`)
+              (block (call (. `tcp` `send`) `"ERR: too large\\n"`) (return)))
+            (= `pending_upload_size` `size`)
+            (= `script_len` `0`)
+            (= `proto_state` (. `State` `receiving_upload`))
+            (call (. `tcp` `send`) `"OK: ready\\n"`)))
+        (arm
+          `run`
+          _
+          (block
+            (if
+              (== `script_len` `0`)
+              (block (call (. `tcp` `send`) `"ERR: no script\\n"`) (return)))
+            (call (. `tcp` `send`) `"OK: running\\n"`)
+            (call `runScript`)))
+        (arm `restart` _ (call (. `tcp` `send`) `"OK: restarting\\n"`))
+        (arm `logs` _ (call (. `tcp` `send`) `"OK: log streaming not yet implemented\\n"`))
+        (arm `repl` _ (call (. `tcp` `send`) `"OK: REPL not yet implemented\\n"`))
+        (arm `unknown` _ (call (. `tcp` `send`) `"ERR: unknown command\\n"`)))))
+  (sub
+    `receiveUpload`
+    _
+    _
+    (block
+      (= `remaining` (- `pending_upload_size` `script_len`))
+      (if
+        (== `remaining` `0`)
+        (block
+          (= `proto_state` (. `State` `idle`))
+          (call (. `tcp` `send`) `"OK: uploaded\\n"`)
+          (call (. `console` `puts`) `"[proto] script uploaded\\n"`)
+          (return)))
+      (=
+        `n`
+        (call
+          (. `tcp` `rxConsume`)
+          (index `script_buf` (.. `script_len` (+ `script_len` `remaining`)))))
+      (+= `script_len` `n`)
+      (if
+        (>= `script_len` `pending_upload_size`)
+        (block (= `proto_state` (. `State` `idle`)) (call (. `tcp` `send`) `"OK: uploaded\\n"`)))))
+  (sub
+    `runScript`
+    _
+    _
+    (block
+      (call (. `console` `puts`) `"[proto] running script...\\n"`)
+      (call
+        (call
+          (call (. `engine` `eval`) (index `script_buf` (.. `0` `script_len`)) `"<remote>"`)
+          `catch`)
+        `0`)
+      (call (. `console` `puts`) `"[proto] script done\\n"`)))
+  (fun
+    `parseCommand`
+    ((: `line` (slice `u8`)))
+    `Command`
+    (block
+      (return (. `Command` `ping`) (call `startsWith` `line` `"PING"`))
+      (return (. `Command` `upload`) (call `startsWith` `line` `"UPLOAD"`))
+      (return (. `Command` `run`) (call `startsWith` `line` `"RUN"`))
+      (return (. `Command` `restart`) (call `startsWith` `line` `"RESTART"`))
+      (return (. `Command` `logs`) (call `startsWith` `line` `"LOGS"`))
+      (return (. `Command` `repl`) (call `startsWith` `line` `"REPL"`))
+      (. `Command` `unknown`)))
+  (fun
+    `parseSizeArg`
+    ((: `line` (slice `u8`)))
+    (? `usize`)
+    (block
+      (= `i` `0`)
+      (while
+        (< `i` (. `line` `len`))
+        _
+        (block (break _ _ (== (index `line` `i`) `' '`)) (+= `i` `1`)))
+      (return (null) (>= `i` (. `line` `len`)))
+      (+= `i` `1`)
+      (= `size` `0`)
+      (while
+        (< `i` (. `line` `len`))
+        _
+        (block
+          (= `d` (index `line` `i`))
+          (break _ _ (< `d` `'0'`))
+          (break _ _ (> `d` `'9'`))
+          (= `size` (+ (* `size` `10`) (- `d` `'0'`)))
+          (+= `i` `1`)))
+      (return (null) (== `size` `0`))
+      `size`))
+  (fun
+    `startsWith`
+    ((: `haystack` (slice `u8`)) (: `needle` (slice `u8`)))
+    `bool`
+    (block
+      (return `false`#39 (< (. `haystack` `len`) (. `needle` `len`)))
+      (call
+        (. (. (builtin `import` `"std"`) `mem`) `eql`)
+        `u8`
+        (index `haystack` (.. `0` (. `needle` `len`)))
+        `needle`)))
+  (fun
+    `trimLine`
+    ((: `s` (slice `u8`)))
+    (slice `u8`)
+    (block
+      (= `end` (. `s` `len`))
+      (while
+        (> `end` `0`)
+        _
+        (block
+          (break _ _ (!= (index `s` (- `end` `1`)) `'\\n'`))
+          (break _ _ (!= (index `s` (- `end` `1`)) `'\\r'`))
+          (-= `end` `1`)))
+      (index `s` (.. `0` `end`))))
+  (pub (fun `getScriptBuf` _ (slice `u8`) (block (index `script_buf` (.. `0` `script_len`)))))
+  (pub (fun `hasScript` _ `bool` (block (> `script_len` `0`)))))

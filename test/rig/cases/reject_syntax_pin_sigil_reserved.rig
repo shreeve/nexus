@@ -1,0 +1,9 @@
+# The `@x` pin sigil is reserved: pinning has no semantics yet, so a
+# tight `@` before a name (not a `@builtin(...)` call) is rejected.
+
+sub main()
+  x = 42
+  p = @x
+  print(p)
+
+# error: pinning sigil `@x` is reserved

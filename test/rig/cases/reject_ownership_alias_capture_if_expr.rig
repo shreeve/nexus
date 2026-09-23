@@ -1,0 +1,16 @@
+# Inside a closure, choosing a captured resource with an if-expression
+# is still a bare copy of the captured handle; it is rejected like
+# `y = count`.
+
+sub main()
+  count: *Cell(Int) = *Cell(value: 0)
+  f = |+count|
+    y = if true
+      count
+    else
+      count
+    print(y.get())
+  f()
+  f()
+
+# error: bare use of captured resource `count`

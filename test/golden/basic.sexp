@@ -1,74 +1,113 @@
 (grammar
+  (section `lexer`)
+  (tokens `tokens` `integer` `ident` `plus` `minus` `star` `slash` `power` `lparen` `rparen` `newline` `eof` `err`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'/'` _ `slash`)
+  (lex_rule `"**"` _ `power`)
+  (lex_rule `'('` _ `lparen`)
+  (lex_rule `')'` _ `rparen`)
+  (lex_rule `'\\n'` _ `newline`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (lang `"basic"`)
-  (conflicts `0`)
   (rule
     (name `name`)
     (alt
       _
-      ((tok `IDENT`))))
+      ((tok `IDENT`))
+      _
+      _))
   (rule
     (start `program`)
     (alt
       _
       ((ref `body`))
-      `(module ...1)`))
+      (node
+        `module`
+        (spread `1`))
+      _))
   (rule
     (start `expr`)
     (alt
       _
       ((ref `expr`))
-      `1`))
+      (pos `1`)
+      _))
   (rule
     (name `body`)
     (alt
       _
       ((ref `stmt`))
-      `(1)`)
+      (list
+        (pos `1`))
+      _)
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`)
         (ref `stmt`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`))
-      `1`))
+      (pos `1`)
+      _))
   (rule
     (name `stmt`)
     (alt
       _
-      ((ref `expr`))))
+      ((ref `expr`))
+      _
+      _))
   (rule
     (name `expr`)
     (alt
       _
-      ((at_ref `infix`))))
+      ((at_ref `infix`))
+      _
+      _))
   (rule
     (name `unary`)
     (alt
       _
       ((lit `"-"`)
         (ref `unary`))
-      `(neg 2)`)
+      (node
+        `neg`
+        (pos `2`))
+      _)
     (alt
       _
-      ((ref `atom`))))
+      ((ref `atom`))
+      _
+      _))
   (rule
     (name `atom`)
     (alt
       _
-      ((ref `name`)))
+      ((ref `name`))
+      _
+      _)
     (alt
       _
-      ((tok `INTEGER`)))
+      ((tok `INTEGER`))
+      _
+      _)
     (alt
       _
       ((lit `"("`)
         (ref `expr`)
         (lit `")"`))
-      `2`))
+      (pos `2`)
+      _))
   (infix
     `unary`
     (level

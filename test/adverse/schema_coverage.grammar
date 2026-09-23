@@ -1,0 +1,44 @@
+# A value-bearing element the action does not use fails the coverage gate.
+# error: schema_coverage.grammar:44:12:
+# error: element 3 (expr) carries a value the action does not use
+@lexer
+tokens
+    ident
+    integer
+    newline
+    eq
+    colon
+    lparen
+    rparen
+    comma
+    plus
+    eof
+    err
+# (spaces and tabs are consumed by the lexer as leading whitespace)
+'\n'                                        → newline
+'='                                         → eq
+':'                                         → colon
+'('                                         → lparen
+')'                                         → rparen
+','                                         → comma
+'+'                                         → plus
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@schema
+    module   ...stmts
+    set      target:name value
+    name     id:leaf
+    num      value:leaf
+    call     callee:leaf ...args
+
+program! = stmts                            → (module ...1)
+stmts    = stmt                             → (1)
+         | stmts NEWLINE stmt               → (...1 3)
+name     = IDENT                            → (name 1)
+expr     = name                             → 1
+         | INTEGER                          → (num 1)
+         | IDENT "(" expr ")"               → (call 1 3)
+stmt     = name "=" expr                  → (set target:1 value:1)

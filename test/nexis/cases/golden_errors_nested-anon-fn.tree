@@ -1,0 +1,1 @@
+(program (anon-fn (anon-fn (symbol `inc`) (symbol `%`))))

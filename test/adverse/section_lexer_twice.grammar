@@ -1,0 +1,11 @@
+# A grammar file has one @lexer section.
+# error: section_lexer_twice.grammar:9:2:
+# error: duplicate @lexer section
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+@lexer
+@parser
+top! = IDENT                                → (top 1)

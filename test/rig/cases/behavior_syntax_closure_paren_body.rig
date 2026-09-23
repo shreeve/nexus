@@ -1,0 +1,10 @@
+# A closure's inline body may be a parenthesized expression: `|+k| (k)`
+# yields its copy of `k`.
+
+sub main()
+  k = 4
+  g = |+k| (k)
+  print(g())
+
+# expect:
+# 4

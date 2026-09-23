@@ -1,0 +1,16 @@
+# A token is 8 bytes, its length a u16: a match longer than 65535 bytes is
+# an `err` token (of length 65535) and the scan goes on after the whole
+# match, so the parse fails there instead of the lexer crashing.
+
+@lexer
+tokens
+    word
+    eof
+    err
+[a-z]+                                      → word
+.                                           → err
+
+@parser
+@lang = "token_too_long"
+
+top! = WORD+                                → (top ...1)

@@ -1,0 +1,265 @@
+#!/bin/bash
+# Differential test: generate a parser from each of two (nexus, grammar)
+# pairs, parse a corpus with both, and report every file whose tree differs.
+#
+# Usage:
+#   test/diff [options] OLD_NEXUS NEW_NEXUS OLD_GRAMMAR NEW_GRAMMAR CORPUS...
+#
+#   CORPUS        a directory (searched recursively), a file, or @LIST (a
+#                 file of paths, one per line)
+#   --ext EXT     only corpus files ending in EXT (e.g. .m, .rig)
+#   --start S     start rule for both parsers (default: each parser's first)
+#   --start-old S / --start-new S
+#   --lang-old "F..." / --lang-new "F..."
+#                 @lang module files (default: every *.zig in the directory
+#                 of the @lang module: the grammar's, or its src/)
+#   --expect LIST paths expected to differ (documented intentional changes);
+#                 they are reported but do not fail the run
+#   --spans       compare node spans too (both parsers must record them)
+#   --show N      print tree diffs for the first N differing files (default 5)
+#   --keep DIR    keep the builds, per-file results and reports in DIR
+#   -j N          parallel jobs (default: CPU count)
+#   -O MODE       optimize mode for both parsers (default: ReleaseSafe)
+#
+# OLD_NEXUS / NEW_NEXUS may be `legacy` for Nexus 0.10.3 (test/lib/legacy-nexus)
+# or `current` for this checkout's bin/nexus.
+#
+# Examples:
+#   test/diff legacy current test/mumps/mumps.grammar test/mumps/mumps.grammar \
+#       --ext .m ~/Data/Code/em/misc/vista
+#   test/diff --start parseProgram legacy current ../rig/rig.grammar test/rig/rig.grammar \
+#       --ext .rig ../rig/test ../rig/examples
+#
+# Exit status: 0 when every file gives the same tree (or the same parse
+# error) with both parsers, apart from --expect'ed files; 1 otherwise; 2 on
+# a usage or build error.
+
+set -uo pipefail
+
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/.." && pwd)
+LIB="$HERE/lib"
+
+# -----------------------------------------------------------------------------
+# Chunk worker: run a driver over a list, surviving crashes. Each output
+# line is `path<TAB>ok|err|crash<TAB>hash<TAB>detail`.
+# -----------------------------------------------------------------------------
+run_chunk() { # run_chunk <driver> <start-args or none> <list> <out>
+    local driver=$1 start=$2 list=$3 out=$4
+    [[ $start == none ]] && start=""
+    local rest="$out.rest" part="$out.part" err="$out.stderr" n rc path sp=--no-spans
+    [[ -n "${SPANS:-}" ]] && sp=""
+    cp "$list" "$rest"
+    : >"$out"
+    while [[ -s "$rest" ]]; do
+        # shellcheck disable=SC2086
+        "$driver" $start --hash $sp --list "$rest" >"$part" 2>"$err"
+        rc=$?
+        cat "$part" >>"$out"
+        [[ $rc -le 1 ]] && break
+        # Crashed: the file after the last one reported is the culprit.
+        n=$(wc -l <"$part" | tr -d ' ')
+        path=$(sed -n "$((n + 1))p" "$rest")
+        [[ -z "$path" ]] && break
+        printf '%s\tcrash\t-\t%s\n' "$path" "$(grep -m1 -E 'panic|error|Segmentation' "$err" | tr '\t' ' ' | cut -c1-200)" >>"$out"
+        tail -n +"$((n + 2))" "$rest" >"$rest.tmp" && mv "$rest.tmp" "$rest"
+    done
+    rm -f "$rest" "$part" "$err"
+}
+if [[ "${1:-}" == "--chunk" ]]; then
+    shift
+    run_chunk "$@"
+    exit 0
+fi
+
+usage() { sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+
+EXT="" START_OLD="" START_NEW="" LANG_OLD="-" LANG_NEW="-" EXPECT="" SPANS="" SHOW=5 KEEP="" MODE=ReleaseSafe
+JOBS=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
+POS=()
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --ext) EXT=$2; shift ;;
+        --start) START_OLD=$2; START_NEW=$2; shift ;;
+        --start-old) START_OLD=$2; shift ;;
+        --start-new) START_NEW=$2; shift ;;
+        --lang-old) LANG_OLD=$2; shift ;;
+        --lang-new) LANG_NEW=$2; shift ;;
+        --expect) EXPECT=$2; shift ;;
+        --spans) SPANS=1 ;;
+        --show) SHOW=$2; shift ;;
+        --keep) KEEP=$2; shift ;;
+        -j) JOBS=$2; shift ;;
+        -O) MODE=$2; shift ;;
+        -h|--help) usage ;;
+        -*) echo "unknown option $1" >&2; usage ;;
+        *) POS+=("$1") ;;
+    esac
+    shift
+done
+[[ ${#POS[@]} -ge 5 ]] || usage
+export SPANS
+
+if [[ -t 1 && -z "${NO_COLOR:-}" ]]; then
+    G=$'\033[32m' R=$'\033[31m' Y=$'\033[33m' D=$'\033[2m' B=$'\033[1m' X=$'\033[0m'
+else
+    G='' R='' Y='' D='' B='' X=''
+fi
+
+abspath() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
+resolve_nexus() {
+    case $1 in
+        legacy) "$LIB/legacy-nexus" ;;
+        current) (cd "$ROOT" && zig build >&2) && echo "$ROOT/bin/nexus" ;;
+        *) abspath "$1" ;;
+    esac
+}
+
+OLD_NEXUS=$(resolve_nexus "${POS[0]}") || { echo "cannot find nexus ${POS[0]}" >&2; exit 2; }
+NEW_NEXUS=$(resolve_nexus "${POS[1]}") || { echo "cannot find nexus ${POS[1]}" >&2; exit 2; }
+OLD_GRAMMAR=$(abspath "${POS[2]}")
+NEW_GRAMMAR=$(abspath "${POS[3]}")
+CORPUS=("${POS[@]:4}")
+
+if [[ -n "$KEEP" ]]; then
+    WORK=$KEEP
+    rm -rf "$WORK" && mkdir -p "$WORK"
+else
+    WORK=$(mktemp -d "${TMPDIR:-/tmp}/nexus-diff.XXXXXX")
+    trap 'rm -rf "$WORK"' EXIT
+fi
+WORK=$(cd "$WORK" && pwd)
+START_T=$SECONDS
+
+# --- Build both parsers ------------------------------------------------------
+build() { # build <side> <nexus> <grammar> <lang>
+    local side=$1 nexus=$2 grammar=$3 lang=$4 files=()
+    if [[ $lang == - ]]; then
+        # Every .zig file in the directory holding the @lang module: next to
+        # the grammar, or in its src/ (Rig keeps rig.zig in src/).
+        local name dir gdir
+        gdir=$(dirname "$grammar")
+        name=$(sed -n 's/^@lang *= *"\([^"]*\)".*/\1/p' "$grammar" | head -1)
+        dir=$gdir
+        [[ -n "$name" && ! -f "$gdir/$name.zig" && -f "$gdir/src/$name.zig" ]] && dir=$gdir/src
+        for f in "$dir"/*.zig; do [[ -e "$f" ]] && files+=("$f"); done
+    else
+        for f in $lang; do files+=("$(abspath "$f")"); done
+    fi
+    "$LIB/build-grammar" "$nexus" "$grammar" "$WORK/$side" -O "$MODE" ${files[@]+"${files[@]}"}
+    case $? in
+        0) return 0 ;;
+        10) echo "${R}$side: generation failed${X}" >&2; tail -5 "$WORK/$side/gen.log" >&2 ;;
+        *) echo "${R}$side: compile failed${X}" >&2; grep -m5 'error' "$WORK/$side/compile.log" >&2 ;;
+    esac
+    return 1
+}
+printf '%sbuilding old (%s) and new (%s) parsers, -O %s%s\n' "$D" "${POS[0]}" "${POS[1]}" "$MODE" "$X"
+build old "$OLD_NEXUS" "$OLD_GRAMMAR" "$LANG_OLD" &
+P1=$!
+build new "$NEW_NEXUS" "$NEW_GRAMMAR" "$LANG_NEW" &
+P2=$!
+wait $P1 || { wait $P2; exit 2; }
+wait $P2 || exit 2
+
+# --- Corpus ------------------------------------------------------------------
+LIST="$WORK/files"
+: >"$LIST"
+for c in "${CORPUS[@]}"; do
+    if [[ $c == @* ]]; then cat "${c#@}" >>"$LIST"
+    elif [[ -d $c ]]; then find "$(cd "$c" && pwd)" -type f -name "*${EXT}" ! -name '.*' >>"$LIST"
+    else abspath "$c" >>"$LIST"
+    fi
+done
+sort -u -o "$LIST" "$LIST"
+TOTAL=$(wc -l <"$LIST" | tr -d ' ')
+[[ $TOTAL -gt 0 ]] || { echo "empty corpus" >&2; exit 2; }
+BYTES=$(tr '\n' '\0' <"$LIST" | xargs -0 cat 2>/dev/null | wc -c | tr -d ' ')
+
+# --- Run ---------------------------------------------------------------------
+mkdir -p "$WORK/chunks"
+N=$JOBS
+[[ $N -gt $TOTAL ]] && N=$TOTAL
+PER=$(( (TOTAL + N - 1) / N ))
+split -l "$PER" "$LIST" "$WORK/chunks/c."
+so=none; [[ -n "$START_OLD" ]] && so="--start $START_OLD"
+sn=none; [[ -n "$START_NEW" ]] && sn="--start $START_NEW"
+printf '%sparsing %d files (%s MB) with both parsers (-j %s)%s\n' "$D" "$TOTAL" "$(awk -v b="$BYTES" 'BEGIN{printf "%.1f", b/1048576}')" "$JOBS" "$X"
+RUN_T=$SECONDS
+{
+    for c in "$WORK"/chunks/c.*; do
+        printf '%s\0%s\0%s\0%s\0' "$WORK/old/driver" "$so" "$c" "$c.old"
+        printf '%s\0%s\0%s\0%s\0' "$WORK/new/driver" "$sn" "$c" "$c.new"
+    done
+} | xargs -0 -n 4 -P "$JOBS" "$0" --chunk
+RUN_S=$((SECONDS - RUN_T))
+export LC_ALL=C
+cat "$WORK"/chunks/*.old | sort -t$'\t' -k1,1 >"$WORK/old.tsv"
+cat "$WORK"/chunks/*.new | sort -t$'\t' -k1,1 >"$WORK/new.tsv"
+
+# --- Compare -----------------------------------------------------------------
+: >"$WORK/expect"
+[[ -n "$EXPECT" ]] && sed 's/[[:space:]]*$//' "$EXPECT" | while read -r p; do [[ -n "$p" ]] && abspath "$p"; done >"$WORK/expect"
+join -t$'\t' -a1 -a2 -e MISSING -o 0,1.2,1.3,1.4,2.2,2.3,2.4 "$WORK/old.tsv" "$WORK/new.tsv" | awk -F'\t' -v expect="$WORK/expect" -v dir="$WORK" '
+    BEGIN { while ((getline p < expect) > 0) want[p] = 1 }
+    {
+        path = $1; os = $2; oh = $3; od = $4; ns = $5; nh = $6; nd = $7
+        if (os == ns && oh == nh) cat = (os == "ok" ? "same" : "same_error")
+        else if (os == "ok" && ns == "ok") cat = "tree_differs"
+        else if (os == "ok" && ns == "err") cat = "new_fails"
+        else if (os == "err" && ns == "ok") cat = "new_parses"
+        else if (os == "err" && ns == "err") cat = "error_differs"
+        else if (ns == "crash") cat = "new_crashes"
+        else if (os == "crash") cat = "old_crashes"
+        else cat = "missing"
+        if (cat != "same" && cat != "same_error" && (path in want)) cat = "expected"
+        n[cat]++
+        print path "\t" od "\t" nd >> (dir "/" cat ".tsv")
+    }
+    END { for (c in n) print c "\t" n[c] > (dir "/counts") }
+'
+count() { awk -F'\t' -v c="$1" '$1 == c { print $2 }' "$WORK/counts"; }
+num() { local v; v=$(count "$1"); echo "${v:-0}"; }
+
+BAD=0
+printf '\n%s%-15s %7s%s\n' "$B" "result" "files" "$X"
+for cat in same same_error expected tree_differs error_differs new_fails new_parses new_crashes old_crashes missing; do
+    v=$(num $cat)
+    [[ $v -eq 0 && $cat != same ]] && continue
+    color=$X
+    case $cat in same|same_error) color=$G ;; expected) color=$Y ;; *) color=$R; BAD=1 ;; esac
+    printf '%s%-15s %7d%s\n' "$color" "$cat" "$v" "$X"
+done
+
+# Detail: list files per bad category, then tree diffs for the first few.
+for cat in tree_differs error_differs new_fails new_parses new_crashes old_crashes missing; do
+    [[ -s "$WORK/$cat.tsv" ]] || continue
+    printf '\n%s%s%s\n' "$B" "$cat" "$X"
+    head -20 "$WORK/$cat.tsv" | while IFS=$'\t' read -r p od nd; do
+        case $cat in
+            new_fails|new_crashes) printf '  %s  %s%s%s\n' "$p" "$D" "$nd" "$X" ;;
+            new_parses|old_crashes) printf '  %s  %s%s%s\n' "$p" "$D" "$od" "$X" ;;
+            error_differs) printf '  %s\n    %sold: %s\n    new: %s%s\n' "$p" "$D" "$od" "$nd" "$X" ;;
+            *) printf '  %s\n' "$p" ;;
+        esac
+    done
+    n=$(wc -l <"$WORK/$cat.tsv" | tr -d ' ')
+    [[ $n -gt 20 ]] && printf '  %s… %d more (see --keep)%s\n' "$D" $((n - 20)) "$X"
+done
+sp=--no-spans
+[[ -n "$SPANS" ]] && sp=""
+if [[ -s "$WORK/tree_differs.tsv" && $SHOW -gt 0 ]]; then
+    printf '\n%sfirst tree differences (old → new)%s\n' "$B" "$X"
+    head -"$SHOW" "$WORK/tree_differs.tsv" | while IFS=$'\t' read -r p _ _; do
+        printf '\n  %s%s%s\n' "$B" "$p" "$X"
+        diff -U2 <("$WORK/old/driver" ${so#none} $sp --pretty "$p" 2>&1) <("$WORK/new/driver" ${sn#none} $sp --pretty "$p" 2>&1) \
+            | tail -n +3 | head -30 | sed 's/^/    /'
+    done
+fi
+
+ELAPSED=$((SECONDS - START_T))
+printf '\n%d files, %s same, %s differ  %s(parse %ds, total %ds)%s\n' "$TOTAL" \
+    "$(( $(num same) + $(num same_error) ))" \
+    "$(( TOTAL - $(num same) - $(num same_error) - $(num expected) ))" "$D" "$RUN_S" "$ELAPSED" "$X"
+[[ -n "$KEEP" ]] && printf '%sresults in %s (old.tsv, new.tsv, <category>.tsv)%s\n' "$D" "$WORK" "$X"
+exit $BAD

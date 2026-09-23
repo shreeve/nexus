@@ -1,0 +1,18 @@
+# A node that consumes nothing at the end of its parent lies inside the
+# parent's span: spans nest. (An empty node sits at the next token, but the
+# parent ends at its last token, before the blanks between them.)
+
+@lexer
+tokens
+    ident
+    comma
+    eof
+    err
+','                                         → comma
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "empty_node_span"
+
+top! = IDENT IDENT* [","]                   → (top 1 2 (opt 3))

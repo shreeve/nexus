@@ -1,0 +1,9 @@
+# A closure's parameter annotations must match the type its context
+# gives it: a `*sub(Int)` closure cannot declare `a: String`.
+
+sub main()
+  v: *Cell(Int) = *Cell(value: 0)
+  cb: *sub(Int) = *|+v, a: String| print(a)
+  cb(1)
+
+# error: closure parameter `a` is declared `String`, but the closure's type passes `Int`

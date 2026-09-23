@@ -1,0 +1,26 @@
+(module
+  (struct `Node` (: `n` `Int`) (: `next` (optional (shared `Node`))))
+  (struct `Tree` (: `n` `Int`) (: `kids` (generic_inst `Vec` (shared `Tree`))))
+  (fun
+    `sum`
+    ((: `t` (borrow_read (shared `Tree`))))
+    `Int`
+    (block
+      (set _ `total` _ (member `t` `n`))
+      (for iter `k` _ (read (member `t` `kids`)) (block (set += `total` _ (call `sum` (read `k`)))))
+      `total`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ (share (call `Node` (kwarg `n` `1`) (kwarg `next` `none`))))
+      (set _ `b` _ (share (call `Node` (kwarg `n` `2`) (kwarg `next` (clone `a`)))))
+      (call `print` (member `b` `n`) (member `a` `n`))
+      (set _ `leaf1` _ (share (call `Tree` (kwarg `n` `3`) (kwarg `kids` (call `Vec`)))))
+      (set _ `leaf2` _ (share (call `Tree` (kwarg `n` `4`) (kwarg `kids` (call `Vec`)))))
+      (set _ `kids` (generic_inst `Vec` (shared `Tree`)) (call `Vec`))
+      (call (member (write `kids`) `push`) (move `leaf1`))
+      (call (member (write `kids`) `push`) (move `leaf2`))
+      (set _ `root` _ (share (call `Tree` (kwarg `n` `5`) (kwarg `kids` (move `kids`)))))
+      (call `print` (call `sum` (read `root`))))))

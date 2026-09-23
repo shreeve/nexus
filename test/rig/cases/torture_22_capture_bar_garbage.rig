@@ -1,0 +1,6 @@
+# Capture-bar lookalikes: empty, sigil-only, spaced, unterminated.
+sub main()
+  f = |+| 1
+  g = || 2
+  h = | x | 3
+  k = |a, 4

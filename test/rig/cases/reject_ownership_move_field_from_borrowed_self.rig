@@ -1,0 +1,19 @@
+# A field cannot be moved out of a `?self` receiver: the caller still
+# owns and drops it.
+
+struct Box
+  payload: Int
+
+struct Pair
+  a: *Box
+
+  sub take(?self)
+    x = <self.a
+    print(x.payload)
+
+sub main()
+  p = Pair(a: *Box(payload: 1))
+  p.take()
+  print("back")
+
+# error: cannot move out of

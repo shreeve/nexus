@@ -1,0 +1,13 @@
+# A quoted byte is one byte.
+# error: lexer_one_byte.grammar:10:34:
+# error: expected exactly one byte in quotes
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+@ mode → plus, {mode = counted('ab')}
+. → err
+@parser
+top! = WORD → 1

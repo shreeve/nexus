@@ -1,0 +1,4 @@
+(module
+  (extern_fun `abs` ((: `n` `Int`)) `Int`)
+  (sub `print_abs` ((: `n` `Int`)) _ (block (raw_block (block (call `print` (call `abs` `n`))))))
+  (sub `main` () _ (block (call `print_abs` (neg `5`)) (call `print_abs` `3`))))

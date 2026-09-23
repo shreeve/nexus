@@ -1,0 +1,13 @@
+# Float literals may carry a decimal exponent: `1.0e10`, `2e-3`, `1.5E+2`.
+# A hex literal's `e` is a digit, not an exponent.
+
+sub main()
+  big = 1.0e10
+  small = 2e-3
+  mid = 1.5E+2
+  typed: Float = 3e2
+  hex = 0xE1
+  print(big / 1e9, small * 1000.0, mid, typed, hex)
+
+# expect:
+# 10 2 150 300 225

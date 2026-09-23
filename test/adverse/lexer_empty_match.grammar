@@ -1,0 +1,12 @@
+# A token must consume at least one byte
+# error: lexer_empty_match.grammar:9:1:
+# error: matches the empty string
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+[0-9]* → num
+. → err
+@parser
+top! = WORD → 1

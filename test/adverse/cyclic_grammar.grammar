@@ -1,0 +1,20 @@
+# A cyclic grammar (b ⇒ a ⇒ b) is rejected. With the conflict it causes
+# declared, the generated parser reduced around the cycle forever on "x".
+# error: cyclic_grammar.grammar:16:5:
+# error: the grammar is cyclic (b ⇒ a ⇒ b)
+@lexer
+tokens
+    x
+    eof
+    err
+'x'   → x
+.     → err
+
+@parser
+@conflicts
+    reduce b → a over c → a  1  # test
+b = a → (b 1)
+top! = c
+c = a → (c 1)
+a = b → (a 1)
+  | X

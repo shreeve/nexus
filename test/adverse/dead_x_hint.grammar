@@ -1,0 +1,20 @@
+# An `X "c"` hint that decides no shift/reduce conflict is rejected: the
+# LR(1) lookaheads already separate the cases, so the hint has no effect.
+# error: dead_x_hint.grammar:20:
+# error: X ":" on name
+# error: has no effect
+@lexer
+tokens
+    ident
+    colon
+    eof
+    err
+':'                                         → colon
+[a-zA-Z]+                                   → ident
+.                                           → err
+@parser
+# (no @conflicts block: the grammar must be conflict-free)
+program! = entry ":" IDENT                  → (entry 1 3)
+         | entry                            → (entry 1)
+entry    = name                             → 1
+name     = IDENT X ":"                      → 1

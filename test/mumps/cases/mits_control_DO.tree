@@ -1,0 +1,235 @@
+(routine
+  (label `DO`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/control/DO"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO label sets"`)) (expr (num `42`)) (expr (str `"$$DOLBL^DO()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO returns to caller"`)) (expr (num `1`)) (expr (str `"$$DORET^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO with 1 arg"`)) (expr (num `5`)) (expr (str `"$$DO1^DO()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO with 3 args"`)) (expr (num `6`)) (expr (str `"$$DO3^DO()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO with default formal"`)) (expr (num `10`)) (expr (str `"$$DODEF^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO:1 runs"`)) (expr (str `"yes"`)) (expr (str `"$$DOPCT^DO()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO:0 skips"`)) (expr (str `"no"`)) (expr (str `"$$DOPCF^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO 2-deep"`)) (expr (str `"inner"`)) (expr (str `"$$DONEST2^DO()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO 3-deep"`)) (expr (str `"leaf"`)) (expr (str `"$$DONEST3^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO label+1 starts at offset"`))
+          (expr (str `"second"`))
+          (expr (str `"$$DOOFF^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO without NEW shares scope"`))
+          (expr (str `"mod"`))
+          (expr (str `"$$DOSHARE^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO inside FOR runs each iter"`))
+          (expr (num `10`))
+          (expr (str `"$$DOFOR^DO()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"argumentless DO with dotted block"`))
+          (expr (num `6`))
+          (expr (str `"$$DOBLOCK^DO()"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/control/DO"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DOLBL` _ ((new _ `r`) (do _ (call (ref `LBL1`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `LBL1` _ ((new _ `x`) (set _ (= (lvar `r`) (expr (num `42`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `DORET`
+    _
+    ((new _ `r`)
+      (set _ (= (lvar `r`) (expr (num `0`))))
+      (do _ (call (ref `LBL2`)))
+      (set _ (= (lvar `r`) (expr (lvar `r`) (`+` (num `1`)))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `LBL2` _ ((quit)))
+  (` `)
+  (label `DO1` _ ((new _ `r`) (do _ (call (ref `ADD1`) ((expr (num `5`)))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `ADD1` (`a`) ((set _ (= (lvar `r`) (expr (lvar `a`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `DO3`
+    _
+    ((new _ `r`) (do _ (call (ref `ADD3`) ((expr (num `1`)) (expr (num `2`)) (expr (num `3`)))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label
+    `ADD3`
+    (`a` `b` `c`)
+    ((set _ (= (lvar `r`) (expr (lvar `a`) (`+` (lvar `b`)) (`+` (lvar `c`)))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DODEF` _ ((new _ `r`) (do _ (call (ref `ADDDEF`) ((expr (num `10`)))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `ADDDEF` (`a` `b`))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `r`)
+        (expr (lvar `a`) (`+` (intrinsic `G`#206 ((expr (lvar `b`)) (expr (num `0`)))))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `DOPCT`
+    _
+    ((new _ `r`)
+      (set _ (= (lvar `r`) (expr (str `"no"`))))
+      (do (postcond (expr (num `1`))) (call (ref `SETOK`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `SETOK` _ ((set _ (= (lvar `r`) (expr (str `"yes"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `DOPCF`
+    _
+    ((new _ `r`)
+      (set _ (= (lvar `r`) (expr (str `"no"`))))
+      (do (postcond (expr (num `0`))) (call (ref `SETOK2`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `SETOK2` _ ((set _ (= (lvar `r`) (expr (str `"yes"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DONEST2` _ ((new _ `r`) (do _ (call (ref `LVL1`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `LVL1` _ ((do _ (call (ref `LVL2`)))))
+  (` ` _ (quit))
+  (label `LVL2` _ ((set _ (= (lvar `r`) (expr (str `"inner"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DONEST3` _ ((new _ `r`) (do _ (call (ref `L1`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `L1` _ ((do _ (call (ref `L2`)))))
+  (` ` _ (quit))
+  (label `L2` _ ((do _ (call (ref `L3`)))))
+  (` ` _ (quit))
+  (label `L3` _ ((set _ (= (lvar `r`) (expr (str `"leaf"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DOOFF` _ ((new _ `r`) (do _ (call (ref `LBLOFF` (expr (num `1`)))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `LBLOFF` _ ((set _ (= (lvar `r`) (expr (str `"first"`)))) (quit)))
+  (` ` _ (set _ (= (lvar `r`) (expr (str `"second"`)))) (quit))
+  (` `)
+  (label
+    `DOSHARE`
+    _
+    ((new _ `r`) (set _ (= (lvar `r`) (expr (str `"orig"`)))) (do _ (call (ref `MUT`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `MUT` _ ((set _ (= (lvar `r`) (expr (str `"mod"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DOFOR` _ ((new _ `r` `i`) (set _ (= (lvar `r`) (expr (num `0`))))))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (do _ (call (ref `INC`))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `INC` _ ((set _ (= (lvar `r`) (expr (lvar `r`) (`+` (num `1`)))))))
+  (` ` _ (quit))
+  (` `)
+  (label `DOBLOCK` _ ((new _ `r` `i`) (set _ (= (lvar `r`) (expr (num `0`))))))
+  (` `)
+  (` ` _ (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `3`)))) (do))
+  (` . `#1 _ (set _ (= (lvar `r`) (expr (lvar `r`) (`+` (lvar `i`))))))
+  (` ` _ (quit _ (expr (lvar `r`)))))

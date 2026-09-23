@@ -1,0 +1,9 @@
+# A drop body cannot drop `self`.
+
+struct Owner
+  cell: *Cell(Int)
+
+  drop self: !Owner
+    -self
+
+# error: cannot drop `self` inside its own drop body

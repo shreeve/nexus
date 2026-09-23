@@ -1,0 +1,11 @@
+# A builtin outside the safe whitelist (`@bitCast`) is allowed inside a
+# `raw` block.
+
+sub main()
+  x: I32 = -1
+  raw
+    y: U32 = @bitCast(x)
+    print(y)
+
+# expect:
+# 4294967295

@@ -1,0 +1,12 @@
+# `/` on integers truncates toward zero.
+
+fun half(n: Int) -> Int
+  n / 2
+
+sub main()
+  print(half(7))
+  print(half(-7))
+
+# expect:
+# 3
+# -3

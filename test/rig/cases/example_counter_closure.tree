@@ -1,0 +1,39 @@
+(module
+  (fun
+    `make_counter`
+    ((: `start` `Int`))
+    (shared (fun_type (`Int`) `Int`))
+    (block
+      (set
+        _
+        `count`
+        (shared (generic_inst `Cell` `Int`))
+        (share (call `Cell` (kwarg `value` `start`))))
+      (share
+        (lambda
+          ((cap_clone `count`) `step`)
+          _
+          _
+          (block
+            (call (member `count` `set`) (+ (call (member `count` `get`)) `step`))
+            (call (member `count` `get`)))))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `count` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `bump`
+        _
+        (lambda
+          ((cap_clone `count`))
+          _
+          _
+          (block (call (member `count` `set`) (+ (call (member `count` `get`)) `1`)))))
+      (call `bump`)
+      (call `bump`)
+      (call `print` (call (member `count` `get`)))
+      (set _ `next` _ (call `make_counter` `100`))
+      (call `print` (call `next` `1`) (call `next` `10`)))))

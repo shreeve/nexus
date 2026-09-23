@@ -210,7 +210,26 @@ tokens
 
 @parser
 
-@conflicts = 19
+@conflicts
+    shift  if → IF cond block                           1  # dangling else: ELSE binds to the nearest if
+    shift  while → WHILE cond block                     1  # ELSE binds to the nearest while
+    shift  while → WHILE cond ":" expr block            1  # ELSE binds to the nearest while
+    shift  for → FOR "*" IDENT IN expr block            1  # ELSE binds to the nearest for
+    shift  for → FOR "*" IDENT "," IDENT IN expr block  1  # ELSE binds to the nearest for
+    shift  for → FOR IDENT IN expr block                1  # ELSE binds to the nearest for
+    shift  for → FOR IDENT "," IDENT IN expr block      1  # ELSE binds to the nearest for
+    shift  postif → infix IF expr                       1  # ELSE binds to the nearest postfix if
+    shift  return → RETURN expr                         1  # a postfix guard binds to the return statement
+    shift  return → RETURN                              1  # a postfix guard binds to the return statement
+    shift  break → BREAK ":" IDENT                      1  # a postfix guard binds to the break statement
+    shift  break → BREAK                                2  # break :label names the loop to break
+    shift  continue → CONTINUE ":" IDENT                1  # a postfix guard binds to the continue statement
+    shift  continue → CONTINUE                          2  # continue :label names the loop to continue
+    shift  unary → call                                 1  # call: starts a typed assignment or constant
+    shift  L(arg).tail → ε                              2  # a comma after a call argument continues the arguments
+    shift  L(expr).tail → ε                             2  # a comma or ) after an argument belongs to the argument list
+    shift  args → ε                                     1  # .{} is an empty struct literal, not empty call arguments
+    shift  arg → term                                   1  # a ternary if binds to the term before it
 
 @as ident = [keyword]
 

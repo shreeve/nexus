@@ -1,0 +1,21 @@
+# A letter literal rule listed before the identifier rule wins for that
+# exact text (longest match, ties broken by rule order): "if" lexes as
+# kw_if, "iffy" as ident.
+# Found while building the test harness.
+
+@lexer
+tokens
+    ident
+    kw_if
+    eof
+    err
+"if"                                        → kw_if
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "keyword_literal_rule"
+
+top! = item                                 → 1
+item = KW_IF IDENT                          → (if 2)
+     | IDENT                                → (id 1)

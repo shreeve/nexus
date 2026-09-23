@@ -1,0 +1,12 @@
+(sequence
+  (command _ (word `echo`) (word `'single $x'`) (word `"double $x"`) (word `plain`))
+  (seq_always
+    (command
+      _
+      (word `echo`)
+      (word `~/dir`)
+      (word `./rel`)
+      (word `../up`)
+      (word `/abs/path`)
+      (word `*.zig`)))
+  (seq_always))

@@ -1,0 +1,20 @@
+(module
+  (enum `Color` `red` `green`)
+  (fun
+    `pick`
+    ((: `b` `Bool`))
+    `Color`
+    (block (if `b` (block (return (enum_lit `red`)))) (return (enum_lit `green`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (match
+        (call `pick` `true`)
+        (arm (enum_lit `red`) (call `print` `1`))
+        (arm (enum_lit `green`) (call `print` `2`)))
+      (match
+        (call `pick` `false`)
+        (arm (enum_lit `red`) (call `print` `1`))
+        (arm (enum_lit `green`) (call `print` `2`))))))

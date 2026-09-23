@@ -1,0 +1,13 @@
+# An invalid pattern is reported before a syntax error later on its line.
+# error: lexer_pattern_error_first.grammar:10:5:
+# error: bare word in pattern
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' word
+. → err
+@parser
+top! = WORD → 1

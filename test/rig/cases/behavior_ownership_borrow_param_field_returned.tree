@@ -1,0 +1,16 @@
+(module
+  (struct `Box` (: `payload` `Int`))
+  (struct `Holder` (: `inner` `Box`))
+  (fun
+    `inner_of`
+    ((: `h` (borrow_read `Holder`)))
+    (borrow_read `Box`)
+    (block (read (member `h` `inner`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `h` _ (call `Holder` (kwarg `inner` (call `Box` (kwarg `payload` `9`)))))
+      (set _ `b` _ (call `inner_of` (read `h`)))
+      (call `print` (member `b` `payload`)))))

@@ -1,0 +1,22 @@
+# Multi-statement match arms in value position yield their last expression.
+
+enum Op
+  add
+  minus
+
+fun apply(op: Op, a: Int, b: Int) -> Int
+  match op
+    .add
+      tmp = a + b
+      tmp
+    .minus
+      tmp = a - b
+      tmp
+
+sub main()
+  print(apply(.add, 3, 4))
+  print(apply(.minus, 10, 3))
+
+# expect:
+# 7
+# 7
