@@ -104,8 +104,8 @@ pub fn lineCol(source: []const u8, pos: u32) LineCol {
 pub fn firstSrcPos(sexp: Sexp) u32 {
     return switch (sexp) {
         .src => |s| s.pos,
-        .list => |items| blk: {
-            for (items) |c| {
+        .list => |l| blk: {
+            for (l.items()) |c| {
                 const p = firstSrcPos(c);
                 if (p > 0) break :blk p;
             }

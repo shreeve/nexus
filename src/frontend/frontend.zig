@@ -86,7 +86,8 @@ pub fn dumpSexp(writer: anytype, sexp: Sexp, source: []const u8, indent: usize) 
         .tag => |t| try writer.writeAll(@tagName(t)),
         .src => |s| try dumpSrcText(writer, source[s.pos..][0..s.len]),
         .str => |s| try writer.print("\"{s}\"", .{s}),
-        .list => |items| {
+        .list => |l| {
+            const items = l.items();
             if (items.len == 0) {
                 try writer.writeAll("()");
                 return;

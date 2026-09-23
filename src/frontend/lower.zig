@@ -68,7 +68,7 @@ pub const GrammarLowerer = struct {
 
     fn listItems(node: Sexp) ?[]const Sexp {
         return switch (node) {
-            .list => |items| items,
+            .list => |l| l.items(),
             else => null,
         };
     }
@@ -91,7 +91,7 @@ pub const GrammarLowerer = struct {
     fn nodeOffset(node: Sexp) u32 {
         return switch (node) {
             .src => |s| s.pos,
-            .list => |items| if (items.len > 0) nodeOffset(items[0]) else 0,
+            .list => |l| if (l.len > 0) nodeOffset(l.items()[0]) else 0,
             else => 0,
         };
     }
@@ -557,18 +557,18 @@ const negSrcMulti: Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
 // schema at the top of nexus.grammar. Must be comptime so the nested `&[_]Sexp{...}` literals
 // resolve into static memory.
 fn negRule(comptime elems: []const Sexp) Sexp {
-    return comptime .{ .list = &[_]Sexp{
+    return comptime Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]Sexp{ .{ .tag = .name }, negSrc0 } },
-            .{ .list = &[_]Sexp{
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .name }, negSrc0 }),
+            Sexp.listOf(&[_]Sexp{
                 .{ .tag = .alt },
                 .nil,
-                .{ .list = elems },
-            } },
-        } },
-    } };
+                Sexp.listOf(elems),
+            }),
+        }),
+    });
 }
 
 // Every test below creates its own arena so shape-error bailouts from the
@@ -586,106 +586,106 @@ test "lowerer rejects non-list root" {
 }
 
 test "lowerer rejects root list with wrong tag" {
-    try expectShapeError(.{ .list = &[_]Sexp{.{ .tag = .alt }} });
+    try expectShapeError(Sexp.listOf(&[_]Sexp{.{ .tag = .alt }}));
 }
 
 test "lowerer rejects entry that is not a tagged list" {
-    try expectShapeError(.{ .list = &[_]Sexp{ .{ .tag = .grammar }, negSrc0 } });
+    try expectShapeError(Sexp.listOf(&[_]Sexp{ .{ .tag = .grammar }, negSrc0 }));
 }
 
 test "lowerer rejects entry with unknown tag" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{.{ .tag = .opt }} },
-    } });
+        Sexp.listOf(&[_]Sexp{.{ .tag = .opt }}),
+    }));
 }
 
 test "lowerer rejects (lang) with no STRING" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{.{ .tag = .lang }} },
-    } });
+        Sexp.listOf(&[_]Sexp{.{ .tag = .lang }}),
+    }));
 }
 
 test "lowerer rejects (conflicts) with non-numeric src" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{ .{ .tag = .conflicts }, negSrc0 } },
-    } });
+        Sexp.listOf(&[_]Sexp{ .{ .tag = .conflicts }, negSrc0 }),
+    }));
 }
 
 test "lowerer rejects (as) with no entries" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{ .{ .tag = .as }, negSrc0 } },
-    } });
+        Sexp.listOf(&[_]Sexp{ .{ .tag = .as }, negSrc0 }),
+    }));
 }
 
 test "lowerer rejects (as) entry with wrong tag" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .as },
             negSrc0,
-            .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-        } },
-    } });
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+        }),
+    }));
 }
 
 test "lowerer rejects (op_map) with wrong arity" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .op },
-            .{ .list = &[_]Sexp{ .{ .tag = .op_map }, negSrc0 } },
-        } },
-    } });
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .op_map }, negSrc0 }),
+        }),
+    }));
 }
 
 test "lowerer rejects (level) containing non-infix_op child" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .infix },
             negSrc0,
-            .{ .list = &[_]Sexp{
+            Sexp.listOf(&[_]Sexp{
                 .{ .tag = .level },
-                .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-            } },
-        } },
-    } });
+                Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+            }),
+        }),
+    }));
 }
 
 test "lowerer rejects (rule) with no alts" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]Sexp{ .{ .tag = .name }, negSrc0 } },
-        } },
-    } });
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .name }, negSrc0 }),
+        }),
+    }));
 }
 
 test "lowerer rejects rule_name tag that is neither start nor name" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-            .{ .list = &[_]Sexp{ .{ .tag = .alt }, .nil, .{ .list = &[_]Sexp{} } } },
-        } },
-    } });
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .alt }, .nil, Sexp.listOf(&[_]Sexp{}) }),
+        }),
+    }));
 }
 
 test "lowerer rejects alt child that is not list" {
-    try expectShapeError(.{ .list = &[_]Sexp{
+    try expectShapeError(Sexp.listOf(&[_]Sexp{
         .{ .tag = .grammar },
-        .{ .list = &[_]Sexp{
+        Sexp.listOf(&[_]Sexp{
             .{ .tag = .rule },
-            .{ .list = &[_]Sexp{ .{ .tag = .name }, negSrc0 } },
-            .{ .list = &[_]Sexp{ .{ .tag = .alt }, .nil, negSrc0 } },
-        } },
-    } });
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .name }, negSrc0 }),
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .alt }, .nil, negSrc0 }),
+        }),
+    }));
 }
 
 test "lowerer rejects bare src as an element" {
@@ -693,63 +693,61 @@ test "lowerer rejects bare src as an element" {
 }
 
 test "lowerer rejects (ref) with wrong arity" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{.{ .tag = .ref }} }}));
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{.{ .tag = .ref }})}));
 }
 
 test "lowerer rejects (list_req) missing inner" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{ .{ .tag = .list_req }, negSrc0 } }}));
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{ .{ .tag = .list_req }, negSrc0 })}));
 }
 
 test "lowerer rejects (list_req) inner with unknown tag" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{
         .{ .tag = .list_req },
         negSrc0,
-        .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-    } }}));
+        Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+    })}));
 }
 
 test "lowerer rejects (group) with no ALT_BODY" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{.{ .tag = .group }} }}));
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{.{ .tag = .group }})}));
 }
 
 test "lowerer rejects (quantified) missing quant" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{
         .{ .tag = .quantified },
-        .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-    } }}));
+        Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+    })}));
 }
 
 test "lowerer rejects (quantified) quant child with wrong tag" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{
         .{ .tag = .quantified },
-        .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-        .{ .list = &[_]Sexp{.{ .tag = .skip }} },
-    } }}));
+        Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+        Sexp.listOf(&[_]Sexp{.{ .tag = .skip }}),
+    })}));
 }
 
 test "lowerer rejects (skip_q) missing quant" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{
         .{ .tag = .skip_q },
-        .{ .list = &[_]Sexp{ .{ .tag = .ref }, negSrc0 } },
-    } }}));
+        Sexp.listOf(&[_]Sexp{ .{ .tag = .ref }, negSrc0 }),
+    })}));
 }
 
 test "lowerer rejects (exclude) with wrong arity" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{.{ .tag = .exclude }} }}));
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{.{ .tag = .exclude }})}));
 }
 
 test "lowerer rejects (exclude) with multi-char literal" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{ .{ .tag = .exclude }, negSrcMulti } }}));
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{ .{ .tag = .exclude }, negSrcMulti })}));
 }
 
 test "lowerer rejects (exclude) appearing inside a group body" {
-    try expectShapeError(negRule(&.{.{
-        .list = &[_]Sexp{
-            .{ .tag = .group },
-            .nil, // KIND slot — `_` for plain group
-            .{ .list = &[_]Sexp{
-                .{ .list = &[_]Sexp{ .{ .tag = .exclude }, negSrc0 } },
-            } },
-        },
-    }}));
+    try expectShapeError(negRule(&.{Sexp.listOf(&[_]Sexp{
+        .{ .tag = .group },
+        .nil, // KIND slot — `_` for plain group
+        Sexp.listOf(&[_]Sexp{
+            Sexp.listOf(&[_]Sexp{ .{ .tag = .exclude }, negSrc0 }),
+        }),
+    })}));
 }

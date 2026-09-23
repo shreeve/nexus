@@ -46,6 +46,16 @@ pub fn build(b: *std.Build) void {
     const test_lowerer_step = b.step("test-lowerer", "Run lowerer negative-shape tests");
     test_lowerer_step.dependOn(&run_lowerer_tests.step);
 
+    // The runtime template on its own (runtime.zig and the template's
+    // fixture tests); also part of the unit tests above.
+    const runtime_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/codegen/runtime.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const test_runtime_step = b.step("test-runtime", "Run the parser runtime template tests");
+    test_runtime_step.dependOn(&b.addRunArtifact(runtime_tests).step);
+
     // Integration tests: shells out to test/run which drives ./bin/nexus
     // on the in-repo grammars, diffs goldens, and runs the bootstrap
     // fixed-point check.

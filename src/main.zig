@@ -1,6 +1,6 @@
 //! nexus — generate a standalone Zig lexer + LR parser from a .grammar file.
 //!
-//! Usage: nexus [--slr] [-c] <grammar-file> [output-file]
+//! Usage: nexus [--slr] [--spans] [-c] <grammar-file> [output-file]
 //!        nexus check <grammar-file>
 //!        nexus --dump-sexp <grammar-file> [output-file]
 //!
@@ -30,6 +30,8 @@ const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
     _ = @import("frontend/lower.zig");
+    _ = @import("codegen/runtime.zig");
+    _ = @import("codegen/codegen.zig");
 }
 
 const usage =
@@ -52,6 +54,8 @@ const help =
     \\Options:
     \\  -c, --comments  Include grammar-rule comments in generated code
     \\      --slr       Use SLR(1) instead of LALR(1) for parse tables
+    \\      --spans     Record node spans and rule ids in the generated
+    \\                  parser (always on for grammars with @schema)
     \\      --dump-sexp Parse the @parser section via the self-hosted
     \\                  frontend and write its canonical S-expression
     \\                  tree to the output file (or stdout)
@@ -66,6 +70,7 @@ const help =
 const Options = struct {
     checkMode: bool = false,
     emitComments: bool = false,
+    spans: bool = false,
     parseMode: lookahead.ParseMode = .lalr,
     grammarFile: []const u8,
     outputFile: []const u8,
@@ -110,6 +115,9 @@ pub fn main(init: std.process.Init) !void {
             positionalStart += 1;
         } else if (std.mem.eql(u8, arg, "--slr")) {
             opts.parseMode = .slr;
+            positionalStart += 1;
+        } else if (std.mem.eql(u8, arg, "--spans")) {
+            opts.spans = true;
             positionalStart += 1;
         } else break;
     }
@@ -185,7 +193,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     var lexerGen = LexerGenerator.init(allocator, &lexerParser.spec);
     defer lexerGen.deinit();
 
-    const lexerCode = lexerGen.generate() catch |err| {
+    const lexerDecls = lexerGen.generateDecls() catch |err| {
         diag.err("lexer generation failed: {any}", .{err});
         return;
     };
@@ -224,7 +232,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     }
 
     // Without parser rules the output is the lexer alone
-    var finalCode: []const u8 = lexerCode;
+    var finalCode: []const u8 = undefined;
 
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
@@ -264,12 +272,17 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             diag.err("parser generation failed: {any}", .{err});
             return;
         };
-        finalCode = codegen.generate(allocator, &g, &auto, &tbl, &lexerParser.spec, lexerCode, opts.emitComments) catch |err| {
+        finalCode = codegen.generate(allocator, &g, &auto, &tbl, &lexerParser.spec, lexerDecls, .{
+            .emitComments = opts.emitComments,
+            .spans = opts.spans,
+        }) catch |err| {
             diag.err("parser generation failed: {any}", .{err});
             return;
         };
 
         conflicts.report(allocator, &tbl, g.expectConflicts);
+    } else {
+        finalCode = try codegen.lexerModule(allocator, lexerParser.spec.langName, lexerDecls);
     }
 
     try writeOutput(io, opts.outputFile, finalCode);

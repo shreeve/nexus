@@ -163,7 +163,8 @@ fn checkSlot(s: Sexp, slot: Slot) ?Problem {
         .marker => return if (s == .nil or s == .tag) null else problem(s, "expected a marker tag"),
         .group => return switch (s) {
             .nil => null,
-            .list => |items| blk: {
+            .list => |l| blk: {
+                const items = l.items();
                 if (items.len > 0 and items[0] == .tag) break :blk problem(s, "expected an untagged list");
                 for (items) |c| if (checkSlot(c, .node)) |p| break :blk p;
                 break :blk null;
@@ -174,7 +175,7 @@ fn checkSlot(s: Sexp, slot: Slot) ?Problem {
 }
 
 fn checkNode(s: Sexp) ?Problem {
-    const items = s.list;
+    const items = s.items();
     if (items.len == 0 or items[0] != .tag) return problem(s, "expected a tagged node");
     const tag = items[0].tag;
     const shape = shapeOf(tag) orelse return problem(s, "a marker tag cannot head a node");
@@ -317,13 +318,13 @@ test "malformed nodes are reported" {
     const a = testing.allocator;
     const cond: Sexp = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
     var missing = [_]Sexp{ .{ .tag = .@"if" }, cond };
-    try testing.expect(validate(.{ .list = &missing }) != null);
+    try testing.expect(validate(Sexp.listOf(&missing)) != null);
     var extra = [_]Sexp{ .{ .tag = .@"return" }, cond, cond };
-    try testing.expect(validate(.{ .list = &extra }) != null);
-    var not_leaf = [_]Sexp{ .{ .tag = .@"member" }, cond, .{ .list = &extra } };
-    try testing.expect(validate(.{ .list = &not_leaf }) != null);
+    try testing.expect(validate(Sexp.listOf(&extra)) != null);
+    var not_leaf = [_]Sexp{ .{ .tag = .@"member" }, cond, Sexp.listOf(&extra) };
+    try testing.expect(validate(Sexp.listOf(&not_leaf)) != null);
     var marker_head = [_]Sexp{ .{ .tag = .@"iter" }, cond };
-    try testing.expect(validate(.{ .list = &marker_head }) != null);
+    try testing.expect(validate(Sexp.listOf(&marker_head)) != null);
 
     // Padding supplies absent trailing optional slots.
     var short = [_]Sexp{ .{ .tag = .@"if" }, cond, cond };
@@ -331,5 +332,5 @@ test "malformed nodes are reported" {
     defer a.free(padded);
     try testing.expectEqual(@as(usize, 4), padded.len);
     try testing.expect(padded[3] == .nil);
-    try testing.expect(validate(.{ .list = padded }) == null);
+    try testing.expect(validate(Sexp.listOf(padded)) == null);
 }

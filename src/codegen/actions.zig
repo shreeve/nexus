@@ -90,7 +90,7 @@ pub fn generateRuleAction(allocator: Allocator, writer: anytype, rule: Rule) !vo
     }
 
     if (std.mem.eql(u8, template, "()")) {
-        try writer.writeAll(".{ .list = &[_]Sexp{} }");
+        try writer.writeAll("self.emptyList()");
         return;
     }
 
@@ -137,7 +137,7 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
     }
 
     if (elements.items.len == 0) {
-        try writer.writeAll(".{ .list = &[_]Sexp{} }");
+        try writer.writeAll("self.emptyList()");
         return;
     }
 
@@ -286,7 +286,7 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
     }
     if (extendElem) |first| {
         const pos = stripKeyAndSuffix(elements.items[first])[3] - '1' + offset;
-        try writer.print("blk: {{ var out = self.extendList(pass[{d}]) catch break :blk .nil; ", .{pos});
+        try writer.print("blk: {{ var out = self.extendList(pass[{d}]) catch break :blk self.oomNil(); ", .{pos});
     } else {
         try writer.writeAll("blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; ");
     }
@@ -298,19 +298,19 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
 
         if (work[0] >= '1' and work[0] <= '9') {
             const pos = work[0] - '1' + offset;
-            try writer.print("out.append(self.allocator(), pass[{d}]) catch break :blk .nil; ", .{pos});
+            try writer.print("out.append(self.allocator(), pass[{d}]) catch break :blk self.oomNil(); ", .{pos});
         } else if (work[0] == '~' and work.len > 1 and work[1] >= '1' and work[1] <= '9') {
             const pos = work[1] - '1' + offset;
-            try writer.print("out.append(self.allocator(), if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}) catch break :blk .nil; ", .{ pos, pos });
+            try writer.print("out.append(self.allocator(), if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}) catch break :blk self.oomNil(); ", .{ pos, pos });
         } else if (work[0] == '.' and work.len >= 4 and work[1] == '.' and work[2] == '.') {
             const pos = work[3] - '1' + offset;
-            try writer.print("if (pass[{d}] == .list) for (pass[{d}].list) |item| out.append(self.allocator(), item) catch break :blk .nil; ", .{ pos, pos });
+            try writer.print("for (pass[{d}].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); ", .{pos});
         } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
-            try writer.writeAll("out.append(self.allocator(), .nil) catch break :blk .nil; ");
+            try writer.writeAll("out.append(self.allocator(), .nil) catch break :blk self.oomNil(); ");
         } else if (isLikelyTagName(work)) {
             // Tag literal at child position (`key:` prefix already
             // stripped); anything that isn't tag-like is an error below.
-            try writer.print("out.append(self.allocator(), .{{ .tag = .@\"{s}\" }}) catch break :blk .nil; ", .{work});
+            try writer.print("out.append(self.allocator(), .{{ .tag = .@\"{s}\" }}) catch break :blk self.oomNil(); ", .{work});
         } else {
             diag.err(
                 "unknown action element '{s}' in template: {s}\n" ++
@@ -320,11 +320,10 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
             return error.UnknownActionElement;
         }
     }
-    try writer.writeAll("while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); ");
     if (extendElem != null) {
         try writer.writeAll("break :blk self.keepList(&out); }");
     } else {
-        try writer.writeAll("break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; }");
+        try writer.writeAll("break :blk self.finishList(&out); }");
     }
 }
 

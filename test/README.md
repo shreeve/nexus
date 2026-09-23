@@ -74,7 +74,7 @@ The in-repo suites:
 
 | Suite | Grammar | Corpus |
 |---|---|---|
-| `basic`, `features`, `lit_tags` | small feature grammars | hand-written; all in `known/` because the parsers do not compile today |
+| `basic`, `features`, `lit_tags` | small feature grammars (no lang `Lexer` wrapper) | hand-written |
 | `nexus` | `nexus.grammar` with `src/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 | `rig` | the live Rig grammar and its `rig.zig`, `ir.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 that fail today), 22 MVTS-derived em compliance routines |

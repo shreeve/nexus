@@ -2,11 +2,6 @@
 #
 # A grammar without @lang generates a parser that compiles and runs, and
 # exports the same `Parser` name as every other grammar.
-#
-# Today: the generated parser reads `self.lexer.base.aux`, which only
-# exists on a lang Lexer wrapper: "no field named 'base'" (basic, features
-# and lit_tags have the same failure). Without @lang there is also no
-# `Parser` alias, only `BaseParser`.
 # (architecture.md Appendix A; SPEC §8.2)
 
 @lexer
