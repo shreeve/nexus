@@ -121,13 +121,30 @@ pub const BaseLexer = struct {
 
     const cls0 = blk: {
         var t: [256]bool = @splat(false);
+        for ('A'..91) |c| t[c] = true;
+        t['_'] = true;
+        for ('a'..123) |c| t[c] = true;
+        break :blk t;
+    };
+
+    const cls1 = blk: {
+        var t: [256]bool = @splat(false);
         t['\t'] = true;
         t['\r'] = true;
         t[' '] = true;
         break :blk t;
     };
 
-    const cls1 = blk: {
+    const cls2 = blk: {
+        var t: [256]bool = @splat(false);
+        for (0x00..10) |c| t[c] = true;
+        for (0x0B..34) |c| t[c] = true;
+        for ('#'..92) |c| t[c] = true;
+        for (']'..256) |c| t[c] = true;
+        break :blk t;
+    };
+
+    const cls3 = blk: {
         var t: [256]bool = @splat(false);
         for ('0'..58) |c| t[c] = true;
         for ('A'..91) |c| t[c] = true;
@@ -170,6 +187,10 @@ pub const BaseLexer = struct {
             var accEnd: usize = start;
             dfa: switch (@as(u16, 0)) {
                 0 => {
+                    if (p < n and cls0[src[p]]) {
+                        p += 1;
+                        continue :dfa 22;
+                    }
                     if (p < n) switch (src[p]) {
                         0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '$'...'\'', '/', '\\', '^', '`', 0x7F...0xFF => {
                             p += 1;
@@ -270,10 +291,6 @@ pub const BaseLexer = struct {
                             self.pos = @intCast(p);
                             return .{ .cat = .@"at", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                         },
-                        'A'...'Z', '_', 'a'...'z' => {
-                            p += 1;
-                            continue :dfa 22;
-                        },
                         '[' => {
                             p += 1;
                             self.pos = @intCast(p);
@@ -304,21 +321,22 @@ pub const BaseLexer = struct {
                             self.pos = @intCast(p);
                             return .{ .cat = .@"tilde", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                         },
+                        else => {},
                     };
                     break :dfa;
                 },
                 2 => {
-                    while (p < n and cls0[src[p]]) p += 1;
+                    while (p < n and cls1[src[p]]) p += 1;
                     continue :scan;
                 },
                 5 => {
                     acc = 27;
                     accEnd = p;
+                    if (p < n and cls2[src[p]]) {
+                        p += 1;
+                        continue :dfa 29;
+                    }
                     if (p < n) switch (src[p]) {
-                        0x00...'\t', 0x0B...'!', '#'...'[', ']'...0xFF => {
-                            p += 1;
-                            continue :dfa 29;
-                        },
                         '"' => {
                             p += 1;
                             self.pos = @intCast(p);
@@ -369,7 +387,7 @@ pub const BaseLexer = struct {
                     return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                 },
                 22 => {
-                    while (p < n and cls1[src[p]]) p += 1;
+                    while (p < n and cls3[src[p]]) p += 1;
                     self.pos = @intCast(p);
                     return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                 },

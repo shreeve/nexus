@@ -44,6 +44,10 @@ const maxGuardAtoms = 10;
 /// A self-loop that excludes at most this many bytes is scanned with SIMD.
 const maxSimdStops = 3;
 
+/// A transition class this wide into a looping state is tested before the
+/// state's switch.
+const hotClassMin = 16;
+
 pub const LexerGenerator = struct {
     allocator: Allocator,
     spec: *const LexerSpec,
@@ -783,6 +787,12 @@ pub const LexerGenerator = struct {
         , .{ ind, ind, r.token });
     }
 
+    fn hasSelfLoop(self: *const LexerGenerator, s: u32) bool {
+        const nc = self.dfa.classes.count;
+        for (0..nc) |c| if (self.dfa.trans[s * nc + c] == s) return true;
+        return false;
+    }
+
     fn isTerminal(self: *const LexerGenerator, s: u32) bool {
         if (self.dfa.accept[s] == automaton.none) return false;
         const nc = self.dfa.classes.count;
@@ -805,24 +815,16 @@ pub const LexerGenerator = struct {
         if (anySave) {
             try self.print("{s}var acc: u16 = {d};\n{s}var accEnd: usize = start;\n", .{ ind, noRule, ind });
         }
+        // With several start states, a `select` prong (entered first, so the
+        // initial dispatch is a direct jump) branches on the guard conditions
+        // and continues into the start state of the configuration that holds.
+        const select: u32 = dfa.numStates;
+        try self.print("{s}dfa: switch (@as(u16, {d})) {{\n", .{ ind, if (multi) select else self.startOfMask[0] });
         if (multi) {
-            try self.print("{s}const mask: u8 = ", .{ind});
-            for (self.atoms, 0..) |at, i| {
-                if (i > 0) try self.write(" | ");
-                try self.write("(@as(u8, @intFromBool(");
-                try self.emitGuardExpr(.{ .variable = at.variable, .op = at.op, .value = at.value });
-                try self.print(")) << {d})", .{i});
-            }
-            try self.write(";\n");
-            try self.print("{s}const startState = [_]u16{{", .{ind});
-            for (self.startOfMask, 0..) |s, i| {
-                if (i > 0) try self.write(", ");
-                try self.print("{d}", .{s});
-            }
-            try self.write("};\n");
-            try self.print("{s}dfa: switch (startState[mask]) {{\n", .{ind});
-        } else {
-            try self.print("{s}dfa: switch (@as(u16, {d})) {{\n", .{ ind, self.startOfMask[0] });
+            const selInd = try std.fmt.allocPrint(a, "{s}    ", .{ind});
+            try self.print("{s}{d} => {{\n", .{ selInd, select });
+            try self.emitSelect(0, 0, try std.fmt.allocPrint(a, "{s}    ", .{selInd}));
+            try self.print("{s}}},\n", .{selInd});
         }
 
         const inner = try std.fmt.allocPrint(a, "{s}    ", .{ind});
@@ -860,6 +862,22 @@ pub const LexerGenerator = struct {
             if (!loop.isEmpty()) try self.emitLoop(loop, inner2);
             const acc = dfa.accept[s];
             if (self.saves[s]) try self.print("{s}acc = {d};\n{s}accEnd = p;\n", .{ inner2, acc, inner2 });
+            // The widest transition into a looping state (identifier-like
+            // runs) is tested before the switch: a predictable branch on the
+            // common path instead of an indirect jump through the table.
+            var hot: ?usize = null;
+            if (targets.items.len > 1) {
+                for (targets.items, 0..) |x, i| {
+                    if (x.set.count() < hotClassMin or self.isTerminal(x.t) or !self.hasSelfLoop(x.t)) continue;
+                    if (hot == null or x.set.count() > targets.items[hot.?].set.count()) hot = i;
+                }
+            }
+            if (hot) |h| {
+                try self.print("{s}if (p < n and ", .{inner2});
+                try self.emitMembership(targets.items[h].set, "src[p]");
+                try self.print(") {{\n{s}    p += 1;\n{s}    continue :dfa {d};\n{s}}}\n", .{ inner2, inner2, targets.items[h].t, inner2 });
+                _ = targets.orderedRemove(h);
+            }
             if (targets.items.len > 0) {
                 try self.print("{s}if (p < n) switch (src[p]) {{\n", .{inner2});
                 var covered: ByteSet = .{};
@@ -906,6 +924,43 @@ pub const LexerGenerator = struct {
     }
 
     const noRule: u16 = std.math.maxInt(u16);
+
+    /// A decision tree over the guard atoms that continues into the start
+    /// state of the configuration that holds. `fixed` marks atoms already
+    /// tested on this path, with their outcomes in `bits`; only atoms that
+    /// still change the start state are tested.
+    fn emitSelect(self: *LexerGenerator, fixed: usize, bits: usize, ind: []const u8) !void {
+        const starts = self.startOfMask;
+        var first: ?u32 = null;
+        var uniform = true;
+        for (starts, 0..) |st, mask| {
+            if (mask & fixed != bits) continue;
+            if (first == null) first = st else if (first.? != st) uniform = false;
+        }
+        if (uniform) {
+            try self.print("{s}continue :dfa {d};\n", .{ ind, first.? });
+            return;
+        }
+        // The first untested atom the start state depends on.
+        const atom = for (0..self.atoms.len) |i| {
+            const bit = @as(usize, 1) << @intCast(i);
+            if (fixed & bit != 0) continue;
+            for (starts, 0..) |st, mask| {
+                if (mask & fixed == bits and starts[mask ^ bit] != st) break;
+            } else continue;
+            break i;
+        } else unreachable;
+        const bit = @as(usize, 1) << @intCast(atom);
+        const at = self.atoms[atom];
+        try self.print("{s}if (", .{ind});
+        try self.emitGuardExpr(.{ .variable = at.variable, .op = at.op, .value = at.value });
+        try self.write(") {\n");
+        const deeper = try std.fmt.allocPrint(self.arena.allocator(), "{s}    ", .{ind});
+        try self.emitSelect(fixed | bit, bits | bit, deeper);
+        try self.print("{s}}} else {{\n", .{ind});
+        try self.emitSelect(fixed | bit, bits, deeper);
+        try self.print("{s}}}\n", .{ind});
+    }
 
     fn emitLoop(self: *LexerGenerator, loop: ByteSet, ind: []const u8) !void {
         const stops = loop.invert();
