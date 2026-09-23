@@ -181,14 +181,6 @@ pub const Lexer = struct {
     }
 };
 
-// SIMD helpers (fallback if simd.zig not available)
-const simd = struct {
-    fn findByte(haystack: []const u8, needle: u8) usize {
-        for (haystack, 0..) |c, i| if (c == needle) return i;
-        return haystack.len;
-    }
-};
-
 // =============================================================================
 // Tag enum (collected from grammar actions)
 // =============================================================================
