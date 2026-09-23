@@ -459,7 +459,7 @@ pub const BaseParser = struct {
 
     fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         return switch (ruleId) {
-            0 => self.sexpSpread(.@"module", pass[1]),
+            0 => self.sexpSpread(.@"module", pass[0]),
             1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             2 => blk: { var out = self.extendList(pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk self.keepList(&out); },
             3 => pass[0],
@@ -518,21 +518,21 @@ const SYM_program_START: u16 = 12;
 const symIdent: u16 = 7;
 
 const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 5, 13 };
-const ruleLen = [_]u8{ 2, 1, 3, 2, 3, 3, 3, 2 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 3, 3, 3 };
 
 // Parse Table: 15 states × 14 symbols
 const numStates = 15;
 const numSymbols = 14;
 
 const sparse = [numStates][]const i16{
-    &.{3,1,12,2},
-    &.{1,-1},
-    &.{4,4,5,6,7,5},
+    &.{12,1},
+    &.{3,2,4,3,5,5,7,4},
     &.{1,-1},
     &.{1,-2,6,7},
     &.{8,8,10,10,11,9},
     &.{1,-3,6,-3},
-    &.{1,-5,5,11,6,-5,7,5},
+    &.{1,-1},
+    &.{1,-5,5,11,6,-5,7,4},
     &.{9,12},
     &.{9,13},
     &.{9,14},
