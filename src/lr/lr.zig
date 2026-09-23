@@ -77,6 +77,8 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         error.InvalidRepairToken => unreachable, // validated above
     };
 
+    try checkEmptyLoops(a, g, &tbl, opts.path);
+
     const copts: conflicts.Options = .{ .path = opts.path };
     conflicts.checkHints(a, g, &tbl, copts) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -88,6 +90,45 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     };
 
     return .{ .automaton = auto, .lookaheads = la, .table = tbl };
+}
+
+/// Reductions of empty rules on one lookahead only push states. If a chain
+/// of them returns to a state it has passed, the parser pushes forever on
+/// that lookahead (a `<` hint, or a conflict resolved toward the empty
+/// rule, can build such a table).
+fn checkEmptyLoops(a: Allocator, g: *const Grammar, tbl: *const table.Table, path: []const u8) Error!void {
+    const seen = try a.alloc(u32, tbl.rows.len);
+    defer a.free(seen);
+    @memset(seen, 0);
+    var stamp: u32 = 0;
+    for (tbl.rows, 0..) |row, s0| {
+        for (row, 0..) |cell, t| {
+            if (g.symbols.items[t].kind != .terminal) continue;
+            if (cell != .reduce or g.rules.items[cell.reduce].rhs.len != 0) continue;
+            stamp += 1;
+            var s = s0;
+            while (true) {
+                if (seen[s] == stamp) {
+                    const rule = g.rules.items[cell.reduce];
+                    var name: std.Io.Writer.Allocating = .init(a);
+                    defer name.deinit();
+                    conflicts.writeSymbol(&name.writer, g, rule.lhs) catch return error.OutOfMemory;
+                    name.writer.writeAll(" on ") catch return error.OutOfMemory;
+                    conflicts.writeSymbol(&name.writer, g, @intCast(t)) catch return error.OutOfMemory;
+                    std.debug.print("{s}:{d}:{d}: error: reducing the empty rule {s} leads back to the same state, so the parser would push forever on that token (a `<` hint or a conflict resolved toward an empty rule)\n", .{ path, @max(rule.line, 1), @max(rule.col, 1), name.written() });
+                    return error.GenerationFailed;
+                }
+                seen[s] = stamp;
+                const act = tbl.rows[s][t];
+                if (act != .reduce) break;
+                const rule = g.rules.items[act.reduce];
+                if (rule.rhs.len != 0) break;
+                const next = tbl.rows[s][rule.lhs];
+                if (next != .gotoState) break;
+                s = next.gotoState;
+            }
+        }
+    }
 }
 
 /// Reject a cyclic grammar: a rule that derives itself (a ⇒+ a, through

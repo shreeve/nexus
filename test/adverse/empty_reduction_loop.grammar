@@ -1,0 +1,19 @@
+# A `<` hint that makes an empty rule win over shifting builds a table that
+# pushes forever on "x" (the generated parser hung on "xc"); rejected.
+# error: empty_reduction_loop.grammar:19:1:
+# error: reducing the empty rule b on X leads back to the same state
+@lexer
+tokens
+    x
+    c
+    eof
+    err
+'x'   → x
+'c'   → c
+.     → err
+
+@parser
+top! = a
+a = b a C → (a 2)
+  | X
+b = <
