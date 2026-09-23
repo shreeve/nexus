@@ -57,9 +57,23 @@ parser-side work (tables, reductions, tree building) dominates.
 
 ## Node-store overhead
 
-Not applicable: 0.10.3 records no node spans. When 1.0 adds the node store
-(SPEC §4.2, target ≤ 5% parse-time overhead), measure it here by generating
-the same grammar with and without spans.
+Measured at the codegen branch (after `f81d084`), ReleaseFast, the same
+inputs as above: each grammar generated three ways (0.10.3; 1.0 plain; 1.0
+with `--spans`), each parser run alternately, best parse time of 6-10
+rounds of 3 (the machine was shared, load 6-8; single runs varied by ±3%).
+
+| input | 0.10.3 ms | 1.0 plain ms | 1.0 `--spans` ms | spans overhead | nodes per byte |
+|---|---:|---:|---:|---:|---:|
+| mumps (VistA, 86.5 MB) | 2374 | 1747 | 1910 | +9.3% | 0.57 |
+| rig (synthetic, 3.8 MB) | 72.8 | 62.1 | 64.1 | +3.2% | 0.12 |
+
+The overhead is per list node (one 12-byte entry in the node store) plus
+one start position per stack entry. MUMPS builds 46 M list nodes for 32 M
+tokens (most of them untagged plumbing lists), so it pays about three
+times Rig's rate; still, a MUMPS parser with spans is 20% faster than
+0.10.3 without them. Trees are identical in all three builds (`--hash
+--no-spans` over all 24,704 VistA routines and the 362 Rig sources, raw
+tree and after Rig's `Parser` wrapper).
 
 ## Differential runs (for scale)
 
