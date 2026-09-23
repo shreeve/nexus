@@ -136,7 +136,8 @@ check_case() {
 }
 
 # check_rejects <grammar>: generation fails with a non-zero exit, a
-# file:line:col diagnostic, and every `# error:` text of the grammar.
+# file:line:col diagnostic, every `# error:` text of the grammar, and none
+# of its `# absent:` texts.
 check_rejects() {
     local g=$1 out rc
     local tmp="$WORK/out/$(key_of "$g").zig"
@@ -147,7 +148,7 @@ check_rejects() {
     if [[ $rc -gt 128 ]] || grep -qE "$PANIC_RE" <<<"$out"; then REASON="generator crashed"; return 1; fi
     if [[ -z "$(directive error "$g")" ]]; then REASON="no # error: directive"; return 1; fi
     local got
-    got=$(grep -m1 -E 'error|❌' <<<"$out" | sed 's/^[[:space:]]*//')
+    got=$(grep -m1 -E '❌|⚠|error:|error\.[A-Z]' <<<"$out" | sed 's/^[[:space:]]*//')
     if [[ $rc -eq 0 ]]; then REASON="exit status 0 (expected non-zero); said: ${got:-nothing}"; return 1; fi
     local want
     while IFS= read -r want; do
@@ -157,6 +158,10 @@ check_rejects() {
             return 1
         fi
     done < <(directive error "$g")
+    while IFS= read -r want; do
+        [[ -z "$want" ]] && continue
+        if grep -qiF -- "$want" <<<"$out"; then REASON="output contains \"$want\""; return 1; fi
+    done < <(directive absent "$g")
     if ! grep -qE "$POS_RE" <<<"$out"; then REASON="no file:line:col: error: diagnostic"; return 1; fi
     return 0
 }
@@ -416,7 +421,7 @@ for dir in test/*/; do
         [[ -f "test/golden/$name.sexp" ]] && add "sexp/$name" sexp "$dir" "$name"
         add "determinism/$name" determinism "$dir" "$name"
     fi
-    if cat ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null | grep -qE '^test "'; then
+    if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"
     fi
 done

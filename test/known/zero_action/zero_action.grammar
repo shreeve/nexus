@@ -1,0 +1,24 @@
+# error: zero_action.grammar:23:
+#
+# `0` is not an element position: `→ 0` and `→ (0 1 2)` are rejected with a
+# location. (README documents `0` as "the rule name as tag"; if 1.0 keeps
+# that meaning instead, turn this into a run test.)
+#
+# Today: `→ 0` is silently ignored (default action), and `(0 1 2)` emits a
+# tag literally named "0".
+# (architecture.md Appendix A: nest.grammar; SPEC §3.2, §8.11)
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "zero_action"
+
+top! = item                                 → 1
+item = IDENT IDENT                          → 0
+     | IDENT IDENT IDENT                    → (0 1 2)

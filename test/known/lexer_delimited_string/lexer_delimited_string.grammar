@@ -1,0 +1,18 @@
+# A delimited pattern with a negated class, '`' [^`]* '`', is compiled like
+# any other pattern.
+#
+# Today: the rule is silently dropped (no token is ever produced for it).
+# (architecture.md Appendix A: lexprobe.grammar; SPEC §5)
+
+@lexer
+tokens
+    tick
+    eof
+    err
+'`' [^`]* '`'                               → tick
+.                                           → err
+
+@parser
+@lang = "lexer_delimited_string"
+
+top! = TICK                                 → (tick 1)

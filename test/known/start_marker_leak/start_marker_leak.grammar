@@ -1,0 +1,36 @@
+# error: start_marker_leak.grammar:
+# error: conflict
+# absent: form!
+#
+# Declaring `form!` as a second start symbol does not change the grammar's
+# conflicts, and conflict reports never mention the internal start marker.
+# The four real conflicts (the empty `forms` alternative) are undeclared, so
+# generation fails.
+#
+# Today: the marker terminal `form!` is prepended to the first `form` rule
+# and becomes part of the automaton: two extra "S/R: forms vs form!"
+# conflicts (Nexis has six), and generation exits 0 with a warning.
+# (architecture.md §6 item 3; SPEC §6, §8.5, §8.11)
+
+@lexer
+tokens
+    ident
+    lparen
+    rparen
+    eof
+    err
+'('                                         → lparen
+')'                                         → rparen
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "start_marker_leak"
+
+program! = forms                            → (p ...1)
+form!    = form                             → 1
+forms    = forms form                       → (...1 2)
+         | form                             → (1)
+         |                                  → ()
+form     = IDENT
+         | "(" forms ")"                    → (list ...2)
