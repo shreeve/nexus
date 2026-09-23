@@ -2078,6 +2078,48 @@ const keywordToSymbol = blk: {
 };
 const keywordFallbackSymbol: u16 = 0;
 
+// Every @as keyword terminal is a field of some group's Id enum.
+comptime {
+    if (!(@hasField(lang.KeywordId, "EXTERN"))) @compileError("EXTERN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field EXTERN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "CONST"))) @compileError("CONST is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CONST: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ZIG"))) @compileError("ZIG is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ZIG: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "PUB"))) @compileError("PUB is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field PUB: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "EXPORT"))) @compileError("EXPORT is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field EXPORT: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "PACKED"))) @compileError("PACKED is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field PACKED: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "CALLCONV"))) @compileError("CALLCONV is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CALLCONV: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "FUN"))) @compileError("FUN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field FUN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "SUB"))) @compileError("SUB is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field SUB: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "USE"))) @compileError("USE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field USE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "TYPE"))) @compileError("TYPE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field TYPE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "TEST"))) @compileError("TEST is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field TEST: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "OPAQUE"))) @compileError("OPAQUE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field OPAQUE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ENUM"))) @compileError("ENUM is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ENUM: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ERROR"))) @compileError("ERROR is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ERROR: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "STRUCT"))) @compileError("STRUCT is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field STRUCT: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "COMPTIME"))) @compileError("COMPTIME is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field COMPTIME: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ALIGN"))) @compileError("ALIGN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ALIGN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "VOLATILE"))) @compileError("VOLATILE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field VOLATILE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "FN"))) @compileError("FN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field FN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "AS"))) @compileError("AS is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field AS: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "IF"))) @compileError("IF is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field IF: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ELSE"))) @compileError("ELSE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ELSE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "WHILE"))) @compileError("WHILE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field WHILE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "FOR"))) @compileError("FOR is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field FOR: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "IN"))) @compileError("IN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field IN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "MATCH"))) @compileError("MATCH is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field MATCH: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "CATCH"))) @compileError("CATCH is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CATCH: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "RETURN"))) @compileError("RETURN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field RETURN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "BREAK"))) @compileError("BREAK is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field BREAK: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "CONTINUE"))) @compileError("CONTINUE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CONTINUE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "DEFER"))) @compileError("DEFER is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field DEFER: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ERRDEFER"))) @compileError("ERRDEFER is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ERRDEFER: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "INLINE"))) @compileError("INLINE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field INLINE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "TRY"))) @compileError("TRY is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field TRY: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "NULL"))) @compileError("NULL is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field NULL: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "UNREACHABLE"))) @compileError("UNREACHABLE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field UNREACHABLE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "UNDEFINED"))) @compileError("UNDEFINED is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field UNDEFINED: rules using it could never match");
+}
+
 const ruleLhs = [_]u16{ 3, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 17, 18, 19, 20, 21, 21, 21, 22, 22, 22, 22, 23, 23, 23, 23, 23, 85, 86, 86, 24, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 97, 98, 98, 26, 26, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 27, 27, 27, 28, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30, 30, 30, 30, 30, 30, 30, 31, 32, 32, 32, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 37, 38, 38, 39, 39, 39, 39, 40, 40, 40, 40, 40, 40, 41, 41, 41, 41, 42, 42, 43, 43, 44, 45, 46, 46, 46, 46, 46, 46, 47, 47, 48, 48, 48, 48, 48, 48, 49, 49, 49, 131, 132, 132, 49, 49, 49, 133, 134, 134, 50, 50, 51, 51, 52, 52, 52, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 143, 144, 144, 53, 53, 53, 147, 148, 148, 54, 55, 56, 57, 57, 150, 152, 153, 153, 154, 154, 155, 155, 156, 156, 157, 157, 158, 158, 159, 159, 159, 159, 159, 159, 159, 160, 160, 161, 161, 161, 162, 162, 162, 163, 163, 163, 163, 164, 164, 100 };
 const ruleLen = [_]u8{ 1, 1, 3, 2, 1, 1, 1, 1, 3, 1, 5, 4, 2, 2, 1, 2, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 5, 4, 4, 3, 4, 3, 2, 4, 3, 2, 5, 5, 5, 1, 3, 2, 1, 3, 1, 1, 4, 1, 3, 5, 5, 2, 3, 0, 1, 2, 1, 2, 2, 2, 3, 3, 3, 5, 4, 4, 6, 2, 3, 0, 5, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4, 7, 7, 5, 5, 3, 5, 7, 3, 5, 8, 10, 7, 9, 6, 8, 5, 7, 5, 1, 3, 2, 1, 2, 1, 3, 5, 4, 3, 2, 5, 3, 5, 3, 5, 3, 4, 3, 2, 1, 5, 4, 3, 3, 2, 1, 5, 3, 3, 1, 2, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 3, 5, 3, 2, 2, 2, 2, 2, 1, 3, 3, 4, 2, 3, 0, 2, 4, 1, 2, 3, 0, 1, 0, 5, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 1, 1, 3, 3, 2, 3, 0, 3, 3, 2, 2, 3, 0, 4, 3, 4, 3, 2, 3, 3, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 1 };
 

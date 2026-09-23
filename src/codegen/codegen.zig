@@ -759,6 +759,60 @@ const Codegen = struct {
                 try w.print("const {s}FallbackSymbol: u16 = {d};\n", .{ directive.rule, fallbackId orelse 0 });
             }
         }
+        try self.emitKeywordCheck(w);
+    }
+
+    /// A terminal that is no lexer token reaches the parser only as a
+    /// member of an `@as` group's Id enum; one no group names could never
+    /// match. Without @lang the groups are known here (each matches its own
+    /// name), so that is a generation error; with @lang the Id enums live
+    /// in the lang module, so the parser fails to build naming it.
+    fn emitKeywordCheck(self: *Codegen, w: *std.Io.Writer) !void {
+        const identAs = self.hasIdentAs();
+        var groups: std.ArrayListUnmanaged([]const u8) = .empty;
+        for (self.g.asDirectives) |directive| {
+            if (isSelf(directive)) continue;
+            try groups.append(self.allocator, directive.rule);
+        }
+        var any = false;
+        for (self.g.symbols.items) |sym| {
+            if (sym.kind != .terminal or sym.name.len == 0 or sym.name[0] < 'A' or sym.name[0] > 'Z') continue;
+            if (std.mem.endsWith(u8, sym.name, "!")) continue;
+            if (!self.isPromotedKeyword(sym.name, identAs)) continue;
+            if (std.ascii.eqlIgnoreCase(sym.name, self.promotable.?)) continue;
+            const used = for (self.g.rules.items) |rule| {
+                if (std.mem.indexOfScalar(u16, rule.rhs, sym.id) != null) break true;
+            } else false;
+            if (!used) continue;
+            // A terminal named like a group (CMD for `cmd`) is the group's
+            // fallback: every Id without a terminal of its own becomes it.
+            const named = for (groups.items) |group| {
+                if (std.ascii.eqlIgnoreCase(group, sym.name)) break true;
+            } else false;
+            if (named) continue;
+            if (self.g.lang == null) {
+                {
+                    self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
+                    return error.UnknownKeyword;
+                }
+                continue;
+            }
+            if (!any) try w.writeAll("\n// Every @as keyword terminal is a field of some group's Id enum.\ncomptime {\n");
+            any = true;
+            try w.writeAll("    if (!(");
+            for (groups.items, 0..) |group, i| {
+                if (i > 0) try w.writeAll(" or ");
+                try w.print("@hasField(lang.{s}Id, \"{s}\")", .{ try capitalized(self.allocator, group), sym.name });
+            }
+            if (groups.items.len == 0) try w.writeAll("false");
+            try w.print(")) @compileError(\"{s} is no lexer token, and no @as group's Id enum (", .{sym.name});
+            for (groups.items, 0..) |group, i| {
+                if (i > 0) try w.writeAll(", ");
+                try w.print("lang.{s}Id", .{try capitalized(self.allocator, group)});
+            }
+            try w.print(") has a field {s}: rules using it could never match\");\n", .{sym.name});
+        }
+        if (any) try w.writeAll("}\n");
     }
 
     /// Per-rule lhs symbol and rhs length.

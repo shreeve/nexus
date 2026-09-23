@@ -81,6 +81,9 @@ pub const GrammarLowerer = struct {
         if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
         if (self.tagsNode) |node| if (!self.hasSchema)
             return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
+        // Without a `name!` rule, the first rule is the start symbol.
+        if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
+            try self.startSymbols.append(allocator, self.rules.items[0].name);
         return GrammarIR{
             .rules = try self.rules.toOwnedSlice(allocator),
             .startSymbols = try self.startSymbols.toOwnedSlice(allocator),

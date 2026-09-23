@@ -1,0 +1,153 @@
+#!/bin/bash
+# Extract the tested examples of Markdown documents into grammar suites
+# that test/run checks like any other (see test/README.md, "Doc tests").
+#
+# Usage:
+#   test/lib/doctest OUTDIR DOC.md...
+#
+# Prints one task per line, tab-separated:
+#   suite  ID  DIR          a complete grammar (DIR holds it, its lang files,
+#                           cases/ and doc-test .zig files)
+#   ztest  ID  DIR          DIR has `zig test` files
+#   frag   ID  FILE         a fragment, checked with `nexus --dump-sexp`
+#   bad    ID  MESSAGE      a malformed or unmarked example
+#
+# Code fences, by info string:
+#   ```grammar NAME.grammar [rejects] [--spans]
+#                 a complete grammar file; it must generate (and compile), or
+#                 with `rejects` fail with every line of the next ```error block
+#   ```grammar fragment [lexer]
+#                 part of a grammar file (@parser-section text, or @lexer-
+#                 section lines with `lexer`); it must parse
+#   ```zig NAME.zig        a file next to the last grammar's parser (its @lang module)
+#   ```zig test            a `zig test` file for the last grammar (imports parser.zig)
+#   ```zig fragment        illustration only
+#   ```input [start=RULE]  input for the last grammar ...
+#   ```tree [no-spans]     ... and the tree the test driver prints for it
+#   ```error               lines the last `rejects` grammar's errors contain
+# A `grammar` or `zig` fence without one of these markers is an error; any
+# other fence (text, bash, ...) is not checked.
+
+set -euo pipefail
+[[ $# -ge 1 ]] || { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+OUT=$1
+shift
+rm -rf "$OUT"
+mkdir -p "$OUT"
+
+for doc in "$@"; do
+    docid=$(basename "$doc" .md)
+    mkdir -p "$OUT/$docid"
+    awk -v OUT="$OUT" -v DOCID="$docid" -v DOC="$doc" '
+function task(kind, id, arg) { printf "%s\t%s\t%s\n", kind, id, arg }
+function bad(line, msg) { task("bad", "docs/" DOCID "/L" line, DOC ":" line ": " msg) }
+function has(word,    i) { for (i = 2; i <= nw; i++) if (w[i] == word) return 1; return 0 }
+function suffixed(suf,    i) {
+    for (i = 2; i <= nw; i++) if (length(w[i]) > length(suf) && substr(w[i], length(w[i]) - length(suf) + 1) == suf) return w[i]
+    return ""
+}
+function valueOf(key,    i) {
+    for (i = 2; i <= nw; i++) if (index(w[i], key "=") == 1) return substr(w[i], length(key) + 2)
+    return ""
+}
+function write(path, text) { printf "%s", text > path; close(path) }
+function pendingCase() {
+    if (caseBase != "") bad(caseLine, "an ```input block needs a ```tree block after it")
+    caseBase = ""
+}
+function pendingError() {
+    if (rejectsLine != "") bad(rejectsLine, "a `rejects` grammar needs an ```error block after it")
+    rejectsLine = ""
+}
+function needSuite(what) {
+    if (suite == "") { bad(start, "a ```" what " block needs a complete ```grammar block before it"); return 0 }
+    return 1
+}
+function finish(    name, dir, flags, i, n, lines, subdir, path) {
+    if (lang == "grammar") {
+        pendingCase(); pendingError()
+        name = suffixed(".grammar")
+        if (name != "") {
+            dir = OUT "/" DOCID "/L" start "-" substr(name, 1, length(name) - 8)
+            system("mkdir -p \"" dir "/cases\"")
+            grammarPath = dir "/" name
+            write(grammarPath, body)
+            flags = ""
+            for (i = 2; i <= nw; i++) if (substr(w[i], 1, 2) == "--") flags = flags " " w[i]
+            if (flags != "") write(dir "/test.conf", "flags=\"" substr(flags, 2) "\"\n")
+            suite = dir
+            suiteId = "docs/" DOCID "/L" start "-" substr(name, 1, length(name) - 8)
+            rejects = has("rejects")
+            if (rejects) rejectsLine = start
+            task("suite", suiteId, dir)
+        } else if (has("fragment")) {
+            path = OUT "/" DOCID "/frag-L" start ".grammar"
+            write(path, (has("lexer") ? "@lexer\n" : "") body)
+            task("frag", "docs/" DOCID "/L" start, path)
+        } else bad(start, "unmarked ```grammar block: name its file (NAME.grammar) or mark it fragment")
+    } else if (lang == "zig") {
+        name = suffixed(".zig")
+        if ((has("test") || name != "") && rejects) {
+            bad(start, "a ```zig block follows a `rejects` grammar (its parser is never built)")
+        } else if (has("test")) {
+            if (needSuite("zig test")) {
+                write(suite "/doctest_L" start ".zig", body)
+                if (!(suite in ztested)) { ztested[suite] = 1; task("ztest", suiteId "/zig", suite) }
+            }
+        } else if (name != "") {
+            if (needSuite("zig " name)) write(suite "/" name, body)
+        } else if (!has("fragment")) bad(start, "unmarked ```zig block: mark it test, NAME.zig, or fragment")
+    } else if (lang == "input") {
+        pendingCase()
+        if (!needSuite("input")) return
+        if (rejects) { bad(start, "an ```input block follows a `rejects` grammar"); return }
+        subdir = valueOf("start")
+        dir = suite "/cases" (subdir != "" ? "/" subdir : "")
+        system("mkdir -p \"" dir "\"")
+        caseBase = dir "/L" start
+        caseLine = start
+        write(caseBase ".txt", body)
+    } else if (lang == "tree") {
+        if (caseBase == "") { bad(start, "a ```tree block needs an ```input block before it"); return }
+        write(caseBase ".tree", body)
+        if (has("no-spans")) write(caseBase ".args", "--no-spans\n")
+        caseBase = ""
+    } else if (lang == "error") {
+        if (rejectsLine == "") { bad(start, "an ```error block needs a `rejects` grammar before it"); return }
+        n = split(body, lines, "\n")
+        for (i = 1; i <= n; i++) if (lines[i] ~ /[^ \t]/) printf "# error: %s\n", lines[i] >> grammarPath
+        close(grammarPath)
+        rejectsLine = ""
+    }
+}
+BEGIN { inFence = 0; suite = ""; caseBase = ""; rejectsLine = "" }
+{
+    if (!inFence) {
+        if (match($0, /^[ \t]*```/)) {
+            indent = RLENGTH - 3
+            info = substr($0, RLENGTH + 1)
+            sub(/^[ \t]+/, "", info)
+            # w[1] is the language, w[2..nw] its attributes
+            nw = split(info, w, /[ \t]+/)
+            lang = nw > 0 ? w[1] : ""
+            inFence = 1
+            start = NR
+            body = ""
+        }
+        next
+    }
+    if ($0 ~ /^[ \t]*```[ \t]*$/) {
+        finish()
+        inFence = 0
+        next
+    }
+    line = $0
+    for (i = 0; i < indent && substr(line, 1, 1) ~ /[ \t]/; i++) line = substr(line, 2)
+    body = body line "\n"
+}
+END {
+    if (inFence) bad(start, "unclosed code fence")
+    pendingCase(); pendingError()
+}
+' "$doc"
+done

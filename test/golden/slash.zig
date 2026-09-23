@@ -1838,6 +1838,17 @@ const keywordToSymbol = blk: {
 };
 const keywordFallbackSymbol: u16 = 0;
 
+// Every @as keyword terminal is a field of some group's Id enum.
+comptime {
+    if (!(@hasField(lang.KeywordId, "IF"))) @compileError("IF is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field IF: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "ELSE"))) @compileError("ELSE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ELSE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "WHILE"))) @compileError("WHILE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field WHILE: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "FOR"))) @compileError("FOR is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field FOR: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "IN"))) @compileError("IN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field IN: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "MATCH"))) @compileError("MATCH is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field MATCH: rules using it could never match");
+    if (!(@hasField(lang.KeywordId, "CMD"))) @compileError("CMD is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CMD: rules using it could never match");
+}
+
 const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 43, 7, 8, 9, 9, 10, 10, 11, 11, 49, 49, 50, 12, 51, 51, 13, 13, 52, 52, 53, 14, 15, 16, 17, 17, 57, 57, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 77, 77, 30, 31, 31, 32, 33, 34, 81, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 95 };
 const ruleLen = [_]u8{ 1, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 2, 0, 2, 2, 2, 1, 1, 3, 4, 3, 4, 2, 0, 2, 1, 2, 0, 2, 3, 2, 0, 2, 1, 1, 2, 1, 3, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 2, 0, 2, 2, 1, 2, 3, 3, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3 };
 
