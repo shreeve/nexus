@@ -1,0 +1,4 @@
+(module
+  (for ptr `i` `j` (name `xs`) (call `f` (name `i`) (name `j`)))
+  (for _ `i` _ (array (num `1`) (num `2`)) (call `g`))
+  (for ptr `k` _ (name `ys`) (pass)))

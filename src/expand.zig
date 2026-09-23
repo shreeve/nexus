@@ -55,6 +55,8 @@ pub const Options = struct {
     path: []const u8 = "",
     /// Schema mode: per rule, per alternative, what semantics resolved.
     resolved: ?[]const []const Resolved = null,
+    /// Schema mode: the placed `(op 1 3)` node per `@infix` operator.
+    infix: ?[]const Resolved = null,
 };
 
 /// Process parsed grammar into internal representation
@@ -693,7 +695,7 @@ const Expander = struct {
         for (levels.items, 0..) |level, i| {
             const thisId = levelIds.items[i];
             const nextId = if (i + 1 < levels.items.len) levelIds.items[i + 1] else baseId;
-            for (infix.ops) |op| {
+            for (infix.ops, 0..) |op, opIndex| {
                 if (op.prec != level) continue;
                 const opStr = try std.fmt.allocPrint(g.allocator, "\"{s}\"", .{op.op});
                 const opId = try g.addSymbol(opStr, .terminal);
@@ -703,12 +705,20 @@ const Expander = struct {
                     .none => .{ nextId, opId, nextId },
                 };
                 const items = try g.allocator.dupe(ActionItem, &.{ .{ .elem = .{ .ref = 1 } }, .{ .elem = .{ .ref = 3 } } });
+                var tree: ActionTree = .{ .list = .{ .head = .{ .tag = op.op }, .items = items } };
+                var kind: ?u16 = null;
+                if (self.opts.infix) |placed| {
+                    const r = placed[opIndex];
+                    tree = r.tree.?;
+                    kind = r.kind;
+                }
                 _ = try self.addRule(.{
                     .id = 0,
                     .lhs = thisId,
                     .rhs = try g.allocator.dupe(u16, &rhs),
-                    .action = try std.fmt.allocPrint(g.allocator, "({s} 1 3)", .{op.op}),
-                    .actionTree = .{ .list = .{ .head = .{ .tag = op.op }, .items = items } },
+                    .action = try grammar.renderAction(g.allocator, tree),
+                    .actionTree = tree,
+                    .kind = kind,
                 });
             }
             // this_level → next_level

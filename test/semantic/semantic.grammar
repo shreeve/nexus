@@ -1,0 +1,146 @@
+# A small statement language in schema mode, exercising every 1.0
+# addition to the @parser section: @schema (comma and punctuation kinds;
+# typed, optional, rest and side-band roles; @wrapper), @tags, @display,
+# @errors, @trivia, @repair, a @conflicts manifest, role-named actions
+# (role:N, role:...N, role:_, role:literal, nested nodes, positions past
+# 9), pattern labels (on tokens, rules, [opt] and choice elements, on a
+# whole choice, `_:X` drops), choices (A | B), (A | B)? and (A | B):role,
+# the coverage opt-out, and @infix operators as schema kinds.
+
+@lexer
+
+tokens
+    ident
+    integer
+    newline
+    eq
+    plus_eq
+    colon
+    comma
+    lparen
+    rparen
+    lbracket
+    rbracket
+    plus
+    minus
+    star
+    slash
+    let
+    if
+    unless
+    then
+    else
+    return
+    for
+    ptr
+    in
+    do
+    call
+    swap
+    with
+    pass
+    yield
+    eof
+    err
+
+[ \t]+                                      → skip
+'#' [^\n]*                                  → skip
+'\n'                                        → newline
+"+="                                        → plus_eq
+'='                                         → eq
+':'                                         → colon
+','                                         → comma
+'('                                         → lparen
+')'                                         → rparen
+'['                                         → lbracket
+']'                                         → rbracket
+'+'                                         → plus
+'-'                                         → minus
+'*'                                         → star
+'/'                                         → slash
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+
+@lang = "semantic"
+
+@schema
+    module     ...stmts
+    set        op:tag? target:name value | eq
+    let        name:leaf type:name? value
+    if         kw:leaf cond then:node else:node?
+    for        mode:tag(ptr)? var:leaf index:leaf? iter body
+    call       callee:leaf ...args
+    swap       a:leaf b:leaf c:leaf d:leaf
+    return     value?
+    yield      value:leaf?
+    pass
+    array      ...items
+    neg        value:num
+    num        value:leaf
+    name       id:leaf
+    "+", "-"   left right
+    "*", "/"   left right
+    note       text:leaf @wrapper
+
+@tags  flag
+
+@display
+    IDENT: "a name"
+    "=": "'='"
+
+@errors
+    expr: "an expression"
+
+@trivia NEWLINE
+
+@repair
+    holes      IDENT
+    structure  NEWLINE
+
+@conflicts
+    shift  stmt → IF infix THEN stmt       1   # else binds to the nearest if
+    shift  stmt → UNLESS infix THEN stmt   1   # the same for unless
+
+program! = stmts                            → (module ...1)
+
+stmts    = stmt                             → (1)
+         | stmts NEWLINE stmt               → (...1 3)
+         | stmts NEWLINE                    → 1
+
+stmt     = target:name eq:"=" value:expr    → (set)
+         | name "+=" expr                   → (set += 1 value:3)
+         | LET IDENT "+=" expr              → (set op:+= target:(name 2) value:4)
+         | LET name:IDENT [":" type:name] "=" value:expr
+                                            → (let)
+         | (IF | UNLESS):kw cond:expr THEN then:stmt
+           [ELSE else:stmt]                 → (if)
+         | FOR PTR var:IDENT ["," index:IDENT] IN iter:expr DO body:stmt
+                                            → (for mode:ptr)
+         | FOR var:IDENT IN iter:expr DO body:stmt
+                                            → (for mode:_)
+         | CALL callee:IDENT "(" args:[L(expr)] ")"
+                                            → (call)
+         | SWAP "(" IDENT "," IDENT ")" WITH "(" IDENT "," IDENT ")"
+                                            → (swap 3 5 9 11)
+         | RETURN [value:expr]              → (return)
+         | YIELD value:(IDENT | INTEGER)?    → (yield)
+         | PASS _:IDENT                     → (pass)
+         | PASS "(" IDENT ")"               → (pass)  ~ "the name is only a comment"
+         | expr                             → 1
+
+name     = IDENT                            → (name 1)
+
+expr     = @infix
+
+atom     = name                             → 1
+         | INTEGER                           → (num 1)
+         | "-" INTEGER                       → (neg value:(num 2))
+         | "(" expr ")"                     → 2
+         | "[" [L(expr)] "]"                → (array ...2)
+
+@infix atom
+    "+" left, "-" left
+    "*" left, "/" left

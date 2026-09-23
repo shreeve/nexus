@@ -19,6 +19,7 @@ const GrammarLowerer = frontend.GrammarLowerer;
 const LexerGenerator = @import("lexgen/lexgen.zig").LexerGenerator;
 const Grammar = @import("grammar.zig").Grammar;
 const expand = @import("expand.zig");
+const semantics = @import("semantics.zig");
 const check = @import("check.zig");
 const lr = @import("lr/lr.zig");
 const codegen = @import("codegen/codegen.zig");
@@ -224,10 +225,27 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
         defer g.deinit();
-        expand.processGrammar(&g, &ir, .{ .path = grammarFile }) catch |err| {
+        // Schema mode: resolve every action against @schema first.
+        var sem: ?semantics.Result = null;
+        if (ir.schema != null) sem = semantics.resolve(allocator, &ir, &lexerParser.spec, grammarFile) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
             fail();
         };
+        expand.processGrammar(&g, &ir, .{
+            .path = grammarFile,
+            .resolved = if (sem) |s| s.resolved else null,
+            .infix = if (sem) |s| s.infix else null,
+        }) catch |err| {
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            fail();
+        };
+        if (sem) |s| {
+            g.schema = s.schema;
+            semantics.checkTypes(allocator, &g, grammarFile) catch |err| {
+                if (err == error.OutOfMemory) diag.err("out of memory", .{});
+                fail();
+            };
+        }
 
         // Validate all referenced symbols are defined
         const validationErrors = check.validateSymbols(&g, &lexerParser.spec);

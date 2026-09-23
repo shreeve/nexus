@@ -396,7 +396,7 @@
         (ref `pair_line`))
       (list
         (spread `1`)
-        (pos `3`))))
+        (spread `3`))))
   (rule
     (name `pair_line`)
     (alt

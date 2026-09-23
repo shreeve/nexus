@@ -1,0 +1,8 @@
+(module
+  (if `if` (name `x`) (set _ (name `y`) (num `1`)) _)
+  (if `unless` (name `x`) (return _) (return (num `5`)))
+  (if
+    `if`
+    (name `a`)
+    (if `if` (name `b`) (set _ (name `c`) (num `1`)) (set _ (name `d`) (num `2`)))
+    _))
