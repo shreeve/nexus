@@ -42,6 +42,10 @@ pub fn processGrammar(g: *Grammar, ir: *const GrammarIR) !void {
         const lhsId = g.getSymbol(rule.name).?;
 
         for (rule.alternatives) |alt| {
+            // `X! = X` only declares X a start symbol; as a rule it would be
+            // the cycle X → X.
+            if (rule.isStart and isSelfReference(rule.name, alt)) continue;
+
             // Expand consecutive opt_groups into explicit alternatives
             const expandedAlts = try expandOptionalGroups(g, alt);
 
@@ -77,30 +81,20 @@ pub fn processGrammar(g: *Grammar, ir: *const GrammarIR) !void {
     if (ir.startSymbols.len > 0) {
         for (ir.startSymbols) |startName| {
             if (g.getSymbol(startName)) |startId| {
-                // Create marker terminal "X!"
+                // Marker terminal "X!": the parser injects it as the first
+                // token of parseX, selecting X's accept rule. It appears only
+                // in that rule, so it is never a lookahead and adds no states
+                // or conflicts to the grammar proper.
                 const markerName = try std.fmt.allocPrint(g.allocator, "{s}!", .{startName});
                 const markerId = try g.addSymbol(markerName, .terminal);
-
-                // Prepend marker to start rule
-                for (g.rules.items) |*rule| {
-                    if (rule.lhs == startId) {
-                        var newRhs: std.ArrayListUnmanaged(u16) = .empty;
-                        try newRhs.append(g.allocator, markerId);
-                        for (rule.rhs) |sym| {
-                            try newRhs.append(g.allocator, sym);
-                        }
-                        rule.rhs = try newRhs.toOwnedSlice(g.allocator);
-                        rule.actionOffset = 1;
-                        break;
-                    }
-                }
 
                 // Create unique accept symbol
                 const acceptName = try std.fmt.allocPrint(g.allocator, "$accept_{s}", .{startName});
                 const uniqueAcceptId = try g.addSymbol(acceptName, .nonterminal);
 
-                // Create augmented rule: $accept_X → startSymbol EOF
+                // Create augmented rule: $accept_X → X! X EOF
                 var acceptRhs: std.ArrayListUnmanaged(u16) = .empty;
+                try acceptRhs.append(g.allocator, markerId);
                 try acceptRhs.append(g.allocator, startId);
                 try acceptRhs.append(g.allocator, g.endId);
 
@@ -143,11 +137,21 @@ pub fn processGrammar(g: *Grammar, ir: *const GrammarIR) !void {
     g.opMappings = ir.opMappings;
     g.lang = ir.lang;
     g.expectConflicts = ir.expectConflicts;
+    g.conflicts = ir.conflicts;
+    g.errorNames = ir.errorNames;
+    g.repair = ir.repair;
 
     // Generate infix expression chain if @infix was declared
     if (ir.infix) |infix| {
         if (infix.ops.len > 0) try generateInfixChain(g, infix);
     }
+}
+
+/// Whether an alternative is exactly its own rule's name (`X = X`).
+fn isSelfReference(name: []const u8, alt: ParsedAlternative) bool {
+    if (alt.elements.len != 1) return false;
+    const elem = alt.elements[0];
+    return elem.kind == .ident and elem.quantifier == .one and std.mem.eql(u8, elem.value, name);
 }
 
 fn isAliasRule(rule: ParsedRule) ?[]const u8 {

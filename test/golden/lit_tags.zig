@@ -1099,7 +1099,7 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
-        0 => self.sexpSpread(.@"module", pass[1]),
+        0 => self.sexpSpread(.@"module", pass[0]),
         1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         3 => pass[0],
@@ -1111,21 +1111,21 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
 }
 
 const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 5, 13 };
-const ruleLen = [_]u8{ 2, 1, 3, 2, 3, 3, 3, 2 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 3, 3, 3 };
 
 // Parse table: 15 states x 14 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
 const numStates = 15;
 
 const sparse = [numStates][]const i16{
-    &.{3,1,12,2},
-    &.{1,-1},
-    &.{4,4,5,6,7,5},
+    &.{12,1},
+    &.{3,2,4,3,5,5,7,4},
     &.{1,-1},
     &.{1,-2,6,7},
     &.{8,8,10,10,11,9},
     &.{1,-3,6,-3},
-    &.{1,-5,5,11,6,-5,7,5},
+    &.{1,-1},
+    &.{1,-5,5,11,6,-5,7,4},
     &.{9,12},
     &.{9,13},
     &.{9,14},
