@@ -229,15 +229,55 @@ pub const Dfa = struct {
         return self.trans[state * self.classes.count + self.classes.classOf[byte]];
     }
 
+    /// A shortest input accepted from start configuration `start` (breadth
+    /// first over states), or null if none is.
+    pub fn shortestAccepted(self: *const Dfa, gpa: Allocator, start: u32) !?[]u8 {
+        const nc = self.classes.count;
+        const prev = try gpa.alloc(u32, self.numStates);
+        defer gpa.free(prev);
+        const via = try gpa.alloc(u8, self.numStates);
+        defer gpa.free(via);
+        @memset(prev, none);
+        const s0 = self.starts[start];
+        var queue: std.ArrayListUnmanaged(u32) = .empty;
+        defer queue.deinit(gpa);
+        try queue.append(gpa, s0);
+        prev[s0] = s0;
+        var qi: usize = 0;
+        while (qi < queue.items.len) : (qi += 1) {
+            const s = queue.items[qi];
+            if (self.accept[s] != none and s != s0) {
+                var bytes: std.ArrayListUnmanaged(u8) = .empty;
+                var t = s;
+                while (t != s0) : (t = prev[t]) try bytes.append(gpa, via[t]);
+                std.mem.reverse(u8, bytes.items);
+                return try bytes.toOwnedSlice(gpa);
+            }
+            for (0..nc) |c| {
+                const t = self.trans[s * nc + c];
+                if (t == none or prev[t] != none) continue;
+                prev[t] = s;
+                via[t] = self.classes.rep[c];
+                try queue.append(gpa, t);
+            }
+        }
+        return null;
+    }
+
     pub fn deinit(self: *Dfa, gpa: Allocator) void {
         gpa.free(self.trans);
         gpa.free(self.accept);
         gpa.free(self.starts);
     }
 
-    /// Longest match from `start` over `input`: (rule, length), or null.
+    /// Longest match from start configuration `start` over `input`.
     pub fn longestMatch(self: *const Dfa, start: u32, input: []const u8) ?Match {
-        var s = self.starts[start];
+        return self.longestMatchFrom(self.starts[start], input);
+    }
+
+    /// Longest match from DFA state `state` over `input`: (rule, length), or null.
+    pub fn longestMatchFrom(self: *const Dfa, state: u32, input: []const u8) ?Match {
+        var s = state;
         var best: ?Match = null;
         for (input, 0..) |b, i| {
             s = self.next(s, b);

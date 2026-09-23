@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """Generated-lexer property test.
 
-Random lexer specs (random regex patterns, some with trailing context or the
-skip action) are turned into grammars, generated with bin/nexus, compiled
-together into one driver, and run over random inputs. Every token stream is
-compared with a reference computed here from the definition of the lexer:
-skip spaces/tabs into `pre`, longest match over all rules (ties to the
-earlier rule; trailing context counts toward the match), `err` for one
-unmatched byte, `eof` at the end. Match lengths come from a
-set-of-positions matcher over the random ASTs, independent of the
-generator's automaton.
+Random lexer specs are turned into grammars, generated with bin/nexus,
+compiled together into one driver, and run over random inputs. A spec has
+random patterns (some with trailing context or the skip action), guards on a
+state variable and on `pre`, actions that set the state variable, and
+sometimes a zero-width rule. Every token stream is compared with a
+reference computed here from the definition of the lexer: skip spaces/tabs
+into `pre`, try the zero-width rule, then the longest match over the rules
+whose guards hold at the token's start (ties to the earlier rule; trailing
+context counts toward the match), `err` for one unmatched byte, `eof` at
+the end. Match lengths come from a set-of-positions matcher over the random
+ASTs, independent of the generator's automaton.
 
     test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N] [--keep DIR]
 """
@@ -71,18 +73,36 @@ def lengths(n):
         a, b = lengths(n.args[0])
         return (a * n.args[1], None if b is None else b * n.args[2])
 
+GUARDS = [None, None, None, "m", "!m", "pre", "!pre", "m & pre"]
+
 def make_spec(rng):
     rules = []
     for i in range(rng.randrange(1, 6)):
         main = gen(rng)
-        rule = {"main": main, "trail": None, "skip": False}
+        rule = {"main": main, "trail": None, "skip": False, "guard": rng.choice(GUARDS),
+                "set": rng.choice([None, None, 0, 1])}
         r = rng.random()
         if r < 0.15:
             rule["trail"] = gen(rng)
         elif r < 0.22:
             rule["skip"] = True
         rules.append(rule)
-    return rules
+    # Sometimes a zero-width rule: 2+ blanks mid-token-stream.
+    zw = {"guard": rng.choice(["pre > 1", "pre > 1 & !m"]), "set": rng.choice([None, 0, 1])} if rng.random() < 0.3 else None
+    return {"rules": rules, "zw": zw}
+
+def holds(guard, m, pre):
+    if guard is None: return True
+    ok = True
+    for g in guard.split(" & "):
+        g = g.strip()
+        if g == "m": ok = ok and m != 0
+        elif g == "!m": ok = ok and m == 0
+        elif g == "pre": ok = ok and pre != 0
+        elif g == "!pre": ok = ok and pre == 0
+        elif g == "pre > 1": ok = ok and pre > 1
+        else: raise ValueError(g)
+    return ok
 
 def ends(n, s, starts):
     """Set of positions e such that s[p:e] matches n for some p in starts
@@ -118,18 +138,23 @@ def ends(n, s, starts):
             if not cur: break
         return result
 
-def reference(rules, src):
+def reference(spec, src):
     """Token stream per the lexer definition: list of (cat, pos, len, pre)."""
+    rules, zw = spec["rules"], spec["zw"]
     out = []
-    p = 0; n = len(src)
+    p = 0; n = len(src); m = 0
     ws_start = p
     while True:
         while p < n and src[p] in " \t": p += 1
         pre = min(p - ws_start, 255)
+        if zw is not None and holds(zw["guard"], m, pre):
+            if zw["set"] is not None: m = zw["set"]
+            out.append(("zw", ws_start, p - ws_start, pre)); ws_start = p; continue
         if p >= n:
             out.append(("eof", p, 0, pre)); return out
         best = None
         for i, r in enumerate(rules):
+            if not holds(r["guard"], m, pre): continue
             e = ends(r["main"], src, {p})
             if r["trail"] is not None: e = ends(r["trail"], src, e)
             e.discard(p)
@@ -143,16 +168,22 @@ def reference(rules, src):
         if rules[i]["trail"] is not None:
             mlen = lengths(rules[i]["main"]); tlen = lengths(rules[i]["trail"])
             tok = mlen[0] if mlen[0] == mlen[1] else L - tlen[0]
+        if rules[i]["set"] is not None: m = rules[i]["set"]
         if rules[i]["skip"]:
             p += tok; continue          # skipped bytes count toward pre
         out.append(("t%d" % i, p, tok, pre)); p += tok; ws_start = p
 
-def grammar(rules):
-    lines = ["@lexer", "tokens"]
-    lines += ["    t%d" % i for i in range(len(rules))] + ["    eof", "    err"]
+def grammar(spec):
+    rules, zw = spec["rules"], spec["zw"]
+    lines = ["@lexer", "state", "    m = 0", "tokens"]
+    lines += ["    t%d" % i for i in range(len(rules))] + ["    zw", "    eof", "    err"]
+    if zw is not None:
+        lines.append("@ %s → zw%s" % (zw["guard"], "" if zw["set"] is None else ", {m = %d}" % zw["set"]))
     for i, r in enumerate(rules):
         pat = nexus(r["main"]) + (" / " + nexus(r["trail"]) if r["trail"] else "")
-        lines.append("%s → t%d%s" % (pat, i, ", skip" if r["skip"] else ""))
+        guard = " @ " + r["guard"] if r["guard"] else ""
+        acts = ("" if r["set"] is None else ", {m = %d}" % r["set"]) + (", skip" if r["skip"] else "")
+        lines.append("%s%s → t%d%s" % (pat, guard, i, acts))
     lines += [".  → err", "@parser", "top! = ERR → 1", ""]
     return "\n".join(lines)
 
@@ -172,7 +203,7 @@ def main():
     specs = []; rejected = 0; attempts = 0
     while len(specs) < a.specs:
         attempts += 1
-        rules = make_spec(rng)
+        rules = make_spec(rng)  # a spec: rules plus an optional zero-width rule
         k = len(specs)
         d = os.path.join(work, "m%d" % k); os.makedirs(d, exist_ok=True)
         g = os.path.join(d, "g.grammar")
@@ -182,7 +213,7 @@ def main():
             msg = r.stderr.strip().splitlines()[-1]
             # Specs the generator rightly rejects (dead rule, empty match,
             # trailing context with no fixed side) are regenerated.
-            if not any(s in msg for s in ("can never match", "matches the empty string", "must not match the empty string", "fixed-length", "space or tab", "zero-width")):
+            if not any(s in msg for s in ("can never match", "matches the empty string", "must not match the empty string", "can be empty", "fixed-length", "space or tab", "zero-width", "never all true")):
                 print("unexpected generation error:", msg, "\n" + grammar(rules)); sys.exit(1)
             rejected += 1
             continue

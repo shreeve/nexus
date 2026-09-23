@@ -187,7 +187,9 @@ Mode resolution per group:
 @code = checkPatternMode
 ```
 
-Imports a function from the lang module into the generated lexer.
+Adds `pub fn checkPatternMode(self) bool` to the generated lexer, calling
+`lang.checkPatternMode(source, pos)` at the current position (for the lang
+`Lexer` wrapper).
 
 ## Grammar Authoring Patterns
 

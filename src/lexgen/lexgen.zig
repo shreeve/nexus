@@ -58,7 +58,6 @@ pub const LexerGenerator = struct {
     simdUsed: bool = false,
 
     // Analysis results
-    patterns: []?regex.Pattern = &.{},
     /// Spec indices of the rules in the DFA (consuming rules), in priority order.
     consuming: []u32 = &.{},
     atoms: []Atom = &.{},
@@ -137,13 +136,11 @@ pub const LexerGenerator = struct {
         const a = self.arena.allocator();
         const rules = self.spec.rules.items;
 
-        self.patterns = try a.alloc(?regex.Pattern, rules.len);
         var consuming: std.ArrayListUnmanaged(u32) = .empty;
         var ends: std.ArrayListUnmanaged(TokenEnd) = .empty;
         var fulls: std.ArrayListUnmanaged(*const regex.Node) = .empty;
         for (rules, 0..) |*r, i| {
             if (r.pattern.len == 0) {
-                self.patterns[i] = null;
                 try self.checkZeroWidth(r);
                 continue;
             }
@@ -152,7 +149,6 @@ pub const LexerGenerator = struct {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidPattern => return self.fail(r, d.offset, "{s}", .{d.message}),
             };
-            self.patterns[i] = p;
             const full = try p.full(a);
             try ends.append(a, try self.checkConsuming(r, p, full));
             try consuming.append(a, @intCast(i));
@@ -296,6 +292,9 @@ pub const LexerGenerator = struct {
         var end: TokenEnd = .whole;
         if (p.trail) |t| {
             if (r.rewind != null) return self.fail(r, 0, "use either trailing context '/' or rewind(n), not both", .{});
+            if (regex.nullable(p.main) and regex.fixedLen(p.main) != 0) {
+                return self.fail(r, 0, "the token before '/' can be empty; write it so it always consumes a byte (or use hold for a zero-width token)", .{});
+            }
             if (regex.fixedLen(p.main)) |k| {
                 end = if (k == 0) .start else .{ .fromStart = k };
             } else if (regex.fixedLen(t)) |k| {
@@ -333,8 +332,8 @@ pub const LexerGenerator = struct {
     /// Every consuming rule must win for some input in some configuration;
     /// a rule shadowed everywhere is dead code in the grammar.
     fn checkReachable(self: *LexerGenerator, fulls: []const *const regex.Node) !void {
-        _ = fulls;
-        const winners = try self.arena.allocator().alloc(bool, self.consuming.len);
+        const a = self.arena.allocator();
+        const winners = try a.alloc(bool, self.consuming.len);
         @memset(winners, false);
         for (self.dfa.accept) |acc| {
             if (acc != automaton.none) winners[acc] = true;
@@ -342,8 +341,16 @@ pub const LexerGenerator = struct {
         for (winners, 0..) |w, k| {
             if (w) continue;
             const r = &self.spec.rules.items[self.consuming[k]];
-            // Find an earlier rule that shadows it, for the message.
-            return self.fail(r, 0, "this rule can never match: for every input it matches, an earlier rule matches the same text (longest match, ties to the earlier rule)", .{});
+            // Name the rule that wins a shortest text this one matches, in a
+            // configuration where this one is live.
+            const mask = for (self.startOfMask, 0..) |_, m| {
+                if (self.guardsHold(r.guards, m)) break m;
+            } else return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
+            var single = try automaton.build(a, .{ .patterns = fulls[k .. k + 1], .starts = &.{&[_]u32{0}} });
+            const text = (try single.shortestAccepted(a, 0)).?;
+            const m = self.dfa.longestMatchFrom(self.startOfMask[mask], text).?;
+            const winner = &self.spec.rules.items[self.consuming[m.rule]];
+            return self.fail(r, 0, "this rule can never match: on every text it matches, an earlier rule matches as much (e.g. \"{f}\" goes to the rule on line {d}; longest match, ties to the earlier rule)", .{ std.zig.fmtString(text), winner.line });
         }
     }
 
@@ -584,13 +591,11 @@ pub const LexerGenerator = struct {
             try w.print("\n    const cls{d} = blk: {{\n        var t: [256]bool = @splat(false);\n", .{i});
             var rbuf: [128]Range = undefined;
             var b1: [8]u8 = undefined;
-            var b2: [8]u8 = undefined;
             for (ranges(set, &rbuf)) |r| {
                 if (r.lo == r.hi) {
                     try w.print("        t[{s}] = true;\n", .{byteLit(&b1, r.lo)});
                 } else {
                     try w.print("        for ({s}..{d}) |c| t[c] = true;\n", .{ byteLit(&b1, r.lo), @as(u16, r.hi) + 1 });
-                    _ = &b2;
                 }
             }
             try w.writeAll("        break :blk t;\n    };\n");
