@@ -50,6 +50,7 @@ pub const GrammarLowerer = struct {
     displayNames: std.ArrayListUnmanaged(DisplayName) = .empty,
     infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
     infixBase: ?[]const u8 = null,
+    infixLoc: diag.Source.Loc = .{ .line = 0, .col = 0 },
     lang: ?[]const u8 = null,
     expectConflicts: ?u32 = null,
     conflicts: std.ArrayListUnmanaged(ConflictEntry) = .empty,
@@ -77,6 +78,8 @@ pub const GrammarLowerer = struct {
             .infix = if (self.infixBase) |base| InfixDecl{
                 .baseRule = base,
                 .ops = try self.infixOps.toOwnedSlice(allocator),
+                .line = self.infixLoc.line,
+                .col = self.infixLoc.col,
             } else null,
             .lang = self.lang,
             .expectConflicts = self.expectConflicts,
@@ -295,7 +298,8 @@ pub const GrammarLowerer = struct {
 
     fn lowerAs(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         if (items.len < 4) return self.shapeError(node, "(as TOKEN VIA AS_ENTRY+)");
-        const token = try self.requireSrc(items[1], "@as token");
+        // The token is stored as its TokenCat name (`IDENT` → `ident`).
+        const token = try std.ascii.allocLowerString(self.allocator, try self.requireSrc(items[1], "@as token"));
         const sharedVia = try self.optSrc(items[2], "@as lookup function");
         var groups: usize = 0;
         for (items[3..]) |entry| {
@@ -364,6 +368,7 @@ pub const GrammarLowerer = struct {
         if (items.len < 3) return self.shapeError(node, "(infix IDENT LEVEL+)");
         if (self.infixBase != null) return self.fail(node, "duplicate @infix", .{});
         self.infixBase = try self.requireSrc(items[1], "@infix base expression");
+        self.infixLoc = self.loc(node);
         var prec: u32 = 1;
         for (items[2..]) |level| {
             const lt = try self.requireTag(level, .level);

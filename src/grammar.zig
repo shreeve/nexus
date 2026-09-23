@@ -416,6 +416,9 @@ pub const RepairSpec = struct {
 pub const InfixDecl = struct {
     baseRule: []const u8,
     ops: []const InfixOp,
+    /// Source position of the `@infix` directive (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// @as directive for token-to-rule mapping (uses @lang module)

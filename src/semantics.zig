@@ -146,7 +146,7 @@ const Resolver = struct {
         if (self.ir.infix) |decl| for (decl.ops) |op| {
             const items = try a.dupe(ActionItem, &.{ .{ .elem = .{ .ref = 1 } }, .{ .elem = .{ .ref = 3 } } });
             const list: ActionList = .{ .head = .{ .tag = op.op }, .items = items };
-            const ctx: Ctx = .{ .rule = "@infix", .line = 0, .col = 0 };
+            const ctx: Ctx = .{ .rule = "@infix", .line = decl.line, .col = decl.col };
             try infix.append(a, .{ .tree = .{ .list = try self.place(ctx, list, &.{}, null) }, .kind = self.kindIndex.get(op.op) });
         };
 
