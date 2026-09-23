@@ -127,12 +127,9 @@ pub fn main(init: std.process.Init) !void {
 fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?[]const u8) !void {
     const sourceText = try readGrammar(allocator, io, grammarFile);
 
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
-        diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
-        if (err == error.ParseError) {
-            diag.info("  (hint: run `./bin/nexus {s} /tmp/out.zig` for parser-generator diagnostics)", .{grammarFile});
-        }
-        return;
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+        if (err != error.ParseError) diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
+        fail();
     };
     defer parsed.parser.deinit();
 
@@ -199,15 +196,15 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     }
     diag.info("   Parsing @parser section...", .{});
 
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
-        diag.err("failed to parse @parser section: {any}", .{err});
-        return;
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+        if (err != error.ParseError) diag.err("failed to parse the @parser section of {s}: {any}", .{ grammarFile, err });
+        fail();
     };
     defer parsed.parser.deinit();
 
-    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
-        diag.err("lowering failed: {any}", .{err});
-        return;
+    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.source) catch |err| {
+        if (err == error.OutOfMemory) diag.err("out of memory", .{});
+        fail();
     };
 
     if (ir.lang == null) ir.lang = lexerParser.spec.langName;
@@ -274,6 +271,11 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     try writeOutput(io, opts.outputFile, finalCode);
     diag.info("Generated: {s}", .{opts.outputFile});
+}
+
+/// Exit with status 1 after the error has been reported.
+fn fail() noreturn {
+    std.process.exit(1);
 }
 
 fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {

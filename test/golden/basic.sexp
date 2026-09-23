@@ -11,30 +11,35 @@
     (alt
       _
       ((ref `body`))
-      `(module ...1)`))
+      (node
+        `module`
+        (spread `1`))))
   (rule
     (start `expr`)
     (alt
       _
       ((ref `expr`))
-      `1`))
+      (pos `1`)))
   (rule
     (name `body`)
     (alt
       _
       ((ref `stmt`))
-      `(1)`)
+      (list
+        (pos `1`)))
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`)
         (ref `stmt`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`)))
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`))
-      `1`))
+      (pos `1`)))
   (rule
     (name `stmt`)
     (alt
@@ -51,7 +56,9 @@
       _
       ((lit `"-"`)
         (ref `unary`))
-      `(neg 2)`)
+      (node
+        `neg`
+        (pos `2`)))
     (alt
       _
       ((ref `atom`))))
@@ -68,7 +75,7 @@
       ((lit `"("`)
         (ref `expr`)
         (lit `")"`))
-      `2`))
+      (pos `2`)))
   (infix
     `unary`
     (level

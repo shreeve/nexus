@@ -11,25 +11,33 @@
     (alt
       _
       ((ref `forms`))
-      `(program ...1)`))
+      (node
+        `program`
+        (spread `1`))))
   (rule
     (start `form`)
     (alt
       _
       ((ref `form`))
-      `1`))
+      (pos `1`)))
   (rule
     (name `forms`)
     (alt
       _
       ((ref `forms`)
         (ref `form`))
-      `(...1 2)`)
+      (list
+        (spread `1`)
+        (pos `2`)))
     (alt
       _
       ((ref `form`))
-      `(1)`)
-    (alt _ () `()`))
+      (list
+        (pos `1`)))
+    (alt
+      _
+      ()
+      (list)))
   (rule
     (name `form`)
     (alt
@@ -76,27 +84,39 @@
     (alt
       _
       ((tok `INTEGER`))
-      `(int 1)`)
+      (node
+        `int`
+        (pos `1`)))
     (alt
       _
       ((tok `REAL`))
-      `(real 1)`)
+      (node
+        `real`
+        (pos `1`)))
     (alt
       _
       ((tok `STRING`))
-      `(string 1)`)
+      (node
+        `string`
+        (pos `1`)))
     (alt
       _
       ((tok `CHAR`))
-      `(char 1)`)
+      (node
+        `char`
+        (pos `1`)))
     (alt
       _
       ((tok `KEYWORD`))
-      `(keyword 1)`)
+      (node
+        `keyword`
+        (pos `1`)))
     (alt
       _
       ((tok `IDENT`))
-      `(symbol 1)`))
+      (node
+        `symbol`
+        (pos `1`))))
   (rule
     (name `list_form`)
     (alt
@@ -104,7 +124,9 @@
       ((lit `"("`)
         (ref `forms`)
         (lit `")"`))
-      `(list ...2)`))
+      (node
+        `list`
+        (spread `2`))))
   (rule
     (name `vector_form`)
     (alt
@@ -112,7 +134,9 @@
       ((lit `"["`)
         (ref `forms`)
         (lit `"]"`))
-      `(vector ...2)`))
+      (node
+        `vector`
+        (spread `2`))))
   (rule
     (name `map_form`)
     (alt
@@ -120,7 +144,9 @@
       ((lit `"{"`)
         (ref `forms`)
         (lit `"}"`))
-      `(map ...2)`))
+      (node
+        `map`
+        (spread `2`))))
   (rule
     (name `set_form`)
     (alt
@@ -128,42 +154,54 @@
       ((lit `"#{"`)
         (ref `forms`)
         (lit `"}"`))
-      `(set ...2)`))
+      (node
+        `set`
+        (spread `2`))))
   (rule
     (name `quote_form`)
     (alt
       _
       ((lit `"'"`)
         (ref `form`))
-      `(quote 2)`))
+      (node
+        `quote`
+        (pos `2`))))
   (rule
     (name `syntax_quote_form`)
     (alt
       _
       ((lit `"\`"`)
         (ref `form`))
-      `(syntax-quote 2)`))
+      (node
+        `syntax-quote`
+        (pos `2`))))
   (rule
     (name `unquote_form`)
     (alt
       _
       ((lit `"~"`)
         (ref `form`))
-      `(unquote 2)`))
+      (node
+        `unquote`
+        (pos `2`))))
   (rule
     (name `unquote_splicing_form`)
     (alt
       _
       ((lit `"~@"`)
         (ref `form`))
-      `(unquote-splicing 2)`))
+      (node
+        `unquote-splicing`
+        (pos `2`))))
   (rule
     (name `deref_form`)
     (alt
       _
       ((lit `"@"`)
         (ref `form`))
-      `(deref 2)`))
+      (node
+        `deref`
+        (pos `2`))))
   (rule
     (name `anon_fn_form`)
     (alt
@@ -171,14 +209,18 @@
       ((lit `"#("`)
         (ref `forms`)
         (lit `")"`))
-      `(anon-fn ...2)`))
+      (node
+        `anon-fn`
+        (spread `2`))))
   (rule
     (name `discard_form`)
     (alt
       _
       ((lit `"#_"`)
         (ref `form`))
-      `(discard 2)`))
+      (node
+        `discard`
+        (pos `2`))))
   (rule
     (name `meta_form`)
     (alt
@@ -186,4 +228,7 @@
       ((lit `"^"`)
         (ref `form`)
         (ref `form`))
-      `(with-meta-raw 3 2)`)))
+      (node
+        `with-meta-raw`
+        (pos `3`)
+        (pos `2`)))))

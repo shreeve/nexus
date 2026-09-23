@@ -1,9 +1,5 @@
 # L(X, sep) — a list with an explicit separator — generates and parses.
 #
-# Today: the frontend emits the separator wrapped in a list
-# (`sep_term = STRING → (1)`), the lowerer requires a bare src, and
-# generation fails with "shape error ...: expected separator" (exit 0).
-# L(X, sep) and L(X?, sep) are therefore unusable.
 # Found while building the test harness.
 
 @lexer

@@ -1,11 +1,8 @@
-# error: zero_action.grammar:23:
+# error: zero_action.grammar:20:49:
 #
 # `0` is not an element position: `→ 0` and `→ (0 1 2)` are rejected with a
-# location. (README documents `0` as "the rule name as tag"; if 1.0 keeps
-# that meaning instead, turn this into a run test.)
+# location.
 #
-# Today: `→ 0` is silently ignored (default action), and `(0 1 2)` emits a
-# tag literally named "0".
 # (architecture.md Appendix A: nest.grammar; SPEC §3.2, §8.11)
 
 @lexer

@@ -11,30 +11,35 @@
     (alt
       _
       ((ref `body`))
-      `(module ...1)`))
+      (node
+        `module`
+        (spread `1`))))
   (rule
     (start `expr`)
     (alt
       _
       ((ref `expr`))
-      `1`))
+      (pos `1`)))
   (rule
     (name `body`)
     (alt
       _
       ((ref `stmt`))
-      `(1)`)
+      (list
+        (pos `1`)))
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`)
         (ref `stmt`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`)))
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`))
-      `1`))
+      (pos `1`)))
   (rule
     (name `stmt`)
     (alt
@@ -47,7 +52,10 @@
       ((ref `call`)
         (lit `"="`)
         (ref `expr`))
-      `(assign 1 3)`)
+      (node
+        `assign`
+        (pos `1`)
+        (pos `3`)))
     (alt
       _
       ((at_ref `infix`))))
@@ -59,7 +67,10 @@
         (lit `"("`)
         (ref `args`)
         (lit `")"`))
-      `(call 1 ...3)`)
+      (node
+        `call`
+        (pos `1`)
+        (spread `3`)))
     (alt
       _
       ((ref `atom`))))
@@ -70,8 +81,12 @@
       ((list_req
           `L`
           (plain `expr`)))
-      `(...1)`)
-    (alt _ () `()`))
+      (list
+        (spread `1`)))
+    (alt
+      _
+      ()
+      (list)))
   (rule
     (name `atom`)
     (alt
@@ -88,7 +103,7 @@
       ((lit `"("`)
         (ref `expr`)
         (lit `")"`))
-      `2`))
+      (pos `2`)))
   (infix
     `call`
     (level

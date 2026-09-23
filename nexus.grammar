@@ -1,128 +1,90 @@
-# nexus.grammar — Nexus grammar DSL, parsed by Nexus itself (self-hosting).
+# nexus.grammar: the @parser section of a Nexus grammar file, described in
+# Nexus's own format (self-hosting).
 #
-# This grammar defines the `.grammar` file format so Nexus can generate its own
-# frontend parser. The emitted parser produces an S-expression tree that the
-# Nexus engine lowers directly into GrammarIR. The lexer half of a `.grammar`
-# file remains scanned by Nexus's hand-written LexerParser; this file describes
-# only the `@parser` section and the top-level directive syntax.
+# Nexus generates its frontend parser (src/frontend/parser.zig) from this
+# file, with src/frontend/lang.zig as the @lang module. The frontend turns
+# the text after `@parser` into the S-expression tree documented below,
+# which src/frontend/lower.zig lowers into the grammar IR. The lexer wrapper
+# in lang.zig handles layout, comments, labels, contextual keywords, and
+# action scanning; see its header for the token stream this grammar reads.
 #
 # -----------------------------------------------------------------------------
-# Canonical S-expression schema (authoritative contract with the lowerer)
+# Canonical S-expression schema (the contract with the lowerer)
 # -----------------------------------------------------------------------------
 #
-# Every successful parse of a `.grammar` file's @parser section yields:
+# SRC is a source leaf; `_` is nil. Trailing nil children are omitted from
+# every list (the frontend is a schema-less grammar), so a shape written
+# `(t A B?)` has one or two children.
 #
-#     (grammar ENTRY ENTRY ...)
-#
-# Trivia (comments, blank lines) never appear in the tree. Each ENTRY is one
-# directive sexp or one rule sexp.
+#     (grammar ENTRY ...)                   one ENTRY per directive or rule
 #
 # --- Directives ---
 #
-#     (lang      STRING-src)
-#     (conflicts INTEGER-src)
-#     (code      IDENT-src CODE_BLOCK-src)
-#     (as        IDENT-src AS_ENTRY AS_ENTRY ...)
-#     (op        OP_MAP OP_MAP ...)
-#     (errors    ERROR_NAME ERROR_NAME ...)
-#     (infix     IDENT-src LEVEL LEVEL ...)
+#     (lang      STRING)
+#     (conflicts INTEGER)                   `@conflicts = N` (legacy count)
+#     (manifest  CONFLICT ...)              `@conflicts` block
+#     (as        TOKEN VIA AS_ENTRY ...)    VIA: _ or IDENT (the `via` function)
+#     (op        OP_MAP ...)
+#     (errors    NAME_PAIR ...)
+#     (display   NAME_PAIR ...)
+#     (infix     IDENT LEVEL ...)
+#     (schema    KIND_DECL ...)
+#     (tags      NAME ...)                  NAME: IDENT, TOKEN or STRING
+#     (trivia    NAME ...)
+#     (repair    REPAIR_LINE ...)
 #
-# AS_ENTRY:
-#     (as_entry KIND IDENT-src)      # KIND ∈ _ | perm
-#                                    #   _    bare IDENT  (strict / shift-only)
-#                                    #   perm IDENT!      permissive (reduce-aware)
-#
-# OP_MAP:     (op_map STRING-src STRING-src)
-# ERROR_NAME: (error_name IDENT-or-TOKEN-src STRING-src)
-# LEVEL:      (level INFIX_OP INFIX_OP ...)
-# INFIX_OP:   (infix_op STRING-src ASSOC-src)     # ASSOC ∈ left | right | none
+#     CONFLICT:    (conflict KIND CRULE OVER? COUNT? REASON?)
+#                  KIND: IDENT (shift|reduce); OVER: _ or CRULE;
+#                  COUNT: INTEGER; REASON: COMMENT
+#     CRULE:       (crule LHS SYM ...)      SYM: IDENT, TOKEN, STRING or EPSILON
+#     AS_ENTRY:    (as_entry PERM IDENT VIA?)   PERM: _ or perm (`name!`)
+#     OP_MAP:      (op_map STRING STRING)
+#     NAME_PAIR:   (name_pair KEY STRING)   KEY: LABEL (`name:`) or STRING
+#     LEVEL:       (level INFIX_OP ...)
+#     INFIX_OP:    (infix_op STRING ASSOC)  ASSOC: left, right, none or IDENT
+#     KIND_DECL:   (kind_decl (kinds NAME ...) (roles ROLE ...) SIDES? WRAPPER?)
+#                  SIDES: _ or (sides IDENT ...); WRAPPER: wrapper
+#     ROLE:        (role REST NAME TYPE? OPT?)   REST: _ or rest; OPT: opt
+#     TYPE:        (type ATOM ...)          ATOM: IDENT, STRING, or
+#                  (tagset IDENT VALUE ...)  for `tag(a|b)`
+#     REPAIR_LINE: (repair_line IDENT NAME ...)
 #
 # --- Rules ---
 #
-#     (rule RULE_NAME ALT ALT ...)      # always ≥ 1 alternative
-#
-# RULE_NAME is one of:
-#     (start IDENT-or-TOKEN-src)        # trailing '!' marks a start symbol
-#     (name  IDENT-or-TOKEN-src)
-#
-# ALT:
-#     (alt KIND ELEMENT-list ACTION_TEXT-src?)
-#     # KIND ∈ _ | reduce | shift
-#     #   _      plain
-#     #   reduce '<' tight-binding hint (prefer reduce on S/R conflict)
-#     #   shift  '>' prefer-shift hint  (prefer shift  on S/R conflict)
-#
-# ELEMENT-list is always a .list (possibly empty). An empty alternative is
-# encoded as (alt _ () ...) — never by omitting the element-list child.
+#     (rule RULE_NAME ALT ...)              always >= 1 alternative
+#     RULE_NAME: (start SRC) for `name!`, (name SRC) otherwise
+#     ALT:       (alt HINT ELEMENTS ACTION? OPTOUT?)
+#                HINT: _, reduce (`<`) or shift (`>`); ELEMENTS: a list;
+#                ACTION: _ or an action; OPTOUT: STRING (`~ "reason"`)
 #
 # --- Elements ---
 #
-# Each ELEMENT is exactly one of the following tagged sexps:
+#     (ref SRC)  (tok SRC)  (lit SRC)  (at_ref SRC)
+#     (list_req TOKEN LIST_INNER)           L(...)
+#     (group KIND BODY ...)                 KIND: _ `( )`, opt `[ ]`, many `[X ...]`
+#     (quantified ELEMENT QUANT)            X? X* X+
+#     (skip ELEMENT)  (skip_q ELEMENT QUANT)
+#     (exclude STRING)                      X "c"
+#     (label LABEL ELEMENT)                 role:X, and (A | B):role
 #
-#     (ref    IDENT-src)
-#     (tok    TOKEN-src)
-#     (lit    STRING-src)
-#     (at_ref IDENT-or-KW_INFIX-src)
+#     BODY is a list of ELEMENTs; QUANT is (opt), (zero_plus) or (one_plus).
+#     LIST_INNER: (plain ITEM) (opt_items_nosep ITEM)
+#                 (sep_items ITEM SEP) (opt_items ITEM SEP)
 #
-#     (list_req TOKEN-src LIST_INNER)          # L(...)   required
+# --- Actions ---
 #
-#     (group KIND ALT_BODY ALT_BODY ...)
-#     # KIND ∈ _ | many | opt
-#     #   _    ( a | b | c )           parens group
-#     #   many [ a | b | c , ... ]     optional comma-separated list
-#     #   opt  [ a | b | c ]           optional group
+#     (pos INTEGER)                         → N
+#     (null)                                → _
+#     (node WORD ITEM ...)                  (tag ...)
+#     (list ITEM ...)                       (...) without a head tag
+#     (keep INTEGER ITEM ...)               (!N ...): headed by element N
 #
-# The surface form `[L(X)]` parses as a single-alternative `(group opt ...)`
-# whose one ALT_BODY contains exactly one list_req element; the lowerer
-# recognizes that shape and folds it into an optional comma-separated list.
+#     ITEM: VALUE, or (named LABEL VALUE)   role:value
+#     VALUE: (pos N) (spread N) (symid N) (null) (tag WORD) or a nested
+#            node / list / keep
 #
-#     (quantified ELEMENT QUANT)               # X?, X*, X+
-#     (skip       ELEMENT)                     # !X
-#     (skip_q     ELEMENT QUANT)               # !X?, !X*, !X+
-#     (exclude    STRING-src)                  # X "c"   next-char exclusion hint
-#
-# Group-like nodes always contain at least one ALT_BODY child, even when the
-# source has exactly one alternative. Each ALT_BODY is a .list of ELEMENT
-# sexps.
-#
-# LIST_INNER is exactly one of:
-#     (plain           IDENT-src)              # L(X)
-#     (opt_items       IDENT-src SEP-src)      # L(X?, sep)
-#     (sep_items       IDENT-src SEP-src)      # L(X, sep)
-#     (opt_items_nosep IDENT-src)              # L(X?)
-#
-# SEP-src is a STRING-src or a TOKEN-src.
-#
-# QUANT is one of: (opt), (zero_plus), (one_plus).
-#
-# --- Exclusion hint (X "c") ---
-#
-# The surface syntax `X "c"` inside an alternative is lexed as the dedicated
-# KW_X token followed by a STRING, which the parser grammar emits as
-# (exclude STRING-src). Any number of such elements may appear in an
-# alternative; the lowerer removes them from the element list and records
-# the last-seen character as the alternative's excludeChar (matching the
-# legal "rightmost wins" semantics used by MUMPS constructs like
-# `glvn X "#" X ":"`).
-#
-# --- Invariants ---
-#
-# 1. Every lowering entry point receives exactly the documented shape or emits
-#    a hard error with source position. No silent defaults, no fallback
-#    wrappers.
-# 2. Tags are non-overlapping. `list_req` means required list and nothing else.
-#    A `(group many ...)` is [X, ...] and nothing else; `(group opt ...)` is
-#    [X] and nothing else. The kind-discriminator child slot (slot 1 in alt /
-#    group / as_entry) is the canonical way to distinguish near-identical
-#    shapes without proliferating head Tags.
-# 3. No position admits a bare .src where a tagged list is documented, and
-#    vice versa.
-# 4. Discarded trivia (comments, newlines, commas inside directive bodies) is
-#    dropped via dedicated grammar alternatives (`→ 1` pass-through), never by
-#    emitting empty-list placeholders that intermix with real content.
-# 5. ACTION_TEXT srcs are opaque to the lowerer. Only the code generator
-#    interprets their contents, and it does so once.
-#
+# Every lowering entry point accepts exactly these shapes; anything else is
+# a hard error with a source position.
 # -----------------------------------------------------------------------------
 
 @lexer
@@ -130,13 +92,16 @@
 tokens
     ident
     token
+    label
     kw_x
+    kw_list
     string
     integer
+    word
     eq
     pipe
+    union
     arrow
-    larrow
     question
     star
     plus
@@ -146,43 +111,47 @@ tokens
     rbracket
     langle
     rangle
-    lbrace
-    rbrace
     comma
     colon
     bang
     tilde
     dots
     at
-    semicolon
+    epsilon
     newline
+    cont
+    next_alt
     comment
-    code_block
-    action_text
+    kw_nil
     kw_lang
     kw_conflicts
     kw_as
     kw_op
-    kw_code
     kw_errors
+    kw_display
     kw_infix
+    kw_schema
+    kw_tags
+    kw_trivia
+    kw_repair
+    kw_wrapper
+    kw_via
+    kw_over
     kw_left
     kw_right
     kw_none
-    kw_skip
     eof
     err
 
-# Whitespace (spaces and tabs only — newlines are significant)
+# Whitespace (spaces and tabs only; the wrapper handles line breaks)
 [ \t\r]+                                    → skip
 
 # Comments
 '#' [^\n]*                                  → comment
 
-# Newlines are significant tokens
 '\n'                                        → newline
 
-# Arrows (ASCII only; Unicode → and ← handled in lexer wrapper)
+# Arrows (the Unicode arrow is scanned by the wrapper)
 "->"                                        → arrow
 
 # Punctuation
@@ -197,64 +166,44 @@ tokens
 ']'                                         → rbracket
 '<'                                         → langle
 '>'                                         → rangle
-'{'                                         → lbrace
-'}'                                         → rbrace
 ','                                         → comma
 ':'                                         → colon
 '!'                                         → bang
 '~'                                         → tilde
 '@'                                         → at
-';'                                         → semicolon
 
-# Ellipsis
 "..."                                       → dots
 
 # Strings (double-quoted with backslash escapes)
 '"' ([^"\\\n] | '\\' .)* '"'                → string
 
-# Numbers
 [0-9]+                                      → integer
 
-# Identifiers and tokens (uppercase tokens reclassified in lexer wrapper)
+# Words (classified by the wrapper: ident, token, label, keywords)
 [a-zA-Z_][a-zA-Z0-9_]*                      → ident
 
-# Fallback
 .                                           → err
 
 @parser
 
 @lang = "lang"
-
-# The grammar reports 16 shift/reduce conflicts, all resolved correctly by
-# default-shift. They fall into three families:
-#
-#   - Trivia absorption in repeating directive bodies (shift the next
-#     NEWLINE / COMMENT / STRING into the pending list): op_content,
-#     infix_body, prod_tail (4).
-#   - Continuation lookahead after an alt_line (shift the next IDENT /
-#     TOKEN / "@" to stay in the element list before reducing): alt_line
-#     and production (4).
-#   - Top-level entry continuation (shift IDENT / TOKEN / "@" / NEWLINE /
-#     COMMENT to extend entries or start the next directive / rule):
-#     entries and directive (7).
-#   - L(X) disambiguation (shift "(" after TOKEN when the grammar-author
-#     wrote a list construct): primary (1).
-@conflicts = 16
+@conflicts = 0
 
 # ===========================================================================
-# Top-level structure — entries separated by newlines/comments
+# Top level: entries separated by line breaks
 # ===========================================================================
 
-grammar! = entries                          → (grammar ...1)
+grammar! = body                             → 1
 
-entries  = entries entry                    → (...1 2)
+body     = entries                          → (grammar ...1)
+         |                                  → (grammar)
+
+entries  = entry                            → (1)
+         | entries NEWLINE entry            → (...1 3)
          | entries NEWLINE                  → 1
-         | entries COMMENT                  → 1
-         | entry                            → (1)
-         |                                  → ()
 
-entry    = directive                        → 1
-         | production                       → 1
+entry    = directive
+         | production
 
 # ===========================================================================
 # Directives
@@ -262,148 +211,261 @@ entry    = directive                        → 1
 
 directive = "@" KW_LANG "=" STRING          → (lang 4)
           | "@" KW_CONFLICTS "=" INTEGER    → (conflicts 4)
+          | "@" KW_CONFLICTS conflict_lines → (manifest ...3)
           | "@" KW_AS as_body               → (as ...3)
-          | "@" KW_OP "=" "[" op_content "]" → (op ...5)
-          | "@" KW_CODE IDENT code_block    → (code 3 4)
-          | "@" KW_ERRORS error_items       → (errors ...3)
-          | "@" KW_INFIX infix_body         → (infix ...3)
+          | "@" KW_OP "=" "[" op_items "]"  → (op ...5)
+          | "@" KW_ERRORS name_pairs        → (errors ...3)
+          | "@" KW_DISPLAY name_pairs       → (display ...3)
+          | "@" KW_INFIX IDENT infix_rows   → (infix 3 ...4)
+          | "@" KW_SCHEMA schema_lines      → (schema ...3)
+          | "@" KW_TAGS name_list           → (tags ...3)
+          | "@" KW_TRIVIA name_list         → (trivia ...3)
+          | "@" KW_REPAIR repair_lines      → (repair ...3)
 
-# --- @as directive ---
+# --- @conflicts block: `kind lhs → rhs [over lhs → rhs] count # reason` ---
 
-as_body  = IDENT "=" "[" as_list "]"        → (1 ...4)
+conflict_lines = CONT conflict_line                 → (2)
+               | conflict_lines CONT conflict_line  → (...1 3)
 
-as_list  = as_list "," as_entry             → (...1 3)
-         | as_entry                         → (1)
+conflict_line = IDENT crule INTEGER COMMENT                 → (conflict 1 2 _ 3 4)
+              | IDENT crule INTEGER                         → (conflict 1 2 _ 3)
+              | IDENT crule KW_OVER crule INTEGER COMMENT   → (conflict 1 2 4 5 6)
+              | IDENT crule KW_OVER crule INTEGER           → (conflict 1 2 4 5)
+
+crule     = IDENT ARROW csyms               → (crule 1 ...3)
+
+csyms     = csym                            → (1)
+          | csyms csym                      → (...1 2)
+
+csym      = IDENT
+          | TOKEN
+          | STRING
+          | EPSILON
+
+# --- @as TOKEN [via fn] = [group[!] [via fn], ...] ---
+
+as_body  = as_token "=" "[" as_list "]"                 → (1 _ ...4)
+         | as_token KW_VIA IDENT "=" "[" as_list "]"    → (1 3 ...6)
+
+as_token = IDENT
+         | TOKEN
+
+as_list  = as_entry                         → (1)
+         | as_list "," as_entry             → (...1 3)
 
 as_entry = IDENT "!"                        → (as_entry perm 1)
          | IDENT                            → (as_entry _ 1)
+         | IDENT "!" KW_VIA IDENT           → (as_entry perm 1 4)
+         | IDENT KW_VIA IDENT               → (as_entry _ 1 3)
 
-# --- @op directive (commas/newlines/comments are absorbed between pairs) ---
+# --- @op = [ "lit" → "token", ... ] (line breaks inside brackets are blanks) ---
 
-op_content = op_content op_item             → (...1 2)
-           | op_content ","                 → 1
-           | op_content NEWLINE             → 1
-           | op_content COMMENT             → 1
-           | op_item                        → (1)
-           |                                → ()
+op_items = op_item                          → (1)
+         | op_items op_item                 → (...1 2)
+         | op_items ","                     → 1
 
-op_item    = STRING ARROW STRING            → (op_map 1 3)
+op_item  = STRING ARROW STRING              → (op_map 1 3)
 
-# --- @errors directive ---
+# --- @errors / @display: `key: "name"` pairs, inline or on indented lines ---
 
-error_items = error_items error_pair        → (...1 2)
-            | error_items ","               → 1
-            | error_items NEWLINE           → 1
-            | error_items COMMENT           → 1
-            | error_pair                    → (1)
+name_pairs = pair_line                      → 1
+           | CONT pair_line                 → 2
+           | name_pairs CONT pair_line      → (...1 3)
 
-error_pair  = IDENT ":" STRING              → (error_name 1 3)
-            | TOKEN ":" STRING              → (error_name 1 3)
+pair_line  = name_pair                      → (1)
+           | pair_line "," name_pair        → (...1 3)
+           | pair_line ","                  → 1
 
-# --- @infix directive ---
-#
-# Each precedence level is one source line; the `(level ...)` tag keeps them
-# distinct so the lowerer can assign increasing precedence in order.
+name_pair  = LABEL STRING                   → (name_pair 1 2)
+           | STRING ":" STRING              → (name_pair 1 3)
 
-infix_body  = IDENT nl_skip infix_rows      → (1 ...3)
+# --- @infix base, then one indented line per precedence level ---
 
-nl_skip     = nl_skip NEWLINE               → 1
-            | nl_skip COMMENT               → 1
-            | NEWLINE
-            | COMMENT
+infix_rows = CONT infix_row                 → (2)
+           | infix_rows CONT infix_row      → (...1 3)
 
-infix_rows  = infix_rows NEWLINE infix_row  → (...1 3)
-            | infix_rows NEWLINE            → 1
-            | infix_rows COMMENT            → 1
-            | infix_row                     → (1)
+infix_row  = infix_ops                      → (level ...1)
 
-infix_row   = infix_ops                     → (level ...1)
+infix_ops  = infix_op                       → (1)
+           | infix_ops "," infix_op         → (...1 3)
 
-infix_ops   = infix_ops "," infix_op        → (...1 3)
-            | infix_op                      → (1)
+infix_op   = STRING KW_LEFT                 → (infix_op 1 2)
+           | STRING KW_RIGHT                → (infix_op 1 2)
+           | STRING KW_NONE                 → (infix_op 1 2)
+           | STRING IDENT                   → (infix_op 1 2)
 
-infix_op    = STRING KW_LEFT                → (infix_op 1 2)
-            | STRING KW_RIGHT               → (infix_op 1 2)
-            | STRING KW_NONE                → (infix_op 1 2)
-            | STRING IDENT                  → (infix_op 1 2)
+# --- @schema: one indented line per kind (or comma-separated kinds) ---
 
-# --- @code block (opaque) ---
+schema_lines = CONT kind_decl               → (2)
+             | schema_lines CONT kind_decl  → (...1 3)
 
-code_block  = CODE_BLOCK                    → 1
+kind_decl  = kind_names roles                           → (kind_decl 1 2)
+           | kind_names roles "|" side_names            → (kind_decl 1 2 4)
+           | kind_names roles "@" KW_WRAPPER            → (kind_decl 1 2 _ wrapper)
+           | kind_names roles "|" side_names "@" KW_WRAPPER → (kind_decl 1 2 4 wrapper)
+
+kind_names = kind_name                      → (kinds 1)
+           | kind_names "," kind_name       → (...1 3)
+
+kind_name  = IDENT
+           | STRING
+
+roles      =                                → (roles)
+           | roles role                     → (...1 2)
+
+role       = IDENT                          → (role _ 1)
+           | IDENT "?"                      → (role _ 1 _ opt)
+           | LABEL role_type                → (role _ 1 2)
+           | LABEL role_type "?"            → (role _ 1 2 opt)
+           | "..." IDENT                    → (role rest 2)
+           | "..." LABEL role_type          → (role rest 2 3)
+
+role_type  = type_atom                      → (type 1)
+           | role_type UNION type_atom      → (...1 3)
+
+type_atom  = IDENT
+           | STRING
+           | IDENT "(" tag_values ")"       → (tagset 1 ...3)
+
+tag_values = tag_value                      → (1)
+           | tag_values UNION tag_value     → (...1 3)
+
+tag_value  = IDENT
+           | STRING
+
+side_names = IDENT                          → (sides 1)
+           | side_names IDENT               → (...1 2)
+
+# --- @tags / @trivia: names on the directive line and indented lines ---
+
+name_list  = name_items                     → 1
+           | CONT name_items                → 2
+           | name_list CONT name_items      → (...1 ...3)
+
+name_items = name_item                      → (1)
+           | name_items name_item           → (...1 2)
+
+name_item  = IDENT
+           | TOKEN
+           | STRING
+
+# --- @repair: `holes TOKEN ...` / `structure TOKEN ...` lines ---
+
+repair_lines = CONT repair_line             → (2)
+             | repair_lines CONT repair_line → (...1 3)
+
+repair_line  = IDENT name_items             → (repair_line 1 ...2)
 
 # ===========================================================================
-# Productions — line-structured with explicit continuation
+# Productions
 #
-# A production is:
-#   rule_name "=" alt_line           (first alternative on same line as =)
-#   NEWLINE "|" alt_line             (continuation alternatives, line-prefix |)
-#   NEWLINE+ / EOF                   (termination)
+#   rule_name "=" alternative
+#     | alternative                 (a line starting with `|`: next_alt)
 #
-# prod_tail is nullable: after the first alt_line the parser shifts NEWLINE
-# (default-shift on S/R conflict) and checks whether | follows. If not, the
-# newline is absorbed and the production ends.
+# An indented line that does not start with `|` continues the current
+# alternative (its pattern or its action).
 # ===========================================================================
 
-production = rule_name "=" alts prod_tail    → (rule 1 ...3 ...4)
-
-alts       = alts "|" alt_line              → (...1 3)
-           | alt_line                       → (1)
-
-prod_tail  = prod_tail NEWLINE "|" alts     → (...1 ...4)
-           | prod_tail NEWLINE COMMENT      → 1
-           | prod_tail NEWLINE              → 1
-           |                                → ()
+production = rule_name "=" alts             → (rule 1 ...3)
 
 rule_name  = IDENT "!"                      → (start 1)
            | IDENT                          → (name 1)
            | TOKEN "!"                      → (start 1)
            | TOKEN                          → (name 1)
 
-alt_line   = elements ARROW ACTION_TEXT      → (alt _      1 3)
-           | elements "<" ARROW ACTION_TEXT → (alt reduce 1 4)
-           | elements ">" ARROW ACTION_TEXT → (alt shift  1 4)
-           | elements "<"                   → (alt reduce 1)
-           | elements ">"                   → (alt shift  1)
-           | elements                       → (alt _      1)
+alts       = alt_line                       → (1)
+           | alts "|" alt_line              → (...1 3)
+           | alts NEXT_ALT alt_line         → (...1 3)
 
-elements   = elements element               → (...1 2)
-           |                                → ()
+alt_line   = elements                                       → (alt _ 1)
+           | elements "<"                                   → (alt reduce 1)
+           | elements ">"                                   → (alt shift 1)
+           | elements ARROW action                          → (alt _ 1 3)
+           | elements "<" ARROW action                      → (alt reduce 1 4)
+           | elements ">" ARROW action                      → (alt shift 1 4)
+           | elements ARROW action "~" STRING               → (alt _ 1 3 5)
+           | elements "<" ARROW action "~" STRING           → (alt reduce 1 4 6)
+           | elements ">" ARROW action "~" STRING           → (alt shift 1 4 6)
 
-element    = primary quantifier             → (quantified 1 2)
+elements   =                                → ()
+           | elements element               → (...1 2)
+           | elements CONT                  → 1
+
+element    = LABEL labelable                → (label 1 2)
+           | group_paren ":" IDENT          → (label 3 1)
+           | labelable
            | "!" primary quantifier         → (skip_q 2 3)
            | "!" primary                    → (skip 2)
            | KW_X STRING                    → (exclude 2)
+
+labelable  = primary quantifier             → (quantified 1 2)
            | primary
 
 primary    = IDENT                          → (ref 1)
-           | TOKEN "(" bracket_inner ")"    → (list_req 1 3)
            | TOKEN                          → (tok 1)
            | STRING                         → (lit 1)
+           | KW_LIST "(" list_inner ")"     → (list_req 1 3)
            | "@" IDENT                      → (at_ref 2)
            | "@" KW_INFIX                   → (at_ref 2)
-           | "(" alt_group ")"              → (group _ ...2)
+           | group_paren
            | "[" bracket_body "]"           → 2
 
+group_paren = "(" alt_group ")"             → (group _ ...2)
+
 bracket_body = alt_group "..."              → (group many ...1)
-             | alt_group                    → (group opt  ...1)
+             | alt_group "," "..."          → (group many ...1)
+             | alt_group                    → (group opt ...1)
 
-bracket_inner = IDENT "?" "," sep_term      → (opt_items 1 4)
-              | IDENT "," sep_term          → (sep_items 1 3)
-              | IDENT "?"                   → (opt_items_nosep 1)
-              | IDENT                       → (plain 1)
+list_inner = list_item                      → (plain 1)
+           | list_item "?"                  → (opt_items_nosep 1)
+           | list_item "," sep_term         → (sep_items 1 3)
+           | list_item "?" "," sep_term     → (opt_items 1 4)
 
-sep_term    = STRING                        → (1)
-            | TOKEN                         → (1)
+list_item  = IDENT
+           | TOKEN
 
-alt_group   = alt_group "|" alt_elem        → (...1 3)
-            | alt_elem                      → (1)
+sep_term   = STRING
+           | TOKEN
 
-alt_elem    = alt_elem element              → (...1 2)
-            | element                       → (1)
+alt_group  = alt_elem                       → (1)
+           | alt_group "|" alt_elem         → (...1 3)
+
+alt_elem   = element                        → (1)
+           | alt_elem element               → (...1 2)
 
 quantifier = "?"                            → (opt)
            | "*"                            → (zero_plus)
            | "+"                            → (one_plus)
 
-# Action text is captured as an opaque token by the lexer wrapper.
-# The generated code interprets action templates like "(assign 1 3)" directly.
+# ===========================================================================
+# Actions
+# ===========================================================================
+
+action     = INTEGER                        → (pos 1)
+           | KW_NIL                         → (null)
+           | sexp
+
+sexp       = "(" WORD items ")"             → (node 2 ...3)
+           | "(" "!" INTEGER items ")"      → (keep 3 ...4)
+           | "(" items_nohead ")"           → (list ...2)
+
+items_nohead =                              → ()
+             | first_item items             → (1 ...2)
+
+items      =                                → ()
+           | items item                     → (...1 2)
+
+first_item = LABEL value                    → (named 1 2)
+           | plain_value
+
+item       = LABEL value                    → (named 1 2)
+           | value
+
+value      = plain_value
+           | WORD                           → (tag 1)
+
+plain_value = INTEGER                       → (pos 1)
+            | "..." INTEGER                 → (spread 2)
+            | "~" INTEGER                   → (symid 2)
+            | KW_NIL                        → (null)
+            | sexp
