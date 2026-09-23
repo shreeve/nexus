@@ -34,7 +34,12 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     var auto = automaton.build(g) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.NoAcceptRule => {
-            std.debug.print("{s}: error: the grammar has no start symbol\n", .{opts.path});
+            std.debug.print("{s}:1:1: error: the grammar has no start symbol\n", .{opts.path});
+            return error.GenerationFailed;
+        },
+        error.TooManyStates => {
+            const first = if (g.rules.items.len > 0) g.rules.items[0] else null;
+            std.debug.print("{s}:{d}:{d}: error: the grammar needs more than {d} parser states, the parse table's limit\n", .{ opts.path, if (first) |r| @max(r.line, 1) else 1, if (first) |r| @max(r.col, 1) else 1, automaton.maxStates });
             return error.GenerationFailed;
         },
     };

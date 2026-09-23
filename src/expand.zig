@@ -38,6 +38,14 @@ const Allocator = std.mem.Allocator;
 
 pub const Error = error{ ExpandError, OutOfMemory };
 
+/// Most rules a grammar may expand into: the parse table encodes a
+/// reduction by rule r as the i16 -(r + 2).
+pub const maxRules = 32766;
+
+/// Most grammar symbols before an alternative is expanded (symbol ids are
+/// u16, and one alternative adds at most a few thousand).
+const maxSymbols = 60000;
+
 /// What the semantic layer resolved for one source alternative (schema
 /// mode): the action with every role placed in its slot (positions may be
 /// internal positions of labeled choice elements), the side-band labels,
@@ -225,6 +233,8 @@ const Expander = struct {
 
     fn addRule(self: *Expander, rule: Rule) !u16 {
         const g = self.g;
+        if (g.rules.items.len >= maxRules)
+            return self.fail(@max(1, if (rule.line != 0) rule.line else self.originLine), @max(1, if (rule.line != 0) rule.col else self.originCol), "the grammar expands into more than {d} rules, the parse table's limit", .{maxRules});
         const id: u16 = @intCast(g.rules.items.len);
         var r = rule;
         r.id = id;
@@ -297,6 +307,10 @@ const Expander = struct {
 
     fn expandAlternative(self: *Expander, lhsId: u16, alt: ParsedAlternative, resolved: ?Resolved) Error!void {
         const a = self.alloc();
+        // Symbol ids are u16; one alternative adds at most a few symbols per
+        // element (and at most 255 elements), so this keeps them in range.
+        if (self.g.symbols.items.len > maxSymbols)
+            return self.fail(alt.line, alt.col, "the grammar has more than {d} symbols", .{maxSymbols});
         try self.checkElements(alt);
         self.originLine = alt.line;
         self.originCol = alt.col;
@@ -310,7 +324,12 @@ const Expander = struct {
         for (alt.elements, 0..) |e, i| if (isVariable(e)) try vars.append(a, i);
 
         var total: usize = 1;
-        for (vars.items) |i| total *= radix(alt.elements[i]);
+        for (vars.items) |i| {
+            total = std.math.mul(usize, total, radix(alt.elements[i])) catch maxRules + 1;
+            if (total > maxRules) break;
+        }
+        if (total > maxRules)
+            return self.fail(alt.line, alt.col, "this alternative's [...] groups and choices expand into more than {d} rules (one per combination); move some into helper rules", .{maxRules});
 
         // Without a schema, a leading `role:N` names the head tag only when
         // the alternative is not expanded (otherwise the key is dropped).

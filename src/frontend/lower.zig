@@ -363,6 +363,10 @@ pub const GrammarLowerer = struct {
             const name = try self.requireSrc(n, "token name");
             for (spec.tokens.items) |t| if (std.mem.eql(u8, t.name, name))
                 return self.fail(n, "token '{s}' is declared twice", .{name});
+            // The 8-byte Token keeps its category in a byte (one value is
+            // the built-in `skip`).
+            if (spec.tokens.items.len == 255)
+                return self.fail(n, "too many tokens: at most 255 can be declared (a token's category is one byte)", .{});
             try spec.tokens.append(self.allocator, .{ .name = name });
         }
     }
