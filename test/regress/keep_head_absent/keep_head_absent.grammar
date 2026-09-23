@@ -16,4 +16,5 @@ tokens
 @parser
 @lang = "keep_head_absent"
 
-top! = "(" [IDENT] ")" IDENT*               → (!2 ...4)
+top! = "(" [x] ")" IDENT*                   → (!2 ...4)
+x    = IDENT                                → 1
