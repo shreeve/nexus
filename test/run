@@ -167,11 +167,12 @@ check_rejects() {
     return 0
 }
 
-# check_known_suite <dir>: a self-contained bug test (test/known/<name>/).
+# check_bug_suite <dir>: a self-contained bug test (test/known/<name>/ or
+# test/regress/<name>/).
 # With `# error:` directives its grammar must be rejected; otherwise it must
 # generate cleanly (`# absent:` / `# generated-has:`), compile, and every
 # case under cases/ must produce its tree.
-check_known_suite() {
+check_bug_suite() {
     local dir=$1
     suite_conf "$dir"
     local g=$GRAMMAR
@@ -326,7 +327,7 @@ worker() {
     local ok
     case $kind in
         case)        check_case "$a" "$b" "$c" "${6:-}" "$( [[ "$id" == */known/* ]] && echo 0 || echo 1)"; ok=$? ;;
-        known)       check_known_suite "$a"; ok=$? ;;
+        bug)         check_bug_suite "$a"; ok=$? ;;
         adverse)     check_rejects "$a"; ok=$? ;;
         gen)         check_golden_gen "$a" "$b"; ok=$? ;;
         sexp)        check_sexp "$a" "$b"; ok=$? ;;
@@ -339,7 +340,13 @@ worker() {
     esac
     if [[ "$id" == known/* || "$id" == */known/* ]]; then
         if [[ $ok -eq 0 ]]; then
-            printf 'fixed\t%s\tnow passes; move it out of known/\n' "$id" >"$res"
+            local how
+            case $id in
+                known/*) how="git mv test/$id test/regress/" ;;
+                adverse/known/*) how="git mv test/$id.grammar test/adverse/" ;;
+                *) how="move test/${id%%/*}/known/${id#*/known/}.* (input and .tree) to test/${id%%/*}/cases/" ;;
+            esac
+            printf 'fixed\t%s\tnow passes: %s\n' "$id" "$how" >"$res"
         else
             printf 'known\t%s\t%s\n' "$id" "$REASON" >"$res"
         fi
@@ -419,7 +426,7 @@ need_build() { grep -qxF "$1" "$BUILDS" || echo "$1" >>"$BUILDS"; }
 for dir in test/*/; do
     dir=${dir%/}
     name=$(basename "$dir")
-    case $name in golden|adverse|known|lib|bench) continue ;; esac
+    case $name in golden|adverse|known|regress|lib|bench) continue ;; esac
     suite_conf "$dir"
     [[ -n "$GRAMMAR" ]] || continue
     for sub in cases known; do
@@ -439,10 +446,12 @@ for dir in test/*/; do
     fi
 done
 
-for dir in test/known/*/; do
+# Bug tests: test/known/<name>/ (failing today) and test/regress/<name>/
+# (fixed; they stay as regression tests).
+for dir in test/known/*/ test/regress/*/; do
     dir=${dir%/}
     [[ -d "$dir" ]] || continue
-    add "known/$(basename "$dir")" known "$dir" || continue
+    add "$(basename "$(dirname "$dir")")/$(basename "$dir")" bug "$dir" || continue
     suite_conf "$dir"
     grep -qE '^# error:' "$GRAMMAR" || need_build "$dir"
 done
