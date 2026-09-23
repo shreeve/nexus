@@ -9,7 +9,10 @@
 //! lr (automaton, lookaheads, table) -> codegen (the parser module).
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
+const Io = std.Io;
 
+const diag = @import("diag.zig");
 const frontend = @import("frontend/frontend.zig");
 const LexerParser = frontend.LexerParser;
 const GrammarLowerer = frontend.GrammarLowerer;
@@ -29,55 +32,62 @@ test {
     _ = @import("frontend/lower.zig");
 }
 
+const usage =
+    \\Usage: nexus <grammar-file> [output-file]
+    \\       nexus check <grammar-file>
+    \\       nexus --help
+    \\
+;
+
+const help =
+    \\nexus — Universal Parser Generator
+    \\
+    \\Reads a .grammar file with @lexer and @parser sections and generates
+    \\a combined parser.zig module containing both lexer and parser.
+    \\
+    \\Usage: nexus <grammar-file> [output-file]
+    \\       nexus check <grammar-file>
+    \\       nexus --dump-sexp <grammar-file> [output-file]
+    \\
+    \\Options:
+    \\  -c, --comments  Include grammar-rule comments in generated code
+    \\      --slr       Use SLR(1) instead of LALR(1) for parse tables
+    \\      --dump-sexp Parse the @parser section via the self-hosted
+    \\                  frontend and write its canonical S-expression
+    \\                  tree to the output file (or stdout)
+    \\  -h, --help      Show this help
+    \\
+    \\Examples:
+    \\  nexus lang.grammar src/parser.zig
+    \\  nexus --dump-sexp nexus.grammar test/golden/nexus.sexp
+    \\
+;
+
+const Options = struct {
+    checkMode: bool = false,
+    emitComments: bool = false,
+    parseMode: lookahead.ParseMode = .lalr,
+    grammarFile: []const u8,
+    outputFile: []const u8,
+};
+
 pub fn main(init: std.process.Init) !void {
     // Nexus is a short-lived CLI: read one grammar, emit one parser, exit.
-    // The process-wide arena is the idiomatic allocator for this shape:
-    //
-    //   - Avoids `std.heap.DebugAllocator`'s O(n) per-alloc tracking overhead,
-    //     which made MUMPS generation ~700x slower in Debug (23s vs 33ms).
-    //   - Keeps stderr clean (arena doesn't leak-check; previous `init.gpa` usage
-    //     surfaced ~400 pre-existing "leaks" that only matter if nexus is ever
-    //     embedded in a long-running process — not the current use case).
-    //   - Individual `.free()` / `.deinit()` calls become harmless no-ops.
-    //
-    // If you ever need to hunt allocation bugs (e.g., before refactoring nexus
-    // into a library), swap `init.arena.allocator()` → `init.gpa` below.
+    // Everything is allocated from the process arena (no per-allocation
+    // tracking cost; `free`/`deinit` calls are no-ops). Swap in `init.gpa`
+    // to hunt allocation bugs.
     const allocator = init.arena.allocator();
     const io = init.io;
 
     const args = try init.minimal.args.toSlice(allocator);
 
     if (args.len < 2) {
-        std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
-        std.debug.print("       nexus check <grammar-file>\n", .{});
-        std.debug.print("       nexus --help\n", .{});
+        std.debug.print(usage, .{});
         return;
     }
 
     if (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "-h")) {
-        std.debug.print(
-            \\nexus — Universal Parser Generator
-            \\
-            \\Reads a .grammar file with @lexer and @parser sections and generates
-            \\a combined parser.zig module containing both lexer and parser.
-            \\
-            \\Usage: nexus <grammar-file> [output-file]
-            \\       nexus check <grammar-file>
-            \\       nexus --dump-sexp <grammar-file> [output-file]
-            \\
-            \\Options:
-            \\  -c, --comments  Include grammar-rule comments in generated code
-            \\      --slr       Use SLR(1) instead of LALR(1) for parse tables
-            \\      --dump-sexp Parse the @parser section via the self-hosted
-            \\                  frontend and write its canonical S-expression
-            \\                  tree to the output file (or stdout)
-            \\  -h, --help      Show this help
-            \\
-            \\Examples:
-            \\  nexus lang.grammar src/parser.zig
-            \\  nexus --dump-sexp nexus.grammar test/golden/nexus.sexp
-            \\
-        , .{});
+        std.debug.print(help, .{});
         return;
     }
 
@@ -86,91 +96,84 @@ pub fn main(init: std.process.Init) !void {
             std.debug.print("Usage: nexus --dump-sexp <grammar-file> [output-file]\n", .{});
             return;
         }
-        const grammarFile = args[2];
-        const outputPath: ?[]const u8 = if (args.len >= 4) args[3] else null;
-
-        const sourceText = std.Io.Dir.cwd().readFileAlloc(io, grammarFile, allocator, .limited(max_grammar_bytes)) catch |err| {
-            std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
-            return err;
-        };
-
-        var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
-            std.debug.print("❌ Failed to parse {s}: {any}\n", .{ grammarFile, err });
-            if (err == error.ParseError) {
-                std.debug.print("  (hint: run `./bin/nexus {s} /tmp/out.zig` for parser-generator diagnostics)\n", .{grammarFile});
-            }
-            return;
-        };
-        defer parsed.parser.deinit();
-
-        var output: std.Io.Writer.Allocating = .init(allocator);
-        defer output.deinit();
-        const writer = &output.writer;
-        try frontend.dumpSexp(writer, parsed.sexp, parsed.parserBody, 0);
-        try writer.writeByte('\n');
-        const bytes = writer.buffered();
-
-        if (outputPath) |path| {
-            const file = std.Io.Dir.cwd().createFile(io, path, .{}) catch |err| {
-                std.debug.print("Error creating {s}: {any}\n", .{ path, err });
-                return err;
-            };
-            defer file.close(io);
-            try file.writeStreamingAll(io, bytes);
-            std.debug.print("✅ Wrote S-expression dump to {s} ({d} bytes)\n", .{ path, bytes.len });
-        } else {
-            std.debug.print("{s}", .{bytes});
-        }
-        return;
+        return dumpSexp(allocator, io, args[2], if (args.len >= 4) args[3] else null);
     }
 
     const checkMode = std.mem.eql(u8, args[1], "check") or std.mem.eql(u8, args[1], "--check");
 
     // Parse option flags from remaining args
-    var comments = false;
-    var parseMode: lookahead.ParseMode = .lalr;
+    var opts: Options = .{ .checkMode = checkMode, .grammarFile = undefined, .outputFile = undefined };
     var positionalStart: usize = if (checkMode) 2 else 1;
     for (args[positionalStart..]) |arg| {
         if (std.mem.eql(u8, arg, "--comments") or std.mem.eql(u8, arg, "-c")) {
-            comments = true;
+            opts.emitComments = true;
             positionalStart += 1;
         } else if (std.mem.eql(u8, arg, "--slr")) {
-            parseMode = .slr;
+            opts.parseMode = .slr;
             positionalStart += 1;
         } else break;
     }
 
-    const grammarFile = if (positionalStart < args.len) args[positionalStart] else {
+    opts.grammarFile = if (positionalStart < args.len) args[positionalStart] else {
         std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
         return;
     };
-    const outputFile = if (positionalStart + 1 < args.len) args[positionalStart + 1] else "src/parser.zig";
+    opts.outputFile = if (positionalStart + 1 < args.len) args[positionalStart + 1] else "src/parser.zig";
 
-    // Read grammar file
-    const sourceText = std.Io.Dir.cwd().readFileAlloc(io, grammarFile, allocator, .limited(max_grammar_bytes)) catch |err| {
-        std.debug.print("Error reading {s}: {any}\n", .{ grammarFile, err });
-        return err;
+    return generate(allocator, io, opts);
+}
+
+/// `nexus --dump-sexp`: print the frontend's canonical tree for the @parser section.
+fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?[]const u8) !void {
+    const sourceText = try readGrammar(allocator, io, grammarFile);
+
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
+        diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
+        if (err == error.ParseError) {
+            diag.info("  (hint: run `./bin/nexus {s} /tmp/out.zig` for parser-generator diagnostics)", .{grammarFile});
+        }
+        return;
+    };
+    defer parsed.parser.deinit();
+
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
+    const writer = &output.writer;
+    try frontend.dumpSexp(writer, parsed.sexp, parsed.parserBody, 0);
+    try writer.writeByte('\n');
+    const bytes = writer.buffered();
+
+    if (outputPath) |path| {
+        try writeOutput(io, path, bytes);
+        diag.info("Wrote S-expression dump to {s} ({d} bytes)", .{ path, bytes.len });
+    } else {
+        std.debug.print("{s}", .{bytes});
+    }
+}
+
+/// `nexus [check] <grammar>`: run the pipeline and write the parser module
+/// (or, in check mode, lint the grammar IR and stop).
+fn generate(allocator: Allocator, io: Io, opts: Options) !void {
+    const grammarFile = opts.grammarFile;
+    const sourceText = try readGrammar(allocator, io, grammarFile);
+
+    diag.info("Reading grammar from {s}", .{grammarFile});
+
+    // Lexer section
+    const lexerStart = frontend.findSection(sourceText, "@lexer") orelse {
+        diag.err("no @lexer section found in {s}", .{grammarFile});
+        return;
     };
 
-    std.debug.print("📖 Reading grammar from {s}\n", .{grammarFile});
-
-    // Find @lexer section
-    const lexerStart = frontend.findSection(sourceText, "@lexer");
-    if (lexerStart == null) {
-        std.debug.print("❌ No @lexer section found in {s}\n", .{grammarFile});
-        return;
-    }
-
-    // Parse lexer section
-    var lexerParser = LexerParser.init(allocator, sourceText[lexerStart.? + 6 ..]);
+    var lexerParser = LexerParser.init(allocator, sourceText[lexerStart + 6 ..]);
     defer lexerParser.deinit();
 
     lexerParser.parseLexerSection() catch |err| {
-        std.debug.print("❌ Lexer parse error at line {d}: {any}\n", .{ lexerParser.line, err });
+        diag.err("lexer parse error at line {d}: {any}", .{ lexerParser.line, err });
         return;
     };
 
-    std.debug.print("   Lexer: {d} states, {d} tokens, {d} rules\n", .{
+    diag.info("   Lexer: {d} states, {d} tokens, {d} rules", .{
         lexerParser.spec.states.items.len,
         lexerParser.spec.tokens.items.len,
         lexerParser.spec.rules.items.len,
@@ -179,114 +182,112 @@ pub fn main(init: std.process.Init) !void {
     // The lexer generator needs @lang before the @parser section is parsed
     if (frontend.scanLangDirective(sourceText)) |name| lexerParser.spec.langName = name;
 
-    // Generate lexer code
     var lexerGen = LexerGenerator.init(allocator, &lexerParser.spec);
     defer lexerGen.deinit();
 
     const lexerCode = lexerGen.generate() catch |err| {
-        std.debug.print("❌ Lexer generation error: {any}\n", .{err});
+        diag.err("lexer generation failed: {any}", .{err});
         return;
     };
 
-    // Find @parser section
-    const parserStart = frontend.findSection(sourceText, "@parser");
-    if (parserStart == null) {
-        std.debug.print("❌ No @parser section found in {s}\n", .{grammarFile});
+    // Parser section: parse it through the self-hosted frontend and lower the
+    // resulting S-expression tree into GrammarIR. The IR's strings are slices
+    // of sourceText.
+    if (frontend.findSection(sourceText, "@parser") == null) {
+        diag.err("no @parser section found in {s}", .{grammarFile});
         return;
     }
-    var finalCode: []const u8 = lexerCode;
+    diag.info("   Parsing @parser section...", .{});
 
-    if (parserStart) |ps| {
-        _ = ps;
-        std.debug.print("   Parsing @parser section...\n", .{});
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
+        diag.err("failed to parse @parser section: {any}", .{err});
+        return;
+    };
+    defer parsed.parser.deinit();
 
-        // Parse the @parser section through the self-hosted frontend and
-        // lower the resulting S-expression tree into GrammarIR. The lowerer
-        // extracts text from .src nodes into slices backed by sourceText
-        // (which outlives main), so the parser's arena is freed as soon as
-        // lowering returns.
-        var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
-            std.debug.print("❌ Failed to parse @parser section: {any}\n", .{err});
-            return;
-        };
-        defer parsed.parser.deinit();
+    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
+        diag.err("lowering failed: {any}", .{err});
+        return;
+    };
 
-        var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
-            std.debug.print("❌ Lowerer error: {any}\n", .{err});
-            return;
-        };
+    if (ir.lang == null) ir.lang = lexerParser.spec.langName;
 
-        if (ir.lang == null) ir.lang = lexerParser.spec.langName;
+    diag.info("   Parser: {d} rules, {d} start symbols", .{
+        ir.rules.len,
+        ir.startSymbols.len,
+    });
 
-        std.debug.print("   Parser: {d} rules, {d} start symbols\n", .{
-            ir.rules.len,
-            ir.startSymbols.len,
-        });
-
-        // Run semantic checks
-        if (checkMode) {
-            std.debug.print("\n🔍 Checking grammar...\n", .{});
-            const checkErrors = check.checkGrammar(allocator, &ir);
-            if (checkErrors > 0) return;
-            return;
-        }
-
-        // Only generate parser if there are rules
-        if (ir.rules.len > 0) {
-            var g = Grammar.init(allocator);
-            defer g.deinit();
-            expand.processGrammar(&g, &ir) catch |err| {
-                std.debug.print("❌ Grammar processing error: {any}\n", .{err});
-                return;
-            };
-
-            // Validate all referenced symbols are defined
-            const validationErrors = check.validateSymbols(&g, &lexerParser.spec);
-            if (validationErrors > 0) {
-                std.debug.print("❌ Found {d} undefined symbol(s)\n", .{validationErrors});
-                return;
-            }
-
-            var auto = automaton.build(&g) catch |err| {
-                std.debug.print("❌ Automaton build error: {any}\n", .{err});
-                return;
-            };
-            defer auto.deinit(allocator);
-
-            const la = lookahead.compute(&g, &auto, parseMode) catch |err| {
-                std.debug.print("❌ Lookahead computation error: {any}\n", .{err});
-                return;
-            };
-
-            std.debug.print("   Generated: {d} symbols, {d} rules, {d} states\n", .{
-                g.symbols.items.len,
-                g.rules.items.len,
-                auto.states.items.len,
-            });
-
-            // Build the parse table (resolves and records conflicts), then
-            // emit the combined lexer + parser module
-            const tbl = table.build(&g, &auto, la) catch |err| {
-                std.debug.print("❌ Parser generation error: {any}\n", .{err});
-                return;
-            };
-            finalCode = codegen.generate(allocator, &g, &auto, &tbl, &lexerParser.spec, lexerCode, comments) catch |err| {
-                std.debug.print("❌ Parser generation error: {any}\n", .{err});
-                return;
-            };
-
-            conflicts.report(allocator, &tbl, g.expectConflicts);
-        }
+    if (opts.checkMode) {
+        diag.info("\nChecking grammar...", .{});
+        _ = check.checkGrammar(allocator, &ir);
+        return;
     }
 
-    // Write output
-    const file = std.Io.Dir.cwd().createFile(io, outputFile, .{}) catch |err| {
-        std.debug.print("Error creating {s}: {any}\n", .{ outputFile, err });
+    // Without parser rules the output is the lexer alone
+    var finalCode: []const u8 = lexerCode;
+
+    if (ir.rules.len > 0) {
+        var g = Grammar.init(allocator);
+        defer g.deinit();
+        expand.processGrammar(&g, &ir) catch |err| {
+            diag.err("grammar processing failed: {any}", .{err});
+            return;
+        };
+
+        // Validate all referenced symbols are defined
+        const validationErrors = check.validateSymbols(&g, &lexerParser.spec);
+        if (validationErrors > 0) {
+            diag.err("found {d} undefined symbol(s)", .{validationErrors});
+            return;
+        }
+
+        var auto = automaton.build(&g) catch |err| {
+            diag.err("automaton construction failed: {any}", .{err});
+            return;
+        };
+        defer auto.deinit(allocator);
+
+        const la = lookahead.compute(&g, &auto, opts.parseMode) catch |err| {
+            diag.err("lookahead computation failed: {any}", .{err});
+            return;
+        };
+
+        diag.info("   Generated: {d} symbols, {d} rules, {d} states", .{
+            g.symbols.items.len,
+            g.rules.items.len,
+            auto.states.items.len,
+        });
+
+        // Build the parse table (resolves and records conflicts), then emit
+        // the combined lexer + parser module
+        const tbl = table.build(&g, &auto, la) catch |err| {
+            diag.err("parser generation failed: {any}", .{err});
+            return;
+        };
+        finalCode = codegen.generate(allocator, &g, &auto, &tbl, &lexerParser.spec, lexerCode, opts.emitComments) catch |err| {
+            diag.err("parser generation failed: {any}", .{err});
+            return;
+        };
+
+        conflicts.report(allocator, &tbl, g.expectConflicts);
+    }
+
+    try writeOutput(io, opts.outputFile, finalCode);
+    diag.info("Generated: {s}", .{opts.outputFile});
+}
+
+fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {
+    return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_grammar_bytes)) catch |err| {
+        diag.err("cannot read {s}: {any}", .{ path, err });
+        return err;
+    };
+}
+
+fn writeOutput(io: Io, path: []const u8, bytes: []const u8) !void {
+    const file = std.Io.Dir.cwd().createFile(io, path, .{}) catch |err| {
+        diag.err("cannot create {s}: {any}", .{ path, err });
         return err;
     };
     defer file.close(io);
-
-    try file.writeStreamingAll(io, finalCode);
-
-    std.debug.print("✅ Generated: {s}\n", .{outputFile});
+    try file.writeStreamingAll(io, bytes);
 }

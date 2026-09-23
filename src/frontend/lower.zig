@@ -1,6 +1,7 @@
 //! Strict, schema-driven lowering of the frontend Sexp tree into GrammarIR.
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const Allocator = std.mem.Allocator;
 const parser = @import("parser.zig");
 const Sexp = parser.Sexp;
@@ -110,7 +111,7 @@ pub const GrammarLowerer = struct {
                     col = 1;
                 } else col += 1;
             }
-            std.debug.print("❌ shape error at line {d}, col {d}: expected {s}\n", .{ line, col, expected });
+            diag.err("shape error at line {d}, col {d}: expected {s}", .{ line, col, expected });
         }
         return error.ShapeError;
     }
@@ -287,9 +288,8 @@ pub const GrammarLowerer = struct {
 
         // Children of the element list are either regular ELEMENT sexps or
         // (exclude STRING) hints. Exclude elements are consumed here: they
-        // set the alternative's excludeChar (last-seen wins, matching
-        // legacy semantics) and never reach the element list that
-        // processGrammar sees.
+        // set the alternative's excludeChar (the last one wins) and never
+        // reach the element list that processGrammar sees.
         const rawChildren = try self.requireList(items[2], "element list");
         var elements: std.ArrayListUnmanaged(ParsedElement) = .empty;
         var excludeChar: u8 = 0;
@@ -452,10 +452,8 @@ pub const GrammarLowerer = struct {
                 };
             }
 
-            // For optGroup, downstream expansion labels the generated
-            // alternatives with the first sub-element's text; mirror the
-            // hand-written frontend by carrying it in `value`. Plain groups
-            // don't need it.
+            // For optGroup, `value` carries the first sub-element's text.
+            // Plain groups don't need it.
             const firstValue: []const u8 = if (kind == .optGroup and bodyElements.items.len > 0)
                 bodyElements.items[0].value
             else
@@ -556,7 +554,7 @@ const negSrcMulti: Sexp = .{ .src = .{ .pos = 1, .len = 4, .id = 0 } };
 // Wrap an element list as (grammar (rule (name SRC) (alt _ (elems...)))) so
 // the lowerer reaches the element dispatch. The `_` (nil) at slot 1 of the
 // alt is the "plain alternative — no precedence kind" discriminator per the
-// v0.10.3 schema. Must be comptime so the nested `&[_]Sexp{...}` literals
+// schema at the top of nexus.grammar. Must be comptime so the nested `&[_]Sexp{...}` literals
 // resolve into static memory.
 fn negRule(comptime elems: []const Sexp) Sexp {
     return comptime .{ .list = &[_]Sexp{

@@ -3,6 +3,7 @@
 //! builds its Sexp, and collects the tags actions use for the Tag enum.
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const Rule = grammar.Rule;
@@ -243,17 +244,14 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
             } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
                 try writer.writeAll(".nil");
             } else if (isTagLiteral(work)) {
-                // Tag literal at child position — kind-discriminator
-                // pattern used by Rig and any grammar that wants the
-                // grammar action to emit normalized shapes directly
+                // Tag literal at child position — a kind discriminator
                 // (e.g., `(set move 1 _ 3)` puts the Tag `.move` in
-                // slot 2). Previously silent-dropped; now emitted as
-                // a literal-Tag Sexp.
+                // slot 2), emitted as a literal-Tag Sexp.
                 try writer.print(".{{ .tag = .@\"{s}\" }}", .{work});
             } else {
-                std.debug.print(
-                    "❌ Unknown action element '{s}' in template: {s}\n" ++
-                        "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
+                diag.err(
+                    "unknown action element '{s}' in template: {s}\n" ++
+                        "  (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)",
                     .{ work, template },
                 );
                 return error.UnknownActionElement;
@@ -310,18 +308,13 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
         } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
             try writer.writeAll("out.append(self.allocator(), .nil) catch break :blk .nil; ");
         } else if (isLikelyTagName(work)) {
-            // Tag literal at child position. The complex-case path
-            // already emitted this for unrecognized elements, but
-            // (a) using `elem` instead of `work` let `key:` prefixes
-            // leak into the emitted Tag name, and (b) any garbage
-            // element silently became a (broken) Tag literal. Both
-            // are tightened here: strip via `work`, validate via
-            // `isLikelyTagName`, error on anything else.
+            // Tag literal at child position (`key:` prefix already
+            // stripped); anything that isn't tag-like is an error below.
             try writer.print("out.append(self.allocator(), .{{ .tag = .@\"{s}\" }}) catch break :blk .nil; ", .{work});
         } else {
-            std.debug.print(
-                "❌ Unknown action element '{s}' in template: {s}\n" ++
-                    "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
+            diag.err(
+                "unknown action element '{s}' in template: {s}\n" ++
+                    "  (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)",
                 .{ work, template },
             );
             return error.UnknownActionElement;

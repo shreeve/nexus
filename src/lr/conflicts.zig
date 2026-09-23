@@ -2,6 +2,7 @@
 //! building the parse table and compares the total against `@conflicts`.
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const Allocator = std.mem.Allocator;
 const Table = @import("table.zig").Table;
 
@@ -15,7 +16,7 @@ pub fn report(allocator: Allocator, table: *const Table, expectConflicts: ?u32) 
     if (table.conflictDetails.items.len == 0) {
         if (expectConflicts) |expected| {
             if (expected != 0)
-                std.debug.print("   ✅ 0 conflicts (expected {d} — consider updating @conflicts)\n", .{expected});
+                diag.warn("0 conflicts (expected {d}; update @conflicts)", .{expected});
         }
         return;
     }
@@ -74,11 +75,11 @@ pub fn report(allocator: Allocator, table: *const Table, expectConflicts: ?u32) 
     const total = table.conflicts;
     if (expectConflicts) |expected| {
         if (total == expected) {
-            std.debug.print("   ✅ {d} conflicts (as expected)\n", .{total});
+            diag.info("   {d} conflicts (as expected)", .{total});
         } else {
-            std.debug.print("   ⚠️  {d} conflicts (expected {d} — update @conflicts)\n", .{ total, expected });
+            diag.warn("{d} conflicts (expected {d}; update @conflicts)", .{ total, expected });
         }
     } else if (total > 0) {
-        std.debug.print("   ⚠️  {d} conflicts detected (add @conflicts = {d} to suppress if ok)\n", .{ total, total });
+        diag.warn("{d} conflicts (add @conflicts = {d} if they are expected)", .{ total, total });
     }
 }

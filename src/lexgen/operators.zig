@@ -187,10 +187,8 @@ fn emitSwitchArm(gen: *LexerGenerator, firstChar: u8, rules: []const OpRule, cod
             } else {
                 // Err fallback: pos was already advanced by the outer
                 // consumer; emit `len=1` covering the offending byte and
-                // keep `pos` advanced so the next call moves on. (The
-                // previous `self.pos -= 1` here caused an infinite loop in
-                // BaseLexer-only callers such as the syntax highlighter
-                // when the buffer ended mid-token, e.g. `echo $!`.)
+                // keep `pos` advanced so the next call moves on (rewinding
+                // here would loop forever on a buffer ending mid-token).
                 try gen.write("                break :blk Token{ .cat = .@\"err\", .pre = wsCount, .pos = start, .len = 1 };\n");
             }
         }
@@ -356,12 +354,11 @@ fn emitGuardedSingleCharRules(gen: *LexerGenerator, rules: []const OpRule) !void
 /// Runs BEFORE string scanners, punct-ident, compound-literal, number/ident
 /// fast-paths, and the operator switch.
 ///
-/// Resolves two shadowing bugs surfaced by slash:
-///   - `"'''" → heredoc_sq` was silently dropped because the sq-string
-///     scanner (triggered by leader `'`) fired first and consumed the
-///     triple quotes as an escape-and-unterminated error.
-///   - `"???" → missing` was preempted by the `[*?]...` punct-ident
-///     dispatch consuming `?` as a len-1 ident.
+/// Without it, earlier dispatch tiers shadow such rules, e.g.:
+///   - `"'''" → heredoc_sq`: the sq-string scanner (leader `'`) would
+///     consume the triple quote as an unterminated string.
+///   - `"???" → missing`: the `[*?]...` punct-ident dispatch would consume
+///     `?` as a len-1 ident.
 ///
 /// Also fills the shape gap left by `generatePrefixScanners` (single-char
 /// literal prefix + class) for multi-char literal prefix + class:
@@ -411,8 +408,7 @@ pub fn generateMultiCharLiteralPreemption(gen: *LexerGenerator) !void {
     // separately — those are emitted in preemption regardless of
     // shadowing because the operator switch can't emit class-suffix
     // consumption. Marking their LEADER as globally shadowed would
-    // over-preempt sibling pure-literal rules on that leader (the MUMPS
-    // bug em flagged).
+    // over-preempt sibling pure-literal rules on that leader.
     var trulyShadowed: [256]bool = @splat(false);
     for (gen.spec.rules.items) |gr| {
         if (!std.mem.startsWith(u8, gr.token, "string")) continue;
@@ -532,8 +528,8 @@ pub fn generateMultiCharLiteralPreemption(gen: *LexerGenerator) !void {
         //   - Its leader is truly shadowed by an earlier dispatch, OR
         //   - It has a class suffix (operator switch can't emit that shape)
         // Pure multi-char literals on non-shadowed leaders continue to
-        // flow through the operator switch where they're already handled
-        // correctly — avoids the MUMPS-style duplication em flagged.
+        // flow through the operator switch, which handles them without
+        // duplication.
         const needsPreemption = trulyShadowed[prefixChars[0]] or hasSuffix;
         if (!needsPreemption) continue;
 

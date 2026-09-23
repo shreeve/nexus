@@ -5,6 +5,7 @@
 //! `pattern [@ guards] -> token[, action]*`. Patterns are kept as raw text.
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const LexerSpec = grammar.LexerSpec;
@@ -284,7 +285,7 @@ pub const LexerParser = struct {
             }
             const content = std.mem.trim(u8, self.source[lineStart..self.pos], " \t\r");
             if (content.len > 0) {
-                std.debug.print("   ⚠ Skipped lexer line {d} (handled by lang wrapper): {s}\n", .{ self.line, content });
+                diag.warn("skipped lexer line {d} (handled by lang wrapper): {s}", .{ self.line, content });
             }
         }
     }

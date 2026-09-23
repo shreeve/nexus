@@ -152,7 +152,7 @@ run_adverse() {
     local rc=0
     output=$(cd test/adverse && ../../$NEXUS "$grammar_file" "$tmp" 2>&1) || rc=$?
 
-    if echo "$output" | grep -q '❌'; then
+    if echo "$output" | grep -q '^error:'; then
         say_pass "$name (expected error)"
         PASS=$((PASS + 1))
     elif [[ $rc -ne 0 ]]; then
@@ -316,7 +316,7 @@ say_section_done $(( SECONDS - SECTION_START ))
 # 6. Lowerer Negative Shape Tests (Zig-native test blocks)
 #
 # Hand-crafted malformed Sexps fed directly to GrammarLowerer via Zig's
-# built-in `test "..."` blocks in src/nexus.zig. Each case asserts
+# built-in `test "..."` blocks in src/frontend/lower.zig. Each case asserts
 # error.ShapeError, proving the lowerer's "exact shape or hard error"
 # contract directly rather than inferring it from well-formed grammars.
 # The test binary is a separate compile from ./bin/nexus and contains no

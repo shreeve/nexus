@@ -197,7 +197,8 @@ fn computeFollow(g: *Grammar) !void {
 }
 
 // =============================================================================
-// LALR(1) Construction — DeRemer & Pennello Lookahead Propagation
+// LALR(1) Construction — spontaneous generation + propagation
+// (Aho et al., "Compilers", 4.7.5)
 // =============================================================================
 //
 // LALR(1) computes per-item per-state lookahead sets for reductions,

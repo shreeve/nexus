@@ -6,6 +6,7 @@
 //!     references, unreachable rules), without generating anything.
 
 const std = @import("std");
+const diag = @import("diag.zig");
 const Allocator = std.mem.Allocator;
 const grammar = @import("grammar.zig");
 const GrammarIR = grammar.GrammarIR;
@@ -47,7 +48,7 @@ pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
             if (seen.contains(rule.name)) continue;
             seen.put(rule.name, {}) catch {};
             if (!rule.isStart and !reachable.contains(rule.name)) {
-                std.debug.print("  warning: unreachable rule '{s}'\n", .{rule.name});
+                diag.warn("unreachable rule '{s}'", .{rule.name});
                 warnings += 1;
             }
         }
@@ -56,7 +57,7 @@ pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
     if (errors > 0 or warnings > 0) {
         std.debug.print("\n  {d} error(s), {d} warning(s)\n", .{ errors, warnings });
     } else {
-        std.debug.print("  ✅ No issues found\n", .{});
+        diag.info("  No issues found", .{});
     }
 
     return errors;
@@ -65,7 +66,7 @@ pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
 fn checkUndefinedRefs(elements: []const ParsedElement, ruleName: []const u8, ruleNames: *std.StringHashMap(void), errors: *u32) void {
     for (elements) |elem| {
         if (elem.kind == .ident and elem.value.len > 0 and !ruleNames.contains(elem.value)) {
-            std.debug.print("  error: undefined rule '{s}' referenced in '{s}'\n", .{ elem.value, ruleName });
+            diag.err("undefined rule '{s}' referenced in '{s}'", .{ elem.value, ruleName });
             errors.* += 1;
         }
         if (elem.subElements.len > 0) checkUndefinedRefs(elem.subElements, ruleName, ruleNames, errors);
@@ -110,7 +111,7 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec) u32 {
         // Check nonterminals have at least one rule
         if (sym.kind == .nonterminal) {
             if (sym.rules.items.len == 0) {
-                std.debug.print("  ❌ Undefined rule: '{s}'\n", .{sym.name});
+                diag.err("undefined rule '{s}'", .{sym.name});
                 errors += 1;
             }
         }
@@ -165,7 +166,7 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec) u32 {
             }
 
             if (!found) {
-                std.debug.print("  ❌ Undefined token: '{s}'\n", .{sym.name});
+                diag.err("undefined token '{s}'", .{sym.name});
                 errors += 1;
             }
         }

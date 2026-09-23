@@ -3,6 +3,7 @@
 //! (identifier-like, punctuation-led identifiers, numeric suffixes).
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const grammar = @import("../grammar.zig");
 const LexerSpec = grammar.LexerSpec;
 const Guard = grammar.Guard;
@@ -195,7 +196,7 @@ pub fn collectPunctIdentRules(spec: *const LexerSpec) !struct {
         const requireOne = rule.pattern[pos] == '+';
 
         if (count >= result.len) {
-            std.debug.print("error: too many punct-ident rules (max {d})\n", .{result.len});
+            diag.err("too many punct-ident rules (max {d})", .{result.len});
             return error.Overflow;
         }
         result[count] = .{
@@ -288,7 +289,7 @@ pub fn collectIdentRules(spec: *const LexerSpec) !struct { rules: [8]IdentInfo, 
         }
 
         if (count >= result.len) {
-            std.debug.print("error: too many identifier-like token types (max {d})\n", .{result.len});
+            diag.err("too many identifier-like token types (max {d})", .{result.len});
             return error.Overflow;
         }
         result[count] = .{
@@ -377,7 +378,7 @@ pub fn collectNumericSuffixRules(spec: *const LexerSpec) !struct {
         if (pos != rule.pattern.len) continue;
 
         if (count >= result.len) {
-            std.debug.print("error: too many numeric-suffix rules (max {d})\n", .{result.len});
+            diag.err("too many numeric-suffix rules (max {d})", .{result.len});
             return error.Overflow;
         }
         result[count] = .{

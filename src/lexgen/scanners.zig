@@ -4,6 +4,7 @@
 //! scan functions themselves, plus comment handling.
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const grammar = @import("../grammar.zig");
 const Guard = grammar.Guard;
 const Action = grammar.Action;
@@ -1273,7 +1274,7 @@ fn emitIdentSuffix(gen: *LexerGenerator, suffixChars: [256]bool, indent: []const
     for (0..256) |c| {
         if (suffixChars[c]) {
             if (n >= chars.len) {
-                std.debug.print("error: too many suffix characters (max {d})\n", .{chars.len});
+                diag.err("too many suffix characters (max {d})", .{chars.len});
                 return error.Overflow;
             }
             chars[n] = @intCast(c);
