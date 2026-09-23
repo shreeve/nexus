@@ -467,6 +467,7 @@ const Expander = struct {
                 .symId => |p| if (try self.at(p) == absent) .nil else .{ .symId = try self.at(p) },
                 .spread => |p| if (try self.at(p) != absent) .{ .spread = try self.at(p) } else if (self.schemaless) .nil else null,
                 .node => |l| .{ .node = try self.listPtr(l.*) },
+                .litTag => |p| if (try self.at(p) == absent) .nil else .{ .litTag = try self.at(p) },
                 .nil, .tagLit => e,
             };
         }

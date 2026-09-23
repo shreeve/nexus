@@ -113,14 +113,14 @@ fn markElem(tree: []bool, rule: Rule, e: ActionElem) void {
     switch (e) {
         .ref => |p| tree[rule.rhs[p - 1]] = true,
         .node => |n| markItems(tree, rule, n.*),
-        .spread, .symId, .nil, .tagLit => {},
+        .spread, .symId, .nil, .tagLit, .litTag => {},
     }
 }
 
 /// Emit the Zig expression for `rule`'s action. `reachesTree` is whether
 /// the rule's value can reach the tree (see `treeSymbols`).
 pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool) !void {
-    var e = Emitter{ .allocator = allocator, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread" };
+    var e = Emitter{ .allocator = allocator, .g = g, .rule = rule, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread" };
     const tree = rule.actionTree orelse {
         // Default: nothing, the one element, or an untagged list.
         if (rule.rhs.len == 0) return writer.writeAll(".nil");
@@ -136,6 +136,8 @@ pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Gramm
 
 const Emitter = struct {
     allocator: Allocator,
+    g: *const Grammar,
+    rule: Rule,
     /// Schema mode: fixed-length lists, no trailing-nil stripping.
     fixed: bool,
     /// Counter for the labels of nested list blocks.
@@ -220,6 +222,7 @@ const Emitter = struct {
                 posCount += 1;
             },
             .nil => hasNil = true,
+            .litTag => hasChildTag = true,
             .tagLit => |t| if (isTagLiteral(t)) {
                 hasChildTag = true;
             } else {
@@ -326,6 +329,7 @@ const Emitter = struct {
             },
             .nil => try w.writeAll(".nil"),
             .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
+            .litTag => |p| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
             .node => |n| {
                 // A nested node gets its own node id, spanning the
                 // pattern elements it references.
@@ -364,7 +368,7 @@ const Range = struct {
 
     fn addElem(self: *Range, e: ActionElem) void {
         switch (e) {
-            .ref, .spread, .symId => |p| self.add(p),
+            .ref, .spread, .symId, .litTag => |p| self.add(p),
             .node => |n| self.addList(n.*),
             .nil, .tagLit => {},
         }
@@ -381,7 +385,7 @@ const Range = struct {
 
 fn refersTo(e: ActionElem, pos: u16) bool {
     return switch (e) {
-        .ref, .spread, .symId => |p| p == pos,
+        .ref, .spread, .symId, .litTag => |p| p == pos,
         .node => |n| blk: {
             switch (n.head) {
                 .ref => |h| if (refersTo(h, pos)) break :blk true,
@@ -399,6 +403,19 @@ fn isTagLiteral(t: []const u8) bool {
     if (t.len == 0) return false;
     const c = t[0];
     return std.ascii.isAlphabetic(c) or c == '!' or c == '#' or c == '?' or c == '@' or c == '$' or c == '*' or c == '/';
+}
+
+/// The text a string-literal terminal (`"+="`) matches: its name without
+/// the quotes, `\c` escapes read as `c`.
+fn literalText(allocator: Allocator, name: []const u8) ![]const u8 {
+    const body = name[1 .. name.len - 1];
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var i: usize = 0;
+    while (i < body.len) : (i += 1) {
+        if (body[i] == '\\' and i + 1 < body.len) i += 1;
+        try out.append(allocator, body[i]);
+    }
+    return out.toOwnedSlice(allocator);
 }
 
 /// A tag name inside `@"..."` (escapes `\`).

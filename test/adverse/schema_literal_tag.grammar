@@ -1,0 +1,23 @@
+# A tag role labeling literals takes each literal's text as a tag value,
+# checked against the role's tag(...) set.
+# error: schema_literal_tag.grammar:23:8:
+# error: role 'op' takes one of +=|-=, not '%='
+@lexer
+tokens
+    ident, plus_eq, minus_eq, percent_eq, eof, err
+"+="                                        → plus_eq
+"-="                                        → minus_eq
+"%="                                        → percent_eq
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "schema_literal_tag"
+
+@schema
+    set    target:leaf op:tag("+=" | "-=") value:leaf
+
+top! = target:IDENT op:("+=" | "-=") value:IDENT
+                                            → (set)
+     | target:IDENT
+       op:("+=" | "%=") value:IDENT        → (set)

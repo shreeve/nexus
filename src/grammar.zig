@@ -332,6 +332,9 @@ pub const ActionElem = union(enum) {
     nil,
     /// A tag literal in child position (`op:+=`, `move`).
     tagLit: []const u8,
+    /// The tag named by the text of the string literal matched at
+    /// position N (a `tag` role labeling `"+="` or `("+=" | "-=")`).
+    litTag: u16,
     /// A nested `(kind …)` node.
     node: *const ActionList,
 };
@@ -383,6 +386,7 @@ fn renderElem(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), elem: Acti
         .symId => |n| try out.print(allocator, "~{d}", .{n}),
         .nil => try out.append(allocator, '_'),
         .tagLit => |t| try out.appendSlice(allocator, t),
+        .litTag => |n| try out.print(allocator, "tag({d})", .{n}),
         .node => |l| try renderList(allocator, out, l.*),
     }
 }

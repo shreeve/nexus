@@ -5,7 +5,8 @@
 # (role:N, role:...N, role:_, role:literal, nested nodes, positions past
 # 9), pattern labels (on tokens, rules, [opt] and choice elements, on a
 # whole choice, `_:X` drops), choices (A | B), (A | B)? and (A | B):role,
-# the coverage opt-out, and @infix operators as schema kinds.
+# a tag role labeling a choice of literals (the matched literal names the
+# tag), the coverage opt-out, and @infix operators as schema kinds.
 
 @lexer
 
@@ -15,6 +16,8 @@ tokens
     newline
     eq
     plus_eq
+    minus_eq
+    star_eq
     colon
     comma
     lparen
@@ -48,6 +51,8 @@ tokens
 '#' [^\n]*                                  → comment
 '\n'                                        → newline
 "+="                                        → plus_eq
+"-="                                        → minus_eq
+"*="                                        → star_eq
 '='                                         → eq
 ':'                                         → colon
 ','                                         → comma
@@ -113,6 +118,8 @@ stmts    = stmt                             → (1)
 
 stmt     = target:name eq:"=" value:expr    → (set)
          | name "+=" expr                   → (set += 1 value:3)
+         | target:name op:("-=" | "*=") value:expr
+                                            → (set)
          | LET IDENT "+=" expr              → (set op:+= target:(name 2) value:4)
          | LET name:IDENT [":" type:name] "=" value:expr
                                             → (let)

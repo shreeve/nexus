@@ -27,8 +27,9 @@
 //!     followed by `(` is the list keyword `kw_list`. The word after a `@`
 //!     is a directive keyword; `left right none` are keywords inside an
 //!     `@infix` block, `over` inside `@conflicts`, `via` in an `@as` line.
-//!     Inside `@schema` a `|` written without a space before it joins a
-//!     type union (`union`); `|` after a space starts the side-band roles.
+//!     Inside `@schema` a `|` within parentheses (`tag(a | b)`) or written
+//!     without a space before it joins a type union (`union`); any other
+//!     `|` starts the side-band roles.
 //!   - Sections. A `@lexer` or `@parser` at the start of a line is `at`
 //!     followed by `kw_lexer` / `kw_parser`, and switches the scanner to
 //!     that section. Before the first marker (the preamble) and in the
@@ -207,8 +208,14 @@ pub const Lexer = struct {
                 if (self.bracketDepth > 0) self.bracketDepth -= 1;
             },
             .arrow => return self.arrow(tok),
-            .pipe => if (self.block == .schema and tok.pos > 0 and !isBlank(s[tok.pos - 1])) {
+            .pipe => if (self.block == .schema and (self.parenDepth > 0 or (tok.pos > 0 and !isBlank(s[tok.pos - 1])))) {
                 tok.cat = .@"union";
+            },
+            .lparen => if (self.block == .schema) {
+                self.parenDepth += 1;
+            },
+            .rparen => if (self.block == .schema and self.parenDepth > 0) {
+                self.parenDepth -= 1;
             },
             .at => if (self.lineStart) {
                 // A directive: its keyword decides the block context.
@@ -335,6 +342,7 @@ pub const Lexer = struct {
             if (self.bracketDepth > 0) return null;
             if (self.atStart) return null;
             self.lineStart = true;
+            self.parenDepth = 0;
             if (s[i] == '|') {
                 self.base.pos = @intCast(i + 1);
                 return make(.next_alt, i, 1);
