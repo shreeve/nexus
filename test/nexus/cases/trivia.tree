@@ -1,3 +1,8 @@
 (grammar
-  (rule (start `program`) (alt _ ((ref `stmt`)) `(module 1)   # trailing comment`))
-  (rule (name `stmt`) (alt _ ((tok `A`)) `(a 1)`) (alt _ ((tok `B`)) `(b 1)`)))
+  (rule
+    (start `program`)@19..27
+    (alt _ ((ref `stmt`)@30..34)@30..34 (node `module` (pos `1`)@67..68)@59..69 _)@30..69)@19..69
+  (rule
+    (name `stmt`)@110..114
+    (alt _ ((tok `A`)@117..118)@117..118 (node `a` (pos `1`)@153..154)@150..155 _)@117..155
+    (alt _ ((tok `B`)@191..192)@191..192 (node `b` (pos `1`)@227..228)@224..229 _)@191..229)@110..229)@19..230

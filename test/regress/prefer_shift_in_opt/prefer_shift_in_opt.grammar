@@ -1,0 +1,26 @@
+# absent: KW_ELSE
+#
+# A `>` (prefer shift) hint on an alternative with an [opt] group applies to
+# every expansion of the group, so the dangling-else shift/reduce is
+# resolved by the hint and is not a conflict.
+#
+# (architecture.md §1.6.2; SPEC §8.5)
+
+@lexer
+tokens
+    ident
+    kw_if
+    kw_else
+    eof
+    err
+'?'                                         → kw_if
+':'                                         → kw_else
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "prefer_shift_in_opt"
+
+top! = stmt                                 → 1
+stmt = KW_IF IDENT stmt [KW_ELSE stmt] >    → (if 2 3 5)
+     | IDENT

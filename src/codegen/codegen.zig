@@ -29,6 +29,7 @@ const findTokenForLiteral = grammar.findTokenForLiteral;
 const Automaton = @import("../lr/automaton.zig").Automaton;
 const Table = @import("../lr/table.zig").Table;
 const actions = @import("actions.zig");
+const semantics = @import("../semantics.zig");
 const runtime = @import("runtime.zig");
 
 pub const Options = struct {
@@ -171,12 +172,7 @@ const Codegen = struct {
     // -------------------------------------------------------------------------
 
     fn collectSchema(self: *Codegen, s: Schema) !void {
-        for (s.kinds) |k| try self.addUnique(&self.schemaTags, k.tag);
-        for (s.kinds) |k| for (k.roles) |r| switch (r.type) {
-            .tag => |values| for (values) |v| try self.addUnique(&self.schemaTags, v),
-            else => {},
-        };
-        for (s.extraTags) |t| try self.addUnique(&self.schemaTags, t);
+        try self.schemaTags.appendSlice(self.allocator, try semantics.schemaTags(self.allocator, s));
         for (s.kinds) |k| {
             for (k.roles) |r| try self.addUnique(&self.roles, r.name);
             for (k.side) |r| try self.addUnique(&self.roles, r);
@@ -334,13 +330,13 @@ const Codegen = struct {
             }
             try names.put(self.allocator, view, k.tag);
             const tag = std.zig.fmtString(k.tag);
-            try w.print("    pub const {s} = struct {{\n        pub const kind: Tag = .@\"{f}\";\n", .{ view, tag });
+            try w.print("    pub const {s} = struct {{\n", .{view});
             for (k.roles, 0..) |r, i| {
                 const role = std.zig.fmtString(r.name);
                 if (r.rest) {
-                    try w.print("        pub fn @\"{f}\"(node: Sexp) []const Sexp {{\n            return restAt(node, .@\"{f}\", {d}, \"ir.{s}.{f}\");\n        }}\n", .{ role, tag, i + 1, view, role });
+                    try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") []const @\"ir.Sexp\" {{\n            return @\"ir.restAt\"(@\"ir.node\", .@\"{f}\", {d}, \"ir.{s}.{f}\");\n        }}\n", .{ role, tag, i + 1, view, role });
                 } else {
-                    try w.print("        pub fn @\"{f}\"(node: Sexp) Sexp {{\n            return at(node, .@\"{f}\", {d}, \"ir.{s}.{f}\");\n        }}\n", .{ role, tag, i + 1, view, role });
+                    try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") @\"ir.Sexp\" {{\n            return @\"ir.at\"(@\"ir.node\", .@\"{f}\", {d}, \"ir.{s}.{f}\");\n        }}\n", .{ role, tag, i + 1, view, role });
                 }
             }
             try w.writeAll("    };\n");
@@ -575,7 +571,7 @@ const Codegen = struct {
                 try a.writeAll("\n");
             }
             try a.print("        {d} => ", .{ruleIdx});
-            try actions.generateRuleAction(self.allocator, a, rule);
+            try actions.generateRuleAction(self.allocator, a, self.g, rule);
             try a.writeAll(",\n");
         }
         const body = arms.written();

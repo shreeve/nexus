@@ -1,68 +1,51 @@
-//! Action codegen: compiles a rule's action template (`(tag 1 ...2)`, `N`,
-//! `_`, `~N`, `key:N`, child tag literals) into the Zig expression that
-//! builds its Sexp, and collects the tags actions use for the Tag enum.
+//! Action codegen: compiles a rule's action tree (grammar.ActionTree) into
+//! the Zig expression `executeAction` returns for it, and collects the tags
+//! actions use (for the auto-extracted Tag enum).
+//!
+//! Two modes. Without a schema, lists drop trailing nils (at run time) and
+//! the 0.10 fast paths are kept byte for byte, including their choices:
+//! `(tag ...N)` is `sexpSpread`, `(tag M ...N)` and `(tag ...N M)` are
+//! `sexpPosSpread` with M first. With a schema, every list has exactly the
+//! items its action places (fixed length, nils kept), in order.
+//!
+//! The emitted code touches the Sexp list representation only through the
+//! helpers in the "Runtime surface" section at the bottom.
 
 const std = @import("std");
-const diag = @import("../diag.zig");
 const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
+const Grammar = grammar.Grammar;
 const Rule = grammar.Rule;
+const ActionTree = grammar.ActionTree;
+const ActionList = grammar.ActionList;
+const ActionElem = grammar.ActionElem;
 
-/// Tags referenced by action templates, in first-seen order.
+/// Tags referenced by actions (heads and child tag literals, nested lists
+/// included), in first-seen order over the rules.
 pub const TagSet = struct {
     map: std.StringHashMapUnmanaged(u16) = .empty,
     list: std.ArrayListUnmanaged([]const u8) = .empty,
 
     pub fn collect(self: *TagSet, allocator: Allocator, rules: []const Rule) !void {
         for (rules) |rule| {
-            if (rule.action) |action| {
-                try self.collectFromAction(allocator, action);
+            const tree = rule.actionTree orelse continue;
+            switch (tree) {
+                .list => |l| try self.collectList(allocator, l),
+                else => {},
             }
         }
     }
 
-    fn collectFromAction(self: *TagSet, allocator: Allocator, template: []const u8) !void {
-        // For paren-style: (tag elem1 elem2 ...) — register the head as
-        // a Tag, AND walk every child element to register any tag literal
-        // found at a child position (e.g., `(set move 1 _ 3)` registers
-        // both `set` and `move`). The head and child semantics differ
-        // in how `key:value` sugar is interpreted:
-        //   * head `tag:N` registers `tag` (key part)
-        //   * child `key:val` registers `val` (value part, via stripKeyAndSuffix)
-        if (template.len <= 1 or template[0] != '(') return;
-
-        var i: usize = 1;
-        var first_element = true;
-        while (i < template.len and template[i] != ')') {
-            while (i < template.len and (template[i] == ' ' or template[i] == '\t')) i += 1;
-            if (i >= template.len or template[i] == ')') break;
-            const start = i;
-            while (i < template.len and template[i] != ' ' and template[i] != '\t' and template[i] != ')') i += 1;
-            if (i <= start) break;
-            const raw = template[start..i];
-
-            var tag: []const u8 = "";
-            if (first_element) {
-                // Head: strip `:value` suffix, keep the `key` part as the tag.
-                tag = raw;
-                if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
-                    const after = tag[colonPos + 1 ..];
-                    if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
-                        after[0] == '.' or after[0] == '~'))
-                    {
-                        tag = tag[0..colonPos];
-                    }
-                }
-            } else {
-                // Child: strip `key:` prefix, keep the value part.
-                tag = stripKeyAndSuffix(raw);
-            }
-
-            if (isLikelyTagName(tag)) {
-                try self.register(allocator, tag);
-            }
-            first_element = false;
+    fn collectList(self: *TagSet, allocator: Allocator, l: ActionList) !void {
+        switch (l.head) {
+            .tag => |t| try self.register(allocator, t),
+            else => {},
         }
+        for (l.items) |item| switch (item.elem) {
+            .tagLit => |t| try self.register(allocator, t),
+            .node => |n| try self.collectList(allocator, n.*),
+            else => {},
+        };
     }
 
     fn register(self: *TagSet, allocator: Allocator, tag: []const u8) !void {
@@ -74,8 +57,10 @@ pub const TagSet = struct {
     }
 };
 
-pub fn generateRuleAction(allocator: Allocator, writer: anytype, rule: Rule) !void {
-    if (rule.action == null) {
+/// Emit the Zig expression for `rule`'s action.
+pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule) !void {
+    var e = Emitter{ .allocator = allocator, .offset = rule.actionOffset, .fixed = g.schema != null };
+    const tree = rule.actionTree orelse {
         // Default: nothing, the one element, or an untagged list.
         try writer.writeAll(switch (rule.rhs.len) {
             0 => ".nil",
@@ -83,315 +68,297 @@ pub fn generateRuleAction(allocator: Allocator, writer: anytype, rule: Rule) !vo
             else => "self.list(pass)",
         });
         return;
+    };
+    switch (tree) {
+        .nil => try writer.writeAll(".nil"),
+        .pass => |p| try writer.print("pass[{d}]", .{e.index(p)}),
+        .list => |l| try e.list(writer, l, "blk"),
     }
-
-    const template = rule.action.?;
-    const offset = rule.actionOffset;
-
-    // Handle simple cases
-    if (std.mem.eql(u8, template, "nil") or std.mem.eql(u8, template, "_")) {
-        try writer.writeAll(".nil");
-        return;
-    }
-
-    if (std.mem.eql(u8, template, "()")) {
-        try writer.writeAll("self.emptyList()");
-        return;
-    }
-
-    // Handle spread patterns: (!1 ...2)
-    if (std.mem.eql(u8, template, "(!1 ...2)")) {
-        try writer.writeAll("self.spreadList(pass[0], pass[1])");
-        return;
-    }
-    if (std.mem.eql(u8, template, "(!2 ...3)")) {
-        try writer.writeAll("self.spreadList(pass[1], pass[2])");
-        return;
-    }
-
-    // Handle simple passthrough: 1, 2, etc.
-    if (template.len == 1 and template[0] >= '1' and template[0] <= '9') {
-        const pos = template[0] - '1' + offset;
-        try writer.print("pass[{d}]", .{pos});
-        return;
-    }
-
-    // Handle paren-style S-expressions: (tag 1 2 3)
-    if (template.len > 0 and template[0] == '(') {
-        try generateParenAction(allocator, writer, template, offset);
-        return;
-    }
-
-    // Fallback
-    try writer.writeAll("self.list(pass)");
 }
 
-fn generateParenAction(allocator: Allocator, writer: anytype, template: []const u8, offset: u8) !void {
-    // Parse (tag elem1 elem2 ...) and generate build code
-    var i: usize = 1; // Skip opening paren
-    var elements: std.ArrayListUnmanaged([]const u8) = .empty;
-    defer elements.deinit(allocator);
+const Emitter = struct {
+    allocator: Allocator,
+    /// Added to every position (the start-marker offset).
+    offset: u8,
+    /// Schema mode: fixed-length lists, no trailing-nil stripping.
+    fixed: bool,
+    /// Counter for the labels of nested list blocks.
+    depth: usize = 0,
 
-    // Skip whitespace and parse elements
-    while (i < template.len and template[i] != ')') {
-        while (i < template.len and (template[i] == ' ' or template[i] == '\t')) i += 1;
-        if (i >= template.len or template[i] == ')') break;
-        const start = i;
-        while (i < template.len and template[i] != ' ' and template[i] != '\t' and template[i] != ')') i += 1;
-        if (i > start) try elements.append(allocator, template[start..i]);
+    fn index(self: *const Emitter, pos: u16) usize {
+        return @as(usize, pos) - 1 + self.offset;
     }
 
-    if (elements.items.len == 0) {
-        try writer.writeAll("self.emptyList()");
-        return;
-    }
+    fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+        if (l.head == .none and l.items.len == 0) return w.writeAll(emptyList);
 
-    // Analyze elements
-    const tag = elements.items[0];
-    var tagName = tag;
-
-    // Strip key:value from tag if present (e.g., "dots:2?" -> "dots")
-    if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
-        const after = tag[colonPos + 1 ..];
-        if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
-            after[0] == '.' or after[0] == '~' or after[0] == '_'))
-        {
-            tagName = tag[0..colonPos];
+        // (!A ...B): element A consed onto the list at B.
+        if (l.head == .ref and l.items.len == 1 and l.items[0].elem == .spread and l.head.ref == .ref) {
+            return w.print("self.spreadList(pass[{d}], pass[{d}])", .{ self.index(l.head.ref.ref), self.index(l.items[0].elem.spread) });
         }
+
+        if (self.fixed) return self.fixedList(w, l, label);
+        return self.legacyList(w, l, label);
     }
 
-    const firstIsTag = isTagLiteral(tagName);
+    // --- Schema mode -------------------------------------------------------
 
-    // Count element types
-    var spreadCount: usize = 0;
-    var spreadPos: u8 = 0;
-    var posCount: usize = 0;
-    var firstPos: u8 = 0;
-    var hasTilde = false;
-    var hasOther = false;
-    var hasNil = false;
-    // Track child-position Tag literals separately. The dispatcher's
-    // sexpSpread / sexpPosSpread fast paths emit (tag ...spread) and
-    // (tag pos ...spread) shapes, neither of which has a slot for a
-    // kind-discriminator child Tag — so routing a mixed (Tag + spread)
-    // template through either would silently drop the Tag. Force such
-    // templates to the complex case, which can place tag literals at
-    // arbitrary positions.
-    var hasChildTagLiteral = false;
-
-    for (elements.items[1..]) |elem| {
-        const work = stripKeyAndSuffix(elem);
-        if (work.len == 0) continue;
-        if (work[0] == '.' and work.len >= 4 and work[1] == '.' and work[2] == '.') {
-            spreadCount += 1;
-            spreadPos = work[3] - '1' + offset;
-        } else if (work[0] == '~') {
-            hasTilde = true;
-        } else if (work[0] >= '1' and work[0] <= '9') {
-            if (posCount == 0) firstPos = work[0] - '1' + offset;
-            posCount += 1;
-        } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
-            hasNil = true; // track nil separately for pattern matching
-        } else if (isTagLiteral(work)) {
-            hasChildTagLiteral = true;
-        } else {
-            hasOther = true;
-        }
-    }
-
-    // Pattern: (tag ...N) - use sexpSpread (only if no nil elements and no child tag literals)
-    if (firstIsTag and spreadCount == 1 and posCount == 0 and !hasTilde and !hasOther and !hasNil and !hasChildTagLiteral) {
-        try writer.print("self.sexpSpread(.@\"{s}\", pass[{d}])", .{ tagName, spreadPos });
-        return;
-    }
-
-    // Pattern: (tag N ...M) - use sexpPosSpread (only if no nil elements and no child tag literals)
-    if (firstIsTag and spreadCount == 1 and posCount == 1 and !hasTilde and !hasOther and !hasNil and !hasChildTagLiteral) {
-        try writer.print("self.sexpPosSpread(.@\"{s}\", pass[{d}], pass[{d}])", .{ tagName, firstPos, spreadPos });
-        return;
-    }
-
-    // Simple case: self.sexp(.@"tag", &.{pass[0], pass[1], ...})
-    // Only if first element is a tag and no spreads/tilde
-    var tagHasValue = false;
-    var tagValue: []const u8 = "";
-
-    // Check if tag has key:value format (like "dots:2?", "type:_")
-    if (std.mem.indexOfScalar(u8, tag, ':')) |colonPos| {
-        const after = tag[colonPos + 1 ..];
-        if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
-            after[0] == '.' or after[0] == '~' or after[0] == '_'))
-        {
-            tagHasValue = true;
-            tagValue = stripKeyAndSuffix(tag);
-        }
-    }
-
-    if (firstIsTag and spreadCount == 0 and !hasTilde and !hasOther) {
-        try writer.print("self.sexp(.@\"{s}\", &.{{", .{tagName});
-        var first = true;
-
-        // Add tag's value if it had key:value format
-        if (tagHasValue and tagValue.len > 0) {
-            if (tagValue[0] >= '1' and tagValue[0] <= '9') {
-                try writer.print("pass[{d}]", .{tagValue[0] - '1' + offset});
+    fn fixedList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+        var spreads = false;
+        for (l.items) |item| if (item.elem == .spread) {
+            spreads = true;
+        };
+        if (!spreads) {
+            // Every item is one Sexp: allocate the list in one step.
+            try w.writeAll(listFromSlicePrefix);
+            var first = true;
+            if (headValue(l.head)) |_| {
+                try self.headExpr(w, l.head);
                 first = false;
             }
+            for (l.items) |item| {
+                if (!first) try w.writeAll(", ");
+                first = false;
+                try self.value(w, item.elem);
+            }
+            return w.writeAll(listFromSliceSuffix);
         }
+        try self.buildList(w, l, label);
+    }
 
-        for (elements.items[1..]) |elem| {
-            const work = stripKeyAndSuffix(elem);
-            if (work.len == 0) continue;
-            if (!first) try writer.writeAll(", ");
-            first = false;
-            if (work[0] >= '1' and work[0] <= '9') {
-                try writer.print("pass[{d}]", .{work[0] - '1' + offset});
-            } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
-                try writer.writeAll(".nil");
-            } else if (isTagLiteral(work)) {
-                // Tag literal at child position — a kind discriminator
-                // (e.g., `(set move 1 _ 3)` puts the Tag `.move` in
-                // slot 2), emitted as a literal-Tag Sexp.
-                try writer.print(".{{ .tag = .@\"{s}\" }}", .{work});
+    // --- Without a schema (0.10 output) --------------------------------------
+
+    fn legacyList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+        const tag: ?[]const u8 = switch (l.head) {
+            .tag => |t| t,
+            else => null,
+        };
+        const firstIsTag = if (tag) |t| isTagLiteral(t) else false;
+
+        var spreadCount: usize = 0;
+        var spreadPos: u16 = 0;
+        var posCount: usize = 0;
+        var firstPos: u16 = 0;
+        var hasTilde = false;
+        var hasOther = false;
+        var hasNil = false;
+        var hasChildTag = false;
+        for (l.items) |item| switch (item.elem) {
+            .spread => |p| {
+                spreadCount += 1;
+                spreadPos = p;
+            },
+            .symId => hasTilde = true,
+            .ref => |p| {
+                if (posCount == 0) firstPos = p;
+                posCount += 1;
+            },
+            .nil => hasNil = true,
+            .tagLit => |t| if (isTagLiteral(t)) {
+                hasChildTag = true;
             } else {
-                diag.err(
-                    "unknown action element '{s}' in template: {s}\n" ++
-                        "  (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)",
-                    .{ work, template },
-                );
-                return error.UnknownActionElement;
+                hasOther = true;
+            },
+            .node => {},
+            .label => hasOther = true,
+        };
+        const plain = firstIsTag and !hasTilde and !hasOther;
+        const bare = plain and !hasNil and !hasChildTag and !hasNested(l);
+
+        if (bare and spreadCount == 1 and posCount == 0) {
+            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ fmtTag(tag.?), self.index(spreadPos) });
+        }
+        if (bare and spreadCount == 1 and posCount == 1) {
+            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ fmtTag(tag.?), self.index(firstPos), self.index(spreadPos) });
+        }
+        if (plain and spreadCount == 0) {
+            try w.print("self.sexp(.@\"{f}\", &.{{", .{fmtTag(tag.?)});
+            for (l.items, 0..) |item, i| {
+                if (i > 0) try w.writeAll(", ");
+                try self.value(w, item.elem);
+            }
+            return w.writeAll("})");
+        }
+        try self.buildList(w, l, label);
+    }
+
+    fn hasNested(l: ActionList) bool {
+        for (l.items) |item| if (item.elem == .node) return true;
+        return false;
+    }
+
+    // --- Shared ------------------------------------------------------------
+
+    /// A labeled block that appends the head and every item to a list.
+    /// A leading `...N` whose N is not used again extends that list in
+    /// place (amortized O(1) growth of left-recursive lists; each reduced
+    /// value is consumed once). Trailing nils are dropped by the runtime
+    /// (keepList/finishList) unless the schema fixes positions.
+    fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+        var extend: ?u16 = null;
+        if (l.head == .none and l.items.len > 0 and l.items[0].elem == .spread) {
+            const n = l.items[0].elem.spread;
+            extend = n;
+            for (l.items[1..]) |item| if (refersTo(item.elem, n)) {
+                extend = null;
+            };
+        }
+        if (extend) |n| {
+            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, self.index(n), label });
+        } else {
+            try w.print("{s}: {{ var out: std.ArrayListUnmanaged(Sexp) = .empty; ", .{label});
+        }
+        if (headValue(l.head)) |_| {
+            try w.writeAll("out.append(self.allocator(), ");
+            try self.headExpr(w, l.head);
+            try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
+        }
+        for (l.items, 0..) |item, i| {
+            if (extend != null and i == 0) continue;
+            switch (item.elem) {
+                .spread => |p| {
+                    const at = self.index(p);
+                    try w.print("for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} " ++ allocFailed ++ "; ", .{ at, label });
+                },
+                else => {
+                    try w.writeAll("out.append(self.allocator(), ");
+                    try self.value(w, item.elem);
+                    try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
+                },
             }
         }
-        try writer.writeAll("})");
-        return;
-    }
-
-    // Complex case: inline list building (spreads, tilde transforms).
-    //
-    // A template that starts with a spread, `(...N more...)`, extends
-    // the list at N: that is how a left-recursive list rule adds one
-    // element. Copying the whole list on every reduction would make
-    // parsing an n-element list O(n^2) in time and arena memory, so
-    // the list grows in place instead (`extendList` / `keepList`,
-    // amortized O(1) per element). This is safe because each reduced
-    // value is consumed exactly once, unless the template names N
-    // again, in which case the list is copied as before.
-    var extendElem: ?usize = null;
-    for (elements.items, 0..) |elem, idx| {
-        const work = stripKeyAndSuffix(elem);
-        if (work.len == 0) continue;
-        if (isSpread(work)) extendElem = idx;
-        break;
-    }
-    if (extendElem) |first| {
-        const digit = stripKeyAndSuffix(elements.items[first])[3];
-        for (elements.items[first + 1 ..]) |elem| {
-            if (positionDigit(stripKeyAndSuffix(elem)) == digit) extendElem = null;
-        }
-    }
-    if (extendElem) |first| {
-        const pos = stripKeyAndSuffix(elements.items[first])[3] - '1' + offset;
-        try writer.print("blk: {{ var out = self.extendList(pass[{d}]) catch break :blk self.oomNil(); ", .{pos});
-    } else {
-        try writer.writeAll("blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; ");
-    }
-    for (elements.items, 0..) |elem, idx| {
-        if (elem.len == 0) continue;
-        if (extendElem == idx) continue;
-        const work = stripKeyAndSuffix(elem);
-        if (work.len == 0) continue;
-
-        if (work[0] >= '1' and work[0] <= '9') {
-            const pos = work[0] - '1' + offset;
-            try writer.print("out.append(self.allocator(), pass[{d}]) catch break :blk self.oomNil(); ", .{pos});
-        } else if (work[0] == '~' and work.len > 1 and work[1] >= '1' and work[1] <= '9') {
-            const pos = work[1] - '1' + offset;
-            try writer.print("out.append(self.allocator(), if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}) catch break :blk self.oomNil(); ", .{ pos, pos });
-        } else if (work[0] == '.' and work.len >= 4 and work[1] == '.' and work[2] == '.') {
-            const pos = work[3] - '1' + offset;
-            try writer.print("for (pass[{d}].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); ", .{pos});
-        } else if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) {
-            try writer.writeAll("out.append(self.allocator(), .nil) catch break :blk self.oomNil(); ");
-        } else if (isLikelyTagName(work)) {
-            // Tag literal at child position (`key:` prefix already
-            // stripped); anything that isn't tag-like is an error below.
-            try writer.print("out.append(self.allocator(), .{{ .tag = .@\"{s}\" }}) catch break :blk self.oomNil(); ", .{work});
+        if (extend != null) {
+            try w.print("break :{s} self.keepList(&out); }}", .{label});
         } else {
-            diag.err(
-                "unknown action element '{s}' in template: {s}\n" ++
-                    "  (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)",
-                .{ work, template },
-            );
-            return error.UnknownActionElement;
+            try w.print("break :{s} ", .{label});
+            try w.writeAll(listFromOwned ++ "; }");
         }
     }
-    if (extendElem != null) {
-        try writer.writeAll("break :blk self.keepList(&out); }");
-    } else {
-        try writer.writeAll("break :blk self.finishList(&out); }");
+
+    fn headValue(head: ActionList.Head) ?void {
+        return switch (head) {
+            .none => null,
+            else => {},
+        };
     }
-}
 
-/// `...N` in an action template.
-fn isSpread(work: []const u8) bool {
-    return work.len >= 4 and work[0] == '.' and work[1] == '.' and work[2] == '.';
-}
-
-/// The position digit an action element refers to (`N`, `~N`, `...N`).
-fn positionDigit(work: []const u8) ?u8 {
-    if (work.len == 0) return null;
-    const digit = if (isSpread(work)) work[3] else if (work[0] == '~' and work.len > 1) work[1] else work[0];
-    return if (digit >= '1' and digit <= '9') digit else null;
-}
-
-fn stripKeyAndSuffix(elem: []const u8) []const u8 {
-    var work = elem;
-    // Strip key: prefix (e.g., "offset:3" -> "3", "type:_" -> "_")
-    if (std.mem.indexOfScalar(u8, work, ':')) |colonPos| {
-        const after = work[colonPos + 1 ..];
-        if (after.len > 0 and (after[0] >= '1' and after[0] <= '9' or
-            after[0] == '.' or after[0] == '~' or after[0] == '_'))
-        {
-            work = after;
+    fn headExpr(self: *Emitter, w: anytype, head: ActionList.Head) anyerror!void {
+        switch (head) {
+            .tag => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
+            .ref => |e| try self.value(w, e),
+            .none => unreachable,
         }
     }
-    return work;
-}
 
-fn isTagLiteral(work: []const u8) bool {
-    if (work.len == 0) return false;
-    if (std.mem.eql(u8, work, "nil") or std.mem.eql(u8, work, "_")) return false;
-    const c = work[0];
-    // Tag literals start with letter or special char like !, #, ?, @, $
-    return (c >= 'a' and c <= 'z') or (c >= 'A' and c <= 'Z') or
-        c == '!' or c == '#' or c == '?' or c == '@' or c == '$' or c == '*' or c == '/';
-}
-
-// Permissive recognizer for action elements that look like a Tag-enum
-// member name. Used at child positions (where the dispatcher routes
-// letter-start tags through the simple case and operator-name tags
-// through the complex case). Rejects only the forms the action
-// language has dedicated syntax for: position refs (digit-start),
-// symbol-id refs (`~`-start), spreads (`...`), nil/`_`, and the
-// `key:value` annotation sugar (`:` strictly between two non-empty
-// halves — a bare `:` or leading-colon operator like `:=` is a
-// valid Tag name and passes through).
-fn isLikelyTagName(name: []const u8) bool {
-    if (name.len == 0) return false;
-    if (std.mem.eql(u8, name, "nil") or std.mem.eql(u8, name, "_")) return false;
-    const c = name[0];
-    // Single-digit position ref `1`-`9`. (Multi-digit names and `0`
-    // are valid Tag names and pass through.)
-    if (c >= '1' and c <= '9' and name.len == 1) return false;
-    // Symbol-id ref `~N` (tilde + digit). A bare `~` is a valid Tag.
-    if (c == '~' and name.len >= 2 and name[1] >= '1' and name[1] <= '9') return false;
-    // Spread `...N` (3 dots + digit). Shorter dot-starts like `.`, `..`,
-    // `.member` are valid Tag names.
-    if (c == '.' and name.len >= 4 and name[1] == '.' and name[2] == '.' and name[3] >= '1' and name[3] <= '9') return false;
-    // `key:value` annotation sugar requires content on BOTH sides of the
-    // colon. A bare `:` or leading-colon operator (`:=`) passes through.
-    if (std.mem.indexOfScalar(u8, name, ':')) |colonPos| {
-        if (colonPos > 0 and colonPos + 1 < name.len) return false;
+    /// One item's Sexp value (spreads are handled by the list builders).
+    fn value(self: *Emitter, w: anytype, e: ActionElem) anyerror!void {
+        switch (e) {
+            .ref => |p| try w.print("pass[{d}]", .{self.index(p)}),
+            .symId => |p| {
+                const at = self.index(p);
+                try w.print("if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}", .{ at, at });
+            },
+            .nil => try w.writeAll(".nil"),
+            .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
+            .node => |n| {
+                // A nested node gets its own node id, spanning the
+                // pattern elements it references.
+                self.depth += 1;
+                var buf: [16]u8 = undefined;
+                const label = try std.fmt.bufPrint(&buf, "blk{d}", .{self.depth});
+                var range: Range = .{};
+                range.addList(n.*);
+                if (range.lo) |lo| {
+                    try w.writeAll("self.nested(");
+                    try self.list(w, n.*, label);
+                    try w.print(", {d}, {d})", .{ self.index(lo), self.index(range.hi) });
+                } else {
+                    try w.writeAll("self.nestedEmpty(");
+                    try self.list(w, n.*, label);
+                    try w.writeAll(")");
+                }
+            },
+            .spread, .label => unreachable,
+        }
     }
-    return true;
+};
+
+/// The pattern positions an action list references.
+const Range = struct {
+    lo: ?u16 = null,
+    hi: u16 = 0,
+
+    fn add(self: *Range, pos: u16) void {
+        self.lo = if (self.lo) |lo| @min(lo, pos) else pos;
+        self.hi = @max(self.hi, pos);
+    }
+
+    fn addElem(self: *Range, e: ActionElem) void {
+        switch (e) {
+            .ref, .spread, .symId => |p| self.add(p),
+            .node => |n| self.addList(n.*),
+            .nil, .tagLit, .label => {},
+        }
+    }
+
+    fn addList(self: *Range, l: ActionList) void {
+        switch (l.head) {
+            .ref => |h| self.addElem(h),
+            else => {},
+        }
+        for (l.items) |item| self.addElem(item.elem);
+    }
+};
+
+fn refersTo(e: ActionElem, pos: u16) bool {
+    return switch (e) {
+        .ref, .spread, .symId => |p| p == pos,
+        .node => |n| blk: {
+            switch (n.head) {
+                .ref => |h| if (refersTo(h, pos)) break :blk true,
+                else => {},
+            }
+            for (n.items) |item| if (refersTo(item.elem, pos)) break :blk true;
+            break :blk false;
+        },
+        else => false,
+    };
 }
+
+/// Tags the 0.10 fast paths accept at the head: letters and `! # ? @ $ * /`.
+fn isTagLiteral(t: []const u8) bool {
+    if (t.len == 0) return false;
+    const c = t[0];
+    return std.ascii.isAlphabetic(c) or c == '!' or c == '#' or c == '?' or c == '@' or c == '$' or c == '*' or c == '/';
+}
+
+/// A tag name inside `@"..."` (escapes `\`).
+fn fmtTag(t: []const u8) std.fmt.Alt([]const u8, writeTag) {
+    return .{ .data = t };
+}
+
+fn writeTag(t: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    for (t) |c| {
+        if (c == '\\' or c == '"') try w.writeByte('\\');
+        try w.writeByte(c);
+    }
+}
+
+// =============================================================================
+// Runtime surface: the builders emitted action code calls (runtime_template
+// `BaseParser`). Each gives the list it builds a node id when the parser
+// keeps a node store.
+// =============================================================================
+
+/// `listFromSlicePrefix` + comma-separated item expressions + suffix: a
+/// list node over exactly those items.
+const listFromSlicePrefix = "self.build(&.{ ";
+const listFromSliceSuffix = " })";
+/// The list node holding the items of the ArrayList `out`.
+const listFromOwned = "self.finishList(&out)";
+/// `()`
+const emptyList = "self.emptyList()";
+/// The items of the list in `pass[{d}]` (none for any other value).
+const itemsOf = "pass[{d}].items()";
+/// The value of a list block whose allocation failed.
+const allocFailed = "self.oomNil()";

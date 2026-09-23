@@ -10,13 +10,16 @@ const lang = @import("lang.zig");
 pub const TokenCat = enum(u8) {
     @"ident",
     @"token",
+    @"label",
     @"kw_x",
+    @"kw_list",
     @"string",
     @"integer",
+    @"word",
     @"eq",
     @"pipe",
+    @"union",
     @"arrow",
-    @"larrow",
     @"question",
     @"star",
     @"plus",
@@ -26,30 +29,35 @@ pub const TokenCat = enum(u8) {
     @"rbracket",
     @"langle",
     @"rangle",
-    @"lbrace",
-    @"rbrace",
     @"comma",
     @"colon",
     @"bang",
     @"tilde",
     @"dots",
     @"at",
-    @"semicolon",
+    @"rule_text",
     @"newline",
+    @"cont",
+    @"next_alt",
     @"comment",
-    @"code_block",
-    @"action_text",
+    @"kw_nil",
     @"kw_lang",
     @"kw_conflicts",
     @"kw_as",
     @"kw_op",
-    @"kw_code",
     @"kw_errors",
+    @"kw_display",
     @"kw_infix",
+    @"kw_schema",
+    @"kw_tags",
+    @"kw_trivia",
+    @"kw_repair",
+    @"kw_wrapper",
+    @"kw_via",
+    @"kw_over",
     @"kw_left",
     @"kw_right",
     @"kw_none",
-    @"kw_skip",
     @"eof",
     @"err",
 
@@ -225,7 +233,6 @@ pub const BaseLexer = struct {
                 break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
             },
             ':' => Token{ .cat = .@"colon", .pre = wsCount, .pos = start, .len = 1 },
-            ';' => Token{ .cat = .@"semicolon", .pre = wsCount, .pos = start, .len = 1 },
             '<' => Token{ .cat = .@"langle", .pre = wsCount, .pos = start, .len = 1 },
             '=' => Token{ .cat = .@"eq", .pre = wsCount, .pos = start, .len = 1 },
             '>' => Token{ .cat = .@"rangle", .pre = wsCount, .pos = start, .len = 1 },
@@ -233,9 +240,7 @@ pub const BaseLexer = struct {
             '@' => Token{ .cat = .@"at", .pre = wsCount, .pos = start, .len = 1 },
             '[' => Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 },
             ']' => Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 },
-            '{' => Token{ .cat = .@"lbrace", .pre = wsCount, .pos = start, .len = 1 },
             '|' => Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 1 },
-            '}' => Token{ .cat = .@"rbrace", .pre = wsCount, .pos = start, .len = 1 },
             '~' => Token{ .cat = .@"tilde", .pre = wsCount, .pos = start, .len = 1 },
             else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
         };
@@ -271,13 +276,131 @@ const simd = struct {
 };
 
 // =============================================================================
-// Tag enum (re-exported from the language module)
+// Tag and Role enums (from @schema)
 // =============================================================================
 
-pub const Tag = lang.Tag;
+pub const Tag = enum(u8) {
+    @"grammar",
+    @"lang",
+    @"conflicts",
+    @"manifest",
+    @"conflict",
+    @"as",
+    @"as_entry",
+    @"op",
+    @"op_map",
+    @"errors",
+    @"display",
+    @"name_pair",
+    @"infix",
+    @"level",
+    @"infix_op",
+    @"schema",
+    @"kind_decl",
+    @"kinds",
+    @"sides",
+    @"roles",
+    @"role",
+    @"type",
+    @"tagset",
+    @"tags",
+    @"trivia",
+    @"repair",
+    @"repair_line",
+    @"rule",
+    @"start",
+    @"name",
+    @"alt",
+    @"ref",
+    @"tok",
+    @"lit",
+    @"at_ref",
+    @"list_req",
+    @"plain",
+    @"opt_items_nosep",
+    @"sep_items",
+    @"opt_items",
+    @"group",
+    @"quantified",
+    @"skip_q",
+    @"skip",
+    @"exclude",
+    @"label",
+    @"opt",
+    @"zero_plus",
+    @"one_plus",
+    @"pos",
+    @"spread",
+    @"symid",
+    @"null",
+    @"tag",
+    @"named",
+    @"node",
+    @"list",
+    @"keep",
+    @"perm",
+    @"wrapper",
+    @"rest",
+    @"many",
+};
 
-/// Roles exist only in schema mode.
-pub const Role = enum(u16) {};
+pub const Role = enum(u16) {
+    @"entries",
+    @"name",
+    @"count",
+    @"kind",
+    @"rule",
+    @"over",
+    @"reason",
+    @"token",
+    @"via",
+    @"groups",
+    @"perm",
+    @"group",
+    @"maps",
+    @"lit",
+    @"pairs",
+    @"key",
+    @"base",
+    @"levels",
+    @"ops",
+    @"op",
+    @"assoc",
+    @"decls",
+    @"kinds",
+    @"roles",
+    @"sides",
+    @"wrapper",
+    @"names",
+    @"rest",
+    @"type",
+    @"opt",
+    @"atoms",
+    @"tag",
+    @"values",
+    @"lines",
+    @"class",
+    @"alts",
+    @"id",
+    @"hint",
+    @"elements",
+    @"action",
+    @"optout",
+    @"keyword",
+    @"inner",
+    @"item",
+    @"sep",
+    @"bodies",
+    @"element",
+    @"quant",
+    @"char",
+    @"n",
+    @"word",
+    @"role",
+    @"value",
+    @"head",
+    @"items",
+};
 
 /// Start symbols; `BaseParser.parse(start)` parses one.
 pub const Start = enum(u16) {
@@ -869,11 +992,29 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(items, self.newNodeId()) };
     }
 
-    /// A nested node built by the current reduction from elements
-    /// lo..hi (0-based, inclusive); it spans just those elements.
-    fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
-        return .{ .list = List.withId(items, id) };
+    /// A list node over exactly `items` (fixed positions).
+    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        return self.node(out);
+    }
+
+    /// A nested node of the current reduction: its span covers just the
+    /// elements lo..hi (0-based, inclusive) it references.
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
+        }
+        return s;
+    }
+
+    /// A nested node that references no elements: empty, at the start of
+    /// the reduction.
+    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            const at = self.reduction.extent.start;
+            self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
+        }
+        return s;
     }
 
     /// Length of `items` without trailing nils (all of it when positions
@@ -1194,60 +1335,529 @@ pub const BaseParser = struct {
 
 
 // =============================================================================
+// IR accessors (from @schema)
+// =============================================================================
+
+// Inside `ir`, generated kind and role names (a kind `tag` has the view
+// `ir.Tag`) could shadow the module's own names, so `ir` refers to them
+// through these aliases, whose names no kind or role can take.
+const @"ir.Sexp" = Sexp;
+const @"ir.Tag" = Tag;
+const @"ir.Role" = Role;
+
+/// Role-based access to schema nodes. `get`/`rest` look the slot up by the
+/// node's kind; the per-kind views (`ir.Set.target(node)`) are resolved at
+/// compile time. Asking for a role the node's kind does not have panics in
+/// safety-checked builds and yields nil (or no items) otherwise.
+pub const ir = struct {
+    /// The child in `role` (nil when absent).
+    pub fn get(node: @"ir.Sexp", role: @"ir.Role") @"ir.Sexp" {
+        const k = kindFor(node, "ir.get", role) orelse return .nil;
+        const slot = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
+        const items = node.list.items();
+        return if (slot < items.len) items[slot] else .nil;
+    }
+
+    /// The children in rest role `role`.
+    pub fn rest(node: @"ir.Sexp", role: @"ir.Role") []const @"ir.Sexp" {
+        const k = kindFor(node, "ir.rest", role) orelse return &.{};
+        const slot = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
+        const items = node.list.items();
+        return if (slot < items.len) items[slot..] else &.{};
+    }
+
+    /// Whether nodes of `kind` have `role` (slot or rest role).
+    pub fn has(kind: @"ir.Tag", role: @"ir.Role") bool {
+        return slotOf(kind, role) != null or restSlotOf(kind, role) != null;
+    }
+
+    fn kindFor(node: @"ir.Sexp", comptime what: []const u8, role: @"ir.Role") ?@"ir.Tag" {
+        if (node.kind()) |k| return k;
+        if (std.debug.runtime_safety) std.debug.panic(what ++ "(.{s}): not a schema node: {s}", .{ @tagName(role), @tagName(node) });
+        return null;
+    }
+
+    fn missing(kind: @"ir.Tag", role: @"ir.Role", comptime what: []const u8, value: anytype) @TypeOf(value) {
+        if (std.debug.runtime_safety) {
+            const hint = if (slotOf(kind, role) != null) " (a slot role; use ir.get)" else if (restSlotOf(kind, role) != null) " (a rest role; use ir.rest)" else "";
+            std.debug.panic(what ++ ": kind '{s}' has no role '{s}'{s}", .{ @tagName(kind), @tagName(role), hint });
+        }
+        return value;
+    }
+
+    pub const Grammar = struct {
+        pub fn @"entries"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"grammar", 1, "ir.Grammar.entries");
+        }
+    };
+    pub const Lang = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"lang", 1, "ir.Lang.name");
+        }
+    };
+    pub const Conflicts = struct {
+        pub fn @"count"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"conflicts", 1, "ir.Conflicts.count");
+        }
+    };
+    pub const Manifest = struct {
+        pub fn @"entries"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"manifest", 1, "ir.Manifest.entries");
+        }
+    };
+    pub const Conflict = struct {
+        pub fn @"kind"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"conflict", 1, "ir.Conflict.kind");
+        }
+        pub fn @"rule"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"conflict", 2, "ir.Conflict.rule");
+        }
+        pub fn @"over"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"conflict", 3, "ir.Conflict.over");
+        }
+        pub fn @"count"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"conflict", 4, "ir.Conflict.count");
+        }
+        pub fn @"reason"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"conflict", 5, "ir.Conflict.reason");
+        }
+    };
+    pub const As = struct {
+        pub fn @"token"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as", 1, "ir.As.token");
+        }
+        pub fn @"via"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as", 2, "ir.As.via");
+        }
+        pub fn @"groups"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"as", 3, "ir.As.groups");
+        }
+    };
+    pub const AsEntry = struct {
+        pub fn @"perm"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as_entry", 1, "ir.AsEntry.perm");
+        }
+        pub fn @"group"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as_entry", 2, "ir.AsEntry.group");
+        }
+        pub fn @"via"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as_entry", 3, "ir.AsEntry.via");
+        }
+    };
+    pub const Op = struct {
+        pub fn @"maps"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"op", 1, "ir.Op.maps");
+        }
+    };
+    pub const OpMap = struct {
+        pub fn @"lit"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"op_map", 1, "ir.OpMap.lit");
+        }
+        pub fn @"token"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"op_map", 2, "ir.OpMap.token");
+        }
+    };
+    pub const Errors = struct {
+        pub fn @"pairs"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"errors", 1, "ir.Errors.pairs");
+        }
+    };
+    pub const Display = struct {
+        pub fn @"pairs"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"display", 1, "ir.Display.pairs");
+        }
+    };
+    pub const NamePair = struct {
+        pub fn @"key"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"name_pair", 1, "ir.NamePair.key");
+        }
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"name_pair", 2, "ir.NamePair.name");
+        }
+    };
+    pub const Infix = struct {
+        pub fn @"base"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"infix", 1, "ir.Infix.base");
+        }
+        pub fn @"levels"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"infix", 2, "ir.Infix.levels");
+        }
+    };
+    pub const Level = struct {
+        pub fn @"ops"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"level", 1, "ir.Level.ops");
+        }
+    };
+    pub const InfixOp = struct {
+        pub fn @"op"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"infix_op", 1, "ir.InfixOp.op");
+        }
+        pub fn @"assoc"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"infix_op", 2, "ir.InfixOp.assoc");
+        }
+    };
+    pub const Schema = struct {
+        pub fn @"decls"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"schema", 1, "ir.Schema.decls");
+        }
+    };
+    pub const KindDecl = struct {
+        pub fn @"kinds"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"kind_decl", 1, "ir.KindDecl.kinds");
+        }
+        pub fn @"roles"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"kind_decl", 2, "ir.KindDecl.roles");
+        }
+        pub fn @"sides"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"kind_decl", 3, "ir.KindDecl.sides");
+        }
+        pub fn @"wrapper"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"kind_decl", 4, "ir.KindDecl.wrapper");
+        }
+    };
+    pub const Kinds = struct {
+        pub fn @"names"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"kinds", 1, "ir.Kinds.names");
+        }
+    };
+    pub const Sides = struct {
+        pub fn @"names"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"sides", 1, "ir.Sides.names");
+        }
+    };
+    pub const Roles = struct {
+        pub fn @"roles"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"roles", 1, "ir.Roles.roles");
+        }
+    };
+    pub const Role = struct {
+        pub fn @"rest"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"role", 1, "ir.Role.rest");
+        }
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"role", 2, "ir.Role.name");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"role", 3, "ir.Role.type");
+        }
+        pub fn @"opt"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"role", 4, "ir.Role.opt");
+        }
+    };
+    pub const Type = struct {
+        pub fn @"atoms"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"type", 1, "ir.Type.atoms");
+        }
+    };
+    pub const Tagset = struct {
+        pub fn @"tag"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"tagset", 1, "ir.Tagset.tag");
+        }
+        pub fn @"values"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"tagset", 2, "ir.Tagset.values");
+        }
+    };
+    pub const Tags = struct {
+        pub fn @"names"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"tags", 1, "ir.Tags.names");
+        }
+    };
+    pub const Trivia = struct {
+        pub fn @"names"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"trivia", 1, "ir.Trivia.names");
+        }
+    };
+    pub const Repair = struct {
+        pub fn @"lines"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"repair", 1, "ir.Repair.lines");
+        }
+    };
+    pub const RepairLine = struct {
+        pub fn @"class"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"repair_line", 1, "ir.RepairLine.class");
+        }
+        pub fn @"names"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"repair_line", 2, "ir.RepairLine.names");
+        }
+    };
+    pub const Rule = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"rule", 1, "ir.Rule.name");
+        }
+        pub fn @"alts"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"rule", 2, "ir.Rule.alts");
+        }
+    };
+    pub const Start = struct {
+        pub fn @"id"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"start", 1, "ir.Start.id");
+        }
+    };
+    pub const Name = struct {
+        pub fn @"id"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"name", 1, "ir.Name.id");
+        }
+    };
+    pub const Alt = struct {
+        pub fn @"hint"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"alt", 1, "ir.Alt.hint");
+        }
+        pub fn @"elements"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"alt", 2, "ir.Alt.elements");
+        }
+        pub fn @"action"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"alt", 3, "ir.Alt.action");
+        }
+        pub fn @"optout"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"alt", 4, "ir.Alt.optout");
+        }
+    };
+    pub const Ref = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"ref", 1, "ir.Ref.name");
+        }
+    };
+    pub const Tok = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"tok", 1, "ir.Tok.name");
+        }
+    };
+    pub const Lit = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"lit", 1, "ir.Lit.name");
+        }
+    };
+    pub const AtRef = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"at_ref", 1, "ir.AtRef.name");
+        }
+    };
+    pub const ListReq = struct {
+        pub fn @"keyword"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"list_req", 1, "ir.ListReq.keyword");
+        }
+        pub fn @"inner"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"list_req", 2, "ir.ListReq.inner");
+        }
+    };
+    pub const Plain = struct {
+        pub fn @"item"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"plain", 1, "ir.Plain.item");
+        }
+    };
+    pub const OptItemsNosep = struct {
+        pub fn @"item"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"opt_items_nosep", 1, "ir.OptItemsNosep.item");
+        }
+    };
+    pub const SepItems = struct {
+        pub fn @"item"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"sep_items", 1, "ir.SepItems.item");
+        }
+        pub fn @"sep"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"sep_items", 2, "ir.SepItems.sep");
+        }
+    };
+    pub const OptItems = struct {
+        pub fn @"item"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"opt_items", 1, "ir.OptItems.item");
+        }
+        pub fn @"sep"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"opt_items", 2, "ir.OptItems.sep");
+        }
+    };
+    pub const Group = struct {
+        pub fn @"kind"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"group", 1, "ir.Group.kind");
+        }
+        pub fn @"bodies"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"group", 2, "ir.Group.bodies");
+        }
+    };
+    pub const Quantified = struct {
+        pub fn @"element"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"quantified", 1, "ir.Quantified.element");
+        }
+        pub fn @"quant"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"quantified", 2, "ir.Quantified.quant");
+        }
+    };
+    pub const SkipQ = struct {
+        pub fn @"element"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"skip_q", 1, "ir.SkipQ.element");
+        }
+        pub fn @"quant"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"skip_q", 2, "ir.SkipQ.quant");
+        }
+    };
+    pub const Skip = struct {
+        pub fn @"element"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"skip", 1, "ir.Skip.element");
+        }
+    };
+    pub const Exclude = struct {
+        pub fn @"char"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"exclude", 1, "ir.Exclude.char");
+        }
+    };
+    pub const Label = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"label", 1, "ir.Label.name");
+        }
+        pub fn @"element"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"label", 2, "ir.Label.element");
+        }
+    };
+    pub const Opt = struct {
+    };
+    pub const ZeroPlus = struct {
+    };
+    pub const OnePlus = struct {
+    };
+    pub const Pos = struct {
+        pub fn @"n"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pos", 1, "ir.Pos.n");
+        }
+    };
+    pub const Spread = struct {
+        pub fn @"n"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"spread", 1, "ir.Spread.n");
+        }
+    };
+    pub const Symid = struct {
+        pub fn @"n"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"symid", 1, "ir.Symid.n");
+        }
+    };
+    pub const Null = struct {
+    };
+    pub const Tag = struct {
+        pub fn @"word"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"tag", 1, "ir.Tag.word");
+        }
+    };
+    pub const Named = struct {
+        pub fn @"role"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"named", 1, "ir.Named.role");
+        }
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"named", 2, "ir.Named.value");
+        }
+    };
+    pub const Node = struct {
+        pub fn @"head"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"node", 1, "ir.Node.head");
+        }
+        pub fn @"items"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"node", 2, "ir.Node.items");
+        }
+    };
+    pub const List = struct {
+        pub fn @"items"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"list", 1, "ir.List.items");
+        }
+    };
+    pub const Keep = struct {
+        pub fn @"n"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"keep", 1, "ir.Keep.n");
+        }
+        pub fn @"items"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"keep", 2, "ir.Keep.items");
+        }
+    };
+};
+
+/// Slot `slot` of `node`, a node of `kind` (checked in safety builds).
+fn @"ir.at"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot] else .nil;
+}
+
+/// The children of `node` from `slot` on.
+fn @"ir.restAt"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) []const Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot..] else &.{};
+}
+
+fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
+    if (std.debug.runtime_safety and !node.isKind(kind)) {
+        const actual = if (node.kind()) |k| @tagName(k) else @tagName(node);
+        std.debug.panic(what ++ ": node is '{s}', not '" ++ @tagName(kind) ++ "'", .{actual});
+    }
+}
+
+
+// =============================================================================
 // Grammar
 // =============================================================================
 
 /// Node spans and rule ids are recorded (`@schema` or `--spans`).
-pub const nodeStore = false;
+pub const nodeStore = true;
 /// Element extents are kept for side-band labels and nested nodes.
-const elemEnds = false;
+const elemEnds = true;
 /// Lists keep trailing nils: positions are fixed by the schema.
-const keepTrailingNils = false;
+const keepTrailingNils = true;
 const hasTrivia = false;
 const hasRepair = false;
-const numSymbols = 73;
+const numSymbols = 115;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
 fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"newline" => 35,
-        .@"comment" => 36,
-        .@"kw_lang" => 38,
-        .@"string" => 40,
-        .@"kw_conflicts" => 41,
-        .@"integer" => 42,
-        .@"kw_as" => 43,
-        .@"kw_op" => 44,
-        .@"kw_code" => 47,
-        .@"ident" => 48,
-        .@"kw_errors" => 49,
-        .@"kw_infix" => 50,
-        .@"arrow" => 53,
-        .@"token" => 55,
-        .@"kw_left" => 56,
-        .@"kw_right" => 57,
-        .@"kw_none" => 58,
-        .@"code_block" => 59,
-        .@"action_text" => 61,
-        .@"kw_x" => 64,
-        .@"at" => 37,
-        .@"eq" => 39,
-        .@"lbracket" => 45,
-        .@"rbracket" => 46,
-        .@"comma" => 51,
-        .@"bang" => 52,
-        .@"colon" => 54,
-        .@"pipe" => 60,
-        .@"langle" => 62,
-        .@"rangle" => 63,
-        .@"lparen" => 65,
-        .@"rparen" => 66,
-        .@"question" => 68,
-        .@"star" => 69,
-        .@"plus" => 70,
-        .@"dots" => 67,
+        .@"newline" => 62,
+        .@"kw_lang" => 64,
+        .@"string" => 66,
+        .@"kw_conflicts" => 67,
+        .@"integer" => 68,
+        .@"kw_as" => 69,
+        .@"kw_op" => 70,
+        .@"kw_errors" => 73,
+        .@"kw_display" => 74,
+        .@"kw_infix" => 75,
+        .@"ident" => 76,
+        .@"kw_schema" => 77,
+        .@"kw_tags" => 78,
+        .@"kw_trivia" => 79,
+        .@"kw_repair" => 80,
+        .@"cont" => 81,
+        .@"rule_text" => 82,
+        .@"comment" => 83,
+        .@"kw_over" => 85,
+        .@"token" => 86,
+        .@"kw_via" => 87,
+        .@"arrow" => 90,
+        .@"label" => 91,
+        .@"kw_left" => 93,
+        .@"kw_right" => 94,
+        .@"kw_none" => 95,
+        .@"kw_wrapper" => 97,
+        .@"union" => 100,
+        .@"next_alt" => 103,
+        .@"kw_x" => 107,
+        .@"kw_list" => 108,
+        .@"kw_nil" => 111,
+        .@"word" => 112,
+        .@"at" => 63,
+        .@"eq" => 65,
+        .@"lbracket" => 71,
+        .@"rbracket" => 72,
+        .@"comma" => 88,
+        .@"bang" => 89,
+        .@"colon" => 92,
+        .@"pipe" => 96,
+        .@"question" => 98,
+        .@"lparen" => 101,
+        .@"rparen" => 102,
+        .@"langle" => 104,
+        .@"rangle" => 105,
+        .@"tilde" => 106,
+        .@"star" => 109,
+        .@"plus" => 110,
+        .@"dots" => 99,
         else => 2, // error
     };
 }
@@ -1255,263 +1865,478 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
-        0 => self.sexpSpread(.@"grammar", pass[0]),
-        1 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        2 => pass[0],
-        3 => pass[0],
-        4 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        5 => self.emptyList(),
+        0 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"grammar" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        1 => self.build(&.{ .{ .tag = .@"grammar" } }),
+        2 => self.build(&.{ pass[0] }),
+        3 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        4 => pass[0],
+        5 => pass[0],
         6 => pass[0],
-        7 => pass[0],
-        8 => self.sexp(.@"lang", &.{pass[3]}),
-        9 => self.sexp(.@"conflicts", &.{pass[3]}),
-        10 => self.sexpSpread(.@"as", pass[2]),
-        11 => self.sexpSpread(.@"op", pass[4]),
-        12 => self.sexp(.@"code", &.{pass[2], pass[3]}),
-        13 => self.sexpSpread(.@"errors", pass[2]),
-        14 => self.sexpSpread(.@"infix", pass[2]),
-        15 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        16 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        17 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        18 => self.sexp(.@"as_entry", &.{.{ .tag = .@"perm" }, pass[0]}),
-        19 => self.sexp(.@"as_entry", &.{.nil, pass[0]}),
-        20 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        7 => self.build(&.{ .{ .tag = .@"lang" }, pass[3] }),
+        8 => self.build(&.{ .{ .tag = .@"conflicts" }, pass[3] }),
+        9 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"manifest" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        10 => pass[2],
+        11 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"op" }) catch break :blk self.oomNil(); for (pass[4].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        12 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"errors" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        13 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"display" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        14 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"infix" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        15 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"schema" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        16 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"tags" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        17 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"trivia" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        18 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"repair" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        19 => self.build(&.{ pass[1] }),
+        20 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         21 => pass[0],
-        22 => pass[0],
-        23 => pass[0],
-        24 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        25 => self.emptyList(),
-        26 => self.sexp(.@"op_map", &.{pass[0], pass[2]}),
-        27 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        28 => pass[0],
-        29 => pass[0],
-        30 => pass[0],
-        31 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        32 => self.sexp(.@"error_name", &.{pass[0], pass[2]}),
-        33 => self.sexp(.@"error_name", &.{pass[0], pass[2]}),
-        34 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        35 => pass[0],
-        36 => pass[0],
+        22 => .nil,
+        23 => self.build(&.{ .{ .tag = .@"conflict" }, pass[0], pass[1], .nil, pass[2], pass[3] }),
+        24 => self.build(&.{ .{ .tag = .@"conflict" }, pass[0], pass[1], pass[3], pass[4], pass[5] }),
+        25 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"as" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        26 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"as" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        27 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"as" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[5].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        28 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"as" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[5].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        29 => self.build(&.{ pass[0] }),
+        30 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        31 => self.build(&.{ .{ .tag = .@"as_entry" }, .nil, pass[0], .nil }),
+        32 => self.build(&.{ .{ .tag = .@"as_entry" }, .nil, pass[0], pass[2] }),
+        33 => self.build(&.{ .{ .tag = .@"as_entry" }, .{ .tag = .@"perm" }, pass[0], .nil }),
+        34 => self.build(&.{ .{ .tag = .@"as_entry" }, .{ .tag = .@"perm" }, pass[0], pass[3] }),
+        35 => self.build(&.{ pass[0] }),
+        36 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         37 => pass[0],
-        38 => pass[0],
-        39 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        40 => pass[0],
-        41 => pass[0],
-        42 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        43 => self.sexpSpread(.@"level", pass[0]),
-        44 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        45 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        46 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-        47 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-        48 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-        49 => self.sexp(.@"infix_op", &.{pass[0], pass[1]}),
-        50 => pass[0],
-        51 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"rule" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        52 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        53 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        54 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        55 => pass[0],
-        56 => pass[0],
-        57 => self.emptyList(),
-        58 => self.sexp(.@"start", &.{pass[0]}),
-        59 => self.sexp(.@"name", &.{pass[0]}),
-        60 => self.sexp(.@"start", &.{pass[0]}),
-        61 => self.sexp(.@"name", &.{pass[0]}),
-        62 => self.sexp(.@"alt", &.{.nil, pass[0], pass[2]}),
-        63 => self.sexp(.@"alt", &.{.{ .tag = .@"reduce" }, pass[0], pass[3]}),
-        64 => self.sexp(.@"alt", &.{.{ .tag = .@"shift" }, pass[0], pass[3]}),
-        65 => self.sexp(.@"alt", &.{.{ .tag = .@"reduce" }, pass[0]}),
-        66 => self.sexp(.@"alt", &.{.{ .tag = .@"shift" }, pass[0]}),
-        67 => self.sexp(.@"alt", &.{.nil, pass[0]}),
-        68 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        69 => self.emptyList(),
-        70 => self.sexp(.@"quantified", &.{pass[0], pass[1]}),
-        71 => self.sexp(.@"skip_q", &.{pass[1], pass[2]}),
-        72 => self.sexp(.@"skip", &.{pass[1]}),
-        73 => self.sexp(.@"exclude", &.{pass[1]}),
-        74 => pass[0],
-        75 => self.sexp(.@"ref", &.{pass[0]}),
-        76 => self.sexp(.@"list_req", &.{pass[0], pass[2]}),
-        77 => self.sexp(.@"tok", &.{pass[0]}),
-        78 => self.sexp(.@"lit", &.{pass[0]}),
-        79 => self.sexp(.@"at_ref", &.{pass[1]}),
-        80 => self.sexp(.@"at_ref", &.{pass[1]}),
-        81 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        82 => pass[1],
-        83 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"many" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        84 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"opt" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        85 => self.sexp(.@"opt_items", &.{pass[0], pass[3]}),
-        86 => self.sexp(.@"sep_items", &.{pass[0], pass[2]}),
-        87 => self.sexp(.@"opt_items_nosep", &.{pass[0]}),
-        88 => self.sexp(.@"plain", &.{pass[0]}),
-        89 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        90 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        91 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        92 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        93 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
-        94 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        95 => self.sexp(.@"opt", &.{}),
-        96 => self.sexp(.@"zero_plus", &.{}),
-        97 => self.sexp(.@"one_plus", &.{}),
+        38 => self.build(&.{ .{ .tag = .@"op_map" }, pass[0], pass[2] }),
+        39 => pass[0],
+        40 => pass[1],
+        41 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        42 => self.build(&.{ pass[0] }),
+        43 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        44 => pass[0],
+        45 => self.build(&.{ .{ .tag = .@"name_pair" }, pass[0], pass[1] }),
+        46 => self.build(&.{ .{ .tag = .@"name_pair" }, pass[0], pass[2] }),
+        47 => self.build(&.{ pass[1] }),
+        48 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        49 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"level" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        50 => self.build(&.{ pass[0] }),
+        51 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        52 => self.build(&.{ .{ .tag = .@"infix_op" }, pass[0], pass[1] }),
+        53 => self.build(&.{ .{ .tag = .@"infix_op" }, pass[0], pass[1] }),
+        54 => self.build(&.{ .{ .tag = .@"infix_op" }, pass[0], pass[1] }),
+        55 => self.build(&.{ .{ .tag = .@"infix_op" }, pass[0], pass[1] }),
+        56 => self.build(&.{ pass[1] }),
+        57 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        58 => self.build(&.{ .{ .tag = .@"kind_decl" }, self.nested(blk1: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kinds" }) catch break :blk1 self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk1 self.oomNil(); break :blk1 self.finishList(&out); }, 0, 0), self.nested(blk2: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"roles" }) catch break :blk2 self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk2 self.oomNil(); break :blk2 self.finishList(&out); }, 1, 1), .nil, .nil }),
+        59 => self.build(&.{ .{ .tag = .@"kind_decl" }, self.nested(blk1: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kinds" }) catch break :blk1 self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk1 self.oomNil(); break :blk1 self.finishList(&out); }, 0, 0), self.nested(blk2: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"roles" }) catch break :blk2 self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk2 self.oomNil(); break :blk2 self.finishList(&out); }, 1, 1), self.nested(blk3: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"sides" }) catch break :blk3 self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk3 self.oomNil(); break :blk3 self.finishList(&out); }, 3, 3), .nil }),
+        60 => self.build(&.{ .{ .tag = .@"kind_decl" }, self.nested(blk1: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kinds" }) catch break :blk1 self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk1 self.oomNil(); break :blk1 self.finishList(&out); }, 0, 0), self.nested(blk2: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"roles" }) catch break :blk2 self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk2 self.oomNil(); break :blk2 self.finishList(&out); }, 1, 1), .nil, .{ .tag = .@"wrapper" } }),
+        61 => self.build(&.{ .{ .tag = .@"kind_decl" }, self.nested(blk1: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kinds" }) catch break :blk1 self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk1 self.oomNil(); break :blk1 self.finishList(&out); }, 0, 0), self.nested(blk2: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"roles" }) catch break :blk2 self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk2 self.oomNil(); break :blk2 self.finishList(&out); }, 1, 1), self.nested(blk3: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"sides" }) catch break :blk3 self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk3 self.oomNil(); break :blk3 self.finishList(&out); }, 3, 3), .{ .tag = .@"wrapper" } }),
+        62 => self.build(&.{ pass[0] }),
+        63 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        64 => pass[0],
+        65 => pass[0],
+        66 => self.emptyList(),
+        67 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        68 => self.build(&.{ .{ .tag = .@"role" }, .nil, pass[0], .nil, .nil }),
+        69 => self.build(&.{ .{ .tag = .@"role" }, .nil, pass[0], .nil, .{ .tag = .@"opt" } }),
+        70 => self.build(&.{ .{ .tag = .@"role" }, .nil, pass[0], pass[1], .nil }),
+        71 => self.build(&.{ .{ .tag = .@"role" }, .nil, pass[0], pass[1], .{ .tag = .@"opt" } }),
+        72 => self.build(&.{ .{ .tag = .@"role" }, .{ .tag = .@"rest" }, pass[1], .nil, .nil }),
+        73 => self.build(&.{ .{ .tag = .@"role" }, .{ .tag = .@"rest" }, pass[1], pass[2], .nil }),
+        74 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"type" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        75 => self.build(&.{ pass[0] }),
+        76 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        77 => pass[0],
+        78 => pass[0],
+        79 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"tagset" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        80 => self.build(&.{ pass[0] }),
+        81 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        82 => pass[0],
+        83 => pass[0],
+        84 => self.build(&.{ pass[0] }),
+        85 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        86 => pass[0],
+        87 => pass[1],
+        88 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        89 => self.build(&.{ pass[0] }),
+        90 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        91 => pass[0],
+        92 => pass[0],
+        93 => pass[0],
+        94 => self.build(&.{ pass[1] }),
+        95 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        96 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"repair_line" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        97 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"rule" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        98 => self.build(&.{ .{ .tag = .@"start" }, pass[0] }),
+        99 => self.build(&.{ .{ .tag = .@"start" }, pass[0] }),
+        100 => self.build(&.{ .{ .tag = .@"name" }, pass[0] }),
+        101 => self.build(&.{ .{ .tag = .@"name" }, pass[0] }),
+        102 => self.build(&.{ pass[0] }),
+        103 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        104 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        105 => self.build(&.{ .{ .tag = .@"alt" }, .nil, pass[0], .nil, .nil }),
+        106 => self.build(&.{ .{ .tag = .@"alt" }, pass[1], pass[0], .nil, .nil }),
+        107 => self.build(&.{ .{ .tag = .@"alt" }, pass[1], pass[0], .nil, .nil }),
+        108 => self.build(&.{ .{ .tag = .@"alt" }, .nil, pass[0], pass[2], .nil }),
+        109 => self.build(&.{ .{ .tag = .@"alt" }, pass[1], pass[0], pass[3], .nil }),
+        110 => self.build(&.{ .{ .tag = .@"alt" }, pass[1], pass[0], pass[3], .nil }),
+        111 => self.build(&.{ .{ .tag = .@"alt" }, .nil, pass[0], pass[2], pass[4] }),
+        112 => self.build(&.{ .{ .tag = .@"alt" }, pass[1], pass[0], pass[3], pass[5] }),
+        113 => self.build(&.{ .{ .tag = .@"alt" }, pass[1], pass[0], pass[3], pass[5] }),
+        114 => self.emptyList(),
+        115 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        116 => pass[0],
+        117 => self.build(&.{ .{ .tag = .@"label" }, pass[0], pass[1] }),
+        118 => self.build(&.{ .{ .tag = .@"label" }, pass[2], pass[0] }),
+        119 => pass[0],
+        120 => self.build(&.{ .{ .tag = .@"skip_q" }, pass[1], pass[2] }),
+        121 => self.build(&.{ .{ .tag = .@"skip" }, pass[1] }),
+        122 => self.build(&.{ .{ .tag = .@"exclude" }, pass[1] }),
+        123 => self.build(&.{ .{ .tag = .@"quantified" }, pass[0], pass[1] }),
+        124 => pass[0],
+        125 => self.build(&.{ .{ .tag = .@"ref" }, pass[0] }),
+        126 => self.build(&.{ .{ .tag = .@"tok" }, pass[0] }),
+        127 => self.build(&.{ .{ .tag = .@"lit" }, pass[0] }),
+        128 => self.build(&.{ .{ .tag = .@"list_req" }, pass[0], pass[2] }),
+        129 => self.build(&.{ .{ .tag = .@"at_ref" }, pass[1] }),
+        130 => self.build(&.{ .{ .tag = .@"at_ref" }, pass[1] }),
+        131 => pass[0],
+        132 => pass[1],
+        133 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        134 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"many" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        135 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"many" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        136 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"group" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"opt" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        137 => self.build(&.{ .{ .tag = .@"plain" }, pass[0] }),
+        138 => self.build(&.{ .{ .tag = .@"opt_items_nosep" }, pass[0] }),
+        139 => self.build(&.{ .{ .tag = .@"sep_items" }, pass[0], pass[2] }),
+        140 => self.build(&.{ .{ .tag = .@"opt_items" }, pass[0], pass[3] }),
+        141 => pass[0],
+        142 => pass[0],
+        143 => pass[0],
+        144 => pass[0],
+        145 => self.build(&.{ pass[0] }),
+        146 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        147 => self.build(&.{ pass[0] }),
+        148 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        149 => self.build(&.{ .{ .tag = .@"opt" } }),
+        150 => self.build(&.{ .{ .tag = .@"zero_plus" } }),
+        151 => self.build(&.{ .{ .tag = .@"one_plus" } }),
+        152 => self.build(&.{ .{ .tag = .@"pos" }, pass[0] }),
+        153 => self.build(&.{ .{ .tag = .@"null" } }),
+        154 => pass[0],
+        155 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"node" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        156 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"keep" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        157 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"list" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        158 => self.emptyList(),
+        159 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        160 => self.emptyList(),
+        161 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        162 => self.build(&.{ .{ .tag = .@"named" }, pass[0], pass[1] }),
+        163 => pass[0],
+        164 => self.build(&.{ .{ .tag = .@"named" }, pass[0], pass[1] }),
+        165 => pass[0],
+        166 => pass[0],
+        167 => self.build(&.{ .{ .tag = .@"tag" }, pass[0] }),
+        168 => self.build(&.{ .{ .tag = .@"pos" }, pass[0] }),
+        169 => self.build(&.{ .{ .tag = .@"spread" }, pass[1] }),
+        170 => self.build(&.{ .{ .tag = .@"symid" }, pass[1] }),
+        171 => self.build(&.{ .{ .tag = .@"null" } }),
+        172 => pass[0],
         else => unreachable,
     };
 }
 
-const ruleLhs = [_]u16{ 3, 4, 4, 4, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6, 7, 8, 8, 9, 9, 10, 10, 10, 10, 10, 10, 11, 12, 12, 12, 12, 12, 13, 13, 14, 15, 15, 15, 15, 16, 16, 16, 16, 17, 18, 18, 19, 19, 19, 19, 20, 21, 22, 22, 23, 23, 23, 23, 24, 24, 24, 24, 25, 25, 25, 25, 25, 25, 26, 26, 27, 27, 27, 27, 27, 28, 28, 28, 28, 28, 28, 28, 28, 29, 29, 30, 30, 30, 30, 31, 31, 32, 32, 33, 33, 34, 34, 34, 72 };
-const ruleLen = [_]u8{ 1, 2, 2, 2, 1, 0, 1, 1, 4, 4, 3, 6, 4, 3, 3, 5, 3, 1, 2, 1, 2, 2, 2, 2, 1, 0, 3, 2, 2, 2, 2, 1, 3, 3, 3, 2, 2, 1, 1, 3, 2, 2, 1, 1, 3, 1, 2, 2, 2, 2, 1, 4, 3, 1, 4, 3, 2, 0, 2, 1, 2, 1, 3, 4, 4, 2, 2, 1, 2, 0, 2, 3, 2, 2, 1, 1, 4, 1, 1, 2, 2, 3, 3, 2, 1, 4, 3, 2, 1, 1, 1, 3, 1, 2, 1, 1, 1, 1, 3 };
+const ruleLhs = [_]u16{ 3, 3, 4, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 84, 84, 8, 8, 9, 9, 9, 9, 10, 10, 11, 11, 11, 11, 12, 12, 12, 13, 14, 14, 14, 15, 15, 15, 16, 16, 17, 17, 18, 19, 19, 20, 20, 20, 20, 21, 21, 22, 22, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 26, 26, 26, 26, 27, 28, 28, 29, 29, 29, 30, 30, 31, 31, 32, 32, 33, 33, 33, 34, 34, 35, 35, 35, 36, 36, 37, 38, 39, 39, 39, 39, 40, 40, 40, 41, 41, 41, 41, 41, 41, 41, 41, 41, 42, 42, 42, 43, 43, 43, 43, 43, 43, 44, 44, 45, 45, 45, 45, 45, 45, 45, 45, 46, 47, 47, 47, 48, 48, 48, 48, 49, 49, 50, 50, 51, 51, 52, 52, 53, 53, 53, 54, 54, 54, 55, 55, 55, 56, 56, 57, 57, 58, 58, 59, 59, 60, 60, 61, 61, 61, 61, 61, 114 };
+const ruleLen = [_]u8{ 1, 0, 1, 3, 2, 1, 1, 4, 4, 3, 3, 6, 3, 3, 4, 3, 3, 3, 3, 2, 3, 1, 0, 4, 6, 5, 5, 7, 7, 1, 3, 1, 3, 2, 4, 1, 2, 2, 3, 1, 2, 3, 1, 3, 2, 2, 3, 2, 3, 1, 1, 3, 2, 2, 2, 2, 2, 3, 2, 4, 4, 6, 1, 3, 1, 1, 0, 2, 1, 2, 2, 3, 2, 3, 1, 1, 3, 1, 1, 4, 1, 3, 1, 1, 1, 2, 1, 2, 3, 1, 2, 1, 1, 1, 2, 3, 2, 3, 2, 2, 1, 1, 1, 3, 3, 1, 2, 2, 3, 4, 4, 5, 6, 6, 0, 2, 2, 2, 3, 1, 3, 2, 2, 2, 1, 1, 1, 1, 4, 2, 2, 1, 3, 3, 2, 3, 1, 1, 2, 3, 4, 1, 1, 1, 1, 1, 3, 1, 2, 1, 1, 1, 1, 1, 1, 4, 5, 3, 0, 2, 0, 2, 2, 1, 2, 1, 1, 1, 1, 2, 2, 1, 1, 3 };
 
-// Parse table: 147 states x 73 symbols. 0 = error, > 0 = shift or
+// Parse table: 287 states x 115 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 147;
+const numStates = 287;
 
 const sparse = [numStates][]const i16{
-    &.{71,1},
-    &.{1,-7,3,6,4,8,5,4,6,3,21,10,24,2,35,-7,36,-7,37,9,48,5,55,7},
-    &.{39,11},
-    &.{1,-8,35,-8,36,-8,37,-8,48,-8,55,-8},
-    &.{1,-6,35,-6,36,-6,37,-6,48,-6,55,-6},
-    &.{39,-61,52,12},
+    &.{113,1},
+    &.{1,-3,3,6,4,8,5,5,6,3,38,4,39,2,63,7,76,10,86,9},
+    &.{65,11},
+    &.{1,-7,62,-7},
+    &.{1,-8,62,-8},
+    &.{1,-4,62,-4},
     &.{1,-1},
-    &.{39,-63,52,14},
-    &.{1,-2,5,16,6,3,21,10,24,2,35,15,36,17,37,9,48,5,55,7},
-    &.{38,19,41,21,43,20,44,23,47,22,49,18,50,24},
-    &.{1,-9,35,-9,36,-9,37,-9,48,-9,55,-9},
-    &.{1,-71,22,26,25,25,26,27,35,-71,36,-71,37,-71,40,-71,45,-71,48,-71,52,-71,53,-71,55,-71,60,-71,62,-71,63,-71,64,-71,65,-71},
-    &.{39,-60},
+    &.{64,15,67,13,69,19,70,18,73,22,74,21,75,23,77,16,78,14,79,17,80,20},
+    &.{1,-2,62,24},
+    &.{65,-103,89,25},
+    &.{65,-102,89,26},
+    &.{1,-116,40,27,41,29,42,28,62,-116,63,-116,66,-116,71,-116,76,-116,81,-116,86,-116,89,-116,90,-116,91,-116,96,-116,101,-116,103,-116,104,-116,105,-116,107,-116,108,-116},
     &.{1,-1},
-    &.{39,-62},
-    &.{1,-4,35,-4,36,-4,37,-4,48,-4,55,-4},
-    &.{1,-3,35,-3,36,-3,37,-3,48,-3,55,-3},
-    &.{1,-5,35,-5,36,-5,37,-5,48,-5,55,-5},
-    &.{12,29,13,30,48,31,55,28},
-    &.{39,32},
-    &.{7,33,48,34},
-    &.{39,35},
-    &.{48,36},
-    &.{39,37},
-    &.{14,38,48,39},
-    &.{1,-55,35,-55,36,-55,37,-55,48,-55,55,-55,60,-55},
-    &.{1,-59,23,40,35,-59,36,-59,37,-59,48,-59,55,-59,60,41},
-    &.{1,-69,27,44,28,42,35,-69,36,-69,37,50,40,52,45,51,48,54,52,53,53,45,55,46,60,-69,62,49,63,47,64,43,65,48},
-    &.{54,55},
-    &.{1,-15,13,58,35,57,36,59,37,-15,48,31,51,56,55,28},
-    &.{1,-33,35,-33,36,-33,37,-33,48,-33,51,-33,55,-33},
-    &.{54,60},
-    &.{40,61},
-    &.{1,-12,35,-12,36,-12,37,-12,48,-12,55,-12},
-    &.{39,62},
-    &.{42,63},
-    &.{20,65,59,64},
-    &.{45,66},
-    &.{1,-16,35,-16,36,-16,37,-16,48,-16,55,-16},
-    &.{15,67,35,68,36,69},
-    &.{1,-53,35,70,36,-53,37,-53,48,-53,55,-53},
-    &.{1,-71,25,71,26,27,35,-71,36,-71,37,-71,40,-71,45,-71,48,-71,52,-71,53,-71,55,-71,60,-71,62,-71,63,-71,64,-71,65,-71},
-    &.{1,-76,34,73,35,-76,36,-76,37,-76,40,-76,45,-76,46,-76,48,-76,52,-76,53,-76,55,-76,60,-76,62,-76,63,-76,64,-76,65,-76,66,-76,67,-76,68,74,69,75,70,72},
-    &.{40,76},
-    &.{1,-70,35,-70,36,-70,37,-70,40,-70,45,-70,48,-70,52,-70,53,-70,55,-70,60,-70,62,-70,63,-70,64,-70,65,-70},
-    &.{61,77},
-    &.{1,-79,35,-79,36,-79,37,-79,40,-79,45,-79,46,-79,48,-79,52,-79,53,-79,55,-79,60,-79,62,-79,63,-79,64,-79,65,78,66,-79,67,-79,68,-79,69,-79,70,-79},
-    &.{1,-68,35,-68,36,-68,37,-68,48,-68,53,79,55,-68,60,-68},
-    &.{27,81,28,42,32,82,33,80,37,50,40,52,45,51,48,54,52,53,55,46,64,43,65,48},
-    &.{1,-67,35,-67,36,-67,37,-67,48,-67,53,83,55,-67,60,-67},
-    &.{48,85,50,84},
-    &.{27,81,28,42,29,86,32,87,33,80,37,50,40,52,45,51,48,54,52,53,55,46,64,43,65,48},
-    &.{1,-80,35,-80,36,-80,37,-80,40,-80,45,-80,46,-80,48,-80,52,-80,53,-80,55,-80,60,-80,62,-80,63,-80,64,-80,65,-80,66,-80,67,-80,68,-80,69,-80,70,-80},
-    &.{28,88,37,50,40,52,45,51,48,54,55,46,65,48},
-    &.{1,-77,35,-77,36,-77,37,-77,40,-77,45,-77,46,-77,48,-77,52,-77,53,-77,55,-77,60,-77,62,-77,63,-77,64,-77,65,-77,66,-77,67,-77,68,-77,69,-77,70,-77},
-    &.{40,89},
-    &.{1,-30,35,-30,36,-30,37,-30,48,-30,51,-30,55,-30},
-    &.{1,-31,35,-31,36,-31,37,-31,48,-31,51,-31,55,-31},
-    &.{1,-29,35,-29,36,-29,37,-29,48,-29,51,-29,55,-29},
-    &.{1,-32,35,-32,36,-32,37,-32,48,-32,51,-32,55,-32},
-    &.{40,90},
-    &.{1,-10,35,-10,36,-10,37,-10,48,-10,55,-10},
-    &.{45,91},
-    &.{1,-11,35,-11,36,-11,37,-11,48,-11,55,-11},
-    &.{1,-52,35,-52,36,-52,37,-52,48,-52,55,-52},
-    &.{1,-14,35,-14,36,-14,37,-14,48,-14,55,-14},
-    &.{10,94,11,93,35,-27,36,-27,40,92,46,-27,51,-27},
-    &.{16,98,17,101,18,97,19,100,35,96,36,99,40,95},
-    &.{35,-39,36,-39,40,-39},
-    &.{35,-40,36,-40,40,-40},
-    &.{1,-58,35,-58,36,103,37,-58,48,-58,55,-58,60,102},
-    &.{1,-54,35,-54,36,-54,37,-54,48,-54,55,-54,60,-54},
-    &.{1,-99,35,-99,36,-99,37,-99,40,-99,45,-99,46,-99,48,-99,52,-99,53,-99,55,-99,60,-99,62,-99,63,-99,64,-99,65,-99,66,-99,67,-99},
-    &.{1,-72,35,-72,36,-72,37,-72,40,-72,45,-72,46,-72,48,-72,52,-72,53,-72,55,-72,60,-72,62,-72,63,-72,64,-72,65,-72,66,-72,67,-72},
-    &.{1,-97,35,-97,36,-97,37,-97,40,-97,45,-97,46,-97,48,-97,52,-97,53,-97,55,-97,60,-97,62,-97,63,-97,64,-97,65,-97,66,-97,67,-97},
-    &.{1,-98,35,-98,36,-98,37,-98,40,-98,45,-98,46,-98,48,-98,52,-98,53,-98,55,-98,60,-98,62,-98,63,-98,64,-98,65,-98,66,-98,67,-98},
-    &.{1,-75,35,-75,36,-75,37,-75,40,-75,45,-75,46,-75,48,-75,52,-75,53,-75,55,-75,60,-75,62,-75,63,-75,64,-75,65,-75,66,-75,67,-75},
-    &.{1,-64,35,-64,36,-64,37,-64,48,-64,55,-64,60,-64},
-    &.{30,104,48,105},
-    &.{61,106},
-    &.{27,107,28,42,37,50,40,52,45,51,46,-94,48,54,52,53,55,46,60,-94,64,43,65,48,66,-94,67,-94},
-    &.{37,-96,40,-96,45,-96,46,-96,48,-96,52,-96,55,-96,60,-96,64,-96,65,-96,66,-96,67,-96},
-    &.{60,109,66,108},
-    &.{61,110},
-    &.{1,-82,35,-82,36,-82,37,-82,40,-82,45,-82,46,-82,48,-82,52,-82,53,-82,55,-82,60,-82,62,-82,63,-82,64,-82,65,-82,66,-82,67,-82,68,-82,69,-82,70,-82},
-    &.{1,-81,35,-81,36,-81,37,-81,40,-81,45,-81,46,-81,48,-81,52,-81,53,-81,55,-81,60,-81,62,-81,63,-81,64,-81,65,-81,66,-81,67,-81,68,-81,69,-81,70,-81},
-    &.{46,111},
-    &.{46,-86,60,109,67,112},
-    &.{1,-74,34,113,35,-74,36,-74,37,-74,40,-74,45,-74,46,-74,48,-74,52,-74,53,-74,55,-74,60,-74,62,-74,63,-74,64,-74,65,-74,66,-74,67,-74,68,74,69,75,70,72},
-    &.{1,-35,35,-35,36,-35,37,-35,48,-35,51,-35,55,-35},
-    &.{1,-34,35,-34,36,-34,37,-34,48,-34,51,-34,55,-34},
-    &.{8,114,9,115,48,116},
-    &.{53,117},
-    &.{35,-26,36,-26,40,-26,46,-26,51,-26},
-    &.{11,119,35,121,36,122,40,92,46,120,51,118},
-    &.{48,124,56,123,57,125,58,126},
-    &.{35,-37,36,-37,40,-37},
-    &.{1,-45,35,-45,36,-45,37,-45,48,-45,51,127,55,-45},
-    &.{1,-36,35,128,36,129,37,-36,48,-36,55,-36},
-    &.{35,-38,36,-38,40,-38},
-    &.{1,-47,35,-47,36,-47,37,-47,48,-47,51,-47,55,-47},
-    &.{1,-44,35,-44,36,-44,37,-44,48,-44,55,-44},
-    &.{1,-71,22,130,25,25,26,27,35,-71,36,-71,37,-71,40,-71,45,-71,48,-71,52,-71,53,-71,55,-71,60,-71,62,-71,63,-71,64,-71,65,-71},
-    &.{1,-57,35,-57,36,-57,37,-57,48,-57,55,-57},
-    &.{66,131},
-    &.{51,133,66,-90,68,132},
-    &.{1,-66,35,-66,36,-66,37,-66,48,-66,55,-66,60,-66},
-    &.{37,-95,40,-95,45,-95,46,-95,48,-95,52,-95,55,-95,60,-95,64,-95,65,-95,66,-95,67,-95},
-    &.{1,-83,35,-83,36,-83,37,-83,40,-83,45,-83,46,-83,48,-83,52,-83,53,-83,55,-83,60,-83,62,-83,63,-83,64,-83,65,-83,66,-83,67,-83,68,-83,69,-83,70,-83},
-    &.{27,81,28,42,33,134,37,50,40,52,45,51,48,54,52,53,55,46,64,43,65,48},
-    &.{1,-65,35,-65,36,-65,37,-65,48,-65,55,-65,60,-65},
-    &.{1,-84,35,-84,36,-84,37,-84,40,-84,45,-84,46,-84,48,-84,52,-84,53,-84,55,-84,60,-84,62,-84,63,-84,64,-84,65,-84,66,-84,67,-84,68,-84,69,-84,70,-84},
-    &.{46,-85},
-    &.{1,-73,35,-73,36,-73,37,-73,40,-73,45,-73,46,-73,48,-73,52,-73,53,-73,55,-73,60,-73,62,-73,63,-73,64,-73,65,-73,66,-73,67,-73},
-    &.{46,136,51,135},
-    &.{46,-19,51,-19},
-    &.{46,-21,51,-21,52,137},
-    &.{40,138},
-    &.{35,-23,36,-23,40,-23,46,-23,51,-23},
-    &.{35,-22,36,-22,40,-22,46,-22,51,-22},
-    &.{1,-13,35,-13,36,-13,37,-13,48,-13,55,-13},
-    &.{35,-24,36,-24,40,-24,46,-24,51,-24},
-    &.{35,-25,36,-25,40,-25,46,-25,51,-25},
-    &.{1,-48,35,-48,36,-48,37,-48,48,-48,51,-48,55,-48},
-    &.{1,-51,35,-51,36,-51,37,-51,48,-51,51,-51,55,-51},
-    &.{1,-49,35,-49,36,-49,37,-49,48,-49,51,-49,55,-49},
-    &.{1,-50,35,-50,36,-50,37,-50,48,-50,51,-50,55,-50},
-    &.{19,139,40,95},
-    &.{1,-42,17,140,18,97,19,100,35,-42,36,-42,37,-42,40,95,48,-42,55,-42},
-    &.{1,-43,35,-43,36,-43,37,-43,48,-43,55,-43},
-    &.{1,-56,35,-56,36,-56,37,-56,48,-56,55,-56,60,41},
-    &.{1,-78,35,-78,36,-78,37,-78,40,-78,45,-78,46,-78,48,-78,52,-78,53,-78,55,-78,60,-78,62,-78,63,-78,64,-78,65,-78,66,-78,67,-78,68,-78,69,-78,70,-78},
-    &.{51,141,66,-89},
-    &.{31,143,40,142,55,144},
-    &.{27,107,28,42,37,50,40,52,45,51,46,-93,48,54,52,53,55,46,60,-93,64,43,65,48,66,-93,67,-93},
-    &.{9,145,48,116},
-    &.{1,-17,35,-17,36,-17,37,-17,48,-17,55,-17},
-    &.{46,-20,51,-20},
-    &.{35,-28,36,-28,40,-28,46,-28,51,-28},
-    &.{1,-46,35,-46,36,-46,37,-46,48,-46,51,-46,55,-46},
-    &.{1,-41,35,-41,36,-41,37,-41,48,-41,55,-41},
-    &.{31,146,40,142,55,144},
-    &.{66,-91},
-    &.{66,-88},
-    &.{66,-92},
-    &.{46,-18,51,-18},
-    &.{66,-87},
+    &.{7,32,65,31,81,30},
+    &.{33,34,34,33,35,35,66,36,76,39,81,37,86,38},
+    &.{65,40},
+    &.{21,42,81,41},
+    &.{33,43,34,33,35,35,66,36,76,39,81,37,86,38},
+    &.{65,44},
+    &.{9,46,76,47,86,45},
+    &.{36,49,81,48},
+    &.{14,53,15,50,16,54,66,55,81,51,91,52},
+    &.{14,56,15,50,16,54,66,55,81,51,91,52},
+    &.{76,57},
+    &.{1,-6,5,58,6,3,38,4,39,2,62,-6,63,7,76,10,86,9},
+    &.{65,-101},
+    &.{65,-100},
+    &.{1,-99,62,-99,96,60,103,59},
+    &.{1,-107,43,74,44,77,45,69,46,67,62,-107,63,64,66,62,71,63,76,70,81,65,86,76,89,68,90,71,91,72,96,-107,101,78,103,-107,104,73,105,66,107,61,108,75},
+    &.{1,-104,62,-104,96,-104,103,-104},
+    &.{8,79,76,80},
+    &.{68,81},
+    &.{1,-11,62,-11,81,82},
+    &.{1,-88,35,83,62,-88,66,36,76,39,81,-88,86,38},
+    &.{1,-18,62,-18,81,84},
+    &.{1,-91,62,-91,66,-91,76,-91,81,-91,86,-91},
+    &.{1,-95,62,-95,66,-95,76,-95,81,-95,86,-95},
+    &.{34,85,35,35,66,36,76,39,86,38},
+    &.{1,-94,62,-94,66,-94,76,-94,81,-94,86,-94},
+    &.{1,-93,62,-93,66,-93,76,-93,81,-93,86,-93},
+    &.{66,86},
+    &.{22,89,23,90,24,88,66,87,76,91},
+    &.{1,-17,62,-17,81,92},
+    &.{1,-19,62,-19,81,84},
+    &.{71,93},
+    &.{65,94,87,95},
+    &.{1,-12,62,-12},
+    &.{65,96,87,97},
+    &.{37,98,76,99},
+    &.{1,-20,62,-20,81,100},
+    &.{1,-41,62,-41,81,-41,88,101},
+    &.{15,102,16,54,66,55,91,52},
+    &.{66,103},
+    &.{1,-15,62,-15,81,104},
+    &.{1,-44,62,-44,81,-44,88,-44},
+    &.{92,105},
+    &.{1,-14,62,-14,81,104},
+    &.{17,107,81,106},
+    &.{1,-5,62,-5},
+    &.{1,-116,41,108,42,28,62,-116,63,-116,66,-116,71,-116,76,-116,81,-116,86,-116,89,-116,90,-116,91,-116,96,-116,101,-116,103,-116,104,-116,105,-116,107,-116,108,-116},
+    &.{1,-116,41,109,42,28,62,-116,63,-116,66,-116,71,-116,76,-116,81,-116,86,-116,89,-116,90,-116,91,-116,96,-116,101,-116,103,-116,104,-116,105,-116,107,-116,108,-116},
+    &.{66,110},
+    &.{1,-129,62,-129,63,-129,66,-129,71,-129,72,-129,76,-129,81,-129,86,-129,88,-129,89,-129,90,-129,91,-129,96,-129,98,-129,99,-129,101,-129,102,-129,103,-129,104,-129,105,-129,107,-129,108,-129,109,-129,110,-129},
+    &.{43,113,44,77,45,69,46,67,47,114,51,112,52,111,63,64,66,62,71,63,76,70,86,76,89,68,91,72,101,78,107,61,108,75},
+    &.{75,116,76,115},
+    &.{1,-118,62,-118,63,-118,66,-118,71,-118,76,-118,81,-118,86,-118,89,-118,90,-118,91,-118,96,-118,101,-118,103,-118,104,-118,105,-118,107,-118,108,-118},
+    &.{1,-109,62,-109,90,117,96,-109,103,-109},
+    &.{1,-133,62,-133,63,-133,66,-133,71,-133,72,-133,76,-133,81,-133,86,-133,88,-133,89,-133,90,-133,91,-133,92,118,96,-133,98,-133,99,-133,101,-133,102,-133,103,-133,104,-133,105,-133,107,-133,108,-133,109,-133,110,-133},
+    &.{45,120,46,119,63,64,66,62,71,63,76,70,86,76,101,78,108,75},
+    &.{1,-126,53,123,62,-126,63,-126,66,-126,71,-126,72,-126,76,-126,81,-126,86,-126,88,-126,89,-126,90,-126,91,-126,96,-126,98,122,99,-126,101,-126,102,-126,103,-126,104,-126,105,-126,107,-126,108,-126,109,121,110,124},
+    &.{1,-127,62,-127,63,-127,66,-127,71,-127,72,-127,76,-127,81,-127,86,-127,88,-127,89,-127,90,-127,91,-127,96,-127,98,-127,99,-127,101,-127,102,-127,103,-127,104,-127,105,-127,107,-127,108,-127,109,-127,110,-127},
+    &.{54,126,55,129,68,125,101,128,111,127},
+    &.{44,130,45,69,46,119,63,64,66,62,71,63,76,70,86,76,101,78,108,75},
+    &.{1,-108,62,-108,90,131,96,-108,103,-108},
+    &.{1,-117,62,-117,63,-117,66,-117,71,-117,76,-117,81,-117,86,-117,89,-117,90,-117,91,-117,96,-117,101,-117,103,-117,104,-117,105,-117,107,-117,108,-117},
+    &.{101,132},
+    &.{1,-128,62,-128,63,-128,66,-128,71,-128,72,-128,76,-128,81,-128,86,-128,88,-128,89,-128,90,-128,91,-128,96,-128,98,-128,99,-128,101,-128,102,-128,103,-128,104,-128,105,-128,107,-128,108,-128,109,-128,110,-128},
+    &.{1,-121,62,-121,63,-121,66,-121,71,-121,72,-121,76,-121,81,-121,86,-121,88,-121,89,-121,90,-121,91,-121,96,-121,99,-121,101,-121,102,-121,103,-121,104,-121,105,-121,107,-121,108,-121},
+    &.{43,113,44,77,45,69,46,67,51,133,52,111,63,64,66,62,71,63,76,70,86,76,89,68,91,72,101,78,107,61,108,75},
+    &.{1,-21,62,-21,81,-21},
+    &.{82,134},
+    &.{1,-10,62,-10},
+    &.{8,135,76,80},
+    &.{1,-92,62,-92,66,-92,76,-92,81,-92,86,-92},
+    &.{34,136,35,35,66,36,76,39,86,38},
+    &.{1,-89,35,83,62,-89,66,36,76,39,81,-89,86,38},
+    &.{1,-9,62,-9},
+    &.{1,-67,62,-67,63,-67,76,-67,81,-67,88,-67,91,-67,96,-67,99,-67},
+    &.{1,-64,62,-64,63,-64,76,-64,81,-64,88,-64,91,-64,96,-64,99,-64},
+    &.{1,-58,62,-58,81,-58},
+    &.{1,-68,25,138,62,-68,63,-68,76,-68,81,-68,88,137,91,-68,96,-68,99,-68},
+    &.{1,-66,62,-66,63,-66,76,-66,81,-66,88,-66,91,-66,96,-66,99,-66},
+    &.{22,139,23,90,24,88,66,87,76,91},
+    &.{12,140,13,141,66,142},
+    &.{71,143},
+    &.{76,144},
+    &.{71,145},
+    &.{76,146},
+    &.{1,-96,62,-96,81,-96},
+    &.{34,147,35,35,66,36,76,39,86,38},
+    &.{37,148,76,99},
+    &.{1,-46,16,149,62,-46,66,55,81,-46,88,-46,91,52},
+    &.{1,-42,62,-42,81,-42,88,101},
+    &.{1,-47,62,-47,81,-47,88,-47},
+    &.{15,150,16,54,66,55,91,52},
+    &.{66,151},
+    &.{18,152,19,153,20,155,66,154},
+    &.{1,-16,62,-16,81,156},
+    &.{1,-106,62,-106,96,-106,103,-106},
+    &.{1,-105,62,-105,96,-105,103,-105},
+    &.{1,-124,62,-124,63,-124,66,-124,71,-124,72,-124,76,-124,81,-124,86,-124,88,-124,89,-124,90,-124,91,-124,96,-124,99,-124,101,-124,102,-124,103,-124,104,-124,105,-124,107,-124,108,-124},
+    &.{43,157,44,77,45,69,46,67,63,64,66,62,71,63,72,-147,76,70,86,76,88,-147,89,68,91,72,96,-147,99,-147,101,78,102,-147,107,61,108,75},
+    &.{72,-138,88,159,96,160,99,158},
+    &.{63,-149,66,-149,71,-149,72,-149,76,-149,86,-149,88,-149,89,-149,91,-149,96,-149,99,-149,101,-149,102,-149,107,-149,108,-149},
+    &.{72,161},
+    &.{1,-131,62,-131,63,-131,66,-131,71,-131,72,-131,76,-131,81,-131,86,-131,88,-131,89,-131,90,-131,91,-131,96,-131,98,-131,99,-131,101,-131,102,-131,103,-131,104,-131,105,-131,107,-131,108,-131,109,-131,110,-131},
+    &.{1,-132,62,-132,63,-132,66,-132,71,-132,72,-132,76,-132,81,-132,86,-132,88,-132,89,-132,90,-132,91,-132,96,-132,98,-132,99,-132,101,-132,102,-132,103,-132,104,-132,105,-132,107,-132,108,-132,109,-132,110,-132},
+    &.{54,162,55,129,68,125,101,128,111,127},
+    &.{76,163},
+    &.{1,-133,62,-133,63,-133,66,-133,71,-133,72,-133,76,-133,81,-133,86,-133,88,-133,89,-133,90,-133,91,-133,96,-133,98,-133,99,-133,101,-133,102,-133,103,-133,104,-133,105,-133,107,-133,108,-133,109,-133,110,-133},
+    &.{1,-123,53,164,62,-123,63,-123,66,-123,71,-123,72,-123,76,-123,81,-123,86,-123,88,-123,89,-123,90,-123,91,-123,96,-123,98,122,99,-123,101,-123,102,-123,103,-123,104,-123,105,-123,107,-123,108,-123,109,121,110,124},
+    &.{1,-152,62,-152,63,-152,66,-152,71,-152,72,-152,76,-152,81,-152,86,-152,88,-152,89,-152,90,-152,91,-152,96,-152,99,-152,101,-152,102,-152,103,-152,104,-152,105,-152,107,-152,108,-152},
+    &.{1,-151,62,-151,63,-151,66,-151,71,-151,72,-151,76,-151,81,-151,86,-151,88,-151,89,-151,90,-151,91,-151,96,-151,99,-151,101,-151,102,-151,103,-151,104,-151,105,-151,107,-151,108,-151},
+    &.{1,-125,62,-125,63,-125,66,-125,71,-125,72,-125,76,-125,81,-125,86,-125,88,-125,89,-125,90,-125,91,-125,96,-125,99,-125,101,-125,102,-125,103,-125,104,-125,105,-125,107,-125,108,-125},
+    &.{1,-153,62,-153,63,-153,66,-153,71,-153,72,-153,76,-153,81,-153,86,-153,88,-153,89,-153,90,-153,91,-153,96,-153,99,-153,101,-153,102,-153,103,-153,104,-153,105,-153,107,-153,108,-153},
+    &.{1,-154,62,-154,96,-154,103,-154,106,-154},
+    &.{1,-110,62,-110,96,-110,103,-110,106,165},
+    &.{1,-155,62,-155,96,-155,103,-155,106,-155},
+    &.{55,169,56,175,58,168,61,166,68,176,89,171,91,173,99,172,101,128,102,-160,106,174,111,170,112,167},
+    &.{1,-156,62,-156,96,-156,103,-156,106,-156},
+    &.{1,-119,62,-119,63,-119,66,-119,71,-119,72,-119,76,-119,81,-119,86,-119,88,-119,89,-119,90,-119,91,-119,96,-119,99,-119,101,-119,102,-119,103,-119,104,-119,105,-119,107,-119,108,-119},
+    &.{54,177,55,129,68,125,101,128,111,127},
+    &.{48,181,49,178,76,180,86,179},
+    &.{96,160,102,182},
+    &.{68,183,85,184},
+    &.{1,-22,62,-22,81,-22},
+    &.{1,-90,35,83,62,-90,66,36,76,39,81,-90,86,38},
+    &.{24,185,66,87,76,91},
+    &.{1,-60,26,189,62,-60,63,190,76,191,81,-60,91,187,96,188,99,186},
+    &.{1,-59,62,-59,81,-59},
+    &.{13,194,66,142,72,192,88,193},
+    &.{66,-37,72,-37,88,-37},
+    &.{90,195},
+    &.{10,197,11,196,76,198},
+    &.{65,199},
+    &.{10,200,11,196,76,198},
+    &.{65,201},
+    &.{1,-98,35,83,62,-98,66,36,76,39,81,-98,86,38},
+    &.{1,-97,62,-97,81,-97},
+    &.{1,-45,62,-45,81,-45,88,-45},
+    &.{1,-43,62,-43,81,-43,88,101},
+    &.{1,-48,62,-48,81,-48,88,-48},
+    &.{1,-49,62,-49,81,-49},
+    &.{1,-51,62,-51,81,-51,88,202},
+    &.{76,204,93,206,94,203,95,205},
+    &.{1,-52,62,-52,81,-52,88,-52},
+    &.{18,207,19,153,20,155,66,154},
+    &.{63,-150,66,-150,71,-150,72,-150,76,-150,86,-150,88,-150,89,-150,91,-150,96,-150,99,-150,101,-150,102,-150,107,-150,108,-150},
+    &.{72,-136},
+    &.{99,208},
+    &.{43,113,44,77,45,69,46,67,52,209,63,64,66,62,71,63,76,70,86,76,89,68,91,72,101,78,107,61,108,75},
+    &.{1,-134,62,-134,63,-134,66,-134,71,-134,72,-134,76,-134,81,-134,86,-134,88,-134,89,-134,90,-134,91,-134,96,-134,98,-134,99,-134,101,-134,102,-134,103,-134,104,-134,105,-134,107,-134,108,-134,109,-134,110,-134},
+    &.{1,-112,62,-112,96,-112,103,-112,106,210},
+    &.{1,-120,62,-120,63,-120,66,-120,71,-120,72,-120,76,-120,81,-120,86,-120,88,-120,89,-120,90,-120,91,-120,96,-120,99,-120,101,-120,102,-120,103,-120,104,-120,105,-120,107,-120,108,-120},
+    &.{1,-122,62,-122,63,-122,66,-122,71,-122,72,-122,76,-122,81,-122,86,-122,88,-122,89,-122,90,-122,91,-122,96,-122,99,-122,101,-122,102,-122,103,-122,104,-122,105,-122,107,-122,108,-122},
+    &.{66,211},
+    &.{68,-165,91,-165,99,-165,101,-165,102,-165,106,-165,111,-165,112,-165},
+    &.{57,212,68,-162,91,-162,99,-162,101,-162,102,-162,106,-162,111,-162,112,-162},
+    &.{57,213,68,-162,91,-162,99,-162,101,-162,102,-162,106,-162,111,-162,112,-162},
+    &.{68,-174,91,-174,99,-174,101,-174,102,-174,106,-174,111,-174,112,-174},
+    &.{68,-173,91,-173,99,-173,101,-173,102,-173,106,-173,111,-173,112,-173},
+    &.{68,214},
+    &.{68,215},
+    &.{55,169,60,218,61,216,68,176,99,172,101,128,106,174,111,170,112,217},
+    &.{68,219},
+    &.{102,220},
+    &.{68,-170,91,-170,99,-170,101,-170,102,-170,106,-170,111,-170,112,-170},
+    &.{1,-111,62,-111,96,-111,103,-111,106,221},
+    &.{88,222,98,223,102,-139},
+    &.{88,-144,98,-144,102,-144},
+    &.{88,-143,98,-143,102,-143},
+    &.{102,224},
+    &.{1,-135,62,-135,63,-135,66,-135,71,-135,72,-135,76,-135,81,-135,86,-135,88,-135,89,-135,90,-135,91,-135,92,-135,96,-135,98,-135,99,-135,101,-135,102,-135,103,-135,104,-135,105,-135,107,-135,108,-135,109,-135,110,-135},
+    &.{1,-24,62,-24,81,-24,83,225,84,226},
+    &.{82,227},
+    &.{1,-65,62,-65,63,-65,76,-65,81,-65,88,-65,91,-65,96,-65,99,-65},
+    &.{76,229,91,228},
+    &.{27,232,28,230,29,231,66,234,76,233},
+    &.{32,235,76,236},
+    &.{1,-69,62,-69,63,-69,76,-69,81,-69,91,-69,96,-69,99,-69},
+    &.{97,237},
+    &.{1,-70,62,-70,63,-70,76,-70,81,-70,91,-70,96,-70,98,238,99,-70},
+    &.{1,-13,62,-13},
+    &.{66,-39,72,-39,88,-39},
+    &.{66,-38,72,-38,88,-38},
+    &.{66,239},
+    &.{72,-31,88,-31},
+    &.{72,240,88,241},
+    &.{72,-33,87,242,88,-33,89,243},
+    &.{71,244},
+    &.{72,245,88,241},
+    &.{71,246},
+    &.{20,247,66,154},
+    &.{1,-55,62,-55,81,-55,88,-55},
+    &.{1,-57,62,-57,81,-57,88,-57},
+    &.{1,-56,62,-56,81,-56,88,-56},
+    &.{1,-54,62,-54,81,-54,88,-54},
+    &.{1,-50,62,-50,81,-50},
+    &.{72,-137},
+    &.{43,157,44,77,45,69,46,67,63,64,66,62,71,63,72,-148,76,70,86,76,88,-148,89,68,91,72,96,-148,99,-148,101,78,102,-148,107,61,108,75},
+    &.{66,248},
+    &.{1,-113,62,-113,96,-113,103,-113},
+    &.{55,169,59,250,60,251,61,216,68,176,91,252,99,172,101,128,102,249,106,174,111,170,112,217},
+    &.{55,169,59,250,60,251,61,216,68,176,91,252,99,172,101,128,102,-161,106,174,111,170,112,217},
+    &.{57,253,68,-162,91,-162,99,-162,101,-162,102,-162,106,-162,111,-162,112,-162},
+    &.{68,-171,91,-171,99,-171,101,-171,102,-171,106,-171,111,-171,112,-171},
+    &.{68,-168,91,-168,99,-168,101,-168,102,-168,106,-168,111,-168,112,-168},
+    &.{68,-169,91,-169,99,-169,101,-169,102,-169,106,-169,111,-169,112,-169},
+    &.{68,-164,91,-164,99,-164,101,-164,102,-164,106,-164,111,-164,112,-164},
+    &.{68,-172,91,-172,99,-172,101,-172,102,-172,106,-172,111,-172,112,-172},
+    &.{1,-159,62,-159,68,-159,91,-159,96,-159,99,-159,101,-159,102,-159,103,-159,106,-159,111,-159,112,-159},
+    &.{66,254},
+    &.{50,256,66,257,86,255},
+    &.{88,258,102,-140},
+    &.{1,-130,62,-130,63,-130,66,-130,71,-130,72,-130,76,-130,81,-130,86,-130,88,-130,89,-130,90,-130,91,-130,96,-130,98,-130,99,-130,101,-130,102,-130,103,-130,104,-130,105,-130,107,-130,108,-130,109,-130,110,-130},
+    &.{1,-23,62,-23,81,-23},
+    &.{1,-25,62,-25,81,-25},
+    &.{68,259},
+    &.{27,260,28,230,29,231,66,234,76,233},
+    &.{1,-74,62,-74,63,-74,76,-74,81,-74,91,-74,96,-74,99,-74},
+    &.{1,-76,62,-76,63,-76,76,-76,81,-76,91,-76,96,-76,98,-76,99,-76,100,261},
+    &.{1,-77,62,-77,63,-77,76,-77,81,-77,91,-77,96,-77,98,-77,99,-77,100,-77},
+    &.{1,-72,62,-72,63,-72,76,-72,81,-72,91,-72,96,-72,98,262,99,-72},
+    &.{1,-79,62,-79,63,-79,76,-79,81,-79,91,-79,96,-79,98,-79,99,-79,100,-79,101,263},
+    &.{1,-80,62,-80,63,-80,76,-80,81,-80,91,-80,96,-80,98,-80,99,-80,100,-80},
+    &.{1,-61,62,-61,63,264,76,265,81,-61},
+    &.{1,-86,62,-86,63,-86,76,-86,81,-86},
+    &.{1,-62,62,-62,81,-62},
+    &.{1,-71,62,-71,63,-71,76,-71,81,-71,91,-71,96,-71,99,-71},
+    &.{66,-40,72,-40,88,-40},
+    &.{1,-28,62,-28},
+    &.{11,266,76,198},
+    &.{76,267},
+    &.{72,-35,87,268,88,-35},
+    &.{10,269,11,196,76,198},
+    &.{1,-27,62,-27},
+    &.{10,270,11,196,76,198},
+    &.{1,-53,62,-53,81,-53,88,-53},
+    &.{1,-115,62,-115,96,-115,103,-115},
+    &.{1,-157,62,-157,68,-157,91,-157,96,-157,99,-157,101,-157,102,-157,103,-157,106,-157,111,-157,112,-157},
+    &.{68,-163,91,-163,99,-163,101,-163,102,-163,106,-163,111,-163,112,-163},
+    &.{68,-167,91,-167,99,-167,101,-167,102,-167,106,-167,111,-167,112,-167},
+    &.{55,169,60,271,61,216,68,176,99,172,101,128,106,174,111,170,112,217},
+    &.{55,169,59,250,60,251,61,216,68,176,91,252,99,172,101,128,102,272,106,174,111,170,112,217},
+    &.{1,-114,62,-114,96,-114,103,-114},
+    &.{102,-146},
+    &.{102,-141},
+    &.{102,-145},
+    &.{50,273,66,257,86,255},
+    &.{1,-24,62,-24,81,-24,83,225,84,274},
+    &.{1,-75,62,-75,63,-75,76,-75,81,-75,91,-75,96,-75,99,-75},
+    &.{29,275,66,234,76,233},
+    &.{1,-73,62,-73,63,-73,76,-73,81,-73,91,-73,96,-73,99,-73},
+    &.{30,277,31,276,66,279,76,278},
+    &.{97,280},
+    &.{1,-87,62,-87,63,-87,76,-87,81,-87},
+    &.{72,-32,88,-32},
+    &.{72,-34,88,-34},
+    &.{76,281},
+    &.{72,282,88,241},
+    &.{72,283,88,241},
+    &.{68,-166,91,-166,99,-166,101,-166,102,-166,106,-166,111,-166,112,-166},
+    &.{1,-158,62,-158,68,-158,91,-158,96,-158,99,-158,101,-158,102,-158,103,-158,106,-158,111,-158,112,-158},
+    &.{102,-142},
+    &.{1,-26,62,-26,81,-26},
+    &.{1,-78,62,-78,63,-78,76,-78,81,-78,91,-78,96,-78,98,-78,99,-78,100,-78},
+    &.{100,-82,102,-82},
+    &.{100,284,102,285},
+    &.{100,-84,102,-84},
+    &.{100,-85,102,-85},
+    &.{1,-63,62,-63,81,-63},
+    &.{72,-36,88,-36},
+    &.{1,-30,62,-30},
+    &.{1,-29,62,-29},
+    &.{31,286,66,279,76,278},
+    &.{1,-81,62,-81,63,-81,76,-81,81,-81,91,-81,96,-81,98,-81,99,-81,100,-81},
+    &.{100,-83,102,-83},
 };
 
 const parseTable = blk: {
@@ -1546,34 +2371,47 @@ fn startState(start: Start) u16 {
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"grammar" => 71,
+        .@"grammar" => 113,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    1, 35, 36, 37, 48, 55, 39, 39, 52, 1, 38, 41, 43, 44, 47, 49, 50, 1, 35, 36, 37, 40, 45, 48,
-    52, 53, 55, 60, 62, 63, 64, 65, 48, 55, 48, 1, 35, 36, 37, 48, 55, 60, 54, 1, 35, 36, 37, 48,
-    51, 55, 40, 42, 59, 45, 35, 36, 1, 35, 36, 37, 40, 45, 46, 48, 52, 53, 55, 60, 62, 63, 64, 65,
-    66, 67, 68, 69, 70, 61, 1, 35, 36, 37, 48, 53, 55, 60, 37, 40, 45, 48, 52, 55, 64, 65, 48, 50,
-    37, 40, 45, 48, 55, 65, 35, 36, 40, 46, 51, 35, 36, 40, 1, 35, 36, 37, 40, 45, 46, 48, 52, 53,
-    55, 60, 62, 63, 64, 65, 66, 67, 37, 40, 45, 46, 48, 52, 55, 60, 64, 65, 66, 67, 60, 66, 46, 46,
-    60, 67, 53, 48, 56, 57, 58, 66, 51, 66, 68, 46, 51, 46, 51, 52, 1, 35, 36, 37, 40, 48, 55, 51,
-    66, 40, 55,
+    1, 63, 76, 86, 65, 1, 62, 1, 64, 67, 69, 70, 73, 74, 75, 77, 78, 79, 80, 65, 89, 1, 62, 63,
+    66, 71, 76, 81, 86, 89, 90, 91, 96, 101, 103, 104, 105, 107, 108, 65, 81, 66, 76, 81, 86, 81, 76, 86,
+    66, 81, 91, 76, 1, 62, 63, 76, 86, 1, 62, 96, 103, 68, 1, 62, 81, 1, 62, 66, 76, 81, 86, 66,
+    76, 86, 66, 66, 76, 71, 65, 87, 1, 62, 81, 88, 66, 91, 92, 1, 62, 63, 66, 71, 72, 76, 81, 86,
+    88, 89, 90, 91, 96, 98, 99, 101, 102, 103, 104, 105, 107, 108, 109, 110, 63, 66, 71, 76, 86, 89, 91, 101,
+    107, 108, 75, 76, 1, 62, 90, 96, 103, 1, 62, 63, 66, 71, 72, 76, 81, 86, 88, 89, 90, 91, 92, 96,
+    98, 99, 101, 102, 103, 104, 105, 107, 108, 109, 110, 63, 66, 71, 76, 86, 101, 108, 68, 101, 111, 101, 1, 62,
+    63, 66, 71, 72, 76, 81, 86, 88, 89, 90, 91, 96, 99, 101, 102, 103, 104, 105, 107, 108, 82, 1, 62, 63,
+    76, 81, 88, 91, 96, 99, 1, 62, 66, 81, 88, 91, 63, 66, 71, 72, 76, 86, 88, 89, 91, 96, 99, 101,
+    102, 107, 108, 72, 88, 96, 99, 72, 1, 62, 96, 103, 106, 68, 89, 91, 99, 101, 102, 106, 111, 112, 96, 102,
+    68, 85, 1, 62, 63, 76, 81, 91, 96, 99, 66, 72, 88, 90, 76, 93, 94, 95, 99, 68, 91, 99, 101, 102,
+    106, 111, 112, 68, 99, 101, 106, 111, 112, 102, 88, 98, 102, 1, 62, 81, 83, 76, 91, 97, 1, 62, 63, 76,
+    81, 91, 96, 98, 99, 72, 88, 72, 87, 88, 89, 1, 62, 68, 91, 96, 99, 101, 102, 103, 106, 111, 112, 66,
+    86, 88, 102, 1, 62, 63, 76, 81, 91, 96, 98, 99, 100, 1, 62, 63, 76, 81, 91, 96, 98, 99, 100, 101,
+    1, 62, 63, 76, 81, 72, 87, 88, 100, 102,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 6, 7, 9, 10, 17, 32, 34, 35, 42, 43, 50, 51, 52, 53, 54, 56, 77, 78, 86, 94, 96, 102,
-    107, 110, 128, 140, 142, 143, 146, 147, 151, 152, 155, 157, 160, 167, 169, 171,
+    0, 0, 4, 5, 7, 8, 19, 21, 39, 41, 45, 46, 48, 51, 52, 57, 61, 62, 65, 71, 74, 75, 77, 78,
+    80, 84, 86, 87, 112, 122, 124, 129, 155, 162, 165, 166, 188, 189, 198, 204, 219, 223, 224, 229, 238, 240, 242, 250,
+    253, 254, 258, 259, 267, 273, 274, 277, 281, 283, 284, 293, 295, 299, 311, 313, 315, 325, 336, 341, 344, 346,
 };
 const expectedOf = [_]u16{
-    0, 1, 2, 1, 1, 3, 4, 3, 1, 5, 1, 6, 2, 4, 2, 1, 1, 1, 7, 2, 8, 2, 8, 2,
-    8, 9, 9, 6, 10, 11, 11, 10, 12, 1, 2, 13, 14, 15, 1, 16, 1, 6, 17, 12, 6, 18, 17, 19,
-    20, 19, 21, 20, 17, 22, 17, 12, 11, 11, 11, 11, 12, 1, 15, 1, 1, 1, 23, 24, 24, 24, 9, 9,
-    25, 25, 25, 25, 25, 9, 8, 18, 26, 26, 27, 18, 17, 17, 28, 29, 17, 11, 11, 8, 30, 23, 23, 31,
-    24, 11, 1, 24, 11, 1, 6, 1, 32, 33, 9, 26, 17, 20, 9, 17, 28, 25, 34, 34, 35, 12, 23, 23,
-    1, 23, 23, 11, 11, 11, 11, 12, 36, 1, 9, 17, 37, 38, 26, 8, 1, 34, 23, 11, 1, 38, 32, 32,
-    32, 34, 32,
+    0, 1, 2, 3, 3, 3, 4, 5, 3, 6, 6, 7, 4, 8, 9, 2, 10, 9, 2, 11, 10, 12, 12, 13,
+    14, 2, 2, 15, 7, 15, 13, 16, 17, 18, 17, 18, 18, 19, 18, 18, 20, 21, 17, 17, 22, 23, 3, 23,
+    13, 17, 24, 25, 20, 17, 24, 26, 17, 10, 3, 7, 7, 20, 27, 28, 29, 7, 30, 31, 32, 27, 27, 33,
+    32, 30, 7, 34, 27, 35, 28, 17, 36, 3, 13, 18, 19, 18, 3, 37, 37, 17, 37, 37, 21, 20, 22, 13,
+    22, 13, 17, 19, 13, 38, 24, 24, 25, 20, 20, 17, 15, 15, 35, 39, 40, 39, 41, 27, 27, 33, 13, 27,
+    27, 35, 35, 35, 35, 42, 42, 42, 43, 42, 35, 33, 11, 44, 45, 17, 18, 21, 46, 17, 47, 47, 48, 13,
+    2, 13, 2, 18, 17, 24, 24, 24, 17, 24, 49, 24, 20, 39, 41, 50, 28, 27, 42, 35, 35, 20, 51, 51,
+    51, 51, 51, 16, 16, 52, 16, 53, 51, 42, 54, 54, 54, 53, 31, 55, 36, 37, 56, 21, 13, 46, 57, 58,
+    3, 47, 47, 20, 59, 59, 60, 22, 59, 22, 20, 24, 24, 24, 24, 17, 41, 39, 20, 15, 51, 51, 51, 51,
+    51, 51, 51, 51, 61, 20, 62, 63, 27, 17, 17, 16, 21, 46, 64, 64, 58, 65, 64, 66, 66, 17, 46, 47,
+    3, 13, 13, 67, 13, 3, 13, 24, 15, 61, 51, 51, 52, 51, 15, 53, 53, 53, 62, 55, 46, 21, 46, 21,
+    57, 66, 59, 59, 13, 59, 59, 51, 61, 53, 17, 64, 68, 68, 68, 68, 17, 59, 3, 3, 21, 64, 68,
 };
 
 fn expectedIn(state: u16) []const u16 {
@@ -1584,42 +2422,56 @@ fn expectedIn(state: u16) []const u16 {
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
         1 => "end of input",
-        35 => "newline",
-        36 => "comment",
-        37 => "\"@\"",
-        38 => "kw_lang",
-        39 => "\"=\"",
-        40 => "string",
-        41 => "kw_conflicts",
-        42 => "integer",
-        43 => "kw_as",
-        44 => "kw_op",
-        45 => "\"[\"",
-        46 => "\"]\"",
-        47 => "kw_code",
-        48 => "ident",
-        49 => "kw_errors",
-        50 => "kw_infix",
-        51 => "\",\"",
-        52 => "\"!\"",
-        53 => "arrow",
-        54 => "\":\"",
-        55 => "token",
-        56 => "kw_left",
-        57 => "kw_right",
-        58 => "kw_none",
-        59 => "code_block",
-        60 => "\"|\"",
-        61 => "action_text",
-        62 => "\"<\"",
-        63 => "\">\"",
-        64 => "kw_x",
-        65 => "\"(\"",
-        66 => "\")\"",
-        67 => "\"...\"",
-        68 => "\"?\"",
-        69 => "\"*\"",
-        70 => "\"+\"",
+        62 => "newline",
+        63 => "\"@\"",
+        64 => "kw_lang",
+        65 => "\"=\"",
+        66 => "string",
+        67 => "kw_conflicts",
+        68 => "integer",
+        69 => "kw_as",
+        70 => "kw_op",
+        71 => "\"[\"",
+        72 => "\"]\"",
+        73 => "kw_errors",
+        74 => "kw_display",
+        75 => "kw_infix",
+        76 => "ident",
+        77 => "kw_schema",
+        78 => "kw_tags",
+        79 => "kw_trivia",
+        80 => "kw_repair",
+        81 => "cont",
+        82 => "rule_text",
+        83 => "comment",
+        85 => "kw_over",
+        86 => "token",
+        87 => "kw_via",
+        88 => "\",\"",
+        89 => "\"!\"",
+        90 => "arrow",
+        91 => "label",
+        92 => "\":\"",
+        93 => "kw_left",
+        94 => "kw_right",
+        95 => "kw_none",
+        96 => "\"|\"",
+        97 => "kw_wrapper",
+        98 => "\"?\"",
+        99 => "\"...\"",
+        100 => "union",
+        101 => "\"(\"",
+        102 => "\")\"",
+        103 => "next_alt",
+        104 => "\"<\"",
+        105 => "\">\"",
+        106 => "\"~\"",
+        107 => "kw_x",
+        108 => "kw_list",
+        109 => "\"*\"",
+        110 => "\"+\"",
+        111 => "kw_nil",
+        112 => "word",
         else => "",
     };
 }
@@ -1637,20 +2489,445 @@ fn ruleSideLabels(rule: u16) []const SideLabel {
     return &.{};
 }
 
-fn slotOf(_: Tag, _: Role) ?usize {
-    return null;
+// =============================================================================
+// Schema slots
+// =============================================================================
+
+/// Slot of `role` in nodes of `kind` (the head is slot 0).
+fn slotOf(kind: Tag, role: Role) ?usize {
+    return switch (kind) {
+        .@"lang" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"conflicts" => switch (role) {
+            .@"count" => 1,
+            else => null,
+        },
+        .@"conflict" => switch (role) {
+            .@"kind" => 1,
+            .@"rule" => 2,
+            .@"over" => 3,
+            .@"count" => 4,
+            .@"reason" => 5,
+            else => null,
+        },
+        .@"as" => switch (role) {
+            .@"token" => 1,
+            .@"via" => 2,
+            else => null,
+        },
+        .@"as_entry" => switch (role) {
+            .@"perm" => 1,
+            .@"group" => 2,
+            .@"via" => 3,
+            else => null,
+        },
+        .@"op_map" => switch (role) {
+            .@"lit" => 1,
+            .@"token" => 2,
+            else => null,
+        },
+        .@"name_pair" => switch (role) {
+            .@"key" => 1,
+            .@"name" => 2,
+            else => null,
+        },
+        .@"infix" => switch (role) {
+            .@"base" => 1,
+            else => null,
+        },
+        .@"infix_op" => switch (role) {
+            .@"op" => 1,
+            .@"assoc" => 2,
+            else => null,
+        },
+        .@"kind_decl" => switch (role) {
+            .@"kinds" => 1,
+            .@"roles" => 2,
+            .@"sides" => 3,
+            .@"wrapper" => 4,
+            else => null,
+        },
+        .@"role" => switch (role) {
+            .@"rest" => 1,
+            .@"name" => 2,
+            .@"type" => 3,
+            .@"opt" => 4,
+            else => null,
+        },
+        .@"tagset" => switch (role) {
+            .@"tag" => 1,
+            else => null,
+        },
+        .@"repair_line" => switch (role) {
+            .@"class" => 1,
+            else => null,
+        },
+        .@"rule" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"start" => switch (role) {
+            .@"id" => 1,
+            else => null,
+        },
+        .@"name" => switch (role) {
+            .@"id" => 1,
+            else => null,
+        },
+        .@"alt" => switch (role) {
+            .@"hint" => 1,
+            .@"elements" => 2,
+            .@"action" => 3,
+            .@"optout" => 4,
+            else => null,
+        },
+        .@"ref" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"tok" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"lit" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"at_ref" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"list_req" => switch (role) {
+            .@"keyword" => 1,
+            .@"inner" => 2,
+            else => null,
+        },
+        .@"plain" => switch (role) {
+            .@"item" => 1,
+            else => null,
+        },
+        .@"opt_items_nosep" => switch (role) {
+            .@"item" => 1,
+            else => null,
+        },
+        .@"sep_items" => switch (role) {
+            .@"item" => 1,
+            .@"sep" => 2,
+            else => null,
+        },
+        .@"opt_items" => switch (role) {
+            .@"item" => 1,
+            .@"sep" => 2,
+            else => null,
+        },
+        .@"group" => switch (role) {
+            .@"kind" => 1,
+            else => null,
+        },
+        .@"quantified" => switch (role) {
+            .@"element" => 1,
+            .@"quant" => 2,
+            else => null,
+        },
+        .@"skip_q" => switch (role) {
+            .@"element" => 1,
+            .@"quant" => 2,
+            else => null,
+        },
+        .@"skip" => switch (role) {
+            .@"element" => 1,
+            else => null,
+        },
+        .@"exclude" => switch (role) {
+            .@"char" => 1,
+            else => null,
+        },
+        .@"label" => switch (role) {
+            .@"name" => 1,
+            .@"element" => 2,
+            else => null,
+        },
+        .@"pos" => switch (role) {
+            .@"n" => 1,
+            else => null,
+        },
+        .@"spread" => switch (role) {
+            .@"n" => 1,
+            else => null,
+        },
+        .@"symid" => switch (role) {
+            .@"n" => 1,
+            else => null,
+        },
+        .@"tag" => switch (role) {
+            .@"word" => 1,
+            else => null,
+        },
+        .@"named" => switch (role) {
+            .@"role" => 1,
+            .@"value" => 2,
+            else => null,
+        },
+        .@"node" => switch (role) {
+            .@"head" => 1,
+            else => null,
+        },
+        .@"keep" => switch (role) {
+            .@"n" => 1,
+            else => null,
+        },
+        else => null,
+    };
 }
 
-fn restSlotOf(_: Tag, _: Role) ?usize {
-    return null;
+/// First slot of rest role `role` in nodes of `kind`.
+fn restSlotOf(kind: Tag, role: Role) ?usize {
+    return switch (kind) {
+        .@"grammar" => if (role == .@"entries") 1 else null,
+        .@"manifest" => if (role == .@"entries") 1 else null,
+        .@"as" => if (role == .@"groups") 3 else null,
+        .@"op" => if (role == .@"maps") 1 else null,
+        .@"errors" => if (role == .@"pairs") 1 else null,
+        .@"display" => if (role == .@"pairs") 1 else null,
+        .@"infix" => if (role == .@"levels") 2 else null,
+        .@"level" => if (role == .@"ops") 1 else null,
+        .@"schema" => if (role == .@"decls") 1 else null,
+        .@"kinds" => if (role == .@"names") 1 else null,
+        .@"sides" => if (role == .@"names") 1 else null,
+        .@"roles" => if (role == .@"roles") 1 else null,
+        .@"type" => if (role == .@"atoms") 1 else null,
+        .@"tagset" => if (role == .@"values") 2 else null,
+        .@"tags" => if (role == .@"names") 1 else null,
+        .@"trivia" => if (role == .@"names") 1 else null,
+        .@"repair" => if (role == .@"lines") 1 else null,
+        .@"repair_line" => if (role == .@"names") 2 else null,
+        .@"rule" => if (role == .@"alts") 2 else null,
+        .@"group" => if (role == .@"bodies") 2 else null,
+        .@"node" => if (role == .@"items") 2 else null,
+        .@"list" => if (role == .@"items") 1 else null,
+        .@"keep" => if (role == .@"items") 2 else null,
+        else => null,
+    };
 }
 
-fn roleAt(_: Tag, _: usize) ?Role {
-    return null;
+/// The slot role at `slot` of nodes of `kind`.
+fn roleAt(kind: Tag, slot: usize) ?Role {
+    return switch (kind) {
+        .@"lang" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"conflicts" => switch (slot) {
+            1 => .@"count",
+            else => null,
+        },
+        .@"conflict" => switch (slot) {
+            1 => .@"kind",
+            2 => .@"rule",
+            3 => .@"over",
+            4 => .@"count",
+            5 => .@"reason",
+            else => null,
+        },
+        .@"as" => switch (slot) {
+            1 => .@"token",
+            2 => .@"via",
+            else => null,
+        },
+        .@"as_entry" => switch (slot) {
+            1 => .@"perm",
+            2 => .@"group",
+            3 => .@"via",
+            else => null,
+        },
+        .@"op_map" => switch (slot) {
+            1 => .@"lit",
+            2 => .@"token",
+            else => null,
+        },
+        .@"name_pair" => switch (slot) {
+            1 => .@"key",
+            2 => .@"name",
+            else => null,
+        },
+        .@"infix" => switch (slot) {
+            1 => .@"base",
+            else => null,
+        },
+        .@"infix_op" => switch (slot) {
+            1 => .@"op",
+            2 => .@"assoc",
+            else => null,
+        },
+        .@"kind_decl" => switch (slot) {
+            1 => .@"kinds",
+            2 => .@"roles",
+            3 => .@"sides",
+            4 => .@"wrapper",
+            else => null,
+        },
+        .@"role" => switch (slot) {
+            1 => .@"rest",
+            2 => .@"name",
+            3 => .@"type",
+            4 => .@"opt",
+            else => null,
+        },
+        .@"tagset" => switch (slot) {
+            1 => .@"tag",
+            else => null,
+        },
+        .@"repair_line" => switch (slot) {
+            1 => .@"class",
+            else => null,
+        },
+        .@"rule" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"start" => switch (slot) {
+            1 => .@"id",
+            else => null,
+        },
+        .@"name" => switch (slot) {
+            1 => .@"id",
+            else => null,
+        },
+        .@"alt" => switch (slot) {
+            1 => .@"hint",
+            2 => .@"elements",
+            3 => .@"action",
+            4 => .@"optout",
+            else => null,
+        },
+        .@"ref" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"tok" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"lit" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"at_ref" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"list_req" => switch (slot) {
+            1 => .@"keyword",
+            2 => .@"inner",
+            else => null,
+        },
+        .@"plain" => switch (slot) {
+            1 => .@"item",
+            else => null,
+        },
+        .@"opt_items_nosep" => switch (slot) {
+            1 => .@"item",
+            else => null,
+        },
+        .@"sep_items" => switch (slot) {
+            1 => .@"item",
+            2 => .@"sep",
+            else => null,
+        },
+        .@"opt_items" => switch (slot) {
+            1 => .@"item",
+            2 => .@"sep",
+            else => null,
+        },
+        .@"group" => switch (slot) {
+            1 => .@"kind",
+            else => null,
+        },
+        .@"quantified" => switch (slot) {
+            1 => .@"element",
+            2 => .@"quant",
+            else => null,
+        },
+        .@"skip_q" => switch (slot) {
+            1 => .@"element",
+            2 => .@"quant",
+            else => null,
+        },
+        .@"skip" => switch (slot) {
+            1 => .@"element",
+            else => null,
+        },
+        .@"exclude" => switch (slot) {
+            1 => .@"char",
+            else => null,
+        },
+        .@"label" => switch (slot) {
+            1 => .@"name",
+            2 => .@"element",
+            else => null,
+        },
+        .@"pos" => switch (slot) {
+            1 => .@"n",
+            else => null,
+        },
+        .@"spread" => switch (slot) {
+            1 => .@"n",
+            else => null,
+        },
+        .@"symid" => switch (slot) {
+            1 => .@"n",
+            else => null,
+        },
+        .@"tag" => switch (slot) {
+            1 => .@"word",
+            else => null,
+        },
+        .@"named" => switch (slot) {
+            1 => .@"role",
+            2 => .@"value",
+            else => null,
+        },
+        .@"node" => switch (slot) {
+            1 => .@"head",
+            else => null,
+        },
+        .@"keep" => switch (slot) {
+            1 => .@"n",
+            else => null,
+        },
+        else => null,
+    };
 }
 
-fn restRoleOf(_: Tag) ?struct { role: Role, slot: usize } {
-    return null;
+fn restRoleOf(kind: Tag) ?struct { role: Role, slot: usize } {
+    return switch (kind) {
+        .@"grammar" => .{ .role = .@"entries", .slot = 1 },
+        .@"manifest" => .{ .role = .@"entries", .slot = 1 },
+        .@"as" => .{ .role = .@"groups", .slot = 3 },
+        .@"op" => .{ .role = .@"maps", .slot = 1 },
+        .@"errors" => .{ .role = .@"pairs", .slot = 1 },
+        .@"display" => .{ .role = .@"pairs", .slot = 1 },
+        .@"infix" => .{ .role = .@"levels", .slot = 2 },
+        .@"level" => .{ .role = .@"ops", .slot = 1 },
+        .@"schema" => .{ .role = .@"decls", .slot = 1 },
+        .@"kinds" => .{ .role = .@"names", .slot = 1 },
+        .@"sides" => .{ .role = .@"names", .slot = 1 },
+        .@"roles" => .{ .role = .@"roles", .slot = 1 },
+        .@"type" => .{ .role = .@"atoms", .slot = 1 },
+        .@"tagset" => .{ .role = .@"values", .slot = 2 },
+        .@"tags" => .{ .role = .@"names", .slot = 1 },
+        .@"trivia" => .{ .role = .@"names", .slot = 1 },
+        .@"repair" => .{ .role = .@"lines", .slot = 1 },
+        .@"repair_line" => .{ .role = .@"names", .slot = 2 },
+        .@"rule" => .{ .role = .@"alts", .slot = 2 },
+        .@"group" => .{ .role = .@"bodies", .slot = 2 },
+        .@"node" => .{ .role = .@"items", .slot = 2 },
+        .@"list" => .{ .role = .@"items", .slot = 1 },
+        .@"keep" => .{ .role = .@"items", .slot = 2 },
+        else => null,
+    };
 }
 
 // =============================================================================

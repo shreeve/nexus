@@ -205,6 +205,7 @@ pub const Role = enum(u16) {};
 /// Start symbols; `BaseParser.parse(start)` parses one.
 pub const Start = enum(u16) {
     @"program" = 3,
+    @"expr" = 4,
 };
 
 // =============================================================================
@@ -476,6 +477,10 @@ pub const BaseParser = struct {
 
     pub fn parseProgram(self: *BaseParser) !Sexp {
         return self.parse(.@"program");
+    }
+
+    pub fn parseExpr(self: *BaseParser) !Sexp {
+        return self.parse(.@"expr");
     }
 
 
@@ -792,11 +797,29 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(items, self.newNodeId()) };
     }
 
-    /// A nested node built by the current reduction from elements
-    /// lo..hi (0-based, inclusive); it spans just those elements.
-    fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
-        return .{ .list = List.withId(items, id) };
+    /// A list node over exactly `items` (fixed positions).
+    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        return self.node(out);
+    }
+
+    /// A nested node of the current reduction: its span covers just the
+    /// elements lo..hi (0-based, inclusive) it references.
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
+        }
+        return s;
+    }
+
+    /// A nested node that references no elements: empty, at the start of
+    /// the reduction.
+    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            const at = self.reduction.extent.start;
+            self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
+        }
+        return s;
     }
 
     /// Length of `items` without trailing nils (all of it when positions
@@ -1128,7 +1151,7 @@ const elemEnds = false;
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
-const numSymbols = 25;
+const numSymbols = 26;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
@@ -1136,15 +1159,15 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
         .@"newline" => 8,
-        .@"ident" => 10,
-        .@"integer" => 11,
-        .@"minus" => 9,
-        .@"lparen" => 12,
-        .@"rparen" => 13,
-        .@"plus" => 21,
-        .@"star" => 22,
-        .@"slash" => 23,
-        .@"power" => 24,
+        .@"ident" => 11,
+        .@"integer" => 12,
+        .@"minus" => 10,
+        .@"lparen" => 13,
+        .@"rparen" => 14,
+        .@"plus" => 22,
+        .@"star" => 23,
+        .@"slash" => 24,
+        .@"power" => 25,
         else => 2, // error
     };
 }
@@ -1156,66 +1179,68 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         3 => pass[0],
-        4 => self.sexp(.@"neg", &.{pass[1]}),
-        5 => pass[0],
+        4 => pass[0],
+        5 => self.sexp(.@"neg", &.{pass[1]}),
         6 => pass[0],
         7 => pass[0],
-        8 => pass[1],
-        11 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        12 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        13 => pass[0],
-        14 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-        15 => self.sexp(.@"/", &.{pass[0], pass[2]}),
-        16 => pass[0],
-        17 => self.sexp(.@"**", &.{pass[0], pass[2]}),
-        18 => pass[0],
+        8 => pass[0],
+        9 => pass[1],
+        12 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        13 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        14 => pass[0],
+        15 => self.sexp(.@"*", &.{pass[0], pass[2]}),
+        16 => self.sexp(.@"/", &.{pass[0], pass[2]}),
+        17 => pass[0],
+        18 => self.sexp(.@"**", &.{pass[0], pass[2]}),
         19 => pass[0],
+        20 => pass[0],
         else => unreachable,
     };
 }
 
-const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 6, 6, 6, 15, 17, 18, 18, 18, 19, 19, 19, 20, 20, 7 };
-const ruleLen = [_]u8{ 1, 1, 3, 2, 2, 1, 1, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 6, 6, 7, 7, 7, 16, 18, 19, 19, 19, 20, 20, 20, 21, 21, 9 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 1, 2, 1, 1, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
 
-// Parse table: 34 states x 25 symbols. 0 = error, > 0 = shift or
+// Parse table: 35 states x 26 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 34;
+const numStates = 35;
 
 const sparse = [numStates][]const i16{
-    &.{14,2},
-    &.{16,3},
-    &.{3,9,4,11,5,7,6,4,7,5,9,10,10,12,11,14,12,15,18,6,19,13,20,8},
-    &.{5,7,6,4,7,16,9,10,10,12,11,14,12,15,18,6,19,13,20,8},
-    &.{1,-7,8,-7,9,-7,13,-7,21,-7,22,-7,23,-7,24,-7},
+    &.{15,2},
+    &.{17,3},
+    &.{3,15,4,16,5,7,6,4,7,12,9,5,10,6,11,8,12,13,13,9,19,10,20,14,21,11},
+    &.{4,17,6,4,7,12,9,5,10,6,11,8,12,13,13,9,19,10,20,14,21,11},
+    &.{1,-21,8,-21,10,-21,14,-21,22,-21,23,-21,24,-21,25,18},
+    &.{1,-6,8,-6,14,-6},
+    &.{6,19,7,12,10,6,11,8,12,13,13,9},
+    &.{1,-2,8,20},
+    &.{1,-9,8,-9,10,-9,14,-9,22,-9,23,-9,24,-9,25,-9},
+    &.{4,21,6,4,7,12,9,5,10,6,11,8,12,13,13,9,19,10,20,14,21,11},
+    &.{1,-22,8,-22,10,23,14,-22,22,22},
+    &.{1,-19,8,-19,10,-19,14,-19,22,-19,23,-19,24,-19},
+    &.{1,-8,8,-8,10,-8,14,-8,22,-8,23,-8,24,-8,25,-8},
+    &.{1,-10,8,-10,10,-10,14,-10,22,-10,23,-10,24,-10,25,-10},
+    &.{1,-16,8,-16,10,-16,14,-16,22,-16,23,25,24,24},
+    &.{1,-1},
     &.{1,-3,8,-3},
-    &.{1,-21,8,-21,9,17,13,-21,21,18},
-    &.{1,-20,8,-20,9,-20,13,-20,21,-20,22,-20,23,-20,24,19},
-    &.{1,-18,8,-18,9,-18,13,-18,21,-18,22,-18,23,-18},
     &.{1,-1},
-    &.{5,21,6,4,9,10,10,12,11,14,12,15},
-    &.{1,-2,8,22},
-    &.{1,-8,8,-8,9,-8,13,-8,21,-8,22,-8,23,-8,24,-8},
-    &.{1,-15,8,-15,9,-15,13,-15,21,-15,22,23,23,24},
-    &.{1,-9,8,-9,9,-9,13,-9,21,-9,22,-9,23,-9,24,-9},
-    &.{5,7,6,4,7,25,9,10,10,12,11,14,12,15,18,6,19,13,20,8},
+    &.{6,4,7,12,10,6,11,8,12,13,13,9,21,28},
+    &.{1,-7,8,-7,10,-7,14,-7,22,-7,23,-7,24,-7,25,-7},
+    &.{1,-5,4,29,6,4,7,12,8,-5,9,5,10,6,11,8,12,13,13,9,19,10,20,14,21,11},
+    &.{14,30},
+    &.{6,4,7,12,10,6,11,8,12,13,13,9,20,31,21,11},
+    &.{6,4,7,12,10,6,11,8,12,13,13,9,20,32,21,11},
+    &.{6,4,7,12,10,6,11,8,12,13,13,9,21,33},
+    &.{6,4,7,12,10,6,11,8,12,13,13,9,21,34},
     &.{1,-1},
-    &.{5,7,6,4,9,10,10,12,11,14,12,15,19,27,20,8},
-    &.{5,7,6,4,9,10,10,12,11,14,12,15,19,28,20,8},
-    &.{5,7,6,4,9,10,10,12,11,14,12,15,20,29},
     &.{1,-1},
-    &.{1,-6,8,-6,9,-6,13,-6,21,-6,22,-6,23,-6,24,-6},
-    &.{1,-5,5,7,6,4,7,30,8,-5,9,10,10,12,11,14,12,15,18,6,19,13,20,8},
-    &.{5,7,6,4,9,10,10,12,11,14,12,15,20,31},
-    &.{5,7,6,4,9,10,10,12,11,14,12,15,20,32},
-    &.{13,33},
-    &.{1,-1},
-    &.{1,-14,8,-14,9,-14,13,-14,21,-14,22,23,23,24},
-    &.{1,-13,8,-13,9,-13,13,-13,21,-13,22,23,23,24},
-    &.{1,-19,8,-19,9,-19,13,-19,21,-19,22,-19,23,-19},
+    &.{1,-20,8,-20,10,-20,14,-20,22,-20,23,-20,24,-20},
     &.{1,-4,8,-4},
-    &.{1,-16,8,-16,9,-16,13,-16,21,-16,22,-16,23,-16},
-    &.{1,-17,8,-17,9,-17,13,-17,21,-17,22,-17,23,-17},
-    &.{1,-10,8,-10,9,-10,13,-10,21,-10,22,-10,23,-10,24,-10},
+    &.{1,-11,8,-11,10,-11,14,-11,22,-11,23,-11,24,-11,25,-11},
+    &.{1,-14,8,-14,10,-14,14,-14,22,-14,23,25,24,24},
+    &.{1,-15,8,-15,10,-15,14,-15,22,-15,23,25,24,24},
+    &.{1,-18,8,-18,10,-18,14,-18,22,-18,23,-18,24,-18},
+    &.{1,-17,8,-17,10,-17,14,-17,22,-17,23,-17,24,-17},
 };
 
 const parseTable = blk: {
@@ -1245,27 +1270,29 @@ fn getImmediateShift(_: u16, _: u8) ?i16 {
 fn startState(start: Start) u16 {
     return switch (start) {
         .@"program" => 0,
+        .@"expr" => 1,
     };
 }
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"program" => 14,
+        .@"program" => 15,
+        .@"expr" => 17,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    16, 9, 10, 11, 12, 1, 8, 9, 13, 21, 22, 23, 24, 1, 8, 1, 8, 9, 13, 21, 1, 8, 9, 13,
-    21, 22, 23, 1, 1, 8, 9, 10, 11, 12, 13,
+    10, 11, 12, 13, 1, 8, 10, 14, 22, 23, 24, 25, 1, 8, 14, 1, 8, 1, 8, 10, 14, 22, 1, 8,
+    10, 14, 22, 23, 24, 1, 1, 8, 10, 11, 12, 13, 14,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 1, 5, 13, 15, 20, 27, 28, 34, 35,
+    0, 0, 4, 12, 15, 17, 22, 29, 30, 36, 37,
 };
 const expectedOf = [_]u16{
-    0, 1, 2, 2, 3, 4, 5, 3, 6, 7, 2, 4, 3, 6, 3, 2, 7, 2, 2, 2, 7, 3, 8, 2,
-    2, 9, 7, 6, 6, 6, 4, 6, 6, 3,
+    0, 0, 1, 1, 2, 3, 1, 4, 2, 1, 5, 6, 2, 2, 6, 7, 4, 7, 1, 2, 8, 9, 1, 1,
+    1, 1, 7, 7, 6, 4, 2, 6, 6, 6, 6,
 };
 
 fn expectedIn(state: u16) []const u16 {
@@ -1277,15 +1304,15 @@ fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
         1 => "end of input",
         8 => "newline",
-        9 => "\"-\"",
-        10 => "ident",
-        11 => "integer",
-        12 => "\"(\"",
-        13 => "\")\"",
-        21 => "\"+\"",
-        22 => "\"*\"",
-        23 => "\"/\"",
-        24 => "\"**\"",
+        10 => "\"-\"",
+        11 => "ident",
+        12 => "integer",
+        13 => "\"(\"",
+        14 => "\")\"",
+        22 => "\"+\"",
+        23 => "\"*\"",
+        24 => "\"/\"",
+        25 => "\"**\"",
         else => "",
     };
 }
@@ -1331,5 +1358,14 @@ pub fn parseProgram(allocator: std.mem.Allocator, source: []const u8) !struct { 
     var p = Parser.init(allocator, source);
     errdefer p.deinit();
     const sexp = try p.parseProgram();
+    return .{ .parser = p, .sexp = sexp };
+}
+
+/// Parse a whole expr with a new `Parser`. The caller owns
+/// `result.parser` and must `deinit()` it when done with the tree.
+pub fn parseExpr(allocator: std.mem.Allocator, source: []const u8) !struct { parser: Parser, sexp: Sexp } {
+    var p = Parser.init(allocator, source);
+    errdefer p.deinit();
+    const sexp = try p.parseExpr();
     return .{ .parser = p, .sexp = sexp };
 }

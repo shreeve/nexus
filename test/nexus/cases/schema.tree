@@ -1,0 +1,61 @@
+(grammar
+  (schema
+    (kind_decl (kinds `module`)@12..18 (roles (role rest `decls` _ _)@23..31)@23..31 _ _)@12..31
+    (kind_decl
+      (kinds `set`)@36..39
+      (roles
+        (role _ `op` (type `tag`)@50..53 opt)@47..54
+        (role _ `target` (type `name` `member`)@62..73 _)@55..73
+        (role _ `value` _ _)@74..79)@47..79
+      (sides `eq`)@82..84
+      _)@36..84
+    (kind_decl
+      (kinds `"+"` `"-"`)@89..97
+      (roles (role _ `left` _ _)@100..104 (role _ `right` _ _)@105..110)@100..110
+      _
+      _)@89..110
+    (kind_decl
+      (kinds `for`)@115..118
+      (roles
+        (role _ `mode` (type (tagset `tag` `iter` `ptr`)@131..144)@131..144 opt)@126..145
+        (role _ `var` (type `leaf`)@150..154 _)@146..154
+        (role _ `body` (type `node`)@160..164 opt)@155..165
+        (role rest `rest` (type `group`)@174..179 _)@166..179)@126..179
+      _
+      _)@115..179
+    (kind_decl
+      (kinds `note`)@184..188
+      (roles (role _ `text` (type `leaf`)@200..204 _)@195..204)@195..204
+      _
+      wrapper)@184..213
+    (kind_decl (kinds `mark`)@218..222 (roles)@229..229 (sides `at`)@231..233 wrapper)@218..242)@0..242
+  (tags `flag` `"=>"` `extra`)@244..270
+  (display
+    (name_pair `IDENT` `"a name"`)@285..300
+    (name_pair `"="` `"'='"`)@302..312
+    (name_pair `STRING` `"a string"`)@317..335)@272..335
+  (errors
+    (name_pair `expr` `"an expression"`)@349..370
+    (name_pair `stmt` `"a statement"`)@375..394)@337..394
+  (trivia `COMMENT` `BLANK`)@396..417
+  (repair
+    (repair_line `holes` `IDENT`)@431..447
+    (repair_line `structure` `NEWLINE` `INDENT` `OUTDENT`)@452..485)@419..485
+  (manifest
+    (conflict `shift` `stmt → IF expr THEN stmt` _ `2` `# else binds to the nearest if`)@502..581
+    (conflict `reduce` `lname → name` `targs → name` `34` `# names win over arguments`)@586..663
+    (conflict `shift` `opt → ε` _ `1` `# an empty rhs`)@668..732
+    (conflict
+      `reduce`
+      `L(IDENT).tail -> ε`
+      `items -> IDENT?`
+      `3`
+      `# generated symbols, verbatim`)@737..819)@487..819
+  (as
+    `IDENT`
+    _
+    (as_entry _ `fn` `fnAs`)@834..845
+    (as_entry perm `isv` _)@847..851
+    (as_entry _ `self` _)@853..857
+    (as_entry perm `cmd` `cmdAs`)@859..873)@825..874
+  (as `IDENT` `keywordAs` (as_entry _ `keyword` _)@902..909)@879..910)@0..911

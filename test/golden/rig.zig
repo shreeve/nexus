@@ -1145,11 +1145,29 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(items, self.newNodeId()) };
     }
 
-    /// A nested node built by the current reduction from elements
-    /// lo..hi (0-based, inclusive); it spans just those elements.
-    fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
-        return .{ .list = List.withId(items, id) };
+    /// A list node over exactly `items` (fixed positions).
+    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        return self.node(out);
+    }
+
+    /// A nested node of the current reduction: its span covers just the
+    /// elements lo..hi (0-based, inclusive) it references.
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
+        }
+        return s;
+    }
+
+    /// A nested node that references no elements: empty, at the start of
+    /// the reduction.
+    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            const at = self.reduction.extent.start;
+            self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
+        }
+        return s;
     }
 
     /// Length of `items` without trailing nils (all of it when positions
@@ -1723,7 +1741,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         123 => pass[0],
         124 => pass[0],
         125 => self.sexp(.@"member", &.{pass[0], pass[2]}),
-        126 => self.list(pass),
+        126 => pass[0],
         127 => self.sexpPosSpread(.@"generic_inst", pass[0], pass[2]),
         128 => self.sexp(.@"generic_inst", &.{pass[0]}),
         129 => pass[1],
@@ -1769,7 +1787,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         169 => self.sexp(.@"while", &.{pass[1], .nil, pass[2]}),
         170 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4]}),
         171 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5], pass[7]}),
-        172 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], pass[0]}),
+        172 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], pass[9]}),
         173 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], .nil, pass[3], pass[4], pass[6]}),
         174 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], pass[3], pass[5], pass[6], pass[8]}),
         175 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5]}),
@@ -1785,7 +1803,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         185 => pass[0],
         186 => self.sexp(.@"range_pattern", &.{pass[0], pass[2]}),
         187 => pass[0],
-        188 => self.list(pass),
+        188 => pass[0],
         189 => pass[0],
         190 => self.sexp(.@"neg", &.{pass[1]}),
         191 => pass[0],

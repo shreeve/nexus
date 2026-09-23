@@ -195,6 +195,7 @@ pub const ParsedRule = struct {
     isStart: bool,
     alternatives: []const ParsedAlternative,
     line: u32 = 0,
+    col: u32 = 0,
 };
 
 pub const ParsedAlternative = struct {
@@ -208,6 +209,7 @@ pub const ParsedAlternative = struct {
     preferReduce: bool = false,
     preferShift: bool = false,
     line: u32 = 0,
+    col: u32 = 0,
 };
 
 pub const ParsedElement = struct {
@@ -220,8 +222,11 @@ pub const ParsedElement = struct {
     /// `choice` elements: one alternative sequence per `|` branch.
     choices: []const []const ParsedElement = &.{},
     skip: bool = false,
-    /// `role:element` pattern label.
+    /// `role:element` pattern label (`_` = explicitly dropped).
     label: ?[]const u8 = null,
+    /// Source position of the element (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 
     pub const Kind = enum {
         ident,
@@ -257,6 +262,7 @@ pub const Schema = struct {
         /// Produced by a lang Parser wrapper, not by any rule.
         wrapper: bool = false,
         line: u32 = 0,
+        col: u32 = 0,
     };
 
     pub const Role = struct {
@@ -297,7 +303,9 @@ pub const ActionList = struct {
     pub const Head = union(enum) {
         /// `(tag …)`: a tag-headed list (a schema kind in schema mode).
         tag: []const u8,
-        /// `(~N …)` / `(N …)`: a list headed by an element's value.
+        /// `(!N …)`: a list headed by element N's value (a src-headed list).
+        /// The frontend produces only `.ref`; lists whose first item is a
+        /// plain `N` or `~N` are untagged (`.none`).
         ref: ActionElem,
         /// `(…)` with no head: an untagged list (plumbing or a group).
         none,
@@ -323,9 +331,62 @@ pub const ActionElem = union(enum) {
     tagLit: []const u8,
     /// A nested `(kind …)` node.
     node: *const ActionList,
-    /// `@name` / a pattern label reference, resolved to a position by expand.zig.
+    /// A reference to a pattern label by name. Not produced by the 1.0
+    /// frontend (labels fill roles through the schema); reserved.
     label: []const u8,
 };
+
+/// The canonical text of an action: `N`, `_`, or `(head item ...)` with
+/// items `N`, `...N`, `~N`, `_`, tags, nested lists, each optionally
+/// prefixed by `role:`. Used in generated-code comments and diagnostics.
+pub fn renderAction(allocator: Allocator, tree: ActionTree) ![]const u8 {
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    switch (tree) {
+        .pass => |n| try out.print(allocator, "{d}", .{n}),
+        .nil => try out.append(allocator, '_'),
+        .list => |list| try renderList(allocator, &out, list),
+    }
+    return out.toOwnedSlice(allocator);
+}
+
+fn renderList(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), list: ActionList) Allocator.Error!void {
+    try out.append(allocator, '(');
+    var sep = false;
+    switch (list.head) {
+        .tag => |t| {
+            try out.appendSlice(allocator, t);
+            sep = true;
+        },
+        .ref => |e| {
+            try out.append(allocator, '!');
+            try renderElem(allocator, out, e);
+            sep = true;
+        },
+        .none => {},
+    }
+    for (list.items) |item| {
+        if (sep) try out.append(allocator, ' ');
+        sep = true;
+        if (item.role) |r| {
+            try out.appendSlice(allocator, r);
+            try out.append(allocator, ':');
+        }
+        try renderElem(allocator, out, item.elem);
+    }
+    try out.append(allocator, ')');
+}
+
+fn renderElem(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), elem: ActionElem) Allocator.Error!void {
+    switch (elem) {
+        .ref => |n| try out.print(allocator, "{d}", .{n}),
+        .spread => |n| try out.print(allocator, "...{d}", .{n}),
+        .symId => |n| try out.print(allocator, "~{d}", .{n}),
+        .nil => try out.append(allocator, '_'),
+        .tagLit => |t| try out.appendSlice(allocator, t),
+        .node => |l| try renderList(allocator, out, l.*),
+        .label => |l| try out.appendSlice(allocator, l),
+    }
+}
 
 /// One `@conflicts` manifest entry.
 pub const ConflictEntry = struct {
@@ -337,6 +398,7 @@ pub const ConflictEntry = struct {
     count: u32,
     reason: []const u8,
     line: u32 = 0,
+    col: u32 = 0,
 };
 
 pub const DisplayName = struct {
@@ -354,6 +416,9 @@ pub const RepairSpec = struct {
 pub const InfixDecl = struct {
     baseRule: []const u8,
     ops: []const InfixOp,
+    /// Source position of the `@infix` directive (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// @as directive for token-to-rule mapping (uses @lang module)
@@ -476,9 +541,12 @@ pub const Rule = struct {
     kind: ?u16 = null,
     /// Side-band labels: (role, 1-based position) recorded in the role store.
     sideLabels: []const SideLabel = &.{},
-    /// Source line of the alternative this rule came from (diagnostics).
+    /// Source line and column of the alternative this rule came from
+    /// (0 for synthesized rules).
     line: u32 = 0,
+    col: u32 = 0,
 
+    /// `pos` is 1-based like action positions (codegen adds actionOffset).
     pub const SideLabel = struct { role: []const u8, pos: u16 };
 };
 

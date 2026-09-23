@@ -610,11 +610,29 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(items, self.newNodeId()) };
     }
 
-    /// A nested node built by the current reduction from elements
-    /// lo..hi (0-based, inclusive); it spans just those elements.
-    fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
-        return .{ .list = List.withId(items, id) };
+    /// A list node over exactly `items` (fixed positions).
+    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        return self.node(out);
+    }
+
+    /// A nested node of the current reduction: its span covers just the
+    /// elements lo..hi (0-based, inclusive) it references.
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
+        }
+        return s;
+    }
+
+    /// A nested node that references no elements: empty, at the start of
+    /// the reduction.
+    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            const at = self.reduction.extent.start;
+            self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
+        }
+        return s;
     }
 
     /// Length of `items` without trailing nils (all of it when positions
@@ -941,39 +959,46 @@ pub const BaseParser = struct {
 // IR accessors (from @schema)
 // =============================================================================
 
+// Inside `ir`, generated kind and role names (a kind `tag` has the view
+// `ir.Tag`) could shadow the module's own names, so `ir` refers to them
+// through these aliases, whose names no kind or role can take.
+const @"ir.Sexp" = Sexp;
+const @"ir.Tag" = Tag;
+const @"ir.Role" = Role;
+
 /// Role-based access to schema nodes. `get`/`rest` look the slot up by the
 /// node's kind; the per-kind views (`ir.Set.target(node)`) are resolved at
 /// compile time. Asking for a role the node's kind does not have panics in
 /// safety-checked builds and yields nil (or no items) otherwise.
 pub const ir = struct {
     /// The child in `role` (nil when absent).
-    pub fn get(node: Sexp, role: Role) Sexp {
+    pub fn get(node: @"ir.Sexp", role: @"ir.Role") @"ir.Sexp" {
         const k = kindFor(node, "ir.get", role) orelse return .nil;
-        const slot = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(Sexp, .nil));
+        const slot = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
         const items = node.list.items();
         return if (slot < items.len) items[slot] else .nil;
     }
 
     /// The children in rest role `role`.
-    pub fn rest(node: Sexp, role: Role) []const Sexp {
+    pub fn rest(node: @"ir.Sexp", role: @"ir.Role") []const @"ir.Sexp" {
         const k = kindFor(node, "ir.rest", role) orelse return &.{};
-        const slot = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const Sexp, &.{}));
+        const slot = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
         const items = node.list.items();
         return if (slot < items.len) items[slot..] else &.{};
     }
 
     /// Whether nodes of `kind` have `role` (slot or rest role).
-    pub fn has(kind: Tag, role: Role) bool {
+    pub fn has(kind: @"ir.Tag", role: @"ir.Role") bool {
         return slotOf(kind, role) != null or restSlotOf(kind, role) != null;
     }
 
-    fn kindFor(node: Sexp, comptime what: []const u8, role: Role) ?Tag {
+    fn kindFor(node: @"ir.Sexp", comptime what: []const u8, role: @"ir.Role") ?@"ir.Tag" {
         if (node.kind()) |k| return k;
         if (std.debug.runtime_safety) std.debug.panic(what ++ "(.{s}): not a schema node: {s}", .{ @tagName(role), @tagName(node) });
         return null;
     }
 
-    fn missing(kind: Tag, role: Role, comptime what: []const u8, value: anytype) @TypeOf(value) {
+    fn missing(kind: @"ir.Tag", role: @"ir.Role", comptime what: []const u8, value: anytype) @TypeOf(value) {
         if (std.debug.runtime_safety) {
             const hint = if (slotOf(kind, role) != null) " (a slot role; use ir.get)" else if (restSlotOf(kind, role) != null) " (a rest role; use ir.rest)" else "";
             std.debug.panic(what ++ ": kind '{s}' has no role '{s}'{s}", .{ @tagName(kind), @tagName(role), hint });
@@ -981,27 +1006,29 @@ pub const ir = struct {
         return value;
     }
 
-    fn at(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) Sexp {
-        check(node, kind, what);
-        const items = node.items();
-        return if (slot < items.len) items[slot] else .nil;
-    }
-
-    fn restAt(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) []const Sexp {
-        check(node, kind, what);
-        const items = node.items();
-        return if (slot < items.len) items[slot..] else &.{};
-    }
-
-    fn check(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
-        if (std.debug.runtime_safety and !node.isKind(kind)) {
-            const actual = if (node.kind()) |k| @tagName(k) else @tagName(node);
-            std.debug.panic(what ++ ": node is '{s}', not '" ++ @tagName(kind) ++ "'", .{actual});
-        }
-    }
-
     // @slot views
 };
+
+/// Slot `slot` of `node`, a node of `kind` (checked in safety builds).
+fn @"ir.at"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot] else .nil;
+}
+
+/// The children of `node` from `slot` on.
+fn @"ir.restAt"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) []const Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot..] else &.{};
+}
+
+fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
+    if (std.debug.runtime_safety and !node.isKind(kind)) {
+        const actual = if (node.kind()) |k| @tagName(k) else @tagName(node);
+        std.debug.panic(what ++ ": node is '{s}', not '" ++ @tagName(kind) ++ "'", .{actual});
+    }
+}
 
 // @end
 
@@ -1430,7 +1457,7 @@ test "ir accessors: by role and through per-kind positions" {
     try testing.expectEqualStrings("a", ir.get(set, .target).getText(p.source));
     const add = ir.get(set, .value);
     try testing.expect(add.isKind(.add));
-    try testing.expectEqualStrings("c", ir.at(add, .add, 2, "ir.Add.right").getText(p.source));
+    try testing.expectEqualStrings("c", @"ir.at"(add, .add, 2, "ir.Add.right").getText(p.source));
     try testing.expect(ir.has(.set, .target));
     try testing.expect(!ir.has(.set, .left));
     try testing.expect(ir.has(.prog, .stmts));

@@ -907,11 +907,29 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(items, self.newNodeId()) };
     }
 
-    /// A nested node built by the current reduction from elements
-    /// lo..hi (0-based, inclusive); it spans just those elements.
-    fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
-        return .{ .list = List.withId(items, id) };
+    /// A list node over exactly `items` (fixed positions).
+    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        return self.node(out);
+    }
+
+    /// A nested node of the current reduction: its span covers just the
+    /// elements lo..hi (0-based, inclusive) it references.
+    fn nested(self: *BaseParser, s: Sexp, lo: usize, hi: usize) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            self.nodes.at(s.list.id).span = spanOf(self.elemsExtent(lo, hi));
+        }
+        return s;
+    }
+
+    /// A nested node that references no elements: empty, at the start of
+    /// the reduction.
+    fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
+        if (nodeStore and s == .list and s.list.id != 0) {
+            const at = self.reduction.extent.start;
+            self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
+        }
+        return s;
     }
 
     /// Length of `items` without trailing nils (all of it when positions

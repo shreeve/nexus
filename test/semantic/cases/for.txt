@@ -1,0 +1,3 @@
+for ptr i, j in xs do call f(i, j)
+for i in [1, 2] do call g()
+for ptr k in ys do pass k

@@ -1,11 +1,24 @@
 (grammar
-  (rule (start `program`) (alt _ ((ref `body`)) `(module ...1)`))
-  (rule (start `expr`) (alt _ ((ref `expr`)) `1`))
-  (rule (name `name`) (alt _ ((tok `IDENT`))))
   (rule
-    (name `body`)
-    (alt _ ((ref `stmt`)) `(1)`)
-    (alt _ ((ref `body`) (tok `NEWLINE`) (ref `stmt`)) `(...1 3)`)
-    (alt _ ((ref `body`) (tok `NEWLINE`)) `1`)
-    (alt _ () `()`))
-  (rule (name `stmt`) (alt _ ((ref `expr`))) (alt _ ((lit `"return"`) (ref `expr`)) `(return 2)`)))
+    (start `program`)@0..8
+    (alt _ ((ref `body`)@11..15)@11..15 (node `module` (spread `1`)@48..52)@40..53 _)@11..53)@0..53
+  (rule (start `expr`)@54..59 (alt _ ((ref `expr`)@65..69)@65..69 (pos `1`)@73..74 _)@65..74)@54..74
+  (rule (name `name`)@76..80 (alt _ ((tok `IDENT`)@83..88)@83..88 _ _)@83..88)@76..88
+  (rule
+    (name `body`)@90..94
+    (alt _ ((ref `stmt`)@97..101)@97..101 (list (pos `1`)@131..132)@130..133 _)@97..133
+    (alt
+      _
+      ((ref `body`)@141..145 (tok `NEWLINE`)@146..153 (ref `stmt`)@154..158)@141..158
+      (list (spread `1`)@175..179 (pos `3`)@180..181)@174..182
+      _)@141..182
+    (alt _ ((ref `body`)@190..194 (tok `NEWLINE`)@195..202)@190..202 (pos `1`)@223..224 _)@190..224
+    (alt _ ()@261..261 (list)@265..267 _)@261..267)@90..267
+  (rule
+    (name `stmt`)@269..273
+    (alt _ ((ref `expr`)@276..280)@276..280 _ _)@276..280
+    (alt
+      _
+      ((lit `"return"`)@288..296 (ref `expr`)@297..301)@288..301
+      (node `return` (pos `2`)@329..330)@321..331
+      _)@288..331)@269..331)@0..332

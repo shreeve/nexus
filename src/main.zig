@@ -19,6 +19,7 @@ const GrammarLowerer = frontend.GrammarLowerer;
 const LexerGenerator = @import("lexgen/lexgen.zig").LexerGenerator;
 const Grammar = @import("grammar.zig").Grammar;
 const expand = @import("expand.zig");
+const semantics = @import("semantics.zig");
 const check = @import("check.zig");
 const lr = @import("lr/lr.zig");
 const codegen = @import("codegen/codegen.zig");
@@ -27,6 +28,7 @@ const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
     _ = @import("frontend/lower.zig");
+    _ = @import("semantics.zig");
     _ = @import("lr/lr.zig");
     _ = @import("codegen/runtime.zig");
     _ = @import("codegen/codegen.zig");
@@ -133,12 +135,9 @@ pub fn main(init: std.process.Init) !void {
 fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?[]const u8) !void {
     const sourceText = try readGrammar(allocator, io, grammarFile);
 
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
-        diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
-        if (err == error.ParseError) {
-            diag.info("  (hint: run `./bin/nexus {s} /tmp/out.zig` for parser-generator diagnostics)", .{grammarFile});
-        }
-        return;
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+        if (err != error.ParseError) diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
+        fail();
     };
     defer parsed.parser.deinit();
 
@@ -205,15 +204,15 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     }
     diag.info("   Parsing @parser section...", .{});
 
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText) catch |err| {
-        diag.err("failed to parse @parser section: {any}", .{err});
-        return;
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+        if (err != error.ParseError) diag.err("failed to parse the @parser section of {s}: {any}", .{ grammarFile, err });
+        fail();
     };
     defer parsed.parser.deinit();
 
-    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.parserBody) catch |err| {
-        diag.err("lowering failed: {any}", .{err});
-        return;
+    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.source) catch |err| {
+        if (err == error.OutOfMemory) diag.err("out of memory", .{});
+        fail();
     };
 
     if (ir.lang == null) ir.lang = lexerParser.spec.langName;
@@ -225,7 +224,13 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     if (opts.checkMode) {
         diag.info("\nChecking grammar...", .{});
-        _ = check.checkGrammar(allocator, &ir);
+        var failed = check.checkGrammar(allocator, &ir) > 0;
+        if (ir.schema != null) {
+            _ = semantics.resolve(allocator, &ir, &lexerParser.spec, grammarFile) catch {
+                failed = true;
+            };
+        }
+        if (failed) fail();
         return;
     }
 
@@ -235,10 +240,27 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
         defer g.deinit();
-        expand.processGrammar(&g, &ir) catch |err| {
-            diag.err("grammar processing failed: {any}", .{err});
-            return;
+        // Schema mode: resolve every action against @schema first.
+        var sem: ?semantics.Result = null;
+        if (ir.schema != null) sem = semantics.resolve(allocator, &ir, &lexerParser.spec, grammarFile) catch |err| {
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            fail();
         };
+        expand.processGrammar(&g, &ir, .{
+            .path = grammarFile,
+            .resolved = if (sem) |s| s.resolved else null,
+            .infix = if (sem) |s| s.infix else null,
+        }) catch |err| {
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            fail();
+        };
+        if (sem) |s| {
+            g.schema = s.schema;
+            semantics.checkTypes(allocator, &g, grammarFile) catch |err| {
+                if (err == error.OutOfMemory) diag.err("out of memory", .{});
+                fail();
+            };
+        }
 
         // Validate all referenced symbols are defined
         const validationErrors = check.validateSymbols(&g, &lexerParser.spec);
@@ -278,6 +300,11 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     try writeOutput(io, opts.outputFile, finalCode);
     diag.info("Generated: {s}", .{opts.outputFile});
+}
+
+/// Exit with status 1 after the error has been reported.
+fn fail() noreturn {
+    std.process.exit(1);
 }
 
 fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {
