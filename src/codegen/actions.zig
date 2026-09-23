@@ -154,10 +154,13 @@ const Emitter = struct {
     fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         if (l.head == .none and l.items.len == 0) return w.print(emptyList, .{self.use});
 
-        // (!A ...B): element A consed onto the list at B.
-        if (l.head == .ref and l.items.len == 1 and l.items[0].elem == .spread and l.head.ref == .ref) {
-            return w.print("self.spreadList(pass[{d}], pass[{d}], {s})", .{ index(l.head.ref.ref), index(l.items[0].elem.spread), self.use });
-        }
+        // (!A ...B): element A consed onto the list at B (A nil when it is
+        // an absent optional element: the head stays either way).
+        if (l.head == .ref and l.items.len == 1 and l.items[0].elem == .spread) switch (l.head.ref) {
+            .ref => |a| return w.print("self.spreadList(pass[{d}], pass[{d}], {s})", .{ index(a), index(l.items[0].elem.spread), self.use }),
+            .nil => return w.print("self.spreadList(.nil, pass[{d}], {s})", .{ index(l.items[0].elem.spread), self.use }),
+            else => {},
+        };
 
         if (self.fixed or l.keepNils) return self.fixedList(w, l, label);
         return self.schemalessList(w, l, label);

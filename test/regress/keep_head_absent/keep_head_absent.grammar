@@ -1,0 +1,19 @@
+# `(!N ...M)` is a list headed by element N; when N is an absent optional
+# element the head is nil and stays, as it does when N's value is nil.
+
+@lexer
+tokens
+    ident
+    lparen
+    rparen
+    eof
+    err
+'('                                         → lparen
+')'                                         → rparen
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "keep_head_absent"
+
+top! = "(" [IDENT] ")" IDENT*               → (!2 ...4)
