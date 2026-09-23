@@ -30,19 +30,10 @@
   (trivia `COMMENT` `BLANK`)
   (repair (repair_line `holes` `IDENT`) (repair_line `structure` `NEWLINE` `INDENT` `OUTDENT`))
   (manifest
-    (conflict
-      `shift`
-      (crule `stmt` `IF` `expr` `THEN` `stmt`)
-      _
-      `2`
-      `# else binds to the nearest if`)
-    (conflict
-      `reduce`
-      (crule `lname` `name`)
-      (crule `targs` `name`)
-      `34`
-      `# names win over arguments`)
-    (conflict `shift` (crule `opt` `ε`) _ `1` `# an empty rhs`))
+    (conflict `shift` `stmt → IF expr THEN stmt` _ `2` `# else binds to the nearest if`)
+    (conflict `reduce` `lname → name` `targs → name` `34` `# names win over arguments`)
+    (conflict `shift` `opt → ε` _ `1` `# an empty rhs`)
+    (conflict `reduce` `L(IDENT).tail -> ε` `items -> IDENT?` `3` `# generated symbols, verbatim`))
   (as
     `IDENT`
     _

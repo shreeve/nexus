@@ -12,11 +12,14 @@
 //!     starts with `|` (the `|` is consumed with it). Inside `[ ... ]` line
 //!     breaks are plain whitespace. No layout token precedes the first
 //!     token; one `newline` always precedes `eof` after content.
-//!   - Comments. Trailing comments are dropped, except inside a
-//!     `@conflicts` block, where the trailing comment of an entry is its
-//!     rationale and is kept as a `comment` token.
-//!   - Unicode: `→` is an arrow, `ε` an epsilon (the empty right-hand side
-//!     in `@conflicts` entries).
+//!   - Comments. Trailing comments are dropped, except in `@conflicts`
+//!     entries (below).
+//!   - `@conflicts` entries. Each indented line of the block is split into
+//!     the kind word (`ident`), the rule text verbatim (`rule_text`; any
+//!     symbol syntax, `→`/`->`, `ε`), `over` (`kw_over`) and a second rule
+//!     text, the count (`integer`: the last word), and the rationale
+//!     (`comment`: from `#` to the end of the line).
+//!   - Unicode: `→` is an arrow.
 //!   - Words. An identifier immediately followed by `:` is a `label`
 //!     (`role:element`, `expr: "expression"`); the colon is consumed.
 //!     Capitalized words are `token`s. `X` followed by a one-character
@@ -49,7 +52,6 @@ pub const Tag = enum(u8) {
     conflicts,
     manifest,
     conflict,
-    crule,
     as,
     as_entry,
     op,
@@ -122,8 +124,11 @@ pub const Lexer = struct {
     afterLayout: bool = true,
     bracketDepth: u16 = 0,
     parenDepth: u16 = 0,
-    /// A token scanned ahead of the one being returned.
-    pending: ?Token = null,
+    /// Tokens scanned ahead of the one being returned (a `@conflicts`
+    /// entry line is split at once), in order from `queueHead`.
+    queue: [8]Token = undefined,
+    queueHead: u8 = 0,
+    queueLen: u8 = 0,
     /// Position of the last line break, for the `newline` before `eof`.
     lastBreak: ?u32 = null,
 
@@ -144,8 +149,9 @@ pub const Lexer = struct {
     }
 
     pub fn next(self: *Lexer) Token {
-        if (self.pending) |tok| {
-            self.pending = null;
+        if (self.queueHead < self.queueLen) {
+            const tok = self.queue[self.queueHead];
+            self.queueHead += 1;
             return self.emit(tok);
         }
         while (true) {
@@ -156,6 +162,15 @@ pub const Lexer = struct {
 
     fn src(self: *const Lexer) []const u8 {
         return self.base.source;
+    }
+
+    fn push(self: *Lexer, tok: Token) void {
+        if (self.queueHead == self.queueLen) {
+            self.queueHead = 0;
+            self.queueLen = 0;
+        }
+        self.queue[self.queueLen] = tok;
+        self.queueLen += 1;
     }
 
     fn make(cat: TokenCat, pos: usize, len: usize) Token {
@@ -179,16 +194,15 @@ pub const Lexer = struct {
     /// token (a dropped comment, a line break inside brackets).
     fn scanNormal(self: *Lexer) ?Token {
         const s = self.src();
-        // Unicode arrow and epsilon are not in the generated lexer.
         var p = self.base.pos;
         while (p < s.len and (s[p] == ' ' or s[p] == '\t' or s[p] == '\r')) p += 1;
+        if (self.block == .conflicts and self.lineStart and !self.afterAt and p < s.len and s[p] != '\n') {
+            return self.splitConflict(p);
+        }
+        // The Unicode arrow is not in the generated lexer.
         if (p + 2 < s.len and s[p] == 0xE2 and s[p + 1] == 0x86 and s[p + 2] == 0x92) {
             self.base.pos = @intCast(p + 3);
             return self.arrow(make(.arrow, p, 3));
-        }
-        if (p + 1 < s.len and s[p] == 0xCE and s[p + 1] == 0xB5) {
-            self.base.pos = @intCast(p + 2);
-            return make(.epsilon, p, 2);
         }
 
         var tok = self.base.matchRules();
@@ -196,15 +210,12 @@ pub const Lexer = struct {
             .newline => return self.lineBreak(tok.pos),
             .eof => {
                 if (!self.atStart and !self.afterLayout) {
-                    self.pending = tok;
+                    self.push(tok);
                     return make(.newline, self.lastBreak orelse tok.pos, if (self.lastBreak != null) 1 else 0);
                 }
                 return tok;
             },
-            .comment => {
-                if (self.block == .conflicts and !self.lineStart) return tok;
-                return null;
-            },
+            .comment => return null,
             .ident => tok.cat = self.classifyWord(tok),
             .lbracket => self.bracketDepth += 1,
             .rbracket => {
@@ -221,6 +232,78 @@ pub const Lexer = struct {
             else => {},
         }
         return tok;
+    }
+
+    /// Split a `@conflicts` entry line starting at `start` into its tokens
+    /// (see the file header); returns the first and queues the rest.
+    fn splitConflict(self: *Lexer, start: usize) Token {
+        const s = self.src();
+        var end = start;
+        var inString = false;
+        while (end < s.len and s[end] != '\n') : (end += 1) {
+            if (s[end] == '"') inString = !inString;
+            if (s[end] == '#' and !inString) break;
+        }
+        const commentStart = end;
+        var lineEnd = end;
+        while (lineEnd < s.len and s[lineEnd] != '\n') lineEnd += 1;
+        while (end > start and isBlank(s[end - 1])) end -= 1;
+
+        // Words, outside strings.
+        var words: [64]struct { a: usize, b: usize } = undefined;
+        var n: usize = 0;
+        var i = start;
+        while (i < end and n < words.len) {
+            while (i < end and isBlank(s[i])) i += 1;
+            if (i >= end) break;
+            const a = i;
+            var quoted = false;
+            while (i < end and (quoted or !isBlank(s[i]))) : (i += 1) {
+                if (s[i] == '"') quoted = !quoted;
+            }
+            words[n] = .{ .a = a, .b = i };
+            n += 1;
+        }
+
+        var toks: [6]Token = undefined;
+        var t: usize = 0;
+        if (n > 0) {
+            toks[t] = make(.ident, words[0].a, words[0].b - words[0].a);
+            t += 1;
+            var last = n;
+            const count: ?Token = if (n > 1 and allDigits(s[words[n - 1].a..words[n - 1].b])) blk: {
+                last = n - 1;
+                break :blk make(.integer, words[n - 1].a, words[n - 1].b - words[n - 1].a);
+            } else null;
+            // Rule texts, split at a standalone `over`.
+            var from: usize = 1;
+            for (1..last + 1) |w| {
+                const isOver = w < last and eql(s[words[w].a..words[w].b], "over");
+                if (w == last or isOver) {
+                    if (w > from and t < toks.len) {
+                        toks[t] = make(.rule_text, words[from].a, words[w - 1].b - words[from].a);
+                        t += 1;
+                    }
+                    if (isOver and t < toks.len) {
+                        toks[t] = make(.kw_over, words[w].a, 4);
+                        t += 1;
+                    }
+                    from = w + 1;
+                }
+            }
+            if (count) |c| if (t < toks.len) {
+                toks[t] = c;
+                t += 1;
+            };
+        }
+        if (commentStart < lineEnd and t < toks.len) {
+            toks[t] = make(.comment, commentStart, lineEnd - commentStart);
+            t += 1;
+        }
+        self.base.pos = @intCast(lineEnd);
+        if (t == 0) return make(.err, start, 1);
+        for (toks[1..t]) |tok| self.push(tok);
+        return toks[0];
     }
 
     fn arrow(self: *Lexer, tok: Token) Token {
@@ -298,7 +381,6 @@ pub const Lexer = struct {
                 if (eql(t, "right")) return .kw_right;
                 if (eql(t, "none")) return .kw_none;
             },
-            .conflicts => if (eql(t, "over")) return .kw_over,
             .as => if (eql(t, "via")) return .kw_via,
             else => {},
         }

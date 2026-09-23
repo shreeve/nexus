@@ -44,7 +44,7 @@ tokens
     tilde
     dots
     at
-    epsilon
+    rule_text
     newline
     cont
     next_alt
@@ -126,8 +126,7 @@ tokens
     lang             name:leaf
     conflicts        count:leaf
     manifest         ...entries:conflict
-    conflict         kind:leaf rule:crule over:crule? count:leaf reason:leaf?
-    crule            lhs:leaf ...rhs:leaf
+    conflict         kind:leaf rule:leaf over:leaf? count:leaf reason:leaf?
     as               token:leaf via:leaf? ...groups:as_entry
     as_entry         perm:tag(perm)? group:leaf via:leaf?
     op               ...maps:op_map
@@ -206,22 +205,16 @@ directive = "@" KW_LANG "=" name:STRING                 → (lang)
           | "@" KW_REPAIR lines:repair_lines            → (repair)
 
 # --- @conflicts block: `kind lhs → rhs [over lhs → rhs] count # reason` ---
+#
+# The lexer wrapper splits each entry line: the kind word, the rule text
+# (verbatim, in whatever symbol syntax the conflict report prints), `over`
+# and a second rule text, the count, and the rationale comment.
 
 conflict_lines = CONT conflict_line                 → (2)
                | conflict_lines CONT conflict_line  → (...1 3)
 
-conflict_line = kind:IDENT rule:crule [KW_OVER over:crule] count:INTEGER reason:COMMENT?
+conflict_line = kind:IDENT rule:RULE_TEXT [KW_OVER over:RULE_TEXT] count:INTEGER reason:COMMENT?
                                                     → (conflict)
-
-crule     = lhs:IDENT ARROW rhs:csyms               → (crule)
-
-csyms     = csym                                    → (1)
-          | csyms csym                              → (...1 2)
-
-csym      = IDENT
-          | TOKEN
-          | STRING
-          | EPSILON
 
 # --- @as TOKEN [via fn] = [group[!] [via fn], ...] ---
 

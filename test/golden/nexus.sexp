@@ -48,12 +48,12 @@
         (role
           _
           `rule`
-          (type `crule`)
+          (type `leaf`)
           _)
         (role
           _
           `over`
-          (type `crule`)
+          (type `leaf`)
           opt)
         (role
           _
@@ -65,21 +65,6 @@
           `reason`
           (type `leaf`)
           opt))
-      _
-      _)
-    (kind_decl
-      (kinds `crule`)
-      (roles
-        (role
-          _
-          `lhs`
-          (type `leaf`)
-          _)
-        (role
-          rest
-          `rhs`
-          (type `leaf`)
-          _))
       _
       _)
     (kind_decl
@@ -767,13 +752,13 @@
           (tok `IDENT`))
         (label
           `rule`
-          (ref `crule`))
+          (tok `RULE_TEXT`))
         (group
           opt
           ((tok `KW_OVER`)
             (label
               `over`
-              (ref `crule`))))
+              (tok `RULE_TEXT`))))
         (label
           `count`
           (tok `INTEGER`))
@@ -783,57 +768,6 @@
             (tok `COMMENT`)
             (opt))))
       (node `conflict`)
-      _))
-  (rule
-    (name `crule`)
-    (alt
-      _
-      ((label
-          `lhs`
-          (tok `IDENT`))
-        (tok `ARROW`)
-        (label
-          `rhs`
-          (ref `csyms`)))
-      (node `crule`)
-      _))
-  (rule
-    (name `csyms`)
-    (alt
-      _
-      ((ref `csym`))
-      (list
-        (pos `1`))
-      _)
-    (alt
-      _
-      ((ref `csyms`)
-        (ref `csym`))
-      (list
-        (spread `1`)
-        (pos `2`))
-      _))
-  (rule
-    (name `csym`)
-    (alt
-      _
-      ((tok `IDENT`))
-      _
-      _)
-    (alt
-      _
-      ((tok `TOKEN`))
-      _
-      _)
-    (alt
-      _
-      ((tok `STRING`))
-      _
-      _)
-    (alt
-      _
-      ((tok `EPSILON`))
-      _
       _))
   (rule
     (name `as_body`)

@@ -254,8 +254,8 @@ pub const GrammarLowerer = struct {
                 .reduce
             else
                 return self.fail(et[1], "conflict kind must be `shift` or `reduce`, not '{s}'", .{kindName});
-            const rule = try self.lowerCrule(et[2]);
-            const over: ?[]const u8 = if (et[3] == .nil) null else try self.lowerCrule(et[3]);
+            const rule = try self.lowerRuleText(et[2]);
+            const over: ?[]const u8 = if (et[3] == .nil) null else try self.lowerRuleText(et[3]);
             if (kind == .shift and over != null)
                 return self.fail(et[3], "a `shift` entry names one rule; `over` belongs to `reduce` entries", .{});
             if (kind == .reduce and over == null)
@@ -278,22 +278,13 @@ pub const GrammarLowerer = struct {
         }
     }
 
-    /// `(crule LHS SYM...)` as the text `lhs → sym sym` (`lhs → ε` for an
-    /// empty right-hand side).
-    fn lowerCrule(self: *GrammarLowerer, node: Sexp) LowerError![]const u8 {
-        const items = try self.requireTag(node, .crule);
-        if (items.len < 3) return self.shapeError(node, "(crule LHS SYM+)");
-        var out: std.ArrayListUnmanaged(u8) = .empty;
-        try out.appendSlice(self.allocator, try self.requireSrc(items[1], "rule name"));
-        try out.appendSlice(self.allocator, " \u{2192}");
-        for (items[2..]) |sym| {
-            const t = try self.requireSrc(sym, "symbol");
-            if (std.mem.eql(u8, t, "\u{03B5}") and items.len != 3)
-                return self.fail(sym, "ε stands for an empty right-hand side; it cannot be mixed with symbols", .{});
-            try out.append(self.allocator, ' ');
-            try out.appendSlice(self.allocator, t);
-        }
-        return out.toOwnedSlice(self.allocator);
+    /// A conflict entry's rule, `lhs → rhs`, kept verbatim (the LR stage
+    /// compares it with whitespace normalized and `->` read as `→`).
+    fn lowerRuleText(self: *GrammarLowerer, node: Sexp) LowerError![]const u8 {
+        const t = try self.requireSrc(node, "conflict rule text");
+        if (std.mem.indexOf(u8, t, "\u{2192}") == null and std.mem.indexOf(u8, t, "->") == null)
+            return self.fail(node, "a conflict entry names a rule as `lhs → rhs`, not '{s}'", .{t});
+        return t;
     }
 
     fn lowerAs(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
@@ -899,7 +890,8 @@ const testing = std.testing;
 //   0 "x"   1..5 "\"ab\""   5 "0"   6 "3"   7 "Y"   8..13 "shift"
 //   13..19 "reduce"   19 "!"   20..24 "self"   24..26 "fn"
 //   26..28 "#r"   28..31 "tag"   31..34 "zzz"   34..36 "\"\""   36 "1"
-const negText = "x\"ab\"03Yshiftreduce!selffn#rtagzzz\"\"1";
+//   37..43 "a -> b"
+const negText = "x\"ab\"03Yshiftreduce!selffn#rtagzzz\"\"1a -> b";
 const negSourceMap: diag.Source = .{ .path = "test.grammar", .text = negText };
 
 fn src(pos: u32, len: u16) Sexp {
@@ -919,6 +911,7 @@ const sTagWord = src(28, 3);
 const sZzz = src(31, 3);
 const sEmptyStr = src(34, 2);
 const sOne = src(36, 1);
+const sArrowRule = src(37, 6);
 
 fn L(comptime items: []const Sexp) Sexp {
     return .{ .list = items };
@@ -1031,7 +1024,7 @@ test "lowerer rejects (name_pair) whose name is not a string" {
 // --- Conflict manifest ---
 
 fn crule() Sexp {
-    return comptime L(&.{ T(.crule), sX, sUpper });
+    return sArrowRule;
 }
 test "lowerer rejects (manifest) with no entries" {
     try expectShapeError(root(&.{L(&.{T(.manifest)})}));
@@ -1048,8 +1041,11 @@ test "lowerer rejects a shift entry with over" {
 test "lowerer rejects a reduce entry without over" {
     try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sReduce, crule(), .nil, sThree, sComment }) })}));
 }
-test "lowerer rejects a (crule) with no right-hand side" {
-    try expectShapeError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, L(&.{ T(.crule), sX }), .nil, sThree, sComment }) })}));
+test "lowerer rejects a conflict rule without an arrow" {
+    try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, sZzz, .nil, sThree, sComment }) })}));
+}
+test "lowerer rejects a conflict rule that is not a src" {
+    try expectShapeError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, L(&.{T(.opt)}), .nil, sThree, sComment }) })}));
 }
 test "lowerer rejects both @conflicts forms" {
     try expectLowerError(root(&.{

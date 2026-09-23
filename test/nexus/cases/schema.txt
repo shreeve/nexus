@@ -27,6 +27,7 @@
     shift   stmt → IF expr THEN stmt           2   # else binds to the nearest if
     reduce  lname → name over targs → name     34  # names win over arguments
     shift   opt → ε                            1   # an empty rhs
+    reduce  L(IDENT).tail -> ε over items -> IDENT?  3  # generated symbols, verbatim
 
 @as IDENT = [fn via fnAs, isv!, self, cmd! via cmdAs]
 @as IDENT via keywordAs = [keyword]
