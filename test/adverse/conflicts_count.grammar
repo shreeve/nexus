@@ -1,0 +1,14 @@
+# A conflict total is not a declaration: each conflict is declared in an
+# @conflicts block.
+# error: conflicts_count.grammar:13:14:
+# error: `@conflicts = N` is not supported
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+@parser
+@conflicts = 0
+top! = IDENT                                → (top 1)

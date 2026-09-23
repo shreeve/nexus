@@ -410,7 +410,17 @@ after
 
 @lang = "mumps"
 
-@conflicts = 44
+@conflicts
+    shift  L(expr).tail → ε                             2  # a comma after a list item continues the list
+    shift  deviceparam → expr                           1  # USE dev:(x): the parentheses group an expression, the same value as a one-parameter list
+    shift  IDENT* → ε                                   2  # pattern code letters after a repeat count run as far as they go
+    shift  rlvn → IDENT                                 1  # name= after USE dev: is a keyword device parameter
+    shift  rgvn → "^" "|" expr "|" IDENT                1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "|" expr "," expr "|" IDENT       1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "[" expr "]" IDENT                1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "[" expr "," expr "]" IDENT       1  # ( after an extended global name starts its subscripts
+    reduce lname → "@" atom over tstartargs → "@" atom  34  # TSTART @x: the indirect argument is a local-name list
+    reduce actual? → ε over L(actual?)? → ε             2  # an empty () argument list holds one absent actual
 
 @as ident = [fn, isv, ssvn, self, cmd]
 
@@ -475,7 +485,7 @@ set     = SET [postcond] L(setarg)          → (set 2 ...3)
 setarg  = "@" atom "=" expr                 → (@name 2 value:4)
         | "@" atom                          → (@args 2)
         | glvn "=" expr                     → (= 1 3)
-        | "(" L(setglvn) ")" "=" expr       → (setmulti ...2 value:5)
+        | "(" L(setglvn) ")" "=" expr       → (setmulti value:5 ...2)
         | "$" name "(" setglvn "," L(expr) ")" "=" expr → (setfn 2 4 ...6 value:9)
         | "$" name "(" setglvn ")" "=" expr → (setfn 2 4 value:7)
         | "$" name                          → (setisv 2)
@@ -602,7 +612,8 @@ writearg = posformat
 
 banghash  = "!" | "#" | EXCLAIM_WS | HASH_WS
 tabcol    = "?" expr PATEND?                → (? 2)
-posformat = banghash+ [tabcol]              → (posformat ...1 2)
+posformat = banghash+                       → (posformat ...1)
+          | banghash+ tabcol                → (posformat 2 ...1)
           | tabcol                          → 1
           | COLIND atom                     → (?@ 2)
 

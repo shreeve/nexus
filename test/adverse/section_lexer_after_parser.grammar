@@ -1,0 +1,10 @@
+# The @lexer section comes before the @parser section.
+# error: section_lexer_after_parser.grammar:6:2:
+# error: the @lexer section comes before @parser
+@parser
+top! = IDENT                                → (top 1)
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err

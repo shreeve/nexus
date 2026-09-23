@@ -18,8 +18,8 @@
 //!   tables     ruleLhs, ruleLen
 //!   functions  getAction, getImmediateShift, startState, startMarker,
 //!              tokenToSymbol, executeAction, expectedIn, symbolName, isTrivia,
-//!              repairCandidates, ruleSideLabels, slotOf, restSlotOf,
-//!              roleAt, restRoleOf
+//!              repairCandidates, repairClass, ruleSideLabels, slotOf,
+//!              restSlotOf, roleAt, restRoleOf
 
 const std = @import("std");
 
@@ -163,7 +163,7 @@ const NodeStore = struct {
     chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
     len: u32 = 0,
 
-    const chunkLen = 1024;
+    const chunkLen = 128;
 
     inline fn add(self: *NodeStore, a: std.mem.Allocator, info: NodeInfo) !NodeId {
         const id = self.len;
@@ -201,11 +201,29 @@ pub const Failure = struct {
 pub const Tolerant = struct {
     /// The tree; `.nil` when the parse could not be completed.
     sexp: Sexp,
-    /// The first real error (null when the input was valid).
+    /// The first error, as the strict parse reports it (null when the
+    /// input was valid).
     failure: ?Failure,
     /// Tokens inserted plus tokens deleted.
     repairs: u32,
+    /// Zero-width tokens inserted (holes and structure).
+    insertions: u32 = 0,
+    /// Offending tokens deleted.
+    deletions: u32 = 0,
     complete: bool,
+};
+
+/// A token's role in tolerant repair, from `@repair`.
+pub const RepairClass = enum {
+    /// Not fabricable: real input.
+    none,
+    /// `holes`: a value-carrying token that may be minted with empty text.
+    hole,
+    /// `structure`: layout a lexer mints (INDENT, OUTDENT, ...).
+    structure,
+    /// `terminator`: structure that ends a statement (NEWLINE); the only
+    /// insertion allowed in front of real input.
+    terminator,
 };
 
 /// The id attribute of the token the lexer just produced, cleared as it is
@@ -252,9 +270,10 @@ pub const BaseParser = struct {
     // when it consumed none. A reduction then extends from its first
     // element's start to the end of the last token shifted (`lastEnd`),
     // and is empty when start >= end. With `elemEnds` (side-band labels or
-    // nested nodes) each entry's end is kept too.
-    starts: std.ArrayListUnmanaged(u32) = .empty,
-    ends: std.ArrayListUnmanaged(u32) = .empty,
+    // nested nodes) each entry's end is kept too. Both are indexed like
+    // `valueStack` and sized to its capacity (the stack top is its length).
+    starts: []u32 = &.{},
+    ends: []u32 = &.{},
     nodes: NodeStore = .{},
     sides: std.ArrayListUnmanaged(SideEntry) = .empty,
     reduction: Reduction = .{},
@@ -267,12 +286,13 @@ pub const BaseParser = struct {
 
     const ListSpare = struct { len: usize, capacity: usize };
 
-    /// The reduction in progress: its rule, the stack index of its first
-    /// element, its extent, and the first node id it built.
+    /// The reduction in progress: its rule and where it starts (it ends at
+    /// `lastEnd`); with `elemEnds`, also the stack index of its first
+    /// element and the first node id it built.
     const Reduction = struct {
         rule: u16 = 0,
+        start: u32 = 0,
         base: u32 = 0,
-        extent: Span = .empty,
         firstNode: NodeId = 0,
     };
 
@@ -317,38 +337,97 @@ pub const BaseParser = struct {
         }
     }
 
-    /// Parse `start`, repairing errors from the grammar's `@repair` table:
-    /// insert a zero-width token that lets the offending token be shifted,
-    /// else delete the offending token. Records the first real error; gives
-    /// up after `budget` repairs.
+    /// Parse `start`, repairing syntax errors for an editor: the parse goes
+    /// on past an error with the tree built the normal way. The rules:
+    ///
+    ///   1. The first error is recorded exactly as the strict parse reports
+    ///      it (token, state, expected set); repairs never replace it, and a
+    ///      repaired parse still returns it: recovery is not acceptance.
+    ///   2. Only tokens the grammar declares in `@repair` are ever inserted,
+    ///      as zero-width tokens at the offending token, taken from the
+    ///      state's generated candidate list (holes, then structure; fewer
+    ///      further fabrications first).
+    ///   3. What the offending token admits: end of input and structure
+    ///      tokens (lexer scaffolding) admit any candidate; real input
+    ///      admits only a `terminator` (a statement boundary splits what
+    ///      the user wrote without inventing meaning in front of it: no
+    ///      holes, no block structure before real code).
+    ///   4. An insertion must let the offending token be consumed (shifted,
+    ///      or accepted at end of input). At end of input or a structure
+    ///      token, when none does, a candidate the state can shift is
+    ///      inserted anyway, never twice in the same configuration (stack
+    ///      depth, state, token) since the last token was consumed, so
+    ///      several insertions can complete an unfinished construct.
+    ///   5. With no admissible insertion the offending token is deleted,
+    ///      except end of input, which is never deleted: the parse ends
+    ///      there, incomplete.
+    ///   6. At most `budget` repairs (insertions plus deletions); when they
+    ///      are spent the parse ends, incomplete.
+    ///
+    /// Strict parsing (`parse`) is a separate entry point and pays nothing.
     pub fn parseTolerant(self: *BaseParser, start: Start, budget: u32) !Tolerant {
         if (!hasRepair) @compileError("parseTolerant needs a @repair section in the grammar");
         try self.begin(start);
-        var repairs: u32 = 0;
+        var result: Tolerant = .{ .sexp = .nil, .failure = null, .repairs = 0, .complete = false };
+        // Configurations repaired since the last consumed token (rule 4).
+        var tried: std.ArrayListUnmanaged(RepairKey) = .empty;
         while (true) {
             const state = self.stateStack.getLast();
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
+                if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                return .{ .sexp = self.valueStack.getLast(), .failure = self.failure, .repairs = repairs, .complete = true };
+                result.sexp = self.valueStack.getLast();
+                result.complete = true;
+                break;
             } else {
+                // An inserted token is always acceptable (rule 4).
+                std.debug.assert(self.pendingInsert == null);
                 if (self.failure == null) self.recordFailure(state, sym);
-                if (repairs == budget or self.pendingInsert != null) break;
-                repairs += 1;
-                if (try self.findInsertion(sym)) |token| {
+                if (result.repairs == budget) break;
+                if (try self.chooseInsertion(sym, tried.items)) |token| {
+                    try tried.append(self.allocator(), .{ .depth = @intCast(self.stateStack.items.len), .state = state, .token = token });
                     self.pendingInsert = token;
+                    result.insertions += 1;
                 } else if (sym == endSymbol) {
                     break;
                 } else {
                     try self.advance();
+                    tried.clearRetainingCapacity();
+                    result.deletions += 1;
                 }
+                result.repairs += 1;
             }
         }
-        return .{ .sexp = .nil, .failure = self.failure, .repairs = repairs, .complete = false };
+        result.failure = self.failure;
+        return result;
+    }
+
+    const RepairKey = struct { depth: u32, state: u16, token: u16 };
+
+    /// The insertion rules 3 and 4 allow before `next`, best first; null
+    /// when there is none.
+    fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
+        const state = self.stateStack.getLast();
+        const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
+        const real = nextClass == .none or nextClass == .hole;
+        for (repairCandidates(state)) |candidate| {
+            if (real and repairClass(candidate) != .terminator) continue;
+            if (try self.accepts(&.{ candidate, next })) return candidate;
+        }
+        if (real) return null;
+        const depth: u32 = @intCast(self.stateStack.items.len);
+        for (repairCandidates(state)) |candidate| {
+            const seen = for (tried) |k| {
+                if (k.depth == depth and k.state == state and k.token == candidate) break true;
+            } else false;
+            if (!seen and try self.accepts(&.{candidate})) return candidate;
+        }
+        return null;
     }
 
     fn begin(self: *BaseParser, start: Start) !void {
@@ -361,8 +440,6 @@ pub const BaseParser = struct {
         if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
         if (nodeStore) {
-            self.starts.clearRetainingCapacity();
-            self.ends.clearRetainingCapacity();
             if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
         }
         if (hasTrivia) try self.skipTrivia();
@@ -414,14 +491,8 @@ pub const BaseParser = struct {
         self.valueStack.items[n] = value;
         self.stateStack.items.len = n + 2;
         self.stateStack.items[n + 1] = state;
-        if (nodeStore) {
-            self.starts.items.len = n + 1;
-            self.starts.items[n] = start;
-        }
-        if (elemEnds) {
-            self.ends.items.len = n + 1;
-            self.ends.items[n] = end;
-        }
+        if (nodeStore) self.starts[n] = start;
+        if (elemEnds) self.ends[n] = end;
     }
 
     fn growStacks(self: *BaseParser) !void {
@@ -429,8 +500,8 @@ pub const BaseParser = struct {
         try self.valueStack.ensureUnusedCapacity(a, 1);
         const capacity = self.valueStack.capacity;
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
-        if (nodeStore) try self.starts.ensureTotalCapacity(a, capacity);
-        if (elemEnds) try self.ends.ensureTotalCapacity(a, capacity);
+        if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
+        if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -439,15 +510,12 @@ pub const BaseParser = struct {
         const top = self.stateStack.items.len - len;
 
         if (nodeStore) {
-            self.reduction = .{
-                .rule = ruleId,
-                .base = @intCast(base),
-                .extent = .{
-                    .start = if (len > 0) self.starts.items[base] else self.current.pos,
-                    .end = self.lastEnd,
-                },
-                .firstNode = self.nodes.len,
-            };
+            self.reduction.rule = ruleId;
+            self.reduction.start = if (len > 0) self.starts[base] else self.current.pos;
+            if (elemEnds) {
+                self.reduction.base = @intCast(base);
+                self.reduction.firstNode = self.nodes.len;
+            }
         }
 
         // The action reads its elements in place on the value stack; the
@@ -463,16 +531,11 @@ pub const BaseParser = struct {
             self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
             self.stateStack.items[top] = @intCast(next);
-            if (nodeStore) {
-                self.starts.items.len = base + 1;
-                self.starts.items[base] = self.reduction.extent.start;
-            }
-            if (elemEnds) {
-                self.ends.items.len = base + 1;
-                self.ends.items[base] = self.lastEnd;
-            }
+            // starts[base] already holds the reduction's start (its first
+            // element's).
+            if (elemEnds) self.ends[base] = self.lastEnd;
         } else {
-            try self.pushEntry(@intCast(next), result, self.reduction.extent.start, self.lastEnd);
+            try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
     }
 
@@ -499,6 +562,11 @@ pub const BaseParser = struct {
     // Node store, spans, side-band roles
     // -------------------------------------------------------------------------
 
+    /// The span of the reduction in progress.
+    inline fn reductionSpan(self: *const BaseParser) Span {
+        return spanOf(.{ .start = self.reduction.start, .end = self.lastEnd });
+    }
+
     /// The span of an extent: empty at its start when it consumed no
     /// tokens.
     fn spanOf(extent: Span) Span {
@@ -509,13 +577,13 @@ pub const BaseParser = struct {
     fn elemsExtent(self: *const BaseParser, lo: usize, hi: usize) Span {
         if (!elemEnds) @compileError("element extents need elemEnds");
         const base = self.reduction.base;
-        return .{ .start = self.starts.items[base + lo], .end = self.ends.items[base + hi] };
+        return .{ .start = self.starts[base + lo], .end = self.ends[base + hi] };
     }
 
     /// A new node id for a list the current reduction builds.
     inline fn newNodeId(self: *BaseParser) NodeId {
         if (!nodeStore) return 0;
-        return self.addNode(spanOf(self.reduction.extent));
+        return self.addNode(self.reductionSpan());
     }
 
     inline fn addNode(self: *BaseParser, extent: Span) NodeId {
@@ -561,12 +629,42 @@ pub const BaseParser = struct {
         }
     }
 
-    /// The rule that built a list node (null without a node id).
+    /// The rule that built a list node (null without a node id, or for a
+    /// node a lang wrapper made with `newNode`).
     pub fn ruleOf(self: *const BaseParser, s: Sexp) ?u16 {
         if (!nodeStore or s != .list) return null;
         const id = s.list.id;
         if (id == 0 or id >= self.nodes.len) return null;
-        return self.nodes.at(id).rule;
+        const rule = self.nodes.at(id).rule;
+        return if (rule == wrapperRule) null else rule;
+    }
+
+    /// The rule recorded for nodes built outside a reduction.
+    const wrapperRule = std.math.maxInt(u16);
+
+    /// A `(tag children...)` node built outside a reduction, e.g. by a lang
+    /// `Parser` wrapper for an `@wrapper` kind: allocated in the parser's
+    /// arena, with a fresh node id recording `extent` as its span (so
+    /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
+    /// is null). Without a node store the node has no id.
+    pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
+        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        out[0] = .{ .tag = tag };
+        @memcpy(out[1..], children);
+        return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
+    }
+
+    /// An untagged list built outside a reduction (a `group` value), with a
+    /// node id recording `extent` like `newNode`.
+    pub fn newList(self: *BaseParser, items: []const Sexp, extent: Span) !Sexp {
+        const out = try self.allocator().dupe(Sexp, items);
+        return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
+    }
+
+    fn wrapperNodeId(self: *BaseParser, extent: Span) !NodeId {
+        if (!nodeStore) return 0;
+        if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
+        return self.nodes.add(self.allocator(), .{ .span = extent, .rule = wrapperRule });
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
@@ -605,15 +703,20 @@ pub const BaseParser = struct {
         return .nil;
     }
 
+    /// Whether an untagged list can reach the tree (and so gets a node id)
+    /// or is only ever spread into another list (plumbing: no node id).
+    /// The generator decides per rule (see codegen/actions.zig).
+    const ListUse = enum { tree, spread };
+
     /// A list node of the current reduction over freshly built `items`.
-    inline fn node(self: *BaseParser, items: []const Sexp) Sexp {
-        return .{ .list = List.withId(items, self.newNodeId()) };
+    inline fn node(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
+        return .{ .list = List.withId(items, if (use == .tree) self.newNodeId() else 0) };
     }
 
     /// A list node over exactly `items` (fixed positions).
-    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
         const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// A nested node of the current reduction: its span covers just the
@@ -629,7 +732,7 @@ pub const BaseParser = struct {
     /// the reduction.
     fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
-            const at = self.reduction.extent.start;
+            const at = self.reduction.start;
             self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
         }
         return s;
@@ -646,25 +749,25 @@ pub const BaseParser = struct {
     }
 
     /// The default action: nothing, the one element, or an untagged list.
-    fn list(self: *BaseParser, pass: []Sexp) Sexp {
+    fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
         if (pass.len == 0) return .nil;
         if (pass.len == 1) return pass[0];
         const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// `()`: an empty list.
-    fn emptyList(self: *BaseParser) Sexp {
-        return self.node(&.{});
+    fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
+        return self.node(&.{}, use);
     }
 
     /// `[head, ...tail]`
-    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp) Sexp {
+    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
         const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// Start a list holding the items of `base` (a list, else nothing)
@@ -688,7 +791,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -697,10 +800,10 @@ pub const BaseParser = struct {
             }) catch return self.oomNil();
         }
         var id: NodeId = 0;
-        if (nodeStore) {
+        if (nodeStore and use == .tree) {
             if (self.extending != 0) {
                 id = self.extending;
-                self.nodes.at(id).* = .{ .span = spanOf(self.reduction.extent), .rule = self.reduction.rule };
+                self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
         self.extending = 0;
@@ -708,10 +811,10 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items);
+        return self.node(items, use);
     }
 
     /// `(tag items...)`
@@ -720,7 +823,7 @@ pub const BaseParser = struct {
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     /// `(tag ...spread)`
@@ -730,7 +833,7 @@ pub const BaseParser = struct {
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
@@ -745,7 +848,7 @@ pub const BaseParser = struct {
             out[1] = pos;
             @memcpy(out[2..], items[0..len]);
         }
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     // -------------------------------------------------------------------------
@@ -811,18 +914,16 @@ pub const BaseParser = struct {
         return expectedIn(state);
     }
 
+    /// The reader-facing name of a grammar symbol, as `writeError` prints
+    /// it: its `@errors` or `@display` name, a literal as written, a token
+    /// name in lower case; empty for other rules.
+    pub fn symbolText(sym: u16) []const u8 {
+        return symbolName(sym);
+    }
+
     // -------------------------------------------------------------------------
     // Tolerant repair
     // -------------------------------------------------------------------------
-
-    /// The first candidate of the current state after which `next` can be
-    /// shifted (or accepted).
-    fn findInsertion(self: *BaseParser, next: u16) !?u16 {
-        for (repairCandidates(self.stateStack.getLast())) |candidate| {
-            if (try self.accepts(&.{ candidate, next })) return candidate;
-        }
-        return null;
-    }
 
     /// Whether `symbols` can be consumed from the current state, simulating
     /// reductions on a scratch copy of the state stack.
@@ -974,22 +1075,48 @@ pub const ir = struct {
     /// The child in `role` (nil when absent).
     pub fn get(node: @"ir.Sexp", role: @"ir.Role") @"ir.Sexp" {
         const k = kindFor(node, "ir.get", role) orelse return .nil;
-        const slot = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
+        const at = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
         const items = node.list.items();
-        return if (slot < items.len) items[slot] else .nil;
+        return if (at < items.len) items[at] else .nil;
     }
 
     /// The children in rest role `role`.
     pub fn rest(node: @"ir.Sexp", role: @"ir.Role") []const @"ir.Sexp" {
         const k = kindFor(node, "ir.rest", role) orelse return &.{};
-        const slot = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
+        const at = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
         const items = node.list.items();
-        return if (slot < items.len) items[slot..] else &.{};
+        return if (at < items.len) items[at..] else &.{};
     }
 
     /// Whether nodes of `kind` have `role` (slot or rest role).
     pub fn has(kind: @"ir.Tag", role: @"ir.Role") bool {
         return slotOf(kind, role) != null or restSlotOf(kind, role) != null;
+    }
+
+    /// The slot of `role` in nodes of `kind` (the head is slot 0), at
+    /// compile time; a compile error when `kind` has no such slot role. For
+    /// lang Parser wrappers that build or rewrite nodes:
+    /// `items[ir.slot(.set, .value)] = v`.
+    pub fn slot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime slotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no slot role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The first slot of rest role `role` in nodes of `kind`, at compile
+    /// time; a compile error when `kind` has no such rest role.
+    pub fn restSlot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime restSlotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no rest role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The fixed length of `kind` nodes: the head plus one slot per slot
+    /// role (rest children follow).
+    pub fn width(comptime kind: @"ir.Tag") usize {
+        return comptime blk: {
+            var n: usize = 1;
+            while (roleAt(kind, n) != null) n += 1;
+            break :blk n;
+        };
     }
 
     fn kindFor(node: @"ir.Sexp", comptime what: []const u8, role: @"ir.Role") ?@"ir.Tag" {
@@ -1048,7 +1175,7 @@ fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
 //          | "(" expr ")"           → 2
 //
 // with `#...` comments as trivia, a `@schema` of set/add/prog, and
-// IDENT then NEWLINE as repair candidates.
+// `@repair holes IDENT, terminator NEWLINE`.
 // =============================================================================
 
 const Tag = enum(u8) { prog, set, add };
@@ -1212,6 +1339,14 @@ fn repairCandidates(state: u16) []const u16 {
     };
 }
 
+fn repairClass(sym: u16) RepairClass {
+    return switch (sym) {
+        9 => .hole,
+        8 => .terminator,
+        else => .none,
+    };
+}
+
 fn ruleSideLabels(rule: u16) []const SideLabel {
     return switch (rule) {
         3 => &.{.{ .role = .eq, .pass = 1 }},
@@ -1271,18 +1406,18 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         1 => blk: {
             var out: std.ArrayListUnmanaged(Sexp) = .empty;
             out.append(self.allocator(), pass[0]) catch break :blk self.oomNil();
-            break :blk self.finishList(&out);
+            break :blk self.finishList(&out, .spread);
         },
         2 => blk: {
             var out = self.extendList(pass[0]) catch break :blk self.oomNil();
             out.append(self.allocator(), pass[2]) catch break :blk self.oomNil();
-            break :blk self.keepList(&out);
+            break :blk self.keepList(&out, .spread);
         },
         3 => self.sexp(.set, &.{ pass[0], pass[2] }),
         4 => pass[0],
-        5 => self.list(pass),
+        5 => self.list(pass, .tree),
         6 => self.sexp(.add, &.{ pass[0], pass[2] }),
-        7 => self.list(pass),
+        7 => self.list(pass, .tree),
         8 => pass[1],
         else => unreachable,
     };
@@ -1350,14 +1485,40 @@ test "spans cover the reduction, including tokens not in the tree" {
     try testing.expect(set.list.id >= 1 and set.list.id <= p.nodeCount());
 }
 
-test "a left-recursive list keeps its node id as it grows" {
+test "a plumbing list spread into its parent gets no node" {
     var p = BaseParser.init(testing.allocator, "a\nb\nc\nd");
     defer p.deinit();
     const tree = try p.parse(.prog);
     try testing.expectEqualStrings("(prog a b c d)", try render(&p, tree));
-    // stmts: one node for the list, one for prog.
-    try testing.expectEqual(@as(u32, 2), p.nodeCount());
+    // stmts only ever spreads into prog (its rules build with `.spread`):
+    // prog is the one node.
+    try testing.expectEqual(@as(u32, 1), p.nodeCount());
     try testing.expectEqual(Span{ .start = 0, .end = 7 }, p.span(tree));
+}
+
+test "a list that reaches the tree keeps its node id as it grows" {
+    var p = BaseParser.init(testing.allocator, "a b c");
+    defer p.deinit();
+    try p.begin(.prog);
+    // Build `(a)`, then extend it twice, as a left-recursive rule does.
+    const items = [_]Sexp{ .{ .src = .{ .pos = 0, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 2, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 4, .len = 1, .id = 0 } } };
+    p.reduction = .{ .rule = 1, .start = 0 };
+    p.lastEnd = 1;
+    var out: std.ArrayListUnmanaged(Sexp) = .empty;
+    try out.append(p.allocator(), items[0]);
+    var l = p.finishList(&out, .tree);
+    for (items[1..], 1..) |item, i| {
+        p.reduction = .{ .rule = 2, .start = 0 };
+        p.lastEnd = @intCast(2 * i + 1);
+        var grown = try p.extendList(l);
+        try grown.append(p.allocator(), item);
+        const next = p.keepList(&grown, .tree);
+        try testing.expectEqual(l.list.id, next.list.id);
+        l = next;
+    }
+    try testing.expectEqual(@as(u32, 1), p.nodeCount());
+    try testing.expectEqual(Span{ .start = 0, .end = 5 }, p.span(l));
+    try testing.expectEqual(@as(?u16, 2), p.ruleOf(l));
 }
 
 test "side-band roles record a span without a tree slot" {
@@ -1407,19 +1568,21 @@ test "parse errors carry the token span and the expected set" {
 }
 
 test "the tolerant driver inserts holes and deletes stray tokens" {
-    // `a = ` misses its value: a zero-width IDENT is inserted.
+    // `a = ` misses its value before a newline (a terminator, so layout): a
+    // zero-width IDENT is inserted.
     var p = BaseParser.init(testing.allocator, "a = \nb");
     defer p.deinit();
     const r = try p.parseTolerant(.prog, 8);
     try testing.expect(r.complete);
     try testing.expectEqual(@as(u32, 1), r.repairs);
+    try testing.expectEqual(@as(u32, 1), r.insertions);
     try testing.expectEqualStrings("(prog (set a ) b)", try render(&p, r.sexp));
     try testing.expectEqual(TokenCat.newline, r.failure.?.cat);
     const hole = ir.get(r.sexp.items()[1], .value);
     try testing.expectEqual(@as(u16, 0), hole.src.len);
     try testing.expectEqual(@as(u32, 4), hole.src.pos);
 
-    // `a b`: a NEWLINE is inserted between the statements.
+    // `a b`: a terminator is inserted in front of the real token `b`.
     var q = BaseParser.init(testing.allocator, "a b");
     defer q.deinit();
     const s = try q.parseTolerant(.prog, 8);
@@ -1433,19 +1596,91 @@ test "the tolerant driver inserts holes and deletes stray tokens" {
     try testing.expect(u.complete);
     try testing.expectEqualStrings("(prog (add a b))", try render(&t, u.sexp));
     try testing.expectEqual(@as(u32, 1), u.repairs);
-
-    // The budget bounds the repairs.
-    var v = BaseParser.init(testing.allocator, ") ) ) a");
-    defer v.deinit();
-    const x = try v.parseTolerant(.prog, 2);
-    try testing.expect(!x.complete);
-    try testing.expectEqual(@as(u32, 2), x.repairs);
+    try testing.expectEqual(@as(u32, 1), u.deletions);
 
     // Valid input: no failure, no repairs.
     var y = BaseParser.init(testing.allocator, "a");
     defer y.deinit();
     const z = try y.parseTolerant(.prog, 8);
     try testing.expect(z.complete and z.failure == null and z.repairs == 0);
+}
+
+test "tolerant parsing never puts a hole in front of real input" {
+    // A hole before `+` would make `a = <hole> + b`; the real token is
+    // deleted instead.
+    var p = BaseParser.init(testing.allocator, "a = + b");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog (set a b))", try render(&p, r.sexp));
+    try testing.expectEqual(@as(u32, 0), r.insertions);
+    try testing.expectEqual(@as(u32, 1), r.deletions);
+}
+
+test "tolerant parsing: end of input takes holes and is never deleted" {
+    var p = BaseParser.init(testing.allocator, "a =");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog (set a ))", try render(&p, r.sexp));
+    try testing.expectEqual(TokenCat.eof, r.failure.?.cat);
+
+    // `(a` needs a `)`, which is not fabricable: the parse ends at end of
+    // input, incomplete, without deleting it.
+    var q = BaseParser.init(testing.allocator, "(a");
+    defer q.deinit();
+    const s = try q.parseTolerant(.prog, 8);
+    try testing.expect(!s.complete);
+    try testing.expectEqual(@as(u32, 0), s.repairs);
+    try testing.expectEqual(TokenCat.eof, s.failure.?.cat);
+
+    // `a = (`: a hole is inserted though `)` is still missing (the hole
+    // makes progress), once; then the parse ends.
+    var t = BaseParser.init(testing.allocator, "a = (");
+    defer t.deinit();
+    const u = try t.parseTolerant(.prog, 8);
+    try testing.expect(!u.complete);
+    try testing.expectEqual(@as(u32, 1), u.insertions);
+    try testing.expectEqual(@as(u32, 0), u.deletions);
+}
+
+test "tolerant parsing keeps the first error and honors the budget" {
+    var p = BaseParser.init(testing.allocator, "a = + b\n) c");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog (set a b) c)", try render(&p, r.sexp));
+    try testing.expectEqual(@as(u32, 2), r.deletions);
+    // The first error, as the strict parse reports it.
+    try testing.expectEqual(Span{ .start = 4, .end = 5 }, r.failure.?.span);
+    try testing.expectEqualStrings("1:5: expected an expression, got \"+\"", try errorText(&p));
+
+    var q = BaseParser.init(testing.allocator, ") ) ) a");
+    defer q.deinit();
+    const s = try q.parseTolerant(.prog, 2);
+    try testing.expect(!s.complete);
+    try testing.expectEqual(@as(u32, 2), s.repairs);
+    try testing.expectEqual(Span{ .start = 0, .end = 1 }, s.failure.?.span);
+
+    var t = BaseParser.init(testing.allocator, "a b");
+    defer t.deinit();
+    const u = try t.parseTolerant(.prog, 0);
+    try testing.expect(!u.complete);
+    try testing.expectEqual(@as(u32, 0), u.repairs);
+    try testing.expect(u.failure != null);
+}
+
+test "ir slots are known at compile time" {
+    try testing.expectEqual(@as(usize, 1), comptime ir.slot(.set, .target));
+    try testing.expectEqual(@as(usize, 2), comptime ir.slot(.add, .right));
+    try testing.expectEqual(@as(usize, 1), comptime ir.restSlot(.prog, .stmts));
+    try testing.expectEqual(@as(usize, 3), comptime ir.width(.set));
+    try testing.expectEqual(@as(usize, 1), comptime ir.width(.prog));
+    // A wrapper fills a role by its slot.
+    var items: [ir.width(.set)]Sexp = @splat(.nil);
+    items[0] = .{ .tag = .set };
+    items[ir.slot(.set, .value)] = .{ .src = .{ .pos = 4, .len = 1, .id = 0 } };
+    try testing.expectEqual(@as(u32, 4), ir.get(Sexp.listOf(&items), .value).src.pos);
 }
 
 test "ir accessors: by role and through per-kind positions" {
@@ -1468,17 +1703,40 @@ test "facts export" {
     var p = BaseParser.init(testing.allocator, "a = b\nc");
     defer p.deinit();
     const tree = try p.parse(.prog);
-    // Ids follow construction order: set = 1, the stmts plumbing list = 2
-    // (spread into prog, so not in the tree), prog = 3.
+    // Ids follow construction order: set = 1, prog = 2 (the stmts list
+    // between them is plumbing: no node).
     try testing.expectEqualStrings(
-        \\(node 3 prog 0 7)
-        \\(role 3 stmts 1 leaf 6 1)
+        \\(node 2 prog 0 7)
+        \\(role 2 stmts 1 leaf 6 1)
         \\(node 1 set 0 5)
         \\(role 1 target leaf 0 1)
         \\(role 1 value leaf 4 1)
         \\(side 1 eq 2 1)
         \\
     , try facts(&p, tree));
+}
+
+test "a wrapper builds nodes with ids and spans" {
+    var p = BaseParser.init(testing.allocator, "a = b");
+    defer p.deinit();
+    const tree = try p.parse(.prog);
+    const set = tree.items()[1];
+    const before = p.nodeCount();
+    const add = try p.newNode(.add, &.{ ir.get(set, .target), ir.get(set, .value) }, .{ .start = 0, .end = 5 });
+    try testing.expectEqual(before + 1, p.nodeCount());
+    try testing.expectEqualStrings("(add a b)", try render(&p, add));
+    try testing.expectEqual(Span{ .start = 0, .end = 5 }, p.span(add));
+    try testing.expectEqual(@as(?u16, null), p.ruleOf(add));
+    try testing.expectEqualStrings("b", ir.get(add, .right).getText(p.source));
+    const group = try p.newList(&.{ .nil, .nil }, .{ .start = 4, .end = 4 });
+    try testing.expectEqual(Span{ .start = 4, .end = 4 }, p.span(group));
+    try testing.expect(group.list.id == add.list.id + 1);
+    try testing.expectEqualStrings(
+        \\(node 3 add 0 5)
+        \\(role 3 left leaf 0 1)
+        \\(role 3 right leaf 4 1)
+        \\
+    , try facts(&p, add));
 }
 
 test "facts quote names with s-expression syntax" {

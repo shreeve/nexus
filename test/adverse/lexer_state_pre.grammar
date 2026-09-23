@@ -1,0 +1,11 @@
+# pre is built in.
+# error: lexer_state_pre.grammar:6:5:
+# error: 'pre' is the built-in whitespace count
+@lexer
+state
+    pre = 1
+tokens
+    eof, err
+. → err
+@parser
+top! = ERR → 1

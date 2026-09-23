@@ -1,0 +1,27 @@
+# Conflict reports and @conflicts entries name generated symbols in source
+# syntax: a repeated choice is `(A | B)`, a group `(A !B)` (`!` marks a
+# skipped element), and `X*` / `X?` their repetitions and options.
+
+@lexer
+tokens
+    name
+    num
+    comma
+    semi
+    eof
+    err
+','                                         → comma
+';'                                         → semi
+[0-9]+                                      → num
+[a-z]+                                      → name
+.                                           → err
+
+@parser
+@lang = "generated_names"
+
+@conflicts
+    shift  (NAME | NUM)* → ε  3  # a name after the run joins the run
+    shift  (NAME !",")* → ε   2  # a name after the pairs joins the pairs
+
+top! = (NAME | NUM)* NAME? ";"              → (run ...1 2)
+     | ";" (NAME !",")* NAME? ";"           → (pairs ...2 3)

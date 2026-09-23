@@ -1,0 +1,21 @@
+# A list followed by its own separator is ambiguous: the conflict is
+# reported like any other (it must be declared in @conflicts), never
+# resolved silently inside the list's expansion.
+# error: list_tail_conflict.grammar:21:1:
+# error: undeclared conflict: shift  L(IDENT).tail → ε
+@lexer
+tokens
+    ident
+    comma
+    star
+    eof
+    err
+','                                         → comma
+'*'                                         → star
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "list_tail_conflict"
+
+top! = L(IDENT) "," "*"                     → (top ...1)

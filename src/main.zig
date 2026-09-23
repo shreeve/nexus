@@ -4,9 +4,10 @@
 //!        nexus check <grammar-file>
 //!        nexus --dump-sexp <grammar-file> [output-file]
 //!
-//! Pipeline: frontend (lexer section + self-hosted @parser section, lowered
-//! to GrammarIR) -> lexgen (lexer source) -> expand (desugared Grammar) ->
-//! lr (automaton, lookaheads, table) -> codegen (the parser module).
+//! Pipeline: frontend (the self-hosted grammar-file parser, lowered to the
+//! lexer spec and GrammarIR) -> lexgen (lexer source) -> expand (desugared
+//! Grammar) -> lr (automaton, lookaheads, table) -> codegen (the parser
+//! module).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -14,7 +15,6 @@ const Io = std.Io;
 
 const diag = @import("diag.zig");
 const frontend = @import("frontend/frontend.zig");
-const LexerParser = frontend.LexerParser;
 const GrammarLowerer = frontend.GrammarLowerer;
 const LexerGenerator = @import("lexgen/lexgen.zig").LexerGenerator;
 const Grammar = @import("grammar.zig").Grammar;
@@ -57,7 +57,7 @@ const help =
     \\      --slr       Use SLR(1) instead of LALR(1) for parse tables
     \\      --spans     Record node spans and rule ids in the generated
     \\                  parser (always on for grammars with @schema)
-    \\      --dump-sexp Parse the @parser section via the self-hosted
+    \\      --dump-sexp Parse the grammar file with the self-hosted
     \\                  frontend and write its canonical S-expression
     \\                  tree to the output file (or stdout)
     \\  -h, --help      Show this help
@@ -132,7 +132,7 @@ pub fn main(init: std.process.Init) !void {
     return generate(allocator, io, opts);
 }
 
-/// `nexus --dump-sexp`: print the frontend's canonical tree for the @parser section.
+/// `nexus --dump-sexp`: print the frontend's canonical tree of the grammar file.
 fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?[]const u8) !void {
     const sourceText = try readGrammar(allocator, io, grammarFile);
 
@@ -145,7 +145,7 @@ fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?
     var output: std.Io.Writer.Allocating = .init(allocator);
     defer output.deinit();
     const writer = &output.writer;
-    try frontend.dumpSexp(writer, parsed.sexp, parsed.parserBody, 0);
+    try frontend.dumpSexp(writer, parsed.sexp, sourceText, 0);
     try writer.writeByte('\n');
     const bytes = writer.buffered();
 
@@ -165,28 +165,36 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     diag.info("Reading grammar from {s}", .{grammarFile});
 
-    // Lexer section
-    const lexerStart = frontend.findSection(sourceText, "@lexer") orelse {
-        diag.err("no @lexer section found in {s}", .{grammarFile});
-        return;
+    // The whole file through the self-hosted frontend, lowered into the
+    // lexer spec and GrammarIR (whose strings are slices of sourceText).
+    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+        if (err != error.ParseError) diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
+        fail();
     };
+    defer parsed.parser.deinit();
 
-    var lexerParser = LexerParser.init(allocator, sourceText, lexerStart + "@lexer".len, grammarFile);
-    defer lexerParser.deinit();
-
-    // Lexer-section and lexer-generation errors are reported where they occur.
-    lexerParser.parseLexerSection() catch std.process.exit(1);
+    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.source) catch |err| {
+        if (err == error.OutOfMemory) diag.err("out of memory", .{});
+        fail();
+    };
+    var lexerSpec = ir.lexer orelse {
+        diag.errLine(grammarFile, 1, 1, "no @lexer section (a grammar file has an @lexer section, then an @parser section)", .{});
+        fail();
+    };
+    if (!ir.hasParser) {
+        const end = parsed.source.at(sourceText.len);
+        diag.errLine(grammarFile, end.line, end.col, "no @parser section (a grammar file ends with an @parser section, which may be empty)", .{});
+        fail();
+    }
+    lexerSpec.langName = ir.lang;
 
     diag.info("   Lexer: {d} states, {d} tokens, {d} rules", .{
-        lexerParser.spec.states.items.len,
-        lexerParser.spec.tokens.items.len,
-        lexerParser.spec.rules.items.len,
+        lexerSpec.states.items.len,
+        lexerSpec.tokens.items.len,
+        lexerSpec.rules.items.len,
     });
 
-    // The lexer generator needs @lang before the @parser section is parsed
-    if (frontend.scanLangDirective(sourceText)) |name| lexerParser.spec.langName = name;
-
-    var lexerGen = LexerGenerator.init(allocator, &lexerParser.spec);
+    var lexerGen = LexerGenerator.init(allocator, &lexerSpec);
     defer lexerGen.deinit();
 
     const lexerDecls = lexerGen.generateDecls() catch |err| switch (err) {
@@ -197,28 +205,6 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         },
     };
 
-    // Parser section: parse it through the self-hosted frontend and lower the
-    // resulting S-expression tree into GrammarIR. The IR's strings are slices
-    // of sourceText.
-    if (frontend.findSection(sourceText, "@parser") == null) {
-        diag.err("no @parser section found in {s}", .{grammarFile});
-        return;
-    }
-    diag.info("   Parsing @parser section...", .{});
-
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
-        if (err != error.ParseError) diag.err("failed to parse the @parser section of {s}: {any}", .{ grammarFile, err });
-        fail();
-    };
-    defer parsed.parser.deinit();
-
-    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.source) catch |err| {
-        if (err == error.OutOfMemory) diag.err("out of memory", .{});
-        fail();
-    };
-
-    if (ir.lang == null) ir.lang = lexerParser.spec.langName;
-
     diag.info("   Parser: {d} rules, {d} start symbols", .{
         ir.rules.len,
         ir.startSymbols.len,
@@ -228,7 +214,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         diag.info("\nChecking grammar...", .{});
         var failed = check.checkGrammar(allocator, &ir) > 0;
         if (ir.schema != null) {
-            _ = semantics.resolve(allocator, &ir, &lexerParser.spec, grammarFile) catch {
+            _ = semantics.resolve(allocator, &ir, &lexerSpec, grammarFile) catch {
                 failed = true;
             };
         }
@@ -244,7 +230,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         defer g.deinit();
         // Schema mode: resolve every action against @schema first.
         var sem: ?semantics.Result = null;
-        if (ir.schema != null) sem = semantics.resolve(allocator, &ir, &lexerParser.spec, grammarFile) catch |err| {
+        if (ir.schema != null) sem = semantics.resolve(allocator, &ir, &lexerSpec, grammarFile) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
             fail();
         };
@@ -265,11 +251,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         }
 
         // Validate all referenced symbols are defined
-        const validationErrors = check.validateSymbols(&g, &lexerParser.spec);
-        if (validationErrors > 0) {
-            diag.err("found {d} undefined symbol(s)", .{validationErrors});
-            return;
-        }
+        if (check.validateSymbols(&g, &lexerSpec, grammarFile) > 0) fail();
 
         var result = lr.run(&g, .{
             .mode = opts.parseMode,
@@ -289,7 +271,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             diag.info("   {d} conflicts (as declared)", .{result.table.conflicts});
 
         // Emit the combined lexer + parser module
-        finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerParser.spec, lexerDecls, .{
+        finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerSpec, lexerDecls, .{
             .emitComments = opts.emitComments,
             .spans = opts.spans,
             .source = .{ .path = grammarFile, .text = sourceText },
@@ -299,7 +281,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             std.process.exit(1);
         };
     } else {
-        finalCode = try codegen.lexerModule(allocator, lexerParser.spec.langName, lexerDecls);
+        finalCode = try codegen.lexerModule(allocator, lexerSpec.langName, lexerDecls);
     }
 
     try writeOutput(io, opts.outputFile, finalCode);

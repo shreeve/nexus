@@ -1,0 +1,18 @@
+# An empty @conflicts block declares no conflicts: any conflict is drift.
+# error: empty_manifest_conflict.grammar:17:1:
+# error: undeclared conflict: shift  IDENT* → ε
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "empty_manifest_conflict"
+
+@conflicts
+
+top! = IDENT* IDENT?                        → (top ...1 2)
+     | IDENT                                → (top 1)

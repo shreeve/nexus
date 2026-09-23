@@ -1,0 +1,36 @@
+# A whole grammar file: directives, the @lexer section, the @parser section.
+@lang = "demo"
+
+@lexer
+
+state inline = -1
+state
+    beg = 1         # a comment
+    flag = true
+    paren = 0
+
+after
+    beg = 0
+
+tokens
+    ident, number
+    string eof err
+    comment
+
+@code = checkMode
+
+[ \t]+                              → skip, skip
+'#' [^\n]*                          → comment, simd_to '\n'
+'\n'                                → ident, {beg = 1}
+'('                                 → ident, {paren++}
+')' @ paren > 0                     → ident, {paren--}
+'.'+ @ beg & !flag                  → ident, {beg = counted('.')}, hold
+@ pre >= 2 & beg == 1               → ident, {flag = false}
+"<=>"                               -> ident, rewind(1)
+[0-9]+ / '.' [a-z]                  => number
+'"' ([^"\\\n] | '\\' .)* '"'        → string
+.                                   → err
+
+@parser
+
+top! = IDENT                        → (top 1)

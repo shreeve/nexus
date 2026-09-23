@@ -1,0 +1,13 @@
+# A rule reference with no rule is reported where it is used.
+# error: undefined_rule.grammar:13:12:
+# error: undefined rule 'bogus'
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z]+ → ident
+. → err
+@parser
+# (no @conflicts block: the grammar must be conflict-free)
+program! = bogus → (module 1)

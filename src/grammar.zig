@@ -1,8 +1,8 @@
 //! Grammar data shared by every stage of the generator.
 //!
-//!   - Lexer spec: the parsed `@lexer` section (state vars, tokens, rules).
-//!   - Grammar IR: the lowered `@parser` section (rules, alternatives,
-//!     elements, directives), produced by frontend/lower.zig.
+//!   - Lexer spec: the lowered `@lexer` section (state vars, tokens, rules).
+//!   - Grammar IR: the lowered grammar file (rules, alternatives, elements,
+//!     directives, and the lexer spec), produced by frontend/lower.zig.
 //!   - Symbols and rules: the desugared BNF grammar the LR stages consume.
 
 const std = @import("std");
@@ -163,7 +163,7 @@ pub fn findTokenForLiteral(spec: *const LexerSpec, text: []const u8) ?[]const u8
 }
 
 // =============================================================================
-// Grammar IR (the lowered @parser section)
+// Grammar IR (the lowered grammar file)
 //
 // The self-hosted frontend (frontend/parser.zig + frontend/lower.zig)
 // produces this IR from .grammar files; expand.zig consumes it.
@@ -177,7 +177,6 @@ pub const GrammarIR = struct {
     errorNames: []const ErrorName,
     infix: ?InfixDecl = null,
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null, // legacy `@conflicts = N`; replaced by `conflicts`
     /// `@schema`: present means the grammar is in schema mode.
     schema: ?Schema = null,
     /// `@conflicts` manifest; empty means the grammar must be conflict-free.
@@ -188,6 +187,11 @@ pub const GrammarIR = struct {
     trivia: []const []const u8 = &.{},
     /// `@repair`: the tolerant-repair alphabet; null = no tolerant driver.
     repair: ?RepairSpec = null,
+    /// The @lexer section; null when the file has none.
+    lexer: ?LexerSpec = null,
+    /// Whether the file has a @parser section (text without section
+    /// markers is @parser-section text).
+    hasParser: bool = true,
 };
 
 pub const ParsedRule = struct {
@@ -200,11 +204,10 @@ pub const ParsedRule = struct {
 
 pub const ParsedAlternative = struct {
     elements: []const ParsedElement,
-    action: ?[]const u8 = null, // legacy template text; replaced by actionTree
     actionTree: ?ActionTree = null,
     /// `~ "reason"`: exempt from the schema coverage gate.
     optOut: ?[]const u8 = null,
-    excludeChar: u8 = 0, // legacy; replaced by excludeChars
+    /// `X "c"` hints: characters that force a shift when adjacent.
     excludeChars: []const u8 = &.{},
     preferReduce: bool = false,
     preferShift: bool = false,
@@ -329,11 +332,11 @@ pub const ActionElem = union(enum) {
     nil,
     /// A tag literal in child position (`op:+=`, `move`).
     tagLit: []const u8,
+    /// The tag named by the text of the string literal matched at
+    /// position N (a `tag` role labeling `"+="` or `("+=" | "-=")`).
+    litTag: u16,
     /// A nested `(kind …)` node.
     node: *const ActionList,
-    /// A reference to a pattern label by name. Not produced by the 1.0
-    /// frontend (labels fill roles through the schema); reserved.
-    label: []const u8,
 };
 
 /// The canonical text of an action: `N`, `_`, or `(head item ...)` with
@@ -383,8 +386,8 @@ fn renderElem(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), elem: Acti
         .symId => |n| try out.print(allocator, "~{d}", .{n}),
         .nil => try out.append(allocator, '_'),
         .tagLit => |t| try out.appendSlice(allocator, t),
+        .litTag => |n| try out.print(allocator, "tag({d})", .{n}),
         .node => |l| try renderList(allocator, out, l.*),
-        .label => |l| try out.appendSlice(allocator, l),
     }
 }
 
@@ -409,8 +412,11 @@ pub const DisplayName = struct {
 pub const RepairSpec = struct {
     /// Tokens that may be minted as zero-width holes (value-carrying, e.g. IDENT).
     holes: []const []const u8,
-    /// Structural tokens that may be minted (NEWLINE, INDENT, OUTDENT).
+    /// Structural tokens that may be minted (INDENT, OUTDENT).
     structure: []const []const u8,
+    /// Structural tokens that end a statement (NEWLINE): the only tokens
+    /// the tolerant driver inserts in front of real input.
+    terminators: []const []const u8 = &.{},
 };
 
 pub const InfixDecl = struct {
@@ -460,12 +466,8 @@ pub const Symbol = struct {
     id: u16,
     name: []const u8,
     kind: Kind,
-
-    // For nonterminals only
-    nullable: bool = false,
-    firsts: SymbolSet = .empty,
-    follows: SymbolSet = .empty,
-    rules: std.ArrayListUnmanaged(u16) = .empty, // Rule IDs that define this nonterminal
+    /// Nonterminals: the ids of the rules that define it.
+    rules: std.ArrayListUnmanaged(u16) = .empty,
 
     pub const Kind = enum { terminal, nonterminal };
 
@@ -475,49 +477,6 @@ pub const Symbol = struct {
 
     pub fn deinit(self: *Symbol, allocator: Allocator) void {
         self.rules.deinit(allocator);
-        self.firsts.deinit(allocator);
-        self.follows.deinit(allocator);
-    }
-};
-
-/// A set of symbol IDs (for FIRST/FOLLOW sets)
-pub const SymbolSet = struct {
-    items: std.ArrayListUnmanaged(u16) = .empty,
-
-    pub const empty: SymbolSet = .{};
-
-    pub fn deinit(self: *SymbolSet, allocator: Allocator) void {
-        self.items.deinit(allocator);
-    }
-
-    pub fn add(self: *SymbolSet, allocator: Allocator, id: u16) !void {
-        for (self.items.items) |existing| {
-            if (existing == id) return;
-        }
-        try self.items.append(allocator, id);
-    }
-
-    pub fn contains(self: *const SymbolSet, id: u16) bool {
-        for (self.items.items) |existing| {
-            if (existing == id) return true;
-        }
-        return false;
-    }
-
-    pub fn addAll(self: *SymbolSet, allocator: Allocator, other: *const SymbolSet) !bool {
-        const oldCount = self.items.items.len;
-        for (other.items.items) |id| {
-            try self.add(allocator, id);
-        }
-        return self.items.items.len > oldCount;
-    }
-
-    pub fn count(self: *const SymbolSet) usize {
-        return self.items.items.len;
-    }
-
-    pub fn slice(self: *const SymbolSet) []const u16 {
-        return self.items.items;
     }
 };
 
@@ -526,17 +485,15 @@ pub const Rule = struct {
     id: u16,
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
-    action: ?[]const u8, // Action template text (legacy; replaced by actionTree)
     /// Action with every label resolved to a position and, in schema mode,
-    /// every role placed in its slot (nils filled). Null = pass through 1.
+    /// every role placed in its slot (nils filled). Null = the default:
+    /// nothing, the one element, or an untagged list of the elements.
     actionTree: ?ActionTree = null,
-    actionOffset: u8 = 0, // Position offset for start rules with marker tokens
-    nullable: bool = false,
-    firsts: SymbolSet = .empty,
-    excludeChar: u8 = 0, // X "c" (legacy; replaced by excludeChars)
-    excludeChars: []const u8 = &.{}, // X "c" - chars that force shift when adjacent
-    preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
-    preferShift: bool = false, // > hint - prefer shift on S/R conflict
+    /// `X "c"` hints: characters that force a shift when adjacent.
+    excludeChars: []const u8 = &.{},
+    /// `<` / `>` hints: prefer reduce / shift on a shift/reduce conflict.
+    preferReduce: bool = false,
+    preferShift: bool = false,
     /// Schema kind index this rule constructs (schema mode), for the node store.
     kind: ?u16 = null,
     /// Side-band labels: (role, 1-based position) recorded in the role store.
@@ -546,7 +503,7 @@ pub const Rule = struct {
     line: u32 = 0,
     col: u32 = 0,
 
-    /// `pos` is 1-based like action positions (codegen adds actionOffset).
+    /// `pos` is 1-based like action positions.
     pub const SideLabel = struct { role: []const u8, pos: u16 };
 };
 
@@ -579,7 +536,6 @@ pub const Grammar = struct {
     errorNames: []const ErrorName = &.{},
     displayNames: []const DisplayName = &.{},
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null, // legacy; replaced by `conflicts`
     schema: ?Schema = null,
     conflicts: []const ConflictEntry = &.{},
     trivia: []const []const u8 = &.{},
@@ -597,7 +553,6 @@ pub const Grammar = struct {
 
         for (self.rules.items) |*rule| {
             self.allocator.free(rule.rhs);
-            rule.firsts.deinit(self.allocator);
         }
         self.rules.deinit(self.allocator);
 

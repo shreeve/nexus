@@ -58,7 +58,6 @@ tokens
 
 @lang = "features"
 
-@conflicts = 0
 
 name = IDENT
 

@@ -1,0 +1,7 @@
+# Without a tokens block the error points at the end of the section.
+# error: lexer_no_tokens.grammar:6:1:
+# error: must declare 'eof'
+@lexer
+. → err
+@parser
+top! = ERR → 1

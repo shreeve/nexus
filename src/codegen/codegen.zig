@@ -616,16 +616,17 @@ const Codegen = struct {
         const w = &out.writer;
         var arms: std.Io.Writer.Allocating = .init(self.allocator);
         const a = &arms.writer;
+        const reaches = try actions.treeSymbols(self.allocator, self.g);
         for (self.g.rules.items, 0..) |rule, ruleIdx| {
             if (self.g.isAcceptRule(@intCast(ruleIdx))) continue;
             if (self.options.emitComments) {
                 try a.print("        // {s} =", .{self.g.symbols.items[rule.lhs].name});
                 for (rule.rhs) |symId| try a.print(" {s}", .{self.g.symbols.items[symId].name});
-                if (rule.action) |action| try a.print(" \xe2\x86\x92 {s}", .{action});
+                if (rule.actionTree) |tree| try a.print(" \xe2\x86\x92 {s}", .{try grammar.renderAction(self.allocator, tree)});
                 try a.writeAll("\n");
             }
             try a.print("        {d} => ", .{ruleIdx});
-            try actions.generateRuleAction(self.allocator, a, self.g, rule);
+            try actions.generateRuleAction(self.allocator, a, self.g, rule, reaches[rule.lhs]);
             try a.writeAll(",\n");
         }
         const body = arms.written();
@@ -912,6 +913,7 @@ const Codegen = struct {
     fn emitRepair(self: *Codegen, w: *std.Io.Writer) !void {
         const r = self.table.repair orelse {
             try w.writeAll("\nfn repairCandidates(_: u16) []const u16 {\n    return &.{};\n}\n");
+            try w.writeAll("\nfn repairClass(_: u16) RepairClass {\n    return .none;\n}\n");
             return;
         };
         try w.writeAll("\n/// Tolerant repair: state s may insert, best first,\n/// repairTokens[repairOffsets[s]..repairOffsets[s + 1]].\nconst repairTokens = [_]u16{");
@@ -925,7 +927,19 @@ const Codegen = struct {
             \\    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
             \\}
             \\
+            \\/// The `@repair` class of a grammar symbol.
+            \\fn repairClass(sym: u16) RepairClass {
+            \\    return switch (sym) {
+            \\
         );
+        const spec = self.g.repair.?;
+        const classes = [_]struct { []const []const u8, []const u8 }{
+            .{ spec.holes, "hole" }, .{ spec.structure, "structure" }, .{ spec.terminators, "terminator" },
+        };
+        for (classes) |c| for (c[0]) |name| {
+            try w.print("        {d} => .{s},\n", .{ self.g.getSymbol(name).?, c[1] });
+        };
+        try w.writeAll("        else => .none,\n    };\n}\n");
     }
 
     fn emitSideLabels(self: *Codegen, w: *std.Io.Writer) !void {
@@ -937,7 +951,7 @@ const Codegen = struct {
             any = true;
             try w.print("        {d} => &.{{", .{rule.id});
             for (rule.sideLabels) |label| {
-                try w.print(" .{{ .role = .@\"{f}\", .pass = {d} }},", .{ std.zig.fmtString(label.role), label.pos - 1 + rule.actionOffset });
+                try w.print(" .{{ .role = .@\"{f}\", .pass = {d} }},", .{ std.zig.fmtString(label.role), label.pos - 1 });
             }
             try w.writeAll(" },\n");
         }

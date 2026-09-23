@@ -1,6 +1,19 @@
 (grammar
+  (section `lexer`)
+  (tokens `tokens` `integer` `ident` `plus` `minus` `star` `slash` `power` `lparen` `rparen` `newline` `eof` `err`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'/'` _ `slash`)
+  (lex_rule `"**"` _ `power`)
+  (lex_rule `'('` _ `lparen`)
+  (lex_rule `')'` _ `rparen`)
+  (lex_rule `'\\n'` _ `newline`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (lang `"basic"`)
-  (conflicts `0`)
   (rule
     (name `name`)
     (alt

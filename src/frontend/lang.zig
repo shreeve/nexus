@@ -27,8 +27,26 @@
 //!     followed by `(` is the list keyword `kw_list`. The word after a `@`
 //!     is a directive keyword; `left right none` are keywords inside an
 //!     `@infix` block, `over` inside `@conflicts`, `via` in an `@as` line.
-//!     Inside `@schema` a `|` written without a space before it joins a
-//!     type union (`union`); `|` after a space starts the side-band roles.
+//!     Inside `@schema` a `|` within parentheses (`tag(a | b)`) or written
+//!     without a space before it joins a type union (`union`); any other
+//!     `|` starts the side-band roles.
+//!   - Sections. A `@lexer` or `@parser` at the start of a line is `at`
+//!     followed by `kw_lexer` / `kw_parser`, and switches the scanner to
+//!     that section. Before the first marker (the preamble) and in the
+//!     @parser section the rules above and below apply; the @lexer section
+//!     is scanned line by line (below).
+//!   - The @lexer section. Blank and comment lines produce no tokens. A
+//!     `state`, `after` or `tokens` line (`kw_state` ...) opens a block:
+//!     its indented lines are `cont` lines; every other line break is a
+//!     `newline`. A line that opens no block starts with `@code` (`at`
+//!     `kw_code`), with `@` (a zero-width rule), or with a pattern, which
+//!     is scanned verbatim up to an unquoted `@`, arrow, or `#` (`pattern`,
+//!     trailing blanks excluded). The rest of a line is `ident`s, integers
+//!     (with an optional `-`), `quoted` bytes (`'c'`), `compare` (`==` `!=`
+//!     `<` `<=` `>` `>=`), `incdec` (`++` `--`), arrows (`→` `->` `=>`), and
+//!     `= ! & , ( ) { }`. Any other run of characters is `err`. An
+//!     unterminated literal or class, an unterminated quoted byte, and a
+//!     line that is not a rule are `err` tokens with a `problem` message.
 //!   - Actions. After an arrow outside brackets (and outside `@conflicts`)
 //!     the rest of the line is an action, scanned in action mode: `(` `)`,
 //!     positions (`integer`), `...N` (`dots` + `integer`), `~N` (`tilde` +
@@ -49,6 +67,7 @@ pub const Tag = parser.Tag;
 
 pub const Lexer = struct {
     base: BaseLexer,
+    section: Section = .preamble,
     mode: Mode = .normal,
     block: Block = .none,
     afterAt: bool = false,
@@ -67,9 +86,34 @@ pub const Lexer = struct {
     queueLen: u8 = 0,
     /// Position of the last line break, for the `newline` before `eof`.
     lastBreak: ?u32 = null,
+    /// The last `at` began its line (a section marker can follow).
+    atLineStart: bool = false,
+    /// @lexer section: a `state`, `after` or `tokens` block is open, and
+    /// the current line is one of its indented lines.
+    lexBlock: bool = false,
+    blockLine: bool = false,
+    /// Why the last `err` token was produced, when the token alone does not
+    /// say (see `Problem`).
+    problem: ?Problem = null,
+    /// The last @lexer-section pattern: a syntax error later on its line is
+    /// reported as the pattern's own error when the pattern is invalid.
+    lastPattern: ?Token = null,
 
     const Mode = enum { normal, action };
     const Block = enum { none, as, conflicts, infix, schema, other };
+    pub const Section = enum { preamble, lexer, parser };
+
+    /// A scanning error the parser reports instead of "unexpected err":
+    /// the message for the `err` token at `pos`.
+    pub const Problem = struct {
+        pos: u32,
+        buf: [160]u8 = undefined,
+        len: u8 = 0,
+
+        pub fn message(self: *const Problem) []const u8 {
+            return self.buf[0..self.len];
+        }
+    };
 
     pub fn init(source: []const u8) Lexer {
         return .{ .base = BaseLexer.init(source) };
@@ -91,7 +135,12 @@ pub const Lexer = struct {
             return self.emit(tok);
         }
         while (true) {
-            const tok = (if (self.mode == .action) self.scanAction() else self.scanNormal()) orelse continue;
+            const tok = (if (self.section == .lexer)
+                self.scanLexer()
+            else if (self.mode == .action)
+                self.scanAction()
+            else
+                self.scanNormal()) orelse continue;
             return self.emit(tok);
         }
     }
@@ -121,6 +170,7 @@ pub const Lexer = struct {
         }
         self.afterLayout = layout;
         self.afterAt = tok.cat == .at;
+        if (tok.cat == .at) self.atLineStart = tok.pos == 0 or self.src()[tok.pos - 1] == '\n';
         return tok;
     }
 
@@ -158,8 +208,14 @@ pub const Lexer = struct {
                 if (self.bracketDepth > 0) self.bracketDepth -= 1;
             },
             .arrow => return self.arrow(tok),
-            .pipe => if (self.block == .schema and tok.pos > 0 and !isBlank(s[tok.pos - 1])) {
+            .pipe => if (self.block == .schema and (self.parenDepth > 0 or (tok.pos > 0 and !isBlank(s[tok.pos - 1])))) {
                 tok.cat = .@"union";
+            },
+            .lparen => if (self.block == .schema) {
+                self.parenDepth += 1;
+            },
+            .rparen => if (self.block == .schema and self.parenDepth > 0) {
+                self.parenDepth -= 1;
             },
             .at => if (self.lineStart) {
                 // A directive: its keyword decides the block context.
@@ -177,6 +233,10 @@ pub const Lexer = struct {
         var end = start;
         var inString = false;
         while (end < s.len and s[end] != '\n') : (end += 1) {
+            if (inString and s[end] == '\\' and end + 1 < s.len and s[end + 1] != '\n') {
+                end += 1;
+                continue;
+            }
             if (s[end] == '"') inString = !inString;
             if (s[end] == '#' and !inString) break;
         }
@@ -195,6 +255,10 @@ pub const Lexer = struct {
             const a = i;
             var quoted = false;
             while (i < end and (quoted or !isBlank(s[i]))) : (i += 1) {
+                if (quoted and s[i] == '\\' and i + 1 < end) {
+                    i += 1;
+                    continue;
+                }
                 if (s[i] == '"') quoted = !quoted;
             }
             words[n] = .{ .a = a, .b = i };
@@ -278,6 +342,7 @@ pub const Lexer = struct {
             if (self.bracketDepth > 0) return null;
             if (self.atStart) return null;
             self.lineStart = true;
+            self.parenDepth = 0;
             if (s[i] == '|') {
                 self.base.pos = @intCast(i + 1);
                 return make(.next_alt, i, 1);
@@ -293,6 +358,17 @@ pub const Lexer = struct {
         const end = tok.pos + tok.len;
         const t = s[tok.pos..end];
 
+        if (self.afterAt and self.atLineStart and tok.pos > 0 and self.src()[tok.pos - 1] == '@') {
+            if (eql(t, "lexer")) {
+                self.section = .lexer;
+                self.lexBlock = false;
+                return .kw_lexer;
+            }
+            if (eql(t, "parser")) {
+                self.section = .parser;
+                return .kw_parser;
+            }
+        }
         if (self.afterAt) {
             if (directiveKeyword(t)) |kw| {
                 if (self.block == .other) self.block = switch (kw) {
@@ -344,6 +420,250 @@ pub const Lexer = struct {
         while (i < s.len and (s[i] == ' ' or s[i] == '\t')) i += 1;
         if (i + 2 < s.len and s[i] == '"' and s[i + 1] != '\\' and s[i + 2] == '"') return true;
         return i + 3 < s.len and s[i] == '"' and s[i + 1] == '\\' and s[i + 3] == '"';
+    }
+
+    // --- The @lexer section ------------------------------------------------
+
+    /// One token of the @lexer section, or null when the scanned input
+    /// produced none (a comment, a skipped line).
+    fn scanLexer(self: *Lexer) ?Token {
+        const s = self.src();
+        var p: usize = self.base.pos;
+        while (p < s.len and isBlank(s[p])) p += 1;
+        self.base.pos = @intCast(p);
+        if (p >= s.len) return self.endOfInput(p);
+        const c = s[p];
+        if (c == '\n') return self.lexerLineBreak(p);
+        if (c == '#') {
+            while (p < s.len and s[p] != '\n') p += 1;
+            self.base.pos = @intCast(p);
+            return null;
+        }
+        if (self.lineStart and !self.blockLine) return self.lexerLineStart(p);
+        return self.lexerToken(p);
+    }
+
+    /// The first token of a line that is not inside a block.
+    fn lexerLineStart(self: *Lexer, p: usize) Token {
+        const s = self.src();
+        const c = s[p];
+        if (c == '@') {
+            const word = s[p + 1 .. p + 1 + wordLen(s, p + 1)];
+            const kw: ?TokenCat = if (eql(word, "code"))
+                .kw_code
+            else if (eql(word, "parser"))
+                .kw_parser
+            else if (eql(word, "lexer"))
+                .kw_lexer
+            else
+                null;
+            self.base.pos = @intCast(p + 1);
+            if (kw) |k| {
+                self.base.pos = @intCast(p + 1 + word.len);
+                self.push(make(k, p + 1, word.len));
+                if (k == .kw_parser) self.section = .parser;
+            }
+            return make(.at, p, 1);
+        }
+        const word = s[p .. p + wordLen(s, p)];
+        if (word.len > 0) {
+            const kw: ?TokenCat = if (eql(word, "state"))
+                .kw_state
+            else if (eql(word, "after"))
+                .kw_after
+            else if (eql(word, "tokens"))
+                .kw_tokens
+            else
+                null;
+            if (kw) |k| {
+                self.base.pos = @intCast(p + word.len);
+                self.lexBlock = true;
+                return make(k, p, word.len);
+            }
+        }
+        switch (c) {
+            '\'', '"', '[', '.', '(', '\\' => return self.lexerPattern(p),
+            else => {},
+        }
+        const end = p + nonBlankLen(s, p);
+        self.base.pos = @intCast(end);
+        return self.fail(p, end - p, "unrecognized line in the @lexer section: '{s}' (expected state, after, tokens, @code, or a rule)", .{s[p..end]});
+    }
+
+    /// A rule's pattern: up to an unquoted `@`, arrow, or `#`, or the end
+    /// of the line, without trailing blanks. Quotes and classes honor
+    /// backslash escapes and must close on the line.
+    fn lexerPattern(self: *Lexer, start: usize) Token {
+        const s = self.src();
+        var p = start;
+        while (p < s.len) {
+            const c = s[p];
+            if (c == '\n' or c == '#' or c == '@' or arrowLen(s, p) != 0) break;
+            if (c == '\'' or c == '"') {
+                const open = p;
+                p += 1;
+                while (p < s.len and s[p] != c and s[p] != '\n') {
+                    if (s[p] == '\\' and p + 1 < s.len and s[p + 1] != '\n') p += 1;
+                    p += 1;
+                }
+                if (p >= s.len or s[p] != c) return self.failLine(open, "unterminated quoted literal", .{});
+                p += 1;
+                continue;
+            }
+            if (c == '[') {
+                const open = p;
+                p += 1;
+                if (p < s.len and s[p] == '^') p += 1;
+                if (p < s.len and s[p] == ']') p += 1;
+                while (p < s.len and s[p] != ']' and s[p] != '\n') {
+                    if (s[p] == '\\' and p + 1 < s.len and s[p + 1] != '\n') p += 1;
+                    p += 1;
+                }
+                if (p >= s.len or s[p] != ']') return self.failLine(open, "unclosed '['", .{});
+                p += 1;
+                continue;
+            }
+            if (c == '\\' and p + 1 < s.len and s[p + 1] != '\n') {
+                p += 2;
+                continue;
+            }
+            p += 1;
+        }
+        self.base.pos = @intCast(p);
+        var end = p;
+        while (end > start and isBlank(s[end - 1])) end -= 1;
+        const tok = make(.pattern, start, end - start);
+        self.lastPattern = tok;
+        return tok;
+    }
+
+    /// A token after the start of a @lexer-section line.
+    fn lexerToken(self: *Lexer, p: usize) Token {
+        const s = self.src();
+        const c = s[p];
+        const after: u8 = if (p + 1 < s.len) s[p + 1] else 0;
+        const arrowBytes = arrowLen(s, p);
+        if (arrowBytes != 0) return self.take(.arrow, p, arrowBytes);
+        if (std.ascii.isAlphabetic(c) or c == '_') return self.take(.ident, p, wordLen(s, p));
+        if (std.ascii.isDigit(c) or (c == '-' and std.ascii.isDigit(after))) {
+            var e = p + 1;
+            while (e < s.len and std.ascii.isDigit(s[e])) e += 1;
+            return self.take(.integer, p, e - p);
+        }
+        switch (c) {
+            '=' => return if (after == '=') self.take(.compare, p, 2) else self.take(.eq, p, 1),
+            '!' => return if (after == '=') self.take(.compare, p, 2) else self.take(.bang, p, 1),
+            '<', '>' => return self.take(.compare, p, if (after == '=') 2 else 1),
+            '+', '-' => if (after == c) return self.take(.incdec, p, 2),
+            '&' => return self.take(.amp, p, 1),
+            ',' => return self.take(.comma, p, 1),
+            '(' => return self.take(.lparen, p, 1),
+            ')' => return self.take(.rparen, p, 1),
+            '{' => return self.take(.lbrace, p, 1),
+            '}' => return self.take(.rbrace, p, 1),
+            '@' => return self.take(.at, p, 1),
+            '\'' => {
+                var e = p + 1;
+                while (e < s.len and s[e] != '\'' and s[e] != '\n') {
+                    if (s[e] == '\\' and e + 1 < s.len and s[e + 1] != '\n') e += 1;
+                    e += 1;
+                }
+                if (e >= s.len or s[e] != '\'') return self.failLine(p, "unterminated quoted byte", .{});
+                return self.take(.quoted, p, e + 1 - p);
+            },
+            else => {},
+        }
+        // Anything else, up to a blank or a character that starts a token.
+        var e = p + 1;
+        while (e < s.len and !isBlank(s[e]) and s[e] != '\n' and std.mem.indexOfScalar(u8, "=!<>&,(){}@'#", s[e]) == null) e += 1;
+        return self.take(.err, p, e - p);
+    }
+
+    fn take(self: *Lexer, cat: TokenCat, pos: usize, len: usize) Token {
+        self.base.pos = @intCast(pos + len);
+        return make(cat, pos, len);
+    }
+
+    /// A line break in the @lexer section: skips blank and comment lines;
+    /// an indented line inside a block is `cont`, any other line `newline`.
+    fn lexerLineBreak(self: *Lexer, pos: usize) ?Token {
+        const s = self.src();
+        var i = pos + 1;
+        while (true) {
+            const lineBegin = i;
+            while (i < s.len and isBlank(s[i])) i += 1;
+            if (i >= s.len) {
+                self.base.pos = @intCast(s.len);
+                self.lastBreak = @intCast(pos);
+                return null; // eof handling emits the final newline
+            }
+            if (s[i] == '\n') {
+                i += 1;
+                continue;
+            }
+            if (s[i] == '#') {
+                while (i < s.len and s[i] != '\n') i += 1;
+                continue;
+            }
+            self.base.pos = @intCast(i);
+            if (self.atStart) return null;
+            self.lineStart = true;
+            if (i > lineBegin and self.lexBlock) {
+                self.blockLine = true;
+                return make(.cont, pos, 1);
+            }
+            self.lexBlock = false;
+            self.blockLine = false;
+            return make(.newline, pos, 1);
+        }
+    }
+
+    /// End of input: one `newline` after content, then `eof`.
+    fn endOfInput(self: *Lexer, p: usize) Token {
+        const tok = make(.eof, p, 0);
+        if (!self.atStart and !self.afterLayout) {
+            self.push(tok);
+            return make(.newline, self.lastBreak orelse p, if (self.lastBreak != null) 1 else 0);
+        }
+        return tok;
+    }
+
+    /// An `err` token for the rest of the line, with a problem message.
+    fn failLine(self: *Lexer, pos: usize, comptime fmt: []const u8, args: anytype) Token {
+        const s = self.src();
+        var end = pos;
+        while (end < s.len and s[end] != '\n') end += 1;
+        self.base.pos = @intCast(end);
+        return self.fail(pos, end - pos, fmt, args);
+    }
+
+    fn fail(self: *Lexer, pos: usize, len: usize, comptime fmt: []const u8, args: anytype) Token {
+        var problem: Problem = .{ .pos = @intCast(pos) };
+        const written = std.fmt.bufPrint(&problem.buf, fmt, args) catch problem.buf[0..];
+        problem.len = @intCast(written.len);
+        self.problem = problem;
+        return make(.err, pos, len);
+    }
+
+    /// Arrow at `p`: `→`, `->` or `=>`; its length in bytes, or 0.
+    fn arrowLen(s: []const u8, p: usize) usize {
+        if (p + 1 < s.len and (s[p] == '-' or s[p] == '=') and s[p + 1] == '>') return 2;
+        if (p + 2 < s.len and s[p] == 0xE2 and s[p + 1] == 0x86 and s[p + 2] == 0x92) return 3;
+        return 0;
+    }
+
+    fn wordLen(s: []const u8, p: usize) usize {
+        var e = p;
+        if (e < s.len and (std.ascii.isAlphabetic(s[e]) or s[e] == '_')) {
+            while (e < s.len and (std.ascii.isAlphanumeric(s[e]) or s[e] == '_')) e += 1;
+        }
+        return e - p;
+    }
+
+    fn nonBlankLen(s: []const u8, p: usize) usize {
+        var e = p;
+        while (e < s.len and !isBlank(s[e]) and s[e] != '\n') e += 1;
+        return e - p;
     }
 
     // --- Action mode -------------------------------------------------------

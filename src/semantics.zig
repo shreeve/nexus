@@ -184,7 +184,7 @@ const Resolver = struct {
             const e = layout.element(alt.elements, p);
             const name = e.label orelse continue;
             if (std.mem.eql(u8, name, "_")) continue;
-            try labels.append(self.a, .{ .name = name, .pos = @intCast(p), .line = e.line, .col = e.col });
+            try labels.append(self.a, .{ .name = name, .pos = @intCast(p), .line = e.line, .col = e.col, .lits = try literalTexts(self.a, e) });
         }
 
         var out: Resolved = .{ .tree = alt.actionTree };
@@ -211,7 +211,9 @@ const Resolver = struct {
         return out;
     }
 
-    const Label = struct { name: []const u8, pos: u16, line: u32, col: u32 };
+    /// A pattern label. `lits`: the texts a labeled string literal or
+    /// choice of string literals can match (null for other elements).
+    const Label = struct { name: []const u8, pos: u16, line: u32, col: u32, lits: ?[]const []const u8 = null };
 
     /// Place a list's items: a kind-headed list gets its slots in schema
     /// order; any other list is plumbing and keeps its items. Nested lists
@@ -305,6 +307,13 @@ const Resolver = struct {
                         self.err(lctx, "role '{s}' of '{s}' is filled by the label and by the action", .{ lab.name, tag });
                         continue;
                     }
+                    // A tag role labeling literals takes the tag the
+                    // matched literal's text names.
+                    if (roles[ri].type == .tag) if (lab.lits) |lits| {
+                        for (lits) |t| try self.noteTag(lctx, .{ .tagLit = t }, roles[ri]);
+                        slots[ri] = .{ .litTag = lab.pos };
+                        continue;
+                    };
                     slots[ri] = .{ .ref = lab.pos };
                 } else {
                     try rest.append(a, .{ .spread = lab.pos });
@@ -496,7 +505,7 @@ const Resolver = struct {
 
     fn markElem(e: ActionElem, used: []bool) void {
         switch (e) {
-            .ref, .spread, .symId => |p| used[p] = true,
+            .ref, .spread, .symId, .litTag => |p| used[p] = true,
             .node => |n| markList(n.*, used),
             else => {},
         }
@@ -536,6 +545,39 @@ const Resolver = struct {
         return false;
     }
 };
+
+/// The texts a string literal element, or a choice whose every alternative
+/// is one string literal, can match; null for any other element.
+fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
+    switch (e.kind) {
+        .string => {
+            if (e.quantifier != .one) return null;
+            return try a.dupe([]const u8, &.{try unquote(a, e.value)});
+        },
+        .choice => {
+            if (e.quantifier != .one) return null;
+            const out = try a.alloc([]const u8, e.choices.len);
+            for (e.choices, 0..) |c, i| {
+                if (c.len != 1 or c[0].kind != .string or c[0].quantifier != .one) return null;
+                out[i] = try unquote(a, c[0].value);
+            }
+            return out;
+        },
+        else => return null,
+    }
+}
+
+/// A string literal's text: without its quotes, `\c` escapes read as `c`.
+fn unquote(a: Allocator, lit: []const u8) ![]const u8 {
+    const body = lit[1 .. lit.len - 1];
+    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var i: usize = 0;
+    while (i < body.len) : (i += 1) {
+        if (body[i] == '\\' and i + 1 < body.len) i += 1;
+        try out.append(a, body[i]);
+    }
+    return out.toOwnedSlice(a);
+}
 
 fn isUpper(s: []const u8) bool {
     return s.len > 0 and s[0] >= 'A' and s[0] <= 'Z';
@@ -742,7 +784,7 @@ const TypeChecker = struct {
     }
 
     fn sym(rule: grammar.Rule, pos: u16) u16 {
-        return rule.rhs[pos - 1 + rule.actionOffset];
+        return rule.rhs[pos - 1];
     }
 
     fn ruleResult(self: *TypeChecker, rule: grammar.Rule, out: *std.DynamicBitSetUnmanaged, items: *std.DynamicBitSetUnmanaged) void {
@@ -791,12 +833,11 @@ const TypeChecker = struct {
             .spread => |p| _ = unionInto(out, self.items[sym(rule, p)]),
             .symId => out.set(Types.leaf),
             .nil => out.set(Types.nil),
-            .tagLit => out.set(Types.tag),
+            .tagLit, .litTag => out.set(Types.tag),
             .node => |n| switch (n.head) {
                 .tag => |t| if (self.kindIndex.get(t)) |k| out.set(Types.firstKind + k) else out.set(Types.list),
                 else => out.set(Types.list),
             },
-            .label => {},
         }
     }
 
@@ -1113,7 +1154,7 @@ test "result types flow through pass-through rules and lists" {
     try expectActions(&g, a, "top", &.{"(block body:...1)"});
 }
 
-test "without a schema, expanded actions keep the 0.10 trailing-nil cut" {
+test "without a schema, expanded actions cut trailing absent positions" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -1140,4 +1181,65 @@ test "without a schema, expanded actions keep the 0.10 trailing-nil cut" {
         \\
     );
     try expectActions(&g2, a, "top", &.{ "(p 1)", "(p 1 2 x)", "(p 1 _ x 2)", "(p 1 2 x 3)" });
+}
+
+test "synthesized symbols are named in source syntax; identical ones are shared" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\top! = ID? item+ L(item, ";") [L(item?)] (item !"!") (A | B C)* sum
+        \\     | (item !"!") (A | B C)+
+        \\sum  = @infix
+        \\item = ID | STRING
+        \\@infix item
+        \\    "+" left, "-" left
+        \\    "*" left
+        \\
+    );
+    const names = [_][]const u8{
+        "ID?",                "item+",             "item*",
+        "L(item, \";\")",     "L(item, \";\").tail", "L(item?)",
+        "L(item?)?",          "L(item?).tail",     "(item !\"!\")",
+        "(A | B C)",          "(A | B C)*",        "(A | B C)+",
+        "infix(\"+\" \"-\")", "infix(\"*\")",
+    };
+    for (names) |n| if (g.getSymbol(n) == null) {
+        std.debug.print("no symbol {s}\n", .{n});
+        return error.TestExpectedEqual;
+    };
+    // The group and the choice each appear twice but are one symbol.
+    const group = g.getSymbol("(item !\"!\")").?;
+    try testing.expectEqual(@as(usize, 1), g.symbols.items[group].rules.items.len);
+    try testing.expectEqual(@as(usize, 2), g.symbols.items[g.getSymbol("(A | B C)").?].rules.items.len);
+    try expectActions(&g, a, "(item !\"!\")", &.{"1"});
+    // Rule texts, as conflict reports and manifests print them.
+    const lr = @import("lr/conflicts.zig");
+    const top = g.symbols.items[g.getSymbol("top").?].rules.items;
+    try testing.expectEqualStrings("top → ID? item+ L(item, \";\") L(item?)? (item !\"!\") (A | B C)* infix", try lr.ruleText(a, &g, top[0]));
+    const level = g.symbols.items[g.getSymbol("infix(\"+\" \"-\")").?].rules.items;
+    try testing.expectEqualStrings("infix(\"+\" \"-\") → infix(\"+\" \"-\") \"+\" infix(\"*\")", try lr.ruleText(a, &g, level[0]));
+}
+
+test "a tag role labeling literals takes the matched literal's text as its tag" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\@schema
+        \\    set   op:tag("+=" | "-=") target:leaf value:leaf
+        \\    swap  op:tag a:leaf b:leaf
+        \\top! = target:IDENT op:("+=" | "-=") value:IDENT     → (set)
+        \\     | a:IDENT op:"<->" b:IDENT                      → (swap)
+        \\
+    );
+    try expectActions(&g, a, "top", &.{
+        "(set op:tag(2) target:1 value:3)",
+        "(set op:tag(2) target:1 value:3)",
+        "(swap op:tag(2) a:1 b:3)",
+    });
+    const rules = g.symbols.items[g.getSymbol("top").?].rules.items;
+    try testing.expectEqualStrings("\"-=\"", g.symbols.items[g.rules.items[rules[1]].rhs[1]].name);
 }

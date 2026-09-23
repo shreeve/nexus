@@ -1,5 +1,14 @@
 (grammar
-  (conflicts `0`)
+  (section `lexer`)
+  (tokens `tokens` `ident` `integer` `assign` `plus_assign` `arrow` `newline` `eof` `err`)
+  (lex_rule `'+='` _ `plus_assign`)
+  (lex_rule `'='` _ `assign`)
+  (lex_rule `'->'` _ `arrow`)
+  (lex_rule `'\\n'` _ `newline`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (rule
     (start `program`)
     (alt

@@ -1,0 +1,13 @@
+# A held rule consumes nothing, so it cannot rewind.
+# error: lexer_hold_rewind.grammar:10:1:
+# error: cannot both hold and rewind
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'ab' → word, hold, rewind(1)
+. → err
+@parser
+top! = WORD → 1

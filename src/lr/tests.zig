@@ -37,7 +37,7 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
         const lhs = g.getSymbol(std.mem.trim(u8, text[0..arrow], " ")).?;
         var rhs: std.ArrayListUnmanaged(u16) = .empty;
         var excl: std.ArrayListUnmanaged(u8) = .empty;
-        var rule: grammar.Rule = .{ .id = @intCast(g.rules.items.len), .lhs = lhs, .rhs = &.{}, .action = null };
+        var rule: grammar.Rule = .{ .id = @intCast(g.rules.items.len), .lhs = lhs, .rhs = &.{} };
         var it = std.mem.tokenizeScalar(u8, text[arrow + "→".len ..], ' ');
         while (it.next()) |tok| {
             if (std.mem.eql(u8, tok, "ε")) continue;
@@ -62,7 +62,7 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
         const marker = try g.addSymbol(try std.fmt.allocPrint(a, "{s}!", .{name}), .terminal);
         const acc = try g.addSymbol(try std.fmt.allocPrint(a, "$accept_{s}", .{name}), .nonterminal);
         const id: u16 = @intCast(g.rules.items.len);
-        try g.rules.append(a, .{ .id = id, .lhs = acc, .rhs = try a.dupe(u16, &.{ marker, start, g.endId }), .action = null });
+        try g.rules.append(a, .{ .id = id, .lhs = acc, .rhs = try a.dupe(u16, &.{ marker, start, g.endId }) });
         try g.symbols.items[acc].rules.append(a, id);
         try g.startSymbols.append(a, start);
         try g.acceptRules.append(a, id);
@@ -410,13 +410,8 @@ test "manifest check: match, count change, winner flip, missing, undeclared" {
     try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
     try expectContains(sink.written(), "declared conflict no longer occurs: shift stmt → val \";\"");
 
-    // No manifest: the legacy total, then "must be conflict-free".
+    // No manifest: the grammar must be conflict-free.
     b.g.conflicts = &.{};
-    b.g.expectConflicts = 2;
-    try conflicts.check(a, &b.g, &b.auto, &b.tbl, opts);
-    b.g.expectConflicts = 3;
-    try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
-    b.g.expectConflicts = null;
     try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
 }
 
@@ -513,29 +508,13 @@ test "a start marker adds no conflicts and every start alternative is reachable"
     try testing.expect(two.tbl.rows[entry][sym(&two.g, "\"(\"")] == .shift);
 }
 
-test "synthesized symbols print in source syntax" {
+test "manifest rule texts normalize arrows, blanks and empty right-hand sides" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
-    // The shapes expand.zig produces for X?, X*, X+, L(X, ";"), and a group.
-    const b = try generate(a, &.{
-        "prog → _opt_9 _plus_9 _list_9s _grp_0",
-        "_opt_9 → item",
-        "_opt_9 → ε",
-        "_star_9 → item _star_9",
-        "_star_9 → ε",
-        "_plus_9 → item _star_9",
-        "_list_9s → item _tail_9s",
-        "_tail_9s → \";\" item _tail_9s",
-        "_tail_9s → ε",
-        "_grp_0 → item \"!\"",
-        "item → ID",
-    }, &.{"prog"}, .lalr);
-    try testing.expectEqualStrings("prog → item? item+ L(item, \";\") (item \"!\")", try conflicts.ruleText(a, &b.g, 0));
-    try testing.expectEqualStrings("item* → ε", try conflicts.ruleText(a, &b.g, 4));
-    try testing.expectEqualStrings("L(item, \";\").tail → \";\" item L(item, \";\").tail", try conflicts.ruleText(a, &b.g, 7));
     try testing.expectEqualStrings("a → b", try conflicts.normalize(a, " a  ->   b "));
     try testing.expectEqualStrings("a → ε", try conflicts.normalize(a, "a ->"));
+    try testing.expectEqualStrings("L(x, \";\") → x L(x, \";\").tail", try conflicts.normalize(a, "L(x, \";\")  ->  x L(x, \";\").tail"));
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
@@ -604,7 +583,7 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     try testing.expectEqual(@as(u32, 4), costs[sym(&g, "call")]);
     try testing.expectEqual(@as(u32, 5), costs[sym(&g, "stmt")]);
 
-    g.repair = .{ .holes = &.{"ID"}, .structure = &.{ "NEWLINE", "\")\"" } };
+    g.repair = .{ .holes = &.{"ID"}, .structure = &.{"\")\""}, .terminators = &.{"NEWLINE"} };
     const tbl = try table.build(&g, &auto, la);
     const rep = tbl.repair.?;
     // After `ID "(" args`: `)` closes the call (structure).
@@ -625,6 +604,7 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     try testing.expect(repair.validate(&g, .{ .holes = &.{"args"}, .structure = &.{} }) != null);
     try testing.expect(repair.validate(&g, .{ .holes = &.{"ID"}, .structure = &.{"ID"} }) != null);
     try testing.expect(repair.validate(&g, .{ .holes = &.{"ID"}, .structure = &.{"NEWLINE"} }) == null);
+    try testing.expect(repair.validate(&g, .{ .holes = &.{"ID"}, .structure = &.{}, .terminators = &.{"ID"} }) != null);
 }
 
 test "ranking puts holes above cheaper structure" {

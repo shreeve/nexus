@@ -28,11 +28,10 @@ pub const Lookaheads = struct {
     nullable: []const bool,
 };
 
-pub fn compute(g: *Grammar, auto: *const Automaton, mode: ParseMode) !Lookaheads {
+pub fn compute(g: *const Grammar, auto: *const Automaton, mode: ParseMode) !Lookaheads {
     const a = g.allocator;
     const nullable = try computeNullable(g);
     const first = try computeFirst(g, nullable);
-    try publishFirst(g, first);
 
     const sets = switch (mode) {
         .slr => try slrSets(g, auto, nullable, first),
@@ -52,11 +51,10 @@ pub fn compute(g: *Grammar, auto: *const Automaton, mode: ParseMode) !Lookaheads
 //
 // =============================================================================
 
-/// Which symbols derive ε (fixed point). Also records the result on the
-/// grammar's symbols and rules.
-fn computeNullable(g: *Grammar) ![]bool {
+/// Which symbols derive ε (fixed point).
+fn computeNullable(g: *const Grammar) ![]bool {
     const nullable = try g.allocator.alloc(bool, g.symbols.items.len);
-    for (g.symbols.items, 0..) |sym, i| nullable[i] = sym.kind == .nonterminal and sym.nullable;
+    @memset(nullable, false);
 
     var changed = true;
     while (changed) {
@@ -71,13 +69,6 @@ fn computeNullable(g: *Grammar) ![]bool {
                 changed = true;
             }
         }
-    }
-
-    for (g.symbols.items, 0..) |*sym, i| sym.nullable = nullable[i];
-    for (g.rules.items) |*rule| {
-        rule.nullable = for (rule.rhs) |s| {
-            if (!nullable[s]) break false;
-        } else true;
     }
     return nullable;
 }
@@ -103,31 +94,6 @@ fn computeFirst(g: *const Grammar, nullable: []const bool) !SetArray {
     return first;
 }
 
-/// Mirror FIRST onto the grammar's `Symbol.firsts` / `Rule.firsts` lists
-/// (ascending symbol ids) for stages that read the grammar directly.
-fn publishFirst(g: *Grammar, first: SetArray) !void {
-    const a = g.allocator;
-    for (g.symbols.items, 0..) |*sym, i| {
-        if (sym.kind != .nonterminal) continue;
-        sym.firsts.items.clearRetainingCapacity();
-        var it = first.get(i).iterator();
-        while (it.next()) |t| try sym.firsts.items.append(a, t);
-    }
-    var scratch = try SetArray.init(a, 1, g.symbols.items.len);
-    defer scratch.deinit(a);
-    const set = scratch.get(0);
-    for (g.rules.items) |*rule| {
-        set.clear();
-        for (rule.rhs) |s| {
-            _ = set.unionWith(first.get(s));
-            if (!g.symbols.items[s].nullable) break;
-        }
-        rule.firsts.items.clearRetainingCapacity();
-        var it = set.iterator();
-        while (it.next()) |t| try rule.firsts.items.append(a, t);
-    }
-}
-
 // =============================================================================
 // SLR(1): FOLLOW sets
 // =============================================================================
@@ -138,7 +104,7 @@ fn publishFirst(g: *Grammar, first: SetArray) !void {
 //
 // =============================================================================
 
-fn slrSets(g: *Grammar, auto: *const Automaton, nullable: []const bool, first: SetArray) ![]const []const BitSet {
+fn slrSets(g: *const Grammar, auto: *const Automaton, nullable: []const bool, first: SetArray) ![]const []const BitSet {
     const a = g.allocator;
     const n = g.symbols.items.len;
     const follow = try SetArray.init(a, n, n);
@@ -166,14 +132,6 @@ fn slrSets(g: *Grammar, auto: *const Automaton, nullable: []const bool, first: S
                 if (!nullable[s]) restNullable = false;
             }
         }
-    }
-
-    // Mirror onto Symbol.follows for stages that read the grammar directly.
-    for (g.symbols.items, 0..) |*sym, i| {
-        if (sym.kind != .nonterminal) continue;
-        sym.follows.items.clearRetainingCapacity();
-        var it = follow.get(i).iterator();
-        while (it.next()) |t| try sym.follows.items.append(a, t);
     }
 
     const sets = try a.alloc([]const BitSet, auto.states.items.len);

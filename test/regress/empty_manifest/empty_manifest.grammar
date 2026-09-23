@@ -1,0 +1,17 @@
+# An empty @conflicts block declares a conflict-free grammar (like no
+# block at all).
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "empty_manifest"
+
+@conflicts
+
+top! = IDENT+                               → (top ...1)

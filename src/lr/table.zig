@@ -102,9 +102,7 @@ pub const Table = struct {
 
 /// The characters of a rule's `X "c"` hints.
 pub fn hintChars(rule: *const Rule) []const u8 {
-    if (rule.excludeChars.len > 0) return rule.excludeChars;
-    if (rule.excludeChar != 0) return (&rule.excludeChar)[0..1];
-    return &.{};
+    return rule.excludeChars;
 }
 
 /// The character of a one-character literal terminal (`"("`), else null.

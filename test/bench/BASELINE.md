@@ -75,6 +75,29 @@ times Rig's rate; still, a MUMPS parser with spans is 20% faster than
 --no-spans` over all 24,704 VistA routines and the 362 Rig sources, raw
 tree and after Rig's `Parser` wrapper).
 
+### After reducing the store (1.0.0)
+
+Three changes: an untagged list that is only ever spread into another list
+(plumbing: the tails of `L(X)`, left-recursive lists spread into their
+parent, ...) gets no node id, since nothing can reach it (the generator
+decides per rule; MUMPS builds 27.7 M nodes instead of 49.0 M on VistA); a
+reduction records only its rule and start (its end is `lastEnd`, and the
+first element's start already sits on the span stack), with the span
+stacks plain buffers sized with the value stack; node-store chunks of 128
+entries instead of 1024 (most routines build ~1,100 nodes).
+
+ReleaseFast, the same inputs, builds run alternately (min of 20 rounds for
+MUMPS, 40 for Rig; the machine was shared, load 4-16, medians in
+parentheses):
+
+| input | 1.0 plain ms | `--spans` before ms | `--spans` now ms | overhead before | overhead now |
+|---|---:|---:|---:|---:|---:|
+| mumps (VistA, 86.5 MB) | 1735.9 (1831.1) | 1900.9 (1942.2) | 1816.5 (1855.6) | +9.5% | +4.6% |
+| rig (synthetic, 3.8 MB) | 64.0 (68.8) | 66.5 (71.5) | 66.0 (70.3) | +3.9% | +3.1% |
+
+Trees and spans are identical before and after on all 24,704 VistA
+routines (`--hash`, with and without spans).
+
 ## Differential runs (for scale)
 
 `test/diff legacy current` with the same MUMPS grammar over VistA + ORO

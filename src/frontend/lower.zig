@@ -1,4 +1,5 @@
-//! Strict lowering of the frontend's S-expression tree into the grammar IR.
+//! Strict lowering of the frontend's S-expression tree into the lexer spec
+//! and the grammar IR.
 //!
 //! The tree's shapes are declared by the @schema block of nexus.grammar
 //! (every list has all of its slots, `_` where an optional role is
@@ -33,14 +34,28 @@ const ActionItem = grammar.ActionItem;
 const ActionElem = grammar.ActionElem;
 const ConflictEntry = grammar.ConflictEntry;
 const DisplayName = grammar.DisplayName;
+const LexerSpec = grammar.LexerSpec;
+const LexerRule = grammar.LexerRule;
+const Guard = grammar.Guard;
+const Action = grammar.Action;
+const regex = @import("../lexgen/regex.zig");
 
 pub const LowerError = error{ ShapeError, LowerError, OutOfMemory };
 
 pub const GrammarLowerer = struct {
     allocator: Allocator,
-    /// The grammar file; `.src` positions are relative to `source.base`
-    /// (the start of the @parser body).
+    /// The grammar file; `.src` positions are offsets into its text.
     source: diag.Source,
+
+    /// Where the entries are: before any section marker, in @lexer, or in
+    /// @parser. A tree without markers is @parser-section text.
+    section: enum { preamble, lexer, parser } = .preamble,
+    sectioned: bool = false,
+    lexer: ?LexerSpec = null,
+    /// Position of the first `tokens` keyword.
+    tokensAt: ?u32 = null,
+    hasParser: bool = false,
+    scratch: std.ArrayListUnmanaged(u8) = .empty,
 
     rules: std.ArrayListUnmanaged(ParsedRule) = .empty,
     startSymbols: std.ArrayListUnmanaged([]const u8) = .empty,
@@ -52,9 +67,7 @@ pub const GrammarLowerer = struct {
     infixBase: ?[]const u8 = null,
     infixLoc: diag.Source.Loc = .{ .line = 0, .col = 0 },
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null,
     conflicts: std.ArrayListUnmanaged(ConflictEntry) = .empty,
-    hasManifest: bool = false,
     kinds: std.ArrayListUnmanaged(Schema.Kind) = .empty,
     hasSchema: bool = false,
     extraTags: std.ArrayListUnmanaged([]const u8) = .empty,
@@ -65,10 +78,9 @@ pub const GrammarLowerer = struct {
     pub fn lower(allocator: Allocator, sexp: Sexp, source: diag.Source) LowerError!GrammarIR {
         var self = GrammarLowerer{ .allocator = allocator, .source = source };
         try self.lowerRoot(sexp);
+        if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
         if (self.tagsNode) |node| if (!self.hasSchema)
             return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
-        if (self.hasManifest and self.expectConflicts != null)
-            return self.fail(sexp, "use either `@conflicts = N` or an `@conflicts` block, not both", .{});
         return GrammarIR{
             .rules = try self.rules.toOwnedSlice(allocator),
             .startSymbols = try self.startSymbols.toOwnedSlice(allocator),
@@ -82,7 +94,6 @@ pub const GrammarLowerer = struct {
                 .col = self.infixLoc.col,
             } else null,
             .lang = self.lang,
-            .expectConflicts = self.expectConflicts,
             .schema = if (self.hasSchema) Schema{
                 .kinds = try self.kinds.toOwnedSlice(allocator),
                 .extraTags = try self.extraTags.toOwnedSlice(allocator),
@@ -91,6 +102,8 @@ pub const GrammarLowerer = struct {
             .displayNames = try self.displayNames.toOwnedSlice(allocator),
             .trivia = try self.trivia.toOwnedSlice(allocator),
             .repair = self.repair,
+            .lexer = self.lexer,
+            .hasParser = self.hasParser or !self.sectioned,
         };
     }
 
@@ -205,6 +218,11 @@ pub const GrammarLowerer = struct {
 
     fn lowerRoot(self: *GrammarLowerer, sexp: Sexp) LowerError!void {
         const items = try self.requireTag(sexp, .grammar);
+        for (items[1..]) |entry| {
+            if (taggedItems(entry)) |t| if (t.tag == .section) {
+                self.sectioned = true;
+            };
+        }
         for (items[1..]) |entry| try self.lowerEntry(entry);
     }
 
@@ -223,8 +241,299 @@ pub const GrammarLowerer = struct {
             .tags => try self.lowerTags(entry, t.items),
             .trivia => try self.lowerTrivia(entry, t.items),
             .repair => try self.lowerRepair(entry, t.items),
-            .rule => try self.lowerRule(entry, t.items),
+            .rule => {
+                if (self.sectioned and self.section != .parser)
+                    return self.fail(entry, "rules belong in the @parser section", .{});
+                try self.lowerRule(entry, t.items);
+            },
+            .section => try self.lowerSection(entry, t.items),
+            .state, .after, .tokens, .code, .lex_rule => {
+                if (self.section != .lexer) return self.fail(entry, "lexer rules and blocks belong in the @lexer section", .{});
+                const spec = &self.lexer.?;
+                switch (t.tag) {
+                    .state => try self.lowerStateBlock(entry, t.items, spec),
+                    .after => try self.lowerAfterBlock(entry, t.items, spec),
+                    .tokens => try self.lowerTokensBlock(entry, t.items, spec),
+                    .code => {
+                        try self.requireArity(entry, t.items, 2, 2, "(code IDENT)");
+                        try spec.codeFunctions.append(self.allocator, try self.requireSrc(t.items[1], "function name"));
+                    },
+                    else => try self.lowerLexRule(entry, t.items, spec),
+                }
+            },
             else => return self.shapeError(entry, "directive or rule"),
+        }
+    }
+
+    // --- Sections ---
+
+    fn lowerSection(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
+        try self.requireArity(node, items, 2, 2, "(section NAME)");
+        const name = try self.requireSrc(items[1], "section name");
+        const at = firstPos(node).?;
+        if (std.mem.eql(u8, name, "lexer")) {
+            if (self.lexer != null) return self.fail(node, "duplicate @lexer section", .{});
+            if (self.section == .parser) return self.fail(node, "the @lexer section comes before @parser", .{});
+            var spec = LexerSpec.init(self.allocator);
+            spec.fileName = self.source.path;
+            self.lexer = spec;
+            self.section = .lexer;
+        } else if (std.mem.eql(u8, name, "parser")) {
+            if (self.hasParser) return self.fail(node, "duplicate @parser section", .{});
+            // The marker's `@` directly precedes its name.
+            if (self.section == .lexer) try self.validateLexer(at - 1);
+            self.hasParser = true;
+            self.section = .parser;
+        } else return self.shapeError(node, "(section lexer|parser)");
+    }
+
+    // --- The @lexer section ---
+
+    fn failAt(self: *const GrammarLowerer, pos: usize, comptime fmt: []const u8, args: anytype) LowerError {
+        if (@import("builtin").is_test) return error.LowerError;
+        diag.errAt(self.source, pos, fmt, args);
+        return error.LowerError;
+    }
+
+    fn failLine(self: *const GrammarLowerer, line: u32, col: u32, comptime fmt: []const u8, args: anytype) LowerError {
+        if (@import("builtin").is_test) return error.LowerError;
+        diag.errLine(self.source.path, line, col, fmt, args);
+        return error.LowerError;
+    }
+
+    fn srcPos(node: Sexp) u32 {
+        return switch (node) {
+            .src => |x| x.pos,
+            else => 0,
+        };
+    }
+
+    /// `state` block: `name = value` per variable.
+    fn lowerStateBlock(self: *GrammarLowerer, node: Sexp, items: []const Sexp, spec: *LexerSpec) LowerError!void {
+        if (items.len < 2) return self.shapeError(node, "(state KEYWORD ASSIGN...)");
+        for (items[2..]) |assign| {
+            const a = try self.lowerAssign(assign);
+            for (spec.states.items) |st| if (std.mem.eql(u8, st.name, a.name))
+                return self.fail(a.nameNode, "state variable '{s}' is declared twice", .{a.name});
+            if (std.mem.eql(u8, a.name, "pre"))
+                return self.fail(a.nameNode, "'pre' is the built-in whitespace count; choose another state variable name", .{});
+            const value = try self.stateValue(a.name, a.valueNode);
+            try spec.states.append(self.allocator, .{ .name = a.name, .initialValue = value });
+        }
+    }
+
+    /// `after` block: assignments applied whenever a token consumes input.
+    fn lowerAfterBlock(self: *GrammarLowerer, node: Sexp, items: []const Sexp, spec: *LexerSpec) LowerError!void {
+        if (items.len < 2) return self.shapeError(node, "(after KEYWORD ASSIGN...)");
+        for (items[2..]) |assign| {
+            const a = try self.lowerAssign(assign);
+            const value = try self.stateValue(a.name, a.valueNode);
+            if (!isState(spec, a.name))
+                return self.fail(a.nameNode, "after block assigns '{s}', which is not a declared state variable", .{a.name});
+            try spec.afterActions.append(self.allocator, .{ .kind = .set, .variable = a.name, .value = value });
+        }
+    }
+
+    const Assign = struct { name: []const u8, nameNode: Sexp, valueNode: Sexp };
+
+    fn lowerAssign(self: *GrammarLowerer, node: Sexp) LowerError!Assign {
+        const it = try self.requireTag(node, .assign);
+        try self.requireArity(node, it, 3, 3, "(assign NAME VALUE)");
+        return .{ .name = try self.requireSrc(it[1], "variable name"), .nameNode = it[1], .valueNode = it[2] };
+    }
+
+    /// A state value: an integer that fits an i8, `true` (1) or `false` (0).
+    fn stateValue(self: *GrammarLowerer, name: []const u8, node: Sexp) LowerError!i32 {
+        const t = try self.requireSrc(node, "value");
+        if (std.mem.eql(u8, t, "true")) return 1;
+        if (std.mem.eql(u8, t, "false")) return 0;
+        const v = std.fmt.parseInt(i32, t, 10) catch
+            return self.fail(node, "state variable '{s}' needs an integer, true, or false; found '{s}'", .{ name, t });
+        if (v < -128 or v > 127) return self.fail(node, "value {d} for '{s}' does not fit a state variable (i8, -128..127)", .{ v, name });
+        return v;
+    }
+
+    fn lowerTokensBlock(self: *GrammarLowerer, node: Sexp, items: []const Sexp, spec: *LexerSpec) LowerError!void {
+        if (items.len < 2) return self.shapeError(node, "(tokens KEYWORD NAME...)");
+        if (self.tokensAt == null) self.tokensAt = srcPos(items[1]);
+        for (items[2..]) |n| {
+            const name = try self.requireSrc(n, "token name");
+            for (spec.tokens.items) |t| if (std.mem.eql(u8, t.name, name))
+                return self.fail(n, "token '{s}' is declared twice", .{name});
+            try spec.tokens.append(self.allocator, .{ .name = name });
+        }
+    }
+
+    /// `(lex_rule PATTERN GUARDS TOKEN ACTION...)`
+    fn lowerLexRule(self: *GrammarLowerer, node: Sexp, items: []const Sexp, spec: *LexerSpec) LowerError!void {
+        if (items.len < 4) return self.shapeError(node, "(lex_rule PATTERN GUARDS TOKEN ACTION...)");
+        const pattern = try self.optSrc(items[1], "pattern") orelse "";
+        var guards: std.ArrayListUnmanaged(Guard) = .empty;
+        var at: u32 = srcPos(items[1]);
+        if (items[2] != .nil) {
+            const gt = try self.requireTag(items[2], .guards);
+            if (gt.len < 3) return self.shapeError(items[2], "(guards AT GUARD+)");
+            if (items[1] == .nil) at = srcPos(gt[1]);
+            for (gt[2..]) |g| try guards.append(self.allocator, try self.lowerGuard(g));
+        } else if (items[1] == .nil) return self.fail(node, "a rule needs a pattern or a guard", .{});
+        const where = self.source.at(at);
+
+        var literal: ?[]const u8 = null;
+        if (pattern.len > 0) {
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+            var d: regex.Diagnostic = .{};
+            const parsed = regex.parse(arena.allocator(), pattern, &d) catch |e| switch (e) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidPattern => return self.failAt(at + d.offset, "{s}", .{d.message}),
+            };
+            if (parsed.trail == null) {
+                if (try regex.literal(parsed.main, &self.scratch, self.allocator)) |lit| literal = try self.allocator.dupe(u8, lit);
+            }
+        }
+
+        var rule: LexerRule = .{
+            .pattern = pattern,
+            .guards = &.{},
+            .token = try self.requireSrc(items[3], "token name"),
+            .actions = &.{},
+            .literal = literal,
+            .line = where.line,
+            .col = where.col,
+        };
+        var actions: std.ArrayListUnmanaged(Action) = .empty;
+        for (items[4..]) |a| try self.lowerLexAction(a, &rule, &actions);
+        if (rule.hold and rule.rewind != null) return self.failAt(at, "a rule cannot both hold and rewind", .{});
+        if (rule.hold and rule.isSkip) return self.failAt(at, "a held (zero-width) rule cannot also skip", .{});
+        rule.guards = try guards.toOwnedSlice(self.allocator);
+        rule.actions = try actions.toOwnedSlice(self.allocator);
+        try spec.rules.append(self.allocator, rule);
+    }
+
+    /// `(guard NEG VAR OP VALUE)`: `[!]var`, or `[!]var op n`.
+    fn lowerGuard(self: *GrammarLowerer, node: Sexp) LowerError!Guard {
+        const gt = try self.requireTag(node, .guard);
+        try self.requireArity(node, gt, 5, 5, "(guard NEG VAR OP VALUE)");
+        const variable = try self.requireSrc(gt[2], "guard variable");
+        const negated = gt[1] != .nil;
+        const opText = try self.optSrc(gt[3], "comparison") orelse
+            return .{ .variable = variable, .op = .truthy, .value = 0, .negated = negated };
+        const ops = [_]struct { []const u8, Guard.Op }{
+            .{ "==", .eq }, .{ "!=", .ne }, .{ ">=", .ge }, .{ "<=", .le }, .{ ">", .gt }, .{ "<", .lt },
+        };
+        const op = for (ops) |o| {
+            if (std.mem.eql(u8, o[0], opText)) break o[1];
+        } else return self.shapeError(gt[3], "comparison operator");
+        const valueText = try self.requireSrc(gt[4], "guard value");
+        const value = std.fmt.parseInt(i32, valueText, 10) catch
+            return self.fail(gt[4], "guard value {s} is out of range", .{valueText});
+        return .{ .variable = variable, .op = op, .value = value, .negated = negated };
+    }
+
+    fn lowerLexAction(self: *GrammarLowerer, node: Sexp, rule: *LexerRule, actions: *std.ArrayListUnmanaged(Action)) LowerError!void {
+        const t = taggedItems(node) orelse return self.shapeError(node, "lexer action");
+        switch (t.tag) {
+            .set_action => {
+                try self.requireArity(node, t.items, 3, 3, "(set_action NAME VALUE)");
+                const name = try self.requireSrc(t.items[1], "variable name");
+                try actions.append(self.allocator, .{ .kind = .set, .variable = name, .value = try self.stateValue(name, t.items[2]) });
+            },
+            .step_action => {
+                try self.requireArity(node, t.items, 3, 3, "(step_action NAME OP)");
+                const name = try self.requireSrc(t.items[1], "variable name");
+                const op = try self.requireSrc(t.items[2], "`++` or `--`");
+                try actions.append(self.allocator, .{ .kind = if (op[0] == '+') .inc else .dec, .variable = name });
+            },
+            .counted => {
+                try self.requireArity(node, t.items, 4, 4, "(counted NAME FN CHAR)");
+                const name = try self.requireSrc(t.items[1], "variable name");
+                const func = try self.requireSrc(t.items[2], "function name");
+                if (!std.mem.eql(u8, func, "counted"))
+                    return self.fail(t.items[2], "unknown function '{s}' in the action (expected counted('c'))", .{func});
+                try actions.append(self.allocator, .{ .kind = .counted, .variable = name, .char = try self.quotedByte(t.items[3]) });
+            },
+            .lex_action => {
+                try self.requireArity(node, t.items, 3, 3, "(lex_action WORD ARG)");
+                const wordNode = t.items[1];
+                const word = try self.requireSrc(wordNode, "action");
+                const arg = t.items[2];
+                // `word(arg)` or `word arg`: the parentheses are not in the tree.
+                const argText = try self.optSrc(arg, "action argument");
+                const parens = argText != null and std.mem.indexOfScalar(u8, self.source.text[srcPos(wordNode) + word.len .. srcPos(arg)], '(') != null;
+                const quoted = argText != null and argText.?[0] == '\'';
+                if (std.mem.eql(u8, word, "skip") or std.mem.eql(u8, word, "hold")) {
+                    if (arg != .nil) return self.fail(arg, "`{s}` takes no argument", .{word});
+                    if (word[0] == 's') rule.isSkip = true else rule.hold = true;
+                } else if (std.mem.eql(u8, word, "simd_to")) {
+                    if (!quoted or parens) return self.fail(if (arg == .nil) wordNode else arg, "expected a quoted byte after simd_to, as in simd_to '\\n'", .{});
+                    rule.isSimd = true;
+                    rule.simdChar = try self.quotedByte(arg);
+                } else if (std.mem.eql(u8, word, "rewind")) {
+                    if (!parens or quoted) return self.fail(if (arg == .nil) wordNode else arg, "rewind takes a byte count, as in rewind(1)", .{});
+                    const n = std.fmt.parseInt(i32, argText.?, 10) catch -1;
+                    if (n < 0 or n > 65535) return self.fail(wordNode, "rewind({s}) is out of range", .{argText.?});
+                    rule.rewind = @intCast(n);
+                } else if (std.mem.eql(u8, word, "counting") or std.mem.eql(u8, word, "matching")) {
+                    return self.fail(wordNode, "{s}() describes balanced nesting, which no finite automaton can recognize; use trailing context '/' for bounded lookahead or handle nesting in the lang Lexer wrapper", .{word});
+                } else {
+                    return self.fail(wordNode, "unknown lexer action '{s}' (expected {{...}}, skip, hold, rewind(n), or simd_to 'c')", .{word});
+                }
+            },
+            else => return self.shapeError(node, "lexer action"),
+        }
+    }
+
+    /// The byte of a quoted `'c'` (escapes as in patterns).
+    fn quotedByte(self: *GrammarLowerer, node: Sexp) LowerError!u8 {
+        const quoted = try self.requireSrc(node, "quoted byte");
+        const at = srcPos(node);
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        var d: regex.Diagnostic = .{};
+        const p = regex.parse(arena.allocator(), quoted, &d) catch |err| switch (err) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.InvalidPattern => return self.failAt(at + d.offset, "{s}", .{d.message}),
+        };
+        return (if (p.main.* == .set) p.main.set.only() else null) orelse
+            self.failAt(at, "expected exactly one byte in quotes", .{});
+    }
+
+    fn isState(spec: *const LexerSpec, name: []const u8) bool {
+        for (spec.states.items) |st| if (std.mem.eql(u8, st.name, name)) return true;
+        return false;
+    }
+
+    fn isToken(spec: *const LexerSpec, name: []const u8) bool {
+        if (std.mem.eql(u8, name, "skip")) return true;
+        for (spec.tokens.items) |t| if (std.mem.eql(u8, t.name, name)) return true;
+        return false;
+    }
+
+    /// Names the lexer rules use must be declared: tokens in `tokens` (plus
+    /// the built-in `skip`), variables in `state` (guards may also test
+    /// `pre`, and actions may assign it).
+    /// `end` is where the section ends (reported when there is no `tokens`
+    /// block).
+    fn validateLexer(self: *GrammarLowerer, end: u32) LowerError!void {
+        const spec = &self.lexer.?;
+        for ([_][]const u8{ "eof", "err" }) |required| {
+            if (!isToken(spec, required))
+                return self.failAt(self.tokensAt orelse end, "the tokens block must declare '{s}' (the lexer emits it at end of input / on unmatched bytes)", .{required});
+        }
+        for (spec.rules.items) |r| {
+            if (!isToken(spec, r.token)) return self.failLine(r.line, r.col, "token '{s}' is not declared in the tokens block", .{r.token});
+            for (r.guards) |g| {
+                if (!std.mem.eql(u8, g.variable, "pre") and !isState(spec, g.variable))
+                    return self.failLine(r.line, r.col, "guard tests '{s}', which is not a declared state variable or 'pre'", .{g.variable});
+            }
+            for (r.actions) |a| {
+                const v = a.variable.?;
+                if (std.mem.eql(u8, v, "pre")) {
+                    if (a.kind == .inc or a.kind == .dec) return self.failLine(r.line, r.col, "'pre' can only be assigned ({{pre = n}} or {{pre = counted('c')}})", .{});
+                } else if (!isState(spec, v)) {
+                    return self.failLine(r.line, r.col, "action assigns '{s}', which is not a declared state variable", .{v});
+                }
+            }
         }
     }
 
@@ -235,15 +544,17 @@ pub const GrammarLowerer = struct {
         self.lang = stripQuotes(try self.requireSrc(items[1], "language-name string"));
     }
 
+    /// `@conflicts = N` is not a declaration: conflicts are declared one by
+    /// one in an `@conflicts` block. The form is recognized only to say so.
     fn lowerConflictCount(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         try self.requireArity(node, items, 2, 2, "(conflicts INTEGER)");
-        if (self.expectConflicts != null) return self.fail(node, "duplicate `@conflicts = N`", .{});
-        self.expectConflicts = try self.parseCount(items[1], "conflict count");
+        return self.fail(node, "`@conflicts = N` is not supported: delete it and declare each conflict in an `@conflicts` block (without one the grammar must be conflict-free; generation prints the block to paste)", .{});
     }
 
+    /// `@conflicts`, one entry per line; an empty block (like none) means
+    /// the grammar must be conflict-free.
     fn lowerManifest(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
-        if (items.len < 2) return self.shapeError(node, "(manifest CONFLICT+)");
-        self.hasManifest = true;
+        if (items.len < 1) return self.shapeError(node, "(manifest CONFLICT...)");
         for (items[1..]) |entry| {
             const et = try self.requireTag(entry, .conflict);
             try self.requireArity(entry, et, 6, 6, "(conflict KIND CRULE OVER COUNT REASON)");
@@ -333,7 +644,19 @@ pub const GrammarLowerer = struct {
         const key = try self.requireSrc(et[1], "name key");
         const name = try self.requireSrc(et[2], "display string");
         if (name.len < 2 or name[0] != '"') return self.shapeError(et[2], "display string");
-        return .{ .key = key, .name = stripQuotes(name), .quoted = key.len > 0 and key[0] == '"' };
+        return .{ .key = key, .name = try unescape(self.allocator, stripQuotes(name)), .quoted = key.len > 0 and key[0] == '"' };
+    }
+
+    /// The text of a string literal's body: `\"` is `"`, `\\` is `\`.
+    fn unescape(allocator: Allocator, body: []const u8) LowerError![]const u8 {
+        if (std.mem.indexOfScalar(u8, body, '\\') == null) return body;
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        var i: usize = 0;
+        while (i < body.len) : (i += 1) {
+            if (body[i] == '\\' and i + 1 < body.len and (body[i + 1] == '"' or body[i + 1] == '\\')) i += 1;
+            try out.append(allocator, body[i]);
+        }
+        return out.toOwnedSlice(allocator);
     }
 
     fn lowerErrors(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
@@ -509,6 +832,7 @@ pub const GrammarLowerer = struct {
         if (self.repair != null) return self.fail(node, "duplicate @repair", .{});
         var holes: std.ArrayListUnmanaged([]const u8) = .empty;
         var structure: std.ArrayListUnmanaged([]const u8) = .empty;
+        var terminators: std.ArrayListUnmanaged([]const u8) = .empty;
         for (items[1..]) |line| {
             const lt = try self.requireTag(line, .repair_line);
             if (lt.len < 3) return self.shapeError(line, "(repair_line IDENT NAME+)");
@@ -517,13 +841,16 @@ pub const GrammarLowerer = struct {
                 &holes
             else if (std.mem.eql(u8, which, "structure"))
                 &structure
+            else if (std.mem.eql(u8, which, "terminator"))
+                &terminators
             else
-                return self.fail(lt[1], "@repair lines are `holes ...` or `structure ...`, not '{s}'", .{which});
+                return self.fail(lt[1], "@repair lines are `holes ...`, `structure ...` or `terminator ...`, not '{s}'", .{which});
             for (lt[2..]) |n| try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "token name")));
         }
         self.repair = .{
             .holes = try holes.toOwnedSlice(self.allocator),
             .structure = try structure.toOwnedSlice(self.allocator),
+            .terminators = try terminators.toOwnedSlice(self.allocator),
         };
     }
 
@@ -586,10 +913,8 @@ pub const GrammarLowerer = struct {
         const l = self.loc(if (firstPos(items[2]) != null) items[2] else if (items[3] != .nil) items[3] else ruleName);
         return .{
             .elements = elems,
-            .action = if (actionTree) |t| try grammar.renderAction(self.allocator, t) else null,
             .actionTree = actionTree,
             .optOut = if (optOut) |o| stripQuotes(o) else null,
-            .excludeChar = if (excludeChars.len > 0) excludeChars[excludeChars.len - 1] else 0,
             .excludeChars = excludeChars,
             .preferReduce = hint != null and hint.?[0] == '<',
             .preferShift = hint != null and hint.?[0] == '>',
@@ -890,8 +1215,9 @@ const testing = std.testing;
 //   0 "x"   1..5 "\"ab\""   5 "0"   6 "3"   7 "Y"   8..13 "shift"
 //   13..19 "reduce"   19 "!"   20..24 "self"   24..26 "fn"
 //   26..28 "#r"   28..31 "tag"   31..34 "zzz"   34..36 "\"\""   36 "1"
-//   37..43 "a -> b"
-const negText = "x\"ab\"03Yshiftreduce!selffn#rtagzzz\"\"1a -> b";
+//   37..43 "a -> b"   43..48 "lexer"   48..54 "parser"   54..57 "eof"
+//   57..60 "err"
+const negText = "x\"ab\"03Yshiftreduce!selffn#rtagzzz\"\"1a -> blexerparsereoferr";
 const negSourceMap: diag.Source = .{ .path = "test.grammar", .text = negText };
 
 fn src(pos: u32, len: u16) Sexp {
@@ -912,6 +1238,10 @@ const sZzz = src(31, 3);
 const sEmptyStr = src(34, 2);
 const sOne = src(36, 1);
 const sArrowRule = src(37, 6);
+const sLexer = src(43, 5);
+const sParser = src(48, 6);
+const sEof = src(54, 3);
+const sErr = src(57, 3);
 
 fn L(comptime items: []const Sexp) Sexp {
     return Sexp.listOf(items);
@@ -978,8 +1308,8 @@ test "lowerer rejects entry with unknown tag" {
 test "lowerer rejects (lang) with no STRING" {
     try expectShapeError(root(&.{L(&.{T(.lang)})}));
 }
-test "lowerer rejects (conflicts) with non-numeric count" {
-    try expectLowerError(root(&.{L(&.{ T(.conflicts), sX })}));
+test "lowerer rejects @conflicts = N" {
+    try expectLowerError(root(&.{L(&.{ T(.conflicts), sThree })}));
 }
 test "lowerer rejects (as) with no entries" {
     try expectShapeError(root(&.{L(&.{ T(.as), sX, .nil })}));
@@ -1026,8 +1356,11 @@ test "lowerer rejects (name_pair) whose name is not a string" {
 fn crule() Sexp {
     return sArrowRule;
 }
-test "lowerer rejects (manifest) with no entries" {
-    try expectShapeError(root(&.{L(&.{T(.manifest)})}));
+test "lowerer accepts an empty (manifest)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ir = try GrammarLowerer.lower(arena.allocator(), comptime root(&.{L(&.{T(.manifest)})}), negSourceMap);
+    try testing.expectEqual(@as(usize, 0), ir.conflicts.len);
 }
 test "lowerer rejects a conflict kind other than shift or reduce" {
     try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sX, crule(), .nil, sThree, sComment }) })}));
@@ -1046,12 +1379,6 @@ test "lowerer rejects a conflict rule without an arrow" {
 }
 test "lowerer rejects a conflict rule that is not a src" {
     try expectShapeError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, L(&.{T(.opt)}), .nil, sThree, sComment }) })}));
-}
-test "lowerer rejects both @conflicts forms" {
-    try expectLowerError(root(&.{
-        L(&.{ T(.conflicts), sThree }),
-        L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, crule(), .nil, sThree, sComment }) }),
-    }));
 }
 
 // --- Schema ---
@@ -1230,4 +1557,68 @@ test "lowerer rejects a bare src as an action value" {
 }
 test "lowerer rejects a tag word with a quote" {
     try expectLowerError(actionRule(L(&.{ T(.node), sStr })));
+}
+
+// --- Sections and the @lexer section ---
+
+fn lexerSection(comptime entries: []const Sexp) Sexp {
+    return comptime root(&[_]Sexp{L(&.{ T(.section), sLexer })} ++ entries);
+}
+test "lowerer accepts a minimal @lexer section" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ir = try GrammarLowerer.lower(arena.allocator(), comptime root(&.{
+        L(&.{ T(.section), sLexer }),
+        L(&.{ T(.tokens), sX, sEof, sErr }),
+        L(&.{ T(.lex_rule), sStr, .nil, sErr }),
+        L(&.{ T(.section), sParser }),
+    }), negSourceMap);
+    try testing.expectEqual(@as(usize, 1), ir.lexer.?.rules.items.len);
+    try testing.expectEqualStrings("ab", ir.lexer.?.rules.items[0].literal.?);
+    try testing.expect(ir.hasParser);
+}
+test "lowerer rejects a section marker that is neither lexer nor parser" {
+    try expectShapeError(root(&.{L(&.{ T(.section), sX })}));
+}
+test "lowerer rejects a duplicate @parser section" {
+    try expectLowerError(root(&.{ L(&.{ T(.section), sParser }), L(&.{ T(.section), sParser }) }));
+}
+test "lowerer rejects lexer entries outside the @lexer section" {
+    try expectLowerError(root(&.{L(&.{ T(.tokens), sX, sX })}));
+}
+test "lowerer rejects rules before any section" {
+    try expectLowerError(root(&.{
+        L(&.{ T(.rule), L(&.{ T(.name), sX }), L(&.{ T(.alt), .nil, L(&.{}), .nil, .nil }) }),
+        L(&.{ T(.section), sParser }),
+    }));
+}
+test "lowerer rejects a @lexer section without eof and err tokens" {
+    try expectLowerError(lexerSection(&.{}));
+}
+test "lowerer rejects a token declared twice" {
+    try expectLowerError(lexerSection(&.{L(&.{ T(.tokens), sX, sX, sX })}));
+}
+test "lowerer rejects (lex_rule) without a token" {
+    try expectShapeError(lexerSection(&.{L(&.{ T(.lex_rule), sStr, .nil })}));
+}
+test "lowerer rejects a lexer rule with neither pattern nor guard" {
+    try expectLowerError(lexerSection(&.{L(&.{ T(.lex_rule), .nil, .nil, sX })}));
+}
+test "lowerer rejects an invalid pattern" {
+    try expectLowerError(lexerSection(&.{L(&.{ T(.lex_rule), sZzz, .nil, sX })}));
+}
+test "lowerer rejects a guard with an unknown comparison" {
+    try expectShapeError(lexerSection(&.{L(&.{ T(.lex_rule), sStr, L(&.{ T(.guards), sX, L(&.{ T(.guard), .nil, sX, sZzz, sOne }) }), sX })}));
+}
+test "lowerer rejects an unknown lexer action shape" {
+    try expectShapeError(lexerSection(&.{L(&.{ T(.lex_rule), sStr, .nil, sX, L(&.{T(.opt)}) })}));
+}
+test "lowerer rejects an unknown lexer action word" {
+    try expectLowerError(lexerSection(&.{L(&.{ T(.lex_rule), sStr, .nil, sX, L(&.{ T(.lex_action), sZzz, .nil }) })}));
+}
+test "lowerer rejects a counted() action under another name" {
+    try expectLowerError(lexerSection(&.{L(&.{ T(.lex_rule), sStr, .nil, sX, L(&.{ T(.counted), sX, sZzz, sStr }) })}));
+}
+test "lowerer rejects a state value that is not a number" {
+    try expectLowerError(lexerSection(&.{L(&.{ T(.state), sX, L(&.{ T(.assign), sX, sZzz }) })}));
 }

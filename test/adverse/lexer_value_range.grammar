@@ -1,0 +1,13 @@
+# State values fit an i8.
+# error: lexer_value_range.grammar:10:23:
+# error: does not fit a state variable
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' → plus, {mode = 300}
+. → err
+@parser
+top! = WORD → 1

@@ -1,10 +1,286 @@
 (grammar
+  (section `lexer`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (lex_rule
+    `[ \\t\\r]+`
+    _
+    `skip`
+    (lex_action `skip` _))
+  (lex_rule `'#' [^\\n]*` _ `comment`)
+  (lex_rule `'\\n'` _ `newline`)
+  (lex_rule `"->"` _ `arrow`)
+  (lex_rule `'='` _ `eq`)
+  (lex_rule `'|'` _ `pipe`)
+  (lex_rule `'?'` _ `question`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'('` _ `lparen`)
+  (lex_rule `')'` _ `rparen`)
+  (lex_rule `'['` _ `lbracket`)
+  (lex_rule `']'` _ `rbracket`)
+  (lex_rule `'<'` _ `langle`)
+  (lex_rule `'>'` _ `rangle`)
+  (lex_rule `','` _ `comma`)
+  (lex_rule `':'` _ `colon`)
+  (lex_rule `'!'` _ `bang`)
+  (lex_rule `'~'` _ `tilde`)
+  (lex_rule `'@'` _ `at`)
+  (lex_rule `"..."` _ `dots`)
+  (lex_rule `'"' ([^"\\\\\\n] | '\\\\' .)* '"'` _ `string`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (lang `"lang"`)
+  (display
+    (name_pair `EOF` `"end of file"`)
+    (name_pair `NEWLINE` `"end of line"`)
+    (name_pair `CONT` `"an indented line"`)
+    (name_pair `NEXT_ALT` `"a \`|\` line"`)
+    (name_pair `IDENT` `"a name"`)
+    (name_pair `TOKEN` `"a token name"`)
+    (name_pair `LABEL` `"a label"`)
+    (name_pair `WORD` `"a tag"`)
+    (name_pair `STRING` `"a string"`)
+    (name_pair `INTEGER` `"a number"`)
+    (name_pair `COMMENT` `"a comment"`)
+    (name_pair `RULE_TEXT` `"a rule"`)
+    (name_pair `ARROW` `"\\"→\\""`)
+    (name_pair `PATTERN` `"a pattern"`)
+    (name_pair `QUOTED` `"a quoted byte"`)
+    (name_pair `COMPARE` `"a comparison"`)
+    (name_pair `AMP` `"\\"&\\""`)
+    (name_pair `INCDEC` `"\\"++\\"/\\"--\\""`)
+    (name_pair `LBRACE` `"\\"{\\""`)
+    (name_pair `RBRACE` `"\\"}\\""`)
+    (name_pair `UNION` `"\\"|\\""`)
+    (name_pair `DOTS` `"\\"...\\""`)
+    (name_pair `KW_LANG` `"lang"`)
+    (name_pair `KW_CONFLICTS` `"conflicts"`)
+    (name_pair `KW_AS` `"as"`)
+    (name_pair `KW_OP` `"op"`)
+    (name_pair `KW_ERRORS` `"errors"`)
+    (name_pair `KW_DISPLAY` `"display"`)
+    (name_pair `KW_INFIX` `"infix"`)
+    (name_pair `KW_SCHEMA` `"schema"`)
+    (name_pair `KW_TAGS` `"tags"`)
+    (name_pair `KW_TRIVIA` `"trivia"`)
+    (name_pair `KW_REPAIR` `"repair"`)
+    (name_pair `KW_WRAPPER` `"wrapper"`)
+    (name_pair `KW_VIA` `"via"`)
+    (name_pair `KW_OVER` `"over"`)
+    (name_pair `KW_LEFT` `"left"`)
+    (name_pair `KW_RIGHT` `"right"`)
+    (name_pair `KW_NONE` `"none"`)
+    (name_pair `KW_LEXER` `"lexer"`)
+    (name_pair `KW_PARSER` `"parser"`)
+    (name_pair `KW_CODE` `"code"`)
+    (name_pair `KW_STATE` `"state"`)
+    (name_pair `KW_AFTER` `"after"`)
+    (name_pair `KW_TOKENS` `"tokens"`)
+    (name_pair `KW_X` `"X"`)
+    (name_pair `KW_LIST` `"L"`)
+    (name_pair `KW_NIL` `"_"`))
   (schema
     (kind_decl
       (kinds `grammar`)
       (roles
         (role rest `entries` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `section`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `state` `after`)
+      (roles
+        (role
+          _
+          `keyword`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `vars`
+          (type `assign`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `assign`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `value`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `tokens`)
+      (roles
+        (role
+          _
+          `keyword`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `names`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `code`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `lex_rule`)
+      (roles
+        (role
+          _
+          `pattern`
+          (type `leaf`)
+          opt)
+        (role
+          _
+          `guards`
+          (type `guards`)
+          opt)
+        (role
+          _
+          `token`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `actions`
+          (type `lex_action` `set_action` `step_action` `counted`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `guards`)
+      (roles
+        (role
+          _
+          `at`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `conds`
+          (type `guard`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `guard`)
+      (roles
+        (role
+          _
+          `neg`
+          (type `leaf`)
+          opt)
+        (role
+          _
+          `var`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `op`
+          (type `leaf`)
+          opt)
+        (role
+          _
+          `value`
+          (type `leaf`)
+          opt))
+      _
+      _)
+    (kind_decl
+      (kinds `lex_action`)
+      (roles
+        (role
+          _
+          `word`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `arg`
+          (type `leaf`)
+          opt))
+      _
+      _)
+    (kind_decl
+      (kinds `set_action`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `value`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `step_action`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `op`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `counted`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `fn`
+          (type `leaf`)
+          _)
+        (role
+          _
+          `char`
+          (type `leaf`)
+          _))
       _
       _)
     (kind_decl
@@ -608,6 +884,378 @@
       _
       ((ref `production`))
       _
+      _)
+    (alt
+      _
+      ((ref `section`))
+      _
+      _)
+    (alt
+      _
+      ((ref `lexer_entry`))
+      _
+      _))
+  (rule
+    (name `section`)
+    (alt
+      _
+      ((lit `"@"`)
+        (label
+          `name`
+          (group
+            _
+            ((tok `KW_LEXER`))
+            ((tok `KW_PARSER`)))))
+      (node `section`)
+      _))
+  (rule
+    (name `lexer_entry`)
+    (alt
+      _
+      ((label
+          `keyword`
+          (tok `KW_STATE`))
+        (label
+          `vars`
+          (ref `assign_block`)))
+      (node `state`)
+      _)
+    (alt
+      _
+      ((label
+          `keyword`
+          (tok `KW_AFTER`))
+        (label
+          `vars`
+          (ref `assign_block`)))
+      (node `after`)
+      _)
+    (alt
+      _
+      ((label
+          `keyword`
+          (tok `KW_TOKENS`))
+        (label
+          `names`
+          (ref `token_block`)))
+      (node `tokens`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_CODE`)
+        (lit `"="`)
+        (label
+          `name`
+          (tok `IDENT`)))
+      (node `code`)
+      _)
+    (alt
+      _
+      ((ref `lex_rule`))
+      _
+      _))
+  (rule
+    (name `assign_block`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((ref `assign`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `assign_lines`))
+      _
+      _))
+  (rule
+    (name `assign_lines`)
+    (alt
+      _
+      ((tok `CONT`)
+        (ref `assign`))
+      (list
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `assign_lines`)
+        (tok `CONT`)
+        (ref `assign`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `assign`)
+    (alt
+      _
+      ((label
+          `name`
+          (tok `IDENT`))
+        (lit `"="`)
+        (label
+          `value`
+          (group
+            _
+            ((tok `INTEGER`))
+            ((tok `IDENT`)))))
+      (node `assign`)
+      _))
+  (rule
+    (name `token_block`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((ref `token_lines`))
+      _
+      _))
+  (rule
+    (name `token_lines`)
+    (alt
+      _
+      ((tok `CONT`)
+        (ref `token_names`))
+      (pos `2`)
+      _)
+    (alt
+      _
+      ((ref `token_lines`)
+        (tok `CONT`)
+        (ref `token_names`))
+      (list
+        (spread `1`)
+        (spread `3`))
+      _))
+  (rule
+    (name `token_names`)
+    (alt
+      _
+      ((ref `token_name`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `token_names`)
+        (ref `token_name`))
+      (list
+        (spread `1`)
+        (pos `2`))
+      _))
+  (rule
+    (name `token_name`)
+    (alt
+      _
+      ((tok `IDENT`))
+      _
+      _)
+    (alt
+      _
+      ((tok `IDENT`)
+        (lit `","`))
+      (pos `1`)
+      _))
+  (rule
+    (name `lex_rule`)
+    (alt
+      _
+      ((label
+          `pattern`
+          (tok `PATTERN`))
+        (group
+          opt
+          ((label
+              `guards`
+              (ref `guard_part`))))
+        (tok `ARROW`)
+        (label
+          `token`
+          (tok `IDENT`))
+        (label
+          `actions`
+          (ref `lex_actions`)))
+      (node `lex_rule`)
+      _)
+    (alt
+      _
+      ((label
+          `guards`
+          (ref `guard_part`))
+        (tok `ARROW`)
+        (label
+          `token`
+          (tok `IDENT`))
+        (label
+          `actions`
+          (ref `lex_actions`)))
+      (node `lex_rule`)
+      _))
+  (rule
+    (name `guard_part`)
+    (alt
+      _
+      ((label
+          `at`
+          (lit `"@"`))
+        (label
+          `conds`
+          (ref `guard_list`)))
+      (node `guards`)
+      _))
+  (rule
+    (name `guard_list`)
+    (alt
+      _
+      ((ref `guard`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `guard_list`)
+        (tok `AMP`)
+        (ref `guard`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `guard`)
+    (alt
+      _
+      ((label
+          `neg`
+          (quantified
+            (lit `"!"`)
+            (opt)))
+        (label
+          `var`
+          (tok `IDENT`)))
+      (node `guard`)
+      _)
+    (alt
+      _
+      ((label
+          `neg`
+          (quantified
+            (lit `"!"`)
+            (opt)))
+        (label
+          `var`
+          (tok `IDENT`))
+        (label
+          `op`
+          (tok `COMPARE`))
+        (label
+          `value`
+          (tok `INTEGER`)))
+      (node `guard`)
+      _))
+  (rule
+    (name `lex_actions`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((ref `lex_actions`)
+        (lit `","`)
+        (ref `lex_action`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `lex_action`)
+    (alt
+      _
+      ((label
+          `word`
+          (tok `IDENT`)))
+      (node `lex_action`)
+      _)
+    (alt
+      _
+      ((label
+          `word`
+          (tok `IDENT`))
+        (label
+          `arg`
+          (tok `QUOTED`)))
+      (node `lex_action`)
+      _)
+    (alt
+      _
+      ((label
+          `word`
+          (tok `IDENT`))
+        (lit `"("`)
+        (label
+          `arg`
+          (group
+            _
+            ((tok `INTEGER`))
+            ((tok `QUOTED`))))
+        (lit `")"`))
+      (node `lex_action`)
+      _)
+    (alt
+      _
+      ((tok `LBRACE`)
+        (label
+          `name`
+          (tok `IDENT`))
+        (lit `"="`)
+        (label
+          `value`
+          (group
+            _
+            ((tok `INTEGER`))
+            ((tok `IDENT`))))
+        (tok `RBRACE`))
+      (node `set_action`)
+      _)
+    (alt
+      _
+      ((tok `LBRACE`)
+        (label
+          `name`
+          (tok `IDENT`))
+        (lit `"="`)
+        (label
+          `fn`
+          (tok `IDENT`))
+        (lit `"("`)
+        (label
+          `char`
+          (tok `QUOTED`))
+        (lit `")"`)
+        (tok `RBRACE`))
+      (node `counted`)
+      _)
+    (alt
+      _
+      ((tok `LBRACE`)
+        (label
+          `name`
+          (tok `IDENT`))
+        (label
+          `op`
+          (tok `INCDEC`))
+        (tok `RBRACE`))
+      (node `step_action`)
       _))
   (rule
     (name `directive`)
@@ -638,6 +1286,12 @@
         (label
           `entries`
           (ref `conflict_lines`)))
+      (node `manifest`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_CONFLICTS`))
       (node `manifest`)
       _)
     (alt

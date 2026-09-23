@@ -1,12 +1,14 @@
-# nexus.grammar: the @parser section of a Nexus grammar file, described in
-# Nexus's own format (self-hosting).
+# nexus.grammar: a Nexus grammar file, described in Nexus's own format
+# (self-hosting).
 #
 # Nexus generates its frontend parser (src/frontend/parser.zig) from this
 # file, with src/frontend/lang.zig as the @lang module. The frontend turns
-# the text after `@parser` into the S-expression tree documented below,
-# which src/frontend/lower.zig lowers into the grammar IR. The lexer wrapper
-# in lang.zig handles layout, comments, labels, contextual keywords, and
-# action scanning; see its header for the token stream this grammar reads.
+# a whole grammar file (the directives before `@lexer`, the @lexer section
+# and the @parser section) into the S-expression tree documented below,
+# which src/frontend/lower.zig lowers into the lexer spec and the grammar
+# IR. The lexer wrapper in lang.zig handles layout, comments, labels,
+# contextual keywords, action scanning, and the line-oriented @lexer
+# section; see its header for the token stream this grammar reads.
 #
 # The tree the frontend builds is declared by the @schema block below: one
 # kind per line with its roles in slot order. It is the contract with
@@ -67,6 +69,19 @@ tokens
     kw_left
     kw_right
     kw_none
+    kw_lexer
+    kw_parser
+    kw_code
+    kw_state
+    kw_after
+    kw_tokens
+    pattern
+    quoted
+    compare
+    amp
+    lbrace
+    rbrace
+    incdec
     eof
     err
 
@@ -115,12 +130,46 @@ tokens
 
 @lang = "lang"
 
+# Token names in syntax errors ("expected a name or \"=\"").
+@display
+    EOF: "end of file", NEWLINE: "end of line", CONT: "an indented line",
+    NEXT_ALT: "a `|` line", IDENT: "a name", TOKEN: "a token name",
+    LABEL: "a label", WORD: "a tag", STRING: "a string", INTEGER: "a number",
+    COMMENT: "a comment", RULE_TEXT: "a rule", ARROW: "\"→\"",
+    PATTERN: "a pattern", QUOTED: "a quoted byte", COMPARE: "a comparison",
+    AMP: "\"&\"", INCDEC: "\"++\"/\"--\"", LBRACE: "\"{\"", RBRACE: "\"}\"",
+    UNION: "\"|\"", DOTS: "\"...\"",
+    KW_LANG: "lang", KW_CONFLICTS: "conflicts", KW_AS: "as", KW_OP: "op",
+    KW_ERRORS: "errors", KW_DISPLAY: "display", KW_INFIX: "infix",
+    KW_SCHEMA: "schema", KW_TAGS: "tags", KW_TRIVIA: "trivia",
+    KW_REPAIR: "repair", KW_WRAPPER: "wrapper", KW_VIA: "via", KW_OVER: "over",
+    KW_LEFT: "left", KW_RIGHT: "right", KW_NONE: "none", KW_LEXER: "lexer",
+    KW_PARSER: "parser", KW_CODE: "code", KW_STATE: "state",
+    KW_AFTER: "after", KW_TOKENS: "tokens", KW_X: "X", KW_LIST: "L",
+    KW_NIL: "_"
+
 # ===========================================================================
 # The tree
 # ===========================================================================
 
 @schema
     grammar          ...entries
+
+    # Section markers: `@lexer`, `@parser`
+    section          name:leaf
+
+    # The @lexer section
+    state, after     keyword:leaf ...vars:assign
+    assign           name:leaf value:leaf
+    tokens           keyword:leaf ...names:leaf
+    code             name:leaf
+    lex_rule         pattern:leaf? guards:guards? token:leaf ...actions:lex_action|set_action|step_action|counted
+    guards           at:leaf ...conds:guard
+    guard            neg:leaf? var:leaf op:leaf? value:leaf?
+    lex_action       word:leaf arg:leaf?
+    set_action       name:leaf value:leaf
+    step_action      name:leaf op:leaf
+    counted          name:leaf fn:leaf char:leaf
 
     # Directives
     lang             name:leaf
@@ -186,6 +235,76 @@ entries  = entry                            → (1)
 
 entry    = directive
          | production
+         | section
+         | lexer_entry
+
+section  = "@" name:(KW_LEXER | KW_PARSER)          → (section)
+
+# ===========================================================================
+# The @lexer section
+#
+# One entry per line. A `state`, `after` or `tokens` line opens a block
+# whose indented lines are its contents (CONT); every other line is a rule
+#
+#   pattern [@ guard & guard ...] → token [, action ...]
+#
+# or a zero-width rule `@ guard ... → token ...`. The wrapper scans the
+# pattern verbatim (PATTERN; lexgen/regex.zig parses it) and the rest of
+# the line into the tokens below.
+# ===========================================================================
+
+lexer_entry = keyword:KW_STATE vars:assign_block        → (state)
+            | keyword:KW_AFTER vars:assign_block        → (after)
+            | keyword:KW_TOKENS names:token_block       → (tokens)
+            | "@" KW_CODE "=" name:IDENT                → (code)
+            | lex_rule
+
+assign_block =                                          → ()
+             | assign                                   → (1)
+             | assign_lines
+
+assign_lines = CONT assign                              → (2)
+             | assign_lines CONT assign                 → (...1 3)
+
+assign      = name:IDENT "=" value:(INTEGER | IDENT)    → (assign)
+
+token_block =                                           → ()
+            | token_lines
+
+token_lines = CONT token_names                          → 2
+            | token_lines CONT token_names              → (...1 ...3)
+
+token_names = token_name                                → (1)
+            | token_names token_name                    → (...1 2)
+
+token_name  = IDENT
+            | IDENT ","                                 → 1
+
+lex_rule    = pattern:PATTERN [guards:guard_part] ARROW token:IDENT actions:lex_actions
+                                                        → (lex_rule)
+            | guards:guard_part ARROW token:IDENT actions:lex_actions
+                                                        → (lex_rule)
+
+guard_part  = at:"@" conds:guard_list                   → (guards)
+
+guard_list  = guard                                     → (1)
+            | guard_list AMP guard                      → (...1 3)
+
+guard       = neg:"!"? var:IDENT                        → (guard)
+            | neg:"!"? var:IDENT op:COMPARE value:INTEGER
+                                                        → (guard)
+
+lex_actions =                                           → ()
+            | lex_actions "," lex_action                → (...1 3)
+
+lex_action  = word:IDENT                                → (lex_action)
+            | word:IDENT arg:QUOTED                     → (lex_action)
+            | word:IDENT "(" arg:(INTEGER | QUOTED) ")" → (lex_action)
+            | LBRACE name:IDENT "=" value:(INTEGER | IDENT) RBRACE
+                                                        → (set_action)
+            | LBRACE name:IDENT "=" fn:IDENT "(" char:QUOTED ")" RBRACE
+                                                        → (counted)
+            | LBRACE name:IDENT op:INCDEC RBRACE        → (step_action)
 
 # ===========================================================================
 # Directives
@@ -194,6 +313,7 @@ entry    = directive
 directive = "@" KW_LANG "=" name:STRING                 → (lang)
           | "@" KW_CONFLICTS "=" count:INTEGER          → (conflicts)
           | "@" KW_CONFLICTS entries:conflict_lines     → (manifest)
+          | "@" KW_CONFLICTS                            → (manifest)
           | "@" KW_AS as_body                           → 3
           | "@" KW_OP "=" "[" maps:op_items "]"         → (op)
           | "@" KW_ERRORS pairs:name_pairs              → (errors)

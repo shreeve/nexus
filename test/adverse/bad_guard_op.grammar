@@ -12,5 +12,5 @@ tokens
 [a-zA-Z]+ → ident
 . → err
 @parser
-@conflicts = 0
+# (no @conflicts block: the grammar must be conflict-free)
 program! = IDENT → (module 1)

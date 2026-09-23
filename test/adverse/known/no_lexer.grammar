@@ -1,4 +1,0 @@
-# Missing @lexer section
-# error: @lexer
-@parser
-program! = IDENT → (module 1)

@@ -1,0 +1,24 @@
+# A @conflicts entry may name string literals holding `#` or an escaped
+# quote; the entry's count and rationale are read after them.
+
+@lexer
+tokens
+    name
+    hash
+    quote
+    eof
+    err
+'#'                                         → hash
+'"'                                         → quote
+[a-z]+                                      → name
+.                                           → err
+
+@parser
+@lang = "manifest_quotes"
+
+@conflicts
+    shift  pair → "#" "\""  1  # a name after a bare pair belongs to that pair
+
+top! = pair* NAME?                          → (top ...1 2)
+pair = "#" "\""                             → (pair)
+     | "#" "\"" NAME                        → (pair 3)
