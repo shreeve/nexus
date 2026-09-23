@@ -8,84 +8,11 @@
 # in lang.zig handles layout, comments, labels, contextual keywords, and
 # action scanning; see its header for the token stream this grammar reads.
 #
-# -----------------------------------------------------------------------------
-# Canonical S-expression schema (the contract with the lowerer)
-# -----------------------------------------------------------------------------
-#
-# SRC is a source leaf; `_` is nil. Trailing nil children are omitted from
-# every list (the frontend is a schema-less grammar), so a shape written
-# `(t A B?)` has one or two children.
-#
-#     (grammar ENTRY ...)                   one ENTRY per directive or rule
-#
-# --- Directives ---
-#
-#     (lang      STRING)
-#     (conflicts INTEGER)                   `@conflicts = N` (legacy count)
-#     (manifest  CONFLICT ...)              `@conflicts` block
-#     (as        TOKEN VIA AS_ENTRY ...)    VIA: _ or IDENT (the `via` function)
-#     (op        OP_MAP ...)
-#     (errors    NAME_PAIR ...)
-#     (display   NAME_PAIR ...)
-#     (infix     IDENT LEVEL ...)
-#     (schema    KIND_DECL ...)
-#     (tags      NAME ...)                  NAME: IDENT, TOKEN or STRING
-#     (trivia    NAME ...)
-#     (repair    REPAIR_LINE ...)
-#
-#     CONFLICT:    (conflict KIND CRULE OVER? COUNT? REASON?)
-#                  KIND: IDENT (shift|reduce); OVER: _ or CRULE;
-#                  COUNT: INTEGER; REASON: COMMENT
-#     CRULE:       (crule LHS SYM ...)      SYM: IDENT, TOKEN, STRING or EPSILON
-#     AS_ENTRY:    (as_entry PERM IDENT VIA?)   PERM: _ or perm (`name!`)
-#     OP_MAP:      (op_map STRING STRING)
-#     NAME_PAIR:   (name_pair KEY STRING)   KEY: LABEL (`name:`) or STRING
-#     LEVEL:       (level INFIX_OP ...)
-#     INFIX_OP:    (infix_op STRING ASSOC)  ASSOC: left, right, none or IDENT
-#     KIND_DECL:   (kind_decl (kinds NAME ...) (roles ROLE ...) SIDES? WRAPPER?)
-#                  SIDES: _ or (sides IDENT ...); WRAPPER: wrapper
-#     ROLE:        (role REST NAME TYPE? OPT?)   REST: _ or rest; OPT: opt
-#     TYPE:        (type ATOM ...)          ATOM: IDENT, STRING, or
-#                  (tagset IDENT VALUE ...)  for `tag(a|b)`
-#     REPAIR_LINE: (repair_line IDENT NAME ...)
-#
-# --- Rules ---
-#
-#     (rule RULE_NAME ALT ...)              always >= 1 alternative
-#     RULE_NAME: (start SRC) for `name!`, (name SRC) otherwise
-#     ALT:       (alt HINT ELEMENTS ACTION? OPTOUT?)
-#                HINT: _, reduce (`<`) or shift (`>`); ELEMENTS: a list;
-#                ACTION: _ or an action; OPTOUT: STRING (`~ "reason"`)
-#
-# --- Elements ---
-#
-#     (ref SRC)  (tok SRC)  (lit SRC)  (at_ref SRC)
-#     (list_req TOKEN LIST_INNER)           L(...)
-#     (group KIND BODY ...)                 KIND: _ `( )`, opt `[ ]`, many `[X ...]`
-#     (quantified ELEMENT QUANT)            X? X* X+
-#     (skip ELEMENT)  (skip_q ELEMENT QUANT)
-#     (exclude STRING)                      X "c"
-#     (label LABEL ELEMENT)                 role:X, and (A | B):role
-#
-#     BODY is a list of ELEMENTs; QUANT is (opt), (zero_plus) or (one_plus).
-#     LIST_INNER: (plain ITEM) (opt_items_nosep ITEM)
-#                 (sep_items ITEM SEP) (opt_items ITEM SEP)
-#
-# --- Actions ---
-#
-#     (pos INTEGER)                         → N
-#     (null)                                → _
-#     (node WORD ITEM ...)                  (tag ...)
-#     (list ITEM ...)                       (...) without a head tag
-#     (keep INTEGER ITEM ...)               (!N ...): headed by element N
-#
-#     ITEM: VALUE, or (named LABEL VALUE)   role:value
-#     VALUE: (pos N) (spread N) (symid N) (null) (tag WORD) or a nested
-#            node / list / keep
-#
-# Every lowering entry point accepts exactly these shapes; anything else is
+# The tree the frontend builds is declared by the @schema block below: one
+# kind per line with its roles in slot order. It is the contract with
+# lower.zig, which accepts exactly those shapes (every list has all of its
+# slots; `_` where an optional role is absent) and reports anything else as
 # a hard error with a source position.
-# -----------------------------------------------------------------------------
 
 @lexer
 
@@ -187,15 +114,71 @@ tokens
 @parser
 
 @lang = "lang"
-@conflicts = 0
+
+# ===========================================================================
+# The tree
+# ===========================================================================
+
+@schema
+    grammar          ...entries
+
+    # Directives
+    lang             name:leaf
+    conflicts        count:leaf
+    manifest         ...entries:conflict
+    conflict         kind:leaf rule:crule over:crule? count:leaf reason:leaf?
+    crule            lhs:leaf ...rhs:leaf
+    as               token:leaf via:leaf? ...groups:as_entry
+    as_entry         perm:tag(perm)? group:leaf via:leaf?
+    op               ...maps:op_map
+    op_map           lit:leaf token:leaf
+    errors, display  ...pairs:name_pair
+    name_pair        key:leaf name:leaf
+    infix            base:leaf ...levels:level
+    level            ...ops:infix_op
+    infix_op         op:leaf assoc:leaf
+    schema           ...decls:kind_decl
+    kind_decl        kinds:kinds roles:roles sides:sides? wrapper:tag(wrapper)?
+    kinds, sides     ...names:leaf
+    roles            ...roles:role
+    role             rest:tag(rest)? name:leaf type:type? opt:tag(opt)?
+    type             ...atoms
+    tagset           tag:leaf ...values:leaf
+    tags, trivia     ...names:leaf
+    repair           ...lines:repair_line
+    repair_line      class:leaf ...names:leaf
+
+    # Rules
+    rule             name:start|name ...alts:alt
+    start, name      id:leaf
+    alt              hint:leaf? elements:group action:pos|null|"node"|list|keep? optout:leaf?
+
+    # Pattern elements
+    ref, tok, lit, at_ref      name:leaf
+    list_req                   keyword:leaf inner:plain|opt_items_nosep|sep_items|opt_items
+    plain, opt_items_nosep     item:leaf
+    sep_items, opt_items       item:leaf sep:leaf
+    group                      kind:tag(many|opt)? ...bodies:group
+    quantified, skip_q         element quant:opt|zero_plus|one_plus
+    skip                       element
+    exclude                    char:leaf
+    label                      name:leaf element
+    opt, zero_plus, one_plus
+
+    # Actions
+    pos, spread, symid         n:leaf
+    null
+    tag                        word:leaf
+    named                      role:leaf value
+    node                       head:leaf ...items
+    list                       ...items
+    keep                       n:leaf ...items
 
 # ===========================================================================
 # Top level: entries separated by line breaks
 # ===========================================================================
 
-grammar! = body                             → 1
-
-body     = entries                          → (grammar ...1)
+grammar! = entries                          → (grammar ...1)
          |                                  → (grammar)
 
 entries  = entry                            → (1)
@@ -209,33 +192,31 @@ entry    = directive
 # Directives
 # ===========================================================================
 
-directive = "@" KW_LANG "=" STRING          → (lang 4)
-          | "@" KW_CONFLICTS "=" INTEGER    → (conflicts 4)
-          | "@" KW_CONFLICTS conflict_lines → (manifest ...3)
-          | "@" KW_AS as_body               → (as ...3)
-          | "@" KW_OP "=" "[" op_items "]"  → (op ...5)
-          | "@" KW_ERRORS name_pairs        → (errors ...3)
-          | "@" KW_DISPLAY name_pairs       → (display ...3)
-          | "@" KW_INFIX IDENT infix_rows   → (infix 3 ...4)
-          | "@" KW_SCHEMA schema_lines      → (schema ...3)
-          | "@" KW_TAGS name_list           → (tags ...3)
-          | "@" KW_TRIVIA name_list         → (trivia ...3)
-          | "@" KW_REPAIR repair_lines      → (repair ...3)
+directive = "@" KW_LANG "=" name:STRING                 → (lang)
+          | "@" KW_CONFLICTS "=" count:INTEGER          → (conflicts)
+          | "@" KW_CONFLICTS entries:conflict_lines     → (manifest)
+          | "@" KW_AS as_body                           → 3
+          | "@" KW_OP "=" "[" maps:op_items "]"         → (op)
+          | "@" KW_ERRORS pairs:name_pairs              → (errors)
+          | "@" KW_DISPLAY pairs:name_pairs             → (display)
+          | "@" KW_INFIX base:IDENT levels:infix_rows   → (infix)
+          | "@" KW_SCHEMA decls:schema_lines            → (schema)
+          | "@" KW_TAGS names:name_list                 → (tags)
+          | "@" KW_TRIVIA names:name_list               → (trivia)
+          | "@" KW_REPAIR lines:repair_lines            → (repair)
 
 # --- @conflicts block: `kind lhs → rhs [over lhs → rhs] count # reason` ---
 
 conflict_lines = CONT conflict_line                 → (2)
                | conflict_lines CONT conflict_line  → (...1 3)
 
-conflict_line = IDENT crule INTEGER COMMENT                 → (conflict 1 2 _ 3 4)
-              | IDENT crule INTEGER                         → (conflict 1 2 _ 3)
-              | IDENT crule KW_OVER crule INTEGER COMMENT   → (conflict 1 2 4 5 6)
-              | IDENT crule KW_OVER crule INTEGER           → (conflict 1 2 4 5)
+conflict_line = kind:IDENT rule:crule [KW_OVER over:crule] count:INTEGER reason:COMMENT?
+                                                    → (conflict)
 
-crule     = IDENT ARROW csyms               → (crule 1 ...3)
+crule     = lhs:IDENT ARROW rhs:csyms               → (crule)
 
-csyms     = csym                            → (1)
-          | csyms csym                      → (...1 2)
+csyms     = csym                                    → (1)
+          | csyms csym                              → (...1 2)
 
 csym      = IDENT
           | TOKEN
@@ -244,106 +225,105 @@ csym      = IDENT
 
 # --- @as TOKEN [via fn] = [group[!] [via fn], ...] ---
 
-as_body  = as_token "=" "[" as_list "]"                 → (1 _ ...4)
-         | as_token KW_VIA IDENT "=" "[" as_list "]"    → (1 3 ...6)
+as_body  = token:(IDENT | TOKEN) [KW_VIA via:IDENT] "=" "[" groups:as_list "]"
+                                                    → (as)
 
-as_token = IDENT
-         | TOKEN
+as_list  = as_entry                                 → (1)
+         | as_list "," as_entry                     → (...1 3)
 
-as_list  = as_entry                         → (1)
-         | as_list "," as_entry             → (...1 3)
-
-as_entry = IDENT "!"                        → (as_entry perm 1)
-         | IDENT                            → (as_entry _ 1)
-         | IDENT "!" KW_VIA IDENT           → (as_entry perm 1 4)
-         | IDENT KW_VIA IDENT               → (as_entry _ 1 3)
+as_entry = group:IDENT [KW_VIA via:IDENT]           → (as_entry)
+         | group:IDENT "!" [KW_VIA via:IDENT]       → (as_entry perm:perm)
 
 # --- @op = [ "lit" → "token", ... ] (line breaks inside brackets are blanks) ---
 
-op_items = op_item                          → (1)
-         | op_items op_item                 → (...1 2)
-         | op_items ","                     → 1
+op_items = op_item                                  → (1)
+         | op_items op_item                         → (...1 2)
+         | op_items ","                             → 1
 
-op_item  = STRING ARROW STRING              → (op_map 1 3)
+op_item  = lit:STRING ARROW token:STRING            → (op_map)
 
 # --- @errors / @display: `key: "name"` pairs, inline or on indented lines ---
 
-name_pairs = pair_line                      → 1
-           | CONT pair_line                 → 2
-           | name_pairs CONT pair_line      → (...1 ...3)
+name_pairs = pair_line                              → 1
+           | CONT pair_line                         → 2
+           | name_pairs CONT pair_line              → (...1 ...3)
 
-pair_line  = name_pair                      → (1)
-           | pair_line "," name_pair        → (...1 3)
-           | pair_line ","                  → 1
+pair_line  = name_pair                              → (1)
+           | pair_line "," name_pair                → (...1 3)
+           | pair_line ","                          → 1
 
-name_pair  = LABEL STRING                   → (name_pair 1 2)
-           | STRING ":" STRING              → (name_pair 1 3)
+name_pair  = key:LABEL name:STRING                  → (name_pair)
+           | key:STRING ":" name:STRING             → (name_pair)
 
 # --- @infix base, then one indented line per precedence level ---
 
-infix_rows = CONT infix_row                 → (2)
-           | infix_rows CONT infix_row      → (...1 3)
+infix_rows = CONT infix_row                         → (2)
+           | infix_rows CONT infix_row              → (...1 3)
 
-infix_row  = infix_ops                      → (level ...1)
+infix_row  = ops:infix_ops                          → (level)
 
-infix_ops  = infix_op                       → (1)
-           | infix_ops "," infix_op         → (...1 3)
+infix_ops  = infix_op                               → (1)
+           | infix_ops "," infix_op                 → (...1 3)
 
-infix_op   = STRING KW_LEFT                 → (infix_op 1 2)
-           | STRING KW_RIGHT                → (infix_op 1 2)
-           | STRING KW_NONE                 → (infix_op 1 2)
-           | STRING IDENT                   → (infix_op 1 2)
+infix_op   = op:STRING assoc:(KW_LEFT | KW_RIGHT | KW_NONE | IDENT)
+                                                    → (infix_op)
 
 # --- @schema: one indented line per kind (or comma-separated kinds) ---
 
-schema_lines = CONT kind_decl               → (2)
-             | schema_lines CONT kind_decl  → (...1 3)
+schema_lines = CONT kind_decl                       → (2)
+             | schema_lines CONT kind_decl          → (...1 3)
 
-kind_decl  = kind_names roles                           → (kind_decl 1 2)
-           | kind_names roles "|" side_names            → (kind_decl 1 2 4)
-           | kind_names roles "@" KW_WRAPPER            → (kind_decl 1 2 _ wrapper)
-           | kind_names roles "|" side_names "@" KW_WRAPPER → (kind_decl 1 2 4 wrapper)
+kind_decl  = kind_names role_list                   → (kind_decl kinds:(kinds ...1) roles:(roles ...2))
+           | kind_names role_list "|" side_names    → (kind_decl kinds:(kinds ...1) roles:(roles ...2)
+                                                                 sides:(sides ...4))
+           | kind_names role_list "@" KW_WRAPPER    → (kind_decl kinds:(kinds ...1) roles:(roles ...2)
+                                                                 wrapper:wrapper)
+           | kind_names role_list "|" side_names "@" KW_WRAPPER
+                                                    → (kind_decl kinds:(kinds ...1) roles:(roles ...2)
+                                                                 sides:(sides ...4) wrapper:wrapper)
 
-kind_names = kind_name                      → (kinds 1)
-           | kind_names "," kind_name       → (...1 3)
+kind_names = kind_name                              → (1)
+           | kind_names "," kind_name               → (...1 3)
 
 kind_name  = IDENT
            | STRING
 
-roles      =                                → (roles)
-           | roles role                     → (...1 2)
+role_list  =                                        → ()
+           | role_list role                         → (...1 2)
 
-role       = IDENT                          → (role _ 1)
-           | IDENT "?"                      → (role _ 1 _ opt)
-           | LABEL role_type                → (role _ 1 2)
-           | LABEL role_type "?"            → (role _ 1 2 opt)
-           | "..." IDENT                    → (role rest 2)
-           | "..." LABEL role_type          → (role rest 2 3)
+role       = name:IDENT                             → (role)
+           | name:IDENT "?"                         → (role opt:opt)
+           | name:LABEL type:role_type              → (role)
+           | name:LABEL type:role_type "?"          → (role opt:opt)
+           | "..." name:IDENT                       → (role rest:rest)
+           | "..." name:LABEL type:role_type        → (role rest:rest)
 
-role_type  = type_atom                      → (type 1)
-           | role_type UNION type_atom      → (...1 3)
+role_type  = type_atoms                             → (type ...1)
+
+type_atoms = type_atom                              → (1)
+           | type_atoms UNION type_atom             → (...1 3)
 
 type_atom  = IDENT
            | STRING
-           | IDENT "(" tag_values ")"       → (tagset 1 ...3)
+           | tag:IDENT "(" values:tag_values ")"    → (tagset)
 
-tag_values = tag_value                      → (1)
-           | tag_values UNION tag_value     → (...1 3)
+tag_values = tag_value                              → (1)
+           | tag_values UNION tag_value             → (...1 3)
 
 tag_value  = IDENT
            | STRING
 
-side_names = IDENT                          → (sides 1)
-           | side_names IDENT               → (...1 2)
+side_names = IDENT                                  → (1)
+           | side_names IDENT                       → (...1 2)
 
 # --- @tags / @trivia: names on the directive line and indented lines ---
 
-name_list  = name_items                     → 1
-           | CONT name_items                → 2
-           | name_list CONT name_items      → (...1 ...3)
+name_list  = name_items                             → 1
+           | CONT name_items                        → 2
+           | name_list CONT name_items              → (...1 ...3)
 
-name_items = name_item                      → (1)
-           | name_items name_item           → (...1 2)
+name_items = name_item                              → (1)
+           | name_items name_item                   → (...1 2)
 
 name_item  = IDENT
            | TOKEN
@@ -351,10 +331,10 @@ name_item  = IDENT
 
 # --- @repair: `holes TOKEN ...` / `structure TOKEN ...` lines ---
 
-repair_lines = CONT repair_line             → (2)
-             | repair_lines CONT repair_line → (...1 3)
+repair_lines = CONT repair_line                     → (2)
+             | repair_lines CONT repair_line        → (...1 3)
 
-repair_line  = IDENT name_items             → (repair_line 1 ...2)
+repair_line  = class:IDENT names:name_items         → (repair_line)
 
 # ===========================================================================
 # Productions
@@ -366,60 +346,53 @@ repair_line  = IDENT name_items             → (repair_line 1 ...2)
 # alternative (its pattern or its action).
 # ===========================================================================
 
-production = rule_name "=" alts             → (rule 1 ...3)
+production = name:rule_name "=" alts:alts           → (rule)
 
-rule_name  = IDENT "!"                      → (start 1)
-           | IDENT                          → (name 1)
-           | TOKEN "!"                      → (start 1)
-           | TOKEN                          → (name 1)
+rule_name  = id:(IDENT | TOKEN) "!"                 → (start)
+           | id:(IDENT | TOKEN)                     → (name)
 
-alts       = alt_line                       → (1)
-           | alts "|" alt_line              → (...1 3)
-           | alts NEXT_ALT alt_line         → (...1 3)
+alts       = alt_line                               → (1)
+           | alts "|" alt_line                      → (...1 3)
+           | alts NEXT_ALT alt_line                 → (...1 3)
 
-alt_line   = elements                                       → (alt _ 1)
-           | elements "<"                                   → (alt reduce 1)
-           | elements ">"                                   → (alt shift 1)
-           | elements ARROW action                          → (alt _ 1 3)
-           | elements "<" ARROW action                      → (alt reduce 1 4)
-           | elements ">" ARROW action                      → (alt shift 1 4)
-           | elements ARROW action "~" STRING               → (alt _ 1 3 5)
-           | elements "<" ARROW action "~" STRING           → (alt reduce 1 4 6)
-           | elements ">" ARROW action "~" STRING           → (alt shift 1 4 6)
+alt_line   = elements:elements hint:("<" | ">")? [ARROW action:action]
+                                                    → (alt)
+           | elements:elements hint:("<" | ">")? ARROW action:action "~" optout:STRING
+                                                    → (alt)
 
-elements   =                                → ()
-           | elements element               → (...1 2)
-           | elements CONT                  → 1
+elements   =                                        → ()
+           | elements element                       → (...1 2)
+           | elements CONT                          → 1
 
-element    = LABEL labelable                → (label 1 2)
-           | group_paren ":" IDENT          → (label 3 1)
+element    = name:LABEL element:labelable           → (label)
+           | element:group_paren ":" name:IDENT     → (label)
            | labelable
-           | "!" primary quantifier         → (skip_q 2 3)
-           | "!" primary                    → (skip 2)
-           | KW_X STRING                    → (exclude 2)
+           | "!" element:primary quant:quantifier   → (skip_q)
+           | "!" element:primary                    → (skip)
+           | KW_X char:STRING                       → (exclude)
 
-labelable  = primary quantifier             → (quantified 1 2)
+labelable  = element:primary quant:quantifier       → (quantified)
            | primary
 
-primary    = IDENT                          → (ref 1)
-           | TOKEN                          → (tok 1)
-           | STRING                         → (lit 1)
-           | KW_LIST "(" list_inner ")"     → (list_req 1 3)
-           | "@" IDENT                      → (at_ref 2)
-           | "@" KW_INFIX                   → (at_ref 2)
+primary    = name:IDENT                             → (ref)
+           | name:TOKEN                             → (tok)
+           | name:STRING                            → (lit)
+           | keyword:KW_LIST "(" inner:list_inner ")"
+                                                    → (list_req)
+           | "@" name:(IDENT | KW_INFIX)            → (at_ref)
            | group_paren
-           | "[" bracket_body "]"           → 2
+           | "[" bracket_body "]"                   → 2
 
-group_paren = "(" alt_group ")"             → (group _ ...2)
+group_paren = "(" alt_group ")"                     → (group _ ...2)
 
-bracket_body = alt_group "..."              → (group many ...1)
-             | alt_group "," "..."          → (group many ...1)
-             | alt_group                    → (group opt ...1)
+bracket_body = alt_group "..."                      → (group many ...1)
+             | alt_group "," "..."                  → (group many ...1)
+             | alt_group                            → (group opt ...1)
 
-list_inner = list_item                      → (plain 1)
-           | list_item "?"                  → (opt_items_nosep 1)
-           | list_item "," sep_term         → (sep_items 1 3)
-           | list_item "?" "," sep_term     → (opt_items 1 4)
+list_inner = item:list_item                         → (plain)
+           | item:list_item "?"                     → (opt_items_nosep)
+           | item:list_item "," sep:sep_term        → (sep_items)
+           | item:list_item "?" "," sep:sep_term    → (opt_items)
 
 list_item  = IDENT
            | TOKEN
@@ -427,45 +400,45 @@ list_item  = IDENT
 sep_term   = STRING
            | TOKEN
 
-alt_group  = alt_elem                       → (1)
-           | alt_group "|" alt_elem         → (...1 3)
+alt_group  = alt_elem                               → (1)
+           | alt_group "|" alt_elem                 → (...1 3)
 
-alt_elem   = element                        → (1)
-           | alt_elem element               → (...1 2)
+alt_elem   = element                                → (1)
+           | alt_elem element                       → (...1 2)
 
-quantifier = "?"                            → (opt)
-           | "*"                            → (zero_plus)
-           | "+"                            → (one_plus)
+quantifier = "?"                                    → (opt)
+           | "*"                                    → (zero_plus)
+           | "+"                                    → (one_plus)
 
 # ===========================================================================
 # Actions
 # ===========================================================================
 
-action     = INTEGER                        → (pos 1)
-           | KW_NIL                         → (null)
+action     = n:INTEGER                              → (pos)
+           | KW_NIL                                 → (null)
            | sexp
 
-sexp       = "(" WORD items ")"             → (node 2 ...3)
-           | "(" "!" INTEGER items ")"      → (keep 3 ...4)
-           | "(" items_nohead ")"           → (list ...2)
+sexp       = "(" head:WORD items:items ")"          → (node)
+           | "(" "!" n:INTEGER items:items ")"      → (keep)
+           | "(" items_nohead ")"                   → (list ...2)
 
-items_nohead =                              → ()
-             | first_item items             → (1 ...2)
+items_nohead =                                      → ()
+             | first_item items                     → (1 ...2)
 
-items      =                                → ()
-           | items item                     → (...1 2)
+items      =                                        → ()
+           | items item                             → (...1 2)
 
-first_item = LABEL value                    → (named 1 2)
+first_item = role:LABEL value:value                 → (named)
            | plain_value
 
-item       = LABEL value                    → (named 1 2)
+item       = role:LABEL value:value                 → (named)
            | value
 
 value      = plain_value
-           | WORD                           → (tag 1)
+           | word:WORD                              → (tag)
 
-plain_value = INTEGER                       → (pos 1)
-            | "..." INTEGER                 → (spread 2)
-            | "~" INTEGER                   → (symid 2)
-            | KW_NIL                        → (null)
+plain_value = n:INTEGER                             → (pos)
+            | "..." n:INTEGER                       → (spread)
+            | "~" n:INTEGER                         → (symid)
+            | KW_NIL                                → (null)
             | sexp

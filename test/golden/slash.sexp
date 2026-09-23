@@ -4,13 +4,14 @@
   (as
     `ident`
     _
-    (as_entry perm `keyword`))
+    (as_entry perm `keyword` _))
   (rule
     (start `program`)
     (alt
       _
       ((ref `sequence`))
-      (pos `1`)))
+      (pos `1`)
+      _))
   (rule
     (name `sequence`)
     (alt
@@ -22,36 +23,55 @@
       (node
         `sequence`
         (pos `1`)
-        (spread `2`))))
+        (spread `2`))
+      _))
   (rule
     (name `sequence_item`)
     (alt
       _
-      ((ref `pipeline`)))
+      ((ref `pipeline`))
+      _
+      _)
     (alt
       _
-      ((ref `conditional`)))
+      ((ref `conditional`))
+      _
+      _)
     (alt
       _
-      ((ref `while_loop`)))
+      ((ref `while_loop`))
+      _
+      _)
     (alt
       _
-      ((ref `for_loop`)))
+      ((ref `for_loop`))
+      _
+      _)
     (alt
       _
-      ((ref `match_stmt`)))
+      ((ref `match_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `block_stmt`)))
+      ((ref `block_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `assigns`)))
+      ((ref `assigns`))
+      _
+      _)
     (alt
       _
-      ((ref `cmd_def`)))
+      ((ref `cmd_def`))
+      _
+      _)
     (alt
       _
-      ((ref `str_def`))))
+      ((ref `str_def`))
+      _
+      _))
   (rule
     (name `sequence_tail`)
     (alt
@@ -60,46 +80,53 @@
         (ref `sequence_item`))
       (node
         `seq_always`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `SEMI`))
       (node
         `seq_always`
-        (null)))
+        (null))
+      _)
     (alt
       _
       ((tok `AND_AND`)
         (ref `sequence_item`))
       (node
         `seq_and`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `OR_OR`)
         (ref `sequence_item`))
       (node
         `seq_or`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP`)
         (ref `sequence_item`))
       (node
         `seq_bg`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP`))
       (node
         `seq_bg`
-        (null))))
+        (null))
+      _))
   (rule
     (name `pipeline`)
     (alt
       _
       ((ref `stage`))
-      (pos `1`))
+      (pos `1`)
+      _)
     (alt
       _
       ((ref `stage`)
@@ -109,22 +136,28 @@
       (node
         `pipeline`
         (pos `1`)
-        (spread `2`))))
+        (spread `2`))
+      _))
   (rule
     (name `pipe_tail`)
     (alt
       _
       ((tok `PIPE`)
         (ref `stage`))
-      (pos `2`)))
+      (pos `2`)
+      _))
   (rule
     (name `stage`)
     (alt
       _
-      ((ref `simple_command`)))
+      ((ref `simple_command`))
+      _
+      _)
     (alt
       _
-      ((ref `subshell`))))
+      ((ref `subshell`))
+      _
+      _))
   (rule
     (name `subshell`)
     (alt
@@ -138,7 +171,8 @@
       (node
         `subshell`
         (pos `2`)
-        (pos `4`))))
+        (pos `4`))
+      _))
   (rule
     (name `block_stmt`)
     (alt
@@ -152,7 +186,8 @@
       (node
         `block`
         (pos `2`)
-        (pos `4`))))
+        (pos `4`))
+      _))
   (rule
     (name `redirect_list`)
     (alt
@@ -162,7 +197,8 @@
           (one_plus)))
       (node
         `redirects`
-        (spread `1`))))
+        (spread `1`))
+      _))
   (rule
     (name `simple_command`)
     (alt
@@ -175,7 +211,8 @@
         `command`
         (null)
         (pos `1`)
-        (spread `2`)))
+        (spread `2`))
+      _)
     (alt
       _
       ((ref `env_prefix_list`)
@@ -187,7 +224,8 @@
         `command`
         (pos `1`)
         (pos `2`)
-        (spread `3`))))
+        (spread `3`))
+      _))
   (rule
     (name `env_prefix_list`)
     (alt
@@ -197,7 +235,8 @@
           (one_plus)))
       (node
         `env_binds`
-        (spread `1`))))
+        (spread `1`))
+      _))
   (rule
     (name `assigns`)
     (alt
@@ -207,7 +246,8 @@
           (one_plus)))
       (node
         `assigns`
-        (spread `1`))))
+        (spread `1`))
+      _))
   (rule
     (name `assign_prefix`)
     (alt
@@ -217,7 +257,8 @@
       (node
         `env_bind`
         (pos `1`)
-        (pos `2`))))
+        (pos `2`))
+      _))
   (rule
     (name `assign_value`)
     (alt
@@ -225,7 +266,8 @@
       ((ref `word_atom`))
       (node
         `scalar`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `LBRACKET`)
@@ -233,7 +275,8 @@
         (tok `RBRACKET`))
       (node
         `list`
-        (spread `2`))))
+        (spread `2`))
+      _))
   (rule
     (name `word_atoms_opt`)
     (alt
@@ -242,15 +285,20 @@
           (ref `word_atom`)
           (zero_plus)))
       (list
-        (spread `1`))))
+        (spread `1`))
+      _))
   (rule
     (name `part`)
     (alt
       _
-      ((ref `word_atom`)))
+      ((ref `word_atom`))
+      _
+      _)
     (alt
       _
-      ((ref `redirect`))))
+      ((ref `redirect`))
+      _
+      _))
   (rule
     (name `leading_word`)
     (alt
@@ -258,37 +306,43 @@
       ((tok `IDENT`))
       (node
         `word`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `INTEGER`))
       (node
         `word`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `STRING_SQ`))
       (node
         `word`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `STRING_DQ`))
       (node
         `word`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `VARIABLE`))
       (node
         `var`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `VAR_BRACED`))
       (node
         `var_braced`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `DOLLAR_PAREN`)
@@ -296,7 +350,8 @@
         (tok `RPAREN`))
       (node
         `cmd_subst`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AT_PAREN`)
@@ -304,7 +359,8 @@
         (tok `RPAREN`))
       (node
         `list_capture`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `PROC_SUB_IN`)
@@ -312,7 +368,8 @@
         (tok `RPAREN`))
       (node
         `proc_sub_in`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `PROC_SUB_OUT`)
@@ -320,24 +377,29 @@
         (tok `RPAREN`))
       (node
         `proc_sub_out`
-        (pos `2`))))
+        (pos `2`))
+      _))
   (rule
     (name `word_atom`)
     (alt
       _
-      ((ref `leading_word`)))
+      ((ref `leading_word`))
+      _
+      _)
     (alt
       _
       ((tok `NAME_EQ`))
       (node
         `word`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `ASSIGN`))
       (node
         `word`
-        (pos `1`))))
+        (pos `1`))
+      _))
   (rule
     (name `conditional`)
     (alt
@@ -349,7 +411,8 @@
         `if`
         (pos `2`)
         (pos `3`)
-        (null)))
+        (null))
+      _)
     (alt
       _
       ((tok `IF`)
@@ -360,13 +423,15 @@
         `if`
         (pos `2`)
         (pos `3`)
-        (pos `4`))))
+        (pos `4`))
+      _))
   (rule
     (name `cond_chain`)
     (alt
       _
       ((ref `pipeline`))
-      (pos `1`))
+      (pos `1`)
+      _)
     (alt
       _
       ((ref `cond_chain`)
@@ -375,7 +440,8 @@
       (node
         `cond_and`
         (pos `1`)
-        (pos `3`)))
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `cond_chain`)
@@ -384,7 +450,8 @@
       (node
         `cond_or`
         (pos `1`)
-        (pos `3`))))
+        (pos `3`))
+      _))
   (rule
     (name `else_part`)
     (alt
@@ -393,14 +460,16 @@
         (ref `block_form`))
       (node
         `else`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `ELSE`)
         (ref `conditional`))
       (node
         `elif`
-        (pos `2`))))
+        (pos `2`))
+      _))
   (rule
     (name `block_form`)
     (alt
@@ -410,7 +479,8 @@
         (tok `RBRACE`))
       (node
         `body`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `INDENT`)
@@ -418,7 +488,8 @@
         (tok `OUTDENT`))
       (node
         `body`
-        (pos `2`))))
+        (pos `2`))
+      _))
   (rule
     (name `while_loop`)
     (alt
@@ -429,7 +500,8 @@
       (node
         `while`
         (pos `2`)
-        (pos `3`))))
+        (pos `3`))
+      _))
   (rule
     (name `for_loop`)
     (alt
@@ -443,7 +515,8 @@
         `for`
         (pos `2`)
         (pos `4`)
-        (pos `5`))))
+        (pos `5`))
+      _))
   (rule
     (name `match_stmt`)
     (alt
@@ -454,7 +527,8 @@
       (node
         `match`
         (pos `2`)
-        (pos `3`))))
+        (pos `3`))
+      _))
   (rule
     (name `match_block`)
     (alt
@@ -464,7 +538,8 @@
         (tok `RBRACE`))
       (node
         `match_arms`
-        (spread `2`)))
+        (spread `2`))
+      _)
     (alt
       _
       ((tok `INDENT`)
@@ -472,7 +547,8 @@
         (tok `OUTDENT`))
       (node
         `match_arms`
-        (spread `2`))))
+        (spread `2`))
+      _))
   (rule
     (name `match_arms`)
     (alt
@@ -483,18 +559,21 @@
           (zero_plus)))
       (list
         (pos `1`)
-        (spread `2`))))
+        (spread `2`))
+      _))
   (rule
     (name `match_arm_tail`)
     (alt
       _
       ((tok `SEMI`)
         (ref `match_arm`))
-      (pos `2`))
+      (pos `2`)
+      _)
     (alt
       _
       ((tok `SEMI`))
-      (null)))
+      (null)
+      _))
   (rule
     (name `match_arm`)
     (alt
@@ -504,7 +583,8 @@
       (node
         `match_arm`
         (pos `1`)
-        (pos `2`))))
+        (pos `2`))
+      _))
   (rule
     (name `cmd_def`)
     (alt
@@ -515,7 +595,8 @@
       (node
         `cmd_def`
         (pos `2`)
-        (pos `3`))))
+        (pos `3`))
+      _))
   (rule
     (name `str_def`)
     (alt
@@ -526,7 +607,8 @@
       (node
         `str_def`
         (pos `2`)
-        (pos `3`))))
+        (pos `3`))
+      _))
   (rule
     (name `word_atoms`)
     (alt
@@ -536,7 +618,8 @@
           (one_plus)))
       (node
         `words`
-        (spread `1`))))
+        (spread `1`))
+      _))
   (rule
     (name `redirect`)
     (alt
@@ -545,7 +628,8 @@
         (ref `word_atom`))
       (node
         `redir_read`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `FD_LT`)
@@ -553,14 +637,16 @@
       (node
         `redir_read_fd`
         (pos `1`)
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `GT`)
         (ref `word_atom`))
       (node
         `redir_write`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `FD_GT`)
@@ -568,40 +654,46 @@
       (node
         `redir_write_fd`
         (pos `1`)
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `GT_GT`)
         (ref `word_atom`))
       (node
         `redir_append`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP_GT`)
         (ref `word_atom`))
       (node
         `redir_both`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP_GT_GT`)
         (ref `word_atom`))
       (node
         `redir_both_append`
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `FD_DUP_OUT`))
       (node
         `redir_dup_out`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `FD_DUP_IN`))
       (node
         `redir_dup_in`
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `HEREDOC_OPEN`)
@@ -609,7 +701,8 @@
       (node
         `redir_heredoc`
         (pos `1`)
-        (pos `2`)))
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `HEREDOC_OPEN_LIT`)
@@ -617,4 +710,5 @@
       (node
         `redir_heredoc_lit`
         (pos `1`)
-        (pos `2`)))))
+        (pos `2`))
+      _)))

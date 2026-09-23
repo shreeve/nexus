@@ -1,8 +1,10 @@
 //! Strict lowering of the frontend's S-expression tree into the grammar IR.
 //!
-//! The tree's shapes are documented at the top of nexus.grammar. Every
-//! lowering entry point accepts exactly those shapes; anything else is a
-//! hard error (`error.ShapeError`) reported at a source position. Semantic
+//! The tree's shapes are declared by the @schema block of nexus.grammar
+//! (every list has all of its slots, `_` where an optional role is
+//! absent). Every lowering entry point accepts exactly those shapes;
+//! anything else is a hard error (`error.ShapeError`) reported at a source
+//! position. Semantic
 //! mistakes the tree can express (an unknown associativity, a position 0,
 //! a missing conflict rationale, ...) are reported the same way, as
 //! `error.LowerError`. There are no silent defaults and no heuristic
@@ -108,11 +110,6 @@ pub const GrammarLowerer = struct {
             else => return null,
         };
         return .{ .tag = tag, .items = items };
-    }
-
-    /// Child `i` of a list whose trailing nil children were omitted.
-    fn slot(items: []const Sexp, i: usize) Sexp {
-        return if (i < items.len) items[i] else .nil;
     }
 
     fn stripQuotes(s: []const u8) []const u8 {
@@ -246,7 +243,7 @@ pub const GrammarLowerer = struct {
         self.hasManifest = true;
         for (items[1..]) |entry| {
             const et = try self.requireTag(entry, .conflict);
-            try self.requireArity(entry, et, 3, 6, "(conflict KIND CRULE OVER COUNT REASON)");
+            try self.requireArity(entry, et, 6, 6, "(conflict KIND CRULE OVER COUNT REASON)");
             const kindName = try self.requireSrc(et[1], "conflict kind");
             const kind: @FieldType(ConflictEntry, "kind") = if (std.mem.eql(u8, kindName, "shift"))
                 .shift
@@ -254,15 +251,14 @@ pub const GrammarLowerer = struct {
                 .reduce
             else
                 return self.fail(et[1], "conflict kind must be `shift` or `reduce`, not '{s}'", .{kindName});
-            const rule = try self.lowerCrule(slot(et, 2));
-            const over: ?[]const u8 = if (slot(et, 3) == .nil) null else try self.lowerCrule(et[3]);
+            const rule = try self.lowerCrule(et[2]);
+            const over: ?[]const u8 = if (et[3] == .nil) null else try self.lowerCrule(et[3]);
             if (kind == .shift and over != null)
                 return self.fail(et[3], "a `shift` entry names one rule; `over` belongs to `reduce` entries", .{});
             if (kind == .reduce and over == null)
                 return self.fail(entry, "a `reduce` entry names the winning rule `over` the losing one", .{});
-            if (slot(et, 4) == .nil) return self.fail(entry, "conflict entry needs a count", .{});
             const count = try self.parseCount(et[4], "conflict count");
-            const reasonRaw = try self.optSrc(slot(et, 5), "rationale comment") orelse
+            const reasonRaw = try self.optSrc(et[5], "rationale comment") orelse
                 return self.fail(entry, "conflict entry needs a `# rationale` comment", .{});
             const reason = std.mem.trim(u8, reasonRaw[1..], " \t\r");
             if (reason.len == 0) return self.fail(et[5], "conflict rationale is empty", .{});
@@ -304,10 +300,10 @@ pub const GrammarLowerer = struct {
         var groups: usize = 0;
         for (items[3..]) |entry| {
             const et = try self.requireTag(entry, .as_entry);
-            try self.requireArity(entry, et, 3, 4, "(as_entry KIND IDENT VIA?)");
+            try self.requireArity(entry, et, 4, 4, "(as_entry PERM IDENT VIA)");
             const permissive = (try self.flag(entry, et[1], &.{.perm}, "(as_entry KIND ...): KIND must be _ or perm")) != null;
             const rule = try self.requireSrc(et[2], "@as group name");
-            const via = try self.optSrc(slot(et, 3), "@as lookup function");
+            const via = try self.optSrc(et[3], "@as lookup function");
             if (std.mem.eql(u8, rule, "self")) {
                 if (permissive) return self.fail(et[2], "`self!` is not allowed: `self` is a checkpoint, not a group", .{});
                 if (via != null) return self.fail(et[3], "`self` has no lookup function", .{});
@@ -393,7 +389,7 @@ pub const GrammarLowerer = struct {
 
     fn lowerKindDecl(self: *GrammarLowerer, decl: Sexp) LowerError!void {
         const dt = try self.requireTag(decl, .kind_decl);
-        try self.requireArity(decl, dt, 3, 5, "(kind_decl KINDS ROLES SIDES? WRAPPER?)");
+        try self.requireArity(decl, dt, 5, 5, "(kind_decl KINDS ROLES SIDES WRAPPER)");
         const names = try self.requireTag(dt[1], .kinds);
         if (names.len < 2) return self.shapeError(dt[1], "(kinds NAME+)");
         const roleNodes = try self.requireTag(dt[2], .roles);
@@ -409,7 +405,7 @@ pub const GrammarLowerer = struct {
         }
 
         var side: std.ArrayListUnmanaged([]const u8) = .empty;
-        if (slot(dt, 3) != .nil) {
+        if (dt[3] != .nil) {
             const st = try self.requireTag(dt[3], .sides);
             if (st.len < 2) return self.shapeError(dt[3], "(sides IDENT+)");
             for (st[1..]) |s| {
@@ -421,7 +417,7 @@ pub const GrammarLowerer = struct {
                 try side.append(self.allocator, name);
             }
         }
-        const wrapper = (try self.flag(decl, slot(dt, 4), &.{.wrapper}, "(kind_decl ... WRAPPER): wrapper or _")) != null;
+        const wrapper = (try self.flag(decl, dt[4], &.{.wrapper}, "(kind_decl ... WRAPPER): wrapper or _")) != null;
 
         const roleSlice = try roles.toOwnedSlice(self.allocator);
         const sideSlice = try side.toOwnedSlice(self.allocator);
@@ -445,13 +441,13 @@ pub const GrammarLowerer = struct {
 
     fn lowerRole(self: *GrammarLowerer, node: Sexp) LowerError!Schema.Role {
         const rt = try self.requireTag(node, .role);
-        try self.requireArity(node, rt, 3, 5, "(role REST NAME TYPE? OPT?)");
+        try self.requireArity(node, rt, 5, 5, "(role REST NAME TYPE OPT)");
         const rest = (try self.flag(node, rt[1], &.{.rest}, "(role REST ...): rest or _")) != null;
         const name = try self.requireSrc(rt[2], "role name");
         if (name.len == 0 or name[0] == '_' or !std.ascii.isLower(name[0]))
             return self.fail(rt[2], "role names start with a lowercase letter: '{s}'", .{name});
-        const optional = (try self.flag(node, slot(rt, 4), &.{.opt}, "(role ... OPT): opt or _")) != null;
-        const roleType: Schema.RoleType = if (slot(rt, 3) == .nil) .any else try self.lowerRoleType(rt[3]);
+        const optional = (try self.flag(node, rt[4], &.{.opt}, "(role ... OPT): opt or _")) != null;
+        const roleType: Schema.RoleType = if (rt[3] == .nil) .any else try self.lowerRoleType(rt[3]);
         return .{ .name = name, .type = roleType, .optional = optional, .rest = rest };
     }
 
@@ -565,8 +561,10 @@ pub const GrammarLowerer = struct {
 
     fn lowerAlt(self: *GrammarLowerer, altNode: Sexp, ruleName: Sexp) LowerError!ParsedAlternative {
         const items = try self.requireTag(altNode, .alt);
-        try self.requireArity(altNode, items, 3, 5, "(alt KIND ELEMENTS ACTION? OPTOUT?)");
-        const kind = try self.flag(altNode, items[1], &.{ .reduce, .shift }, "(alt KIND ...): KIND must be _, reduce or shift");
+        try self.requireArity(altNode, items, 5, 5, "(alt HINT ELEMENTS ACTION OPTOUT)");
+        const hint = try self.optSrc(items[1], "`<` or `>` hint");
+        if (hint) |h| if (!std.mem.eql(u8, h, "<") and !std.mem.eql(u8, h, ">"))
+            return self.shapeError(altNode, "(alt HINT ...): HINT must be _, `<` or `>`");
 
         // (exclude "c") hints are consumed here: they set the alternative's
         // excluded characters and never reach the element list.
@@ -584,12 +582,12 @@ pub const GrammarLowerer = struct {
         }
 
         const elems = try elements.toOwnedSlice(self.allocator);
-        const actionTree: ?ActionTree = if (slot(items, 3) == .nil) null else try self.lowerAction(items[3], logicalLength(elems));
-        const optOut = try self.optSrc(slot(items, 4), "opt-out reason");
+        const actionTree: ?ActionTree = if (items[3] == .nil) null else try self.lowerAction(items[3], logicalLength(elems));
+        const optOut = try self.optSrc(items[4], "opt-out reason");
         if (optOut) |o| if (stripQuotes(o).len == 0) return self.fail(items[4], "an opt-out needs a reason", .{});
 
         const excludeChars = try exclude.toOwnedSlice(self.allocator);
-        const l = self.loc(if (firstPos(items[2]) != null) items[2] else if (slot(items, 3) != .nil) items[3] else ruleName);
+        const l = self.loc(if (firstPos(items[2]) != null) items[2] else if (items[3] != .nil) items[3] else ruleName);
         return .{
             .elements = elems,
             .action = if (actionTree) |t| try grammar.renderAction(self.allocator, t) else null,
@@ -597,8 +595,8 @@ pub const GrammarLowerer = struct {
             .optOut = if (optOut) |o| stripQuotes(o) else null,
             .excludeChar = if (excludeChars.len > 0) excludeChars[excludeChars.len - 1] else 0,
             .excludeChars = excludeChars,
-            .preferReduce = kind == .reduce,
-            .preferShift = kind == .shift,
+            .preferReduce = hint != null and hint.?[0] == '<',
+            .preferShift = hint != null and hint.?[0] == '>',
             .line = l.line,
             .col = l.col,
         };
@@ -931,7 +929,7 @@ fn root(comptime entries: []const Sexp) Sexp {
 // (grammar (rule (name x) (alt _ (ELEMS...) ACTION?)))
 fn ruleWith(comptime elems: []const Sexp, comptime action: ?Sexp) Sexp {
     return comptime blk: {
-        const alt = if (action) |a| L(&.{ T(.alt), .nil, L(elems), a }) else L(&.{ T(.alt), .nil, L(elems) });
+        const alt = L(&.{ T(.alt), .nil, L(elems), action orelse .nil, .nil });
         break :blk root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }), alt })});
     };
 }
@@ -992,18 +990,18 @@ test "lowerer rejects (as) entry with wrong tag" {
     try expectShapeError(root(&.{L(&.{ T(.as), sX, .nil, L(&.{ T(.ref), sX }) })}));
 }
 test "lowerer rejects (as_entry) with a bad kind" {
-    try expectShapeError(root(&.{L(&.{ T(.as), sX, .nil, L(&.{ T(.as_entry), T(.many), sX }) })}));
+    try expectShapeError(root(&.{L(&.{ T(.as), sX, .nil, L(&.{ T(.as_entry), T(.many), sX, .nil }) })}));
 }
 test "lowerer rejects self! in @as" {
-    try expectLowerError(root(&.{L(&.{ T(.as), sX, .nil, L(&.{ T(.as_entry), T(.perm), sSelf }) })}));
+    try expectLowerError(root(&.{L(&.{ T(.as), sX, .nil, L(&.{ T(.as_entry), T(.perm), sSelf, .nil }) })}));
 }
 test "lowerer rejects self via fn in @as" {
     try expectLowerError(root(&.{L(&.{ T(.as), sX, .nil, L(&.{ T(.as_entry), .nil, sSelf, sFn }) })}));
 }
 test "lowerer rejects a shared @as via with two groups" {
     try expectLowerError(root(&.{L(&.{
-        T(.as),                          sX,                               sFn,
-        L(&.{ T(.as_entry), .nil, sX }), L(&.{ T(.as_entry), .nil, sFn }),
+        T(.as),                                sX,                                     sFn,
+        L(&.{ T(.as_entry), .nil, sX, .nil }), L(&.{ T(.as_entry), .nil, sFn, .nil }),
     })}));
 }
 test "lowerer rejects (op_map) with wrong arity" {
@@ -1037,7 +1035,7 @@ test "lowerer rejects a conflict kind other than shift or reduce" {
     try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sX, crule(), .nil, sThree, sComment }) })}));
 }
 test "lowerer rejects a conflict entry without a rationale" {
-    try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, crule(), .nil, sThree }) })}));
+    try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, crule(), .nil, sThree, .nil }) })}));
 }
 test "lowerer rejects a shift entry with over" {
     try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, crule(), crule(), sThree, sComment }) })}));
@@ -1058,15 +1056,15 @@ test "lowerer rejects both @conflicts forms" {
 // --- Schema ---
 
 fn kindDecl(comptime roles: []const Sexp) Sexp {
-    return comptime root(&.{L(&.{ T(.schema), L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }), L(&[_]Sexp{T(.roles)} ++ roles) }) })});
+    return comptime root(&.{L(&.{ T(.schema), L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }), L(&[_]Sexp{T(.roles)} ++ roles), .nil, .nil }) })});
 }
 test "lowerer accepts a schema kind with typed, optional and rest roles" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const ir = try GrammarLowerer.lower(arena.allocator(), kindDecl(&.{
-        L(&.{ T(.role), .nil, sFn, L(&.{ T(.type), L(&.{ T(.tagset), sTagWord, sX, sZzz }) }) }),
+        L(&.{ T(.role), .nil, sFn, L(&.{ T(.type), L(&.{ T(.tagset), sTagWord, sX, sZzz }) }), .nil }),
         L(&.{ T(.role), .nil, sSelf, .nil, T(.opt) }),
-        L(&.{ T(.role), T(.rest), sZzz }),
+        L(&.{ T(.role), T(.rest), sZzz, .nil, .nil }),
     }), negSourceMap);
     const kind = ir.schema.?.kinds[0];
     try testing.expectEqual(@as(usize, 3), kind.roles.len);
@@ -1081,33 +1079,34 @@ test "lowerer rejects (kind_decl) without a roles list" {
     try expectShapeError(root(&.{L(&.{ T(.schema), L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }) }) })}));
 }
 test "lowerer rejects a rest role that is not last" {
-    try expectLowerError(kindDecl(&.{ L(&.{ T(.role), T(.rest), sZzz }), L(&.{ T(.role), .nil, sFn }) }));
+    try expectLowerError(kindDecl(&.{ L(&.{ T(.role), T(.rest), sZzz, .nil, .nil }), L(&.{ T(.role), .nil, sFn, .nil, .nil }) }));
 }
 test "lowerer rejects a duplicate role" {
-    try expectLowerError(kindDecl(&.{ L(&.{ T(.role), .nil, sFn }), L(&.{ T(.role), .nil, sFn }) }));
+    try expectLowerError(kindDecl(&.{ L(&.{ T(.role), .nil, sFn, .nil, .nil }), L(&.{ T(.role), .nil, sFn, .nil, .nil }) }));
 }
 test "lowerer rejects an uppercase role name" {
-    try expectLowerError(kindDecl(&.{L(&.{ T(.role), .nil, sUpper })}));
+    try expectLowerError(kindDecl(&.{L(&.{ T(.role), .nil, sUpper, .nil, .nil })}));
 }
 test "lowerer rejects a value list on a type other than tag" {
-    try expectLowerError(kindDecl(&.{L(&.{ T(.role), .nil, sFn, L(&.{ T(.type), L(&.{ T(.tagset), sZzz, sX }) }) })}));
+    try expectLowerError(kindDecl(&.{L(&.{ T(.role), .nil, sFn, L(&.{ T(.type), L(&.{ T(.tagset), sZzz, sX }) }), .nil })}));
 }
 test "lowerer rejects a builtin type in a union" {
-    try expectLowerError(kindDecl(&.{L(&.{ T(.role), .nil, sFn, L(&.{ T(.type), sTagWord, sZzz }) })}));
+    try expectLowerError(kindDecl(&.{L(&.{ T(.role), .nil, sFn, L(&.{ T(.type), sTagWord, sZzz }), .nil })}));
 }
 test "lowerer rejects a side-band role that is also a slot role" {
     try expectLowerError(root(&.{L(&.{ T(.schema), L(&.{
         T(.kind_decl),
         L(&.{ T(.kinds), sX }),
-        L(&.{ T(.roles), L(&.{ T(.role), .nil, sFn }) }),
+        L(&.{ T(.roles), L(&.{ T(.role), .nil, sFn, .nil, .nil }) }),
         L(&.{ T(.sides), sFn }),
+        .nil,
     }) })}));
 }
 test "lowerer rejects a kind declared twice" {
     try expectLowerError(root(&.{L(&.{
         T(.schema),
-        L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }), L(&.{T(.roles)}) }),
-        L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }), L(&.{T(.roles)}) }),
+        L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }), L(&.{T(.roles)}), .nil, .nil }),
+        L(&.{ T(.kind_decl), L(&.{ T(.kinds), sX }), L(&.{T(.roles)}), .nil, .nil }),
     })}));
 }
 test "lowerer rejects @tags without @schema" {
@@ -1123,19 +1122,22 @@ test "lowerer rejects (rule) with no alts" {
     try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }) })}));
 }
 test "lowerer rejects rule_name tag that is neither start nor name" {
-    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.ref), sX }), L(&.{ T(.alt), .nil, L(&.{}) }) })}));
+    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.ref), sX }), L(&.{ T(.alt), .nil, L(&.{}), .nil, .nil }) })}));
 }
 test "lowerer rejects alt child that is not list" {
-    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }), L(&.{ T(.alt), .nil, sX }) })}));
+    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }), L(&.{ T(.alt), .nil, sX, .nil, .nil }) })}));
 }
-test "lowerer rejects an alt with a bad hint kind" {
-    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }), L(&.{ T(.alt), T(.many), L(&.{}) }) })}));
+test "lowerer rejects an alt with a bad hint" {
+    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }), L(&.{ T(.alt), sX, L(&.{}), .nil, .nil }) })}));
+}
+test "lowerer rejects an alt without its optional slots" {
+    try expectShapeError(root(&.{L(&.{ T(.rule), L(&.{ T(.name), sX }), L(&.{ T(.alt), .nil, L(&.{}) }) })}));
 }
 test "lowerer rejects an empty opt-out reason" {
     try expectLowerError(root(&.{L(&.{
         T(.rule),
         L(&.{ T(.name), sX }),
-        L(&.{ T(.alt), .nil, L(&.{L(&.{ T(.ref), sX })}), L(&.{ T(.pos), sX }), sEmptyStr }),
+        L(&.{ T(.alt), .nil, L(&.{L(&.{ T(.ref), sX })}), L(&.{ T(.pos), sOne }), sEmptyStr }),
     })}));
 }
 test "lowerer rejects bare src as an element" {

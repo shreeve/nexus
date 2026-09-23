@@ -1,33 +1,37 @@
 (grammar
   (rule
     (name `list`)
-    (alt _ ((list_req `L` (plain `item`))) (node `list` (spread `1`)))
+    (alt _ ((list_req `L` (plain `item`))) (node `list` (spread `1`)) _)
     (alt
       _
       ((lit `"("`) (list_req `L` (sep_items `item` `","`)) (lit `")"`))
-      (node `sep` (spread `2`)))
-    (alt _ ((list_req `L` (opt_items_nosep `item`))) (node `optitems` (spread `1`)))
-    (alt _ ((list_req `L` (opt_items `item` `";"`))) (node `optsep` (spread `1`)))
-    (alt _ ((list_req `L` (sep_items `item` `SEMI`))) (node `toksep` (spread `1`))))
+      (node `sep` (spread `2`))
+      _)
+    (alt _ ((list_req `L` (opt_items_nosep `item`))) (node `optitems` (spread `1`)) _)
+    (alt _ ((list_req `L` (opt_items `item` `";"`))) (node `optsep` (spread `1`)) _)
+    (alt _ ((list_req `L` (sep_items `item` `SEMI`))) (node `toksep` (spread `1`)) _))
   (rule
     (name `opts`)
     (alt
       _
       ((tok `A`) (group opt ((tok `B`) (tok `C`))) (tok `D`))
-      (node `opts` (pos `1`) (pos `2`) (pos `3`) (pos `4`)))
-    (alt _ ((group opt ((list_req `L` (plain `item`))))) (node `optlist` (spread `1`)))
-    (alt _ ((group many ((ref `item`)))) (node `many` (spread `1`)))
-    (alt _ ((group opt ((tok `B`)) ((tok `C`)))) (node `alts` (pos `1`))))
+      (node `opts` (pos `1`) (pos `2`) (pos `3`) (pos `4`))
+      _)
+    (alt _ ((group opt ((list_req `L` (plain `item`))))) (node `optlist` (spread `1`)) _)
+    (alt _ ((group many ((ref `item`)))) (node `many` (spread `1`)) _)
+    (alt _ ((group opt ((tok `B`)) ((tok `C`)))) (node `alts` (pos `1`)) _))
   (rule
     (name `groups`)
     (alt
       _
       ((group _ ((tok `A`)) ((tok `B`) (tok `C`))) (tok `D`))
-      (node `group` (pos `1`) (pos `2`)))
+      (node `group` (pos `1`) (pos `2`))
+      _)
     (alt
       _
       ((quantified (group _ ((ref `cmd`) (skip_q (tok `SPACES`) (opt)))) (one_plus)))
-      (node `cmds` (spread `1`))))
+      (node `cmds` (spread `1`))
+      _))
   (rule
     (name `quants`)
     (alt
@@ -35,20 +39,23 @@
       ((quantified (tok `A`) (opt))
         (quantified (tok `B`) (zero_plus))
         (quantified (tok `C`) (one_plus)))
-      (node `q` (pos `1`) (pos `2`) (pos `3`)))
-    (alt _ ((skip (tok `A`)) (tok `B`)) (node `skip` (pos `2`)))
-    (alt _ ((skip_q (tok `A`) (zero_plus)) (tok `B`)) (node `skipq` (pos `2`))))
+      (node `q` (pos `1`) (pos `2`) (pos `3`))
+      _)
+    (alt _ ((skip (tok `A`)) (tok `B`)) (node `skip` (pos `2`)) _)
+    (alt _ ((skip_q (tok `A`) (zero_plus)) (tok `B`)) (node `skipq` (pos `2`)) _))
   (rule
     (name `hints`)
     (alt
       _
       ((ref `glvn`) (exclude `"#"`) (exclude `":"`) (ref `expr`))
-      (node `hint` (pos `1`) (pos `2`)))
-    (alt reduce ((tok `A`) (tok `B`)) (node `tight` (pos `1`) (pos `2`)))
-    (alt shift ((tok `A`) (tok `B`)) (node `loose` (pos `1`) (pos `2`))))
+      (node `hint` (pos `1`) (pos `2`))
+      _)
+    (alt `<` ((tok `A`) (tok `B`)) (node `tight` (pos `1`) (pos `2`)) _)
+    (alt `>` ((tok `A`) (tok `B`)) (node `loose` (pos `1`) (pos `2`)) _))
   (rule
     (name `refs`)
     (alt
       _
       ((at_ref `infix`) (tok `IDENT`) (lit `"lit"`) (tok `TOKEN`))
-      (node `refs` (pos `1`) (pos `2`) (pos `3`) (pos `4`)))))
+      (node `refs` (pos `1`) (pos `2`) (pos `3`) (pos `4`))
+      _)))

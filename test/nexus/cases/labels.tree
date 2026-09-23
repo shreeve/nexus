@@ -11,7 +11,8 @@
         (label `iter` (ref `expr`))
         (label `body` (ref `block`))
         (group opt ((tok `ELSE`) (label `else` (ref `block`)))))
-      (node `for`)))
+      (node `for`)
+      _))
   (rule
     (name `cond`)
     (alt
@@ -19,26 +20,31 @@
       ((label `kw` (group _ ((tok `IF`)) ((tok `UNLESS`))))
         (label `test` (ref `expr`))
         (label `body` (ref `block`)))
-      (node `if`))
+      (node `if`)
+      _)
     (alt
       _
       ((label `kw` (quantified (group _ ((tok `IF`)) ((tok `UNLESS`))) (opt)))
         (label `test` (ref `expr`)))
-      (node `if`)))
+      (node `if`)
+      _))
   (rule
     (name `set`)
     (alt
       _
       ((label `target` (ref `name`)) (label `eq` (lit `"="`)) (label `value` (ref `expr`)))
-      (node `set` (named `op` (null))))
+      (node `set` (named `op` (null)))
+      _)
     (alt
       _
       ((ref `name`) (lit `"+="`) (ref `expr`))
-      (node `set` (named `op` (tag `+=`)) (named `target` (pos `1`)) (named `value` (pos `3`))))
+      (node `set` (named `op` (tag `+=`)) (named `target` (pos `1`)) (named `value` (pos `3`)))
+      _)
     (alt
       _
       ((ref `name`) (lit `":"`) (ref `type`) (lit `"="`) (ref `expr`))
-      (node `set` (named `target` (pos `1`)) (named `type` (pos `3`)) (named `value` (pos `5`))))
+      (node `set` (named `target` (pos `1`)) (named `type` (pos `3`)) (named `value` (pos `5`)))
+      _)
     (alt
       _
       ((label `_` (ref `name`)) (skip (lit `"::"`)) (ref `expr`))
@@ -52,13 +58,18 @@
       (node
         `assign`
         (named `target` (node `@name` (pos `1`)))
-        (named `value` (node `num` (pos `2`)))))
-    (alt _ ((exclude `"("`) (tok `IDENT`) (exclude `":"`)) (node `hint` (symid `1`) (tag `!keep`))))
+        (named `value` (node `num` (pos `2`))))
+      _)
+    (alt
+      _
+      ((exclude `"("`) (tok `IDENT`) (exclude `":"`))
+      (node `hint` (symid `1`) (tag `!keep`))
+      _))
   (rule
     (name `many`)
-    (alt _ ((group many ((ref `item`)))) (node `many` (spread `1`)))
-    (alt _ ((list_req `L` (sep_items `item` `";"`))) (node `semi` (spread `1`)))
-    (alt _ ((tok `X`) (tok `Y`)) (node `xy` (pos `1`) (pos `2`)))
+    (alt _ ((group many ((ref `item`)))) (node `many` (spread `1`)) _)
+    (alt _ ((list_req `L` (sep_items `item` `";"`))) (node `semi` (spread `1`)) _)
+    (alt _ ((tok `X`) (tok `Y`)) (node `xy` (pos `1`) (pos `2`)) _)
     (alt
       _
       ((tok `A`)
@@ -72,5 +83,6 @@
         (tok `I`)
         (tok `J`)
         (tok `K`))
-      (node `p` (pos `1`) (pos `11`) (pos `10`)))
-    (alt _ ((tok `A`) (tok `B`)) (keep `1` (spread `2`)))))
+      (node `p` (pos `1`) (pos `11`) (pos `10`))
+      _)
+    (alt _ ((tok `A`) (tok `B`)) (keep `1` (spread `2`)) _)))

@@ -1,14 +1,14 @@
 (grammar
-  (rule (start `program`) (alt _ ((ref `body`)) (node `module` (spread `1`))))
-  (rule (start `expr`) (alt _ ((ref `expr`)) (pos `1`)))
-  (rule (name `name`) (alt _ ((tok `IDENT`))))
+  (rule (start `program`) (alt _ ((ref `body`)) (node `module` (spread `1`)) _))
+  (rule (start `expr`) (alt _ ((ref `expr`)) (pos `1`) _))
+  (rule (name `name`) (alt _ ((tok `IDENT`)) _ _))
   (rule
     (name `body`)
-    (alt _ ((ref `stmt`)) (list (pos `1`)))
-    (alt _ ((ref `body`) (tok `NEWLINE`) (ref `stmt`)) (list (spread `1`) (pos `3`)))
-    (alt _ ((ref `body`) (tok `NEWLINE`)) (pos `1`))
-    (alt _ () (list)))
+    (alt _ ((ref `stmt`)) (list (pos `1`)) _)
+    (alt _ ((ref `body`) (tok `NEWLINE`) (ref `stmt`)) (list (spread `1`) (pos `3`)) _)
+    (alt _ ((ref `body`) (tok `NEWLINE`)) (pos `1`) _)
+    (alt _ () (list) _))
   (rule
     (name `stmt`)
-    (alt _ ((ref `expr`)))
-    (alt _ ((lit `"return"`) (ref `expr`)) (node `return` (pos `2`)))))
+    (alt _ ((ref `expr`)) _ _)
+    (alt _ ((lit `"return"`) (ref `expr`)) (node `return` (pos `2`)) _)))

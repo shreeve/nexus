@@ -7,14 +7,16 @@
       ((ref `body`))
       (node
         `module`
-        (spread `1`))))
+        (spread `1`))
+      _))
   (rule
     (name `body`)
     (alt
       _
       ((ref `stmt`))
       (list
-        (pos `1`)))
+        (pos `1`))
+      _)
     (alt
       _
       ((ref `body`)
@@ -22,12 +24,14 @@
         (ref `stmt`))
       (list
         (spread `1`)
-        (pos `3`)))
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`))
-      (pos `1`)))
+      (pos `1`)
+      _))
   (rule
     (name `stmt`)
     (alt
@@ -40,7 +44,8 @@
         (tag `fixed`)
         (pos `1`)
         (null)
-        (pos `3`)))
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `IDENT`)
@@ -51,7 +56,8 @@
         (tag `move`)
         (pos `1`)
         (null)
-        (pos `3`)))
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `IDENT`)
@@ -62,4 +68,5 @@
         (tag `+=`)
         (pos `1`)
         (null)
-        (pos `3`)))))
+        (pos `3`))
+      _)))

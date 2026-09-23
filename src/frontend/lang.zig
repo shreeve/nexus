@@ -41,11 +41,10 @@ const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
 
-/// The tags of the frontend tree; see the schema at the top of nexus.grammar.
+/// The tags of the frontend tree: the kinds of nexus.grammar's @schema in
+/// declaration order, then its marker values.
 pub const Tag = enum(u8) {
     grammar,
-
-    // Directives
     lang,
     conflicts,
     manifest,
@@ -64,55 +63,37 @@ pub const Tag = enum(u8) {
     schema,
     kind_decl,
     kinds,
+    sides,
     roles,
     role,
     type,
     tagset,
-    sides,
     tags,
     trivia,
     repair,
     repair_line,
-
-    // Rules and alternatives
     rule,
     start,
     name,
     alt,
-
-    // Kind discriminators and flags
-    perm, // (as_entry perm IDENT)       permissive @as
-    reduce, // (alt reduce ...)          `<` hint
-    shift, // (alt shift ...)            `>` hint
-    many, // (group many ...)            `[X ...]`
-    rest, // (role rest NAME ...)        `...name`
-    wrapper, // (kind_decl ... wrapper)  `@wrapper`
-
-    // Elements
     ref,
     tok,
     lit,
     at_ref,
     list_req,
+    plain,
+    opt_items_nosep,
+    sep_items,
+    opt_items,
     group,
     quantified,
-    skip,
     skip_q,
+    skip,
     exclude,
     label,
-
-    // List-inner shapes
-    plain,
-    opt_items,
-    sep_items,
-    opt_items_nosep,
-
-    // Quantifiers (opt is also the `[X]` group kind and the optional-role flag)
     opt,
     zero_plus,
     one_plus,
-
-    // Actions
     pos,
     spread,
     symid,
@@ -122,6 +103,10 @@ pub const Tag = enum(u8) {
     node,
     list,
     keep,
+    perm,
+    wrapper,
+    rest,
+    many,
 };
 
 pub const Lexer = struct {

@@ -1,14 +1,15 @@
 (grammar
   (rule
     (name `a`)
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (pos `1`) (pos `2`) (pos `3`)))
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (pos `1`) (null) (pos `3`)))
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (null) (spread `2`)))
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (pos `1`) (pos `2`) (pos `3`)) _)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (pos `1`) (null) (pos `3`)) _)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (null) (spread `2`)) _)
     (alt
       _
       ((tok `P`) (tok `Q`) (tok `R`))
-      (list (symid `1`) (pos `2`) (named `key` (pos `3`)) (named `else` (null))))
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `set` (tag `+=`) (pos `1`) (null) (pos `3`)))
-    (alt _ ((tok `P`)) (pos `1`))
-    (alt _ ((tok `P`) (tok `Q`)))
-    (alt _ () (null))))
+      (list (symid `1`) (pos `2`) (named `key` (pos `3`)) (named `else` (null)))
+      _)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `set` (tag `+=`) (pos `1`) (null) (pos `3`)) _)
+    (alt _ ((tok `P`)) (pos `1`) _)
+    (alt _ ((tok `P`) (tok `Q`)) _ _)
+    (alt _ () (null) _)))
