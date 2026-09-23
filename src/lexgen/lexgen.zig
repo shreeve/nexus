@@ -167,6 +167,7 @@ pub const LexerGenerator = struct {
         }
         self.consuming = consuming.items;
         self.ends = ends.items;
+        try self.checkZeroWidthCycles();
 
         // Guard atoms of consuming rules, and the live rules per configuration.
         var atoms: std.ArrayListUnmanaged(Atom) = .empty;
@@ -269,6 +270,183 @@ pub const LexerGenerator = struct {
         return false;
     }
 
+    /// Does the rule, which consumes nothing, stop matching after it
+    /// fires? True when its actions (after the `after` assignments, for a
+    /// consuming rule) leave some guard on a state variable false: a set
+    /// value that fails it, or steps that saturate (at 127 or -128) where
+    /// it fails. Anything else could return the same zero-width token
+    /// forever.
+    fn falsifiesGuard(self: *const LexerGenerator, r: *const LexerRule, withAfter: bool) bool {
+        for (r.guards) |g| {
+            if (std.mem.eql(u8, g.variable, "pre")) continue;
+            var known: ?i32 = null;
+            var delta: i32 = 0;
+            if (withAfter) for (self.spec.afterActions.items) |act| {
+                if (!std.mem.eql(u8, act.variable.?, g.variable)) continue;
+                const overridden = for (r.actions) |o| {
+                    if (o.variable != null and std.mem.eql(u8, o.variable.?, g.variable) and (o.kind == .set or o.kind == .counted)) break true;
+                } else false;
+                if (!overridden) known = act.value.?;
+            };
+            var assigned = false;
+            for (r.actions) |act| {
+                const v = act.variable orelse continue;
+                if (!std.mem.eql(u8, v, g.variable)) continue;
+                switch (act.kind) {
+                    .set => {
+                        known = act.value.?;
+                        delta = 0;
+                        assigned = true;
+                    },
+                    .inc, .dec => {
+                        const step: i32 = if (act.kind == .inc) 1 else -1;
+                        if (known) |k| known = std.math.clamp(k + step, -128, 127) else delta += step;
+                        assigned = true;
+                    },
+                    .counted => return true, // a count of bytes: not decidable here
+                }
+            }
+            if (!assigned and known == null) continue;
+            const at: i32 = if (known) |k| k else if (delta > 0) 127 else if (delta < 0) -128 else continue;
+            if (!guardHoldsAt(g, at)) return true;
+        }
+        return false;
+    }
+
+    /// Rules that return a token without advancing: zero-width rules (no
+    /// pattern) and consuming rules that end at their start (`hold`,
+    /// `rewind(0)`, an empty head before `/`). If some of them can fire one
+    /// after another in a cycle (each leaving the state variables where the
+    /// next one's guards can hold), the lexer can return zero-width tokens
+    /// forever at one position. The check follows each variable's possible
+    /// values (-128..127; `pre` 0..255) through the guards and actions,
+    /// with every variable independent, so it only errs on the safe side.
+    fn checkZeroWidthCycles(self: *LexerGenerator) !void {
+        const a = self.arena.allocator();
+        const rules = self.spec.rules.items;
+        var nodes: std.ArrayListUnmanaged(u32) = .empty;
+        for (rules, 0..) |*r, i| {
+            if (r.pattern.len == 0) {
+                try nodes.append(a, @intCast(i));
+                continue;
+            }
+            const k = std.mem.indexOfScalar(u32, self.consuming, @intCast(i)) orelse continue;
+            const e = self.ends[k];
+            if (e == .start or (e == .fromStart and e.fromStart == 0)) try nodes.append(a, @intCast(i));
+        }
+        if (nodes.items.len == 0) return;
+        const n = nodes.items.len;
+        const edge = try a.alloc(bool, n * n);
+        for (nodes.items, 0..) |ai, x| for (nodes.items, 0..) |bi, y| {
+            edge[x * n + y] = self.canFollow(&rules[ai], &rules[bi]);
+        };
+        // Depth-first search for a cycle.
+        const color = try a.alloc(u8, n);
+        @memset(color, 0);
+        const stack = try a.alloc(usize, n);
+        for (0..n) |start| {
+            if (color[start] != 0) continue;
+            if (try self.cycleFrom(start, n, edge, color, stack, 0)) |cyc| {
+                const first = &rules[nodes.items[cyc[0]]];
+                var lines: std.Io.Writer.Allocating = .init(a);
+                for (cyc, 0..) |c, i| {
+                    if (i > 0) try lines.writer.writeAll(", ");
+                    try lines.writer.print("{d}", .{rules[nodes.items[c]].line});
+                }
+                return self.fail(first, 0, "zero-width rules could fire one after another forever at one position (the rules on lines {s}): make an action set a variable so that the next one's guards fail", .{lines.written()});
+            }
+        }
+    }
+
+    fn cycleFrom(self: *LexerGenerator, v: usize, n: usize, edge: []const bool, color: []u8, stack: []usize, depth: usize) !?[]const usize {
+        color[v] = 1;
+        stack[depth] = v;
+        for (0..n) |w| {
+            if (!edge[v * n + w]) continue;
+            if (color[w] == 1) {
+                const at = std.mem.indexOfScalar(usize, stack[0 .. depth + 1], w).?;
+                return stack[at .. depth + 1];
+            }
+            if (color[w] == 0) if (try self.cycleFrom(w, n, edge, color, stack, depth + 1)) |c| return c;
+        }
+        color[v] = 2;
+        return null;
+    }
+
+    /// Can rule `b` fire right after rule `a` fired, at the same position?
+    fn canFollow(self: *const LexerGenerator, a: *const LexerRule, b: *const LexerRule) bool {
+        for (b.guards) |g| {
+            if (!self.canHoldAfter(a, g.variable, b.guards)) return false;
+        }
+        return true;
+    }
+
+    /// Is there a value `variable` can have after rule `a` fires at which
+    /// every guard of `guards` on it holds?
+    fn canHoldAfter(self: *const LexerGenerator, a: *const LexerRule, variable: []const u8, guards: []const Guard) bool {
+        const isPre = std.mem.eql(u8, variable, "pre");
+        if (isPre) {
+            // Only a held zero-width rule leaves the blanks unconsumed.
+            if (!(a.pattern.len == 0 and a.hold)) return holdsAll(guards, variable, 0);
+            var x: i32 = 0;
+            while (x <= 255) : (x += 1) {
+                if (holdsAll(a.guards, variable, x) and holdsAll(guards, variable, x)) return true;
+            }
+            return false;
+        }
+        var x: i32 = -128;
+        while (x <= 127) : (x += 1) {
+            if (!holdsAll(a.guards, variable, x)) continue;
+            const after = self.effect(a, variable, x) orelse return true; // counted: any value
+            if (holdsAll(guards, variable, after)) return true;
+        }
+        return false;
+    }
+
+    /// The value of `variable` after rule `r` fires with it at `x` (null:
+    /// unknown, a count).
+    fn effect(self: *const LexerGenerator, r: *const LexerRule, variable: []const u8, x: i32) ?i32 {
+        var v = x;
+        if (r.pattern.len != 0) for (self.spec.afterActions.items) |act| {
+            if (!std.mem.eql(u8, act.variable.?, variable)) continue;
+            const overridden = for (r.actions) |o| {
+                if (o.variable != null and std.mem.eql(u8, o.variable.?, variable) and (o.kind == .set or o.kind == .counted)) break true;
+            } else false;
+            if (!overridden) v = act.value.?;
+        };
+        for (r.actions) |act| {
+            const name = act.variable orelse continue;
+            if (!std.mem.eql(u8, name, variable)) continue;
+            switch (act.kind) {
+                .set => v = act.value.?,
+                .inc => v = @min(v + 1, 127),
+                .dec => v = @max(v - 1, -128),
+                .counted => return null,
+            }
+        }
+        return v;
+    }
+
+    fn holdsAll(guards: []const Guard, variable: []const u8, x: i32) bool {
+        for (guards) |g| {
+            if (std.mem.eql(u8, g.variable, variable) and !guardHoldsAt(g, x)) return false;
+        }
+        return true;
+    }
+
+    fn guardHoldsAt(g: Guard, x: i32) bool {
+        const holds = switch (g.op) {
+            .eq => x == g.value,
+            .ne => x != g.value,
+            .gt => x > g.value,
+            .lt => x < g.value,
+            .ge => x >= g.value,
+            .le => x <= g.value,
+            .truthy => x != 0,
+        };
+        return holds != g.negated;
+    }
+
     fn hasCounted(r: *const LexerRule) bool {
         for (r.actions) |act| if (act.kind == .counted) return true;
         return false;
@@ -282,6 +460,9 @@ pub const LexerGenerator = struct {
         const consumesWs = !r.hold and requiresWhitespace(r.guards);
         if (!consumesWs and !changesGuardedState(r)) {
             return self.fail(r, 0, "this zero-width rule would match forever: it must require whitespace (a guard false at pre = 0) or assign a state variable its guards test", .{});
+        }
+        if (!consumesWs and !self.falsifiesGuard(r, false)) {
+            return self.fail(r, 0, "this zero-width rule would match forever: after its actions its guards still hold; an action must make one of them false", .{});
         }
     }
 
@@ -325,6 +506,9 @@ pub const LexerGenerator = struct {
             if (r.isSkip) return self.fail(r, 0, "a zero-width token cannot be skipped", .{});
             if (r.guards.len == 0 or !changesGuardedState(r)) {
                 return self.fail(r, 0, "this zero-width rule would match forever: it must assign a state variable its guards test", .{});
+            }
+            if (!self.falsifiesGuard(r, true)) {
+                return self.fail(r, 0, "this zero-width rule would match forever: after its actions its guards still hold; an action must make one of them false", .{});
             }
         }
         return end;

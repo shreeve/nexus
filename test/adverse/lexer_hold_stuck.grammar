@@ -1,0 +1,18 @@
+# A held token whose action leaves its guard true would be returned
+# forever when its pattern matches.
+# error: lexer_hold_stuck.grammar:13:1:
+# error: after its actions its guards still hold
+@lexer
+state
+    m = 1
+tokens
+    t
+    word
+    eof
+    err
+'a' @ m                                     → t, hold, {m = 1}
+[a-z]+                                      → word
+.                                           → err
+
+@parser
+top! = (T | WORD)*                          → (top ...1)

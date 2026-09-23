@@ -1,0 +1,20 @@
+# Two zero-width rules that re-enable each other would return tokens
+# forever at one position (the generated lexer hung on any input).
+# error: lexer_zero_width_cycle.grammar:14:1:
+# error: zero-width rules could fire one after another forever
+@lexer
+state
+    m = 1
+tokens
+    t
+    u
+    word
+    eof
+    err
+@ m                                         → t, {m = 0}
+@ !m                                        → u, {m = 1}
+[a-z]+                                      → word
+.                                           → err
+
+@parser
+top! = (T | U | WORD)*                      → (top ...1)

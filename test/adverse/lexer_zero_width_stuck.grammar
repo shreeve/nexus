@@ -1,0 +1,18 @@
+# A zero-width rule whose action leaves its own guard true would return
+# the same token forever (the generated lexer hung on any input).
+# error: lexer_zero_width_stuck.grammar:13:1:
+# error: after its actions its guards still hold
+@lexer
+state
+    m = 1
+tokens
+    t
+    word
+    eof
+    err
+@ m                                         → t, {m = 1}
+[a-z]+                                      → word
+.                                           → err
+
+@parser
+top! = (T | WORD)*                          → (top ...1)
