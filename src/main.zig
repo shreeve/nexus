@@ -30,6 +30,7 @@ const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
     _ = @import("frontend/lower.zig");
+    _ = @import("lexgen/automaton.zig");
 }
 
 const usage =
