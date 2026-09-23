@@ -9,11 +9,11 @@ const parser = @import("parser.zig");
 pub const Tag = parser.Tag;
 
 const keywords = std.StaticStringMap(parser.TokenCat).initComptime(.{
-    .{ "let", .let },     .{ "if", .@"if" },       .{ "unless", .unless },
-    .{ "then", .then },   .{ "else", .@"else" },   .{ "return", .@"return" },
-    .{ "for", .@"for" },  .{ "ptr", .ptr },        .{ "in", .in },
-    .{ "do", .do },       .{ "call", .call },      .{ "swap", .swap },
-    .{ "with", .with },   .{ "pass", .pass },      .{ "yield", .yield },
+    .{ "let", .let },    .{ "if", .@"if" },     .{ "unless", .unless },
+    .{ "then", .then },  .{ "else", .@"else" }, .{ "return", .@"return" },
+    .{ "for", .@"for" }, .{ "ptr", .ptr },      .{ "in", .in },
+    .{ "do", .do },      .{ "call", .call },    .{ "swap", .swap },
+    .{ "with", .with },  .{ "pass", .pass },    .{ "yield", .yield },
 });
 
 pub const Lexer = struct {
