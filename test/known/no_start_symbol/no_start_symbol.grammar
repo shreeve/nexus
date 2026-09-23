@@ -1,0 +1,21 @@
+# A grammar with no `name!` start symbol parses from its first rule: the
+# generated parser has a parse method for it (or generation fails with a
+# located error; then turn this into a rejection test).
+#
+# Today: generation succeeds and builds tables for the first rule, but the
+# `Start` enum is empty and the parser has no parse method, so nothing can
+# be parsed (the test driver fails to compile: "parser has no parse* start
+# method"). Found while documenting start symbols.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "no_start_symbol"
+
+top  = IDENT+                               → (top ...1)

@@ -410,7 +410,6 @@
 <span class="kw">@parser</span>
 
 <span class="kw">@lang</span> = <span class="str">"basic"</span>
-<span class="kw">@conflicts</span> = <span class="sym">0</span>
 
 <span class="rul">name</span>     = <span class="tok">IDENT</span>
 <span class="rul">program!</span> = <span class="rul">body</span>                  <span class="op">&rarr;</span> <span class="sym">(module ...1)</span>
@@ -486,7 +485,7 @@
   <!-- Validated Languages -->
   <section>
     <h2>Validated Languages</h2>
-    <p>Nexus has been used to build parsers for three real-world languages, each with its own grammar and language module.</p>
+    <p>Each of these grammars generates, compiles and parses its test corpus in the Nexus test suite.</p>
 
     <table class="lang-table">
       <thead>
@@ -497,6 +496,11 @@
         </tr>
       </thead>
       <tbody>
+        <tr>
+          <td>Rig</td>
+          <td><code>rig.grammar</code></td>
+          <td>Systems language with visible ownership (its schema-mode grammar lives in the Rig repository)</td>
+        </tr>
         <tr>
           <td>Zag</td>
           <td><code>zag.grammar</code></td>
@@ -511,6 +515,16 @@
           <td>MUMPS</td>
           <td><code>mumps.grammar</code></td>
           <td>Legacy healthcare language with pattern mode, dot-level counting, and context-sensitive commands</td>
+        </tr>
+        <tr>
+          <td>Ruby subset</td>
+          <td><code>ruby.grammar</code></td>
+          <td>Newline-sensitive statements, modifiers, blocks and symbols</td>
+        </tr>
+        <tr>
+          <td>Nexis</td>
+          <td><code>nexis.grammar</code></td>
+          <td>A Clojure-flavored reader: anonymous functions, syntax-quote, metadata</td>
         </tr>
       </tbody>
     </table>

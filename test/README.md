@@ -1,11 +1,11 @@
 # Nexus test suite
 
 ```bash
-./test/run                  # everything (parallel, ~10 s)
+./test/run                  # everything, in parallel
 ./test/run mumps            # only tests whose id contains "mumps"
 ./test/run -v known         # list each result, including known failures
 ./test/run --update rig     # rewrite goldens after an intended change, then review the diff
-test/diff legacy current A.grammar B.grammar CORPUS   # old-vs-new trees over a corpus
+test/diff legacy current OLD.grammar NEW.grammar CORPUS   # old-vs-new trees over a corpus
 test/bench/run              # generation time and parse throughput
 ```
 
@@ -31,6 +31,10 @@ tested. `zig build test` runs it too.
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
 | `unit/nexus` | the generator's own Zig unit tests (`zig build test-unit`, `unit`, or `test-lowerer`, whichever exists) |
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
+| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2), unreadable files, `check`, `--spans`, `--dump-sexp` |
+| `docs/<DOC>/L<line>-<name>` | a complete grammar in `README.md`, `CHANGELOG.md`, `AGENTS.md`, `docs/*.md` or this file generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
+| `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
+| `docs/<DOC>/L<line>` | a grammar fragment parses (or: a malformed doc example) |
 
 A compile failure fails every case of that grammar with the first compiler
 error as the reason, so "generated but does not compile" can never pass.
@@ -76,10 +80,13 @@ The in-repo suites:
 | Suite | Grammar | Corpus |
 |---|---|---|
 | `basic`, `features`, `lit_tags` | small feature grammars (no lang `Lexer` wrapper) | hand-written |
+| `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
+| `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
+| `spans` | the MUMPS grammar generated with `--spans` | MUMPS cases |
 | `nexus` | `nexus.grammar` with `src/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 | `rig` | the live Rig grammar and its `rig.zig`, `ir.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 that fail today), 22 MVTS-derived em compliance routines |
-| `zag`, `ruby`, `slash`, `nexis` | downstream grammars (old format) | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
+| `zag`, `ruby`, `slash`, `nexis` | downstream grammars, ported to 1.0 without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
 where and how an input fails.
@@ -95,15 +102,15 @@ where and how an input fails.
 "text"               a .str value
 name                 a .tag value
 _                    nil
-(…)@12..40           a list's node span, printed automatically once the parser has span()
+(…)@12..40           a list's node span, when the parser records spans (@schema or --spans)
 !error ParseError at 3:5 unexpected newline
 ```
 
 The driver adapts at compile time: `Parser` (or `BaseParser` when a
 grammar has no `@lang`), lists as slices (0.10.x) or as a struct with
-`items()` (1.0), and every `pub fn parseX(*Parser) !Sexp` as a start rule.
-When 1.0 adds spans, `./test/run --update` records them in every golden;
-review that diff once.
+`items()` (1.0), and every `pub fn parseX(*Parser) !Sexp` as a start rule
+(so the same driver serves `test/diff` with Nexus 0.10.3). `--no-spans`
+omits the spans.
 
 ## Known bugs
 
@@ -121,6 +128,7 @@ Other header directives:
 | `# error: <text>` | generation must fail (non-zero exit, `file:line:col: error`) and print `<text>` |
 | `# absent: <text>` | the generator's output must not contain `<text>` |
 | `# generated-has: <text>` | the generated parser must contain `<text>` |
+| `# compile-error: <text>` | the grammar generates, but its parser must fail to compile with `<text>` |
 
 Give each bug test its own `@lang` module with a pass-through `Lexer`
 wrapper unless the bug is about grammars without one, so that one bug
@@ -131,8 +139,7 @@ with the move to make: `known/<bug>` to `test/regress/`, a
 `<grammar>/known/<case>` into `cases/`, an `adverse/known/<name>` into
 `test/adverse/`. Make the move in the same commit as the fix, and drop the
 "Today:" paragraph from the header: tests outside `known/` describe
-current behavior only. The known tests are written in the 0.10.3 grammar
-format; port them along with the other grammars.
+current behavior only.
 
 ## Differential testing
 
@@ -140,16 +147,19 @@ format; port them along with the other grammars.
 parses a corpus with both (parallel chunks, ReleaseSafe), and compares
 trees file by file. `legacy` names Nexus 0.10.3 (built from the `v0.10.3`
 tag on first use, or `$NEXUS_LEGACY`), `current` this checkout's
-`bin/nexus`.
+`bin/nexus`. Pair each generator with a grammar it reads: `legacy` reads
+only the 0.10 format, `current` only 1.0.
 
 ```bash
-# The Rig port: 1.0 grammar vs 0.10.3 grammar, both after Rig's Parser wrapper
-test/diff --start parseProgram legacy current ~/Data/Code/rig/rig.grammar test/rig/rig.grammar \
-    --ext .rig ~/Data/Code/rig/test ~/Data/Code/rig/examples
+# MUMPS: em's 0.10 grammar under 0.10.3 vs the 1.0 port, over VistA
+# (24,704 routines: 22,709 same trees, 1,995 same parse errors)
+test/diff --lang-old ~/Data/Code/em/src/mumps.zig --lang-new test/mumps/mumps.zig \
+    legacy current ~/Data/Code/em/mumps.grammar test/mumps/mumps.grammar \
+    --ext .m ~/Data/Code/em/misc/vista
 
-# MUMPS over VistA + ORO (51k routines, ~3 s of parsing)
-test/diff legacy current test/mumps/mumps.grammar NEW/mumps.grammar \
-    --ext .m ~/Data/Code/em/misc/vista ~/Data/Code/em/misc/foia/oro
+# Two 1.0 grammars (a change under review), after a lang Parser wrapper
+test/diff --start parseProgram current current OLD/rig.grammar NEW/rig.grammar \
+    --ext .rig ~/Data/Code/rig/test ~/Data/Code/rig/examples
 ```
 
 Results are grouped as `same`, `same_error` (the same parse error),
@@ -163,6 +173,27 @@ directory of the grammar's `@lang` module (next to the grammar or in its
 `src/`); override with `--lang-old` / `--lang-new`, and the start rule with
 `--start`, `--start-old`, `--start-new`. The exit status is 0 only when
 nothing differs.
+
+## Doc tests
+
+Every Markdown document the suite scans (`README.md`, `CHANGELOG.md`,
+`AGENTS.md`, `docs/*.md`, this file) is split into examples by
+`test/lib/doctest`, which marks them by their fence's info string:
+
+| Fence | Checked |
+|---|---|
+| ` ```grammar NAME.grammar ` | a complete grammar: generates and compiles (with `--spans` etc. after the name as generator options) |
+| ` ```grammar NAME.grammar rejects ` | generation fails, and the output contains every line of the next ` ```error ` block |
+| ` ```grammar fragment ` / ` ```grammar fragment lexer ` | parses (`nexus --dump-sexp`), as @parser-section or @lexer-section text |
+| ` ```input [start=RULE] ` then ` ```tree [no-spans] ` | the last complete grammar parses the input to exactly this tree |
+| ` ```zig NAME.zig ` | a file next to the last grammar's parser (its lang module) |
+| ` ```zig test ` | `zig test` against the last grammar's parser |
+| ` ```zig fragment ` | illustration only |
+
+A `grammar` or `zig` fence without one of these markers fails, and so does
+an `input` without its `tree`, so nothing in a document goes untested by
+accident. Other fences (`text`, `bash`, ...) are not checked. The examples
+are extracted into `.zig-cache/nexus-test/docs/` and run like any suite.
 
 ## Lexer fuzzing
 
@@ -180,7 +211,7 @@ against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
 in-repo grammar, and measures lexing and lexing+parsing throughput on the
 full VistA corpus and a synthetic 4 MB Rig file (falling back to the
 committed cases when those repos are absent). `test/bench/BASELINE.md` holds
-the 0.10.3 numbers; update it when a change moves them.
+the 0.10.3 and 1.0.0 numbers; update it when a change moves them.
 
 ## Files
 
@@ -192,6 +223,7 @@ the 0.10.3 numbers; update it when a change moves them.
 | `test/lib/driver.zig` | tree driver compiled into every generated parser |
 | `test/lib/build-grammar` | generate + compile one grammar with a given nexus |
 | `test/lib/legacy-nexus` | find or build Nexus 0.10.3 |
+| `test/lib/doctest` | extract the doc examples into suites |
 | `test/golden/` | generated-code (`.zig`) and frontend-tree (`.sexp`) goldens |
 
 Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite

@@ -1,6 +1,6 @@
 # Zig 0.15.x → 0.16.0 Migration — Quickstart Kit
 
-This file is a **turn-key quickstart** for pointing an AI (or yourself) at a Zig codebase that needs a 0.15.x → 0.16.0 migration. It's small on purpose. The actual reference material lives in `ZIG-0.16.0-REFERENCE.md` (1,800+ lines of changelog, patterns, decoder tables, and workflow playbook distilled from a real end-to-end port).
+This file is a **turn-key quickstart** for pointing an AI (or yourself) at a Zig codebase that needs a 0.15.x → 0.16.0 migration. It's small on purpose. The actual reference material lives in `REFERENCE.md` (1,800+ lines of changelog, patterns, decoder tables, and workflow playbook distilled from a real end-to-end port).
 
 ---
 
@@ -19,7 +19,7 @@ This file is a **turn-key quickstart** for pointing an AI (or yourself) at a Zig
    - Check with `zig version` — should print `0.16.0`.
    - Install via your package manager (`brew install zig` on macOS, etc.).
 3. **A shell the AI can run** (`zig build`, `zig build test`, `rg`, `sed`).
-4. **This file (`ZIG-0.16.0-QUICKSTART.md`) and its companion (`ZIG-0.16.0-REFERENCE.md`).**
+4. **This file (`QUICKSTART.md`) and its companion (`REFERENCE.md`).**
 
 ## Optional inputs (helpful but not required)
 
@@ -36,8 +36,8 @@ Paste this as your first message in a new chat. Replace the `<…>` fields.
 I need to migrate a Zig codebase from 0.15.x to 0.16.0.
 
 Reference files (both attached/available in this workspace):
-- ZIG-0.16.0-QUICKSTART.md  (start here; this is the protocol)
-- ZIG-0.16.0-REFERENCE.md   (full changelog + decoder + playbook)
+- QUICKSTART.md  (start here; this is the protocol)
+- REFERENCE.md   (full changelog + decoder + playbook)
 
 Codebase:
 - Path: <absolute path to the project root>
@@ -49,7 +49,7 @@ Codebase:
 Zig 0.16.0 is installed locally (verified with `zig version`).
 
 Please follow the "Migration Workflow Tactics" section at the end of
-ZIG-0.16.0-REFERENCE.md. Specifically:
+REFERENCE.md. Specifically:
 1. Start with Phase 0 (empirical baseline — `zig build`, capture errors,
    do not edit code yet).
 2. Migrate one API family at a time, compiling between each step.
@@ -124,7 +124,7 @@ Go.
 
 | Symptom | Likely cause | Where to look |
 |---|---|---|
-| `missing struct field: items` on `ArrayListUnmanaged(T)` | Lost field defaults | "Common Bad Assumptions #15" in ZIG-0.16.0-REFERENCE.md |
+| `missing struct field: items` on `ArrayListUnmanaged(T)` | Lost field defaults | "Common Bad Assumptions #15" in REFERENCE.md |
 | `tried to invoke non-function 'writer'` on `Allocating` | It's a field, not a method | "Common Bad Assumptions #13" |
 | `expected type 'std.Io.Limit'` with integer | `.limited(N)` needed | "Common Bad Assumptions #14" |
 | `root source file struct 'mem' has no member 'trimLeft'` | Renamed 0.16 | "Std lib trim rename" subsection |
@@ -158,4 +158,4 @@ If all six are true, the migration is done.
 
 This kit was written from exactly one real migration. It worked for that project. It will probably work for yours with minor adaptations. But every codebase has its own quirks, and 0.16 made enough changes that something novel will almost certainly surface.
 
-**When you hit something this kit doesn't cover:** log it, fix it, and if you feel generous, open a PR against this file (or its parent `ZIG-0.16.0-REFERENCE.md`) to help the next person.
+**When you hit something this kit doesn't cover:** log it, fix it, and if you feel generous, open a PR against this file (or its parent `REFERENCE.md`) to help the next person.

@@ -1,7 +1,7 @@
 //! Nexus — Build Configuration
 //!
-//! Builds the nexus tool that reads .grammar files and generates
-//! parser.zig (lexer + LALR(1) parser producing S-expressions).
+//! Builds bin/nexus, which reads a .grammar file and generates a parser
+//! module (DFA lexer + LALR(1) parser producing S-expressions).
 //!
 //! Usage:
 //!   zig build                    — build nexus
@@ -37,13 +37,14 @@ pub fn build(b: *std.Build) void {
     const run_step = b.step("run", "Run nexus");
     run_step.dependOn(&run_cmd.step);
 
-    // Zig-native unit tests (currently only the lowerer negative-shape
-    // suite). Runs in a separate test binary compiled by `zig test`; the
-    // production `nexus` executable never links this code.
+    // The generator's Zig unit tests (lowering, patterns and automata, the
+    // LR core, semantics, the runtime template), in a separate test binary;
+    // the `nexus` executable never links this code. `test/run` runs them as
+    // unit/nexus.
     const lowerer_tests = b.addTest(.{ .root_module = nexus_mod });
     const run_lowerer_tests = b.addRunArtifact(lowerer_tests);
 
-    const test_lowerer_step = b.step("test-lowerer", "Run lowerer negative-shape tests");
+    const test_lowerer_step = b.step("test-lowerer", "Run the generator's unit tests");
     test_lowerer_step.dependOn(&run_lowerer_tests.step);
 
     // The runtime template on its own (runtime.zig and the template's

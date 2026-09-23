@@ -1,8 +1,9 @@
 //! nexus — generate a standalone Zig lexer + LR parser from a .grammar file.
 //!
-//! Usage: nexus [--slr] [--spans] [-c] <grammar-file> [output-file]
+//! Usage: nexus [options] <grammar-file> [output-file]
 //!        nexus check <grammar-file>
 //!        nexus --dump-sexp <grammar-file> [output-file]
+//!        nexus --help | --version
 //!
 //! Pipeline: frontend (the self-hosted grammar-file parser, lowered to the
 //! lexer spec and GrammarIR) -> lexgen (lexer source) -> expand (desugared
@@ -36,37 +37,47 @@ test {
 }
 
 const usage =
-    \\Usage: nexus <grammar-file> [output-file]
+    \\Usage: nexus [options] <grammar-file> [output-file]
     \\       nexus check <grammar-file>
-    \\       nexus --help
+    \\       nexus --dump-sexp <grammar-file> [output-file]
+    \\       nexus --help | --version
     \\
 ;
 
-const help =
-    \\nexus — Universal Parser Generator
+const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser module out\n\n" ++
+    \\Reads a .grammar file (an @lexer section, then an @parser section) and
+    \\writes a standalone Zig module with its DFA lexer, LALR(1) parser and,
+    \\with @schema, the verified semantic layer.
     \\
-    \\Reads a .grammar file with @lexer and @parser sections and generates
-    \\a combined parser.zig module containing both lexer and parser.
     \\
-    \\Usage: nexus <grammar-file> [output-file]
-    \\       nexus check <grammar-file>
-    \\       nexus --dump-sexp <grammar-file> [output-file]
+++ usage ++
+    \\
+    \\Commands:
+    \\  <grammar-file> [output-file]
+    \\                  Generate the parser module (default output:
+    \\                  src/parser.zig)
+    \\  check           Check the grammar without writing anything
+    \\  --dump-sexp     Write the frontend's S-expression tree of the grammar
+    \\                  file to output-file (default: standard output)
     \\
     \\Options:
-    \\  -c, --comments  Include grammar-rule comments in generated code
-    \\      --slr       Use SLR(1) instead of LALR(1) for parse tables
-    \\      --spans     Record node spans and rule ids in the generated
-    \\                  parser (always on for grammars with @schema)
-    \\      --dump-sexp Parse the grammar file with the self-hosted
-    \\                  frontend and write its canonical S-expression
-    \\                  tree to the output file (or stdout)
+    \\  --spans         Record node spans and rule ids (always on with @schema)
+    \\  --slr           Build SLR(1) tables instead of LALR(1)
+    \\  -c, --comments  Write each grammar rule as a comment above its action
     \\  -h, --help      Show this help
+    \\  -V, --version   Show the version
+    \\
+    \\Errors are reported as file:line:col: error: <message>; the exit
+    \\status is 0 on success, 1 on any error, 2 on a usage error.
     \\
     \\Examples:
-    \\  nexus lang.grammar src/parser.zig
-    \\  nexus --dump-sexp nexus.grammar test/golden/nexus.sexp
+    \\  nexus calc.grammar src/parser.zig
+    \\  nexus check calc.grammar
+    \\  nexus --dump-sexp nexus.grammar
     \\
 ;
+
+const version = @import("version.zig").version;
 
 const Options = struct {
     checkMode: bool = false,
@@ -87,49 +98,63 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(allocator);
 
-    if (args.len < 2) {
-        std.debug.print(usage, .{});
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "-h")) {
-        std.debug.print(help, .{});
-        return;
-    }
-
-    if (std.mem.eql(u8, args[1], "--dump-sexp")) {
-        if (args.len < 3) {
-            std.debug.print("Usage: nexus --dump-sexp <grammar-file> [output-file]\n", .{});
-            return;
-        }
-        return dumpSexp(allocator, io, args[2], if (args.len >= 4) args[3] else null);
-    }
-
-    const checkMode = std.mem.eql(u8, args[1], "check") or std.mem.eql(u8, args[1], "--check");
-
-    // Parse option flags from remaining args
-    var opts: Options = .{ .checkMode = checkMode, .grammarFile = undefined, .outputFile = undefined };
-    var positionalStart: usize = if (checkMode) 2 else 1;
-    for (args[positionalStart..]) |arg| {
-        if (std.mem.eql(u8, arg, "--comments") or std.mem.eql(u8, arg, "-c")) {
+    var command: enum { generate, check, dump } = .generate;
+    var opts: Options = .{ .grammarFile = undefined, .outputFile = "src/parser.zig" };
+    var positional: [2][]const u8 = undefined;
+    var count: usize = 0;
+    for (args[1..], 1..) |arg, i| {
+        if (eql(arg, "-h") or eql(arg, "--help")) {
+            return writeStdout(io, help);
+        } else if (eql(arg, "-V") or eql(arg, "--version")) {
+            return writeStdout(io, "nexus " ++ version ++ "\n");
+        } else if (eql(arg, "--dump-sexp")) {
+            command = .dump;
+        } else if (eql(arg, "-c") or eql(arg, "--comments")) {
             opts.emitComments = true;
-            positionalStart += 1;
-        } else if (std.mem.eql(u8, arg, "--slr")) {
+        } else if (eql(arg, "--slr")) {
             opts.parseMode = .slr;
-            positionalStart += 1;
-        } else if (std.mem.eql(u8, arg, "--spans")) {
+        } else if (eql(arg, "--spans")) {
             opts.spans = true;
-            positionalStart += 1;
-        } else break;
+        } else if (i == 1 and eql(arg, "check")) {
+            command = .check;
+        } else if (arg.len > 1 and arg[0] == '-') {
+            usageError("unknown option '{s}'", .{arg});
+        } else if (count < 2) {
+            positional[count] = arg;
+            count += 1;
+        } else {
+            usageError("unexpected argument '{s}'", .{arg});
+        }
     }
+    if (count == 0) usageError("no grammar file given", .{});
 
-    opts.grammarFile = if (positionalStart < args.len) args[positionalStart] else {
-        std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
-        return;
-    };
-    opts.outputFile = if (positionalStart + 1 < args.len) args[positionalStart + 1] else "src/parser.zig";
-
+    switch (command) {
+        .dump => return dumpSexp(allocator, io, positional[0], if (count == 2) positional[1] else null),
+        .check => {
+            if (count == 2) usageError("`nexus check` writes nothing; unexpected '{s}'", .{positional[1]});
+            opts.checkMode = true;
+        },
+        .generate => if (count == 2) {
+            opts.outputFile = positional[1];
+        },
+    }
+    opts.grammarFile = positional[0];
     return generate(allocator, io, opts);
+}
+
+fn eql(a: []const u8, b: []const u8) bool {
+    return std.mem.eql(u8, a, b);
+}
+
+/// A command-line mistake: the message and the usage, exit status 2.
+fn usageError(comptime fmt: []const u8, args: anytype) noreturn {
+    diag.err(fmt, args);
+    std.debug.print("{s}Run `nexus --help` for more.\n", .{usage});
+    std.process.exit(2);
+}
+
+fn writeStdout(io: Io, bytes: []const u8) !void {
+    try std.Io.File.stdout().writeStreamingAll(io, bytes);
 }
 
 /// `nexus --dump-sexp`: print the frontend's canonical tree of the grammar file.
@@ -153,12 +178,12 @@ fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?
         try writeOutput(io, path, bytes);
         diag.info("Wrote S-expression dump to {s} ({d} bytes)", .{ path, bytes.len });
     } else {
-        std.debug.print("{s}", .{bytes});
+        try writeStdout(io, bytes);
     }
 }
 
 /// `nexus [check] <grammar>`: run the pipeline and write the parser module
-/// (or, in check mode, lint the grammar IR and stop).
+/// (in check mode, also lint the grammar IR, and write nothing).
 fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     const grammarFile = opts.grammarFile;
     const sourceText = try readGrammar(allocator, io, grammarFile);
@@ -210,17 +235,9 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         ir.startSymbols.len,
     });
 
-    if (opts.checkMode) {
-        diag.info("\nChecking grammar...", .{});
-        var failed = check.checkGrammar(allocator, &ir) > 0;
-        if (ir.schema != null) {
-            _ = semantics.resolve(allocator, &ir, &lexerSpec, grammarFile) catch {
-                failed = true;
-            };
-        }
-        if (failed) fail();
-        return;
-    }
+    // Check mode: the lint (undefined and unreachable rules), then every
+    // check generation makes; nothing is written.
+    if (opts.checkMode and check.checkGrammar(allocator, &ir) > 0) fail();
 
     // Without parser rules the output is the lexer alone
     var finalCode: []const u8 = undefined;
@@ -284,6 +301,10 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         finalCode = try codegen.lexerModule(allocator, lexerSpec.langName, lexerDecls);
     }
 
+    if (opts.checkMode) {
+        diag.info("{s}: no errors", .{grammarFile});
+        return;
+    }
     try writeOutput(io, opts.outputFile, finalCode);
     diag.info("Generated: {s}", .{opts.outputFile});
 }
@@ -295,16 +316,19 @@ fn fail() noreturn {
 
 fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_grammar_bytes)) catch |err| {
-        diag.err("cannot read {s}: {any}", .{ path, err });
-        return err;
+        diag.err("cannot read {s}: {s}", .{ path, @errorName(err) });
+        fail();
     };
 }
 
 fn writeOutput(io: Io, path: []const u8, bytes: []const u8) !void {
     const file = std.Io.Dir.cwd().createFile(io, path, .{}) catch |err| {
-        diag.err("cannot create {s}: {any}", .{ path, err });
-        return err;
+        diag.err("cannot create {s}: {s}", .{ path, @errorName(err) });
+        fail();
     };
     defer file.close(io);
-    try file.writeStreamingAll(io, bytes);
+    file.writeStreamingAll(io, bytes) catch |err| {
+        diag.err("cannot write {s}: {s}", .{ path, @errorName(err) });
+        fail();
+    };
 }
