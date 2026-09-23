@@ -994,7 +994,17 @@ pub const GrammarLowerer = struct {
             else => {},
         };
         var elem = try self.lowerElement(items[2]);
-        if (elem.kind == .optGroup) return self.fail(node, "label '{s}' on a multi-element [...] group; label its elements", .{name});
+        if (elem.kind == .optGroup) {
+            if (elem.subElements.len != 1) return self.fail(node, "label '{s}' on a multi-element [...] group; label its elements", .{name});
+            // `role:["x"]` labels the one element (as `[role:"x"]` does).
+            const sub = try self.allocator.dupe(ParsedElement, elem.subElements);
+            sub[0].label = name;
+            const l = self.loc(items[1]);
+            sub[0].line = l.line;
+            sub[0].col = l.col;
+            elem.subElements = sub;
+            return elem;
+        }
         elem.label = name;
         const l = self.loc(items[1]);
         elem.line = l.line;

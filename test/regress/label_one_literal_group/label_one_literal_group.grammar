@@ -1,0 +1,20 @@
+# A label on a one-element [...] group of a literal (`b:["+"]`) labels the
+# literal, like `[b:"+"]` (it was rejected as a multi-element group).
+
+@lexer
+tokens
+    ident
+    plus
+    eof
+    err
+'+'                                         → plus
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "label_one_literal_group"
+
+@schema
+    pair   a:leaf b:leaf?
+
+top! = a:IDENT b:["+"]                      → (pair)
