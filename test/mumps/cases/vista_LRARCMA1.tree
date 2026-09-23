@@ -1,0 +1,720 @@
+(routine
+  (label `LRARCMA1`)
+  (` `)
+  (` `)
+  (label `EN`)
+  (` ` _ (do _ (call (ref `INITMAN` _ `LRARCMR1`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRGETIN`)
+        (expr (select ((expr (lvar `LRIN`)) (expr (num `0`))) ((expr (num `1`)) (expr (num `1`))))))))
+  (` `
+    _
+    (for)
+    (do _ (call (ref `BUILD`)))
+    (quit
+      (postcond
+        (expr
+          (expr (lvar `LREND`))
+          (`!` (expr (`'` (lvar `LRLOOP`))))
+          (`!` (expr (lvar `LRBLDONE`)))))))
+  (` ` _ (quit))
+  (label `BUILD`)
+  (` ` _ (do _ (call (ref `GTIN`))))
+  (` ` _ (if (expr (`'` (lvar `LRIN`)))) (set _ (= (lvar `LRBLDONE`) (expr (num `1`)))) (quit))
+  (` `)
+  (` ` _ (set _ (setmulti (expr (num `0`)) (lvar `LRAPINGT`) (lvar `LRCPINGT`))))
+  (` ` _ (set _ (= (lvar `LRCDT`) (expr (lvar `LRCDTB`) (`-` (num `1`))))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `LRCDT`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `LRCDT`))))))))))
+    (quit
+      (postcond
+        (expr
+          (expr (lvar `LRCDT`) (`>` (lvar `LRCDTE`)))
+          (`!` (expr (lvar `LRCDT`) (`<` (num `1`)))))))
+    (do))
+  (` . `#1
+    _
+    (set
+      _
+      (= (lvar `LRCDTN`) (expr (num `0`)))
+      (=
+        (lvar `LRCDTN`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `LRCDT`))
+                   (expr (lvar `LRCDTN`)))))))))))
+  (` . `#1 _ (do _ (call (ref `DATCOM` _ `LRARCMR1`))))
+  (` . `#1
+    _
+    (write
+      (postcond
+        (expr
+          (intrinsic `E`#203 ((expr (lvar `IOST`)) (expr (num `1`)) (expr (num `2`))))
+          (`=` (str `"C-"`))))
+      (expr (str `"."`))))
+  (` . `#1 _ (set _ (= (lvar `LRCC`) (expr (num `0`)))))
+  (` . `#1
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `LRCC`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCDTN`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `LRCC`))))))))))
+    (quit (postcond (expr (expr (lvar `LRCC`) (`=` (str `""`))))))
+    (do _ (call (ref `CC`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRGTOTS`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (gvar `TMP` ((expr (str `"LRAR-WL"`)) (expr (intrinsic `J`#208)) (expr (num `0`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `LRGTOTS`)
+        (expr (lvar `U`))
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `LRGTOTS`)) (expr (lvar `U`))))
+          (`+` (lvar `LRAPINGT`))
+          (`+` (lvar `LRCPINGT`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar `TMP` ((expr (str `"LRAR-WL"`)) (expr (intrinsic `J`#208)) (expr (num `0`))))
+        (expr (lvar `LRGTOTS`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRGTOTS`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (gvar
+                 `TMP`
+                 ((expr (str `"LRAR-WL"`))
+                   (expr (intrinsic `J`#208))
+                   (expr (str `"DIV"`))
+                   (expr (str `"AP"`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `0`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `LRGTOTS`)
+        (expr (lvar `U`))
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `LRGTOTS`)) (expr (lvar `U`))))
+          (`+` (lvar `LRAPINGT`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar
+          `TMP`
+          ((expr (str `"LRAR-WL"`))
+            (expr (intrinsic `J`#208))
+            (expr (str `"DIV"`))
+            (expr (str `"AP"`))
+            (expr (lvar `LRIN`))
+            (expr (num `0`))))
+        (expr (lvar `LRGTOTS`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRGTOTS`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (gvar
+                 `TMP`
+                 ((expr (str `"LRAR-WL"`))
+                   (expr (intrinsic `J`#208))
+                   (expr (str `"DIV"`))
+                   (expr (str `"CP"`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `0`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `LRGTOTS`)
+        (expr (lvar `U`))
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `LRGTOTS`)) (expr (lvar `U`))))
+          (`+` (lvar `LRCPINGT`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar
+          `TMP`
+          ((expr (str `"LRAR-WL"`))
+            (expr (intrinsic `J`#208))
+            (expr (str `"DIV"`))
+            (expr (str `"CP"`))
+            (expr (lvar `LRIN`))
+            (expr (num `0`))))
+        (expr (lvar `LRGTOTS`)))))
+  (` ` _ (quit))
+  (label `CC`)
+  (` `
+    _
+    (set
+      _
+      (= (lvar `LRCCN`) (expr (num `0`)))
+      (=
+        (lvar `LRCCN`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCDTN`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `LRCC`))
+                   (expr (lvar `LRCCN`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRCCZ`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCDTN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCCN`))
+                   (expr (num `0`)))))
+              (expr (lvar `U`))))))))
+  (` `
+    _
+    (set
+      (postcond (expr (intrinsic `E`#203 ((expr (lvar `LRCCZ`)))) (`=` (str `"+"`))))
+      (=
+        (lvar `LRCCZ`)
+        (expr (intrinsic `E`#203 ((expr (lvar `LRCCZ`)) (expr (num `2`)) (expr (num `99`))))))))
+  (` `
+    _
+    (set _ (= (lvar `LRCAPNUM`) (expr (extrinsic ((`WKLDCODE` `LRARCU`) ((expr (lvar `LRCCZ`)))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `LRCAPNAM`) (expr (extrinsic ((`WKLDNAME` `LRARCU`) ((expr (lvar `LRCAPIFN`)))))))))
+  (` ` _ (do _ (call (ref `BMPMANL` _ `LRARCMR1`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRCTM`)
+        (expr
+          (select
+            ((expr (lvar `LRCTMB`) (`=` (num `0`))) (expr (str `""`)))
+            ((expr (num `1`)) (expr (lvar `LRCTMB`) (`-` (num `.001`)))))))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `LRCTM`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCDTN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCCN`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `LRCTM`))))))))))
+    (quit
+      (postcond
+        (expr
+          (expr (lvar `LRCTM`) (`>` (lvar `LRCTME`)))
+          (`!` (expr (lvar `LRCTM`) (`=` (str `""`)))))))
+    (set
+      _
+      (= (lvar `LRCTMN`) (expr (num `0`)))
+      (=
+        (lvar `LRCTMN`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `LAR`
+                 ((expr (num `64.19999`))
+                   (expr (lvar `LRIN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCDTN`))
+                   (expr (num `1`))
+                   (expr (lvar `LRCCN`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `LRCTM`))
+                   (expr (lvar `LRCTMN`))))))))))
+    (do _ (call (ref `TM`))))
+  (` ` _ (quit))
+  (label `TM`)
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (`'`
+            (expr
+              (intrinsic
+                `D`#202
+                ((expr
+                   (gvar
+                     `LAR`
+                     ((expr (num `64.19999`))
+                       (expr (lvar `LRIN`))
+                       (expr (num `1`))
+                       (expr (lvar `LRCDTN`))
+                       (expr (num `1`))
+                       (expr (lvar `LRCCN`))
+                       (expr (num `1`))
+                       (expr (lvar `LRCTMN`))
+                       (expr (num `0`)))))))
+              (`#` (num `2`)))))))
+    (set
+      _
+      (= (lvar `LRX`) (expr (naked (expr (num `0`)))))
+      (= (lvar `LRX1`) (expr (naked (expr (num `1`)))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRMA`)
+        (expr (intrinsic `P`#212 ((expr (lvar `LRX`)) (expr (lvar `U`)) (expr (num `5`))))))
+      (= (lvar `X`) (expr (lvar `LRMA`))))
+    (do _ (call (ref `GETA`)))
+    (set _ (= (lvar `LRMA`) (expr (`+` (lvar `Y`))))))
+  (` `
+    _
+    (if (expr (lvar `LRAA`)))
+    (quit (postcond (expr (`'` (intrinsic `D`#202 ((expr (lvar `LRAA` ((expr (lvar `LRMA`))))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `LRUC`)
+        (expr (`+` (intrinsic `P`#212 ((expr (lvar `LRX`)) (expr (lvar `U`)) (expr (num `3`)))))))
+      (=
+        (lvar `LRLDIV`)
+        (expr (intrinsic `P`#212 ((expr (lvar `LRX`)) (expr (lvar `U`)) (expr (num `4`))))))
+      (=
+        (lvar `LRLSS`)
+        (expr (intrinsic `P`#212 ((expr (lvar `LRX`)) (expr (lvar `U`)) (expr (num `6`))))))
+      (= (lvar `X`) (expr (lvar `LRLSS`))))
+    (do _ (call (ref `GETA`)))
+    (set _ (= (lvar `LRLSS`) (expr (`+` (lvar `Y`)))))
+    (set
+      (postcond
+        (expr
+          (lvar `LRLDIV`)
+          (`=` (str `""`))
+          (`!` (expr (lvar `LRLDIV`) (`=` (str `"CLINICAL PATHOLOGY"`))))))
+      (= (lvar `LRLDIV`) (expr (str `"CP"`)))))
+  (` `
+    _
+    (if (expr (lvar `LRLDIV`) (`=` (str `"ANATOMIC PATHOLOGY"`))))
+    (set _ (= (lvar `LRLDIV`) (expr (str `"AP"`)))))
+  (` ` _ (set (postcond (expr (`'` (lvar `LRUC`)))) (= (lvar `LRUC`) (expr (num `1`)))))
+  (` ` _ (if (expr (`+` (lvar `LRMA`)))) (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `LRREC`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `LRO` ((expr (num `68`)) (expr (lvar `LRMA`)) (expr (num `0`)))))))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `LRMAA`)
+        (expr
+          (select
+            ((expr
+               (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`)) (expr (num `11`))))
+               (`]` (str `""`)))
+              (expr (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`)) (expr (num `11`))))))
+            ((expr (num `1`)) (expr (lvar `LRNDFN`))))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `LRMAN`)
+        (expr
+          (select
+            ((expr (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`)))) (`]` (str `""`)))
+              (expr (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`))))))
+            ((expr (num `1`)) (expr (lvar `LRNDFN`))))))))
+  (` . `#1 _ (set _ (= (lvar `LRMAN` ((expr (lvar `LRMAA`)))) (expr (lvar `LRMAN`)))))
+  (` `
+    _
+    (if (expr (`'` (`+` (lvar `LRMA`)))))
+    (set
+      _
+      (setmulti (expr (lvar `LRNDFN`)) (lvar `LRMAA`) (lvar `LRMAN`))
+      (= (lvar `LRMAN` ((expr (lvar `LRMAA`)))) (expr (lvar `LRMAN`)))))
+  (` ` _ (if (expr (`+` (lvar `LRLSS`)))) (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `LRREC`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `LRO` ((expr (num `68`)) (expr (lvar `LRLSS`)) (expr (num `0`)))))))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `LRLSSA`)
+        (expr
+          (select
+            ((expr
+               (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`)) (expr (num `11`))))
+               (`]` (str `""`)))
+              (expr (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`)) (expr (num `11`))))))
+            ((expr (num `1`)) (expr (lvar `LRNDFN`))))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `LRLSSN`)
+        (expr
+          (select
+            ((expr (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`)))) (`]` (str `""`)))
+              (expr (intrinsic `P`#212 ((expr (lvar `LRREC`)) (expr (lvar `U`))))))
+            ((expr (num `1`)) (expr (lvar `LRNDFN`))))))))
+  (` . `#1 _ (set _ (= (lvar `LRLSSN` ((expr (lvar `LRLSSA`)))) (expr (lvar `LRLSSN`)))))
+  (` `
+    _
+    (if (expr (`'` (`+` (lvar `LRLSS`)))))
+    (set
+      _
+      (setmulti (expr (lvar `LRNDFN`)) (lvar `LRLSSA`) (lvar `LRLSSN`))
+      (= (lvar `LRLSSN` ((expr (lvar `LRLSSA`)))) (expr (lvar `LRLSSN`)))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `TMP`
+               ((expr (str `"LRAR-WL"`))
+                 (expr (intrinsic `J`#208))
+                 (expr (str `"DIV"`))
+                 (expr (lvar `LRLDIV`))
+                 (expr (lvar `LRIN`))
+                 (expr (lvar `LRMAA`))
+                 (expr (lvar `LRLSSA`))
+                 (expr (lvar `LRCAPNAM`)))))))
+        (`#` (num `2`))))
+    (do))
+  (` . `#1
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (naked (expr (lvar `LRCAPNAM`)))
+        (expr (lvar `U`))
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (gvar
+                 `TMP`
+                 ((expr (str `"LRAR-WL"`))
+                   (expr (intrinsic `J`#208))
+                   (expr (str `"DIV"`))
+                   (expr (lvar `LRLDIV`))
+                   (expr (lvar `LRIN`))
+                   (expr (lvar `LRMAA`))
+                   (expr (lvar `LRLSSA`))
+                   (expr (lvar `LRCAPNAM`)))))
+              (expr (lvar `U`))))
+          (`+` (lvar `LRUC`))))))
+  (` ` _ (else) (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (gvar
+          `TMP`
+          ((expr (str `"LRAR-WL"`))
+            (expr (intrinsic `J`#208))
+            (expr (str `"DIV"`))
+            (expr (lvar `LRLDIV`))
+            (expr (lvar `LRIN`))
+            (expr (lvar `LRMAA`))
+            (expr (lvar `LRLSSA`))
+            (expr (lvar `LRCAPNAM`))))
+        (expr (lvar `LRUC`)))))
+  (` . `#1
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (gvar
+          `TMP`
+          ((expr (str `"LRAR-WL"`))
+            (expr (intrinsic `J`#208))
+            (expr (str `"DIV"`))
+            (expr (lvar `LRLDIV`))
+            (expr (lvar `LRIN`))
+            (expr (lvar `LRMAA`))
+            (expr (lvar `LRLSSA`))
+            (expr (lvar `LRCAPNAM`))))
+        (expr (lvar `U`))
+        (expr (num `2`))
+        (expr (lvar `LRCAPNUM`)))))
+  (` ` _ (if (expr (lvar `LRLDIV`) (`=` (str `"AP"`)))) (do))
+  (` . `#1 _ (set _ (= (lvar `LRAPINGT`) (expr (lvar `LRAPINGT`) (`+` (lvar `LRUC`))))))
+  (` ` _ (else) (do))
+  (` . `#1 _ (set _ (= (lvar `LRCPINGT`) (expr (lvar `LRCPINGT`) (`+` (lvar `LRUC`))))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `TMP`
+               ((expr (str `"LRAR-WL"`))
+                 (expr (intrinsic `J`#208))
+                 (expr (str `"DIV"`))
+                 (expr (lvar `LRLDIV`))
+                 (expr (lvar `LRIN`))
+                 (expr (lvar `LRMAA`))
+                 (expr (lvar `LRLSSA`))
+                 (expr (num `0`)))))))
+        (`#` (num `2`))))
+    (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (naked (expr (num `0`)))
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (gvar
+                 `TMP`
+                 ((expr (str `"LRAR-WL"`))
+                   (expr (intrinsic `J`#208))
+                   (expr (str `"DIV"`))
+                   (expr (lvar `LRLDIV`))
+                   (expr (lvar `LRIN`))
+                   (expr (lvar `LRMAA`))
+                   (expr (lvar `LRLSSA`))
+                   (expr (num `0`)))))
+              (expr (lvar `U`))))
+          (`+` (lvar `LRUC`))))))
+  (` ` _ (else) (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (gvar
+          `TMP`
+          ((expr (str `"LRAR-WL"`))
+            (expr (intrinsic `J`#208))
+            (expr (str `"DIV"`))
+            (expr (lvar `LRLDIV`))
+            (expr (lvar `LRIN`))
+            (expr (lvar `LRMAA`))
+            (expr (lvar `LRLSSA`))
+            (expr (num `0`))))
+        (expr (lvar `LRUC`)))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr
+             (gvar
+               `TMP`
+               ((expr (str `"LRAR-WL"`))
+                 (expr (intrinsic `J`#208))
+                 (expr (str `"AA"`))
+                 (expr (lvar `LRMAA`))
+                 (expr (lvar `LRLSSA`))
+                 (expr (num `0`)))))))
+        (`#` (num `2`))))
+    (do))
+  (` . `#1
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (naked (expr (num `0`)))
+        (expr (lvar `U`))
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (gvar
+                 `TMP`
+                 ((expr (str `"LRAR-WL"`))
+                   (expr (intrinsic `J`#208))
+                   (expr (str `"AA"`))
+                   (expr (lvar `LRMAA`))
+                   (expr (lvar `LRLSSA`))
+                   (expr (num `0`)))))
+              (expr (lvar `U`))))
+          (`+` (lvar `LRUC`))))))
+  (` ` _ (else) (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (gvar
+          `TMP`
+          ((expr (str `"LRAR-WL"`))
+            (expr (intrinsic `J`#208))
+            (expr (str `"AA"`))
+            (expr (lvar `LRMAA`))
+            (expr (lvar `LRLSSA`))
+            (expr (num `0`))))
+        (expr (lvar `LRUC`)))))
+  (` ` _ (quit))
+  (label `GTIN`)
+  (` `
+    _
+    (set
+      (postcond (expr (lvar `LRGETIN`)))
+      (=
+        (lvar `LRIN`)
+        (expr
+          (`+`
+            (intrinsic `O`#211 ((expr (gvar `LAR` ((expr (num `64.19999`)) (expr (lvar `LRIN`))))))))))))
+  (` `
+    _
+    (set
+      (postcond (expr (lvar `LRIN`)))
+      (=
+        (lvar `LRINN`)
+        (expr (gvar `LAR` ((expr (num `64.19999`)) (expr (lvar `LRIN`)) (expr (num `0`))))))))
+  (` ` _ (set _ (= (lvar `LRGETIN`) (expr (num `1`)))))
+  (` ` _ (quit))
+  (label `GETA`)
+  (` `
+    _
+    (kill _ (lvar `DIC`))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `68`)))
+      (= (lvar `DIC` ((expr (num `0`)))) (expr (str `"XMZ"`)))))
+  (` ` _ (do _ (call (ref _ _ `DIC`))) (quit (postcond (expr (lvar `Y`) (`=` (`-` (num `1`)))))))
+  (` ` _ (quit)))

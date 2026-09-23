@@ -1,0 +1,17 @@
+# A body-less `extern sub` declares a C function returning void; calls
+# still require a `raw` block. Reseeding with the same seed repeats the
+# sequence.
+
+extern sub srand(seed: U32)
+extern fun rand() -> Int
+
+sub main()
+  raw
+    srand(7)
+    a = rand()
+    srand(7)
+    b = rand()
+    print(a == b)
+
+# expect:
+# true

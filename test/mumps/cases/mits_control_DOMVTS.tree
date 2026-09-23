@@ -1,0 +1,175 @@
+(routine
+  (label `DOMVTS`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/control/DOMVTS"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO LBL+N where N is computed"`))
+          (expr (str `"third"`))
+          (expr (str `"$$T1^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO chain through arg-passing"`))
+          (expr (num `10`))
+          (expr (str `"$$T2^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO:cond where cond was set by prior DO"`))
+          (expr (str `"yes"`))
+          (expr (str `"$$T3^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO same label twice cumulative"`))
+          (expr (num `2`))
+          (expr (str `"$$T4^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"Q expr propagates through DO chain"`))
+          (expr (str `"leaf"`))
+          (expr (str `"$$T5^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO arg-by-ref builds caller's array"`))
+          (expr (num `6`))
+          (expr (str `"$$T6^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"argless-DO multi-line block"`))
+          (expr (num `15`))
+          (expr (str `"$$T7^DOMVTS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"DO recursion 5 deep accumulates"`))
+          (expr (num `15`))
+          (expr (str `"$$T8^DOMVTS()"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/control/DOMVTS"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `T1`
+    _
+    ((new _ `r` `n`)
+      (set _ (= (lvar `n`) (expr (num `2`))))
+      (do _ (call (ref `LBL` (expr (lvar `n`)))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `LBL` _ ((set _ (= (lvar `r`) (expr (str `"first"`)))) (quit)))
+  (` ` _ (set _ (= (lvar `r`) (expr (str `"second"`)))) (quit))
+  (` ` _ (set _ (= (lvar `r`) (expr (str `"third"`)))) (quit))
+  (` `)
+  (label `T2` _ ((new _ `a` `b` `c`) (set _ (= (lvar `a`) (expr (num `0`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `ADD1`) ((byref `a`)))
+      (call (ref `ADD2`) ((byref `a`)))
+      (call (ref `ADD3`) ((byref `a`)))
+      (call (ref `ADD4`) ((byref `a`)))))
+  (` ` _ (quit _ (expr (lvar `a`))))
+  (label `ADD1` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `1`))))) (quit)))
+  (label `ADD2` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `2`))))) (quit)))
+  (label `ADD3` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `3`))))) (quit)))
+  (label `ADD4` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `4`))))) (quit)))
+  (` `)
+  (label `T3` _ ((new _ `r`) (set _ (= (lvar `r`) (expr (str `"no"`))))))
+  (` ` _ (do _ (call (ref `SETFLAG`))))
+  (` `)
+  (` ` _ (do (postcond (expr (lvar `flag`))) (call (ref `SETOK`))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (label `SETFLAG` _ ((set _ (= (lvar `flag`) (expr (num `1`)))) (quit)))
+  (label `SETOK` _ ((set _ (= (lvar `r`) (expr (str `"yes"`)))) (quit)))
+  (` `)
+  (label `T4` _ ((new _ `c`) (set _ (= (lvar `c`) (expr (num `0`))))))
+  (` ` _ (do _ (call (ref `INC4`))))
+  (` ` _ (do _ (call (ref `INC4`))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (label `INC4` _ ((set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))) (quit)))
+  (` `)
+  (label `T5` _ ((quit _ (expr (extrinsic (`LEAF` (_)))))))
+  (label `LEAF` _ ((quit _ (expr (str `"leaf"`)))))
+  (` `)
+  (label `T6` _ ((new _ `x`) (do _ (call (ref `BUILD`) ((byref `x`) (expr (num `3`)))))))
+  (` `
+    _
+    (new _ `s` `k`)
+    (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `x` ((expr (lvar `k`)))))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (label
+    `BUILD`
+    (`arr` `n`)
+    ((quit (postcond (expr (lvar `n`) (`=` (num `0`)))))
+      (set _ (= (lvar `arr` ((expr (lvar `n`)))) (expr (lvar `n`))))
+      (do _ (call (ref `BUILD`) ((byref `arr`) (expr (lvar `n`) (`-` (num `1`))))))))
+  (` ` _ (quit))
+  (` `)
+  (label `T7` _ ((new _ `s` `i`) (set _ (= (lvar `s`) (expr (num `0`))))))
+  (` ` _ (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `5`)))) (do))
+  (` . `#1 _ (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `i`))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label `T8` _ ((new _ `s`) (set _ (= (lvar `s`) (expr (num `0`))))))
+  (` ` _ (do _ (call (ref `REC`) ((expr (num `5`)) (byref `s`)))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (label
+    `REC`
+    (`n` `acc`)
+    ((quit (postcond (expr (lvar `n`) (`=` (num `0`)))))
+      (set _ (= (lvar `acc`) (expr (lvar `acc`) (`+` (lvar `n`)))))
+      (do _ (call (ref `REC`) ((expr (lvar `n`) (`-` (num `1`))) (byref `acc`))))))
+  (` ` _ (quit)))

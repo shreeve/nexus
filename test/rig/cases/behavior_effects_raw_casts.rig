@@ -1,0 +1,17 @@
+# The cast builtins convert between number types inside `raw`.
+
+sub main()
+  x: U64 = 300
+  f = 1.5
+  n: I64 = 7
+  raw
+    a: U8 = @truncate(x)
+    b: I32 = @intFromFloat(f)
+    c: U64 = @bitCast(f)
+    d: F32 = @floatCast(f)
+    e: F64 = @floatFromInt(n)
+    g: U8 = @intCast(n)
+    print(a, b, c, d, e, g)
+
+# expect:
+# 44 1 4609434218613702656 1.5 7 7

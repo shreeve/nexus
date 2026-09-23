@@ -1,0 +1,185 @@
+(routine
+  (label `PATALT`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/patterns/PATALT"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A) numeric matches"`)) (expr (num `1`)) (expr (str `"""5""?1(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A) alpha matches"`)) (expr (num `1`)) (expr (str `"""x""?1(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A) reject other"`)) (expr (num `0`)) (expr (str `"""!""?1(1N,1A)"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3(N,A) all alpha"`)) (expr (num `1`)) (expr (str `"""abc""?3(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3(N,A) mixed"`)) (expr (num `1`)) (expr (str `"""a1b""?3(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3(N,A) all numeric"`)) (expr (num `1`)) (expr (str `"""123""?3(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"3(N,A) reject punct"`)) (expr (num `0`)) (expr (str `"""ab!""?3(1N,1A)"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".(N,A) zero matches"`)) (expr (num `1`)) (expr (str `"""""?.(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".(N,A) many matches"`))
+          (expr (num `1`))
+          (expr (str `"""abc123def""?.(1N,1A)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".(N,A) reject single bad"`))
+          (expr (num `0`))
+          (expr (str `"""abc!""?.(1N,1A)"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A,P) numeric"`)) (expr (num `1`)) (expr (str `"""1""?1(1N,1A,1P)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A,P) alpha"`)) (expr (num `1`)) (expr (str `"""x""?1(1N,1A,1P)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A,P) punct"`)) (expr (num `1`)) (expr (str `"""!""?1(1N,1A,1P)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(N,A,P) reject control char"`))
+          (expr (num `0`))
+          (expr (str `"$C(0)?1(1N,1A,1P)"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(\`AB\`,2N) literal"`))
+          (expr (num `1`))
+          (expr (str `"""AB""?1(1""AB"",2N)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(\`AB\`,2N) numeric"`))
+          (expr (num `1`))
+          (expr (str `"""47""?1(1""AB"",2N)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(\`AB\`,2N) reject"`)) (expr (num `0`)) (expr (str `"""XY""?1(1""AB"",2N)"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'? negation"`)) (expr (num `1`)) (expr (str `"""abc""'?3N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'? on matching pattern"`)) (expr (num `0`)) (expr (str `"""123""'?3N"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"phone-like with optional dash"`))
+          (expr (num `1`))
+          (expr (str `"""555-1234""?3N1(1""-"")4N"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"space-or-dash-separated"`))
+          (expr (num `1`))
+          (expr (str `"""555 1234""?3N1(1""-"",1"" "")4N"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/patterns/PATALT"`))))))
+  (` ` _ (quit)))

@@ -1,0 +1,2 @@
+pub fun scale(n: Int, by: Int = 10, off: Int = -1) -> Int
+  n * by + off

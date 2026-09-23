@@ -1,0 +1,17 @@
+(sequence
+  (if
+    (command _ (word `test`) (word `-f`) (word `file`))
+    (body (sequence (command _ (word `echo`) (word `yes`))))
+    (else (body (sequence (command _ (word `echo`) (word `no`))))))
+  (seq_always
+    (if
+      (command _ (word `test`) (word `-d`) (word `dir`))
+      (body (sequence (command _ (word `echo`) (word `dir`))))
+      (else (body (sequence (command _ (word `echo`) (word `nodir`)))))))
+  (seq_always
+    (for
+      `x`
+      (words (word `a`) (word `b`) (word `c`))
+      (body (sequence (command _ (word `echo`) (var `$x`))))))
+  (seq_always (while (command _ (word `true`)) (body (sequence (command _ (word `break`))))))
+  (seq_always))

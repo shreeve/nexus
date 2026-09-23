@@ -1,0 +1,41 @@
+# A closure's bare parameters take their types from the type its context
+# expects: a binding annotation, a parameter of the called function, a
+# Vec's element type, a struct field, or a function's return type.
+
+struct Button
+  label: String
+  on_click: *sub(Int)
+
+fun apply(f: *fun(Int) Int, x: Int) -> Int
+  f(x)
+
+fun adder(n: Int) -> *fun(Int) Int
+  *|+n, a| a + n
+
+sub main()
+  add: fun(Int, Int) Int = |a, b| a + b
+  print(add(2, 3))
+
+  print(apply(*|a| a * 10, 4))
+
+  total: *Cell(Int) = *Cell(value: 0)
+  handlers: Vec(*sub(Int)) = Vec()
+  (!handlers).push(*|+total, n| total.set(total.get() + n))
+  (!handlers).push(*|+total, n| total.set(total.get() + n * 100))
+  for h in ?handlers
+    h(2)
+  print(total.get())
+
+  b = Button(label: "ok", on_click: *|+total, n| total.set(n))
+  b.on_click(7)
+  print(b.label, total.get())
+
+  plus5 = adder(5)
+  print(plus5(1))
+
+# expect:
+# 5
+# 40
+# 202
+# ok 7
+# 6

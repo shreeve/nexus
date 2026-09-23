@@ -1,0 +1,14 @@
+# `?self` is sugar for `self: ?Self`; `u.greet()` auto-borrows `u`.
+
+struct User
+  name: String
+
+  fun greet(?self) -> String
+    self.name
+
+sub main()
+  u = User(name: "Steve")
+  print(u.greet())
+
+# expect:
+# Steve

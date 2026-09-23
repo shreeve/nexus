@@ -1,0 +1,18 @@
+# A borrow of a field of a borrowed parameter may be returned.
+
+struct Box
+  payload: Int
+
+struct Holder
+  inner: Box
+
+fun inner_of(h: ?Holder) -> ?Box
+  ?h.inner
+
+sub main()
+  h = Holder(inner: Box(payload: 9))
+  b = inner_of(?h)
+  print(b.payload)
+
+# expect:
+# 9

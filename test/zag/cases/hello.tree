@@ -1,0 +1,9 @@
+(module
+  (fun `add` ((: `a` `i32`) (: `b` `i32`)) `i32` (block (+ `a` `b`)))
+  (sub
+    `main`
+    _
+    _
+    (block
+      (= `total` (call `add` `1` `2`))
+      (if (> `total` `0`) (block (call `print` `total`)) (block (call `print` `0`))))))

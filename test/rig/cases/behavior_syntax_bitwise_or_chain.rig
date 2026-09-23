@@ -1,0 +1,11 @@
+# `a | b | c` is bitwise or of three integers.
+
+sub main()
+  a = 1
+  b = 2
+  c = 4
+  x = a | b | c
+  print(x)
+
+# expect:
+# 7

@@ -1,0 +1,4 @@
+(expr
+  (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `"^"`)) (expr (num `2`))))
+  (`_` (str `"-"`))
+  (`_` (intrinsic `E`#203 ((expr (lvar `Y`)) (expr (num `1`))))))

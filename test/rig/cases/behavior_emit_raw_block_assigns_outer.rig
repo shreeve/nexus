@@ -1,0 +1,10 @@
+# Assigning an outer local inside a `raw` block updates it.
+
+sub main()
+  r = 0
+  raw
+    r = 5
+  print(r)
+
+# expect:
+# 5

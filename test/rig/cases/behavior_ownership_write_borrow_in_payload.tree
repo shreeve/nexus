@@ -1,0 +1,40 @@
+(module
+  (struct `Box` (: `n` `Int`))
+  (enum `Slot` (variant `held` ((: `b` (borrow_write `Box`)))) `empty`)
+  (generic_type `W` (`T`) (: `v` `T`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `b` _ (call `Box` (kwarg `n` `1`)))
+      (if
+        `true`
+        (block
+          (set _ `s` `Slot` (call (enum_lit `held`) (kwarg `b` (write `b`))))
+          (match
+            `s`
+            (arm (variant_pattern `held` `r`) (set _ (member `r` `n`) _ `2`))
+            (arm (enum_lit `empty`) (call `print` `0`)))))
+      (call `print` (member `b` `n`))
+      (if
+        `true`
+        (block
+          (set _ `o` (optional (borrow_write `Box`)) (write `b`))
+          (if (as (move `o`) `r`) (block (set _ (member `r` `n`) _ `3`)))))
+      (call `print` (member `b` `n`))
+      (if
+        `true`
+        (block
+          (set _ `w` (generic_inst `W` (borrow_write `Box`)) (call `W` (kwarg `v` (write `b`))))
+          (set _ (member (member `w` `v`) `n`) _ `4`)))
+      (call `print` (member `b` `n`))
+      (if
+        `true`
+        (block (set _ `xs` _ (array (write `b`))) (set _ (member (index `xs` `0`) `n`) _ `5`)))
+      (call `print` (member `b` `n`))
+      (set _ `x` _ `1`)
+      (if
+        `true`
+        (block (set _ `ints` _ (array (write `x`))) (call `print` (+ (index `ints` `0`) `1`))))
+      (call `print` `x`))))

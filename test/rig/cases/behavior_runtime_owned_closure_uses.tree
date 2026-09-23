@@ -1,0 +1,55 @@
+(module
+  (struct
+    `Button`
+    (: `on_click` (shared (fun_type (`Int`))))
+    (sub
+      `click`
+      ((: `self` (borrow_read `Button`)) (: `n` `Int`))
+      _
+      (block (call (member `self` `on_click`) `n`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `total` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `button`
+        _
+        (call
+          `Button`
+          (kwarg
+            `on_click`
+            (share
+              (lambda
+                ((cap_clone `total`) `n`)
+                _
+                _
+                (block (call (member `total` `set`) (+ (call (member `total` `get`)) `n`))))))))
+      (call (member `button` `click`) `4`)
+      (call (member `button` `click`) `5`)
+      (call `print` (call (member `total` `get`)))
+      (set _ `fs` (generic_inst `Vec` (shared (fun_type (`Int`) `Int`))) (call `Vec`))
+      (call (member (write `fs`) `push`) (share (lambda (`x`) _ _ (block (+ `x` `1`)))))
+      (call (member (write `fs`) `push`) (share (lambda (`x`) _ _ (block (* `x` `10`)))))
+      (for iter `f` _ (read `fs`) (block (call `print` (call `f` `3`))))
+      (set
+        _
+        `later`
+        (optional (shared (fun_type)))
+        (share (lambda () _ _ (block (call `print` `"now set"`)))))
+      (if (as (move `later`) `run`) (block (call `run`)))
+      (set
+        _
+        `greet`
+        (shared (fun_type (`String` `Int`)))
+        (share
+          (lambda
+            (`name` `times`)
+            _
+            _
+            (block
+              (set _ `i` _ `0`)
+              (while (< `i` `times`) (set += `i` _ `1`) (block (call `print` `"hi"` `name`)))))))
+      (call `greet` `"ada"` `2`))))

@@ -1,0 +1,26 @@
+# A bare variant of an enum whose other variants own resources is a new
+# value: it may be bound, passed, and stored.
+
+struct B
+  n: Int
+
+  drop self: !B
+    print("drop", self.n)
+
+enum Slot
+  full(b: *B)
+  empty
+
+fun fill(s: Slot) -> Int
+  match s
+    .full(b) => b.n
+    .empty => 0
+
+sub main()
+  a: Slot = Slot.empty
+  c = Slot.full(b: *B(n: 1))
+  print(fill(Slot.empty), fill(<c), fill(<a))
+
+# expect:
+# drop 1
+# 0 1 0

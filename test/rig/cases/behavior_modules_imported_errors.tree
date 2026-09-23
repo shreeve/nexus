@@ -1,0 +1,44 @@
+(module
+  (use `parsing`)
+  (fun
+    `checked`
+    ((: `s` `String`))
+    (error_union `Int`)
+    (block
+      (if (== `s` `"?"`) (block (return (member (member `parsing` `ParseError`) `empty`))))
+      (propagate (call (member `parsing` `parse`) `s`))))
+  (fun
+    `name`
+    ((: `s` `String`))
+    `String`
+    (block
+      (set
+        _
+        `n`
+        _
+        (catch
+          (call `checked` `s`)
+          `err`
+          (block
+            (match
+              `err`
+              (arm (enum_lit `empty`) (return `"empty"`))
+              (arm (enum_lit `bad_digit`) (return `"bad digit"`))
+              (arm `else` (return `"other"`))))))
+      `"ok"`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call
+        `print`
+        (call `name` `""`)
+        (call `name` `"x"`)
+        (call `name` `"?"`)
+        (call `name` `"abc"`))
+      (set _ `e` (member `parsing` `ParseError`) (enum_lit `bad_digit`))
+      (call
+        `print`
+        `e`
+        (catch (call (member `parsing` `parse`) `"x"`) `err` (if (== `err` `e`) `1` `2`))))))

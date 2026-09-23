@@ -1,0 +1,9 @@
+# Safe-whitelist builtins (`@sizeOf`, `@TypeOf`, ...) need no `raw` block.
+
+sub main()
+  x: I64 = 7
+  n = @sizeOf(@TypeOf(x))
+  print(n)
+
+# expect:
+# 8

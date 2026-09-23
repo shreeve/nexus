@@ -1,0 +1,27 @@
+(module
+  (struct `Box` (: `v` `Int`))
+  (fun `show` ((: `b` (borrow_read `Box`))) `Int` (block (member `b` `v`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ `7`)
+      (set _ `b` _ `2`)
+      (set _ `x` _ `3`)
+      (call `print` (< `a` `x`))
+      (call `print` (* `a` `b`))
+      (call `print` (+ `a` `b`))
+      (call `print` (% `a` `b`))
+      (call `print` (- `a` `b`))
+      (set _ `y` _ (neg `x`))
+      (call `print` `y`)
+      (call `print` (builtin `sizeOf` `Box`))
+      (set _ `s` _ (share (call `Box` (kwarg `v` `10`))))
+      (set _ `t` _ (clone `s`))
+      (set _ `u` _ (move `s`))
+      (call `print` (member `u` `v`))
+      (drop `u`)
+      (call `print` (member `t` `v`))
+      (set _ `box` _ (call `Box` (kwarg `v` `1`)))
+      (call `print` (call `show` (read `box`))))))

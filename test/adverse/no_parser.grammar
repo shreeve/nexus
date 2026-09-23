@@ -1,8 +1,0 @@
-# Missing @parser section — lexer only, no rules
-@lexer
-tokens
-    ident
-    eof
-    err
-[a-zA-Z]+ → ident
-. → err

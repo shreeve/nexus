@@ -1,0 +1,407 @@
+(routine
+  (label `ROREXT03`)
+  (` `)
+  (` `)
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `CSR` (`REGIEN`))
+  (` ` _ (new _ `CS` `RC` `RORINFO` `RORSEG` `RPTSTATS` `TMP`))
+  (` ` _ (do _ (call (ref `ECH` _ `RORHL7`) ((byref `CS`)))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RC`)
+        (expr
+          (extrinsic ((`REGINFO` `RORUTL17`) ((expr (lvar `REGIEN`)) (expr (str `"RORINFO"`))))))))
+    (quit (postcond (expr (lvar `RC`) (`<` (num `0`)))) (expr (lvar `RC`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (extrinsic ((`STATS` `RORTSK12`) ((expr (lvar `REGIEN`)) (byref `RPTSTATS`))))))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `RORSEG` ((expr (num `0`)))) (expr (str `"CSR"`)))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `ROREXT` ((expr (str `"VERSION"`))))) (expr (lvar `U`)))))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `TMP`)) (expr (str `"."`)) (expr (num `2`))))
+          (`=` (str `""`))))
+      (setfn `P` (lvar `TMP`) (expr (str `"."`)) (expr (num `2`)) (expr (str `"0"`)))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `TMP`)
+        (expr (str `"."`))
+        (expr (num `3`))
+        (expr
+          (`+`
+            (intrinsic
+              `P`#212
+              ((expr (lvar `ROREXT` ((expr (str `"VERSION"`))))) (expr (lvar `U`)) (expr (num `2`)))))))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `TMP`)
+        (expr (str `"."`))
+        (expr (num `4`))
+        (expr (`+` (extrinsic (`BUILD` `ROR`)))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RORSEG` ((expr (num `1`))))
+        (expr
+          (extrinsic
+            ((`ESCAPE` `RORHL7`)
+              ((expr
+                 (intrinsic
+                   `P`#212
+                   ((expr (extrinsic ((`REGNAME` `RORUTL01`) ((expr (lvar `REGIEN`))))))
+                     (expr (lvar `U`))))))))
+          (`_` (lvar `CS`))
+          (`_` (lvar `TMP`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RORSEG` ((expr (num `3`))))
+        (expr (extrinsic ((`SITE` `RORUTL03`) ((expr (lvar `CS`)))))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (str `"0"`)
+          (`_` (lvar `CS`))
+          (`_` (lvar `CS`))
+          (`_` (lvar `CS`))
+          (`_` (lvar `CS`))
+          (`_` (str `"U"`))))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `TMP`)
+        (expr (lvar `CS`))
+        (expr (num `6`))
+        (expr (`+` (intrinsic `G`#206 ((expr (lvar `RORINFO` ((expr (str `"NPP"`))))))))))))
+  (` `
+    _
+    (set
+      _
+      (setfn
+        `P`
+        (lvar `TMP`)
+        (expr (lvar `CS`))
+        (expr (num `7`))
+        (expr (`+` (intrinsic `P`#212 ((expr (lvar `RPTSTATS`)) (expr (lvar `U`)))))))))
+  (` ` _ (set _ (= (lvar `RORSEG` ((expr (num `4`)))) (expr (lvar `TMP`)))))
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `ADDSEG` _ `RORHL7`) ((byref `RORSEG`)))))
+  (` ` _ (quit _ (expr (num `0`))))
+  (` `)
+  (` `)
+  (label `PID`)
+  (` ` _ (new _ `CS` `RORSEG`))
+  (` ` _ (do _ (call (ref `ECH` _ `RORHL7`) ((byref `CS`)))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `RORSEG` ((expr (num `0`)))) (expr (str `"PID"`)))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RORSEG` ((expr (num `3`))))
+        (expr
+          (str `"0"`)
+          (`_` (lvar `CS`))
+          (`_` (lvar `CS`))
+          (`_` (lvar `CS`))
+          (`_` (lvar `CS`))
+          (`_` (str `"U"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RORSEG` ((expr (num `5`))))
+        (expr (str `"PSEUDO"`) (`_` (lvar `CS`)) (`_` (str `"PATIENT"`))))))
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `ADDSEG` _ `RORHL7`) ((byref `RORSEG`)))))
+  (` ` _ (quit _ (expr (num `0`))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (label `REGSTATE` (`REGIEN`))
+  (` ` _ (new _ `RC`))
+  (` `)
+  (` `
+    _
+    (set _ (= (lvar `RC`) (expr (extrinsic (`PID` (_))))))
+    (quit (postcond (expr (lvar `RC`) (`<` (num `0`)))) (expr (lvar `RC`))))
+  (` `
+    _
+    (set _ (= (lvar `RC`) (expr (extrinsic (`CSR` ((expr (lvar `REGIEN`))))))))
+    (quit (postcond (expr (lvar `RC`) (`<` (num `0`)))) (expr (lvar `RC`))))
+  (` `)
+  (` ` _ (quit _ (expr (num `0`))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (label `SEND` (`RGIENLST`))
+  (` ` _ (new _ `IENS` `MID` `RC` `REGIEN` `RORFDA` `RORMSG` `TMP`))
+  (` `
+    _
+    (write
+      (postcond
+        (expr
+          (intrinsic `G`#206 ((expr (lvar `RORPARM` ((expr (str `"DEBUG"`)))))))
+          (`>` (num `1`))))
+      (posformat `!`)
+      (expr (str `"HL7 Batch ID: "`))
+      (expr (intrinsic `G`#206 ((expr (lvar `ROREXT` ((expr (str `"HL7MID"`))))))))))
+  (` `
+    _
+    (set _ (= (lvar `RC`) (expr (extrinsic ((`SEND` `RORHL7`) ((byref `MID`)))))))
+    (quit (postcond (expr (lvar `RC`) (`<` (num `0`)))) (expr (lvar `RC`))))
+  (` `
+    _
+    (if (expr (`'` (lvar `RC`))) (expr (intrinsic `G`#206 ((expr (lvar `MID`)))) (`'=` (str `""`))))
+    (do))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `ROREXT` ((expr (str `"NBM"`))))
+        (expr (intrinsic `G`#206 ((expr (lvar `ROREXT` ((expr (str `"NBM"`))))))) (`+` (num `1`))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (str `"HL7 batch message "`) (`_` (lvar `MID`)) (`_` (str `" has been generated"`))))))
+  (` . `#1 _ (do _ (call (ref `LOG` _ `RORLOG`) ((expr (num `2`)) (expr (lvar `TMP`))))))
+  (` . `#1)
+  (` . `#1)
+  (` . `#1 _ (set _ (setmulti (expr (num `0`)) (lvar `RC`) (lvar `REGIEN`))))
+  (` . `#1
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `REGIEN`)
+        (expr (intrinsic `O`#211 ((expr (lvar `RGIENLST` ((expr (lvar `REGIEN`))))))))))
+    (quit (postcond (expr (lvar `REGIEN`) (`'>` (num `0`)))))
+    (do)
+    (quit (postcond (expr (lvar `RC`) (`<` (num `0`))))))
+  (` . . `#2
+    _
+    (kill _ (lvar `RORFDA`) (lvar `RORMSG`))
+    (set _ (= (lvar `IENS`) (expr (str `"+1,"`) (`_` (lvar `REGIEN`)) (`_` (str `","`))))))
+  (` . . `#2)
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `RORFDA` ((expr (num `798.122`)) (expr (lvar `IENS`)) (expr (num `.01`))))
+        (expr (lvar `MID`)))))
+  (` . . `#2)
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `RORFDA` ((expr (num `798.122`)) (expr (lvar `IENS`)) (expr (num `.02`))))
+        (expr (intrinsic `G`#206 ((expr (lvar `ROREXT` ((expr (str `"HL7MID"`)))))))))))
+  (` . . `#2)
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (`+` (intrinsic `G`#206 ((expr (lvar `ROREXT` ((expr (str `"HL7DT"`))))))))))))
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `RORFDA` ((expr (num `798.122`)) (expr (lvar `IENS`)) (expr (num `.03`))))
+        (expr
+          (select
+            ((expr (lvar `TMP`) (`>` (num `0`))) (expr (lvar `TMP`)))
+            ((expr (num `1`)) (expr (extrinsic (`NOW` `XLFDT`)))))))))
+  (` . . `#2)
+  (` . . `#2
+    _
+    (do _ (call (ref `UPDATE` _ `DIE`) (_ (expr (str `"RORFDA"`)) _ (expr (str `"RORMSG"`))))))
+  (` . . `#2
+    _
+    (set
+      (postcond (expr (intrinsic `G`#206 ((expr (lvar `DIERR`))))))
+      (=
+        (lvar `RC`)
+        (expr
+          (extrinsic
+            ((`DBS` `RORERR`)
+              ((expr (str `"RORMSG"`))
+                (expr (`-` (num `9`)))
+                _
+                (expr (lvar `PTIEN`))
+                (expr (num `798.122`))
+                (expr (lvar `IENS`)))))))))
+  (` ` _ (quit _ (expr (num `0`))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (label `UPDRECS` (`PTIEN` `RGIENLST` `BATCHID` `ENDT`))
+  (` ` _ (new _ `FS` `IEN` `IENS` `RC` `REGIEN` `RORFDA` `RORMSG`))
+  (` ` _ (set _ (setmulti (expr (num `0`)) (lvar `RC`) (lvar `REGIEN`))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `REGIEN`)
+        (expr (intrinsic `O`#211 ((expr (lvar `RGIENLST` ((expr (lvar `REGIEN`))))))))))
+    (quit (postcond (expr (lvar `REGIEN`) (`'>` (num `0`)))))
+    (do)
+    (quit (postcond (expr (lvar `RC`) (`<` (num `0`))))))
+  (` . `#1 _ (kill _ (lvar `RORFDA`) (lvar `RORMSG`)))
+  (` . `#1
+    _
+    (set _ (= (lvar `IEN`) (expr (`+` (lvar `RGIENLST` ((expr (lvar `REGIEN`))))))))
+    (quit (postcond (expr (lvar `IEN`) (`'>` (num `0`))))))
+  (` . `#1 _ (set _ (= (lvar `IENS`) (expr (lvar `IEN`) (`_` (str `","`))))))
+  (` . `#1)
+  (` . `#1
+    _
+    (set
+      (postcond (expr (lvar `BATCHID`) (`'=` (str `""`))))
+      (=
+        (lvar `RORFDA` ((expr (num `798`)) (expr (lvar `IENS`)) (expr (num `10`))))
+        (expr (lvar `BATCHID`)))))
+  (` . `#1)
+  (` . `#1)
+  (` . `#1)
+  (` . `#1)
+  (` . `#1)
+  (` . `#1
+    _
+    (set
+      (postcond (expr (lvar `BATCHID`) (`=` (str `""`))))
+      (=
+        (lvar `RORFDA` ((expr (num `798`)) (expr (lvar `IENS`)) (expr (num `10`))))
+        (expr (lvar `ROREXT` ((expr (str `"HL7MID"`)))) (`_` (str `"-0"`))))))
+  (` . `#1)
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `RORFDA` ((expr (num `798`)) (expr (lvar `IENS`)) (expr (num `9.2`))))
+        (expr (lvar `ENDT`)))))
+  (` . `#1)
+  (` . `#1 _ (do _ (call (ref `FILE` _ `DIE`) (_ (expr (str `"RORFDA"`)) (expr (str `"RORMSG"`))))))
+  (` . `#1
+    _
+    (set
+      (postcond (expr (intrinsic `G`#206 ((expr (lvar `DIERR`))))))
+      (=
+        (lvar `RC`)
+        (expr
+          (extrinsic
+            ((`DBS` `RORERR`)
+              ((expr (str `"RORMSG"`))
+                (expr (`-` (num `9`)))
+                _
+                (expr (lvar `PTIEN`))
+                (expr (num `798`))
+                (expr (lvar `IENS`)))))))))
+  (` `)
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `RC`) (`<` (num `0`))) (expr (lvar `RC`)))
+          ((expr (num `1`)) (expr (num `0`))))))))

@@ -1,0 +1,1 @@
+[1 2.5 "s" \c :kw sym {:a 1} #{1 2} (f x) ^:meta y @r `(a ~b ~@c) #(inc %) #_ skip]

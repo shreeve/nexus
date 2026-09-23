@@ -1,0 +1,10 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ `false`)
+      (if (not `a`) (block (call `print` `1`)))
+      (set _ `b` _ (not `a`))
+      (call `print` `b`))))

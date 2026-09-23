@@ -1,0 +1,441 @@
+(routine
+  (label `ARRAYS`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/locals/ARRAYS"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"count via $O sum"`)) (expr (num `10`)) (expr (str `"$$COUNT^ARRAYS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"count empty array"`)) (expr (num `0`)) (expr (str `"$$COUNTEMPTY^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"sum 1..100"`)) (expr (num `5050`)) (expr (str `"$$SUM100^ARRAYS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"sum sparse"`)) (expr (num `111`)) (expr (str `"$$SUMSPARSE^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"max key (numeric)"`)) (expr (num `100`)) (expr (str `"$$MAXNUMK^ARRAYS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"max key (string)"`)) (expr (str `"zzz"`)) (expr (str `"$$MAXSTRK^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"group counts"`)) (expr (num `6`)) (expr (str `"$$GROUP^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"histogram 26 letters"`)) (expr (num `26`)) (expr (str `"$$HIST^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"walk all leaves"`)) (expr (num `6`)) (expr (str `"$$LEAVES^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"sum only evens"`)) (expr (num `30`)) (expr (str `"$$EVENS^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$O-driven copy"`)) (expr (num `55`)) (expr (str `"$$COPY^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"reverse walk concat"`))
+          (expr (str `"cba"`))
+          (expr (str `"$$REVCAT^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"min value"`)) (expr (`-` (num `5`))) (expr (str `"$$MINVAL^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$O find first match"`))
+          (expr (str `"middle"`))
+          (expr (str `"$$FIRSTMATCH^ARRAYS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"walk mixed-key array"`)) (expr (num `6`)) (expr (str `"$$MIXKEY^ARRAYS()"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/locals/ARRAYS"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label
+    `COUNT`
+    _
+    ((new _ `x` `c` `k` `i`)
+      (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+      (set _ (= (lvar `x` ((expr (lvar `i`)))) (expr (num `1`))))))
+  (` `
+    _
+    (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label
+    `COUNTEMPTY`
+    _
+    ((new _ `x` `c` `k`)
+      (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+      (for)
+      (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+      (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+      (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`)))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label
+    `SUM100`
+    _
+    ((new _ `x` `s` `k` `i`)
+      (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100`))))
+      (set _ (= (lvar `x` ((expr (lvar `i`)))) (expr (lvar `i`))))))
+  (` `
+    _
+    (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `x` ((expr (lvar `k`)))))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label
+    `SUMSPARSE`
+    _
+    ((new _ `x` `s` `k`)
+      (set
+        _
+        (= (lvar `x` ((expr (num `1`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (num `10`)))) (expr (num `10`)))
+        (= (lvar `x` ((expr (num `100`)))) (expr (num `100`))))))
+  (` `
+    _
+    (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `x` ((expr (lvar `k`)))))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label
+    `MAXNUMK`
+    _
+    ((new _ `x` `k` `m` `i`)
+      (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100`))))
+      (set _ (= (lvar `x` ((expr (lvar `i`)))) (expr (num `1`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `m`)
+        (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (str `""`))))) (expr (`-` (num `1`)))))))))
+  (` ` _ (quit _ (expr (lvar `m`))))
+  (` `)
+  (label
+    `MAXSTRK`
+    _
+    ((new _ `x` `m`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"aaa"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"zzz"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"mmm"`)))) (expr (num `1`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `m`)
+        (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (str `""`))))) (expr (`-` (num `1`)))))))))
+  (` ` _ (quit _ (expr (lvar `m`))))
+  (` `)
+  (label `GROUP` _ ((new _ `x` `c` `k` `sub`)))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (str `"fruit"`)) (expr (str `"apple"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"fruit"`)) (expr (str `"banana"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"fruit"`)) (expr (str `"cherry"`)))) (expr (num `1`)))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (str `"veggie"`)) (expr (str `"carrot"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"veggie"`)) (expr (str `"peas"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"veggie"`)) (expr (str `"spinach"`)))) (expr (num `1`)))))
+  (` `
+    _
+    (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (do))
+  (` . `#1
+    _
+    (set _ (= (lvar `sub`) (expr (str `""`))))
+    (for)
+    (set
+      _
+      (=
+        (lvar `sub`)
+        (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`)) (expr (lvar `sub`))))))))))
+    (quit (postcond (expr (lvar `sub`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label `HIST` _ ((new _ `x` `i` `k` `c`)))
+  (` `)
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `26`))))
+    (set
+      _
+      (=
+        (lvar `x` ((expr (intrinsic `C`#201 ((expr (num `96`) (`+` (lvar `i`))))))))
+        (expr
+          (intrinsic
+            `I`#207
+            ((expr (lvar `x` ((expr (intrinsic `C`#201 ((expr (num `96`) (`+` (lvar `i`)))))))))
+              (expr (num `0`))))
+          (`+` (num `1`))))))
+  (` ` _ (kill _ (lvar `x`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `26`))))
+    (set
+      _
+      (=
+        (lvar `x` ((expr (intrinsic `C`#201 ((expr (num `96`) (`+` (lvar `i`))))))))
+        (expr (num `1`)))))
+  (` `
+    _
+    (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label `LEAVES` _ ((new _ `x` `c` `k`) (set _ (= (lvar `c`) (expr (num `0`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (str `"a"`)) (expr (str `"x"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"a"`)) (expr (str `"y"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"b"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"b"`)) (expr (str `"z"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"c"`)) (expr (num `1`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"c"`)) (expr (num `2`)))) (expr (num `1`)))))
+  (` `
+    _
+    (set _ (= (lvar `k`) (expr (str `"x"`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `Q`#215 ((expr (@name (lvar `k`))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label
+    `EVENS`
+    _
+    ((new _ `x` `s` `k` `i`)
+      (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+      (set _ (= (lvar `x` ((expr (lvar `i`)))) (expr (lvar `i`))))))
+  (` `
+    _
+    (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (if (expr (lvar `x` ((expr (lvar `k`)))) (`#` (num `2`)) (`=` (num `0`))))
+    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `x` ((expr (lvar `k`)))))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label
+    `COPY`
+    _
+    ((new _ `a` `b` `k` `i` `s`)
+      (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+      (set _ (= (lvar `a` ((expr (lvar `i`)))) (expr (lvar `i`))))))
+  (` `
+    _
+    (set _ (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `a` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `b` ((expr (lvar `k`)))) (expr (lvar `a` ((expr (lvar `k`))))))))
+  (` `
+    _
+    (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `b` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `b` ((expr (lvar `k`)))))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label
+    `REVCAT`
+    _
+    ((new _ `x` `r` `k`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"a"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"b"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"c"`)))) (expr (num `1`))))))
+  (` `
+    _
+    (set _ (= (lvar `r`) (expr (str `""`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set
+      _
+      (=
+        (lvar `k`)
+        (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))) (expr (`-` (num `1`))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `r`) (expr (lvar `r`) (`_` (lvar `k`))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (` `)
+  (label
+    `MINVAL`
+    _
+    ((new _ `x` `m` `k`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"a"`)))) (expr (num `3`)))
+        (= (lvar `x` ((expr (str `"b"`)))) (expr (`-` (num `5`))))
+        (= (lvar `x` ((expr (str `"c"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"d"`)))) (expr (num `10`))))))
+  (` `
+    _
+    (set _ (= (lvar `m`) (expr (num `999`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (if (expr (lvar `x` ((expr (lvar `k`)))) (`<` (lvar `m`))))
+    (set _ (= (lvar `m`) (expr (lvar `x` ((expr (lvar `k`))))))))
+  (` ` _ (quit _ (expr (lvar `m`))))
+  (` `)
+  (label `FIRSTMATCH` _ ((new _ `x` `k` `target`)))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (str `"first"`)))) (expr (str `"a"`)))
+      (= (lvar `x` ((expr (str `"middle"`)))) (expr (str `"match"`)))
+      (= (lvar `x` ((expr (str `"last"`)))) (expr (str `"b"`)))))
+  (` `
+    _
+    (set _ (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (quit (postcond (expr (lvar `x` ((expr (lvar `k`)))) (`=` (str `"match"`))))))
+  (` ` _ (quit _ (expr (lvar `k`))))
+  (` `)
+  (label `MIXKEY` _ ((new _ `x` `c` `k`) (set _ (= (lvar `c`) (expr (num `0`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (num `1`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (num `2`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"aa"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"bb"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (`-` (num `1`))))) (expr (num `1`)))
+      (= (lvar `x` ((expr (num `0`)))) (expr (num `1`)))))
+  (` `
+    _
+    (set _ (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`)))))

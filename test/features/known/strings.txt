@@ -1,0 +1,3 @@
+"hello"
+"esc \" quote"
+"dollar $x"

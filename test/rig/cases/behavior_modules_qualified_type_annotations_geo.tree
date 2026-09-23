@@ -1,0 +1,12 @@
+(module
+  (pub
+    (struct
+      `Point`
+      (: `x` `Int`)
+      (: `y` `Int`)
+      (fun
+        `sum`
+        ((: `self` (borrow_read `Point`)))
+        `Int`
+        (block (+ (member `self` `x`) (member `self` `y`))))))
+  (pub (type `Meters` `Int`)))

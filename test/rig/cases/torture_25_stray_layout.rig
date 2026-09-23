@@ -1,0 +1,7 @@
+# A dedent to no enclosing level after a line continuation and a
+# comment-only line, then an `else` with nothing to continue.
+sub main()
+    x = 1 + \
+  2
+  # comment
+ else

@@ -1,0 +1,7 @@
+(module
+  (pub
+    (fun
+      `scale`
+      ((: `n` `Int`) (default `by` `Int` `10`) (default `off` `Int` (neg `1`)))
+      `Int`
+      (block (+ (* `n` `by`) `off`)))))

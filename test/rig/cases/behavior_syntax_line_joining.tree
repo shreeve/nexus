@@ -1,0 +1,15 @@
+(module
+  (struct `Counter` (: `n` `Int`) (fun `get` ((read `self`)) `Int` (block (member `self` `n`))))
+  (fun `add3` ((: `a` `Int`) (: `b` `Int`) (: `c` `Int`)) `Int` (block (+ (+ `a` `b`) `c`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `total` _ (+ (+ `1` `2`) `3`))
+      (call `print` `total`)
+      (call `print` (call `add3` `1` `2` `3`))
+      (set _ `c` _ (call `Counter` (kwarg `n` `7`)))
+      (call `print` (call (member `c` `get`)))
+      (set _ `x` _ (+ `1` `2`))
+      (call `print` `x`))))

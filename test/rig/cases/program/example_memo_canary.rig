@@ -1,0 +1,55 @@
+# A Memo-shaped reactive fixture built from substrate pieces. A source
+# keeps its value in a shared `Cell` and its listeners in another; `set`
+# stores the value and calls each listener with it. `map` derives a new
+# source that follows this one through a function; its listener holds
+# the derived source weakly, so the chain does not keep itself alive.
+
+type Listeners = Vec(*sub(Int))
+
+struct IntSource
+  value: *Cell(Int)
+  listeners: *Cell(Listeners)
+
+  fun new(initial: Int) -> *IntSource
+    *IntSource(value: *Cell(value: initial), listeners: *Cell(value: Vec()))
+
+  fun get(self: ?IntSource) -> Int
+    self.value.get()
+
+  # A Cell gives no borrowed access to the Vec inside it, so the list is
+  # swapped out, changed, and swapped back.
+  sub subscribe(self: ?IntSource, listener: *sub(Int))
+    listeners = self.listeners.replace(Vec())
+    (!listeners).push(<listener)
+    _ = self.listeners.replace(<listeners)
+
+  sub set(self: ?IntSource, v: Int)
+    self.value.set(v)
+    listeners = self.listeners.replace(Vec())
+    for listener in ?listeners
+      listener(v)
+    _ = self.listeners.replace(<listeners)
+
+  fun map(self: ?IntSource, f: *fun(Int) Int) -> *IntSource
+    derived = IntSource.new(f(self.get()))
+    self.subscribe(*|~derived, +f, v|
+      if derived.upgrade() as d
+        d.set(f(v)))
+    derived
+
+sub main()
+  count = IntSource.new(1)
+  doubled = count.map(*|n| n * 2)
+  squared = doubled.map(*|n| n * n)
+  squared.subscribe(*|n| print("squared", n))
+  print(doubled.get(), squared.get())   # 2 4
+
+  count.set(3)                          # squared 36
+  count.set(5)                          # squared 100
+  print(doubled.get(), squared.get())   # 10 100
+
+# expect:
+# 2 4
+# squared 36
+# squared 100
+# 10 100

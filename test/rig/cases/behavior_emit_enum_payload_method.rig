@@ -1,0 +1,20 @@
+# Methods declared inside an enum with payload variants.
+
+enum Shape
+  circle(radius: Int)
+  point
+
+  fun is_point(?self) -> Bool
+    match self
+      .circle(r) => false
+      .point => true
+
+sub main()
+  s: Shape = .circle(radius: 2)
+  print(s.is_point())
+  p: Shape = .point
+  print(p.is_point())
+
+# expect:
+# false
+# true

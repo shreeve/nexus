@@ -1,0 +1,10 @@
+# A string's escapes are those Zig understands; any other is rejected.
+
+sub main()
+  print("bad \q escape")
+  print("\x4g")
+  print("\u{110000}")
+
+# error: invalid escape `\q` in a string
+# error: invalid escape `\x` in a string
+# error: invalid escape `\u` in a string

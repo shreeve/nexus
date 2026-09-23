@@ -1,0 +1,25 @@
+# Yielding a Copy payload field from a match arm does not consume the
+# scrutinee; it is still dropped.
+
+struct B
+  n: Int
+
+  drop self: !B
+    print("drop", self.n)
+
+enum S
+  one(a: *B, k: Int)
+  empty
+
+fun go(s: S) -> Int
+  match s
+    .one(a, k) => k
+    .empty => 0
+
+sub main()
+  s: S = .one(a: *B(n: 1), k: 3)
+  print(go(<s))
+
+# expect:
+# drop 1
+# 3

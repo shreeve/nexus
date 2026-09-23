@@ -1,0 +1,35 @@
+# Inside ( ) a newline is whitespace, so expressions, arguments, and
+# method chains may span lines regardless of indentation. A trailing `\`
+# joins the next line anywhere.
+
+struct Counter
+  n: Int
+
+  fun get(?self) -> Int
+    self.n
+
+fun add3(a: Int, b: Int, c: Int) -> Int
+  a + b + c
+
+sub main()
+  total = (1 +
+           2 +
+      3)
+  print total
+  print add3(
+    1,
+    2,
+    3
+  )
+  c = Counter(n: 7)
+  print (c
+    .get())
+  x = 1 + \
+    2
+  print x
+
+# expect:
+# 6
+# 6
+# 7
+# 3

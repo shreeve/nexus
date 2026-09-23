@@ -1,0 +1,44 @@
+(module
+  (enum
+    `Shape`
+    (variant `circle` ((: `radius` `Int`)))
+    (variant `rect` ((: `w` `Int`) (: `h` `Int`)))
+    `point`)
+  (fun
+    `area`
+    ((: `s` (borrow_read `Shape`)))
+    `Int`
+    (block
+      (match
+        `s`
+        (arm (variant_pattern `circle` `r`) (return (* (* `3` `r`) `r`)))
+        (arm (variant_pattern `rect` `w` `h`) (return (* `w` `h`)))
+        (arm (enum_lit `point`) (return `0`)))))
+  (struct
+    `Canvas`
+    (: `width` `Int`)
+    (: `height` `Int`)
+    (fun
+      `fits`
+      ((read `self`) (: `s` (borrow_read `Shape`)))
+      `Bool`
+      (block (<= (call `area` `s`) (* (member `self` `width`) (member `self` `height`))))))
+  (generic_type `Pair` (`T`) (: `left` `T`) (: `right` `T`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set
+        _
+        `shapes`
+        (generic_inst `Pair` `Shape`)
+        (call
+          `Pair`
+          (kwarg `left` (call (enum_lit `circle`) (kwarg `radius` `2`)))
+          (kwarg `right` (call (enum_lit `rect`) (kwarg `w` `3`) (kwarg `h` `5`)))))
+      (call `print` (call `area` (read (member `shapes` `left`))))
+      (call `print` (call `area` (read (member `shapes` `right`))))
+      (set _ `canvas` _ (call `Canvas` (kwarg `width` `4`) (kwarg `height` `3`)))
+      (call `print` (call (member `canvas` `fits`) (read (member `shapes` `left`))))
+      (call `print` (call (member `canvas` `fits`) (read (member `shapes` `right`)))))))

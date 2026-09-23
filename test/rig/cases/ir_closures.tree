@@ -1,0 +1,52 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `n` _ `1`)
+      (set _ `count` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set _ `copied` _ (lambda ((cap_clone `n`)) _ _ (block (call `print` `n`))))
+      (set
+        _
+        `cloned`
+        _
+        (lambda
+          ((cap_clone `count`))
+          _
+          _
+          (block (call (member `count` `set`) (+ (call (member `count` `get`)) `1`)))))
+      (set _ `weak` _ (lambda ((cap_weak `count`)) _ _ (block (call `print` `"weak"`))))
+      (set _ `moved` _ (lambda ((cap_move `n`)) _ _ (block (call `print` `n`))))
+      (set _ `tick` _ (lambda () _ _ (block (call `print` `"tick"`))))
+      (call `copied`)
+      (set _ `add` (fun_type (`Int` `Int`) `Int`) (lambda (`a` `b`) _ _ (block (+ `a` `b`))))
+      (set
+        _
+        `typed`
+        _
+        (lambda ((cap_clone `count`) (: `a` `Int`)) _ _ (block (call (member `count` `set`) `a`))))
+      (call `add` `1` `2`)
+      (set
+        _
+        `cb`
+        (shared (fun_type))
+        (share
+          (lambda
+            ((cap_clone `count`))
+            _
+            _
+            (block (call (member `count` `set`) (+ (call (member `count` `get`)) `1`))))))
+      (call `cb`)
+      (set
+        _
+        `one`
+        (shared (fun_type (`Int`)))
+        (share (lambda ((cap_clone `count`) `a`) _ _ (block (call (member `count` `set`) `a`)))))
+      (call `one` `5`)
+      (set
+        _
+        `two`
+        (shared (fun_type (`Int` `Int`) `Int`))
+        (share (lambda (`a` `b`) _ _ (block (* `a` `b`)))))
+      (call `print` (call `two` `1` `2`)))))

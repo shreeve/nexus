@@ -1,0 +1,62 @@
+(module
+  (struct
+    `Counter`
+    (: `hits` (generic_inst `Cell` `Int`))
+    (: `name` `String`)
+    (sub
+      `hit`
+      ((read `self`))
+      _
+      (block
+        (call
+          (member (member `self` `hits`) `set`)
+          (+ (call (member (member `self` `hits`) `get`)) `1`)))))
+  (sub
+    `bump`
+    ((: `c` (borrow_read (generic_inst `Cell` `Int`))) (: `by` `Int`))
+    _
+    (block (call (member `c` `set`) (+ (call (member `c` `get`)) `by`))))
+  (fun
+    `swap`
+    ((: `c` (borrow_read (generic_inst `Cell` `Int`))) (: `v` `Int`))
+    `Int`
+    (block (call (member `c` `replace`) `v`)))
+  (fun
+    `lent`
+    ((: `c` `Counter`))
+    `Int`
+    (block (call `bump` (read (member `c` `hits`)) `100`) (call (member (member `c` `hits`) `get`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `c` (generic_inst `Cell` `Int`) (call `Cell` (kwarg `value` `1`)))
+      (call `bump` (read `c`) `10`)
+      (call `print` (call (member `c` `get`)))
+      (set _ `old` _ (call `swap` (read `c`) `5`))
+      (call `print` `old` (call (member `c` `get`)))
+      (set _ `r` _ (read `c`))
+      (call (member `r` `set`) `7`)
+      (call `print` (call (member `c` `get`)))
+      (set
+        _
+        `k`
+        _
+        (call `Counter` (kwarg `hits` (call `Cell` (kwarg `value` `0`))) (kwarg `name` `"k"`)))
+      (call (member `k` `hit`))
+      (call (member `k` `hit`))
+      (call `print` (member `k` `name`) (call (member (member `k` `hits`) `get`)))
+      (call `print` (call `lent` `k`) (call (member (member `k` `hits`) `get`)))
+      (set
+        _
+        `box`
+        _
+        (share
+          (call
+            `Counter`
+            (kwarg `hits` (call `Cell` (kwarg `value` `40`)))
+            (kwarg `name` `"shared"`))))
+      (call (member `box` `hit`))
+      (call `bump` (read (member `box` `hits`)) `1`)
+      (call `print` (member `box` `name`) (call (member (member `box` `hits`) `get`))))))

@@ -1,0 +1,28 @@
+# A value moved on one path and not used afterwards is fine; the
+# auto-drop guard releases it only on the path where it was not moved.
+
+struct Box
+  payload: Int
+
+  drop self: !Box
+    print("drop")
+
+sub eat(rc: *Box)
+  print(rc.payload)
+
+sub go(c: Bool)
+  rc = *Box(payload: 1)
+  if c
+    eat(<rc)
+  print("after")
+
+sub main()
+  go(true)
+  go(false)
+
+# expect:
+# 1
+# drop
+# after
+# after
+# drop

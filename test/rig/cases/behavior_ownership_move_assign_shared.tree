@@ -1,0 +1,14 @@
+(module
+  (struct
+    `U`
+    (: `v` `Int`)
+    (drop_decl ((: `self` (borrow_write `U`))) (block (call `print` (+ (member `self` `v`) `100`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `rc` _ (share (call `U` (kwarg `v` `1`))))
+      (set _ `rc2` _ (share (call `U` (kwarg `v` `2`))))
+      (set move `rc2` _ `rc`)
+      (call `print` (member `rc2` `v`)))))

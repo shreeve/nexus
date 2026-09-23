@@ -1,0 +1,455 @@
+(routine
+  (label `IVM2069P`)
+  (` `)
+  (` `)
+  (label `EN`)
+  (` `)
+  (` `
+    _
+    (new
+      _
+      `ADDR`
+      `PORT`
+      `STATION`
+      `TCPDATA`
+      `AN`
+      `RLLN`
+      `SLLN`
+      `STOP`
+      `VER`
+      `DA`
+      `FILE`
+      `RET`
+      `ERROR`))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `STATION`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (extrinsic (`SITE` `VASITE`))) (expr (str `"^"`)) (expr (num `3`))))))))
+  (` `)
+  (` ` _ (set _ (= (lvar `STOP`) (expr (num `0`)))))
+  (` `
+    _
+    (quit
+      (postcond
+        (expr (extrinsic (`SETLL16` ((expr (lvar `STATION`)) (byref `RLLN`) (byref `SLLN`))))))))
+  (` ` _ (quit (postcond (expr (extrinsic (`SETAPP` ((expr (lvar `STATION`)) (byref `AN`))))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `PROTOCOL`)
+        ((expr (lvar `STATION`)) (expr (lvar `RLLN`)) (expr (lvar `SLLN`)) (byref `AN`)))))
+  (` `)
+  (` `)
+  (` `)
+  (label `CLOSREA` _ ((set _ (= (lvar `FILE`) (expr (num `301.93`))))))
+  (` ` _ (set _ (= (lvar `ERROR`) (expr (str `""`)))))
+  (` ` _ (kill _ (lvar `DATA`)))
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar `IVM` ((expr (num `301.93`)) (expr (str `"B"`)) (expr (str `"CONVERTED"`))))))))))
+    (do)
+    (quit
+      (postcond
+        (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))))
+  (` . `#1 _ (set _ (= (lvar `DATA` ((expr (num `.01`)))) (expr (str `"CONVERTED"`)))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `RET`)
+        (expr
+          (extrinsic
+            ((`ADD` `DGENDBS`)
+              ((expr (lvar `FILE`)) (expr (str `""`)) (byref `DATA`) (byref `ERROR`))))))))
+  (` . `#1
+    _
+    (if (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))
+    (do))
+  (` . . `#2
+    _
+    (set _ (= (lvar `RET`) (expr (`-` (num `1`)) (`_` (str `"^"`)) (`_` (lvar `ERROR`))))))
+  (` . . `#2 _ (do _ (call (ref `ERROR`) ((expr (lvar `RET`)) (expr (str `"Updating #301.93"`))))))
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `IVM`
+                 ((expr (num `301.93`)) (expr (str `"B"`)) (expr (str `"NOT CONVERTED"`))))))))))
+    (do)
+    (quit
+      (postcond
+        (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))))
+  (` . `#1 _ (set _ (= (lvar `DATA` ((expr (num `.01`)))) (expr (str `"NOT CONVERTED"`)))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `RET`)
+        (expr
+          (extrinsic
+            ((`ADD` `DGENDBS`)
+              ((expr (lvar `FILE`)) (expr (str `""`)) (byref `DATA`) (byref `ERROR`))))))))
+  (` . `#1
+    _
+    (if (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))
+    (do))
+  (` . . `#2
+    _
+    (set _ (= (lvar `RET`) (expr (`-` (num `1`)) (`_` (str `"^"`)) (`_` (lvar `ERROR`))))))
+  (` . . `#2 _ (do _ (call (ref `ERROR`) ((expr (lvar `RET`)) (expr (str `"Updating #301.93"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `SETLL16` (`STATION` `RLLN` `SLLN`))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (new _ `ADDR` `PORT` `RECVLL` `SENDLL` `RET` `VISN` `M` `IENS`))
+  (` `)
+  (` ` _ (set _ (= (lvar `PORT`) (expr (num `7788`)))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `SLLN`) (expr (str `"LLEDBOUT"`)))))
+  (` ` _ (set _ (= (lvar `ADDR`) (expr (str `"10.224.132.101"`)))))
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RET`)
+        (expr
+          (extrinsic
+            ((`LL16` `IVM2069Q`)
+              ((expr (lvar `SLLN`))
+                (expr (str `"TCP"`))
+                (expr (str `"NC"`))
+                (expr (num `10`))
+                (expr (lvar `ADDR`))
+                (expr (lvar `PORT`))
+                (expr (str `"C"`))
+                (expr (str `"N"`))
+                (expr (str `""`)))))))))
+  (` `
+    _
+    (if (expr (`+` (lvar `RET`)) (`<` (num `0`))))
+    (do
+      _
+      (call (ref `ERROR`) ((expr (lvar `RET`)) (expr (str `"Edb Send Link:"`) (`_` (lvar `SLLN`))))))
+    (quit _ (expr (num `1`))))
+  (` `)
+  (label `RLL`)
+  (` ` _ (set _ (= (lvar `RLLN`) (expr (str `"LLEDBIN"`)))))
+  (` ` _ (set _ (= (lvar `ADDR`) (expr (str `""`)))))
+  (` ` _ (set _ (= (lvar `PORT`) (expr (str `""`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RET`)
+        (expr
+          (extrinsic
+            ((`LL16` `IVM2069Q`)
+              ((expr (lvar `RLLN`))
+                (expr (str `"TCP"`))
+                (expr (str `"MS"`))
+                (expr (num `10`))
+                (expr (lvar `ADDR`))
+                (expr (lvar `PORT`))
+                (expr (str `"M"`))
+                (expr (str `"N"`))
+                (expr (str `""`)))))))))
+  (` `
+    _
+    (if (expr (`+` (lvar `RET`)) (`<` (num `0`))))
+    (do
+      _
+      (call
+        (ref `ERROR`)
+        ((expr (lvar `RET`)) (expr (str `"Edb Receive Link:"`) (`_` (lvar `RLLN`))))))
+    (quit _ (expr (num `1`))))
+  (label `LL16EXIT` _ ((quit _ (expr (lvar `STOP`)))))
+  (` `)
+  (` `)
+  (label `SETAPP` (`STATION` `AN`))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (new _ `RECVAPP` `SENDAPP`))
+  (` ` _ (set _ (= (lvar `AN` ((expr (str `"S"`)))) (expr (str `"EAS EDB"`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `SENDAPP`)
+        (expr
+          (extrinsic
+            ((`APP` `IVM2069Q`)
+              ((expr (lvar `AN` ((expr (str `"S"`)))))
+                (expr (str `"a"`))
+                (expr (lvar `STATION`))
+                (expr (str `"USA"`)))))))))
+  (` `
+    _
+    (if (expr (`+` (lvar `SENDAPP`)) (`<` (num `0`))))
+    (do
+      _
+      (call
+        (ref `ERROR`)
+        ((expr (lvar `SENDAPP`))
+          (expr (str `"Sending App:"`) (`_` (lvar `AN` ((expr (str `"S"`)))))))))
+    (goto _ ((ref `APPEXIT`))))
+  (` `)
+  (label `ANR` _ ((set _ (= (lvar `AN` ((expr (str `"R"`)))) (expr (str `"EDB eGate"`))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `RECVAPP`)
+        (expr
+          (extrinsic
+            ((`APP` `IVM2069Q`)
+              ((expr (lvar `AN` ((expr (str `"R"`)))))
+                (expr (str `"a"`))
+                (expr (num `200`))
+                (expr (str `"USA"`)))))))))
+  (` `
+    _
+    (if (expr (`+` (lvar `RECVAPP`)) (`<` (num `0`))))
+    (do
+      _
+      (call
+        (ref `ERROR`)
+        ((expr (lvar `RECVAPP`))
+          (expr (str `"Receiving App:"`) (`_` (lvar `AN` ((expr (str `"R"`))))))))))
+  (label `APPEXIT` _ ((quit _ (expr (lvar `STOP`)))))
+  (` `)
+  (` `)
+  (label `PROTOCOL` (`STATION` `RLLN` `SLLN` `AN`))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (new _ `RESULT` `SIEN` `DUZ` `V` `N` `N1` `LNCNT` `LINE` `PROTRET` `NAM`))
+  (` `)
+  (` ` _ (set _ (= (lvar `N1`) (expr (str `""`))) (= (lvar `V`) (expr (str `"2.3.1"`)))))
+  (` `)
+  (` ` _ (set _ (= (lvar `LNCNT`) (expr (num `1`)))))
+  (` `
+    _
+    (for)
+    (set _ (= (lvar `LINE`) (expr (text `PROTDAT` (expr (lvar `LNCNT`))))))
+    (quit
+      (postcond
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `LINE`)) (expr (str `";"`)) (expr (num `3`))))
+          (`=` (str `"END"`)))))
+    (do)
+    (quit (postcond (expr (lvar `STOP`)))))
+  (` . `#1 _ (kill _ (lvar `D`) (lvar `RESULT`)))
+  (` . `#1
+    _
+    (for (lvar `N`) (range (expr (num `3`)) (expr (num `1`))))
+    (quit
+      (postcond
+        (expr
+          (intrinsic `P`#212 ((expr (lvar `LINE`)) (expr (str `";"`)) (expr (lvar `N`))))
+          (`=` (str `"LEND"`)))))
+    (set
+      _
+      (=
+        (lvar `D` ((expr (lvar `N`))))
+        (expr
+          (extrinsic
+            (`V`
+              ((expr
+                 (intrinsic `P`#212 ((expr (lvar `LINE`)) (expr (str `";"`)) (expr (lvar `N`))))))))))))
+  (` . `#1
+    _
+    (set
+      _
+      (=
+        (lvar `NAM`)
+        (expr
+          (lvar `D` ((expr (num `3`))))
+          (`_` (lvar `D` ((expr (num `4`)))))
+          (`_` (lvar `D` ((expr (num `5`)))))))))
+  (` . `#1 _ (do (postcond (expr (lvar `NAM`) (`[` (str `"CLIENT"`))))))
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `SIEN`)
+        (expr
+          (extrinsic
+            ((`SP` `IVM2069Q`)
+              ((expr (lvar `NAM`))
+                (expr (lvar `D` ((expr (num `6`)))))
+                (expr (lvar `D` ((expr (num `7`)))))
+                (expr (lvar `D` ((expr (num `8`)))))
+                (expr (lvar `D` ((expr (num `9`)))))
+                (expr (lvar `D` ((expr (num `10`))))))))))))
+  (` . . `#2
+    _
+    (if (expr (`+` (lvar `SIEN`)) (`<` (num `0`))))
+    (do
+      _
+      (call (ref `ERROR`) ((expr (lvar `SIEN`)) (expr (str `"Subscriber:"`) (`_` (lvar `NAM`)))))))
+  (` . `#1 _ (do (postcond (expr (lvar `NAM`) (`[` (str `"SERVER"`))))))
+  (` . . `#2 _ (new _ `TMPNAM` `ITEMTXT`))
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `TMPNAM`)
+        (expr
+          (lvar `D` ((expr (num `6`))))
+          (`_` (lvar `D` ((expr (num `7`)))))
+          (`_` (intrinsic `P`#212 ((expr (lvar `NAM`)) (expr (str `"SERVER "`)) (expr (num `2`)))))))))
+  (` . . `#2 _ (set _ (= (lvar `ITEMTXT`) (expr (extrinsic (`GETIT` ((expr (lvar `TMPNAM`)))))))))
+  (` . . `#2
+    _
+    (set
+      _
+      (=
+        (lvar `RESULT`)
+        (expr
+          (extrinsic
+            ((`EDP` `IVM2069Q`)
+              ((expr (lvar `NAM`))
+                (expr (lvar `D` ((expr (num `6`)))))
+                (expr (lvar `D` ((expr (num `7`)))))
+                (expr (lvar `D` ((expr (num `8`)))))
+                (expr (lvar `D` ((expr (num `9`)))))
+                (expr (lvar `D` ((expr (num `10`)))))
+                (expr (lvar `D` ((expr (num `11`)))))
+                (expr (lvar `D` ((expr (num `12`)))))
+                (expr (lvar `ITEMTXT`)))))))))
+  (` . . `#2
+    _
+    (if (expr (`+` (lvar `RESULT`)) (`<` (num `0`))))
+    (do
+      _
+      (call
+        (ref `ERROR`)
+        ((expr (lvar `RESULT`)) (expr (str `"Event Driver:"`) (`_` (lvar `NAM`)))))))
+  (` . `#1 _ (set _ (= (lvar `LNCNT`) (expr (lvar `LNCNT`) (`+` (num `1`))))))
+  (` ` _ (kill _ (lvar `D`)))
+  (` ` _ (quit))
+  (` `)
+  (label `ERROR` (`ERRMSG` `SUBJ`))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (new _ `TXT`))
+  (` ` _ (set _ (= (lvar `STOP`) (expr (num `1`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `TXT`)
+        (expr (intrinsic `P`#212 ((expr (lvar `ERRMSG`)) (expr (str `"^"`)) (expr (num `2`))))))))
+  (` `
+    _
+    (write _ (posformat `!`) (expr (str `"===================================================="`))))
+  (` `
+    _
+    (write _ (posformat `!`) (expr (str `"=                   ERROR                          ="`))))
+  (` `
+    _
+    (write _ (posformat `!`) (expr (str `"===================================================="`))))
+  (` ` _ (write _ (posformat `!`) (expr (str `"When creating "`) (`_` (lvar `SUBJ`)))))
+  (` `
+    _
+    (write _ (posformat `!`) (expr (str `"===================================================="`))))
+  (` ` _ (write _ (posformat `!`) (expr (str `"**ERROR MSG: "`)) (expr (lvar `TXT`))))
+  (` ` _ (quit))
+  (` `)
+  (label `V` (`VALUE`))
+  (` `)
+  (` `
+    _
+    (if (expr (intrinsic `E`#203 ((expr (lvar `VALUE`)))) (`=` (str `"@"`))))
+    (quit
+      _
+      (expr
+        (@name
+          (expr
+            (intrinsic
+              `E`#203
+              ((expr (lvar `VALUE`))
+                (expr (num `2`))
+                (expr (intrinsic `L`#209 ((expr (lvar `VALUE`))))))))))))
+  (` ` _ (quit _ (expr (lvar `VALUE`))))
+  (` `)
+  (label `GETIT` (`N`))
+  (` `)
+  (` `
+    _
+    (quit
+      (postcond (expr (lvar `N`) (`=` (str `"ORUZ06"`))))
+      (expr (str `"IVM Case Status/Unsolicited HEC/Edb to VAMC"`))))
+  (` `
+    _
+    (quit
+      (postcond (expr (lvar `N`) (`=` (str `"ORUZ09"`))))
+      (expr (str `"IVM BILLING/COLLECTION/Unsolicited VAMC to HEC/Edb"`))))
+  (` ` _ (quit _ (expr (str `""`))))
+  (` `)
+  (label `PROTDAT`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `))

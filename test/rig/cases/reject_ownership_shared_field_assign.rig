@@ -1,0 +1,11 @@
+# Assigning a field through a shared handle is rejected.
+
+struct User
+  age: Int
+
+sub main()
+  rc = *User(age: 1)
+  rc.age = 99
+  -rc
+
+# error: cannot assign through shared handle

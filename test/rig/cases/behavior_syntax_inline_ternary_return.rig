@@ -1,0 +1,12 @@
+# `return a if c else b` returns the ternary's value.
+
+fun f(c: Bool) -> Int
+  return 1 if c else 2
+
+sub main()
+  print(f(true))
+  print(f(false))
+
+# expect:
+# 1
+# 2

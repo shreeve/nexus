@@ -1,0 +1,21 @@
+# A conversion takes one number; a constant is converted at compile
+# time, so it must fit the target type.
+
+sub main()
+  big =! 300
+  a = U8(big)
+  b = U8(-1)
+  c = I8(200.5)
+  d = U32(-0.5)
+  e = Int("7")
+  f = Int(1, 2)
+  g = Float(true)
+  h = I64(9223372036854775807) + I8(1)
+
+# error: integer value `300` does not fit in `U8`
+# error: integer value `-1` does not fit in `U8`
+# error: `200.5` does not fit in `I8`
+# error: `Int(x)` converts a number; `x` has type `String`
+# error: `Int(x)` converts one number; it takes exactly one argument
+# error: `Float(x)` converts a number; `x` has type `Bool`
+# error: operator `+` operands have different types `Int` and `I8`

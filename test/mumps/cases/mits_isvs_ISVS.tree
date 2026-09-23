@@ -1,0 +1,280 @@
+(routine
+  (label `ISVS`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/isvs/ISVS"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$T after IF true"`)) (expr (num `1`)) (expr (str `"$$TT^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$T after IF false"`)) (expr (num `0`)) (expr (str `"$$TF^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$T persists across non-IF"`)) (expr (num `1`)) (expr (str `"$$TP^ISVS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$TLEVEL = 0 outside transaction"`))
+          (expr (num `0`))
+          (expr (str `"$$TL^ISVS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$JOB > 0"`)) (expr (num `1`)) (expr (str `"$$JBP^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$JOB constant within process"`))
+          (expr (num `1`))
+          (expr (str `"$$JBC^ISVS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$H has 1 comma"`)) (expr (num `1`)) (expr (str `"$$HCOMMA^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$H first piece is positive int"`))
+          (expr (num `1`))
+          (expr (str `"$$HDAYS^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$H second piece is 0..86399"`))
+          (expr (num `1`))
+          (expr (str `"$$HSEC^ISVS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZH has 3 commas"`)) (expr (num `3`)) (expr (str `"$$ZHC^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZH us field is 0..999999"`)) (expr (num `1`)) (expr (str `"$$ZHUS^ISVS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZUT is positive integer"`)) (expr (num `1`)) (expr (str `"$$ZUTP^ISVS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$ZUT increases monotonically"`))
+          (expr (num `1`))
+          (expr (str `"$$ZUTM^ISVS()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$STORAGE > 0"`)) (expr (num `1`)) (expr (str `"$$STG^ISVS()"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/isvs/ISVS"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `TT` _ ((if (expr (num `1`))) (quit _ (expr (intrinsic `T`#221)))))
+  (` ` _ (quit _ (expr (`-` (num `1`)))))
+  (` `)
+  (label `TF` _ ((if (expr (num `0`)))))
+  (` ` _ (quit _ (expr (intrinsic `T`#221))))
+  (` `)
+  (label `TP` _ ((new _ `x`) (if (expr (num `1`))) (set _ (= (lvar `x`) (expr (num `1`))))))
+  (` `)
+  (` ` _ (quit _ (expr (intrinsic `T`#221))))
+  (` `)
+  (label `TL` _ ((quit _ (expr (intrinsic `TLEVEL`#315)))))
+  (` `)
+  (label
+    `JBP`
+    _
+    ((quit
+       _
+       (expr
+         (select
+           ((expr (intrinsic `JOB`#306) (`>` (num `0`))) (expr (num `1`)))
+           ((expr (num `1`)) (expr (num `0`))))))))
+  (` `)
+  (label `JBC` _ ((new _ `a` `b`) (set _ (= (lvar `a`) (expr (intrinsic `JOB`#306))))))
+  (` `)
+  (` `
+    _
+    (new _ `i`)
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100`))))
+    (set _ (= (lvar `b`) (expr (lvar `i`)))))
+  (` ` _ (set _ (= (lvar `b`) (expr (intrinsic `JOB`#306)))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `a`) (`=` (lvar `b`))) (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))))
+  (` `)
+  (label
+    `HCOMMA`
+    _
+    ((quit
+       _
+       (expr (intrinsic `L`#209 ((expr (intrinsic `H`#304)) (expr (str `","`)))) (`-` (num `1`))))))
+  (` `)
+  (label
+    `HDAYS`
+    _
+    ((new _ `d`)
+      (set
+        _
+        (=
+          (lvar `d`)
+          (expr
+            (intrinsic `P`#212 ((expr (intrinsic `H`#304)) (expr (str `","`)) (expr (num `1`)))))))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `d`) (`>` (num `0`))) (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))))
+  (` `)
+  (label
+    `HSEC`
+    _
+    ((new _ `s`)
+      (set
+        _
+        (=
+          (lvar `s`)
+          (expr
+            (intrinsic `P`#212 ((expr (intrinsic `H`#304)) (expr (str `","`)) (expr (num `2`)))))))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `s`) (`>=` (num `0`)) (`&` (expr (lvar `s`) (`<` (num `86400`)))))
+            (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))))
+  (` `)
+  (label
+    `ZHC`
+    _
+    ((quit
+       _
+       (expr (intrinsic `L`#209 ((expr (intrinsic `ZH`#324)) (expr (str `","`)))) (`-` (num `1`))))))
+  (` `)
+  (label
+    `ZHUS`
+    _
+    ((new _ `us`)
+      (set
+        _
+        (=
+          (lvar `us`)
+          (expr
+            (intrinsic `P`#212 ((expr (intrinsic `ZH`#324)) (expr (str `","`)) (expr (num `3`)))))))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `us`) (`>=` (num `0`)) (`&` (expr (lvar `us`) (`<` (num `1000000`)))))
+            (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))))
+  (` `)
+  (label `ZUTP` _ ((new _ `z`) (set _ (= (lvar `z`) (expr (intrinsic `ZUT`#335))))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `z`) (`>` (num `0`))) (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))))
+  (` `)
+  (label `ZUTM` _ ((new _ `a` `b` `i`) (set _ (= (lvar `a`) (expr (intrinsic `ZUT`#335))))))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `1000`))))
+    (set _ (= (lvar `b`) (expr (lvar `i`)))))
+  (` ` _ (set _ (= (lvar `b`) (expr (intrinsic `ZUT`#335)))))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (select
+          ((expr (lvar `b`) (`>=` (lvar `a`))) (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`)))))))
+  (` `)
+  (label
+    `STG`
+    _
+    ((quit
+       _
+       (expr
+         (select
+           ((expr (intrinsic `STORAGE`) (`>` (num `0`))) (expr (num `1`)))
+           ((expr (num `1`)) (expr (num `0`)))))))))

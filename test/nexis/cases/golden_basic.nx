@@ -1,0 +1,25 @@
+; test/golden/basic.nx — canonical reader round-trip over a representative
+; source file. Exercises the happy-path surface of §7.2 (FORMS.md §7).
+
+(ns nexis.example
+  (:require [nexis.core :as core]))
+
+(def answer 42)
+(def pi 3.14)
+
+(defn greet
+  "Return a friendly greeting."
+  [who]
+  (str "hello, " who))
+
+(let [xs [1 2 3]
+      ys {:a 1 :b 2}
+      zs #{:alpha :beta}]
+  (reduce + xs))
+
+(when (pos? answer)
+  (println (greet "nexis")))
+
+;; A transaction-shaped sketch (illustrative only — no evaluation here).
+(with-tx [tx conn]
+  (db/alter! tx alice update :age inc))

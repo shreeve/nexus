@@ -1,0 +1,19 @@
+# `rc2 <- rc` drops rc2's old handle, then moves rc into rc2. Each
+# allocation is dropped exactly once.
+
+struct U
+  v: Int
+
+  drop self: !U
+    print(self.v + 100)
+
+sub main()
+  rc = *U(v: 1)
+  rc2 = *U(v: 2)
+  rc2 <- rc
+  print(rc2.v)
+
+# expect:
+# 102
+# 1
+# 101

@@ -1,0 +1,61 @@
+(routine
+  (label `OPS`)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr
+          (num `1`)
+          (`+` (num `2`))
+          (`*` (num `3`))
+          (`-` (num `4`))
+          (`/` (num `5`))
+          (`\\` (num `6`))
+          (`#` (num `7`))
+          (`**` (num `2`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (lvar `A`) (`'=` (lvar `B`))))
+      (= (lvar `Y`) (expr (lvar `A`) (`'<` (lvar `B`))))
+      (= (lvar `Z`) (expr (lvar `A`) (`'>` (lvar `B`))))
+      (= (lvar `W`) (expr (lvar `A`) (`]` (lvar `B`))))
+      (= (lvar `V`) (expr (lvar `A`) (`]]` (lvar `B`))))
+      (= (lvar `U`) (expr (lvar `A`) (`[` (lvar `B`))))
+      (= (lvar `T`) (expr (lvar `A`) (`'[` (lvar `B`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (lvar `A`) (`_` (lvar `B`)) (`_` (str `"c"`))))
+      (= (lvar `Y`) (expr (`'` (lvar `A`))))
+      (= (lvar `Z`) (expr (`-` (lvar `A`))))
+      (= (lvar `W`) (expr (`+` (lvar `A`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (lvar `A`) (`&` (lvar `B`)) (`!` (lvar `C`))))
+      (= (lvar `Y`) (expr (lvar `A`) (`'&` (lvar `B`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (lvar `A`) (? ((pat (`1` `1`) (`A`)) (pat () (`N`))))))
+      (= (lvar `Y`) (expr (lvar `A`) (? ((pat () (`E`)) (pat (`1` `1`) (_ `"x"`)) (pat () (`E`))))))
+      (= (lvar `Z`) (expr (lvar `A`) ('? ((pat (`3` `3`) (`N`))))))
+      (=
+        (lvar `W`)
+        (expr (lvar `A`) (? ((pat (`1` `1`) alt ((pat (`1` `1`) (`A`))) ((pat (`1` `1`) (`N`))))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (str `"quote""d"`)))
+      (= (lvar `Y`) (expr (num `1E3`)))
+      (= (lvar `Z`) (expr (num `.5`)))
+      (= (lvar `W`) (expr (num `1.5E-2`)))))
+  (` ` _ (quit)))

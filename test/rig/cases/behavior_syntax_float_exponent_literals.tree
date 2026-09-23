@@ -1,0 +1,12 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `big` _ `1.0e10`)
+      (set _ `small` _ `2e-3`)
+      (set _ `mid` _ `1.5E+2`)
+      (set _ `typed` `Float` `3e2`)
+      (set _ `hex` _ `0xE1`)
+      (call `print` (/ `big` `1e9`) (* `small` `1000.0`) `mid` `typed` `hex`))))

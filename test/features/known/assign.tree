@@ -1,0 +1,1 @@
+(module (assign `x` (+ `1` `2`)) (assign `y` (* `x` (- `3` `4`))))

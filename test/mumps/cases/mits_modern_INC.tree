@@ -1,0 +1,321 @@
+(routine
+  (label `INC`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/modern/INC"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I undefined creates with 1"`))
+          (expr (num `1`))
+          (expr (str `"$$BASIC^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I existing adds 1"`)) (expr (num `2`)) (expr (str `"$$EXIST^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I returns new value"`)) (expr (num `10`)) (expr (str `"$$RETVAL^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I mutates in place"`)) (expr (num `6`)) (expr (str `"$$MUT^INC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I delta=5"`)) (expr (num `5`)) (expr (str `"$$D5^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I negative delta"`)) (expr (`-` (num `3`))) (expr (str `"$$DNEG^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I delta=0 returns current"`)) (expr (num `7`)) (expr (str `"$$D0^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I decimal delta"`)) (expr (num `1.5`)) (expr (str `"$$DDEC^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I large positive delta"`)) (expr (num `1000`)) (expr (str `"$$DLG^INC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I in 100-iter loop"`)) (expr (num `100`)) (expr (str `"$$LOOP^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I sum-of-1-to-10"`)) (expr (num `55`)) (expr (str `"$$MIXLOOP^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I as condition (truthy after first)"`))
+          (expr (num `1`))
+          (expr (str `"$$ASCOND^INC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"multiple counters independent"`))
+          (expr (num `3`))
+          (expr (str `"$$MULT^INC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I subscripted local"`)) (expr (num `1`)) (expr (str `"$$SUB1^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I subscripted with delta"`)) (expr (num `5`)) (expr (str `"$$SUB5^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I deep subscript creates and increments"`))
+          (expr (num `1`))
+          (expr (str `"$$DEEPSUB^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I deep with delta"`)) (expr (num `10`)) (expr (str `"$$DEEPDEL^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I subscripted in loop accumulates"`))
+          (expr (num `55`))
+          (expr (str `"$$SUBLOOP^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I global subscripted"`)) (expr (num `1`)) (expr (str `"$$GSUB^INC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$I sibling counters independent"`))
+          (expr (str `"2,3"`))
+          (expr (str `"$$SIBLINGS^INC()"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/modern/INC"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `BASIC` _ ((new _ `x`)))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))
+  (` `)
+  (label `EXIST` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `1`))))))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))
+  (` `)
+  (label `RETVAL` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `9`))))))
+  (` ` _ (new _ `r`) (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`))))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (` `)
+  (label `MUT` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `5`))))))
+  (` ` _ (new _ `r`) (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`))))))))
+  (` `)
+  (` ` _ (quit _ (expr (lvar `x`))))
+  (` `)
+  (label `D5` _ ((new _ `x`)))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `5`)))))))
+  (` `)
+  (label `DNEG` _ ((new _ `x`)))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (`-` (num `3`))))))))
+  (` `)
+  (label `D0` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `7`))))))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `0`)))))))
+  (` `)
+  (label `DDEC` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `1`))))))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `0.5`)))))))
+  (` `)
+  (label `DLG` _ ((new _ `x`)))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `1000`)))))))
+  (` `)
+  (label `LOOP` _ ((new _ `x` `i` `r`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100`))))
+    (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`))))))))
+  (` ` _ (quit _ (expr (lvar `x`))))
+  (` `)
+  (label `MIXLOOP` _ ((new _ `x` `i` `r`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (lvar `i`))))))))
+  (` ` _ (quit _ (expr (lvar `x`))))
+  (` `)
+  (label `ASCOND` _ ((new _ `x` `result`) (set _ (= (lvar `result`) (expr (num `0`))))))
+  (` `)
+  (` `
+    _
+    (if (expr (intrinsic `I`#207 ((expr (lvar `x`))))))
+    (set _ (= (lvar `result`) (expr (num `1`)))))
+  (` ` _ (quit _ (expr (lvar `result`))))
+  (` `)
+  (label `MULT` _ ((new _ `x` `y`)))
+  (` `)
+  (` `
+    _
+    (new _ `r`)
+    (set
+      _
+      (=
+        (lvar `r`)
+        (expr
+          (intrinsic `I`#207 ((expr (lvar `x`))))
+          (`+` (intrinsic `I`#207 ((expr (lvar `x`)))))
+          (`+` (intrinsic `I`#207 ((expr (lvar `y`)))))
+          (`+` (intrinsic `I`#207 ((expr (lvar `y`)))))
+          (`+` (intrinsic `I`#207 ((expr (lvar `x`)))))))))
+  (` `)
+  (` ` _ (quit _ (expr (lvar `x`))))
+  (` `)
+  (label `SUB1` _ ((new _ `x`)))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"k"`))))))))))
+  (` `)
+  (label `SUB5` _ ((new _ `x`)))
+  (` `
+    _
+    (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"k"`))))) (expr (num `5`)))))))
+  (` `)
+  (label `DEEPSUB` _ ((new _ `x` `r`)))
+  (` `
+    _
+    (quit
+      _
+      (expr
+        (intrinsic
+          `I`#207
+          ((expr (lvar `x` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))))))))
+  (` `)
+  (label `DEEPDEL` _ ((new _ `x` `i` `r`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"counter"`)))))))))))
+  (` ` _ (quit _ (expr (lvar `x` ((expr (str `"counter"`)))))))
+  (` `)
+  (label `SUBLOOP` _ ((new _ `x` `i` `r`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (set
+      _
+      (=
+        (lvar `r`)
+        (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"k"`))))) (expr (lvar `i`))))))))
+  (` ` _ (quit _ (expr (lvar `x` ((expr (str `"k"`)))))))
+  (` `)
+  (label `GSUB` _ ((kill _ (gvar `MITS`))))
+  (` `
+    _
+    (new _ `r`)
+    (set
+      _
+      (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (gvar `MITS` ((expr (str `"counter"`)))))))))))
+  (` ` _ (new _ `v`) (set _ (= (lvar `v`) (expr (gvar `MITS` ((expr (str `"counter"`))))))))
+  (` ` _ (kill _ (gvar `MITS`)))
+  (` ` _ (quit _ (expr (lvar `v`))))
+  (` `)
+  (label `SIBLINGS` _ ((new _ `x`)))
+  (` `
+    _
+    (new _ `r1`)
+    (set _ (= (lvar `r1`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"a"`)))))))))))
+  (` `
+    _
+    (new _ `r2`)
+    (set _ (= (lvar `r2`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"b"`)))))))))))
+  (` `
+    _
+    (new _ `r3`)
+    (set _ (= (lvar `r3`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"a"`)))))))))))
+  (` `
+    _
+    (new _ `r4`)
+    (set
+      _
+      (=
+        (lvar `r4`)
+        (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"b"`))))) (expr (num `2`))))))))
+  (` `
+    _
+    (quit
+      _
+      (expr (lvar `x` ((expr (str `"a"`)))) (`_` (str `","`)) (`_` (lvar `x` ((expr (str `"b"`)))))))))

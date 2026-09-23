@@ -1,0 +1,738 @@
+(routine
+  (label `A1B2OSR1`)
+  (` `)
+  (` `)
+  (` ` _ (kill _ (gvar `UTILITY` ((expr (intrinsic `J`#208))))))
+  (` ` _ (do _ (call (ref `DATA`))) (quit))
+  (` `)
+  (label `DATA`)
+  (` ` _ (set _ (= (lvar `A`) (expr (lvar `A1B2BDT`) (`-` (num `.00001`))))))
+  (` `
+    _
+    (for (lvar `I`) (range (expr (lvar `A`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `A`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `A`))))))))))
+    (quit
+      (postcond
+        (expr
+          (`'` (lvar `A`))
+          (`!` (expr (lvar `A`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
+    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `M`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `A1B2`
+                 ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `A`)) (expr (lvar `M`))))))))))
+    (quit (postcond (expr (`'` (lvar `M`)))))
+    (if
+      (expr (lvar `M`))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (lvar `M`)) (expr (num `0`)))))))))
+    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
+    (do _ (call (ref `FAC`)) (call (ref `ADM`))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `D`) (expr (lvar `A1B2BDT`) (`-` (num `.00001`))))))
+  (` `
+    _
+    (for (lvar `I`) (range (expr (lvar `D`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `D`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (str `"ADS"`)) (expr (lvar `D`))))))))))
+    (quit
+      (postcond
+        (expr
+          (`'` (lvar `D`))
+          (`!` (expr (lvar `D`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
+    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `M`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `A1B2`
+                 ((expr (num `11500.2`)) (expr (str `"ADS"`)) (expr (lvar `D`)) (expr (lvar `M`))))))))))
+    (quit (postcond (expr (`'` (lvar `M`)))))
+    (if
+      (expr (lvar `M`))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (lvar `M`)) (expr (num `0`)))))))))
+    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
+    (do _ (call (ref `FAC`)) (call (ref `DIS`))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `P`) (expr (str `""`)))))
+  (` `
+    _
+    (for (lvar `I`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `P`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `P`))))))))))
+    (quit
+      (postcond
+        (expr
+          (`'` (lvar `P`))
+          (`!` (expr (lvar `P`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
+    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `M`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `A1B2`
+                 ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `P`)) (expr (lvar `M`))))))))))
+    (quit (postcond (expr (`'` (lvar `M`)))))
+    (if
+      (expr (lvar `M`))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (lvar `M`)) (expr (num `0`)))))))))
+    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
+    (do _ (call (ref `FAC`)))
+    (if
+      (expr
+        (select
+          ((expr
+             (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `6`))))
+             (`=` (str `""`)))
+            (expr (num `1`)))
+          ((expr
+             (expr
+               (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `6`))))
+               (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`))))))
+            (expr (num `1`)))
+          ((expr (num `1`)) (expr (num `0`))))))
+    (do _ (call (ref `PTRM`))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `T`) (expr (lvar `A1B2BDT`) (`-` (num `.0001`))))))
+  (` `
+    _
+    (for (lvar `I`) (range (expr (lvar `T`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `T`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `A1B2` ((expr (num `11500.3`)) (expr (str `"B"`)) (expr (lvar `T`))))))))))
+    (quit
+      (postcond
+        (expr
+          (`'` (lvar `T`))
+          (`!` (expr (lvar `T`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
+    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+    (set
+      _
+      (=
+        (lvar `M`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `A1B2`
+                 ((expr (num `11500.3`)) (expr (str `"B"`)) (expr (lvar `T`)) (expr (lvar `M`))))))))))
+    (quit (postcond (expr (`'` (lvar `M`)))))
+    (if
+      (expr (lvar `M`))
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `A1B2` ((expr (num `11500.3`)) (expr (lvar `M`)) (expr (num `0`)))))))))
+    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
+    (do _ (call (ref `FAC`)) (call (ref `TRF`))))
+  (` ` _ (quit))
+  (` `)
+  (label `ADM`)
+  (` ` _ (quit (postcond (expr (lvar `FAC`) (`=` (str `""`)) (`!` (expr (`'` (lvar `A1B2CHK`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DFN`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `2`)))))))
+    (quit
+      (postcond
+        (expr
+          (`'` (lvar `DFN`))
+          (`!`
+            (expr
+              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `BOS`)
+        (expr
+          (select
+            ((expr (`'` (lvar `DFN`))) (expr (str `""`)))
+            ((expr
+               (`'`
+                 (intrinsic
+                   `D`#202
+                   ((expr
+                      (gvar `A1B2` ((expr (num `11500.1`)) (expr (lvar `DFN`)) (expr (num `0`)))))))))
+              (expr (str `""`)))
+            ((expr (num `1`))
+              (expr
+                (intrinsic
+                  `P`#212
+                  ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `4`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `SPC`)
+        (expr
+          (select
+            ((expr
+               (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `3`))))))
+              (expr (str `""`)))
+            ((expr
+               (`'`
+                 (intrinsic
+                   `D`#202
+                   ((expr
+                      (gvar
+                        `DIC`
+                        ((expr (num `42.4`))
+                          (expr
+                            (intrinsic
+                              `P`#212
+                              ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `3`)))))
+                          (expr (num `0`)))))))))
+              (expr (str `""`)))
+            ((expr (num `1`))
+              (expr
+                (intrinsic
+                  `P`#212
+                  ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `3`)))))))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-ADM"`)) (expr (lvar `FAC`))))))))))
+      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-ADM-NAT"`))))))))))
+      (= (naked (expr (str `"ODS-ADM-NAT"`))) (expr (num `0`))))
+    (set
+      _
+      (=
+        (naked (expr (str `"ODS-ADM-NAT"`)))
+        (expr (naked (expr (str `"ODS-ADM-NAT"`))) (`+` (num `1`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208))
+                   (expr (str `"ODS-PT-ADM"`))
+                   (expr (lvar `DFN`))
+                   (expr (lvar `FAC`))))))))))
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-UNQ-ADM"`)) (expr (lvar `FAC`))))))))))
+      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208)) (expr (str `"ODS-PT-ADM"`)) (expr (lvar `DFN`))))))))))
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-UNQ-ADM-NAT"`))))))))))
+      (= (naked (expr (str `"ODS-UNQ-ADM-NAT"`))) (expr (num `0`))))
+    (set
+      _
+      (=
+        (naked (expr (str `"ODS-UNQ-ADM-NAT"`)))
+        (expr (naked (expr (str `"ODS-UNQ-ADM-NAT"`))) (`+` (num `1`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (if
+      (expr (lvar `BOS`) (`]` (str `""`)))
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208))
+                   (expr (str `"ODS-PT-ADM-BOS"`))
+                   (expr (lvar `BOS`))
+                   (expr (lvar `DFN`))
+                   (expr (lvar `FAC`))))))))))
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208))
+                     (expr (str `"ODS-UNQA-BOS"`))
+                     (expr (lvar `FAC`))
+                     (expr (lvar `BOS`))))))))))
+      (= (naked (expr (lvar `BOS`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `BOS`))) (expr (naked (expr (lvar `BOS`))) (`+` (num `1`))))))
+  (` `
+    _
+    (if
+      (expr (lvar `BOS`) (`]` (str `""`)))
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208))
+                   (expr (str `"ODS-PT-ADM-BOS"`))
+                   (expr (lvar `BOS`))
+                   (expr (lvar `DFN`))))))))))
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208))
+                     (expr (str `"ODS-UNQA-BOS-NAT"`))
+                     (expr (lvar `BOS`))))))))))
+      (= (naked (expr (lvar `BOS`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `BOS`))) (expr (naked (expr (lvar `BOS`))) (`+` (num `1`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (if
+      (expr (lvar `SPC`) (`]` (str `""`)))
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208))
+                   (expr (str `"ODS-PT-ADM-SPC"`))
+                   (expr (lvar `SPC`))
+                   (expr (lvar `DFN`))
+                   (expr (lvar `FAC`))))))))))
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208))
+                     (expr (str `"ODS-UNQA-SPC"`))
+                     (expr (lvar `FAC`))
+                     (expr (lvar `SPC`))))))))))
+      (= (naked (expr (lvar `SPC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `SPC`))) (expr (naked (expr (lvar `SPC`))) (`+` (num `1`))))))
+  (` `
+    _
+    (if
+      (expr (lvar `SPC`) (`]` (str `""`)))
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208))
+                   (expr (str `"ODS-PT-ADM-SPC"`))
+                   (expr (lvar `SPC`))
+                   (expr (lvar `DFN`))))))))))
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208))
+                     (expr (str `"ODS-UNQA-SPC-NAT"`))
+                     (expr (lvar `SPC`))))))))))
+      (= (naked (expr (lvar `SPC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `SPC`))) (expr (naked (expr (lvar `SPC`))) (`+` (num `1`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (gvar
+          `UTILITY`
+          ((expr (intrinsic `J`#208))
+            (expr (str `"ODS-PT-ADM"`))
+            (expr (lvar `DFN`))
+            (expr (lvar `FAC`))))
+        (expr (str `""`)))))
+  (` `
+    _
+    (if (expr (lvar `BOS`) (`]` (str `""`))))
+    (set
+      _
+      (=
+        (gvar
+          `UTILITY`
+          ((expr (intrinsic `J`#208))
+            (expr (str `"ODS-PT-ADM-BOS"`))
+            (expr (lvar `BOS`))
+            (expr (lvar `DFN`))
+            (expr (lvar `FAC`))))
+        (expr (str `""`)))))
+  (` `
+    _
+    (if (expr (lvar `SPC`) (`]` (str `""`))))
+    (set
+      _
+      (=
+        (gvar
+          `UTILITY`
+          ((expr (intrinsic `J`#208))
+            (expr (str `"ODS-PT-ADM-SPC"`))
+            (expr (lvar `SPC`))
+            (expr (lvar `DFN`))
+            (expr (lvar `FAC`))))
+        (expr (str `""`)))))
+  (` ` _ (quit))
+  (` `)
+  (label `DIS`)
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `FAC`)
+          (`=` (str `""`))
+          (`!`
+            (expr
+              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))
+          (`!` (expr (`'` (lvar `A1B2CHK`))))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-DIS"`)) (expr (lvar `FAC`))))))))))
+      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-DIS-NAT"`))))))))))
+      (= (naked (expr (str `"ODS-DIS-NAT"`))) (expr (num `0`))))
+    (set
+      _
+      (= (naked (expr (str `"ODS-DIS-NAT"`))) (expr (expr (str `"ODS-DIS-NAT"`)) (`+` (num `1`))))))
+  (` `
+    _
+    (quit
+      (postcond
+        (expr (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `11`)))))))))
+  (` `)
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-TRF-NVA"`)) (expr (lvar `FAC`))))))))))
+      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-TRF-NVA-NAT"`))))))))))
+      (= (naked (expr (str `"ODS-TRF-NVA-NAT"`))) (expr (num `0`))))
+    (set
+      _
+      (=
+        (naked (expr (str `"ODS-TRF-NVA-NAT"`)))
+        (expr (naked (expr (str `"ODS-TRF-NVA-NAT"`))) (`+` (num `1`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `PTRM`)
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `FAC`)
+          (`=` (str `""`))
+          (`!`
+            (expr
+              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))
+          (`!` (expr (`'` (lvar `A1B2CHK`))))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-PTRM"`)) (expr (lvar `FAC`))))))))))
+      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-PTRM-NAT"`))))))))))
+      (= (naked (expr (str `"ODS-PTRM-NAT"`))) (expr (num `0`))))
+    (set
+      _
+      (=
+        (naked (expr (str `"ODS-PTRM-NAT"`)))
+        (expr (naked (expr (str `"ODS-PTRM-NAT"`))) (`+` (num `1`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `TRF`)
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (lvar `FAC`)
+          (`=` (str `""`))
+          (`!`
+            (expr
+              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))
+          (`!`
+            (expr
+              (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `11`))))
+              (`=` (str `""`))))
+          (`!` (expr (`'` (lvar `A1B2CHK`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `TYP`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `11`))))))
+      (=
+        (lvar `SUBS`)
+        (expr
+          (select
+            ((expr (lvar `TYP`)) (expr (str `"ODS-DISP-NVA"`)))
+            ((expr (num `1`)) (expr (str `"ODS-DISP-VA"`))))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr
+                 (gvar
+                   `UTILITY`
+                   ((expr (intrinsic `J`#208)) (expr (lvar `SUBS`)) (expr (lvar `FAC`))))))))))
+      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
+  (` ` _ (set _ (= (lvar `SUBS`) (expr (lvar `SUBS`) (`_` (str `"-NAT"`))))))
+  (` `
+    _
+    (set
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (lvar `SUBS`))))))))))
+      (= (naked (expr (lvar `SUBS`))) (expr (num `0`))))
+    (set _ (= (naked (expr (lvar `SUBS`))) (expr (naked (expr (lvar `SUBS`))) (`+` (num `1`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `FAC`)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `FAC`)
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `7`)))))))
+    (quit
+      (postcond
+        (expr
+          (lvar `FAC`)
+          (`=` (str `""`))
+          (`!`
+            (expr
+              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `A1B2CHK`) (expr (num `0`)))
+      (=
+        (lvar `X`)
+        (expr
+          (select
+            ((expr (intrinsic `D`#202 ((expr (lvar `A1B2NTY`)))))
+              (expr
+                (intrinsic `P`#212 ((expr (lvar `A1B2NTY`)) (expr (lvar `U`)) (expr (num `2`))))))
+            ((expr (num `1`)) (expr (str `""`))))))))
+  (` `
+    _
+    (if
+      (expr
+        (select
+          ((expr (lvar `X`) (`=` (str `""`)) (`!` (expr (lvar `X`) (`=` (str `"A"`)))))
+            (expr (num `1`)))
+          ((expr (lvar `X`) (`=` (str `"R"`)))
+            (expr
+              (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `9`))))
+              (`=` (lvar `A1B2VRG`))))
+          ((expr (lvar `X`) (`=` (str `"V"`)))
+            (expr
+              (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `7`))))
+              (`=` (lvar `A1B2FN`))))
+          ((expr (num `1`)) (expr (num `0`))))))
+    (set _ (= (lvar `A1B2CHK`) (expr (num `1`)))))
+  (` ` _ (quit (postcond (expr (`'` (lvar `A1B2CHK`))))))
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr
+               (gvar
+                 `UTILITY`
+                 ((expr (intrinsic `J`#208)) (expr (str `"ODS-FAC"`)) (expr (lvar `FAC`))))))))))
+    (set
+      _
+      (=
+        (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-FAC"`)) (expr (lvar `FAC`))))
+        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `8`))))))))
+  (` ` _ (quit)))

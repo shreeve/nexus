@@ -1,0 +1,34 @@
+# Every ownership sigil in expression position, plus the binding forms.
+
+struct Node
+  value: Int
+
+sub consume(n: Node)
+  print(n.value)
+
+sub inspect(n: ?Node)
+  print(n.value)
+
+sub touch(n: !Node)
+  print(n.value)
+
+sub main()
+  a = Node(value: 1)
+  inspect ?a
+  touch !a
+  b = <a
+  consume <b
+
+  s = *Node(value: 2)
+  t = +s
+  w = ~t
+  -s
+
+  fixed =! 10
+  x = 1
+  new x = x + 1
+  y <- x
+
+  raw
+    p: I32 = @intCast(y)
+    print(p)

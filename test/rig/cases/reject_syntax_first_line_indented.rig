@@ -1,0 +1,5 @@
+# The first line of a file cannot be indented.
+  sub main()
+    print(1)
+
+# error: unexpected indentation

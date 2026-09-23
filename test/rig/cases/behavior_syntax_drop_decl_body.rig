@@ -1,0 +1,17 @@
+# A struct's `drop self: !Self` body runs at scope exit and can read
+# `self`'s fields.
+
+struct File
+  fd: Int
+
+  drop self: !File
+    print(self.fd)
+
+sub main()
+  f: File = File(fd: 7)
+  print(0)
+  # scope exit runs the drop body, which prints the fd
+
+# expect:
+# 0
+# 7

@@ -1,0 +1,13 @@
+# Inside parentheses a newline does not end the statement, so call
+# arguments may span lines.
+
+fun add(a: Int, b: Int) -> Int
+  a + b
+
+sub main()
+  x = add(1,
+    2)
+  print(x)
+
+# expect:
+# 3

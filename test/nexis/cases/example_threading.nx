@@ -1,0 +1,13 @@
+; examples/threading.nx — the threading macros (-> and ->>).
+;
+;   (-> 1 (+ 2) (+ 3))  is  (+ (+ 1 2) 3)  =>  6
+;   (-> x f)            is  (f x)
+;   (-> x (f a))        is  (f x a)         ; thread-first
+;
+; Host macros: let/fn/->.
+
+(let [start 0]
+  (-> start
+      (+ 1)
+      (+ 10)
+      (+ 100)))

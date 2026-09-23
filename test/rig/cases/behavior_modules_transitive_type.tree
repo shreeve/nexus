@@ -1,0 +1,17 @@
+(module
+  (use `lib`)
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` _ (call (member `lib` `make`) `1`))
+      (set _ `w` _ (weak `x`))
+      (set _ `s` _ (call (member `lib` `slot`) `2`))
+      (match
+        `s`
+        (arm (variant_pattern `full` `b`) (call `print` `"full"` (call (member `b` `get`))))
+        (arm (enum_lit `empty`) (call `print` `"empty"`)))
+      (set _ `p` _ (call (member `lib` `plain`) `3`))
+      (set _ `q` _ (move `p`))
+      (call `print` (call (member `x` `get`)) (member `q` `n`)))))

@@ -1,0 +1,134 @@
+; test/nextomic/pull.nx — pull and pull-many: [*], attribute lists,
+; nested patterns, reverse attributes, component recursion, `...` and
+; depth recursion through a cycle, :limit, :default, :as, time views,
+; and the errors. Runs from a scratch directory; the store is fresh.
+
+(require '[nextomic :as d])
+(require '[prelude :as t])
+
+(def c (d/connect "pull.edb"))
+(d/transact! c [{:db/ident :person/name :db/valueType :db.type/string :db/cardinality :db.cardinality/one}
+                {:db/ident :person/email :db/valueType :db.type/string :db/cardinality :db.cardinality/one
+                 :db/unique :db.unique/identity}
+                {:db/ident :person/age :db/valueType :db.type/long :db/cardinality :db.cardinality/one}
+                {:db/ident :person/tags :db/valueType :db.type/keyword :db/cardinality :db.cardinality/many}
+                {:db/ident :person/friend :db/valueType :db.type/ref :db/cardinality :db.cardinality/many}
+                {:db/ident :person/boss :db/valueType :db.type/ref :db/cardinality :db.cardinality/one}
+                {:db/ident :person/level :db/valueType :db.type/ref :db/cardinality :db.cardinality/one}
+                {:db/ident :person/house :db/valueType :db.type/ref :db/cardinality :db.cardinality/one
+                 :db/isComponent true}
+                {:db/ident :house/name :db/valueType :db.type/string :db/cardinality :db.cardinality/one}
+                {:db/ident :house/rooms :db/valueType :db.type/ref :db/cardinality :db.cardinality/many
+                 :db/isComponent true}
+                {:db/ident :room/name :db/valueType :db.type/string :db/cardinality :db.cardinality/one}
+                {:db/ident :node/label :db/valueType :db.type/string :db/cardinality :db.cardinality/one
+                 :db/unique :db.unique/identity}
+                {:db/ident :edge/to :db/valueType :db.type/ref :db/cardinality :db.cardinality/many}
+                {:db/ident :level/junior} {:db/ident :level/senior}])
+
+; Ann owns a house of two rooms; Bob and Cy report to Ann, Di to Cy;
+; Ed is his own friend; the graph n1 -> n2 -> n3 -> n1 has a cycle.
+(def people
+  (d/transact! c [{:db/id "ann" :person/name "Ann" :person/email "ann@x" :person/age 30 :person/tags [:red :blue]
+                   :person/level :level/senior
+                   :person/house {:house/name "Villa" :house/rooms [{:room/name "kitchen"} {:room/name "hall"}]}}
+                  {:db/id "bob" :person/name "Bob" :person/email "bob@x" :person/age 25 :person/tags [:blue]
+                   :person/friend ["ann"] :person/boss "ann" :person/level :level/junior}
+                  {:db/id "cy" :person/name "Cy" :person/email "cy@x" :person/age 41
+                   :person/friend ["ann" "bob"] :person/boss "ann"}
+                  {:db/id "di" :person/name "Di" :person/email "di@x" :person/friend ["cy"] :person/boss "cy"}
+                  {:db/id "ed" :person/name "Ed" :person/email "ed@x" :person/age 55 :person/friend ["ed"]}
+                  {:db/id "n1" :node/label "n1" :edge/to ["n2"]} {:db/id "n2" :node/label "n2" :edge/to ["n3"]}
+                  {:db/id "n3" :node/label "n3" :edge/to ["n1"]}]))
+(defn eid [tempid] (get (:tempids people) tempid))
+(def ann (eid "ann"))
+(def bob (eid "bob"))
+(def cy (eid "cy"))
+(def di (eid "di"))
+(def ed (eid "ed"))
+(def db (d/db c))
+
+; [*]: every attribute, card-many as vectors, refs as {:db/id e} with
+; the target's ident when it has one, a component pulled in full.
+(def ann-all (d/pull db '[*] ann))
+(t/check "[*] carries :db/id" (= ann (:db/id ann-all)))
+(t/check "[*] lists card-many values in index order" (= [:red :blue] (:person/tags ann-all)))
+(t/check "a ref to an ident renders with the ident" (= {:db/id (d/entid db :level/senior) :db/ident :level/senior} (:person/level ann-all)))
+(t/check "a component is pulled in full under [*]"
+       (= ["kitchen" "hall"] (mapv :room/name (:house/rooms (:person/house ann-all)))))
+(t/check "a plain ref renders as {:db/id e}" (= {:db/id ann} (:person/boss (d/pull db '[*] bob))))
+(t/check "an entity with no datoms pulls as nil" (nil? (d/pull db '[*] (dec t/user-partition))))
+(t/check "a lookup ref resolves the entity" (= ann-all (d/pull db '[*] [:person/email "ann@x"])))
+(t/check "an ident resolves the entity" (= {:db/id (d/entid db :level/junior) :db/ident :level/junior}
+                                         (d/pull db '[:db/ident] :level/junior)))
+
+; Attribute lists: a missing attribute is omitted.
+(println (d/pull db '[:person/name :person/age] ann))
+(t/check "a missing attribute is omitted" (= {:db/id di :person/name "Di"} (d/pull db '[:person/name :person/age] di)))
+
+; Nested patterns follow refs; explicit specs win over *.
+(println (d/pull db '[:person/name {:person/boss [:person/name]}] di))
+(println (d/pull db '[:person/name {:person/boss [:person/name {:person/boss [:person/name]}]}] di))
+(println (d/pull db '[:person/name {:person/friend [:person/name]}] cy))
+(t/check "a nested spec wins over *" (= "Ann" (:person/name (:person/boss (d/pull db '[* {:person/boss [:person/name]}] bob)))))
+
+; Reverse attributes: the entities that point here, as a vector.
+(println (d/pull db '[:person/name :person/_boss] ann))
+(println (d/pull db '[:person/name {:person/_boss [:person/name]}] ann))
+(t/check "a reverse component attribute pulls its one owner in full"
+       (= (dissoc ann-all :person/house)
+          (dissoc (:person/_house (d/pull db '[:person/_house] (:db/id (:person/house ann-all)))) :person/house)))
+(t/check "a reverse attribute with no referrers is omitted" (= {:db/id ed} (d/pull db '[:person/_boss] ed)))
+
+; Recursion: `...` follows the attribute until it runs out or cycles;
+; a depth stops there; a target already on the path is a plain ref.
+(println (d/pull db '[:person/name {:person/boss ...}] di))
+(println (d/pull db '[:person/name {:person/boss 1}] di))
+(println (d/pull db '[:person/name {:person/friend ...}] ed))
+(println (d/pull db '[:node/label {:edge/to ...}] [:node/label "n1"]))
+(println (d/pull db '[:node/label {:edge/to 1}] [:node/label "n1"]))
+(t/check "depth 0 is the plain ref" (= {:db/id cy} (:person/boss (d/pull db '[{:person/boss 0}] di))))
+
+; Options: :limit, :default, :as; both spellings.
+(t/check ":limit cuts card-many values" (= [:red] (:person/tags (d/pull db '[(:person/tags :limit 1)] ann))))
+(t/check "(limit attr n) is the same spec" (= [:red] (:person/tags (d/pull db '[(limit :person/tags 1)] ann))))
+(t/check ":limit nil lifts the cut" (= [:red :blue] (:person/tags (d/pull db '[[:person/tags :limit nil]] ann))))
+(t/check ":limit 0 omits the attribute" (= {:db/id ann} (d/pull db '[(:person/tags :limit 0)] ann)))
+(t/check ":default fills a missing attribute" (= 0 (:person/age (d/pull db '[(:person/age :default 0)] di))))
+(t/check ":default does not replace a present one" (= 30 (:person/age (d/pull db '[(:person/age :default 0)] ann))))
+(t/check "(default attr v) is the same spec" (= [] (:person/tags (d/pull db '[(default :person/tags [])] di))))
+(t/check ":as renames the key" (= {:db/id ann :nm "Ann" :yrs 30} (d/pull db '[(:person/name :as :nm) (:person/age :as :yrs)] ann)))
+(println (d/pull db '[{(:person/friend :limit 1 :as :pal) [:person/name]}] cy))
+
+; Time views: the update retracts a tag, renames Ed and adds a friend.
+(def update (d/transact! c [[:db/retract ann :person/tags :red]
+                            [:db/add ed :person/name "Edward"]
+                            [:db/add ann :person/friend di]]))
+(def now (d/db c))
+(t/check "the current view sees the update" (= [:blue] (:person/tags (d/pull now '[:person/tags] ann))))
+(t/check "as-of before the update sees the old facts"
+       (= {:db/id ann :person/tags [:red :blue]} (d/pull (d/as-of now (:tx people)) '[:person/tags] ann)))
+(t/check "an older db-value is unchanged" (= "Ed" (:person/name (d/pull db '[:person/name] ed))))
+(t/check "since shows only the new facts" (= {:db/id ann :person/friend [{:db/id di}]} (d/pull (d/since now (:tx people)) '[*] ann)))
+(t/check "since has nothing for an untouched entity" (nil? (d/pull (d/since now (:tx people)) '[*] bob)))
+
+; pull-many: one result per entity, in order, nil for a missing one.
+(println (d/pull-many now '[:person/name] [[:person/email "ann@x"] bob (dec t/user-partition) :level/senior]))
+(t/check "pull-many over a list" (= [{:db/id ann :person/name "Ann"}] (d/pull-many now '[:person/name] (list ann))))
+(t/check "pull-many over nothing" (= [] (d/pull-many now '[*] [])))
+
+; Errors: a pull-syntax error carries its message and, inside the
+; pattern, the spec's index.
+(println (t/caught (d/pull (d/history now) '[*] ann)))
+(println (t/caught (d/pull now '[:person/name 42] ann)))
+(println (t/caught (d/pull now '[(:person/tags :limit :lots)] ann)))
+(println (t/caught (d/pull now '[*] "ann")))
+(println (t/caught (d/pull now '[*] [:person/name "Ann"])))
+(println (t/caught (d/pull now '[*] [:person/email "nobody@x"])))
+(println (t/caught (d/pull now '[:person/nope] ann)))
+(println (t/caught (d/pull-many now '[*] ann)))
+(t/check "a caught error leaves the db usable" (= "Ann" (:person/name (d/pull now '[:person/name] ann))))
+
+(d/release c)
+(println (t/caught (d/pull now '[*] ann)))
+:pull-done

@@ -1,0 +1,223 @@
+(routine
+  (label `PRCAI170`)
+  (` `)
+  (` `)
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `PREINIT`)
+  (` ` _ (new _ `%` `CURDATA` `NEWDATA` `RCERROR`))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `BMES` _ `XPDUTL`)
+        ((expr (str `" >>  Starting the Pre-Initialization routine ..."`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `MES` _ `XPDUTL`)
+        ((expr (str `"     -> Checking file 430.2 prior to adding new entries ..."`))))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `RCERROR`) (expr (num `0`)))))
+  (` `
+    _
+    (for (lvar `%`) (range (expr (num `33`)) (expr (num `1`)) (expr (num `39`))))
+    (set
+      _
+      (=
+        (lvar `CURDATA`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `PRCA` ((expr (num `430.2`)) (expr (lvar `%`)) (expr (num `0`))))))))))
+    (if (expr (lvar `CURDATA`) (`'=` (str `""`))))
+    (set
+      _
+      (=
+        (lvar `NEWDATA`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (text (@ref (lvar `%`)))) (expr (str `";"`)) (expr (num `3`)) (expr (num `99`)))))))
+    (if
+      (expr
+        (intrinsic `P`#212 ((expr (lvar `CURDATA`)) (expr (str `"^"`))))
+        (`'=` (intrinsic `P`#212 ((expr (lvar `NEWDATA`)) (expr (str `"^"`)))))))
+    (set _ (= (lvar `RCERROR`) (expr (num `1`)))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (if (expr (lvar `RCERROR`)))
+    (set _ (= (lvar `XPDQUIT`) (expr (num `1`))))
+    (do
+      _
+      (call
+        (ref `MES` _ `XPDUTL`)
+        ((expr (str `"        WARNING: FILE 430.2 IS CORRUPT.  UNABLE TO INSTALL PATCH."`))))
+      (call (ref `MES` _ `XPDUTL`) ((expr (str `"        PLEASE LOG A NOIS."`))))))
+  (` `
+    _
+    (if (expr (`'` (lvar `RCERROR`))))
+    (do _ (call (ref `MES` _ `XPDUTL`) ((expr (str `"        Everything is OK!"`))))))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `MES` _ `XPDUTL`) ((expr (str `" >>  End of the Pre-Initialization routine."`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `POSTINIT`)
+  (` `
+    _
+    (new
+      _
+      `%`
+      `D`
+      `D0`
+      `DA`
+      `DI`
+      `DIC`
+      `DIE`
+      `DIK`
+      `DINUM`
+      `DLAYGO`
+      `DQ`
+      `DR`
+      `RCDATA`
+      `RCDINUM`
+      `X`
+      `Y`))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `BMES` _ `XPDUTL`)
+        ((expr (str `" >>  Starting the Post-Initialization routine ..."`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `MES` _ `XPDUTL`)
+        ((expr (str `"     -> Adding new AR Category entries to file 430.2 ..."`))))))
+  (` `)
+  (` `)
+  (` ` _ (for (lvar `RCDINUM`) (range (expr (num `33`)) (expr (num `1`)) (expr (num `39`)))) (do))
+  (` .   `#1
+    _
+    (set
+      _
+      (=
+        (lvar `RCDATA`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (text (@ref (lvar `RCDINUM`))))
+              (expr (str `";"`))
+              (expr (num `3`))
+              (expr (num `99`))))))))
+  (` .   `#1
+    _
+    (set
+      _
+      (setmulti (expr (str `"^PRCA(430.2,"`)) (lvar `DIC`) (lvar `DIE`))
+      (= (lvar `DIC` ((expr (num `0`)))) (expr (str `"L"`)))
+      (= (lvar `DLAYGO`) (expr (num `430.2`)))))
+  (` .   `#1)
+  (` .   `#1)
+  (` .   `#1
+    _
+    (if
+      (expr
+        (intrinsic
+          `D`#202
+          ((expr (gvar `PRCA` ((expr (num `430.2`)) (expr (lvar `RCDINUM`)) (expr (num `0`)))))))))
+    (set _ (= (lvar `DIK`) (expr (str `"^PRCA(430.2,"`))) (= (lvar `DA`) (expr (lvar `RCDINUM`))))
+    (do _ (call (ref _ _ `DIK`))))
+  (` .   `#1)
+  (` .   `#1)
+  (` .   `#1 _ (set _ (= (lvar `DINUM`) (expr (lvar `RCDINUM`)))))
+  (` .   `#1
+    _
+    (set _ (= (lvar `X`) (expr (intrinsic `P`#212 ((expr (lvar `RCDATA`)) (expr (str `"^"`))))))))
+  (` .   `#1 _ (do _ (call (ref `FILE` _ `DICN`))))
+  (` .   `#1)
+  (` .   `#1)
+  (` .   `#1 _ (set _ (= (lvar `DA`) (expr (lvar `RCDINUM`)))))
+  (` .   `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DR`)
+        (expr
+          (str `"1///"`)
+          (`_` (intrinsic `P`#212 ((expr (lvar `RCDATA`)) (expr (str `"^"`)) (expr (num `2`)))))
+          (`_` (str `";2////0;3///1319;5///P;"`))))))
+  (` .   `#1)
+  (` .   `#1
+    _
+    (set
+      _
+      (=
+        (lvar `DR`)
+        (expr
+          (lvar `DR`)
+          (`_` (str `"6////"`))
+          (`_` (intrinsic `P`#212 ((expr (lvar `RCDATA`)) (expr (str `"^"`)) (expr (num `3`)))))
+          (`_` (str `";"`))))))
+  (` .   `#1
+    _
+    (set
+      _
+      (= (lvar `DR`) (expr (lvar `DR`) (`_` (str `"7///2;9///1;10///1;11///1;12///1;13///2;"`))))))
+  (` .   `#1)
+  (` .   `#1
+    _
+    (set _ (= (lvar `DR`) (expr (lvar `DR`) (`_` (str `"14///30,40,55,80,85,50,60,65,70;"`))))))
+  (` .   `#1 _ (do _ (call (ref _ _ `DIE`))))
+  (` `)
+  (` ` _ (do _ (call (ref `MES` _ `XPDUTL`) ((expr (str `"        OK, I'm done!"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `MES` _ `XPDUTL`)
+        ((expr (str `" >>  End of the Post-Initialization routine ..."`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (` `)
+  (label `33`)
+  (label `34`)
+  (label `35`)
+  (label `36`)
+  (label `37`)
+  (label `38`)
+  (label `39`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `))

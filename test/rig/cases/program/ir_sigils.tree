@@ -1,0 +1,24 @@
+(module
+  (struct `Node` (: `value` `Int`))
+  (sub `consume` ((: `n` `Node`)) _ (block (call `print` (member `n` `value`))))
+  (sub `inspect` ((: `n` (borrow_read `Node`))) _ (block (call `print` (member `n` `value`))))
+  (sub `touch` ((: `n` (borrow_write `Node`))) _ (block (call `print` (member `n` `value`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` _ (call `Node` (kwarg `value` `1`)))
+      (call `inspect` (read `a`))
+      (call `touch` (write `a`))
+      (set _ `b` _ (move `a`))
+      (call `consume` (move `b`))
+      (set _ `s` _ (share (call `Node` (kwarg `value` `2`))))
+      (set _ `t` _ (clone `s`))
+      (set _ `w` _ (weak `t`))
+      (drop `s`)
+      (set fixed `fixed` _ `10`)
+      (set _ `x` _ `1`)
+      (set shadow `x` _ (+ `x` `1`))
+      (set move `y` _ `x`)
+      (raw_block (block (set _ `p` `I32` (builtin `intCast` `y`)) (call `print` `p`))))))

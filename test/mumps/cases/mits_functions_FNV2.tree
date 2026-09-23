@@ -1,0 +1,30 @@
+(routine
+  (label `FNV2`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/functions/FNV2"`))))))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"II-82  $L(expr1,expr2)=3"`))
+          (expr (str `"33"`))
+          (expr (str `"$L(""AAAA"",""AA"")_$l(""0000000000"",""00000"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"II-83  $L(expr1,expr2)=2"`))
+          (expr (num `22`))
+          (expr (str `"$L(""AAAA"",""AAA"")_$L(""0000000000"",""00000000"")"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/functions/FNV2"`))))))
+  (` ` _ (quit)))

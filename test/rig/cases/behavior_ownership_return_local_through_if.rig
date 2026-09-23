@@ -1,0 +1,25 @@
+# A local returned through an if-expression moves out of the function;
+# the local in the branch not taken is dropped at scope exit.
+
+struct Box
+  payload: Int
+
+  drop self: !Box
+    print(self.payload * 10)
+
+fun pick(c: Bool) -> *Box
+  a = *Box(payload: 1)
+  b = *Box(payload: 2)
+  if c
+    a
+  else
+    b
+
+sub main()
+  x = pick(true)
+  print(x.payload)
+
+# expect:
+# 20
+# 1
+# 10

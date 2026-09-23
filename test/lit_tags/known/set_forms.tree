@@ -1,0 +1,1 @@
+(module (set fixed `x` _ `1`) (set move `y` _ `2`) (set += `z` _ `3`))

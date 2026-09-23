@@ -1,0 +1,777 @@
+(program
+  (list (symbol `require`) (quote (vector (symbol `nextomic`) (keyword `:as`) (symbol `d`))))
+  (list (symbol `require`) (quote (vector (symbol `prelude`) (keyword `:as`) (symbol `t`))))
+  (list (symbol `def`) (symbol `c`) (list (symbol `d/connect`) (string `"pull.edb"`)))
+  (list
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/name`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/email`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/unique`)
+        (keyword `:db.unique/identity`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/age`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/long`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/tags`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/keyword`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/friend`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/boss`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/level`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:person/house`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/isComponent`)
+        (symbol `true`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:house/name`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:house/rooms`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`)
+        (keyword `:db/isComponent`)
+        (symbol `true`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:room/name`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:node/label`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        (keyword `:db/unique`)
+        (keyword `:db.unique/identity`))
+      (map
+        (keyword `:db/ident`)
+        (keyword `:edge/to`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/ref`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`))
+      (map (keyword `:db/ident`) (keyword `:level/junior`))
+      (map (keyword `:db/ident`) (keyword `:level/senior`))))
+  (list
+    (symbol `def`)
+    (symbol `people`)
+    (list
+      (symbol `d/transact!`)
+      (symbol `c`)
+      (vector
+        (map
+          (keyword `:db/id`)
+          (string `"ann"`)
+          (keyword `:person/name`)
+          (string `"Ann"`)
+          (keyword `:person/email`)
+          (string `"ann@x"`)
+          (keyword `:person/age`)
+          (int `30`)
+          (keyword `:person/tags`)
+          (vector (keyword `:red`) (keyword `:blue`))
+          (keyword `:person/level`)
+          (keyword `:level/senior`)
+          (keyword `:person/house`)
+          (map
+            (keyword `:house/name`)
+            (string `"Villa"`)
+            (keyword `:house/rooms`)
+            (vector
+              (map (keyword `:room/name`) (string `"kitchen"`))
+              (map (keyword `:room/name`) (string `"hall"`)))))
+        (map
+          (keyword `:db/id`)
+          (string `"bob"`)
+          (keyword `:person/name`)
+          (string `"Bob"`)
+          (keyword `:person/email`)
+          (string `"bob@x"`)
+          (keyword `:person/age`)
+          (int `25`)
+          (keyword `:person/tags`)
+          (vector (keyword `:blue`))
+          (keyword `:person/friend`)
+          (vector (string `"ann"`))
+          (keyword `:person/boss`)
+          (string `"ann"`)
+          (keyword `:person/level`)
+          (keyword `:level/junior`))
+        (map
+          (keyword `:db/id`)
+          (string `"cy"`)
+          (keyword `:person/name`)
+          (string `"Cy"`)
+          (keyword `:person/email`)
+          (string `"cy@x"`)
+          (keyword `:person/age`)
+          (int `41`)
+          (keyword `:person/friend`)
+          (vector (string `"ann"`) (string `"bob"`))
+          (keyword `:person/boss`)
+          (string `"ann"`))
+        (map
+          (keyword `:db/id`)
+          (string `"di"`)
+          (keyword `:person/name`)
+          (string `"Di"`)
+          (keyword `:person/email`)
+          (string `"di@x"`)
+          (keyword `:person/friend`)
+          (vector (string `"cy"`))
+          (keyword `:person/boss`)
+          (string `"cy"`))
+        (map
+          (keyword `:db/id`)
+          (string `"ed"`)
+          (keyword `:person/name`)
+          (string `"Ed"`)
+          (keyword `:person/email`)
+          (string `"ed@x"`)
+          (keyword `:person/age`)
+          (int `55`)
+          (keyword `:person/friend`)
+          (vector (string `"ed"`)))
+        (map
+          (keyword `:db/id`)
+          (string `"n1"`)
+          (keyword `:node/label`)
+          (string `"n1"`)
+          (keyword `:edge/to`)
+          (vector (string `"n2"`)))
+        (map
+          (keyword `:db/id`)
+          (string `"n2"`)
+          (keyword `:node/label`)
+          (string `"n2"`)
+          (keyword `:edge/to`)
+          (vector (string `"n3"`)))
+        (map
+          (keyword `:db/id`)
+          (string `"n3"`)
+          (keyword `:node/label`)
+          (string `"n3"`)
+          (keyword `:edge/to`)
+          (vector (string `"n1"`))))))
+  (list
+    (symbol `defn`)
+    (symbol `eid`)
+    (vector (symbol `tempid`))
+    (list (symbol `get`) (list (keyword `:tempids`) (symbol `people`)) (symbol `tempid`)))
+  (list (symbol `def`) (symbol `ann`) (list (symbol `eid`) (string `"ann"`)))
+  (list (symbol `def`) (symbol `bob`) (list (symbol `eid`) (string `"bob"`)))
+  (list (symbol `def`) (symbol `cy`) (list (symbol `eid`) (string `"cy"`)))
+  (list (symbol `def`) (symbol `di`) (list (symbol `eid`) (string `"di"`)))
+  (list (symbol `def`) (symbol `ed`) (list (symbol `eid`) (string `"ed"`)))
+  (list (symbol `def`) (symbol `db`) (list (symbol `d/db`) (symbol `c`)))
+  (list
+    (symbol `def`)
+    (symbol `ann-all`)
+    (list (symbol `d/pull`) (symbol `db`) (quote (vector (symbol `*`))) (symbol `ann`)))
+  (list
+    (symbol `t/check`)
+    (string `"[*] carries :db/id"`)
+    (list (symbol `=`) (symbol `ann`) (list (keyword `:db/id`) (symbol `ann-all`))))
+  (list
+    (symbol `t/check`)
+    (string `"[*] lists card-many values in index order"`)
+    (list
+      (symbol `=`)
+      (vector (keyword `:red`) (keyword `:blue`))
+      (list (keyword `:person/tags`) (symbol `ann-all`))))
+  (list
+    (symbol `t/check`)
+    (string `"a ref to an ident renders with the ident"`)
+    (list
+      (symbol `=`)
+      (map
+        (keyword `:db/id`)
+        (list (symbol `d/entid`) (symbol `db`) (keyword `:level/senior`))
+        (keyword `:db/ident`)
+        (keyword `:level/senior`))
+      (list (keyword `:person/level`) (symbol `ann-all`))))
+  (list
+    (symbol `t/check`)
+    (string `"a component is pulled in full under [*]"`)
+    (list
+      (symbol `=`)
+      (vector (string `"kitchen"`) (string `"hall"`))
+      (list
+        (symbol `mapv`)
+        (keyword `:room/name`)
+        (list (keyword `:house/rooms`) (list (keyword `:person/house`) (symbol `ann-all`))))))
+  (list
+    (symbol `t/check`)
+    (string `"a plain ref renders as {:db/id e}"`)
+    (list
+      (symbol `=`)
+      (map (keyword `:db/id`) (symbol `ann`))
+      (list
+        (keyword `:person/boss`)
+        (list (symbol `d/pull`) (symbol `db`) (quote (vector (symbol `*`))) (symbol `bob`)))))
+  (list
+    (symbol `t/check`)
+    (string `"an entity with no datoms pulls as nil"`)
+    (list
+      (symbol `nil?`)
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote (vector (symbol `*`)))
+        (list (symbol `dec`) (symbol `t/user-partition`)))))
+  (list
+    (symbol `t/check`)
+    (string `"a lookup ref resolves the entity"`)
+    (list
+      (symbol `=`)
+      (symbol `ann-all`)
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote (vector (symbol `*`)))
+        (vector (keyword `:person/email`) (string `"ann@x"`)))))
+  (list
+    (symbol `t/check`)
+    (string `"an ident resolves the entity"`)
+    (list
+      (symbol `=`)
+      (map
+        (keyword `:db/id`)
+        (list (symbol `d/entid`) (symbol `db`) (keyword `:level/junior`))
+        (keyword `:db/ident`)
+        (keyword `:level/junior`))
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote (vector (keyword `:db/ident`)))
+        (keyword `:level/junior`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:person/name`) (keyword `:person/age`)))
+      (symbol `ann`)))
+  (list
+    (symbol `t/check`)
+    (string `"a missing attribute is omitted"`)
+    (list
+      (symbol `=`)
+      (map (keyword `:db/id`) (symbol `di`) (keyword `:person/name`) (string `"Di"`))
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote (vector (keyword `:person/name`) (keyword `:person/age`)))
+        (symbol `di`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote
+        (vector
+          (keyword `:person/name`)
+          (map (keyword `:person/boss`) (vector (keyword `:person/name`)))))
+      (symbol `di`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote
+        (vector
+          (keyword `:person/name`)
+          (map
+            (keyword `:person/boss`)
+            (vector
+              (keyword `:person/name`)
+              (map (keyword `:person/boss`) (vector (keyword `:person/name`)))))))
+      (symbol `di`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote
+        (vector
+          (keyword `:person/name`)
+          (map (keyword `:person/friend`) (vector (keyword `:person/name`)))))
+      (symbol `cy`)))
+  (list
+    (symbol `t/check`)
+    (string `"a nested spec wins over *"`)
+    (list
+      (symbol `=`)
+      (string `"Ann"`)
+      (list
+        (keyword `:person/name`)
+        (list
+          (keyword `:person/boss`)
+          (list
+            (symbol `d/pull`)
+            (symbol `db`)
+            (quote
+              (vector (symbol `*`) (map (keyword `:person/boss`) (vector (keyword `:person/name`)))))
+            (symbol `bob`))))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:person/name`) (keyword `:person/_boss`)))
+      (symbol `ann`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote
+        (vector
+          (keyword `:person/name`)
+          (map (keyword `:person/_boss`) (vector (keyword `:person/name`)))))
+      (symbol `ann`)))
+  (list
+    (symbol `t/check`)
+    (string `"a reverse component attribute pulls its one owner in full"`)
+    (list
+      (symbol `=`)
+      (list (symbol `dissoc`) (symbol `ann-all`) (keyword `:person/house`))
+      (list
+        (symbol `dissoc`)
+        (list
+          (keyword `:person/_house`)
+          (list
+            (symbol `d/pull`)
+            (symbol `db`)
+            (quote (vector (keyword `:person/_house`)))
+            (list (keyword `:db/id`) (list (keyword `:person/house`) (symbol `ann-all`)))))
+        (keyword `:person/house`))))
+  (list
+    (symbol `t/check`)
+    (string `"a reverse attribute with no referrers is omitted"`)
+    (list
+      (symbol `=`)
+      (map (keyword `:db/id`) (symbol `ed`))
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote (vector (keyword `:person/_boss`)))
+        (symbol `ed`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:person/name`) (map (keyword `:person/boss`) (symbol `...`))))
+      (symbol `di`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:person/name`) (map (keyword `:person/boss`) (int `1`))))
+      (symbol `di`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:person/name`) (map (keyword `:person/friend`) (symbol `...`))))
+      (symbol `ed`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:node/label`) (map (keyword `:edge/to`) (symbol `...`))))
+      (vector (keyword `:node/label`) (string `"n1"`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote (vector (keyword `:node/label`) (map (keyword `:edge/to`) (int `1`))))
+      (vector (keyword `:node/label`) (string `"n1"`))))
+  (list
+    (symbol `t/check`)
+    (string `"depth 0 is the plain ref"`)
+    (list
+      (symbol `=`)
+      (map (keyword `:db/id`) (symbol `cy`))
+      (list
+        (keyword `:person/boss`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (map (keyword `:person/boss`) (int `0`))))
+          (symbol `di`)))))
+  (list
+    (symbol `t/check`)
+    (string `":limit cuts card-many values"`)
+    (list
+      (symbol `=`)
+      (vector (keyword `:red`))
+      (list
+        (keyword `:person/tags`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (list (keyword `:person/tags`) (keyword `:limit`) (int `1`))))
+          (symbol `ann`)))))
+  (list
+    (symbol `t/check`)
+    (string `"(limit attr n) is the same spec"`)
+    (list
+      (symbol `=`)
+      (vector (keyword `:red`))
+      (list
+        (keyword `:person/tags`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (list (symbol `limit`) (keyword `:person/tags`) (int `1`))))
+          (symbol `ann`)))))
+  (list
+    (symbol `t/check`)
+    (string `":limit nil lifts the cut"`)
+    (list
+      (symbol `=`)
+      (vector (keyword `:red`) (keyword `:blue`))
+      (list
+        (keyword `:person/tags`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (vector (keyword `:person/tags`) (keyword `:limit`) (symbol `nil`))))
+          (symbol `ann`)))))
+  (list
+    (symbol `t/check`)
+    (string `":limit 0 omits the attribute"`)
+    (list
+      (symbol `=`)
+      (map (keyword `:db/id`) (symbol `ann`))
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote (vector (list (keyword `:person/tags`) (keyword `:limit`) (int `0`))))
+        (symbol `ann`))))
+  (list
+    (symbol `t/check`)
+    (string `":default fills a missing attribute"`)
+    (list
+      (symbol `=`)
+      (int `0`)
+      (list
+        (keyword `:person/age`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (list (keyword `:person/age`) (keyword `:default`) (int `0`))))
+          (symbol `di`)))))
+  (list
+    (symbol `t/check`)
+    (string `":default does not replace a present one"`)
+    (list
+      (symbol `=`)
+      (int `30`)
+      (list
+        (keyword `:person/age`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (list (keyword `:person/age`) (keyword `:default`) (int `0`))))
+          (symbol `ann`)))))
+  (list
+    (symbol `t/check`)
+    (string `"(default attr v) is the same spec"`)
+    (list
+      (symbol `=`)
+      (vector)
+      (list
+        (keyword `:person/tags`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (list (symbol `default`) (keyword `:person/tags`) (vector))))
+          (symbol `di`)))))
+  (list
+    (symbol `t/check`)
+    (string `":as renames the key"`)
+    (list
+      (symbol `=`)
+      (map
+        (keyword `:db/id`)
+        (symbol `ann`)
+        (keyword `:nm`)
+        (string `"Ann"`)
+        (keyword `:yrs`)
+        (int `30`))
+      (list
+        (symbol `d/pull`)
+        (symbol `db`)
+        (quote
+          (vector
+            (list (keyword `:person/name`) (keyword `:as`) (keyword `:nm`))
+            (list (keyword `:person/age`) (keyword `:as`) (keyword `:yrs`))))
+        (symbol `ann`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull`)
+      (symbol `db`)
+      (quote
+        (vector
+          (map
+            (list
+              (keyword `:person/friend`)
+              (keyword `:limit`)
+              (int `1`)
+              (keyword `:as`)
+              (keyword `:pal`))
+            (vector (keyword `:person/name`)))))
+      (symbol `cy`)))
+  (list
+    (symbol `def`)
+    (symbol `update`)
+    (list
+      (symbol `d/transact!`)
+      (symbol `c`)
+      (vector
+        (vector (keyword `:db/retract`) (symbol `ann`) (keyword `:person/tags`) (keyword `:red`))
+        (vector (keyword `:db/add`) (symbol `ed`) (keyword `:person/name`) (string `"Edward"`))
+        (vector (keyword `:db/add`) (symbol `ann`) (keyword `:person/friend`) (symbol `di`)))))
+  (list (symbol `def`) (symbol `now`) (list (symbol `d/db`) (symbol `c`)))
+  (list
+    (symbol `t/check`)
+    (string `"the current view sees the update"`)
+    (list
+      (symbol `=`)
+      (vector (keyword `:blue`))
+      (list
+        (keyword `:person/tags`)
+        (list
+          (symbol `d/pull`)
+          (symbol `now`)
+          (quote (vector (keyword `:person/tags`)))
+          (symbol `ann`)))))
+  (list
+    (symbol `t/check`)
+    (string `"as-of before the update sees the old facts"`)
+    (list
+      (symbol `=`)
+      (map
+        (keyword `:db/id`)
+        (symbol `ann`)
+        (keyword `:person/tags`)
+        (vector (keyword `:red`) (keyword `:blue`)))
+      (list
+        (symbol `d/pull`)
+        (list (symbol `d/as-of`) (symbol `now`) (list (keyword `:tx`) (symbol `people`)))
+        (quote (vector (keyword `:person/tags`)))
+        (symbol `ann`))))
+  (list
+    (symbol `t/check`)
+    (string `"an older db-value is unchanged"`)
+    (list
+      (symbol `=`)
+      (string `"Ed"`)
+      (list
+        (keyword `:person/name`)
+        (list
+          (symbol `d/pull`)
+          (symbol `db`)
+          (quote (vector (keyword `:person/name`)))
+          (symbol `ed`)))))
+  (list
+    (symbol `t/check`)
+    (string `"since shows only the new facts"`)
+    (list
+      (symbol `=`)
+      (map
+        (keyword `:db/id`)
+        (symbol `ann`)
+        (keyword `:person/friend`)
+        (vector (map (keyword `:db/id`) (symbol `di`))))
+      (list
+        (symbol `d/pull`)
+        (list (symbol `d/since`) (symbol `now`) (list (keyword `:tx`) (symbol `people`)))
+        (quote (vector (symbol `*`)))
+        (symbol `ann`))))
+  (list
+    (symbol `t/check`)
+    (string `"since has nothing for an untouched entity"`)
+    (list
+      (symbol `nil?`)
+      (list
+        (symbol `d/pull`)
+        (list (symbol `d/since`) (symbol `now`) (list (keyword `:tx`) (symbol `people`)))
+        (quote (vector (symbol `*`)))
+        (symbol `bob`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `d/pull-many`)
+      (symbol `now`)
+      (quote (vector (keyword `:person/name`)))
+      (vector
+        (vector (keyword `:person/email`) (string `"ann@x"`))
+        (symbol `bob`)
+        (list (symbol `dec`) (symbol `t/user-partition`))
+        (keyword `:level/senior`))))
+  (list
+    (symbol `t/check`)
+    (string `"pull-many over a list"`)
+    (list
+      (symbol `=`)
+      (vector (map (keyword `:db/id`) (symbol `ann`) (keyword `:person/name`) (string `"Ann"`)))
+      (list
+        (symbol `d/pull-many`)
+        (symbol `now`)
+        (quote (vector (keyword `:person/name`)))
+        (list (symbol `list`) (symbol `ann`)))))
+  (list
+    (symbol `t/check`)
+    (string `"pull-many over nothing"`)
+    (list
+      (symbol `=`)
+      (vector)
+      (list (symbol `d/pull-many`) (symbol `now`) (quote (vector (symbol `*`))) (vector))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/pull`)
+        (list (symbol `d/history`) (symbol `now`))
+        (quote (vector (symbol `*`)))
+        (symbol `ann`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/pull`)
+        (symbol `now`)
+        (quote (vector (keyword `:person/name`) (int `42`)))
+        (symbol `ann`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/pull`)
+        (symbol `now`)
+        (quote (vector (list (keyword `:person/tags`) (keyword `:limit`) (keyword `:lots`))))
+        (symbol `ann`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list (symbol `d/pull`) (symbol `now`) (quote (vector (symbol `*`))) (string `"ann"`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/pull`)
+        (symbol `now`)
+        (quote (vector (symbol `*`)))
+        (vector (keyword `:person/name`) (string `"Ann"`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/pull`)
+        (symbol `now`)
+        (quote (vector (symbol `*`)))
+        (vector (keyword `:person/email`) (string `"nobody@x"`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list
+        (symbol `d/pull`)
+        (symbol `now`)
+        (quote (vector (keyword `:person/nope`)))
+        (symbol `ann`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list (symbol `d/pull-many`) (symbol `now`) (quote (vector (symbol `*`))) (symbol `ann`))))
+  (list
+    (symbol `t/check`)
+    (string `"a caught error leaves the db usable"`)
+    (list
+      (symbol `=`)
+      (string `"Ann"`)
+      (list
+        (keyword `:person/name`)
+        (list
+          (symbol `d/pull`)
+          (symbol `now`)
+          (quote (vector (keyword `:person/name`)))
+          (symbol `ann`)))))
+  (list (symbol `d/release`) (symbol `c`))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `t/caught`)
+      (list (symbol `d/pull`) (symbol `now`) (quote (vector (symbol `*`))) (symbol `ann`))))
+  (keyword `:pull-done`))

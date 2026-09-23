@@ -1,0 +1,14 @@
+# A function may end with a `while true` loop that it leaves only by
+# `return`.
+
+fun first_over(limit: Int) -> Int
+  x = 0
+  while true : x += 1
+    if x * x > limit
+      return x
+
+sub main()
+  print(first_over(50))
+
+# expect:
+# 8

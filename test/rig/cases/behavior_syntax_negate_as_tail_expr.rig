@@ -1,0 +1,10 @@
+# `-x` as the last line of a `fun` is its value: numeric negation.
+
+fun neg(x: Int) -> Int
+  -x
+
+sub main()
+  print(neg(3))
+
+# expect:
+# -3

@@ -1,0 +1,19 @@
+# User-defined drop: `Owner` owns a shared `Cell`. When `o` goes out of
+# scope, the `drop` body runs first, then the compiler-generated drop
+# glue releases the `cell` field.
+
+struct Owner
+  cell: *Cell(Int)
+
+  drop self: !Owner
+    print(self.cell.get())
+
+sub main()
+  c: *Cell(Int) = *Cell(value: 42)
+  o: Owner = Owner(cell: <c)
+  print(0)
+  # scope exit: the drop body prints 42, then the `cell` handle is released
+
+# expect:
+# 0
+# 42

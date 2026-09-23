@@ -1,0 +1,180 @@
+(routine
+  (label `BOOLEAN`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/operators/BOOLEAN"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"nonzero number truthy"`)) (expr (num `1`)) (expr (str `"'(0=5)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"zero is falsy"`)) (expr (num `1`)) (expr (str `"'0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"empty string is falsy"`)) (expr (num `1`)) (expr (str `"'"""""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'0' is falsy"`)) (expr (num `1`)) (expr (str `"'""0"""`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'5abc' is truthy"`)) (expr (num `1`)) (expr (str `"'('+""5abc"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'abc' is falsy"`)) (expr (num `1`)) (expr (str `"'+""abc"""`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"1&1 = 1"`)) (expr (num `1`)) (expr (str `"1&1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"1&0 = 0"`)) (expr (num `0`)) (expr (str `"1&0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"0&1 = 0"`)) (expr (num `0`)) (expr (str `"0&1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"0&0 = 0"`)) (expr (num `0`)) (expr (str `"0&0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"nonzero & nonzero = 1"`)) (expr (num `1`)) (expr (str `"5&7"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'yes' & 1 (str→0)"`)) (expr (num `0`)) (expr (str `"""yes""&1"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"1!0 = 1"`)) (expr (num `1`)) (expr (str `"1!0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"0!0 = 0"`)) (expr (num `0`)) (expr (str `"0!0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"0!1 = 1"`)) (expr (num `1`)) (expr (str `"0!1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'abc' ! 1 (str→0, then or)"`)) (expr (num `1`)) (expr (str `"""abc""!1"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"'1 = 0"`)) (expr (num `0`)) (expr (str `"'1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"'0 = 1"`)) (expr (num `1`)) (expr (str `"'0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"''1 = 1"`)) (expr (num `1`)) (expr (str `"''1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"''abc' = 1"`)) (expr (num `1`)) (expr (str `"'""abc"""`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"1&0!1 → ((1&0)!1) = 1"`)) (expr (num `1`)) (expr (str `"1&0!1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"0!1&0 → ((0!1)&0) = 0"`)) (expr (num `0`)) (expr (str `"0!1&0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"'(0&1)"`)) (expr (num `1`)) (expr (str `"'(0&1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'1&0 → ('1)&0 = 0"`)) (expr (num `0`)) (expr (str `"'1&0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"'0&1 → ('0)&1 = 1"`)) (expr (num `1`)) (expr (str `"'0&1"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/operators/BOOLEAN"`))))))
+  (` ` _ (quit)))

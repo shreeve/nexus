@@ -1,0 +1,34 @@
+# A `(`, `.`, or `-` touching the value before it continues that value:
+# a call, member access, subtraction. Separated from it by a space and
+# touching what follows, it starts a new operand of a paren-free call.
+
+enum Color
+  red
+  green
+
+sub show(c: Color)
+  match c
+    .red => print "red"
+    .green => print "green"
+
+fun double(n: Int) -> Int
+  n * 2
+
+sub main()
+  print (1 + 2) * 3     # print((1 + 2) * 3)
+  print -3              # print(-3)
+  x = 10
+  print x - 3           # subtraction
+  print x-3
+  show .green           # show(.green)
+  print double(4)       # print(double(4))
+  print double 5        # print(double(5))
+
+# expect:
+# 9
+# -3
+# 7
+# 7
+# green
+# 8
+# 10

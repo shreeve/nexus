@@ -1,0 +1,10 @@
+# A type alias is transparent (`N` is `Int`), so it is not a constructor;
+# `N(5)` is rejected.
+
+type N = Int
+
+sub main()
+  x = N(5)
+  print(x)
+
+# error: `N`

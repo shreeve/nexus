@@ -1,0 +1,10 @@
+(routine
+  (label `LABEL`)
+  (` ` _ (quit))
+  (label `ADD` (`A` `B`))
+  (` ` _ (quit _ (expr (lvar `A`) (`+` (lvar `B`)))))
+  (label `NOARGS` _ ((quit _ (expr (num `1`)))))
+  (label `%ZUTIL`)
+  (` ` _ (quit))
+  (label `123`)
+  (` ` _ (quit)))

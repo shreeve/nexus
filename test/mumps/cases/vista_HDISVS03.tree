@@ -1,0 +1,533 @@
+(routine
+  (label `HDISVS03`)
+  (` `)
+  (label `STATUS` (`PRSARR` `ERRARR`))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (if (expr (extrinsic ((`GETSDIS` `HDISVF03`) (_))))) (do) (quit))
+  (` .`#1 _ (new _ `TMP`))
+  (` .`#1
+    _
+    (set
+      _
+      (= (lvar `TMP`) (expr (str `"STATUS^HDISVS03: Processing of status updates by central "`)))))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (lvar `TMP`) (`_` (str `"server is currently disabled"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` ` _ (new _ `EINDX` `ESUBS` `AINDX` `ASUBS` `DATA` `TMP` `DATE` `STATPTR` `SRCTYPE` `SYSPTR`))
+  (` ` _ (new _ `SOURCE` `MAILMAN` `FILE` `FIELD` `STAT` `STATDT` `INDX` `OOPS` `CODE` `CODEPTR`))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `EINDX`)
+        (expr (intrinsic `NA`#210 ((expr (@subs (lvar `PRSARR`) ((expr (str `"EINDX"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `ESUBS`)
+        (expr (intrinsic `NA`#210 ((expr (@subs (lvar `PRSARR`) ((expr (str `"ESUBS"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `AINDX`)
+        (expr (intrinsic `NA`#210 ((expr (@subs (lvar `PRSARR`) ((expr (str `"AINDX"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `ASUBS`)
+        (expr (intrinsic `NA`#210 ((expr (@subs (lvar `PRSARR`) ((expr (str `"ASUBS"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DATA`)
+        (expr (intrinsic `NA`#210 ((expr (@subs (lvar `PRSARR`) ((expr (str `"DATA"`)))))))))))
+  (` ` _ (set _ (= (lvar `OOPS`) (expr (num `0`)))))
+  (` ` _ (set _ (= (lvar `ERRARR`) (expr (intrinsic `G`#206 ((expr (lvar `ERRARR`))))))))
+  (` ` _ (if (expr (lvar `ERRARR`) (`'=` (str `""`)))) (kill _ (@args (lvar `ERRARR`))))
+  (` ` _ (set _ (= (lvar `PRSARR`) (expr (intrinsic `G`#206 ((expr (lvar `PRSARR`))))))))
+  (` ` _ (if (expr (lvar `PRSARR`) (`=` (str `""`)))) (do) (quit))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (str `"SATUS^HDISVS03: Input parameter PRSARR was not passed"`)))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` ` _ (if (expr (`'` (intrinsic `D`#202 ((expr (@name (lvar `PRSARR`)))))))) (do) (quit))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (str `"STATUS^HDISVS0S: Input array "`)
+          (`_` (lvar `PRSARR`))
+          (`_` (str `" (PRSARR) does not exist"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (for (lvar `X`) (range (expr (num `1`)) (expr (num `1`))))
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (text `ELEMENTS` (expr (lvar `X`)))) (expr (str `";;"`)) (expr (num `2`)))))))
+    (quit (postcond (expr (lvar `TMP`) (`=` (str `""`)))))
+    (do))
+  (` .`#1
+    _
+    (if (expr (`'` (intrinsic `D`#202 ((expr (@subs (lvar `EINDX`) ((expr (lvar `TMP`))))))))))
+    (do))
+  (` ..`#2
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (str `"XML element '"`)
+          (`_` (lvar `TMP`))
+          (`_` (str `"' was not found in the XML document"`))))))
+  (` ..`#2 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` ..`#2 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic `G`#206 ((expr (@subs (lvar `ESUBS`) ((expr (num `1`)))))))
+        (`'=` (str `"HDISParameters"`))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (str `"'HDISParameters' was not the root element in the XML document"`)))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` ` _ (if (expr (lvar `OOPS`))) (quit))
+  (` `)
+  (` ` _ (set _ (= (lvar `INDX`) (expr (@subs (lvar `EINDX`) ((expr (str `"HDISParameters"`))))))))
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `SOURCE`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"Source"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `SRCTYPE`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"SourceType"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `MAILMAN`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"MailManDomain"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `FILE`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"FileNumber"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `FIELD`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"FieldNumber"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `STAT`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"StatusCode"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `STATDT`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (@subs
+                 (lvar `DATA`)
+                 ((expr (lvar `INDX`))
+                   (expr (num `1`))
+                   (expr (@subs (lvar `EINDX`) ((expr (str `"StatusDateTime"`)))))
+                   (expr (num `1`))
+                   (expr (str `"V"`)))))))))))
+  (` `)
+  (` `
+    _
+    (for
+      (lvar `TMP`)
+      (expr (str `"SOURCE"`))
+      (expr (str `"MAILMAN"`))
+      (expr (str `"FILE"`))
+      (expr (str `"FIELD"`))
+      (expr (str `"STAT"`))
+      (expr (str `"STATDT"`))
+      (expr (str `"SRCTYPE"`)))
+    (if (expr (intrinsic `G`#206 ((expr (@name (lvar `TMP`))))) (`=` (str `""`))))
+    (do))
+  (` .`#1 _ (set _ (= (lvar `Y`) (expr (str `"Source"`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `TMP`) (`=` (str `"SRCTYPE"`))))
+    (set _ (= (lvar `Y`) (expr (str `"SourceType"`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `TMP`) (`=` (str `"MAILMAN"`))))
+    (set _ (= (lvar `Y`) (expr (str `"MailManDomain"`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `TMP`) (`=` (str `"FILE"`))))
+    (set _ (= (lvar `Y`) (expr (str `"FileNumber"`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `TMP`) (`=` (str `"FIELD"`))))
+    (set _ (= (lvar `Y`) (expr (str `"FieldNumber"`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `TMP`) (`=` (str `"STAT"`))))
+    (set _ (= (lvar `Y`) (expr (str `"StatusCode"`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `TMP`) (`=` (str `"STATDT"`))))
+    (set _ (= (lvar `Y`) (expr (str `"StatusDateTime"`)))))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr (str `"XML element '"`) (`_` (lvar `TMP`)) (`_` (str `"' did not have a value"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `X`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (if (expr (lvar `SOURCE`) (`'=` (str `""`))))
+    (if (expr (`'` (extrinsic ((`FACPTR` `HDISVF01`) ((expr (lvar `SOURCE`))))))))
+    (do))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (str `"Value of XML element 'Source' ("`) (`_` (lvar `SOURCE`))))))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (lvar `TMP`) (`_` (str `") is not a valid facility number"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (if (expr (`'` (lvar `OOPS`))))
+    (if
+      (expr
+        (`'`
+          (extrinsic
+            ((`FINDSYS` `HDISVF07`)
+              ((expr (lvar `MAILMAN`))
+                (expr (lvar `SOURCE`))
+                (expr (lvar `SRCTYPE`))
+                (expr (num `1`))
+                (byref `SYSPTR`)))))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (str `"Entry for XML elements 'Source' ("`)
+          (`_` (lvar `SOURCE`))
+          (`_` (str `"), MailManDomain "`))))))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (lvar `TMP`)
+          (`_` (str `"("`))
+          (`_` (lvar `MAILMAN`))
+          (`_` (str `"), and 'SourceType' ("`))
+          (`_` (lvar `SRCTYPE`))
+          (`_` (str `") could not "`))))))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (str `"be found/created in HDIS SYSTEM file (#7718.21)"`)))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (if (expr (`'` (lvar `OOPS`))))
+    (if (expr (`'` (extrinsic ((`GETPTR` `HDISVF10`) ((expr (lvar `SYSPTR`))))))))
+    (if
+      (expr
+        (`'`
+          (extrinsic
+            ((`PARAMINI` `HDISVF10`)
+              ((expr (lvar `SYSPTR`))
+                (expr (str `""`))
+                (expr (str `""`))
+                (expr (str `""`))
+                (expr (num `1`))))))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (str `"Entry for XML elements 'Source' ("`)
+          (`_` (lvar `SOURCE`))
+          (`_` (str `"), 'MailManDomain' "`))))))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (lvar `TMP`)
+          (`_` (str `"("`))
+          (`_` (lvar `MAILMAN`))
+          (`_` (str `"), and 'SourceType' ("`))
+          (`_` (lvar `SRCTYPE`))
+          (`_` (str `") could not "`))))))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (str `"be found/created in HDIS PARAMETER file (#7718.29)"`)))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (if (expr (`'` (lvar `OOPS`))))
+    (if (expr (extrinsic ((`GETSDIS` `HDISVF03`) ((expr (lvar `SYSPTR`)))))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (str `"Processing of status udpates from 'Source' ("`)
+          (`_` (lvar `SOURCE`))
+          (`_` (str `"), "`))))))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr
+          (lvar `TMP`)
+          (`_` (str `"'MailManDomain' ("`))
+          (`_` (lvar `MAILMAN`))
+          (`_` (str `"), and 'SourceType' ("`))))))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (lvar `TMP`) (`_` (lvar `SRCTYPE`)) (`_` (str `") currently disabled"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` ` _ (if (expr (lvar `OOPS`))) (quit))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `CODEPTR`) (expr (num `0`)))))
+  (` `
+    _
+    (if (expr (lvar `STAT`) (`'=` (str `""`))))
+    (if
+      (expr
+        (`'`
+          (extrinsic
+            ((`GETIEN` `HDISVF06`) ((expr (lvar `STAT`)) (expr (num `2`)) (byref `CODEPTR`)))))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (str `"Unable to convert value of 'StatusCode' ("`) (`_` (lvar `STAT`))))))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (lvar `TMP`) (`_` (str `") to it's server side equivalent"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` .`#1 _ (set _ (= (lvar `CODEPTR`) (expr (num `0`)))))
+  (` `
+    _
+    (if (expr (lvar `CODEPTR`)))
+    (if (expr (`'` (extrinsic ((`GETCODE` `HDISVF06`) ((expr (lvar `CODEPTR`)) (byref `CODE`)))))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (str `"Unable to convert value of 'StatusCode' ("`) (`_` (lvar `STAT`))))))
+  (` .`#1
+    _
+    (set _ (= (lvar `TMP`) (expr (lvar `TMP`) (`_` (str `") to it's server side equivalent"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` `
+    _
+    (if (expr (lvar `STATDT`) (`'=` (str `""`))))
+    (set
+      _
+      (=
+        (lvar `DATE`)
+        (expr (extrinsic ((`XMLTFM` `HDISVU01`) ((expr (lvar `STATDT`)) (expr (num `1`))))))))
+    (if (expr (lvar `DATE`) (`=` (str `""`))))
+    (do))
+  (` .`#1
+    _
+    (set
+      _
+      (=
+        (lvar `TMP`)
+        (expr (str `"Unable to convert value of 'StatusDateTime' ("`) (`_` (lvar `STATDT`))))))
+  (` .`#1 _ (set _ (= (lvar `TMP`) (expr (lvar `TMP`) (`_` (str `") to FileMan format"`))))))
+  (` .`#1 _ (do _ (call (ref `ADDERR` _ `HDISVC00`) ((expr (lvar `TMP`)) (expr (lvar `ERRARR`))))))
+  (` .`#1 _ (set _ (= (lvar `OOPS`) (expr (num `1`)))))
+  (` `)
+  (` ` _ (if (expr (lvar `OOPS`))) (quit))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SETSTAT` _ `HDISVF01`)
+        ((expr (lvar `FILE`))
+          (expr (lvar `FIELD`))
+          (expr (lvar `CODE`))
+          (expr (lvar `DATE`))
+          (expr (num `2`))
+          (expr (lvar `SOURCE`))
+          (expr (lvar `MAILMAN`))
+          (expr (lvar `SRCTYPE`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `ELEMENTS`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `))

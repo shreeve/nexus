@@ -1,0 +1,12 @@
+program! = body                     → (module ...1)
+expr!    = expr -> 1
+
+name = IDENT
+
+body = stmt                         → (1)
+     | body NEWLINE stmt            → (...1 3)
+     | body NEWLINE                 → 1
+     |                              → ()
+
+stmt = expr
+     | "return" expr                → (return 2)

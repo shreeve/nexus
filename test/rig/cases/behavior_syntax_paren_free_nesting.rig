@@ -1,0 +1,23 @@
+# A paren-free call takes the rest of the line; a nested one may be its
+# last argument: `print add 1, 2` is `print(add(1, 2))`. A closure body
+# may be a paren-free call too.
+
+fun add(a: Int, b: Int) -> Int
+  a + b
+
+fun double(n: Int) -> Int
+  n * 2
+
+sub main()
+  print add 1, 2
+  print double add 3, 4
+  print add 1, double 5
+  n = 6
+  show = |+n| print n
+  show()
+
+# expect:
+# 3
+# 14
+# 11
+# 6

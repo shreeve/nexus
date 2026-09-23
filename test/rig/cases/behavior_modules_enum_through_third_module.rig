@@ -1,0 +1,12 @@
+# An enum from one module passes through a function of another.
+
+use util
+use geo
+
+sub main()
+  a: util.Shape = .circle(r: 1)
+  b: util.Shape = .sq(s: 2)
+  print(geo.total(?a, ?b))
+
+# expect:
+# 7

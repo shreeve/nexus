@@ -1,0 +1,8 @@
+(program
+  stmts
+  (assign `a` `'single'`)
+  (assign `b` (dstr `double ` (evstr (stmts `a`)) ` interp ` (evstr (stmts (+ `1` `2`)))))
+  (assign `c` `:sym`)
+  (assign `d` `%w[one two three]`)
+  (assign `e` `3.14`)
+  (assign `f` `1_000`))

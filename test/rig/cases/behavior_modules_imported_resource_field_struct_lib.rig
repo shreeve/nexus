@@ -1,0 +1,8 @@
+pub struct Noisy
+  n: Int
+
+  drop self: !Noisy
+    print("drop", self.n)
+
+pub struct Holder
+  b: *Noisy

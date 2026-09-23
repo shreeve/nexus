@@ -1,0 +1,317 @@
+(routine
+  (label `FSCULOOK`)
+  (` `)
+  (` `)
+  (label `LOOKUP` (`ITEM` `DEFAULT` `PARAM` `OK` `SCREEN`))
+  (` ` _ (new _ `DIC` `DLAYGO` `Y`) (kill _ (lvar `DIC`) (lvar `Y`)))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DEFAULT`) (expr (intrinsic `G`#206 ((expr (lvar `DEFAULT`))))))
+      (= (lvar `SCREEN`) (expr (intrinsic `G`#206 ((expr (lvar `SCREEN`))))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `LOOK`)
+        ((expr (lvar `ITEM`))
+          (expr (lvar `DEFAULT`))
+          (expr (lvar `PARAM`))
+          (expr (lvar `SCREEN`))
+          (byref `DIC`)
+          (byref `OK`)))))
+  (` ` _ (if (expr (`'` (lvar `OK`)))) (quit))
+  (` `
+    _
+    (if (expr (lvar `DIC` ((expr (num `0`)))) (`[` (str `"L"`))))
+    (set _ (= (lvar `DLAYGO`) (expr (lvar `DIC`)))))
+  (` ` _ (do _ (call (ref _ _ `DIC`))) (kill _ (lvar `DIC`)))
+  (` ` _ (do _ (call (ref `VALUE`) ((byref `DEFAULT`) (byref `Y`) (byref `OK`)))))
+  (` ` _ (quit))
+  (` `)
+  (label `LOOK` (`ITEM` `DEFAULT` `PARAM` `SCREEN` `DIC` `OK`))
+  (` ` _ (set _ (= (lvar `OK`) (expr (num `1`)))))
+  (` ` _ (set _ (= (lvar `DIC` ((expr (num `0`)))) (expr (lvar `PARAM`)))))
+  (` `
+    _
+    (if (expr (intrinsic `L`#209 ((expr (lvar `DEFAULT`))))))
+    (set _ (= (lvar `DIC` ((expr (str `"B"`)))) (expr (lvar `DEFAULT`)))))
+  (` `
+    _
+    (if (expr (intrinsic `L`#209 ((expr (lvar `SCREEN`))))))
+    (set _ (= (lvar `DIC` ((expr (str `"S"`)))) (expr (lvar `SCREEN`)))))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"CALL"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7100`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Call: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"LIST"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7107.1`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select List: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"PARAM"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7109`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Parameter: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"RPT"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7107.5`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Report: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"MOD"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7105.4`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Module/Version: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"SITE"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7105.1`)))
+      (=
+        (lvar `DIC` ((expr (str `"A"`))))
+        (expr
+          (str `"Select "`)
+          (`_` (extrinsic (`NAME` ((expr (lvar `ITEM`))))))
+          (`_` (str `": "`)))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"SPEC"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7105.2`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Specialist: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"FORMAT"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7107.6`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Format: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"FTYPE"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7107.7`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Display Format: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"ISC"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7105.3`)))
+      (=
+        (lvar `DIC` ((expr (str `"A"`))))
+        (expr
+          (str `"Select "`)
+          (`_` (extrinsic (`NAME` ((expr (lvar `ITEM`))))))
+          (`_` (str `": "`)))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"PRI"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7106.2`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Priority: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"PARAM"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7109`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Parameter: "`)))
+      (= (lvar `DIC` ((expr (str `"S"`)))) (expr (str `"I Y=1"`)))))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"SUB"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7105.6`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Subcomponent: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"TASK"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7106.3`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Task: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"FUNC"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7106.4`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Functional Area: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"PACK"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7105.5`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Package: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"WORK"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7103.5`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Workload: "`))))
+    (quit))
+  (` `
+    _
+    (if (expr (lvar `ITEM`) (`=` (str `"STATUS"`))))
+    (set
+      _
+      (= (lvar `DIC`) (expr (num `7100.5`)))
+      (= (lvar `DIC` ((expr (str `"A"`)))) (expr (str `"Select Status History: "`))))
+    (quit))
+  (` ` _ (kill _ (lvar `DIC`)) (set _ (= (lvar `OK`) (expr (num `0`)))))
+  (` ` _ (quit))
+  (` `)
+  (label `VALUE` (`DEFAULT` `Y` `OK`))
+  (` ` _ (set _ (= (lvar `DEFAULT`) (expr (lvar `Y`)))))
+  (` `
+    _
+    (if (expr (intrinsic `D`#202 ((expr (lvar `Y` ((expr (num `0`)))))))))
+    (set _ (= (lvar `DEFAULT` ((expr (num `0`)))) (expr (lvar `Y` ((expr (num `0`))))))))
+  (` ` _ (if (expr (lvar `Y`) (`<` (num `1`)))) (set _ (= (lvar `OK`) (expr (num `0`)))))
+  (` ` _ (quit))
+  (` `)
+  (label `NAME` (`ABBREV`))
+  (` ` _ (new _ `FLD`))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `FLD`)
+        (expr
+          (`+`
+            (intrinsic
+              `O`#211
+              ((expr
+                 (gvar
+                   `FSC`
+                   ((expr (str `"FLD"`))
+                     (expr (str `"AC"`))
+                     (expr (lvar `ABBREV`))
+                     (expr (num `0`))))))))))))
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (`'`
+            (intrinsic
+              `D`#202
+              ((expr (gvar `FSC` ((expr (str `"FLD"`)) (expr (lvar `FLD`)) (expr (num `0`))))))))))
+      (expr (str `""`)))
+    (quit
+      _
+      (expr
+        (intrinsic `P`#212 ((expr (naked (expr (num `0`)))) (expr (lvar `U`)) (expr (num `2`)))))))
+  (` `)
+  (label `LIST` (`LIST` `RESTRICT` `OK`))
+  (` ` _ (new _ `DEFAULT` `X`))
+  (` ` _ (set _ (= (lvar `DEFAULT`) (expr (intrinsic `G`#206 ((expr (lvar `LIST`))))))))
+  (` ` _ (for) (do) (quit (postcond (expr (intrinsic `D`#202 ((expr (lvar `OK`))))))))
+  (` .`#1 _ (set _ (= (lvar `RESTRICT`) (expr (num `0`)))))
+  (` .`#1
+    _
+    (write
+      _
+      (posformat `!`)
+      (expr
+        (str `"Select List: "`)
+        (`_`
+          (select
+            ((expr (intrinsic `L`#209 ((expr (lvar `DEFAULT`)))))
+              (expr (lvar `DEFAULT`) (`_` (str `"// "`))))
+            ((expr (num `1`)) (expr (str `""`)))))))
+    (read _ ((lvar `X`) (expr (lvar `DTIME`))))
+    (set
+      (postcond
+        (expr
+          (intrinsic `L`#209 ((expr (lvar `DEFAULT`))))
+          (`&` (`'` (intrinsic `L`#209 ((expr (lvar `X`))))))))
+      (= (lvar `X`) (expr (lvar `DEFAULT`))))
+    (if (expr (`'` (intrinsic `T`#221))))
+    (set _ (= (lvar `OK`) (expr (num `0`))))
+    (quit))
+  (` .`#1
+    _
+    (if (expr (lvar `X`) (`[` (lvar `U`)) (`!` (`'` (intrinsic `L`#209 ((expr (lvar `X`))))))))
+    (set _ (= (lvar `LIST`) (expr (`-` (num `1`)))) (= (lvar `OK`) (expr (num `0`))))
+    (quit))
+  (` .`#1
+    _
+    (if
+      (expr
+        (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `2`))))
+        (`=` (str `"R."`))
+        (`!`
+          (expr
+            (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `2`))))
+            (`=` (str `"r."`))))))
+    (set
+      _
+      (= (lvar `RESTRICT`) (expr (num `1`)))
+      (=
+        (lvar `X`)
+        (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `3`)) (expr (num `245`)))))))
+    (if (expr (`'` (intrinsic `L`#209 ((expr (lvar `X`)))))))
+    (set _ (= (lvar `X`) (expr (str `"?"`)))))
+  (` .`#1
+    _
+    (do
+      _
+      (call
+        (ref `LOOKUP`)
+        ((expr (str `"LIST"`)) (byref `LIST`) (expr (str `"EMOQ"`)) (byref `OK`))))
+    (if (expr (`'` (lvar `OK`))))
+    (kill _ (lvar `OK`))
+    (quit))
+  (` .`#1
+    _
+    (if
+      (expr (`'` (lvar `RESTRICT`)))
+      (expr (extrinsic ((`ASK` `FSCLIMIT`) ((expr (lvar `LIST`)))))))
+    (set _ (= (lvar `RESTRICT`) (expr (num `1`)))))
+  (` .`#1
+    _
+    (if (expr (lvar `RESTRICT`)))
+    (do _ (call (ref `RESTRICT` _ `FSCLIMIT`) ((byref `RESTRICT`))))
+    (if (expr (`'` (intrinsic `L`#209 ((expr (lvar `RESTRICT`)))))))
+    (kill _ (lvar `OK`)))
+  (` ` _ (quit)))

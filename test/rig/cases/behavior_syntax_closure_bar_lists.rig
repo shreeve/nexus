@@ -1,0 +1,33 @@
+# One bar list holds a closure's captures and parameters. An entry with
+# a sigil is a capture (`+x` copies a Copy value or clones a handle, `<x`
+# moves, `~x` holds weakly); a bare name is a parameter, typed from
+# context or annotated. `||` is an empty list, and `*` before the bars
+# makes the closure owned.
+
+sub main()
+  n = 10
+  cell: *Cell(Int) = *Cell(value: 0)
+  v: Vec(Int) = Vec()
+  (!v).push(1)
+
+  copy = |+n| n + 1
+  clone = |+cell| cell.get()
+  moved = |<v| v.length()
+  weak = |~cell|
+    if cell.upgrade() as c
+      print("alive", c.get())
+  param = |a: Int| a * 2
+  both = |+n, a: Int, b: Int| n + a + b
+  nothing = || print("nothing")
+  owned: *sub() = *|| print("owned nothing")
+
+  print(copy(), clone(), moved(), param(4), both(1, 2))
+  weak()
+  nothing()
+  owned()
+
+# expect:
+# 11 0 1 8 13
+# alive 0
+# nothing
+# owned nothing

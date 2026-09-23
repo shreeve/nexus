@@ -1,0 +1,27 @@
+(program
+  (list
+    (symbol `defn`)
+    (symbol `abs`)
+    (vector (symbol `n`))
+    (list (symbol `when-not`) (list (symbol `<`) (symbol `n`) (int `0`)) (symbol `n`)))
+  (list
+    (symbol `defn`)
+    (symbol `sum-up-to`)
+    (vector (symbol `n`))
+    (list
+      (symbol `loop`)
+      (vector (symbol `i`) (int `0`) (symbol `acc`) (int `0`))
+      (list
+        (symbol `if`)
+        (list (symbol `<`) (symbol `i`) (list (symbol `+`) (symbol `n`) (int `1`)))
+        (list
+          (symbol `recur`)
+          (list (symbol `+`) (symbol `i`) (int `1`))
+          (list (symbol `+`) (symbol `acc`) (symbol `i`)))
+        (symbol `acc`))))
+  (list
+    (symbol `defn`)
+    (symbol `first-truthy`)
+    (vector (symbol `a`) (symbol `b`) (symbol `c`))
+    (list (symbol `or`) (symbol `a`) (symbol `b`) (symbol `c`)))
+  (list (symbol `sum-up-to`) (int `10`)))

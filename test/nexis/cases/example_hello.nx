@@ -1,0 +1,7 @@
+; examples/hello.nx — the smallest nexis program that compiles from
+; source through bin/nexis.
+
+(defn greet [name]
+  name)
+
+(greet 'world)

@@ -1,0 +1,21 @@
+# A resource nested deep inside generic wrappers is dropped once, with
+# the outermost wrapper.
+
+struct P
+  n: Int
+
+  drop self: !P
+    print("drop", self.n)
+
+type Box(T)
+  value: T
+
+sub main()
+  h: *P = *P(n: 5)
+  b: Box(Box(Box(Box(Box(Box(Box(Box(Box(Box(*P)))))))))) = Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: <h))))))))))
+  c = <b
+  print(c.value.value.value.value.value.value.value.value.value.value.n)
+
+# expect:
+# 5
+# drop 5

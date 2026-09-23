@@ -1,0 +1,15 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set fixed `big` _ `300`)
+      (set _ `a` _ (call `U8` `big`))
+      (set _ `b` _ (call `U8` (neg `1`)))
+      (set _ `c` _ (call `I8` `200.5`))
+      (set _ `d` _ (call `U32` (neg `0.5`)))
+      (set _ `e` _ (call `Int` `"7"`))
+      (set _ `f` _ (call `Int` `1` `2`))
+      (set _ `g` _ (call `Float` `true`))
+      (set _ `h` _ (+ (call `I64` `9223372036854775807`) (call `I8` `1`))))))

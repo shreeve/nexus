@@ -1,0 +1,63 @@
+# A `-> T!` function fails by returning an error value: a member of an
+# error set (`return E.name`, or `.name` where it is not a variant of
+# `T`), or an error it caught. `catch |err|` names the error, which may
+# be any error: it is matched and compared with error-set members.
+
+error ParseError
+  empty
+  too_long
+
+error NetError
+  timeout
+
+fun parse_len(s: String) -> Int!
+  if s == ""
+    return ParseError.empty
+  if s.len > 5
+    return .too_long
+  s.len
+
+fun fetch(n: Int) -> Int!
+  e: NetError = .timeout
+  return e if n < 0
+  parse_len("ab")! + n
+
+fun describe(s: String) -> String
+  n = parse_len(s) catch |err|
+    match err
+      .empty => return "empty"
+      .too_long => return "too long"
+      else => return "other"
+  if n > 2
+    "long enough"
+  else
+    "short"
+
+fun retry(n: Int) -> Int!
+  fetch(n) catch |err|
+    return err if err == NetError.timeout
+    0
+
+sub main()
+  print(parse_len("abc") catch -1)
+  print(parse_len("") catch -1)
+  print(parse_len("abcdefg") catch |err| 100 if err == .too_long else 200)
+  print(describe(""), describe("abcdefgh"), describe("abcd"), describe("a"))
+  print(fetch(3) catch 0, fetch(-1) catch |e| -9 if e == .timeout else -8)
+  print(retry(1) catch 7, retry(-1) catch 7)
+  x = parse_len("") catch |err|
+    print("failed with", err)
+    0
+  print(x)
+  print(fetch(1)!)
+
+# expect:
+# 3
+# -1
+# 100
+# empty too long long enough short
+# 5 -9
+# 3 7
+# failed with .empty
+# 0
+# 3

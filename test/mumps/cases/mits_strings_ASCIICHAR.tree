@@ -1,0 +1,93 @@
+(routine
+  (label `ASCIICHAR`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/strings/ASCIICHAR"`))))))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-4 Integer interpretation of intexpr, while intexpr is numeric "`))
+          (expr (str `"EF"`))
+          (expr (str `"$CHAR(0.0069E+4,35.2*2.001)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-5 Integer interpretation of intexpr, while intexpr contains bi"`))
+          (expr (str `" AB"`))
+          (expr (str `"$C(15+15+2,+""66ABC""--2-3,""6""_""6"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-10 expr is string literal, and $L(expr)>0"`))
+          (expr (num `42`))
+          (expr (str `"$A(""*|^=09876"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-11 expr is numeric literal, and $L(expr)=1 i.e. expr is a digit"`))
+          (expr (num `50`))
+          (expr (str `"$A(02)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-13 expr is numeric literal, and $L(expr)>1,expr<=0"`))
+          (expr (num `48`))
+          (expr (str `"$A(.00E3)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-16 expr1 is non-integer numeric literal, and greater than zero"`))
+          (expr (num `53`))
+          (expr (str `"$A(034.95165E2,00.04000E+2)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-17 expr1 is non-integer numeric literal, and less than zero"`))
+          (expr (num `46`))
+          (expr (str `"$A(-00.000034567000E+008,6000E-3)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-18 expr1 is integer numeric literal, and greater than zero"`))
+          (expr (str `"52"`))
+          (expr (str `"$A(00000234650.0000,2+1)"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"I-20/21.2 intexpr2 is greater than $L(expr1)"`))
+          (expr (str `"-1"`))
+          (expr (str `"$A(1,2)"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/strings/ASCIICHAR"`))))))
+  (` ` _ (quit)))

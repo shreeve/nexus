@@ -1,0 +1,19 @@
+(module
+  (struct
+    `Bag`
+    (: `items` (generic_inst `Vec` `Int`))
+    (sub
+      `add`
+      ((write `self`) (: `x` `Int`))
+      _
+      (block (call (member (write (member `self` `items`)) `push`) `x`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `v` (generic_inst `Vec` `Int`) (call `Vec`))
+      (set _ `b` _ (call `Bag` (kwarg `items` (move `v`))))
+      (call (member (write `b`) `add`) `4`)
+      (call (member (write `b`) `add`) `5`)
+      (call `print` (call (member (member `b` `items`) `length`))))))

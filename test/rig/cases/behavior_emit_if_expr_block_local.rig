@@ -1,0 +1,13 @@
+# A local bound inside a multi-statement branch of a binding's `if`
+# resolves at its use in the same branch.
+
+sub main()
+  result = if 5 > 0
+    doubled: Int = 5 * 2
+    doubled + 1
+  else
+    0
+  print(result)
+
+# expect:
+# 11
