@@ -1291,6 +1291,12 @@
     (alt
       _
       ((lit `"@"`)
+        (tok `KW_CONFLICTS`))
+      (node `manifest`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
         (tok `KW_AS`)
         (ref `as_body`))
       (pos `3`)

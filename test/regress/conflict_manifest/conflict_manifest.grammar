@@ -16,6 +16,7 @@ tokens
 @lang = "conflict_manifest"
 
 @conflicts
+    shift  L(IDENT).tail → ε                     1  # two names are the `item? item` form
     reduce L(IDENT).tail → ε over items → IDENT  1  # a lone item is the [item] form
 
 top!  = items                               → 1

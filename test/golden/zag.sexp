@@ -112,6 +112,8 @@
     (conflict `shift` `continue → CONTINUE ":" IDENT` _ `1` `# a postfix guard binds to the continue statement`)
     (conflict `shift` `continue → CONTINUE` _ `2` `# continue :label names the loop to continue`)
     (conflict `shift` `unary → call` _ `1` `# call: starts a typed assignment or constant`)
+    (conflict `shift` `L(arg).tail → ε` _ `2` `# a comma after a call argument continues the arguments`)
+    (conflict `shift` `L(expr).tail → ε` _ `2` `# a comma or ) after an argument belongs to the argument list`)
     (conflict `shift` `args → ε` _ `1` `# .{} is an empty struct literal, not empty call arguments`)
     (conflict `shift` `arg → term` _ `1` `# a ternary if binds to the term before it`))
   (as

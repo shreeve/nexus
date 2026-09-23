@@ -226,6 +226,8 @@ tokens
     shift  continue → CONTINUE ":" IDENT                1  # a postfix guard binds to the continue statement
     shift  continue → CONTINUE                          2  # continue :label names the loop to continue
     shift  unary → call                                 1  # call: starts a typed assignment or constant
+    shift  L(arg).tail → ε                              2  # a comma after a call argument continues the arguments
+    shift  L(expr).tail → ε                             2  # a comma or ) after an argument belongs to the argument list
     shift  args → ε                                     1  # .{} is an empty struct literal, not empty call arguments
     shift  arg → term                                   1  # a ternary if binds to the term before it
 

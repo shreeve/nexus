@@ -648,7 +648,6 @@ const Expander = struct {
             .lhs = tailId,
             .rhs = &[_]u16{},
             .actionTree = emptyList,
-            .preferShift = true,
         });
         return listId;
     }

@@ -313,6 +313,7 @@ lex_action  = word:IDENT                                → (lex_action)
 directive = "@" KW_LANG "=" name:STRING                 → (lang)
           | "@" KW_CONFLICTS "=" count:INTEGER          → (conflicts)
           | "@" KW_CONFLICTS entries:conflict_lines     → (manifest)
+          | "@" KW_CONFLICTS                            → (manifest)
           | "@" KW_AS as_body                           → 3
           | "@" KW_OP "=" "[" maps:op_items "]"         → (op)
           | "@" KW_ERRORS pairs:name_pairs              → (errors)

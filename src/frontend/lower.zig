@@ -551,8 +551,10 @@ pub const GrammarLowerer = struct {
         return self.fail(node, "`@conflicts = N` is not supported: delete it and declare each conflict in an `@conflicts` block (without one the grammar must be conflict-free; generation prints the block to paste)", .{});
     }
 
+    /// `@conflicts`, one entry per line; an empty block (like none) means
+    /// the grammar must be conflict-free.
     fn lowerManifest(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
-        if (items.len < 2) return self.shapeError(node, "(manifest CONFLICT+)");
+        if (items.len < 1) return self.shapeError(node, "(manifest CONFLICT...)");
         for (items[1..]) |entry| {
             const et = try self.requireTag(entry, .conflict);
             try self.requireArity(entry, et, 6, 6, "(conflict KIND CRULE OVER COUNT REASON)");
@@ -1354,8 +1356,11 @@ test "lowerer rejects (name_pair) whose name is not a string" {
 fn crule() Sexp {
     return sArrowRule;
 }
-test "lowerer rejects (manifest) with no entries" {
-    try expectShapeError(root(&.{L(&.{T(.manifest)})}));
+test "lowerer accepts an empty (manifest)" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const ir = try GrammarLowerer.lower(arena.allocator(), comptime root(&.{L(&.{T(.manifest)})}), negSourceMap);
+    try testing.expectEqual(@as(usize, 0), ir.conflicts.len);
 }
 test "lowerer rejects a conflict kind other than shift or reduce" {
     try expectLowerError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sX, crule(), .nil, sThree, sComment }) })}));

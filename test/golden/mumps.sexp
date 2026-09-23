@@ -384,6 +384,7 @@
   (section `parser`)
   (lang `"mumps"`)
   (manifest
+    (conflict `shift` `L(expr).tail → ε` _ `2` `# a comma after a list item continues the list`)
     (conflict `shift` `deviceparam → expr` _ `1` `# USE dev:(x): the parentheses group an expression, the same value as a one-parameter list`)
     (conflict `shift` `IDENT* → ε` _ `2` `# pattern code letters after a repeat count run as far as they go`)
     (conflict `shift` `rlvn → IDENT` _ `1` `# name= after USE dev: is a keyword device parameter`)

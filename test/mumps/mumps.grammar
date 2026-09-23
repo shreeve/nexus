@@ -411,6 +411,7 @@ after
 @lang = "mumps"
 
 @conflicts
+    shift  L(expr).tail → ε                             2  # a comma after a list item continues the list
     shift  deviceparam → expr                           1  # USE dev:(x): the parentheses group an expression, the same value as a one-parameter list
     shift  IDENT* → ε                                   2  # pattern code letters after a repeat count run as far as they go
     shift  rlvn → IDENT                                 1  # name= after USE dev: is a keyword device parameter
