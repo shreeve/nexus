@@ -1,7 +1,5 @@
 # A nested node `(q 1)` may appear as an action element.
 #
-# Today: nesting is not supported; the generator emits a tag literally
-# named "(q" and a broken action.
 # (architecture.md Appendix A: nest.grammar; SPEC §3.5)
 
 @lexer

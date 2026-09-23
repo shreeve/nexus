@@ -4,9 +4,6 @@
 # every expansion of the group, so the dangling-else shift/reduce is
 # resolved by the hint and is not a conflict.
 #
-# Today: expandOptionalGroups copies preferReduce but drops preferShift, so
-# the generator reports "S/R: stmt vs KW_ELSE" (the parse itself shifts by
-# default and is already right).
 # (architecture.md §1.6.2; SPEC §8.5)
 
 @lexer

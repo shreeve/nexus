@@ -226,9 +226,9 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
         defer g.deinit();
-        expand.processGrammar(&g, &ir) catch |err| {
-            diag.err("grammar processing failed: {any}", .{err});
-            return;
+        expand.processGrammar(&g, &ir, .{ .path = grammarFile }) catch |err| {
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            fail();
         };
 
         // Validate all referenced symbols are defined

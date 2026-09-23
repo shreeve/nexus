@@ -1002,7 +1002,7 @@ test "lowerer rejects self via fn in @as" {
 }
 test "lowerer rejects a shared @as via with two groups" {
     try expectLowerError(root(&.{L(&.{
-        T(.as),                                  sX,                                      sFn,
+        T(.as),                          sX,                               sFn,
         L(&.{ T(.as_entry), .nil, sX }), L(&.{ T(.as_entry), .nil, sFn }),
     })}));
 }

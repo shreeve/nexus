@@ -159,7 +159,7 @@ const Codegen = struct {
                 try writer.writeAll("\n");
             }
             try writer.print("            {d} => ", .{ruleIdx});
-            try actions.generateRuleAction(self.allocator, writer, rule);
+            try actions.generateRuleAction(self.allocator, writer, self.g, rule);
             try writer.writeAll(",\n");
         }
 

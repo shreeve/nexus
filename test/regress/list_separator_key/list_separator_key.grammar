@@ -1,10 +1,6 @@
 # Two lists of the same item with different separators are different
 # lists: L(item, ",") and L(item, "|") each accept only their separator.
 #
-# Today: list rules are keyed by (item, optional, has-a-custom-separator),
-# not by the separator itself, so both lists share the rules of whichever
-# is created first. (Currently masked: L(X, sep) does not generate at all,
-# see known/list_separator.)
 # (architecture.md §2.2.4 and §6 item 3; SPEC §8.5)
 
 @lexer

@@ -980,7 +980,7 @@ pub const BaseParser = struct {
             169 => self.sexp(.@"while", &.{pass[1], .nil, pass[2]}),
             170 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4]}),
             171 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5], pass[7]}),
-            172 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], pass[0]}),
+            172 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], pass[9]}),
             173 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], .nil, pass[3], pass[4], pass[6]}),
             174 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], pass[3], pass[5], pass[6], pass[8]}),
             175 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5]}),

@@ -1,9 +1,6 @@
 # An alias (`name = IDENT`) can be a list item, wherever it is defined and
 # whether or not its target is used elsewhere first.
 #
-# Today: when L(name) is lowered before IDENT has been seen, the alias
-# does not resolve and generation fails with "Undefined rule: 'name'"
-# (exit 0). Mentioning IDENT in an earlier rule makes it work.
 # Found while building the test harness.
 
 @lexer

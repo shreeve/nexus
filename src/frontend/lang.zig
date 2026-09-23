@@ -323,12 +323,12 @@ pub const Lexer = struct {
 
     fn directiveKeyword(t: []const u8) ?TokenCat {
         const map = [_]struct { []const u8, TokenCat }{
-            .{ "lang", .kw_lang },         .{ "conflicts", .kw_conflicts },
-            .{ "as", .kw_as },             .{ "op", .kw_op },
-            .{ "errors", .kw_errors },     .{ "display", .kw_display },
-            .{ "infix", .kw_infix },       .{ "schema", .kw_schema },
-            .{ "tags", .kw_tags },         .{ "trivia", .kw_trivia },
-            .{ "repair", .kw_repair },     .{ "wrapper", .kw_wrapper },
+            .{ "lang", .kw_lang },     .{ "conflicts", .kw_conflicts },
+            .{ "as", .kw_as },         .{ "op", .kw_op },
+            .{ "errors", .kw_errors }, .{ "display", .kw_display },
+            .{ "infix", .kw_infix },   .{ "schema", .kw_schema },
+            .{ "tags", .kw_tags },     .{ "trivia", .kw_trivia },
+            .{ "repair", .kw_repair }, .{ "wrapper", .kw_wrapper },
         };
         for (map) |entry| if (eql(t, entry[0])) return entry[1];
         return null;
