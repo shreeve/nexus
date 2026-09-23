@@ -1,0 +1,12 @@
+# rewind(n) cannot exceed the shortest match
+# error: lexer_rewind_too_long.grammar:9:1:
+# error: exceeds the shortest match
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'ab' → word, rewind(3)
+. → err
+@parser
+top! = WORD → 1

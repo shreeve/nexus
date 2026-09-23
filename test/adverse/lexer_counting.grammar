@@ -1,0 +1,12 @@
+# counting()/matching() is not a regular language
+# error: lexer_counting.grammar:9:5:
+# error: balanced nesting
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'?' counting('(') [0-9]+ matching(')') → plus
+. → err
+@parser
+top! = WORD → 1

@@ -1,0 +1,12 @@
+# A pattern that can only start with blanks never sees them
+# error: lexer_blank_pattern.grammar:9:1:
+# error: space or tab
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+[ \t]+ → word
+. → err
+@parser
+top! = WORD → 1

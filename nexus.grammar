@@ -174,7 +174,7 @@ tokens
     err
 
 # Whitespace (spaces and tabs only — newlines are significant)
-[ \t\r]+                                    → skip
+[ \t\r]+                                    → skip, skip
 
 # Comments
 '#' [^\n]*                                  → comment

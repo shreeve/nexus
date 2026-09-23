@@ -151,7 +151,7 @@ pub const TokenCat = enum(u8) {
     @"eof",
     @"err",
 
-    // Internal (used by generator)
+    // Built in: the token of `→ skip` rules (returned to the lang Lexer)
     @"skip",
 };
 
@@ -160,10 +160,10 @@ pub const TokenCat = enum(u8) {
 // =============================================================================
 
 pub const Token = struct {
-    pos: u32,         // Byte position in source (4 bytes)
-    len: u16,         // Token length in bytes (2 bytes)
-    cat: TokenCat,    // Token category (1 byte)
-    pre: u8,          // Preceding whitespace count (1 byte)
+    pos: u32, // Byte position in source (4 bytes)
+    len: u16, // Token length in bytes (2 bytes)
+    cat: TokenCat, // Token category (1 byte)
+    pre: u8, // Preceding whitespace count (1 byte)
 
     comptime {
         std.debug.assert(@sizeOf(Token) == 8);
@@ -173,11 +173,14 @@ pub const Token = struct {
 // =============================================================================
 // LEXER
 // =============================================================================
+
 pub const BaseLexer = struct {
     const Self = @This();
 
     source: []const u8,
     pos: u32,
+    /// Side channel a lang Lexer wrapper may set per token; the parser
+    /// copies it into the shifted leaf's `src.id` and clears it.
     aux: u16 = 0,
     // State variables
     paren: i8,
@@ -210,420 +213,1012 @@ pub const BaseLexer = struct {
         self.brace = 0;
     }
 
-    /// Peek at current character (0 if at end)
-    inline fn peek(self: *const Self) u8 {
-        return if (self.pos < self.source.len) self.source[self.pos] else 0;
-    }
-
-    /// Peek at character at offset (0 if at end)
-    inline fn peekAt(self: *const Self, offset: u32) u8 {
-        const p = self.pos + offset;
-        return if (p < self.source.len) self.source[p] else 0;
-    }
-
     /// Get next token
     pub fn next(self: *Self) Token {
         return self.matchRules();
     }
 
-    // Character classification flags (generated from grammar patterns)
-    const DIGIT: u8 = 1 << 0;
-    const LETTER: u8 = 1 << 1;
-    const WHITESPACE: u8 = 1 << 2;
-
-    const charFlags: [256]u8 = blk: {
-        var table: [256]u8 = [_]u8{0} ** 256;
-        for ('0'..'9' + 1) |c| table[c] = DIGIT;
-        for ('A'..'Z' + 1) |c| table[c] = LETTER;
-        for ('a'..'z' + 1) |c| table[c] = LETTER;
-        table['_'] = LETTER;
-        table[' '] = WHITESPACE;
-        table['\t'] = WHITESPACE;
-        break :blk table;
+    const cls0 = blk: {
+        var t: [256]bool = @splat(false);
+        t['\t'] = true;
+        t['\r'] = true;
+        t[' '] = true;
+        break :blk t;
     };
 
-    inline fn isDigit(c: u8) bool {
-        return (charFlags[c] & DIGIT) != 0;
+    const cls1 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('0'..58) |c| t[c] = true;
+        t['_'] = true;
+        break :blk t;
+    };
+
+    const cls2 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('0'..58) |c| t[c] = true;
+        for ('A'..91) |c| t[c] = true;
+        t['_'] = true;
+        for ('a'..123) |c| t[c] = true;
+        break :blk t;
+    };
+
+    const cls3 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('0'..50) |c| t[c] = true;
+        t['_'] = true;
+        break :blk t;
+    };
+
+    const cls4 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('0'..56) |c| t[c] = true;
+        t['_'] = true;
+        break :blk t;
+    };
+
+    const cls5 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('0'..58) |c| t[c] = true;
+        for ('A'..71) |c| t[c] = true;
+        t['_'] = true;
+        for ('a'..103) |c| t[c] = true;
+        break :blk t;
+    };
+
+    /// First index at or after `from` whose byte is in `stops` (or src.len).
+    inline fn scanUntil(src: []const u8, from: usize, comptime stops: []const u8) usize {
+        const V = @Vector(16, u8);
+        var p = from;
+        while (p + 16 <= src.len) : (p += 16) {
+            const v: V = src[p..][0..16].*;
+            var hits: u16 = 0;
+            inline for (stops) |c| hits |= @bitCast(v == @as(V, @splat(c)));
+            if (hits != 0) return p + @ctz(hits);
+        }
+        while (p < src.len) : (p += 1) {
+            inline for (stops) |c| if (src[p] == c) return p;
+        }
+        return p;
     }
 
-    inline fn isLetter(c: u8) bool {
-        return (charFlags[c] & LETTER) != 0;
-    }
-
-    inline fn isWhitespace(c: u8) bool {
-        return (charFlags[c] & WHITESPACE) != 0;
-    }
-
-    inline fn isIdentChar(c: u8) bool {
-        return isLetter(c) or isDigit(c);
-    }
-    /// Match lexer rules
+    /// Match the next token.
     pub fn matchRules(self: *Self) Token {
-        // Count whitespace first
-        const wsStart = self.pos;
-        while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
-            self.pos += 1;
-        }
-        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
-        // EOF check
-        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
-        }
-
-        const start = self.pos;
-        const c = self.source[self.pos];
-        // Newline handling (generated from grammar rules)
-        if (c == '\n' or c == '\r') {
-                self.pos += 1;
-                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
-        }
-        // Multi-char literal preemption (heredoc delimiters,
-        // triple-bang operators, etc.) — longest-first; falls
-        // through on no match.
-        if (c == '@') {
-            if (self.pos + 3 <= self.source.len and self.source[self.pos + 1] == '@' and ((self.source[self.pos + 2] >= 'A' and self.source[self.pos + 2] <= 'Z') or self.source[self.pos + 2] == '_' or (self.source[self.pos + 2] >= 'a' and self.source[self.pos + 2] <= 'z'))) {
-                self.pos += 3;
-                while (self.pos < self.source.len and ((self.source[self.pos] >= '0' and self.source[self.pos] <= '9') or (self.source[self.pos] >= 'A' and self.source[self.pos] <= 'Z') or self.source[self.pos] == '_' or (self.source[self.pos] >= 'a' and self.source[self.pos] <= 'z'))) self.pos += 1;
-                return Token{ .cat = .@"cvar", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+        const src = self.source;
+        const n = src.len;
+        var p: usize = self.pos;
+        const wsStart = p;
+        scan: while (true) {
+            while (p < n and (src[p] == ' ' or src[p] == '\t')) p += 1;
+            const pre: u8 = @intCast(@min(p - wsStart, 255));
+            if (p >= n) {
+                self.pos = @intCast(p);
+                return .{ .cat = .@"eof", .pre = pre, .pos = @intCast(p), .len = 0 };
             }
-        }
-        if (c == '"') {            self.pos += 1;
-            while (self.pos < self.source.len) {
-                const ch = self.source[self.pos];
-                if (ch == '"') {
-                    self.pos += 1;
-                    return Token{ .cat = .@"string_dq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-                }
-                if (ch == '\\') { self.pos += 2; continue; }
-                if (ch == '\n') break;
-                self.pos += 1;
+            const start = p;
+            var acc: u16 = 65535;
+            var accEnd: usize = start;
+            dfa: switch (@as(u16, 0)) {
+                0 => {
+                    if (p < n) switch (src[p]) {
+                        0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', 0x7F...0xFF => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '\t', '\r', ' ' => {
+                            p += 1;
+                            continue :dfa 2;
+                        },
+                        '\n' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"newline", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '!' => {
+                            p += 1;
+                            continue :dfa 4;
+                        },
+                        '"' => {
+                            p += 1;
+                            continue :dfa 5;
+                        },
+                        '#' => {
+                            p += 1;
+                            continue :dfa 6;
+                        },
+                        '$' => {
+                            p += 1;
+                            continue :dfa 7;
+                        },
+                        '%' => {
+                            p += 1;
+                            continue :dfa 8;
+                        },
+                        '&' => {
+                            p += 1;
+                            continue :dfa 9;
+                        },
+                        '\'' => {
+                            p += 1;
+                            continue :dfa 10;
+                        },
+                        '(' => {
+                            p += 1;
+                            self.paren +%= 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        ')' => {
+                            p += 1;
+                            self.paren -%= 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '*' => {
+                            p += 1;
+                            continue :dfa 13;
+                        },
+                        '+' => {
+                            p += 1;
+                            continue :dfa 14;
+                        },
+                        ',' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"comma", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '-' => {
+                            p += 1;
+                            continue :dfa 16;
+                        },
+                        '.' => {
+                            p += 1;
+                            continue :dfa 17;
+                        },
+                        '/' => {
+                            p += 1;
+                            continue :dfa 18;
+                        },
+                        '0' => {
+                            p += 1;
+                            continue :dfa 19;
+                        },
+                        '1'...'9' => {
+                            p += 1;
+                            continue :dfa 20;
+                        },
+                        ':' => {
+                            p += 1;
+                            continue :dfa 21;
+                        },
+                        ';' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"semicolon", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '<' => {
+                            p += 1;
+                            continue :dfa 23;
+                        },
+                        '=' => {
+                            p += 1;
+                            continue :dfa 24;
+                        },
+                        '>' => {
+                            p += 1;
+                            continue :dfa 25;
+                        },
+                        '?' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"question", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '@' => {
+                            p += 1;
+                            continue :dfa 27;
+                        },
+                        'A'...'Z' => {
+                            p += 1;
+                            continue :dfa 28;
+                        },
+                        '[' => {
+                            p += 1;
+                            self.brack +%= 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"lbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '\\' => {
+                            p += 1;
+                            continue :dfa 30;
+                        },
+                        ']' => {
+                            p += 1;
+                            self.brack -%= 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"rbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '^' => {
+                            p += 1;
+                            continue :dfa 32;
+                        },
+                        '_', 'a'...'z' => {
+                            p += 1;
+                            continue :dfa 33;
+                        },
+                        '{' => {
+                            p += 1;
+                            self.brace +%= 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"lbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '|' => {
+                            p += 1;
+                            continue :dfa 35;
+                        },
+                        '}' => {
+                            p += 1;
+                            self.brace -%= 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"rbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '~' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"tilde", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                    };
+                    break :dfa;
+                },
+                2 => {
+                    while (p < n and cls0[src[p]]) p += 1;
+                    continue :scan;
+                },
+                4 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"ne", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '~' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"nmatch", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"bang", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                5 => {
+                    acc = 80;
+                    accEnd = p;
+                    if (p < n) switch (src[p]) {
+                        0x00...'!', '#'...'[', ']'...0xFF => {
+                            p += 1;
+                            continue :dfa 40;
+                        },
+                        '"' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"string_dq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '\\' => {
+                            p += 1;
+                            continue :dfa 42;
+                        },
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                6 => {
+                    p = scanUntil(src, p, &.{'\n'});
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"comment", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                7 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'9' => {
+                            p += 1;
+                            continue :dfa 43;
+                        },
+                        'A'...'Z', '_', 'a'...'z' => {
+                            p += 1;
+                            continue :dfa 44;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                8 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"percent_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"percent", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                9 => {
+                    if (p < n) switch (src[p]) {
+                        '&' => {
+                            p += 1;
+                            continue :dfa 46;
+                        },
+                        '.' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"safe_nav", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"amp_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"ampersand", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                10 => {
+                    acc = 80;
+                    accEnd = p;
+                    if (p < n) switch (src[p]) {
+                        0x00...'&', '('...'[', ']'...0xFF => {
+                            p += 1;
+                            continue :dfa 49;
+                        },
+                        '\'' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"string_sq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '\\' => {
+                            p += 1;
+                            continue :dfa 51;
+                        },
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                13 => {
+                    if (p < n) switch (src[p]) {
+                        '*' => {
+                            p += 1;
+                            continue :dfa 52;
+                        },
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"star_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"star", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                14 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"plus_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"plus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                16 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"minus_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '>' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"arrow", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"minus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                17 => {
+                    if (p < n) switch (src[p]) {
+                        '.' => {
+                            p += 1;
+                            continue :dfa 57;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"dot", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                18 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"slash_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"slash", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                19 => {
+                    acc = 17;
+                    accEnd = p;
+                    if (p < n) switch (src[p]) {
+                        '.' => {
+                            p += 1;
+                            continue :dfa 59;
+                        },
+                        '0'...'9', '_' => {
+                            p += 1;
+                            continue :dfa 20;
+                        },
+                        'B', 'b' => {
+                            p += 1;
+                            continue :dfa 60;
+                        },
+                        'E', 'e' => {
+                            p += 1;
+                            continue :dfa 61;
+                        },
+                        'O', 'o' => {
+                            p += 1;
+                            continue :dfa 62;
+                        },
+                        'X', 'x' => {
+                            p += 1;
+                            continue :dfa 63;
+                        },
+                        'i' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"imaginary", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        'r' => {
+                            p += 1;
+                            continue :dfa 65;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                20 => {
+                    while (p < n and cls1[src[p]]) p += 1;
+                    acc = 17;
+                    accEnd = p;
+                    if (p < n) switch (src[p]) {
+                        '.' => {
+                            p += 1;
+                            continue :dfa 59;
+                        },
+                        'E', 'e' => {
+                            p += 1;
+                            continue :dfa 61;
+                        },
+                        'i' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"imaginary", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        'r' => {
+                            p += 1;
+                            continue :dfa 65;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                21 => {
+                    if (p < n) switch (src[p]) {
+                        ':' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"scope", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"colon", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                23 => {
+                    if (p < n) switch (src[p]) {
+                        '<' => {
+                            p += 1;
+                            continue :dfa 67;
+                        },
+                        '=' => {
+                            p += 1;
+                            continue :dfa 68;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                24 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            continue :dfa 69;
+                        },
+                        '>' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"fat_arrow", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '~' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"match_op", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"assign", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                25 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"ge", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '>' => {
+                            p += 1;
+                            continue :dfa 73;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                27 => {
+                    acc = 80;
+                    accEnd = p;
+                    if (p < n) switch (src[p]) {
+                        '@' => {
+                            p += 1;
+                            continue :dfa 74;
+                        },
+                        'A'...'Z', '_', 'a'...'z' => {
+                            p += 1;
+                            continue :dfa 75;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                28 => {
+                    while (p < n and cls2[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"constant", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                30 => {
+                    if (p < n) switch (src[p]) {
+                        '\n' => {
+                            p += 1;
+                            continue :scan;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                32 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"caret_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"caret", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                33 => {
+                    while (p < n and cls2[src[p]]) p += 1;
+                    if (p < n) switch (src[p]) {
+                        '!', '?' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                35 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"pipe_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '|' => {
+                            p += 1;
+                            continue :dfa 80;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"pipe", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                40 => {
+                    p = scanUntil(src, p, &.{'"', '\\'});
+                    if (p < n) switch (src[p]) {
+                        '"' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"string_dq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '\\' => {
+                            p += 1;
+                            continue :dfa 42;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                42 => {
+                    if (p < n) switch (src[p]) {
+                        0x00...0xFF => {
+                            p += 1;
+                            continue :dfa 40;
+                        },
+                    };
+                    break :dfa;
+                },
+                43 => {
+                    while (p < n and src[p] -% '0' <= 9) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"gvar", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                44 => {
+                    while (p < n and cls2[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"gvar", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                46 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"andand_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"andand", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                49 => {
+                    p = scanUntil(src, p, &.{'\'', '\\'});
+                    if (p < n) switch (src[p]) {
+                        '\'' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"string_sq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        '\\' => {
+                            p += 1;
+                            continue :dfa 51;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                51 => {
+                    if (p < n) switch (src[p]) {
+                        0x00...0xFF => {
+                            p += 1;
+                            continue :dfa 49;
+                        },
+                    };
+                    break :dfa;
+                },
+                52 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"power_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"power", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                57 => {
+                    if (p < n) switch (src[p]) {
+                        '.' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"dotdotdot", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"dotdot", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                59 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'9' => {
+                            p += 1;
+                            continue :dfa 84;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                60 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'1' => {
+                            p += 1;
+                            continue :dfa 85;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                61 => {
+                    if (p < n) switch (src[p]) {
+                        '+', '-' => {
+                            p += 1;
+                            continue :dfa 86;
+                        },
+                        '0'...'9' => {
+                            p += 1;
+                            continue :dfa 87;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                62 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'7' => {
+                            p += 1;
+                            continue :dfa 88;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                63 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'9', 'A'...'F', 'a'...'f' => {
+                            p += 1;
+                            continue :dfa 89;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                65 => {
+                    if (p < n) switch (src[p]) {
+                        'i' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"imaginary", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"rational", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                67 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"lshift_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"lshift", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                68 => {
+                    if (p < n) switch (src[p]) {
+                        '>' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"cmp", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"le", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                69 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"eqq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                73 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"rshift_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"rshift", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                74 => {
+                    if (p < n) switch (src[p]) {
+                        'A'...'Z', '_', 'a'...'z' => {
+                            p += 1;
+                            continue :dfa 95;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                75 => {
+                    while (p < n and cls2[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"ivar", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                80 => {
+                    if (p < n) switch (src[p]) {
+                        '=' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"oror_eq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"oror", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                84 => {
+                    while (p < n and cls1[src[p]]) p += 1;
+                    acc = 12;
+                    accEnd = p;
+                    if (p < n) switch (src[p]) {
+                        'E', 'e' => {
+                            p += 1;
+                            continue :dfa 97;
+                        },
+                        'i' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"imaginary", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        'r' => {
+                            p += 1;
+                            continue :dfa 99;
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"float", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                85 => {
+                    while (p < n and cls3[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                86 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'9' => {
+                            p += 1;
+                            continue :dfa 87;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                87 => {
+                    while (p < n and cls1[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"float", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                88 => {
+                    while (p < n and cls4[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                89 => {
+                    while (p < n and cls5[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                95 => {
+                    while (p < n and cls2[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"cvar", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                97 => {
+                    if (p < n) switch (src[p]) {
+                        '+', '-' => {
+                            p += 1;
+                            continue :dfa 100;
+                        },
+                        '0'...'9' => {
+                            p += 1;
+                            continue :dfa 101;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                99 => {
+                    if (p < n) switch (src[p]) {
+                        'i' => {
+                            p += 1;
+                            self.pos = @intCast(p);
+                            return .{ .cat = .@"imaginary", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                        },
+                        else => {},
+                    };
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"rational", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                100 => {
+                    if (p < n) switch (src[p]) {
+                        '0'...'9' => {
+                            p += 1;
+                            continue :dfa 101;
+                        },
+                        else => {},
+                    };
+                    break :dfa;
+                },
+                101 => {
+                    while (p < n and cls1[src[p]]) p += 1;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"float", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                else => unreachable,
             }
-            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-        }
-        if (c == '\'') {            self.pos += 1;
-            while (self.pos < self.source.len) {
-                const ch = self.source[self.pos];
-                if (ch == '\'') {
-                    self.pos += 1;
-                    return Token{ .cat = .@"string_sq", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-                }
-                if (ch == '\\') { self.pos += 2; continue; }
-                if (ch == '\n') break;
-                self.pos += 1;
+            switch (acc) {
+                80 => {
+                    p = accEnd;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                17 => {
+                    p = accEnd;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                12 => {
+                    p = accEnd;
+                    self.pos = @intCast(p);
+                    return .{ .cat = .@"float", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                },
+                else => {},
             }
-            return Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
+            self.pos = @intCast(start + 1);
+            return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = 1 };
         }
-        // Number
-        if (isDigit(c)) {
-            return self.scanNumber(start, wsCount);
-        }
-        // Identifier
-        if (isLetter(c)) {
-            return self.scanIdent(start, wsCount);
-        }
-        if (c == '$') {
-            const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-            if ((nc >= 'a' and nc <= 'z') or (nc >= 'A' and nc <= 'Z') or nc == '_') {
-                self.pos += 1;
-                while (self.pos < self.source.len) {
-                    const vc = self.source[self.pos];
-                    if (!((vc >= 'a' and vc <= 'z') or (vc >= 'A' and vc <= 'Z') or (vc >= '0' and vc <= '9') or vc == '_')) break;
-                    self.pos += 1;
-                }
-                return Token{ .cat = .@"gvar", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-            if (nc >= '0' and nc <= '9') {
-                self.pos += 2;
-                return Token{ .cat = .@"gvar", .pre = wsCount, .pos = start, .len = 2 };
-            }
-        }
-        if (c == '@') {
-            const nc = if (self.pos + 1 < self.source.len) self.source[self.pos + 1] else 0;
-            if ((nc >= 'a' and nc <= 'z') or (nc >= 'A' and nc <= 'Z') or nc == '_') {
-                self.pos += 1;
-                while (self.pos < self.source.len) {
-                    const vc = self.source[self.pos];
-                    if (!((vc >= 'a' and vc <= 'z') or (vc >= 'A' and vc <= 'Z') or (vc >= '0' and vc <= '9') or vc == '_')) break;
-                    self.pos += 1;
-                }
-                return Token{ .cat = .@"ivar", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        // Comment (scan to end of line)
-        if (c == '#') {
-            while (self.pos < self.source.len and self.source[self.pos] != '\n') {
-                self.pos += 1;
-            }
-            return Token{ .cat = .@"comment", .pre = wsCount, .pos = start, .len = @intCast(self.pos - start) };
-        }
-        // Single/multi-char operators
-        self.pos += 1;
-        return switch (c) {
-            '!' => blk: {
-                if (self.peek() == '~') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"nmatch", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"ne", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"bang", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '%' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"percent_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"percent", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '&' => blk: {
-                if (self.peek() == '&') {
-                    self.pos += 1;
-                    if (self.peek() == '=') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"andand_eq", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"andand", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"amp_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '.') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"safe_nav", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"ampersand", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '(' => blk: {
-                self.paren += 1;
-                    break :blk Token{ .cat = .@"lparen", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ')' => blk: {
-                self.paren -= 1;
-                    break :blk Token{ .cat = .@"rparen", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '*' => blk: {
-                if (self.peek() == '*') {
-                    self.pos += 1;
-                    if (self.peek() == '=') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"power_eq", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"power", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"star_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"star", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '+' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"plus_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"plus", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ',' => Token{ .cat = .@"comma", .pre = wsCount, .pos = start, .len = 1 },
-            '-' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"minus_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '>') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"arrow", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"minus", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '.' => blk: {
-                if (self.peek() == '.') {
-                    self.pos += 1;
-                    if (self.peek() == '.') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"dotdotdot", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"dotdot", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"dot", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '/' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"slash_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"slash", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ':' => blk: {
-                if (self.peek() == ':') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"scope", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"colon", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ';' => Token{ .cat = .@"semicolon", .pre = wsCount, .pos = start, .len = 1 },
-            '<' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    if (self.peek() == '>') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"cmp", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"le", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '<') {
-                    self.pos += 1;
-                    if (self.peek() == '=') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"lshift_eq", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"lshift", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"lt", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '=' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    if (self.peek() == '=') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"eqq", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '~') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"match_op", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '>') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"fat_arrow", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"assign", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '>' => blk: {
-                if (self.peek() == '>') {
-                    self.pos += 1;
-                    if (self.peek() == '=') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"rshift_eq", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"rshift", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"ge", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"gt", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '?' => Token{ .cat = .@"question", .pre = wsCount, .pos = start, .len = 1 },
-            '[' => blk: {
-                self.brack += 1;
-                    break :blk Token{ .cat = .@"lbracket", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '\\' => blk: {
-                if (self.peek() == '\n') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"skip", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            ']' => blk: {
-                self.brack -= 1;
-                    break :blk Token{ .cat = .@"rbracket", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '^' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"caret_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"caret", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '{' => blk: {
-                self.brace += 1;
-                    break :blk Token{ .cat = .@"lbrace", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '|' => blk: {
-                if (self.peek() == '|') {
-                    self.pos += 1;
-                    if (self.peek() == '=') {
-                        self.pos += 1;
-                    break :blk Token{ .cat = .@"oror_eq", .pre = wsCount, .pos = start, .len = 3 };
-                    }
-                    break :blk Token{ .cat = .@"oror", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"pipe_eq", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                    break :blk Token{ .cat = .@"pipe", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '}' => blk: {
-                self.brace -= 1;
-                    break :blk Token{ .cat = .@"rbrace", .pre = wsCount, .pos = start, .len = 1 };
-            },
-            '~' => Token{ .cat = .@"tilde", .pre = wsCount, .pos = start, .len = 1 },
-            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
-        };
-    }
-
-    /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {
-        // Number prefix patterns (from grammar)
-        if (self.source[self.pos] == '0' and self.pos + 1 < self.source.len) {
-            const prefix = self.source[self.pos + 1];
-            if (prefix == 'x' or prefix == 'X') {
-                self.pos += 2;
-                while (self.pos < self.source.len) {
-                    const dc = self.source[self.pos];
-                    if ((dc >= '0' and dc <= '9') or (dc >= 'a' and dc <= 'f') or (dc >= 'A' and dc <= 'F') or dc == '_') {
-                        self.pos += 1;
-                    } else break;
-                }
-                return Token{ .cat = .@"integer", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
-            }
-            else if (prefix == 'b' or prefix == 'B') {
-                self.pos += 2;
-                while (self.pos < self.source.len) {
-                    const dc = self.source[self.pos];
-                    if (dc == '0' or dc == '1' or dc == '_') {
-                        self.pos += 1;
-                    } else break;
-                }
-                return Token{ .cat = .@"integer", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
-            }
-            else if (prefix == 'o' or prefix == 'O') {
-                self.pos += 2;
-                while (self.pos < self.source.len) {
-                    const dc = self.source[self.pos];
-                    if ((dc >= '0' and dc <= '7') or dc == '_') {
-                        self.pos += 1;
-                    } else break;
-                }
-                return Token{ .cat = .@"integer", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
-            }
-        }
-        // Decimal integer
-        if (isDigit(self.source[self.pos])) {
-            while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
-                self.pos += 1;
-            }
-        }
-        return Token{ .cat = .@"integer", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
-    }
-
-    /// Scan identifier (generated from grammar)
-    fn scanIdent(self: *Self, start: u32, ws: u8) Token {
-        while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
-            self.pos += 1;
-        }
-        const first = self.source[start];
-        if ((first >= 'A' and first <= 'Z')) {
-            return Token{ .cat = .@"constant", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
-        }
-        if (self.pos < self.source.len and (self.source[self.pos] == '!' or self.source[self.pos] == '?'))
-            self.pos += 1;
-        return Token{ .cat = .@"ident", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
     }
 };
 

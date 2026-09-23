@@ -1,9 +1,5 @@
 # A multi-character lexer literal written with single quotes ('+=', '->')
 # is the same token as the parser literal "+=" / "->".
-#
-# Today: the parser literal is not matched to the single-quoted lexer rule,
-# so tokenToSymbol has no entry for `.plus_assign` / `.arrow` and those
-# alternatives are silently unreachable (lit_tags.grammar has this shape).
 # Found while building the test harness.
 
 @lexer

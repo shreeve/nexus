@@ -1,0 +1,12 @@
+# Trailing context needs one fixed-length side
+# error: lexer_trailing_both_variable.grammar:9:1:
+# error: fixed-length
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+[a-z]+ / [0-9]+ → word
+. → err
+@parser
+top! = WORD → 1

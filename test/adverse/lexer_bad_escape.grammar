@@ -1,0 +1,12 @@
+# Unknown escapes are errors
+# error: lexer_bad_escape.grammar:9:2:
+# error: unknown escape
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'\q' → plus
+. → err
+@parser
+top! = WORD → 1

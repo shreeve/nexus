@@ -1,0 +1,113 @@
+# Lexer feature suite: every lexer-section construct, end to end. The parser
+# section just lists the tokens, each wrapped in a tag naming its category;
+# the lang Lexer copies each token's `pre` into `aux`, so a leaf's `#N`
+# is the whitespace (or skipped text) before it.
+
+@lexer
+
+state
+    beg  = 1
+    mode = 0
+
+after
+    beg = 0
+
+tokens
+    word
+    kw_if
+    num
+    real
+    hex
+    str
+    sstr
+    comment
+    minus
+    arrow
+    lparen
+    rparen
+    tag
+    question
+    code
+    patend
+    bang
+    bang_ws
+    label
+    lt
+    newline
+    indent
+    gap
+    eof
+    err
+
+# Zero-width rules: blanks at line start (dots after them are counted into
+# pre), and 2+ blanks mid-line.
+@ beg & pre > 0                             → indent, {pre = counted('.')}
+@ !beg & pre > 1                            → gap, {pre = 0}
+
+'\n'                                        → newline, {beg = 1}
+"\\\n"                                      → skip, skip
+'#' [^\n]*                                  → comment, simd_to '\n'
+
+# Strings: backslash escapes, doubled-quote escapes
+'"' ([^"\\\n] | '\\' .)* '"'                → str
+"'" ([^'\n] | "''")* "'"                    → sstr
+
+# Numbers: bounded repeat, guarded rules
+'0x' [0-9a-fA-F]{1,4}                       → hex
+[0-9]+                  @ mode              → num
+[0-9]+ ('.' [0-9]+)? [eE] [+-]? [0-9]+ @ !mode → real
+[0-9]* '.' [0-9]+       @ !mode             → real
+[0-9]+                                      → num
+
+# A literal ties with the identifier rule and wins by coming first
+"if"                                        → kw_if
+[a-z_][a-z0-9_]*                            → word
+
+# Trailing context: variable head, fixed tail; fixed head, variable tail
+[A-Z]+ ':' / '('                            → label
+'?' / [0-9]+ [A-Z]                          → question, {mode = 1}
+'?'                                         → question
+[A-Z]                   @ mode              → code
+')'                     @ mode              → patend, hold, {mode = 0}
+
+'<' [a-z]+ '>'                              → tag
+"<=>"                                       → lt, rewind(1)
+'<'                                         → lt
+"->"                                        → arrow
+'-'                                         → minus
+'('                                         → lparen
+')'                                         → rparen
+'!'                     @ pre               → bang_ws
+'!'                                         → bang
+.                                           → err
+
+@parser
+@lang = "lexer"
+
+top!  = toks                                → (toks ...1)
+toks  = toks tok                            → (...1 2)
+      | tok                                 → (1)
+tok   = WORD                                → (word 1)
+      | KW_IF                               → (if 1)
+      | NUM                                 → (num 1)
+      | REAL                                → (real 1)
+      | HEX                                 → (hex 1)
+      | STR                                 → (str 1)
+      | SSTR                                → (sstr 1)
+      | COMMENT                             → (comment 1)
+      | MINUS                               → (minus 1)
+      | ARROW                               → (arrow 1)
+      | LPAREN                              → (lparen 1)
+      | RPAREN                              → (rparen 1)
+      | TAG                                 → (tag 1)
+      | QUESTION                            → (question 1)
+      | CODE                                → (code 1)
+      | PATEND                              → (patend 1)
+      | BANG                                → (bang 1)
+      | BANG_WS                             → (bang_ws 1)
+      | LABEL                               → (label 1)
+      | LT                                  → (lt 1)
+      | NEWLINE                             → (newline 1)
+      | INDENT                              → (indent 1)
+      | GAP                                 → (gap 1)
+      | ERR                                 → (err 1)

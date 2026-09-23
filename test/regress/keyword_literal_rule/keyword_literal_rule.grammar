@@ -1,9 +1,6 @@
 # A letter literal rule listed before the identifier rule wins for that
 # exact text (longest match, ties broken by rule order): "if" lexes as
 # kw_if, "iffy" as ident.
-#
-# Today: the identifier fast path runs first and "if" always lexes as
-# ident, so the KW_IF alternative is unreachable.
 # Found while building the test harness.
 
 @lexer
