@@ -1,0 +1,21 @@
+# A string literal that no lexer rule produces (no pattern is exactly that
+# text) is rejected: no input could ever match it. "ab" is lexed as an
+# ident, and "%" as err.
+# error: literal_without_token.grammar:19:8:
+# error: the literal "ab" is no token
+# error: literal_without_token.grammar:20:8:
+# error: the literal "%" is no token
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+top! = sum                                  → 1
+sum  = IDENT "ab" IDENT                     → (ab 1 3)
+     | IDENT "%" IDENT                      → (mod 1 3)
+     | IDENT                                → 1

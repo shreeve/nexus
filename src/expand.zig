@@ -385,6 +385,8 @@ const Expander = struct {
 
             const mapped: ?ActionTree = if (tree) |t|
                 try self.mapTree(t, posMap, vars.items.len > 0, alt)
+            else if (vars.items.len > 0)
+                try self.expandedDefault(alt, digits, rhs.items.len)
             else
                 null;
 
@@ -408,6 +410,55 @@ const Expander = struct {
                 .col = alt.col,
             });
         }
+    }
+
+    /// The default action (no `→`) of one variant of an expanded
+    /// alternative: every element's value in order, with nil for each
+    /// absent optional element, exactly as when the optional element is
+    /// not expanded (`[T]`, `T?`: a rule that yields nil). A chosen choice
+    /// alternative contributes its elements. One value is passed through.
+    fn expandedDefault(self: *Expander, alt: ParsedAlternative, digits: []const usize, rhsLen: usize) Error!ActionTree {
+        const a = self.alloc();
+        var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+        var at: u16 = 0; // rhs elements placed so far
+        var d: usize = 0;
+        for (alt.elements) |e| {
+            if (!isVariable(e)) {
+                at += 1;
+                try items.append(a, .{ .elem = .{ .ref = at } });
+                continue;
+            }
+            const digit = digits[d];
+            d += 1;
+            switch (e.kind) {
+                .optGroup => for (e.subElements) |_| {
+                    if (digit == 1) {
+                        at += 1;
+                        try items.append(a, .{ .elem = .{ .ref = at } });
+                    } else try items.append(a, .{ .elem = .nil });
+                },
+                .choice => {
+                    const optional = e.quantifier == .optional;
+                    if (optional and digit == 0) {
+                        try items.append(a, .{ .elem = .nil });
+                    } else for (e.choices[if (optional) digit - 1 else digit]) |_| {
+                        at += 1;
+                        try items.append(a, .{ .elem = .{ .ref = at } });
+                    }
+                },
+                else => if (digit == 1) {
+                    at += 1;
+                    try items.append(a, .{ .elem = .{ .ref = at } });
+                } else try items.append(a, .{ .elem = .nil }),
+            }
+        }
+        std.debug.assert(at == rhsLen);
+        if (items.items.len == 0) return .nil;
+        if (items.items.len == 1) return switch (items.items[0].elem) {
+            .ref => |p| .{ .pass = p },
+            else => .nil,
+        };
+        return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(a), .keepNils = true } };
     }
 
     fn internalPos(layout: Layout, elem: usize, alt: usize, j: usize) usize {

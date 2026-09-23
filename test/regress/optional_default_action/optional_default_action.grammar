@@ -1,0 +1,39 @@
+# Without an action, an alternative's value lists its elements, with nil
+# for an absent optional element, however the optional is spelled: [T] and
+# T? (a rule that yields nil), and ["x"], [r] and r? (expanded into
+# variants) all give the same shape.
+
+@lexer
+tokens
+    ident
+    comma
+    semi
+    one
+    two
+    three
+    four
+    five
+    six
+    eof
+    err
+','   → comma
+';'   → semi
+'1'   → one
+'2'   → two
+'3'   → three
+'4'   → four
+'5'   → five
+'6'   → six
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "optional_default_action"
+top! = x
+x = ONE IDENT [SEMI] IDENT
+  | TWO IDENT SEMI? IDENT
+  | THREE IDENT [","] IDENT
+  | FOUR IDENT ","? IDENT
+  | FIVE IDENT [r] IDENT
+  | SIX IDENT r? IDENT
+r = SEMI SEMI

@@ -125,13 +125,13 @@
     (conflict `shift` `stmt_list → sep stmt_list` _ `2` `# a newline after a separator is another separator, not the end of the list`)
     (conflict `shift` `stmt_list → sep` _ `2` `# a newline after a separator is another separator, not the end of the list`)
     (conflict `shift` `asgn → mlhs ASSIGN mrhs` _ `1` `# a comma after a multiple assignment's values adds another value`)
-    (conflict `shift` `call → call "." IDENT` _ `6` `# a following [ or do binds to this method call`)
+    (conflict `shift` `call → call "." IDENT` _ `7` `# a following [ or do binds to this method call`)
     (conflict `shift` `call → call "." IDENT call_args` _ `2` `# do binds to the innermost call with arguments`)
     (conflict `shift` `call → call "&." IDENT` _ `2` `# do binds to the innermost call`)
     (conflict `shift` `call → call "&." IDENT call_args` _ `2` `# do binds to the innermost call with arguments`)
     (conflict `shift` `call → IDENT call_args` _ `2` `# do binds to the innermost call with arguments`)
-    (conflict `shift` `call → SUPER` _ `2` `# [ after super starts its argument array`)
-    (conflict `shift` `call → YIELD` _ `2` `# [ after yield starts its argument array`)
+    (conflict `shift` `call → SUPER` _ `3` `# [ after super starts its argument array`)
+    (conflict `shift` `call → YIELD` _ `3` `# [ after yield starts its argument array`)
     (conflict `shift` `arg → expr` _ `1` `# (expr) after a method name is a parenthesized expression`)
     (conflict `shift` `primary → IDENT` _ `4` `# do or [ after a bare name binds to that name as a method call`)
     (conflict `shift` `rescues → ε` _ `5` `# each rescue clause joins the begin block`)
@@ -148,8 +148,8 @@
     (conflict `reduce` `lhs → call "." IDENT` `call → call "." IDENT` `1` `# an attribute before a comma is an assignment target`)
     (conflict `reduce` `lhs → call "[" "]"` `call → call "[" "]"` `1` `# an index before a comma is an assignment target`)
     (conflict `reduce` `lhs → call "[" index_args "]"` `call → call "[" index_args "]"` `1` `# an index before a comma is an assignment target`)
-    (conflict `reduce` `arg → "**" expr` `pair → "**" expr` `4` `# **expr in call arguments is a double splat argument`)
-    (conflict `reduce` `cmd_arg → "**" expr` `pair → "**" expr` `16` `# **expr in command arguments is a double splat argument`))
+    (conflict `reduce` `arg → POWER expr` `pair → POWER expr` `4` `# **expr in call arguments is a double splat argument`)
+    (conflict `reduce` `cmd_arg → POWER expr` `pair → POWER expr` `16` `# **expr in command arguments is a double splat argument`))
   (as
     `ident`
     _
@@ -1024,7 +1024,7 @@
       _)
     (alt
       _
-      ((lit `"**"`)
+      ((tok `POWER`)
         (ref `expr`))
       (node
         `kwsplat`
@@ -1103,7 +1103,7 @@
       _)
     (alt
       _
-      ((lit `"**"`)
+      ((tok `POWER`)
         (ref `expr`))
       (node
         `kwsplat`
@@ -1428,7 +1428,7 @@
       _)
     (alt
       _
-      ((lit `"**"`)
+      ((tok `POWER`)
         (ref `expr`))
       (node
         `kwsplat`
@@ -1794,7 +1794,7 @@
     (alt
       _
       ((tok `IDENT`)
-        (lit `"="`)
+        (tok `ASSIGN`)
         (ref `expr`))
       (node
         `optarg`
@@ -1827,7 +1827,7 @@
       _)
     (alt
       _
-      ((lit `"**"`)
+      ((tok `POWER`)
         (tok `IDENT`))
       (node
         `kwrestarg`

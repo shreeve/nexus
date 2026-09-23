@@ -159,7 +159,7 @@ const Emitter = struct {
             return w.print("self.spreadList(pass[{d}], pass[{d}], {s})", .{ index(l.head.ref.ref), index(l.items[0].elem.spread), self.use });
         }
 
-        if (self.fixed) return self.fixedList(w, l, label);
+        if (self.fixed or l.keepNils) return self.fixedList(w, l, label);
         return self.schemalessList(w, l, label);
     }
 

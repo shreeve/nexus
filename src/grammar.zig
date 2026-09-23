@@ -302,6 +302,10 @@ pub const ActionTree = union(enum) {
 pub const ActionList = struct {
     head: Head,
     items: []const ActionItem,
+    /// Keep every item, trailing nils included (the default action of an
+    /// expanded alternative: absent optional elements are nil, as they are
+    /// for an optional element that is not expanded).
+    keepNils: bool = false,
 
     pub const Head = union(enum) {
         /// `(tag …)`: a tag-headed list (a schema kind in schema mode).
