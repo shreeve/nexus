@@ -1,0 +1,30 @@
+# An opt-out needs a reason.
+# error: optout_empty_reason.grammar:30:58:
+# error: an opt-out needs a reason
+@lexer
+tokens
+    ident
+    integer
+    newline
+    eq
+    colon
+    lparen
+    rparen
+    comma
+    plus
+    eof
+    err
+[ \t]+                                      → skip
+'\n'                                        → newline
+'='                                         → eq
+':'                                         → colon
+'('                                         → lparen
+')'                                         → rparen
+','                                         → comma
+'+'                                         → plus
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+program! = IDENT                            → (p 1)  ~ ""

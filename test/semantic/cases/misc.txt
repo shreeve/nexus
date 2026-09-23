@@ -1,0 +1,7 @@
+swap(a, b) with (c, d)
+yield
+yield x
+yield 7
+pass (ignored)
+[]
+(1 - 2) / 3

@@ -1,0 +1,8 @@
+(module
+  (swap `a` `b` `c` `d`)
+  (yield _)
+  (yield `x`)
+  (yield `7`)
+  (pass)
+  (array)
+  (/ (- (num `1`) (num `2`)) (num `3`)))

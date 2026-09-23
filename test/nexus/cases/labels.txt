@@ -1,0 +1,16 @@
+for  = FOR mode:[FOR_MODE] var:name ["," index:name] IN iter:expr body:block
+       [ELSE else:block]                                    → (for)
+cond = (IF | UNLESS):kw test:expr body:block                → (if)
+     | kw:(IF | UNLESS)? test:expr                           → (if)
+set  = target:name eq:"=" value:expr                        → (set op:_)
+     | name "+=" expr                                       → (set op:+= target:1 value:3)
+     | name ":" type "=" expr                               → (set target:1 type:3 value:5)
+     | _:name !"::" expr                                    → (drop 3)  ~ "the name is only a comment"
+nest = IDENT IDENT                                          → (assign target:(@name 1)
+                                                               value:(num 2))
+     | X "(" IDENT X ":"                                    → (hint ~1 !keep)
+many = [item, ...]                                          → (many ...1)
+     | L(item, ";")                                         → (semi ...1)  # a trailing comment
+     | X Y                                                  → (xy 1 2)
+     | A B C D E F G H I J K                                → (p 1 11 10)
+     | A B                                                  → (!1 ...2)

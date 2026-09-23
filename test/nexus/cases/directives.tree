@@ -3,18 +3,22 @@
   (conflicts `3`)
   (as
     `ident`
-    (as_entry _ `keyword`)
-    (as_entry perm `command`)
-    (as_entry _ `self`)
-    (as_entry perm `intrinsic`))
+    _
+    (as_entry _ `keyword` _)
+    (as_entry perm `command` _)
+    (as_entry _ `self` _)
+    (as_entry perm `intrinsic` _))
   (op (op_map `"'="` `"noteq"`) (op_map `"'<"` `"notlt"`))
-  (errors (error_name `expr` `"expression"`) (error_name `STRING` `"string literal"`))
+  (errors (name_pair `expr` `"expression"`) (name_pair `STRING` `"string literal"`))
   (infix
     `unary`
     (level (infix_op `"||"` `left`))
     (level (infix_op `"=="` `none`) (infix_op `"!="` `none`))
     (level (infix_op `"+"` `left`) (infix_op `"-"` `left`))
     (level (infix_op `"**"` `right`)))
-  (rule (start `program`) (alt _ ((ref `expr`)) `(module 1)`))
-  (rule (name `expr`) (alt _ ((at_ref `infix`))))
-  (rule (name `unary`) (alt _ ((lit `"-"`) (ref `unary`)) `(neg 2)`) (alt _ ((tok `IDENT`)))))
+  (rule (start `program`) (alt _ ((ref `expr`)) (node `module` (pos `1`)) _))
+  (rule (name `expr`) (alt _ ((at_ref `infix`)) _ _))
+  (rule
+    (name `unary`)
+    (alt _ ((lit `"-"`) (ref `unary`)) (node `neg` (pos `2`)) _)
+    (alt _ ((tok `IDENT`)) _ _)))

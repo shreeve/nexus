@@ -1231,7 +1231,7 @@ pub const BaseParser = struct {
             499 => self.sexp(.@"intrinsic", &.{pass[1], pass[3]}),
             500 => self.sexp(.@"intrinsic", &.{pass[1]}),
             501 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            502 => self.list(pass),
+            502 => pass[0],
             503 => self.sexp(.@"@name", &.{pass[1]}),
             504 => self.spreadList(pass[0], pass[1]),
             505 => self.spreadList(pass[1], pass[2]),

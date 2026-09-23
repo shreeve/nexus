@@ -1,11 +1,15 @@
 (grammar
   (rule
     (name `a`)
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(tag 1 2 3)`)
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(tag 1 _ 3)`)
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(tag nil ...2)`)
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(~1 2 key:3 else:_)`)
-    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(set += 1 _ 3)`)
-    (alt _ ((tok `P`)) `1`)
-    (alt _ ((tok `P`) (tok `Q`)))
-    (alt _ () `_`)))
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (pos `1`) (pos `2`) (pos `3`)) _)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (pos `1`) (null) (pos `3`)) _)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `tag` (null) (spread `2`)) _)
+    (alt
+      _
+      ((tok `P`) (tok `Q`) (tok `R`))
+      (list (symid `1`) (pos `2`) (named `key` (pos `3`)) (named `else` (null)))
+      _)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) (node `set` (tag `+=`) (pos `1`) (null) (pos `3`)) _)
+    (alt _ ((tok `P`)) (pos `1`) _)
+    (alt _ ((tok `P`) (tok `Q`)) _ _)
+    (alt _ () (null) _)))

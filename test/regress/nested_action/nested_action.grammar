@@ -1,0 +1,16 @@
+# A nested node `(q 1)` may appear as an action element.
+#
+# (architecture.md Appendix A: nest.grammar; SPEC §3.5)
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "nested_action"
+
+top! = IDENT IDENT                          → (p (q 1) 2)

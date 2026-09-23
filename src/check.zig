@@ -65,11 +65,14 @@ pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
 
 fn checkUndefinedRefs(elements: []const ParsedElement, ruleName: []const u8, ruleNames: *std.StringHashMap(void), errors: *u32) void {
     for (elements) |elem| {
-        if (elem.kind == .ident and elem.value.len > 0 and !ruleNames.contains(elem.value)) {
+        const isRuleRef = elem.kind == .ident or
+            ((elem.kind == .reqList or elem.kind == .optList) and elem.value.len > 0 and !(elem.value[0] >= 'A' and elem.value[0] <= 'Z'));
+        if (isRuleRef and elem.value.len > 0 and !ruleNames.contains(elem.value)) {
             diag.err("undefined rule '{s}' referenced in '{s}'", .{ elem.value, ruleName });
             errors.* += 1;
         }
         if (elem.subElements.len > 0) checkUndefinedRefs(elem.subElements, ruleName, ruleNames, errors);
+        for (elem.choices) |choice| checkUndefinedRefs(choice, ruleName, ruleNames, errors);
     }
 }
 
@@ -78,14 +81,7 @@ fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringH
     reachable.put(name, {}) catch return;
     for (ir.rules) |rule| {
         if (!std.mem.eql(u8, rule.name, name)) continue;
-        for (rule.alternatives) |alt| {
-            for (alt.elements) |elem| {
-                if (elem.kind == .ident or elem.kind == .reqList or elem.kind == .optList) {
-                    markReachable(elem.value, ir, reachable);
-                }
-                markReachableElements(elem.subElements, ir, reachable);
-            }
-        }
+        for (rule.alternatives) |alt| markReachableElements(alt.elements, ir, reachable);
     }
 }
 
@@ -95,6 +91,7 @@ fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, 
             markReachable(elem.value, ir, reachable);
         }
         markReachableElements(elem.subElements, ir, reachable);
+        for (elem.choices) |choice| markReachableElements(choice, ir, reachable);
     }
 }
 

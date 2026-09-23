@@ -5,24 +5,33 @@
     (alt
       _
       ((ref `body`))
-      `(module ...1)`))
+      (node
+        `module`
+        (spread `1`))
+      _))
   (rule
     (name `body`)
     (alt
       _
       ((ref `stmt`))
-      `(1)`)
+      (list
+        (pos `1`))
+      _)
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`)
         (ref `stmt`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `body`)
         (tok `NEWLINE`))
-      `1`))
+      (pos `1`)
+      _))
   (rule
     (name `stmt`)
     (alt
@@ -30,16 +39,34 @@
       ((tok `IDENT`)
         (lit `"="`)
         (tok `INTEGER`))
-      `(set fixed 1 _ 3)`)
+      (node
+        `set`
+        (tag `fixed`)
+        (pos `1`)
+        (null)
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `IDENT`)
         (lit `"->"`)
         (tok `INTEGER`))
-      `(set move 1 _ 3)`)
+      (node
+        `set`
+        (tag `move`)
+        (pos `1`)
+        (null)
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `IDENT`)
         (lit `"+="`)
         (tok `INTEGER`))
-      `(set += 1 _ 3)`)))
+      (node
+        `set`
+        (tag `+=`)
+        (pos `1`)
+        (null)
+        (pos `3`))
+      _)))

@@ -1,0 +1,44 @@
+(grammar
+  (schema
+    (kind_decl (kinds `module`) (roles (role rest `decls` _ _)) _ _)
+    (kind_decl
+      (kinds `set`)
+      (roles
+        (role _ `op` (type `tag`) opt)
+        (role _ `target` (type `name` `member`) _)
+        (role _ `value` _ _))
+      (sides `eq`)
+      _)
+    (kind_decl (kinds `"+"` `"-"`) (roles (role _ `left` _ _) (role _ `right` _ _)) _ _)
+    (kind_decl
+      (kinds `for`)
+      (roles
+        (role _ `mode` (type (tagset `tag` `iter` `ptr`)) opt)
+        (role _ `var` (type `leaf`) _)
+        (role _ `body` (type `node`) opt)
+        (role rest `rest` (type `group`) _))
+      _
+      _)
+    (kind_decl (kinds `note`) (roles (role _ `text` (type `leaf`) _)) _ wrapper)
+    (kind_decl (kinds `mark`) (roles) (sides `at`) wrapper))
+  (tags `flag` `"=>"` `extra`)
+  (display
+    (name_pair `IDENT` `"a name"`)
+    (name_pair `"="` `"'='"`)
+    (name_pair `STRING` `"a string"`))
+  (errors (name_pair `expr` `"an expression"`) (name_pair `stmt` `"a statement"`))
+  (trivia `COMMENT` `BLANK`)
+  (repair (repair_line `holes` `IDENT`) (repair_line `structure` `NEWLINE` `INDENT` `OUTDENT`))
+  (manifest
+    (conflict `shift` `stmt → IF expr THEN stmt` _ `2` `# else binds to the nearest if`)
+    (conflict `reduce` `lname → name` `targs → name` `34` `# names win over arguments`)
+    (conflict `shift` `opt → ε` _ `1` `# an empty rhs`)
+    (conflict `reduce` `L(IDENT).tail -> ε` `items -> IDENT?` `3` `# generated symbols, verbatim`))
+  (as
+    `IDENT`
+    _
+    (as_entry _ `fn` `fnAs`)
+    (as_entry perm `isv` _)
+    (as_entry _ `self` _)
+    (as_entry perm `cmd` `cmdAs`))
+  (as `IDENT` `keywordAs` (as_entry _ `keyword` _)))

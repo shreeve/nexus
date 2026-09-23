@@ -3,26 +3,36 @@
   (conflicts `66`)
   (as
     `ident`
-    (as_entry perm `keyword`))
+    _
+    (as_entry perm `keyword` _))
   (rule
     (start `program`)
     (alt
       _
       ((ref `stmts`))
-      `(program ...1)`))
+      (node
+        `program`
+        (spread `1`))
+      _))
   (rule
     (start `expr`)
     (alt
       _
       ((ref `expr`))
-      `1`))
+      (pos `1`)
+      _))
   (rule
     (name `stmts`)
     (alt
       _
       ((ref `stmt_list`))
-      `1`)
-    (alt _ () `(stmts)`))
+      (pos `1`)
+      _)
+    (alt
+      _
+      ()
+      (node `stmts`)
+      _))
   (rule
     (name `stmt_list`)
     (alt
@@ -30,85 +40,128 @@
       ((ref `stmt_list`)
         (ref `sep`)
         (ref `stmt`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `stmt_list`)
         (ref `sep`))
-      `1`)
+      (pos `1`)
+      _)
     (alt
       _
       ((ref `sep`)
         (ref `stmt_list`))
-      `2`)
+      (pos `2`)
+      _)
     (alt
       _
       ((ref `stmt`))
-      `(stmts 1)`)
+      (node
+        `stmts`
+        (pos `1`))
+      _)
     (alt
       _
       ((ref `sep`))
-      `(stmts)`))
+      (node `stmts`)
+      _))
   (rule
     (name `sep`)
     (alt
       _
       ((tok `NEWLINE`))
-      `()`)
+      (list)
+      _)
     (alt
       _
       ((tok `SEMICOLON`))
-      `()`))
+      (list)
+      _))
   (rule
     (name `stmt`)
     (alt
       _
-      ((ref `if_stmt`)))
+      ((ref `if_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `unless_stmt`)))
+      ((ref `unless_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `while_stmt`)))
+      ((ref `while_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `until_stmt`)))
+      ((ref `until_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `for_stmt`)))
+      ((ref `for_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `case_stmt`)))
+      ((ref `case_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `def_stmt`)))
+      ((ref `def_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `class_stmt`)))
+      ((ref `class_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `module_stmt`)))
+      ((ref `module_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `begin_stmt`)))
+      ((ref `begin_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `alias_stmt`)))
+      ((ref `alias_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `undef_stmt`)))
+      ((ref `undef_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `flow_stmt`)))
+      ((ref `flow_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `cmd_stmt`)))
+      ((ref `cmd_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `mod_stmt`)))
+      ((ref `mod_stmt`))
+      _
+      _)
     (alt
       _
-      ((ref `expr`))))
+      ((ref `expr`))
+      _
+      _))
   (rule
     (name `mod_stmt`)
     (alt
@@ -116,58 +169,97 @@
       ((ref `expr`)
         (tok `IF_MOD`)
         (ref `expr`))
-      `(if 3 1 _)`)
+      (node
+        `if`
+        (pos `3`)
+        (pos `1`)
+        (null))
+      _)
     (alt
       _
       ((ref `expr`)
         (tok `UNLESS_MOD`)
         (ref `expr`))
-      `(unless 3 1 _)`)
+      (node
+        `unless`
+        (pos `3`)
+        (pos `1`)
+        (null))
+      _)
     (alt
       _
       ((ref `expr`)
         (tok `WHILE_MOD`)
         (ref `expr`))
-      `(while 3 1)`)
+      (node
+        `while`
+        (pos `3`)
+        (pos `1`))
+      _)
     (alt
       _
       ((ref `expr`)
         (tok `UNTIL_MOD`)
         (ref `expr`))
-      `(until 3 1)`)
+      (node
+        `until`
+        (pos `3`)
+        (pos `1`))
+      _)
     (alt
       _
       ((ref `expr`)
         (tok `RESCUE_MOD`)
         (ref `expr`))
-      `(rescue 1 3)`)
+      (node
+        `rescue`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `flow_stmt`)
         (tok `IF_MOD`)
         (ref `expr`))
-      `(if 3 1 _)`)
+      (node
+        `if`
+        (pos `3`)
+        (pos `1`)
+        (null))
+      _)
     (alt
       _
       ((ref `flow_stmt`)
         (tok `UNLESS_MOD`)
         (ref `expr`))
-      `(unless 3 1 _)`))
+      (node
+        `unless`
+        (pos `3`)
+        (pos `1`)
+        (null))
+      _))
   (rule
     (name `expr`)
     (alt
       _
-      ((ref `kw_not`))))
+      ((ref `kw_not`))
+      _
+      _))
   (rule
     (name `kw_not`)
     (alt
       _
       ((tok `NOT_KW`)
         (ref `kw_not`))
-      `(not 2)`)
+      (node
+        `not`
+        (pos `2`))
+      _)
     (alt
       _
-      ((ref `kw_or`))))
+      ((ref `kw_or`))
+      _
+      _))
   (rule
     (name `kw_or`)
     (alt
@@ -175,10 +267,16 @@
       ((ref `kw_or`)
         (tok `OR_KW`)
         (ref `kw_and`))
-      `(or 1 3)`)
+      (node
+        `or`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
-      ((ref `kw_and`))))
+      ((ref `kw_and`))
+      _
+      _))
   (rule
     (name `kw_and`)
     (alt
@@ -186,10 +284,16 @@
       ((ref `kw_and`)
         (tok `AND_KW`)
         (ref `asgn`))
-      `(and 1 3)`)
+      (node
+        `and`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
-      ((ref `asgn`))))
+      ((ref `asgn`))
+      _
+      _))
   (rule
     (name `asgn`)
     (alt
@@ -197,94 +301,156 @@
       ((ref `mlhs`)
         (tok `ASSIGN`)
         (ref `mrhs`))
-      `(masgn 1 3)`)
+      (node
+        `masgn`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `ASSIGN`)
         (ref `asgn`))
-      `(assign 1 3)`)
+      (node
+        `assign`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `PLUS_EQ`)
         (ref `asgn`))
-      `(+= 1 3)`)
+      (node
+        `+=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `MINUS_EQ`)
         (ref `asgn`))
-      `(-= 1 3)`)
+      (node
+        `-=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `STAR_EQ`)
         (ref `asgn`))
-      `(*= 1 3)`)
+      (node
+        `*=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `SLASH_EQ`)
         (ref `asgn`))
-      `(/= 1 3)`)
+      (node
+        `/=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `PERCENT_EQ`)
         (ref `asgn`))
-      `(%= 1 3)`)
+      (node
+        `%=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `POWER_EQ`)
         (ref `asgn`))
-      `(**= 1 3)`)
+      (node
+        `**=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `PIPE_EQ`)
         (ref `asgn`))
-      `(|= 1 3)`)
+      (node
+        `|=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `AMP_EQ`)
         (ref `asgn`))
-      `(&= 1 3)`)
+      (node
+        `&=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `CARET_EQ`)
         (ref `asgn`))
-      `(^= 1 3)`)
+      (node
+        `^=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `LSHIFT_EQ`)
         (ref `asgn`))
-      `(<<= 1 3)`)
+      (node
+        `<<=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `RSHIFT_EQ`)
         (ref `asgn`))
-      `(>>= 1 3)`)
+      (node
+        `>>=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `OROR_EQ`)
         (ref `asgn`))
-      `(||= 1 3)`)
+      (node
+        `||=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `lhs`)
         (tok `ANDAND_EQ`)
         (ref `asgn`))
-      `(&&= 1 3)`)
+      (node
+        `&&=`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
-      ((ref `ternary`))))
+      ((ref `ternary`))
+      _
+      _))
   (rule
     (name `mlhs`)
     (alt
@@ -292,26 +458,39 @@
       ((ref `lhs`)
         (lit `","`)
         (ref `lhs`))
-      `(mlhs 1 3)`)
+      (node
+        `mlhs`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `mlhs`)
         (lit `","`)
         (ref `lhs`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `mlhs`)
         (lit `","`)
         (ref `splat_lhs`))
-      `(...1 3)`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
   (rule
     (name `splat_lhs`)
     (alt
       _
       ((tok `STAR_SPLAT`)
         (ref `lhs`))
-      `(splat 2)`))
+      (node
+        `splat`
+        (pos `2`))
+      _))
   (rule
     (name `mrhs`)
     (alt
@@ -319,49 +498,76 @@
       ((ref `ternary`)
         (lit `","`)
         (ref `ternary`))
-      `(mrhs 1 3)`)
+      (node
+        `mrhs`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `mrhs`)
         (lit `","`)
         (ref `ternary`))
-      `(...1 3)`)
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `mrhs`)
         (lit `","`)
         (ref `splat_val`))
-      `(...1 3)`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
   (rule
     (name `splat_val`)
     (alt
       _
       ((tok `STAR_SPLAT`)
         (ref `ternary`))
-      `(splat 2)`))
+      (node
+        `splat`
+        (pos `2`))
+      _))
   (rule
     (name `lhs`)
     (alt
       _
-      ((tok `IDENT`)))
+      ((tok `IDENT`))
+      _
+      _)
     (alt
       _
-      ((tok `IVAR`)))
+      ((tok `IVAR`))
+      _
+      _)
     (alt
       _
-      ((tok `CVAR`)))
+      ((tok `CVAR`))
+      _
+      _)
     (alt
       _
-      ((tok `GVAR`)))
+      ((tok `GVAR`))
+      _
+      _)
     (alt
       _
-      ((tok `CONSTANT`)))
+      ((tok `CONSTANT`))
+      _
+      _)
     (alt
       _
       ((ref `call`)
         (lit `"."`)
         (tok `IDENT`))
-      `(attrasgn 1 3)`)
+      (node
+        `attrasgn`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `call`)
@@ -370,7 +576,11 @@
           opt
           ((ref `index_args`)))
         (lit `"]"`))
-      `(indexasgn 1 3)`))
+      (node
+        `indexasgn`
+        (pos `1`)
+        (pos `3`))
+      _))
   (rule
     (name `ternary`)
     (alt
@@ -380,10 +590,17 @@
         (ref `ternary`)
         (tok `COLON`)
         (ref `ternary`))
-      `(if 1 3 5)`)
+      (node
+        `if`
+        (pos `1`)
+        (pos `3`)
+        (pos `5`))
+      _)
     (alt
       _
-      ((at_ref `infix`))))
+      ((at_ref `infix`))
+      _
+      _))
   (infix
     `unary`
     (level
@@ -426,30 +643,47 @@
       _
       ((tok `MINUS_U`)
         (ref `unary`))
-      `(u- 2)`)
+      (node
+        `u-`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `PLUS_U`)
         (ref `unary`))
-      `(u+ 2)`)
+      (node
+        `u+`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `BANG`)
         (ref `unary`))
-      `(! 2)`)
+      (node
+        `!`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `TILDE`)
         (ref `unary`))
-      `(~ 2)`)
+      (node
+        `~`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `DEFINED`)
         (ref `unary`))
-      `(defined 2)`)
+      (node
+        `defined`
+        (pos `2`))
+      _)
     (alt
       _
-      ((ref `power`))))
+      ((ref `power`))
+      _
+      _))
   (rule
     (name `power`)
     (alt
@@ -457,10 +691,16 @@
       ((ref `call`)
         (tok `POWER`)
         (ref `unary`))
-      `(** 1 3)`)
+      (node
+        `**`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
-      ((ref `call`))))
+      ((ref `call`))
+      _
+      _))
   (rule
     (name `call`)
     (alt
@@ -474,7 +714,13 @@
         (group
           opt
           ((ref `block`))))
-      `(send 1 3 4 5)`)
+      (node
+        `send`
+        (pos `1`)
+        (pos `3`)
+        (pos `4`)
+        (pos `5`))
+      _)
     (alt
       _
       ((ref `call`)
@@ -486,7 +732,13 @@
         (group
           opt
           ((ref `block`))))
-      `(csend 1 3 4 5)`)
+      (node
+        `csend`
+        (pos `1`)
+        (pos `3`)
+        (pos `4`)
+        (pos `5`))
+      _)
     (alt
       _
       ((ref `call`)
@@ -495,18 +747,30 @@
           opt
           ((ref `index_args`)))
         (lit `"]"`))
-      `(index 1 3)`)
+      (node
+        `index`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `call`)
         (lit `"::"`)
         (tok `CONSTANT`))
-      `(scope 1 3)`)
+      (node
+        `scope`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((lit `"::"`)
         (tok `CONSTANT`))
-      `(scope _ 2)`)
+      (node
+        `scope`
+        (null)
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `IDENT`)
@@ -514,29 +778,49 @@
         (group
           opt
           ((ref `block`))))
-      `(send _ 1 2 3)`)
+      (node
+        `send`
+        (null)
+        (pos `1`)
+        (pos `2`)
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `IDENT`)
         (ref `block`))
-      `(send _ 1 _ 2)`)
+      (node
+        `send`
+        (null)
+        (pos `1`)
+        (null)
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `SUPER`)
         (group
           opt
           ((ref `call_args`))))
-      `(super 2)`)
+      (node
+        `super`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `YIELD`)
         (group
           opt
           ((ref `call_args`))))
-      `(yield 2)`)
+      (node
+        `yield`
+        (pos `2`))
+      _)
     (alt
       _
-      ((ref `primary`))))
+      ((ref `primary`))
+      _
+      _))
   (rule
     (name `index_args`)
     (alt
@@ -544,19 +828,25 @@
       ((list_req
           `L`
           (plain `arg`)))
-      `(args ...1)`))
+      (node
+        `args`
+        (spread `1`))
+      _))
   (rule
     (name `methodname`)
     (alt
       _
-      ((tok `IDENT`))))
+      ((tok `IDENT`))
+      _
+      _))
   (rule
     (name `call_args`)
     (alt
       _
       ((lit `"("`)
         (lit `")"`))
-      `(args)`)
+      (node `args`)
+      _)
     (alt
       _
       ((lit `"("`)
@@ -564,30 +854,46 @@
           `L`
           (plain `arg`))
         (lit `")"`))
-      `(args ...2)`))
+      (node
+        `args`
+        (spread `2`))
+      _))
   (rule
     (name `arg`)
     (alt
       _
-      ((ref `expr`)))
+      ((ref `expr`))
+      _
+      _)
     (alt
       _
       ((tok `STAR_SPLAT`)
         (ref `expr`))
-      `(splat 2)`)
+      (node
+        `splat`
+        (pos `2`))
+      _)
     (alt
       _
       ((lit `"**"`)
         (ref `expr`))
-      `(kwsplat 2)`)
+      (node
+        `kwsplat`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP_BLOCK`)
         (ref `expr`))
-      `(block_pass 2)`)
+      (node
+        `block_pass`
+        (pos `2`))
+      _)
     (alt
       _
-      ((ref `pair`))))
+      ((ref `pair`))
+      _
+      _))
   (rule
     (name `cmd_stmt`)
     (alt
@@ -597,7 +903,13 @@
         (group
           opt
           ((ref `block`))))
-      `(send _ 1 2 3)`)
+      (node
+        `send`
+        (null)
+        (pos `1`)
+        (pos `2`)
+        (pos `3`))
+      _)
     (alt
       _
       ((ref `call`)
@@ -607,7 +919,13 @@
         (group
           opt
           ((ref `block`))))
-      `(send 1 3 4 5)`))
+      (node
+        `send`
+        (pos `1`)
+        (pos `3`)
+        (pos `4`)
+        (pos `5`))
+      _))
   (rule
     (name `cmd_args`)
     (alt
@@ -615,30 +933,46 @@
       ((list_req
           `L`
           (plain `cmd_arg`)))
-      `(args ...1)`))
+      (node
+        `args`
+        (spread `1`))
+      _))
   (rule
     (name `cmd_arg`)
     (alt
       _
-      ((ref `expr`)))
+      ((ref `expr`))
+      _
+      _)
     (alt
       _
       ((tok `STAR_SPLAT`)
         (ref `expr`))
-      `(splat 2)`)
+      (node
+        `splat`
+        (pos `2`))
+      _)
     (alt
       _
       ((lit `"**"`)
         (ref `expr`))
-      `(kwsplat 2)`)
+      (node
+        `kwsplat`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP_BLOCK`)
         (ref `expr`))
-      `(block_pass 2)`)
+      (node
+        `block_pass`
+        (pos `2`))
+      _)
     (alt
       _
-      ((ref `pair`))))
+      ((ref `pair`))
+      _
+      _))
   (rule
     (name `block`)
     (alt
@@ -649,7 +983,11 @@
           ((ref `block_params`)))
         (ref `stmts`)
         (tok `END`))
-      `(block 2 3)`)
+      (node
+        `block`
+        (pos `2`)
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `LBRACE_BLOCK`)
@@ -658,7 +996,11 @@
           ((ref `block_params`)))
         (ref `stmts`)
         (lit `"}"`))
-      `(block 2 3)`))
+      (node
+        `block`
+        (pos `2`)
+        (pos `3`))
+      _))
   (rule
     (name `block_params`)
     (alt
@@ -668,107 +1010,158 @@
           `L`
           (plain `param`))
         (lit `"|"`))
-      `(params ...2)`)
+      (node
+        `params`
+        (spread `2`))
+      _)
     (alt
       _
       ((lit `"|"`)
         (lit `"|"`))
-      `(params)`))
+      (node `params`)
+      _))
   (rule
     (name `primary`)
     (alt
       _
-      ((tok `IDENT`)))
+      ((tok `IDENT`))
+      _
+      _)
     (alt
       _
-      ((tok `CONSTANT`)))
+      ((tok `CONSTANT`))
+      _
+      _)
     (alt
       _
-      ((tok `IVAR`)))
+      ((tok `IVAR`))
+      _
+      _)
     (alt
       _
-      ((tok `CVAR`)))
+      ((tok `CVAR`))
+      _
+      _)
     (alt
       _
-      ((tok `GVAR`)))
+      ((tok `GVAR`))
+      _
+      _)
     (alt
       _
-      ((tok `INTEGER`)))
+      ((tok `INTEGER`))
+      _
+      _)
     (alt
       _
-      ((tok `FLOAT`)))
+      ((tok `FLOAT`))
+      _
+      _)
     (alt
       _
-      ((tok `RATIONAL`)))
+      ((tok `RATIONAL`))
+      _
+      _)
     (alt
       _
-      ((tok `IMAGINARY`)))
+      ((tok `IMAGINARY`))
+      _
+      _)
     (alt
       _
-      ((tok `STRING_SQ`)))
+      ((tok `STRING_SQ`))
+      _
+      _)
     (alt
       _
-      ((tok `STRING_DQ`)))
+      ((tok `STRING_DQ`))
+      _
+      _)
     (alt
       _
-      ((tok `PCT_W`)))
+      ((tok `PCT_W`))
+      _
+      _)
     (alt
       _
-      ((tok `PCT_I`)))
+      ((tok `PCT_I`))
+      _
+      _)
     (alt
       _
-      ((ref `dstring`)))
+      ((ref `dstring`))
+      _
+      _)
     (alt
       _
-      ((tok `SYMBOL`)))
+      ((tok `SYMBOL`))
+      _
+      _)
     (alt
       _
-      ((ref `literal_kw`)))
+      ((ref `literal_kw`))
+      _
+      _)
     (alt
       _
-      ((ref `lambda`)))
+      ((ref `lambda`))
+      _
+      _)
     (alt
       _
-      ((ref `array`)))
+      ((ref `array`))
+      _
+      _)
     (alt
       _
-      ((ref `hash`)))
+      ((ref `hash`))
+      _
+      _)
     (alt
       _
       ((lit `"("`)
         (ref `expr`)
         (lit `")"`))
-      `2`))
+      (pos `2`)
+      _))
   (rule
     (name `literal_kw`)
     (alt
       _
       ((tok `TRUE`))
-      `(true)`)
+      (node `true`)
+      _)
     (alt
       _
       ((tok `FALSE`))
-      `(false)`)
+      (node `false`)
+      _)
     (alt
       _
       ((tok `NIL`))
-      `(nil)`)
+      (list
+        (null))
+      _)
     (alt
       _
       ((tok `SELF`))
-      `(self)`)
+      (node `self`)
+      _)
     (alt
       _
       ((tok `KW__FILE__`))
-      `(__FILE__)`)
+      (node `__FILE__`)
+      _)
     (alt
       _
       ((tok `KW__LINE__`))
-      `(__LINE__)`)
+      (node `__LINE__`)
+      _)
     (alt
       _
       ((tok `KW__ENCODING__`))
-      `(__ENCODING__)`))
+      (node `__ENCODING__`)
+      _))
   (rule
     (name `lambda`)
     (alt
@@ -778,7 +1171,11 @@
           opt
           ((ref `params`)))
         (ref `block`))
-      `(lambda 2 3)`))
+      (node
+        `lambda`
+        (pos `2`)
+        (pos `3`))
+      _))
   (rule
     (name `dstring`)
     (alt
@@ -788,23 +1185,32 @@
           (ref `dstr_part`)
           (one_plus))
         (tok `DSTR_END`))
-      `(dstr ...2)`)
+      (node
+        `dstr`
+        (spread `2`))
+      _)
     (alt
       _
       ((tok `DSTR_BEG`)
         (tok `DSTR_END`))
-      `(dstr)`))
+      (node `dstr`)
+      _))
   (rule
     (name `dstr_part`)
     (alt
       _
-      ((tok `STR_CONTENT`)))
+      ((tok `STR_CONTENT`))
+      _
+      _)
     (alt
       _
       ((tok `EMBEXPR_BEG`)
         (ref `stmts`)
         (tok `EMBEXPR_END`))
-      `(evstr 2)`))
+      (node
+        `evstr`
+        (pos `2`))
+      _))
   (rule
     (name `array`)
     (alt
@@ -816,17 +1222,25 @@
               `L`
               (plain `elem`))))
         (lit `"]"`))
-      `(array ...2)`))
+      (node
+        `array`
+        (spread `2`))
+      _))
   (rule
     (name `elem`)
     (alt
       _
-      ((ref `expr`)))
+      ((ref `expr`))
+      _
+      _)
     (alt
       _
       ((tok `STAR_SPLAT`)
         (ref `expr`))
-      `(splat 2)`))
+      (node
+        `splat`
+        (pos `2`))
+      _))
   (rule
     (name `hash`)
     (alt
@@ -838,25 +1252,39 @@
               `L`
               (plain `pair`))))
         (lit `"}"`))
-      `(hash ...2)`))
+      (node
+        `hash`
+        (spread `2`))
+      _))
   (rule
     (name `pair`)
     (alt
       _
       ((tok `LABEL`)
         (ref `expr`))
-      `(pair 1 2)`)
+      (node
+        `pair`
+        (pos `1`)
+        (pos `2`))
+      _)
     (alt
       _
       ((ref `expr`)
         (lit `"=>"`)
         (ref `expr`))
-      `(pair 1 3)`)
+      (node
+        `pair`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((lit `"**"`)
         (ref `expr`))
-      `(kwsplat 2)`))
+      (node
+        `kwsplat`
+        (pos `2`))
+      _))
   (rule
     (name `if_stmt`)
     (alt
@@ -867,15 +1295,25 @@
         (ref `stmts`)
         (ref `else_clause`)
         (tok `END`))
-      `(if 2 4 5)`))
+      (node
+        `if`
+        (pos `2`)
+        (pos `4`)
+        (pos `5`))
+      _))
   (rule
     (name `else_clause`)
-    (alt _ () `()`)
+    (alt
+      _
+      ()
+      (list)
+      _)
     (alt
       _
       ((tok `ELSE`)
         (ref `stmts`))
-      `2`)
+      (pos `2`)
+      _)
     (alt
       _
       ((tok `ELSIF`)
@@ -883,13 +1321,19 @@
         (ref `then_sep`)
         (ref `stmts`)
         (ref `else_clause`))
-      `(if 2 4 5)`))
+      (node
+        `if`
+        (pos `2`)
+        (pos `4`)
+        (pos `5`))
+      _))
   (rule
     (name `then_sep`)
     (alt
       _
       ((tok `THEN_SEP`))
-      `()`))
+      (list)
+      _))
   (rule
     (name `unless_stmt`)
     (alt
@@ -900,15 +1344,25 @@
         (ref `stmts`)
         (ref `opt_else`)
         (tok `END`))
-      `(unless 2 4 5)`))
+      (node
+        `unless`
+        (pos `2`)
+        (pos `4`)
+        (pos `5`))
+      _))
   (rule
     (name `opt_else`)
-    (alt _ () `()`)
+    (alt
+      _
+      ()
+      (list)
+      _)
     (alt
       _
       ((tok `ELSE`)
         (ref `stmts`))
-      `2`))
+      (pos `2`)
+      _))
   (rule
     (name `while_stmt`)
     (alt
@@ -918,7 +1372,11 @@
         (ref `do_sep`)
         (ref `stmts`)
         (tok `END`))
-      `(while 2 4)`))
+      (node
+        `while`
+        (pos `2`)
+        (pos `4`))
+      _))
   (rule
     (name `until_stmt`)
     (alt
@@ -928,13 +1386,18 @@
         (ref `do_sep`)
         (ref `stmts`)
         (tok `END`))
-      `(until 2 4)`))
+      (node
+        `until`
+        (pos `2`)
+        (pos `4`))
+      _))
   (rule
     (name `do_sep`)
     (alt
       _
       ((tok `DO_SEP`))
-      `()`))
+      (list)
+      _))
   (rule
     (name `for_stmt`)
     (alt
@@ -946,7 +1409,12 @@
         (ref `do_sep`)
         (ref `stmts`)
         (tok `END`))
-      `(for 2 4 6)`))
+      (node
+        `for`
+        (pos `2`)
+        (pos `4`)
+        (pos `6`))
+      _))
   (rule
     (name `case_stmt`)
     (alt
@@ -959,7 +1427,12 @@
           (one_plus))
         (ref `opt_else`)
         (tok `END`))
-      `(case 2 ...4 5)`)
+      (node
+        `case`
+        (pos `2`)
+        (spread `4`)
+        (pos `5`))
+      _)
     (alt
       _
       ((tok `CASE`)
@@ -969,7 +1442,12 @@
           (one_plus))
         (ref `opt_else`)
         (tok `END`))
-      `(case _ ...3 4)`))
+      (node
+        `case`
+        (null)
+        (spread `3`)
+        (pos `4`))
+      _))
   (rule
     (name `when_clause`)
     (alt
@@ -980,7 +1458,11 @@
           (plain `arg`))
         (ref `then_sep`)
         (ref `stmts`))
-      `(when ...2 4)`))
+      (node
+        `when`
+        (spread `2`)
+        (pos `4`))
+      _))
   (rule
     (name `begin_stmt`)
     (alt
@@ -991,19 +1473,32 @@
         (ref `rescues`)
         (ref `ensure_cl`)
         (tok `END`))
-      `(begin 3 4 5)`))
+      (node
+        `begin`
+        (pos `3`)
+        (pos `4`)
+        (pos `5`))
+      _))
   (rule
     (name `rescues`)
     (alt
       _
       ((ref `rescue_cl`))
-      `1`)
+      (pos `1`)
+      _)
     (alt
       _
       ((ref `rescues`)
         (ref `rescue_cl`))
-      `(...1 2)`)
-    (alt _ () `()`))
+      (list
+        (spread `1`)
+        (pos `2`))
+      _)
+    (alt
+      _
+      ()
+      (list)
+      _))
   (rule
     (name `rescue_cl`)
     (alt
@@ -1011,7 +1506,12 @@
       ((tok `RESCUE`)
         (ref `then_sep`)
         (ref `stmts`))
-      `(rescue _ _ 3)`)
+      (node
+        `rescue`
+        (null)
+        (null)
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `RESCUE`)
@@ -1019,7 +1519,12 @@
         (tok `IDENT`)
         (ref `then_sep`)
         (ref `stmts`))
-      `(rescue _ 3 5)`)
+      (node
+        `rescue`
+        (null)
+        (pos `3`)
+        (pos `5`))
+      _)
     (alt
       _
       ((tok `RESCUE`)
@@ -1028,7 +1533,12 @@
           (plain `const_path`))
         (ref `then_sep`)
         (ref `stmts`))
-      `(rescue 2 _ 4)`)
+      (node
+        `rescue`
+        (pos `2`)
+        (null)
+        (pos `4`))
+      _)
     (alt
       _
       ((tok `RESCUE`)
@@ -1039,7 +1549,12 @@
         (tok `IDENT`)
         (ref `then_sep`)
         (ref `stmts`))
-      `(rescue 2 4 6)`))
+      (node
+        `rescue`
+        (pos `2`)
+        (pos `4`)
+        (pos `6`))
+      _))
   (rule
     (name `ensure_cl`)
     (alt
@@ -1047,8 +1562,15 @@
       ((tok `ENSURE`)
         (ref `sep`)
         (ref `stmts`))
-      `(ensure 3)`)
-    (alt _ () `()`))
+      (node
+        `ensure`
+        (pos `3`))
+      _)
+    (alt
+      _
+      ()
+      (list)
+      _))
   (rule
     (name `def_stmt`)
     (alt
@@ -1063,7 +1585,14 @@
         (ref `rescues`)
         (ref `ensure_cl`)
         (tok `END`))
-      `(def 2 3 5 6 7)`)
+      (node
+        `def`
+        (pos `2`)
+        (pos `3`)
+        (pos `5`)
+        (pos `6`)
+        (pos `7`))
+      _)
     (alt
       _
       ((tok `DEF`)
@@ -1078,14 +1607,23 @@
         (ref `rescues`)
         (ref `ensure_cl`)
         (tok `END`))
-      `(defs 2 4 5 7 8 9)`))
+      (node
+        `defs`
+        (pos `2`)
+        (pos `4`)
+        (pos `5`)
+        (pos `7`)
+        (pos `8`)
+        (pos `9`))
+      _))
   (rule
     (name `params`)
     (alt
       _
       ((lit `"("`)
         (lit `")"`))
-      `(params)`)
+      (node `params`)
+      _)
     (alt
       _
       ((lit `"("`)
@@ -1093,42 +1631,67 @@
           `L`
           (plain `param`))
         (lit `")"`))
-      `(params ...2)`))
+      (node
+        `params`
+        (spread `2`))
+      _))
   (rule
     (name `param`)
     (alt
       _
-      ((tok `IDENT`)))
+      ((tok `IDENT`))
+      _
+      _)
     (alt
       _
       ((tok `IDENT`)
         (lit `"="`)
         (ref `expr`))
-      `(optarg 1 3)`)
+      (node
+        `optarg`
+        (pos `1`)
+        (pos `3`))
+      _)
     (alt
       _
       ((tok `LABEL`))
-      `(kwarg 1)`)
+      (node
+        `kwarg`
+        (pos `1`))
+      _)
     (alt
       _
       ((tok `LABEL`)
         (ref `expr`))
-      `(kwoptarg 1 2)`)
+      (node
+        `kwoptarg`
+        (pos `1`)
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `STAR_SPLAT`)
         (tok `IDENT`))
-      `(restarg 2)`)
+      (node
+        `restarg`
+        (pos `2`))
+      _)
     (alt
       _
       ((lit `"**"`)
         (tok `IDENT`))
-      `(kwrestarg 2)`)
+      (node
+        `kwrestarg`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `AMP_BLOCK`)
         (tok `IDENT`))
-      `(blockarg 2)`))
+      (node
+        `blockarg`
+        (pos `2`))
+      _))
   (rule
     (name `class_stmt`)
     (alt
@@ -1141,7 +1704,12 @@
         (ref `sep`)
         (ref `stmts`)
         (tok `END`))
-      `(class 2 3 5)`)
+      (node
+        `class`
+        (pos `2`)
+        (pos `3`)
+        (pos `5`))
+      _)
     (alt
       _
       ((tok `CLASS`)
@@ -1150,14 +1718,19 @@
         (ref `sep`)
         (ref `stmts`)
         (tok `END`))
-      `(sclass 3 5)`))
+      (node
+        `sclass`
+        (pos `3`)
+        (pos `5`))
+      _))
   (rule
     (name `superclass`)
     (alt
       _
       ((lit `"<"`)
         (ref `const_path`))
-      `2`))
+      (pos `2`)
+      _))
   (rule
     (name `module_stmt`)
     (alt
@@ -1167,18 +1740,28 @@
         (ref `sep`)
         (ref `stmts`)
         (tok `END`))
-      `(module 2 4)`))
+      (node
+        `module`
+        (pos `2`)
+        (pos `4`))
+      _))
   (rule
     (name `const_path`)
     (alt
       _
-      ((tok `CONSTANT`)))
+      ((tok `CONSTANT`))
+      _
+      _)
     (alt
       _
       ((ref `const_path`)
         (lit `"::"`)
         (tok `CONSTANT`))
-      `(scope 1 3)`))
+      (node
+        `scope`
+        (pos `1`)
+        (pos `3`))
+      _))
   (rule
     (name `alias_stmt`)
     (alt
@@ -1186,7 +1769,11 @@
       ((tok `ALIAS`)
         (ref `alias_name`)
         (ref `alias_name`))
-      `(alias 2 3)`))
+      (node
+        `alias`
+        (pos `2`)
+        (pos `3`))
+      _))
   (rule
     (name `undef_stmt`)
     (alt
@@ -1195,59 +1782,86 @@
         (list_req
           `L`
           (plain `alias_name`)))
-      `(undef ...2)`))
+      (node
+        `undef`
+        (spread `2`))
+      _))
   (rule
     (name `alias_name`)
     (alt
       _
-      ((tok `IDENT`)))
+      ((tok `IDENT`))
+      _
+      _)
     (alt
       _
-      ((tok `SYMBOL`))))
+      ((tok `SYMBOL`))
+      _
+      _))
   (rule
     (name `flow_stmt`)
     (alt
       _
       ((tok `RETURN`)
         (ref `cmd_args`))
-      `(return 2)`)
+      (node
+        `return`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `RETURN`))
-      `(return)`)
+      (node `return`)
+      _)
     (alt
       _
       ((tok `BREAK`)
         (ref `cmd_args`))
-      `(break 2)`)
+      (node
+        `break`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `BREAK`))
-      `(break)`)
+      (node `break`)
+      _)
     (alt
       _
       ((tok `NEXT`)
         (ref `cmd_args`))
-      `(next 2)`)
+      (node
+        `next`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `NEXT`))
-      `(next)`)
+      (node `next`)
+      _)
     (alt
       _
       ((tok `YIELD`)
         (ref `cmd_args`))
-      `(yield 2)`)
+      (node
+        `yield`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `SUPER`)
         (ref `cmd_args`))
-      `(super 2)`)
+      (node
+        `super`
+        (pos `2`))
+      _)
     (alt
       _
       ((tok `RETRY`))
-      `(retry)`)
+      (node `retry`)
+      _)
     (alt
       _
       ((tok `REDO`))
-      `(redo)`)))
+      (node `redo`)
+      _)))

@@ -1,0 +1,24 @@
+# A @conflicts manifest entry is read back exactly as the generator prints
+# it, including generated symbols (`L(IDENT).tail`), `ε` and `over`.
+
+@lexer
+tokens
+    ident
+    comma
+    eof
+    err
+[ \t]+                                      → skip
+','                                         → comma
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "conflict_manifest"
+
+@conflicts
+    reduce L(IDENT).tail → ε over items → IDENT  1  # a lone item is the [item] form
+
+top!  = items                               → 1
+items = L(item) [item]                      → (i 1 2)
+      | item? item                          → (j 1 2)
+item  = IDENT

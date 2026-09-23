@@ -1,11 +1,42 @@
-// lang.zig — Language module for the Nexus grammar DSL self-hosting parser
-//
-// Imported by the generated parser (parser.zig). Provides:
-//   - Tag enum for S-expression node types
-//   - Custom Lexer wrapper with three responsibilities:
-//     1. Unicode arrow scanning (→ and ←)
-//     2. Keyword reclassification (directive keywords after @, associativity always)
-//     3. Action text capture (opaque rest-of-line after → outside brackets)
+//! lang.zig: the @lang module of the self-hosted frontend (parser.zig).
+//!
+//! Provides the Tag enum of the frontend's S-expression tree and the Lexer
+//! wrapper that turns the generated BaseLexer's tokens into the token
+//! stream nexus.grammar parses. The wrapper owns everything that depends
+//! on layout or context:
+//!
+//!   - Layout. Blank lines and comment-only lines produce no tokens. Each
+//!     remaining line break becomes one token: `newline` when the next line
+//!     starts in column 1, `cont` when it is indented (a continuation of the
+//!     current rule or directive block), or `next_alt` when the next line
+//!     starts with `|` (the `|` is consumed with it). Inside `[ ... ]` line
+//!     breaks are plain whitespace. No layout token precedes the first
+//!     token; one `newline` always precedes `eof` after content.
+//!   - Comments. Trailing comments are dropped, except in `@conflicts`
+//!     entries (below).
+//!   - `@conflicts` entries. Each indented line of the block is split into
+//!     the kind word (`ident`), the rule text verbatim (`rule_text`; any
+//!     symbol syntax, `→`/`->`, `ε`), `over` (`kw_over`) and a second rule
+//!     text, the count (`integer`: the last word), and the rationale
+//!     (`comment`: from `#` to the end of the line).
+//!   - Unicode: `→` is an arrow.
+//!   - Words. An identifier immediately followed by `:` is a `label`
+//!     (`role:element`, `expr: "expression"`); the colon is consumed.
+//!     Capitalized words are `token`s. `X` followed by a one-character
+//!     string literal is the next-char hint keyword `kw_x`. `L` immediately
+//!     followed by `(` is the list keyword `kw_list`. The word after a `@`
+//!     is a directive keyword; `left right none` are keywords inside an
+//!     `@infix` block, `over` inside `@conflicts`, `via` in an `@as` line.
+//!     Inside `@schema` a `|` written without a space before it joins a
+//!     type union (`union`); `|` after a space starts the side-band roles.
+//!   - Actions. After an arrow outside brackets (and outside `@conflicts`)
+//!     the rest of the line is an action, scanned in action mode: `(` `)`,
+//!     positions (`integer`), `...N` (`dots` + `integer`), `~N` (`tilde` +
+//!     `integer`), `!N` (`bang` + `integer`), `_`/`nil` (`kw_nil`),
+//!     `role:` (`label`), and any other run of non-blank characters is a
+//!     `word` (a tag). An open parenthesis continues the action onto
+//!     indented lines. A `#` outside parentheses starts a comment; `~`
+//!     outside parentheses before a string is the coverage opt-out.
 
 const std = @import("std");
 const parser = @import("parser.zig");
@@ -13,69 +44,96 @@ const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
 
-// Tag enum mirrors the canonical S-expression schema documented at the top of
-// nexus.grammar. Every variant here corresponds to a tagged sexp the generated
-// parser emits; the strict lowerer in lower.zig consumes exactly this set.
+/// The tags of the frontend tree: the kinds of nexus.grammar's @schema in
+/// declaration order, then its marker values.
 pub const Tag = enum(u8) {
     grammar,
-
-    // Directives
     lang,
     conflicts,
-    code,
+    manifest,
+    conflict,
     as,
     as_entry,
     op,
     op_map,
     errors,
-    error_name,
+    display,
+    name_pair,
     infix,
     level,
     infix_op,
-
-    // Rules and alternatives
+    schema,
+    kind_decl,
+    kinds,
+    sides,
+    roles,
+    role,
+    type,
+    tagset,
+    tags,
+    trivia,
+    repair,
+    repair_line,
     rule,
     start,
     name,
     alt,
-
-    // Kind discriminators (children of as_entry, alt, group)
-    perm, // (as_entry perm IDENT)            permissive @as
-    reduce, // (alt reduce ELEMENTS ACTION?)    `<` tight-binding hint
-    shift, // (alt shift  ELEMENTS ACTION?)    `>` prefer-shift hint
-    many, // (group many ALT_BODY...)         `[X, ...]` optional comma list
-
-    // Elements
     ref,
     tok,
     lit,
     at_ref,
     list_req,
+    plain,
+    opt_items_nosep,
+    sep_items,
+    opt_items,
     group,
     quantified,
-    skip,
     skip_q,
+    skip,
     exclude,
-
-    // List-inner shapes
-    plain,
-    opt_items,
-    sep_items,
-    opt_items_nosep,
-
-    // Quantifiers (opt is reused as the GROUP kind for `[X]`)
+    label,
     opt,
     zero_plus,
     one_plus,
+    pos,
+    spread,
+    symid,
+    null,
+    tag,
+    named,
+    node,
+    list,
+    keep,
+    perm,
+    wrapper,
+    rest,
+    many,
 };
 
 pub const Lexer = struct {
     base: BaseLexer,
     mode: Mode = .normal,
+    block: Block = .none,
     afterAt: bool = false,
+    /// The next token is the first of its line.
+    lineStart: bool = true,
+    /// No token has been emitted yet (layout tokens are suppressed).
+    atStart: bool = true,
+    /// The last emitted token was a layout token (or nothing yet).
+    afterLayout: bool = true,
     bracketDepth: u16 = 0,
+    parenDepth: u16 = 0,
+    /// Tokens scanned ahead of the one being returned (a `@conflicts`
+    /// entry line is split at once), in order from `queueHead`.
+    queue: [8]Token = undefined,
+    queueHead: u8 = 0,
+    queueLen: u8 = 0,
+    /// Position of the last line break, for the `newline` before `eof`.
+    lastBreak: ?u32 = null,
 
-    const Mode = enum { normal, captureAction };
+    const Mode = enum { normal, action };
+    const Block = enum { none, as, conflicts, infix, schema, other };
 
     pub fn init(source: []const u8) Lexer {
         return .{ .base = BaseLexer.init(source) };
@@ -87,119 +145,378 @@ pub const Lexer = struct {
 
     pub fn reset(self: *Lexer) void {
         self.base.reset();
+        self.* = .{ .base = self.base };
     }
 
     pub fn next(self: *Lexer) Token {
-        if (self.mode == .captureAction) return self.scanActionText();
+        if (self.queueHead < self.queueLen) {
+            const tok = self.queue[self.queueHead];
+            self.queueHead += 1;
+            return self.emit(tok);
+        }
+        while (true) {
+            const tok = (if (self.mode == .action) self.scanAction() else self.scanNormal()) orelse continue;
+            return self.emit(tok);
+        }
+    }
 
-        const ws = self.skipWhitespace();
+    fn src(self: *const Lexer) []const u8 {
+        return self.base.source;
+    }
 
-        if (self.scanUnicodeArrow(ws)) |tok| return self.emit(tok);
+    fn push(self: *Lexer, tok: Token) void {
+        if (self.queueHead == self.queueLen) {
+            self.queueHead = 0;
+            self.queueLen = 0;
+        }
+        self.queue[self.queueLen] = tok;
+        self.queueLen += 1;
+    }
 
-        self.base.pos = self.base.pos - @as(u32, @intCast(ws.count));
+    fn make(cat: TokenCat, pos: usize, len: usize) Token {
+        return .{ .cat = cat, .pre = 0, .pos = @intCast(pos), .len = @intCast(len) };
+    }
+
+    fn emit(self: *Lexer, tok: Token) Token {
+        const layout = tok.cat == .newline or tok.cat == .cont or tok.cat == .next_alt;
+        if (!layout and tok.cat != .eof) {
+            self.atStart = false;
+            self.lineStart = false;
+        }
+        self.afterLayout = layout;
+        self.afterAt = tok.cat == .at;
+        return tok;
+    }
+
+    // --- Normal mode -------------------------------------------------------
+
+    /// One token in normal mode, or null when the scanned input produced no
+    /// token (a dropped comment, a line break inside brackets).
+    fn scanNormal(self: *Lexer) ?Token {
+        const s = self.src();
+        var p = self.base.pos;
+        while (p < s.len and (s[p] == ' ' or s[p] == '\t' or s[p] == '\r')) p += 1;
+        if (self.block == .conflicts and self.lineStart and !self.afterAt and p < s.len and s[p] != '\n') {
+            return self.splitConflict(p);
+        }
+        // The Unicode arrow is not in the generated lexer.
+        if (p + 2 < s.len and s[p] == 0xE2 and s[p + 1] == 0x86 and s[p + 2] == 0x92) {
+            self.base.pos = @intCast(p + 3);
+            return self.arrow(make(.arrow, p, 3));
+        }
+
         var tok = self.base.matchRules();
-
-        if (tok.cat == .ident) tok.cat = self.classifyIdent(tok);
-        if (tok.cat == .lbracket) self.bracketDepth += 1;
-        if (tok.cat == .rbracket and self.bracketDepth > 0) self.bracketDepth -= 1;
-        if (tok.cat == .arrow and self.bracketDepth == 0) self.mode = .captureAction;
-
-        return self.emit(tok);
-    }
-
-    // --- Action text capture (opaque island: everything after → to end of line) ---
-
-    fn scanActionText(self: *Lexer) Token {
-        self.mode = .normal;
-        while (self.base.pos < self.base.source.len and
-            (self.base.source[self.base.pos] == ' ' or self.base.source[self.base.pos] == '\t'))
-        {
-            self.base.pos += 1;
-        }
-        const start = self.base.pos;
-        while (self.base.pos < self.base.source.len and self.base.source[self.base.pos] != '\n') {
-            self.base.pos += 1;
-        }
-        var end = self.base.pos;
-        while (end > start and (self.base.source[end - 1] == ' ' or self.base.source[end - 1] == '\t')) {
-            end -= 1;
-        }
-        if (end > start) {
-            self.afterAt = false;
-            return Token{ .cat = .action_text, .pre = 0, .pos = start, .len = @intCast(end - start) };
-        }
-        return self.next();
-    }
-
-    // --- Unicode arrow scanning (→ U+2192, ← U+2190) ---
-
-    const Whitespace = struct { start: u32, count: usize };
-
-    fn skipWhitespace(self: *Lexer) Whitespace {
-        const start = self.base.pos;
-        while (self.base.pos < self.base.source.len) {
-            const ch = self.base.source[self.base.pos];
-            if (ch == ' ' or ch == '\t' or ch == '\r') self.base.pos += 1 else break;
-        }
-        return .{ .start = start, .count = self.base.pos - start };
-    }
-
-    fn scanUnicodeArrow(self: *Lexer, ws: Whitespace) ?Token {
-        if (self.base.pos + 2 >= self.base.source.len) return null;
-        const s = self.base.source;
-        if (s[self.base.pos] != 0xE2 or s[self.base.pos + 1] != 0x86) return null;
-        const start = self.base.pos;
-        const pre: u8 = @intCast(@min(ws.count, 255));
-        return switch (s[self.base.pos + 2]) {
-            0x92 => blk: { // → rightwards arrow
-                self.base.pos += 3;
-                if (self.bracketDepth == 0) self.mode = .captureAction;
-                break :blk Token{ .cat = .arrow, .pre = pre, .pos = start, .len = 3 };
+        switch (tok.cat) {
+            .newline => return self.lineBreak(tok.pos),
+            .eof => {
+                if (!self.atStart and !self.afterLayout) {
+                    self.push(tok);
+                    return make(.newline, self.lastBreak orelse tok.pos, if (self.lastBreak != null) 1 else 0);
+                }
+                return tok;
             },
-            0x90 => blk: { // ← leftwards arrow
-                self.base.pos += 3;
-                break :blk Token{ .cat = .larrow, .pre = pre, .pos = start, .len = 3 };
+            .comment => return null,
+            .ident => tok.cat = self.classifyWord(tok),
+            .lbracket => self.bracketDepth += 1,
+            .rbracket => {
+                if (self.bracketDepth > 0) self.bracketDepth -= 1;
             },
-            else => null,
-        };
+            .arrow => return self.arrow(tok),
+            .pipe => if (self.block == .schema and tok.pos > 0 and !isBlank(s[tok.pos - 1])) {
+                tok.cat = .@"union";
+            },
+            .at => if (self.lineStart) {
+                // A directive: its keyword decides the block context.
+                self.block = .other;
+            },
+            else => {},
+        }
+        return tok;
     }
 
-    // --- Keyword classification ---
+    /// Split a `@conflicts` entry line starting at `start` into its tokens
+    /// (see the file header); returns the first and queues the rest.
+    fn splitConflict(self: *Lexer, start: usize) Token {
+        const s = self.src();
+        var end = start;
+        var inString = false;
+        while (end < s.len and s[end] != '\n') : (end += 1) {
+            if (s[end] == '"') inString = !inString;
+            if (s[end] == '#' and !inString) break;
+        }
+        const commentStart = end;
+        var lineEnd = end;
+        while (lineEnd < s.len and s[lineEnd] != '\n') lineEnd += 1;
+        while (end > start and isBlank(s[end - 1])) end -= 1;
 
-    fn classifyIdent(self: *Lexer, tok: Token) TokenCat {
-        const t = self.base.source[tok.pos..][0..tok.len];
-        // Bare `X` is the reserved exclusion marker in grammar alternatives
-        // (surface form `X "c"` means "not followed by c"). Reclassify it
-        // here so the parser grammar can match `KW_X STRING` structurally.
-        if (t.len == 1 and t[0] == 'X') return .kw_x;
-        if (t.len > 0 and t[0] >= 'A' and t[0] <= 'Z') return .token;
-        return classify(t, self.afterAt);
+        // Words, outside strings.
+        var words: [64]struct { a: usize, b: usize } = undefined;
+        var n: usize = 0;
+        var i = start;
+        while (i < end and n < words.len) {
+            while (i < end and isBlank(s[i])) i += 1;
+            if (i >= end) break;
+            const a = i;
+            var quoted = false;
+            while (i < end and (quoted or !isBlank(s[i]))) : (i += 1) {
+                if (s[i] == '"') quoted = !quoted;
+            }
+            words[n] = .{ .a = a, .b = i };
+            n += 1;
+        }
+
+        var toks: [6]Token = undefined;
+        var t: usize = 0;
+        if (n > 0) {
+            toks[t] = make(.ident, words[0].a, words[0].b - words[0].a);
+            t += 1;
+            var last = n;
+            const count: ?Token = if (n > 1 and allDigits(s[words[n - 1].a..words[n - 1].b])) blk: {
+                last = n - 1;
+                break :blk make(.integer, words[n - 1].a, words[n - 1].b - words[n - 1].a);
+            } else null;
+            // Rule texts, split at a standalone `over`.
+            var from: usize = 1;
+            for (1..last + 1) |w| {
+                const isOver = w < last and eql(s[words[w].a..words[w].b], "over");
+                if (w == last or isOver) {
+                    if (w > from and t < toks.len) {
+                        toks[t] = make(.rule_text, words[from].a, words[w - 1].b - words[from].a);
+                        t += 1;
+                    }
+                    if (isOver and t < toks.len) {
+                        toks[t] = make(.kw_over, words[w].a, 4);
+                        t += 1;
+                    }
+                    from = w + 1;
+                }
+            }
+            if (count) |c| if (t < toks.len) {
+                toks[t] = c;
+                t += 1;
+            };
+        }
+        if (commentStart < lineEnd and t < toks.len) {
+            toks[t] = make(.comment, commentStart, lineEnd - commentStart);
+            t += 1;
+        }
+        self.base.pos = @intCast(lineEnd);
+        if (t == 0) return make(.err, start, 1);
+        for (toks[1..t]) |tok| self.push(tok);
+        return toks[0];
     }
 
-    fn classify(t: []const u8, afterAt: bool) TokenCat {
-        if (t.len < 2 or t.len > 9) return .ident;
-        return switch (t[0]) {
-            'a' => if (afterAt and eql(t, "as")) .kw_as else .ident,
-            'c' => if (afterAt and eql(t, "code")) .kw_code else if (afterAt and eql(t, "conflicts")) .kw_conflicts else .ident,
-            'e' => if (afterAt and eql(t, "errors")) .kw_errors else .ident,
-            'i' => if (afterAt and eql(t, "infix")) .kw_infix else .ident,
-            'l' => if (eql(t, "left")) .kw_left else if (afterAt and eql(t, "lang")) .kw_lang else .ident,
-            'n' => if (eql(t, "none")) .kw_none else .ident,
-            'o' => if (afterAt and eql(t, "op")) .kw_op else .ident,
-            'r' => if (eql(t, "right")) .kw_right else .ident,
-            's' => if (afterAt and eql(t, "skip")) .kw_skip else .ident,
-            else => .ident,
+    fn arrow(self: *Lexer, tok: Token) Token {
+        if (self.bracketDepth == 0 and self.block != .conflicts) {
+            self.mode = .action;
+            self.parenDepth = 0;
+        }
+        return tok;
+    }
+
+    /// A line break at `pos`: skips blank and comment-only lines, then
+    /// returns the layout token for the next content line (or null inside
+    /// brackets and before the first token).
+    fn lineBreak(self: *Lexer, pos: usize) ?Token {
+        const s = self.src();
+        var i = pos;
+        while (i < s.len and s[i] != '\n') i += 1;
+        if (i < s.len) i += 1;
+        while (true) {
+            const lineBegin = i;
+            while (i < s.len and (s[i] == ' ' or s[i] == '\t' or s[i] == '\r')) i += 1;
+            if (i >= s.len) {
+                self.base.pos = @intCast(s.len);
+                self.lastBreak = @intCast(pos);
+                return null; // eof handling emits the final newline
+            }
+            if (s[i] == '\n') {
+                i += 1;
+                continue;
+            }
+            if (s[i] == '#') {
+                while (i < s.len and s[i] != '\n') i += 1;
+                continue;
+            }
+            self.base.pos = @intCast(i);
+            if (self.bracketDepth > 0) return null;
+            if (self.atStart) return null;
+            self.lineStart = true;
+            if (s[i] == '|') {
+                self.base.pos = @intCast(i + 1);
+                return make(.next_alt, i, 1);
+            }
+            if (i > lineBegin) return make(.cont, pos, 1);
+            self.block = .none;
+            return make(.newline, pos, 1);
+        }
+    }
+
+    fn classifyWord(self: *Lexer, tok: Token) TokenCat {
+        const s = self.src();
+        const end = tok.pos + tok.len;
+        const t = s[tok.pos..end];
+
+        if (self.afterAt) {
+            if (directiveKeyword(t)) |kw| {
+                if (self.block == .other) self.block = switch (kw) {
+                    .kw_as => .as,
+                    .kw_conflicts => .conflicts,
+                    .kw_infix => .infix,
+                    .kw_schema => .schema,
+                    else => .other,
+                };
+                return kw;
+            }
+        }
+        if (end < s.len and s[end] == ':' and !(end + 1 < s.len and s[end + 1] == ':')) {
+            self.base.pos = @intCast(end + 1);
+            return .label;
+        }
+        if (eql(t, "X") and isHintLiteral(s, end)) return .kw_x;
+        if (eql(t, "L") and end < s.len and s[end] == '(') return .kw_list;
+        switch (self.block) {
+            .infix => {
+                if (eql(t, "left")) return .kw_left;
+                if (eql(t, "right")) return .kw_right;
+                if (eql(t, "none")) return .kw_none;
+            },
+            .as => if (eql(t, "via")) return .kw_via,
+            else => {},
+        }
+        if (t[0] >= 'A' and t[0] <= 'Z') return .token;
+        return .ident;
+    }
+
+    fn directiveKeyword(t: []const u8) ?TokenCat {
+        const map = [_]struct { []const u8, TokenCat }{
+            .{ "lang", .kw_lang },     .{ "conflicts", .kw_conflicts },
+            .{ "as", .kw_as },         .{ "op", .kw_op },
+            .{ "errors", .kw_errors }, .{ "display", .kw_display },
+            .{ "infix", .kw_infix },   .{ "schema", .kw_schema },
+            .{ "tags", .kw_tags },     .{ "trivia", .kw_trivia },
+            .{ "repair", .kw_repair }, .{ "wrapper", .kw_wrapper },
         };
+        for (map) |entry| if (eql(t, entry[0])) return entry[1];
+        return null;
+    }
+
+    /// Whether a one-character string literal (`"c"` or `"\c"`) follows
+    /// position `end`, after blanks: the `X "c"` next-char hint.
+    fn isHintLiteral(s: []const u8, end: usize) bool {
+        var i = end;
+        while (i < s.len and (s[i] == ' ' or s[i] == '\t')) i += 1;
+        if (i + 2 < s.len and s[i] == '"' and s[i + 1] != '\\' and s[i + 2] == '"') return true;
+        return i + 3 < s.len and s[i] == '"' and s[i + 1] == '\\' and s[i + 3] == '"';
+    }
+
+    // --- Action mode -------------------------------------------------------
+
+    fn scanAction(self: *Lexer) ?Token {
+        const s = self.src();
+        var p: usize = self.base.pos;
+        while (p < s.len and (s[p] == ' ' or s[p] == '\t' or s[p] == '\r')) p += 1;
+        self.base.pos = @intCast(p);
+
+        if (p >= s.len or s[p] == '\n') {
+            if (self.parenDepth > 0 and self.continuesAction(p)) return null;
+            self.mode = .normal;
+            return null;
+        }
+        const c = s[p];
+        if (c == '#' and self.parenDepth == 0) {
+            while (p < s.len and s[p] != '\n') p += 1;
+            self.base.pos = @intCast(p);
+            self.mode = .normal;
+            return null;
+        }
+        if (c == '(') {
+            self.parenDepth += 1;
+            self.base.pos += 1;
+            return make(.lparen, p, 1);
+        }
+        if (c == ')') {
+            if (self.parenDepth > 0) self.parenDepth -= 1;
+            self.base.pos += 1;
+            return make(.rparen, p, 1);
+        }
+        if (c == '~' and self.parenDepth == 0) {
+            var q = p + 1;
+            while (q < s.len and (s[q] == ' ' or s[q] == '\t')) q += 1;
+            if (q < s.len and s[q] == '"') {
+                self.base.pos += 1;
+                self.mode = .normal;
+                return make(.tilde, p, 1);
+            }
+        }
+
+        var end = p;
+        while (end < s.len and !isBlank(s[end]) and s[end] != '\n' and s[end] != '(' and s[end] != ')') end += 1;
+        const w = s[p..end];
+
+        // `role:` prefix
+        if (identPrefix(w)) |n| if (n < w.len and w[n] == ':') {
+            self.base.pos = @intCast(p + n + 1);
+            return make(.label, p, n);
+        };
+        if (allDigits(w)) {
+            self.base.pos = @intCast(end);
+            return make(.integer, p, w.len);
+        }
+        const marks = [_]struct { []const u8, TokenCat }{ .{ "...", .dots }, .{ "~", .tilde }, .{ "!", .bang } };
+        for (marks) |m| {
+            if (w.len > m[0].len and std.mem.startsWith(u8, w, m[0]) and allDigits(w[m[0].len..])) {
+                self.base.pos = @intCast(p + m[0].len);
+                return make(m[1], p, m[0].len);
+            }
+        }
+        self.base.pos = @intCast(end);
+        if (eql(w, "_") or eql(w, "nil")) return make(.kw_nil, p, w.len);
+        return make(.word, p, w.len);
+    }
+
+    /// Inside an open action parenthesis at the end of a line: whether the
+    /// next content line is indented (the action continues there). Skips
+    /// blank and comment-only lines; moves the scan position when it does.
+    fn continuesAction(self: *Lexer, pos: usize) bool {
+        const s = self.src();
+        var i = pos;
+        while (i < s.len) {
+            if (s[i] == '\n') i += 1;
+            const lineBegin = i;
+            while (i < s.len and (s[i] == ' ' or s[i] == '\t' or s[i] == '\r')) i += 1;
+            if (i >= s.len) return false;
+            if (s[i] == '\n') continue;
+            if (s[i] == '#') {
+                while (i < s.len and s[i] != '\n') i += 1;
+                continue;
+            }
+            if (i == lineBegin) return false;
+            self.base.pos = @intCast(i);
+            return true;
+        }
+        return false;
+    }
+
+    fn identPrefix(w: []const u8) ?usize {
+        if (w.len == 0) return null;
+        if (!(std.ascii.isAlphabetic(w[0]) or w[0] == '_')) return null;
+        var n: usize = 1;
+        while (n < w.len and (std.ascii.isAlphanumeric(w[n]) or w[n] == '_')) n += 1;
+        return n;
+    }
+
+    fn allDigits(w: []const u8) bool {
+        if (w.len == 0) return false;
+        for (w) |ch| if (!std.ascii.isDigit(ch)) return false;
+        return true;
+    }
+
+    fn isBlank(ch: u8) bool {
+        return ch == ' ' or ch == '\t' or ch == '\r';
     }
 
     fn eql(a: []const u8, b: []const u8) bool {
         return std.mem.eql(u8, a, b);
-    }
-
-    // --- State tracking ---
-
-    fn emit(self: *Lexer, tok: Token) Token {
-        self.afterAt = (tok.cat == .at);
-        return tok;
     }
 };
