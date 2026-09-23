@@ -1,6 +1,6 @@
 # State variable with non-numeric value
 # error: bad_state_value.grammar:6:
-# error: state
+# error: hello
 @lexer
 state
     beg = hello

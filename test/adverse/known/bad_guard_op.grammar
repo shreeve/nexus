@@ -1,6 +1,6 @@
 # Invalid guard operator
 # error: bad_guard_op.grammar:11:
-# error: guard
+# error: ~~
 @lexer
 state
     beg = 1
