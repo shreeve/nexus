@@ -1,0 +1,19 @@
+# A rule that can never complete (every alternative needs itself) is
+# rejected: no input derives it, and LALR lookaheads assume every rule can.
+# error: unproductive_rule.grammar:19:
+# error: loop derives no finite input
+@lexer
+tokens
+    ident
+    comma
+    eof
+    err
+','                                         → comma
+[a-zA-Z]+                                   → ident
+.                                           → err
+@parser
+@conflicts = 0
+program! = item                             → 1
+item     = IDENT
+         | loop
+loop     = loop "," IDENT                   → (loop 1 3)

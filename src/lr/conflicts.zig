@@ -333,6 +333,12 @@ fn sameRule(a: Allocator, g: *const Grammar, text: []const u8, ruleId: u16) !boo
 pub const Options = struct {
     /// The grammar file, for located messages.
     path: []const u8,
+    /// Where reports go; null = stderr.
+    out: ?*std.Io.Writer = null,
+
+    fn emit(self: Options, text: []const u8) !void {
+        if (self.out) |w| try w.writeAll(text) else std.debug.print("{s}", .{text});
+    }
 };
 
 pub const CheckError = error{ ConflictDrift, OutOfMemory, WriteFailed };
@@ -418,7 +424,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
     if (!drift) return;
     try w.writeAll("the grammar's conflicts are now:\n\n");
     try writeManifest(w, a, g, actual, g.conflicts);
-    std.debug.print("{s}", .{out.written()});
+    try opts.emit(out.written());
     return error.ConflictDrift;
 }
 
@@ -450,12 +456,13 @@ pub fn checkHints(a: Allocator, g: *const Grammar, tbl: *const Table, opts: Opti
         if (siblingUsed) continue;
 
         failed = true;
-        const text = try ruleText(a, g, h.rule);
-        defer a.free(text);
-        var buf: [256]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buf);
-        try located(&w, opts.path, rule.line);
-        std.debug.print("{s}X \"{c}\" on {s} has no effect: no state has a shift/reduce conflict between this rule and \"{c}\"; remove the hint\n", .{ w.buffered(), h.char, text, h.char });
+        var out: std.Io.Writer.Allocating = .init(a);
+        defer out.deinit();
+        try located(&out.writer, opts.path, rule.line);
+        try out.writer.print("X \"{c}\" on ", .{h.char});
+        try writeRule(&out.writer, g, h.rule);
+        try out.writer.print(" has no effect: no state has a shift/reduce conflict between this rule and \"{c}\"; remove the hint\n", .{h.char});
+        try opts.emit(out.written());
     }
     if (failed) return error.ConflictDrift;
 }
