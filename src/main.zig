@@ -251,11 +251,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         }
 
         // Validate all referenced symbols are defined
-        const validationErrors = check.validateSymbols(&g, &lexerSpec);
-        if (validationErrors > 0) {
-            diag.err("found {d} undefined symbol(s)", .{validationErrors});
-            return;
-        }
+        if (check.validateSymbols(&g, &lexerSpec, grammarFile) > 0) fail();
 
         var result = lr.run(&g, .{
             .mode = opts.parseMode,

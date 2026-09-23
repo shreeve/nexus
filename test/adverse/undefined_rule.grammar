@@ -1,6 +1,6 @@
-# References undefined nonterminal
-# error: undefined_rule.grammar:13:
-# error: bogus
+# A rule reference with no rule is reported where it is used.
+# error: undefined_rule.grammar:13:12:
+# error: undefined rule 'bogus'
 @lexer
 tokens
     ident

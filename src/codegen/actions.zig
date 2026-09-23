@@ -2,11 +2,11 @@
 //! the Zig expression `executeAction` returns for it, and collects the tags
 //! actions use (for the auto-extracted Tag enum).
 //!
-//! Two modes. Without a schema, lists drop trailing nils (at run time) and
-//! the 0.10 fast paths are kept byte for byte, including their choices:
-//! `(tag ...N)` is `sexpSpread`, `(tag M ...N)` and `(tag ...N M)` are
-//! `sexpPosSpread` with M first. With a schema, every list has exactly the
-//! items its action places (fixed length, nils kept), in order.
+//! Two modes. Without a schema, lists drop trailing nils (at run time), and
+//! common shapes use dedicated builders: `(tag ...N)` is `sexpSpread`,
+//! `(tag M ...N)` is `sexpPosSpread`, `(tag a b)` is `sexp`. With a schema,
+//! every list has exactly the items its action places (fixed length, nils
+//! kept), in order.
 //!
 //! The emitted code touches the Sexp list representation only through the
 //! helpers in the "Runtime surface" section at the bottom.
@@ -158,7 +158,7 @@ const Emitter = struct {
         }
 
         if (self.fixed) return self.fixedList(w, l, label);
-        return self.legacyList(w, l, label);
+        return self.schemalessList(w, l, label);
     }
 
     // --- Schema mode -------------------------------------------------------
@@ -192,9 +192,9 @@ const Emitter = struct {
         return if (l.head == .tag) ".tree" else self.use;
     }
 
-    // --- Without a schema (0.10 output) --------------------------------------
+    // --- Without a schema ----------------------------------------------------
 
-    fn legacyList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+    fn schemalessList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         const tag: ?[]const u8 = switch (l.head) {
             .tag => |t| t,
             else => null,
@@ -394,7 +394,7 @@ fn refersTo(e: ActionElem, pos: u16) bool {
     };
 }
 
-/// Tags the 0.10 fast paths accept at the head: letters and `! # ? @ $ * /`.
+/// Tags the dedicated builders accept at the head: letters and `! # ? @ $ * /`.
 fn isTagLiteral(t: []const u8) bool {
     if (t.len == 0) return false;
     const c = t[0];

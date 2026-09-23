@@ -95,20 +95,30 @@ fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, 
     }
 }
 
-/// Validate that all referenced symbols are defined.
-/// Returns error count (0 = all valid).
-pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec) u32 {
+/// Where `sym` is first used: the location of the first rule whose
+/// right-hand side has it.
+fn firstUse(g: *const Grammar, sym: u16) struct { line: u32, col: u32 } {
+    for (g.rules.items) |rule| {
+        if (std.mem.indexOfScalar(u16, rule.rhs, sym) != null and rule.line > 0) return .{ .line = rule.line, .col = rule.col };
+    }
+    return .{ .line = 1, .col = 1 };
+}
+
+/// Validate that all referenced symbols are defined, reporting each
+/// undefined one where it is first used. Returns the error count.
+pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec, path: []const u8) u32 {
     var errors: u32 = 0;
 
-    for (g.symbols.items) |sym| {
-        // Skip special/generated symbols
+    for (g.symbols.items, 0..) |sym, symId| {
+        // The accept symbols and literals need no definition.
         if (sym.name.len == 0) continue;
-        if (sym.name[0] == '$' or sym.name[0] == '_' or sym.name[0] == '"') continue;
+        if (sym.name[0] == '$' or sym.name[0] == '"') continue;
 
         // Check nonterminals have at least one rule
         if (sym.kind == .nonterminal) {
             if (sym.rules.items.len == 0) {
-                diag.err("undefined rule '{s}'", .{sym.name});
+                const at = firstUse(g, @intCast(symId));
+                diag.errLine(path, at.line, at.col, "undefined rule '{s}'", .{sym.name});
                 errors += 1;
             }
         }
@@ -163,7 +173,8 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec) u32 {
             }
 
             if (!found) {
-                diag.err("undefined token '{s}'", .{sym.name});
+                const at = firstUse(g, @intCast(symId));
+                diag.errLine(path, at.line, at.col, "undefined token '{s}'", .{sym.name});
                 errors += 1;
             }
         }

@@ -14,10 +14,10 @@
 //! element's index in the expanded right-hand side, or to "absent".
 //!
 //! Absent positions. In schema mode an absent `N` is nil and an absent
-//! `...N` contributes nothing. Without a schema the 0.10 rules apply
-//! unchanged: an absent `N`, `~N` or `...N` becomes nil, and in an
-//! expanded alternative the action is cut before the first absent
-//! position that is followed by no present one (trailing nils dropped).
+//! `...N` contributes nothing. Without a schema an absent `N`, `~N` or
+//! `...N` becomes nil, and in an expanded alternative the action is cut
+//! before the first absent position that is followed by no present one
+//! (trailing nils dropped).
 
 const std = @import("std");
 const diag = @import("diag.zig");
@@ -309,11 +309,11 @@ const Expander = struct {
         for (vars.items) |i| total *= radix(alt.elements[i]);
 
         // Without a schema, a leading `role:N` names the head tag only when
-        // the alternative is not expanded (0.10 dropped the key otherwise).
+        // the alternative is not expanded (otherwise the key is dropped).
         const tree: ?ActionTree = if (resolved) |r|
             r.tree
         else if (alt.actionTree) |t|
-            (if (vars.items.len == 0) legacyHeadRole(t) else t)
+            (if (vars.items.len == 0) roleHead(t) else t)
         else
             null;
         const digits = try a.alloc(usize, vars.items.len);
@@ -451,7 +451,8 @@ const Expander = struct {
     const Mapper = struct {
         x: *Expander,
         posMap: []const u16,
-        legacy: bool,
+        /// No schema: absent spreads are nil, and expanded actions are cut.
+        schemaless: bool,
         alt: ParsedAlternative,
 
         fn at(self: Mapper, p: u16) Error!u16 {
@@ -464,7 +465,7 @@ const Expander = struct {
             return switch (e) {
                 .ref => |p| if (try self.at(p) == absent) .nil else .{ .ref = try self.at(p) },
                 .symId => |p| if (try self.at(p) == absent) .nil else .{ .symId = try self.at(p) },
-                .spread => |p| if (try self.at(p) != absent) .{ .spread = try self.at(p) } else if (self.legacy) .nil else null,
+                .spread => |p| if (try self.at(p) != absent) .{ .spread = try self.at(p) } else if (self.schemaless) .nil else null,
                 .node => |l| .{ .node = try self.listPtr(l.*) },
                 .nil, .tagLit => e,
             };
@@ -490,7 +491,7 @@ const Expander = struct {
     };
 
     fn mapTree(self: *Expander, tree: ActionTree, posMap: []const u16, expanded: bool, alt: ParsedAlternative) Error!ActionTree {
-        const m = Mapper{ .x = self, .posMap = posMap, .legacy = !self.schemaMode(), .alt = alt };
+        const m = Mapper{ .x = self, .posMap = posMap, .schemaless = !self.schemaMode(), .alt = alt };
         switch (tree) {
             .nil => return .nil,
             .pass => |p| {
@@ -499,7 +500,7 @@ const Expander = struct {
             },
             .list => |l| {
                 var mapped = try m.list(l);
-                if (m.legacy and expanded) mapped.items = legacyCut(l.items, mapped.items);
+                if (m.schemaless and expanded) mapped.items = trailingCut(l.items, mapped.items);
                 return .{ .list = mapped };
             },
         }
@@ -647,10 +648,8 @@ const Expander = struct {
             .lhs = tailId,
             .rhs = &[_]u16{},
             .actionTree = emptyList,
-            .nullable = true,
             .preferShift = true,
         });
-        g.symbols.items[tailId].nullable = true;
         return listId;
     }
 
@@ -660,8 +659,7 @@ const Expander = struct {
         if (g.getSymbol(name)) |existing| return existing;
         const optId = try g.addSymbol(name, .nonterminal);
         _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = try g.allocator.dupe(u16, &.{symId}) });
-        _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = &[_]u16{}, .nullable = true });
-        g.symbols.items[optId].nullable = true;
+        _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = &[_]u16{} });
         return optId;
     }
 
@@ -678,8 +676,7 @@ const Expander = struct {
             .actionTree = try consTree(g.allocator, 1),
         });
         // X* → ε → ()
-        _ = try self.addRule(.{ .id = 0, .lhs = starId, .rhs = &[_]u16{}, .actionTree = emptyList, .nullable = true });
-        g.symbols.items[starId].nullable = true;
+        _ = try self.addRule(.{ .id = 0, .lhs = starId, .rhs = &[_]u16{}, .actionTree = emptyList });
         return starId;
     }
 
@@ -807,10 +804,9 @@ fn groupAction(allocator: Allocator, elements: []const ParsedElement) !?ActionTr
 }
 
 /// Without a schema, a list whose first item is `role:N` and that has no
-/// head tag is headed by the tag `role` (the 0.10 reading of
-/// `(ref:1 postcond:2)` as `(ref 1 2)`); applied to unexpanded
-/// alternatives only, as in 0.10.
-fn legacyHeadRole(tree: ActionTree) ActionTree {
+/// head tag is headed by the tag `role` (`(ref:1 postcond:2)` reads as
+/// `(ref 1 2)`); applied to unexpanded alternatives only.
+fn roleHead(tree: ActionTree) ActionTree {
     const l = switch (tree) {
         .list => |l| l,
         else => return tree,
@@ -820,11 +816,11 @@ fn legacyHeadRole(tree: ActionTree) ActionTree {
     return .{ .list = .{ .head = .{ .tag = role }, .items = l.items } };
 }
 
-/// The 0.10 trailing-nil cut of an expanded alternative's action: the
-/// items from the first absent position after the last present one on
-/// are dropped. `original` and `mapped` are parallel (legacy mapping keeps
-/// every item).
-fn legacyCut(original: []const ActionItem, mapped: []const ActionItem) []const ActionItem {
+/// The trailing-nil cut of an expanded alternative's action without a
+/// schema: the items from the first absent position after the last present
+/// one on are dropped. `original` and `mapped` are parallel (schema-less
+/// mapping keeps every item).
+fn trailingCut(original: []const ActionItem, mapped: []const ActionItem) []const ActionItem {
     var lastPresent: ?usize = null;
     var firstRef: ?usize = null;
     for (original, 0..) |item, i| {

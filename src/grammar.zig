@@ -462,12 +462,8 @@ pub const Symbol = struct {
     id: u16,
     name: []const u8,
     kind: Kind,
-
-    // For nonterminals only
-    nullable: bool = false,
-    firsts: SymbolSet = .empty,
-    follows: SymbolSet = .empty,
-    rules: std.ArrayListUnmanaged(u16) = .empty, // Rule IDs that define this nonterminal
+    /// Nonterminals: the ids of the rules that define it.
+    rules: std.ArrayListUnmanaged(u16) = .empty,
 
     pub const Kind = enum { terminal, nonterminal };
 
@@ -477,49 +473,6 @@ pub const Symbol = struct {
 
     pub fn deinit(self: *Symbol, allocator: Allocator) void {
         self.rules.deinit(allocator);
-        self.firsts.deinit(allocator);
-        self.follows.deinit(allocator);
-    }
-};
-
-/// A set of symbol IDs (for FIRST/FOLLOW sets)
-pub const SymbolSet = struct {
-    items: std.ArrayListUnmanaged(u16) = .empty,
-
-    pub const empty: SymbolSet = .{};
-
-    pub fn deinit(self: *SymbolSet, allocator: Allocator) void {
-        self.items.deinit(allocator);
-    }
-
-    pub fn add(self: *SymbolSet, allocator: Allocator, id: u16) !void {
-        for (self.items.items) |existing| {
-            if (existing == id) return;
-        }
-        try self.items.append(allocator, id);
-    }
-
-    pub fn contains(self: *const SymbolSet, id: u16) bool {
-        for (self.items.items) |existing| {
-            if (existing == id) return true;
-        }
-        return false;
-    }
-
-    pub fn addAll(self: *SymbolSet, allocator: Allocator, other: *const SymbolSet) !bool {
-        const oldCount = self.items.items.len;
-        for (other.items.items) |id| {
-            try self.add(allocator, id);
-        }
-        return self.items.items.len > oldCount;
-    }
-
-    pub fn count(self: *const SymbolSet) usize {
-        return self.items.items.len;
-    }
-
-    pub fn slice(self: *const SymbolSet) []const u16 {
-        return self.items.items;
     }
 };
 
@@ -529,13 +482,14 @@ pub const Rule = struct {
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
     /// Action with every label resolved to a position and, in schema mode,
-    /// every role placed in its slot (nils filled). Null = pass through 1.
+    /// every role placed in its slot (nils filled). Null = the default:
+    /// nothing, the one element, or an untagged list of the elements.
     actionTree: ?ActionTree = null,
-    nullable: bool = false,
-    firsts: SymbolSet = .empty,
-    excludeChars: []const u8 = &.{}, // X "c" - chars that force shift when adjacent
-    preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
-    preferShift: bool = false, // > hint - prefer shift on S/R conflict
+    /// `X "c"` hints: characters that force a shift when adjacent.
+    excludeChars: []const u8 = &.{},
+    /// `<` / `>` hints: prefer reduce / shift on a shift/reduce conflict.
+    preferReduce: bool = false,
+    preferShift: bool = false,
     /// Schema kind index this rule constructs (schema mode), for the node store.
     kind: ?u16 = null,
     /// Side-band labels: (role, 1-based position) recorded in the role store.
@@ -595,7 +549,6 @@ pub const Grammar = struct {
 
         for (self.rules.items) |*rule| {
             self.allocator.free(rule.rhs);
-            rule.firsts.deinit(self.allocator);
         }
         self.rules.deinit(self.allocator);
 

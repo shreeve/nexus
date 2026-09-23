@@ -1112,7 +1112,7 @@ test "result types flow through pass-through rules and lists" {
     try expectActions(&g, a, "top", &.{"(block body:...1)"});
 }
 
-test "without a schema, expanded actions keep the 0.10 trailing-nil cut" {
+test "without a schema, expanded actions cut trailing absent positions" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
