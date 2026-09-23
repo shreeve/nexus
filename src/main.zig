@@ -65,7 +65,6 @@ const Options = struct {
     checkMode: bool = false,
     emitComments: bool = false,
     parseMode: lr.ParseMode = .lalr,
-    verifyLalr: bool = false,
     grammarFile: []const u8,
     outputFile: []const u8,
 };
@@ -109,9 +108,6 @@ pub fn main(init: std.process.Init) !void {
             positionalStart += 1;
         } else if (std.mem.eql(u8, arg, "--slr")) {
             opts.parseMode = .slr;
-            positionalStart += 1;
-        } else if (std.mem.eql(u8, arg, "--verify-lalr")) {
-            opts.verifyLalr = true;
             positionalStart += 1;
         } else break;
     }
@@ -246,7 +242,6 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         var result = lr.run(&g, .{
             .mode = opts.parseMode,
             .path = grammarFile,
-            .verifyLalr = opts.verifyLalr,
         }) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
             std.process.exit(1);
