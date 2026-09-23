@@ -882,7 +882,8 @@ fn consTree(allocator: Allocator, n: u16) !ActionTree {
 
 /// The value of a `( ... )` group or a choice alternative: nil when every
 /// element is skipped, the element when one is kept, the kept elements as
-/// a list when some are skipped, and the default (null) otherwise.
+/// a list when some are skipped (nils kept, like the default), and the
+/// default (null) otherwise.
 fn groupAction(allocator: Allocator, elements: []const ParsedElement) !?ActionTree {
     var kept: std.ArrayListUnmanaged(u16) = .empty;
     for (elements, 0..) |sub, i| if (!sub.skip) try kept.append(allocator, @intCast(i + 1));
@@ -891,7 +892,8 @@ fn groupAction(allocator: Allocator, elements: []const ParsedElement) !?ActionTr
     if (kept.items.len == elements.len) return null;
     var items: std.ArrayListUnmanaged(ActionItem) = .empty;
     for (kept.items) |p| try items.append(allocator, .{ .elem = .{ .ref = p } });
-    return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(allocator) } };
+    // Like the default action, a kept nil stays (no trailing-nil cut).
+    return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(allocator), .keepNils = true } };
 }
 
 /// Without a schema, a list whose first item is `role:N` and that has no
