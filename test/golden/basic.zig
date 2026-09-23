@@ -455,26 +455,29 @@ pub const BaseParser = struct {
 
     fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         return switch (ruleId) {
-            0 => self.sexpSpread(.@"module", pass[1]),
+            0 => self.sexpSpread(.@"module", pass[0]),
             1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             2 => blk: { var out = self.extendList(pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk self.keepList(&out); },
             3 => pass[0],
-            4 => self.sexp(.@"neg", &.{pass[1]}),
-            5 => self.list(pass),
+            4 => self.list(pass),
+            5 => self.sexp(.@"neg", &.{pass[1]}),
             6 => self.list(pass),
             7 => self.list(pass),
-            8 => pass[1],
-            9 => self.list(pass),
-            10 => self.list(pass),
-            11 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            12 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            13 => pass[0],
-            14 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-            15 => self.sexp(.@"/", &.{pass[0], pass[2]}),
+            8 => self.list(pass),
+            9 => pass[1],
+            10 => pass[1],
+            11 => self.list(pass),
+            12 => pass[1],
+            13 => self.list(pass),
+            14 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            15 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
             16 => pass[0],
-            17 => self.sexp(.@"**", &.{pass[0], pass[2]}),
-            18 => pass[0],
+            17 => self.sexp(.@"*", &.{pass[0], pass[2]}),
+            18 => self.sexp(.@"/", &.{pass[0], pass[2]}),
             19 => pass[0],
+            20 => self.sexp(.@"**", &.{pass[0], pass[2]}),
+            21 => pass[0],
+            22 => pass[0],
             else => .nil,
         };
     }
@@ -483,15 +486,15 @@ pub const BaseParser = struct {
         return switch (token.cat) {
             .@"eof" => 1,
             .@"newline" => 8,
-            .@"ident" => 10,
-            .@"integer" => 11,
-            .@"minus" => 9,
-            .@"lparen" => 12,
-            .@"rparen" => 13,
-            .@"plus" => 21,
-            .@"star" => 22,
-            .@"slash" => 23,
-            .@"power" => 24,
+            .@"ident" => 11,
+            .@"integer" => 12,
+            .@"minus" => 10,
+            .@"lparen" => 13,
+            .@"rparen" => 14,
+            .@"plus" => 24,
+            .@"star" => 25,
+            .@"slash" => 26,
+            .@"power" => 27,
             else => 2, // error
         };
     }
@@ -503,6 +506,10 @@ pub const BaseParser = struct {
     pub fn parseProgram(self: *BaseParser) !Sexp {
         self.injectedToken = SYM_program_START;
         return self.doParse(SYM_program);
+    }
+    pub fn parseExpr(self: *BaseParser) !Sexp {
+        self.injectedToken = SYM_expr_START;
+        return self.doParse(SYM_expr);
     }
 };
 
@@ -528,53 +535,74 @@ pub fn parseProgram(allocator: std.mem.Allocator, source: []const u8) !struct { 
     return .{ .parser = p, .sexp = sexp };
 }
 
+/// Convenience: instantiate the (lang-extended) parser and parse a whole
+/// expr. Caller owns `result.parser` and must call `result.parser.deinit()`
+/// when done with the returned tree (the tree references arena-allocated
+/// memory owned by the parser).
+///
+/// The parser is returned by value, so the underlying type
+/// must be safely movable (no self-referential storage).
+/// `BaseParser` is movable by construction; custom `lang.Parser`
+/// wrappers must preserve this invariant.
+pub fn parseExpr(allocator: std.mem.Allocator, source: []const u8) !struct { parser: Parser, sexp: Sexp } {
+    var p = Parser.init(allocator, source);
+    errdefer p.deinit();
+    const sexp = try p.parseExpr();
+    return .{ .parser = p, .sexp = sexp };
+}
+
 // Symbol IDs
 const SYM_program: u16 = 3;
-const SYM_program_START: u16 = 14;
-const SYM_infix: u16 = 7;
-const symIdent: u16 = 10;
+const SYM_program_START: u16 = 15;
+const SYM_expr: u16 = 4;
+const SYM_expr_START: u16 = 18;
+const symIdent: u16 = 11;
 
-const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 6, 6, 6, 15, 17, 18, 18, 18, 19, 19, 19, 20, 20, 7 };
-const ruleLen = [_]u8{ 2, 1, 3, 2, 2, 1, 1, 1, 3, 2, 2, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 6, 6, 7, 7, 7, 16, 17, 19, 20, 21, 21, 21, 22, 22, 22, 23, 23, 9 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 1, 2, 1, 1, 1, 3, 2, 2, 2, 2, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
 
-// Parse Table: 33 states × 25 symbols
-const numStates = 33;
-const numSymbols = 25;
+// Parse Table: 37 states × 28 symbols
+const numStates = 37;
+const numSymbols = 28;
 
 const sparse = [numStates][]const i16{
-    &.{3,2,14,3},
-    &.{5,7,6,4,7,6,9,5,10,10,11,11,12,12,18,8,19,13,20,9},
+    &.{15,2,16,3},
+    &.{18,5,19,4},
+    &.{3,15,4,16,5,9,6,6,7,13,9,7,10,8,11,10,12,14,13,11,21,12,22,17,23,18},
     &.{1,-1},
-    &.{4,16,5,7,6,4,7,15,9,5,10,10,11,11,12,12,18,8,19,13,20,9},
-    &.{1,-7,8,-7,9,-7,13,-7,21,-7,22,-7,23,-7,24,-7},
-    &.{5,17,6,4,9,5,10,10,11,11,12,12},
     &.{1,-1},
-    &.{1,-20,8,-20,9,-20,13,-20,21,-20,22,-20,23,-20,24,19},
-    &.{1,-21,8,-21,9,20,13,-21,21,21},
-    &.{1,-18,8,-18,9,-18,13,-18,21,-18,22,-18,23,-18},
-    &.{1,-8,8,-8,9,-8,13,-8,21,-8,22,-8,23,-8,24,-8},
-    &.{1,-9,8,-9,9,-9,13,-9,21,-9,22,-9,23,-9,24,-9},
-    &.{5,7,6,4,7,22,9,5,10,10,11,11,12,12,18,8,19,13,20,9},
-    &.{1,-15,8,-15,9,-15,13,-15,21,-15,22,23,23,24},
-    &.{1,-1},
+    &.{4,21,6,6,7,13,9,7,10,8,11,10,12,14,13,11,21,12,22,17,23,18},
+    &.{1,-23,8,-23,10,-23,14,-23,24,-23,25,-23,26,-23,27,22},
+    &.{1,-6,8,-6,14,-6},
+    &.{6,23,7,13,10,8,11,10,12,14,13,11},
+    &.{1,-2,8,24},
+    &.{1,-9,8,-9,10,-9,14,-9,24,-9,25,-9,26,-9,27,-9},
+    &.{4,25,6,6,7,13,9,7,10,8,11,10,12,14,13,11,21,12,22,17,23,18},
+    &.{1,-24,8,-24,10,27,14,-24,24,26},
+    &.{1,-8,8,-8,10,-8,14,-8,24,-8,25,-8,26,-8,27,-8},
+    &.{1,-10,8,-10,10,-10,14,-10,24,-10,25,-10,26,-10,27,-10},
+    &.{1,-12},
     &.{1,-3,8,-3},
-    &.{1,-2,8,25},
-    &.{1,-6,8,-6,9,-6,13,-6,21,-6,22,-6,23,-6,24,-6},
+    &.{1,-18,8,-18,10,-18,14,-18,24,-18,25,28,26,29},
+    &.{1,-21,8,-21,10,-21,14,-21,24,-21,25,-21,26,-21},
     &.{1,-1},
-    &.{5,7,6,4,9,5,10,10,11,11,12,12,20,26},
-    &.{5,7,6,4,9,5,10,10,11,11,12,12,19,27,20,9},
-    &.{5,7,6,4,9,5,10,10,11,11,12,12,19,28,20,9},
-    &.{13,29},
-    &.{5,7,6,4,9,5,10,10,11,11,12,12,20,30},
-    &.{5,7,6,4,9,5,10,10,11,11,12,12,20,31},
-    &.{1,-5,5,7,6,4,7,32,8,-5,9,5,10,10,11,11,12,12,18,8,19,13,20,9},
-    &.{1,-19,8,-19,9,-19,13,-19,21,-19,22,-19,23,-19},
-    &.{1,-14,8,-14,9,-14,13,-14,21,-14,22,23,23,24},
-    &.{1,-13,8,-13,9,-13,13,-13,21,-13,22,23,23,24},
-    &.{1,-10,8,-10,9,-10,13,-10,21,-10,22,-10,23,-10,24,-10},
-    &.{1,-16,8,-16,9,-16,13,-16,21,-16,22,-16,23,-16},
-    &.{1,-17,8,-17,9,-17,13,-17,21,-17,22,-17,23,-17},
+    &.{1,-1},
+    &.{1,-14},
+    &.{6,6,7,13,10,8,11,10,12,14,13,11,23,30},
+    &.{1,-7,8,-7,10,-7,14,-7,24,-7,25,-7,26,-7,27,-7},
+    &.{1,-5,4,31,6,6,7,13,8,-5,9,7,10,8,11,10,12,14,13,11,21,12,22,17,23,18},
+    &.{14,32},
+    &.{6,6,7,13,10,8,11,10,12,14,13,11,22,33,23,18},
+    &.{6,6,7,13,10,8,11,10,12,14,13,11,22,34,23,18},
+    &.{6,6,7,13,10,8,11,10,12,14,13,11,23,35},
+    &.{6,6,7,13,10,8,11,10,12,14,13,11,23,36},
+    &.{1,-22,8,-22,10,-22,14,-22,24,-22,25,-22,26,-22},
     &.{1,-4,8,-4},
+    &.{1,-11,8,-11,10,-11,14,-11,24,-11,25,-11,26,-11,27,-11},
+    &.{1,-16,8,-16,10,-16,14,-16,24,-16,25,28,26,29},
+    &.{1,-17,8,-17,10,-17,14,-17,24,-17,25,28,26,29},
+    &.{1,-19,8,-19,10,-19,14,-19,24,-19,25,-19,26,-19},
+    &.{1,-20,8,-20,10,-20,14,-20,24,-20,25,-20,26,-20},
 };
 
 const parseTable = blk: {
@@ -604,7 +632,7 @@ fn getImmediateShift(state: u16, char: u8) ?i16 {
 }
 const startStates = [_]struct { sym: u16, state: u16 }{
     .{ .sym = 3, .state = 0 },
-    .{ .sym = 7, .state = 1 },
+    .{ .sym = 4, .state = 1 },
 };
 
 fn getStartState(startSym: u16) u16 {
@@ -614,7 +642,7 @@ fn getStartState(startSym: u16) u16 {
     return 0;
 }
 
-const acceptRules = [_]u16{ 9, 10 };
+const acceptRules = [_]u16{ 11, 13 };
 
 fn isAcceptRule(ruleId: u16) bool {
     for (acceptRules) |ar| if (ruleId == ar) return true;

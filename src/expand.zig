@@ -174,6 +174,7 @@ const Expander = struct {
         g.errorId = try g.addSymbol("error", .terminal);
 
         for (ir.rules) |rule| {
+            if (self.isStart(rule.name) or self.blocks(rule.name) != 1) continue;
             if (isAliasRule(rule)) |target| try g.aliases.put(g.allocator, rule.name, target);
         }
         for (ir.rules) |rule| {
@@ -186,6 +187,7 @@ const Expander = struct {
             const lhsId = g.getSymbol(rule.name).?;
             for (rule.alternatives, 0..) |alt, ai| {
                 const resolved: ?Resolved = if (self.opts.resolved) |r| r[ri][ai] else null;
+                if (rule.isStart and isEntryIdiom(rule.name, alt)) continue;
                 try self.expandAlternative(lhsId, alt, resolved);
             }
         }
@@ -222,39 +224,41 @@ const Expander = struct {
 
     // --- Start symbols ---
 
+    fn isStart(self: *const Expander, name: []const u8) bool {
+        for (self.ir.startSymbols) |s| if (std.mem.eql(u8, s, name)) return true;
+        return false;
+    }
+
+    /// Number of `name = ...` blocks for `name`.
+    fn blocks(self: *const Expander, name: []const u8) usize {
+        var n: usize = 0;
+        for (self.ir.rules) |r| n += @intFromBool(std.mem.eql(u8, r.name, name));
+        return n;
+    }
+
+    /// The `x! = x → action` alternative of start symbol `x`, if any.
+    fn entryIdiom(self: *const Expander, name: []const u8) ?struct { alt: ParsedAlternative, resolved: ?Resolved } {
+        for (self.ir.rules, 0..) |rule, ri| {
+            if (!rule.isStart or !std.mem.eql(u8, rule.name, name)) continue;
+            for (rule.alternatives, 0..) |alt, ai| if (isEntryIdiom(name, alt)) {
+                return .{ .alt = alt, .resolved = if (self.opts.resolved) |r| r[ri][ai] else null };
+            };
+        }
+        return null;
+    }
+
+    /// One entry per start symbol x: `$accept_x → $start_x $end` and
+    /// `$start_x → x! x`, where the marker terminal `x!` is what `parseX`
+    /// injects first. The alternatives of an `x! = ...` block are ordinary
+    /// alternatives of x (usable anywhere x is), except `x! = x → action`,
+    /// which only declares x a start symbol and gives the entry its action
+    /// (default: x's value). The marker appears in no rule but the entry's,
+    /// so it never reaches the rest of the automaton.
     fn addStartRules(self: *Expander) Error!void {
         const g = self.g;
         const ir = self.ir;
-        if (ir.startSymbols.len > 0) {
-            for (ir.startSymbols) |startName| {
-                const startId = g.getSymbol(startName) orelse continue;
-                const markerName = try std.fmt.allocPrint(g.allocator, "{s}!", .{startName});
-                const markerId = try g.addSymbol(markerName, .terminal);
-
-                // The marker is prepended to the first rule of the start symbol.
-                for (g.rules.items) |*rule| {
-                    if (rule.lhs == startId) {
-                        var newRhs: std.ArrayListUnmanaged(u16) = .empty;
-                        try newRhs.append(g.allocator, markerId);
-                        try newRhs.appendSlice(g.allocator, rule.rhs);
-                        rule.rhs = try newRhs.toOwnedSlice(g.allocator);
-                        rule.actionOffset = 1;
-                        break;
-                    }
-                }
-
-                const acceptName = try std.fmt.allocPrint(g.allocator, "$accept_{s}", .{startName});
-                const acceptId = try g.addSymbol(acceptName, .nonterminal);
-                const ruleId = try self.addRule(.{
-                    .id = 0,
-                    .lhs = acceptId,
-                    .rhs = try g.allocator.dupe(u16, &.{ startId, g.endId }),
-                    .action = null,
-                });
-                try g.startSymbols.append(g.allocator, startId);
-                try g.acceptRules.append(g.allocator, ruleId);
-            }
-        } else if (g.rules.items.len > 0) {
+        if (ir.startSymbols.len == 0) {
+            if (g.rules.items.len == 0) return;
             const startSymbol = g.rules.items[0].lhs;
             const ruleId = try self.addRule(.{
                 .id = 0,
@@ -263,6 +267,41 @@ const Expander = struct {
                 .action = null,
             });
             try g.startSymbols.append(g.allocator, startSymbol);
+            try g.acceptRules.append(g.allocator, ruleId);
+            return;
+        }
+        for (ir.startSymbols) |startName| {
+            const startId = g.getSymbol(startName) orelse continue;
+            const markerId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "{s}!", .{startName}), .terminal);
+            const entryId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "$start_{s}", .{startName}), .nonterminal);
+            const acceptId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "$accept_{s}", .{startName}), .nonterminal);
+
+            var tree: ActionTree = .{ .pass = 1 };
+            var line: u32 = 0;
+            var col: u32 = 0;
+            if (self.entryIdiom(startName)) |idiom| {
+                line = idiom.alt.line;
+                col = idiom.alt.col;
+                const t = if (idiom.resolved) |r| r.tree else idiom.alt.actionTree;
+                if (t) |given| tree = if (self.schemaMode()) given else legacyHeadRole(given);
+            }
+            _ = try self.addRule(.{
+                .id = 0,
+                .lhs = entryId,
+                .rhs = try g.allocator.dupe(u16, &.{ markerId, startId }),
+                .action = try grammar.renderAction(g.allocator, tree),
+                .actionTree = tree,
+                .actionOffset = 1,
+                .line = line,
+                .col = col,
+            });
+            const ruleId = try self.addRule(.{
+                .id = 0,
+                .lhs = acceptId,
+                .rhs = try g.allocator.dupe(u16, &.{ entryId, g.endId }),
+                .action = null,
+            });
+            try g.startSymbols.append(g.allocator, startId);
             try g.acceptRules.append(g.allocator, ruleId);
         }
     }
@@ -704,6 +743,13 @@ const Expander = struct {
         _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{levelIds.items[0]}), .action = "1", .actionTree = .{ .pass = 1 } });
     }
 };
+
+/// `x! = x`: the start block alternative that is the start symbol itself.
+fn isEntryIdiom(name: []const u8, alt: ParsedAlternative) bool {
+    if (alt.elements.len != 1) return false;
+    const e = alt.elements[0];
+    return e.kind == .ident and e.quantifier == .one and e.label == null and !e.skip and std.mem.eql(u8, e.value, name);
+}
 
 fn isAliasRule(rule: ParsedRule) ?[]const u8 {
     if (rule.alternatives.len != 1) return null;

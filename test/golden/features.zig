@@ -496,32 +496,33 @@ pub const BaseParser = struct {
 
     fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         return switch (ruleId) {
-            0 => self.sexpSpread(.@"module", pass[1]),
-            1 => pass[1],
-            2 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            3 => blk: { var out = self.extendList(pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk self.keepList(&out); },
-            4 => pass[0],
-            5 => self.sexp(.@"assign", &.{pass[0], pass[2]}),
-            6 => self.list(pass),
-            7 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-            8 => self.list(pass),
-            9 => self.spreadList(pass[0], pass[1]),
-            10 => self.spreadList(pass[1], pass[2]),
-            11 => .{ .list = &[_]Sexp{} },
-            12 => blk: { var out = self.extendList(pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk self.keepList(&out); },
-            13 => .{ .list = &[_]Sexp{} },
+            0 => self.sexpSpread(.@"module", pass[0]),
+            1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            2 => blk: { var out = self.extendList(pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk self.keepList(&out); },
+            3 => pass[0],
+            4 => self.sexp(.@"assign", &.{pass[0], pass[2]}),
+            5 => self.list(pass),
+            6 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
+            7 => self.list(pass),
+            8 => self.spreadList(pass[0], pass[1]),
+            9 => self.spreadList(pass[1], pass[2]),
+            10 => .{ .list = &[_]Sexp{} },
+            11 => blk: { var out = self.extendList(pass[0]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk self.keepList(&out); },
+            12 => .{ .list = &[_]Sexp{} },
+            13 => self.list(pass),
             14 => self.list(pass),
             15 => self.list(pass),
-            16 => self.list(pass),
+            16 => pass[1],
             17 => pass[1],
             18 => self.list(pass),
-            19 => self.list(pass),
-            20 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            21 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            22 => pass[0],
-            23 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-            24 => pass[0],
+            19 => pass[1],
+            20 => self.list(pass),
+            21 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            22 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
+            23 => pass[0],
+            24 => self.sexp(.@"*", &.{pass[0], pass[2]}),
             25 => pass[0],
+            26 => pass[0],
             else => .nil,
         };
     }
@@ -537,9 +538,9 @@ pub const BaseParser = struct {
             .@"lparen" => 12,
             .@"rparen" => 13,
             .@"comma" => 14,
-            .@"plus" => 26,
-            .@"minus" => 27,
-            .@"star" => 28,
+            .@"plus" => 28,
+            .@"minus" => 29,
+            .@"star" => 30,
             else => 2, // error
         };
     }
@@ -600,59 +601,60 @@ pub fn parseExpr(allocator: std.mem.Allocator, source: []const u8) !struct { par
 const SYM_program: u16 = 3;
 const SYM_program_START: u16 = 20;
 const SYM_expr: u16 = 4;
-const SYM_expr_START: u16 = 22;
+const SYM_expr_START: u16 = 23;
 const symIdent: u16 = 17;
 
-const ruleLhs = [_]u16{ 3, 4, 5, 5, 5, 4, 4, 6, 6, 15, 16, 16, 7, 7, 8, 8, 8, 8, 21, 23, 24, 24, 24, 25, 25, 11 };
-const ruleLen = [_]u8{ 2, 2, 1, 3, 2, 3, 1, 4, 1, 2, 3, 0, 1, 0, 1, 1, 1, 3, 2, 2, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 4, 6, 6, 15, 16, 16, 7, 7, 8, 8, 8, 8, 21, 22, 24, 25, 26, 26, 26, 27, 27, 11 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 1, 4, 1, 2, 3, 0, 1, 0, 1, 1, 1, 3, 2, 2, 2, 2, 3, 3, 1, 3, 1, 1 };
 
-// Parse Table: 42 states × 29 symbols
-const numStates = 42;
-const numSymbols = 29;
+// Parse Table: 43 states × 31 symbols
+const numStates = 43;
+const numSymbols = 31;
 
 const sparse = [numStates][]const i16{
-    &.{3,2,20,3},
-    &.{4,11,6,5,8,10,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
+    &.{20,2,21,3},
+    &.{23,5,24,4},
+    &.{3,15,4,17,5,9,6,6,8,16,11,7,12,14,17,12,18,13,19,11,26,8,27,10},
     &.{1,-1},
-    &.{4,17,5,16,6,5,8,10,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{1,-27,9,-27,13,-27,14,-27,26,18,27,19},
-    &.{1,-26,9,-26,10,21,12,20,13,-26,14,-26,26,-26,27,-26,28,-26},
-    &.{1,-8,9,-8,13,-8,14,-8},
-    &.{1,-17,9,-17,10,-17,12,-17,13,-17,14,-17,26,-17,27,-17,28,-17},
-    &.{4,22,6,5,8,10,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{1,-24,9,-24,13,-24,14,-24,26,-24,27,-24,28,23},
-    &.{1,-10,9,-10,10,-10,12,-10,13,-10,14,-10,26,-10,27,-10,28,-10},
     &.{1,-1},
-    &.{1,-18,9,-18,10,-18,12,-18,13,-18,14,-18,26,-18,27,-18,28,-18},
-    &.{4,25,6,5,8,10,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{1,-16,9,-16,10,-16,12,-16,13,-16,14,-16,26,-16,27,-16,28,-16},
-    &.{1,-1},
-    &.{1,-2,9,26},
-    &.{1,-4,9,-4},
-    &.{6,27,8,10,12,8,17,14,18,7,19,12,25,28},
-    &.{6,27,8,10,12,8,17,14,18,7,19,12,25,29},
-    &.{4,32,6,5,7,30,8,10,11,6,12,8,13,-15,15,31,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{4,33,6,5,8,10,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{13,34},
-    &.{6,35,8,10,12,8,17,14,18,7,19,12},
-    &.{1,-1},
-    &.{1,-3,9,-3,13,-3,14,-3},
-    &.{1,-6,4,36,6,5,8,10,9,-6,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{1,-26,9,-26,12,20,13,-26,14,-26,26,-26,27,-26,28,-26},
-    &.{1,-22,9,-22,13,-22,14,-22,26,-22,27,-22,28,23},
-    &.{1,-23,9,-23,13,-23,14,-23,26,-23,27,-23,28,23},
-    &.{13,37},
-    &.{13,-14},
-    &.{13,-13,14,39,16,38},
+    &.{4,20,6,6,8,16,11,7,12,14,17,12,18,13,19,11,26,8,27,10},
+    &.{1,-27,9,-27,10,22,12,21,13,-27,14,-27,28,-27,29,-27,30,-27},
     &.{1,-7,9,-7,13,-7,14,-7},
-    &.{1,-19,9,-19,10,-19,12,-19,13,-19,14,-19,26,-19,27,-19,28,-19},
-    &.{1,-25,9,-25,12,20,13,-25,14,-25,26,-25,27,-25,28,-25},
-    &.{1,-5,9,-5},
-    &.{1,-9,9,-9,10,-9,12,-9,13,-9,14,-9,26,-9,27,-9,28,-9},
+    &.{1,-28,9,-28,13,-28,14,-28,28,23,29,24},
+    &.{1,-2,9,25},
+    &.{1,-25,9,-25,13,-25,14,-25,28,-25,29,-25,30,26},
+    &.{1,-17,9,-17,10,-17,12,-17,13,-17,14,-17,28,-17,29,-17,30,-17},
+    &.{1,-15,9,-15,10,-15,12,-15,13,-15,14,-15,28,-15,29,-15,30,-15},
+    &.{1,-16,9,-16,10,-16,12,-16,13,-16,14,-16,28,-16,29,-16,30,-16},
+    &.{4,27,6,6,8,16,11,7,12,14,17,12,18,13,19,11,26,8,27,10},
+    &.{1,-19},
+    &.{1,-9,9,-9,10,-9,12,-9,13,-9,14,-9,28,-9,29,-9,30,-9},
+    &.{1,-3,9,-3},
+    &.{1,-1},
+    &.{1,-1},
+    &.{1,-21},
+    &.{4,30,6,6,7,28,8,16,11,7,12,14,13,-14,15,29,17,12,18,13,19,11,26,8,27,10},
+    &.{4,31,6,6,8,16,11,7,12,14,17,12,18,13,19,11,26,8,27,10},
+    &.{6,32,8,16,12,14,17,12,18,13,19,11,27,33},
+    &.{6,32,8,16,12,14,17,12,18,13,19,11,27,34},
+    &.{1,-5,4,35,6,6,8,16,9,-5,11,7,12,14,17,12,18,13,19,11,26,8,27,10},
+    &.{6,36,8,16,12,14,17,12,18,13,19,11},
+    &.{13,37},
+    &.{13,38},
+    &.{13,-13},
+    &.{13,-12,14,40,16,39},
+    &.{1,-6,9,-6,13,-6,14,-6},
+    &.{1,-27,9,-27,12,21,13,-27,14,-27,28,-27,29,-27,30,-27},
+    &.{1,-23,9,-23,13,-23,14,-23,28,-23,29,-23,30,26},
+    &.{1,-24,9,-24,13,-24,14,-24,28,-24,29,-24,30,26},
+    &.{1,-4,9,-4},
+    &.{1,-26,9,-26,12,21,13,-26,14,-26,28,-26,29,-26,30,-26},
+    &.{1,-18,9,-18,10,-18,12,-18,13,-18,14,-18,28,-18,29,-18,30,-18},
+    &.{1,-8,9,-8,10,-8,12,-8,13,-8,14,-8,28,-8,29,-8,30,-8},
+    &.{13,-10},
+    &.{4,41,6,6,8,16,11,7,12,14,17,12,18,13,19,11,26,8,27,10},
+    &.{13,-12,14,40,16,42},
     &.{13,-11},
-    &.{4,40,6,5,8,10,11,6,12,8,17,14,18,7,19,12,22,13,24,4,25,9},
-    &.{13,-13,14,39,16,41},
-    &.{13,-12},
 };
 
 const parseTable = blk: {
@@ -692,7 +694,7 @@ fn getStartState(startSym: u16) u16 {
     return 0;
 }
 
-const acceptRules = [_]u16{ 18, 19 };
+const acceptRules = [_]u16{ 18, 20 };
 
 fn isAcceptRule(ruleId: u16) bool {
     for (acceptRules) |ar| if (ruleId == ar) return true;
