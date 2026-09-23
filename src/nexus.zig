@@ -16,7 +16,7 @@ const Allocator = std.mem.Allocator;
 // The generated frontend parser for nexus.grammar itself. It lives alongside
 // nexus.zig so the tool can load its own grammar DSL through the same table-
 // driven machinery it emits for downstream languages.
-const frontend = @import("parser.zig");
+const frontend = @import("frontend/parser.zig");
 
 const version = "0.10.3";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads

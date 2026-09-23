@@ -9,7 +9,7 @@
 #   4. Adverse tests — bad grammars must produce errors
 #   5. Self-host S-expression golden — parse nexus.grammar through the
 #      generated frontend and diff canonical S-exp dump against
-#      test/golden/nexus.sexp; regenerate src/parser.zig and verify the
+#      test/golden/nexus.sexp; regenerate src/frontend/parser.zig and verify the
 #      bootstrap fixed point
 #   6. Lowerer negative shape tests — feed hand-crafted malformed Sexps
 #      to GrammarLowerer and assert each rejects with error.ShapeError
@@ -245,13 +245,13 @@ run_bootstrap_fp() {
         ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  bootstrap-fp — regen failed"
         return
     fi
-    if diff -q src/parser.zig "$tmp" >/dev/null 2>&1; then
-        say_pass "bootstrap-fp (src/parser.zig is a fixed point)"
+    if diff -q src/frontend/parser.zig "$tmp" >/dev/null 2>&1; then
+        say_pass "bootstrap-fp (src/frontend/parser.zig is a fixed point)"
         PASS=$((PASS + 1))
     else
         FAIL=$((FAIL + 1))
-        local lines=$(diff src/parser.zig "$tmp" | grep -c '^[<>]' || true)
-        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  bootstrap-fp — $lines lines drifted (run ./bin/nexus nexus.grammar src/parser.zig and commit)"
+        local lines=$(diff src/frontend/parser.zig "$tmp" | grep -c '^[<>]' || true)
+        ERRORS+=$'\n'"  ${C_RED}FAIL${C_RESET}  bootstrap-fp — $lines lines drifted (run ./bin/nexus nexus.grammar src/frontend/parser.zig and commit)"
     fi
 }
 
