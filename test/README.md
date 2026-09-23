@@ -63,6 +63,7 @@ optional:
 | `grammar` | the only `*.grammar` in the directory | grammar path |
 | `lang` | every `*.zig` in the directory | `@lang` module files (space-separated) |
 | `start` | the parser's first `parse*` method | start rule for `cases/*` |
+| `flags` | none | extra generator options, e.g. `--spans` |
 | `generator` | `current` | `legacy` generates with Nexus 0.10.3 instead of `bin/nexus` (for grammars still in the old format once 1.0 no longer reads it); `gen/`, `sexp/` and `determinism/` are then skipped |
 
 A case is any file in `cases/` except `*.tree`, `*.md` and `README*`; its

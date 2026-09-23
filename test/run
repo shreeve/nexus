@@ -33,12 +33,12 @@ TIMEOUT=${NEXUS_TEST_TIMEOUT:-60}
 # its @lang module files, optional test.conf, and cases/ + known/ inputs.
 # -----------------------------------------------------------------------------
 
-# suite_conf <dir>: sets GRAMMAR LANG START GENERATOR (absolute paths)
+# suite_conf <dir>: sets GRAMMAR LANG START GENERATOR FLAGS (absolute paths)
 suite_conf() {
-    local dir=$1 grammar="" lang="" start="" generator=current
+    local dir=$1 grammar="" lang="" start="" generator=current flags=""
     if [[ -f "$dir/test.conf" ]]; then
         # shellcheck disable=SC1091
-        eval "$(cd "$dir" && { source ./test.conf; declare -p grammar lang start generator 2>/dev/null; })"
+        eval "$(cd "$dir" && { source ./test.conf; declare -p grammar lang start generator flags 2>/dev/null; })"
     fi
     if [[ -z "$grammar" ]]; then
         grammar=$(cd "$dir" && ls ./*.grammar 2>/dev/null | head -1)
@@ -51,6 +51,7 @@ suite_conf() {
     for f in $lang; do LANG_FILES+=("$(cd "$dir" && cd "$(dirname "$f")" && echo "$(pwd)/$(basename "$f")")"); done
     START=$start
     GENERATOR=$generator
+    FLAGS=$flags
 }
 
 generator_bin() { # generator_bin <current|legacy>
@@ -79,7 +80,7 @@ build_suite() {
     suite_conf "$dir"
     local gen
     gen=$(generator_bin "$GENERATOR") || { printf '12\tlegacy nexus unavailable: %s\n' "$gen" >"$WORK/build/$key"; return; }
-    timeout "$TIMEOUT" "$LIB/build-grammar" "$gen" "$GRAMMAR" "$out" ${LANG_FILES[@]+"${LANG_FILES[@]}"}
+    NEXUS_FLAGS=$FLAGS timeout "$TIMEOUT" "$LIB/build-grammar" "$gen" "$GRAMMAR" "$out" ${LANG_FILES[@]+"${LANG_FILES[@]}"}
     rc=$?
     case $rc in
         0) ;;
