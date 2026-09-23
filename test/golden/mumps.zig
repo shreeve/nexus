@@ -1356,7 +1356,7 @@ const NodeStore = struct {
     chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
     len: u32 = 0,
 
-    const chunkLen = 1024;
+    const chunkLen = 128;
 
     inline fn add(self: *NodeStore, a: std.mem.Allocator, info: NodeInfo) !NodeId {
         const id = self.len;
@@ -1463,9 +1463,10 @@ pub const BaseParser = struct {
     // when it consumed none. A reduction then extends from its first
     // element's start to the end of the last token shifted (`lastEnd`),
     // and is empty when start >= end. With `elemEnds` (side-band labels or
-    // nested nodes) each entry's end is kept too.
-    starts: std.ArrayListUnmanaged(u32) = .empty,
-    ends: std.ArrayListUnmanaged(u32) = .empty,
+    // nested nodes) each entry's end is kept too. Both are indexed like
+    // `valueStack` and sized to its capacity (the stack top is its length).
+    starts: []u32 = &.{},
+    ends: []u32 = &.{},
     nodes: NodeStore = .{},
     sides: std.ArrayListUnmanaged(SideEntry) = .empty,
     reduction: Reduction = .{},
@@ -1478,12 +1479,13 @@ pub const BaseParser = struct {
 
     const ListSpare = struct { len: usize, capacity: usize };
 
-    /// The reduction in progress: its rule, the stack index of its first
-    /// element, its extent, and the first node id it built.
+    /// The reduction in progress: its rule and where it starts (it ends at
+    /// `lastEnd`); with `elemEnds`, also the stack index of its first
+    /// element and the first node id it built.
     const Reduction = struct {
         rule: u16 = 0,
+        start: u32 = 0,
         base: u32 = 0,
-        extent: Span = .empty,
         firstNode: NodeId = 0,
     };
 
@@ -1650,8 +1652,6 @@ pub const BaseParser = struct {
         if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
         if (nodeStore) {
-            self.starts.clearRetainingCapacity();
-            self.ends.clearRetainingCapacity();
             if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
         }
         if (hasTrivia) try self.skipTrivia();
@@ -1703,14 +1703,8 @@ pub const BaseParser = struct {
         self.valueStack.items[n] = value;
         self.stateStack.items.len = n + 2;
         self.stateStack.items[n + 1] = state;
-        if (nodeStore) {
-            self.starts.items.len = n + 1;
-            self.starts.items[n] = start;
-        }
-        if (elemEnds) {
-            self.ends.items.len = n + 1;
-            self.ends.items[n] = end;
-        }
+        if (nodeStore) self.starts[n] = start;
+        if (elemEnds) self.ends[n] = end;
     }
 
     fn growStacks(self: *BaseParser) !void {
@@ -1718,8 +1712,8 @@ pub const BaseParser = struct {
         try self.valueStack.ensureUnusedCapacity(a, 1);
         const capacity = self.valueStack.capacity;
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
-        if (nodeStore) try self.starts.ensureTotalCapacity(a, capacity);
-        if (elemEnds) try self.ends.ensureTotalCapacity(a, capacity);
+        if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
+        if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -1728,15 +1722,12 @@ pub const BaseParser = struct {
         const top = self.stateStack.items.len - len;
 
         if (nodeStore) {
-            self.reduction = .{
-                .rule = ruleId,
-                .base = @intCast(base),
-                .extent = .{
-                    .start = if (len > 0) self.starts.items[base] else self.current.pos,
-                    .end = self.lastEnd,
-                },
-                .firstNode = self.nodes.len,
-            };
+            self.reduction.rule = ruleId;
+            self.reduction.start = if (len > 0) self.starts[base] else self.current.pos;
+            if (elemEnds) {
+                self.reduction.base = @intCast(base);
+                self.reduction.firstNode = self.nodes.len;
+            }
         }
 
         // The action reads its elements in place on the value stack; the
@@ -1752,16 +1743,11 @@ pub const BaseParser = struct {
             self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
             self.stateStack.items[top] = @intCast(next);
-            if (nodeStore) {
-                self.starts.items.len = base + 1;
-                self.starts.items[base] = self.reduction.extent.start;
-            }
-            if (elemEnds) {
-                self.ends.items.len = base + 1;
-                self.ends.items[base] = self.lastEnd;
-            }
+            // starts[base] already holds the reduction's start (its first
+            // element's).
+            if (elemEnds) self.ends[base] = self.lastEnd;
         } else {
-            try self.pushEntry(@intCast(next), result, self.reduction.extent.start, self.lastEnd);
+            try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
     }
 
@@ -1788,6 +1774,11 @@ pub const BaseParser = struct {
     // Node store, spans, side-band roles
     // -------------------------------------------------------------------------
 
+    /// The span of the reduction in progress.
+    inline fn reductionSpan(self: *const BaseParser) Span {
+        return spanOf(.{ .start = self.reduction.start, .end = self.lastEnd });
+    }
+
     /// The span of an extent: empty at its start when it consumed no
     /// tokens.
     fn spanOf(extent: Span) Span {
@@ -1798,13 +1789,13 @@ pub const BaseParser = struct {
     fn elemsExtent(self: *const BaseParser, lo: usize, hi: usize) Span {
         if (!elemEnds) @compileError("element extents need elemEnds");
         const base = self.reduction.base;
-        return .{ .start = self.starts.items[base + lo], .end = self.ends.items[base + hi] };
+        return .{ .start = self.starts[base + lo], .end = self.ends[base + hi] };
     }
 
     /// A new node id for a list the current reduction builds.
     inline fn newNodeId(self: *BaseParser) NodeId {
         if (!nodeStore) return 0;
-        return self.addNode(spanOf(self.reduction.extent));
+        return self.addNode(self.reductionSpan());
     }
 
     inline fn addNode(self: *BaseParser, extent: Span) NodeId {
@@ -1894,15 +1885,20 @@ pub const BaseParser = struct {
         return .nil;
     }
 
+    /// Whether an untagged list can reach the tree (and so gets a node id)
+    /// or is only ever spread into another list (plumbing: no node id).
+    /// The generator decides per rule (see codegen/actions.zig).
+    const ListUse = enum { tree, spread };
+
     /// A list node of the current reduction over freshly built `items`.
-    inline fn node(self: *BaseParser, items: []const Sexp) Sexp {
-        return .{ .list = List.withId(items, self.newNodeId()) };
+    inline fn node(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
+        return .{ .list = List.withId(items, if (use == .tree) self.newNodeId() else 0) };
     }
 
     /// A list node over exactly `items` (fixed positions).
-    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
         const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// A nested node of the current reduction: its span covers just the
@@ -1918,7 +1914,7 @@ pub const BaseParser = struct {
     /// the reduction.
     fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
-            const at = self.reduction.extent.start;
+            const at = self.reduction.start;
             self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
         }
         return s;
@@ -1935,25 +1931,25 @@ pub const BaseParser = struct {
     }
 
     /// The default action: nothing, the one element, or an untagged list.
-    fn list(self: *BaseParser, pass: []Sexp) Sexp {
+    fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
         if (pass.len == 0) return .nil;
         if (pass.len == 1) return pass[0];
         const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// `()`: an empty list.
-    fn emptyList(self: *BaseParser) Sexp {
-        return self.node(&.{});
+    fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
+        return self.node(&.{}, use);
     }
 
     /// `[head, ...tail]`
-    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp) Sexp {
+    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
         const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// Start a list holding the items of `base` (a list, else nothing)
@@ -1977,7 +1973,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -1986,10 +1982,10 @@ pub const BaseParser = struct {
             }) catch return self.oomNil();
         }
         var id: NodeId = 0;
-        if (nodeStore) {
+        if (nodeStore and use == .tree) {
             if (self.extending != 0) {
                 id = self.extending;
-                self.nodes.at(id).* = .{ .span = spanOf(self.reduction.extent), .rule = self.reduction.rule };
+                self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
         self.extending = 0;
@@ -1997,10 +1993,10 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items);
+        return self.node(items, use);
     }
 
     /// `(tag items...)`
@@ -2009,7 +2005,7 @@ pub const BaseParser = struct {
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     /// `(tag ...spread)`
@@ -2019,7 +2015,7 @@ pub const BaseParser = struct {
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
@@ -2034,7 +2030,7 @@ pub const BaseParser = struct {
             out[1] = pos;
             @memcpy(out[2..], items[0..len]);
         }
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     // -------------------------------------------------------------------------
@@ -2401,8 +2397,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         0 => pass[0],
         1 => pass[0],
         2 => pass[0],
-        3 => self.spreadList(pass[0], pass[1]),
-        4 => self.emptyList(),
+        3 => self.spreadList(pass[0], pass[1], .spread),
+        4 => self.emptyList(.spread),
         5 => self.sexpSpread(.@"routine", pass[0]),
         6 => pass[0],
         7 => .nil,
@@ -2417,20 +2413,20 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         16 => self.sexp(.@"label", &.{pass[0], .nil, pass[2]}),
         17 => self.sexp(.@"label", &.{pass[0], pass[1], pass[3]}),
         18 => self.sexp(.@"label", &.{pass[0], .nil, pass[1]}),
-        19 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"label" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        20 => self.spreadList(pass[0], pass[1]),
-        21 => self.spreadList(pass[1], pass[2]),
-        22 => self.emptyList(),
+        19 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"label" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        20 => self.spreadList(pass[0], pass[1], .tree),
+        21 => self.spreadList(pass[1], pass[2], .spread),
+        22 => self.emptyList(.spread),
         23 => pass[0],
         24 => .nil,
         25 => pass[1],
-        26 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        27 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        28 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        29 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        30 => self.spreadList(pass[0], pass[1]),
-        31 => self.emptyList(),
-        32 => self.spreadList(pass[0], pass[1]),
+        26 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        27 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        28 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        29 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        30 => self.spreadList(pass[0], pass[1], .spread),
+        31 => self.emptyList(.spread),
+        32 => self.spreadList(pass[0], pass[1], .tree),
         33 => pass[0],
         34 => pass[0],
         35 => pass[0],
@@ -2463,58 +2459,58 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         62 => pass[0],
         63 => pass[0],
         64 => pass[0],
-        65 => self.spreadList(pass[0], pass[1]),
-        66 => self.emptyList(),
-        67 => self.spreadList(pass[0], pass[1]),
+        65 => self.spreadList(pass[0], pass[1], .spread),
+        66 => self.emptyList(.spread),
+        67 => self.spreadList(pass[0], pass[1], .tree),
         68 => pass[0],
         69 => self.sexp(.@"postcond", &.{pass[1]}),
-        70 => self.spreadList(pass[0], pass[1]),
-        71 => self.spreadList(pass[1], pass[2]),
-        72 => self.emptyList(),
-        73 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        70 => self.spreadList(pass[0], pass[1], .spread),
+        71 => self.spreadList(pass[1], pass[2], .spread),
+        72 => self.emptyList(.spread),
+        73 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         74 => self.sexpPosSpread(.@"set", pass[1], pass[2]),
         75 => self.sexp(.@"@name", &.{pass[1], pass[3]}),
         76 => self.sexp(.@"@args", &.{pass[1]}),
-        77 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        78 => self.spreadList(pass[0], pass[1]),
-        79 => self.spreadList(pass[1], pass[2]),
-        80 => self.emptyList(),
+        77 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        78 => self.spreadList(pass[0], pass[1], .spread),
+        79 => self.spreadList(pass[1], pass[2], .spread),
+        80 => self.emptyList(.spread),
         81 => self.sexpPosSpread(.@"setmulti", pass[4], pass[1]),
-        82 => self.spreadList(pass[0], pass[1]),
-        83 => self.spreadList(pass[1], pass[2]),
-        84 => self.emptyList(),
-        85 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"setfn" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); for (pass[5].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[8]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        82 => self.spreadList(pass[0], pass[1], .tree),
+        83 => self.spreadList(pass[1], pass[2], .spread),
+        84 => self.emptyList(.spread),
+        85 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"setfn" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); for (pass[5].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[8]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         86 => self.sexp(.@"setfn", &.{pass[1], pass[3], pass[6]}),
         87 => self.sexp(.@"setisv", &.{pass[1]}),
         88 => pass[0],
         89 => self.sexp(.@"@name", &.{pass[1]}),
-        90 => self.spreadList(pass[0], pass[1]),
-        91 => self.spreadList(pass[1], pass[2]),
-        92 => self.emptyList(),
+        90 => self.spreadList(pass[0], pass[1], .spread),
+        91 => self.spreadList(pass[1], pass[2], .spread),
+        92 => self.emptyList(.spread),
         93 => pass[0],
         94 => .nil,
-        95 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"new" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        95 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"new" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         96 => self.sexpPosSpread(.@"new", pass[1], pass[2]),
         97 => pass[0],
         98 => self.sexp(.@"intrinsic", &.{pass[1]}),
-        99 => self.spreadList(pass[0], pass[1]),
-        100 => self.spreadList(pass[1], pass[2]),
-        101 => self.emptyList(),
+        99 => self.spreadList(pass[0], pass[1], .spread),
+        100 => self.spreadList(pass[1], pass[2], .spread),
+        101 => self.emptyList(.spread),
         102 => self.sexpSpread(.@"exclusive", pass[1]),
         103 => self.sexp(.@"@args", &.{pass[1]}),
-        104 => self.spreadList(pass[0], pass[1]),
-        105 => self.spreadList(pass[1], pass[2]),
-        106 => self.emptyList(),
-        107 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"merge" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        104 => self.spreadList(pass[0], pass[1], .spread),
+        105 => self.spreadList(pass[1], pass[2], .spread),
+        106 => self.emptyList(.spread),
+        107 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"merge" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         108 => self.sexpPosSpread(.@"merge", pass[1], pass[2]),
-        109 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        109 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         110 => self.sexp(.@"@args", &.{pass[1]}),
-        111 => self.spreadList(pass[0], pass[1]),
-        112 => self.spreadList(pass[1], pass[2]),
-        113 => self.emptyList(),
+        111 => self.spreadList(pass[0], pass[1], .spread),
+        112 => self.spreadList(pass[1], pass[2], .spread),
+        113 => self.emptyList(.spread),
         114 => pass[0],
         115 => .nil,
-        116 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kill" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        116 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kill" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         117 => self.sexpPosSpread(.@"kill", pass[1], pass[2]),
         118 => pass[0],
         119 => self.sexpSpread(.@"exclusive", pass[1]),
@@ -2527,20 +2523,20 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         126 => self.sexp(.@"else", &.{}),
         127 => self.sexp(.@"for", &.{}),
         128 => self.sexpSpread(.@"for", pass[1]),
-        129 => self.spreadList(pass[0], pass[1]),
-        130 => self.spreadList(pass[1], pass[2]),
-        131 => self.emptyList(),
-        132 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        129 => self.spreadList(pass[0], pass[1], .spread),
+        130 => self.spreadList(pass[1], pass[2], .spread),
+        131 => self.emptyList(.spread),
+        132 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         133 => self.sexpPosSpread(.@"@name", pass[1], pass[3]),
         134 => self.sexp(.@"range", &.{pass[0], pass[2], pass[4]}),
         135 => self.sexp(.@"range", &.{pass[0], pass[2]}),
         136 => pass[0],
-        137 => self.spreadList(pass[0], pass[1]),
-        138 => self.spreadList(pass[1], pass[2]),
-        139 => self.emptyList(),
+        137 => self.spreadList(pass[0], pass[1], .spread),
+        138 => self.spreadList(pass[1], pass[2], .spread),
+        139 => self.emptyList(.spread),
         140 => pass[0],
         141 => .nil,
-        142 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"do" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        142 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"do" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         143 => self.sexpPosSpread(.@"do", pass[1], pass[2]),
         144 => self.sexp(.@"call", &.{pass[0]}),
         145 => self.sexp(.@"call", &.{pass[0], pass[1]}),
@@ -2551,15 +2547,15 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         150 => self.sexp(.@"call", &.{pass[0], .nil, pass[1]}),
         151 => self.sexp(.@"call", &.{pass[0], pass[1], pass[2]}),
         152 => self.sexp(.@"@args", &.{pass[1]}),
-        153 => self.spreadList(pass[0], pass[1]),
-        154 => self.spreadList(pass[1], pass[2]),
-        155 => self.emptyList(),
-        156 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"goto" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        153 => self.spreadList(pass[0], pass[1], .spread),
+        154 => self.spreadList(pass[1], pass[2], .spread),
+        155 => self.emptyList(.spread),
+        156 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"goto" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         157 => self.sexpPosSpread(.@"goto", pass[1], pass[2]),
-        158 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        159 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        160 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        161 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        158 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        159 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        160 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        161 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         162 => self.sexp(.@"@args", &.{pass[1]}),
         163 => self.sexp(.@"@ref", &.{pass[1]}),
         164 => self.sexp(.@"@ref", &.{pass[1], pass[3]}),
@@ -2572,78 +2568,78 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         171 => self.sexp(.@"quit", &.{pass[1]}),
         172 => self.sexp(.@"quit", &.{.nil, pass[1]}),
         173 => self.sexp(.@"quit", &.{pass[1], pass[2]}),
-        174 => self.spreadList(pass[0], pass[1]),
-        175 => self.spreadList(pass[1], pass[2]),
-        176 => self.emptyList(),
+        174 => self.spreadList(pass[0], pass[1], .spread),
+        175 => self.spreadList(pass[1], pass[2], .spread),
+        176 => self.emptyList(.spread),
         177 => pass[0],
         178 => .nil,
-        179 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"break" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        179 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"break" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         180 => self.sexpPosSpread(.@"break", pass[1], pass[2]),
-        181 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        182 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        183 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"hang" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        181 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        182 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        183 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"hang" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         184 => self.sexpPosSpread(.@"hang", pass[1], pass[2]),
         185 => self.sexp(.@"halt", &.{}),
         186 => self.sexp(.@"halt", &.{pass[1]}),
-        187 => self.spreadList(pass[0], pass[1]),
-        188 => self.spreadList(pass[1], pass[2]),
-        189 => self.emptyList(),
-        190 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"job" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        187 => self.spreadList(pass[0], pass[1], .spread),
+        188 => self.spreadList(pass[1], pass[2], .spread),
+        189 => self.emptyList(.spread),
+        190 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"job" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         191 => self.sexpPosSpread(.@"job", pass[1], pass[2]),
-        192 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        193 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        194 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        195 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[5]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        196 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        197 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        198 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        199 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[5]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        200 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        201 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        202 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        203 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        204 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        205 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        206 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        207 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        192 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        193 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        194 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        195 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[5]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        196 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        197 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        198 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        199 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[5]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        200 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        201 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        202 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        203 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        204 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        205 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        206 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        207 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         208 => self.sexp(.@"@args", &.{pass[1]}),
-        209 => self.emptyList(),
-        210 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        211 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        212 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        213 => self.spreadList(pass[0], pass[1]),
-        214 => self.spreadList(pass[1], pass[2]),
-        215 => self.emptyList(),
-        216 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"xecute" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        209 => self.emptyList(.tree),
+        210 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        211 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        212 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        213 => self.spreadList(pass[0], pass[1], .spread),
+        214 => self.spreadList(pass[1], pass[2], .spread),
+        215 => self.emptyList(.spread),
+        216 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"xecute" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         217 => self.sexpPosSpread(.@"xecute", pass[1], pass[2]),
-        218 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        219 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        220 => self.spreadList(pass[0], pass[1]),
-        221 => self.spreadList(pass[1], pass[2]),
-        222 => self.emptyList(),
-        223 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"view" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        218 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        219 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        220 => self.spreadList(pass[0], pass[1], .spread),
+        221 => self.spreadList(pass[1], pass[2], .spread),
+        222 => self.emptyList(.spread),
+        223 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"view" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         224 => self.sexpPosSpread(.@"view", pass[1], pass[2]),
-        225 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        226 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        227 => self.spreadList(pass[0], pass[1]),
-        228 => self.spreadList(pass[1], pass[2]),
-        229 => self.emptyList(),
-        230 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"open" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        225 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        226 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        227 => self.spreadList(pass[0], pass[1], .spread),
+        228 => self.spreadList(pass[1], pass[2], .spread),
+        229 => self.emptyList(.spread),
+        230 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"open" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         231 => self.sexpPosSpread(.@"open", pass[1], pass[2]),
-        232 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[6]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        233 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        234 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        235 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        236 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        237 => self.spreadList(pass[0], pass[1]),
-        238 => self.spreadList(pass[1], pass[2]),
-        239 => self.emptyList(),
-        240 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"use" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        232 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[6]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        233 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        234 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        235 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        236 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        237 => self.spreadList(pass[0], pass[1], .spread),
+        238 => self.spreadList(pass[1], pass[2], .spread),
+        239 => self.emptyList(.spread),
+        240 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"use" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         241 => self.sexpPosSpread(.@"use", pass[1], pass[2]),
-        242 => self.spreadList(pass[0], pass[1]),
-        243 => self.spreadList(pass[1], pass[2]),
-        244 => self.emptyList(),
-        245 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"read" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        242 => self.spreadList(pass[0], pass[1], .spread),
+        243 => self.spreadList(pass[1], pass[2], .spread),
+        244 => self.emptyList(.spread),
+        245 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"read" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         246 => self.sexpPosSpread(.@"read", pass[1], pass[2]),
         247 => pass[0],
         248 => self.sexpPosSpread(.@"/", pass[1], pass[3]),
@@ -2654,16 +2650,16 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         253 => self.sexp(.@"char", &.{pass[1]}),
         254 => self.sexp(.@"#", &.{pass[0], pass[2], pass[3]}),
         255 => self.sexp(.@"#", &.{pass[0], pass[2]}),
-        256 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        256 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         257 => pass[0],
         258 => self.sexp(.@"prompt", &.{pass[0]}),
         259 => self.sexp(.@"@args", &.{pass[1]}),
-        260 => self.spreadList(pass[0], pass[1]),
-        261 => self.spreadList(pass[1], pass[2]),
-        262 => self.emptyList(),
+        260 => self.spreadList(pass[0], pass[1], .spread),
+        261 => self.spreadList(pass[1], pass[2], .spread),
+        262 => self.emptyList(.spread),
         263 => pass[0],
         264 => .nil,
-        265 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"write" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        265 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"write" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         266 => self.sexpPosSpread(.@"write", pass[1], pass[2]),
         267 => pass[0],
         268 => self.sexpPosSpread(.@"/", pass[1], pass[3]),
@@ -2677,32 +2673,32 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         276 => pass[0],
         277 => .nil,
         278 => self.sexp(.@"?", &.{pass[1]}),
-        279 => self.spreadList(pass[0], pass[1]),
-        280 => self.emptyList(),
-        281 => self.spreadList(pass[0], pass[1]),
+        279 => self.spreadList(pass[0], pass[1], .spread),
+        280 => self.emptyList(.spread),
+        281 => self.spreadList(pass[0], pass[1], .spread),
         282 => self.sexpSpread(.@"posformat", pass[0]),
         283 => self.sexpPosSpread(.@"posformat", pass[1], pass[0]),
         284 => pass[0],
         285 => self.sexp(.@"?@", &.{pass[1]}),
-        286 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"close" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        286 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"close" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         287 => self.sexpPosSpread(.@"close", pass[1], pass[2]),
-        288 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        289 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        288 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        289 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         290 => pass[1],
         291 => pass[0],
-        292 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        293 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        292 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        293 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         294 => self.sexp(.@"attr", &.{pass[1], pass[3]}),
         295 => self.sexp(.@"keyword", &.{pass[1]}),
         296 => self.sexp(.@"attr", &.{pass[0], pass[2]}),
         297 => pass[0],
         298 => pass[1],
-        299 => self.spreadList(pass[0], pass[1]),
-        300 => self.spreadList(pass[1], pass[2]),
-        301 => self.emptyList(),
+        299 => self.spreadList(pass[0], pass[1], .spread),
+        300 => self.spreadList(pass[1], pass[2], .spread),
+        301 => self.emptyList(.spread),
         302 => pass[0],
         303 => .nil,
-        304 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        304 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         305 => self.sexpPosSpread(.@"lock", pass[1], pass[2]),
         306 => self.sexp(.@"lock=", &.{pass[0]}),
         307 => self.sexp(.@"lock=", &.{pass[0], pass[1]}),
@@ -2710,60 +2706,60 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         309 => self.sexp(.@"lock+", &.{pass[1], pass[2]}),
         310 => self.sexp(.@"lock-", &.{pass[1]}),
         311 => self.sexp(.@"lock-", &.{pass[1], pass[2]}),
-        312 => self.spreadList(pass[0], pass[1]),
-        313 => self.spreadList(pass[1], pass[2]),
-        314 => self.emptyList(),
-        315 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock+" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        316 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock+" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        317 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock-" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        318 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock-" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        319 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock=" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        320 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock=" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        312 => self.spreadList(pass[0], pass[1], .spread),
+        313 => self.spreadList(pass[1], pass[2], .spread),
+        314 => self.emptyList(.spread),
+        315 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock+" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        316 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock+" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        317 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock-" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        318 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock-" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        319 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock=" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        320 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock=" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"multi" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         321 => self.sexp(.@"@args", &.{pass[1]}),
         322 => pass[0],
         323 => pass[0],
         324 => self.sexp(.@"tstart", &.{}),
         325 => self.sexp(.@"tstart", &.{pass[1]}),
-        326 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"tstart" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        326 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"tstart" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         327 => self.sexpPosSpread(.@"tstart", pass[1], pass[2]),
-        328 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        329 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        328 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        329 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         330 => self.sexp(.@"params", &.{pass[1]}),
         331 => self.sexp(.@"@name", &.{pass[1]}),
-        332 => self.spreadList(pass[0], pass[1]),
-        333 => self.spreadList(pass[1], pass[2]),
-        334 => self.emptyList(),
-        335 => blk: { var out = self.extendList(pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        332 => self.spreadList(pass[0], pass[1], .tree),
+        333 => self.spreadList(pass[1], pass[2], .spread),
+        334 => self.emptyList(.spread),
+        335 => blk: { var out = self.extendList(pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
         336 => pass[0],
         337 => self.sexp(.@"*", &.{}),
         338 => pass[0],
         339 => .nil,
-        340 => blk: { var out = self.extendList(pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        340 => blk: { var out = self.extendList(pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
         341 => pass[0],
-        342 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        343 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        342 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        343 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         344 => self.sexp(.@"tcommit", &.{}),
         345 => self.sexp(.@"tcommit", &.{pass[1]}),
         346 => self.sexp(.@"trollback", &.{}),
         347 => self.sexp(.@"trollback", &.{pass[1]}),
         348 => self.sexp(.@"trestart", &.{}),
         349 => self.sexp(.@"trestart", &.{pass[1]}),
-        350 => self.spreadList(pass[0], pass[1]),
-        351 => self.spreadList(pass[1], pass[2]),
-        352 => self.emptyList(),
+        350 => self.spreadList(pass[0], pass[1], .spread),
+        351 => self.spreadList(pass[1], pass[2], .spread),
+        352 => self.emptyList(.spread),
         353 => pass[0],
         354 => .nil,
-        355 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zwrite" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        355 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zwrite" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         356 => self.sexpPosSpread(.@"zwrite", pass[1], pass[2]),
         357 => pass[0],
         358 => .nil,
-        359 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zbreak" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        359 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zbreak" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         360 => self.sexpPosSpread(.@"zbreak", pass[1], pass[2]),
         361 => self.sexp(.@"zhalt", &.{.nil, pass[1]}),
         362 => self.sexp(.@"zhalt", &.{pass[1], pass[2]}),
         363 => self.sexp(.@"zhalt", &.{}),
         364 => self.sexp(.@"zhalt", &.{pass[1]}),
-        365 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zkill" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        365 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zkill" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         366 => self.sexpPosSpread(.@"zkill", pass[1], pass[2]),
         367 => self.sexp(.@"ref", &.{pass[0]}),
         368 => self.sexp(.@"ref", &.{pass[0], pass[2]}),
@@ -2775,24 +2771,24 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         374 => self.sexp(.@"@name", &.{pass[1]}),
         375 => pass[0],
         376 => .nil,
-        377 => self.spreadList(pass[0], pass[1]),
-        378 => self.spreadList(pass[1], pass[2]),
-        379 => self.emptyList(),
+        377 => self.spreadList(pass[0], pass[1], .tree),
+        378 => self.spreadList(pass[1], pass[2], .spread),
+        379 => self.emptyList(.spread),
         380 => pass[0],
         381 => .nil,
         382 => pass[1],
         383 => self.sexp(.@"byref", &.{pass[1]}),
         384 => pass[0],
         385 => self.sexpPosSpread(.@"expr", pass[0], pass[1]),
-        386 => self.spreadList(pass[0], pass[1]),
-        387 => self.emptyList(),
-        388 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), if (pass[0] == .src) pass[0] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        386 => self.spreadList(pass[0], pass[1], .spread),
+        387 => self.emptyList(.spread),
+        388 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), if (pass[0] == .src) pass[0] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         389 => self.sexp(.@"?", &.{pass[1]}),
-        390 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"'?" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        390 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"'?" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         391 => self.sexp(.@"?@", &.{pass[1]}),
-        392 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"'?@" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        392 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"'?@" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         393 => pass[1],
-        394 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        394 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         395 => self.sexp(.@"@name", &.{pass[1]}),
         396 => pass[0],
         397 => pass[0],
@@ -2829,31 +2825,31 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         428 => pass[0],
         429 => pass[0],
         430 => pass[0],
-        431 => self.spreadList(pass[0], pass[1]),
-        432 => self.emptyList(),
-        433 => self.spreadList(pass[0], pass[1]),
+        431 => self.spreadList(pass[0], pass[1], .spread),
+        432 => self.emptyList(.spread),
+        433 => self.spreadList(pass[0], pass[1], .tree),
         434 => pass[0],
-        435 => self.spreadList(pass[0], pass[1]),
-        436 => self.emptyList(),
-        437 => self.spreadList(pass[0], pass[1]),
+        435 => self.spreadList(pass[0], pass[1], .spread),
+        436 => self.emptyList(.spread),
+        437 => self.spreadList(pass[0], pass[1], .tree),
         438 => self.sexp(.@"pat", &.{pass[0], pass[1], pass[3]}),
         439 => self.sexp(.@"pat", &.{pass[0], pass[1]}),
         440 => self.sexp(.@"pat", &.{pass[0], pass[2]}),
         441 => self.sexp(.@"pat", &.{pass[0]}),
         442 => self.sexp(.@"pat", &.{pass[0], pass[1], pass[3]}),
         443 => self.sexp(.@"pat", &.{pass[0], pass[1]}),
-        444 => self.spreadList(pass[0], pass[1]),
-        445 => self.spreadList(pass[1], pass[2]),
-        446 => self.emptyList(),
-        447 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"pat" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"alt" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        444 => self.spreadList(pass[0], pass[1], .spread),
+        445 => self.spreadList(pass[1], pass[2], .spread),
+        446 => self.emptyList(.spread),
+        447 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"pat" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"alt" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         448 => pass[0],
-        449 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        450 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        451 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        452 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        453 => self.emptyList(),
-        454 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        455 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        449 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        450 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        451 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        452 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        453 => self.emptyList(.tree),
+        454 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        455 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         456 => pass[0],
         457 => pass[0],
         458 => pass[0],
@@ -2875,10 +2871,10 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         474 => self.sexp(.@"gvar", &.{pass[6], .nil, pass[2], pass[4]}),
         475 => self.sexp(.@"gvar", &.{pass[6], pass[7], pass[2], pass[4]}),
         476 => self.sexp(.@"@ssvn", &.{pass[3], pass[5]}),
-        477 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[5] == .src) pass[5] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        478 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[5] == .src) pass[5] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[6]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        479 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[2] == .src) pass[2] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        480 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[2] == .src) pass[2] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        477 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[5] == .src) pass[5] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        478 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[5] == .src) pass[5] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[6]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        479 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[2] == .src) pass[2] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        480 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"ssvn" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[2] == .src) pass[2] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         481 => pass[1],
         482 => pass[0],
         483 => pass[0],
@@ -2890,23 +2886,23 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         489 => pass[0],
         490 => pass[0],
         491 => self.sexp(.@"extrinsic", &.{pass[2]}),
-        492 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        493 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        494 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        495 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        496 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        497 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        498 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        492 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        493 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        494 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        495 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        496 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        497 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        498 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         499 => self.sexp(.@"intrinsic", &.{pass[1], pass[3]}),
         500 => self.sexp(.@"intrinsic", &.{pass[1]}),
-        501 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        501 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         502 => pass[0],
         503 => self.sexp(.@"@name", &.{pass[1]}),
-        504 => self.spreadList(pass[0], pass[1]),
-        505 => self.spreadList(pass[1], pass[2]),
-        506 => self.emptyList(),
+        504 => self.spreadList(pass[0], pass[1], .spread),
+        505 => self.spreadList(pass[1], pass[2], .spread),
+        506 => self.emptyList(.spread),
         507 => self.sexpSpread(.@"select", pass[3]),
-        508 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        508 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         509 => self.sexp(.@"text", &.{pass[3]}),
         510 => self.sexp(.@"text", &.{pass[3]}),
         511 => self.sexp(.@"text", &.{pass[3], pass[5]}),
@@ -2915,9 +2911,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         514 => self.sexp(.@"text", &.{.nil, pass[4]}),
         515 => self.sexp(.@"text", &.{.nil, pass[4], pass[6]}),
         516 => self.sexp(.@"text", &.{.nil, .nil, pass[4]}),
-        517 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        518 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        519 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        517 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        518 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"intrinsic" }) catch break :blk self.oomNil(); out.append(self.allocator(), if (pass[1] == .src) pass[1] else .{ .src = .{ .pos = 0, .len = 0, .id = 0 } }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        519 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         520 => pass[0],
         521 => self.sexp(.@"routine", &.{pass[1]}),
         else => unreachable,

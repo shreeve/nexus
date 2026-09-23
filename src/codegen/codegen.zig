@@ -616,6 +616,7 @@ const Codegen = struct {
         const w = &out.writer;
         var arms: std.Io.Writer.Allocating = .init(self.allocator);
         const a = &arms.writer;
+        const reaches = try actions.treeSymbols(self.allocator, self.g);
         for (self.g.rules.items, 0..) |rule, ruleIdx| {
             if (self.g.isAcceptRule(@intCast(ruleIdx))) continue;
             if (self.options.emitComments) {
@@ -625,7 +626,7 @@ const Codegen = struct {
                 try a.writeAll("\n");
             }
             try a.print("        {d} => ", .{ruleIdx});
-            try actions.generateRuleAction(self.allocator, a, self.g, rule);
+            try actions.generateRuleAction(self.allocator, a, self.g, rule, reaches[rule.lhs]);
             try a.writeAll(",\n");
         }
         const body = arms.written();

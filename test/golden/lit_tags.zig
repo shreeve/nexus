@@ -309,7 +309,7 @@ const NodeStore = struct {
     chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
     len: u32 = 0,
 
-    const chunkLen = 1024;
+    const chunkLen = 128;
 
     inline fn add(self: *NodeStore, a: std.mem.Allocator, info: NodeInfo) !NodeId {
         const id = self.len;
@@ -416,9 +416,10 @@ pub const BaseParser = struct {
     // when it consumed none. A reduction then extends from its first
     // element's start to the end of the last token shifted (`lastEnd`),
     // and is empty when start >= end. With `elemEnds` (side-band labels or
-    // nested nodes) each entry's end is kept too.
-    starts: std.ArrayListUnmanaged(u32) = .empty,
-    ends: std.ArrayListUnmanaged(u32) = .empty,
+    // nested nodes) each entry's end is kept too. Both are indexed like
+    // `valueStack` and sized to its capacity (the stack top is its length).
+    starts: []u32 = &.{},
+    ends: []u32 = &.{},
     nodes: NodeStore = .{},
     sides: std.ArrayListUnmanaged(SideEntry) = .empty,
     reduction: Reduction = .{},
@@ -431,12 +432,13 @@ pub const BaseParser = struct {
 
     const ListSpare = struct { len: usize, capacity: usize };
 
-    /// The reduction in progress: its rule, the stack index of its first
-    /// element, its extent, and the first node id it built.
+    /// The reduction in progress: its rule and where it starts (it ends at
+    /// `lastEnd`); with `elemEnds`, also the stack index of its first
+    /// element and the first node id it built.
     const Reduction = struct {
         rule: u16 = 0,
+        start: u32 = 0,
         base: u32 = 0,
-        extent: Span = .empty,
         firstNode: NodeId = 0,
     };
 
@@ -587,8 +589,6 @@ pub const BaseParser = struct {
         if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
         if (nodeStore) {
-            self.starts.clearRetainingCapacity();
-            self.ends.clearRetainingCapacity();
             if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
         }
         if (hasTrivia) try self.skipTrivia();
@@ -640,14 +640,8 @@ pub const BaseParser = struct {
         self.valueStack.items[n] = value;
         self.stateStack.items.len = n + 2;
         self.stateStack.items[n + 1] = state;
-        if (nodeStore) {
-            self.starts.items.len = n + 1;
-            self.starts.items[n] = start;
-        }
-        if (elemEnds) {
-            self.ends.items.len = n + 1;
-            self.ends.items[n] = end;
-        }
+        if (nodeStore) self.starts[n] = start;
+        if (elemEnds) self.ends[n] = end;
     }
 
     fn growStacks(self: *BaseParser) !void {
@@ -655,8 +649,8 @@ pub const BaseParser = struct {
         try self.valueStack.ensureUnusedCapacity(a, 1);
         const capacity = self.valueStack.capacity;
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
-        if (nodeStore) try self.starts.ensureTotalCapacity(a, capacity);
-        if (elemEnds) try self.ends.ensureTotalCapacity(a, capacity);
+        if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
+        if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -665,15 +659,12 @@ pub const BaseParser = struct {
         const top = self.stateStack.items.len - len;
 
         if (nodeStore) {
-            self.reduction = .{
-                .rule = ruleId,
-                .base = @intCast(base),
-                .extent = .{
-                    .start = if (len > 0) self.starts.items[base] else self.current.pos,
-                    .end = self.lastEnd,
-                },
-                .firstNode = self.nodes.len,
-            };
+            self.reduction.rule = ruleId;
+            self.reduction.start = if (len > 0) self.starts[base] else self.current.pos;
+            if (elemEnds) {
+                self.reduction.base = @intCast(base);
+                self.reduction.firstNode = self.nodes.len;
+            }
         }
 
         // The action reads its elements in place on the value stack; the
@@ -689,16 +680,11 @@ pub const BaseParser = struct {
             self.valueStack.items[base] = result;
             self.stateStack.items.len = top + 1;
             self.stateStack.items[top] = @intCast(next);
-            if (nodeStore) {
-                self.starts.items.len = base + 1;
-                self.starts.items[base] = self.reduction.extent.start;
-            }
-            if (elemEnds) {
-                self.ends.items.len = base + 1;
-                self.ends.items[base] = self.lastEnd;
-            }
+            // starts[base] already holds the reduction's start (its first
+            // element's).
+            if (elemEnds) self.ends[base] = self.lastEnd;
         } else {
-            try self.pushEntry(@intCast(next), result, self.reduction.extent.start, self.lastEnd);
+            try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
     }
 
@@ -725,6 +711,11 @@ pub const BaseParser = struct {
     // Node store, spans, side-band roles
     // -------------------------------------------------------------------------
 
+    /// The span of the reduction in progress.
+    inline fn reductionSpan(self: *const BaseParser) Span {
+        return spanOf(.{ .start = self.reduction.start, .end = self.lastEnd });
+    }
+
     /// The span of an extent: empty at its start when it consumed no
     /// tokens.
     fn spanOf(extent: Span) Span {
@@ -735,13 +726,13 @@ pub const BaseParser = struct {
     fn elemsExtent(self: *const BaseParser, lo: usize, hi: usize) Span {
         if (!elemEnds) @compileError("element extents need elemEnds");
         const base = self.reduction.base;
-        return .{ .start = self.starts.items[base + lo], .end = self.ends.items[base + hi] };
+        return .{ .start = self.starts[base + lo], .end = self.ends[base + hi] };
     }
 
     /// A new node id for a list the current reduction builds.
     inline fn newNodeId(self: *BaseParser) NodeId {
         if (!nodeStore) return 0;
-        return self.addNode(spanOf(self.reduction.extent));
+        return self.addNode(self.reductionSpan());
     }
 
     inline fn addNode(self: *BaseParser, extent: Span) NodeId {
@@ -831,15 +822,20 @@ pub const BaseParser = struct {
         return .nil;
     }
 
+    /// Whether an untagged list can reach the tree (and so gets a node id)
+    /// or is only ever spread into another list (plumbing: no node id).
+    /// The generator decides per rule (see codegen/actions.zig).
+    const ListUse = enum { tree, spread };
+
     /// A list node of the current reduction over freshly built `items`.
-    inline fn node(self: *BaseParser, items: []const Sexp) Sexp {
-        return .{ .list = List.withId(items, self.newNodeId()) };
+    inline fn node(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
+        return .{ .list = List.withId(items, if (use == .tree) self.newNodeId() else 0) };
     }
 
     /// A list node over exactly `items` (fixed positions).
-    fn build(self: *BaseParser, items: []const Sexp) Sexp {
+    fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
         const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// A nested node of the current reduction: its span covers just the
@@ -855,7 +851,7 @@ pub const BaseParser = struct {
     /// the reduction.
     fn nestedEmpty(self: *BaseParser, s: Sexp) Sexp {
         if (nodeStore and s == .list and s.list.id != 0) {
-            const at = self.reduction.extent.start;
+            const at = self.reduction.start;
             self.nodes.at(s.list.id).span = .{ .start = at, .end = at };
         }
         return s;
@@ -872,25 +868,25 @@ pub const BaseParser = struct {
     }
 
     /// The default action: nothing, the one element, or an untagged list.
-    fn list(self: *BaseParser, pass: []Sexp) Sexp {
+    fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
         if (pass.len == 0) return .nil;
         if (pass.len == 1) return pass[0];
         const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// `()`: an empty list.
-    fn emptyList(self: *BaseParser) Sexp {
-        return self.node(&.{});
+    fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
+        return self.node(&.{}, use);
     }
 
     /// `[head, ...tail]`
-    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp) Sexp {
+    fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
         const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
-        return self.node(out);
+        return self.node(out, use);
     }
 
     /// Start a list holding the items of `base` (a list, else nothing)
@@ -914,7 +910,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -923,10 +919,10 @@ pub const BaseParser = struct {
             }) catch return self.oomNil();
         }
         var id: NodeId = 0;
-        if (nodeStore) {
+        if (nodeStore and use == .tree) {
             if (self.extending != 0) {
                 id = self.extending;
-                self.nodes.at(id).* = .{ .span = spanOf(self.reduction.extent), .rule = self.reduction.rule };
+                self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
         self.extending = 0;
@@ -934,10 +930,10 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items);
+        return self.node(items, use);
     }
 
     /// `(tag items...)`
@@ -946,7 +942,7 @@ pub const BaseParser = struct {
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     /// `(tag ...spread)`
@@ -956,7 +952,7 @@ pub const BaseParser = struct {
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
@@ -971,7 +967,7 @@ pub const BaseParser = struct {
             out[1] = pos;
             @memcpy(out[2..], items[0..len]);
         }
-        return self.node(out);
+        return self.node(out, .tree);
     }
 
     // -------------------------------------------------------------------------
@@ -1209,12 +1205,12 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"module", pass[0]),
-        1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
-        2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
+        1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
         3 => pass[0],
         4 => self.sexp(.@"set", &.{.{ .tag = .@"fixed" }, pass[0], .nil, pass[2]}),
         5 => self.sexp(.@"set", &.{.{ .tag = .@"move" }, pass[0], .nil, pass[2]}),
-        6 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
+        6 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         else => unreachable,
     };
 }

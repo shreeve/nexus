@@ -57,17 +57,75 @@ pub const TagSet = struct {
     }
 };
 
-/// Emit the Zig expression for `rule`'s action.
-pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule) !void {
-    var e = Emitter{ .allocator = allocator, .fixed = g.schema != null };
+/// Per symbol: whether its value can reach the tree, as opposed to only
+/// being spread into another list (or dropped). A value reaches the tree
+/// when it is the result of a start symbol, an item or head of a list
+/// (a list's items stay items when the list is spread into another), or
+/// passed through (`→ N`, or the one element of a default action) by a
+/// rule whose own value reaches the tree. An untagged list built by a rule
+/// whose left-hand side never reaches the tree is plumbing: it needs no
+/// node id (nothing can ask for its span).
+pub fn treeSymbols(allocator: Allocator, g: *const Grammar) ![]bool {
+    const tree = try allocator.alloc(bool, g.symbols.items.len);
+    @memset(tree, false);
+    for (g.startSymbols.items) |s| tree[s] = true;
+    for (g.rules.items) |rule| {
+        const action = rule.actionTree orelse {
+            if (rule.rhs.len > 1) for (rule.rhs) |s| {
+                tree[s] = true;
+            };
+            continue;
+        };
+        switch (action) {
+            .list => |l| markItems(tree, rule, l),
+            else => {},
+        }
+    }
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (g.rules.items) |rule| {
+            if (!tree[rule.lhs]) continue;
+            const pos: ?u16 = if (rule.actionTree) |action| switch (action) {
+                .pass => |p| p,
+                else => null,
+            } else if (rule.rhs.len == 1) 1 else null;
+            const p = pos orelse continue;
+            const s = rule.rhs[p - 1];
+            if (!tree[s]) {
+                tree[s] = true;
+                changed = true;
+            }
+        }
+    }
+    return tree;
+}
+
+fn markItems(tree: []bool, rule: Rule, l: ActionList) void {
+    switch (l.head) {
+        .ref => |h| markElem(tree, rule, h),
+        else => {},
+    }
+    for (l.items) |item| markElem(tree, rule, item.elem);
+}
+
+fn markElem(tree: []bool, rule: Rule, e: ActionElem) void {
+    switch (e) {
+        .ref => |p| tree[rule.rhs[p - 1]] = true,
+        .node => |n| markItems(tree, rule, n.*),
+        .spread, .symId, .nil, .tagLit => {},
+    }
+}
+
+/// Emit the Zig expression for `rule`'s action. `reachesTree` is whether
+/// the rule's value can reach the tree (see `treeSymbols`).
+pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool) !void {
+    var e = Emitter{ .allocator = allocator, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread" };
     const tree = rule.actionTree orelse {
         // Default: nothing, the one element, or an untagged list.
-        try writer.writeAll(switch (rule.rhs.len) {
-            0 => ".nil",
-            1 => "pass[0]",
-            else => "self.list(pass)",
-        });
-        return;
+        if (rule.rhs.len == 0) return writer.writeAll(".nil");
+        if (rule.rhs.len == 1) return writer.writeAll("pass[0]");
+        return writer.print("self.list(pass, {s})", .{e.use});
     };
     switch (tree) {
         .nil => try writer.writeAll(".nil"),
@@ -82,6 +140,9 @@ const Emitter = struct {
     fixed: bool,
     /// Counter for the labels of nested list blocks.
     depth: usize = 0,
+    /// The `ListUse` of the rule's own untagged list (`.tree` or
+    /// `.spread`); nested lists always reach the tree.
+    use: []const u8,
 
     /// The value-stack index of action position `pos` (1-based).
     fn index(pos: u16) usize {
@@ -89,11 +150,11 @@ const Emitter = struct {
     }
 
     fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
-        if (l.head == .none and l.items.len == 0) return w.writeAll(emptyList);
+        if (l.head == .none and l.items.len == 0) return w.print(emptyList, .{self.use});
 
         // (!A ...B): element A consed onto the list at B.
         if (l.head == .ref and l.items.len == 1 and l.items[0].elem == .spread and l.head.ref == .ref) {
-            return w.print("self.spreadList(pass[{d}], pass[{d}])", .{ index(l.head.ref.ref), index(l.items[0].elem.spread) });
+            return w.print("self.spreadList(pass[{d}], pass[{d}], {s})", .{ index(l.head.ref.ref), index(l.items[0].elem.spread), self.use });
         }
 
         if (self.fixed) return self.fixedList(w, l, label);
@@ -120,9 +181,15 @@ const Emitter = struct {
                 first = false;
                 try self.value(w, item.elem);
             }
-            return w.writeAll(listFromSliceSuffix);
+            return w.print(listFromSliceSuffix, .{self.listUse(l)});
         }
         try self.buildList(w, l, label);
+    }
+
+    /// The use of a list this rule builds: tagged lists are nodes; an
+    /// untagged one follows the rule.
+    fn listUse(self: *const Emitter, l: ActionList) []const u8 {
+        return if (l.head == .tag) ".tree" else self.use;
     }
 
     // --- Without a schema (0.10 output) --------------------------------------
@@ -228,10 +295,9 @@ const Emitter = struct {
             }
         }
         if (extend != null) {
-            try w.print("break :{s} self.keepList(&out); }}", .{label});
+            try w.print("break :{s} self.keepList(&out, {s}); }}", .{ label, self.listUse(l) });
         } else {
-            try w.print("break :{s} ", .{label});
-            try w.writeAll(listFromOwned ++ "; }");
+            try w.print("break :{s} " ++ listFromOwned ++ "; }}", .{ label, self.listUse(l) });
         }
     }
 
@@ -263,6 +329,9 @@ const Emitter = struct {
             .node => |n| {
                 // A nested node gets its own node id, spanning the
                 // pattern elements it references.
+                const use = self.use;
+                self.use = ".tree";
+                defer self.use = use;
                 self.depth += 1;
                 var buf: [16]u8 = undefined;
                 const label = try std.fmt.bufPrint(&buf, "blk{d}", .{self.depth});
@@ -350,14 +419,16 @@ fn writeTag(t: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
 // keeps a node store.
 // =============================================================================
 
-/// `listFromSlicePrefix` + comma-separated item expressions + suffix: a
-/// list node over exactly those items.
+/// `listFromSlicePrefix` + comma-separated item expressions + suffix (a
+/// format taking the list's `ListUse`): a list node over exactly those
+/// items.
 const listFromSlicePrefix = "self.build(&.{ ";
-const listFromSliceSuffix = " })";
-/// The list node holding the items of the ArrayList `out`.
-const listFromOwned = "self.finishList(&out)";
-/// `()`
-const emptyList = "self.emptyList()";
+const listFromSliceSuffix = " }}, {s})";
+/// The list node holding the items of the ArrayList `out` (format: the
+/// list's `ListUse`).
+const listFromOwned = "self.finishList(&out, {s})";
+/// `()` (format: its `ListUse`)
+const emptyList = "self.emptyList({s})";
 /// The items of the list in `pass[{d}]` (none for any other value).
 const itemsOf = "pass[{d}].items()";
 /// The value of a list block whose allocation failed.
