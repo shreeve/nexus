@@ -124,60 +124,22 @@ pub const BaseLexer = struct {
                     continue :dfa 10;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...'\'', ',', '.', ':'...'@', '['...'^', '`', '{'...0xFF => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    '\n' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"newline", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    '(' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    ')' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    '*' => {
-                        p += 1;
-                        continue :dfa 5;
-                    },
-                    '+' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"plus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    '-' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"minus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    '/' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"slash", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
-                    '0'...'9' => {
-                        p += 1;
-                        continue :dfa 9;
-                    },
+                    0x00...'\t', 0x0B...'\'', ',', '.', ':'...'@', '['...'^', '`', '{'...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"newline", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    ')' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '*' => { p += 1; continue :dfa 5; },
+                    '+' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"plus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '-' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"minus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '/' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"slash", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '0'...'9' => { p += 1; continue :dfa 9; },
                     else => {},
                 };
                 break :dfa;
             },
             5 => {
                 if (p < n) switch (src[p]) {
-                    '*' => {
-                        p += 1;
-                        self.pos = @intCast(p);
-                        return .{ .cat = .@"power", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
-                    },
+                    '*' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"power", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);

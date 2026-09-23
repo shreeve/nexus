@@ -891,13 +891,25 @@ pub const LexerGenerator = struct {
                     try self.write(inner3);
                     try self.emitSwitchItems(x.set);
                     if (self.isTerminal(x.t)) {
-                        try self.write(" => {\n");
-                        const deep = try std.fmt.allocPrint(a, "{s}    ", .{inner3});
-                        try self.print("{s}p += 1;\n", .{deep});
-                        try self.emitFinish(dfa.accept[x.t], "p", deep);
-                        try self.print("{s}}},\n", .{inner3});
+                        // The finish, on one line when it is at most three simple statements.
+                        var body: std.Io.Writer.Allocating = .init(a);
+                        const outer = self.w;
+                        self.w = &body.writer;
+                        try self.emitFinish(dfa.accept[x.t], "p", "");
+                        self.w = outer;
+                        const text = std.mem.trimEnd(u8, body.written(), "\n");
+                        if (std.mem.count(u8, text, "\n") <= 2 and std.mem.count(u8, text, "{") == std.mem.count(u8, text, ".{")) {
+                            const joined = try std.mem.replaceOwned(u8, a, text, "\n", " ");
+                            try self.print(" => {{ p += 1; {s} }},\n", .{joined});
+                        } else {
+                            try self.write(" => {\n");
+                            const deep = try std.fmt.allocPrint(a, "{s}    ", .{inner3});
+                            try self.print("{s}p += 1;\n", .{deep});
+                            try self.emitFinish(dfa.accept[x.t], "p", deep);
+                            try self.print("{s}}},\n", .{inner3});
+                        }
                     } else {
-                        try self.print(" => {{\n{s}    p += 1;\n{s}    continue :dfa {d};\n{s}}},\n", .{ inner3, inner3, x.t, inner3 });
+                        try self.print(" => {{ p += 1; continue :dfa {d}; }},\n", .{x.t});
                     }
                 }
                 if (covered.count() < 256) try self.print("{s}else => {{}},\n", .{inner3});
