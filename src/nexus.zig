@@ -6300,6 +6300,10 @@ const ParserGenerator = struct {
             \\
             \\    stateStack: std.ArrayListUnmanaged(u16) = .empty,
             \\    valueStack: std.ArrayListUnmanaged(Sexp) = .empty,
+            \\    /// Spare capacity of the lists `keepList` returned, by address.
+            \\    listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
+            \\
+            \\    const ListSpare = struct { len: usize, capacity: usize };
             \\
             \\    pub fn init(backingAllocator: std.mem.Allocator, source: []const u8) BaseParser {
             \\        var p = BaseParser{
@@ -6424,6 +6428,35 @@ const ParserGenerator = struct {
             \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
             \\        for (pass) |v| out.append(self.allocator(), v) catch return .nil;
             \\        return .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} };
+            \\    }
+            \\
+            \\    /// Start a list holding the items of `base` (a list, else
+            \\    /// nothing) for an action that appends to it. A list from
+            \\    /// `keepList` is reused with its spare capacity, so a
+            \\    /// left-recursive list grows in amortized O(1) per element.
+            \\    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayListUnmanaged(Sexp) {
+            \\        if (base != .list) return .empty;
+            \\        const items = base.list;
+            \\        if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
+            \\            if (spare.len == items.len) {
+            \\                _ = self.listSpare.remove(@intFromPtr(items.ptr));
+            \\                return .{ .items = @constCast(items), .capacity = spare.capacity };
+            \\            }
+            \\        };
+            \\        var out: std.ArrayListUnmanaged(Sexp) = .empty;
+            \\        try out.appendSlice(self.allocator(), items);
+            \\        return out;
+            \\    }
+            \\
+            \\    /// Finish a list from `extendList`, recording its spare capacity.
+            \\    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp)) Sexp {
+            \\        if (out.items.len > 0 and out.capacity > out.items.len) {
+            \\            self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
+            \\                .len = out.items.len,
+            \\                .capacity = out.capacity,
+            \\            }) catch {};
+            \\        }
+            \\        return .{ .list = out.items };
             \\    }
             \\
             \\    /// Build S-expression: (tag items...) with trailing nil trimming
@@ -7391,10 +7424,38 @@ const ParserGenerator = struct {
             return;
         }
 
-        // Complex case: inline list building (spreads, tilde transforms)
-        try writer.writeAll("blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; ");
-        for (elements.items) |elem| {
+        // Complex case: inline list building (spreads, tilde transforms).
+        //
+        // A template that starts with a spread, `(...N more...)`, extends
+        // the list at N: that is how a left-recursive list rule adds one
+        // element. Copying the whole list on every reduction would make
+        // parsing an n-element list O(n^2) in time and arena memory, so
+        // the list grows in place instead (`extendList` / `keepList`,
+        // amortized O(1) per element). This is safe because each reduced
+        // value is consumed exactly once, unless the template names N
+        // again, in which case the list is copied as before.
+        var extendElem: ?usize = null;
+        for (elements.items, 0..) |elem, idx| {
+            const work = self.stripKeyAndSuffix(elem);
+            if (work.len == 0) continue;
+            if (isSpread(work)) extendElem = idx;
+            break;
+        }
+        if (extendElem) |first| {
+            const digit = self.stripKeyAndSuffix(elements.items[first])[3];
+            for (elements.items[first + 1 ..]) |elem| {
+                if (positionDigit(self.stripKeyAndSuffix(elem)) == digit) extendElem = null;
+            }
+        }
+        if (extendElem) |first| {
+            const pos = self.stripKeyAndSuffix(elements.items[first])[3] - '1' + offset;
+            try writer.print("blk: {{ var out = self.extendList(pass[{d}]) catch break :blk .nil; ", .{pos});
+        } else {
+            try writer.writeAll("blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; ");
+        }
+        for (elements.items, 0..) |elem, idx| {
             if (elem.len == 0) continue;
+            if (extendElem == idx) continue;
             const work = self.stripKeyAndSuffix(elem);
             if (work.len == 0) continue;
 
@@ -7428,7 +7489,23 @@ const ParserGenerator = struct {
             }
         }
         try writer.writeAll("while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); ");
-        try writer.writeAll("break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; }");
+        if (extendElem != null) {
+            try writer.writeAll("break :blk self.keepList(&out); }");
+        } else {
+            try writer.writeAll("break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; }");
+        }
+    }
+
+    /// `...N` in an action template.
+    fn isSpread(work: []const u8) bool {
+        return work.len >= 4 and work[0] == '.' and work[1] == '.' and work[2] == '.';
+    }
+
+    /// The position digit an action element refers to (`N`, `~N`, `...N`).
+    fn positionDigit(work: []const u8) ?u8 {
+        if (work.len == 0) return null;
+        const digit = if (isSpread(work)) work[3] else if (work[0] == '~' and work.len > 1) work[1] else work[0];
+        return if (digit >= '1' and digit <= '9') digit else null;
     }
 
     fn stripKeyAndSuffix(self: *ParserGenerator, elem: []const u8) []const u8 {
