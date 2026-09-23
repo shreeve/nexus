@@ -1,0 +1,23 @@
+# error: repair_error_location.grammar:21:16:
+# error: NOPE is not a token the parser grammar uses
+#
+# An @repair line naming a token the grammar does not use is reported at
+# the name, like every other generation error.
+#
+# Today: the error has no line and column (`repair_error_location.grammar:
+# error: @repair: NOPE ...`). Found while documenting @repair.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "repair_error_location"
+@repair
+    holes      NOPE
+
+top! = IDENT                                → (top 1)

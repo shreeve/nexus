@@ -178,6 +178,7 @@ check_bug_suite() {
     suite_conf "$dir"
     local g=$GRAMMAR
     if grep -qE '^# error:' "$g"; then check_rejects "$g"; return; fi
+    if grep -qE '^# compile-error:' "$g"; then check_compile_error "$dir"; return; fi
     check_built "$dir" || return 1
     local out="$OUTROOT/build/$(key_of "$dir")" want
     cat "$out/gen.log" >>"$LOG"
@@ -194,6 +195,26 @@ check_bug_suite() {
         n=$((n + 1))
         check_case "$dir" "$file" "$start" "$tree" 0 || { REASON="$(basename "$file"): $REASON"; return 1; }
     done < <(list_cases "$dir/cases")
+    return 0
+}
+
+# check_compile_error <dir>: the grammar generates, but its parser must not
+# build: the compile log has every `# compile-error:` text.
+check_compile_error() {
+    local dir=$1 key st why want
+    key=$(key_of "$dir")
+    IFS=$'\t' read -r st why <"$WORK/build/$key" || { REASON="suite was not built"; return 1; }
+    local out="$OUTROOT/build/$key"
+    cat "$out/gen.log" "$out/compile.log" >>"$LOG" 2>/dev/null
+    case $st in
+        0) REASON="the parser builds (expected a compile error)"; return 1 ;;
+        11) ;;
+        *) REASON=$why; return 1 ;;
+    esac
+    while IFS= read -r want; do
+        [[ -z "$want" ]] && continue
+        if ! grep -qF -- "$want" "$out/compile.log"; then REASON="compile errors lack \"$want\": $(first_error "$out/compile.log")"; return 1; fi
+    done < <(directive compile-error "$GRAMMAR")
     return 0
 }
 
