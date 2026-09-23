@@ -163,6 +163,15 @@ directory of the grammar's `@lang` module (next to the grammar or in its
 `--start`, `--start-old`, `--start-new`. The exit status is 0 only when
 nothing differs.
 
+## Lexer fuzzing
+
+`test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N]` generates random
+lexer specs (random patterns, trailing context, the `skip` action), builds
+them all with `bin/nexus` into one driver, lexes random inputs, and compares
+every token (cat, pos, len, pre) with a reference computed from the lexer's
+definition using Python's `re.fullmatch`. The DFA itself is also checked
+against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
+
 ## Benchmarks
 
 `test/bench/run` builds nexus (ReleaseFast by default, `-O` to change,

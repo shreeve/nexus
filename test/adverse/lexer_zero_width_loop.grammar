@@ -1,0 +1,12 @@
+# A zero-width rule that never changes its guard would loop
+# error: lexer_zero_width_loop.grammar:9:1:
+# error: match forever
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+@ mode → word
+. → err
+@parser
+top! = WORD → 1

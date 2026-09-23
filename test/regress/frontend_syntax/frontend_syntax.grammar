@@ -13,7 +13,7 @@ tokens
     rbracket
     eof
     err
-[ \t]+                                      → skip
+# (spaces and tabs are consumed by the lexer as leading whitespace)
 '!'                                         → x
 ';'                                         → semi
 ','                                         → comma

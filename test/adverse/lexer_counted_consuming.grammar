@@ -1,0 +1,12 @@
+# counted() counts what follows the leading whitespace of a zero-width rule
+# error: lexer_counted_consuming.grammar:9:1:
+# error: zero-width rule
+@lexer
+state
+    mode = 0
+tokens
+    word, eof, err
+'@' → word, {mode = counted('.')}
+. → err
+@parser
+top! = WORD → 1

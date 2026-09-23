@@ -58,13 +58,26 @@ pub const Action = struct {
 
 /// Lexer rule
 pub const LexerRule = struct {
+    /// Pattern text (see lexgen/regex.zig); empty for a zero-width guard rule.
     pattern: []const u8,
     guards: []const Guard,
     token: []const u8,
     actions: []const Action,
+    /// `simd_to 'c'`: asserts the pattern scans a `[^c]*` run (accelerated).
     isSimd: bool = false,
     simdChar: ?u8 = null,
+    /// `skip` action: the match is discarded and scanning continues.
     isSkip: bool = false,
+    /// `hold`: the token is zero-width; the pattern is lookahead only.
+    hold: bool = false,
+    /// `rewind(n)`: the token is the first n bytes of the match.
+    rewind: ?u16 = null,
+    /// The one string the pattern matches, when it is a plain literal with
+    /// no trailing context (drives literal-to-token resolution).
+    literal: ?[]const u8 = null,
+    /// 1-based location of the pattern (or of the `@` of a zero-width rule).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// Complete lexer specification
@@ -75,6 +88,10 @@ pub const LexerSpec = struct {
     rules: std.ArrayListUnmanaged(LexerRule),
     codeFunctions: std.ArrayListUnmanaged([]const u8),
     langName: ?[]const u8 = null,
+    /// `after` block: assignments applied whenever a token consumes input.
+    afterActions: std.ArrayListUnmanaged(Action) = .empty,
+    /// Grammar file name, for diagnostics.
+    fileName: []const u8 = "",
 
     pub fn init(allocator: Allocator) LexerSpec {
         return .{
@@ -95,6 +112,7 @@ pub const LexerSpec = struct {
         self.tokens.deinit(self.allocator);
         self.rules.deinit(self.allocator);
         self.codeFunctions.deinit(self.allocator);
+        self.afterActions.deinit(self.allocator);
     }
 };
 
@@ -102,64 +120,46 @@ pub const LexerSpec = struct {
 // Lexer spec queries (used by parser code generation)
 // =============================================================================
 
+/// The token the lexer produces for exactly the one-byte text `ch`
+/// (see findTokenForLiteral).
 pub fn findTokenForChar(spec: *const LexerSpec, ch: u8) ?[]const u8 {
-    var guardedMatch: ?[]const u8 = null;
-    for (spec.rules.items) |rule| {
-        if (rule.isSkip) continue;
-
-        // Single-quoted char: 'X' or '\n'
-        if (rule.pattern.len >= 3 and rule.pattern[0] == '\'') {
-            const c: u8 = if (rule.pattern[1] == '\\' and rule.pattern.len >= 4)
-                switch (rule.pattern[2]) {
-                    'n' => '\n',
-                    'r' => '\r',
-                    't' => '\t',
-                    '\\' => '\\',
-                    '\'' => '\'',
-                    else => rule.pattern[2],
-                }
-            else
-                rule.pattern[1];
-            const close = if (rule.pattern[1] == '\\') @as(usize, 4) else @as(usize, 3);
-            if (c == ch and close <= rule.pattern.len) {
-                const after = std.mem.trim(u8, rule.pattern[close..], " \t");
-                if (after.len == 0) {
-                    if (rule.guards.len == 0) return rule.token;
-                    if (guardedMatch == null) guardedMatch = rule.token;
-                }
-            }
-        }
-
-        // Double-quoted single char: "X" (used when the char itself is a quote)
-        if (rule.pattern.len == 3 and rule.pattern[0] == '"' and rule.pattern[2] == '"') {
-            if (rule.pattern[1] == ch) {
-                if (rule.guards.len == 0) return rule.token;
-                if (guardedMatch == null) guardedMatch = rule.token;
-            }
-        }
-    }
-    return guardedMatch;
+    return findTokenForLiteral(spec, &[_]u8{ch});
 }
 
-pub fn findTokenForLiteral(spec: *const LexerSpec, literal: []const u8) ?[]const u8 {
-    for (spec.rules.items) |rule| {
-        if (rule.isSkip) continue;
-        if (rule.pattern.len >= 3 and rule.pattern[0] == '"') {
-            var i: usize = 1;
-            while (i < rule.pattern.len) : (i += 1) {
-                if (rule.pattern[i] == '\\' and i + 1 < rule.pattern.len) {
-                    i += 1;
-                    continue;
-                }
-                if (rule.pattern[i] == '"') break;
-            }
-            if (i < rule.pattern.len) {
-                const inner = rule.pattern[1..i];
-                if (std.mem.eql(u8, inner, literal)) return rule.token;
-            }
+/// The token of the rule whose pattern is exactly the literal `text`: the
+/// first unguarded such rule, else the first guarded one. `text` may carry
+/// the parser section's backslash escapes. Rules whose token is not the
+/// matched text (hold, rewind, trailing context, skip) never qualify.
+pub fn findTokenForLiteral(spec: *const LexerSpec, text: []const u8) ?[]const u8 {
+    var buf: [256]u8 = undefined;
+    var n: usize = 0;
+    var i: usize = 0;
+    while (i < text.len) : (i += 1) {
+        if (n == buf.len) return null;
+        var c = text[i];
+        if (c == '\\' and i + 1 < text.len) {
+            i += 1;
+            c = switch (text[i]) {
+                'n' => '\n',
+                'r' => '\r',
+                't' => '\t',
+                '0' => 0,
+                else => text[i],
+            };
         }
+        buf[n] = c;
+        n += 1;
     }
-    return null;
+    const lit = buf[0..n];
+    var guarded: ?[]const u8 = null;
+    for (spec.rules.items) |rule| {
+        const rl = rule.literal orelse continue;
+        if (rule.isSkip or rule.hold or rule.rewind != null) continue;
+        if (!std.mem.eql(u8, rl, lit)) continue;
+        if (rule.guards.len == 0) return rule.token;
+        if (guarded == null) guarded = rule.token;
+    }
+    return guarded;
 }
 
 // =============================================================================

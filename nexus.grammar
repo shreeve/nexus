@@ -71,7 +71,7 @@ tokens
     err
 
 # Whitespace (spaces and tabs only; the wrapper handles line breaks)
-[ \t\r]+                                    → skip
+[ \t\r]+                                    → skip, skip
 
 # Comments
 '#' [^\n]*                                  → comment

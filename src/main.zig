@@ -29,6 +29,7 @@ const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 test {
     _ = @import("frontend/lower.zig");
     _ = @import("semantics.zig");
+    _ = @import("lexgen/lexgen.zig");
     _ = @import("lr/lr.zig");
 }
 
@@ -162,13 +163,11 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         return;
     };
 
-    var lexerParser = LexerParser.init(allocator, sourceText[lexerStart + 6 ..]);
+    var lexerParser = LexerParser.init(allocator, sourceText, lexerStart + "@lexer".len, grammarFile);
     defer lexerParser.deinit();
 
-    lexerParser.parseLexerSection() catch |err| {
-        diag.err("lexer parse error at line {d}: {any}", .{ lexerParser.line, err });
-        return;
-    };
+    // Lexer-section and lexer-generation errors are reported where they occur.
+    lexerParser.parseLexerSection() catch std.process.exit(1);
 
     diag.info("   Lexer: {d} states, {d} tokens, {d} rules", .{
         lexerParser.spec.states.items.len,
@@ -182,9 +181,12 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     var lexerGen = LexerGenerator.init(allocator, &lexerParser.spec);
     defer lexerGen.deinit();
 
-    const lexerCode = lexerGen.generate() catch |err| {
-        diag.err("lexer generation failed: {any}", .{err});
-        return;
+    const lexerCode = lexerGen.generate() catch |err| switch (err) {
+        error.LexerGenerationError => std.process.exit(1),
+        else => {
+            diag.err("lexer generation failed: {any}", .{err});
+            std.process.exit(1);
+        },
     };
 
     // Parser section: parse it through the self-hosted frontend and lower the

@@ -1,7 +1,4 @@
 # The pattern '<' [a-z]+ '>' matches exactly that: `<abc>` is one token.
-#
-# Today: the rule is approximated by the identifier shape; it lexes `<abc`
-# (without the `>`) using [A-Za-z0-9_] instead of [a-z].
 # (architecture.md Appendix A: lexprobe.grammar; SPEC §5)
 
 @lexer

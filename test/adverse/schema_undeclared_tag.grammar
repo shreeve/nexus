@@ -15,7 +15,7 @@ tokens
     plus
     eof
     err
-[ \t]+                                      → skip
+# (spaces and tabs are consumed by the lexer as leading whitespace)
 '\n'                                        → newline
 '='                                         → eq
 ':'                                         → colon

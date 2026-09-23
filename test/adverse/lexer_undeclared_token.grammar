@@ -1,0 +1,12 @@
+# Rule tokens must be declared
+# error: lexer_undeclared_token.grammar:9:1:
+# error: not declared
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'+' → minus
+. → err
+@parser
+top! = WORD → 1

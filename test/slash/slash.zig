@@ -233,7 +233,7 @@ pub const Lexer = struct {
             // sigil. The auto-generated lexer dispatches `<` to a
             // single-char token before the multi-char heredoc patterns
             // get a chance, so we recover here.
-            if (tok.cat == .lt) {
+            if (tok.cat == .lt or tok.cat == .heredoc_open or tok.cat == .heredoc_open_lit) {
                 if (self.tryFuseHeredocOpen(tok)) |fused| {
                     self.last_cat = fused.cat;
                     return fused;

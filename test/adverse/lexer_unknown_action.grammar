@@ -1,0 +1,12 @@
+# Unknown actions are errors
+# error: lexer_unknown_action.grammar:9:15:
+# error: unknown lexer action
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'+' → plus, frob
+. → err
+@parser
+top! = WORD → 1

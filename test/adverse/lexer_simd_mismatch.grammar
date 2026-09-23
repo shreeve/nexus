@@ -1,0 +1,12 @@
+# simd_to must name the byte that ends a [^c]* run
+# error: lexer_simd_mismatch.grammar:9:1:
+# error: simd_to
+@lexer
+state
+    mode = 0
+tokens
+    word, num, plus, eof, err
+'#' [a-z]* → word, simd_to '\n'
+. → err
+@parser
+top! = WORD → 1

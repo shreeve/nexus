@@ -1,161 +1,120 @@
 //! Lexer code generation: turns a grammar.LexerSpec into the Zig source of
-//! `TokenCat`, `Token`, and the `Lexer`/`BaseLexer` struct with its
-//! `matchRules()` dispatch. Rule behavior is recognized from pattern shapes
-//! (see patterns.zig); emission is split across operators.zig and
-//! scanners.zig.
+//! `TokenCat`, `Token`, and the `Lexer`/`BaseLexer` struct.
+//!
+//! Every rule pattern is compiled (regex.zig) into one minimized DFA
+//! (automaton.zig) with a start state per guard configuration, and emitted
+//! as a direct-coded scanner: a labeled `switch` with one prong per DFA
+//! state that jumps between states with `continue`. Fast paths are derived
+//! from the automaton, not from token names: self-loops become tight loops
+//! (a range test, a comptime byte table, or a SIMD scan for `[^x]*`-style
+//! runs), and transitions into final states return the token in place.
+//!
+//! Token semantics (per `matchRules` call):
+//!   1. Spaces and tabs are skipped; their count (saturating at 255) is the
+//!      token's `pre`.
+//!   2. Zero-width rules (empty pattern, guards only) are tried in order.
+//!   3. At end of input the `eof` token is returned.
+//!   4. The longest match among the rules whose guards hold wins; ties go
+//!      to the earlier rule. No match: one byte becomes an `err` token.
+//!   5. The `after` assignments run, then the rule's actions; `hold`,
+//!      `rewind(n)` and trailing context `r1 / r2` shorten the token; a
+//!      `skip` action discards it (its bytes count toward `pre`).
 
 const std = @import("std");
+const diag = @import("../diag.zig");
 const grammar = @import("../grammar.zig");
 const LexerSpec = grammar.LexerSpec;
+const LexerRule = grammar.LexerRule;
 const Guard = grammar.Guard;
 const Action = grammar.Action;
 const Allocator = std.mem.Allocator;
 const version = @import("../version.zig").version;
-const patterns = @import("patterns.zig");
-const operators = @import("operators.zig");
-const scanners = @import("scanners.zig");
+const regex = @import("regex.zig");
+const automaton = @import("automaton.zig");
+const ByteSet = regex.ByteSet;
+
+test {
+    _ = regex;
+    _ = automaton;
+}
+
+/// Most distinct guard conditions over consuming rules (2^n start configurations).
+const maxGuardAtoms = 10;
+
+/// A self-loop that excludes at most this many bytes is scanned with SIMD.
+const maxSimdStops = 3;
+
+/// A transition class this wide into a looping state is tested before the
+/// state's switch.
+const hotClassMin = 16;
 
 pub const LexerGenerator = struct {
     allocator: Allocator,
     spec: *const LexerSpec,
     output: std.Io.Writer.Allocating,
+    /// Where emission goes (the output, or a scratch buffer).
+    w: *std.Io.Writer = undefined,
+    arena: std.heap.ArenaAllocator,
+    simdUsed: bool = false,
 
-    // Rules whose tokenization is emitted at the top of matchRules by
-    // generateMultiCharLiteralPreemption. generateOperatorSwitch skips
-    // these so the same multi-char literal isn't handled twice.
-    preemptedRules: std.ArrayListUnmanaged(usize) = .empty,
+    // Analysis results
+    /// Spec indices of the rules in the DFA (consuming rules), in priority order.
+    consuming: []u32 = &.{},
+    atoms: []Atom = &.{},
+    /// Start state for each configuration mask (2^atoms.len entries).
+    startOfMask: []u32 = &.{},
+    dfa: automaton.Dfa = undefined,
+    /// Token end for each consuming rule.
+    ends: []TokenEnd = &.{},
+    /// Byte tables emitted as `cls<N>` constants.
+    tables: std.ArrayListUnmanaged(ByteSet) = .empty,
+    /// States whose accepting rule must be saved before leaving them.
+    saves: []bool = &.{},
+
+    const Atom = struct { variable: []const u8, op: Guard.Op, value: i32 };
+
+    /// Where a consuming rule's token ends, relative to its match.
+    const TokenEnd = union(enum) {
+        whole,
+        /// Zero-width at the match start (`hold`).
+        start,
+        /// `start + n` (`rewind(n)`, or trailing context after a fixed-length head).
+        fromStart: u32,
+        /// `matchEnd - n` (trailing context of fixed length n).
+        fromEnd: u32,
+    };
 
     pub fn init(allocator: Allocator, spec: *const LexerSpec) LexerGenerator {
         return .{
             .allocator = allocator,
             .spec = spec,
             .output = .init(allocator),
+            .arena = std.heap.ArenaAllocator.init(allocator),
         };
     }
 
     pub fn deinit(self: *LexerGenerator) void {
         self.output.deinit();
-        self.preemptedRules.deinit(self.allocator);
+        self.arena.deinit();
     }
 
-    pub fn isRulePreempted(self: *const LexerGenerator, ruleIndex: usize) bool {
-        for (self.preemptedRules.items) |idx| {
-            if (idx == ruleIndex) return true;
-        }
-        return false;
+    fn write(self: *LexerGenerator, s: []const u8) !void {
+        try self.w.writeAll(s);
     }
 
-    pub fn write(self: *LexerGenerator, s: []const u8) !void {
-        try self.output.writer.writeAll(s);
+    fn print(self: *LexerGenerator, comptime fmt: []const u8, args: anytype) !void {
+        try self.w.print(fmt, args);
     }
 
-    pub fn print(self: *LexerGenerator, comptime fmt: []const u8, args: anytype) !void {
-        try self.output.writer.print(fmt, args);
-    }
-
-    pub fn emitGuardCondition(self: *LexerGenerator, guard: Guard) !void {
-        const isPre = std.mem.eql(u8, guard.variable, "pre");
-        const lhs = if (isPre) "wsCount" else guard.variable;
-        const prefix = if (isPre) "" else "self.";
-
-        if (guard.negated and guard.op == .truthy) {
-            try self.print("{s}{s} == 0", .{ prefix, lhs });
-        } else if (guard.op == .truthy) {
-            try self.print("{s}{s} != 0", .{ prefix, lhs });
-        } else {
-            const op: []const u8 = switch (guard.op) {
-                .gt => ">",
-                .lt => "<",
-                .eq => "==",
-                .ne => "!=",
-                .ge => ">=",
-                .le => "<=",
-                .truthy => unreachable,
-            };
-            try self.print("{s}{s} {s} {d}", .{ prefix, lhs, op, guard.value });
-        }
-    }
-
-    pub fn emitAllGuards(self: *LexerGenerator, guards: []const Guard) !void {
-        for (guards, 0..) |guard, i| {
-            if (i > 0) try self.write(" and ");
-            try self.emitGuardCondition(guard);
-        }
-    }
-
-    pub fn emitActions(self: *LexerGenerator, actions: []const Action, indent: []const u8) !void {
-        for (actions) |action| {
-            try self.write(indent);
-            switch (action.kind) {
-                .set => try self.print("self.{s} = {d};\n", .{ action.variable.?, action.value.? }),
-                .inc => try self.print("self.{s} += 1;\n", .{action.variable.?}),
-                .dec => try self.print("self.{s} -= 1;\n", .{action.variable.?}),
-                .counted => {
-                    const ch = patterns.charToZigLiteral(action.char.?);
-                    try self.print("{{ var count: u8 = 0; while (self.pos < self.source.len and self.source[self.pos] == {s}) {{ self.pos += 1; count +|= 1; while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) self.pos += 1; }} self.{s} = count; }}\n", .{ ch.buf[0..ch.len], action.variable.? });
-                },
-            }
-        }
-    }
-
-    pub fn emitTokenReturn(self: *LexerGenerator, keyword: []const u8, token: []const u8, charCount: u8) !void {
-        try self.print("                    {s} Token{{ .cat = .@\"{s}\", .pre = wsCount, .pos = start, .len = {d} }};\n", .{ keyword, token, charCount });
-    }
-
-    /// Find the state variable that complex rules set for a given character.
-    /// Used to determine which state variable an @code function affects.
-    fn findCodeFnStateVar(self: *LexerGenerator, firstChar: u8) ?[]const u8 {
-        for (self.spec.rules.items) |rule| {
-            if (patterns.parseLiteralPattern(rule.pattern) != null) continue;
-            if (rule.pattern.len == 0) continue;
-            var startsWith: ?u8 = null;
-            if (rule.pattern.len >= 3 and (rule.pattern[0] == '\'' or rule.pattern[0] == '"')) {
-                startsWith = rule.pattern[1];
-            }
-            if (startsWith) |sw| {
-                if (sw != firstChar) continue;
-            } else continue;
-            for (rule.actions) |action| {
-                if (action.kind == .set and action.variable != null) return action.variable;
-            }
-        }
-        return null;
-    }
-
-    pub fn emitCharSetCondition(self: *LexerGenerator, chars: [256]bool, varName: []const u8) !void {
-        var ranges: [128]struct { lo: u8, hi: u8 } = undefined;
-        var rangeCount: usize = 0;
-        var i: u16 = 0;
-        while (i < 256) {
-            if (chars[i]) {
-                const lo: u8 = @intCast(i);
-                while (i < 256 and chars[i]) i += 1;
-                const hi: u8 = @intCast(i - 1);
-                ranges[rangeCount] = .{ .lo = lo, .hi = hi };
-                rangeCount += 1;
-            } else {
-                i += 1;
-            }
-        }
-        if (rangeCount == 0) {
-            try self.write("false");
-            return;
-        }
-        for (ranges[0..rangeCount], 0..) |rng, ri| {
-            if (ri > 0) try self.write(" or ");
-            if (rng.lo == rng.hi) {
-                const lit = patterns.charToZigLiteral(rng.lo);
-                try self.print("{s} == '{s}'", .{ varName, lit.buf[0..lit.len] });
-            } else {
-                const loLit = patterns.charToZigLiteral(rng.lo);
-                const hiLit = patterns.charToZigLiteral(rng.hi);
-                try self.print("({s} >= '{s}' and {s} <= '{s}')", .{ varName, loLit.buf[0..loLit.len], varName, hiLit.buf[0..hiLit.len] });
-            }
-        }
+    fn fail(self: *LexerGenerator, rule: *const LexerRule, offset: usize, comptime fmt: []const u8, args: anytype) error{LexerGenerationError} {
+        diag.errLine(self.spec.fileName, rule.line, rule.col + @as(u32, @intCast(offset)), fmt, args);
+        return error.LexerGenerationError;
     }
 
     pub fn generate(self: *LexerGenerator) ![]const u8 {
-        // Header
+        self.w = &self.output.writer;
+        try self.analyze();
+
         try self.print("//! Generated by nexus v{s} — do not edit\n", .{version});
         try self.write(
             \\
@@ -163,20 +122,260 @@ pub const LexerGenerator = struct {
             \\
             \\
         );
-
-        // Generate TokenCat enum
-        try self.generateTokenCat();
-
-        // Generate Token struct
-        try self.generateTokenStruct();
-
-        // Generate Lexer struct
-        try self.generateLexerStruct();
-
+        try self.emitTokenCat();
+        try self.emitTokenStruct();
+        try self.emitLexerStruct();
         return self.output.toOwnedSlice();
     }
 
-    fn generateTokenCat(self: *LexerGenerator) !void {
+    // =========================================================================
+    // Analysis
+    // =========================================================================
+
+    fn analyze(self: *LexerGenerator) !void {
+        const a = self.arena.allocator();
+        const rules = self.spec.rules.items;
+
+        var consuming: std.ArrayListUnmanaged(u32) = .empty;
+        var ends: std.ArrayListUnmanaged(TokenEnd) = .empty;
+        var fulls: std.ArrayListUnmanaged(*const regex.Node) = .empty;
+        for (rules, 0..) |*r, i| {
+            if (r.pattern.len == 0) {
+                try self.checkZeroWidth(r);
+                continue;
+            }
+            var d: regex.Diagnostic = .{};
+            const p = regex.parse(a, r.pattern, &d) catch |e| switch (e) {
+                error.OutOfMemory => return error.OutOfMemory,
+                error.InvalidPattern => return self.fail(r, d.offset, "{s}", .{d.message}),
+            };
+            const full = try p.full(a);
+            try ends.append(a, try self.checkConsuming(r, p, full));
+            try consuming.append(a, @intCast(i));
+            try fulls.append(a, full);
+        }
+        self.consuming = consuming.items;
+        self.ends = ends.items;
+
+        // Guard atoms of consuming rules, and the live rules per configuration.
+        var atoms: std.ArrayListUnmanaged(Atom) = .empty;
+        for (self.consuming) |ri| {
+            for (rules[ri].guards) |g| {
+                const at = atomOf(g);
+                for (atoms.items) |x| {
+                    if (std.mem.eql(u8, x.variable, at.variable) and x.op == at.op and x.value == at.value) break;
+                } else try atoms.append(a, at);
+            }
+        }
+        if (atoms.items.len > maxGuardAtoms) {
+            return self.fail(&rules[self.consuming[0]], 0, "rules use {d} distinct guard conditions; at most {d} are supported", .{ atoms.items.len, maxGuardAtoms });
+        }
+        self.atoms = atoms.items;
+
+        const masks = @as(usize, 1) << @intCast(self.atoms.len);
+        var liveSets: std.ArrayListUnmanaged([]const u32) = .empty;
+        self.startOfMask = try a.alloc(u32, masks);
+        var live: std.ArrayListUnmanaged(u32) = .empty;
+        for (0..masks) |mask| {
+            live.clearRetainingCapacity();
+            for (self.consuming, 0..) |ri, k| {
+                if (self.guardsHold(rules[ri].guards, mask)) try live.append(a, @intCast(k));
+            }
+            const idx = for (liveSets.items, 0..) |ls, j| {
+                if (std.mem.eql(u32, ls, live.items)) break j;
+            } else blk: {
+                try liveSets.append(a, try a.dupe(u32, live.items));
+                break :blk liveSets.items.len - 1;
+            };
+            self.startOfMask[mask] = @intCast(idx);
+        }
+
+        self.dfa = automaton.build(a, .{ .patterns = fulls.items, .starts = liveSets.items }) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.AutomatonTooLarge => return self.fail(&rules[self.consuming[0]], 0, "the lexer automaton is too large (bounded repeats expand; reduce {{n,m}} counts)", .{}),
+        };
+        if (self.dfa.numStates > std.math.maxInt(u16)) {
+            return self.fail(&rules[self.consuming[0]], 0, "the lexer DFA has {d} states; at most 65535 are supported", .{self.dfa.numStates});
+        }
+        for (self.startOfMask) |*s| s.* = self.dfa.starts[s.*];
+
+        // A rule whose pattern cannot win anywhere is reported: every rule
+        // must be able to produce its token in some configuration.
+        try self.checkReachable(fulls.items);
+
+        self.saves = try a.alloc(bool, self.dfa.numStates);
+        for (0..self.dfa.numStates) |s| self.saves[s] = self.needsSave(@intCast(s));
+    }
+
+    fn atomOf(g: Guard) Atom {
+        return switch (g.op) {
+            .truthy => .{ .variable = g.variable, .op = .ne, .value = 0 },
+            else => .{ .variable = g.variable, .op = g.op, .value = g.value },
+        };
+    }
+
+    fn atomIndex(self: *const LexerGenerator, at: Atom) usize {
+        for (self.atoms, 0..) |x, i| {
+            if (std.mem.eql(u8, x.variable, at.variable) and x.op == at.op and x.value == at.value) return i;
+        }
+        unreachable;
+    }
+
+    fn guardsHold(self: *const LexerGenerator, guards: []const Guard, mask: usize) bool {
+        for (guards) |g| {
+            const bit = (mask >> @intCast(self.atomIndex(atomOf(g)))) & 1 != 0;
+            if (bit == g.negated) return false;
+        }
+        return true;
+    }
+
+    /// Is some guard of the rule false when `pre` is 0?
+    fn requiresWhitespace(guards: []const Guard) bool {
+        for (guards) |g| {
+            if (!std.mem.eql(u8, g.variable, "pre")) continue;
+            const at = atomOf(g);
+            const holdsAtZero = switch (at.op) {
+                .eq => 0 == at.value,
+                .ne => 0 != at.value,
+                .gt => 0 > at.value,
+                .lt => 0 < at.value,
+                .ge => 0 >= at.value,
+                .le => 0 <= at.value,
+                .truthy => unreachable,
+            };
+            if (holdsAtZero == g.negated) return true;
+        }
+        return false;
+    }
+
+    /// Does an action assign a state variable that one of the guards tests?
+    fn changesGuardedState(r: *const LexerRule) bool {
+        for (r.actions) |act| {
+            const v = act.variable orelse continue;
+            if (std.mem.eql(u8, v, "pre")) continue;
+            for (r.guards) |g| if (std.mem.eql(u8, g.variable, v)) return true;
+        }
+        return false;
+    }
+
+    fn hasCounted(r: *const LexerRule) bool {
+        for (r.actions) |act| if (act.kind == .counted) return true;
+        return false;
+    }
+
+    fn checkZeroWidth(self: *LexerGenerator, r: *const LexerRule) !void {
+        if (r.rewind != null) return self.fail(r, 0, "rewind(n) needs a pattern; a rule without one is already zero-width", .{});
+        if (r.isSimd) return self.fail(r, 0, "simd_to needs a pattern with a [^c]* run", .{});
+        if (r.isSkip) return self.fail(r, 0, "a zero-width rule cannot skip", .{});
+        if (r.hold and hasCounted(r)) return self.fail(r, 0, "a held rule consumes nothing, so counted() has nothing to count", .{});
+        const consumesWs = !r.hold and requiresWhitespace(r.guards);
+        if (!consumesWs and !changesGuardedState(r)) {
+            return self.fail(r, 0, "this zero-width rule would match forever: it must require whitespace (a guard false at pre = 0) or assign a state variable its guards test", .{});
+        }
+    }
+
+    fn checkConsuming(self: *LexerGenerator, r: *const LexerRule, p: regex.Pattern, full: *const regex.Node) !TokenEnd {
+        const first = regex.firstSet(full);
+        var ws: ByteSet = .{};
+        ws.add(' ');
+        ws.add('\t');
+        if (first.subsetOf(ws)) {
+            return self.fail(r, 0, "this pattern can only start with a space or tab, which the lexer always consumes first as leading whitespace (pre); use a zero-width rule guarded by pre instead", .{});
+        }
+        if (p.trail == null and regex.nullable(p.main)) {
+            return self.fail(r, 0, "this pattern matches the empty string; a token must consume at least one byte (use + rather than *, or a zero-width rule)", .{});
+        }
+        if (r.isSimd) {
+            const c = r.simdChar.?;
+            if (!hasScanLoop(full, c)) return self.fail(r, 0, "simd_to '{f}' does not correspond to a run of bytes other than it (such as [^{f}]*) in the pattern", .{ std.zig.fmtChar(c), std.zig.fmtChar(c) });
+        }
+        var end: TokenEnd = .whole;
+        if (p.trail) |t| {
+            if (r.rewind != null) return self.fail(r, 0, "use either trailing context '/' or rewind(n), not both", .{});
+            if (regex.nullable(p.main) and regex.fixedLen(p.main) != 0) {
+                return self.fail(r, 0, "the token before '/' can be empty; write it so it always consumes a byte (or use hold for a zero-width token)", .{});
+            }
+            if (regex.fixedLen(p.main)) |k| {
+                end = if (k == 0) .start else .{ .fromStart = k };
+            } else if (regex.fixedLen(t)) |k| {
+                end = .{ .fromEnd = k };
+            } else {
+                return self.fail(r, 0, "trailing context needs a fixed-length token or a fixed-length context after '/'", .{});
+            }
+        }
+        if (r.rewind) |n| {
+            const minLen = regex.minLen(full);
+            if (n > minLen) return self.fail(r, 0, "rewind({d}) exceeds the shortest match of the pattern ({d} bytes)", .{ n, minLen });
+            end = if (n == 0) .start else .{ .fromStart = n };
+        }
+        if (r.hold) end = .start;
+        if (hasCounted(r)) return self.fail(r, 0, "counted() belongs on a zero-width rule (no pattern), where it counts the bytes after the leading whitespace", .{});
+        if (end == .start or (end == .fromStart and end.fromStart == 0)) {
+            if (r.isSkip) return self.fail(r, 0, "a zero-width token cannot be skipped", .{});
+            if (r.guards.len == 0 or !changesGuardedState(r)) {
+                return self.fail(r, 0, "this zero-width rule would match forever: it must assign a state variable its guards test", .{});
+            }
+        }
+        return end;
+    }
+
+    fn hasScanLoop(n: *const regex.Node, c: u8) bool {
+        return switch (n.*) {
+            .empty, .set => false,
+            .concat, .alt => |kids| for (kids) |k| {
+                if (hasScanLoop(k, c)) break true;
+            } else false,
+            .repeat => |r| (r.max == null and r.sub.* == .set and !r.sub.set.has(c) and r.sub.set.count() >= 256 - maxSimdStops) or hasScanLoop(r.sub, c),
+        };
+    }
+
+    /// Every consuming rule must win for some input in some configuration;
+    /// a rule shadowed everywhere is dead code in the grammar.
+    fn checkReachable(self: *LexerGenerator, fulls: []const *const regex.Node) !void {
+        const a = self.arena.allocator();
+        const winners = try a.alloc(bool, self.consuming.len);
+        @memset(winners, false);
+        for (self.dfa.accept) |acc| {
+            if (acc != automaton.none) winners[acc] = true;
+        }
+        for (winners, 0..) |w, k| {
+            if (w) continue;
+            const r = &self.spec.rules.items[self.consuming[k]];
+            // Name the rule that wins a shortest text this one matches, in a
+            // configuration where this one is live.
+            const mask = for (self.startOfMask, 0..) |_, m| {
+                if (self.guardsHold(r.guards, m)) break m;
+            } else return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
+            var single = try automaton.build(a, .{ .patterns = fulls[k .. k + 1], .starts = &.{&[_]u32{0}} });
+            const text = (try single.shortestAccepted(a, 0)).?;
+            const m = self.dfa.longestMatchFrom(self.startOfMask[mask], text).?;
+            const winner = &self.spec.rules.items[self.consuming[m.rule]];
+            return self.fail(r, 0, "this rule can never match: on every text it matches, an earlier rule matches as much (e.g. \"{f}\" goes to the rule on line {d}; longest match, ties to the earlier rule)", .{ std.zig.fmtString(text), winner.line });
+        }
+    }
+
+    /// An accepting state must record its rule before moving on only if it
+    /// can step into a non-accepting state (where scanning may then fail).
+    fn needsSave(self: *const LexerGenerator, s: u32) bool {
+        if (self.dfa.accept[s] == automaton.none) return false;
+        const nc = self.dfa.classes.count;
+        for (0..nc) |c| {
+            const t = self.dfa.trans[s * nc + c];
+            if (t != automaton.none and t != s and self.dfa.accept[t] == automaton.none) return true;
+        }
+        return false;
+    }
+
+    // =========================================================================
+    // Emission: types
+    // =========================================================================
+
+    fn declaresSkip(self: *const LexerGenerator) bool {
+        for (self.spec.tokens.items) |t| if (std.mem.eql(u8, t.name, "skip")) return true;
+        return false;
+    }
+
+    fn emitTokenCat(self: *LexerGenerator) !void {
         try self.write(
             \\// =============================================================================
             \\// TOKEN CATEGORIES
@@ -185,33 +384,29 @@ pub const LexerGenerator = struct {
             \\pub const TokenCat = enum(u8) {
             \\
         );
-
-        for (self.spec.tokens.items) |tok| {
-            try self.print("    @\"{s}\",\n", .{tok.name});
+        for (self.spec.tokens.items) |tok| try self.print("    @\"{s}\",\n", .{tok.name});
+        if (!self.declaresSkip()) {
+            try self.write(
+                \\
+                \\    // Built in: the token of `→ skip` rules (returned to the lang Lexer)
+                \\    @"skip",
+                \\
+            );
         }
-
-        // Add internal skip token
-        try self.write(
-            \\
-            \\    // Internal (used by generator)
-            \\    @"skip",
-            \\};
-            \\
-            \\
-        );
+        try self.write("};\n\n");
     }
 
-    fn generateTokenStruct(self: *LexerGenerator) !void {
+    fn emitTokenStruct(self: *LexerGenerator) !void {
         try self.write(
             \\// =============================================================================
             \\// TOKEN STRUCT (8 bytes)
             \\// =============================================================================
             \\
             \\pub const Token = struct {
-            \\    pos: u32,         // Byte position in source (4 bytes)
-            \\    len: u16,         // Token length in bytes (2 bytes)
-            \\    cat: TokenCat,    // Token category (1 byte)
-            \\    pre: u8,          // Preceding whitespace count (1 byte)
+            \\    pos: u32, // Byte position in source (4 bytes)
+            \\    len: u16, // Token length in bytes (2 bytes)
+            \\    cat: TokenCat, // Token category (1 byte)
+            \\    pre: u8, // Preceding whitespace count (1 byte)
             \\
             \\    comptime {
             \\        std.debug.assert(@sizeOf(Token) == 8);
@@ -222,38 +417,29 @@ pub const LexerGenerator = struct {
         );
     }
 
-    fn generateLexerStruct(self: *LexerGenerator) !void {
-        // When @lang is set, generate BaseLexer (lang module may wrap it).
-        // When not set, generate Lexer directly (self-contained).
+    fn emitLexerStruct(self: *LexerGenerator) !void {
         const sname = if (self.spec.langName != null) "BaseLexer" else "Lexer";
-
         try self.write(
             \\// =============================================================================
             \\// LEXER
             \\// =============================================================================
             \\
-        );
-        try self.print("pub const {s} = struct {{\n", .{sname});
-
-        // Internal self-type alias so generated methods work regardless
-        // of whether the struct is named Lexer or BaseLexer.
-        try self.write("    const Self = @This();\n\n");
-
-        try self.write(
-            \\    source: []const u8,
-            \\    pos: u32,
             \\
         );
+        try self.print("pub const {s} = struct {{\n", .{sname});
+        try self.write(
+            \\    const Self = @This();
+            \\
+            \\    source: []const u8,
+            \\    pos: u32,
+            \\    /// Side channel a lang Lexer wrapper may set per token; the parser
+            \\    /// copies it into the shifted leaf's `src.id` and clears it.
+            \\    aux: u16 = 0,
+            \\
+        );
+        if (self.spec.states.items.len > 0) try self.write("    // State variables\n");
+        for (self.spec.states.items) |s| try self.print("    {s}: i8,\n", .{s.name});
 
-        try self.write("    aux: u16 = 0,\n");
-
-        // State variables
-        try self.write("    // State variables\n");
-        for (self.spec.states.items) |state| {
-            try self.print("    {s}: i8,\n", .{state.name});
-        }
-
-        // Init function
         try self.write(
             \\
             \\    pub fn init(source: []const u8) Self {
@@ -262,18 +448,11 @@ pub const LexerGenerator = struct {
             \\            .pos = 0,
             \\
         );
-        for (self.spec.states.items) |state| {
-            try self.print("            .{s} = {d},\n", .{ state.name, state.initialValue });
-        }
+        for (self.spec.states.items) |s| try self.print("            .{s} = {d},\n", .{ s.name, s.initialValue });
         try self.write(
             \\        };
             \\    }
             \\
-            \\
-        );
-
-        // Text function
-        try self.write(
             \\    /// Get the text slice for a token (zero-copy into source)
             \\    pub fn text(self: *const Self, tok: Token) []const u8 {
             \\        const start: usize = tok.pos;
@@ -282,50 +461,40 @@ pub const LexerGenerator = struct {
             \\        return self.source[start..end];
             \\    }
             \\
+            \\    /// Reset lexer to beginning
+            \\    pub fn reset(self: *Self) void {
+            \\        self.pos = 0;
             \\
         );
-
-        // Reset function
-        try self.write("    /// Reset lexer to beginning\n");
-        try self.write("    pub fn reset(self: *Self) void {\n");
-        try self.write("        self.pos = 0;\n");
-        for (self.spec.states.items) |state| {
-            try self.print("        self.{s} = {d};\n", .{ state.name, state.initialValue });
-        }
-        try self.write("    }\n\n");
-
-        // Peek function
+        for (self.spec.states.items) |s| try self.print("        self.{s} = {d};\n", .{ s.name, s.initialValue });
         try self.write(
-            \\    /// Peek at current character (0 if at end)
-            \\    inline fn peek(self: *const Self) u8 {
-            \\        return if (self.pos < self.source.len) self.source[self.pos] else 0;
             \\    }
             \\
-            \\    /// Peek at character at offset (0 if at end)
-            \\    inline fn peekAt(self: *const Self, offset: u32) u8 {
-            \\        const p = self.pos + offset;
-            \\        return if (p < self.source.len) self.source[p] else 0;
-            \\    }
-            \\
-            \\
-        );
-
-        // Next function (simple - matchRules handles everything)
-        try self.write(
             \\    /// Get next token
             \\    pub fn next(self: *Self) Token {
             \\        return self.matchRules();
             \\    }
             \\
-            \\
         );
 
-        try self.generateMatchRules();
+        for (self.spec.codeFunctions.items) |name| {
+            const lang = self.spec.langName orelse {
+                diag.errLine(self.spec.fileName, 1, 1, "@code = {s} needs @lang (the function is imported from the lang module)", .{name});
+                return error.LexerGenerationError;
+            };
+            try self.print(
+                \\
+                \\    /// `@code = {s}`: `{s}.{s}(source, pos)` at the current position.
+                \\    pub fn {s}(self: *const Self) bool {{
+                \\        return {s}.{s}(self.source, self.pos);
+                \\    }}
+                \\
+            , .{ name, lang, name, name, lang, name });
+        }
 
+        try self.emitMatchRules();
         try self.write("};\n");
 
-        // When @lang is set, alias Lexer from the lang module (if it provides one)
-        // or fall back to BaseLexer. This lets lang modules wrap the generated lexer.
         if (self.spec.langName) |lang| {
             try self.print(
                 \\
@@ -335,88 +504,528 @@ pub const LexerGenerator = struct {
         }
     }
 
-    fn generateMatchRules(self: *LexerGenerator) !void {
-        try scanners.generateCharClassification(self);
+    // =========================================================================
+    // Emission: byte tests
+    // =========================================================================
 
-        // Generate @code function wrappers (imported from @lang module)
-        for (self.spec.codeFunctions.items) |funcName| {
-            if (self.spec.langName) |lang| {
-                const stateVar = self.findCodeFnStateVar('?') orelse "pat";
-                try self.print(
-                    \\    fn {s}(self: *Self) void {{
-                    \\        if ({s}.{s}(self.source, self.pos)) self.{s} = 1;
-                    \\    }}
-                    \\
-                , .{ funcName, lang, funcName, stateVar });
+    fn byteLit(buf: *[8]u8, b: u8) []const u8 {
+        return switch (b) {
+            '\n' => "'\\n'",
+            '\r' => "'\\r'",
+            '\t' => "'\\t'",
+            '\\' => "'\\\\'",
+            '\'' => "'\\''",
+            0x20...0x26, 0x28...0x5b, 0x5d...0x7e => std.fmt.bufPrint(buf, "'{c}'", .{b}) catch unreachable,
+            else => std.fmt.bufPrint(buf, "0x{X:0>2}", .{b}) catch unreachable,
+        };
+    }
+
+    const Range = struct { lo: u8, hi: u8 };
+
+    fn ranges(set: ByteSet, out: *[128]Range) []Range {
+        var n: usize = 0;
+        var b: u16 = 0;
+        while (b < 256) {
+            if (!set.has(@intCast(b))) {
+                b += 1;
+                continue;
+            }
+            const lo: u8 = @intCast(b);
+            while (b < 256 and set.has(@intCast(b))) b += 1;
+            out[n] = .{ .lo = lo, .hi = @intCast(b - 1) };
+            n += 1;
+        }
+        return out[0..n];
+    }
+
+    /// Switch-prong items for a byte set: `'a'...'z', '_'`.
+    fn emitSwitchItems(self: *LexerGenerator, set: ByteSet) !void {
+        var rbuf: [128]Range = undefined;
+        var b1: [8]u8 = undefined;
+        var b2: [8]u8 = undefined;
+        for (ranges(set, &rbuf), 0..) |r, i| {
+            if (i > 0) try self.write(", ");
+            if (r.lo == r.hi) {
+                try self.write(byteLit(&b1, r.lo));
+            } else {
+                try self.print("{s}...{s}", .{ byteLit(&b1, r.lo), byteLit(&b2, r.hi) });
             }
         }
+    }
 
-        // Determine if any rule action assigns to wsCount (the grammar's "pre" variable)
-        var wsCountMutable = false;
-        outer: for (self.spec.rules.items) |rule| {
-            for (rule.actions) |action| {
-                if ((action.kind == .set or action.kind == .counted) and
-                    action.variable != null and std.mem.eql(u8, action.variable.?, "pre"))
-                {
-                    wsCountMutable = true;
-                    break :outer;
+    fn tableIndex(self: *LexerGenerator, set: ByteSet) !usize {
+        for (self.tables.items, 0..) |t, i| if (t.eql(set)) return i;
+        try self.tables.append(self.arena.allocator(), set);
+        return self.tables.items.len - 1;
+    }
+
+    /// A boolean expression testing `expr` (a u8) for membership in `set`.
+    fn emitMembership(self: *LexerGenerator, set: ByteSet, expr: []const u8) !void {
+        var rbuf: [128]Range = undefined;
+        const rs = ranges(set, &rbuf);
+        var b1: [8]u8 = undefined;
+        var b2: [8]u8 = undefined;
+        if (rs.len == 1) {
+            const r = rs[0];
+            if (r.lo == r.hi) {
+                try self.print("{s} == {s}", .{ expr, byteLit(&b1, r.lo) });
+            } else if (r.lo == 0) {
+                try self.print("{s} <= {s}", .{ expr, byteLit(&b1, r.hi) });
+            } else if (r.hi == 255) {
+                try self.print("{s} >= {s}", .{ expr, byteLit(&b1, r.lo) });
+            } else {
+                try self.print("{s} -% {s} <= {d}", .{ expr, byteLit(&b1, r.lo), r.hi - r.lo });
+            }
+            return;
+        }
+        if (rs.len == 2 and rs[0].lo == rs[0].hi and rs[1].lo == rs[1].hi) {
+            try self.print("({s} == {s} or {s} == {s})", .{ expr, byteLit(&b1, rs[0].lo), expr, byteLit(&b2, rs[1].lo) });
+            return;
+        }
+        const idx = try self.tableIndex(set);
+        try self.print("cls{d}[{s}]", .{ idx, expr });
+    }
+
+    fn emitTableDecls(self: *LexerGenerator, w: *std.Io.Writer) !void {
+        for (self.tables.items, 0..) |set, i| {
+            try w.print("\n    const cls{d} = blk: {{\n        var t: [256]bool = @splat(false);\n", .{i});
+            var rbuf: [128]Range = undefined;
+            var b1: [8]u8 = undefined;
+            for (ranges(set, &rbuf)) |r| {
+                if (r.lo == r.hi) {
+                    try w.print("        t[{s}] = true;\n", .{byteLit(&b1, r.lo)});
+                } else {
+                    try w.print("        for ({s}..{d}) |c| t[c] = true;\n", .{ byteLit(&b1, r.lo), @as(u16, r.hi) + 1 });
                 }
             }
+            try w.writeAll("        break :blk t;\n    };\n");
         }
+    }
 
+    // =========================================================================
+    // Emission: matchRules
+    // =========================================================================
+
+    fn hasSkipRule(self: *const LexerGenerator) bool {
+        for (self.spec.rules.items) |r| if (r.isSkip) return true;
+        return false;
+    }
+
+    fn preMutable(self: *const LexerGenerator) bool {
+        for (self.spec.rules.items) |r| {
+            for (r.actions) |act| {
+                if (std.mem.eql(u8, act.variable.?, "pre")) return true;
+            }
+        }
+        return false;
+    }
+
+    fn emitMatchRules(self: *LexerGenerator) !void {
+        // matchRules goes to its own buffer first: the byte tables and the
+        // SIMD helper it turns out to need are declared ahead of it.
+        var body: std.Io.Writer.Allocating = .init(self.allocator);
+        defer body.deinit();
+        const main = self.w;
+        self.w = &body.writer;
+        try self.emitMatchRulesBody();
+        self.w = main;
+        try self.emitTableDecls(self.w);
+        if (self.simdUsed) try self.write(simdHelper);
+        try self.write(body.written());
+    }
+
+    fn emitMatchRulesBody(self: *LexerGenerator) !void {
+        const skipLoop = self.hasSkipRule();
         try self.write(
-            \\    /// Match lexer rules
+            \\
+            \\    /// Match the next token.
             \\    pub fn matchRules(self: *Self) Token {
-            \\        // Count whitespace first
-            \\        const wsStart = self.pos;
-            \\        while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
-            \\            self.pos += 1;
-            \\        }
+            \\        const src = self.source;
+            \\        const n = src.len;
+            \\        var p: usize = self.pos;
+            \\        const wsStart = p;
             \\
         );
-        try self.print("        {s} wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));\n", .{if (wsCountMutable) "var" else "const"});
-        try self.write(
-            \\        // EOF check
-            \\        if (self.pos >= self.source.len) {
-        );
-        try self.write(
-            \\            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
-            \\        }
+        const ind = if (skipLoop) "            " else "        ";
+        if (skipLoop) try self.write("        scan: while (true) {\n");
+        try self.print(
+            \\{s}while (p < n and (src[p] == ' ' or src[p] == '\t')) p += 1;
+            \\{s}{s} pre: u8 = @intCast(@min(p - wsStart, 255));
             \\
-            \\        const start = self.pos;
-            \\        const c = self.source[self.pos];
+        , .{ ind, ind, if (self.preMutable()) "var" else "const" });
+
+        try self.emitZeroWidthRules(ind);
+
+        try self.print(
+            \\{s}if (p >= n) {{
+            \\{s}    self.pos = @intCast(p);
+            \\{s}    return .{{ .cat = .@"eof", .pre = pre, .pos = @intCast(p), .len = 0 }};
+            \\{s}}}
+            \\{s}const start = p;
             \\
-        );
+        , .{ ind, ind, ind, ind, ind });
 
-        try scanners.generateNewlineHandling(self);
-
-        // Generate empty-pattern guard rules (zero-width tokens based on state)
-        try scanners.generateEmptyPatternGuards(self);
-
-        const hasBegState = for (self.spec.states.items) |s| {
-            if (std.mem.eql(u8, s.name, "beg")) break true;
-        } else false;
-        if (hasBegState) {
-            try self.write(
-                \\        // From here, clear line-start flag
-                \\        self.beg = 0;
-                \\
-            );
+        if (self.consuming.len > 0) {
+            try self.emitDfa(ind);
         }
 
-        // Top-of-matchRules preemption for multi-char literal rules that
-        // would otherwise be shadowed by string scanners, punct-ident
-        // dispatches, etc. Handles `"'''"`, `"???"`, `` "```"[alpha]...``,
-        // and similar maximal-munch cases. Falls through cleanly when no
-        // literal matches at the current position.
-        try operators.generateMultiCharLiteralPreemption(self);
+        // No rule matched: one byte becomes an error token.
+        try self.emitAfter(ind, &.{});
+        try self.print(
+            \\{s}self.pos = @intCast(start + 1);
+            \\{s}return .{{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = 1 }};
+            \\
+        , .{ ind, ind });
+        if (skipLoop) try self.write("        }\n");
+        try self.write("    }\n");
+    }
 
-        try scanners.generateScannerDispatch(self);
+    fn emitGuardExpr(self: *LexerGenerator, g: Guard) !void {
+        const lhs = if (std.mem.eql(u8, g.variable, "pre")) "pre" else g.variable;
+        const prefix = if (std.mem.eql(u8, g.variable, "pre")) "" else "self.";
+        const at = atomOf(g);
+        const op: []const u8 = switch (at.op) {
+            .eq => if (g.negated) "!=" else "==",
+            .ne => if (g.negated) "==" else "!=",
+            .gt => if (g.negated) "<=" else ">",
+            .lt => if (g.negated) ">=" else "<",
+            .ge => if (g.negated) "<" else ">=",
+            .le => if (g.negated) ">" else "<=",
+            .truthy => unreachable,
+        };
+        try self.print("{s}{s} {s} {d}", .{ prefix, lhs, op, at.value });
+    }
 
-        try scanners.generateCommentHandling(self);
+    fn emitGuards(self: *LexerGenerator, guards: []const Guard) !void {
+        for (guards, 0..) |g, i| {
+            if (i > 0) try self.write(" and ");
+            try self.emitGuardExpr(g);
+        }
+    }
 
-        try operators.generateOperatorSwitch(self);
+    /// State-variable and `pre` assignments; `counted` consumes from `p`.
+    fn emitActions(self: *LexerGenerator, actions: []const Action, ind: []const u8, cursor: []const u8) !void {
+        for (actions) |act| {
+            const v = act.variable.?;
+            const isPre = std.mem.eql(u8, v, "pre");
+            const lhsPrefix = if (isPre) "" else "self.";
+            switch (act.kind) {
+                .set => try self.print("{s}{s}{s} = {d};\n", .{ ind, lhsPrefix, v, act.value.? }),
+                .inc => try self.print("{s}self.{s} +|= 1;\n", .{ ind, v }),
+                .dec => try self.print("{s}self.{s} -|= 1;\n", .{ ind, v }),
+                .counted => {
+                    var b1: [8]u8 = undefined;
+                    const cl = byteLit(&b1, act.char.?);
+                    const conv = if (isPre) "count" else "@bitCast(count)";
+                    try self.print(
+                        \\{s}{{
+                        \\{s}    var count: u8 = 0;
+                        \\{s}    while ({s} < n and src[{s}] == {s}) {{
+                        \\{s}        {s} += 1;
+                        \\{s}        count +|= 1;
+                        \\{s}        while ({s} < n and (src[{s}] == ' ' or src[{s}] == '\t')) {s} += 1;
+                        \\{s}    }}
+                        \\{s}    {s}{s} = {s};
+                        \\{s}}}
+                        \\
+                    , .{ ind, ind, ind, cursor, cursor, cl, ind, cursor, ind, ind, cursor, cursor, cursor, cursor, ind, ind, lhsPrefix, v, conv, ind });
+                },
+            }
+        }
+    }
 
-        try scanners.generateScanners(self);
+    /// The `after` assignments, except those the rule's own actions override.
+    fn emitAfter(self: *LexerGenerator, ind: []const u8, overrides: []const Action) !void {
+        outer: for (self.spec.afterActions.items) |act| {
+            for (overrides) |o| {
+                if (std.mem.eql(u8, o.variable.?, act.variable.?) and (o.kind == .set or o.kind == .counted)) continue :outer;
+            }
+            try self.print("{s}self.{s} = {d};\n", .{ ind, act.variable.?, act.value.? });
+        }
+    }
+
+    fn emitZeroWidthRules(self: *LexerGenerator, ind: []const u8) !void {
+        for (self.spec.rules.items) |*r| {
+            if (r.pattern.len != 0) continue;
+            try self.print("{s}if (", .{ind});
+            try self.emitGuards(r.guards);
+            try self.write(") {\n");
+            const inner = try std.fmt.allocPrint(self.arena.allocator(), "{s}    ", .{ind});
+            try self.emitActions(r.actions, inner, "p");
+            if (r.hold) {
+                try self.print(
+                    \\{s}self.pos = @intCast(wsStart);
+                    \\{s}return .{{ .cat = .@"{s}", .pre = pre, .pos = @intCast(wsStart), .len = 0 }};
+                    \\
+                , .{ inner, inner, r.token });
+            } else {
+                try self.print(
+                    \\{s}self.pos = @intCast(p);
+                    \\{s}return .{{ .cat = .@"{s}", .pre = pre, .pos = @intCast(wsStart), .len = @intCast(p - wsStart) }};
+                    \\
+                , .{ inner, inner, r.token });
+            }
+            try self.print("{s}}}\n", .{ind});
+        }
+    }
+
+    /// Code that finishes consuming rule `k` whose match ends at `endExpr`
+    /// (a usize expression): after-block, token end, actions, return.
+    fn emitFinish(self: *LexerGenerator, k: usize, endExpr: []const u8, ind: []const u8) !void {
+        const r = &self.spec.rules.items[self.consuming[k]];
+        try self.emitAfter(ind, r.actions);
+        switch (self.ends[k]) {
+            .whole => if (!std.mem.eql(u8, endExpr, "p")) try self.print("{s}p = {s};\n", .{ ind, endExpr }),
+            .start => try self.print("{s}p = start;\n", .{ind}),
+            .fromStart => |m| try self.print("{s}p = start + {d};\n", .{ ind, m }),
+            .fromEnd => |m| try self.print("{s}p = {s} - {d};\n", .{ ind, endExpr, m }),
+        }
+        try self.emitActions(r.actions, ind, "p");
+        if (r.isSkip) {
+            try self.print("{s}continue :scan;\n", .{ind});
+            return;
+        }
+        try self.print(
+            \\{s}self.pos = @intCast(p);
+            \\{s}return .{{ .cat = .@"{s}", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }};
+            \\
+        , .{ ind, ind, r.token });
+    }
+
+    fn hasSelfLoop(self: *const LexerGenerator, s: u32) bool {
+        const nc = self.dfa.classes.count;
+        for (0..nc) |c| if (self.dfa.trans[s * nc + c] == s) return true;
+        return false;
+    }
+
+    fn isTerminal(self: *const LexerGenerator, s: u32) bool {
+        if (self.dfa.accept[s] == automaton.none) return false;
+        const nc = self.dfa.classes.count;
+        for (0..nc) |c| if (self.dfa.trans[s * nc + c] != automaton.none) return false;
+        return true;
+    }
+
+    fn emitDfa(self: *LexerGenerator, ind: []const u8) !void {
+        const a = self.arena.allocator();
+        const dfa = &self.dfa;
+        const nc = dfa.classes.count;
+
+        // Configuration mask from the guard atoms.
+        const multi = self.atoms.len > 0 and blk: {
+            for (self.startOfMask) |s| if (s != self.startOfMask[0]) break :blk true;
+            break :blk false;
+        };
+        var anySave = false;
+        for (self.saves) |sv| anySave = anySave or sv;
+        if (anySave) {
+            try self.print("{s}var acc: u16 = {d};\n{s}var accEnd: usize = start;\n", .{ ind, noRule, ind });
+        }
+        // With several start states, a `select` prong (entered first, so the
+        // initial dispatch is a direct jump) branches on the guard conditions
+        // and continues into the start state of the configuration that holds.
+        const select: u32 = dfa.numStates;
+        try self.print("{s}dfa: switch (@as(u16, {d})) {{\n", .{ ind, if (multi) select else self.startOfMask[0] });
+        if (multi) {
+            const selInd = try std.fmt.allocPrint(a, "{s}    ", .{ind});
+            try self.print("{s}{d} => {{\n", .{ selInd, select });
+            try self.emitSelect(0, 0, try std.fmt.allocPrint(a, "{s}    ", .{selInd}));
+            try self.print("{s}}},\n", .{selInd});
+        }
+
+        const inner = try std.fmt.allocPrint(a, "{s}    ", .{ind});
+        const inner2 = try std.fmt.allocPrint(a, "{s}        ", .{ind});
+        const inner3 = try std.fmt.allocPrint(a, "{s}            ", .{ind});
+
+        // States that are only entered by in-place finishes need no prong.
+        var s: u32 = 0;
+        while (s < dfa.numStates) : (s += 1) {
+            const isStart = for (dfa.starts) |st| {
+                if (st == s) break true;
+            } else false;
+            if (self.isTerminal(s) and !isStart) continue;
+            try self.print("{s}{d} => {{\n", .{ inner, s });
+
+            // Group transitions by target.
+            var loop: ByteSet = .{};
+            var targets: std.ArrayListUnmanaged(struct { t: u32, set: ByteSet }) = .empty;
+            for (0..nc) |c| {
+                const t = dfa.trans[s * nc + c];
+                if (t == automaton.none) continue;
+                const bytes = dfa.classes.bytes(@intCast(c));
+                if (t == s) {
+                    loop.merge(bytes);
+                    continue;
+                }
+                for (targets.items) |*x| {
+                    if (x.t == t) {
+                        x.set.merge(bytes);
+                        break;
+                    }
+                } else try targets.append(a, .{ .t = t, .set = bytes });
+            }
+
+            if (!loop.isEmpty()) try self.emitLoop(loop, inner2);
+            const acc = dfa.accept[s];
+            if (self.saves[s]) try self.print("{s}acc = {d};\n{s}accEnd = p;\n", .{ inner2, acc, inner2 });
+            // The widest transition into a looping state (identifier-like
+            // runs) is tested before the switch: a predictable branch on the
+            // common path instead of an indirect jump through the table.
+            var hot: ?usize = null;
+            if (targets.items.len > 1) {
+                for (targets.items, 0..) |x, i| {
+                    if (x.set.count() < hotClassMin or self.isTerminal(x.t) or !self.hasSelfLoop(x.t)) continue;
+                    if (hot == null or x.set.count() > targets.items[hot.?].set.count()) hot = i;
+                }
+            }
+            if (hot) |h| {
+                try self.print("{s}if (p < n and ", .{inner2});
+                try self.emitMembership(targets.items[h].set, "src[p]");
+                try self.print(") {{\n{s}    p += 1;\n{s}    continue :dfa {d};\n{s}}}\n", .{ inner2, inner2, targets.items[h].t, inner2 });
+                _ = targets.orderedRemove(h);
+            }
+            if (targets.items.len > 0) {
+                try self.print("{s}if (p < n) switch (src[p]) {{\n", .{inner2});
+                var covered: ByteSet = .{};
+                for (targets.items) |x| covered.merge(x.set);
+                for (targets.items) |x| {
+                    try self.write(inner3);
+                    try self.emitSwitchItems(x.set);
+                    if (self.isTerminal(x.t)) {
+                        // The finish, on one line when it is at most three simple statements.
+                        var body: std.Io.Writer.Allocating = .init(a);
+                        const outer = self.w;
+                        self.w = &body.writer;
+                        try self.emitFinish(dfa.accept[x.t], "p", "");
+                        self.w = outer;
+                        const text = std.mem.trimEnd(u8, body.written(), "\n");
+                        if (std.mem.count(u8, text, "\n") <= 2 and std.mem.count(u8, text, "{") == std.mem.count(u8, text, ".{")) {
+                            const joined = try std.mem.replaceOwned(u8, a, text, "\n", " ");
+                            try self.print(" => {{ p += 1; {s} }},\n", .{joined});
+                        } else {
+                            try self.write(" => {\n");
+                            const deep = try std.fmt.allocPrint(a, "{s}    ", .{inner3});
+                            try self.print("{s}p += 1;\n", .{deep});
+                            try self.emitFinish(dfa.accept[x.t], "p", deep);
+                            try self.print("{s}}},\n", .{inner3});
+                        }
+                    } else {
+                        try self.print(" => {{ p += 1; continue :dfa {d}; }},\n", .{x.t});
+                    }
+                }
+                if (covered.count() < 256) try self.print("{s}else => {{}},\n", .{inner3});
+                try self.print("{s}}};\n", .{inner2});
+            }
+            if (acc != automaton.none) {
+                try self.emitFinish(acc, "p", inner2);
+            } else {
+                try self.print("{s}break :dfa;\n", .{inner2});
+            }
+            try self.print("{s}}},\n", .{inner});
+        }
+        try self.print("{s}else => unreachable,\n{s}}}\n", .{ inner, ind });
+
+        // Fallback: the scan died after passing an accepting state.
+        if (anySave) {
+            var saved = std.AutoArrayHashMapUnmanaged(u32, void).empty;
+            for (self.saves, 0..) |sv, st| {
+                if (sv) try saved.put(a, dfa.accept[st], {});
+            }
+            try self.print("{s}switch (acc) {{\n", .{ind});
+            for (saved.keys()) |k| {
+                try self.print("{s}{d} => {{\n", .{ inner, k });
+                try self.emitFinish(k, "accEnd", inner2);
+                try self.print("{s}}},\n", .{inner});
+            }
+            try self.print("{s}else => {{}},\n{s}}}\n", .{ inner, ind });
+        }
+    }
+
+    const noRule: u16 = std.math.maxInt(u16);
+
+    /// A decision tree over the guard atoms that continues into the start
+    /// state of the configuration that holds. `fixed` marks atoms already
+    /// tested on this path, with their outcomes in `bits`; only atoms that
+    /// still change the start state are tested.
+    fn emitSelect(self: *LexerGenerator, fixed: usize, bits: usize, ind: []const u8) !void {
+        const starts = self.startOfMask;
+        var first: ?u32 = null;
+        var uniform = true;
+        for (starts, 0..) |st, mask| {
+            if (mask & fixed != bits) continue;
+            if (first == null) first = st else if (first.? != st) uniform = false;
+        }
+        if (uniform) {
+            try self.print("{s}continue :dfa {d};\n", .{ ind, first.? });
+            return;
+        }
+        // The first untested atom the start state depends on.
+        const atom = for (0..self.atoms.len) |i| {
+            const bit = @as(usize, 1) << @intCast(i);
+            if (fixed & bit != 0) continue;
+            for (starts, 0..) |st, mask| {
+                if (mask & fixed == bits and starts[mask ^ bit] != st) break;
+            } else continue;
+            break i;
+        } else unreachable;
+        const bit = @as(usize, 1) << @intCast(atom);
+        const at = self.atoms[atom];
+        try self.print("{s}if (", .{ind});
+        try self.emitGuardExpr(.{ .variable = at.variable, .op = at.op, .value = at.value });
+        try self.write(") {\n");
+        const deeper = try std.fmt.allocPrint(self.arena.allocator(), "{s}    ", .{ind});
+        try self.emitSelect(fixed | bit, bits | bit, deeper);
+        try self.print("{s}}} else {{\n", .{ind});
+        try self.emitSelect(fixed | bit, bits, deeper);
+        try self.print("{s}}}\n", .{ind});
+    }
+
+    fn emitLoop(self: *LexerGenerator, loop: ByteSet, ind: []const u8) !void {
+        const stops = loop.invert();
+        const nstops = stops.count();
+        if (nstops >= 1 and nstops <= maxSimdStops) {
+            self.simdUsed = true;
+            var buf: [maxSimdStops]u8 = undefined;
+            var k: usize = 0;
+            for (0..256) |b| {
+                if (stops.has(@intCast(b))) {
+                    buf[k] = @intCast(b);
+                    k += 1;
+                }
+            }
+            var b1: [8]u8 = undefined;
+            try self.print("{s}p = scanUntil(src, p, &.{{", .{ind});
+            for (buf[0..k], 0..) |b, i| {
+                if (i > 0) try self.write(", ");
+                try self.write(byteLit(&b1, b));
+            }
+            try self.write("});\n");
+            return;
+        }
+        try self.print("{s}while (p < n and ", .{ind});
+        try self.emitMembership(loop, "src[p]");
+        try self.write(") p += 1;\n");
     }
 };
+
+/// Emitted when a self-loop excludes only a few bytes: finds the first byte
+/// at or after `from` that is one of `stops` (or the end of input), 16 bytes
+/// at a time.
+const simdHelper =
+    \\
+    \\    /// First index at or after `from` whose byte is in `stops` (or src.len).
+    \\    inline fn scanUntil(src: []const u8, from: usize, comptime stops: []const u8) usize {
+    \\        const V = @Vector(16, u8);
+    \\        var p = from;
+    \\        while (p + 16 <= src.len) : (p += 16) {
+    \\            const v: V = src[p..][0..16].*;
+    \\            var hits: u16 = 0;
+    \\            inline for (stops) |c| hits |= @bitCast(v == @as(V, @splat(c)));
+    \\            if (hits != 0) return p + @ctz(hits);
+    \\        }
+    \\        while (p < src.len) : (p += 1) {
+    \\            inline for (stops) |c| if (src[p] == c) return p;
+    \\        }
+    \\        return p;
+    \\    }
+    \\
+;

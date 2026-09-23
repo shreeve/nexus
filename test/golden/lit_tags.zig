@@ -25,7 +25,7 @@ pub const TokenCat = enum(u8) {
     @"eof",
     @"err",
 
-    // Internal (used by generator)
+    // Built in: the token of `→ skip` rules (returned to the lang Lexer)
     @"skip",
 };
 
@@ -34,10 +34,10 @@ pub const TokenCat = enum(u8) {
 // =============================================================================
 
 pub const Token = struct {
-    pos: u32,         // Byte position in source (4 bytes)
-    len: u16,         // Token length in bytes (2 bytes)
-    cat: TokenCat,    // Token category (1 byte)
-    pre: u8,          // Preceding whitespace count (1 byte)
+    pos: u32, // Byte position in source (4 bytes)
+    len: u16, // Token length in bytes (2 bytes)
+    cat: TokenCat, // Token category (1 byte)
+    pre: u8, // Preceding whitespace count (1 byte)
 
     comptime {
         std.debug.assert(@sizeOf(Token) == 8);
@@ -47,13 +47,15 @@ pub const Token = struct {
 // =============================================================================
 // LEXER
 // =============================================================================
+
 pub const Lexer = struct {
     const Self = @This();
 
     source: []const u8,
     pos: u32,
+    /// Side channel a lang Lexer wrapper may set per token; the parser
+    /// copies it into the shifted leaf's `src.id` and clears it.
     aux: u16 = 0,
-    // State variables
 
     pub fn init(source: []const u8) Self {
         return .{
@@ -75,118 +77,88 @@ pub const Lexer = struct {
         self.pos = 0;
     }
 
-    /// Peek at current character (0 if at end)
-    inline fn peek(self: *const Self) u8 {
-        return if (self.pos < self.source.len) self.source[self.pos] else 0;
-    }
-
-    /// Peek at character at offset (0 if at end)
-    inline fn peekAt(self: *const Self, offset: u32) u8 {
-        const p = self.pos + offset;
-        return if (p < self.source.len) self.source[p] else 0;
-    }
-
     /// Get next token
     pub fn next(self: *Self) Token {
         return self.matchRules();
     }
 
-    // Character classification flags (generated from grammar patterns)
-    const DIGIT: u8 = 1 << 0;
-    const LETTER: u8 = 1 << 1;
-    const WHITESPACE: u8 = 1 << 2;
-
-    const charFlags: [256]u8 = blk: {
-        var table: [256]u8 = [_]u8{0} ** 256;
-        for ('0'..'9' + 1) |c| table[c] = DIGIT;
-        for ('A'..'Z' + 1) |c| table[c] = LETTER;
-        for ('a'..'z' + 1) |c| table[c] = LETTER;
-        table['_'] = LETTER;
-        table[' '] = WHITESPACE;
-        table['\t'] = WHITESPACE;
-        break :blk table;
+    const cls0 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('A'..91) |c| t[c] = true;
+        t['_'] = true;
+        for ('a'..123) |c| t[c] = true;
+        break :blk t;
     };
 
-    inline fn isDigit(c: u8) bool {
-        return (charFlags[c] & DIGIT) != 0;
-    }
+    const cls1 = blk: {
+        var t: [256]bool = @splat(false);
+        for ('0'..58) |c| t[c] = true;
+        for ('A'..91) |c| t[c] = true;
+        t['_'] = true;
+        for ('a'..123) |c| t[c] = true;
+        break :blk t;
+    };
 
-    inline fn isLetter(c: u8) bool {
-        return (charFlags[c] & LETTER) != 0;
-    }
-
-    inline fn isWhitespace(c: u8) bool {
-        return (charFlags[c] & WHITESPACE) != 0;
-    }
-
-    inline fn isIdentChar(c: u8) bool {
-        return isLetter(c) or isDigit(c);
-    }
-    /// Match lexer rules
+    /// Match the next token.
     pub fn matchRules(self: *Self) Token {
-        // Count whitespace first
-        const wsStart = self.pos;
-        while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) {
-            self.pos += 1;
+        const src = self.source;
+        const n = src.len;
+        var p: usize = self.pos;
+        const wsStart = p;
+        while (p < n and (src[p] == ' ' or src[p] == '\t')) p += 1;
+        const pre: u8 = @intCast(@min(p - wsStart, 255));
+        if (p >= n) {
+            self.pos = @intCast(p);
+            return .{ .cat = .@"eof", .pre = pre, .pos = @intCast(p), .len = 0 };
         }
-        const wsCount: u8 = @intCast(@min(self.pos - wsStart, 255));
-        // EOF check
-        if (self.pos >= self.source.len) {            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.pos, .len = 0 };
-        }
-
-        const start = self.pos;
-        const c = self.source[self.pos];
-        // Newline handling (generated from grammar rules)
-        if (c == '\n' or c == '\r') {
-                self.pos += 1;
-                return Token{ .cat = .@"newline", .pre = wsCount, .pos = start, .len = 1 };
-        }
-        // Number
-        if (isDigit(c)) {
-            return self.scanNumber(start, wsCount);
-        }
-        // Identifier
-        if (isLetter(c)) {
-            return self.scanIdent(start, wsCount);
-        }
-        // Single/multi-char operators
-        self.pos += 1;
-        return switch (c) {
-            '+' => blk: {
-                if (self.peek() == '=') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"plus_assign", .pre = wsCount, .pos = start, .len = 2 };
+        const start = p;
+        dfa: switch (@as(u16, 0)) {
+            0 => {
+                if (p < n and cls0[src[p]]) {
+                    p += 1;
+                    continue :dfa 7;
                 }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
+                if (p < n) switch (src[p]) {
+                    0x00...'\t', 0x0B...'*', ',', '.'...'/', ':'...'<', '>'...'@', '['...'^', '`', '{'...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"newline", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '+' => { p += 1; continue :dfa 3; },
+                    '-' => { p += 1; continue :dfa 4; },
+                    '0'...'9' => { p += 1; continue :dfa 5; },
+                    '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"assign", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    else => {},
+                };
+                break :dfa;
             },
-            '-' => blk: {
-                if (self.peek() == '>') {
-                    self.pos += 1;
-                    break :blk Token{ .cat = .@"arrow", .pre = wsCount, .pos = start, .len = 2 };
-                }
-                break :blk Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 };
+            3 => {
+                if (p < n) switch (src[p]) {
+                    '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"plus_assign", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    else => {},
+                };
+                self.pos = @intCast(p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
-            '=' => Token{ .cat = .@"assign", .pre = wsCount, .pos = start, .len = 1 },
-            else => Token{ .cat = .@"err", .pre = wsCount, .pos = start, .len = 1 },
-        };
-    }
-
-    /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        // Decimal integer
-        if (isDigit(self.source[self.pos])) {
-            while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
-                self.pos += 1;
-            }
+            4 => {
+                if (p < n) switch (src[p]) {
+                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"arrow", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    else => {},
+                };
+                self.pos = @intCast(p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+            },
+            5 => {
+                while (p < n and src[p] -% '0' <= 9) p += 1;
+                self.pos = @intCast(p);
+                return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+            },
+            7 => {
+                while (p < n and cls1[src[p]]) p += 1;
+                self.pos = @intCast(p);
+                return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+            },
+            else => unreachable,
         }
-        return Token{ .cat = .@"integer", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
-    }
-
-    /// Scan identifier (generated from grammar)
-    fn scanIdent(self: *Self, start: u32, ws: u8) Token {
-        while (self.pos < self.source.len and isIdentChar(self.source[self.pos])) {
-            self.pos += 1;
-        }
-        return Token{ .cat = .@"ident", .pre = ws, .pos = start, .len = @intCast(self.pos - start) };
+        self.pos = @intCast(start + 1);
+        return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = 1 };
     }
 };
 
@@ -478,6 +450,8 @@ pub const BaseParser = struct {
             .@"ident" => 7,
             .@"integer" => 9,
             .@"assign" => 8,
+            .@"arrow" => 10,
+            .@"plus_assign" => 11,
             else => 2, // error
         };
     }

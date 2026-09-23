@@ -1,0 +1,10 @@
+# The lexer emits eof at end of input, so it must be declared
+# error: lexer_missing_eof.grammar:5:
+# error: must declare 'eof'
+@lexer
+tokens
+    word, err
+[a-z]+ → word
+. → err
+@parser
+top! = WORD → 1
