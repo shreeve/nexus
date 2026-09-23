@@ -1,0 +1,49 @@
+#!/bin/bash
+# Generate a parser from a grammar with a given Nexus binary and compile it,
+# together with the grammar's @lang module files, into the tree driver
+# (test/lib/driver.zig).
+#
+# Usage:
+#   test/lib/build-grammar NEXUS GRAMMAR OUTDIR [-O mode] [LANGFILE...]
+#
+# OUTDIR receives parser.zig, the lang files, driver.zig, the `driver`
+# binary, gen.log (generator output) and compile.log. Exit status:
+#   0 built   10 generation failed   11 compile failed   2 usage
+#
+# The generator runs in the grammar's directory (as `nexus g.grammar out`),
+# like the golden checks do. Generation fails if the generator exits
+# non-zero, crashes, or writes no parser (0.10.x prints an error and still
+# exits 0).
+
+set -uo pipefail
+
+[[ $# -ge 3 ]] || { sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+NEXUS=$1 GRAMMAR=$2 OUT=$3
+shift 3
+MODE=Debug
+if [[ "${1:-}" == "-O" ]]; then MODE=$2; shift 2; fi
+
+LIB=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$LIB/../.." && pwd)
+CACHE=${NEXUS_TEST_ZIG_CACHE:-$ROOT/.zig-cache/nexus-test/zig}
+
+case $NEXUS in /*) ;; *) NEXUS="$(pwd)/$NEXUS" ;; esac
+mkdir -p "$OUT" "$CACHE"
+OUT=$(cd "$OUT" && pwd)
+rm -f "$OUT/parser.zig" "$OUT/driver"
+
+gdir=$(dirname "$GRAMMAR")
+gname=$(basename "$GRAMMAR")
+(cd "$gdir" && "$NEXUS" "$gname" "$OUT/parser.zig") >"$OUT/gen.log" 2>&1
+rc=$?
+if [[ $rc -ne 0 || ! -s "$OUT/parser.zig" ]]; then
+    echo "exit $rc" >>"$OUT/gen.log"
+    exit 10
+fi
+
+for f in "$@"; do cp "$f" "$OUT/"; done
+cp "$LIB/driver.zig" "$OUT/driver.zig"
+
+# A shared cache dir: an unchanged grammar compiles from cache.
+(cd "$OUT" && zig build-exe -O "$MODE" driver.zig -femit-bin=driver --cache-dir "$CACHE") >"$OUT/compile.log" 2>&1 || exit 11
+exit 0
