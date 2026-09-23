@@ -3,9 +3,10 @@
 
 Random lexer specs are turned into grammars, generated with bin/nexus,
 compiled together into one driver, and run over random inputs. A spec has
-random patterns (some with trailing context or the skip action), guards on a
-state variable and on `pre`, actions that set the state variable, and
-sometimes a zero-width rule. Every token stream is compared with a
+random patterns (some with trailing context, or the skip, hold or rewind(n)
+action), guards on a state variable (truth and comparisons) and on `pre`,
+actions that set or step the state variable, an optional `after` block,
+and sometimes a zero-width rule. Every token stream is compared with a
 reference computed here from the definition of the lexer: skip spaces/tabs
 into `pre`, try the zero-width rule, then the longest match over the rules
 whose guards hold at the token's start (ties to the earlier rule; trailing
@@ -73,35 +74,56 @@ def lengths(n):
         a, b = lengths(n.args[0])
         return (a * n.args[1], None if b is None else b * n.args[2])
 
-GUARDS = [None, None, None, "m", "!m", "pre", "!pre", "m & pre"]
+GUARDS = [None, None, None, "m", "!m", "pre", "!pre", "m & pre", "m == 1", "m != 0", "m > 0", "m < 1",
+          "!m > 1", "m >= 2", "m <= -1 & pre"]
 
 def make_spec(rng):
     rules = []
     for i in range(rng.randrange(1, 6)):
         main = gen(rng)
         rule = {"main": main, "trail": None, "skip": False, "guard": rng.choice(GUARDS),
-                "set": rng.choice([None, None, 0, 1])}
+                "set": rng.choice([None, None, 0, 1, 2, "++", "--"]), "hold": False, "rewind": None}
         r = rng.random()
         if r < 0.15:
             rule["trail"] = gen(rng)
         elif r < 0.22:
             rule["skip"] = True
+        elif r < 0.30:
+            if lengths(main)[0] < 2:
+                main = rule["main"] = Node("cat", [main, Node("lit", "".join(rng.choice(ALPHA) for _ in range(2)))])
+            rule["rewind"] = rng.randrange(1, lengths(main)[0])
+        elif r < 0.36:
+            # a held (zero-width) token: its action must turn its own guard off
+            rule["hold"] = True
+            rule["guard"], rule["set"] = rng.choice([("m", 0), ("!m", 1), ("m == 1", "--"), ("m < 1", "++"), ("m > 0", 0)])
         rules.append(rule)
     # Sometimes a zero-width rule: 2+ blanks mid-token-stream.
     zw = {"guard": rng.choice(["pre > 1", "pre > 1 & !m"]), "set": rng.choice([None, 0, 1])} if rng.random() < 0.3 else None
-    return {"rules": rules, "zw": zw}
+    after = rng.choice([None, None, 0, 1])
+    return {"rules": rules, "zw": zw, "after": after}
+
+def step(m, act, after=None, consuming=False):
+    """m after a rule fires: the after assignment (unless the rule sets m), then its action."""
+    if consuming and after is not None and not isinstance(act, int): m = after
+    if isinstance(act, int): return act
+    if act == "++": return min(m + 1, 127)
+    if act == "--": return max(m - 1, -128)
+    return m
 
 def holds(guard, m, pre):
     if guard is None: return True
     ok = True
     for g in guard.split(" & "):
         g = g.strip()
-        if g == "m": ok = ok and m != 0
-        elif g == "!m": ok = ok and m == 0
-        elif g == "pre": ok = ok and pre != 0
-        elif g == "!pre": ok = ok and pre == 0
-        elif g == "pre > 1": ok = ok and pre > 1
-        else: raise ValueError(g)
+        neg = g.startswith("!")
+        if neg: g = g[1:]
+        parts = g.split()
+        x = m if parts[0] == "m" else pre
+        if len(parts) == 1: r = x != 0
+        else:
+            op, v = parts[1], int(parts[2])
+            r = {"==": x == v, "!=": x != v, ">": x > v, "<": x < v, ">=": x >= v, "<=": x <= v}[op]
+        ok = ok and (r != neg)
     return ok
 
 def ends(n, s, starts):
@@ -148,7 +170,7 @@ def reference(spec, src):
         while p < n and src[p] in " \t": p += 1
         pre = min(p - ws_start, 255)
         if zw is not None and holds(zw["guard"], m, pre):
-            if zw["set"] is not None: m = zw["set"]
+            if zw["set"] is not None: m = step(m, zw["set"])
             out.append(("zw", ws_start, p - ws_start, pre)); ws_start = p; continue
         if p >= n:
             out.append(("eof", p, 0, pre)); return out
@@ -162,27 +184,38 @@ def reference(spec, src):
             L = max(e) - p
             if best is None or L > best[1]: best = (i, L)
         if best is None:
+            # the `.  → err` rule: a consuming rule like the others
+            if spec.get("after") is not None: m = spec["after"]
             out.append(("err", p, 1, pre)); p += 1; ws_start = p; continue
         i, L = best
         tok = L
         if rules[i]["trail"] is not None:
             mlen = lengths(rules[i]["main"]); tlen = lengths(rules[i]["trail"])
             tok = mlen[0] if mlen[0] == mlen[1] else L - tlen[0]
-        if rules[i]["set"] is not None: m = rules[i]["set"]
+        if rules[i]["rewind"] is not None: tok = rules[i]["rewind"]
+        if rules[i]["hold"]: tok = 0
+        m = step(m, rules[i]["set"], spec.get("after"), True)
         if rules[i]["skip"]:
             p += tok; continue          # skipped bytes count toward pre
         out.append(("t%d" % i, p, tok, pre)); p += tok; ws_start = p
 
 def grammar(spec):
     rules, zw = spec["rules"], spec["zw"]
-    lines = ["@lexer", "state", "    m = 0", "tokens"]
+    lines = ["@lexer", "state", "    m = 0"]
+    if spec.get("after") is not None: lines += ["after", "    m = %d" % spec["after"]]
+    lines += ["tokens"]
     lines += ["    t%d" % i for i in range(len(rules))] + ["    zw", "    eof", "    err"]
+    def act(v):
+        if v is None: return ""
+        if isinstance(v, int): return ", {m = %d}" % v
+        return ", {m%s}" % v
     if zw is not None:
-        lines.append("@ %s → zw%s" % (zw["guard"], "" if zw["set"] is None else ", {m = %d}" % zw["set"]))
+        lines.append("@ %s → zw%s" % (zw["guard"], act(zw["set"])))
     for i, r in enumerate(rules):
         pat = nexus(r["main"]) + (" / " + nexus(r["trail"]) if r["trail"] else "")
         guard = " @ " + r["guard"] if r["guard"] else ""
-        acts = ("" if r["set"] is None else ", {m = %d}" % r["set"]) + (", skip" if r["skip"] else "")
+        acts = act(r["set"]) + (", skip" if r["skip"] else "") + (", hold" if r["hold"] else "") + \
+            (", rewind(%d)" % r["rewind"] if r["rewind"] is not None else "")
         lines.append("%s%s → t%d%s" % (pat, guard, i, acts))
     lines += [".  → err", "@parser", "top! = ERR → 1", ""]
     return "\n".join(lines)
@@ -213,7 +246,7 @@ def main():
             msg = r.stderr.strip().splitlines()[-1]
             # Specs the generator rightly rejects (dead rule, empty match,
             # trailing context with no fixed side) are regenerated.
-            if not any(s in msg for s in ("can never match", "matches the empty string", "must not match the empty string", "can be empty", "fixed-length", "space or tab", "zero-width", "never all true")):
+            if not any(s in msg for s in ("can never match", "matches the empty string", "must not match the empty string", "can be empty", "fixed-length", "space or tab", "zero-width", "never all true", "match forever", "one after another", "exceeds the shortest match", "either trailing context")):
                 print("unexpected generation error:", msg, "\n" + grammar(rules)); sys.exit(1)
             rejected += 1
             continue
