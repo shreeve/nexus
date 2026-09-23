@@ -78,7 +78,19 @@ its trees: see [docs/PORTING.md](docs/PORTING.md).
   more than 255 collected tags get a wider `Tag` enum.
 - Without an action, an absent optional element is nil in the alternative's
   list however it is written (`[r]`, `r?`, `["x"]` dropped it before).
-- `@repair` errors and accessor-name clashes are located.
+- `@repair` errors and accessor-name clashes are located; `@repair` may
+  name a token by its literal.
+- Generated parsers never hang or crash on their input: a cyclic grammar
+  (a rule that derives itself) and zero-width lexer rules that could fire
+  forever are generation errors; a match longer than 65535 bytes is an
+  `err` token; an `X "c"` hint applies to the hinted token only (not to
+  every token starting with `c`, nor to a token the tolerant parser
+  inserts).
+- Size limits (255 tokens, 32766 rules, 32767 states) are located errors
+  instead of overflows.
+- Spans nest: an empty node at the end of its parent lies inside it.
+- `b:["+"]` labels the literal; `(!N ...M)` keeps its nil head when N is
+  absent; a `( ... )` group with skipped elements keeps nil elements.
 
 ### Performance
 
