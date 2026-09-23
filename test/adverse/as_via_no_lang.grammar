@@ -1,0 +1,20 @@
+# `@as ... via fn` names a function of the @lang module.
+# error: as_via_no_lang.grammar:17:21:
+# error: the grammar has no @lang
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+program! = items                            → (program ...1)
+items    = item                             → (1)
+         | items item                       → (...1 2)
+@as IDENT = [go via findGo]
+item     = go
+         | IDENT                            → (name 1)
+go       = GO                               → (go 1)

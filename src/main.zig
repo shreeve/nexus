@@ -290,9 +290,11 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerParser.spec, lexerDecls, .{
             .emitComments = opts.emitComments,
             .spans = opts.spans,
+            .source = .{ .path = grammarFile, .text = sourceText },
         }) catch |err| {
-            diag.err("parser generation failed: {any}", .{err});
-            return;
+            // Generation errors are reported where they are found.
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            std.process.exit(1);
         };
     } else {
         finalCode = try codegen.lexerModule(allocator, lexerParser.spec.langName, lexerDecls);

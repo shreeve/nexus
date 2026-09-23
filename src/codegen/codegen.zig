@@ -37,6 +37,8 @@ pub const Options = struct {
     emitComments: bool = false,
     /// Record node spans and rule ids (always on in schema mode).
     spans: bool = false,
+    /// The grammar file, for `file:line:col` in generation errors.
+    source: ?diag.Source = null,
 };
 
 /// Generate the parser module. `lexerDecls` is lexgen's declarations
@@ -214,27 +216,28 @@ const Codegen = struct {
 
         for (self.g.rules.items) |rule| {
             if (rule.rhs.len > 255) {
-                diag.err("rule {d} has {d} elements; the limit is 255", .{ rule.id, rule.rhs.len });
+                self.errLine(rule.line, null, "rule {s} has {d} elements; the limit is 255", .{ self.g.symbols.items[rule.lhs].name, rule.rhs.len });
                 return error.RuleTooLong;
             }
             if (rule.sideLabels.len == 0) continue;
             if (self.schema() == null) {
-                diag.err("rule {d} (line {d}) records side-band roles, which need @schema", .{ rule.id, rule.line });
+                self.errLine(rule.line, null, "side-band roles need @schema", .{});
                 return error.SideLabelWithoutSchema;
             }
             for (rule.sideLabels) |label| if (!self.roleDeclared(label.role)) {
-                diag.err("rule {d} (line {d}): side-band role '{s}' is not declared in @schema", .{ rule.id, rule.line, label.role });
+                self.errLine(rule.line, null, "side-band role '{s}' is not declared in @schema", .{label.role});
                 return error.UnknownRole;
             };
         }
 
         for (self.g.trivia) |name| {
             if (self.tokenCatOf(name) == null) {
-                diag.err("@trivia names '{s}', which is not a lexer token", .{name});
+                self.errDirective("@trivia", name, "@trivia names '{s}', which is not a lexer token", .{name});
                 return error.UnknownTriviaToken;
             }
             if (self.terminalUsed(name)) |ruleId| {
-                diag.err("@trivia token '{s}' is used by rule {d}; trivia never reaches the parser", .{ name, ruleId });
+                const rule = self.g.rules.items[ruleId];
+                self.errDirective("@trivia", name, "@trivia token {s} is used by rule {s}; trivia never reaches the parser", .{ name, self.g.symbols.items[rule.lhs].name });
                 return error.TriviaTokenInGrammar;
             }
         }
@@ -242,20 +245,51 @@ const Codegen = struct {
         for (self.g.asDirectives) |directive| {
             const token = self.promotable orelse directive.token;
             if (!std.mem.eql(u8, token, directive.token)) {
-                diag.err("@as promotes '{s}' and '{s}'; one grammar promotes one token", .{ token, directive.token });
+                self.errDirective("@as", directive.token, "@as promotes '{s}' and '{s}'; one grammar promotes one token", .{ token, directive.token });
                 return error.MultiplePromotableTokens;
             }
             self.promotable = token;
-            if (directive.via != null and self.g.lang == null) {
-                diag.err("@as {s} via {s}: the lookup function lives in the @lang module, and the grammar has no @lang", .{ directive.token, directive.via.? });
+            if (directive.via) |via| if (self.g.lang == null) {
+                self.errDirective("@as", via, "@as via {s}: the lookup function lives in the @lang module, and the grammar has no @lang", .{via});
                 return error.ViaWithoutLang;
-            }
+            };
         }
 
         if (self.g.repair != null and self.table.repair == null) {
-            diag.err("the grammar has @repair but no repair table was computed", .{});
+            self.errDirective("@repair", "", "the grammar has @repair but no repair table was computed", .{});
             return error.MissingRepairTable;
         }
+    }
+
+    /// A generation error at `line` (column 1 unless given).
+    fn errLine(self: *const Codegen, line: u32, col: ?u32, comptime fmt: []const u8, args: anytype) void {
+        const src = self.options.source orelse return diag.err(fmt, args);
+        if (line == 0) return diag.err(fmt, args);
+        diag.errLine(src.path, line, col orelse 1, fmt, args);
+    }
+
+    /// A generation error at `word` on the line of `directive` (`@trivia`),
+    /// or at the directive itself.
+    fn errDirective(self: *const Codegen, directive: []const u8, word: []const u8, comptime fmt: []const u8, args: anytype) void {
+        const src = self.options.source orelse return diag.err(fmt, args);
+        const text = src.text;
+        var pos: usize = 0;
+        while (pos < text.len) {
+            const end = std.mem.indexOfScalarPos(u8, text, pos, '\n') orelse text.len;
+            const line = text[pos..end];
+            if (std.mem.startsWith(u8, line, directive) and
+                (line.len == directive.len or !std.ascii.isAlphanumeric(line[directive.len])))
+            {
+                var at = pos;
+                if (word.len > 0) if (std.mem.indexOf(u8, line[directive.len..], word)) |i| {
+                    at = pos + directive.len + i;
+                };
+                const loc = (diag.Source{ .path = src.path, .text = text }).at(at);
+                return diag.errLine(src.path, loc.line, loc.col, fmt, args);
+            }
+            pos = end + 1;
+        }
+        diag.err(fmt, args);
     }
 
     /// The lexer token (TokenCat name) a grammar token name refers to.
