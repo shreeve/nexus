@@ -778,12 +778,42 @@ pub const BaseParser = struct {
         }
     }
 
-    /// The rule that built a list node (null without a node id).
+    /// The rule that built a list node (null without a node id, or for a
+    /// node a lang wrapper made with `newNode`).
     pub fn ruleOf(self: *const BaseParser, s: Sexp) ?u16 {
         if (!nodeStore or s != .list) return null;
         const id = s.list.id;
         if (id == 0 or id >= self.nodes.len) return null;
-        return self.nodes.at(id).rule;
+        const rule = self.nodes.at(id).rule;
+        return if (rule == wrapperRule) null else rule;
+    }
+
+    /// The rule recorded for nodes built outside a reduction.
+    const wrapperRule = std.math.maxInt(u16);
+
+    /// A `(tag children...)` node built outside a reduction, e.g. by a lang
+    /// `Parser` wrapper for an `@wrapper` kind: allocated in the parser's
+    /// arena, with a fresh node id recording `extent` as its span (so
+    /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
+    /// is null). Without a node store the node has no id.
+    pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
+        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        out[0] = .{ .tag = tag };
+        @memcpy(out[1..], children);
+        return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
+    }
+
+    /// An untagged list built outside a reduction (a `group` value), with a
+    /// node id recording `extent` like `newNode`.
+    pub fn newList(self: *BaseParser, items: []const Sexp, extent: Span) !Sexp {
+        const out = try self.allocator().dupe(Sexp, items);
+        return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
+    }
+
+    fn wrapperNodeId(self: *BaseParser, extent: Span) !NodeId {
+        if (!nodeStore) return 0;
+        if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
+        return self.nodes.add(self.allocator(), .{ .span = extent, .rule = wrapperRule });
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).

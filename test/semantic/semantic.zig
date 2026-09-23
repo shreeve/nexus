@@ -85,6 +85,34 @@ test "accessors: roles by name, per-kind views, fixed positions" {
     try testing.expect(ir.has(.module, .stmts));
 }
 
+test "slots are compile-time constants a wrapper can build nodes with" {
+    try testing.expectEqual(@as(usize, 2), comptime ir.slot(.set, .target));
+    try testing.expectEqual(@as(usize, 2), comptime ir.slot(.@"+", .right));
+    try testing.expectEqual(@as(usize, 2), comptime ir.restSlot(.call, .args));
+    try testing.expectEqual(@as(usize, 4), comptime ir.width(.set));
+    try testing.expectEqual(@as(usize, 2), comptime ir.width(.note));
+    var items: [ir.width(.note)]Sexp = @splat(.nil);
+    items[0] = .{ .tag = .note };
+    items[ir.slot(.note, .text)] = .{ .src = .{ .pos = 0, .len = 1, .id = 0 } };
+    try testing.expect(ir.Note.text(Sexp.listOf(&items)) == .src);
+}
+
+test "a wrapper-built @wrapper node has an id, a span and facts" {
+    var r = try parse("x = 1");
+    defer r.p.deinit();
+    const leaf = ir.Name.id(ir.Set.target(ir.rest(r.tree, .stmts)[0]));
+    const note = try r.p.newNode(.note, &.{leaf}, .{ .start = 0, .end = 5 });
+    try testing.expect(note.list.id != 0);
+    try testing.expectEqualStrings("x", ir.Note.text(note).getText(r.p.source));
+    try testing.expectEqualStrings("x = 1", spanText(&r.p, note));
+    try testing.expectEqual(@as(?u16, null), r.p.ruleOf(note));
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    try r.p.writeFacts(&out.writer, note);
+    try testing.expect(std.mem.startsWith(u8, out.written(), "(node "));
+    try testing.expect(std.mem.indexOf(u8, out.written(), " note 0 5)\n(role ") != null);
+}
+
 test "spans: reductions cover their tokens; nested nodes their elements" {
     const src = "x = (1 + 2)\nlet z += 5";
     var r = try parse(src);

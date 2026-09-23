@@ -1083,12 +1083,42 @@ pub const BaseParser = struct {
         }
     }
 
-    /// The rule that built a list node (null without a node id).
+    /// The rule that built a list node (null without a node id, or for a
+    /// node a lang wrapper made with `newNode`).
     pub fn ruleOf(self: *const BaseParser, s: Sexp) ?u16 {
         if (!nodeStore or s != .list) return null;
         const id = s.list.id;
         if (id == 0 or id >= self.nodes.len) return null;
-        return self.nodes.at(id).rule;
+        const rule = self.nodes.at(id).rule;
+        return if (rule == wrapperRule) null else rule;
+    }
+
+    /// The rule recorded for nodes built outside a reduction.
+    const wrapperRule = std.math.maxInt(u16);
+
+    /// A `(tag children...)` node built outside a reduction, e.g. by a lang
+    /// `Parser` wrapper for an `@wrapper` kind: allocated in the parser's
+    /// arena, with a fresh node id recording `extent` as its span (so
+    /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
+    /// is null). Without a node store the node has no id.
+    pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
+        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        out[0] = .{ .tag = tag };
+        @memcpy(out[1..], children);
+        return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
+    }
+
+    /// An untagged list built outside a reduction (a `group` value), with a
+    /// node id recording `extent` like `newNode`.
+    pub fn newList(self: *BaseParser, items: []const Sexp, extent: Span) !Sexp {
+        const out = try self.allocator().dupe(Sexp, items);
+        return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
+    }
+
+    fn wrapperNodeId(self: *BaseParser, extent: Span) !NodeId {
+        if (!nodeStore) return 0;
+        if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
+        return self.nodes.add(self.allocator(), .{ .span = extent, .rule = wrapperRule });
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
@@ -1496,22 +1526,48 @@ pub const ir = struct {
     /// The child in `role` (nil when absent).
     pub fn get(node: @"ir.Sexp", role: @"ir.Role") @"ir.Sexp" {
         const k = kindFor(node, "ir.get", role) orelse return .nil;
-        const slot = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
+        const at = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
         const items = node.list.items();
-        return if (slot < items.len) items[slot] else .nil;
+        return if (at < items.len) items[at] else .nil;
     }
 
     /// The children in rest role `role`.
     pub fn rest(node: @"ir.Sexp", role: @"ir.Role") []const @"ir.Sexp" {
         const k = kindFor(node, "ir.rest", role) orelse return &.{};
-        const slot = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
+        const at = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
         const items = node.list.items();
-        return if (slot < items.len) items[slot..] else &.{};
+        return if (at < items.len) items[at..] else &.{};
     }
 
     /// Whether nodes of `kind` have `role` (slot or rest role).
     pub fn has(kind: @"ir.Tag", role: @"ir.Role") bool {
         return slotOf(kind, role) != null or restSlotOf(kind, role) != null;
+    }
+
+    /// The slot of `role` in nodes of `kind` (the head is slot 0), at
+    /// compile time; a compile error when `kind` has no such slot role. For
+    /// lang Parser wrappers that build or rewrite nodes:
+    /// `items[ir.slot(.set, .value)] = v`.
+    pub fn slot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime slotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no slot role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The first slot of rest role `role` in nodes of `kind`, at compile
+    /// time; a compile error when `kind` has no such rest role.
+    pub fn restSlot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime restSlotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no rest role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The fixed length of `kind` nodes: the head plus one slot per slot
+    /// role (rest children follow).
+    pub fn width(comptime kind: @"ir.Tag") usize {
+        return comptime blk: {
+            var n: usize = 1;
+            while (roleAt(kind, n) != null) n += 1;
+            break :blk n;
+        };
     }
 
     fn kindFor(node: @"ir.Sexp", comptime what: []const u8, role: @"ir.Role") ?@"ir.Tag" {
