@@ -4,7 +4,6 @@
 # An unresolved conflict that the grammar does not declare fails generation
 # with a non-zero exit (warnings are errors).
 #
-# Today: the conflict is a warning and the parser is written; exit 0.
 # (architecture.md §1.1; SPEC §6, §8.11)
 
 @lexer

@@ -20,16 +20,14 @@ const LexerGenerator = @import("lexgen/lexgen.zig").LexerGenerator;
 const Grammar = @import("grammar.zig").Grammar;
 const expand = @import("expand.zig");
 const check = @import("check.zig");
-const automaton = @import("lr/automaton.zig");
-const lookahead = @import("lr/lookahead.zig");
-const table = @import("lr/table.zig");
-const conflicts = @import("lr/conflicts.zig");
+const lr = @import("lr/lr.zig");
 const codegen = @import("codegen/codegen.zig");
 
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
     _ = @import("frontend/lower.zig");
+    _ = @import("lr/lr.zig");
 }
 
 const usage =
@@ -66,7 +64,7 @@ const help =
 const Options = struct {
     checkMode: bool = false,
     emitComments: bool = false,
-    parseMode: lookahead.ParseMode = .lalr,
+    parseMode: lr.ParseMode = .lalr,
     grammarFile: []const u8,
     outputFile: []const u8,
 };
@@ -238,35 +236,28 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             return;
         }
 
-        var auto = automaton.build(&g) catch |err| {
-            diag.err("automaton construction failed: {any}", .{err});
-            return;
+        var result = lr.run(&g, .{
+            .mode = opts.parseMode,
+            .path = grammarFile,
+        }) catch |err| {
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            std.process.exit(1);
         };
-        defer auto.deinit(allocator);
-
-        const la = lookahead.compute(&g, &auto, opts.parseMode) catch |err| {
-            diag.err("lookahead computation failed: {any}", .{err});
-            return;
-        };
+        defer result.automaton.deinit(allocator);
 
         diag.info("   Generated: {d} symbols, {d} rules, {d} states", .{
             g.symbols.items.len,
             g.rules.items.len,
-            auto.states.items.len,
+            result.automaton.states.items.len,
         });
+        if (result.table.conflicts > 0)
+            diag.info("   {d} conflicts (as declared)", .{result.table.conflicts});
 
-        // Build the parse table (resolves and records conflicts), then emit
-        // the combined lexer + parser module
-        const tbl = table.build(&g, &auto, la) catch |err| {
+        // Emit the combined lexer + parser module
+        finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerParser.spec, lexerCode, opts.emitComments) catch |err| {
             diag.err("parser generation failed: {any}", .{err});
             return;
         };
-        finalCode = codegen.generate(allocator, &g, &auto, &tbl, &lexerParser.spec, lexerCode, opts.emitComments) catch |err| {
-            diag.err("parser generation failed: {any}", .{err});
-            return;
-        };
-
-        conflicts.report(allocator, &tbl, g.expectConflicts);
     }
 
     try writeOutput(io, opts.outputFile, finalCode);

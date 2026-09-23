@@ -1206,8 +1206,7 @@
       _
       ((lit `"*"`)
         (lit `"@"`)
-        (ref `atom`)
-        (exclude `":"`))
+        (ref `atom`))
       (node
         `charindir`
         (pos `3`)))
@@ -1223,8 +1222,7 @@
     (alt
       _
       ((lit `"*"`)
-        (ref `glvn`)
-        (exclude `":"`))
+        (ref `glvn`))
       (node
         `char`
         (pos `2`)))
@@ -1243,8 +1241,7 @@
       _
       ((ref `glvn`)
         (lit `"#"`)
-        (ref `expr`)
-        (exclude `":"`))
+        (ref `expr`))
       (node
         `#`
         (pos `1`)
@@ -1258,9 +1255,7 @@
         (pos `2`)))
     (alt
       _
-      ((ref `glvn`)
-        (exclude `"#"`)
-        (exclude `":"`))
+      ((ref `glvn`))
       (pos `1`))
     (alt
       _
@@ -1811,8 +1806,7 @@
         (group
           opt
           ((lit `"^"`)
-            (ref `routineref`)))
-        (exclude `":"`))
+            (ref `routineref`))))
       (node
         `ref`
         (pos `1`)
@@ -1823,8 +1817,7 @@
       ((lit `"+"`)
         (ref `entryoffset`)
         (lit `"^"`)
-        (ref `routineref`)
-        (exclude `":"`))
+        (ref `routineref`))
       (node
         `ref`
         (null)
@@ -1833,8 +1826,7 @@
     (alt
       _
       ((lit `"^"`)
-        (ref `routineref`)
-        (exclude `":"`))
+        (ref `routineref`))
       (node
         `ref`
         (null)

@@ -1,7 +1,5 @@
 # A start symbol that is also used recursively parses the same language at
 # every level.
-#
-# (architecture.md §1.6.4 and §6 item 3; SPEC §8.5)
 
 @lexer
 tokens

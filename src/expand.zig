@@ -187,7 +187,10 @@ const Expander = struct {
             const lhsId = g.getSymbol(rule.name).?;
             for (rule.alternatives, 0..) |alt, ai| {
                 const resolved: ?Resolved = if (self.opts.resolved) |r| r[ri][ai] else null;
-                if (rule.isStart and isEntryIdiom(rule.name, alt)) continue;
+                if (rule.isStart and isEntryIdiom(rule.name, alt)) {
+                    try self.checkEntryIdiom(alt);
+                    continue;
+                }
                 try self.expandAlternative(lhsId, alt, resolved);
             }
         }
@@ -236,24 +239,12 @@ const Expander = struct {
         return n;
     }
 
-    /// The `x! = x → action` alternative of start symbol `x`, if any.
-    fn entryIdiom(self: *const Expander, name: []const u8) ?struct { alt: ParsedAlternative, resolved: ?Resolved } {
-        for (self.ir.rules, 0..) |rule, ri| {
-            if (!rule.isStart or !std.mem.eql(u8, rule.name, name)) continue;
-            for (rule.alternatives, 0..) |alt, ai| if (isEntryIdiom(name, alt)) {
-                return .{ .alt = alt, .resolved = if (self.opts.resolved) |r| r[ri][ai] else null };
-            };
-        }
-        return null;
-    }
-
-    /// One entry per start symbol x: `$accept_x → $start_x $end` and
-    /// `$start_x → x! x`, where the marker terminal `x!` is what `parseX`
-    /// injects first. The alternatives of an `x! = ...` block are ordinary
-    /// alternatives of x (usable anywhere x is), except `x! = x → action`,
-    /// which only declares x a start symbol and gives the entry its action
-    /// (default: x's value). The marker appears in no rule but the entry's,
-    /// so it never reaches the rest of the automaton.
+    /// One accept rule per start symbol x: `$accept_x → x! x $end`. The
+    /// marker terminal `x!` is what `parseX` injects first to select that
+    /// rule; it appears in no other rule, so it is never a lookahead. The
+    /// alternatives of an `x! = ...` block are ordinary alternatives of x
+    /// (usable anywhere x is), except `x! = x`, which only declares x a
+    /// start symbol (as a rule it would be the cycle x → x).
     fn addStartRules(self: *Expander) Error!void {
         const g = self.g;
         const ir = self.ir;
@@ -273,37 +264,23 @@ const Expander = struct {
         for (ir.startSymbols) |startName| {
             const startId = g.getSymbol(startName) orelse continue;
             const markerId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "{s}!", .{startName}), .terminal);
-            const entryId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "$start_{s}", .{startName}), .nonterminal);
             const acceptId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "$accept_{s}", .{startName}), .nonterminal);
-
-            var tree: ActionTree = .{ .pass = 1 };
-            var line: u32 = 0;
-            var col: u32 = 0;
-            if (self.entryIdiom(startName)) |idiom| {
-                line = idiom.alt.line;
-                col = idiom.alt.col;
-                const t = if (idiom.resolved) |r| r.tree else idiom.alt.actionTree;
-                if (t) |given| tree = if (self.schemaMode()) given else legacyHeadRole(given);
-            }
-            _ = try self.addRule(.{
-                .id = 0,
-                .lhs = entryId,
-                .rhs = try g.allocator.dupe(u16, &.{ markerId, startId }),
-                .action = try grammar.renderAction(g.allocator, tree),
-                .actionTree = tree,
-                .actionOffset = 1,
-                .line = line,
-                .col = col,
-            });
             const ruleId = try self.addRule(.{
                 .id = 0,
                 .lhs = acceptId,
-                .rhs = try g.allocator.dupe(u16, &.{ entryId, g.endId }),
+                .rhs = try g.allocator.dupe(u16, &.{ markerId, startId, g.endId }),
                 .action = null,
             });
             try g.startSymbols.append(g.allocator, startId);
             try g.acceptRules.append(g.allocator, ruleId);
         }
+    }
+
+    /// `x! = x → action`: the action can only be the element itself.
+    fn checkEntryIdiom(self: *Expander, alt: ParsedAlternative) Error!void {
+        const tree = alt.actionTree orelse return;
+        if (tree == .pass) return;
+        return self.fail(alt.line, alt.col, "`x! = x` only declares x a start symbol; its action must be `→ 1` or none", .{});
     }
 
     // --- Alternatives ---

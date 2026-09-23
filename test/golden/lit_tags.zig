@@ -466,8 +466,7 @@ pub const BaseParser = struct {
             4 => self.sexp(.@"set", &.{.{ .tag = .@"fixed" }, pass[0], .nil, pass[2]}),
             5 => self.sexp(.@"set", &.{.{ .tag = .@"move" }, pass[0], .nil, pass[2]}),
             6 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk .nil; out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk .nil; out.append(self.allocator(), pass[0]) catch break :blk .nil; out.append(self.allocator(), .nil) catch break :blk .nil; out.append(self.allocator(), pass[2]) catch break :blk .nil; while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); break :blk .{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }; },
-            7 => pass[1],
-            8 => self.list(pass),
+            7 => self.list(pass),
             else => .nil,
         };
     }
@@ -518,26 +517,25 @@ const SYM_program: u16 = 3;
 const SYM_program_START: u16 = 12;
 const symIdent: u16 = 7;
 
-const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 5, 13, 14 };
-const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 3, 3, 2, 2 };
+const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 5, 13 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 3, 3, 3 };
 
-// Parse Table: 16 states × 15 symbols
-const numStates = 16;
-const numSymbols = 15;
+// Parse Table: 15 states × 14 symbols
+const numStates = 15;
+const numSymbols = 14;
 
 const sparse = [numStates][]const i16{
-    &.{12,1,13,2},
-    &.{3,3,4,4,5,6,7,5},
+    &.{12,1},
+    &.{3,2,4,3,5,5,7,4},
     &.{1,-1},
-    &.{1,-9},
-    &.{1,-2,6,8},
-    &.{8,9,10,11,11,10},
+    &.{1,-2,6,7},
+    &.{8,8,10,10,11,9},
     &.{1,-3,6,-3},
     &.{1,-1},
-    &.{1,-5,5,12,6,-5,7,5},
+    &.{1,-5,5,11,6,-5,7,4},
+    &.{9,12},
     &.{9,13},
     &.{9,14},
-    &.{9,15},
     &.{1,-4,6,-4},
     &.{1,-6,6,-6},
     &.{1,-8,6,-8},
@@ -580,7 +578,7 @@ fn getStartState(startSym: u16) u16 {
     return 0;
 }
 
-const acceptRules = [_]u16{ 8 };
+const acceptRules = [_]u16{ 7 };
 
 fn isAcceptRule(ruleId: u16) bool {
     for (acceptRules) |ar| if (ruleId == ar) return true;

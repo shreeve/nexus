@@ -1,6 +1,4 @@
 # A start symbol with several alternatives parses every alternative.
-#
-# (architecture.md Appendix A: multi.grammar; SPEC §8.1)
 
 @lexer
 tokens

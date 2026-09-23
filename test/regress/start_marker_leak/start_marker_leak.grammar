@@ -7,9 +7,6 @@
 # The four real conflicts (the empty `forms` alternative) are undeclared, so
 # generation fails.
 #
-# Today: the marker terminal `form!` is prepended to the first `form` rule
-# and becomes part of the automaton: two extra "S/R: forms vs form!"
-# conflicts (Nexis has six), and generation exits 0 with a warning.
 # (architecture.md §6 item 3; SPEC §6, §8.5, §8.11)
 
 @lexer

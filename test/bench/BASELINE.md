@@ -27,6 +27,11 @@ grammars spend ~85% of this in LALR lookahead propagation
 ReleaseSafe: mumps 31.1, ruby 33.1, rig 13.5, zag 18.0 ms mean; the small
 grammars are within 0.3 ms of the table.
 
+With the DeRemer–Pennello lookaheads (1.0 LR core), same machine and
+settings: mumps 7.6, ruby 7.8, rig 6.7, zag 7.0 ms mean; the small grammars
+are unchanged (process start is ~4.5 ms). The lookahead phase itself went
+from 23.7 ms to 0.3 ms on MUMPS and from 25.4 ms to 0.4 ms on Ruby.
+
 ## Lexing and parsing throughput
 
 Best of 5 rounds, one thread, all input in memory, a fresh parser per file.
