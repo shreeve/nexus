@@ -306,6 +306,44 @@ check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
     return 0
 }
 
+# check_cli: the command line — --version, --help, usage errors (exit 2),
+# unreadable files (exit 1, no stack trace), and `check` (exit status of a
+# full generation, nothing written).
+check_cli() {
+    local out rc want
+    want="nexus $(sed -n 's/^pub const version = "\(.*\)";/\1/p' src/version.zig)"
+    expect() { # expect <status> <text> <args...>: exit status and output text
+        local status=$1 text=$2
+        shift 2
+        out=$(cd "$WORK/cli" && timeout "$TIMEOUT" "$NEXUS" "$@" 2>&1 </dev/null)
+        rc=$?
+        echo "\$ nexus $* → $rc" >>"$LOG"
+        echo "$out" >>"$LOG"
+        if [[ $rc -ne $status ]]; then REASON="nexus $*: exit $rc, expected $status"; return 1; fi
+        if ! grep -qF -- "$text" <<<"$out"; then REASON="nexus $*: output lacks \"$text\""; return 1; fi
+        if grep -qE "$PANIC_RE|\.zig:[0-9]+:[0-9]+: 0x" <<<"$out"; then REASON="nexus $*: crash or stack trace"; return 1; fi
+        return 0
+    }
+    mkdir -p "$WORK/cli"
+    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar "$WORK/cli/"
+    expect 0 "$want" --version || return 1
+    expect 0 "$want" -V || return 1
+    [[ $(cd "$WORK/cli" && "$NEXUS" --version 2>/dev/null) == "$want" ]] || { REASON="--version does not print \"$want\" on stdout"; return 1; }
+    expect 0 "Usage: nexus" --help || return 1
+    (cd "$WORK/cli" && "$NEXUS" -h 2>/dev/null | grep -q "Usage: nexus") || { REASON="-h does not print the help on stdout"; return 1; }
+    expect 2 "no grammar file given" || return 1
+    expect 2 "unknown option '--bogus'" --bogus no_lang.grammar || return 1
+    expect 2 "unexpected argument 'c'" a b c || return 1
+    expect 1 "error: cannot read missing.grammar" missing.grammar || return 1
+    expect 0 "no errors" check no_lang.grammar || return 1
+    if [[ -e "$WORK/cli/src" ]]; then REASON="check wrote output"; return 1; fi
+    expect 1 "undeclared conflict" check list_tail_conflict.grammar || return 1
+    expect 0 "Generated: out.zig" --spans no_lang.grammar out.zig || return 1
+    grep -q "pub const nodeStore = true" "$WORK/cli/out.zig" || { REASON="--spans did not turn on the node store"; return 1; }
+    expect 0 "(section \`lexer\`)" --dump-sexp no_lang.grammar || return 1
+    return 0
+}
+
 check_unit_nexus() {
     local step
     step=$(zig build -l 2>/dev/null | awk '{print $1}' | grep -m1 -xE 'test-unit|unit|test-lowerer')
@@ -337,6 +375,7 @@ worker() {
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
         unit-nexus)  check_unit_nexus; ok=$? ;;
         diff-tool)   check_diff_tool; ok=$? ;;
+        cli)         check_cli; ok=$? ;;
         *)           REASON="unknown task kind $kind"; ok=1 ;;
     esac
     if [[ "$id" == known/* || "$id" == */known/* ]]; then
@@ -466,6 +505,7 @@ done
 add bootstrap bootstrap
 add unit/nexus unit-nexus
 add tools/diff diff-tool
+add tools/cli cli
 
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 NB=$(wc -l <"$BUILDS" | tr -d ' ')
