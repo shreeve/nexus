@@ -853,7 +853,8 @@ pub const GrammarLowerer = struct {
                 return self.fail(lt[1], "@repair lines are `holes ...`, `structure ...` or `terminator ...`, not '{s}'", .{which});
             const locs = if (out == &holes) &holeLocs else if (out == &structure) &structureLocs else &terminatorLocs;
             for (lt[2..]) |n| {
-                try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "token name")));
+                // A literal keeps its quotes: it names the literal's symbol.
+                try out.append(self.allocator, try self.requireSrc(n, "token name"));
                 const at = self.loc(n);
                 try locs.append(self.allocator, .{ .line = at.line, .col = at.col });
             }
