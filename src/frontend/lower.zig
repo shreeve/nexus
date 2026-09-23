@@ -98,7 +98,7 @@ pub const GrammarLowerer = struct {
 
     fn listItems(node: Sexp) ?[]const Sexp {
         return switch (node) {
-            .list => |items| items,
+            .list => |l| l.items(),
             else => null,
         };
     }
@@ -124,7 +124,7 @@ pub const GrammarLowerer = struct {
     fn firstPos(node: Sexp) ?u32 {
         return switch (node) {
             .src => |s| s.pos,
-            .list => |items| for (items) |item| {
+            .list => |l| for (l.items()) |item| {
                 if (firstPos(item)) |p| break p;
             } else null,
             else => null,
@@ -914,7 +914,7 @@ const sOne = src(36, 1);
 const sArrowRule = src(37, 6);
 
 fn L(comptime items: []const Sexp) Sexp {
-    return .{ .list = items };
+    return Sexp.listOf(items);
 }
 fn T(comptime t: Tag) Sexp {
     return .{ .tag = t };

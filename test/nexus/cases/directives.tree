@@ -1,24 +1,32 @@
 (grammar
-  (lang `"demo"`)
-  (conflicts `3`)
+  (lang `"demo"`)@0..14
+  (conflicts `3`)@15..29
   (as
     `ident`
     _
-    (as_entry _ `keyword` _)
-    (as_entry perm `command` _)
-    (as_entry _ `self` _)
-    (as_entry perm `intrinsic` _))
-  (op (op_map `"'="` `"noteq"`) (op_map `"'<"` `"notlt"`))
-  (errors (name_pair `expr` `"expression"`) (name_pair `STRING` `"string literal"`))
+    (as_entry _ `keyword` _)@44..51
+    (as_entry perm `command` _)@53..61
+    (as_entry _ `self` _)@63..67
+    (as_entry perm `intrinsic` _)@69..79)@35..80
+  (op (op_map `"'="` `"noteq"`)@90..106 (op_map `"'<"` `"notlt"`)@108..124)@82..126
+  (errors
+    (name_pair `expr` `"expression"`)@136..154
+    (name_pair `STRING` `"string literal"`)@156..180)@128..180
   (infix
     `unary`
-    (level (infix_op `"||"` `left`))
-    (level (infix_op `"=="` `none`) (infix_op `"!="` `none`))
-    (level (infix_op `"+"` `left`) (infix_op `"-"` `left`))
-    (level (infix_op `"**"` `right`)))
-  (rule (start `program`) (alt _ ((ref `expr`)) (node `module` (pos `1`)) _))
-  (rule (name `expr`) (alt _ ((at_ref `infix`)) _ _))
+    (level (infix_op `"||"` `left`)@199..208)@199..208
+    (level (infix_op `"=="` `none`)@213..222 (infix_op `"!="` `none`)@224..233)@213..233
+    (level (infix_op `"+"` `left`)@238..246 (infix_op `"-"` `left`)@248..256)@238..256
+    (level (infix_op `"**"` `right`)@261..271)@261..271)@182..271
   (rule
-    (name `unary`)
-    (alt _ ((lit `"-"`) (ref `unary`)) (node `neg` (pos `2`)) _)
-    (alt _ ((tok `IDENT`)) _ _)))
+    (start `program`)@273..281
+    (alt _ ((ref `expr`)@284..288)@284..288 (node `module` (pos `1`)@321..322)@313..323 _)@284..323)@273..323
+  (rule (name `expr`)@324..328 (alt _ ((at_ref `infix`)@335..341)@335..341 _ _)@335..341)@324..341
+  (rule
+    (name `unary`)@342..347
+    (alt
+      _
+      ((lit `"-"`)@353..356 (ref `unary`)@357..362)@353..362
+      (node `neg` (pos `2`)@387..388)@382..389
+      _)@353..389
+    (alt _ ((tok `IDENT`)@401..406)@401..406 _ _)@401..406)@342..406)@0..407

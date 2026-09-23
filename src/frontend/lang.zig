@@ -1,6 +1,6 @@
 //! lang.zig: the @lang module of the self-hosted frontend (parser.zig).
 //!
-//! Provides the Tag enum of the frontend's S-expression tree and the Lexer
+//! Re-exports the Tag enum of the frontend's S-expression tree and provides the Lexer
 //! wrapper that turns the generated BaseLexer's tokens into the token
 //! stream nexus.grammar parses. The wrapper owns everything that depends
 //! on layout or context:
@@ -44,72 +44,8 @@ const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
 
-/// The tags of the frontend tree: the kinds of nexus.grammar's @schema in
-/// declaration order, then its marker values.
-pub const Tag = enum(u8) {
-    grammar,
-    lang,
-    conflicts,
-    manifest,
-    conflict,
-    as,
-    as_entry,
-    op,
-    op_map,
-    errors,
-    display,
-    name_pair,
-    infix,
-    level,
-    infix_op,
-    schema,
-    kind_decl,
-    kinds,
-    sides,
-    roles,
-    role,
-    type,
-    tagset,
-    tags,
-    trivia,
-    repair,
-    repair_line,
-    rule,
-    start,
-    name,
-    alt,
-    ref,
-    tok,
-    lit,
-    at_ref,
-    list_req,
-    plain,
-    opt_items_nosep,
-    sep_items,
-    opt_items,
-    group,
-    quantified,
-    skip_q,
-    skip,
-    exclude,
-    label,
-    opt,
-    zero_plus,
-    one_plus,
-    pos,
-    spread,
-    symid,
-    null,
-    tag,
-    named,
-    node,
-    list,
-    keep,
-    perm,
-    wrapper,
-    rest,
-    many,
-};
+/// The tags of the frontend tree, generated from nexus.grammar's @schema.
+pub const Tag = parser.Tag;
 
 pub const Lexer = struct {
     base: BaseLexer,

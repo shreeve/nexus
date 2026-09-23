@@ -128,6 +128,17 @@ pub const LexerGenerator = struct {
         return self.output.toOwnedSlice();
     }
 
+    /// The lexer's declarations (TokenCat, Token, BaseLexer) without the
+    /// file header and imports, for composing into a generated parser module.
+    pub fn generateDecls(self: *LexerGenerator) ![]const u8 {
+        self.w = &self.output.writer;
+        try self.analyze();
+        try self.emitTokenCat();
+        try self.emitTokenStruct();
+        try self.emitLexerStruct();
+        return self.output.toOwnedSlice();
+    }
+
     // =========================================================================
     // Analysis
     // =========================================================================
@@ -486,21 +497,21 @@ pub const LexerGenerator = struct {
                 \\
                 \\    /// `@code = {s}`: `{s}.{s}(source, pos)` at the current position.
                 \\    pub fn {s}(self: *const Self) bool {{
-                \\        return {s}.{s}(self.source, self.pos);
+                \\        return lang.{s}(self.source, self.pos);
                 \\    }}
                 \\
-            , .{ name, lang, name, name, lang, name });
+            , .{ name, lang, name, name, name });
         }
 
         try self.emitMatchRules();
         try self.write("};\n");
 
-        if (self.spec.langName) |lang| {
-            try self.print(
+        if (self.spec.langName != null) {
+            try self.write(
                 \\
-                \\pub const Lexer = if (@hasDecl({s}, "Lexer")) {s}.Lexer else BaseLexer;
+                \\pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
                 \\
-            , .{ lang, lang });
+            );
         }
     }
 

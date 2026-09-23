@@ -61,7 +61,12 @@ pub const TagSet = struct {
 pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule) !void {
     var e = Emitter{ .allocator = allocator, .offset = rule.actionOffset, .fixed = g.schema != null };
     const tree = rule.actionTree orelse {
-        try writer.writeAll("self.list(pass)");
+        // Default: nothing, the one element, or an untagged list.
+        try writer.writeAll(switch (rule.rhs.len) {
+            0 => ".nil",
+            1 => "pass[0]",
+            else => "self.list(pass)",
+        });
         return;
     };
     switch (tree) {
@@ -85,7 +90,7 @@ const Emitter = struct {
     }
 
     fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
-        if (l.head == .none and l.items.len == 0) return w.writeAll(".{ .list = &[_]Sexp{} }");
+        if (l.head == .none and l.items.len == 0) return w.writeAll(emptyList);
 
         // (!A ...B): element A consed onto the list at B.
         if (l.head == .ref and l.items.len == 1 and l.items[0].elem == .spread and l.head.ref == .ref) {
@@ -118,7 +123,7 @@ const Emitter = struct {
             }
             return w.writeAll(listFromSliceSuffix);
         }
-        try self.buildList(w, l, label, false);
+        try self.buildList(w, l, label);
     }
 
     // --- Without a schema (0.10 output) --------------------------------------
@@ -174,7 +179,7 @@ const Emitter = struct {
             }
             return w.writeAll("})");
         }
-        try self.buildList(w, l, label, true);
+        try self.buildList(w, l, label);
     }
 
     fn hasNested(l: ActionList) bool {
@@ -187,8 +192,9 @@ const Emitter = struct {
     /// A labeled block that appends the head and every item to a list.
     /// A leading `...N` whose N is not used again extends that list in
     /// place (amortized O(1) growth of left-recursive lists; each reduced
-    /// value is consumed once). `strip` drops trailing nils.
-    fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8, strip: bool) anyerror!void {
+    /// value is consumed once). Trailing nils are dropped by the runtime
+    /// (keepList/finishList) unless the schema fixes positions.
+    fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         var extend: ?u16 = null;
         if (l.head == .none and l.items.len > 0 and l.items[0].elem == .spread) {
             const n = l.items[0].elem.spread;
@@ -198,30 +204,29 @@ const Emitter = struct {
             };
         }
         if (extend) |n| {
-            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} .nil; ", .{ label, self.index(n), label });
+            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, self.index(n), label });
         } else {
             try w.print("{s}: {{ var out: std.ArrayListUnmanaged(Sexp) = .empty; ", .{label});
         }
         if (headValue(l.head)) |_| {
             try w.writeAll("out.append(self.allocator(), ");
             try self.headExpr(w, l.head);
-            try w.print(") catch break :{s} .nil; ", .{label});
+            try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
         }
         for (l.items, 0..) |item, i| {
             if (extend != null and i == 0) continue;
             switch (item.elem) {
                 .spread => |p| {
                     const at = self.index(p);
-                    try w.print("if (pass[{d}] == .list) for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} .nil; ", .{ at, at, label });
+                    try w.print("for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} " ++ allocFailed ++ "; ", .{ at, label });
                 },
                 else => {
                     try w.writeAll("out.append(self.allocator(), ");
                     try self.value(w, item.elem);
-                    try w.print(") catch break :{s} .nil; ", .{label});
+                    try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
                 },
             }
         }
-        if (strip) try w.writeAll("while (out.items.len > 0 and out.items[out.items.len - 1] == .nil) _ = out.pop(); ");
         if (extend != null) {
             try w.print("break :{s} self.keepList(&out); }}", .{label});
         } else {
@@ -256,13 +261,52 @@ const Emitter = struct {
             .nil => try w.writeAll(".nil"),
             .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
             .node => |n| {
+                // A nested node gets its own node id, spanning the
+                // pattern elements it references.
                 self.depth += 1;
                 var buf: [16]u8 = undefined;
                 const label = try std.fmt.bufPrint(&buf, "blk{d}", .{self.depth});
-                try self.list(w, n.*, label);
+                var range: Range = .{};
+                range.addList(n.*);
+                if (range.lo) |lo| {
+                    try w.writeAll("self.nested(");
+                    try self.list(w, n.*, label);
+                    try w.print(", {d}, {d})", .{ self.index(lo), self.index(range.hi) });
+                } else {
+                    try w.writeAll("self.nestedEmpty(");
+                    try self.list(w, n.*, label);
+                    try w.writeAll(")");
+                }
             },
             .spread, .label => unreachable,
         }
+    }
+};
+
+/// The pattern positions an action list references.
+const Range = struct {
+    lo: ?u16 = null,
+    hi: u16 = 0,
+
+    fn add(self: *Range, pos: u16) void {
+        self.lo = if (self.lo) |lo| @min(lo, pos) else pos;
+        self.hi = @max(self.hi, pos);
+    }
+
+    fn addElem(self: *Range, e: ActionElem) void {
+        switch (e) {
+            .ref, .spread, .symId => |p| self.add(p),
+            .node => |n| self.addList(n.*),
+            .nil, .tagLit, .label => {},
+        }
+    }
+
+    fn addList(self: *Range, l: ActionList) void {
+        switch (l.head) {
+            .ref => |h| self.addElem(h),
+            else => {},
+        }
+        for (l.items) |item| self.addElem(item.elem);
     }
 };
 
@@ -301,14 +345,20 @@ fn writeTag(t: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
 }
 
 // =============================================================================
-// Runtime surface: the only places emitted action code depends on how a
-// list Sexp is represented (`.list` holds a `[]const Sexp`).
+// Runtime surface: the builders emitted action code calls (runtime_template
+// `BaseParser`). Each gives the list it builds a node id when the parser
+// keeps a node store.
 // =============================================================================
 
-/// `...` + `listFromSliceSuffix` around comma-separated item expressions.
-const listFromSlicePrefix = ".{ .list = self.allocator().dupe(Sexp, &.{ ";
-const listFromSliceSuffix = " }) catch &[_]Sexp{} }";
-/// The list Sexp holding the items of the ArrayList `out`.
-const listFromOwned = ".{ .list = out.toOwnedSlice(self.allocator()) catch &[_]Sexp{} }";
-/// The items of the list in `pass[{d}]` (the format argument).
-const itemsOf = "pass[{d}].list";
+/// `listFromSlicePrefix` + comma-separated item expressions + suffix: a
+/// list node over exactly those items.
+const listFromSlicePrefix = "self.build(&.{ ";
+const listFromSliceSuffix = " })";
+/// The list node holding the items of the ArrayList `out`.
+const listFromOwned = "self.finishList(&out)";
+/// `()`
+const emptyList = "self.emptyList()";
+/// The items of the list in `pass[{d}]` (none for any other value).
+const itemsOf = "pass[{d}].items()";
+/// The value of a list block whose allocation failed.
+const allocFailed = "self.oomNil()";

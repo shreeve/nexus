@@ -91,7 +91,9 @@ fn listItems(l: anytype) []const Sexp {
     return l.items();
 }
 
-const has_spans = @hasDecl(P, "span");
+// Spans are printed when the parser records them (`nodeStore`: `@schema`
+// or `--spans`); without a node store `span()` only hulls the leaves.
+const has_spans = @hasDecl(P, "span") and (!@hasDecl(parser, "nodeStore") or parser.nodeStore);
 
 const Printer = struct {
     src: []const u8,

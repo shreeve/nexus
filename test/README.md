@@ -63,6 +63,7 @@ optional:
 | `grammar` | the only `*.grammar` in the directory | grammar path |
 | `lang` | every `*.zig` in the directory | `@lang` module files (space-separated) |
 | `start` | the parser's first `parse*` method | start rule for `cases/*` |
+| `flags` | none | extra generator options, e.g. `--spans` |
 | `generator` | `current` | `legacy` generates with Nexus 0.10.3 instead of `bin/nexus` (for grammars still in the old format once 1.0 no longer reads it); `gen/`, `sexp/` and `determinism/` are then skipped |
 
 A case is any file in `cases/` except `*.tree`, `*.md` and `README*`; its
@@ -74,7 +75,7 @@ The in-repo suites:
 
 | Suite | Grammar | Corpus |
 |---|---|---|
-| `basic`, `features`, `lit_tags` | small feature grammars | hand-written; all in `known/` because the parsers do not compile today |
+| `basic`, `features`, `lit_tags` | small feature grammars (no lang `Lexer` wrapper) | hand-written |
 | `nexus` | `nexus.grammar` with `src/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 | `rig` | the live Rig grammar and its `rig.zig`, `ir.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 that fail today), 22 MVTS-derived em compliance routines |

@@ -11,7 +11,8 @@
 #   0 built   10 generation failed   11 compile failed   2 usage
 #
 # The generator runs in the grammar's directory (as `nexus g.grammar out`),
-# like the golden checks do. Generation fails if the generator exits
+# like the golden checks do, with $NEXUS_FLAGS (if set) as extra options.
+# Generation fails if the generator exits
 # non-zero, crashes, or writes no parser (0.10.x prints an error and still
 # exits 0).
 
@@ -34,7 +35,8 @@ rm -f "$OUT/parser.zig" "$OUT/driver"
 
 gdir=$(dirname "$GRAMMAR")
 gname=$(basename "$GRAMMAR")
-(cd "$gdir" && "$NEXUS" "$gname" "$OUT/parser.zig") >"$OUT/gen.log" 2>&1
+# shellcheck disable=SC2086 # NEXUS_FLAGS: extra generator options, split on spaces
+(cd "$gdir" && "$NEXUS" ${NEXUS_FLAGS:-} "$gname" "$OUT/parser.zig") >"$OUT/gen.log" 2>&1
 rc=$?
 if [[ $rc -ne 0 || ! -s "$OUT/parser.zig" ]]; then
     echo "exit $rc" >>"$OUT/gen.log"

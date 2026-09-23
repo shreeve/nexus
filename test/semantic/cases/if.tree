@@ -1,8 +1,12 @@
 (module
-  (if `if` (name `x`) (set _ (name `y`) (num `1`)) _)
-  (if `unless` (name `x`) (return _) (return (num `5`)))
+  (if `if` (name `x`)@3..4 (set _ (name `y`)@10..11 (num `1`)@14..15)@10..15 _)@0..15
+  (if `unless` (name `x`)@23..24 (return _)@30..36 (return (num `5`)@49..50)@42..50)@16..50
   (if
     `if`
-    (name `a`)
-    (if `if` (name `b`) (set _ (name `c`) (num `1`)) (set _ (name `d`) (num `2`)))
-    _))
+    (name `a`)@54..55
+    (if
+      `if`
+      (name `b`)@64..65
+      (set _ (name `c`)@71..72 (num `1`)@75..76)@71..76
+      (set _ (name `d`)@82..83 (num `2`)@86..87)@82..87)@61..87
+    _)@51..87)@0..88

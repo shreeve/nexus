@@ -40,11 +40,12 @@ tokens
     with
     pass
     yield
+    comment
     eof
     err
 
 # (spaces and tabs are consumed by the lexer as leading whitespace)
-'#' [^\n]*                                  → skip
+'#' [^\n]*                                  → comment
 '\n'                                        → newline
 "+="                                        → plus_eq
 '='                                         → eq
@@ -94,7 +95,7 @@ tokens
 @errors
     expr: "an expression"
 
-@trivia NEWLINE
+@trivia COMMENT
 
 @repair
     holes      IDENT

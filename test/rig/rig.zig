@@ -998,7 +998,7 @@ pub const Parser = struct {
         if (self.base.current.cat == .eof) {
             const empty = try self.allocator().alloc(Sexp, 1);
             empty[0] = .{ .tag = .@"module" };
-            return .{ .list = empty };
+            return Sexp.listOf(empty);
         }
         const tree = try self.base.parseProgram();
         if (tooDeep(tree, 0)) |pos| {
@@ -1012,7 +1012,7 @@ pub const Parser = struct {
     /// `max_tree_depth`, or null.
     fn tooDeep(sexp: Sexp, depth: u32) ?u32 {
         const items = switch (sexp) {
-            .list => |l| l,
+            .list => |l| l.items(),
             else => return null,
         };
         if (depth == max_tree_depth) return firstPos(sexp);
@@ -1025,8 +1025,8 @@ pub const Parser = struct {
     fn firstPos(sexp: Sexp) u32 {
         var node = sexp;
         descend: while (node == .list) {
-            for (node.list) |item| if (item == .src) return item.src.pos;
-            for (node.list) |item| if (item == .list) {
+            for (node.list.items()) |item| if (item == .src) return item.src.pos;
+            for (node.list.items()) |item| if (item == .list) {
                 node = item;
                 continue :descend;
             };
@@ -1085,14 +1085,14 @@ pub const Parser = struct {
 
     fn walk(self: *Parser, sexp: Sexp) std.mem.Allocator.Error!Sexp {
         const items = switch (sexp) {
-            .list => |l| l,
+            .list => |l| l.items(),
             else => return sexp,
         };
         const walked = try self.allocator().alloc(Sexp, items.len);
         for (items, 0..) |child, i| walked[i] = try self.walk(child);
         if (walked.len >= 2 and walked[0] == .tag and walked[0].tag == .@"lambda") try self.splitBars(walked);
         const out = try ir.pad(self.allocator(), walked);
-        if (out.len == 0 or out[0] != .tag) return .{ .list = out };
+        if (out.len == 0 or out[0] != .tag) return .{ .list = .withId(out, sexp.list.id) };
         switch (out[0].tag) {
             .@"for" => normFor(out),
             // (fun name params returns body): the body's value is returned.
@@ -1101,18 +1101,18 @@ pub const Parser = struct {
             .@"set" => if (out.len >= 5) valueTail(out[4]),
             else => {},
         }
-        return .{ .list = out };
+        return .{ .list = .withId(out, sexp.list.id) };
     }
 
     /// `(lambda entries ...)`: sigiled entries are captures, the rest
     /// parameters. Captures come first.
     fn splitBars(self: *Parser, items: []Sexp) std.mem.Allocator.Error!void {
-        const entries: []const Sexp = if (items[1] == .list) items[1].list else &.{};
+        const entries: []const Sexp = if (items[1] == .list) items[1].list.items() else &.{};
         var caps: std.ArrayListUnmanaged(Sexp) = .empty;
         var params: std.ArrayListUnmanaged(Sexp) = .empty;
         try caps.append(self.allocator(), .{ .tag = .@"captures" });
         for (entries) |e| {
-            const is_capture = e == .list and e.list.len > 0 and e.list[0] == .tag and switch (e.list[0].tag) {
+            const is_capture = e == .list and e.list.len > 0 and e.items()[0] == .tag and switch (e.items()[0].tag) {
                 .@"cap_clone", .@"cap_move", .@"cap_weak" => true,
                 else => false,
             };
@@ -1125,15 +1125,15 @@ pub const Parser = struct {
             }
             try caps.append(self.allocator(), e);
         }
-        items[1] = if (caps.items.len > 1) .{ .list = caps.items } else .nil;
-        if (items.len >= 3) items[2] = if (params.items.len > 0) .{ .list = params.items } else .nil;
+        items[1] = if (caps.items.len > 1) Sexp.listOf(caps.items) else .nil;
+        if (items.len >= 3) items[2] = if (params.items.len > 0) Sexp.listOf(params.items) else .nil;
     }
 
     /// `sexp` (already walked, so its lists are freshly allocated) is in
     /// value position: a trailing `(drop x)` there is `(neg x)`.
     fn valueTail(sexp: Sexp) void {
-        if (sexp != .list or sexp.list.len == 0 or sexp.list[0] != .tag) return;
-        const items = @constCast(sexp.list);
+        if (sexp != .list or sexp.list.len == 0 or sexp.items()[0] != .tag) return;
+        const items = @constCast(sexp.items());
         switch (items[0].tag) {
             .@"drop" => items[0] = .{ .tag = .@"neg" },
             .@"block" => if (items.len >= 2) valueTail(items[items.len - 1]),
@@ -1141,7 +1141,7 @@ pub const Parser = struct {
                 valueTail(items[2]);
                 valueTail(items[3]);
             },
-            .@"match" => for (items[2..]) |arm| valueTail(arm.list[2]),
+            .@"match" => for (items[2..]) |arm| valueTail(arm.items()[2]),
             else => {},
         }
     }
@@ -1150,11 +1150,11 @@ pub const Parser = struct {
     fn normFor(items: []Sexp) void {
         if (items[1] != .tag or items[1].tag != .iter) return;
         const source = items[4];
-        if (source != .list or source.list.len < 2 or source.list[0] != .tag) return;
-        switch (source.list[0].tag) {
+        if (source != .list or source.list.len < 2 or source.items()[0] != .tag) return;
+        switch (source.items()[0].tag) {
             .@"read", .@"write", .@"move" => {
-                items[1] = source.list[0];
-                items[4] = source.list[1];
+                items[1] = source.items()[0];
+                items[4] = source.items()[1];
             },
             else => {},
         }
@@ -1260,11 +1260,11 @@ test "parser: for-source sigil moves into the mode slot" {
     var read_items = [_]Sexp{ .{ .tag = .@"read" }, .{ .str = "xs" } };
     var raw_items = [_]Sexp{
         .{ .tag = .@"for" },  .{ .tag = .iter }, .{ .str = "x" }, .nil,
-        .{ .list = &read_items }, .{ .str = "body" },
+        Sexp.listOf(&read_items), .{ .str = "body" },
     };
     var p = Parser.init(testing.allocator, "");
     defer p.deinit();
-    const out = try p.rewrite(.{ .list = &raw_items });
-    try testing.expectEqual(Tag.@"read", out.list[1].tag);
-    try testing.expect(out.list[4] == .str);
+    const out = try p.rewrite(Sexp.listOf(&raw_items));
+    try testing.expectEqual(Tag.@"read", out.items()[1].tag);
+    try testing.expect(out.items()[4] == .str);
 }
