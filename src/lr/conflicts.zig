@@ -398,7 +398,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
         for (actual, 0..) |e, i| {
             if (taken[i]) continue;
             drift = true;
-            try located(w, opts.path, 0);
+            try located(w, opts.path, g.rules.items[e.rule].line);
             try w.writeAll("undeclared conflict: ");
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});
@@ -413,7 +413,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
     } else if (actual.len > 0) {
         drift = true;
         for (actual) |e| {
-            try located(w, opts.path, 0);
+            try located(w, opts.path, g.rules.items[e.rule].line);
             try w.writeAll("undeclared conflict: ");
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});

@@ -84,8 +84,10 @@ pub const HintUse = struct {
 pub const Table = struct {
     /// ACTION/GOTO, indexed [state][symbol].
     rows: [][]ParseAction,
-    /// Sorted by state, then character.
+    /// Sorted by state (then by terminal id). State s's overrides are
+    /// `xExcludes.items[xExcludeStart[s]..xExcludeStart[s + 1]]`.
     xExcludes: std.ArrayListUnmanaged(XExclude) = .empty,
+    xExcludeStart: []const u32,
     /// Number of unresolved conflicts (= conflictList.len).
     conflicts: u32 = 0,
     /// Every unresolved conflict, by state, then terminal.
@@ -254,12 +256,18 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
         }
     }
 
+    const xExcludeStart = try a.alloc(u32, numStates + 1);
+    @memset(xExcludeStart, 0);
+    for (xExcludes.items) |x| xExcludeStart[x.state + 1] += 1;
+    for (1..numStates + 1) |s| xExcludeStart[s] += xExcludeStart[s - 1];
+
     const exp = try expected.compute(g, auto, la, rows);
     const rep: ?repair.Repair = if (g.repair) |spec| try repair.compute(g, auto, la, rows, spec) else null;
 
     return .{
         .rows = rows,
         .xExcludes = xExcludes,
+        .xExcludeStart = xExcludeStart,
         .conflicts = @intCast(conflictList.items.len),
         .conflictList = try conflictList.toOwnedSlice(a),
         .hints = try hints.toOwnedSlice(a),

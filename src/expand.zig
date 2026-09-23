@@ -137,6 +137,9 @@ pub fn processGrammar(g: *Grammar, ir: *const GrammarIR) !void {
     g.opMappings = ir.opMappings;
     g.lang = ir.lang;
     g.expectConflicts = ir.expectConflicts;
+    g.conflicts = ir.conflicts;
+    g.errorNames = ir.errorNames;
+    g.repair = ir.repair;
 
     // Generate infix expression chain if @infix was declared
     if (ir.infix) |infix| {

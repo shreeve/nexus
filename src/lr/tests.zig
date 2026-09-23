@@ -466,6 +466,10 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
     }
     try testing.expectEqual(@as(usize, 2), n);
     try testing.expectEqual(xs[0].state, xs[1].state);
+    const st = xs[0].state;
+    try testing.expectEqual(@as(u32, 0), x.tbl.xExcludeStart[st]);
+    try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[st + 1]);
+    try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[x.auto.states.items.len]);
     try testing.expect(std.mem.indexOfScalar(u8, &chars, '(') != null and std.mem.indexOfScalar(u8, &chars, '[') != null);
     for (xs) |e| try testing.expect(x.tbl.rows[e.state][sym(&x.g, if (e.char == '(') "\"(\"" else "\"[\"")] == .reduce);
     var sink: std.Io.Writer.Allocating = .init(a);
