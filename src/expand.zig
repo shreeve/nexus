@@ -474,6 +474,9 @@ fn processBaseElement(g: *Grammar, elem: ParsedElement) error{OutOfMemory}!u16 {
             break :blk try g.addSymbol(resolved, .terminal);
         },
         .string => try g.addSymbol(elem.value, .terminal),
+        // `(A | B)` choices are expanded into separate alternatives before
+        // elements are processed; one never reaches here.
+        .choice => unreachable,
         .group => blk: {
             if (elem.subElements.len == 0) break :blk g.errorId;
 

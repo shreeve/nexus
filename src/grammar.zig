@@ -177,21 +177,37 @@ pub const GrammarIR = struct {
     errorNames: []const ErrorName,
     infix: ?InfixDecl = null,
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null,
+    expectConflicts: ?u32 = null, // legacy `@conflicts = N`; replaced by `conflicts`
+    /// `@schema`: present means the grammar is in schema mode.
+    schema: ?Schema = null,
+    /// `@conflicts` manifest; empty means the grammar must be conflict-free.
+    conflicts: []const ConflictEntry = &.{},
+    /// `@display`: reader-facing names for tokens in diagnostics.
+    displayNames: []const DisplayName = &.{},
+    /// `@trivia`: tokens moved to the trivia channel.
+    trivia: []const []const u8 = &.{},
+    /// `@repair`: the tolerant-repair alphabet; null = no tolerant driver.
+    repair: ?RepairSpec = null,
 };
 
 pub const ParsedRule = struct {
     name: []const u8,
     isStart: bool,
     alternatives: []const ParsedAlternative,
+    line: u32 = 0,
 };
 
 pub const ParsedAlternative = struct {
     elements: []const ParsedElement,
-    action: ?[]const u8 = null,
-    excludeChar: u8 = 0,
+    action: ?[]const u8 = null, // legacy template text; replaced by actionTree
+    actionTree: ?ActionTree = null,
+    /// `~ "reason"`: exempt from the schema coverage gate.
+    optOut: ?[]const u8 = null,
+    excludeChar: u8 = 0, // legacy; replaced by excludeChars
+    excludeChars: []const u8 = &.{},
     preferReduce: bool = false,
     preferShift: bool = false,
+    line: u32 = 0,
 };
 
 pub const ParsedElement = struct {
@@ -201,7 +217,11 @@ pub const ParsedElement = struct {
     optionalItems: bool = false,
     listSeparator: ?[]const u8 = null,
     subElements: []const ParsedElement = &[_]ParsedElement{},
+    /// `choice` elements: one alternative sequence per `|` branch.
+    choices: []const []const ParsedElement = &.{},
     skip: bool = false,
+    /// `role:element` pattern label.
+    label: ?[]const u8 = null,
 
     pub const Kind = enum {
         ident,
@@ -211,9 +231,124 @@ pub const ParsedElement = struct {
         optGroup,
         reqList,
         optList,
+        /// `(A | B | C)`: exactly one of the choices (optional with `?`).
+        choice,
     };
 
     pub const Quantifier = enum { one, optional, zeroPlus, onePlus };
+};
+
+// =============================================================================
+// Semantic layer (schema mode)
+// =============================================================================
+
+/// `@schema`: every node kind and its roles.
+pub const Schema = struct {
+    kinds: []const Kind,
+    /// `@tags`: extra tags the Tag enum must contain (used by lang wrappers).
+    extraTags: []const []const u8 = &.{},
+
+    /// One node kind: a tag, its slot roles in order, and side-band roles.
+    pub const Kind = struct {
+        tag: []const u8,
+        roles: []const Role,
+        /// Side-band roles: spans recorded in the role store, not in the tree.
+        side: []const []const u8 = &.{},
+        /// Produced by a lang Parser wrapper, not by any rule.
+        wrapper: bool = false,
+        line: u32 = 0,
+    };
+
+    pub const Role = struct {
+        name: []const u8,
+        type: RoleType = .any,
+        optional: bool = false,
+        /// `...name`: zero or more trailing children; always the last role.
+        rest: bool = false,
+    };
+
+    pub const RoleType = union(enum) {
+        any,
+        node,
+        leaf,
+        /// A marker tag; an empty list allows any tag.
+        tag: []const []const u8,
+        group,
+        /// A node whose head is one of these kinds.
+        kinds: []const []const u8,
+    };
+};
+
+/// A parsed action template. Built by the frontend; consumed by the
+/// semantic checks (semantics.zig) and by parser codegen.
+pub const ActionTree = union(enum) {
+    /// `→ N`: pass element N through unchanged.
+    pass: u16,
+    /// `→ _`: nil.
+    nil,
+    /// `→ (…)`: construct a list.
+    list: ActionList,
+};
+
+pub const ActionList = struct {
+    head: Head,
+    items: []const ActionItem,
+
+    pub const Head = union(enum) {
+        /// `(tag …)`: a tag-headed list (a schema kind in schema mode).
+        tag: []const u8,
+        /// `(~N …)` / `(N …)`: a list headed by an element's value.
+        ref: ActionElem,
+        /// `(…)` with no head: an untagged list (plumbing or a group).
+        none,
+    };
+};
+
+pub const ActionItem = struct {
+    /// `role:elem`; null for a positional element.
+    role: ?[]const u8 = null,
+    elem: ActionElem,
+};
+
+pub const ActionElem = union(enum) {
+    /// `N`: element N (1-based pattern position).
+    ref: u16,
+    /// `...N`: spread element N's children.
+    spread: u16,
+    /// `~N`: element N's resolved symbol id.
+    symId: u16,
+    /// `_`
+    nil,
+    /// A tag literal in child position (`op:+=`, `move`).
+    tagLit: []const u8,
+    /// A nested `(kind …)` node.
+    node: *const ActionList,
+    /// `@name` / a pattern label reference, resolved to a position by expand.zig.
+    label: []const u8,
+};
+
+/// One `@conflicts` manifest entry.
+pub const ConflictEntry = struct {
+    kind: enum { shift, reduce },
+    /// The rule a default shift beat (`shift`) or the reduction kept (`reduce`), as `lhs → rhs`.
+    rule: []const u8,
+    /// For `reduce`: the reduction dropped.
+    over: ?[]const u8 = null,
+    count: u32,
+    reason: []const u8,
+    line: u32 = 0,
+};
+
+pub const DisplayName = struct {
+    token: []const u8,
+    name: []const u8,
+};
+
+pub const RepairSpec = struct {
+    /// Tokens that may be minted as zero-width holes (value-carrying, e.g. IDENT).
+    holes: []const []const u8,
+    /// Structural tokens that may be minted (NEWLINE, INDENT, OUTDENT).
+    structure: []const []const u8,
 };
 
 pub const InfixDecl = struct {
@@ -226,6 +361,8 @@ pub const AsDirective = struct {
     token: []const u8, // "ident"
     rule: []const u8, // "cmd" -> CmdId, cmdAs, cmdToSymbol
     permissive: bool = false, // "cmd!" -> reduce-aware matching (action != 0)
+    /// Explicit lang lookup function; null = the `<rule>As` convention.
+    via: ?[]const u8 = null,
 };
 
 /// @op directive for operator literal-to-token mappings
@@ -324,13 +461,25 @@ pub const Rule = struct {
     id: u16,
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
-    action: ?[]const u8, // Action template text, e.g. (set 2 ...3)
+    action: ?[]const u8, // Action template text (legacy; replaced by actionTree)
+    /// Action with every label resolved to a position and, in schema mode,
+    /// every role placed in its slot (nils filled). Null = pass through 1.
+    actionTree: ?ActionTree = null,
     actionOffset: u8 = 0, // Position offset for start rules with marker tokens
     nullable: bool = false,
     firsts: SymbolSet = .empty,
-    excludeChar: u8 = 0, // X "c" - exclude rule when next char matches
+    excludeChar: u8 = 0, // X "c" (legacy; replaced by excludeChars)
+    excludeChars: []const u8 = &.{}, // X "c" - chars that force shift when adjacent
     preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
     preferShift: bool = false, // > hint - prefer shift on S/R conflict
+    /// Schema kind index this rule constructs (schema mode), for the node store.
+    kind: ?u16 = null,
+    /// Side-band labels: (role, 1-based position) recorded in the role store.
+    sideLabels: []const SideLabel = &.{},
+    /// Source line of the alternative this rule came from (diagnostics).
+    line: u32 = 0,
+
+    pub const SideLabel = struct { role: []const u8, pos: u16 };
 };
 
 /// The desugared grammar: symbols, BNF rules, start/accept bookkeeping, and
@@ -359,8 +508,14 @@ pub const Grammar = struct {
     // Directives carried over from the IR
     asDirectives: []const AsDirective = &.{},
     opMappings: []const OpMapping = &.{},
+    errorNames: []const ErrorName = &.{},
+    displayNames: []const DisplayName = &.{},
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null,
+    expectConflicts: ?u32 = null, // legacy; replaced by `conflicts`
+    schema: ?Schema = null,
+    conflicts: []const ConflictEntry = &.{},
+    trivia: []const []const u8 = &.{},
+    repair: ?RepairSpec = null,
 
     pub fn init(allocator: Allocator) Grammar {
         return .{ .allocator = allocator };
