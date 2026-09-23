@@ -1,0 +1,20 @@
+# Two @schema kinds whose accessor namespaces coincide (foo_bar and fooBar
+# are both ir.FooBar) are reported at the second kind.
+# error: view_name_clash.grammar:17:5:
+# error: both map to the accessor namespace ir.FooBar
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@schema
+    foo_bar   a:leaf
+    fooBar    b:leaf
+
+top! = IDENT                                → (foo_bar 1)
+     | IDENT IDENT                          → (fooBar 2)  ~ "the first name is a comment"

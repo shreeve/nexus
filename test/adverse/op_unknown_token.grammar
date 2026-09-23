@@ -1,0 +1,16 @@
+# @op must map a literal to a lexer token.
+# error: op_unknown_token.grammar:15:16:
+# error: which is no lexer token
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@op = ["+" → "pluss"]
+top! = IDENT                                → (t 1)

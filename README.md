@@ -166,9 +166,7 @@ generation would have failed with `file:line:col: error:` naming the rule.
 - **Self-hosted.** Nexus parses grammar files with a parser Nexus generates
   from [`nexus.grammar`](nexus.grammar), itself written in schema mode.
 - **Located errors.** A mistake in a grammar is reported as
-  `file:line:col: error:` and generation fails; the few gaps left are
-  failing tests in `test/known/`, listed in
-  [GRAMMAR.md](docs/GRAMMAR.md#known-limitations).
+  `file:line:col: error:` and generation fails.
 
 ## Validated languages
 

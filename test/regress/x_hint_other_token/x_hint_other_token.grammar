@@ -1,0 +1,25 @@
+# An `X "("` hint shifts "(" when it touches the previous token; it does not
+# apply to another token that merely starts with "(" ("((" here).
+
+@lexer
+tokens
+    ident
+    lparen
+    rparen
+    dparen
+    eof
+    err
+"(("                                        → dparen
+'('                                         → lparen
+')'                                         → rparen
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "x_hint_other_token"
+
+top!  = item+                               → (top ...1)
+item  = IDENT X "("                         → (var 1)
+      | IDENT "(" IDENT ")"                 → (call 1 3)
+      | "(" IDENT ")"                       → (paren 2)
+      | "((" IDENT                          → (dbl 2)

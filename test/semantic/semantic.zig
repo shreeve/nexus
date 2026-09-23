@@ -222,3 +222,21 @@ test "tolerant parsing inserts declared tokens and records the first error" {
     defer strict.deinit();
     try testing.expectError(error.ParseError, strict.parseProgram());
 }
+
+test "a parser parses from the start every time" {
+    // A tolerant parse after a failed strict one sees the whole input.
+    var p = parser.Parser.init(testing.allocator, "x = \ny = 2");
+    defer p.deinit();
+    try testing.expectError(error.ParseError, p.parseProgram());
+    const r = try p.parseTolerant(.program, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqual(@as(usize, 2), ir.rest(r.sexp, .stmts).len);
+    // Parsing again gives the same tree, and the trivia of that parse only.
+    var q = parser.Parser.init(testing.allocator, "x = 1 # c\ny = 2");
+    defer q.deinit();
+    const a = try q.parseProgram();
+    const b = try q.parseProgram();
+    try testing.expectEqual(ir.rest(a, .stmts).len, ir.rest(b, .stmts).len);
+    try testing.expectEqual(@as(usize, 1), q.trivia().len);
+    try testing.expect(a.list.id != b.list.id);
+}

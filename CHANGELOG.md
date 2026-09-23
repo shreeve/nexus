@@ -68,6 +68,29 @@ its trees: see [docs/PORTING.md](docs/PORTING.md).
 - Lists with different separators are different lists.
 - Conflict reports never mention start markers; list-separator conflicts
   are reported.
+- Nothing dead is accepted silently: a literal no lexer rule produces, a
+  token written both as a literal and by name, `...N` of a token, and an
+  `@as` keyword no group's `Id` enum names are errors (the last one a
+  compile error naming it). This exposed Ruby's default arguments and
+  `**` splats (now parsed) and MUMPS's `"!!"` operator (removed).
+- A grammar without a `name!` rule starts at its first rule.
+- Every schema shape and `--spans` parser compiles, `writeFacts` included;
+  more than 255 collected tags get a wider `Tag` enum.
+- Without an action, an absent optional element is nil in the alternative's
+  list however it is written (`[r]`, `r?`, `["x"]` dropped it before).
+- `@repair` errors and accessor-name clashes are located; `@repair` may
+  name a token by its literal.
+- Generated parsers never hang or crash on their input: a cyclic grammar
+  (a rule that derives itself) and zero-width lexer rules that could fire
+  forever are generation errors; a match longer than 65535 bytes is an
+  `err` token; an `X "c"` hint applies to the hinted token only (not to
+  every token starting with `c`, nor to a token the tolerant parser
+  inserts).
+- Size limits (255 tokens, 32766 rules, 32767 states) are located errors
+  instead of overflows.
+- Spans nest: an empty node at the end of its parent lies inside it.
+- `b:["+"]` labels the literal; `(!N ...M)` keeps its nil head when N is
+  absent; a `( ... )` group with skipped elements keeps nil elements.
 
 ### Performance
 
@@ -75,14 +98,6 @@ Apple M5, ReleaseFast ([test/bench/BASELINE.md](test/bench/BASELINE.md)):
 MUMPS generation 29 → 17 ms; VistA (86.5 MB) lexing 331 → 348 MB/s and
 parsing 36 → 50 MB/s; Rig parsing 52 → 61 MB/s. The node store costs about
 5% (MUMPS) and 3% (Rig) of parse time.
-
-### Known issues
-
-Failing tests in `test/known/`: a grammar with no start symbol gets no parse
-method; a literal no lexer rule produces, a spread of a token without a
-schema, and an `@as` keyword no `Id` enum names are silently dead; a token
-used both by name and by literal matches only by name; `@repair` errors
-have no line and column.
 
 ## 0.10.3
 

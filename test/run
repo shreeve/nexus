@@ -140,7 +140,7 @@ check_case() {
     return 0
 }
 
-# check_rejects <grammar>: generation fails with a non-zero exit, a
+# check_rejects <grammar>: generation (and `nexus check`) fails with a non-zero exit, a
 # file:line:col diagnostic, every `# error:` text of the grammar, and none
 # of its `# absent:` texts.
 check_rejects() {
@@ -168,6 +168,11 @@ check_rejects() {
         if grep -qiF -- "$want" <<<"$out"; then REASON="output contains \"$want\""; return 1; fi
     done < <(directive absent "$g")
     if ! grep -qE "$POS_RE" <<<"$out"; then REASON="no file:line:col: error: diagnostic"; return 1; fi
+    # `nexus check` reports what generation reports.
+    out=$(cd "$(dirname "$g")" && timeout "$TIMEOUT" "$NEXUS" check "$(basename "$g")" 2>&1 </dev/null)
+    rc=$?
+    echo "--- nexus check" >>"$LOG"; echo "$out" >>"$LOG"
+    if [[ $rc -eq 0 ]] || ! grep -qE "$POS_RE" <<<"$out"; then REASON="nexus check accepts it (exit $rc)"; return 1; fi
     return 0
 }
 

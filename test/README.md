@@ -198,10 +198,11 @@ are extracted into `.zig-cache/nexus-test/docs/` and run like any suite.
 ## Lexer fuzzing
 
 `test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N]` generates random
-lexer specs (random patterns, trailing context, the `skip` action), builds
+lexer specs (random patterns, trailing context, the `skip`, `hold` and
+`rewind(n)` actions, `{m++}`/`{m--}`, comparison guards, an `after` block), builds
 them all with `bin/nexus` into one driver, lexes random inputs, and compares
 every token (cat, pos, len, pre) with a reference computed from the lexer's
-definition using Python's `re.fullmatch`. The DFA itself is also checked
+definition with its own set-of-positions matcher. The DFA itself is also checked
 against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
 
 ## Benchmarks

@@ -96,7 +96,9 @@ Each call of the lexer's `next()`:
 3. returns `eof` at the end of input;
 4. runs the DFA: the longest match among the rules whose guards hold wins,
    and a tie goes to the rule written first. With no match, one byte
-   becomes an `err` token;
+   becomes an `err` token, and so does a match longer than a token can
+   hold (65535 bytes: the token covers its first 65535, the scan resumes
+   after the match);
 5. runs the `after` block and the rule's actions.
 
 Only spaces and tabs are implicit; a newline is an ordinary byte, so a
@@ -202,8 +204,9 @@ A rule of the @parser section refers to a token by its name in capitals
 (`IDENT` is the token `ident`) or by a literal (`"("`, `"if"`, `"->"`). A
 literal stands for the token of the lexer rule whose pattern is exactly
 that text (above, `"-"` is `minus`); `@op` maps a literal to a token
-explicitly. A literal that no lexer rule produces never matches: see
-[Known limitations](#known-limitations).
+explicitly. A literal that no lexer rule produces is an error, and so is
+naming one token both ways (`"-"` in one rule, `MINUS` in another): write
+each token one way.
 
 ### State variables and guards
 
@@ -241,9 +244,10 @@ whose token is `skip` without the `skip` action returns a token of the
 built-in category `skip`, which a lang `Lexer` wrapper may act on (the
 parser treats it as an error).
 
-A rule that holds or rewinds to zero width consumes nothing, so it must
-change a variable its guards test; otherwise it would match forever, which
-is an error. `hold` with `rewind`, `hold` with `skip`, and `counted()` on a
+A rule that holds or rewinds to zero width consumes nothing, so its
+actions must make one of its guards false, and no chain of such rules may
+re-enable itself; otherwise the lexer would return zero-width tokens
+forever, which is an error. `hold` with `rewind`, `hold` with `skip`, and `counted()` on a
 consuming rule are errors. `counting()`/`matching()` (balanced nesting) are
 rejected: no finite automaton recognizes them.
 
@@ -386,6 +390,7 @@ action, is an **alias**: `name = IDENT` makes `name` another spelling of
 top-level `parseX(allocator, source)`. A grammar may have several; each
 parses the whole input as that symbol, and its alternatives are ordinary
 alternatives usable anywhere. `x! = x` only declares `x` a start symbol.
+A grammar without any `name!` rule starts at its first rule.
 
 ```grammar starts.grammar
 @lexer
@@ -474,12 +479,12 @@ lists. Positions count the pattern's elements from 1; a multi-element
 
 | Action | Value |
 |---|---|
-| none | nothing: nil; one element: that element; several: a list of all |
+| none | nothing: nil; one element: that element; several: a list of all (nil for an absent optional element) |
 | `N` | element N |
 | `_` (or `nil`) | nil |
 | `(tag a b ...)` | a list headed by the tag `tag` |
 | `(a b ...)` | an untagged list |
-| `...N` | the items of element N (a list), spliced in |
+| `...N` | the items of element N (a list), spliced in; a token is never a list, so `...N` of one is an error |
 | `~N` | element N if it is a leaf (keeping its id), else an empty leaf |
 | `(!N ...)` | a list headed by element N |
 | `(tag ... (kind ...) ...)` | nested lists, as deep as needed |
@@ -491,8 +496,9 @@ enum value. Without `@schema`, the `Tag` enum is the lang module's `Tag`
 `role:v` item is just `v` (except that a leading `role:v` in an untagged
 list names its tag: `(ref:1 2)` is `(ref 1 2)`).
 
-Without `@schema`, lists drop trailing nils, so optional elements at the end
-leave no trace; with `@schema`, every node keeps all its slots.
+Without `@schema`, the lists an action writes drop trailing nils, so
+optional elements at the end leave no trace; with `@schema`, every node
+keeps all its slots.
 
 ```grammar shapes.grammar
 @lexer
@@ -916,7 +922,11 @@ early:
 | `this rule can never match: ... goes to the rule on line N` | an earlier rule shadows it |
 | `this pattern matches the empty string` | use `+` rather than `*`, or a zero-width rule |
 | `undefined rule 'x'` / `undefined token 'X'` | a name nothing defines |
+| `the literal "x" is no token` | no lexer rule's pattern is exactly `x` (and no `@op` maps it) |
+| `"+" and PLUS are the same token` | one token written both ways |
+| `` `...2` spreads a list, but element 2 (IDENT) is a token `` | write `2` |
 | `rule x derives no finite input` | every alternative needs a rule that never completes |
+| `the grammar is cyclic (a ⇒ b ⇒ a)` | a rule derives itself; the grammar has infinitely many parses of some input |
 | `undeclared conflict: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
 | `position 5 is past the end of the pattern (2 elements)` | an action refers to a missing element |
 | `X ":" on name ... has no effect` | a hint that decides nothing |
@@ -924,16 +934,3 @@ early:
 
 `nexus check grammar` runs all of them without writing anything.
 
-### Known limitations
-
-Each of these is a failing test in `test/known/`:
-
-- a grammar with no `name!` start symbol generates a parser with no parse
-  method;
-- a literal that no lexer rule produces, a spread (`...N`) of a token
-  without `@schema`, and (with `@as` and `@lang`) a keyword terminal that no
-  group's `Id` enum names are silently unreachable or empty rather than
-  errors;
-- a token referred to both by name (`PLUS`) and by literal (`"+"`) matches
-  only by name;
-- an `@repair` error names no line and column.

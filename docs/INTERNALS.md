@@ -77,7 +77,8 @@ for the lowest-numbered rule among its NFA accept states, which gives
 longest match with ties to the earlier rule.
 
 `src/lexgen/lexgen.zig` checks each rule (zero-width rules must make
-progress; `hold`, `rewind`, trailing context and `counted()` combine only
+progress: their actions falsify a guard, and no cycle of them re-enables
+itself; `hold`, `rewind`, trailing context and `counted()` combine only
 in sound ways; every rule must win somewhere, else it names the rule that
 shadows it and an example text) and emits the scanner as a labeled
 `switch` with one prong per DFA state, jumping with `continue`. Fast paths
@@ -140,8 +141,8 @@ rejects rules that derive no finite input, and computes lookaheads:
 
 `table.zig` resolves each (state, terminal) cell once from the shift and
 the reductions that want it: `<` and `X "c"` let a reduction win (an
-`X "c"` win also records a run-time override that shifts when the character
-touches the previous token), `>` suppresses the report, a shift otherwise
+`X "c"` win also records a run-time override that shifts that terminal when
+it touches the previous token), `>` suppresses the report, a shift otherwise
 wins, and among reductions the lowest-numbered rule wins. The tables stay
 dense (`[state][symbol]`); a row-displacement form was measured and made
 the MUMPS parser 256 KB smaller but 5-10% slower.
@@ -213,7 +214,7 @@ These hold on every commit; the suite checks each one.
 - **The bootstrap converges** (`bootstrap`).
 - **Nothing silent.** A grammar mistake is a located error with a non-zero
   exit (`adverse/*`); nothing is skipped, simplified or defaulted without
-  saying so. The remaining exceptions are failing tests in `test/known/`.
+  saying so. A gap found is a failing test in `test/known/` until fixed.
 - **Strict lowering.** The lowerer accepts exactly the schema's shapes.
 - **Language-agnostic engine.** No language-specific code in `src/` outside
   the frontend (which is Nexus's own language). Token names carry no

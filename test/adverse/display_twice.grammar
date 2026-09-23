@@ -1,0 +1,17 @@
+# One token named twice in @display.
+# error: display_twice.grammar:16:22:
+# error: @display names IDENT twice
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@display
+    IDENT: "a name", IDENT: "again"
+top! = IDENT                                → (t 1)

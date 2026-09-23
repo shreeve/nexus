@@ -1,0 +1,20 @@
+# error: spread_of_token.grammar:20:8:
+# error: spread
+#
+# `...N` splices the items of a list; element N here is a token, which is
+# never a list, so the spread always contributes nothing. Without a schema
+# that is a located generation error (with a schema it already is: "a
+# spread of a value that is not a list").
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "spread_of_token"
+
+top! = IDENT IDENT                          → (top ...2)

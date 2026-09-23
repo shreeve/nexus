@@ -132,6 +132,8 @@ const Codegen = struct {
     usesNested: bool = false,
     /// The token `@as` promotes (TokenCat name, e.g. `ident`).
     promotable: ?[]const u8 = null,
+    /// tokenToSymbol's cases, in order (see mapTokens).
+    tokenMap: std.ArrayListUnmanaged(struct { cat: []const u8, sym: u16 }) = .empty,
     /// The executeAction function, generated before the configuration.
     actionsCode: []const u8 = "",
 
@@ -261,6 +263,9 @@ const Codegen = struct {
             self.errDirective("@repair", "", "the grammar has @repair but no repair table was computed", .{});
             return error.MissingRepairTable;
         }
+
+        try self.mapTokens();
+        try self.checkNames();
     }
 
     /// A generation error at `line` (column 1 unless given).
@@ -332,7 +337,9 @@ const Codegen = struct {
             try w.writeAll("pub const Tag = lang.Tag;\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) {};\n");
         } else {
             try banner(w, "Tag enum (collected from grammar actions)");
-            try w.writeAll("pub const Tag = enum(u8) {\n");
+            // Non-exhaustive: at least one value of the backing integer stays unnamed.
+            const width: u8 = if (self.tags.list.items.len < 256) 8 else 16;
+            try w.print("pub const Tag = enum(u{d}) {{\n", .{width});
             for (self.tags.list.items) |t| try w.print("    @\"{f}\",\n", .{std.zig.fmtString(t)});
             try w.writeAll("    _,\n};\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) {};\n");
         }
@@ -380,8 +387,16 @@ const Codegen = struct {
         var names: std.StringHashMapUnmanaged([]const u8) = .empty;
         for (s.kinds) |k| {
             const view = try viewName(self.allocator, k.tag);
+            // The names `ir` refers to its own helpers by (see the runtime's
+            // `ir` section); a view by one of them would shadow it.
+            for ([_][]const u8{ "ir.Sexp", "ir.Tag", "ir.Role", "ir.at", "ir.restAt", "ir.check", "ir.node" }) |reserved| {
+                if (std.mem.eql(u8, k.tag, reserved)) {
+                    self.errLine(k.line, k.col, "@schema kind '{s}': the accessor namespace name '{s}' is reserved", .{ k.tag, reserved });
+                    return error.ViewNameClash;
+                }
+            }
             if (names.get(view)) |other| {
-                diag.err("@schema kinds '{s}' and '{s}' both map to the accessor namespace ir.{s}", .{ other, k.tag, view });
+                self.errLine(k.line, k.col, "@schema kinds '{s}' and '{s}' both map to the accessor namespace ir.{s}", .{ other, k.tag, view });
                 return error.ViewNameClash;
             }
             try names.put(self.allocator, view, k.tag);
@@ -451,8 +466,25 @@ const Codegen = struct {
         try w.writeAll("    return switch (token.cat) {\n");
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
 
-        var emitted: std.StringHashMapUnmanaged(void) = .empty;
         if (self.promotable) |tok| try w.print("        .@\"{s}\" => promote(self, token),\n", .{tok});
+        for (self.tokenMap.items) |m| try w.print("        .@\"{s}\" => {d},\n", .{ m.cat, m.sym });
+        try w.print("        else => {d}, // error\n    }};\n}}\n", .{self.g.errorId});
+    }
+
+    /// Which lexer token category each grammar terminal is (tokenToSymbol):
+    /// a named terminal is the category of its name (unless `@as` promotes
+    /// it); a string literal is its `@op` category, else the category of the
+    /// lexer rule whose pattern is exactly that text. A category names one
+    /// terminal: a literal no lexer token produces, and two terminals for
+    /// one category (`"+"` and PLUS), are errors (either would leave
+    /// alternatives no input can reach).
+    fn mapTokens(self: *Codegen) !void {
+        const identAs = self.hasIdentAs();
+        var owner: std.StringHashMapUnmanaged(u16) = .empty;
+        if (self.promotable) |tok| try owner.put(self.allocator, tok, self.g.errorId);
+        var failed = false;
+        // Literals already reported as sharing a token.
+        var shared: std.AutoHashMapUnmanaged(u16, void) = .empty;
 
         for (self.g.symbols.items) |sym| {
             if (sym.kind != .terminal or sym.name.len == 0) continue;
@@ -469,57 +501,98 @@ const Codegen = struct {
             for (lowerName) |ch| {
                 if (!((ch >= 'a' and ch <= 'z') or (ch >= '0' and ch <= '9') or ch == '_')) valid = false;
             }
-            if (valid and !emitted.contains(lowerName)) {
-                try w.print("        .@\"{s}\" => {d},\n", .{ lowerName, sym.id });
-                try emitted.put(self.allocator, lowerName, {});
+            if (valid and !owner.contains(lowerName)) {
+                try self.tokenMap.append(self.allocator, .{ .cat = lowerName, .sym = sym.id });
+                try owner.put(self.allocator, lowerName, sym.id);
             }
         }
 
-        // `@op` mappings for operator literals (e.g. "'=" => noteq)
-        for (self.g.symbols.items) |sym| {
-            if (sym.kind != .terminal or sym.name.len < 2 or sym.name[0] != '"') continue;
-            const literal = try unescapeLiteral(self.allocator, sym.name[1 .. sym.name.len - 1]);
-            for (self.g.opMappings) |m| {
-                if (std.mem.eql(u8, literal, m.lit) and !emitted.contains(m.tok)) {
-                    try w.print("        .@\"{s}\" => {d},\n", .{ m.tok, sym.id });
-                    try emitted.put(self.allocator, m.tok, {});
-                    break;
-                }
-            }
-        }
-
-        // Single-character literals: the token whose lexer pattern is that char
-        for (self.g.symbols.items) |sym| {
+        // String literals: `@op` mappings first, then one-byte literals, then
+        // longer ones (the order of the generated switch).
+        for (0..3) |phase| for (self.g.symbols.items) |sym| {
             if (sym.kind != .terminal or sym.name.len < 3 or sym.name[0] != '"') continue;
-            const char: ?u8 = if (sym.name.len == 3 and sym.name[2] == '"')
-                sym.name[1]
-            else if (sym.name.len == 4 and sym.name[1] == '\\' and sym.name[3] == '"')
-                sym.name[2]
-            else
-                null;
-            const c = char orelse continue;
-            const spec = self.lexerSpec orelse continue;
-            const tokName = findTokenForChar(spec, c) orelse continue;
-            if (!emitted.contains(tokName)) {
-                try w.print("        .@\"{s}\" => {d},\n", .{ tokName, sym.id });
-                try emitted.put(self.allocator, tokName, {});
-            }
-        }
-
-        // Multi-character literals: the token whose lexer pattern is that string
-        for (self.g.symbols.items) |sym| {
-            if (sym.kind != .terminal or sym.name.len < 4 or sym.name[0] != '"') continue;
             const raw = sym.name[1 .. sym.name.len - 1];
-            if (raw.len < 2) continue;
-            const spec = self.lexerSpec orelse continue;
-            const tokName = findTokenForLiteral(spec, raw) orelse continue;
-            if (!emitted.contains(tokName)) {
-                try w.print("        .@\"{s}\" => {d},\n", .{ tokName, sym.id });
-                try emitted.put(self.allocator, tokName, {});
+            const literal = try unescapeLiteral(self.allocator, raw);
+            const cat: ?[]const u8 = switch (phase) {
+                0 => for (self.g.opMappings) |m| {
+                    if (std.mem.eql(u8, literal, m.lit)) break m.tok;
+                } else null,
+                1 => if (literal.len == 1) self.literalCat(raw) else null,
+                else => if (literal.len > 1) self.literalCat(raw) else null,
+            };
+            const c = cat orelse {
+                if (phase == 2 and !self.mapped(sym.id) and !shared.contains(sym.id)) {
+                    self.errAtUse(sym.id, "the literal {s} is no token: no lexer rule's pattern is exactly that text (and no @op maps it)", .{sym.name});
+                    failed = true;
+                }
+                continue;
+            };
+            if (owner.get(c)) |other| {
+                if (other == sym.id) continue;
+                self.errAtUse(sym.id, "{s} and {s} are the same token ({s}); write one of them", .{ sym.name, self.symbolLabel(other), c });
+                try shared.put(self.allocator, sym.id, {});
+                failed = true;
+                continue;
+            }
+            try self.tokenMap.append(self.allocator, .{ .cat = c, .sym = sym.id });
+            try owner.put(self.allocator, c, sym.id);
+        };
+        if (failed) return error.TokenMapping;
+    }
+
+    /// @errors must name rules, @display tokens (of the grammar or the
+    /// lexer), and @op must map to lexer tokens: a misspelled name would
+    /// otherwise be ignored.
+    fn checkNames(self: *Codegen) !void {
+        var failed = false;
+        for (self.g.errorNames) |e| {
+            const sym = self.g.getSymbol(e.rule);
+            if (sym == null or self.g.symbols.items[sym.?].kind != .nonterminal) {
+                self.errLine(@max(e.line, 1), @max(e.col, 1), "@errors names '{s}', which is no rule of the grammar", .{e.rule});
+                failed = true;
             }
         }
+        for (self.g.displayNames) |d| {
+            if (std.ascii.eqlIgnoreCase(d.token, "eof")) continue;
+            const known = for (self.g.symbols.items) |sym| {
+                if (sym.kind == .terminal and std.ascii.eqlIgnoreCase(sym.name, d.token)) break true;
+            } else self.tokenCatOf(d.token) != null;
+            if (!known) {
+                self.errLine(@max(d.line, 1), @max(d.col, 1), "@display names {s}, which is no token of the grammar or the lexer", .{d.token});
+                failed = true;
+            }
+        }
+        for (self.g.opMappings) |m| {
+            if (self.tokenCatOf(m.tok) == null) {
+                self.errLine(@max(m.line, 1), @max(m.col, 1), "@op maps \"{s}\" to \"{s}\", which is no lexer token", .{ m.lit, m.tok });
+                failed = true;
+            }
+        }
+        if (failed) return error.UnknownName;
+    }
 
-        try w.print("        else => {d}, // error\n    }};\n}}\n", .{self.g.errorId});
+    fn literalCat(self: *const Codegen, raw: []const u8) ?[]const u8 {
+        const spec = self.lexerSpec orelse return null;
+        return findTokenForLiteral(spec, raw);
+    }
+
+    fn mapped(self: *const Codegen, sym: u16) bool {
+        for (self.tokenMap.items) |m| if (m.sym == sym) return true;
+        return false;
+    }
+
+    /// How a diagnostic names terminal `sym` (the promoted token: its name).
+    fn symbolLabel(self: *const Codegen, sym: u16) []const u8 {
+        if (sym == self.g.errorId) return self.promotable orelse "error";
+        return self.g.symbols.items[sym].name;
+    }
+
+    /// A generation error at the first rule that uses symbol `sym`.
+    fn errAtUse(self: *const Codegen, sym: u16, comptime fmt: []const u8, args: anytype) void {
+        for (self.g.rules.items) |rule| {
+            if (rule.line > 0 and std.mem.indexOfScalar(u16, rule.rhs, sym) != null) return self.errLine(rule.line, rule.col, fmt, args);
+        }
+        self.errLine(1, 1, fmt, args);
     }
 
     /// Whether terminal `name` reaches the parser by `@as` promotion of an
@@ -718,6 +791,60 @@ const Codegen = struct {
                 try w.print("const {s}FallbackSymbol: u16 = {d};\n", .{ directive.rule, fallbackId orelse 0 });
             }
         }
+        try self.emitKeywordCheck(w);
+    }
+
+    /// A terminal that is no lexer token reaches the parser only as a
+    /// member of an `@as` group's Id enum; one no group names could never
+    /// match. Without @lang the groups are known here (each matches its own
+    /// name), so that is a generation error; with @lang the Id enums live
+    /// in the lang module, so the parser fails to build naming it.
+    fn emitKeywordCheck(self: *Codegen, w: *std.Io.Writer) !void {
+        const identAs = self.hasIdentAs();
+        var groups: std.ArrayListUnmanaged([]const u8) = .empty;
+        for (self.g.asDirectives) |directive| {
+            if (isSelf(directive)) continue;
+            try groups.append(self.allocator, directive.rule);
+        }
+        var any = false;
+        for (self.g.symbols.items) |sym| {
+            if (sym.kind != .terminal or sym.name.len == 0 or sym.name[0] < 'A' or sym.name[0] > 'Z') continue;
+            if (std.mem.endsWith(u8, sym.name, "!")) continue;
+            if (!self.isPromotedKeyword(sym.name, identAs)) continue;
+            if (std.ascii.eqlIgnoreCase(sym.name, self.promotable.?)) continue;
+            const used = for (self.g.rules.items) |rule| {
+                if (std.mem.indexOfScalar(u16, rule.rhs, sym.id) != null) break true;
+            } else false;
+            if (!used) continue;
+            // A terminal named like a group (CMD for `cmd`) is the group's
+            // fallback: every Id without a terminal of its own becomes it.
+            const named = for (groups.items) |group| {
+                if (std.ascii.eqlIgnoreCase(group, sym.name)) break true;
+            } else false;
+            if (named) continue;
+            if (self.g.lang == null) {
+                {
+                    self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
+                    return error.UnknownKeyword;
+                }
+                continue;
+            }
+            if (!any) try w.writeAll("\n// Every @as keyword terminal is a field of some group's Id enum.\ncomptime {\n");
+            any = true;
+            try w.writeAll("    if (!(");
+            for (groups.items, 0..) |group, i| {
+                if (i > 0) try w.writeAll(" or ");
+                try w.print("@hasField(lang.{s}Id, \"{s}\")", .{ try capitalized(self.allocator, group), sym.name });
+            }
+            if (groups.items.len == 0) try w.writeAll("false");
+            try w.print(")) @compileError(\"{s} is no lexer token, and no @as group's Id enum (", .{sym.name});
+            for (groups.items, 0..) |group, i| {
+                if (i > 0) try w.writeAll(", ");
+                try w.print("lang.{s}Id", .{try capitalized(self.allocator, group)});
+            }
+            try w.print(") has a field {s}: rules using it could never match\");\n", .{sym.name});
+        }
+        if (any) try w.writeAll("}\n");
     }
 
     /// Per-rule lhs symbol and rhs length.
@@ -789,16 +916,16 @@ const Codegen = struct {
 
     /// `X "c"` exclusions (grouped by state) and the runtime shift override.
     fn emitExcludes(self: *Codegen, w: *std.Io.Writer) !void {
-        try w.writeAll("\n// X \"c\" excludes: shift instead of reduce when pre == 0 and the next byte matches\n");
-        try w.writeAll("const xExcludes = [_]struct { char: u8, shift: u16 }{\n");
+        try w.writeAll("\n// X \"c\" excludes: shift the hinted token instead of reducing when it\n// touches the previous token (pre == 0)\n");
+        try w.writeAll("const xExcludes = [_]struct { sym: u16, shift: u16 }{\n");
         for (self.table.xExcludes.items) |x| {
-            try w.print("    .{{ .char = {d}, .shift = {d} }},\n", .{ x.char, x.shift });
+            try w.print("    .{{ .sym = {d}, .shift = {d} }},\n", .{ x.sym, x.shift });
         }
         try w.writeAll("};\n");
         if (self.table.xExcludes.items.len == 0) {
             try w.writeAll(
                 \\
-                \\fn getImmediateShift(_: u16, _: u8) ?i16 {
+                \\fn getImmediateShift(_: u16, _: u16) ?i16 {
                 \\    return null;
                 \\}
                 \\
@@ -810,9 +937,9 @@ const Codegen = struct {
         try w.writeAll(
             \\};
             \\
-            \\fn getImmediateShift(state: u16, char: u8) ?i16 {
+            \\fn getImmediateShift(state: u16, sym: u16) ?i16 {
             \\    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-            \\        if (x.char == char) return @intCast(x.shift);
+            \\        if (x.sym == sym) return @intCast(x.shift);
             \\    }
             \\    return null;
             \\}
@@ -987,47 +1114,67 @@ const Codegen = struct {
             return;
         };
         try banner(w, "Schema slots");
-        try w.writeAll("/// Slot of `role` in nodes of `kind` (the head is slot 0).\nfn slotOf(kind: Tag, role: Role) ?usize {\n    return switch (kind) {\n");
+        // The switches are exhaustive enums (Tag, Role): an `else` prong is
+        // emitted only when some value is left, and a parameter no case
+        // reads is discarded (Zig rejects both unreachable prongs and
+        // unused parameters).
+        const allTags = self.schemaTags.items.len;
+        const allRoles = self.roles.items.len;
+        var slotKinds: usize = 0;
+        var restKinds: usize = 0;
         for (s.kinds) |k| {
-            var any = false;
+            if (slotCount(k) > 0) slotKinds += 1;
+            if (restRole(k) != null) restKinds += 1;
+        }
+
+        try w.writeAll("/// Slot of `role` in nodes of `kind` (the head is slot 0).\nfn slotOf(kind: Tag, role: Role) ?usize {\n");
+        if (slotKinds == 0) try w.writeAll("    _ = role;\n");
+        try w.writeAll("    return switch (kind) {\n");
+        for (s.kinds) |k| {
+            if (slotCount(k) == 0) continue;
+            try w.print("        .@\"{f}\" => switch (role) {{\n", .{std.zig.fmtString(k.tag)});
             for (k.roles, 0..) |r, i| {
                 if (r.rest) continue;
-                if (!any) try w.print("        .@\"{f}\" => switch (role) {{\n", .{std.zig.fmtString(k.tag)});
-                any = true;
                 try w.print("            .@\"{f}\" => {d},\n", .{ std.zig.fmtString(r.name), i + 1 });
             }
-            if (any) try w.writeAll("            else => null,\n        },\n");
+            if (slotCount(k) < allRoles) try w.writeAll("            else => null,\n");
+            try w.writeAll("        },\n");
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (slotKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
 
-        try w.writeAll("\n/// First slot of rest role `role` in nodes of `kind`.\nfn restSlotOf(kind: Tag, role: Role) ?usize {\n    return switch (kind) {\n");
+        try w.writeAll("\n/// First slot of rest role `role` in nodes of `kind`.\nfn restSlotOf(kind: Tag, role: Role) ?usize {\n");
+        if (restKinds == 0) try w.writeAll("    _ = role;\n");
+        try w.writeAll("    return switch (kind) {\n");
         for (s.kinds) |k| {
-            for (k.roles, 0..) |r, i| if (r.rest) {
-                try w.print("        .@\"{f}\" => if (role == .@\"{f}\") {d} else null,\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(r.name), i + 1 });
-            };
+            const i = restRole(k) orelse continue;
+            try w.print("        .@\"{f}\" => if (role == .@\"{f}\") {d} else null,\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(k.roles[i].name), i + 1 });
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (restKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
 
-        try w.writeAll("\n/// The slot role at `slot` of nodes of `kind`.\nfn roleAt(kind: Tag, slot: usize) ?Role {\n    return switch (kind) {\n");
+        try w.writeAll("\n/// The slot role at `slot` of nodes of `kind`.\nfn roleAt(kind: Tag, slot: usize) ?Role {\n");
+        if (slotKinds == 0) try w.writeAll("    _ = slot;\n");
+        try w.writeAll("    return switch (kind) {\n");
         for (s.kinds) |k| {
-            var any = false;
+            if (slotCount(k) == 0) continue;
+            try w.print("        .@\"{f}\" => switch (slot) {{\n", .{std.zig.fmtString(k.tag)});
             for (k.roles, 0..) |r, i| {
                 if (r.rest) continue;
-                if (!any) try w.print("        .@\"{f}\" => switch (slot) {{\n", .{std.zig.fmtString(k.tag)});
-                any = true;
                 try w.print("            {d} => .@\"{f}\",\n", .{ i + 1, std.zig.fmtString(r.name) });
             }
-            if (any) try w.writeAll("            else => null,\n        },\n");
+            try w.writeAll("            else => null,\n        },\n");
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (slotKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
 
         try w.writeAll("\nfn restRoleOf(kind: Tag) ?struct { role: Role, slot: usize } {\n    return switch (kind) {\n");
         for (s.kinds) |k| {
-            for (k.roles, 0..) |r, i| if (r.rest) {
-                try w.print("        .@\"{f}\" => .{{ .role = .@\"{f}\", .slot = {d} }},\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(r.name), i + 1 });
-            };
+            const i = restRole(k) orelse continue;
+            try w.print("        .@\"{f}\" => .{{ .role = .@\"{f}\", .slot = {d} }},\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(k.roles[i].name), i + 1 });
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (restKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
     }
 
     // -------------------------------------------------------------------------
@@ -1093,6 +1240,19 @@ fn viewName(allocator: Allocator, kind: []const u8) ![]const u8 {
     }
     if (out.items.len == 0) return std.fmt.allocPrint(allocator, "@\"{f}\"", .{std.zig.fmtString(kind)});
     return out.items;
+}
+
+/// Number of slot (non-rest) roles of a schema kind.
+fn slotCount(k: anytype) usize {
+    var n: usize = 0;
+    for (k.roles) |r| n += @intFromBool(!r.rest);
+    return n;
+}
+
+/// Index of the rest role of a schema kind, if it has one.
+fn restRole(k: anytype) ?usize {
+    for (k.roles, 0..) |r, i| if (r.rest) return i;
+    return null;
 }
 
 /// Undo backslash escapes of a grammar literal.

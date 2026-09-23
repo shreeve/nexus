@@ -1,0 +1,19 @@
+# Without @lang, `@as IDENT = [kw]` promotes only the word `kw` (to KW); any
+# other terminal that is no lexer token could never match.
+# error: as_unknown_keyword_no_lang.grammar:17:9:
+# error: undefined token 'STOP'
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@as IDENT = [kw]
+
+prog! = item+                               → (prog ...1)
+item  = STOP                                → (stop 1)
+      | KW                                  → (kw 1)
+      | IDENT

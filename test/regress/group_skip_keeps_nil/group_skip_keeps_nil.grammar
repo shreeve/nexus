@@ -1,0 +1,23 @@
+# A ( ... ) group with skipped elements is the list of its kept elements,
+# nils included, like an alternative without an action: `(!"," x y)` is
+# (x y) even when y is nil.
+
+@lexer
+tokens
+    ident
+    comma
+    semi
+    eof
+    err
+','                                         → comma
+';'                                         → semi
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "group_skip_keeps_nil"
+
+top! = IDENT (!"," x y)                     → (top 1 2)
+x    = IDENT
+y    = IDENT                                → 1
+     | ";"                                  → _

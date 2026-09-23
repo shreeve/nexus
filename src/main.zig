@@ -235,9 +235,9 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         ir.startSymbols.len,
     });
 
-    // Check mode: the lint (undefined and unreachable rules), then every
+    // Check mode: the lint (unreachable rules, as warnings), then every
     // check generation makes; nothing is written.
-    if (opts.checkMode and check.checkGrammar(allocator, &ir) > 0) fail();
+    const warnings = if (opts.checkMode) check.checkGrammar(allocator, &ir, grammarFile) else 0;
 
     // Without parser rules the output is the lexer alone
     var finalCode: []const u8 = undefined;
@@ -302,7 +302,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     }
 
     if (opts.checkMode) {
-        diag.info("{s}: no errors", .{grammarFile});
+        if (warnings > 0) diag.info("{s}: no errors ({d} warnings)", .{ grammarFile, warnings }) else diag.info("{s}: no errors", .{grammarFile});
         return;
     }
     try writeOutput(io, opts.outputFile, finalCode);
@@ -316,7 +316,9 @@ fn fail() noreturn {
 
 fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_grammar_bytes)) catch |err| {
-        diag.err("cannot read {s}: {s}", .{ path, @errorName(err) });
+        if (err == error.StreamTooLong) {
+            diag.err("cannot read {s}: larger than {d} bytes", .{ path, max_grammar_bytes });
+        } else diag.err("cannot read {s}: {s}", .{ path, @errorName(err) });
         fail();
     };
 }

@@ -76,6 +76,10 @@ pub const Automaton = struct {
 
 /// Build the LR(0) automaton from the processed grammar.
 /// Creates states and transitions for the shift-reduce parser.
+/// Most parser states: the parse table encodes a shift to state s as the
+/// i16 s.
+pub const maxStates = 32767;
+
 pub fn build(g: *const Grammar) !Automaton {
     var automaton: Automaton = .{};
     const auto = &automaton;
@@ -217,6 +221,7 @@ fn processTransitions(g: *const Grammar, auto: *Automaton, stateIdx: usize, stat
 
         // Reuse existing state with same kernel, or create new one
         const target = if (stateMap.get(sig)) |existing| existing else blk: {
+            if (auto.states.items.len >= maxStates) return error.TooManyStates;
             const newState = try closure(g, auto, kernel);
             const newId: u16 = @intCast(auto.states.items.len);
             try auto.states.append(g.allocator, newState);

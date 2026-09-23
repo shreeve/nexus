@@ -302,6 +302,10 @@ pub const ActionTree = union(enum) {
 pub const ActionList = struct {
     head: Head,
     items: []const ActionItem,
+    /// Keep every item, trailing nils included (the default action of an
+    /// expanded alternative: absent optional elements are nil, as they are
+    /// for an optional element that is not expanded).
+    keepNils: bool = false,
 
     pub const Head = union(enum) {
         /// `(tag …)`: a tag-headed list (a schema kind in schema mode).
@@ -407,6 +411,9 @@ pub const ConflictEntry = struct {
 pub const DisplayName = struct {
     token: []const u8,
     name: []const u8,
+    /// Where the key is written (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 pub const RepairSpec = struct {
@@ -417,6 +424,16 @@ pub const RepairSpec = struct {
     /// Structural tokens that end a statement (NEWLINE): the only tokens
     /// the tolerant driver inserts in front of real input.
     terminators: []const []const u8 = &.{},
+    /// Where each name is written (diagnostics): `holes`, then `structure`,
+    /// then `terminators`, in order. Empty when unknown.
+    locs: []const Loc = &.{},
+
+    pub const Loc = struct { line: u32, col: u32 };
+
+    /// The location of name `i` of the three lists taken in order.
+    pub fn locOf(self: RepairSpec, i: usize) ?Loc {
+        return if (i < self.locs.len) self.locs[i] else null;
+    }
 };
 
 pub const InfixDecl = struct {
@@ -440,12 +457,18 @@ pub const AsDirective = struct {
 pub const OpMapping = struct {
     lit: []const u8, // "'=" (the literal in the grammar)
     tok: []const u8, // "noteq" (the lexer token type)
+    /// Where the target token is written (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// @errors directive for human-readable rule names in diagnostics
 pub const ErrorName = struct {
     rule: []const u8, // "expr"
     name: []const u8, // "expression"
+    /// Where the rule name is written (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// @infix directive for automatic precedence-climbing expression grammar

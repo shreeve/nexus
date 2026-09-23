@@ -38,6 +38,14 @@ const Allocator = std.mem.Allocator;
 
 pub const Error = error{ ExpandError, OutOfMemory };
 
+/// Most rules a grammar may expand into: the parse table encodes a
+/// reduction by rule r as the i16 -(r + 2).
+pub const maxRules = 32766;
+
+/// Most grammar symbols before an alternative is expanded (symbol ids are
+/// u16, and one alternative adds at most a few thousand).
+const maxSymbols = 60000;
+
 /// What the semantic layer resolved for one source alternative (schema
 /// mode): the action with every role placed in its slot (positions may be
 /// internal positions of labeled choice elements), the side-band labels,
@@ -225,6 +233,8 @@ const Expander = struct {
 
     fn addRule(self: *Expander, rule: Rule) !u16 {
         const g = self.g;
+        if (g.rules.items.len >= maxRules)
+            return self.fail(@max(1, if (rule.line != 0) rule.line else self.originLine), @max(1, if (rule.line != 0) rule.col else self.originCol), "the grammar expands into more than {d} rules, the parse table's limit", .{maxRules});
         const id: u16 = @intCast(g.rules.items.len);
         var r = rule;
         r.id = id;
@@ -297,16 +307,29 @@ const Expander = struct {
 
     fn expandAlternative(self: *Expander, lhsId: u16, alt: ParsedAlternative, resolved: ?Resolved) Error!void {
         const a = self.alloc();
+        // Symbol ids are u16; one alternative adds at most a few symbols per
+        // element (and at most 255 elements), so this keeps them in range.
+        if (self.g.symbols.items.len > maxSymbols)
+            return self.fail(alt.line, alt.col, "the grammar has more than {d} symbols", .{maxSymbols});
         try self.checkElements(alt);
         self.originLine = alt.line;
         self.originCol = alt.col;
 
         const layout = try Layout.of(a, alt.elements);
+        if (!self.schemaMode()) if (alt.actionTree) |t| switch (t) {
+            .list => |l| try self.checkSpreads(alt, layout, l),
+            else => {},
+        };
         var vars: std.ArrayListUnmanaged(usize) = .empty;
         for (alt.elements, 0..) |e, i| if (isVariable(e)) try vars.append(a, i);
 
         var total: usize = 1;
-        for (vars.items) |i| total *= radix(alt.elements[i]);
+        for (vars.items) |i| {
+            total = std.math.mul(usize, total, radix(alt.elements[i])) catch maxRules + 1;
+            if (total > maxRules) break;
+        }
+        if (total > maxRules)
+            return self.fail(alt.line, alt.col, "this alternative's [...] groups and choices expand into more than {d} rules (one per combination); move some into helper rules", .{maxRules});
 
         // Without a schema, a leading `role:N` names the head tag only when
         // the alternative is not expanded (otherwise the key is dropped).
@@ -381,6 +404,8 @@ const Expander = struct {
 
             const mapped: ?ActionTree = if (tree) |t|
                 try self.mapTree(t, posMap, vars.items.len > 0, alt)
+            else if (vars.items.len > 0)
+                try self.expandedDefault(alt, digits, rhs.items.len)
             else
                 null;
 
@@ -404,6 +429,55 @@ const Expander = struct {
                 .col = alt.col,
             });
         }
+    }
+
+    /// The default action (no `→`) of one variant of an expanded
+    /// alternative: every element's value in order, with nil for each
+    /// absent optional element, exactly as when the optional element is
+    /// not expanded (`[T]`, `T?`: a rule that yields nil). A chosen choice
+    /// alternative contributes its elements. One value is passed through.
+    fn expandedDefault(self: *Expander, alt: ParsedAlternative, digits: []const usize, rhsLen: usize) Error!ActionTree {
+        const a = self.alloc();
+        var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+        var at: u16 = 0; // rhs elements placed so far
+        var d: usize = 0;
+        for (alt.elements) |e| {
+            if (!isVariable(e)) {
+                at += 1;
+                try items.append(a, .{ .elem = .{ .ref = at } });
+                continue;
+            }
+            const digit = digits[d];
+            d += 1;
+            switch (e.kind) {
+                .optGroup => for (e.subElements) |_| {
+                    if (digit == 1) {
+                        at += 1;
+                        try items.append(a, .{ .elem = .{ .ref = at } });
+                    } else try items.append(a, .{ .elem = .nil });
+                },
+                .choice => {
+                    const optional = e.quantifier == .optional;
+                    if (optional and digit == 0) {
+                        try items.append(a, .{ .elem = .nil });
+                    } else for (e.choices[if (optional) digit - 1 else digit]) |_| {
+                        at += 1;
+                        try items.append(a, .{ .elem = .{ .ref = at } });
+                    }
+                },
+                else => if (digit == 1) {
+                    at += 1;
+                    try items.append(a, .{ .elem = .{ .ref = at } });
+                } else try items.append(a, .{ .elem = .nil }),
+            }
+        }
+        std.debug.assert(at == rhsLen);
+        if (items.items.len == 0) return .nil;
+        if (items.items.len == 1) return switch (items.items[0].elem) {
+            .ref => |p| .{ .pass = p },
+            else => .nil,
+        };
+        return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(a), .keepNils = true } };
     }
 
     fn internalPos(layout: Layout, elem: usize, alt: usize, j: usize) usize {
@@ -433,6 +507,42 @@ const Expander = struct {
                 else => {},
             }
         }
+    }
+
+    /// Without a schema, `...N` of a token (which is never a list) would
+    /// drop it silently. (Schema mode reports it with the static types.)
+    fn checkSpreads(self: *Expander, alt: ParsedAlternative, layout: Layout, l: ActionList) Error!void {
+        switch (l.head) {
+            .ref => |e| try self.checkSpread(alt, layout, e),
+            else => {},
+        }
+        for (l.items) |item| try self.checkSpread(alt, layout, item.elem);
+    }
+
+    fn checkSpread(self: *Expander, alt: ParsedAlternative, layout: Layout, e: ActionElem) Error!void {
+        switch (e) {
+            .spread => |p| {
+                if (p == 0 or p > layout.length) return;
+                const elem = layout.element(alt.elements, p);
+                if (!isToken(elem)) return;
+                const what = if (elem.kind == .choice) "a choice of tokens" else elem.value;
+                return self.fail(alt.line, alt.col, "`...{d}` spreads a list, but element {d} ({s}) is a token; use `{d}`", .{ p, p, what, p });
+            },
+            .node => |n| try self.checkSpreads(alt, layout, n.*),
+            else => {},
+        }
+    }
+
+    /// A single token (or an optional one, or a choice of single tokens).
+    fn isToken(e: ParsedElement) bool {
+        if (e.quantifier != .one and e.quantifier != .optional) return false;
+        return switch (e.kind) {
+            .token, .string => true,
+            .choice => for (e.choices) |c| {
+                if (c.len != 1 or !isToken(c[0])) break false;
+            } else true,
+            else => false,
+        };
     }
 
     fn checkLabel(self: *Expander, e: ParsedElement) Error!void {
@@ -791,7 +901,8 @@ fn consTree(allocator: Allocator, n: u16) !ActionTree {
 
 /// The value of a `( ... )` group or a choice alternative: nil when every
 /// element is skipped, the element when one is kept, the kept elements as
-/// a list when some are skipped, and the default (null) otherwise.
+/// a list when some are skipped (nils kept, like the default), and the
+/// default (null) otherwise.
 fn groupAction(allocator: Allocator, elements: []const ParsedElement) !?ActionTree {
     var kept: std.ArrayListUnmanaged(u16) = .empty;
     for (elements, 0..) |sub, i| if (!sub.skip) try kept.append(allocator, @intCast(i + 1));
@@ -800,7 +911,8 @@ fn groupAction(allocator: Allocator, elements: []const ParsedElement) !?ActionTr
     if (kept.items.len == elements.len) return null;
     var items: std.ArrayListUnmanaged(ActionItem) = .empty;
     for (kept.items) |p| try items.append(allocator, .{ .elem = .{ .ref = p } });
-    return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(allocator) } };
+    // Like the default action, a kept nil stays (no trailing-nil cut).
+    return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(allocator), .keepNils = true } };
 }
 
 /// Without a schema, a list whose first item is `role:N` and that has no

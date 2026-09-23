@@ -81,6 +81,9 @@ pub const GrammarLowerer = struct {
         if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
         if (self.tagsNode) |node| if (!self.hasSchema)
             return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
+        // Without a `name!` rule, the first rule is the start symbol.
+        if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
+            try self.startSymbols.append(allocator, self.rules.items[0].name);
         return GrammarIR{
             .rules = try self.rules.toOwnedSlice(allocator),
             .startSymbols = try self.startSymbols.toOwnedSlice(allocator),
@@ -360,6 +363,10 @@ pub const GrammarLowerer = struct {
             const name = try self.requireSrc(n, "token name");
             for (spec.tokens.items) |t| if (std.mem.eql(u8, t.name, name))
                 return self.fail(n, "token '{s}' is declared twice", .{name});
+            // The 8-byte Token keeps its category in a byte (one value is
+            // the built-in `skip`).
+            if (spec.tokens.items.len == 255)
+                return self.fail(n, "too many tokens: at most 255 can be declared (a token's category is one byte)", .{});
             try spec.tokens.append(self.allocator, .{ .name = name });
         }
     }
@@ -541,6 +548,7 @@ pub const GrammarLowerer = struct {
 
     fn lowerLang(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         try self.requireArity(node, items, 2, 2, "(lang STRING)");
+        if (self.lang != null) return self.fail(node, "duplicate @lang", .{});
         self.lang = stripQuotes(try self.requireSrc(items[1], "language-name string"));
     }
 
@@ -632,7 +640,10 @@ pub const GrammarLowerer = struct {
             try self.requireArity(entry, et, 3, 3, "(op_map STRING STRING)");
             const lit = stripQuotes(try self.requireSrc(et[1], "op literal"));
             const tok = stripQuotes(try self.requireSrc(et[2], "op target token"));
-            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
+            for (self.opMappings.items) |m| if (std.mem.eql(u8, m.lit, lit))
+                return self.fail(et[1], "@op maps \"{s}\" twice", .{lit});
+            const at = self.loc(et[2]);
+            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok, .line = at.line, .col = at.col });
         }
     }
 
@@ -664,7 +675,10 @@ pub const GrammarLowerer = struct {
         for (items[1..]) |entry| {
             const p = try self.lowerPair(entry);
             if (p.quoted) return self.fail(entry, "@errors names rules (`rule: \"name\"`); name tokens in @display", .{});
-            try self.errorNames.append(self.allocator, .{ .rule = p.key, .name = p.name });
+            for (self.errorNames.items) |e| if (std.mem.eql(u8, e.rule, p.key))
+                return self.fail(entry, "@errors names '{s}' twice", .{p.key});
+            const at = self.loc(entry);
+            try self.errorNames.append(self.allocator, .{ .rule = p.key, .name = p.name, .line = at.line, .col = at.col });
         }
     }
 
@@ -674,7 +688,10 @@ pub const GrammarLowerer = struct {
             const p = try self.lowerPair(entry);
             if (!p.quoted and !(p.key[0] >= 'A' and p.key[0] <= 'Z'))
                 return self.fail(entry, "@display names tokens (`TOKEN: \"name\"` or `\"lit\": \"name\"`); name rules in @errors", .{});
-            try self.displayNames.append(self.allocator, .{ .token = p.key, .name = p.name });
+            for (self.displayNames.items) |d| if (std.mem.eql(u8, d.token, p.key))
+                return self.fail(entry, "@display names {s} twice", .{p.key});
+            const at = self.loc(entry);
+            try self.displayNames.append(self.allocator, .{ .token = p.key, .name = p.name, .line = at.line, .col = at.col });
         }
     }
 
@@ -833,6 +850,9 @@ pub const GrammarLowerer = struct {
         var holes: std.ArrayListUnmanaged([]const u8) = .empty;
         var structure: std.ArrayListUnmanaged([]const u8) = .empty;
         var terminators: std.ArrayListUnmanaged([]const u8) = .empty;
+        var holeLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
+        var structureLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
+        var terminatorLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
         for (items[1..]) |line| {
             const lt = try self.requireTag(line, .repair_line);
             if (lt.len < 3) return self.shapeError(line, "(repair_line IDENT NAME+)");
@@ -845,12 +865,21 @@ pub const GrammarLowerer = struct {
                 &terminators
             else
                 return self.fail(lt[1], "@repair lines are `holes ...`, `structure ...` or `terminator ...`, not '{s}'", .{which});
-            for (lt[2..]) |n| try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "token name")));
+            const locs = if (out == &holes) &holeLocs else if (out == &structure) &structureLocs else &terminatorLocs;
+            for (lt[2..]) |n| {
+                // A literal keeps its quotes: it names the literal's symbol.
+                try out.append(self.allocator, try self.requireSrc(n, "token name"));
+                const at = self.loc(n);
+                try locs.append(self.allocator, .{ .line = at.line, .col = at.col });
+            }
         }
+        try holeLocs.appendSlice(self.allocator, structureLocs.items);
+        try holeLocs.appendSlice(self.allocator, terminatorLocs.items);
         self.repair = .{
             .holes = try holes.toOwnedSlice(self.allocator),
             .structure = try structure.toOwnedSlice(self.allocator),
             .terminators = try terminators.toOwnedSlice(self.allocator),
+            .locs = try holeLocs.toOwnedSlice(self.allocator),
         };
     }
 
@@ -979,7 +1008,17 @@ pub const GrammarLowerer = struct {
             else => {},
         };
         var elem = try self.lowerElement(items[2]);
-        if (elem.kind == .optGroup) return self.fail(node, "label '{s}' on a multi-element [...] group; label its elements", .{name});
+        if (elem.kind == .optGroup) {
+            if (elem.subElements.len != 1) return self.fail(node, "label '{s}' on a multi-element [...] group; label its elements", .{name});
+            // `role:["x"]` labels the one element (as `[role:"x"]` does).
+            const sub = try self.allocator.dupe(ParsedElement, elem.subElements);
+            sub[0].label = name;
+            const l = self.loc(items[1]);
+            sub[0].line = l.line;
+            sub[0].col = l.col;
+            elem.subElements = sub;
+            return elem;
+        }
         elem.label = name;
         const l = self.loc(items[1]);
         elem.line = l.line;
