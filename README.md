@@ -72,7 +72,7 @@ definitions, and optional token rewriting.
 ```
 {lang}.grammar + {lang}.zig
          ↓
-    nexus (src/nexus.zig)
+    nexus (src/main.zig)
          ↓
     parser.zig (generated lexer + LALR(1) parser)
 ```
@@ -90,13 +90,13 @@ Nexus eats its own dog food. The frontend parser it uses to read every
 LALR(1) parser. The pipeline is:
 
 ```
-nexus.grammar → parser.zig (generated, checked in)
-              → Sexp → GrammarLowerer → GrammarIR → ParserGenerator → parser.zig
+nexus.grammar → src/frontend/parser.zig (generated, checked in)
+              → Sexp → GrammarLowerer → GrammarIR → expand → lr → codegen → parser.zig
 ```
 
 The canonical S-expression schema the frontend emits is documented as a
 block comment at the top of `nexus.grammar` and serves as the authoritative
-contract with the strict `GrammarLowerer` in `src/nexus.zig`. Every lowering
+contract with the strict `GrammarLowerer` in `src/frontend/lower.zig`. Every lowering
 entry point either receives exactly the documented shape or raises a hard
 error pointing at the source line; there is no heuristic shape inference.
 
@@ -104,10 +104,10 @@ Three CI guards protect the pipeline:
 
 - `test/golden/*.sexp` pins the canonical AST for every in-repo grammar
   (nexus, basic, features, zag, slash, mumps). A drift fails the golden.
-- A bootstrap fixed-point test regenerates `src/parser.zig` from
+- A bootstrap fixed-point test regenerates `src/frontend/parser.zig` from
   `nexus.grammar` on every run and diffs it against the checked-in file.
 - A lowerer negative-shape suite (Zig `test "..."` blocks in
-  `src/nexus.zig`) feeds hand-crafted malformed Sexps to
+  `src/frontend/lower.zig`) feeds hand-crafted malformed Sexps to
   `GrammarLowerer` and asserts each one is rejected with
   `error.ShapeError` — proving the "exact shape or hard error"
   contract directly, independent of what well-formed grammars happen to
@@ -118,9 +118,21 @@ Three CI guards protect the pipeline:
 
 ```
 src/
-├── nexus.zig        # Generator engine
-├── parser.zig       # Self-hosted frontend, generated from nexus.grammar
-└── lang.zig         # Lang module for the frontend (Tag enum + lexer wrapper)
+├── main.zig             # CLI and pipeline driver
+├── diag.zig             # error:/warning: diagnostics on stderr
+├── version.zig          # Version stamped into generated headers
+├── grammar.zig          # Shared data: lexer spec, grammar IR, desugared Grammar
+├── check.zig            # Symbol validation and `nexus check` lint
+├── expand.zig           # Desugaring: [opt], X? X* X+, L(X), groups, @infix, start rules
+├── frontend/
+│   ├── frontend.zig     # Section discovery, @parser parse entry, --dump-sexp printer
+│   ├── lexer_section.zig # Hand-written @lexer section parser
+│   ├── lower.zig        # Strict Sexp -> GrammarIR lowering (+ negative-shape tests)
+│   ├── parser.zig       # Self-hosted frontend, generated from nexus.grammar
+│   └── lang.zig         # Lang module for the frontend (Tag enum + lexer wrapper)
+├── lexgen/              # Lexer code generation (lexgen, patterns, operators, scanners)
+├── lr/                  # LR(0) automaton, lookaheads (LALR/SLR), parse table, conflicts
+└── codegen/             # Parser module emission (codegen, actions, runtime text)
 nexus.grammar        # Grammar DSL described in its own grammar format
 build.zig            # Build configuration
 test/
@@ -1031,7 +1043,7 @@ When modifying `nexus.grammar`, regenerate the checked-in frontend parser
 and commit both:
 
 ```bash
-./bin/nexus nexus.grammar src/parser.zig
+./bin/nexus nexus.grammar src/frontend/parser.zig
 ```
 
 If the AST shape changes, also refresh the canonical S-expression golden:
