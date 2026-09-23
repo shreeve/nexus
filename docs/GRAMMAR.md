@@ -96,7 +96,9 @@ Each call of the lexer's `next()`:
 3. returns `eof` at the end of input;
 4. runs the DFA: the longest match among the rules whose guards hold wins,
    and a tie goes to the rule written first. With no match, one byte
-   becomes an `err` token;
+   becomes an `err` token, and so does a match longer than a token can
+   hold (65535 bytes: the token covers its first 65535, the scan resumes
+   after the match);
 5. runs the `after` block and the rule's actions.
 
 Only spaces and tabs are implicit; a newline is an ordinary byte, so a
@@ -242,9 +244,10 @@ whose token is `skip` without the `skip` action returns a token of the
 built-in category `skip`, which a lang `Lexer` wrapper may act on (the
 parser treats it as an error).
 
-A rule that holds or rewinds to zero width consumes nothing, so it must
-change a variable its guards test; otherwise it would match forever, which
-is an error. `hold` with `rewind`, `hold` with `skip`, and `counted()` on a
+A rule that holds or rewinds to zero width consumes nothing, so its
+actions must make one of its guards false, and no chain of such rules may
+re-enable itself; otherwise the lexer would return zero-width tokens
+forever, which is an error. `hold` with `rewind`, `hold` with `skip`, and `counted()` on a
 consuming rule are errors. `counting()`/`matching()` (balanced nesting) are
 rejected: no finite automaton recognizes them.
 
@@ -923,6 +926,7 @@ early:
 | `"+" and PLUS are the same token` | one token written both ways |
 | `` `...2` spreads a list, but element 2 (IDENT) is a token `` | write `2` |
 | `rule x derives no finite input` | every alternative needs a rule that never completes |
+| `the grammar is cyclic (a ⇒ b ⇒ a)` | a rule derives itself; the grammar has infinitely many parses of some input |
 | `undeclared conflict: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
 | `position 5 is past the end of the pattern (2 elements)` | an action refers to a missing element |
 | `X ":" on name ... has no effect` | a hint that decides nothing |
