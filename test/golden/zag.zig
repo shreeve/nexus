@@ -621,6 +621,31 @@ pub const Sexp = union(enum) {
 /// Per node: its source span and the rule that built it.
 pub const NodeInfo = struct { span: Span, rule: u16 };
 
+/// NodeInfo per NodeId, in fixed-size chunks that never move (appending
+/// never copies the store).
+const NodeStore = struct {
+    chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
+    len: u32 = 0,
+
+    const chunkLen = 1024;
+
+    inline fn add(self: *NodeStore, a: std.mem.Allocator, info: NodeInfo) !NodeId {
+        const id = self.len;
+        if (id % chunkLen == 0) try self.addChunk(a);
+        self.chunks.items[id / chunkLen][id % chunkLen] = info;
+        self.len = id + 1;
+        return id;
+    }
+
+    fn addChunk(self: *NodeStore, a: std.mem.Allocator) !void {
+        try self.chunks.append(a, try a.create([chunkLen]NodeInfo));
+    }
+
+    inline fn at(self: *const NodeStore, id: NodeId) *NodeInfo {
+        return &self.chunks.items[id / chunkLen][id % chunkLen];
+    }
+};
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -685,10 +710,16 @@ pub const BaseParser = struct {
     /// Node id of the list `extendList` is growing (0 = none).
     extending: NodeId = 0,
 
-    // Node store (when `nodeStore`): one span per value-stack entry, and
-    // per node its span and rule, indexed by NodeId (entry 0 unused).
-    spanStack: std.ArrayListUnmanaged(Span) = .empty,
-    nodes: std.ArrayListUnmanaged(NodeInfo) = .empty,
+    // Node store (when `nodeStore`): per value-stack entry where it
+    // starts, and per node its span and rule, indexed by NodeId (entry 0
+    // unused). An entry starts at its first token, or at the next token
+    // when it consumed none. A reduction then extends from its first
+    // element's start to the end of the last token shifted (`lastEnd`),
+    // and is empty when start >= end. With `elemEnds` (side-band labels or
+    // nested nodes) each entry's end is kept too.
+    starts: std.ArrayListUnmanaged(u32) = .empty,
+    ends: std.ArrayListUnmanaged(u32) = .empty,
+    nodes: NodeStore = .{},
     sides: std.ArrayListUnmanaged(SideEntry) = .empty,
     reduction: Reduction = .{},
     /// End of the last shifted token (the position of empty reductions).
@@ -700,11 +731,12 @@ pub const BaseParser = struct {
 
     const ListSpare = struct { len: usize, capacity: usize };
 
-    /// The reduction in progress: its rule, element spans, and span.
+    /// The reduction in progress: its rule, where its elements' extents
+    /// start on the span stack, its extent, and the first node it built.
     const Reduction = struct {
         rule: u16 = 0,
-        elems: []const Span = &.{},
-        span: Span = .empty,
+        base: u32 = 0,
+        extent: Span = .empty,
         firstNode: NodeId = 0,
     };
 
@@ -797,10 +829,12 @@ pub const BaseParser = struct {
         self.pendingInsert = null;
         self.outOfMemory = false;
         try self.stateStack.append(self.allocator(), startState(start));
+        if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
         if (nodeStore) {
-            self.spanStack.clearRetainingCapacity();
-            if (self.nodes.items.len == 0) try self.nodes.append(self.allocator(), .{ .span = .empty, .rule = 0 });
+            self.starts.clearRetainingCapacity();
+            self.ends.clearRetainingCapacity();
+            if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
         }
         if (hasTrivia) try self.skipTrivia();
     }
@@ -822,61 +856,95 @@ pub const BaseParser = struct {
     }
 
     fn shift(self: *BaseParser, target: u16) !void {
-        const a = self.allocator();
         if (self.injectedToken != null) {
-            try self.valueStack.append(a, .nil);
-            if (nodeStore) try self.spanStack.append(a, .{ .start = self.current.pos, .end = self.current.pos });
+            try self.pushEntry(target, .nil, self.current.pos, self.lastEnd);
             self.injectedToken = null;
         } else if (self.pendingInsert != null) {
             const pos = self.current.pos;
-            try self.valueStack.append(a, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } });
-            if (nodeStore) try self.spanStack.append(a, .{ .start = pos, .end = pos });
+            try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
+            if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
         } else {
             const tok = self.current;
             const id = if (self.lastMatchedId != 0) self.lastMatchedId else takeLexerId(&self.lexer);
             self.lastMatchedId = 0;
-            try self.valueStack.append(a, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } });
             const end = tok.pos + tok.len;
-            if (nodeStore) try self.spanStack.append(a, .{ .start = tok.pos, .end = end });
-            self.lastEnd = end;
+            try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+            if (nodeStore) self.lastEnd = end;
             try self.advance();
         }
-        try self.stateStack.append(a, target);
+    }
+
+    /// Push a state, its value, and (with a node store) where the value
+    /// starts and ends. The stacks grow together: the state stack is always
+    /// one longer than the others, so one capacity check covers them all.
+    inline fn pushEntry(self: *BaseParser, state: u16, value: Sexp, start: u32, end: u32) !void {
+        const n = self.valueStack.items.len;
+        if (n == self.valueStack.capacity) try self.growStacks();
+        self.valueStack.items.len = n + 1;
+        self.valueStack.items[n] = value;
+        self.stateStack.items.len = n + 2;
+        self.stateStack.items[n + 1] = state;
+        if (nodeStore) {
+            self.starts.items.len = n + 1;
+            self.starts.items[n] = start;
+        }
+        if (elemEnds) {
+            self.ends.items.len = n + 1;
+            self.ends.items[n] = end;
+        }
+    }
+
+    fn growStacks(self: *BaseParser) !void {
+        const a = self.allocator();
+        try self.valueStack.ensureUnusedCapacity(a, 1);
+        const capacity = self.valueStack.capacity;
+        try self.stateStack.ensureTotalCapacity(a, capacity + 1);
+        if (nodeStore) try self.starts.ensureTotalCapacity(a, capacity);
+        if (elemEnds) try self.ends.ensureTotalCapacity(a, capacity);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
         const len = ruleLen[ruleId];
         const base = self.valueStack.items.len - len;
-        var pass: [maxArgs]Sexp = undefined;
-        @memcpy(pass[0..len], self.valueStack.items[base..]);
-        self.valueStack.shrinkRetainingCapacity(base);
-        self.stateStack.shrinkRetainingCapacity(self.stateStack.items.len - len);
+        const top = self.stateStack.items.len - len;
 
         if (nodeStore) {
-            const elems = self.spanStack.items[base..];
             self.reduction = .{
                 .rule = ruleId,
-                .elems = elems,
-                .span = hull(elems, self.lastEnd),
-                .firstNode = @intCast(self.nodes.items.len),
+                .base = @intCast(base),
+                .extent = .{
+                    .start = if (len > 0) self.starts.items[base] else self.current.pos,
+                    .end = self.lastEnd,
+                },
+                .firstNode = self.nodes.len,
             };
         }
 
-        const result = executeAction(self, ruleId, pass[0..len]);
+        // The action reads its elements in place on the value stack; the
+        // result then replaces them (a reduction of nothing pushes it).
+        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
         if (self.outOfMemory) return error.OutOfMemory;
-
-        if (nodeStore) {
-            try self.recordSides(ruleId, result);
-            const whole = self.reduction.span;
-            self.spanStack.shrinkRetainingCapacity(base);
-            try self.spanStack.append(self.allocator(), whole);
-        }
-        try self.valueStack.append(self.allocator(), result);
-
-        const next = getAction(self.stateStack.getLast(), ruleLhs[ruleId]);
+        const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
-        try self.stateStack.append(self.allocator(), @intCast(next));
+
+        if (nodeStore) try self.recordSides(ruleId, result);
+        if (len > 0) {
+            self.valueStack.items.len = base + 1;
+            self.valueStack.items[base] = result;
+            self.stateStack.items.len = top + 1;
+            self.stateStack.items[top] = @intCast(next);
+            if (nodeStore) {
+                self.starts.items.len = base + 1;
+                self.starts.items[base] = self.reduction.extent.start;
+            }
+            if (elemEnds) {
+                self.ends.items.len = base + 1;
+                self.ends.items[base] = self.lastEnd;
+            }
+        } else {
+            try self.pushEntry(@intCast(next), result, self.reduction.extent.start, self.lastEnd);
+        }
     }
 
     /// Fetch the next token, moving trivia to the trivia channel.
@@ -902,33 +970,34 @@ pub const BaseParser = struct {
     // Node store, spans, side-band roles
     // -------------------------------------------------------------------------
 
-    /// The smallest span covering the non-empty spans in `elems`; empty at
-    /// `at` when there are none.
-    fn hull(elems: []const Span, at: u32) Span {
-        var first: usize = 0;
-        while (first < elems.len and elems[first].isEmpty()) first += 1;
-        if (first == elems.len) return .{ .start = at, .end = at };
-        var last = elems.len - 1;
-        while (elems[last].isEmpty()) last -= 1;
-        return .{ .start = elems[first].start, .end = elems[last].end };
+    /// The span of an extent: empty at its start when it consumed no
+    /// tokens.
+    fn spanOf(extent: Span) Span {
+        return if (extent.start < extent.end) extent else .{ .start = extent.start, .end = extent.start };
+    }
+
+    /// The extent of elements lo..hi (0-based, inclusive) of the reduction.
+    fn elemsExtent(self: *const BaseParser, lo: usize, hi: usize) Span {
+        if (!elemEnds) @compileError("element extents need elemEnds");
+        const base = self.reduction.base;
+        return .{ .start = self.starts.items[base + lo], .end = self.ends.items[base + hi] };
     }
 
     /// A new node id for a list the current reduction builds.
     inline fn newNodeId(self: *BaseParser) NodeId {
         if (!nodeStore) return 0;
-        return self.addNode(self.reduction.span);
+        return self.addNode(spanOf(self.reduction.extent));
     }
 
-    fn addNode(self: *BaseParser, extent: Span) NodeId {
-        const id: NodeId = @intCast(self.nodes.items.len);
-        self.nodes.append(self.allocator(), .{ .span = extent, .rule = self.reduction.rule }) catch {
+    inline fn addNode(self: *BaseParser, extent: Span) NodeId {
+        return self.nodes.add(self.allocator(), .{ .span = extent, .rule = self.reduction.rule }) catch {
             self.outOfMemory = true;
             return 0;
         };
-        return id;
     }
 
     fn recordSides(self: *BaseParser, ruleId: u16, result: Sexp) !void {
+        if (!elemEnds) return;
         const labels = ruleSideLabels(ruleId);
         if (labels.len == 0 or result != .list) return;
         const id = result.list.id;
@@ -937,7 +1006,7 @@ pub const BaseParser = struct {
             try self.sides.append(self.allocator(), .{
                 .node = id,
                 .role = label.role,
-                .span = self.reduction.elems[label.pass],
+                .span = spanOf(self.elemsExtent(label.pass, label.pass)),
             });
         }
     }
@@ -950,7 +1019,7 @@ pub const BaseParser = struct {
         switch (s) {
             .src => |x| return .{ .start = x.pos, .end = x.pos + x.len },
             .list => |l| {
-                if (nodeStore and l.id != 0 and l.id < self.nodes.items.len) return self.nodes.items[l.id].span;
+                if (nodeStore and l.id != 0 and l.id < self.nodes.len) return self.nodes.at(l.id).span;
                 var result: ?Span = null;
                 for (l.items()) |child| {
                     const cs = self.span(child);
@@ -967,13 +1036,13 @@ pub const BaseParser = struct {
     pub fn ruleOf(self: *const BaseParser, s: Sexp) ?u16 {
         if (!nodeStore or s != .list) return null;
         const id = s.list.id;
-        if (id == 0 or id >= self.nodes.items.len) return null;
-        return self.nodes.items[id].rule;
+        if (id == 0 or id >= self.nodes.len) return null;
+        return self.nodes.at(id).rule;
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
     pub fn nodeCount(self: *const BaseParser) u32 {
-        return if (self.nodes.items.len == 0) 0 else @intCast(self.nodes.items.len - 1);
+        return self.nodes.len -| 1;
     }
 
     /// The side-band roles recorded for node `id`.
@@ -1015,7 +1084,7 @@ pub const BaseParser = struct {
     /// A nested node built by the current reduction from elements
     /// lo..hi (0-based, inclusive); it spans just those elements.
     fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(hull(self.reduction.elems[lo .. hi + 1], self.reduction.span.start)) else 0;
+        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
         return .{ .list = List.withId(items, id) };
     }
 
@@ -1084,7 +1153,7 @@ pub const BaseParser = struct {
         if (nodeStore) {
             if (self.extending != 0) {
                 id = self.extending;
-                self.nodes.items[id] = .{ .span = self.reduction.span, .rule = self.reduction.rule };
+                self.nodes.at(id).* = .{ .span = spanOf(self.reduction.extent), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
         self.extending = 0;
@@ -1171,8 +1240,7 @@ pub const BaseParser = struct {
         const f = self.failure orelse return;
         const at = self.lineCol(f.span.start);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
-        var buf: [numSymbols]u16 = undefined;
-        const want = expected(f.state, &buf);
+        const want = expectedIn(f.state);
         for (want, 0..) |sym, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
             try w.writeAll(symbolName(sym));
@@ -1190,30 +1258,10 @@ pub const BaseParser = struct {
         std.debug.print("Parse error at {s}\n", .{w.buffered()});
     }
 
-    /// The reader-facing expected set of `state`: each `@errors` rule
-    /// that can start here (in declaration order, when it adds a token not
-    /// already covered) stands in for the tokens that begin it; the
-    /// remaining acceptable tokens follow in symbol order.
-    pub fn expected(state: u16, buf: []u16) []u16 {
-        var covered: [numSymbols]bool = @splat(false);
-        var n: usize = 0;
-        for (namedRules) |named| {
-            if (getAction(state, named.symbol) <= 0) continue;
-            var adds = false;
-            for (named.first) |t| {
-                if (!covered[t] and getAction(state, t) != 0) adds = true;
-            }
-            if (!adds) continue;
-            for (named.first) |t| covered[t] = true;
-            buf[n] = named.symbol;
-            n += 1;
-        }
-        for (terminals) |t| {
-            if (covered[t] or getAction(state, t) == 0) continue;
-            buf[n] = t;
-            n += 1;
-        }
-        return buf[0..n];
+    /// What `state` accepts, reader-named: the `@errors` rules it waits
+    /// for, then the tokens none of them begins with.
+    pub fn expected(state: u16) []const u16 {
+        return expectedIn(state);
     }
 
     // -------------------------------------------------------------------------
@@ -1363,11 +1411,12 @@ pub const BaseParser = struct {
 
 /// Node spans and rule ids are recorded (`@schema` or `--spans`).
 pub const nodeStore = false;
+/// Element extents are kept for side-band labels and nested nodes.
+const elemEnds = false;
 /// Lists keep trailing nils: positions are fixed by the schema.
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
-const maxArgs = 10;
 const numSymbols = 183;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
@@ -1462,35 +1511,36 @@ fn tryIdentAsKeyword(self: *BaseParser, text: []const u8) ?u16 {
 }
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
+    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"module", pass[0]),
         1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         3 => pass[0],
-        4 => self.list(pass),
-        5 => self.list(pass),
-        6 => self.list(pass),
-        7 => self.list(pass),
+        4 => pass[0],
+        5 => pass[0],
+        6 => pass[0],
+        7 => pass[0],
         8 => self.sexp(.@"labeled", &.{pass[1], pass[2]}),
-        9 => self.list(pass),
+        9 => pass[0],
         10 => self.sexp(.@"extern_const", &.{pass[2], pass[4]}),
         11 => self.sexp(.@"extern_var", &.{pass[1], pass[3]}),
         12 => self.sexp(.@"zig", &.{pass[1]}),
         13 => self.sexp(.@"zig", &.{pass[1]}),
-        14 => self.list(pass),
+        14 => pass[0],
         15 => self.sexp(.@"pub", &.{pass[1]}),
         16 => self.sexp(.@"extern", &.{pass[1]}),
         17 => self.sexp(.@"export", &.{pass[1]}),
         18 => self.sexp(.@"packed", &.{pass[1]}),
         19 => self.sexp(.@"callconv", &.{pass[1], pass[2]}),
-        20 => self.list(pass),
-        21 => self.list(pass),
-        22 => self.list(pass),
-        23 => self.list(pass),
-        24 => self.list(pass),
-        25 => self.list(pass),
-        26 => self.list(pass),
-        27 => self.list(pass),
+        20 => pass[0],
+        21 => pass[0],
+        22 => pass[0],
+        23 => pass[0],
+        24 => pass[0],
+        25 => pass[0],
+        26 => pass[0],
+        27 => pass[0],
         28 => self.sexpSpread(.@"block", pass[1]),
         29 => self.sexp(.@"block", &.{}),
         30 => self.sexp(.@"fun", &.{pass[1], pass[2], pass[3], pass[4]}),
@@ -1509,10 +1559,10 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         43 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         44 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         45 => pass[0],
-        46 => self.list(pass),
+        46 => pass[0],
         47 => self.sexp(.@"valued", &.{pass[0], pass[2]}),
-        48 => self.list(pass),
-        49 => self.list(pass),
+        48 => pass[0],
+        49 => pass[0],
         50 => self.sexp(.@"comptime_param", &.{pass[1], pass[3]}),
         51 => pass[0],
         52 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
@@ -1523,7 +1573,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         57 => self.emptyList(),
         58 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         59 => pass[1],
-        60 => self.list(pass),
+        60 => pass[0],
         61 => self.sexp(.@"error_union", &.{pass[1]}),
         62 => self.sexp(.@"?", &.{pass[1]}),
         63 => self.sexp(.@"ptr", &.{pass[1]}),
@@ -1539,24 +1589,24 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         73 => self.emptyList(),
         74 => self.sexp(.@"fn_type", &.{pass[2], pass[4]}),
         75 => self.sexp(.@"fn_type", &.{.nil, pass[3]}),
-        76 => self.list(pass),
-        77 => self.list(pass),
-        78 => self.list(pass),
-        79 => self.list(pass),
-        80 => self.list(pass),
-        81 => self.list(pass),
-        82 => self.list(pass),
-        83 => self.list(pass),
-        84 => self.list(pass),
-        85 => self.list(pass),
-        86 => self.list(pass),
-        87 => self.list(pass),
-        88 => self.list(pass),
-        89 => self.list(pass),
-        90 => self.list(pass),
-        91 => self.list(pass),
-        92 => self.list(pass),
-        93 => self.list(pass),
+        76 => pass[0],
+        77 => pass[0],
+        78 => pass[0],
+        79 => pass[0],
+        80 => pass[0],
+        81 => pass[0],
+        82 => pass[0],
+        83 => pass[0],
+        84 => pass[0],
+        85 => pass[0],
+        86 => pass[0],
+        87 => pass[0],
+        88 => pass[0],
+        89 => pass[0],
+        90 => pass[0],
+        91 => pass[0],
+        92 => pass[0],
+        93 => pass[0],
         94 => self.sexp(.@"as", &.{pass[0], pass[2]}),
         95 => self.sexp(.@"as", &.{pass[0], pass[2]}),
         96 => self.sexp(.@"if", &.{pass[1], pass[2], pass[5], pass[6]}),
@@ -1580,9 +1630,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         114 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         115 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         116 => pass[0],
-        117 => self.list(pass),
+        117 => pass[0],
         118 => self.sexp(.@"enum_pattern", &.{pass[1]}),
-        119 => self.list(pass),
+        119 => pass[0],
         120 => self.sexp(.@"range_pattern", &.{pass[0], pass[2]}),
         121 => self.sexp(.@"arm", &.{pass[0], pass[2], pass[4]}),
         122 => self.sexp(.@"arm", &.{pass[0], pass[2], pass[3]}),
@@ -1627,7 +1677,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         161 => self.sexp(.@"try", &.{pass[1]}),
         162 => self.sexp(.@"addr_of", &.{pass[1]}),
         163 => self.sexp(.@"bit_not", &.{pass[1]}),
-        164 => self.list(pass),
+        164 => pass[0],
         165 => self.sexp(.@"deref", &.{pass[0]}),
         166 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         167 => self.sexp(.@"index", &.{pass[0], pass[2]}),
@@ -1636,31 +1686,31 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         170 => self.emptyList(),
         171 => self.sexpPosSpread(.@"call", pass[0], pass[1]),
         172 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-        173 => self.list(pass),
+        173 => pass[0],
         174 => self.spreadList(pass[0], pass[1]),
         175 => self.spreadList(pass[1], pass[2]),
         176 => self.emptyList(),
         177 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         178 => self.emptyList(),
         179 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-        180 => self.list(pass),
+        180 => pass[0],
         181 => self.sexp(.@"neg", &.{pass[1]}),
         182 => self.sexp(.@"not", &.{pass[1]}),
-        183 => self.list(pass),
-        184 => self.list(pass),
-        185 => self.list(pass),
-        186 => self.list(pass),
-        187 => self.list(pass),
-        188 => self.list(pass),
-        189 => self.list(pass),
-        190 => self.list(pass),
+        183 => pass[0],
+        184 => pass[0],
+        185 => pass[0],
+        186 => pass[0],
+        187 => pass[0],
+        188 => pass[0],
+        189 => pass[0],
+        190 => pass[0],
         191 => self.sexp(.@"null", &.{}),
         192 => self.sexp(.@"unreachable", &.{}),
         193 => self.sexp(.@"undefined", &.{}),
         194 => self.sexp(.@"?", &.{pass[1]}),
         195 => self.sexpPosSpread(.@"builtin", pass[1], pass[3]),
-        196 => self.list(pass),
-        197 => self.list(pass),
+        196 => pass[0],
+        197 => pass[0],
         198 => self.sexpSpread(.@"array", pass[1]),
         199 => pass[1],
         200 => self.spreadList(pass[0], pass[1]),
@@ -2281,13 +2331,10 @@ fn getAction(state: u16, sym: u16) i16 {
 }
 
 // X "c" excludes: shift instead of reduce when pre == 0 and the next byte matches
-const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{
+const xExcludes = [_]struct { char: u8, shift: u16 }{
 };
 
-fn getImmediateShift(state: u16, char: u8) ?i16 {
-    for (xExcludes) |x| {
-        if (x.state == state and x.char == char) return @intCast(x.shift);
-    }
+fn getImmediateShift(_: u16, _: u8) ?i16 {
     return null;
 }
 
@@ -2305,12 +2352,97 @@ fn startMarker(start: Start) u16 {
     };
 }
 
-/// Terminals, for expected sets.
-const terminals = [_]u16{ 1, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 99, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142, 145, 146, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182 };
-
-/// `@errors` rules and the terminals that can begin them.
-const namedRules = [_]struct { symbol: u16, first: []const u16 }{
+/// Expected symbols per state: state s expects list i = expectedOf[s],
+/// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
+const expectedSymbols = [_]u16{
+    59, 60, 61, 63, 64, 65, 66, 67, 68, 69, 72, 73, 74, 75, 77, 78, 79, 80, 81, 82, 88, 89, 92, 94,
+    95, 96, 103, 105, 106, 108, 115, 117, 118, 119, 120, 121, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142,
+    60, 64, 65, 82, 88, 89, 92, 94, 95, 96, 103, 105, 106, 108, 115, 117, 118, 119, 120, 121, 127, 128, 129, 130,
+    135, 136, 137, 138, 139, 140, 141, 142, 60, 1, 58, 71, 1, 58, 59, 70, 71, 84, 87, 93, 99, 101, 102, 104,
+    116, 145, 64, 65, 1, 58, 59, 60, 64, 65, 70, 71, 82, 84, 87, 88, 89, 92, 93, 94, 95, 96, 99, 101,
+    102, 103, 104, 105, 106, 108, 115, 116, 117, 118, 119, 120, 121, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141,
+    142, 145, 1, 58, 59, 60, 64, 65, 70, 71, 76, 84, 87, 88, 89, 90, 92, 93, 94, 95, 96, 99, 101, 102,
+    103, 104, 109, 110, 111, 112, 113, 114, 116, 122, 123, 124, 125, 126, 127, 129, 135, 136, 137, 138, 139, 140, 141, 142,
+    145, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 1, 58, 59, 70, 71,
+    84, 87, 93, 99, 101, 102, 103, 104, 110, 112, 113, 114, 116, 129, 145, 165, 166, 167, 168, 169, 170, 171, 172, 173,
+    174, 175, 176, 177, 178, 179, 1, 58, 59, 70, 71, 84, 87, 93, 99, 101, 102, 103, 104, 112, 113, 114, 116, 145,
+    165, 166, 167, 168, 60, 90, 1, 61, 66, 67, 68, 69, 72, 73, 75, 77, 78, 79, 80, 81, 1, 58, 59, 70,
+    71, 84, 87, 93, 99, 101, 102, 103, 104, 112, 113, 114, 116, 145, 165, 166, 1, 58, 59, 70, 71, 84, 87, 93,
+    99, 101, 102, 103, 104, 112, 113, 114, 116, 129, 145, 165, 166, 167, 168, 169, 1, 58, 59, 70, 71, 84, 87, 93,
+    99, 101, 102, 103, 104, 112, 113, 114, 116, 129, 145, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 1, 58,
+    59, 70, 71, 84, 87, 90, 93, 99, 101, 102, 103, 104, 110, 112, 113, 114, 116, 129, 145, 165, 166, 167, 168, 169,
+    170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 1, 58, 59, 60, 64, 65, 70, 71, 76, 84, 87,
+    88, 89, 90, 92, 93, 94, 95, 96, 99, 101, 102, 103, 104, 109, 110, 112, 113, 114, 116, 122, 123, 124, 125, 126,
+    127, 129, 135, 136, 137, 138, 139, 140, 141, 142, 145, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177,
+    178, 179, 180, 181, 182, 60, 64, 65, 88, 89, 92, 94, 95, 96, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140,
+    141, 142, 1, 58, 59, 70, 71, 84, 87, 93, 99, 101, 102, 103, 104, 110, 112, 113, 114, 116, 129, 145, 165, 166,
+    167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 60, 70, 82, 60, 64, 65, 70, 82, 88, 89, 92, 94, 95,
+    96, 103, 105, 106, 108, 115, 117, 118, 119, 120, 121, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142, 60,
+    64, 65, 82, 88, 89, 92, 94, 95, 96, 103, 105, 106, 108, 109, 115, 117, 118, 119, 120, 121, 127, 128, 129, 130,
+    135, 136, 137, 138, 139, 140, 141, 142, 145, 1, 58, 59, 70, 71, 84, 87, 90, 93, 99, 101, 102, 103, 104, 110,
+    112, 113, 114, 116, 129, 145, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 1,
+    58, 59, 60, 64, 65, 70, 71, 76, 84, 87, 88, 89, 90, 92, 93, 94, 95, 96, 99, 101, 102, 103, 104, 109,
+    110, 111, 112, 113, 114, 116, 122, 123, 124, 125, 126, 127, 129, 135, 136, 137, 138, 139, 140, 141, 142, 145, 146, 165,
+    166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 60, 64, 65, 89, 92, 94, 95,
+    96, 135, 136, 137, 138, 139, 140, 141, 142, 1, 58, 59, 70, 71, 84, 87, 93, 99, 101, 102, 103, 104, 112, 113,
+    114, 116, 145, 1, 58, 59, 70, 71, 84, 87, 93, 99, 101, 102, 103, 104, 112, 113, 114, 116, 145, 165, 60, 61,
+    62, 66, 67, 68, 69, 72, 73, 75, 77, 78, 79, 80, 81, 1, 58, 65, 1, 58, 59, 70, 71, 84, 87, 93,
+    99, 101, 102, 103, 104, 112, 113, 114, 116, 145, 165, 166, 167, 1, 58, 59, 70, 71, 84, 87, 93, 99, 101, 102,
+    103, 104, 112, 113, 114, 116, 145, 165, 166, 167, 168, 169, 60, 64, 65, 82, 88, 89, 92, 93, 94, 95, 96, 103,
+    105, 106, 108, 115, 117, 118, 119, 120, 121, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142, 96, 99, 84,
+    107, 70, 1, 58, 59, 60, 64, 65, 70, 71, 84, 87, 88, 89, 90, 92, 93, 94, 95, 96, 99, 101, 102, 103,
+    104, 109, 110, 112, 113, 114, 116, 127, 129, 135, 136, 137, 138, 139, 140, 141, 142, 145, 165, 166, 167, 168, 169, 170,
+    171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 59, 60, 61, 63, 64, 65, 66, 67, 68, 69, 71, 72,
+    73, 74, 75, 77, 78, 79, 80, 81, 82, 88, 89, 92, 94, 95, 96, 103, 105, 106, 108, 115, 117, 118, 119, 120,
+    121, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142, 70, 87, 70, 84, 87, 59, 70, 84, 87, 60, 64,
+    65, 82, 88, 89, 92, 94, 95, 96, 99, 103, 105, 106, 108, 115, 117, 118, 119, 120, 121, 127, 128, 129, 130, 135,
+    136, 137, 138, 139, 140, 141, 142, 60, 64, 65, 88, 89, 92, 94, 95, 96, 127, 135, 136, 137, 138, 139, 140, 141,
+    142, 60, 88, 89, 90, 92, 95, 84, 145, 145, 93, 99, 145, 84, 93, 99, 145, 60, 70, 82, 87, 59, 70, 59,
+    70, 101, 102, 60, 64, 65, 82, 88, 89, 92, 94, 95, 96, 101, 103, 105, 106, 108, 115, 117, 118, 119, 120, 121,
+    127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142, 76, 59, 1, 58, 59, 60, 61, 63, 64, 65, 66, 67,
+    68, 69, 71, 72, 73, 74, 75, 77, 78, 79, 80, 81, 82, 88, 89, 92, 94, 95, 96, 103, 105, 106, 108, 115,
+    117, 118, 119, 120, 121, 127, 128, 129, 130, 135, 136, 137, 138, 139, 140, 141, 142, 93, 60, 72, 73, 82, 1, 58,
+    59, 70, 71, 84, 87, 93, 99, 101, 102, 103, 104, 112, 113, 114, 116, 129, 145, 165, 166, 167, 168, 169, 170, 171,
+    172, 173, 174, 175, 176, 177, 58, 71, 60, 82, 84, 99, 60, 62, 88, 89, 90, 91, 92, 95, 76, 126, 59, 90,
+    93, 94, 1, 58, 70, 71, 76, 83, 84, 87, 99, 126, 84, 93, 109, 60, 64, 65, 89, 92, 94, 95, 96, 109,
+    135, 136, 137, 138, 139, 140, 141, 142, 104, 107, 58, 59, 71, 76, 58, 70, 71, 76, 83, 84, 87, 60, 88, 89,
+    90, 92, 95, 99, 59, 93, 102, 70, 101, 111, 70, 101, 110, 111, 70, 101, 103, 58, 60, 71, 72, 73, 82, 58,
+    70, 71, 84, 87, 58, 60, 64, 65, 71, 89, 92, 94, 95, 96, 109, 135, 136, 137, 138, 139, 140, 141, 142, 70,
+    111, 70, 103,
 };
+const expectedOffsets = [_]u32{
+    0, 0, 48, 80, 81, 84, 98, 100, 146, 211, 246, 268, 270, 271, 284, 304, 328, 358, 397, 461, 482, 515, 518, 551,
+    585, 623, 689, 705, 723, 742, 757, 759, 760, 781, 804, 837, 838, 839, 841, 842, 900, 949, 951, 954, 958, 991, 1009, 1015,
+    1017, 1018, 1021, 1025, 1029, 1031, 1035, 1068, 1069, 1070, 1121, 1122, 1126, 1158, 1160, 1162, 1164, 1172, 1174, 1178, 1188, 1190, 1191, 1208,
+    1209, 1210, 1214, 1221, 1228, 1230, 1231, 1234, 1238, 1241, 1247, 1252, 1271, 1273, 1275,
+};
+const expectedOf = [_]u16{
+    0, 0, 1, 2, 3, 4, 5, 4, 5, 6, 7, 8, 2, 9, 8, 10, 11, 5, 12, 4, 13, 14, 3, 15,
+    16, 17, 8, 5, 8, 18, 3, 19, 3, 20, 4, 5, 21, 5, 5, 18, 22, 2, 23, 19, 5, 5, 5, 8,
+    24, 3, 13, 8, 4, 5, 4, 8, 2, 8, 4, 25, 26, 19, 5, 3, 19, 4, 4, 2, 3, 4, 4, 27,
+    28, 8, 4, 5, 3, 5, 3, 2, 4, 3, 29, 30, 13, 31, 8, 7, 22, 2, 5, 32, 15, 5, 33, 4,
+    3, 8, 24, 4, 5, 34, 19, 12, 35, 4, 4, 2, 5, 36, 19, 19, 19, 3, 37, 12, 13, 4, 19, 4,
+    19, 19, 19, 19, 19, 19, 19, 19, 38, 17, 39, 38, 19, 19, 19, 38, 3, 8, 40, 41, 42, 43, 11, 44,
+    2, 2, 45, 45, 18, 18, 46, 18, 2, 2, 2, 18, 34, 2, 5, 5, 5, 8, 47, 3, 48, 49, 48, 50,
+    17, 3, 2, 51, 4, 52, 53, 3, 8, 17, 4, 17, 38, 13, 54, 2, 2, 2, 19, 21, 55, 5, 1, 4,
+    3, 56, 57, 4, 38, 2, 3, 5, 5, 5, 38, 19, 19, 38, 19, 19, 19, 58, 17, 12, 44, 5, 2, 8,
+    24, 24, 33, 37, 2, 3, 32, 15, 15, 15, 15, 15, 15, 15, 24, 59, 59, 9, 9, 60, 8, 56, 8, 61,
+    41, 62, 46, 18, 18, 36, 63, 5, 5, 18, 18, 18, 45, 35, 46, 64, 65, 66, 67, 46, 5, 5, 5, 2,
+    68, 5, 48, 69, 55, 8, 8, 49, 2, 5, 5, 41, 46, 38, 4, 2, 5, 3, 3, 48, 56, 47, 70, 4,
+    5, 3, 5, 5, 71, 14, 38, 4, 46, 4, 56, 46, 4, 4, 5, 7, 5, 10, 15, 59, 24, 24, 24, 8,
+    36, 5, 2, 3, 38, 72, 61, 61, 61, 61, 73, 61, 61, 46, 8, 42, 74, 18, 18, 75, 67, 46, 67, 46,
+    2, 2, 26, 58, 76, 46, 67, 71, 18, 47, 2, 50, 2, 38, 4, 38, 4, 38, 38, 77, 52, 8, 2, 48,
+    3, 78, 3, 61, 79, 79, 61, 2, 2, 2, 4, 4, 46, 4, 2, 5, 80, 61, 8, 38, 72, 5, 2, 4,
+    81, 2, 4, 82, 41, 26, 2, 18, 46, 63, 36, 67, 67, 5, 5, 58, 46, 26, 46, 67, 45, 48, 47, 49,
+    5, 4, 5, 5, 52, 47, 47, 2, 3, 61, 79, 70, 5, 83, 5, 5, 5, 4, 5, 5, 3, 5, 4, 5,
+    2, 38, 38, 61, 61, 82, 82, 67, 36, 46, 46, 46, 67, 58, 67, 18, 38, 48, 61, 84, 78, 61, 85, 38,
+    38, 5, 5, 63, 67, 67, 46, 5, 2, 61, 5, 5, 5, 5, 38, 36, 67, 61, 38, 5, 5,
+};
+
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {

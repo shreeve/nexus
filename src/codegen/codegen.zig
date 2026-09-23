@@ -31,20 +31,11 @@ const Table = @import("../lr/table.zig").Table;
 const actions = @import("actions.zig");
 const runtime = @import("runtime.zig");
 
-/// Tolerant-repair insertion candidates, computed from the automaton by the
-/// LR stage for grammars with `@repair`: for each state, the terminal
-/// symbol ids that may be inserted there, best first.
-pub const RepairTable = struct {
-    rows: []const []const u16,
-};
-
 pub const Options = struct {
     /// Write each rule as a comment above its action.
     emitComments: bool = false,
     /// Record node spans and rule ids (always on in schema mode).
     spans: bool = false,
-    /// Required when the grammar has `@repair`.
-    repair: ?RepairTable = null,
 };
 
 /// Generate the parser module. `lexerDecls` is lexgen's declarations
@@ -127,6 +118,10 @@ const Codegen = struct {
     /// Schema mode: the Tag and Role enums, in declaration order.
     schemaTags: std.ArrayListUnmanaged([]const u8) = .empty,
     roles: std.ArrayListUnmanaged([]const u8) = .empty,
+    /// Some action builds a nested node (`self.nested`).
+    usesNested: bool = false,
+    /// The executeAction function, generated before the configuration.
+    actionsCode: []const u8 = "",
 
     fn schema(self: *const Codegen) ?Schema {
         return self.g.schema;
@@ -144,6 +139,9 @@ const Codegen = struct {
         if (self.schema()) |s| try self.collectSchema(s);
         try self.validate();
 
+        self.actionsCode = try self.generateActions();
+        self.usesNested = std.mem.indexOf(u8, self.actionsCode, "self.nested(") != null;
+
         try writeHeader(w, self.g.lang);
         try w.writeAll(lexerDecls);
         try w.writeAll(simdSupport);
@@ -152,7 +150,7 @@ const Codegen = struct {
         try self.emitConfig(w);
         try self.emitTokenToSymbol(w);
         try self.emitIdentToSymbol(w);
-        try self.emitExecuteAction(w);
+        try w.writeAll(self.actionsCode);
         try self.emitAsMaps(w);
         try self.emitRuleTables(w);
         try self.emitParseTable(w);
@@ -238,7 +236,7 @@ const Codegen = struct {
             }
         }
 
-        if (self.g.repair != null and self.options.repair == null) {
+        if (self.g.repair != null and self.table.repair == null) {
             diag.err("the grammar has @repair but no repair table was computed", .{});
             return error.MissingRepairTable;
         }
@@ -355,30 +353,35 @@ const Codegen = struct {
 
     fn emitConfig(self: *Codegen, w: *std.Io.Writer) !void {
         try banner(w, "Grammar");
-        var maxLen: usize = 1;
-        for (self.g.rules.items) |rule| maxLen = @max(maxLen, rule.rhs.len);
         try w.print(
             \\/// Node spans and rule ids are recorded (`@schema` or `--spans`).
             \\pub const nodeStore = {};
+            \\/// Element extents are kept for side-band labels and nested nodes.
+            \\const elemEnds = {};
             \\/// Lists keep trailing nils: positions are fixed by the schema.
             \\const keepTrailingNils = {};
             \\const hasTrivia = {};
             \\const hasRepair = {};
-            \\const maxArgs = {d};
             \\const numSymbols = {d};
             \\const endSymbol: u16 = {d};
             \\const errorSymbol: u16 = {d};
             \\
         , .{
             self.nodeStore(),
+            self.nodeStore() and self.needsElemEnds(),
             self.schema() != null,
             self.g.trivia.len > 0,
-            self.g.repair != null,
-            maxLen,
+            self.table.repair != null,
             self.g.symbols.items.len,
             self.g.endId,
             self.g.errorId,
         });
+    }
+
+    /// Whether some action records a side-band label or builds a nested node.
+    fn needsElemEnds(self: *const Codegen) bool {
+        for (self.g.rules.items) |rule| if (rule.sideLabels.len > 0) return true;
+        return self.usesNested;
     }
 
     fn hasIdentAs(self: *const Codegen) bool {
@@ -558,7 +561,9 @@ const Codegen = struct {
 
     /// executeAction: one switch arm per reducible rule. Accept rules are
     /// never reduced (the table accepts on end of input before them).
-    fn emitExecuteAction(self: *Codegen, w: *std.Io.Writer) !void {
+    fn generateActions(self: *Codegen) ![]const u8 {
+        var out: std.Io.Writer.Allocating = .init(self.allocator);
+        const w = &out.writer;
         var arms: std.Io.Writer.Allocating = .init(self.allocator);
         const a = &arms.writer;
         for (self.g.rules.items, 0..) |rule, ruleIdx| {
@@ -575,11 +580,13 @@ const Codegen = struct {
         }
         const body = arms.written();
         try w.writeAll("\nfn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {\n");
+        try w.writeAll("    @setEvalBranchQuota(1_000_000);\n");
         if (std.mem.indexOf(u8, body, "self.") == null) try w.writeAll("    _ = self;\n");
         if (std.mem.indexOf(u8, body, "pass") == null) try w.writeAll("    _ = pass;\n");
         try w.writeAll("    return switch (ruleId) {\n");
         try w.writeAll(body);
         try w.writeAll("        else => unreachable,\n    };\n}\n");
+        return out.written();
     }
 
     /// `@as`: <rule>Id -> symbol maps (and inline keyword matchers without @lang).
@@ -723,19 +730,32 @@ const Codegen = struct {
         );
     }
 
-    /// `X "c"` exclusions and the runtime shift override lookup.
+    /// `X "c"` exclusions (grouped by state) and the runtime shift override.
     fn emitExcludes(self: *Codegen, w: *std.Io.Writer) !void {
         try w.writeAll("\n// X \"c\" excludes: shift instead of reduce when pre == 0 and the next byte matches\n");
-        try w.writeAll("const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{\n");
+        try w.writeAll("const xExcludes = [_]struct { char: u8, shift: u16 }{\n");
         for (self.table.xExcludes.items) |x| {
-            try w.print("    .{{ .state = {d}, .char = {d}, .shift = {d} }},\n", .{ x.state, x.char, x.shift });
+            try w.print("    .{{ .char = {d}, .shift = {d} }},\n", .{ x.char, x.shift });
         }
+        try w.writeAll("};\n");
+        if (self.table.xExcludes.items.len == 0) {
+            try w.writeAll(
+                \\
+                \\fn getImmediateShift(_: u16, _: u8) ?i16 {
+                \\    return null;
+                \\}
+                \\
+            );
+            return;
+        }
+        try w.writeAll("/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].\nconst xExcludeStart = [_]u32{");
+        try writeList(w, u32, self.table.xExcludeStart);
         try w.writeAll(
             \\};
             \\
             \\fn getImmediateShift(state: u16, char: u8) ?i16 {
-            \\    for (xExcludes) |x| {
-            \\        if (x.state == state and x.char == char) return @intCast(x.shift);
+            \\    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
+            \\        if (x.char == char) return @intCast(x.shift);
             \\    }
             \\    return null;
             \\}
@@ -772,14 +792,6 @@ const Codegen = struct {
     // Diagnostics names
     // -------------------------------------------------------------------------
 
-    fn isTerminalForDiagnostics(self: *const Codegen, sym: grammar.Symbol) bool {
-        if (sym.kind != .terminal) return false;
-        if (sym.id == self.g.endId) return true;
-        if (sym.id == self.g.errorId) return false;
-        if (sym.name.len == 0 or sym.name[0] == '$') return false;
-        return !std.mem.endsWith(u8, sym.name, "!");
-    }
-
     /// The reader-facing name of a symbol: `@display`, `@errors`, else the
     /// literal as written or the token name in lower case.
     fn displayName(self: *const Codegen, sym: grammar.Symbol) !?[]const u8 {
@@ -787,87 +799,43 @@ const Codegen = struct {
             for (self.g.errorNames) |e| if (std.mem.eql(u8, e.rule, sym.name)) return e.name;
             return null;
         }
+        if (sym.id == self.g.errorId) return null;
         if (sym.id == self.g.endId) {
             for (self.g.displayNames) |d| if (std.ascii.eqlIgnoreCase(d.token, "eof")) return d.name;
             return "end of input";
         }
+        if (sym.name.len == 0 or sym.name[0] == '$' or std.mem.endsWith(u8, sym.name, "!")) return null;
         for (self.g.displayNames) |d| if (std.mem.eql(u8, d.token, sym.name)) return d.name;
         for (self.g.displayNames) |d| if (std.ascii.eqlIgnoreCase(d.token, sym.name)) return d.name;
         if (sym.name[0] == '"') return sym.name;
         return try std.ascii.allocLowerString(self.allocator, sym.name);
     }
 
+    /// Expected sets (from the LR stage) and symbol display names.
     fn emitDiagnostics(self: *Codegen, w: *std.Io.Writer) !void {
-        try w.writeAll("\n/// Terminals, for expected sets.\nconst terminals = [_]u16{ ");
-        var first = true;
-        for (self.g.symbols.items) |sym| {
-            if (!self.isTerminalForDiagnostics(sym)) continue;
-            if (!first) try w.writeAll(", ");
-            try w.print("{d}", .{sym.id});
-            first = false;
-        }
-        try w.writeAll(" };\n");
-
-        // `@errors` rules and the terminals that begin them
-        try w.writeAll("\n/// `@errors` rules and the terminals that can begin them.\nconst namedRules = [_]struct { symbol: u16, first: []const u16 }{\n");
-        if (self.g.errorNames.len > 0) {
-            const firsts = try self.firstSets();
-            for (self.g.errorNames) |e| {
-                const id = self.g.getSymbol(e.rule) orelse continue;
-                if (self.g.symbols.items[id].kind != .nonterminal) continue;
-                try w.print("    .{{ .symbol = {d}, .first = &.{{", .{id});
-                var it = firsts[id].iterator(.{});
-                var n: usize = 0;
-                while (it.next()) |t| : (n += 1) {
-                    if (!self.isTerminalForDiagnostics(self.g.symbols.items[t])) continue;
-                    try w.print(" {d},", .{t});
-                }
-                try w.writeAll(" } },\n");
-            }
-        }
-        try w.writeAll("};\n");
+        const e = self.table.expected;
+        try w.writeAll("\n/// Expected symbols per state: state s expects list i = expectedOf[s],\n/// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].\nconst expectedSymbols = [_]u16{");
+        try writeList(w, u16, e.symbols);
+        try w.writeAll("};\nconst expectedOffsets = [_]u32{");
+        try writeList(w, u32, e.offsets);
+        try w.writeAll("};\nconst expectedOf = [_]u16{");
+        try writeList(w, u16, e.ofState);
+        try w.writeAll(
+            \\};
+            \\
+            \\fn expectedIn(state: u16) []const u16 {
+            \\    const i = expectedOf[state];
+            \\    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+            \\}
+            \\
+        );
 
         try w.writeAll("\nfn symbolName(sym: u16) []const u8 {\n    return switch (sym) {\n");
         for (self.g.symbols.items) |sym| {
-            if (sym.kind == .terminal and !self.isTerminalForDiagnostics(sym)) continue;
             const name = try self.displayName(sym) orelse continue;
             try w.print("        {d} => \"{f}\",\n", .{ sym.id, std.zig.fmtString(name) });
         }
         try w.writeAll("        else => \"\",\n    };\n}\n");
-    }
-
-    /// FIRST sets (terminal ids) of every symbol.
-    fn firstSets(self: *Codegen) ![]std.DynamicBitSetUnmanaged {
-        const n = self.g.symbols.items.len;
-        const sets = try self.allocator.alloc(std.DynamicBitSetUnmanaged, n);
-        const nullable = try self.allocator.alloc(bool, n);
-        @memset(nullable, false);
-        for (sets, self.g.symbols.items) |*set, sym| {
-            set.* = try .initEmpty(self.allocator, n);
-            if (sym.kind == .terminal) set.set(sym.id);
-        }
-        var changed = true;
-        while (changed) {
-            changed = false;
-            for (self.g.rules.items) |rule| {
-                const lhs = &sets[rule.lhs];
-                var allNullable = true;
-                for (rule.rhs) |sym| {
-                    const before = lhs.count();
-                    lhs.setUnion(sets[sym]);
-                    if (lhs.count() != before) changed = true;
-                    if (!nullable[sym]) {
-                        allNullable = false;
-                        break;
-                    }
-                }
-                if (allNullable and !nullable[rule.lhs]) {
-                    nullable[rule.lhs] = true;
-                    changed = true;
-                }
-            }
-        }
-        return sets;
     }
 
     // -------------------------------------------------------------------------
@@ -885,20 +853,22 @@ const Codegen = struct {
     }
 
     fn emitRepair(self: *Codegen, w: *std.Io.Writer) !void {
-        const table = self.options.repair orelse {
+        const r = self.table.repair orelse {
             try w.writeAll("\nfn repairCandidates(_: u16) []const u16 {\n    return &.{};\n}\n");
             return;
         };
-        try w.writeAll("\n/// Tolerant repair: per state, the tokens to try inserting, best first.\nconst repairRows = [_][]const u16{\n");
-        for (table.rows) |row| {
-            try w.writeAll("    &.{");
-            for (row, 0..) |sym, i| {
-                if (i > 0) try w.writeAll(",");
-                try w.print(" {d}", .{sym});
-            }
-            try w.writeAll(if (row.len > 0) " },\n" else "},\n");
-        }
-        try w.writeAll("};\n\nfn repairCandidates(state: u16) []const u16 {\n    return repairRows[state];\n}\n");
+        try w.writeAll("\n/// Tolerant repair: state s may insert, best first,\n/// repairTokens[repairOffsets[s]..repairOffsets[s + 1]].\nconst repairTokens = [_]u16{");
+        try writeList(w, u16, r.tokens);
+        try w.writeAll("};\nconst repairOffsets = [_]u32{");
+        try writeList(w, u32, r.offsets);
+        try w.writeAll(
+            \\};
+            \\
+            \\fn repairCandidates(state: u16) []const u16 {
+            \\    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
+            \\}
+            \\
+        );
     }
 
     fn emitSideLabels(self: *Codegen, w: *std.Io.Writer) !void {
@@ -1023,6 +993,15 @@ const Codegen = struct {
         }
     }
 };
+
+/// ` a, b, c,` (24 values per line) for an array literal.
+fn writeList(w: *std.Io.Writer, comptime T: type, values: []const T) !void {
+    for (values, 0..) |v, i| {
+        if (i % 24 == 0) try w.writeAll("\n   ");
+        try w.print(" {d},", .{v});
+    }
+    if (values.len > 0) try w.writeAll("\n");
+}
 
 /// Accessor namespace for a kind: `if_stmt` -> `IfStmt`; kinds that are
 /// not identifiers keep their text (`@"+"`).

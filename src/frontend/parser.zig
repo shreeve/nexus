@@ -413,6 +413,31 @@ pub const Sexp = union(enum) {
 /// Per node: its source span and the rule that built it.
 pub const NodeInfo = struct { span: Span, rule: u16 };
 
+/// NodeInfo per NodeId, in fixed-size chunks that never move (appending
+/// never copies the store).
+const NodeStore = struct {
+    chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
+    len: u32 = 0,
+
+    const chunkLen = 1024;
+
+    inline fn add(self: *NodeStore, a: std.mem.Allocator, info: NodeInfo) !NodeId {
+        const id = self.len;
+        if (id % chunkLen == 0) try self.addChunk(a);
+        self.chunks.items[id / chunkLen][id % chunkLen] = info;
+        self.len = id + 1;
+        return id;
+    }
+
+    fn addChunk(self: *NodeStore, a: std.mem.Allocator) !void {
+        try self.chunks.append(a, try a.create([chunkLen]NodeInfo));
+    }
+
+    inline fn at(self: *const NodeStore, id: NodeId) *NodeInfo {
+        return &self.chunks.items[id / chunkLen][id % chunkLen];
+    }
+};
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -477,10 +502,16 @@ pub const BaseParser = struct {
     /// Node id of the list `extendList` is growing (0 = none).
     extending: NodeId = 0,
 
-    // Node store (when `nodeStore`): one span per value-stack entry, and
-    // per node its span and rule, indexed by NodeId (entry 0 unused).
-    spanStack: std.ArrayListUnmanaged(Span) = .empty,
-    nodes: std.ArrayListUnmanaged(NodeInfo) = .empty,
+    // Node store (when `nodeStore`): per value-stack entry where it
+    // starts, and per node its span and rule, indexed by NodeId (entry 0
+    // unused). An entry starts at its first token, or at the next token
+    // when it consumed none. A reduction then extends from its first
+    // element's start to the end of the last token shifted (`lastEnd`),
+    // and is empty when start >= end. With `elemEnds` (side-band labels or
+    // nested nodes) each entry's end is kept too.
+    starts: std.ArrayListUnmanaged(u32) = .empty,
+    ends: std.ArrayListUnmanaged(u32) = .empty,
+    nodes: NodeStore = .{},
     sides: std.ArrayListUnmanaged(SideEntry) = .empty,
     reduction: Reduction = .{},
     /// End of the last shifted token (the position of empty reductions).
@@ -492,11 +523,12 @@ pub const BaseParser = struct {
 
     const ListSpare = struct { len: usize, capacity: usize };
 
-    /// The reduction in progress: its rule, element spans, and span.
+    /// The reduction in progress: its rule, where its elements' extents
+    /// start on the span stack, its extent, and the first node it built.
     const Reduction = struct {
         rule: u16 = 0,
-        elems: []const Span = &.{},
-        span: Span = .empty,
+        base: u32 = 0,
+        extent: Span = .empty,
         firstNode: NodeId = 0,
     };
 
@@ -585,10 +617,12 @@ pub const BaseParser = struct {
         self.pendingInsert = null;
         self.outOfMemory = false;
         try self.stateStack.append(self.allocator(), startState(start));
+        if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
         if (nodeStore) {
-            self.spanStack.clearRetainingCapacity();
-            if (self.nodes.items.len == 0) try self.nodes.append(self.allocator(), .{ .span = .empty, .rule = 0 });
+            self.starts.clearRetainingCapacity();
+            self.ends.clearRetainingCapacity();
+            if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
         }
         if (hasTrivia) try self.skipTrivia();
     }
@@ -610,61 +644,95 @@ pub const BaseParser = struct {
     }
 
     fn shift(self: *BaseParser, target: u16) !void {
-        const a = self.allocator();
         if (self.injectedToken != null) {
-            try self.valueStack.append(a, .nil);
-            if (nodeStore) try self.spanStack.append(a, .{ .start = self.current.pos, .end = self.current.pos });
+            try self.pushEntry(target, .nil, self.current.pos, self.lastEnd);
             self.injectedToken = null;
         } else if (self.pendingInsert != null) {
             const pos = self.current.pos;
-            try self.valueStack.append(a, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } });
-            if (nodeStore) try self.spanStack.append(a, .{ .start = pos, .end = pos });
+            try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
+            if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
         } else {
             const tok = self.current;
             const id = if (self.lastMatchedId != 0) self.lastMatchedId else takeLexerId(&self.lexer);
             self.lastMatchedId = 0;
-            try self.valueStack.append(a, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } });
             const end = tok.pos + tok.len;
-            if (nodeStore) try self.spanStack.append(a, .{ .start = tok.pos, .end = end });
-            self.lastEnd = end;
+            try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+            if (nodeStore) self.lastEnd = end;
             try self.advance();
         }
-        try self.stateStack.append(a, target);
+    }
+
+    /// Push a state, its value, and (with a node store) where the value
+    /// starts and ends. The stacks grow together: the state stack is always
+    /// one longer than the others, so one capacity check covers them all.
+    inline fn pushEntry(self: *BaseParser, state: u16, value: Sexp, start: u32, end: u32) !void {
+        const n = self.valueStack.items.len;
+        if (n == self.valueStack.capacity) try self.growStacks();
+        self.valueStack.items.len = n + 1;
+        self.valueStack.items[n] = value;
+        self.stateStack.items.len = n + 2;
+        self.stateStack.items[n + 1] = state;
+        if (nodeStore) {
+            self.starts.items.len = n + 1;
+            self.starts.items[n] = start;
+        }
+        if (elemEnds) {
+            self.ends.items.len = n + 1;
+            self.ends.items[n] = end;
+        }
+    }
+
+    fn growStacks(self: *BaseParser) !void {
+        const a = self.allocator();
+        try self.valueStack.ensureUnusedCapacity(a, 1);
+        const capacity = self.valueStack.capacity;
+        try self.stateStack.ensureTotalCapacity(a, capacity + 1);
+        if (nodeStore) try self.starts.ensureTotalCapacity(a, capacity);
+        if (elemEnds) try self.ends.ensureTotalCapacity(a, capacity);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
         const len = ruleLen[ruleId];
         const base = self.valueStack.items.len - len;
-        var pass: [maxArgs]Sexp = undefined;
-        @memcpy(pass[0..len], self.valueStack.items[base..]);
-        self.valueStack.shrinkRetainingCapacity(base);
-        self.stateStack.shrinkRetainingCapacity(self.stateStack.items.len - len);
+        const top = self.stateStack.items.len - len;
 
         if (nodeStore) {
-            const elems = self.spanStack.items[base..];
             self.reduction = .{
                 .rule = ruleId,
-                .elems = elems,
-                .span = hull(elems, self.lastEnd),
-                .firstNode = @intCast(self.nodes.items.len),
+                .base = @intCast(base),
+                .extent = .{
+                    .start = if (len > 0) self.starts.items[base] else self.current.pos,
+                    .end = self.lastEnd,
+                },
+                .firstNode = self.nodes.len,
             };
         }
 
-        const result = executeAction(self, ruleId, pass[0..len]);
+        // The action reads its elements in place on the value stack; the
+        // result then replaces them (a reduction of nothing pushes it).
+        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
         if (self.outOfMemory) return error.OutOfMemory;
-
-        if (nodeStore) {
-            try self.recordSides(ruleId, result);
-            const whole = self.reduction.span;
-            self.spanStack.shrinkRetainingCapacity(base);
-            try self.spanStack.append(self.allocator(), whole);
-        }
-        try self.valueStack.append(self.allocator(), result);
-
-        const next = getAction(self.stateStack.getLast(), ruleLhs[ruleId]);
+        const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
-        try self.stateStack.append(self.allocator(), @intCast(next));
+
+        if (nodeStore) try self.recordSides(ruleId, result);
+        if (len > 0) {
+            self.valueStack.items.len = base + 1;
+            self.valueStack.items[base] = result;
+            self.stateStack.items.len = top + 1;
+            self.stateStack.items[top] = @intCast(next);
+            if (nodeStore) {
+                self.starts.items.len = base + 1;
+                self.starts.items[base] = self.reduction.extent.start;
+            }
+            if (elemEnds) {
+                self.ends.items.len = base + 1;
+                self.ends.items[base] = self.lastEnd;
+            }
+        } else {
+            try self.pushEntry(@intCast(next), result, self.reduction.extent.start, self.lastEnd);
+        }
     }
 
     /// Fetch the next token, moving trivia to the trivia channel.
@@ -690,33 +758,34 @@ pub const BaseParser = struct {
     // Node store, spans, side-band roles
     // -------------------------------------------------------------------------
 
-    /// The smallest span covering the non-empty spans in `elems`; empty at
-    /// `at` when there are none.
-    fn hull(elems: []const Span, at: u32) Span {
-        var first: usize = 0;
-        while (first < elems.len and elems[first].isEmpty()) first += 1;
-        if (first == elems.len) return .{ .start = at, .end = at };
-        var last = elems.len - 1;
-        while (elems[last].isEmpty()) last -= 1;
-        return .{ .start = elems[first].start, .end = elems[last].end };
+    /// The span of an extent: empty at its start when it consumed no
+    /// tokens.
+    fn spanOf(extent: Span) Span {
+        return if (extent.start < extent.end) extent else .{ .start = extent.start, .end = extent.start };
+    }
+
+    /// The extent of elements lo..hi (0-based, inclusive) of the reduction.
+    fn elemsExtent(self: *const BaseParser, lo: usize, hi: usize) Span {
+        if (!elemEnds) @compileError("element extents need elemEnds");
+        const base = self.reduction.base;
+        return .{ .start = self.starts.items[base + lo], .end = self.ends.items[base + hi] };
     }
 
     /// A new node id for a list the current reduction builds.
     inline fn newNodeId(self: *BaseParser) NodeId {
         if (!nodeStore) return 0;
-        return self.addNode(self.reduction.span);
+        return self.addNode(spanOf(self.reduction.extent));
     }
 
-    fn addNode(self: *BaseParser, extent: Span) NodeId {
-        const id: NodeId = @intCast(self.nodes.items.len);
-        self.nodes.append(self.allocator(), .{ .span = extent, .rule = self.reduction.rule }) catch {
+    inline fn addNode(self: *BaseParser, extent: Span) NodeId {
+        return self.nodes.add(self.allocator(), .{ .span = extent, .rule = self.reduction.rule }) catch {
             self.outOfMemory = true;
             return 0;
         };
-        return id;
     }
 
     fn recordSides(self: *BaseParser, ruleId: u16, result: Sexp) !void {
+        if (!elemEnds) return;
         const labels = ruleSideLabels(ruleId);
         if (labels.len == 0 or result != .list) return;
         const id = result.list.id;
@@ -725,7 +794,7 @@ pub const BaseParser = struct {
             try self.sides.append(self.allocator(), .{
                 .node = id,
                 .role = label.role,
-                .span = self.reduction.elems[label.pass],
+                .span = spanOf(self.elemsExtent(label.pass, label.pass)),
             });
         }
     }
@@ -738,7 +807,7 @@ pub const BaseParser = struct {
         switch (s) {
             .src => |x| return .{ .start = x.pos, .end = x.pos + x.len },
             .list => |l| {
-                if (nodeStore and l.id != 0 and l.id < self.nodes.items.len) return self.nodes.items[l.id].span;
+                if (nodeStore and l.id != 0 and l.id < self.nodes.len) return self.nodes.at(l.id).span;
                 var result: ?Span = null;
                 for (l.items()) |child| {
                     const cs = self.span(child);
@@ -755,13 +824,13 @@ pub const BaseParser = struct {
     pub fn ruleOf(self: *const BaseParser, s: Sexp) ?u16 {
         if (!nodeStore or s != .list) return null;
         const id = s.list.id;
-        if (id == 0 or id >= self.nodes.items.len) return null;
-        return self.nodes.items[id].rule;
+        if (id == 0 or id >= self.nodes.len) return null;
+        return self.nodes.at(id).rule;
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
     pub fn nodeCount(self: *const BaseParser) u32 {
-        return if (self.nodes.items.len == 0) 0 else @intCast(self.nodes.items.len - 1);
+        return self.nodes.len -| 1;
     }
 
     /// The side-band roles recorded for node `id`.
@@ -803,7 +872,7 @@ pub const BaseParser = struct {
     /// A nested node built by the current reduction from elements
     /// lo..hi (0-based, inclusive); it spans just those elements.
     fn nested(self: *BaseParser, items: []const Sexp, lo: usize, hi: usize) Sexp {
-        const id: NodeId = if (nodeStore) self.addNode(hull(self.reduction.elems[lo .. hi + 1], self.reduction.span.start)) else 0;
+        const id: NodeId = if (nodeStore) self.addNode(spanOf(self.elemsExtent(lo, hi))) else 0;
         return .{ .list = List.withId(items, id) };
     }
 
@@ -872,7 +941,7 @@ pub const BaseParser = struct {
         if (nodeStore) {
             if (self.extending != 0) {
                 id = self.extending;
-                self.nodes.items[id] = .{ .span = self.reduction.span, .rule = self.reduction.rule };
+                self.nodes.at(id).* = .{ .span = spanOf(self.reduction.extent), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
         self.extending = 0;
@@ -959,8 +1028,7 @@ pub const BaseParser = struct {
         const f = self.failure orelse return;
         const at = self.lineCol(f.span.start);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
-        var buf: [numSymbols]u16 = undefined;
-        const want = expected(f.state, &buf);
+        const want = expectedIn(f.state);
         for (want, 0..) |sym, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
             try w.writeAll(symbolName(sym));
@@ -978,30 +1046,10 @@ pub const BaseParser = struct {
         std.debug.print("Parse error at {s}\n", .{w.buffered()});
     }
 
-    /// The reader-facing expected set of `state`: each `@errors` rule
-    /// that can start here (in declaration order, when it adds a token not
-    /// already covered) stands in for the tokens that begin it; the
-    /// remaining acceptable tokens follow in symbol order.
-    pub fn expected(state: u16, buf: []u16) []u16 {
-        var covered: [numSymbols]bool = @splat(false);
-        var n: usize = 0;
-        for (namedRules) |named| {
-            if (getAction(state, named.symbol) <= 0) continue;
-            var adds = false;
-            for (named.first) |t| {
-                if (!covered[t] and getAction(state, t) != 0) adds = true;
-            }
-            if (!adds) continue;
-            for (named.first) |t| covered[t] = true;
-            buf[n] = named.symbol;
-            n += 1;
-        }
-        for (terminals) |t| {
-            if (covered[t] or getAction(state, t) == 0) continue;
-            buf[n] = t;
-            n += 1;
-        }
-        return buf[0..n];
+    /// What `state` accepts, reader-named: the `@errors` rules it waits
+    /// for, then the tokens none of them begins with.
+    pub fn expected(state: u16) []const u16 {
+        return expectedIn(state);
     }
 
     // -------------------------------------------------------------------------
@@ -1151,11 +1199,12 @@ pub const BaseParser = struct {
 
 /// Node spans and rule ids are recorded (`@schema` or `--spans`).
 pub const nodeStore = false;
+/// Element extents are kept for side-band labels and nested nodes.
+const elemEnds = false;
 /// Lists keep trailing nils: positions are fixed by the schema.
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
-const maxArgs = 6;
 const numSymbols = 73;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
@@ -1204,6 +1253,7 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
 }
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
+    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"grammar", pass[0]),
         1 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
@@ -1242,8 +1292,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         34 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out); },
         35 => pass[0],
         36 => pass[0],
-        37 => self.list(pass),
-        38 => self.list(pass),
+        37 => pass[0],
+        38 => pass[0],
         39 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out); },
         40 => pass[0],
         41 => pass[0],
@@ -1279,7 +1329,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         71 => self.sexp(.@"skip_q", &.{pass[1], pass[2]}),
         72 => self.sexp(.@"skip", &.{pass[1]}),
         73 => self.sexp(.@"exclude", &.{pass[1]}),
-        74 => self.list(pass),
+        74 => pass[0],
         75 => self.sexp(.@"ref", &.{pass[0]}),
         76 => self.sexp(.@"list_req", &.{pass[0], pass[2]}),
         77 => self.sexp(.@"tok", &.{pass[0]}),
@@ -1481,13 +1531,10 @@ fn getAction(state: u16, sym: u16) i16 {
 }
 
 // X "c" excludes: shift instead of reduce when pre == 0 and the next byte matches
-const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{
+const xExcludes = [_]struct { char: u8, shift: u16 }{
 };
 
-fn getImmediateShift(state: u16, char: u8) ?i16 {
-    for (xExcludes) |x| {
-        if (x.state == state and x.char == char) return @intCast(x.shift);
-    }
+fn getImmediateShift(_: u16, _: u8) ?i16 {
     return null;
 }
 
@@ -1503,12 +1550,36 @@ fn startMarker(start: Start) u16 {
     };
 }
 
-/// Terminals, for expected sets.
-const terminals = [_]u16{ 1, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70 };
-
-/// `@errors` rules and the terminals that can begin them.
-const namedRules = [_]struct { symbol: u16, first: []const u16 }{
+/// Expected symbols per state: state s expects list i = expectedOf[s],
+/// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
+const expectedSymbols = [_]u16{
+    1, 35, 36, 37, 48, 55, 39, 39, 52, 1, 38, 41, 43, 44, 47, 49, 50, 1, 35, 36, 37, 40, 45, 48,
+    52, 53, 55, 60, 62, 63, 64, 65, 48, 55, 48, 1, 35, 36, 37, 48, 55, 60, 54, 1, 35, 36, 37, 48,
+    51, 55, 40, 42, 59, 45, 35, 36, 1, 35, 36, 37, 40, 45, 46, 48, 52, 53, 55, 60, 62, 63, 64, 65,
+    66, 67, 68, 69, 70, 61, 1, 35, 36, 37, 48, 53, 55, 60, 37, 40, 45, 48, 52, 55, 64, 65, 48, 50,
+    37, 40, 45, 48, 55, 65, 35, 36, 40, 46, 51, 35, 36, 40, 1, 35, 36, 37, 40, 45, 46, 48, 52, 53,
+    55, 60, 62, 63, 64, 65, 66, 67, 37, 40, 45, 46, 48, 52, 55, 60, 64, 65, 66, 67, 60, 66, 46, 46,
+    60, 67, 53, 48, 56, 57, 58, 66, 51, 66, 68, 46, 51, 46, 51, 52, 1, 35, 36, 37, 40, 48, 55, 51,
+    66, 40, 55,
 };
+const expectedOffsets = [_]u32{
+    0, 0, 6, 7, 9, 10, 17, 32, 34, 35, 42, 43, 50, 51, 52, 53, 54, 56, 77, 78, 86, 94, 96, 102,
+    107, 110, 128, 140, 142, 143, 146, 147, 151, 152, 155, 157, 160, 167, 169, 171,
+};
+const expectedOf = [_]u16{
+    0, 1, 2, 1, 1, 3, 4, 3, 1, 5, 1, 6, 2, 4, 2, 1, 1, 1, 7, 2, 8, 2, 8, 2,
+    8, 9, 9, 6, 10, 11, 11, 10, 12, 1, 2, 13, 14, 15, 1, 16, 1, 6, 17, 12, 6, 18, 17, 19,
+    20, 19, 21, 20, 17, 22, 17, 12, 11, 11, 11, 11, 12, 1, 15, 1, 1, 1, 23, 24, 24, 24, 9, 9,
+    25, 25, 25, 25, 25, 9, 8, 18, 26, 26, 27, 18, 17, 17, 28, 29, 17, 11, 11, 8, 30, 23, 23, 31,
+    24, 11, 1, 24, 11, 1, 6, 1, 32, 33, 9, 26, 17, 20, 9, 17, 28, 25, 34, 34, 35, 12, 23, 23,
+    1, 23, 23, 11, 11, 11, 11, 12, 36, 1, 9, 17, 37, 38, 26, 8, 1, 34, 23, 11, 1, 38, 32, 32,
+    32, 34, 32,
+};
+
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {

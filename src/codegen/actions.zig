@@ -76,7 +76,12 @@ pub const TagSet = struct {
 
 pub fn generateRuleAction(allocator: Allocator, writer: anytype, rule: Rule) !void {
     if (rule.action == null) {
-        try writer.writeAll("self.list(pass)");
+        // Default: nothing, the one element, or an untagged list.
+        try writer.writeAll(switch (rule.rhs.len) {
+            0 => ".nil",
+            1 => "pass[0]",
+            else => "self.list(pass)",
+        });
         return;
     }
 
