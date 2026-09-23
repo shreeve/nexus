@@ -118,6 +118,14 @@ pub const BaseLexer = struct {
         return self.matchRules();
     }
 
+    /// The token of `cat` from `start` to `end`. A match longer than a
+    /// Token can hold (65535 bytes) is an `err` token of that length;
+    /// the scan goes on after the whole match.
+    inline fn token(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+        if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
+        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
+    }
+
     const cls0 = blk: {
         var t: [256]bool = @splat(false);
         t['!'] = true;
@@ -216,43 +224,43 @@ pub const BaseLexer = struct {
                     continue :dfa 4;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '\\', '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '\\', '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    '\n' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
                     '\r' => { p += 1; continue :dfa 3; },
                     '"' => { p += 1; continue :dfa 5; },
                     '#' => { p += 1; continue :dfa 6; },
                     '$' => { p += 1; continue :dfa 7; },
                     '&' => { p += 1; continue :dfa 8; },
                     '\'' => { p += 1; continue :dfa 9; },
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    ')' => { p += 1; self.paren -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"lparen", pre, start, p); },
+                    ')' => { p += 1; self.paren -|= 1; self.pos = @intCast(p); return token(.@"rparen", pre, start, p); },
                     '0'...'9' => { p += 1; continue :dfa 12; },
-                    ';' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    ';' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
                     '<' => { p += 1; continue :dfa 14; },
-                    '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"assign", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '=' => { p += 1; self.pos = @intCast(p); return token(.@"assign", pre, start, p); },
                     '>' => { p += 1; continue :dfa 16; },
                     '@' => { p += 1; continue :dfa 17; },
-                    '[' => { p += 1; self.bracket +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    ']' => { p += 1; self.bracket -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '{' => { p += 1; self.brace +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '[' => { p += 1; self.bracket +|= 1; self.pos = @intCast(p); return token(.@"lbracket", pre, start, p); },
+                    ']' => { p += 1; self.bracket -|= 1; self.pos = @intCast(p); return token(.@"rbracket", pre, start, p); },
+                    '{' => { p += 1; self.brace +|= 1; self.pos = @intCast(p); return token(.@"lbrace", pre, start, p); },
                     '|' => { p += 1; continue :dfa 21; },
-                    '}' => { p += 1; self.brace -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '}' => { p += 1; self.brace -|= 1; self.pos = @intCast(p); return token(.@"rbrace", pre, start, p); },
                     else => {},
                 };
                 break :dfa;
             },
             3 => {
                 if (p < n) switch (src[p]) {
-                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '\n' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"semi", pre, start, p);
             },
             4 => {
                 while (p < n and cls1[src[p]]) p += 1;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"ident", pre, start, p);
             },
             5 => {
                 acc = 44;
@@ -262,17 +270,17 @@ pub const BaseLexer = struct {
                     continue :dfa 24;
                 }
                 if (p < n) switch (src[p]) {
-                    '"' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"string_dq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '"' => { p += 1; self.pos = @intCast(p); return token(.@"string_dq", pre, start, p); },
                     '\\' => { p += 1; continue :dfa 26; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"err", pre, start, p);
             },
             6 => {
                 p = scanUntil(src, p, &.{'\n'});
                 self.pos = @intCast(p);
-                return .{ .cat = .@"comment", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"comment", pre, start, p);
             },
             7 => {
                 acc = 44;
@@ -282,28 +290,28 @@ pub const BaseLexer = struct {
                     continue :dfa 35;
                 }
                 if (p < n) switch (src[p]) {
-                    '!' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '#' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '$' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"dollar_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '*' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '0'...'9' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '?' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '@' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '!' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '#' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '$' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"dollar_paren", pre, start, p); },
+                    '*' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '0'...'9' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '?' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '@' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
                     '{' => { p += 1; continue :dfa 36; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"err", pre, start, p);
             },
             8 => {
                 if (p < n) switch (src[p]) {
-                    '&' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"and_and", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '&' => { p += 1; self.pos = @intCast(p); return token(.@"and_and", pre, start, p); },
                     '>' => { p += 1; continue :dfa 38; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"amp", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"amp", pre, start, p);
             },
             9 => {
                 acc = 44;
@@ -317,7 +325,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"err", pre, start, p);
             },
             12 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
@@ -327,27 +335,27 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"integer", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"integer", pre, start, p);
             },
             14 => {
                 acc = 14;
                 accEnd = p;
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"proc_sub_in", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"proc_sub_in", pre, start, p); },
                     '<' => { p += 1; continue :dfa 44; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"lt", pre, start, p);
             },
             16 => {
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"proc_sub_out", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
-                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"gt_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"proc_sub_out", pre, start, p); },
+                    '>' => { p += 1; self.pos = @intCast(p); return token(.@"gt_gt", pre, start, p); },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"gt", pre, start, p);
             },
             17 => {
                 if (p < n and cls1[src[p]]) {
@@ -355,24 +363,24 @@ pub const BaseLexer = struct {
                     continue :dfa 4;
                 }
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"at_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"at_paren", pre, start, p); },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"ident", pre, start, p);
             },
             21 => {
                 if (p < n) switch (src[p]) {
-                    '|' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"or_or", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '|' => { p += 1; self.pos = @intCast(p); return token(.@"or_or", pre, start, p); },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"pipe", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"pipe", pre, start, p);
             },
             24 => {
                 p = scanUntil(src, p, &.{'\n', '"', '\\'});
                 if (p < n) switch (src[p]) {
-                    '"' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"string_dq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '"' => { p += 1; self.pos = @intCast(p); return token(.@"string_dq", pre, start, p); },
                     '\\' => { p += 1; continue :dfa 26; },
                     else => {},
                 };
@@ -387,7 +395,7 @@ pub const BaseLexer = struct {
             35 => {
                 while (p < n and cls5[src[p]]) p += 1;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"variable", pre, start, p);
             },
             36 => {
                 if (p < n) switch (src[p]) {
@@ -398,11 +406,11 @@ pub const BaseLexer = struct {
             },
             38 => {
                 if (p < n) switch (src[p]) {
-                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"amp_gt_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '>' => { p += 1; self.pos = @intCast(p); return token(.@"amp_gt_gt", pre, start, p); },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"amp_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"amp_gt", pre, start, p);
             },
             39 => {
                 p = scanUntil(src, p, &.{'\n', '\''});
@@ -420,7 +428,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"string_sq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"string_sq", pre, start, p);
             },
             41 => {
                 acc = 12;
@@ -430,7 +438,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"fd_lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"fd_lt", pre, start, p);
             },
             42 => {
                 acc = 11;
@@ -440,7 +448,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return .{ .cat = .@"fd_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"fd_gt", pre, start, p);
             },
             44 => {
                 if (p < n and cls3[src[p]]) {
@@ -456,7 +464,7 @@ pub const BaseLexer = struct {
             49 => {
                 p = scanUntil(src, p, &.{'\n', '}'});
                 if (p < n) switch (src[p]) {
-                    '}' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"var_braced", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '}' => { p += 1; self.pos = @intCast(p); return token(.@"var_braced", pre, start, p); },
                     else => {},
                 };
                 break :dfa;
@@ -485,22 +493,22 @@ pub const BaseLexer = struct {
             54 => {
                 while (p < n and cls5[src[p]]) p += 1;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"heredoc_open", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"heredoc_open", pre, start, p);
             },
             56 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"fd_dup_in", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"fd_dup_in", pre, start, p);
             },
             57 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"fd_dup_out", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"fd_dup_out", pre, start, p);
             },
             58 => {
                 while (p < n and cls5[src[p]]) p += 1;
                 if (p < n) switch (src[p]) {
-                    '\'' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"heredoc_open_lit", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '\'' => { p += 1; self.pos = @intCast(p); return token(.@"heredoc_open_lit", pre, start, p); },
                     else => {},
                 };
                 break :dfa;
@@ -511,27 +519,27 @@ pub const BaseLexer = struct {
             44 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"err", pre, start, p);
             },
             14 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"lt", pre, start, p);
             },
             25 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"string_sq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"string_sq", pre, start, p);
             },
             12 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"fd_lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"fd_lt", pre, start, p);
             },
             11 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return .{ .cat = .@"fd_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+                return token(.@"fd_gt", pre, start, p);
             },
             else => {},
         }
@@ -968,6 +976,8 @@ pub const BaseParser = struct {
     }
 
     fn begin(self: *BaseParser, start: Start) !void {
+        // Token positions are u32.
+        if (self.source.len > std.math.maxInt(u32)) return error.InputTooLarge;
         self.stateStack.clearRetainingCapacity();
         self.valueStack.clearRetainingCapacity();
         self.failure = null;

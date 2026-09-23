@@ -670,6 +670,14 @@ pub const LexerGenerator = struct {
             \\        return self.matchRules();
             \\    }
             \\
+            \\    /// The token of `cat` from `start` to `end`. A match longer than a
+            \\    /// Token can hold (65535 bytes) is an `err` token of that length;
+            \\    /// the scan goes on after the whole match.
+            \\    inline fn token(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+            \\        if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
+            \\        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
+            \\    }
+            \\
         );
 
         for (self.spec.codeFunctions.items) |name| {
@@ -956,7 +964,7 @@ pub const LexerGenerator = struct {
             } else {
                 try self.print(
                     \\{s}self.pos = @intCast(p);
-                    \\{s}return .{{ .cat = .@"{s}", .pre = pre, .pos = @intCast(wsStart), .len = @intCast(p - wsStart) }};
+                    \\{s}return token(.@"{s}", pre, wsStart, p);
                     \\
                 , .{ inner, inner, r.token });
             }
@@ -982,7 +990,7 @@ pub const LexerGenerator = struct {
         }
         try self.print(
             \\{s}self.pos = @intCast(p);
-            \\{s}return .{{ .cat = .@"{s}", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }};
+            \\{s}return token(.@"{s}", pre, start, p);
             \\
         , .{ ind, ind, r.token });
     }
