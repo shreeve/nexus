@@ -884,16 +884,16 @@ const Codegen = struct {
 
     /// `X "c"` exclusions (grouped by state) and the runtime shift override.
     fn emitExcludes(self: *Codegen, w: *std.Io.Writer) !void {
-        try w.writeAll("\n// X \"c\" excludes: shift instead of reduce when pre == 0 and the next byte matches\n");
-        try w.writeAll("const xExcludes = [_]struct { char: u8, shift: u16 }{\n");
+        try w.writeAll("\n// X \"c\" excludes: shift the hinted token instead of reducing when it\n// touches the previous token (pre == 0)\n");
+        try w.writeAll("const xExcludes = [_]struct { sym: u16, shift: u16 }{\n");
         for (self.table.xExcludes.items) |x| {
-            try w.print("    .{{ .char = {d}, .shift = {d} }},\n", .{ x.char, x.shift });
+            try w.print("    .{{ .sym = {d}, .shift = {d} }},\n", .{ x.sym, x.shift });
         }
         try w.writeAll("};\n");
         if (self.table.xExcludes.items.len == 0) {
             try w.writeAll(
                 \\
-                \\fn getImmediateShift(_: u16, _: u8) ?i16 {
+                \\fn getImmediateShift(_: u16, _: u16) ?i16 {
                 \\    return null;
                 \\}
                 \\
@@ -905,9 +905,9 @@ const Codegen = struct {
         try w.writeAll(
             \\};
             \\
-            \\fn getImmediateShift(state: u16, char: u8) ?i16 {
+            \\fn getImmediateShift(state: u16, sym: u16) ?i16 {
             \\    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-            \\        if (x.char == char) return @intCast(x.shift);
+            \\        if (x.sym == sym) return @intCast(x.shift);
             \\    }
             \\    return null;
             \\}

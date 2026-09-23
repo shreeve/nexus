@@ -458,11 +458,12 @@ pub const BaseParser = struct {
     }
 
     /// The table action, with the `X "c"` override: when the table reduces
-    /// and the next byte touches the previous token, shift instead.
+    /// on the hinted token and it touches the previous token, shift
+    /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-            if (getImmediateShift(state, self.source[self.current.pos])) |target| return target;
+        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null) {
+            if (getImmediateShift(state, sym)) |target| return target;
         }
         return action;
     }
@@ -1262,7 +1263,7 @@ const elemEnds = true;
 const numSymbols = 16;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
-const xExcludes = [_]struct { state: u16, char: u8, shift: u16 }{};
+const xExcludes = [_]struct { sym: u16, shift: u16 }{};
 
 // 0 $accept, 1 $end, 2 error, 3 prog, 4 stmts, 5 stmt, 6 expr, 7 term,
 // 8 NEWLINE, 9 IDENT, 10 "=", 11 "+", 12 "(", 13 ")", 14 prog!, 15 $accept_prog
@@ -1317,7 +1318,7 @@ fn expectedIn(state: u16) []const u16 {
     };
 }
 
-fn getImmediateShift(_: u16, _: u8) ?i16 {
+fn getImmediateShift(_: u16, _: u16) ?i16 {
     return null;
 }
 

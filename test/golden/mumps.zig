@@ -1670,11 +1670,12 @@ pub const BaseParser = struct {
     }
 
     /// The table action, with the `X "c"` override: when the table reduces
-    /// and the next byte touches the previous token, shift instead.
+    /// on the hinted token and it touches the previous token, shift
+    /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.current.pos < self.source.len) {
-            if (getImmediateShift(state, self.source[self.current.pos])) |target| return target;
+        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null) {
+            if (getImmediateShift(state, sym)) |target| return target;
         }
         return action;
     }
@@ -4116,22 +4117,23 @@ fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
 
-// X "c" excludes: shift instead of reduce when pre == 0 and the next byte matches
-const xExcludes = [_]struct { char: u8, shift: u16 }{
-    .{ .char = 40, .shift = 282 },
-    .{ .char = 40, .shift = 282 },
-    .{ .char = 40, .shift = 494 },
-    .{ .char = 40, .shift = 495 },
-    .{ .char = 40, .shift = 496 },
-    .{ .char = 40, .shift = 497 },
-    .{ .char = 40, .shift = 498 },
-    .{ .char = 40, .shift = 504 },
-    .{ .char = 64, .shift = 505 },
-    .{ .char = 64, .shift = 612 },
-    .{ .char = 40, .shift = 282 },
-    .{ .char = 40, .shift = 629 },
-    .{ .char = 94, .shift = 630 },
-    .{ .char = 40, .shift = 282 },
+// X "c" excludes: shift the hinted token instead of reducing when it
+// touches the previous token (pre == 0)
+const xExcludes = [_]struct { sym: u16, shift: u16 }{
+    .{ .sym = 118, .shift = 282 },
+    .{ .sym = 118, .shift = 282 },
+    .{ .sym = 118, .shift = 494 },
+    .{ .sym = 118, .shift = 495 },
+    .{ .sym = 118, .shift = 496 },
+    .{ .sym = 118, .shift = 497 },
+    .{ .sym = 118, .shift = 498 },
+    .{ .sym = 118, .shift = 504 },
+    .{ .sym = 135, .shift = 505 },
+    .{ .sym = 135, .shift = 612 },
+    .{ .sym = 118, .shift = 282 },
+    .{ .sym = 118, .shift = 629 },
+    .{ .sym = 169, .shift = 630 },
+    .{ .sym = 118, .shift = 282 },
 };
 /// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
 const xExcludeStart = [_]u32{
@@ -4172,9 +4174,9 @@ const xExcludeStart = [_]u32{
     14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
 };
 
-fn getImmediateShift(state: u16, char: u8) ?i16 {
+fn getImmediateShift(state: u16, sym: u16) ?i16 {
     for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-        if (x.char == char) return @intCast(x.shift);
+        if (x.sym == sym) return @intCast(x.shift);
     }
     return null;
 }

@@ -58,7 +58,7 @@ pub const ParseAction = union(enum) {
 
 /// `X "c"` exclusion: in `state`, the table reduces, but the runtime shifts to
 /// `shift` instead when no whitespace precedes and the next byte is `char`.
-pub const XExclude = struct { state: u16, char: u8, shift: u16 };
+pub const XExclude = struct { state: u16, char: u8, sym: u16, shift: u16 };
 
 /// One unresolved conflict in one cell (state, terminal).
 pub const Conflict = struct {
@@ -218,7 +218,7 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
                     }
                     if (winner) |w| {
                         cell.* = .{ .reduce = w };
-                        if (byHint) try xExcludes.append(a, .{ .state = @intCast(si), .char = ch.?, .shift = target });
+                        if (byHint) try xExcludes.append(a, .{ .state = @intCast(si), .char = ch.?, .sym = @intCast(t), .shift = target });
                         for (cellRules.items) |r| {
                             if (r != w) try conflictList.append(a, .{
                                 .state = @intCast(si),
