@@ -1,179 +1,187 @@
 # ==============================================================================
-# rig.grammar — Rig Language Lexer and Parser Grammar
+# rig.grammar — Rig lexer and parser grammar
 # ==============================================================================
 #
-# Defines the lexer and parser for Rig. Processed by Nexus to generate
-# src/parser.zig.
+# Processed by Nexus into src/parser.zig (`zig build parser`).
 #
-# Usage: ../nexus/bin/nexus rig.grammar src/parser.zig
+# The generated BaseLexer only splits the source into raw tokens. The lexer
+# rewriter in src/rig.zig then:
 #
-# Rig is a systems language with Zig performance, Rust-inspired ownership
-# safety, and clean expression-oriented syntax. This grammar defines the
-# V1 surface (SPEC.md is authoritative for the novel Rig layer; bedrock
-# plumbing is inherited from Zag's grammar surface).
+#   * turns indentation into INDENT / OUTDENT / NEWLINE, and joins lines
+#     inside ( ) and [ ] (a newline there is plain whitespace), except in
+#     a closure body that starts below its bar list, which is laid out in
+#     blocks as anywhere else;
+#   * classifies keywords (every keyword is reserved);
+#   * classifies the characters whose meaning depends on spacing. The rule
+#     is the same for all of them: a character that touches its operand and
+#     not the preceding value is a prefix; otherwise it is an infix
+#     operator or a suffix.
+#
+#       <x +x ?x !x *x ~x @x -x      ownership sigils / negation
+#       |+a, b|  ||  *|a|            closure bar list (vs bitwise `|`)
+#       f(x) a[i]                    call / index (vs `f (x)`, `f [1, 2]`,
+#                                    which pass a new operand to `f`)
+#       .red                         enum literal (vs member access a.b)
+#       T? T! x!                     type / propagation suffixes
+#       a if c else b                ternary vs postfix guard `stmt if c`
+#
+# The grammar has no LALR conflicts; see docs/INTERNALS.md (Conflicts policy).
 # ==============================================================================
 
 @lang = "rig"
 
 @lexer
 
-# ==============================================================================
-# STATE VARIABLES
-# ==============================================================================
-
-state
-    beg   = 1       # beginning of line
-    paren = 0       # parenthesis depth
-    brace = 0       # brace depth
-
-after
-    beg = 0         # cleared after each token
-
-# ==============================================================================
-# TOKEN TYPES
-# ==============================================================================
-
 tokens
     # Literals
-    ident           # Identifier: variable, function, type name
-    integer         # Integer: 0, 1, 42, 1000
-    real            # Decimal: 3.14, .5, 2.0
-    string_sq       # Single-quoted string: 'hello world'
-    string_dq       # Double-quoted string: "hello"
-    true            # true
-    false           # false
+    ident           # identifier
+    integer         # 0, 42, 0xff, 0b1010, 0o17
+    real            # 3.14, .5, 1.0e10, 2e-3
+    string_sq       # 'single'
+    string_dq       # "double"
 
-    # Operators — arithmetic
+    # Keywords (classified by the rewriter; every keyword is reserved)
+    true
+    false
+    and
+    as
+    break
+    catch
+    continue
+    defer
+    drop
+    else
+    enum
+    errdefer
+    error
+    extern
+    for
+    fun
+    if
+    in
+    match
+    new             # a keyword only at statement start (`new x = ...`)
+    not
+    or
+    pre
+    pub
+    raw
+    return
+    struct
+    sub
+    test
+    try
+    type
+    use
+    while
+    zig
+
+    # Operators
     plus            # +
-    minus           # - (infix subtraction)
-    minus_prefix    # - (unary negation, rewriter-classified)
+    minus           # -  infix
+    minus_prefix    # -x negation
     star            # *
     slash           # /
     percent         # %
-    power           # **
-
-    # Operators — comparison
+    power           # ** (not a Rig operator; lexed so it can be rejected)
     eq              # ==
     ne              # !=
     lt              # <
     gt              # >
     le              # <=
     ge              # >=
-
-    # Operators — logical / bitwise / misc
-    and_sym         # &&
-    or_sym          # ||
-    not_sym         # !  (also: write borrow via write_pfx, fallible type via suffix_bang)
-    question        # ?  (also: read borrow via read_pfx, optional type via suffix_q)
+    and_sym         # && (not a Rig operator; the rewriter rejects it)
+    or_sym          # || (not a Rig operator; the rewriter rejects it)
+    not_sym         # !
+    question        # ?
     nullish         # ??
-    bar             # |
+    bar             # |  bitwise or
     ampersand       # &
     caret           # ^
     tilde           # ~
     lshift          # <<
     rshift          # >>
-    at              # @  (Zig builtin call lead, also pin_pfx via rewriter)
-
-    # Operators — assignment
+    at              # @
     assign          # =
-    fixed_assign    # =!  (Rig: fixed bind; was Zag const_assign)
-    move_assign     # <-  (Rig: move-assign)
+    fixed_assign    # =!
+    move_assign     # <-
     plus_assign     # +=
     minus_assign    # -=
     star_assign     # *=
     slash_assign    # /=
+    percent_assign  # %=
+    amp_assign      # &=
+    bar_assign      # |=
+    caret_assign    # ^=
+    lshift_assign   # <<=
+    rshift_assign   # >>=
 
     # Punctuation
-    lparen          # (
+    lparen          # (  grouping, parameter list, or a new operand
     rparen          # )
-    lbrace          # {
-    rbrace          # }
-    lbracket        # [
+    lbrace          # {  (not used by Rig)
+    rbrace          # }  (not used by Rig)
+    lbracket        # [  array literal or slice/array type
     rbracket        # ]
     comma           # ,
     colon           # :
     arrow           # ->
     fat_arrow       # =>
-    dot             # .
+    dot             # .  member access
     dotdot          # ..
-    pipe            # |>
 
-    # Whitespace and structure
-    indent          # Indentation increase
-    outdent         # Indentation decrease
-    newline         # Line terminator
+    # Layout (produced by the rewriter)
+    indent
+    outdent
+    newline
 
-    # Rewriter-classified tokens (no direct lexer rule; emitted by src/rig.zig)
-    post_if         # if (postfix, after return/break/continue)
-    ternary_if      # if (mid-expression, before else)
-    dot_lbrace      # .{ (anonymous struct/array init)
-    bar_capture     # | (capture delimiter, e.g., `|err|`)
-
-    # Rig sigil prefixes (rewriter-classified; see src/rig.zig)
-    move_pfx        # <x   move ownership
-    clone_pfx       # +x   clone
-    pin_pfx         # @x   pin (only when not @name(...))
-    raw_pfx         # %x   raw / unsafe
-    read_pfx        # ?x   read borrow (also ?T read-borrowed type via the parser)
-    write_pfx       # !x   write borrow (also !T write-borrowed type via the parser)
-    share_pfx       # *x   share ownership
-    drop_stmt       # -x   drop (statement-only)
-    suffix_q        # T?  optional type (suffix on type, in type rule)
-                    # x?  RESERVED — future optional-propagation
-                    #     (rewriter classifies `?` after a value-ender;
-                    #     the `?` family is optional / null)
-    suffix_bang     # T!  fallible type / error union (suffix on type)
-                    # x!  propagate failure (suffix on expression)
-                    #     (rewriter classifies `!` after a value-ender;
-                    #     the `!` family is errors / failure)
-    kwarg_name      # name in `Type(name: value)` constructor sugar
-                    # (rewriter promotes IDENT to KWARG_NAME inside parens
-                    # when immediately followed by `:`)
-    dot_lit         # .name  enum literal at expression-start context
-                    # (vs `.name` member access after a value-ender, which
-                    # stays as `dot`)
+    # Rewriter-classified tokens
+    lparen_call     # (  touching the preceding value: call / generic args
+    lbracket_index  # [  touching the preceding value: index
+    post_if         # if  postfix guard: `stmt if cond`
+    ternary_if      # if  inline ternary: `a if cond else b`
+    bar_capture     # |   closure bar list delimiter: `|+a, b|`
+    bar_empty       # ||  an empty closure bar list: `|| print(1)`
+    dot_lit         # .   enum literal: `.red`
+    kwarg_name      # name directly followed by `:` inside ( )
+    move_pfx        # <x  move
+    clone_pfx       # +x  clone
+    pin_pfx         # @x  pin (reserved)
+    read_pfx        # ?x  read borrow, ?T read-borrowed type
+    write_pfx       # !x  write borrow, !T write-borrowed type
+    share_pfx       # *x  share, *T shared type
+    drop_stmt       # -x  drop, as a whole statement
+    suffix_q        # T?  optional type
+    suffix_bang     # T!  fallible type, x! propagate failure
 
     # Misc
-    comment         # # through end of line
-    eof             # End of input
-    err             # Lexer error
+    comment
+    eof
+    err
 
 # ==============================================================================
-# COMMENTS
+# LEXER RULES
 # ==============================================================================
 
 '#' [^\n]*                                  → comment
 
-# ==============================================================================
-# NEWLINES AND LINE CONTINUATION
-# ==============================================================================
-
 "\\\n"                                      → skip         # line continuation
-"\r\n"                                      → newline, {beg = 1}
-'\n'                                        → newline, {beg = 1}
-'\r'                                        → newline, {beg = 1}
-
-# ==============================================================================
-# STRINGS
-# ==============================================================================
+"\r\n"                                      → newline
+'\n'                                        → newline
+'\r'                                        → newline
 
 '"' ([^"\\$\n] | '\\' . | '$')* '"'         → string_dq
 "'" ([^'\n] | "''")* "'"                    → string_sq
 
-# ==============================================================================
-# NUMBERS
-# ==============================================================================
-
-'0' [xX] [0-9a-fA-F]+                       → integer # hex
-'0' [bB] [01]+                              → integer # binary
-'0' [oO] [0-7]+                             → integer # octal
-[0-9]* '.' [0-9]+                           → real
+'0' [xX] [0-9a-fA-F]+                       → integer
+'0' [bB] [01]+                              → integer
+'0' [oO] [0-7]+                             → integer
+[0-9]* '.' [0-9]+ ([Ee] [+-]? [0-9]+)?      → real
+[0-9]+ [Ee] [+-]? [0-9]+                    → real
 [0-9]+                                      → integer
 
-# ==============================================================================
-# MULTI-CHARACTER OPERATORS (longer patterns first)
-# ==============================================================================
-
+"<<="                                       → lshift_assign
+">>="                                       → rshift_assign
 "**"                                        → power
 "=="                                        → eq
 "!="                                        → ne
@@ -187,17 +195,16 @@ tokens
 "-="                                        → minus_assign
 "*="                                        → star_assign
 "/="                                        → slash_assign
+"%="                                        → percent_assign
+"&="                                        → amp_assign
+"|="                                        → bar_assign
+"^="                                        → caret_assign
 "->"                                        → arrow
 "=>"                                        → fat_arrow
-"|>"                                        → pipe
 "??"                                        → nullish
 ".."                                        → dotdot
 "<<"                                        → lshift
 ">>"                                        → rshift
-
-# ==============================================================================
-# SINGLE-CHARACTER OPERATORS AND PUNCTUATION
-# ==============================================================================
 
 '+'                                         → plus
 '-'                                         → minus
@@ -214,35 +221,17 @@ tokens
 '~'                                         → tilde
 '@'                                         → at
 '='                                         → assign
-'('                                         → lparen, {paren++}
-')'                                         → rparen, {paren--}
-'{'                                         → lbrace, {brace++}
-'}'                                         → rbrace, {brace--}
+'('                                         → lparen
+')'                                         → rparen
+'{'                                         → lbrace
+'}'                                         → rbrace
 '['                                         → lbracket
 ']'                                         → rbracket
 ','                                         → comma
 ':'                                         → colon
 '.'                                         → dot
 
-# ==============================================================================
-# IDENTIFIERS
-# ==============================================================================
-
 [a-zA-Z_][a-zA-Z0-9_]*                      → ident
-                                            #
-                                            # Note: Rig drops the Ruby/Zag
-                                            # predicate-name convention
-                                            # (trailing `?` in ident, e.g.,
-                                            # `valid?`) because suffix `?`
-                                            # on types means optional in
-                                            # Rig — `Bool?` would otherwise
-                                            # collide with `valid?`.
-                                            # Convention: use `is_valid` for
-                                            # boolean-returning functions.
-
-# ==============================================================================
-# FALLBACK
-# ==============================================================================
 
 .                                           → err
 
@@ -252,72 +241,80 @@ tokens
 
 @parser
 
-# Conflict budget — Rig adds sigil prefixes + propagation + new bindings
-# on top of Zag's 19. After type-suffix `T?` / `T!` syntax was added,
-# the `type` non-terminal grew 24 expected shift/reduce conflicts
-# (12 each for SUFFIX_Q and SUFFIX_BANG suffixes); shift-prefer
-# correctly extends the type with more suffixes (e.g., `T?!` parses as
-# `(error_union (optional T))`).
-@conflicts = 34
-
-@as ident = [keyword]
+@conflicts = 0
 
 # ==============================================================================
 # PROGRAM STRUCTURE
 # ==============================================================================
 
-name = IDENT
+name     = IDENT
 
 program! = body                             → (module ...1)
-expr!    = expr                             → 1
 
 body     = stmt                             → (1)
          | body NEWLINE stmt                → (...1 3)
          | body NEWLINE                     → 1
 
-stmt     = use
-         | decl
-         | zig
-         | extvar
-         | shadow
-         | drop
-         | typed
-         | ":" name stmt                    → (labeled 2 3)
-         | expr
-
-# Typed binding (statement-only). SPEC: `user: User = loadUser(id)!`,
-# `count: Int =! 0`. Moved out of `expr` so it doesn't collide with the
-# kwarg `name: expr` form inside call argument lists.
-typed    = name ":" type "="  expr          → (set _     1 3 5)
-         | name ":" type "=!" expr          → (set fixed 1 3 5)
-
-# Drop is statement-only per SPEC: -user (NOT y = -x)
-drop     = DROP_STMT name                   → (drop 2)
-
-# Explicit shadowing is statement-only per SPEC: new x = expr
-shadow   = NEW name "=" expr                → (set shadow 2 _ 4)
-
-extvar   = EXTERN CONST name ":" type       → (extern fixed 3 5)
-         | EXTERN name ":" type             → (extern _     2 4)
-
-zig      = ZIG STRING_SQ                    → (zig 2)
-         | ZIG STRING_DQ                    → (zig 2)
-
-decl     = defn
-         | PUB decl                         → (pub 2)
-         | EXTERN decl                      → (extern 2)
-         | EXPORT decl                      → (export 2)
-         | PACKED decl                      → (packed 2)
-         | CALLCONV name decl               → (callconv 2 3)
-
-defn     = fun | sub | enum | struct | errors | typedef | test | opaq
-
 block    = INDENT body OUTDENT              → (block ...2)
          | INDENT      OUTDENT              → (block)
+
+stmt     = use
+         | decl
+         | extvar
+         | ext_fun
+         | ext_sub
+         | zig
+         | ":" name stmt                    → (labeled 2 3)
+         | simple
+         | guarded POST_IF value            → (if 3 1)
+
+guarded  = simple                           → (block 1)
+
+# A simple statement: an expression, a paren-free call, a binding, or a
+# flow statement. Only these take a postfix guard (`return x if done`).
+simple   = tail
+         | postfix "="  tail                → (set _      1 _ 3)
+         | postfix "+=" tail                → (set +=     1 _ 3)
+         | postfix "-=" tail                → (set -=     1 _ 3)
+         | postfix "*=" tail                → (set *=     1 _ 3)
+         | postfix "/=" tail                → (set /=     1 _ 3)
+         | postfix "%=" tail                → (set %=     1 _ 3)
+         | postfix "&=" tail                → (set &=     1 _ 3)
+         | postfix "|=" tail                → (set |=     1 _ 3)
+         | postfix "^=" tail                → (set ^=     1 _ 3)
+         | postfix "<<=" tail               → (set <<=    1 _ 3)
+         | postfix ">>=" tail               → (set >>=    1 _ 3)
+         | postfix "=!" tail                → (set fixed  1 _ 3)
+         | postfix "<-" tail                → (set move   1 _ 3)
+         | name ":" type "="  tail          → (set _      1 3 5)
+         | name ":" type "=!" tail          → (set fixed  1 3 5)
+         | NEW name "=" tail                → (set shadow 2 _ 4)
+         | DROP_STMT name                   → (drop 2)
+         | RETURN tail                      → (return 2)
+         | RETURN                           → (return)
+         | BREAK ":" name tail              → (break 4 3)
+         | BREAK ":" name                   → (break _ 3)
+         | BREAK tail                       → (break 2)
+         | BREAK                            → (break)
+         | CONTINUE ":" name                → (continue 3)
+         | CONTINUE                         → (continue)
+         | DEFER block                      → (defer 2)
+         | DEFER simple                     → (defer 2)
+         | ERRDEFER block                   → (errdefer 2)
+         | ERRDEFER simple                  → (errdefer 2)
+         | PRE block                        → (pre_block 2)
+         | RAW block                        → (raw_block 2)
 
 # ==============================================================================
 # DECLARATIONS
 # ==============================================================================
+
+decl     = defn
+         | PUB defn                         → (pub 2)
+
+defn     = fun | sub | enum | struct | errors | typedef | test
+
+use      = USE name                         → (use 2)
 
 fun      = FUN name params returns block    → (fun 2 3 4 5)
          | FUN name params         block    → (fun 2 3 _ 4)
@@ -327,268 +324,275 @@ fun      = FUN name params returns block    → (fun 2 3 4 5)
 sub      = SUB name params block            → (sub 2 3 _ 4)
          | SUB name        block            → (sub 2 _ _ 3)
 
-use      = USE name                         → (use 2)
+returns  = "->" type                        → 2
 
-# Type declarations:
-#   type Vec3 = [3]f32                          alias
-#   type Pair                                   nominal struct (no params)
-#     a: Int
-#     b: Int
-#   type Box(T)                                 generic struct (SPEC §"Generics")
-#     value: T
-typedef  = TYPE name "=" type               → (type 2 4)
-         | TYPE name params INDENT members OUTDENT → (generic_type 2 3 ...5)
-         | TYPE name        INDENT members OUTDENT → (generic_type 2 _ ...4)
+params   = lparen L(field) ")"              → (...2)
+         | lparen          ")"              → ()
 
-test     = TEST STRING_DQ block             → (test 2 3)
-opaq     = OPAQUE name                      → (opaque 2)
+lparen   = LPAREN_CALL | "("
 
-enum     = ENUM   name INDENT members OUTDENT → (enum 2 ...4)
-errors   = ERROR  name INDENT members OUTDENT → (errors 2 ...4)
-struct   = STRUCT name INDENT members OUTDENT → (struct 2 ...4)
+# Parameters, struct fields, and enum variants share one shape.
+field    = fname                            → 1
+         | fname ":" type                   → (: 1 3)
+         | fname ":" type "=" expr          → (default 1 3 5)
+         | PRE fname ":" type               → (pre_param 2 4)
+         | READ_PFX  fname                  → (read 2)        # `?self`
+         | WRITE_PFX fname                  → (write 2)       # `!self`
 
-# ==============================================================================
-# BUILDING BLOCKS — shared by declarations
-# ==============================================================================
+# Inside ( ) the rewriter turns a name followed by `:` into KWARG_NAME.
+fname    = name                             → 1
+         | KWARG_NAME                       → 1
+
+enum     = ENUM   name        INDENT members OUTDENT → (enum 2 ...4)
+         | ENUM   name params INDENT members OUTDENT → (generic_enum 2 3 ...5)
+errors   = ERROR  name        INDENT members OUTDENT → (errors 2 ...4)
+struct   = STRUCT name        INDENT members OUTDENT → (struct 2 ...4)
+
+typedef  = TYPE name "=" type                          → (type 2 4)
+         | TYPE name params INDENT members OUTDENT     → (generic_type 2 3 ...5)
+         | TYPE name        INDENT members OUTDENT     → (generic_type 2 _ ...4)
 
 members  = member                           → (1)
          | members NEWLINE member           → (...1 3)
          | members NEWLINE                  → 1
+
 member   = field
-         | name "=" expr                    → (valued 1 3)
+         | name "=" expr                    → (valued 1 3)    # enum value: `ok = 200`
+         | name params                      → (variant 1 2)   # payload variant: `circle(r: Int)`
          | fun
          | sub
+         | DROP dparams block               → (drop_decl 2 3) # `drop self: !Self`
 
-# Parameter / field name. Same as `name`, but also accepts `KWARG_NAME`
-# because the rewriter promotes IDENT to KWARG_NAME inside parens
-# (which includes param lists). The parser uses parse-state to decide
-# field-vs-callarg; both reductions are accepted here.
-fname    = name                             → 1
-         | KWARG_NAME                       → 1
+# Sema requires exactly one: `self: !Self`.
+dparams  = L(field)                         → (...1)
 
-field    = PRE fname ":" type               → (pre_param 2 4)
-         | fname                            → 1
-         | fname ":" type                   → (: 1 3)
-         | fname ":" type ALIGN atom        → (aligned 1 3 5)
-         | fname ":" type "=" expr          → (default 1 3 5)
+test     = TEST STRING_DQ block             → (test 2 3)
 
-# SPEC uses parenthesized params: `fun add(a: Int, b: Int) -> Int` and
-# `sub main()`. Bare-list form (Zag-style) also accepted.
-params   = "(" L(field) ")"                 → (...2)
-         | "(" ")"                          → ()
-         | L(field)                         → (...1)
-returns  = "->" type                        → 2
+extvar   = EXTERN name ":" type             → (extern _ 2 4)
 
-type     = name
-         | type SUFFIX_Q                    → (optional 1)     # T?  optional type (suffix binds tightest)
-         | type SUFFIX_BANG                 → (error_union 1)  # T!  fallible type (error union)
-         | READ_PFX             type        → (borrow_read 2)  # ?T  read-borrowed type (param/return)
-         | WRITE_PFX            type        → (borrow_write 2) # !T  write-borrowed type (param/return)
-         | "(" type ")"                     → 2                # parens for grouping (e.g., ([]T)?)
-         | "["              "]" type        → (slice 3)
-         | "[" ":" atom     "]" type        → (sentinel_slice 3 5)
-         | "[" INTEGER      "]" type        → (array_type 2 4)
-         | FN "(" L(type)   ")" type        → (fn_type 3 5)
-         | FN "("           ")" type        → (fn_type _ 4)
-         #
-         # Pointer type forms (`*T`, `* const T`, `* volatile T`, `[*]T`,
-         # `[*:s]T`) inherited from Zag are NOT in Rig V1's surface — Rig
-         # V1 expresses sharing semantics via `?T` / `!T` (borrowed types)
-         # and `*x` / `<x` (expression-position sigils). The Zag-inherited
-         # spellings also tokenize incorrectly (lexer's `share_pfx` rule
-         # requires an operand-start char after `*`, which `]` and space
-         # don't satisfy). Real pointer types come back in M5+ via the
-         # stdlib (e.g., a `Box(T)` with explicit ABI). Removed for now
-         # to keep the grammar honest and the conflict surface smaller.
+ext_fun  = EXTERN FUN name params returns   → (extern_fun 3 4 5)
+         | EXTERN FUN name        returns   → (extern_fun 3 _ 4)
+         | EXTERN FUN name params           → (extern_fun 3 4 _)
+         | EXTERN FUN name                  → (extern_fun 3 _ _)
+
+ext_sub  = EXTERN SUB name params           → (extern_sub 3 4)
+         | EXTERN SUB name                  → (extern_sub 3 _)
+
+zig      = ZIG STRING_DQ                    → (zig 2)
+         | ZIG STRING_SQ                    → (zig 2)
+
+# ==============================================================================
+# TYPES
+# ==============================================================================
+#
+# Suffixes bind tighter than prefixes: `*User?` is a shared optional User;
+# an optional shared handle is written `(*User)?`.
+
+type     = READ_PFX  type                   → (borrow_read 2)
+         | WRITE_PFX type                   → (borrow_write 2)
+         | SHARE_PFX type                   → (shared 2)
+         | "~"       type                   → (weak 2)
+         | "[" "]" type                     → (slice 3)
+         | "[" INTEGER "]" type             → (array_type 2 4)
+         | FUN "(" L(type) ")" type         → (fun_type 3 5)   # `fun(Int) Int`
+         | FUN "(" ")" type                 → (fun_type _ 4)
+         | SUB "(" L(type) ")"              → (fun_type 3)     # `sub(Int)`
+         | SUB "(" ")"                      → (fun_type)
+         | tsuffix
+
+tsuffix  = tsuffix SUFFIX_Q                 → (optional 1)
+         | tsuffix SUFFIX_BANG              → (error_union 1)
+         | tatom
+
+tatom    = name
+         | name "." name                    → (member 1 3)  # `geo.Point`
+         | TYPE                             → 1  # `pre T: type`
+         | name LPAREN_CALL L(type) ")"     → (generic_inst 1 ...3)
+         | name LPAREN_CALL ")"             → (generic_inst 1)
+         | "(" type ")"                     → 2
 
 # ==============================================================================
 # EXPRESSIONS
 # ==============================================================================
+#
+#   tail    an expression, a paren-free call, or a closure whose body is one.
+#           Allowed where nothing can follow on the line: a statement, the
+#           right side of a binding, `return`, a match arm, the last
+#           argument of a call.
+#   expr    anything that yields a value, including block forms.
+#   value   an expression without a block or closure: conditions, operands,
+#           ternary branches.
 
-expr     = if
+tail     = expr
+         | cmd
+         | cclosure
+
+expr     = value
+         | if
          | while
          | for
          | match
          | try_block
-         | postif
-         | coalesce
-         | catch
-         | return
-         | break
-         | continue
-         | defer
-         | errdefer
-         | pre
-         | inline
-         | assign
-         | fixed
-         | moveassign
+         | logic CATCH BAR_CAPTURE name BAR_CAPTURE block → (catch 1 4 6)
+         | closure
+         | PRE value                        → (pre 2)
+
+value    = logic TERNARY_IF logic ELSE value → (if 3 1 5)
+         | logic CATCH BAR_CAPTURE name BAR_CAPTURE value → (catch 1 4 6)
+         | logic CATCH value                 → (catch 1 _ 3)
+         | logic
+
+logic    = logic OR conj                    → (or 1 3)
+         | conj
+conj     = conj AND neg                     → (and 1 3)
+         | neg
+neg      = NOT neg                          → (not 2)
          | @infix
 
-# --- Control flow ---
+cond     = value
+         | cmd
 
-cond     = expr
-         | expr AS  name                    → (as 1 3)
-         | expr BAR_CAPTURE name BAR_CAPTURE → (as 1 3)
+# --- Paren-free calls ---------------------------------------------------------
+#
+# `print p.x` is print(p.x); `send encode <packet` is send(encode(<packet)).
+# A nested paren-free call can only be the last argument.
 
-if       = IF cond block ELSE AS name block → (if 2 3 6 7)
-         | IF cond block ELSE AS name if    → (if 2 3 6 7)
-         | IF cond block ELSE if            → (if 2 3 5)
-         | IF cond block ELSE block         → (if 2 3 5)
-         | IF cond block                    → (if 2 3)
+cmd      = postfix cmdargs                  → (call 1 ...2)
 
-while    = WHILE cond          block ELSE block → (while 2 _ 3 else:5)
-         | WHILE cond ":" expr block ELSE block → (while 2 4 5 else:7)
-         | WHILE cond          block        → (while 2 _ 3)
-         | WHILE cond ":" expr block        → (while 2 4 5)
+# These argument lists are written out rather than `L(expr)`: Nexus lists
+# are greedy, so `L(expr) "," cmdtail` could never reach its cmdtail.
+cmdargs  = exprs                            → 1
+         | exprs "," cmdtail                → (...1 3)
+         | cmdtail                          → (1)
 
-# Unified shape from the grammar: (for <mode> binding1 binding2-or-_ source body else?)
-# `<mode>` is one of: `ptr` (`for *x`), `iter` (default), `read`/`write`/`move`
-# (the Parser sexp rewriter may promote `iter` to `read`/`write`/`move`
-# if the source has an outer ownership wrapper — that's the one
-# inspection-requiring transform the grammar can't express).
-for      = FOR SHARE_PFX name          IN expr block ELSE block → (for ptr  3 _ 5 6 else:8)
-         | FOR SHARE_PFX name "," name IN expr block ELSE block → (for ptr  3 5 7 8 else:10)
-         | FOR          name           IN expr block ELSE block → (for iter 2 _ 4 5 else:7)
-         | FOR          name "," name  IN expr block ELSE block → (for iter 2 4 6 7 else:9)
-         | FOR SHARE_PFX name          IN expr block            → (for ptr  3 _ 5 6)
-         | FOR SHARE_PFX name "," name IN expr block            → (for ptr  3 5 7 8)
-         | FOR          name           IN expr block            → (for iter 2 _ 4 5)
-         | FOR          name "," name  IN expr block            → (for iter 2 4 6 7)
+exprs    = expr                             → (1)
+         | exprs "," expr                   → (...1 3)
 
-match    = MATCH expr INDENT arms OUTDENT   → (match 2 ...4)
+cmdtail  = cmd
+         | cclosure
+
+# --- Control flow -------------------------------------------------------------
+
+# `if e as name` / `while e as name`: `e` is an optional; the body runs
+# with `name` bound to the value inside it.
+ifcond   = cond
+         | value AS name                    → (as 1 3)
+
+if       = IF ifcond block ELSE if          → (if 2 3 5)
+         | IF ifcond block ELSE block       → (if 2 3 5)
+         | IF ifcond block                  → (if 2 3)
+
+while    = WHILE ifcond            block ELSE block → (while 2 _ 3 else:5)
+         | WHILE ifcond ":" simple block ELSE block → (while 2 4 5 else:7)
+         | WHILE ifcond            block            → (while 2 _ 3)
+         | WHILE ifcond ":" simple block            → (while 2 4 5)
+
+# (for <mode> binding index-or-_ source body else?); the Parser wrapper
+# moves a `?xs` / `!xs` / `<xs` source sigil into the mode slot.
+for      = FOR SHARE_PFX name          IN cond block ELSE block → (for ptr  3 _ 5 6 else:8)
+         | FOR SHARE_PFX name "," name IN cond block ELSE block → (for ptr  3 5 7 8 else:10)
+         | FOR           name          IN cond block ELSE block → (for iter 2 _ 4 5 else:7)
+         | FOR           name "," name IN cond block ELSE block → (for iter 2 4 6 7 else:9)
+         | FOR SHARE_PFX name          IN cond block            → (for ptr  3 _ 5 6)
+         | FOR SHARE_PFX name "," name IN cond block            → (for ptr  3 5 7 8)
+         | FOR           name          IN cond block            → (for iter 2 _ 4 5)
+         | FOR           name "," name IN cond block            → (for iter 2 4 6 7)
+
+match    = MATCH cond INDENT arms OUTDENT   → (match 2 ...4)
+
 arms     = arm                              → (1)
          | arms NEWLINE arm                 → (...1 3)
          | arms NEWLINE                     → 1
-patatom  = atom
-         | "." name                         → (enum_pattern 2)
+
+arm      = pattern "=>" simple              → (arm 1 3)
+         | pattern block                    → (arm 1 2)
 
 pattern  = patatom
          | patatom ".." patatom             → (range_pattern 1 3)
 
-arm      = pattern AS name "=>" expr        → (arm 1 3 5)
-         | pattern AS name block            → (arm 1 3 4)
-         | pattern "=>" expr                → (arm 1 _ 3)
-         | pattern block                    → (arm 1 _ 2)
+patatom  = name
+         | ELSE                             → 1  # default arm
+         | INTEGER
+         | MINUS_PREFIX INTEGER             → (neg 2)
+         | REAL
+         | STRING_SQ
+         | STRING_DQ
+         | TRUE
+         | FALSE
+         | DOT_LIT name                     → (enum_lit 2)
+         | DOT_LIT name LPAREN_CALL L(name) ")" → (variant_pattern 2 ...4)
+         | DOT_LIT name LPAREN_CALL ")"     → (variant_pattern 2)
 
-# Value-yielding try block (SPEC §"Multi-Line Fallible Blocks")
-#
-#   try
-#     stmt...
-#   catch |err|
-#     stmt...
-#
-# Nested shape: (try_block <body> (catch_block <name> <catch_body>)?).
-# The `catch_part` sub-rule emits the (catch_block ...) sexp.
-try_block  = TRY block catch_part            → (try_block 2 3)
-           | TRY block                       → (try_block 2)
+# The value-yielding try block is reserved; sema rejects it.
+try_block  = TRY block catch_part           → (try_block 2 3)
+           | TRY block                      → (try_block 2)
 
 catch_part = CATCH BAR_CAPTURE name BAR_CAPTURE block → (catch_block 3 5)
-           | CATCH AS name block             → (catch_block 3 4)
 
-# --- Expression modifiers ---
+# --- Closures -----------------------------------------------------------------
+#
+# A closure starts with its bar list. An entry with a sigil is a capture;
+# a bare name is a parameter, optionally typed:
+#   |+x| clone (a copy, for a Copy value)   |<x| move   |~x| weak
+#   |a, b| a + b      |+v, a: Int| v.set(a)      || print("tick")
+# `*` before the bars makes an owned closure: `*|+v, a| v.set(a)`. The
+# parser splits the entries into (captures ...) and the parameter list.
 
-postif   = @infix IF expr ELSE expr         → (ternary 3 1 5)
-         | @infix IF expr                   → (if 3 1)
-         | @infix TERNARY_IF expr ELSE expr → (ternary 3 1 5)
+closure  = lambda
+         | SHARE_PFX lambda                 → (share 2)
 
-coalesce = @infix "??"          expr        → (?? 1 3)
-catch    = @infix CATCH AS name expr        → (catch 1 4 5)
-         | @infix CATCH BAR_CAPTURE name BAR_CAPTURE expr → (catch 1 4 6)
-         | @infix CATCH         expr        → (catch 1 3)
+lambda   = bars block                       → (lambda 1 _ _ 2)
+         | bars ebody                       → (lambda 1 _ _ 2)
 
-# --- Flow control ---
+# A closure whose inline body is a paren-free call.
+cclosure = clambda
+         | SHARE_PFX clambda                → (share 2)
 
-return   = RETURN expr POST_IF expr         → (return value:2 if:4)
-         | RETURN POST_IF expr              → (return value:_ if:3)
-         | RETURN expr                      → (return value:2)
-         | RETURN                           → (return)
-break    = BREAK ":" name POST_IF expr      → (break value:_ to:3 if:5)
-         | BREAK ":" name expr              → (break value:4 to:3)
-         | BREAK ":" name                   → (break value:_ to:3)
-         | BREAK POST_IF expr               → (break value:_ to:_ if:3)
-         | BREAK expr                       → (break value:2)
-         | BREAK                            → (break)
-continue = CONTINUE ":" name POST_IF expr   → (continue to:3 if:5)
-         | CONTINUE ":" name                → (continue to:3)
-         | CONTINUE POST_IF expr            → (continue to:_ if:3)
-         | CONTINUE                         → (continue)
+clambda  = bars cbody                       → (lambda 1 _ _ 2)
 
-# --- Statement modifiers ---
+bars     = BAR_CAPTURE L(barent) BAR_CAPTURE → (...2)
+         | BAR_EMPTY                        → ()
 
-defer    = DEFER    block                   → (defer 2)
-         | DEFER    expr                    → (defer 2)
-errdefer = ERRDEFER block                   → (errdefer 2)
-         | ERRDEFER expr                    → (errdefer 2)
-pre      = PRE      block                   → (pre_block 2)
-         | PRE      expr                    → (pre 2)
-inline   = INLINE   expr                    → (inline 2)
+barent   = fname                            → 1
+         | fname ":" type                   → (: 1 3)
+         | CLONE_PFX name                   → (cap_clone 2)
+         | MOVE_PFX  name                   → (cap_move 2)
+         | "~"       name                   → (cap_weak 2)
 
-# --- Bindings ---
-
-# All bindings collapse into a single `set` head with a kind discriminator
-# at items[1]. The grammar emits the normalized shape directly using the
-# tag-literal-at-child-position feature (Nexus 0.10.x+).
-assign     = call "="           expr        → (set _      1 _ 3)
-           | call "+="          expr        → (set +=     1 _ 3)
-           | call "-="          expr        → (set -=     1 _ 3)
-           | call "*="          expr        → (set *=     1 _ 3)
-           | call "/="          expr        → (set /=     1 _ 3)
-
-fixed      = call          "=!" expr        → (set fixed  1 _ 3)
-
-moveassign = call          "<-" expr        → (set move   1 _ 3)
+# An inline body is wrapped in a block, like an indented one.
+ebody    = expr                             → (block 1)
+cbody    = cmd                              → (block 1)
 
 # ==============================================================================
-# CALLS AND ATOMS
+# OPERANDS
 # ==============================================================================
 
 unary    = MINUS_PREFIX unary               → (neg 2)
-         | TRY unary                        → (try 2)
-         | "&" unary                        → (addr_of 2)
-         | "~" unary                        → (weak 2)        # weak reference (replaces Zag bit_not)
-         | MOVE_PFX  unary                  → (move 2)        # <x   move ownership
-         | CLONE_PFX unary                  → (clone 2)       # +x   clone
-         | PIN_PFX   unary                  → (pin 2)         # @x   pin (non-builtin form)
-         | RAW_PFX   unary                  → (raw 2)         # %x   raw / unsafe
-         | READ_PFX  unary                  → (read 2)        # ?x   read borrow
-         | WRITE_PFX unary                  → (write 2)       # !x   write borrow
-         | SHARE_PFX unary                  → (share 2)       # *x   share ownership
-         | call
+         | MOVE_PFX  unary                  → (move 2)
+         | CLONE_PFX unary                  → (clone 2)
+         | READ_PFX  unary                  → (read 2)
+         | WRITE_PFX unary                  → (write 2)
+         | SHARE_PFX unary                  → (share 2)
+         | "~"       unary                  → (weak 2)
+         | PIN_PFX   unary                  → (pin 2)
+         | postfix
 
-call     = call "." "*"                     → (deref 1)
-         | call "." name                    → (member 1 3)
-         | call "[" expr "]"                → (index 1 3)
-         | call L(arg)                      → (call 1 ...2)
-         | call "(" args ")"                → (call 1 ...3)
-         | call SUFFIX_BANG                 → (propagate 1)   # x!  propagate failure (suffix on expression);
-                                                              #     same SUFFIX_BANG token as `T!` fallible type
-                                                              #     (parser disambiguates by non-terminal state)
+postfix  = postfix "." name                 → (member 1 3)
+         | postfix LBRACKET_INDEX expr "]"  → (index 1 3)
+         | postfix LPAREN_CALL args ")"     → (call 1 ...3)
+         | postfix SUFFIX_BANG              → (propagate 1)
          | atom
 
-args     = L(callarg)                       → (...1)
+args     = callargs                         → 1
+         | callargs "," cmdtail             → (...1 3)
+         | cmdtail                          → (1)
          |                                  → ()
 
-# A call argument is either a positional expression OR a named pair
-# `name: expr` (constructor sugar). The rewriter promotes IDENT to
-# KWARG_NAME inside parens when immediately followed by `:`, so the
-# pair form is unambiguous to the parser.
+callargs = callarg                          → (1)
+         | callargs "," callarg             → (...1 3)
+
 callarg  = KWARG_NAME ":" expr              → (kwarg 1 3)
          | expr
-
-arg      = term TERNARY_IF expr ELSE arg    → (ternary 3 1 5)
-         | term
-
-term     = MINUS_PREFIX term                → (neg 2)
-         | "~" term                         → (weak 2)
-         | MOVE_PFX  term                   → (move 2)
-         | CLONE_PFX term                   → (clone 2)
-         | PIN_PFX   term                   → (pin 2)
-         | RAW_PFX   term                   → (raw 2)
-         | READ_PFX  term                   → (read 2)
-         | WRITE_PFX term                   → (write 2)
-         | SHARE_PFX term                   → (share 2)
-         | atom
 
 atom     = name
          | INTEGER
@@ -597,40 +601,25 @@ atom     = name
          | STRING_DQ
          | TRUE
          | FALSE
-         | NULL                             → (null)
-         | UNREACHABLE                      → (unreachable)
-         | UNDEFINED                        → (undefined)
-         | DOT_LIT name                     → (enum_lit 2)     # .strict (inferred-type enum value, SPEC §"Compile-Time Specialization")
-         | "@" name "(" args ")"            → (builtin 2 ...4)
-         | record
-         | lambda
-         | "[" args "]"                     → (array ...2)
-         | "(" expr ")"                     → 2
-         | DOT_LBRACE L(dotpair) "}"        → (anon_init ...2)
-         | DOT_LBRACE args "}"              → (anon_init ...2)
-         | DOT_LBRACE "}"                   → (anon_init)
+         | DOT_LIT name                     → (enum_lit 2)
+         | "@" name LPAREN_CALL args ")"    → (builtin 2 ...4)
+         | "[" elems "]"                    → (array ...2)
+         | "(" tail ")"                     → 2
 
-record   = name "{" L(pair) "}"             → (record 1 ...3)
-pair     = name ":" expr                    → (kwarg 1 3)
-dotpair  = "." name "=" expr                → (kwarg 2 4)
-
-lambda   = FN params block                  → (lambda 2 returns:_ 3)
-         | FN        block                  → (lambda params:_ returns:_ 2)
+elems    = L(expr)                          → (...1)
+         |                                  → ()
 
 # ==============================================================================
-# INFIX OPERATORS (precedence chain auto-generated above `unary`)
+# INFIX OPERATORS (lowest precedence first; operands are `unary`)
 # ==============================================================================
 
 @infix unary
-    "|>"  left
-    "||"  left
-    "&&"  left
-    "|"   left
-    "^"   left
-    "&"   left
-    "=="  none, "!=" none, "<" none, ">" none, "<=" none, ">=" none
-    ".."  none
-    "<<"  left, ">>" left
-    "+"   left, "-"  left
-    "*"   left, "/"  left, "%"  left
-    "**"  right
+    "==" none, "!=" none, "<" none, ">" none, "<=" none, ">=" none
+    "??" right
+    ".." none
+    "|"  left
+    "^"  left
+    "&"  left
+    "<<" left, ">>" left
+    "+"  left, "-"  left
+    "*"  left, "/"  left, "%"  left
