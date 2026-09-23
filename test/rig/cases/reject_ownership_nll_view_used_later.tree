@@ -1,18 +1,20 @@
 (module
   (struct
     `Box`
-    (: `n` `Int`)
-    (sub `bump` ((write `self`)) _ (block (set += (member `self` `n`) _ `1`)))
+    (: `n` `Int`)@76..82
+    (sub
+      `bump`
+      ((write `self`)@95..100)@94..101
+      (block (set += (member `self` `n`)@106..112 _ `1`)@106..117)@106..121)@86..121
     (drop_decl
-      ((: `self` (borrow_write `Box`)))
-      (block (call `print` `"drop"` (member `self` `n`)))))
-  (struct `View` (: `box` (borrow_read `Box`)))
+      ((: `self` (borrow_write `Box`)@132..136)@126..136)@126..136
+      (block (call `print` `"drop"` (member `self` `n`)@155..161)@141..162)@141..164)@121..164)@63..164
+  (struct `View` (: `box` (borrow_read `Box`)@183..187)@178..187)@164..189
   (sub
     `main`
-    ()
-    _
+    ()@197..199
     (block
-      (set _ `x` _ (call `Box` (kwarg `n` `1`)))
-      (set _ `v` _ (call `View` (kwarg `box` (read `x`))))
-      (call (member (write `x`) `bump`))
-      (call `print` (member (member `v` `box`) `n`)))))
+      (set _ `x` _ (call `Box` (kwarg `n` `1`)@210..214)@206..215)@202..215
+      (set _ `v` _ (call `View` (kwarg `box` (read `x`)@232..234)@227..234)@222..235)@218..235
+      (call (member (write `x`)@239..241 `bump`)@238..247)@238..249
+      (call `print` (member (member `v` `box`)@258..263 `n`)@258..265)@252..266)@202..329)@189..329)@63..329

@@ -1,54 +1,96 @@
 (module
-  (struct `Button` (: `label` `String`) (: `on_click` (shared (fun_type (`Int`)))))
+  (struct
+    `Button`
+    (: `label` `String`)@228..241
+    (: `on_click` (shared (fun_type (`Int`)@259..262 _)@255..263)@254..263)@244..263)@212..265
   (fun
     `apply`
-    ((: `f` (shared (fun_type (`Int`) `Int`))) (: `x` `Int`))
+    ((: `f` (shared (fun_type (`Int`)@283..286 `Int`)@279..291)@278..291)@275..291
+      (: `x` `Int`)@293..299)@274..300
     `Int`
-    (block (call `f` `x`)))
+    (block (call `f` `x`)@310..314)@310..316)@265..316
   (fun
     `adder`
-    ((: `n` `Int`))
-    (shared (fun_type (`Int`) `Int`))
-    (block (share (lambda ((cap_clone `n`) `a`) _ _ (block (+ `a` `n`))))))
+    ((: `n` `Int`)@326..332)@325..333
+    (shared (fun_type (`Int`)@342..345 `Int`)@338..350)@337..350
+    (block
+      (share
+        (lambda
+          _
+          ((cap_clone `n`)@355..357 `a`)@354..361
+          (block (+ `a` `n`)@362..367)@362..367)@354..367)@353..367)@353..369)@316..369
   (sub
     `main`
-    ()
-    _
+    ()@377..379
     (block
-      (set _ `add` (fun_type (`Int` `Int`) `Int`) (lambda (`a` `b`) _ _ (block (+ `a` `b`))))
-      (call `print` (call `add` `2` `3`))
-      (call `print` (call `apply` (share (lambda (`a`) _ _ (block (* `a` `10`)))) `4`))
-      (set _ `total` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
-      (set _ `handlers` (generic_inst `Vec` (shared (fun_type (`Int`)))) (call `Vec`))
+      (set
+        _
+        `add`
+        (fun_type (`Int` `Int`)@391..399 `Int`)@387..404
+        (lambda _ (`a` `b`)@407..413 (block (+ `a` `b`)@414..419)@414..419)@407..419)@382..419
+      (call `print` (call `add` `2` `3`)@428..437)@422..438
       (call
-        (member (write `handlers`) `push`)
+        `print`
+        (call
+          `apply`
+          (share (lambda _ (`a`)@455..458 (block (* `a` `10`)@459..465)@459..465)@455..465)@454..465
+          `4`)@448..469)@442..470
+      (set
+        _
+        `total`
+        (shared (generic_inst `Cell` `Int`)@482..491)@481..491
+        (share (call `Cell` (kwarg `value` `0`)@500..508)@495..509)@494..509)@474..509
+      (set
+        _
+        `handlers`
+        (generic_inst `Vec` (shared (fun_type (`Int`)@531..534 _)@527..535)@526..535)@522..536
+        (call `Vec`)@539..544)@512..544
+      (call
+        (member (write `handlers`)@548..557 `push`)@547..563
         (share
           (lambda
-            ((cap_clone `total`) `n`)
             _
-            _
-            (block (call (member `total` `set`) (+ (call (member `total` `get`)) `n`))))))
+            ((cap_clone `total`)@566..572 `n`)@565..576
+            (block
+              (call
+                (member `total` `set`)@577..586
+                (+ (call (member `total` `get`)@587..596)@587..598 `n`)@587..602)@577..603)@577..603)@565..603)@564..603)@547..604
       (call
-        (member (write `handlers`) `push`)
+        (member (write `handlers`)@608..617 `push`)@607..623
         (share
           (lambda
-            ((cap_clone `total`) `n`)
             _
-            _
-            (block (call (member `total` `set`) (+ (call (member `total` `get`)) (* `n` `100`)))))))
-      (for iter `h` _ (read `handlers`) (block (call `h` `2`)))
-      (call `print` (call (member `total` `get`)))
+            ((cap_clone `total`)@626..632 `n`)@625..636
+            (block
+              (call
+                (member `total` `set`)@637..646
+                (+ (call (member `total` `get`)@647..656)@647..658 (* `n` `100`)@661..668)@647..668)@637..669)@637..669)@625..669)@624..669)@607..670
+      (for
+        iter
+        `h`
+        _
+        (read `handlers`)@682..691
+        (block (call `h` `2`)@696..700)@696..703
+        _)@673..703
+      (call `print` (call (member `total` `get`)@709..718)@709..720)@703..721
       (set
         _
         `b`
         _
         (call
           `Button`
-          (kwarg `label` `"ok"`)
+          (kwarg `label` `"ok"`)@736..747
           (kwarg
             `on_click`
-            (share (lambda ((cap_clone `total`) `n`) _ _ (block (call (member `total` `set`) `n`)))))))
-      (call (member `b` `on_click`) `7`)
-      (call `print` (member `b` `label`) (call (member `total` `get`)))
-      (set _ `plus5` _ (call `adder` `5`))
-      (call `print` (call `plus5` `1`)))))
+            (share
+              (lambda
+                _
+                ((cap_clone `total`)@761..767 `n`)@760..771
+                (block (call (member `total` `set`)@772..781 `n`)@772..784)@772..784)@760..784)@759..784)@749..784)@729..785)@725..785
+      (call (member `b` `on_click`)@788..798 `7`)@788..801
+      (call
+        `print`
+        (member `b` `label`)@810..817
+        (call (member `total` `get`)@819..828)@819..830)@804..831
+      (set _ `plus5` _ (call `adder` `5`)@843..851)@835..851
+      (call `print` (call `plus5` `1`)@860..868)@854..869)@382..907)@369..907)@212..907

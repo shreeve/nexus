@@ -1,4 +1,13 @@
 (module
-  (type `UserId` `Int`)
-  (fun `next` ((: `a` `UserId`)) `Int` (block (+ `a` `1`)))
-  (sub `main` () _ (block (set _ `x` `UserId` `5`) (call `print` (call `next` `x`)))))
+  (type `UserId` `Int`)@119..136
+  (fun
+    `next`
+    ((: `a` `UserId`)@147..156)@146..157
+    `Int`
+    (block (+ `a` `1`)@167..172)@167..174)@138..174
+  (sub
+    `main`
+    ()@182..184
+    (block
+      (set _ `x` `UserId` `5`)@187..200
+      (call `print` (call `next` `x`)@209..216)@203..217)@187..233)@174..233)@119..233

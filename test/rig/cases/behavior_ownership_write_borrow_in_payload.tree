@@ -1,40 +1,68 @@
 (module
-  (struct `Box` (: `n` `Int`))
-  (enum `Slot` (variant `held` ((: `b` (borrow_write `Box`)))) `empty`)
-  (generic_type `W` (`T`) (: `v` `T`))
+  (struct `Box` (: `n` `Int`)@152..158)@139..160
+  (enum
+    `Slot`
+    (variant `held` ((: `b` (borrow_write `Box`)@180..184)@177..184)@176..185)@172..185
+    `empty`)@160..195
+  (generic_type `W` (`T`)@201..204 (: `v` `T`)@207..211)@195..213
   (sub
     `main`
-    ()
-    _
+    ()@221..223
     (block
-      (set _ `b` _ (call `Box` (kwarg `n` `1`)))
+      (set _ `b` _ (call `Box` (kwarg `n` `1`)@234..238)@230..239)@226..239
       (if
         `true`
         (block
-          (set _ `s` `Slot` (call (enum_lit `held`) (kwarg `b` (write `b`))))
+          (set
+            _
+            `s`
+            `Slot`
+            (call (enum_lit `held`)@264..269 (kwarg `b` (write `b`)@273..275)@270..275)@264..276)@254..276
           (match
             `s`
-            (arm (variant_pattern `held` `r`) (set _ (member `r` `n`) _ `2`))
-            (arm (enum_lit `empty`) (call `print` `0`)))))
-      (call `print` (member `b` `n`))
+            (arm
+              (variant_pattern `held` `r`)@295..303
+              (set _ (member `r` `n`)@307..310 _ `2`)@307..314)@295..314
+            (arm (enum_lit `empty`)@321..327 (call `print` `0`)@331..339)@321..339)@281..342)@254..342
+        _)@242..342
+      (call `print` (member `b` `n`)@348..351)@342..352
       (if
         `true`
         (block
-          (set _ `o` (optional (borrow_write `Box`)) (write `b`))
-          (if (as (move `o`) `r`) (block (set _ (member `r` `n`) _ `3`)))))
-      (call `print` (member `b` `n`))
+          (set
+            _
+            `o`
+            (optional (borrow_write `Box`)@371..375)@370..377
+            (write `b`)@380..382)@367..382
+          (if
+            (as (move `o`)@390..392 `r`)@390..397
+            (block (set _ (member `r` `n`)@404..407 _ `3`)@404..411)@404..414
+            _)@387..414)@367..414
+        _)@355..414
+      (call `print` (member `b` `n`)@420..423)@414..424
       (if
         `true`
         (block
-          (set _ `w` (generic_inst `W` (borrow_write `Box`)) (call `W` (kwarg `v` (write `b`))))
-          (set _ (member (member `w` `v`) `n`) _ `4`)))
-      (call `print` (member `b` `n`))
+          (set
+            _
+            `w`
+            (generic_inst `W` (borrow_write `Box`)@444..448)@442..449
+            (call `W` (kwarg `v` (write `b`)@457..459)@454..459)@452..460)@439..460
+          (set _ (member (member `w` `v`)@465..468 `n`)@465..470 _ `4`)@465..474)@439..477
+        _)@427..477
+      (call `print` (member `b` `n`)@483..486)@477..487
       (if
         `true`
-        (block (set _ `xs` _ (array (write `b`))) (set _ (member (index `xs` `0`) `n`) _ `5`)))
-      (call `print` (member `b` `n`))
-      (set _ `x` _ `1`)
+        (block
+          (set _ `xs` _ (array (write `b`)@508..510)@507..511)@502..511
+          (set _ (member (index `xs` `0`)@516..521 `n`)@516..523 _ `5`)@516..527)@502..530
+        _)@490..530
+      (call `print` (member `b` `n`)@536..539)@530..540
+      (set _ `x` _ `1`)@543..548
       (if
         `true`
-        (block (set _ `ints` _ (array (write `x`))) (call `print` (+ (index `ints` `0`) `1`))))
-      (call `print` `x`))))
+        (block
+          (set _ `ints` _ (array (write `x`)@571..573)@570..574)@563..574
+          (call `print` (+ (index `ints` `0`)@585..592 `1`)@585..596)@579..597)@563..600
+        _)@551..600
+      (call `print` `x`)@600..608)@226..644)@213..644)@139..644

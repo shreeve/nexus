@@ -1,15 +1,25 @@
 (module
-  (struct `Counter` (: `n` `Int`) (fun `get` ((read `self`)) `Int` (block (member `self` `n`))))
-  (fun `add3` ((: `a` `Int`) (: `b` `Int`) (: `c` `Int`)) `Int` (block (+ (+ `a` `b`) `c`)))
+  (struct
+    `Counter`
+    (: `n` `Int`)@192..198
+    (fun
+      `get`
+      ((read `self`)@210..215)@209..216
+      `Int`
+      (block (member `self` `n`)@228..234)@228..236)@202..236)@175..236
+  (fun
+    `add3`
+    ((: `a` `Int`)@245..251 (: `b` `Int`)@253..259 (: `c` `Int`)@261..267)@244..268
+    `Int`
+    (block (+ (+ `a` `b`)@278..283 `c`)@278..287)@278..289)@236..289
   (sub
     `main`
-    ()
-    _
+    ()@297..299
     (block
-      (set _ `total` _ (+ (+ `1` `2`) `3`))
-      (call `print` `total`)
-      (call `print` (call `add3` `1` `2` `3`))
-      (set _ `c` _ (call `Counter` (kwarg `n` `7`)))
-      (call `print` (call (member `c` `get`)))
-      (set _ `x` _ (+ `1` `2`))
-      (call `print` `x`))))
+      (set _ `total` _ (+ (+ `1` `2`)@311..327 `3`)@311..337)@302..338
+      (call `print` `total`)@341..352
+      (call `print` (call `add3` `1` `2` `3`)@361..390)@355..390
+      (set _ `c` _ (call `Counter` (kwarg `n` `7`)@405..409)@397..410)@393..410
+      (call `print` (call (member `c` `get`)@420..430)@420..432)@413..433
+      (set _ `x` _ (+ `1` `2`)@440..451)@436..451
+      (call `print` `x`)@454..461)@302..489)@289..489)@175..489

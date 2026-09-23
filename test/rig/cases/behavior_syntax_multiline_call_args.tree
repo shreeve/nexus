@@ -1,3 +1,12 @@
 (module
-  (fun `add` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ `a` `b`)))
-  (sub `main` () _ (block (set _ `x` _ (call `add` `1` `2`)) (call `print` `x`))))
+  (fun
+    `add`
+    ((: `a` `Int`)@104..110 (: `b` `Int`)@112..118)@103..119
+    `Int`
+    (block (+ `a` `b`)@129..134)@129..136)@96..136
+  (sub
+    `main`
+    ()@144..146
+    (block
+      (set _ `x` _ (call `add` `1` `2`)@153..166)@149..166
+      (call `print` `x`)@169..177)@149..193)@136..193)@96..193

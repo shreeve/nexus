@@ -1,24 +1,35 @@
 (module
-  (struct `Node` (: `value` `Int`))
-  (sub `consume` ((: `n` `Node`)) _ (block (call `print` (member `n` `value`))))
-  (sub `inspect` ((: `n` (borrow_read `Node`))) _ (block (call `print` (member `n` `value`))))
-  (sub `touch` ((: `n` (borrow_write `Node`))) _ (block (call `print` (member `n` `value`))))
+  (struct `Node` (: `value` `Int`)@87..97)@73..99
+  (sub
+    `consume`
+    ((: `n` `Node`)@111..118)@110..119
+    (block (call `print` (member `n` `value`)@128..135)@122..136)@122..138)@99..138
+  (sub
+    `inspect`
+    ((: `n` (borrow_read `Node`)@153..158)@150..158)@149..159
+    (block (call `print` (member `n` `value`)@168..175)@162..176)@162..178)@138..178
+  (sub
+    `touch`
+    ((: `n` (borrow_write `Node`)@191..196)@188..196)@187..197
+    (block (call `print` (member `n` `value`)@206..213)@200..214)@200..216)@178..216
   (sub
     `main`
-    ()
-    _
+    ()@224..226
     (block
-      (set _ `a` _ (call `Node` (kwarg `value` `1`)))
-      (call `inspect` (read `a`))
-      (call `touch` (write `a`))
-      (set _ `b` _ (move `a`))
-      (call `consume` (move `b`))
-      (set _ `s` _ (share (call `Node` (kwarg `value` `2`))))
-      (set _ `t` _ (clone `s`))
-      (set _ `w` _ (weak `t`))
-      (drop `s`)
-      (set fixed `fixed` _ `10`)
-      (set _ `x` _ `1`)
-      (set shadow `x` _ (+ `x` `1`))
-      (set move `y` _ `x`)
-      (raw_block (block (set _ `p` `I32` (builtin `intCast` `y`)) (call `print` `p`))))))
+      (set _ `a` _ (call `Node` (kwarg `value` `1`)@238..246)@233..247)@229..247
+      (call `inspect` (read `a`)@258..260)@250..260
+      (call `touch` (write `a`)@269..271)@263..271
+      (set _ `b` _ (move `a`)@278..280)@274..280
+      (call `consume` (move `b`)@291..293)@283..293
+      (set _ `s` _ (share (call `Node` (kwarg `value` `2`)@307..315)@302..316)@301..316)@297..316
+      (set _ `t` _ (clone `s`)@323..325)@319..325
+      (set _ `w` _ (weak `t`)@332..334)@328..334
+      (drop `s`)@337..339
+      (set fixed `fixed` _ `10`)@343..354
+      (set _ `x` _ `1`)@357..362
+      (set shadow `x` _ (+ `x` `1`)@373..378)@365..378
+      (set move `y` _ `x`)@381..387
+      (raw_block
+        (block
+          (set _ `p` `I32` (builtin `intCast` `y`)@408..419)@399..419
+          (call `print` `p`)@424..432)@399..433)@391..433)@229..433)@216..433)@73..433

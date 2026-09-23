@@ -2,11 +2,11 @@
   (pub
     (struct
       `Point`
-      (: `x` `Int`)
-      (: `y` `Int`)
+      (: `x` `Int`)@19..25
+      (: `y` `Int`)@28..34
       (fun
         `sum`
-        ((: `self` (borrow_read `Point`)))
+        ((: `self` (borrow_read `Point`)@52..58)@46..58)@45..59
         `Int`
-        (block (+ (member `self` `x`) (member `self` `y`))))))
-  (pub (type `Meters` `Int`)))
+        (block (+ (member `self` `x`)@71..77 (member `self` `y`)@80..86)@71..86)@71..88)@38..88)@4..88)@0..88
+  (pub (type `Meters` `Int`)@92..109)@88..109)@0..109

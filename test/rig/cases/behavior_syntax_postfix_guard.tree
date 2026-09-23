@@ -1,18 +1,23 @@
 (module
   (fun
     `first_big`
-    ((: `limit` `Int`))
+    ((: `limit` `Int`)@159..169)@158..170
     `Int`
     (block
-      (set _ `i` _ `0`)
-      (while (< `i` `100`) _ (block (set += `i` _ `1`) (if (> `i` `limit`) (block (break)))))
-      (return `i`)))
+      (set _ `i` _ `0`)@180..185
+      (while
+        (< `i` `100`)@194..201
+        _
+        (block
+          (set += `i` _ `1`)@206..212
+          (if (> `i` `limit`)@226..235 (block (break _ _)@217..222)@217..222 _)@217..235)@206..238
+        _)@188..238
+      (return `i`)@238..246)@180..248)@145..248
   (sub
     `main`
-    ()
-    _
+    ()@256..258
     (block
-      (set _ `x` _ `5`)
-      (if (> `x` `3`) (block (call `print` `x`)))
-      (if (> `x` `9`) (block (call `print` `99`)))
-      (call `print` (call `first_big` `3`)))))
+      (set _ `x` _ `5`)@261..266
+      (if (> `x` `3`)@280..285 (block (call `print` `x`)@269..276)@269..276 _)@269..285
+      (if (> `x` `9`)@301..306 (block (call `print` `99`)@288..297)@288..297 _)@288..306
+      (call `print` (call `first_big` `3`)@315..327)@309..327)@261..347)@248..347)@145..347

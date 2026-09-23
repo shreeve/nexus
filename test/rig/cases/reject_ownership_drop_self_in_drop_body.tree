@@ -1,5 +1,7 @@
 (module
   (struct
     `Owner`
-    (: `cell` (shared (generic_inst `Cell` `Int`)))
-    (drop_decl ((: `self` (borrow_write `Owner`))) (block (drop `self`)))))
+    (: `cell` (shared (generic_inst `Cell` `Int`)@57..66)@56..66)@50..66
+    (drop_decl
+      ((: `self` (borrow_write `Owner`)@81..87)@75..87)@75..87
+      (block (drop `self`)@92..97)@92..152)@70..152)@35..152)@35..152

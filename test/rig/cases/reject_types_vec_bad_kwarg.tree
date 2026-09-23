@@ -1,2 +1,10 @@
 (module
-  (sub `main` () _ (block (set _ `v` (generic_inst `Vec` `Int`) (call `Vec` (kwarg `size` `10`))))))
+  (sub
+    `main`
+    ()@68..70
+    (block
+      (set
+        _
+        `v`
+        (generic_inst `Vec` `Int`)@76..84
+        (call `Vec` (kwarg `size` `10`)@91..99)@87..100)@73..100)@73..176)@60..176)@60..176

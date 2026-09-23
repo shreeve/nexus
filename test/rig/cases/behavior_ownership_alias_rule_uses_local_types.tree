@@ -1,16 +1,17 @@
 (module
-  (struct `Box` (: `value` `Int`))
+  (struct `Box` (: `value` `Int`)@184..194)@171..196
   (sub
     `holder`
-    ((: `rc` (shared `Box`)))
-    _
-    (block (call `print` (member `rc` `value`)) (drop `rc`)))
-  (sub `consumer` ((: `rc` `Int`)) _ (block (call `print` `rc`)))
+    ((: `rc` (shared `Box`)@211..215)@207..215)@206..216
+    (block (call `print` (member `rc` `value`)@225..233)@219..234 (drop `rc`)@237..240)@219..242)@196..242
+  (sub
+    `consumer`
+    ((: `rc` `Int`)@255..262)@254..263
+    (block (call `print` `rc`)@266..275)@266..277)@242..277
   (sub
     `main`
-    ()
-    _
+    ()@285..287
     (block
-      (set _ `b` _ (share (call `Box` (kwarg `value` `1`))))
-      (call `holder` (move `b`))
-      (call `consumer` `42`))))
+      (set _ `b` _ (share (call `Box` (kwarg `value` `1`)@299..307)@295..308)@294..308)@290..308
+      (call `holder` (move `b`)@318..320)@311..321
+      (call `consumer` `42`)@324..336)@290..357)@277..357)@171..357

@@ -1,6 +1,13 @@
 (module
   (struct
     `File`
-    (: `fd` `Int`)
-    (drop_decl ((: `self` (borrow_write `File`))) (block (call `print` (member `self` `fd`)))))
-  (sub `main` () _ (block (set _ `f` `File` (call `File` (kwarg `fd` `7`))) (call `print` `0`))))
+    (: `fd` `Int`)@103..110
+    (drop_decl
+      ((: `self` (borrow_write `File`)@125..130)@119..130)@119..130
+      (block (call `print` (member `self` `fd`)@141..148)@135..149)@135..151)@114..151)@89..151
+  (sub
+    `main`
+    ()@159..161
+    (block
+      (set _ `f` `File` (call `File` (kwarg `fd` `7`)@179..184)@174..185)@164..185
+      (call `print` `0`)@188..196)@164..271)@151..271)@89..271

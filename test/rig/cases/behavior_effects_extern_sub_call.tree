@@ -1,15 +1,14 @@
 (module
-  (extern_sub `srand` ((: `seed` `U32`)))
-  (extern_fun `rand` () `Int`)
+  (extern_sub `srand` ((: `seed` `U32`)@173..182)@172..183)@156..183
+  (extern_fun `rand` ()@199..201 `Int`)@184..208
   (sub
     `main`
-    ()
-    _
+    ()@218..220
     (block
       (raw_block
         (block
-          (call `srand` `7`)
-          (set _ `a` _ (call `rand`))
-          (call `srand` `7`)
-          (set _ `b` _ (call `rand`))
-          (call `print` (== `a` `b`)))))))
+          (call `srand` `7`)@231..239
+          (set _ `a` _ (call `rand`)@248..254)@244..254
+          (call `srand` `7`)@259..267
+          (set _ `b` _ (call `rand`)@276..282)@272..282
+          (call `print` (== `a` `b`)@293..299)@287..300)@231..319)@223..319)@223..319)@210..319)@156..319

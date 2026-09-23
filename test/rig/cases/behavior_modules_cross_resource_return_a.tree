@@ -1,4 +1,8 @@
 (module
-  (pub (struct `Box` (: `value` `Int`)))
+  (pub (struct `Box` (: `value` `Int`)@17..27)@4..29)@0..29
   (pub
-    (fun `make_box` ((: `v` `Int`)) (shared `Box`) (block (share (call `Box` (kwarg `value` `v`)))))))
+    (fun
+      `make_box`
+      ((: `v` `Int`)@46..52)@45..53
+      (shared `Box`)@57..61
+      (block (share (call `Box` (kwarg `value` `v`)@69..77)@65..78)@64..78)@64..79)@33..79)@29..79)@0..79

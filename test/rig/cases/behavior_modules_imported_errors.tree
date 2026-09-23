@@ -1,15 +1,19 @@
 (module
-  (use `parsing`)
+  (use `parsing`)@160..171
   (fun
     `checked`
-    ((: `s` `String`))
-    (error_union `Int`)
+    ((: `s` `String`)@185..194)@184..195
+    (error_union `Int`)@199..203
     (block
-      (if (== `s` `"?"`) (block (return (member (member `parsing` `ParseError`) `empty`))))
-      (propagate (call (member `parsing` `parse`) `s`))))
+      (if
+        (== `s` `"?"`)@241..249
+        (block
+          (return (member (member `parsing` `ParseError`)@213..231 `empty`)@213..237)@206..237)@206..237
+        _)@206..249
+      (propagate (call (member `parsing` `parse`)@252..265 `s`)@252..268)@252..269)@206..271)@173..271
   (fun
     `name`
-    ((: `s` `String`))
+    ((: `s` `String`)@280..289)@279..290
     `String`
     (block
       (set
@@ -17,28 +21,30 @@
         `n`
         _
         (catch
-          (call `checked` `s`)
+          (call `checked` `s`)@307..317
           `err`
           (block
             (match
               `err`
-              (arm (enum_lit `empty`) (return `"empty"`))
-              (arm (enum_lit `bad_digit`) (return `"bad digit"`))
-              (arm `else` (return `"other"`))))))
-      `"ok"`))
+              (arm (enum_lit `empty`)@350..356 (return `"empty"`)@360..374)@350..374
+              (arm (enum_lit `bad_digit`)@381..391 (return `"bad digit"`)@395..413)@381..413
+              (arm `else` (return `"other"`)@428..442)@420..442)@334..445)@334..445)@307..445)@303..445
+      `"ok"`)@303..451)@271..451
   (sub
     `main`
-    ()
-    _
+    ()@459..461
     (block
       (call
         `print`
-        (call `name` `""`)
-        (call `name` `"x"`)
-        (call `name` `"?"`)
-        (call `name` `"abc"`))
-      (set _ `e` (member `parsing` `ParseError`) (enum_lit `bad_digit`))
+        (call `name` `""`)@470..478
+        (call `name` `"x"`)@480..489
+        (call `name` `"?"`)@491..500
+        (call `name` `"abc"`)@502..513)@464..514
+      (set _ `e` (member `parsing` `ParseError`)@520..538 (enum_lit `bad_digit`)@541..551)@517..551
       (call
         `print`
         `e`
-        (catch (call (member `parsing` `parse`) `"x"`) `err` (if (== `err` `e`) `1` `2`))))))
+        (catch
+          (call (member `parsing` `parse`)@563..576 `"x"`)@563..581
+          `err`
+          (if (== `err` `e`)@599..607 `1` `2`)@594..614)@563..614)@554..615)@464..669)@451..669)@160..669

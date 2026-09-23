@@ -1,14 +1,20 @@
 (module
-  (errors `ParseError` `empty`)
+  (errors `ParseError` `empty`)@113..139
   (fun
     `parse_len`
-    ((: `s` `String`))
-    (error_union `Int`)
-    (block (if (== `s` `""`) (block (return (member `ParseError` `empty`)))) (member `s` `len`)))
+    ((: `s` `String`)@153..162)@152..163
+    (error_union `Int`)@167..171
+    (block
+      (if
+        (== `s` `""`)@177..184
+        (block (return (member `ParseError` `empty`)@196..212)@189..212)@189..215
+        _)@174..215
+      (member `s` `len`)@215..220)@174..222)@139..222
   (sub
     `main`
-    ()
-    _
+    ()@230..232
     (block
-      (call `print` (catch (call `parse_len` `"abc"`) _ (neg `1`)))
-      (call `print` (catch (call `parse_len` `""`) _ (neg `1`))))))
+      (call
+        `print`
+        (catch (call `parse_len` `"abc"`)@241..257 _ (neg `1`)@264..266)@241..266)@235..267
+      (call `print` (catch (call `parse_len` `""`)@276..289 _ (neg `1`)@296..298)@276..298)@270..299)@235..320)@222..320)@113..320

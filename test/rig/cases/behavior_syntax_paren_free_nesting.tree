@@ -1,14 +1,28 @@
 (module
-  (fun `add` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ `a` `b`)))
-  (fun `double` ((: `n` `Int`)) `Int` (block (* `n` `2`)))
+  (fun
+    `add`
+    ((: `a` `Int`)@185..191 (: `b` `Int`)@193..199)@184..200
+    `Int`
+    (block (+ `a` `b`)@210..215)@210..217)@177..217
+  (fun
+    `double`
+    ((: `n` `Int`)@228..234)@227..235
+    `Int`
+    (block (* `n` `2`)@245..250)@245..252)@217..252
   (sub
     `main`
-    ()
-    _
+    ()@260..262
     (block
-      (call `print` (call `add` `1` `2`))
-      (call `print` (call `double` (call `add` `3` `4`)))
-      (call `print` (call `add` `1` (call `double` `5`)))
-      (set _ `n` _ `6`)
-      (set _ `show` _ (lambda ((cap_clone `n`)) _ _ (block (call `print` `n`))))
-      (call `show`))))
+      (call `print` (call `add` `1` `2`)@271..279)@265..279
+      (call `print` (call `double` (call `add` `3` `4`)@295..303)@288..303)@282..303
+      (call `print` (call `add` `1` (call `double` `5`)@319..327)@312..327)@306..327
+      (set _ `n` _ `6`)@330..335
+      (set
+        _
+        `show`
+        _
+        (lambda
+          _
+          ((cap_clone `n`)@346..348)@345..349
+          (block (call `print` `n`)@350..357)@350..357)@345..357)@338..357
+      (call `show`)@360..366)@265..396)@252..396)@177..396

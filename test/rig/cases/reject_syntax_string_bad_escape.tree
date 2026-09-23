@@ -1,9 +1,8 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@80..82
     (block
-      (call `print` `"bad \\q escape"`)
-      (call `print` `"\\x4g"`)
-      (call `print` `"\\u{110000}"`))))
+      (call `print` `"bad \\q escape"`)@85..107
+      (call `print` `"\\x4g"`)@110..123
+      (call `print` `"\\u{110000}"`)@126..145)@85..270)@72..270)@72..270

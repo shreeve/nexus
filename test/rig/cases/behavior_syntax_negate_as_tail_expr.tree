@@ -1,3 +1,6 @@
 (module
-  (fun `neg` ((: `x` `Int`)) `Int` (block (drop `x`)))
-  (sub `main` () _ (block (call `print` (call `neg` `3`)))))
+  (fun `neg` ((: `x` `Int`)@76..82)@75..83 `Int` (block (drop `x`)@93..95)@93..97)@68..97
+  (sub
+    `main`
+    ()@105..107
+    (block (call `print` (call `neg` `3`)@116..122)@110..123)@110..140)@97..140)@68..140

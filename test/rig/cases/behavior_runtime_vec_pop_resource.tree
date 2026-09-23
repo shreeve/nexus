@@ -1,26 +1,35 @@
 (module
   (struct
     `B`
-    (: `n` `Int`)
-    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
+    (: `n` `Int`)@173..179
+    (drop_decl
+      ((: `self` (borrow_write `B`)@194..196)@188..196)@188..196
+      (block (call `print` `"drop"` (member `self` `n`)@215..221)@201..222)@201..224)@183..224)@162..224
   (sub
     `main`
-    ()
-    _
+    ()@232..234
     (block
-      (set _ `v` (generic_inst `Vec` (shared `B`)) (call `Vec`))
+      (set _ `v` (generic_inst `Vec` (shared `B`)@244..246)@240..247 (call `Vec`)@250..255)@237..255
       (for
         iter
         `i`
         _
-        (.. `0` `4`)
-        (block (call (member (write `v`) `push`) (share (call `B` (kwarg `n` `i`))))))
-      (set _ `x` _ (call (member (write `v`) `pop`)))
-      (call `print` (== `x` `none`))
-      (if (as (call (member (write `v`) `pop`)) `y`) (block (call `print` `"y"` (member `y` `n`))))
-      (set _ `_` _ (call (member (write `v`) `pop`)))
+        (.. `0` `4`)@267..271
+        (block
+          (call
+            (member (write `v`)@277..279 `push`)@276..285
+            (share (call `B` (kwarg `n` `i`)@289..293)@287..294)@286..294)@276..295)@276..298
+        _)@258..298
+      (set _ `x` _ (call (member (write `v`)@303..305 `pop`)@302..310)@302..312)@298..312
+      (call `print` (== `x` `none`)@321..330)@315..331
+      (if
+        (as (call (member (write `v`)@338..340 `pop`)@337..345)@337..347 `y`)@337..352
+        (block (call `print` `"y"` (member `y` `n`)@368..371)@357..372)@357..375
+        _)@334..375
+      (set _ `_` _ (call (member (write `v`)@380..382 `pop`)@379..387)@379..389)@375..389
       (while
-        (as (call (member (write `v`) `pop`)) `z`)
+        (as (call (member (write `v`)@399..401 `pop`)@398..406)@398..408 `z`)@398..413
         _
-        (block (call `print` `"z"` (member `z` `n`))))
-      (call `print` `"end"` (call (member `v` `length`))))))
+        (block (call `print` `"z"` (member `z` `n`)@429..432)@418..433)@418..436
+        _)@392..436
+      (call `print` `"end"` (call (member `v` `length`)@449..457)@449..459)@436..460)@237..536)@224..536)@162..536

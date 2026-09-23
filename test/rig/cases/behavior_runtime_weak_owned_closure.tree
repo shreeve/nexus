@@ -1,40 +1,67 @@
 (module
-  (struct `H` (: `cb` (weak (fun_type))))
+  (struct `H` (: `cb` (weak (fun_type _ _)@209..214)@208..214)@204..214)@193..216
   (sub
     `call`
-    ((: `w` (borrow_read (weak (fun_type)))))
-    _
+    ((: `w` (borrow_read (weak (fun_type _ _)@230..235)@229..235)@228..235)@225..235)@224..236
     (block
-      (if (as (call (member `w` `upgrade`)) `g`) (block (call `g`)) (block (call `print` `"gone"`)))))
+      (if
+        (as (call (member `w` `upgrade`)@242..251)@242..253 `g`)@242..258
+        (block (call `g`)@263..266)@263..269
+        (block (call `print` `"gone"`)@278..291)@278..293)@239..293)@239..293)@216..293
   (sub
     `main`
-    ()
-    _
+    ()@301..303
     (block
-      (set _ `f` (shared (fun_type (`Int`) `Int`)) (share (lambda (`a`) _ _ (block (+ `a` `1`)))))
+      (set
+        _
+        `f`
+        (shared (fun_type (`Int`)@314..317 `Int`)@310..322)@309..322
+        (share (lambda _ (`a`)@326..329 (block (+ `a` `1`)@330..335)@330..335)@326..335)@325..335)@306..335
       (set
         _
         `g`
-        (shared (fun_type (`Int`) `Int`))
+        (shared (fun_type (`Int`)@346..349 `Int`)@342..354)@341..354
         (share
           (lambda
-            ((cap_weak `f`) `a`)
             _
-            _
+            ((cap_weak `f`)@359..361 `a`)@358..365
             (block
-              (if (as (call (member `f` `upgrade`)) `h`) (block (return (* (call `h` `a`) `10`))))
-              `0`))))
-      (set _ `w` (weak (fun_type (`Int`) `Int`)) (weak `f`))
+              (if
+                (as (call (member `f` `upgrade`)@373..382)@373..384 `h`)@373..389
+                (block (return (* (call `h` `a`)@403..407 `10`)@403..412)@396..412)@396..417
+                _)@370..417
+              `0`)@370..421)@358..421)@357..421)@338..421
+      (set
+        _
+        `w`
+        (weak (fun_type (`Int`)@429..432 `Int`)@425..437)@424..437
+        (weak `f`)@440..442)@421..442
       (if
-        (as (call (member `w` `upgrade`)) `h`)
-        (block (call `print` (call `h` `1`) (call `g` `1`))))
-      (drop `f`)
-      (call `print` (call `g` `1`))
-      (set _ `s` (shared (fun_type)) (share (lambda () _ _ (block (call `print` `"hi"`)))))
-      (set _ `holder` _ (call `H` (kwarg `cb` (weak `s`))))
-      (call `call` (read (member `holder` `cb`)))
-      (set _ `v` (generic_inst `Vec` (weak (fun_type))) (call `Vec`))
-      (call (member (write `v`) `push`) (weak `s`))
-      (for iter `x` _ (read `v`) (block (call `call` (read `x`))))
-      (drop `s`)
-      (call `call` (read (member `holder` `cb`))))))
+        (as (call (member `w` `upgrade`)@448..457)@448..459 `h`)@448..464
+        (block (call `print` (call `h` `1`)@475..479 (call `g` `1`)@481..485)@469..486)@469..489
+        _)@445..489
+      (drop `f`)@489..491
+      (call `print` (call `g` `1`)@500..504)@494..505
+      (set
+        _
+        `s`
+        (shared (fun_type _ _)@513..518)@512..518
+        (share
+          (lambda _ ()@522..524 (block (call `print` `"hi"`)@525..536)@525..536)@522..536)@521..536)@509..536
+      (set _ `holder` _ (call `H` (kwarg `cb` (weak `s`)@554..556)@550..556)@548..557)@539..557
+      (call `call` (read (member `holder` `cb`)@566..575)@565..575)@560..576
+      (set
+        _
+        `v`
+        (generic_inst `Vec` (weak (fun_type _ _)@587..592)@586..592)@582..593
+        (call `Vec`)@596..601)@579..601
+      (call (member (write `v`)@605..607 `push`)@604..613 (weak `s`)@614..616)@604..617
+      (for
+        iter
+        `x`
+        _
+        (read `v`)@629..631
+        (block (call `call` (read `x`)@641..643)@636..644)@636..647
+        _)@620..647
+      (drop `s`)@647..649
+      (call `call` (read (member `holder` `cb`)@658..667)@657..667)@652..668)@306..708)@293..708)@193..708

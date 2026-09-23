@@ -1,24 +1,36 @@
 (module
-  (enum `Sign` `plus` `minus`)
+  (enum `Sign` `plus` `minus`)@184..210
   (fun
     `pick`
-    ((: `c` `Bool`) (: `x` `Int`))
+    ((: `c` `Bool`)@219..226 (: `x` `Int`)@228..234)@218..235
     `Int`
-    (block (set _ `y` _ (if `c` (block (drop `x`)) (block `x`))) `y`))
+    (block
+      (set
+        _
+        `y`
+        _
+        (if `c` (block (drop `x`)@258..260)@258..263 (block `x`)@272..276)@249..276)@245..276
+      `y`)@245..279)@210..279
   (fun
     `apply`
-    ((: `s` `Sign`) (: `n` `Int`))
+    ((: `s` `Sign`)@289..296 (: `n` `Int`)@298..304)@288..305
     `Int`
     (block
-      (match `s` (arm (enum_lit `plus`) (block `n`)) (arm (enum_lit `minus`) (block (drop `n`))))))
-  (fun `tail` ((: `x` `Int`)) `Int` (block (+ (neg `x`) `1`)))
+      (match
+        `s`
+        (arm (enum_lit `plus`)@327..332 (block `n`)@339..345)@327..345
+        (arm (enum_lit `minus`)@345..351 (block (drop `n`)@358..360)@358..362)@345..362)@315..362)@315..362)@279..362
+  (fun
+    `tail`
+    ((: `x` `Int`)@371..377)@370..378
+    `Int`
+    (block (+ (neg `x`)@388..390 `1`)@388..394)@388..396)@362..396
   (sub
     `main`
-    ()
-    _
+    ()@404..406
     (block
-      (call `print` (call `pick` `true` `4`))
-      (call `print` (call `pick` `false` `4`))
-      (call `print` (call `apply` (enum_lit `minus`) `5`))
-      (call `print` (call `apply` (enum_lit `plus`) `5`))
-      (call `print` (call `tail` `3`)))))
+      (call `print` (call `pick` `true` `4`)@415..428)@409..428
+      (call `print` (call `pick` `false` `4`)@437..451)@431..451
+      (call `print` (call `apply` (enum_lit `minus`)@466..472 `5`)@460..476)@454..476
+      (call `print` (call `apply` (enum_lit `plus`)@491..496 `5`)@485..500)@479..500
+      (call `print` (call `tail` `3`)@509..516)@503..516)@409..551)@396..551)@184..551

@@ -1,19 +1,24 @@
 (module
   (struct
     `Noisy`
-    (: `id` `Int`)
+    (: `id` `Int`)@107..114
     (drop_decl
-      ((: `self` (borrow_write `Noisy`)))
-      (block (call `print` `"drop"` (member `self` `id`)))))
-  (sub `eat` ((: `n` (shared `Noisy`))) _ (block (call `print` `"eat"` (member `n` `id`))))
+      ((: `self` (borrow_write `Noisy`)@129..135)@123..135)@123..135
+      (block (call `print` `"drop"` (member `self` `id`)@154..161)@140..162)@140..164)@118..164)@92..164
+  (sub
+    `eat`
+    ((: `n` (shared `Noisy`)@175..181)@172..181)@171..182
+    (block (call `print` `"eat"` (member `n` `id`)@198..202)@185..203)@185..205)@164..205
   (sub
     `main`
-    ()
-    _
+    ()@213..215
     (block
-      (set _ `rc` _ (share (call `Noisy` (kwarg `id` `1`))))
-      (set _ `w` _ (weak `rc`))
+      (set _ `rc` _ (share (call `Noisy` (kwarg `id` `1`)@230..235)@224..236)@223..236)@218..236
+      (set _ `w` _ (weak `rc`)@243..246)@239..246
       (if
-        (as (call (member `w` `upgrade`)) `n`)
-        (block (call `eat` (move `n`)) (call `print` `"after eat"`)))
-      (call `print` `"end"`))))
+        (as (call (member `w` `upgrade`)@252..261)@252..263 `n`)@252..268
+        (block
+          (call `eat` (move `n`)@277..279)@273..280
+          (call `print` `"after eat"`)@285..303)@273..306
+        _)@249..306
+      (call `print` `"end"`)@306..318)@218..365)@205..365)@92..365

@@ -1,10 +1,9 @@
 (module
-  (struct `User` (: `age` `Int`))
+  (struct `User` (: `age` `Int`)@72..80)@58..82
   (sub
     `main`
-    ()
-    _
+    ()@90..92
     (block
-      (set _ `rc` _ (share (call `User` (kwarg `age` `1`))))
-      (set _ (member `rc` `age`) _ `99`)
-      (drop `rc`))))
+      (set _ `rc` _ (share (call `User` (kwarg `age` `1`)@106..112)@101..113)@100..113)@95..113
+      (set _ (member `rc` `age`)@116..122 _ `99`)@116..127
+      (drop `rc`)@130..133)@95..180)@82..180)@58..180

@@ -1,15 +1,20 @@
 (module
   (struct
     `P`
-    (: `n` `Int`)
-    (drop_decl ((: `self` (borrow_write `P`))) (block (call `print` `"drop"` (member `self` `n`)))))
-  (generic_type `Box` (`T`) (: `value` `T`))
+    (: `n` `Int`)@108..114
+    (drop_decl
+      ((: `self` (borrow_write `P`)@129..131)@123..131)@123..131
+      (block (call `print` `"drop"` (member `self` `n`)@150..156)@136..157)@136..159)@118..159)@97..159
+  (generic_type `Box` (`T`)@167..170 (: `value` `T`)@173..181)@159..183
   (sub
     `main`
-    ()
-    _
+    ()@191..193
     (block
-      (set _ `h` (shared `P`) (share (call `P` (kwarg `n` `5`))))
+      (set
+        _
+        `h`
+        (shared `P`)@199..201
+        (share (call `P` (kwarg `n` `5`)@207..211)@205..212)@204..212)@196..212
       (set
         _
         `b`
@@ -27,7 +32,11 @@
                     `Box`
                     (generic_inst
                       `Box`
-                      (generic_inst `Box` (generic_inst `Box` (generic_inst `Box` (shared `P`)))))))))))
+                      (generic_inst
+                        `Box`
+                        (generic_inst
+                          `Box`
+                          (generic_inst `Box` (shared `P`)@258..260)@254..261)@250..262)@246..263)@242..264)@238..265)@234..266)@230..267)@226..268)@222..269)@218..270
         (call
           `Box`
           (kwarg
@@ -62,8 +71,12 @@
                                         `value`
                                         (call
                                           `Box`
-                                          (kwarg `value` (call `Box` (kwarg `value` (move `h`))))))))))))))))))))))
-      (set _ `c` _ (move `b`))
+                                          (kwarg
+                                            `value`
+                                            (call
+                                              `Box`
+                                              (kwarg `value` (move `h`)@383..385)@376..385)@372..386)@365..386)@361..387)@354..387)@350..388)@343..388)@339..389)@332..389)@328..390)@321..390)@317..391)@310..391)@306..392)@299..392)@295..393)@288..393)@284..394)@277..394)@273..395)@215..395
+      (set _ `c` _ (move `b`)@402..404)@398..404
       (call
         `print`
         (member
@@ -73,11 +86,15 @@
                 (member
                   (member
                     (member
-                      (member (member (member (member `c` `value`) `value`) `value`) `value`)
-                      `value`)
-                    `value`)
-                  `value`)
-                `value`)
-              `value`)
-            `value`)
-          `n`)))))
+                      (member
+                        (member
+                          (member (member `c` `value`)@413..420 `value`)@413..426
+                          `value`)@413..432
+                        `value`)@413..438
+                      `value`)@413..444
+                    `value`)@413..450
+                  `value`)@413..456
+                `value`)@413..462
+              `value`)@413..468
+            `value`)@413..474
+          `n`)@413..476)@407..477)@196..502)@183..502)@97..502

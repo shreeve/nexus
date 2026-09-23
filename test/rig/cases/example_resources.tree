@@ -1,15 +1,25 @@
 (module
   (struct
     `Owner`
-    (: `cell` (shared (generic_inst `Cell` `Int`)))
+    (: `cell` (shared (generic_inst `Cell` `Int`)@199..208)@198..208)@192..208
     (drop_decl
-      ((: `self` (borrow_write `Owner`)))
-      (block (call `print` (call (member (member `self` `cell`) `get`))))))
+      ((: `self` (borrow_write `Owner`)@223..229)@217..229)@217..229
+      (block
+        (call
+          `print`
+          (call (member (member `self` `cell`)@240..249 `get`)@240..253)@240..255)@234..256)@234..258)@212..258)@177..258
   (sub
     `main`
-    ()
-    _
+    ()@266..268
     (block
-      (set _ `c` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `42`))))
-      (set _ `o` `Owner` (call `Owner` (kwarg `cell` (move `c`))))
-      (call `print` `0`))))
+      (set
+        _
+        `c`
+        (shared (generic_inst `Cell` `Int`)@275..284)@274..284
+        (share (call `Cell` (kwarg `value` `42`)@293..302)@288..303)@287..303)@271..303
+      (set
+        _
+        `o`
+        `Owner`
+        (call `Owner` (kwarg `cell` (move `c`)@329..331)@323..331)@317..332)@306..332
+      (call `print` `0`)@335..343)@271..440)@258..440)@177..440

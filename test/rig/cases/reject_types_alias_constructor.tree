@@ -1,1 +1,6 @@
-(module (type `N` `Int`) (sub `main` () _ (block (set _ `x` _ (call `N` `5`)) (call `print` `x`))))
+(module
+  (type `N` `Int`)@97..109
+  (sub
+    `main`
+    ()@119..121
+    (block (set _ `x` _ (call `N` `5`)@128..132)@124..132 (call `print` `x`)@135..143)@124..158)@111..158)@97..158

@@ -1,12 +1,17 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@135..137
     (block
-      (set _ `big` _ `1.0e10`)
-      (set _ `small` _ `2e-3`)
-      (set _ `mid` _ `1.5E+2`)
-      (set _ `typed` `Float` `3e2`)
-      (set _ `hex` _ `0xE1`)
-      (call `print` (/ `big` `1e9`) (* `small` `1000.0`) `mid` `typed` `hex`))))
+      (set _ `big` _ `1.0e10`)@140..152
+      (set _ `small` _ `2e-3`)@155..167
+      (set _ `mid` _ `1.5E+2`)@170..182
+      (set _ `typed` `Float` `3e2`)@185..203
+      (set _ `hex` _ `0xE1`)@206..216
+      (call
+        `print`
+        (/ `big` `1e9`)@225..234
+        (* `small` `1000.0`)@236..250
+        `mid`
+        `typed`
+        `hex`)@219..268)@140..299)@127..299)@127..299

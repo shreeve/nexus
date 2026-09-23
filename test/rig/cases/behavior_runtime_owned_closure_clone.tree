@@ -1,22 +1,27 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@194..196
     (block
-      (set _ `count` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `count`
+        (shared (generic_inst `Cell` `Int`)@207..216)@206..216
+        (share (call `Cell` (kwarg `value` `0`)@225..233)@220..234)@219..234)@199..234
       (set
         _
         `cb`
-        (shared (fun_type))
+        (shared (fun_type _ _)@242..247)@241..247
         (share
           (lambda
-            ((cap_clone `count`))
             _
-            _
-            (block (call (member `count` `set`) (+ (call (member `count` `get`)) `1`))))))
-      (set _ `cb2` _ (clone `cb`))
-      (drop `cb`)
-      (call `cb2`)
-      (call `cb2`)
-      (call `print` (call (member `count` `get`))))))
+            ((cap_clone `count`)@252..258)@251..259
+            (block
+              (call
+                (member `count` `set`)@260..269
+                (+ (call (member `count` `get`)@270..279)@270..281 `1`)@270..285)@260..286)@260..286)@251..286)@250..286)@237..286
+      (set _ `cb2` _ (clone `cb`)@295..298)@289..298
+      (drop `cb`)@301..304
+      (call `cb2`)@307..312
+      (call `cb2`)@315..320
+      (call `print` (call (member `count` `get`)@329..338)@329..340)@323..341)@199..376)@186..376)@186..376

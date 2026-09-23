@@ -1,9 +1,20 @@
 (module
   (fun
     `first_over`
-    ((: `limit` `Int`))
+    ((: `limit` `Int`)@97..107)@96..108
     `Int`
     (block
-      (set _ `x` _ `0`)
-      (while `true` (set += `x` _ `1`) (block (if (> (* `x` `x`) `limit`) (block (return `x`)))))))
-  (sub `main` () _ (block (call `print` (call `first_over` `50`)))))
+      (set _ `x` _ `0`)@118..123
+      (while
+        `true`
+        (set += `x` _ `1`)@139..145
+        (block
+          (if
+            (> (* `x` `x`)@153..158 `limit`)@153..166
+            (block (return `x`)@173..181)@173..183
+            _)@150..183)@150..183
+        _)@126..183)@118..183)@82..183
+  (sub
+    `main`
+    ()@191..193
+    (block (call `print` (call `first_over` `50`)@202..216)@196..217)@196..233)@183..233)@82..233

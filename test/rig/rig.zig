@@ -11,13 +11,14 @@
 //! so `parser.Parser.init(allocator, source).parseProgram()` returns the
 //! semantic IR described in docs/INTERNALS.md.
 //!
-//! Also here: the IR `Tag` enum, `BindingKind`, and the identifier
+//! Also here: `Tag` (re-exported from the generated parser), IR helpers
+//! over the generated accessors, `BindingKind`, and the identifier
 //! escaping that emit needs (`writeZigIdent`).
 
 const std = @import("std");
 const parser = @import("parser.zig");
 const diag = @import("diag.zig");
-const ir = @import("ir.zig");
+const ir = parser.ir;
 const BaseLexer = parser.BaseLexer;
 const BaseParser = parser.BaseParser;
 const Token = parser.Token;
@@ -25,147 +26,31 @@ const TokenCat = parser.TokenCat;
 const Sexp = parser.Sexp;
 
 // =============================================================================
-// Tag — IR node heads and marker tags
+// Tag and IR helpers
 // =============================================================================
 
-/// Node shapes are defined in `ir.zig`; an absent optional slot is `_`.
-pub const Tag = enum(u8) {
-    // Declarations
-    @"module",
-    @"use",
-    @"fun",
-    @"sub",
-    @"lambda",
-    @"struct",
-    @"enum",
-    @"errors",
-    @"type",            // type alias: (type Name T)
-    @"generic_type",    // (generic_type Name params-or-_ members...)
-    @"generic_enum",    // (generic_enum Name params members...)
-    @"test",
-    @"pub",
-    @"extern",          // (extern _ name T): extern variable
-    @"extern_fun",      // (extern_fun name params returns)
-    @"extern_sub",      // (extern_sub name params)
-    @"drop_decl",       // (drop_decl (param) block): user-defined drop
-    @"zig",             // reserved: rejected by sema
-    @"labeled",         // (labeled name stmt)
+/// Every node kind and marker tag of the IR, generated from the `@schema`
+/// in rig.grammar (which also gives each kind's roles).
+pub const Tag = parser.Tag;
 
-    // Members and parameters
-    @":",               // (: name T)
-    @"default",         // (default name T expr)
-    @"valued",          // enum member with a value: (valued name expr)
-    @"variant",         // payload variant: (variant name params)
-    @"pre_param",       // (pre_param name T)
+/// The declared return type of a `fun`; `_` for a `sub`, which has none.
+pub fn returnType(fun_or_sub: Sexp) Sexp {
+    return if (fun_or_sub.isKind(.@"fun")) ir.Fun.returns(fun_or_sub) else .nil;
+}
 
-    // Bindings: (set <kind> target type-or-_ expr); see BindingKind.
-    @"set",
-    @"fixed",
-    @"shadow",
-    @"+=",
-    @"-=",
-    @"*=",
-    @"/=",
-    @"%=",
-    @"&=",
-    @"|=",
-    @"^=",
-    @"<<=",
-    @">>=",
-    @"drop",            // (drop name): `-name` statement
-
-    // Control flow
-    @"if",              // (if cond then else): block if, ternary, guard
-    @"as",              // (as expr name): optional binding in an if/while condition
-    @"while",           // (while cond step body else)
-    @"for",             // (for mode binding index source body else)
-    @"iter",            // for modes
-    @"ptr",
-    @"match",
-    @"arm",             // (arm pattern body)
-    @"range_pattern",
-    @"variant_pattern", // .circle(r)
-    @"enum_lit",        // .red
-    @"return",
-    @"break",           // (break value label)
-    @"continue",        // (continue label)
-    @"defer",
-    @"errdefer",
-    @"raw_block",
-    @"pre_block",       // reserved: rejected by sema
-    @"pre",             // reserved: rejected by sema
-    @"try_block",       // reserved: rejected by sema
-    @"catch_block",
-    @"catch",           // (catch expr name handler)
-    @"propagate",       // expr!
-    @"block",
-
-    // Closures
-    @"captures",
-    @"cap_clone",       // |+x|
-    @"cap_weak",        // |~x|
-    @"cap_move",        // |<x|
-
-    // Calls and access
-    @"call",
-    @"builtin",         // @name(args)
-    @"member",
-    @"index",
-    @"array",
-    @"kwarg",
-
-    // Operators
-    @"+",
-    @"-",
-    @"*",
-    @"/",
-    @"%",
-    @"neg",
-    @"not",
-    @"and",
-    @"or",
-    @"==",
-    @"!=",
-    @"<",
-    @">",
-    @"<=",
-    @">=",
-    @"&",
-    @"|",
-    @"^",
-    @"<<",
-    @">>",
-    @"??",
-    @"..",
-
-    // Ownership sigils in expression position
-    @"move",            // <x
-    @"read",            // ?x
-    @"write",           // !x
-    @"clone",           // +x
-    @"share",           // *x
-    @"weak",            // ~x (also ~T in type position)
-    @"pin",             // @x, reserved
-
-    // Types
-    @"optional",        // T?
-    @"error_union",     // T!
-    @"borrow_read",     // ?T
-    @"borrow_write",    // !T
-    @"shared",          // *T
-    @"generic_inst",    // Box(Int)
-    @"slice",           // []T
-    @"array_type",      // [N]T
-    @"fun_type",        // fun(A, B) R
-
-    _,
-};
+/// Every child of a node, in slot order (absent optional slots are `_`),
+/// for passes that visit all of them; empty for a leaf. Passes that need
+/// a particular child read it by role (`parser.ir`).
+pub fn children(node: Sexp) []const Sexp {
+    if (node.kind() == null) return &.{};
+    return node.items()[1..];
+}
 
 // =============================================================================
-// BindingKind — the kind slot of (set <kind> ...)
+// BindingKind — the op slot of (set <op> ...)
 // =============================================================================
 
-/// Exhaustive view of the kind slot, so dispatch sites must handle every
+/// Exhaustive view of the op slot, so dispatch sites must handle every
 /// kind: `_` → default, `fixed` (`=!`), `shadow` (`new x =`), `move`
 /// (`<-`), and the compound assignments (`x op= e`, one per binary
 /// arithmetic, bitwise, and shift operator).
@@ -206,7 +91,7 @@ pub const BindingKind = enum {
 
 pub const BindingKindError = error{InvalidBindingKind};
 
-/// Decode the kind slot of `(set <kind> ...)`. An unknown kind means the
+/// Decode the op slot of `(set <op> ...)`. An unknown op means the
 /// IR is corrupt, so it is an error rather than a silent default.
 pub fn bindingKindOf(kind_slot: Sexp) BindingKindError!BindingKind {
     if (kind_slot == .nil) return .default;
@@ -993,58 +878,44 @@ pub const Parser = struct {
 
     /// Parse without the IR rewrites: the grammar's own output.
     pub fn parseTree(self: *Parser) !Sexp {
-        // A file with no statements is an empty module; the grammar's
-        // `program` needs at least one.
-        if (self.base.current.cat == .eof) {
-            const empty = try self.allocator().alloc(Sexp, 1);
-            empty[0] = .{ .tag = .@"module" };
-            return Sexp.listOf(empty);
-        }
         const tree = try self.base.parseProgram();
-        if (tooDeep(tree, 0)) |pos| {
-            self.failure = .{ .severity = .@"error", .pos = pos, .message = "expression is nested too deeply" };
+        if (tooDeep(tree, 0)) |deep| {
+            const at = self.span(deep);
+            self.failure = .{ .severity = .@"error", .pos = at.start, .end = at.end, .message = "expression is nested too deeply" };
             return error.ParseError;
         }
         return tree;
     }
 
-    /// Position inside the first subtree nested deeper than
-    /// `max_tree_depth`, or null.
-    fn tooDeep(sexp: Sexp, depth: u32) ?u32 {
-        const items = switch (sexp) {
-            .list => |l| l.items(),
-            else => return null,
-        };
-        if (depth == max_tree_depth) return firstPos(sexp);
-        for (items) |item| if (tooDeep(item, depth + 1)) |pos| return pos;
+    /// The source span of a node (see `BaseParser.span`).
+    pub fn span(self: *const Parser, sexp: Sexp) parser.Span {
+        return self.base.span(sexp);
+    }
+
+    /// The first subtree nested `max_tree_depth` deep, or null.
+    fn tooDeep(sexp: Sexp, depth: u32) ?Sexp {
+        if (sexp != .list) return null;
+        if (depth == max_tree_depth) return sexp;
+        for (sexp.items()) |item| if (tooDeep(item, depth + 1)) |deep| return deep;
         return null;
     }
 
-    /// The first source position in `sexp` (without recursion: the
-    /// subtree may be arbitrarily deep).
-    fn firstPos(sexp: Sexp) u32 {
-        var node = sexp;
-        descend: while (node == .list) {
-            for (node.list.items()) |item| if (item == .src) return item.src.pos;
-            for (node.list.items()) |item| if (item == .list) {
-                node = item;
-                continue :descend;
-            };
-            break;
-        }
-        return if (node == .src) node.src.pos else 0;
-    }
-
     /// Why parsing failed: at the token where the parser stopped, or the
-    /// rejected tree.
+    /// rejected tree. A token the parser did not expect is followed by
+    /// what it expected there, when that is a short list.
     pub fn diagnostic(self: *Parser) diag.Diagnostic {
         if (self.failure) |f| return f;
         const tok = self.base.current;
         const src = self.base.source;
+        var pos = tok.pos;
+        var end = tok.pos + tok.len;
         const message: []const u8 = switch (tok.cat) {
-            .err => self.base.lexer.err.message(),
-            .eof => return .{ .severity = .@"error", .pos = self.base.lexer.prev_end, .message = "unexpected end of file" },
-            .outdent => return .{ .severity = .@"error", .pos = self.base.lexer.prev_end, .message = "unexpected end of block" },
+            .err => return .{ .severity = .@"error", .pos = pos, .end = end, .message = self.base.lexer.err.message() },
+            .eof, .outdent => blk: {
+                pos = self.base.lexer.prev_end;
+                end = pos;
+                break :blk if (tok.cat == .eof) "unexpected end of file" else "unexpected end of block";
+            },
             .newline => "unexpected end of line",
             .indent => "unexpected indentation",
             .post_if => "a postfix `if` guard must end a statement; write `a if c else b` for a value",
@@ -1054,8 +925,47 @@ pub const Parser = struct {
             else
                 self.format("unexpected `{s}`", .{src[tok.pos..][0..tok.len]}),
         };
-        return .{ .severity = .@"error", .pos = tok.pos, .message = message };
+        const full = if (self.expectedHint()) |hint| self.format("{s}; expected {s}", .{ message, hint }) else message;
+        return .{ .severity = .@"error", .pos = pos, .end = end, .message = full };
     }
+
+    /// The generated parser's expected set where it stopped (its
+    /// `@display` and `@errors` names, distinct), or null when it names
+    /// more than a few things.
+    fn expectedHint(self: *Parser) ?[]const u8 {
+        var buf: [4096]u8 = undefined;
+        var w = std.Io.Writer.fixed(&buf);
+        self.base.writeError(&w) catch return null;
+        // `line:col: expected A, B or C, got D`
+        const text = w.buffered();
+        const from = (std.mem.indexOf(u8, text, ": expected ") orelse return null) + ": expected ".len;
+        const to = std.mem.lastIndexOf(u8, text, ", got ") orelse return null;
+        var names: [max_expected][]const u8 = undefined;
+        var count: usize = 0;
+        var rest = text[from..to];
+        while (rest.len > 0) {
+            const cut = std.mem.indexOf(u8, rest, ", ") orelse std.mem.indexOf(u8, rest, " or ") orelse rest.len;
+            const name = rest[0..cut];
+            rest = if (cut == rest.len) "" else rest[cut + (if (rest[cut] == ',') @as(usize, 2) else 4) ..];
+            for (names[0..count]) |n| {
+                if (std.mem.eql(u8, n, name)) break;
+            } else {
+                if (count == max_expected) return null;
+                names[count] = name;
+                count += 1;
+            }
+        }
+        if (count == 0) return null;
+        var out: std.Io.Writer.Allocating = .init(self.allocator());
+        for (names[0..count], 0..) |n, i| {
+            if (i > 0) out.writer.writeAll(if (i + 1 == count) " or " else ", ") catch return null;
+            out.writer.writeAll(n) catch return null;
+        }
+        return out.written();
+    }
+
+    /// The longest expected set a parse error lists.
+    const max_expected = 3;
 
     fn format(self: *Parser, comptime fmt: []const u8, args: anytype) []const u8 {
         return std.fmt.allocPrint(self.allocator(), fmt, args) catch "unexpected token";
@@ -1068,15 +978,17 @@ pub const Parser = struct {
     // -------------------------------------------------------------------------
     // Rewrites that need to inspect the tree:
     //
-    //   * every node gets all the slots its schema (`ir.zig`) gives it:
-    //     absent trailing optional slots become `_`;
+    //   * a closure's bar list (the grammar's `params`) splits into its
+    //     captures and parameters:
+    //       (lambda _ ((cap_clone v) a) _ body)  →  (lambda (captures (cap_clone v)) (a) _ body)
     //   * `for` source sigils move into the mode slot:
-    //       (for iter x _ (read xs) body)  →  (for read x _ xs body)
-    //   * a closure's bar list splits into its captures and parameters:
-    //       (lambda ((cap_clone v) a) ...)  →  (lambda (captures (cap_clone v)) (a) ...)
+    //       (for iter x _ (read xs) body _)  →  (for read x _ xs body _)
     //   * a `-name` statement whose value is used is negation, not a drop:
     //     the last statement of a `fun` body, or of a branch or arm whose
     //     value is used, becomes (neg name).
+    //
+    // Every rewritten node keeps its node id, and so its span; the new
+    // `captures` node gets its own (`newNode`).
     // -------------------------------------------------------------------------
 
     pub fn rewrite(self: *Parser, sexp: Sexp) std.mem.Allocator.Error!Sexp {
@@ -1084,77 +996,81 @@ pub const Parser = struct {
     }
 
     fn walk(self: *Parser, sexp: Sexp) std.mem.Allocator.Error!Sexp {
-        const items = switch (sexp) {
-            .list => |l| l.items(),
-            else => return sexp,
-        };
+        if (sexp != .list) return sexp;
+        const items = sexp.items();
         const walked = try self.allocator().alloc(Sexp, items.len);
         for (items, 0..) |child, i| walked[i] = try self.walk(child);
-        if (walked.len >= 2 and walked[0] == .tag and walked[0].tag == .@"lambda") try self.splitBars(walked);
-        const out = try ir.pad(self.allocator(), walked);
-        if (out.len == 0 or out[0] != .tag) return .{ .list = .withId(out, sexp.list.id) };
-        switch (out[0].tag) {
-            .@"for" => normFor(out),
-            // (fun name params returns body): the body's value is returned.
-            .@"fun" => if (out.len >= 5 and out[3] != .nil) valueTail(out[4]),
-            // (set kind target type expr): the expression's value is bound.
-            .@"set" => if (out.len >= 5) valueTail(out[4]),
+        const out: Sexp = .{ .list = parser.List.withId(walked, sexp.list.id) };
+        switch (out.kind() orelse return out) {
+            .@"lambda" => try self.splitBars(out, walked),
+            .@"for" => normFor(walked),
+            // The body's value is returned.
+            .@"fun" => if (ir.Fun.returns(out) != .nil) valueTail(ir.Fun.body(out)),
+            // The expression's value is bound.
+            .@"set" => valueTail(ir.Set.value(out)),
             else => {},
         }
-        return .{ .list = .withId(out, sexp.list.id) };
+        return out;
     }
 
-    /// `(lambda entries ...)`: sigiled entries are captures, the rest
-    /// parameters. Captures come first.
-    fn splitBars(self: *Parser, items: []Sexp) std.mem.Allocator.Error!void {
-        const entries: []const Sexp = if (items[1] == .list) items[1].list.items() else &.{};
+    /// `(lambda _ entries _ body)`: sigiled entries are captures, the
+    /// rest parameters. Captures come first.
+    fn splitBars(self: *Parser, node: Sexp, items: []Sexp) std.mem.Allocator.Error!void {
+        const bars = ir.Lambda.params(node);
         var caps: std.ArrayListUnmanaged(Sexp) = .empty;
         var params: std.ArrayListUnmanaged(Sexp) = .empty;
-        try caps.append(self.allocator(), .{ .tag = .@"captures" });
-        for (entries) |e| {
-            const is_capture = e == .list and e.list.len > 0 and e.items()[0] == .tag and switch (e.items()[0].tag) {
+        for (bars.items()) |e| {
+            const is_capture = if (e.kind()) |k| switch (k) {
                 .@"cap_clone", .@"cap_move", .@"cap_weak" => true,
                 else => false,
-            };
+            } else false;
             if (!is_capture) {
                 try params.append(self.allocator(), e);
                 continue;
             }
             if (params.items.len > 0 and self.failure == null) {
-                self.failure = .{ .severity = .@"error", .pos = firstPos(e), .message = "captures come before parameters in a closure's bar list: `|+v, a| ...`" };
+                const at = self.span(e);
+                self.failure = .{ .severity = .@"error", .pos = at.start, .end = at.end, .message = "captures come before parameters in a closure's bar list: `|+v, a| ...`" };
             }
             try caps.append(self.allocator(), e);
         }
-        items[1] = if (caps.items.len > 1) Sexp.listOf(caps.items) else .nil;
-        if (items.len >= 3) items[2] = if (params.items.len > 0) Sexp.listOf(params.items) else .nil;
+        items[ir.slot(.@"lambda", .captures)] = if (caps.items.len > 0) try self.base.newNode(.@"captures", caps.items, .{
+            .start = self.span(caps.items[0]).start,
+            .end = self.span(caps.items[caps.items.len - 1]).end,
+        }) else .nil;
+        items[ir.slot(.@"lambda", .params)] = if (params.items.len > 0) .{ .list = parser.List.withId(params.items, bars.list.id) } else .nil;
     }
 
     /// `sexp` (already walked, so its lists are freshly allocated) is in
     /// value position: a trailing `(drop x)` there is `(neg x)`.
     fn valueTail(sexp: Sexp) void {
-        if (sexp != .list or sexp.list.len == 0 or sexp.items()[0] != .tag) return;
+        const kind = sexp.kind() orelse return;
         const items = @constCast(sexp.items());
-        switch (items[0].tag) {
+        switch (kind) {
             .@"drop" => items[0] = .{ .tag = .@"neg" },
-            .@"block" => if (items.len >= 2) valueTail(items[items.len - 1]),
-            .@"if" => {
-                valueTail(items[2]);
-                valueTail(items[3]);
+            .@"block" => {
+                const stmts = ir.Block.stmts(sexp);
+                if (stmts.len > 0) valueTail(stmts[stmts.len - 1]);
             },
-            .@"match" => for (items[2..]) |arm| valueTail(arm.items()[2]),
+            .@"if" => {
+                valueTail(ir.If.then(sexp));
+                valueTail(ir.If.@"else"(sexp));
+            },
+            .@"match" => for (ir.Match.arms(sexp)) |arm| valueTail(ir.Arm.body(arm)),
             else => {},
         }
     }
 
     /// Promote the source's `?xs` / `!xs` / `<xs` wrapper into the mode.
     fn normFor(items: []Sexp) void {
-        if (items[1] != .tag or items[1].tag != .iter) return;
-        const source = items[4];
-        if (source != .list or source.list.len < 2 or source.items()[0] != .tag) return;
-        switch (source.items()[0].tag) {
+        const node = Sexp.listOf(items);
+        if (ir.For.mode(node).tag != .iter) return;
+        const source = ir.For.source(node);
+        const kind = source.kind() orelse return;
+        switch (kind) {
             .@"read", .@"write", .@"move" => {
-                items[1] = source.items()[0];
-                items[4] = source.items()[1];
+                items[ir.slot(.@"for", .mode)] = .{ .tag = kind };
+                items[ir.slot(.@"for", .source)] = ir.get(source, .operand);
             },
             else => {},
         }
@@ -1257,14 +1173,129 @@ test "writeZigIdent escapes Zig keywords and emitter names" {
 }
 
 test "parser: for-source sigil moves into the mode slot" {
-    var read_items = [_]Sexp{ .{ .tag = .@"read" }, .{ .str = "xs" } };
-    var raw_items = [_]Sexp{
-        .{ .tag = .@"for" },  .{ .tag = .iter }, .{ .str = "x" }, .nil,
-        Sexp.listOf(&read_items), .{ .str = "body" },
-    };
-    var p = Parser.init(testing.allocator, "");
+    var p = Parser.init(testing.allocator, "for x in ?xs\n  print(x)\n");
     defer p.deinit();
-    const out = try p.rewrite(Sexp.listOf(&raw_items));
-    try testing.expectEqual(Tag.@"read", out.items()[1].tag);
-    try testing.expect(out.items()[4] == .str);
+    const tree = try p.parseProgram();
+    const loop = ir.Module.decls(tree)[0];
+    try testing.expectEqual(Tag.@"read", ir.For.mode(loop).tag);
+    try testing.expectEqualStrings("xs", ir.For.source(loop).getText(p.base.source));
+}
+
+test "parser: bar lists split into captures and parameters, all with node ids" {
+    const source = "f = |+c, a| a + c\n";
+    var p = Parser.init(testing.allocator, source);
+    defer p.deinit();
+    const raw = try p.parseTree();
+    const tree = try p.rewrite(raw);
+    const set = ir.Module.decls(tree)[0];
+    try testing.expectEqual(ir.Module.decls(raw)[0].list.id, set.list.id);
+    const lambda = ir.Set.value(set);
+    const captures = ir.Lambda.captures(lambda);
+    try testing.expect(captures.isKind(.@"captures"));
+    try testing.expectEqual(@as(usize, 1), ir.Lambda.params(lambda).items().len);
+    const s = p.span(lambda);
+    try testing.expectEqualStrings("|+c, a| a + c", source[s.start..s.end]);
+    // The wrapper's `captures` node gets its own id, spanning its entries.
+    try testing.expect(captures.list.id != 0);
+    const cs = p.span(captures);
+    try testing.expectEqualStrings("+c", source[cs.start..cs.end]);
+}
+
+fn parses(source: []const u8) !void {
+    var p = Parser.init(testing.allocator, source);
+    defer p.deinit();
+    _ = try p.parseProgram();
+}
+
+test "parser: every form parses" {
+    try parses(
+        \\use m
+        \\
+        \\type Id = U64
+        \\
+        \\type Box(T)
+        \\  value: T
+        \\
+        \\  fun get(?self) -> T
+        \\    self.value
+        \\
+        \\enum Shape
+        \\  circle(radius: Int)
+        \\  empty()
+        \\  dot
+        \\
+        \\enum Code
+        \\  ok = 200
+        \\
+        \\error Net
+        \\  timeout
+        \\
+        \\struct P
+        \\  n: Int
+        \\
+        \\  drop self: !P
+        \\    print(self.n)
+        \\
+        \\extern fun abs(n: Int) -> Int
+        \\extern fun tick(n: Int)
+        \\extern sub halt
+        \\extern ptr: fun(Int) Int
+        \\
+        \\pub fun f(a: Int, b: Int = 2, pre c: Int) -> Int!
+        \\  a
+        \\
+        \\test "t"
+        \\  print(1)
+        \\
+        \\sub main()
+        \\  x = 1
+        \\  y: [2]Int =! [1, 2]
+        \\  new x = x + 1
+        \\  x += 1
+        \\  x <<= 2
+        \\  z <- w
+        \\  -z
+        \\  if x > 1
+        \\    print x, y
+        \\  else if not (x < 0 and true)
+        \\    return
+        \\  if m as v
+        \\    print(v)
+        \\  :outer while x < 3 : x += 1
+        \\    break :outer
+        \\  while m as v
+        \\    continue
+        \\  else
+        \\    break
+        \\  for a, i in ?xs
+        \\    print(a[i])
+        \\  else
+        \\    print(0)
+        \\  for *p in xs
+        \\    print(p)
+        \\  match s
+        \\    .circle(r) => print(r)
+        \\    1..3 => print(-1)
+        \\    else
+        \\      print(2)
+        \\  g = |+c, <d, ~e, k: Int, j| c + k
+        \\  h = *|+c| c.set(@sizeOf(Int))
+        \\  i = || print(1)
+        \\  v = f(1, b: 3) catch 0
+        \\  u = f(1)!
+        \\  t = f(1) catch |err| 0
+        \\  q = a ?? b
+        \\  o = 1 if c else 2
+        \\  defer print(1)
+        \\  raw
+        \\    print(@intCast(x))
+        \\  print(+a, <b, ?c, !d, *e, ~f, v.w[0])
+        \\  n: fun() Int = f
+        \\  n2: *sub(Int, ?Box(Int)) = h
+        \\  n3: sub() = i
+        \\  o2: (*Box(Int))? = none
+        \\  o3: []~Int = o
+        \\  return x
+        \\
+    );
 }

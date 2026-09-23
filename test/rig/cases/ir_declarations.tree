@@ -1,32 +1,60 @@
 (module
-  (use `math`)
+  (use `math`)@32..40
   (pub
     (struct
       `User`
-      (: `name` `String`)
-      (default `age` `Int` `0`)
-      (fun `greet` ((read `self`)) `String` (block (member `self` `name`)))
-      (sub `birthday` ((write `self`)) _ (block (call `print` (member `self` `age`))))
-      (fun `new` ((: `name` `String`)) `User` (block (call `User` (kwarg `name` `name`))))))
-  (enum `Color` `red` `green` `blue`)
-  (enum `Status` (valued `ok` `200`) (valued `missing` `404`))
+      (: `name` `String`)@60..72
+      (default `age` `Int` `0`)@75..87
+      (fun
+        `greet`
+        ((read `self`)@101..106)@100..107
+        `String`
+        (block (member `self` `name`)@122..131)@122..135)@91..135
+      (sub
+        `birthday`
+        ((write `self`)@148..153)@147..154
+        (block (call `print` (member `self` `age`)@165..173)@159..174)@159..178)@135..178
+      (fun
+        `new`
+        ((: `name` `String`)@186..198)@185..199
+        `User`
+        (block (call `User` (kwarg `name` `name`)@217..227)@212..228)@212..230)@178..230)@46..230)@42..230
+  (enum `Color` `red` `green` `blue`)@230..263
+  (enum `Status` (valued `ok` `200`)@277..285 (valued `missing` `404`)@288..301)@263..303
   (enum
     `Shape`
-    (variant `circle` ((: `radius` `Int`)))
-    (variant `rect` ((: `w` `Int`) (: `h` `Int`)))
-    `point`)
-  (errors `NetworkError` `timeout` `refused`)
+    (variant `circle` ((: `radius` `Int`)@323..334)@322..335)@316..335
+    (variant `rect` ((: `w` `Int`)@343..349 (: `h` `Int`)@351..357)@342..358)@338..358
+    `point`)@303..368
+  (errors `NetworkError` `timeout` `refused`)@368..408
   (generic_type
     `Box`
-    (`T`)
-    (: `value` `T`)
-    (fun `get` ((read `self`)) `T` (block (member `self` `value`))))
-  (generic_type `Maybe` (`T`) (variant `some` ((: `value` `T`))) `none`)
+    (`T`)@416..419
+    (: `value` `T`)@422..430
+    (fun
+      `get`
+      ((read `self`)@442..447)@441..448
+      `T`
+      (block (member `self` `value`)@458..468)@458..470)@434..470)@408..470
+  (generic_type
+    `Maybe`
+    (`T`)@480..483
+    (variant `some` ((: `value` `T`)@491..499)@490..500)@486..500
+    `none`)@470..509
   (struct
     `Guard`
-    (: `id` `Int`)
-    (drop_decl ((: `self` (borrow_write `Guard`))) (block (call `print` (member `self` `id`)))))
-  (extern_fun `abs` ((: `x` `Int`)) `Int`)
-  (extern_sub `log_msg` ((: `msg` `String`)))
-  (fun `add` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ `a` `b`)))
-  (sub `main` () _ (block (call `print` (call `add` `1` `2`)))))
+    (: `id` `Int`)@524..531
+    (drop_decl
+      ((: `self` (borrow_write `Guard`)@546..552)@540..552)@540..552
+      (block (call `print` (member `self` `id`)@563..570)@557..571)@557..573)@535..573)@509..573
+  (extern_fun `abs` ((: `x` `Int`)@588..594)@587..595 `Int`)@573..602
+  (extern_sub `log_msg` ((: `msg` `String`)@622..633)@621..634)@603..634
+  (fun
+    `add`
+    ((: `a` `Int`)@644..650 (: `b` `Int`)@652..658)@643..659
+    `Int`
+    (block (+ `a` `b`)@669..674)@669..676)@636..676
+  (sub
+    `main`
+    ()@684..686
+    (block (call `print` (call `add` `1` `2`)@695..704)@689..705)@689..706)@676..706)@32..706

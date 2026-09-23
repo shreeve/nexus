@@ -1,48 +1,79 @@
 (module
   (enum
     `Shape`
-    (variant `circle` ((: `radius` `Int`)))
-    (variant `rect` ((: `w` `Int`) (: `h` `Int`)))
-    `point`)
+    (variant `circle` ((: `radius` `Int`)@62..73)@61..74)@55..74
+    (variant `rect` ((: `w` `Int`)@82..88 (: `h` `Int`)@90..96)@81..97)@77..97
+    `point`)@42..107
   (fun
     `sign`
-    ((: `x` `Int`))
+    ((: `x` `Int`)@116..122)@115..123
     `Int`
-    (block (if (> `x` `0`) (block `1`) (if (< `x` `0`) (block (neg `1`)) (block `0`)))))
+    (block
+      (if
+        (> `x` `0`)@136..141
+        (block `1`)@146..150
+        (if (< `x` `0`)@158..163 (block (neg `1`)@168..170)@168..173 (block `0`)@182..185)@155..185)@133..185)@133..185)@107..185
   (fun
     `area`
-    ((: `s` (borrow_read `Shape`)))
+    ((: `s` (borrow_read `Shape`)@197..203)@194..203)@193..204
     `Int`
     (block
       (match
         `s`
-        (arm (variant_pattern `circle` `r`) (return (* (* `3` `r`) `r`)))
-        (arm (variant_pattern `rect` `w` `h`) (return (* `w` `h`)))
-        (arm (enum_lit `point`) (return `0`)))))
+        (arm
+          (variant_pattern `circle` `r`)@226..236
+          (return (* (* `3` `r`)@247..252 `r`)@247..256)@240..256)@226..256
+        (arm
+          (variant_pattern `rect` `w` `h`)@261..272
+          (return (* `w` `h`)@283..288)@276..288)@261..288
+        (arm (enum_lit `point`)@293..299 (return `0`)@303..311)@293..311)@214..313)@214..313)@185..313
   (sub
     `main`
-    ()
-    _
+    ()@321..323
     (block
-      (set _ `i` _ `0`)
+      (set _ `i` _ `0`)@326..331
       (while
-        (< `i` `3`)
+        (< `i` `3`)@340..345
         _
-        (block (set _ `i` _ (+ `i` `1`)) (if (== `i` `2`) (block (continue))) (call `print` `i`)))
-      (for iter `n` _ (read `items`) (block (if (> `n` `10`) (block (break))) (call `print` `n`)))
-      (set _ `size` _ `5`)
+        (block
+          (set _ `i` _ (+ `i` `1`)@354..359)@350..359
+          (if (== `i` `2`)@367..373 (block (continue _)@380..388)@380..393 _)@364..393
+          (call `print` `i`)@393..400)@350..404
+        _)@334..404
+      (for
+        iter
+        `n`
+        _
+        (read `items`)@413..419
+        (block
+          (if (> `n` `10`)@427..433 (block (break _ _)@440..445)@440..450 _)@424..450
+          (call `print` `n`)@450..457)@424..461
+        _)@404..461
+      (set _ `size` _ `5`)@461..469
       (match
         `size`
-        (arm (range_pattern `1` `3`) (call `print` `"small"`))
-        (arm (range_pattern `4` `6`) (call `print` `"medium"`))
-        (arm `else` (call `print` `"large"`)))
-      (set _ `label` _ (if (> `size` `3`) (block `"big"`) (block `"small"`)))
-      (set _ `word` _ (match `size` (arm `5` `"five"`) (arm `else` `"other"`)))
-      (if (> `size` `0`) (block (return)))))
+        (arm (range_pattern `1` `3`)@487..491 (call `print` `"small"`)@495..508)@487..508
+        (arm (range_pattern `4` `6`)@513..517 (call `print` `"medium"`)@521..535)@513..535
+        (arm `else` (call `print` `"large"`)@548..561)@540..561)@472..565
+      (set
+        _
+        `label`
+        _
+        (if (> `size` `3`)@576..584 (block `"big"`)@589..597 (block `"small"`)@606..616)@573..616)@565..616
+      (set
+        _
+        `word`
+        _
+        (match `size` (arm `5` `"five"`)@638..649 (arm `else` `"other"`)@654..669)@623..673)@616..673
+      (if (> `size` `0`)@676..684 (block (return _)@689..695)@689..697 _)@673..697)@326..697)@313..697
   (sub
     `optionals`
-    ((: `m` (optional `Int`)) (: `v` (borrow_write (generic_inst `Vec` `Int`))))
-    _
+    ((: `m` (optional `Int`)@714..718)@711..718
+      (: `v` (borrow_write (generic_inst `Vec` `Int`)@724..732)@723..732)@720..732)@710..733
     (block
-      (if (as `m` `x`) (block (call `print` `x`)))
-      (while (as (call (member `v` `pop`)) `y`) _ (block (call `print` `y`))))))
+      (if (as `m` `x`)@739..745 (block (call `print` `x`)@750..757)@750..760 _)@736..760
+      (while
+        (as (call (member `v` `pop`)@766..771)@766..773 `y`)@766..778
+        _
+        (block (call `print` `y`)@783..790)@783..791
+        _)@760..791)@736..791)@697..791)@42..791

@@ -1,10 +1,24 @@
 (module
-  (fun `note` ((: `n` `Int`)) `Int` (block (call `print` `n`) `n`))
-  (fun `pair` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ (* `a` `10`) `b`)))
+  (fun
+    `note`
+    ((: `n` `Int`)@80..86)@79..87
+    `Int`
+    (block (call `print` `n`)@97..105 `n`)@97..111)@71..111
+  (fun
+    `pair`
+    ((: `a` `Int`)@120..126 (: `b` `Int`)@128..134)@119..135
+    `Int`
+    (block (+ (* `a` `10`)@145..151 `b`)@145..155)@145..157)@111..157
   (sub
     `main`
-    ()
-    _
+    ()@165..167
     (block
-      (set _ `p` _ (call `pair` (kwarg `b` (call `note` `2`)) (kwarg `a` (call `note` `1`))))
-      (call `print` `p`))))
+      (set
+        _
+        `p`
+        _
+        (call
+          `pair`
+          (kwarg `b` (call `note` `2`)@183..190)@179..191
+          (kwarg `a` (call `note` `1`)@197..204)@193..205)@174..206)@170..206
+      (call `print` `p`)@209..217)@170..242)@157..242)@71..242

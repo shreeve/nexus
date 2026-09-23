@@ -1,12 +1,19 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@81..83
     (block
-      (set _ `v` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `v`
+        (shared (generic_inst `Cell` `Int`)@90..99)@89..99
+        (share (call `Cell` (kwarg `value` `0`)@108..116)@103..117)@102..117)@86..117
       (set
         _
         `set`
-        (shared (fun_type (`Int`)))
-        (share (lambda (`a` (cap_clone `v`)) _ _ (block (call (member `v` `set`) `a`))))))))
+        (shared (fun_type (`Int`)@130..133 _)@126..134)@125..134
+        (share
+          (lambda
+            _
+            (`a` (cap_clone `v`)@142..144)@138..145
+            (block (call (member `v` `set`)@146..151 `a`)@146..154)@146..154)@138..154)@137..154)@120..154)@86..221)@73..221)@73..221

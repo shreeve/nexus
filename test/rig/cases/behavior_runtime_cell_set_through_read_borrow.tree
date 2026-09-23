@@ -1,53 +1,70 @@
 (module
   (struct
     `Counter`
-    (: `hits` (generic_inst `Cell` `Int`))
-    (: `name` `String`)
+    (: `hits` (generic_inst `Cell` `Int`)@252..261)@246..261
+    (: `name` `String`)@264..276
     (sub
       `hit`
-      ((read `self`))
-      _
+      ((read `self`)@288..293)@287..294
       (block
         (call
-          (member (member `self` `hits`) `set`)
-          (+ (call (member (member `self` `hits`) `get`)) `1`)))))
+          (member (member `self` `hits`)@299..308 `set`)@299..312
+          (+ (call (member (member `self` `hits`)@313..322 `get`)@313..326)@313..328 `1`)@313..332)@299..333)@299..335)@280..335)@229..335
   (sub
     `bump`
-    ((: `c` (borrow_read (generic_inst `Cell` `Int`))) (: `by` `Int`))
-    _
-    (block (call (member `c` `set`) (+ (call (member `c` `get`)) `by`))))
+    ((: `c` (borrow_read (generic_inst `Cell` `Int`)@348..357)@347..357)@344..357
+      (: `by` `Int`)@359..366)@343..367
+    (block
+      (call
+        (member `c` `set`)@370..375
+        (+ (call (member `c` `get`)@376..381)@376..383 `by`)@376..388)@370..389)@370..391)@335..391
   (fun
     `swap`
-    ((: `c` (borrow_read (generic_inst `Cell` `Int`))) (: `v` `Int`))
+    ((: `c` (borrow_read (generic_inst `Cell` `Int`)@404..413)@403..413)@400..413
+      (: `v` `Int`)@415..421)@399..422
     `Int`
-    (block (call (member `c` `replace`) `v`)))
+    (block (call (member `c` `replace`)@432..441 `v`)@432..444)@432..446)@391..446
   (fun
     `lent`
-    ((: `c` `Counter`))
+    ((: `c` `Counter`)@455..465)@454..466
     `Int`
-    (block (call `bump` (read (member `c` `hits`)) `100`) (call (member (member `c` `hits`) `get`))))
+    (block
+      (call `bump` (read (member `c` `hits`)@482..488)@481..488 `100`)@476..494
+      (call (member (member `c` `hits`)@497..503 `get`)@497..507)@497..509)@476..511)@446..511
   (sub
     `main`
-    ()
-    _
+    ()@519..521
     (block
-      (set _ `c` (generic_inst `Cell` `Int`) (call `Cell` (kwarg `value` `1`)))
-      (call `bump` (read `c`) `10`)
-      (call `print` (call (member `c` `get`)))
-      (set _ `old` _ (call `swap` (read `c`) `5`))
-      (call `print` `old` (call (member `c` `get`)))
-      (set _ `r` _ (read `c`))
-      (call (member `r` `set`) `7`)
-      (call `print` (call (member `c` `get`)))
+      (set
+        _
+        `c`
+        (generic_inst `Cell` `Int`)@527..536
+        (call `Cell` (kwarg `value` `1`)@544..552)@539..553)@524..553
+      (call `bump` (read `c`)@561..563 `10`)@556..568
+      (call `print` (call (member `c` `get`)@577..582)@577..584)@571..585
+      (set _ `old` _ (call `swap` (read `c`)@599..601 `5`)@594..605)@588..605
+      (call `print` `old` (call (member `c` `get`)@619..624)@619..626)@608..627
+      (set _ `r` _ (read `c`)@634..636)@630..636
+      (call (member `r` `set`)@639..644 `7`)@639..647
+      (call `print` (call (member `c` `get`)@656..661)@656..663)@650..664
       (set
         _
         `k`
         _
-        (call `Counter` (kwarg `hits` (call `Cell` (kwarg `value` `0`))) (kwarg `name` `"k"`)))
-      (call (member `k` `hit`))
-      (call (member `k` `hit`))
-      (call `print` (member `k` `name`) (call (member (member `k` `hits`) `get`)))
-      (call `print` (call `lent` `k`) (call (member (member `k` `hits`) `get`)))
+        (call
+          `Counter`
+          (kwarg `hits` (call `Cell` (kwarg `value` `0`)@691..699)@686..700)@680..700
+          (kwarg `name` `"k"`)@702..711)@672..712)@668..712
+      (call (member `k` `hit`)@715..720)@715..722
+      (call (member `k` `hit`)@725..730)@725..732
+      (call
+        `print`
+        (member `k` `name`)@741..747
+        (call (member (member `k` `hits`)@749..755 `get`)@749..759)@749..761)@735..762
+      (call
+        `print`
+        (call `lent` `k`)@771..778
+        (call (member (member `k` `hits`)@780..786 `get`)@780..790)@780..792)@765..793
       (set
         _
         `box`
@@ -55,8 +72,11 @@
         (share
           (call
             `Counter`
-            (kwarg `hits` (call `Cell` (kwarg `value` `40`)))
-            (kwarg `name` `"shared"`))))
-      (call (member `box` `hit`))
-      (call `bump` (read (member `box` `hits`)) `1`)
-      (call `print` (member `box` `name`) (call (member (member `box` `hits`) `get`))))))
+            (kwarg `hits` (call `Cell` (kwarg `value` `40`)@823..832)@818..833)@812..833
+            (kwarg `name` `"shared"`)@835..849)@804..850)@803..850)@797..850
+      (call (member `box` `hit`)@853..860)@853..862
+      (call `bump` (read (member `box` `hits`)@871..879)@870..879 `1`)@865..883
+      (call
+        `print`
+        (member `box` `name`)@892..900
+        (call (member (member `box` `hits`)@902..910 `get`)@902..914)@902..916)@886..917)@524..971)@511..971)@229..971

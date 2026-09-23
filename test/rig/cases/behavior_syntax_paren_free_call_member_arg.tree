@@ -1,7 +1,8 @@
 (module
-  (struct `Point` (: `x` `Int`))
+  (struct `Point` (: `x` `Int`)@156..162)@141..164
   (sub
     `main`
-    ()
-    _
-    (block (set _ `p` _ (call `Point` (kwarg `x` `42`))) (call `print` (member `p` `x`)))))
+    ()@172..174
+    (block
+      (set _ `p` _ (call `Point` (kwarg `x` `42`)@187..192)@181..193)@177..193
+      (call `print` (member `p` `x`)@202..205)@196..205)@177..222)@164..222)@141..222

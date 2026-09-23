@@ -1,16 +1,21 @@
 (module
   (struct
     `Box`
-    (: `payload` `Int`)
+    (: `payload` `Int`)@147..159
     (drop_decl
-      ((: `self` (borrow_write `Box`)))
-      (block (call `print` (* (member `self` `payload`) `10`)))))
+      ((: `self` (borrow_write `Box`)@174..178)@168..178)@168..178
+      (block (call `print` (* (member `self` `payload`)@189..201 `10`)@189..206)@183..207)@183..209)@163..209)@134..209
   (fun
     `pick`
-    ((: `c` `Bool`))
-    (shared `Box`)
+    ((: `c` `Bool`)@218..225)@217..226
+    (shared `Box`)@230..234
     (block
-      (set _ `a` _ (share (call `Box` (kwarg `payload` `1`))))
-      (set _ `b` _ (share (call `Box` (kwarg `payload` `2`))))
-      (if `c` (block `a`) (block `b`))))
-  (sub `main` () _ (block (set _ `x` _ (call `pick` `true`)) (call `print` (member `x` `payload`)))))
+      (set _ `a` _ (share (call `Box` (kwarg `payload` `1`)@246..256)@242..257)@241..257)@237..257
+      (set _ `b` _ (share (call `Box` (kwarg `payload` `2`)@269..279)@265..280)@264..280)@260..280
+      (if `c` (block `a`)@292..296 (block `b`)@305..308)@283..308)@237..308)@209..308
+  (sub
+    `main`
+    ()@316..318
+    (block
+      (set _ `x` _ (call `pick` `true`)@325..335)@321..335
+      (call `print` (member `x` `payload`)@344..353)@338..354)@321..380)@308..380)@134..380

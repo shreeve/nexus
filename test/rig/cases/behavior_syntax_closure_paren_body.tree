@@ -1,9 +1,12 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@107..109
     (block
-      (set _ `k` _ `4`)
-      (set _ `g` _ (lambda ((cap_clone `k`)) _ _ (block `k`)))
-      (call `print` (call `g`)))))
+      (set _ `k` _ `4`)@112..117
+      (set
+        _
+        `g`
+        _
+        (lambda _ ((cap_clone `k`)@125..127)@124..128 (block `k`)@129..132)@124..132)@120..132
+      (call `print` (call `g`)@141..144)@135..145)@112..161)@99..161)@99..161

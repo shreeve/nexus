@@ -1,12 +1,15 @@
 (module
   (struct
     `User`
-    (: `name` `String`)
-    (fun `greet` ((read `self`)) `String` (block (member `self` `name`))))
+    (: `name` `String`)@83..95
+    (fun
+      `greet`
+      ((read `self`)@109..114)@108..115
+      `String`
+      (block (member `self` `name`)@130..139)@130..141)@99..141)@69..141
   (sub
     `main`
-    ()
-    _
+    ()@149..151
     (block
-      (set _ `u` _ (call `User` (kwarg `name` `"Steve"`)))
-      (call `print` (call (member `u` `greet`))))))
+      (set _ `u` _ (call `User` (kwarg `name` `"Steve"`)@163..176)@158..177)@154..177
+      (call `print` (call (member `u` `greet`)@186..193)@186..195)@180..196)@154..216)@141..216)@69..216

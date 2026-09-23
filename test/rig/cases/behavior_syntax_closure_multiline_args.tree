@@ -1,79 +1,126 @@
 (module
   (sub
     `each_n`
-    ((: `n` `Int`) (: `f` (shared (fun_type (`Int`)))))
-    _
-    (block (set _ `i` _ `0`) (while (< `i` `n`) (set += `i` _ `1`) (block (call `f` `i`)))))
-  (sub `twice` ((: `f` (shared (fun_type)))) _ (block (call `f`) (call `f`)))
+    ((: `n` `Int`)@354..360
+      (: `f` (shared (fun_type (`Int`)@370..373 _)@366..374)@365..374)@362..374)@353..375
+    (block
+      (set _ `i` _ `0`)@378..383
+      (while
+        (< `i` `n`)@392..397
+        (set += `i` _ `1`)@400..406
+        (block (call `f` `i`)@411..415)@411..417
+        _)@386..417)@378..417)@343..417
+  (sub
+    `twice`
+    ((: `f` (shared (fun_type _ _)@431..436)@430..436)@427..436)@426..437
+    (block (call `f`)@440..443 (call `f`)@446..449)@440..451)@417..451
   (sub
     `main`
-    ()
-    _
+    ()@459..461
     (block
       (set
         _
         `sig`
-        (shared (generic_inst `Signal` `Int`))
-        (share (call `Signal` (kwarg `value` `0`))))
+        (shared (generic_inst `Signal` `Int`)@470..481)@469..481
+        (share (call `Signal` (kwarg `value` `0`)@492..500)@485..501)@484..501)@464..501
       (call
-        (member `sig` `subscribe`)
+        (member `sig` `subscribe`)@504..517
         (share
           (lambda
-            ((cap_weak `sig`))
             _
-            _
+            ((cap_weak `sig`)@520..524)@519..525
             (block
               (if
-                (as (call (member `sig` `upgrade`)) `s`)
-                (block (call `print` `"got"` (call (member `s` `get`)))))))))
-      (call (member `sig` `set`) `4`)
-      (set _ `total` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+                (as (call (member `sig` `upgrade`)@533..544)@533..546 `s`)@533..551
+                (block
+                  (call `print` `"got"` (call (member `s` `get`)@571..576)@571..578)@558..579)@558..579
+                _)@530..579)@530..579)@519..579)@518..579)@504..580
+      (call (member `sig` `set`)@583..590 `4`)@583..593
+      (set
+        _
+        `total`
+        (shared (generic_inst `Cell` `Int`)@605..614)@604..614
+        (share (call `Cell` (kwarg `value` `0`)@623..631)@618..632)@617..632)@597..632
       (call
         `each_n`
         `3`
         (share
           (lambda
-            ((cap_clone `total`) `i`)
             _
-            _
+            ((cap_clone `total`)@647..653 `i`)@646..657
             (block
-              (call (member `total` `set`) (+ (call (member `total` `get`)) `i`))
-              (call `print` `"seen"` `i`)))))
-      (call `print` (call (member `total` `get`)))
+              (call
+                (member `total` `set`)@699..708
+                (+ (call (member `total` `get`)@709..718)@709..720 `i`)@709..724)@699..725
+              (call `print` `"seen"` `i`)@730..746)@699..749)@646..749)@645..749)@635..750
+      (call `print` (call (member `total` `get`)@759..768)@759..770)@753..771
       (call
         `each_n`
         `2`
         (share
           (lambda
-            (`i`)
             _
-            _
-            (block (if (== `i` `0`) (block (call `print` `"zero"`)) (block (call `print` `"one"`)))))))
+            (`i`)@786..789
+            (block
+              (if
+                (== `i` `0`)@797..803
+                (block (call `print` `"zero"`)@810..823)@810..828
+                (block (call `print` `"one"`)@839..851)@839..851)@794..851)@794..851)@786..851)@785..851)@775..852
       (call
         `twice`
         (share
           (lambda
-            ()
             _
-            _
+            ()@863..865
             (block
-              (call `each_n` `2` (share (lambda (`i`) _ _ (block (call `print` `"inner"` `i`)))))
-              (call `print` `"outer"`)))))
-      (set _ `handlers` (generic_inst `Vec` (shared (fun_type))) (call `Vec`))
+              (call
+                `each_n`
+                `2`
+                (share
+                  (lambda
+                    _
+                    (`i`)@881..884
+                    (block (call `print` `"inner"` `i`)@891..908)@891..908)@881..908)@880..908)@870..909
+              (call `print` `"outer"`)@914..928)@870..928)@863..928)@862..928)@856..929
+      (set
+        _
+        `handlers`
+        (generic_inst `Vec` (shared (fun_type _ _)@948..953)@947..953)@943..954
+        (call `Vec`)@957..962)@933..962
       (call
-        (member (write `handlers`) `push`)
+        (member (write `handlers`)@966..975 `push`)@965..981
         (share
           (lambda
-            ((cap_clone `total`))
             _
-            _
-            (block (set _ `n` _ (call (member `total` `get`))) (call `print` `"handler"` `n`)))))
-      (for iter `h` _ (read `handlers`) (block (call `h`)))
-      (set _ `n` _ `3`)
+            ((cap_clone `total`)@984..990)@983..991
+            (block
+              (set _ `n` _ (call (member `total` `get`)@1000..1009)@1000..1011)@996..1011
+              (call `print` `"handler"` `n`)@1016..1035)@996..1035)@983..1035)@982..1035)@965..1036
+      (for
+        iter
+        `h`
+        _
+        (read `handlers`)@1048..1057
+        (block (call `h`)@1062..1065)@1062..1069
+        _)@1039..1069
+      (set _ `n` _ `3`)@1069..1074
       (set
         _
         `r`
         _
-        (call (lambda ((cap_clone `n`)) _ _ (block (set _ `m` _ (* `n` `2`)) (+ `m` `1`)))))
-      (call `print` `r`)
-      (call `each_n` `2` (share (lambda (`i`) _ _ (block (call `print` `"trailing"` `i`))))))))
+        (call
+          (lambda
+            _
+            ((cap_clone `n`)@1083..1085)@1082..1086
+            (block
+              (set _ `m` _ (* `n` `2`)@1095..1100)@1091..1100
+              (+ `m` `1`)@1105..1110)@1091..1110)@1082..1110)@1081..1113)@1077..1113
+      (call `print` `r`)@1116..1124
+      (call
+        `each_n`
+        `2`
+        (share
+          (lambda
+            _
+            (`i`)@1139..1142
+            (block (call `print` `"trailing"` `i`)@1147..1167)@1147..1329)@1139..1329)@1138..1329)@1128..1329)@464..1329)@451..1329)@343..1329

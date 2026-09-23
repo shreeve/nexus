@@ -1,25 +1,31 @@
 (module
-  (errors `ParseError` `empty` `too_long`)
-  (errors `NetError` `timeout`)
+  (errors `ParseError` `empty` `too_long`)@281..318
+  (errors `NetError` `timeout`)@318..344
   (fun
     `parse_len`
-    ((: `s` `String`))
-    (error_union `Int`)
+    ((: `s` `String`)@358..367)@357..368
+    (error_union `Int`)@372..376
     (block
-      (if (== `s` `""`) (block (return (member `ParseError` `empty`))))
-      (if (> (member `s` `len`) `5`) (block (return (enum_lit `too_long`))))
-      (member `s` `len`)))
+      (if
+        (== `s` `""`)@382..389
+        (block (return (member `ParseError` `empty`)@401..417)@394..417)@394..420
+        _)@379..420
+      (if
+        (> (member `s` `len`)@423..428 `5`)@423..432
+        (block (return (enum_lit `too_long`)@444..453)@437..453)@437..456
+        _)@420..456
+      (member `s` `len`)@456..461)@379..463)@344..463
   (fun
     `fetch`
-    ((: `n` `Int`))
-    (error_union `Int`)
+    ((: `n` `Int`)@473..479)@472..480
+    (error_union `Int`)@484..488
     (block
-      (set _ `e` `NetError` (enum_lit `timeout`))
-      (if (< `n` `0`) (block (return `e`)))
-      (+ (propagate (call `parse_len` `"ab"`)) `n`)))
+      (set _ `e` `NetError` (enum_lit `timeout`)@505..513)@491..513
+      (if (< `n` `0`)@528..533 (block (return `e`)@516..524)@516..524 _)@516..533
+      (+ (propagate (call `parse_len` `"ab"`)@536..551)@536..552 `n`)@536..556)@491..558)@463..558
   (fun
     `describe`
-    ((: `s` `String`))
+    ((: `s` `String`)@571..580)@570..581
     `String`
     (block
       (set
@@ -27,52 +33,70 @@
         `n`
         _
         (catch
-          (call `parse_len` `s`)
+          (call `parse_len` `s`)@598..610
           `err`
           (block
             (match
               `err`
-              (arm (enum_lit `empty`) (return `"empty"`))
-              (arm (enum_lit `too_long`) (return `"too long"`))
-              (arm `else` (return `"other"`))))))
-      (if (> `n` `2`) (block `"long enough"`) (block `"short"`))))
+              (arm (enum_lit `empty`)@643..649 (return `"empty"`)@653..667)@643..667
+              (arm (enum_lit `too_long`)@674..683 (return `"too long"`)@687..704)@674..704
+              (arm `else` (return `"other"`)@719..733)@711..733)@627..736)@627..736)@598..736)@594..736
+      (if (> `n` `2`)@739..744 (block `"long enough"`)@749..765 (block `"short"`)@774..783)@736..783)@594..783)@558..783
   (fun
     `retry`
-    ((: `n` `Int`))
-    (error_union `Int`)
+    ((: `n` `Int`)@793..799)@792..800
+    (error_union `Int`)@804..808
     (block
       (catch
-        (call `fetch` `n`)
+        (call `fetch` `n`)@811..819
         `err`
-        (block (if (== `err` (member `NetError` `timeout`)) (block (return `err`))) `0`))))
+        (block
+          (if
+            (== `err` (member `NetError` `timeout`)@857..873)@850..873
+            (block (return `err`)@836..846)@836..846
+            _)@836..873
+          `0`)@836..881)@811..881)@811..881)@783..881
   (sub
     `main`
-    ()
-    _
+    ()@889..891
     (block
-      (call `print` (catch (call `parse_len` `"abc"`) _ (neg `1`)))
-      (call `print` (catch (call `parse_len` `""`) _ (neg `1`)))
+      (call
+        `print`
+        (catch (call `parse_len` `"abc"`)@900..916 _ (neg `1`)@923..925)@900..925)@894..926
+      (call `print` (catch (call `parse_len` `""`)@935..948 _ (neg `1`)@955..957)@935..957)@929..958
       (call
         `print`
         (catch
-          (call `parse_len` `"abcdefg"`)
+          (call `parse_len` `"abcdefg"`)@967..987
           `err`
-          (if (== `err` (enum_lit `too_long`)) `100` `200`)))
+          (if (== `err` (enum_lit `too_long`)@1014..1023)@1007..1023 `100` `200`)@1000..1032)@967..1032)@961..1033
       (call
         `print`
-        (call `describe` `""`)
-        (call `describe` `"abcdefgh"`)
-        (call `describe` `"abcd"`)
-        (call `describe` `"a"`))
+        (call `describe` `""`)@1042..1054
+        (call `describe` `"abcdefgh"`)@1056..1076
+        (call `describe` `"abcd"`)@1078..1094
+        (call `describe` `"a"`)@1096..1109)@1036..1110
       (call
         `print`
-        (catch (call `fetch` `3`) _ `0`)
-        (catch (call `fetch` (neg `1`)) `e` (if (== `e` (enum_lit `timeout`)) (neg `9`) (neg `8`))))
-      (call `print` (catch (call `retry` `1`) _ `7`) (catch (call `retry` (neg `1`)) _ `7`))
+        (catch (call `fetch` `3`)@1119..1127 _ `0`)@1119..1135
+        (catch
+          (call `fetch` (neg `1`)@1143..1145)@1137..1146
+          `e`
+          (if
+            (== `e` (enum_lit `timeout`)@1168..1176)@1163..1176
+            (neg `9`)@1157..1159
+            (neg `8`)@1182..1184)@1157..1184)@1137..1184)@1113..1185
+      (call
+        `print`
+        (catch (call `retry` `1`)@1194..1202 _ `7`)@1194..1210
+        (catch (call `retry` (neg `1`)@1218..1220)@1212..1221 _ `7`)@1212..1229)@1188..1230
       (set
         _
         `x`
         _
-        (catch (call `parse_len` `""`) `err` (block (call `print` `"failed with"` `err`) `0`)))
-      (call `print` `x`)
-      (call `print` (propagate (call `fetch` `1`))))))
+        (catch
+          (call `parse_len` `""`)@1237..1250
+          `err`
+          (block (call `print` `"failed with"` `err`)@1267..1292 `0`)@1267..1301)@1237..1301)@1233..1301
+      (call `print` `x`)@1301..1309
+      (call `print` (propagate (call `fetch` `1`)@1318..1326)@1318..1327)@1312..1328)@894..1432)@881..1432)@281..1432

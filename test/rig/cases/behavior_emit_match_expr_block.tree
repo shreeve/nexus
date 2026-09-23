@@ -1,18 +1,21 @@
 (module
-  (enum `Op` `add` `minus`)
+  (enum `Op` `add` `minus`)@77..100
   (fun
     `apply`
-    ((: `op` `Op`) (: `a` `Int`) (: `b` `Int`))
+    ((: `op` `Op`)@110..116 (: `a` `Int`)@118..124 (: `b` `Int`)@126..132)@109..133
     `Int`
     (block
       (match
         `op`
-        (arm (enum_lit `add`) (block (set _ `tmp` _ (+ `a` `b`)) `tmp`))
-        (arm (enum_lit `minus`) (block (set _ `tmp` _ (- `a` `b`)) `tmp`)))))
+        (arm
+          (enum_lit `add`)@156..160
+          (block (set _ `tmp` _ (+ `a` `b`)@173..178)@167..178 `tmp`)@167..193)@156..193
+        (arm
+          (enum_lit `minus`)@193..199
+          (block (set _ `tmp` _ (- `a` `b`)@212..217)@206..217 `tmp`)@206..229)@193..229)@143..229)@143..229)@100..229
   (sub
     `main`
-    ()
-    _
+    ()@237..239
     (block
-      (call `print` (call `apply` (enum_lit `add`) `3` `4`))
-      (call `print` (call `apply` (enum_lit `minus`) `10` `3`)))))
+      (call `print` (call `apply` (enum_lit `add`)@254..258 `3` `4`)@248..265)@242..266
+      (call `print` (call `apply` (enum_lit `minus`)@281..287 `10` `3`)@275..295)@269..296)@242..316)@229..316)@77..316

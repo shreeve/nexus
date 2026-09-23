@@ -1,8 +1,10 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@96..98
     (block
-      (set _ `x` `I32` (neg `1`))
-      (raw_block (block (set _ `y` `U32` (builtin `bitCast` `x`)) (call `print` `y`))))))
+      (set _ `x` `I32` (neg `1`)@110..112)@101..112
+      (raw_block
+        (block
+          (set _ `y` `U32` (builtin `bitCast` `x`)@132..143)@123..143
+          (call `print` `y`)@148..156)@123..181)@115..181)@101..181)@88..181)@88..181

@@ -1,10 +1,9 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@50..52
     (block
-      (set _ `a` _ `false`)
-      (if (not `a`) (block (call `print` `1`)))
-      (set _ `b` _ (not `a`))
-      (call `print` `b`))))
+      (set _ `a` _ `false`)@55..64
+      (if (not `a`)@70..75 (block (call `print` `1`)@80..88)@80..91 _)@67..91
+      (set _ `b` _ (not `a`)@95..100)@91..100
+      (call `print` `b`)@103..111)@55..134)@42..134)@42..134
