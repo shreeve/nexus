@@ -665,6 +665,17 @@ pub const BaseParser = struct {
         const top = self.stateStack.items.len - len;
 
         if (nodeStore) {
+            // An element that consumed nothing starts at the next token,
+            // past the blanks after this reduction's last token (lastEnd).
+            // When the reduction consumed something, place its trailing
+            // empty elements at lastEnd so that spans nest.
+            if (len > 0 and self.starts[base] < self.lastEnd) {
+                var k = base + len;
+                while (k > base and self.starts[k - 1] > self.lastEnd) : (k -= 1) {
+                    self.starts[k - 1] = self.lastEnd;
+                    self.placeEmpty(self.valueStack.items[k - 1], self.lastEnd);
+                }
+            }
             self.reduction.rule = ruleId;
             self.reduction.start = if (len > 0) self.starts[base] else self.current.pos;
             if (elemEnds) {
@@ -692,6 +703,19 @@ pub const BaseParser = struct {
         } else {
             try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
+    }
+
+    /// Move the nodes of an empty value (a subtree that consumed nothing)
+    /// to `at`.
+    fn placeEmpty(self: *BaseParser, value: Sexp, at: u32) void {
+        if (value != .list) return;
+        const l = value.list;
+        if (l.id != 0 and l.id < self.nodes.len) {
+            const info = self.nodes.at(l.id);
+            if (!info.span.isEmpty()) return;
+            info.span = .{ .start = at, .end = at };
+        }
+        for (l.items()) |child| self.placeEmpty(child, at);
     }
 
     /// Fetch the next token, moving trivia to the trivia channel.
