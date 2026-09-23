@@ -166,7 +166,8 @@ tokens                         # token type declarations
 @parser
 
 @lang = "name"                 # language module
-@conflicts = N                 # expected SLR conflict count
+@conflicts                     # the declared conflicts, one per line
+    shift  <rule>  N  # reason
 @as ident = [keyword]          # context-sensitive keyword promotion
 
 <rule> = <elements> → (action) # parser rules
@@ -584,11 +585,12 @@ subsind = "@" atom "@" subs                 → (@ subs 2 4) # followed by @
 | Directive | Purpose |
 |-----------|---------|
 | `@lang = "name"` | Import language module (`name.zig`) |
-| `@conflicts = N` | Declare expected conflict count |
+| `@conflicts` | Declare each LR conflict (`shift <rule> N # why`, `reduce <winner> over <loser> N # why`); any drift fails generation and prints the actual block |
 | `@as ident = [keyword]` | Context-sensitive keyword promotion |
 | `@op = [...]` | Operator literal-to-token mappings |
 | `@infix base` | Auto-generate precedence chain |
 | `@errors` | Human-readable rule names for diagnostics |
+| `@repair` | Tokens the tolerant parser (`parseTolerant`) may insert |
 | `@code location { ... }` | Inject raw Zig at `imports`, `sexp`, `parser`, or `bottom` |
 
 ### `@infix` — Operator Precedence
@@ -695,6 +697,36 @@ Ruby), use `!` for reduce-aware matching:
 ```
 @as ident = [keyword!]
 ```
+
+### `@repair` — Tolerant Parsing
+
+```
+@repair
+    holes      IDENT               # value tokens minted with empty text
+    structure  INDENT OUTDENT      # layout a lexer mints
+    terminator NEWLINE             # structure that ends a statement
+```
+
+With `@repair`, the generated parser has `parseTolerant(start, budget)`
+for editors: it parses past syntax errors and returns the tree, the first
+error, and the repairs it made. Per state, the generator ranks the
+declared tokens the state accepts (holes first, then fewest further
+tokens the insertion commits to). At an error:
+
+1. The first error is recorded exactly as `parse` reports it; repairs
+   never replace it.
+2. End of input and structure/terminator tokens admit any candidate;
+   real input admits only a `terminator` (no hole or block structure is
+   ever invented in front of code the user wrote).
+3. A candidate is inserted (zero width, at the offending token) when the
+   offending token can then be consumed. At end of input or a structure
+   token, when none can, a candidate the state can shift is inserted
+   anyway, at most once per configuration until input is consumed.
+4. Otherwise the offending token is deleted; end of input is never
+   deleted (the parse ends there, incomplete).
+5. At most `budget` repairs; then the parse ends, incomplete.
+
+`parse` is unaffected.
 
 ### `@errors` — Human-Readable Rule Names
 
@@ -936,7 +968,7 @@ fields whose values point at sibling fields of the same struct.
 | `basic` | Expression grammar (precedence, associativity, multiple start symbols) |
 | `features` | State vars, after, guards, actions, strings, comments, lists |
 | `zag` | Real-world: 57 rules, 19 conflicts |
-| `slash` | Real-world: 34 rules, conflict-free (declares `@conflicts = 0`); `str` block bodies, indent/outdent |
+| `slash` | Real-world: 34 rules, conflict-free (no `@conflicts` block); `str` block bodies, indent/outdent |
 | `mumps` | Real-world: 115 rules, 44 conflicts, @code, counted, empty-pattern guards |
 | `ruby` | Real-world (nanoruby): 65 rules, 66 conflicts, modifier/do reclassification, interpolation, symbols |
 | `rig` | Real-world: 65 rules, 34 conflicts (24 expected from `T?` / `T!` type-position suffix shift/reduce); exercises the v0.10.1 `Parser` auto-wire end-to-end (lang module exports `pub const Parser` that bakes semantic IR normalization into `parseProgram`) |

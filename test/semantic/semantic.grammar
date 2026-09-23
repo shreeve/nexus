@@ -99,7 +99,7 @@ tokens
 
 @repair
     holes      IDENT
-    structure  NEWLINE
+    terminator NEWLINE
 
 @conflicts
     shift  stmt → IF infix THEN stmt       1   # else binds to the nearest if

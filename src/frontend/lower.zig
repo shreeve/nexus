@@ -830,6 +830,7 @@ pub const GrammarLowerer = struct {
         if (self.repair != null) return self.fail(node, "duplicate @repair", .{});
         var holes: std.ArrayListUnmanaged([]const u8) = .empty;
         var structure: std.ArrayListUnmanaged([]const u8) = .empty;
+        var terminators: std.ArrayListUnmanaged([]const u8) = .empty;
         for (items[1..]) |line| {
             const lt = try self.requireTag(line, .repair_line);
             if (lt.len < 3) return self.shapeError(line, "(repair_line IDENT NAME+)");
@@ -838,13 +839,16 @@ pub const GrammarLowerer = struct {
                 &holes
             else if (std.mem.eql(u8, which, "structure"))
                 &structure
+            else if (std.mem.eql(u8, which, "terminator"))
+                &terminators
             else
-                return self.fail(lt[1], "@repair lines are `holes ...` or `structure ...`, not '{s}'", .{which});
+                return self.fail(lt[1], "@repair lines are `holes ...`, `structure ...` or `terminator ...`, not '{s}'", .{which});
             for (lt[2..]) |n| try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "token name")));
         }
         self.repair = .{
             .holes = try holes.toOwnedSlice(self.allocator),
             .structure = try structure.toOwnedSlice(self.allocator),
+            .terminators = try terminators.toOwnedSlice(self.allocator),
         };
     }
 

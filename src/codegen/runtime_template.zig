@@ -18,8 +18,8 @@
 //!   tables     ruleLhs, ruleLen
 //!   functions  getAction, getImmediateShift, startState, startMarker,
 //!              tokenToSymbol, executeAction, expectedIn, symbolName, isTrivia,
-//!              repairCandidates, ruleSideLabels, slotOf, restSlotOf,
-//!              roleAt, restRoleOf
+//!              repairCandidates, repairClass, ruleSideLabels, slotOf,
+//!              restSlotOf, roleAt, restRoleOf
 
 const std = @import("std");
 
@@ -201,11 +201,29 @@ pub const Failure = struct {
 pub const Tolerant = struct {
     /// The tree; `.nil` when the parse could not be completed.
     sexp: Sexp,
-    /// The first real error (null when the input was valid).
+    /// The first error, as the strict parse reports it (null when the
+    /// input was valid).
     failure: ?Failure,
     /// Tokens inserted plus tokens deleted.
     repairs: u32,
+    /// Zero-width tokens inserted (holes and structure).
+    insertions: u32 = 0,
+    /// Offending tokens deleted.
+    deletions: u32 = 0,
     complete: bool,
+};
+
+/// A token's role in tolerant repair, from `@repair`.
+pub const RepairClass = enum {
+    /// Not fabricable: real input.
+    none,
+    /// `holes`: a value-carrying token that may be minted with empty text.
+    hole,
+    /// `structure`: layout a lexer mints (INDENT, OUTDENT, ...).
+    structure,
+    /// `terminator`: structure that ends a statement (NEWLINE); the only
+    /// insertion allowed in front of real input.
+    terminator,
 };
 
 /// The id attribute of the token the lexer just produced, cleared as it is
@@ -317,38 +335,97 @@ pub const BaseParser = struct {
         }
     }
 
-    /// Parse `start`, repairing errors from the grammar's `@repair` table:
-    /// insert a zero-width token that lets the offending token be shifted,
-    /// else delete the offending token. Records the first real error; gives
-    /// up after `budget` repairs.
+    /// Parse `start`, repairing syntax errors for an editor: the parse goes
+    /// on past an error with the tree built the normal way. The rules:
+    ///
+    ///   1. The first error is recorded exactly as the strict parse reports
+    ///      it (token, state, expected set); repairs never replace it, and a
+    ///      repaired parse still returns it: recovery is not acceptance.
+    ///   2. Only tokens the grammar declares in `@repair` are ever inserted,
+    ///      as zero-width tokens at the offending token, taken from the
+    ///      state's generated candidate list (holes, then structure; fewer
+    ///      further fabrications first).
+    ///   3. What the offending token admits: end of input and structure
+    ///      tokens (lexer scaffolding) admit any candidate; real input
+    ///      admits only a `terminator` (a statement boundary splits what
+    ///      the user wrote without inventing meaning in front of it: no
+    ///      holes, no block structure before real code).
+    ///   4. An insertion must let the offending token be consumed (shifted,
+    ///      or accepted at end of input). At end of input or a structure
+    ///      token, when none does, a candidate the state can shift is
+    ///      inserted anyway, never twice in the same configuration (stack
+    ///      depth, state, token) since the last token was consumed, so
+    ///      several insertions can complete an unfinished construct.
+    ///   5. With no admissible insertion the offending token is deleted,
+    ///      except end of input, which is never deleted: the parse ends
+    ///      there, incomplete.
+    ///   6. At most `budget` repairs (insertions plus deletions); when they
+    ///      are spent the parse ends, incomplete.
+    ///
+    /// Strict parsing (`parse`) is a separate entry point and pays nothing.
     pub fn parseTolerant(self: *BaseParser, start: Start, budget: u32) !Tolerant {
         if (!hasRepair) @compileError("parseTolerant needs a @repair section in the grammar");
         try self.begin(start);
-        var repairs: u32 = 0;
+        var result: Tolerant = .{ .sexp = .nil, .failure = null, .repairs = 0, .complete = false };
+        // Configurations repaired since the last consumed token (rule 4).
+        var tried: std.ArrayListUnmanaged(RepairKey) = .empty;
         while (true) {
             const state = self.stateStack.getLast();
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
+                if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                return .{ .sexp = self.valueStack.getLast(), .failure = self.failure, .repairs = repairs, .complete = true };
+                result.sexp = self.valueStack.getLast();
+                result.complete = true;
+                break;
             } else {
+                // An inserted token is always acceptable (rule 4).
+                std.debug.assert(self.pendingInsert == null);
                 if (self.failure == null) self.recordFailure(state, sym);
-                if (repairs == budget or self.pendingInsert != null) break;
-                repairs += 1;
-                if (try self.findInsertion(sym)) |token| {
+                if (result.repairs == budget) break;
+                if (try self.chooseInsertion(sym, tried.items)) |token| {
+                    try tried.append(self.allocator(), .{ .depth = @intCast(self.stateStack.items.len), .state = state, .token = token });
                     self.pendingInsert = token;
+                    result.insertions += 1;
                 } else if (sym == endSymbol) {
                     break;
                 } else {
                     try self.advance();
+                    tried.clearRetainingCapacity();
+                    result.deletions += 1;
                 }
+                result.repairs += 1;
             }
         }
-        return .{ .sexp = .nil, .failure = self.failure, .repairs = repairs, .complete = false };
+        result.failure = self.failure;
+        return result;
+    }
+
+    const RepairKey = struct { depth: u32, state: u16, token: u16 };
+
+    /// The insertion rules 3 and 4 allow before `next`, best first; null
+    /// when there is none.
+    fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
+        const state = self.stateStack.getLast();
+        const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
+        const real = nextClass == .none or nextClass == .hole;
+        for (repairCandidates(state)) |candidate| {
+            if (real and repairClass(candidate) != .terminator) continue;
+            if (try self.accepts(&.{ candidate, next })) return candidate;
+        }
+        if (real) return null;
+        const depth: u32 = @intCast(self.stateStack.items.len);
+        for (repairCandidates(state)) |candidate| {
+            const seen = for (tried) |k| {
+                if (k.depth == depth and k.state == state and k.token == candidate) break true;
+            } else false;
+            if (!seen and try self.accepts(&.{candidate})) return candidate;
+        }
+        return null;
     }
 
     fn begin(self: *BaseParser, start: Start) !void {
@@ -822,15 +899,6 @@ pub const BaseParser = struct {
     // Tolerant repair
     // -------------------------------------------------------------------------
 
-    /// The first candidate of the current state after which `next` can be
-    /// shifted (or accepted).
-    fn findInsertion(self: *BaseParser, next: u16) !?u16 {
-        for (repairCandidates(self.stateStack.getLast())) |candidate| {
-            if (try self.accepts(&.{ candidate, next })) return candidate;
-        }
-        return null;
-    }
-
     /// Whether `symbols` can be consumed from the current state, simulating
     /// reductions on a scratch copy of the state stack.
     fn accepts(self: *BaseParser, symbols: []const u16) !bool {
@@ -1055,7 +1123,7 @@ fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
 //          | "(" expr ")"           → 2
 //
 // with `#...` comments as trivia, a `@schema` of set/add/prog, and
-// IDENT then NEWLINE as repair candidates.
+// `@repair holes IDENT, terminator NEWLINE`.
 // =============================================================================
 
 const Tag = enum(u8) { prog, set, add };
@@ -1216,6 +1284,14 @@ fn repairCandidates(state: u16) []const u16 {
         2, 9, 10, 11, 12 => &.{9},
         4, 5, 6, 7, 8, 14, 15, 16, 17, 18 => &.{8},
         else => &.{},
+    };
+}
+
+fn repairClass(sym: u16) RepairClass {
+    return switch (sym) {
+        9 => .hole,
+        8 => .terminator,
+        else => .none,
     };
 }
 
@@ -1414,19 +1490,21 @@ test "parse errors carry the token span and the expected set" {
 }
 
 test "the tolerant driver inserts holes and deletes stray tokens" {
-    // `a = ` misses its value: a zero-width IDENT is inserted.
+    // `a = ` misses its value before a newline (a terminator, so layout): a
+    // zero-width IDENT is inserted.
     var p = BaseParser.init(testing.allocator, "a = \nb");
     defer p.deinit();
     const r = try p.parseTolerant(.prog, 8);
     try testing.expect(r.complete);
     try testing.expectEqual(@as(u32, 1), r.repairs);
+    try testing.expectEqual(@as(u32, 1), r.insertions);
     try testing.expectEqualStrings("(prog (set a ) b)", try render(&p, r.sexp));
     try testing.expectEqual(TokenCat.newline, r.failure.?.cat);
     const hole = ir.get(r.sexp.items()[1], .value);
     try testing.expectEqual(@as(u16, 0), hole.src.len);
     try testing.expectEqual(@as(u32, 4), hole.src.pos);
 
-    // `a b`: a NEWLINE is inserted between the statements.
+    // `a b`: a terminator is inserted in front of the real token `b`.
     var q = BaseParser.init(testing.allocator, "a b");
     defer q.deinit();
     const s = try q.parseTolerant(.prog, 8);
@@ -1440,19 +1518,78 @@ test "the tolerant driver inserts holes and deletes stray tokens" {
     try testing.expect(u.complete);
     try testing.expectEqualStrings("(prog (add a b))", try render(&t, u.sexp));
     try testing.expectEqual(@as(u32, 1), u.repairs);
-
-    // The budget bounds the repairs.
-    var v = BaseParser.init(testing.allocator, ") ) ) a");
-    defer v.deinit();
-    const x = try v.parseTolerant(.prog, 2);
-    try testing.expect(!x.complete);
-    try testing.expectEqual(@as(u32, 2), x.repairs);
+    try testing.expectEqual(@as(u32, 1), u.deletions);
 
     // Valid input: no failure, no repairs.
     var y = BaseParser.init(testing.allocator, "a");
     defer y.deinit();
     const z = try y.parseTolerant(.prog, 8);
     try testing.expect(z.complete and z.failure == null and z.repairs == 0);
+}
+
+test "tolerant parsing never puts a hole in front of real input" {
+    // A hole before `+` would make `a = <hole> + b`; the real token is
+    // deleted instead.
+    var p = BaseParser.init(testing.allocator, "a = + b");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog (set a b))", try render(&p, r.sexp));
+    try testing.expectEqual(@as(u32, 0), r.insertions);
+    try testing.expectEqual(@as(u32, 1), r.deletions);
+}
+
+test "tolerant parsing: end of input takes holes and is never deleted" {
+    var p = BaseParser.init(testing.allocator, "a =");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog (set a ))", try render(&p, r.sexp));
+    try testing.expectEqual(TokenCat.eof, r.failure.?.cat);
+
+    // `(a` needs a `)`, which is not fabricable: the parse ends at end of
+    // input, incomplete, without deleting it.
+    var q = BaseParser.init(testing.allocator, "(a");
+    defer q.deinit();
+    const s = try q.parseTolerant(.prog, 8);
+    try testing.expect(!s.complete);
+    try testing.expectEqual(@as(u32, 0), s.repairs);
+    try testing.expectEqual(TokenCat.eof, s.failure.?.cat);
+
+    // `a = (`: a hole is inserted though `)` is still missing (the hole
+    // makes progress), once; then the parse ends.
+    var t = BaseParser.init(testing.allocator, "a = (");
+    defer t.deinit();
+    const u = try t.parseTolerant(.prog, 8);
+    try testing.expect(!u.complete);
+    try testing.expectEqual(@as(u32, 1), u.insertions);
+    try testing.expectEqual(@as(u32, 0), u.deletions);
+}
+
+test "tolerant parsing keeps the first error and honors the budget" {
+    var p = BaseParser.init(testing.allocator, "a = + b\n) c");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog (set a b) c)", try render(&p, r.sexp));
+    try testing.expectEqual(@as(u32, 2), r.deletions);
+    // The first error, as the strict parse reports it.
+    try testing.expectEqual(Span{ .start = 4, .end = 5 }, r.failure.?.span);
+    try testing.expectEqualStrings("1:5: expected an expression, got \"+\"", try errorText(&p));
+
+    var q = BaseParser.init(testing.allocator, ") ) ) a");
+    defer q.deinit();
+    const s = try q.parseTolerant(.prog, 2);
+    try testing.expect(!s.complete);
+    try testing.expectEqual(@as(u32, 2), s.repairs);
+    try testing.expectEqual(Span{ .start = 0, .end = 1 }, s.failure.?.span);
+
+    var t = BaseParser.init(testing.allocator, "a b");
+    defer t.deinit();
+    const u = try t.parseTolerant(.prog, 0);
+    try testing.expect(!u.complete);
+    try testing.expectEqual(@as(u32, 0), u.repairs);
+    try testing.expect(u.failure != null);
 }
 
 test "ir accessors: by role and through per-kind positions" {

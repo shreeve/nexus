@@ -2,9 +2,11 @@
 //! driver may insert as zero-width tokens at a syntax error, best first.
 //!
 //! Only tokens the grammar declares fabricable are candidates: `holes`
-//! (value-carrying tokens such as IDENT, whose empty value adds no meaning)
-//! and `structure` (layout tokens such as NEWLINE, INDENT, OUTDENT). A token
-//! is a candidate in a state when the state has an action for it. Ranking:
+//! (value-carrying tokens such as IDENT, whose empty value adds no meaning),
+//! `structure` (layout tokens such as INDENT, OUTDENT) and `terminator`
+//! (structure that ends a statement, such as NEWLINE; the tolerant driver
+//! inserts only terminators in front of real input). A token is a
+//! candidate in a state when the state has an action for it. Ranking:
 //!
 //!   1. holes before structure: a hole keeps the construct under the cursor
 //!      alive (an editor can resolve into it), even when structure would be
@@ -46,7 +48,7 @@ pub const BadToken = struct { name: []const u8, reason: []const u8 };
 /// Check the `@repair` names: each must be a terminal the parser grammar
 /// uses, and appear once. Returns the first offending name.
 pub fn validate(g: *const Grammar, spec: RepairSpec) ?BadToken {
-    const lists = [_][]const []const u8{ spec.holes, spec.structure };
+    const lists = [_][]const []const u8{ spec.holes, spec.structure, spec.terminators };
     for (lists, 0..) |list, li| {
         for (list, 0..) |name, i| {
             const sym = g.getSymbol(name) orelse
@@ -129,12 +131,13 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
 
     for (auto.states.items, 0..) |state, si| {
         candidates.clearRetainingCapacity();
-        const classes = [_][]const []const u8{ spec.holes, spec.structure };
-        for (classes, 0..) |names, class| {
-            for (names) |name| {
+        // Terminators rank as structure.
+        const classes = [_]struct { []const []const u8, u8 }{ .{ spec.holes, 0 }, .{ spec.structure, 1 }, .{ spec.terminators, 1 } };
+        for (classes) |c| {
+            for (c[0]) |name| {
                 const id = g.getSymbol(name).?;
                 if (rows[si][id] == .err) continue;
-                try candidates.append(a, .{ .id = id, .class = @intCast(class), .cost = costAt(g, la, costs, state, id) });
+                try candidates.append(a, .{ .id = id, .class = c[1], .cost = costAt(g, la, costs, state, id) });
             }
         }
         std.mem.sort(Candidate, candidates.items, {}, struct {

@@ -729,11 +729,29 @@ pub const Failure = struct {
 pub const Tolerant = struct {
     /// The tree; `.nil` when the parse could not be completed.
     sexp: Sexp,
-    /// The first real error (null when the input was valid).
+    /// The first error, as the strict parse reports it (null when the
+    /// input was valid).
     failure: ?Failure,
     /// Tokens inserted plus tokens deleted.
     repairs: u32,
+    /// Zero-width tokens inserted (holes and structure).
+    insertions: u32 = 0,
+    /// Offending tokens deleted.
+    deletions: u32 = 0,
     complete: bool,
+};
+
+/// A token's role in tolerant repair, from `@repair`.
+pub const RepairClass = enum {
+    /// Not fabricable: real input.
+    none,
+    /// `holes`: a value-carrying token that may be minted with empty text.
+    hole,
+    /// `structure`: layout a lexer mints (INDENT, OUTDENT, ...).
+    structure,
+    /// `terminator`: structure that ends a statement (NEWLINE); the only
+    /// insertion allowed in front of real input.
+    terminator,
 };
 
 /// The id attribute of the token the lexer just produced, cleared as it is
@@ -848,38 +866,97 @@ pub const BaseParser = struct {
         }
     }
 
-    /// Parse `start`, repairing errors from the grammar's `@repair` table:
-    /// insert a zero-width token that lets the offending token be shifted,
-    /// else delete the offending token. Records the first real error; gives
-    /// up after `budget` repairs.
+    /// Parse `start`, repairing syntax errors for an editor: the parse goes
+    /// on past an error with the tree built the normal way. The rules:
+    ///
+    ///   1. The first error is recorded exactly as the strict parse reports
+    ///      it (token, state, expected set); repairs never replace it, and a
+    ///      repaired parse still returns it: recovery is not acceptance.
+    ///   2. Only tokens the grammar declares in `@repair` are ever inserted,
+    ///      as zero-width tokens at the offending token, taken from the
+    ///      state's generated candidate list (holes, then structure; fewer
+    ///      further fabrications first).
+    ///   3. What the offending token admits: end of input and structure
+    ///      tokens (lexer scaffolding) admit any candidate; real input
+    ///      admits only a `terminator` (a statement boundary splits what
+    ///      the user wrote without inventing meaning in front of it: no
+    ///      holes, no block structure before real code).
+    ///   4. An insertion must let the offending token be consumed (shifted,
+    ///      or accepted at end of input). At end of input or a structure
+    ///      token, when none does, a candidate the state can shift is
+    ///      inserted anyway, never twice in the same configuration (stack
+    ///      depth, state, token) since the last token was consumed, so
+    ///      several insertions can complete an unfinished construct.
+    ///   5. With no admissible insertion the offending token is deleted,
+    ///      except end of input, which is never deleted: the parse ends
+    ///      there, incomplete.
+    ///   6. At most `budget` repairs (insertions plus deletions); when they
+    ///      are spent the parse ends, incomplete.
+    ///
+    /// Strict parsing (`parse`) is a separate entry point and pays nothing.
     pub fn parseTolerant(self: *BaseParser, start: Start, budget: u32) !Tolerant {
         if (!hasRepair) @compileError("parseTolerant needs a @repair section in the grammar");
         try self.begin(start);
-        var repairs: u32 = 0;
+        var result: Tolerant = .{ .sexp = .nil, .failure = null, .repairs = 0, .complete = false };
+        // Configurations repaired since the last consumed token (rule 4).
+        var tried: std.ArrayListUnmanaged(RepairKey) = .empty;
         while (true) {
             const state = self.stateStack.getLast();
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
+                if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                return .{ .sexp = self.valueStack.getLast(), .failure = self.failure, .repairs = repairs, .complete = true };
+                result.sexp = self.valueStack.getLast();
+                result.complete = true;
+                break;
             } else {
+                // An inserted token is always acceptable (rule 4).
+                std.debug.assert(self.pendingInsert == null);
                 if (self.failure == null) self.recordFailure(state, sym);
-                if (repairs == budget or self.pendingInsert != null) break;
-                repairs += 1;
-                if (try self.findInsertion(sym)) |token| {
+                if (result.repairs == budget) break;
+                if (try self.chooseInsertion(sym, tried.items)) |token| {
+                    try tried.append(self.allocator(), .{ .depth = @intCast(self.stateStack.items.len), .state = state, .token = token });
                     self.pendingInsert = token;
+                    result.insertions += 1;
                 } else if (sym == endSymbol) {
                     break;
                 } else {
                     try self.advance();
+                    tried.clearRetainingCapacity();
+                    result.deletions += 1;
                 }
+                result.repairs += 1;
             }
         }
-        return .{ .sexp = .nil, .failure = self.failure, .repairs = repairs, .complete = false };
+        result.failure = self.failure;
+        return result;
+    }
+
+    const RepairKey = struct { depth: u32, state: u16, token: u16 };
+
+    /// The insertion rules 3 and 4 allow before `next`, best first; null
+    /// when there is none.
+    fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
+        const state = self.stateStack.getLast();
+        const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
+        const real = nextClass == .none or nextClass == .hole;
+        for (repairCandidates(state)) |candidate| {
+            if (real and repairClass(candidate) != .terminator) continue;
+            if (try self.accepts(&.{ candidate, next })) return candidate;
+        }
+        if (real) return null;
+        const depth: u32 = @intCast(self.stateStack.items.len);
+        for (repairCandidates(state)) |candidate| {
+            const seen = for (tried) |k| {
+                if (k.depth == depth and k.state == state and k.token == candidate) break true;
+            } else false;
+            if (!seen and try self.accepts(&.{candidate})) return candidate;
+        }
+        return null;
     }
 
     fn begin(self: *BaseParser, start: Start) !void {
@@ -1352,15 +1429,6 @@ pub const BaseParser = struct {
     // -------------------------------------------------------------------------
     // Tolerant repair
     // -------------------------------------------------------------------------
-
-    /// The first candidate of the current state after which `next` can be
-    /// shifted (or accepted).
-    fn findInsertion(self: *BaseParser, next: u16) !?u16 {
-        for (repairCandidates(self.stateStack.getLast())) |candidate| {
-            if (try self.accepts(&.{ candidate, next })) return candidate;
-        }
-        return null;
-    }
 
     /// Whether `symbols` can be consumed from the current state, simulating
     /// reductions on a scratch copy of the state stack.
@@ -2048,6 +2116,10 @@ fn isTrivia(_: TokenCat) bool {
 
 fn repairCandidates(_: u16) []const u16 {
     return &.{};
+}
+
+fn repairClass(_: u16) RepairClass {
+    return .none;
 }
 
 fn ruleSideLabels(rule: u16) []const SideLabel {

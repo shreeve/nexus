@@ -583,7 +583,7 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     try testing.expectEqual(@as(u32, 4), costs[sym(&g, "call")]);
     try testing.expectEqual(@as(u32, 5), costs[sym(&g, "stmt")]);
 
-    g.repair = .{ .holes = &.{"ID"}, .structure = &.{ "NEWLINE", "\")\"" } };
+    g.repair = .{ .holes = &.{"ID"}, .structure = &.{"\")\""}, .terminators = &.{"NEWLINE"} };
     const tbl = try table.build(&g, &auto, la);
     const rep = tbl.repair.?;
     // After `ID "(" args`: `)` closes the call (structure).
@@ -604,6 +604,7 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     try testing.expect(repair.validate(&g, .{ .holes = &.{"args"}, .structure = &.{} }) != null);
     try testing.expect(repair.validate(&g, .{ .holes = &.{"ID"}, .structure = &.{"ID"} }) != null);
     try testing.expect(repair.validate(&g, .{ .holes = &.{"ID"}, .structure = &.{"NEWLINE"} }) == null);
+    try testing.expect(repair.validate(&g, .{ .holes = &.{"ID"}, .structure = &.{}, .terminators = &.{"ID"} }) != null);
 }
 
 test "ranking puts holes above cheaper structure" {

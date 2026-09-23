@@ -912,6 +912,7 @@ const Codegen = struct {
     fn emitRepair(self: *Codegen, w: *std.Io.Writer) !void {
         const r = self.table.repair orelse {
             try w.writeAll("\nfn repairCandidates(_: u16) []const u16 {\n    return &.{};\n}\n");
+            try w.writeAll("\nfn repairClass(_: u16) RepairClass {\n    return .none;\n}\n");
             return;
         };
         try w.writeAll("\n/// Tolerant repair: state s may insert, best first,\n/// repairTokens[repairOffsets[s]..repairOffsets[s + 1]].\nconst repairTokens = [_]u16{");
@@ -925,7 +926,19 @@ const Codegen = struct {
             \\    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
             \\}
             \\
+            \\/// The `@repair` class of a grammar symbol.
+            \\fn repairClass(sym: u16) RepairClass {
+            \\    return switch (sym) {
+            \\
         );
+        const spec = self.g.repair.?;
+        const classes = [_]struct { []const []const u8, []const u8 }{
+            .{ spec.holes, "hole" }, .{ spec.structure, "structure" }, .{ spec.terminators, "terminator" },
+        };
+        for (classes) |c| for (c[0]) |name| {
+            try w.print("        {d} => .{s},\n", .{ self.g.getSymbol(name).?, c[1] });
+        };
+        try w.writeAll("        else => .none,\n    };\n}\n");
     }
 
     fn emitSideLabels(self: *Codegen, w: *std.Io.Writer) !void {

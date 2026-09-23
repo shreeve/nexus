@@ -408,8 +408,11 @@ pub const DisplayName = struct {
 pub const RepairSpec = struct {
     /// Tokens that may be minted as zero-width holes (value-carrying, e.g. IDENT).
     holes: []const []const u8,
-    /// Structural tokens that may be minted (NEWLINE, INDENT, OUTDENT).
+    /// Structural tokens that may be minted (INDENT, OUTDENT).
     structure: []const []const u8,
+    /// Structural tokens that end a statement (NEWLINE): the only tokens
+    /// the tolerant driver inserts in front of real input.
+    terminators: []const []const u8 = &.{},
 };
 
 pub const InfixDecl = struct {
