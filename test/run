@@ -8,7 +8,7 @@
 #               ids look like mumps/label_dots, rig/known/..., gen/zag,
 #               sexp/nexus, determinism/ruby, adverse/no_arrow,
 #               known/multi_alt_start, unit/mumps, unit/nexus, bootstrap,
-#               tools/diff
+#               tools/diff, docs/GRAMMAR/L42-calc (see test/README.md)
 #   -v          also list passing and known-failing tests
 #   -j N        parallel jobs (default: CPU count)
 #   --update    rewrite goldens (test/golden/*, cases/*.tree) from the
@@ -116,6 +116,9 @@ check_case() {
     local got="$WORK/out/$(key_of "$file").got" err="$WORK/out/$(key_of "$file").err"
     local args=()
     [[ -n "$start" ]] && args=(--start "$start")
+    # Extra driver options for this case (doc examples: `--no-spans`).
+    # shellcheck disable=SC2207
+    [[ -f "${file%.*}.args" ]] && args+=($(<"${file%.*}.args"))
     { timeout "$TIMEOUT" "$out/driver" ${args[@]+"${args[@]}"} "$file" >"$got" 2>"$err" </dev/null; } 2>/dev/null
     local rc=$?
     if [[ $rc -eq 124 ]]; then REASON="timed out after ${TIMEOUT}s"; return 1; fi
@@ -227,7 +230,7 @@ list_cases() {
     [[ -d "$cdir" ]] || return 0
     for f in "$cdir"/*; do
         [[ -f "$f" ]] || continue
-        case $f in *.tree|*.md|*/README*) continue ;; esac
+        case $f in *.tree|*.args|*.md|*/README*) continue ;; esac
         printf '%s\x1f%s\x1f%s\n' "$f" "$START" "${f%.*}.tree"
     done
     for sub in "$cdir"/*/; do
@@ -236,7 +239,7 @@ list_cases() {
         [[ $start == parse* ]] || start="parse$(tr '[:lower:]' '[:upper:]' <<<"${start:0:1}")${start:1}"
         for f in "$sub"*; do
             [[ -f "$f" ]] || continue
-            case $f in *.tree|*.md|*/README*) continue ;; esac
+            case $f in *.tree|*.args|*.md|*/README*) continue ;; esac
             printf '%s\x1f%s\x1f%s\n' "$f" "$start" "${f%.*}.tree"
         done
     done
@@ -365,6 +368,15 @@ check_cli() {
     return 0
 }
 
+check_doc_fragment() { # check_doc_fragment <file>: a doc's grammar fragment parses
+    local out rc
+    out=$(timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$1" "$WORK/out/$(key_of "$1").sexp" 2>&1 </dev/null)
+    rc=$?
+    echo "$out" >>"$LOG"
+    if [[ $rc -ne 0 ]]; then REASON="does not parse: $(grep -m1 'error:' <<<"$out" | sed 's/^.*error: //')"; return 1; fi
+    return 0
+}
+
 check_unit_nexus() {
     local step
     step=$(zig build -l 2>/dev/null | awk '{print $1}' | grep -m1 -xE 'test-unit|unit|test-lowerer')
@@ -397,6 +409,8 @@ worker() {
         unit-nexus)  check_unit_nexus; ok=$? ;;
         diff-tool)   check_diff_tool; ok=$? ;;
         cli)         check_cli; ok=$? ;;
+        doc-frag)    check_doc_fragment "$a"; ok=$? ;;
+        doc-bad)     REASON=$a; ok=1 ;;
         *)           REASON="unknown task kind $kind"; ok=1 ;;
     esac
     if [[ "$id" == known/* || "$id" == */known/* ]]; then
@@ -527,6 +541,27 @@ add bootstrap bootstrap
 add unit/nexus unit-nexus
 add tools/diff diff-tool
 add tools/cli cli
+
+# Doc tests: the examples of the Markdown docs, extracted into suites
+# (test/lib/doctest; see test/README.md).
+DOCS_OUT=.zig-cache/nexus-test/docs
+DOC_FILES=()
+for f in README.md CHANGELOG.md AGENTS.md docs/*.md test/README.md; do [[ -f $f ]] && DOC_FILES+=("$f"); done
+if ! "$LIB/doctest" "$DOCS_OUT" "${DOC_FILES[@]}" >"$WORK/docs.tasks"; then
+    printf '%sdoc extraction failed%s\n' "$R" "$X"
+    exit 1
+fi
+while IFS=$'\t' read -r kind id arg; do
+    case $kind in
+        suite)
+            add "$id" bug "$arg" || continue
+            suite_conf "$arg"
+            grep -qE '^# error:' "$GRAMMAR" || need_build "$arg" ;;
+        ztest) add "$id" unit-lang "$arg" && need_build "$arg" ;;
+        frag) add "$id" doc-frag "$arg" ;;
+        bad) add "$id" doc-bad "$arg" ;;
+    esac
+done <"$WORK/docs.tasks"
 
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 NB=$(wc -l <"$BUILDS" | tr -d ' ')
