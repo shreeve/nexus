@@ -1,0 +1,22 @@
+# A token listed twice in @repair is reported at its second mention.
+# error: repair_listed_twice.grammar:22:24:
+# error: @repair: NEWLINE is listed twice
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+top!  = lines                               → (lines ...1)
+lines = IDENT                               → (1)
+      | lines NEWLINE IDENT                 → (...1 3)
+
+@repair
+    holes      IDENT
+    terminator NEWLINE NEWLINE

@@ -1160,7 +1160,7 @@ test "without a schema, expanded actions cut trailing absent positions" {
     const a = arena.allocator();
     const g = try expandText(a,
         \\@parser
-        \\top! = A [b] [c] D   → (p 1 2 3 ...4 x)
+        \\top! = A [b] [c] D*  → (p 1 2 3 ...4 x)
         \\b = B
         \\c = C
         \\

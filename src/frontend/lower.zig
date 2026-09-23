@@ -833,6 +833,9 @@ pub const GrammarLowerer = struct {
         var holes: std.ArrayListUnmanaged([]const u8) = .empty;
         var structure: std.ArrayListUnmanaged([]const u8) = .empty;
         var terminators: std.ArrayListUnmanaged([]const u8) = .empty;
+        var holeLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
+        var structureLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
+        var terminatorLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
         for (items[1..]) |line| {
             const lt = try self.requireTag(line, .repair_line);
             if (lt.len < 3) return self.shapeError(line, "(repair_line IDENT NAME+)");
@@ -845,12 +848,20 @@ pub const GrammarLowerer = struct {
                 &terminators
             else
                 return self.fail(lt[1], "@repair lines are `holes ...`, `structure ...` or `terminator ...`, not '{s}'", .{which});
-            for (lt[2..]) |n| try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "token name")));
+            const locs = if (out == &holes) &holeLocs else if (out == &structure) &structureLocs else &terminatorLocs;
+            for (lt[2..]) |n| {
+                try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "token name")));
+                const at = self.loc(n);
+                try locs.append(self.allocator, .{ .line = at.line, .col = at.col });
+            }
         }
+        try holeLocs.appendSlice(self.allocator, structureLocs.items);
+        try holeLocs.appendSlice(self.allocator, terminatorLocs.items);
         self.repair = .{
             .holes = try holes.toOwnedSlice(self.allocator),
             .structure = try structure.toOwnedSlice(self.allocator),
             .terminators = try terminators.toOwnedSlice(self.allocator),
+            .locs = try holeLocs.toOwnedSlice(self.allocator),
         };
     }
 

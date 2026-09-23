@@ -302,6 +302,10 @@ const Expander = struct {
         self.originCol = alt.col;
 
         const layout = try Layout.of(a, alt.elements);
+        if (!self.schemaMode()) if (alt.actionTree) |t| switch (t) {
+            .list => |l| try self.checkSpreads(alt, layout, l),
+            else => {},
+        };
         var vars: std.ArrayListUnmanaged(usize) = .empty;
         for (alt.elements, 0..) |e, i| if (isVariable(e)) try vars.append(a, i);
 
@@ -433,6 +437,42 @@ const Expander = struct {
                 else => {},
             }
         }
+    }
+
+    /// Without a schema, `...N` of a token (which is never a list) would
+    /// drop it silently. (Schema mode reports it with the static types.)
+    fn checkSpreads(self: *Expander, alt: ParsedAlternative, layout: Layout, l: ActionList) Error!void {
+        switch (l.head) {
+            .ref => |e| try self.checkSpread(alt, layout, e),
+            else => {},
+        }
+        for (l.items) |item| try self.checkSpread(alt, layout, item.elem);
+    }
+
+    fn checkSpread(self: *Expander, alt: ParsedAlternative, layout: Layout, e: ActionElem) Error!void {
+        switch (e) {
+            .spread => |p| {
+                if (p == 0 or p > layout.length) return;
+                const elem = layout.element(alt.elements, p);
+                if (!isToken(elem)) return;
+                const what = if (elem.kind == .choice) "a choice of tokens" else elem.value;
+                return self.fail(alt.line, alt.col, "`...{d}` spreads a list, but element {d} ({s}) is a token; use `{d}`", .{ p, p, what, p });
+            },
+            .node => |n| try self.checkSpreads(alt, layout, n.*),
+            else => {},
+        }
+    }
+
+    /// A single token (or an optional one, or a choice of single tokens).
+    fn isToken(e: ParsedElement) bool {
+        if (e.quantifier != .one and e.quantifier != .optional) return false;
+        return switch (e.kind) {
+            .token, .string => true,
+            .choice => for (e.choices) |c| {
+                if (c.len != 1 or !isToken(c[0])) break false;
+            } else true,
+            else => false,
+        };
     }
 
     fn checkLabel(self: *Expander, e: ParsedElement) Error!void {

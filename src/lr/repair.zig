@@ -42,26 +42,29 @@ pub const Error = error{ OutOfMemory, InvalidRepairToken };
 /// Cost of a symbol no finite string derives (or of an item nothing advances).
 pub const infinite = std.math.maxInt(u32);
 
-/// A `@repair` name that is not a terminal of the parser grammar.
-pub const BadToken = struct { name: []const u8, reason: []const u8 };
+/// A `@repair` name that is not a terminal of the parser grammar; `index`
+/// counts the names of the three lists in order (see `RepairSpec.locOf`).
+pub const BadToken = struct { name: []const u8, reason: []const u8, index: usize };
 
 /// Check the `@repair` names: each must be a terminal the parser grammar
 /// uses, and appear once. Returns the first offending name.
 pub fn validate(g: *const Grammar, spec: RepairSpec) ?BadToken {
     const lists = [_][]const []const u8{ spec.holes, spec.structure, spec.terminators };
+    var index: usize = 0;
     for (lists, 0..) |list, li| {
         for (list, 0..) |name, i| {
+            defer index += 1;
             const sym = g.getSymbol(name) orelse
-                return .{ .name = name, .reason = "is not a token the parser grammar uses" };
+                return .{ .name = name, .reason = "is not a token the parser grammar uses", .index = index };
             if (g.symbols.items[sym].kind != .terminal)
-                return .{ .name = name, .reason = "is a rule, not a token" };
+                return .{ .name = name, .reason = "is a rule, not a token", .index = index };
             if (sym == g.endId or sym == g.errorId)
-                return .{ .name = name, .reason = "can never be inserted" };
+                return .{ .name = name, .reason = "can never be inserted", .index = index };
             for (lists[0 .. li + 1], 0..) |earlier, lj| {
                 const upto = if (lj == li) i else earlier.len;
                 for (earlier[0..upto]) |other| {
                     if (g.getSymbol(other) == sym)
-                        return .{ .name = name, .reason = "is listed twice" };
+                        return .{ .name = name, .reason = "is listed twice", .index = index };
                 }
             }
         }

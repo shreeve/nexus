@@ -60,7 +60,8 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
 
     if (g.repair) |spec| {
         if (repair.validate(g, spec)) |bad| {
-            std.debug.print("{s}: error: @repair: {s} {s}\n", .{ opts.path, bad.name, bad.reason });
+            const at = spec.locOf(bad.index) orelse grammar.RepairSpec.Loc{ .line = 1, .col = 1 };
+            std.debug.print("{s}:{d}:{d}: error: @repair: {s} {s}\n", .{ opts.path, at.line, at.col, bad.name, bad.reason });
             return error.GenerationFailed;
         }
     }

@@ -417,6 +417,16 @@ pub const RepairSpec = struct {
     /// Structural tokens that end a statement (NEWLINE): the only tokens
     /// the tolerant driver inserts in front of real input.
     terminators: []const []const u8 = &.{},
+    /// Where each name is written (diagnostics): `holes`, then `structure`,
+    /// then `terminators`, in order. Empty when unknown.
+    locs: []const Loc = &.{},
+
+    pub const Loc = struct { line: u32, col: u32 };
+
+    /// The location of name `i` of the three lists taken in order.
+    pub fn locOf(self: RepairSpec, i: usize) ?Loc {
+        return if (i < self.locs.len) self.locs[i] else null;
+    }
 };
 
 pub const InfixDecl = struct {

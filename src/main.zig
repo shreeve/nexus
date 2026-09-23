@@ -89,7 +89,7 @@ pub fn main(init: std.process.Init) !void {
 
     if (args.len < 2) {
         std.debug.print(usage, .{});
-        return;
+        fail();
     }
 
     if (std.mem.eql(u8, args[1], "--help") or std.mem.eql(u8, args[1], "-h")) {
@@ -98,36 +98,46 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (std.mem.eql(u8, args[1], "--dump-sexp")) {
-        if (args.len < 3) {
+        if (args.len < 3 or args.len > 4) {
             std.debug.print("Usage: nexus --dump-sexp <grammar-file> [output-file]\n", .{});
-            return;
+            fail();
         }
         return dumpSexp(allocator, io, args[2], if (args.len >= 4) args[3] else null);
     }
 
     const checkMode = std.mem.eql(u8, args[1], "check") or std.mem.eql(u8, args[1], "--check");
 
-    // Parse option flags from remaining args
+    // Options may come before or after the file names; anything else that
+    // starts with `-` is an error, never a file name or silently ignored.
     var opts: Options = .{ .checkMode = checkMode, .grammarFile = undefined, .outputFile = undefined };
-    var positionalStart: usize = if (checkMode) 2 else 1;
-    for (args[positionalStart..]) |arg| {
+    var positionals: [2][]const u8 = undefined;
+    var count: usize = 0;
+    const maxPositionals: usize = if (checkMode) 1 else 2;
+    for (args[if (checkMode) 2 else 1..]) |arg| {
         if (std.mem.eql(u8, arg, "--comments") or std.mem.eql(u8, arg, "-c")) {
             opts.emitComments = true;
-            positionalStart += 1;
         } else if (std.mem.eql(u8, arg, "--slr")) {
             opts.parseMode = .slr;
-            positionalStart += 1;
         } else if (std.mem.eql(u8, arg, "--spans")) {
             opts.spans = true;
-            positionalStart += 1;
-        } else break;
+        } else if (arg.len > 1 and arg[0] == '-') {
+            diag.err("unknown option '{s}' (see nexus --help)", .{arg});
+            fail();
+        } else if (count == maxPositionals) {
+            diag.err("unexpected argument '{s}'", .{arg});
+            std.debug.print(usage, .{});
+            fail();
+        } else {
+            positionals[count] = arg;
+            count += 1;
+        }
     }
-
-    opts.grammarFile = if (positionalStart < args.len) args[positionalStart] else {
-        std.debug.print("Usage: nexus <grammar-file> [output-file]\n", .{});
-        return;
-    };
-    opts.outputFile = if (positionalStart + 1 < args.len) args[positionalStart + 1] else "src/parser.zig";
+    if (count == 0) {
+        std.debug.print(usage, .{});
+        fail();
+    }
+    opts.grammarFile = positionals[0];
+    opts.outputFile = if (count > 1) positionals[1] else "src/parser.zig";
 
     return generate(allocator, io, opts);
 }
@@ -210,17 +220,8 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         ir.startSymbols.len,
     });
 
-    if (opts.checkMode) {
-        diag.info("\nChecking grammar...", .{});
-        var failed = check.checkGrammar(allocator, &ir) > 0;
-        if (ir.schema != null) {
-            _ = semantics.resolve(allocator, &ir, &lexerSpec, grammarFile) catch {
-                failed = true;
-            };
-        }
-        if (failed) fail();
-        return;
-    }
+    // `check`: lint, then everything generation checks, without output.
+    const warnings = if (opts.checkMode) check.checkGrammar(allocator, &ir, grammarFile) else 0;
 
     // Without parser rules the output is the lexer alone
     var finalCode: []const u8 = undefined;
@@ -284,6 +285,10 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         finalCode = try codegen.lexerModule(allocator, lexerSpec.langName, lexerDecls);
     }
 
+    if (opts.checkMode) {
+        if (warnings > 0) diag.info("{d} warning(s); no errors", .{warnings}) else diag.info("No issues found", .{});
+        return;
+    }
     try writeOutput(io, opts.outputFile, finalCode);
     diag.info("Generated: {s}", .{opts.outputFile});
 }
@@ -295,16 +300,21 @@ fn fail() noreturn {
 
 fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {
     return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(max_grammar_bytes)) catch |err| {
-        diag.err("cannot read {s}: {any}", .{ path, err });
-        return err;
+        if (err == error.StreamTooLong) {
+            diag.err("cannot read {s}: larger than {d} bytes", .{ path, max_grammar_bytes });
+        } else diag.err("cannot read {s}: {s}", .{ path, @errorName(err) });
+        fail();
     };
 }
 
 fn writeOutput(io: Io, path: []const u8, bytes: []const u8) !void {
     const file = std.Io.Dir.cwd().createFile(io, path, .{}) catch |err| {
-        diag.err("cannot create {s}: {any}", .{ path, err });
-        return err;
+        diag.err("cannot create {s}: {s}", .{ path, @errorName(err) });
+        fail();
     };
     defer file.close(io);
-    try file.writeStreamingAll(io, bytes);
+    file.writeStreamingAll(io, bytes) catch |err| {
+        diag.err("cannot write {s}: {s}", .{ path, @errorName(err) });
+        fail();
+    };
 }

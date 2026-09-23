@@ -2,8 +2,8 @@
 //!
 //!   - validateSymbols: before generation, every nonterminal needs a rule and
 //!     every uppercase terminal a lexer token (run on the desugared Grammar).
-//!   - checkGrammar: `nexus check` lint of the lowered IR (undefined rule
-//!     references, unreachable rules), without generating anything.
+//!   - checkGrammar: `nexus check` lint of the lowered IR (unreachable
+//!     rules); `check` then runs the whole pipeline without writing output.
 
 const std = @import("std");
 const diag = @import("diag.zig");
@@ -14,33 +14,20 @@ const ParsedElement = grammar.ParsedElement;
 const Grammar = grammar.Grammar;
 const LexerSpec = grammar.LexerSpec;
 
-pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
-    var errors: u32 = 0;
+/// `nexus check` lint of the lowered IR: warns about rules no start symbol
+/// reaches (located at the rule). Everything that is an error is reported
+/// by the generation pipeline, which `check` also runs. Returns the number
+/// of warnings.
+pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR, path: []const u8) u32 {
     var warnings: u32 = 0;
 
-    // Build known rule name set (allow duplicate entries — grammar DSL merges alternatives)
-    var ruleNames = std.StringHashMap(void).init(allocator);
-    defer ruleNames.deinit();
-    for (ir.rules) |rule| {
-        ruleNames.put(rule.name, {}) catch {};
-    }
-    if (ir.infix != null) ruleNames.put("infix", {}) catch {};
-
-    // Check for undefined rule references
-    for (ir.rules) |rule| {
-        for (rule.alternatives) |alt| {
-            checkUndefinedRefs(alt.elements, rule.name, &ruleNames, &errors);
-        }
-    }
-
-    // Check for unreachable rules (skipped when @as directives are present
-    // because keyword expansion creates reachability edges not visible in the IR)
+    // Unreachable rules (skipped when @as directives are present because
+    // keyword expansion creates reachability edges not visible in the IR)
     if (ir.startSymbols.len > 0 and ir.asDirectives.len == 0) {
         var reachable = std.StringHashMap(void).init(allocator);
         defer reachable.deinit();
         for (ir.startSymbols) |s| markReachable(s, ir, &reachable);
         if (ir.infix) |infix| markReachable(infix.baseRule, ir, &reachable);
-        for (ir.asDirectives) |d| markReachable(d.rule, ir, &reachable);
 
         var seen = std.StringHashMap(void).init(allocator);
         defer seen.deinit();
@@ -48,32 +35,12 @@ pub fn checkGrammar(allocator: Allocator, ir: *const GrammarIR) u32 {
             if (seen.contains(rule.name)) continue;
             seen.put(rule.name, {}) catch {};
             if (!rule.isStart and !reachable.contains(rule.name)) {
-                diag.warn("unreachable rule '{s}'", .{rule.name});
+                std.debug.print("{s}:{d}:{d}: warning: unreachable rule '{s}'\n", .{ path, @max(rule.line, 1), @max(rule.col, 1), rule.name });
                 warnings += 1;
             }
         }
     }
-
-    if (errors > 0 or warnings > 0) {
-        std.debug.print("\n  {d} error(s), {d} warning(s)\n", .{ errors, warnings });
-    } else {
-        diag.info("  No issues found", .{});
-    }
-
-    return errors;
-}
-
-fn checkUndefinedRefs(elements: []const ParsedElement, ruleName: []const u8, ruleNames: *std.StringHashMap(void), errors: *u32) void {
-    for (elements) |elem| {
-        const isRuleRef = elem.kind == .ident or
-            ((elem.kind == .reqList or elem.kind == .optList) and elem.value.len > 0 and !(elem.value[0] >= 'A' and elem.value[0] <= 'Z'));
-        if (isRuleRef and elem.value.len > 0 and !ruleNames.contains(elem.value)) {
-            diag.err("undefined rule '{s}' referenced in '{s}'", .{ elem.value, ruleName });
-            errors.* += 1;
-        }
-        if (elem.subElements.len > 0) checkUndefinedRefs(elem.subElements, ruleName, ruleNames, errors);
-        for (elem.choices) |choice| checkUndefinedRefs(choice, ruleName, ruleNames, errors);
-    }
+    return warnings;
 }
 
 fn markReachable(name: []const u8, ir: *const GrammarIR, reachable: *std.StringHashMap(void)) void {

@@ -1,0 +1,18 @@
+# A @repair name that is not a token of the parser grammar is reported where
+# it is written.
+# error: repair_unknown_token.grammar:18:16:
+# error: @repair: SEMI is not a token the parser grammar uses
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+top!  = IDENT                               → (top 1)
+
+@repair
+    holes      SEMI

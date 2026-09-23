@@ -382,8 +382,16 @@ const Codegen = struct {
         var names: std.StringHashMapUnmanaged([]const u8) = .empty;
         for (s.kinds) |k| {
             const view = try viewName(self.allocator, k.tag);
+            // The names `ir` refers to its own helpers by (see the runtime's
+            // `ir` section); a view by one of them would shadow it.
+            for ([_][]const u8{ "ir.Sexp", "ir.Tag", "ir.Role", "ir.at", "ir.restAt", "ir.check", "ir.node" }) |reserved| {
+                if (std.mem.eql(u8, k.tag, reserved)) {
+                    self.errLine(k.line, k.col, "@schema kind '{s}': the accessor namespace name '{s}' is reserved", .{ k.tag, reserved });
+                    return error.ViewNameClash;
+                }
+            }
             if (names.get(view)) |other| {
-                diag.err("@schema kinds '{s}' and '{s}' both map to the accessor namespace ir.{s}", .{ other, k.tag, view });
+                self.errLine(k.line, k.col, "@schema kinds '{s}' and '{s}' both map to the accessor namespace ir.{s}", .{ other, k.tag, view });
                 return error.ViewNameClash;
             }
             try names.put(self.allocator, view, k.tag);
