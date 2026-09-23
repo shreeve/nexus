@@ -745,11 +745,13 @@ test "lowerer rejects (exclude) with multi-char literal" {
 }
 
 test "lowerer rejects (exclude) appearing inside a group body" {
-    try expectShapeError(negRule(&.{.{ .list = &[_]Sexp{
-        .{ .tag = .group },
-        .nil, // KIND slot — `_` for plain group
-        .{ .list = &[_]Sexp{
-            .{ .list = &[_]Sexp{ .{ .tag = .exclude }, negSrc0 } },
-        } },
-    } }}));
+    try expectShapeError(negRule(&.{.{
+        .list = &[_]Sexp{
+            .{ .tag = .group },
+            .nil, // KIND slot — `_` for plain group
+            .{ .list = &[_]Sexp{
+                .{ .list = &[_]Sexp{ .{ .tag = .exclude }, negSrc0 } },
+            } },
+        },
+    }}));
 }

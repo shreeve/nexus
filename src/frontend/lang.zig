@@ -40,10 +40,10 @@ pub const Tag = enum(u8) {
     alt,
 
     // Kind discriminators (children of as_entry, alt, group)
-    perm,    // (as_entry perm IDENT)            permissive @as
-    reduce,  // (alt reduce ELEMENTS ACTION?)    `<` tight-binding hint
-    shift,   // (alt shift  ELEMENTS ACTION?)    `>` prefer-shift hint
-    many,    // (group many ALT_BODY...)         `[X, ...]` optional comma list
+    perm, // (as_entry perm IDENT)            permissive @as
+    reduce, // (alt reduce ELEMENTS ACTION?)    `<` tight-binding hint
+    shift, // (alt shift  ELEMENTS ACTION?)    `>` prefer-shift hint
+    many, // (group many ALT_BODY...)         `[X, ...]` optional comma list
 
     // Elements
     ref,
@@ -99,10 +99,10 @@ pub const Lexer = struct {
         self.base.pos = self.base.pos - @as(u32, @intCast(ws.count));
         var tok = self.base.matchRules();
 
-        if (tok.cat == .@"ident") tok.cat = self.classifyIdent(tok);
-        if (tok.cat == .@"lbracket") self.bracketDepth += 1;
-        if (tok.cat == .@"rbracket" and self.bracketDepth > 0) self.bracketDepth -= 1;
-        if (tok.cat == .@"arrow" and self.bracketDepth == 0) self.mode = .captureAction;
+        if (tok.cat == .ident) tok.cat = self.classifyIdent(tok);
+        if (tok.cat == .lbracket) self.bracketDepth += 1;
+        if (tok.cat == .rbracket and self.bracketDepth > 0) self.bracketDepth -= 1;
+        if (tok.cat == .arrow and self.bracketDepth == 0) self.mode = .captureAction;
 
         return self.emit(tok);
     }
@@ -126,7 +126,7 @@ pub const Lexer = struct {
         }
         if (end > start) {
             self.afterAt = false;
-            return Token{ .cat = .@"action_text", .pre = 0, .pos = start, .len = @intCast(end - start) };
+            return Token{ .cat = .action_text, .pre = 0, .pos = start, .len = @intCast(end - start) };
         }
         return self.next();
     }
@@ -154,11 +154,11 @@ pub const Lexer = struct {
             0x92 => blk: { // → rightwards arrow
                 self.base.pos += 3;
                 if (self.bracketDepth == 0) self.mode = .captureAction;
-                break :blk Token{ .cat = .@"arrow", .pre = pre, .pos = start, .len = 3 };
+                break :blk Token{ .cat = .arrow, .pre = pre, .pos = start, .len = 3 };
             },
             0x90 => blk: { // ← leftwards arrow
                 self.base.pos += 3;
-                break :blk Token{ .cat = .@"larrow", .pre = pre, .pos = start, .len = 3 };
+                break :blk Token{ .cat = .larrow, .pre = pre, .pos = start, .len = 3 };
             },
             else => null,
         };
@@ -171,24 +171,24 @@ pub const Lexer = struct {
         // Bare `X` is the reserved exclusion marker in grammar alternatives
         // (surface form `X "c"` means "not followed by c"). Reclassify it
         // here so the parser grammar can match `KW_X STRING` structurally.
-        if (t.len == 1 and t[0] == 'X') return .@"kw_x";
-        if (t.len > 0 and t[0] >= 'A' and t[0] <= 'Z') return .@"token";
+        if (t.len == 1 and t[0] == 'X') return .kw_x;
+        if (t.len > 0 and t[0] >= 'A' and t[0] <= 'Z') return .token;
         return classify(t, self.afterAt);
     }
 
     fn classify(t: []const u8, afterAt: bool) TokenCat {
-        if (t.len < 2 or t.len > 9) return .@"ident";
+        if (t.len < 2 or t.len > 9) return .ident;
         return switch (t[0]) {
-            'a' => if (afterAt and eql(t, "as")) .@"kw_as" else .@"ident",
-            'c' => if (afterAt and eql(t, "code")) .@"kw_code" else if (afterAt and eql(t, "conflicts")) .@"kw_conflicts" else .@"ident",
-            'e' => if (afterAt and eql(t, "errors")) .@"kw_errors" else .@"ident",
-            'i' => if (afterAt and eql(t, "infix")) .@"kw_infix" else .@"ident",
-            'l' => if (eql(t, "left")) .@"kw_left" else if (afterAt and eql(t, "lang")) .@"kw_lang" else .@"ident",
-            'n' => if (eql(t, "none")) .@"kw_none" else .@"ident",
-            'o' => if (afterAt and eql(t, "op")) .@"kw_op" else .@"ident",
-            'r' => if (eql(t, "right")) .@"kw_right" else .@"ident",
-            's' => if (afterAt and eql(t, "skip")) .@"kw_skip" else .@"ident",
-            else => .@"ident",
+            'a' => if (afterAt and eql(t, "as")) .kw_as else .ident,
+            'c' => if (afterAt and eql(t, "code")) .kw_code else if (afterAt and eql(t, "conflicts")) .kw_conflicts else .ident,
+            'e' => if (afterAt and eql(t, "errors")) .kw_errors else .ident,
+            'i' => if (afterAt and eql(t, "infix")) .kw_infix else .ident,
+            'l' => if (eql(t, "left")) .kw_left else if (afterAt and eql(t, "lang")) .kw_lang else .ident,
+            'n' => if (eql(t, "none")) .kw_none else .ident,
+            'o' => if (afterAt and eql(t, "op")) .kw_op else .ident,
+            'r' => if (eql(t, "right")) .kw_right else .ident,
+            's' => if (afterAt and eql(t, "skip")) .kw_skip else .ident,
+            else => .ident,
         };
     }
 
@@ -199,7 +199,7 @@ pub const Lexer = struct {
     // --- State tracking ---
 
     fn emit(self: *Lexer, tok: Token) Token {
-        self.afterAt = (tok.cat == .@"at");
+        self.afterAt = (tok.cat == .at);
         return tok;
     }
 };

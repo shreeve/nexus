@@ -253,7 +253,7 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
             } else {
                 std.debug.print(
                     "❌ Unknown action element '{s}' in template: {s}\n" ++
-                    "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
+                        "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
                     .{ work, template },
                 );
                 return error.UnknownActionElement;
@@ -321,7 +321,7 @@ fn generateParenAction(allocator: Allocator, writer: anytype, template: []const 
         } else {
             std.debug.print(
                 "❌ Unknown action element '{s}' in template: {s}\n" ++
-                "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
+                    "   (expected position ref like `1`, `_`, `...N`, `~N`, `key:N`, or a tag literal)\n",
                 .{ work, template },
             );
             return error.UnknownActionElement;
@@ -390,8 +390,7 @@ fn isLikelyTagName(name: []const u8) bool {
     if (c == '~' and name.len >= 2 and name[1] >= '1' and name[1] <= '9') return false;
     // Spread `...N` (3 dots + digit). Shorter dot-starts like `.`, `..`,
     // `.member` are valid Tag names.
-    if (c == '.' and name.len >= 4 and name[1] == '.' and name[2] == '.'
-        and name[3] >= '1' and name[3] <= '9') return false;
+    if (c == '.' and name.len >= 4 and name[1] == '.' and name[2] == '.' and name[3] >= '1' and name[3] <= '9') return false;
     // `key:value` annotation sugar requires content on BOTH sides of the
     // colon. A bare `:` or leading-colon operator (`:=`) passes through.
     if (std.mem.indexOfScalar(u8, name, ':')) |colonPos| {

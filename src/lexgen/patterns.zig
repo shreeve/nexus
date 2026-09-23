@@ -129,8 +129,8 @@ pub fn parseCharClass(pattern: []const u8) ?struct { chars: [256]bool, endPos: u
 pub const IdentInfo = struct {
     token: []const u8,
     startChars: [256]bool,
-    contChars: [256]bool,     // Main-loop continuation class (from [class]* or [class]+ after start)
-    hasCont: bool,             // True if the rule had an explicit continuation class
+    contChars: [256]bool, // Main-loop continuation class (from [class]* or [class]+ after start)
+    hasCont: bool, // True if the rule had an explicit continuation class
     suffixChars: [256]bool,
     hasSuffix: bool,
 };
@@ -305,10 +305,10 @@ pub fn collectIdentRules(spec: *const LexerSpec) !struct { rules: [8]IdentInfo, 
 }
 
 pub const NumericSuffixRule = struct {
-    firstClass: [256]bool,      // Consumed by scanNumber
+    firstClass: [256]bool, // Consumed by scanNumber
     middle: [8]u8,
     middleLen: u8,
-    hasSuffix: bool,            // Optional [class]+ after the middle
+    hasSuffix: bool, // Optional [class]+ after the middle
     suffixClass: [256]bool,
     token: []const u8,
 };

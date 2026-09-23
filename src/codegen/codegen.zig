@@ -426,7 +426,7 @@ const Codegen = struct {
                         \\        _ = token;
                         \\        const state = self.stateStack.getLast();
                         \\        if ({s}.{s}As(text)) |id| {{
-                                                    \\            const idIdx = @intFromEnum(id);
+                        \\            const idIdx = @intFromEnum(id);
                         \\            const sym = {s}ToSymbol[idIdx];
                         \\            if (sym != 0 and getAction(state, sym) {s}) {{
                         \\                self.lastMatchedId = @intCast(idIdx);
