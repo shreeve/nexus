@@ -82,13 +82,6 @@ pub const GrammarLowerer = struct {
         return .{ .tag = tag, .items = items };
     }
 
-    fn srcText(self: *const GrammarLowerer, node: Sexp) []const u8 {
-        return switch (node) {
-            .src => |s| self.source[s.pos..][0..s.len],
-            else => "",
-        };
-    }
-
     fn stripQuotes(s: []const u8) []const u8 {
         if (s.len >= 2 and s[0] == '"' and s[s.len - 1] == '"') return s[1 .. s.len - 1];
         return s;

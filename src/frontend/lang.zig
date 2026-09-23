@@ -15,7 +15,7 @@ const TokenCat = parser.TokenCat;
 
 // Tag enum mirrors the canonical S-expression schema documented at the top of
 // nexus.grammar. Every variant here corresponds to a tagged sexp the generated
-// parser emits; the strict lowerer in nexus.zig consumes exactly this set.
+// parser emits; the strict lowerer in lower.zig consumes exactly this set.
 pub const Tag = enum(u8) {
     grammar,
 

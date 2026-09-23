@@ -5,13 +5,10 @@
 
 const std = @import("std");
 const grammar = @import("../grammar.zig");
-const LexerSpec = grammar.LexerSpec;
 const Guard = grammar.Guard;
 const Action = grammar.Action;
-const Allocator = std.mem.Allocator;
 const LexerGenerator = @import("lexgen.zig").LexerGenerator;
 const patterns = @import("patterns.zig");
-const operators = @import("operators.zig");
 
 pub fn generateEmptyPatternGuards(gen: *LexerGenerator) !void {
     // Collect rules with empty patterns (guard-only, zero-width tokens)
@@ -146,7 +143,7 @@ pub fn generateNewlineHandling(gen: *LexerGenerator) !void {
     );
 }
 
-pub fn emitNewlineRules(gen: *LexerGenerator, rules: anytype, charCount: u8) !void {
+fn emitNewlineRules(gen: *LexerGenerator, rules: anytype, charCount: u8) !void {
     var guarded: std.ArrayListUnmanaged(@TypeOf(rules[0])) = .empty;
     defer guarded.deinit(gen.allocator);
     var unguarded: ?@TypeOf(rules[0]) = null;
@@ -555,7 +552,7 @@ pub fn generateScannerDispatch(gen: *LexerGenerator) !void {
 /// integer token and the following chars match the literal middle
 /// (and optional class suffix) of a rule, extend pos and reclassify.
 /// Longest-first so `[0-9]+ '>' '&' [0-9]+` beats `[0-9]+ '>'`.
-pub fn emitNumericSuffixReclassify(gen: *LexerGenerator, indent: []const u8) !void {
+fn emitNumericSuffixReclassify(gen: *LexerGenerator, indent: []const u8) !void {
     const nsr = try patterns.collectNumericSuffixRules(gen.spec);
     if (nsr.count == 0) return;
 
@@ -609,7 +606,7 @@ pub fn emitNumericSuffixReclassify(gen: *LexerGenerator, indent: []const u8) !vo
 /// what follows must be an alpha-class char then a continuation class;
 /// the tail `('=' [class]*)?` is optional. On no-match, pos is restored
 /// and control falls through cleanly.
-pub fn generateCompoundLiteralDispatch(gen: *LexerGenerator) !void {
+fn generateCompoundLiteralDispatch(gen: *LexerGenerator) !void {
     for (gen.spec.rules.items) |rule| {
         if (rule.guards.len > 0) continue; // only unguarded for now
         const p = rule.pattern;
@@ -738,7 +735,7 @@ pub fn generateCompoundLiteralDispatch(gen: *LexerGenerator) !void {
 /// the next char for continuation-class membership before committing. If
 /// guards or continuation check fails, control falls through to the
 /// remaining scanner stages without consuming any input.
-pub fn generatePunctIdentDispatch(gen: *LexerGenerator) !void {
+fn generatePunctIdentDispatch(gen: *LexerGenerator) !void {
     const punct = try patterns.collectPunctIdentRules(gen.spec);
     if (punct.count == 0) return;
 
@@ -805,7 +802,7 @@ pub fn generatePunctIdentDispatch(gen: *LexerGenerator) !void {
     }
 }
 
-pub fn generatePrefixScanners(gen: *LexerGenerator) !void {
+fn generatePrefixScanners(gen: *LexerGenerator) !void {
     // Find rules like: '$' [a-zA-Z_]... → variable, '$' '{' ... → var_braced
     // Group by prefix character
     var emittedPrefixes: [256]bool = @splat(false);
@@ -972,7 +969,7 @@ pub fn generateScanners(gen: *LexerGenerator) !void {
     try generateIdentScanner(gen);
 }
 
-pub fn generateNumberScanner(gen: *LexerGenerator) !void {
+fn generateNumberScanner(gen: *LexerGenerator) !void {
     // Analyze number patterns to detect features
     var hasDecimal = false;
     var hasExponent = false;
@@ -1135,7 +1132,7 @@ pub fn generateNumberScanner(gen: *LexerGenerator) !void {
 }
 
 /// Check if grammar defines number prefix patterns like '0' [xX] ...
-pub fn hasNumberPrefixPatterns(gen: *LexerGenerator) bool {
+fn hasNumberPrefixPatterns(gen: *LexerGenerator) bool {
     for (gen.spec.rules.items) |rule| {
         if (!std.mem.eql(u8, rule.token, "integer")) continue;
         if (rule.pattern.len >= 5 and rule.pattern[0] == '\'' and
@@ -1146,7 +1143,7 @@ pub fn hasNumberPrefixPatterns(gen: *LexerGenerator) bool {
 }
 
 /// Emit prefix branches for grammar-defined patterns like '0' [xX] [0-9a-fA-F]+
-pub fn emitNumberPrefixBranches(gen: *LexerGenerator) !void {
+fn emitNumberPrefixBranches(gen: *LexerGenerator) !void {
     var first = true;
     for (gen.spec.rules.items) |rule| {
         if (!std.mem.eql(u8, rule.token, "integer")) continue;
@@ -1214,7 +1211,7 @@ pub fn emitNumberPrefixBranches(gen: *LexerGenerator) !void {
     }
 }
 
-pub fn generateIdentScanner(gen: *LexerGenerator) !void {
+fn generateIdentScanner(gen: *LexerGenerator) !void {
     const ident = try patterns.collectIdentRules(gen.spec);
     const identRules = ident.rules;
     const identCount = ident.count;
@@ -1270,7 +1267,7 @@ pub fn generateIdentScanner(gen: *LexerGenerator) !void {
     );
 }
 
-pub fn emitIdentSuffix(gen: *LexerGenerator, suffixChars: [256]bool, indent: []const u8) !void {
+fn emitIdentSuffix(gen: *LexerGenerator, suffixChars: [256]bool, indent: []const u8) !void {
     var chars: [8]u8 = undefined;
     var n: usize = 0;
     for (0..256) |c| {

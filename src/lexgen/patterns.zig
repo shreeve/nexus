@@ -6,7 +6,6 @@ const std = @import("std");
 const grammar = @import("../grammar.zig");
 const LexerSpec = grammar.LexerSpec;
 const Guard = grammar.Guard;
-const Action = grammar.Action;
 
 pub const PatternInfo = struct {
     chars: [8]u8,
@@ -61,7 +60,7 @@ pub fn charToZigLiteral(c: u8) struct { buf: [4]u8, len: u8 } {
     };
 }
 
-pub fn resolveEscape(pattern: []const u8, pos: usize) struct { ch: u8, next: usize } {
+fn resolveEscape(pattern: []const u8, pos: usize) struct { ch: u8, next: usize } {
     if (pos < pattern.len and pattern[pos] == '\\' and pos + 1 < pattern.len) {
         return .{ .ch = switch (pattern[pos + 1]) {
             'n' => '\n',

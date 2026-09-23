@@ -27,6 +27,22 @@ pub fn findSection(text: []const u8, marker: []const u8) ?usize {
     return null;
 }
 
+/// The name in a line-leading `@lang = "name"` anywhere in the file. The
+/// lexer generator needs it before the @parser section is parsed (and some
+/// grammars put `@lang` above `@lexer`, where the frontend never sees it).
+pub fn scanLangDirective(sourceText: []const u8) ?[]const u8 {
+    const pos = findSection(sourceText, "@lang") orelse return null;
+    var i = pos + 5;
+    while (i < sourceText.len and (sourceText[i] == ' ' or sourceText[i] == '=' or sourceText[i] == '\t')) : (i += 1) {}
+    if (i < sourceText.len and sourceText[i] == '"') {
+        i += 1;
+        const nameStart = i;
+        while (i < sourceText.len and sourceText[i] != '"') : (i += 1) {}
+        if (i < sourceText.len) return sourceText[nameStart..i];
+    }
+    return null;
+}
+
 // Parse the @parser section of a grammar file through the generated frontend
 // and return the S-expression tree. Callers own the parser's arena lifetime
 // via the returned Parser; deinit it when finished with the tree.
@@ -104,7 +120,7 @@ pub fn dumpSexp(writer: anytype, sexp: Sexp, source: []const u8, indent: usize) 
     }
 }
 
-pub fn dumpSrcText(writer: anytype, text: []const u8) !void {
+fn dumpSrcText(writer: anytype, text: []const u8) !void {
     try writer.writeByte('`');
     for (text) |c| {
         if (c == '`' or c == '\\') try writer.writeByte('\\');

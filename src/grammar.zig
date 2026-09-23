@@ -254,24 +254,24 @@ pub const InfixOp = struct {
 // =============================================================================
 
 /// Terminal or nonterminal symbol
-pub const ParserSymbol = struct {
+pub const Symbol = struct {
     id: u16,
     name: []const u8,
     kind: Kind,
 
     // For nonterminals only
     nullable: bool = false,
-    firsts: ParserSymbolSet = .empty,
-    follows: ParserSymbolSet = .empty,
+    firsts: SymbolSet = .empty,
+    follows: SymbolSet = .empty,
     rules: std.ArrayListUnmanaged(u16) = .empty, // Rule IDs that define this nonterminal
 
     pub const Kind = enum { terminal, nonterminal };
 
-    pub fn init(id: u16, name: []const u8, kind: Kind) ParserSymbol {
+    pub fn init(id: u16, name: []const u8, kind: Kind) Symbol {
         return .{ .id = id, .name = name, .kind = kind };
     }
 
-    pub fn deinit(self: *ParserSymbol, allocator: Allocator) void {
+    pub fn deinit(self: *Symbol, allocator: Allocator) void {
         self.rules.deinit(allocator);
         self.firsts.deinit(allocator);
         self.follows.deinit(allocator);
@@ -279,30 +279,30 @@ pub const ParserSymbol = struct {
 };
 
 /// A set of symbol IDs (for FIRST/FOLLOW sets)
-pub const ParserSymbolSet = struct {
+pub const SymbolSet = struct {
     items: std.ArrayListUnmanaged(u16) = .empty,
 
-    pub const empty: ParserSymbolSet = .{};
+    pub const empty: SymbolSet = .{};
 
-    pub fn deinit(self: *ParserSymbolSet, allocator: Allocator) void {
+    pub fn deinit(self: *SymbolSet, allocator: Allocator) void {
         self.items.deinit(allocator);
     }
 
-    pub fn add(self: *ParserSymbolSet, allocator: Allocator, id: u16) !void {
+    pub fn add(self: *SymbolSet, allocator: Allocator, id: u16) !void {
         for (self.items.items) |existing| {
             if (existing == id) return;
         }
         try self.items.append(allocator, id);
     }
 
-    pub fn contains(self: *const ParserSymbolSet, id: u16) bool {
+    pub fn contains(self: *const SymbolSet, id: u16) bool {
         for (self.items.items) |existing| {
             if (existing == id) return true;
         }
         return false;
     }
 
-    pub fn addAll(self: *ParserSymbolSet, allocator: Allocator, other: *const ParserSymbolSet) !bool {
+    pub fn addAll(self: *SymbolSet, allocator: Allocator, other: *const SymbolSet) !bool {
         const oldCount = self.items.items.len;
         for (other.items.items) |id| {
             try self.add(allocator, id);
@@ -310,25 +310,105 @@ pub const ParserSymbolSet = struct {
         return self.items.items.len > oldCount;
     }
 
-    pub fn count(self: *const ParserSymbolSet) usize {
+    pub fn count(self: *const SymbolSet) usize {
         return self.items.items.len;
     }
 
-    pub fn slice(self: *const ParserSymbolSet) []const u16 {
+    pub fn slice(self: *const SymbolSet) []const u16 {
         return self.items.items;
     }
 };
 
 /// Production rule: lhs → rhs with optional action
-pub const ParserRule = struct {
+pub const Rule = struct {
     id: u16,
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
     action: ?[]const u8, // Action template text, e.g. (set 2 ...3)
     actionOffset: u8 = 0, // Position offset for start rules with marker tokens
     nullable: bool = false,
-    firsts: ParserSymbolSet = .empty,
+    firsts: SymbolSet = .empty,
     excludeChar: u8 = 0, // X "c" - exclude rule when next char matches
     preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
     preferShift: bool = false, // > hint - prefer shift on S/R conflict
+};
+
+/// The desugared grammar: symbols, BNF rules, start/accept bookkeeping, and
+/// the directives later stages need. Built from a GrammarIR by expand.zig.
+pub const Grammar = struct {
+    allocator: Allocator,
+
+    // Symbols
+    symbols: std.ArrayListUnmanaged(Symbol) = .empty,
+    symbolMap: std.StringHashMapUnmanaged(u16) = .empty,
+    aliases: std.StringHashMapUnmanaged([]const u8) = .empty,
+    nextSymbolId: u16 = 0,
+
+    // Rules
+    rules: std.ArrayListUnmanaged(Rule) = .empty,
+
+    // Special symbol IDs
+    acceptId: u16 = 0,
+    endId: u16 = 0,
+    errorId: u16 = 0,
+
+    // One entry per start symbol (parallel arrays)
+    startSymbols: std.ArrayListUnmanaged(u16) = .empty,
+    acceptRules: std.ArrayListUnmanaged(u16) = .empty,
+
+    // Directives carried over from the IR
+    asDirectives: []const AsDirective = &.{},
+    opMappings: []const OpMapping = &.{},
+    lang: ?[]const u8 = null,
+    expectConflicts: ?u32 = null,
+
+    pub fn init(allocator: Allocator) Grammar {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *Grammar) void {
+        for (self.symbols.items) |*sym| sym.deinit(self.allocator);
+        self.symbols.deinit(self.allocator);
+        self.symbolMap.deinit(self.allocator);
+        self.aliases.deinit(self.allocator);
+
+        for (self.rules.items) |*rule| {
+            self.allocator.free(rule.rhs);
+            rule.firsts.deinit(self.allocator);
+        }
+        self.rules.deinit(self.allocator);
+
+        self.startSymbols.deinit(self.allocator);
+        self.acceptRules.deinit(self.allocator);
+    }
+
+    pub fn addSymbol(self: *Grammar, name: []const u8, kind: Symbol.Kind) !u16 {
+        if (self.symbolMap.get(name)) |id| return id;
+
+        const id = self.nextSymbolId;
+        self.nextSymbolId += 1;
+
+        try self.symbols.append(self.allocator, Symbol.init(id, name, kind));
+        try self.symbolMap.put(self.allocator, name, id);
+
+        return id;
+    }
+
+    pub fn getSymbol(self: *const Grammar, name: []const u8) ?u16 {
+        var resolved = name;
+        var count: usize = 0;
+        while (self.aliases.get(resolved)) |target| {
+            count += 1;
+            if (count > 100 or std.mem.eql(u8, resolved, target)) return null;
+            resolved = target;
+        }
+        return self.symbolMap.get(resolved);
+    }
+
+    pub fn isAcceptRule(self: *const Grammar, ruleId: u16) bool {
+        for (self.acceptRules.items) |ar| {
+            if (ruleId == ar) return true;
+        }
+        return false;
+    }
 };

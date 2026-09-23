@@ -4,14 +4,12 @@
 
 const std = @import("std");
 const grammar = @import("../grammar.zig");
-const LexerSpec = grammar.LexerSpec;
 const Guard = grammar.Guard;
 const Action = grammar.Action;
-const Allocator = std.mem.Allocator;
 const LexerGenerator = @import("lexgen.zig").LexerGenerator;
 const patterns = @import("patterns.zig");
 
-pub const OpRule = struct {
+const OpRule = struct {
     chars: [8]u8,
     charCount: u8,
     token: []const u8,
@@ -90,7 +88,7 @@ pub fn generateOperatorSwitch(gen: *LexerGenerator) !void {
     );
 }
 
-pub fn emitSwitchArm(gen: *LexerGenerator, firstChar: u8, rules: []const OpRule, codeFn: ?[]const u8) !void {
+fn emitSwitchArm(gen: *LexerGenerator, firstChar: u8, rules: []const OpRule, codeFn: ?[]const u8) !void {
     var singleRules: std.ArrayListUnmanaged(OpRule) = .empty;
     defer singleRules.deinit(gen.allocator);
     var multiRules: std.ArrayListUnmanaged(OpRule) = .empty;
@@ -201,7 +199,7 @@ pub fn emitSwitchArm(gen: *LexerGenerator, firstChar: u8, rules: []const OpRule,
     try gen.write("            },\n");
 }
 
-pub fn emitMultiCharPeekAhead(gen: *LexerGenerator, rules: []const OpRule, depth: u8, codeFn: ?[]const u8) !void {
+fn emitMultiCharPeekAhead(gen: *LexerGenerator, rules: []const OpRule, depth: u8, codeFn: ?[]const u8) !void {
     const baseIndent = "                ";
     var indentBuf: [64]u8 = undefined;
     const extra: usize = (@as(usize, depth) - 1) * 4;
@@ -300,7 +298,7 @@ pub fn emitMultiCharPeekAhead(gen: *LexerGenerator, rules: []const OpRule, depth
     }
 }
 
-pub fn emitGuardedSingleCharRules(gen: *LexerGenerator, rules: []const OpRule) !void {
+fn emitGuardedSingleCharRules(gen: *LexerGenerator, rules: []const OpRule) !void {
     if (rules.len == 0) return;
 
     // Separate guarded from unguarded
