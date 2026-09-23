@@ -7,7 +7,8 @@
 #   filter      only run tests whose id contains one of these substrings;
 #               ids look like mumps/label_dots, rig/known/..., gen/zag,
 #               sexp/nexus, determinism/ruby, adverse/no_arrow,
-#               known/multi_alt_start, unit/mumps, unit/nexus, bootstrap
+#               known/multi_alt_start, unit/mumps, unit/nexus, bootstrap,
+#               tools/diff
 #   -v          also list passing and known-failing tests
 #   -j N        parallel jobs (default: CPU count)
 #   --update    rewrite goldens (test/golden/*, cases/*.tree) from the
@@ -292,6 +293,17 @@ check_unit_lang() { # check_unit_lang <suite dir>: zig test each lang file with 
     return 0
 }
 
+check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
+    local out
+    out=$(NO_COLOR=1 timeout 300 test/diff -O Debug -j 4 current current test/mumps/mumps.grammar \
+        test/mumps/mumps.grammar --ext .m test/mumps/cases 2>&1)
+    local rc=$?
+    echo "$out" >>"$LOG"
+    if [[ $rc -ne 0 ]]; then REASON="test/diff exited $rc: $(tail -1 <<<"$out")"; return 1; fi
+    if ! grep -qE '^[0-9]+ files, [0-9]+ same, 0 differ' <<<"$out"; then REASON="unexpected summary: $(tail -1 <<<"$out")"; return 1; fi
+    return 0
+}
+
 check_unit_nexus() {
     local step
     step=$(zig build -l 2>/dev/null | awk '{print $1}' | grep -m1 -xE 'test-unit|unit|test-lowerer')
@@ -322,6 +334,7 @@ worker() {
         bootstrap)   check_bootstrap; ok=$? ;;
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
         unit-nexus)  check_unit_nexus; ok=$? ;;
+        diff-tool)   check_diff_tool; ok=$? ;;
         *)           REASON="unknown task kind $kind"; ok=1 ;;
     esac
     if [[ "$id" == known/* || "$id" == */known/* ]]; then
@@ -442,6 +455,7 @@ done
 
 add bootstrap bootstrap
 add unit/nexus unit-nexus
+add tools/diff diff-tool
 
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 NB=$(wc -l <"$BUILDS" | tr -d ' ')

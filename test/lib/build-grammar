@@ -41,7 +41,10 @@ if [[ $rc -ne 0 || ! -s "$OUT/parser.zig" ]]; then
     exit 10
 fi
 
-for f in "$@"; do cp "$f" "$OUT/"; done
+for f in "$@"; do
+    case $(basename "$f") in parser.zig|driver.zig) continue ;; esac # ours
+    cp "$f" "$OUT/"
+done
 cp "$LIB/driver.zig" "$OUT/driver.zig"
 
 # A shared cache dir: an unchanged grammar compiles from cache.
