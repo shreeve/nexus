@@ -1,12 +1,21 @@
-//! Parse table construction with conflict resolution (`X "c"` exclusions,
-//! `<`/`>` hints, default shift, lowest rule wins reduce/reduce).
+//! Parse table construction: ACTION/GOTO from the automaton and lookaheads,
+//! conflict resolution (`X "c"` hints, `<`/`>` hints, default shift, lowest
+//! rule wins reduce/reduce), and the derived tables codegen emits: expected
+//! sets for diagnostics, tolerant-repair candidates, and the row-compressed
+//! form of ACTION/GOTO.
 
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const Grammar = grammar.Grammar;
+const Rule = grammar.Rule;
 const Automaton = @import("automaton.zig").Automaton;
 const Lookaheads = @import("lookahead.zig").Lookaheads;
-const ConflictDetail = @import("conflicts.zig").ConflictDetail;
+const bitset = @import("bitset.zig");
+const SetArray = bitset.SetArray;
+const expected = @import("expected.zig");
+const repair = @import("repair.zig");
+const compress = @import("compress.zig");
 
 // =============================================================================
 // Parse Table Generation
@@ -17,23 +26,23 @@ const ConflictDetail = @import("conflicts.zig").ConflictDetail;
 //   ACTION[state, terminal] = shift s  | reduce r | accept | error
 //   GOTO[state, nonterminal] = state s | error
 //
-// LALR(1) / SLR(1) table construction:
 //   1. SHIFT: If state has A → α • a β (a = terminal), ACTION[state, a] = shift
 //   2. REDUCE: If state has A → α • and a ∈ lookahead(state, item), reduce
-//      - LALR: lookahead = per-item set from merged LR(1) states
-//      - SLR:  lookahead = FOLLOW(A)
 //   3. GOTO: If GOTO(state, A) = s for nonterminal A, GOTO[state, A] = s
-//   4. ACCEPT: If state has S' → S • $, ACTION[state, $] = accept
+//   4. ACCEPT: If state has S' → S • $ (or S' → S $ •), ACTION[state, $] = accept
 //
-// Conflicts:
-//   - Shift/Reduce: Both shift and reduce valid for same (state, terminal)
-//   - Reduce/Reduce: Multiple reductions valid for same (state, terminal)
+// Each cell is resolved once, from everything that wants it: the shift (or
+// accept) and the set R of reductions whose lookahead contains the terminal.
 //
-// Conflict resolution:
-//   - `<` hint: Prefer reduce (tight binding)
-//   - `>` hint: Prefer shift
-//   - `X "c"` hint: Reduce in table, shift at runtime when pre==0
-//   - Default: Shift wins (standard LR behavior)
+//   - No shift: the lowest-numbered rule of R reduces; every other rule of R
+//     is a reduce/reduce conflict ("winner over loser").
+//   - Shift: the rules of R that beat a shift are those with `<` and those
+//     with an `X "c"` hint for this terminal's character. If there are none,
+//     the shift stays and every rule of R without `>` is a shift/reduce
+//     conflict. Otherwise the lowest such rule reduces (an `X "c"` win also
+//     records the runtime shift override) and the rest of R are
+//     reduce/reduce conflicts.
+//   - Accept: always kept; every rule of R without `>` is a conflict.
 //
 // =============================================================================
 
@@ -49,108 +58,214 @@ pub const ParseAction = union(enum) {
 /// `shift` instead when no whitespace precedes and the next byte is `char`.
 pub const XExclude = struct { state: u16, char: u8, shift: u16 };
 
+/// One unresolved conflict in one cell (state, terminal).
+pub const Conflict = struct {
+    state: u16,
+    terminal: u16,
+    kind: Kind,
+    /// `.shift`: the rule whose reduction lost to the default shift (or to
+    /// accept). `.reduce`: the rule that reduces (the lowest-numbered).
+    rule: u16,
+    /// `.reduce`: the rule whose reduction was dropped.
+    over: u16 = 0,
+
+    pub const Kind = enum { shift, reduce };
+};
+
+/// An `X "c"` hint: whether it decided any cell.
+pub const HintUse = struct {
+    rule: u16,
+    char: u8,
+    used: bool,
+};
+
 pub const Table = struct {
     /// ACTION/GOTO, indexed [state][symbol].
     rows: [][]ParseAction,
+    /// Sorted by state, then character.
     xExcludes: std.ArrayListUnmanaged(XExclude) = .empty,
-    /// Unresolved conflicts (default shift, or lowest rule for reduce/reduce).
+    /// Number of unresolved conflicts (= conflictList.len).
     conflicts: u32 = 0,
-    conflictDetails: std.ArrayListUnmanaged(ConflictDetail) = .empty,
+    /// Every unresolved conflict, by state, then terminal.
+    conflictList: []const Conflict = &.{},
+    /// Every `X "c"` hint of every rule, in rule order.
+    hints: []const HintUse = &.{},
+    /// Expected symbols per state, for syntax-error messages.
+    expected: expected.Expected,
+    /// Tolerant-repair insertion candidates per state (grammars with `@repair`).
+    repair: ?repair.Repair = null,
+    /// ACTION/GOTO row-compressed (the form generated parsers use).
+    compact: compress.Compact,
 };
 
+/// The characters of a rule's `X "c"` hints.
+pub fn hintChars(rule: *const Rule) []const u8 {
+    if (rule.excludeChars.len > 0) return rule.excludeChars;
+    if (rule.excludeChar != 0) return (&rule.excludeChar)[0..1];
+    return &.{};
+}
+
+/// The character of a one-character literal terminal (`"("`), else null.
+pub fn literalChar(g: *const Grammar, sym: u16) ?u8 {
+    const name = g.symbols.items[sym].name;
+    if (name.len == 3 and name[0] == '"' and name[2] == '"') return name[1];
+    return null;
+}
+
+/// Whether `sym` is the synthetic marker terminal (`name!`) that selects a
+/// start symbol; markers never appear in reports or expected sets.
+pub fn isStartMarker(g: *const Grammar, sym: u16) bool {
+    const name = g.symbols.items[sym].name;
+    if (name.len < 2 or name[name.len - 1] != '!') return false;
+    for (g.startSymbols.items) |s| {
+        if (std.mem.eql(u8, g.symbols.items[s].name, name[0 .. name.len - 1])) return true;
+    }
+    return false;
+}
+
 pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
+    const a = g.allocator;
     const numStates = auto.states.items.len;
     const numSymbols = g.symbols.items.len;
 
-    var t: Table = .{ .rows = try g.allocator.alloc([]ParseAction, numStates) };
-    const table = t.rows;
-    for (table, 0..) |*row, i| {
-        row.* = try g.allocator.alloc(ParseAction, numSymbols);
-        for (row.*) |*cell| cell.* = .err;
+    const rows = try a.alloc([]ParseAction, numStates);
+    var xExcludes: std.ArrayListUnmanaged(XExclude) = .empty;
+    var conflictList: std.ArrayListUnmanaged(Conflict) = .empty;
 
-        const state = &auto.states.items[i];
+    // Hint bookkeeping: hints[hintStart[r]..][0..hintChars(r).len] are rule r's.
+    const hintStart = try a.alloc(u32, g.rules.items.len);
+    defer a.free(hintStart);
+    var hints: std.ArrayListUnmanaged(HintUse) = .empty;
+    for (g.rules.items, 0..) |*rule, r| {
+        hintStart[r] = @intCast(hints.items.len);
+        for (hintChars(rule)) |c| try hints.append(a, .{ .rule = @intCast(r), .char = c, .used = false });
+    }
 
-        // Shift/goto actions
+    var reduceUnion = try SetArray.init(a, 1, numSymbols);
+    defer reduceUnion.deinit(a);
+    const cellTerminals = reduceUnion.get(0);
+    var cellRules: std.ArrayListUnmanaged(u16) = .empty;
+    defer cellRules.deinit(a);
+
+    for (rows, 0..) |*rowSlot, si| {
+        const row = try a.alloc(ParseAction, numSymbols);
+        rowSlot.* = row;
+        @memset(row, .err);
+        const state = &auto.states.items[si];
+
         for (state.transitions) |trans| {
-            const sym = &g.symbols.items[trans.symbol];
-            if (sym.kind == .nonterminal) {
-                row.*[trans.symbol] = .{ .gotoState = trans.target };
-            } else {
-                row.*[trans.symbol] = .{ .shift = trans.target };
-            }
+            row[trans.symbol] = if (g.symbols.items[trans.symbol].kind == .nonterminal)
+                .{ .gotoState = trans.target }
+            else
+                .{ .shift = trans.target };
         }
-
-        // Accept action
         for (state.items) |item| {
             const rule = &g.rules.items[item.ruleId];
-            if (item.dot < rule.rhs.len and rule.rhs[item.dot] == g.endId) {
-                if (g.isAcceptRule(item.ruleId)) {
-                    row.*[g.endId] = .accept;
-                }
-            }
+            if (g.isAcceptRule(item.ruleId) and
+                (item.dot == rule.rhs.len or rule.rhs[item.dot] == g.endId))
+                row[g.endId] = .accept;
         }
 
-        // Reduce actions
+        // Terminals some (non-accept) reduction wants in this state.
+        cellTerminals.clear();
         for (state.reductions, 0..) |item, ri| {
-            const rule = &g.rules.items[item.ruleId];
+            if (g.isAcceptRule(item.ruleId)) continue;
+            _ = cellTerminals.unionWith(la.sets[si][ri]);
+        }
 
-            if (g.isAcceptRule(item.ruleId)) {
-                row.*[g.endId] = .accept;
-                continue;
+        var it = cellTerminals.iterator();
+        while (it.next()) |t| {
+            cellRules.clearRetainingCapacity();
+            for (state.reductions, 0..) |item, ri| {
+                if (g.isAcceptRule(item.ruleId)) continue;
+                if (la.sets[si][ri].isSet(t)) try cellRules.append(a, item.ruleId);
             }
+            std.mem.sort(u16, cellRules.items, {}, std.sort.asc(u16));
+            const cell = &row[t];
+            const ch = literalChar(g, t);
 
-            const lhsSym = &g.symbols.items[rule.lhs];
-
-            const reduceTerminals = switch (la.mode) {
-                .slr => lhsSym.follows.slice(),
-                .lalr => la.lalr[i][ri].slice(),
-            };
-
-            for (reduceTerminals) |followId| {
-                const current = &row.*[followId];
-                const fname = g.symbols.items[followId].name;
-                const xChar = if (fname.len == 3) fname[1] else 0;
-
-                switch (current.*) {
-                    .err => current.* = .{ .reduce = item.ruleId },
-                    .shift => |s| {
-                        if (rule.excludeChar != 0 and xChar == rule.excludeChar) {
-                            current.* = .{ .reduce = item.ruleId };
-                            try t.xExcludes.append(g.allocator, .{
-                                .state = @intCast(i),
-                                .char = xChar,
-                                .shift = s,
-                            });
-                        } else if (rule.preferReduce) {
-                            current.* = .{ .reduce = item.ruleId };
-                        } else if (rule.preferShift) {
-                            // > hint: keep shift
-                        } else {
-                            t.conflicts += 1;
-                            try t.conflictDetails.append(g.allocator, .{
-                                .kind = .shiftReduce,
-                                .nameA = lhsSym.name,
-                                .nameB = fname,
+            switch (cell.*) {
+                .err => {
+                    const winner = cellRules.items[0];
+                    cell.* = .{ .reduce = winner };
+                    for (cellRules.items[1..]) |r| try conflictList.append(a, .{
+                        .state = @intCast(si),
+                        .terminal = t,
+                        .kind = .reduce,
+                        .rule = winner,
+                        .over = r,
+                    });
+                },
+                .shift => |target| {
+                    // The lowest rule that beats the shift, and whether by X "c".
+                    var winner: ?u16 = null;
+                    var byHint = false;
+                    for (cellRules.items) |r| {
+                        const rule = &g.rules.items[r];
+                        var hinted = false;
+                        if (ch) |c| {
+                            for (hintChars(rule), 0..) |hc, k| {
+                                if (hc == c) {
+                                    hints.items[hintStart[r] + k].used = true;
+                                    hinted = true;
+                                }
+                            }
+                        }
+                        if (winner == null and (hinted or rule.preferReduce)) {
+                            winner = r;
+                            byHint = hinted;
+                        }
+                    }
+                    if (winner) |w| {
+                        cell.* = .{ .reduce = w };
+                        if (byHint) try xExcludes.append(a, .{ .state = @intCast(si), .char = ch.?, .shift = target });
+                        for (cellRules.items) |r| {
+                            if (r != w) try conflictList.append(a, .{
+                                .state = @intCast(si),
+                                .terminal = t,
+                                .kind = .reduce,
+                                .rule = w,
+                                .over = r,
                             });
                         }
-                    },
-                    .reduce => |existing| {
-                        if (item.ruleId < existing) {
-                            current.* = .{ .reduce = item.ruleId };
+                    } else {
+                        for (cellRules.items) |r| {
+                            if (!g.rules.items[r].preferShift) try conflictList.append(a, .{
+                                .state = @intCast(si),
+                                .terminal = t,
+                                .kind = .shift,
+                                .rule = r,
+                            });
                         }
-                        t.conflicts += 1;
-                        const existingRule = &g.rules.items[existing];
-                        try t.conflictDetails.append(g.allocator, .{
-                            .kind = .reduceReduce,
-                            .nameA = lhsSym.name,
-                            .nameB = g.symbols.items[existingRule.lhs].name,
+                    }
+                },
+                .accept => {
+                    for (cellRules.items) |r| {
+                        if (!g.rules.items[r].preferShift) try conflictList.append(a, .{
+                            .state = @intCast(si),
+                            .terminal = t,
+                            .kind = .shift,
+                            .rule = r,
                         });
-                    },
-                    else => {},
-                }
+                    }
+                },
+                .reduce, .gotoState => unreachable,
             }
         }
     }
 
-    return t;
+    const exp = try expected.compute(g, auto, la, rows);
+    const rep: ?repair.Repair = if (g.repair) |spec| try repair.compute(g, auto, la, rows, spec) else null;
+    const compact = try compress.compress(a, rows);
+
+    return .{
+        .rows = rows,
+        .xExcludes = xExcludes,
+        .conflicts = @intCast(conflictList.items.len),
+        .conflictList = try conflictList.toOwnedSlice(a),
+        .hints = try hints.toOwnedSlice(a),
+        .expected = exp,
+        .repair = rep,
+        .compact = compact,
+    };
 }

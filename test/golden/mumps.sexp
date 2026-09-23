@@ -917,8 +917,7 @@
       _
       ((lit `"*"`)
         (lit `"@"`)
-        (ref `atom`)
-        (exclude `":"`))
+        (ref `atom`))
       `(charindir 3)`)
     (alt
       _
@@ -929,8 +928,7 @@
     (alt
       _
       ((lit `"*"`)
-        (ref `glvn`)
-        (exclude `":"`))
+        (ref `glvn`))
       `(char 2)`)
     (alt
       _
@@ -943,8 +941,7 @@
       _
       ((ref `glvn`)
         (lit `"#"`)
-        (ref `expr`)
-        (exclude `":"`))
+        (ref `expr`))
       `(# 1 3)`)
     (alt
       _
@@ -953,9 +950,7 @@
       `(1 2)`)
     (alt
       _
-      ((ref `glvn`)
-        (exclude `"#"`)
-        (exclude `":"`))
+      ((ref `glvn`))
       `1`)
     (alt
       _
@@ -1388,22 +1383,19 @@
         (group
           opt
           ((lit `"^"`)
-            (ref `routineref`)))
-        (exclude `":"`))
+            (ref `routineref`))))
       `(ref 1 3 5)`)
     (alt
       _
       ((lit `"+"`)
         (ref `entryoffset`)
         (lit `"^"`)
-        (ref `routineref`)
-        (exclude `":"`))
+        (ref `routineref`))
       `(ref _ 2 4)`)
     (alt
       _
       ((lit `"^"`)
-        (ref `routineref`)
-        (exclude `":"`))
+        (ref `routineref`))
       `(ref _ _ 2)`))
   (rule
     (name `entryoffset`)
