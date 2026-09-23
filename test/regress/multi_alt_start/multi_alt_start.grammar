@@ -1,8 +1,4 @@
 # A start symbol with several alternatives parses every alternative.
-#
-# Today: the start marker is prepended only to the first rule of `top`, so
-# only `IDENT` is reachable; `42` fails with a ParseError.
-# (architecture.md Appendix A: multi.grammar; SPEC §8.1)
 
 @lexer
 tokens
