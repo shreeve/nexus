@@ -881,7 +881,7 @@ pub const Sexp = union(enum) {
     pub fn write(self: Sexp, source: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self) {
             .nil => try w.writeAll("_"),
-            .tag => |t| try w.writeAll(@tagName(t)),
+            .tag => |t| try w.writeAll(nameOf(t)),
             .src => |s| {
                 try w.writeAll(source[s.pos..][0..s.len]);
                 if (s.id != 0) try w.print("#{d}", .{s.id});
@@ -898,6 +898,12 @@ pub const Sexp = union(enum) {
         }
     }
 };
+
+/// The name of a Tag or Role value, "?" for one the enum does not name
+/// (without a schema, Role is empty and a collected Tag is non-exhaustive).
+fn nameOf(value: anytype) []const u8 {
+    return std.enums.tagName(@TypeOf(value), value) orelse "?";
+}
 
 
 // =============================================================================
@@ -1733,13 +1739,13 @@ pub const BaseParser = struct {
             const k = s.kind();
             const sp = self.span(s);
             try w.print("(node {d} ", .{l.id});
-            if (k) |t| try writeName(w, @tagName(t)) else try w.writeAll("group");
+            if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
             try w.print(" {d} {d})\n", .{ sp.start, sp.end });
             var i: usize = if (k != null) 1 else 0;
             while (i < items.len) : (i += 1) {
                 if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
                     try w.print("(role {d} ", .{l.id});
-                    try writeName(w, @tagName(rest.role));
+                    try writeName(w, nameOf(rest.role));
                     for (items[i..]) |child| {
                         try w.writeByte(' ');
                         try self.factChild(w, child);
@@ -1749,14 +1755,14 @@ pub const BaseParser = struct {
                 };
                 if (items[i] == .nil) continue;
                 try w.print("(role {d} ", .{l.id});
-                if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, @tagName(role)) else try w.print("{d}", .{i});
+                if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
                 try w.writeByte(' ');
                 try self.factChild(w, items[i]);
                 try w.writeAll(")\n");
             }
             for (self.sidesOf(l.id)) |e| {
                 try w.print("(side {d} ", .{l.id});
-                try writeName(w, @tagName(e.role));
+                try writeName(w, nameOf(e.role));
                 try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
             }
         }
@@ -1768,7 +1774,7 @@ pub const BaseParser = struct {
             .nil => try w.writeAll("_"),
             .tag => |t| {
                 try w.writeAll("tag ");
-                try writeName(w, @tagName(t));
+                try writeName(w, nameOf(t));
             },
             .src => |x| try w.print("leaf {d} {d}", .{ x.pos, x.len }),
             .str => |x| {

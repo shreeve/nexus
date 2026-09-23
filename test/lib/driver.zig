@@ -38,6 +38,13 @@ const P = if (@hasDecl(parser, "Parser")) parser.Parser else parser.BaseParser;
 
 const width = 100;
 
+// Generated API the driver never calls must still compile: make the compiler
+// analyze it.
+comptime {
+    if (@hasDecl(parser, "nodeStore") and parser.nodeStore) _ = &parser.BaseParser.writeFacts;
+    if (@hasDecl(Sexp, "write")) _ = &Sexp.write;
+}
+
 // -----------------------------------------------------------------------------
 // Start rules: every `pub fn parseX(self: *P) !Sexp`, discovered at comptime
 // -----------------------------------------------------------------------------

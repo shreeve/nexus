@@ -1,0 +1,18 @@
+# A schema none of whose kinds has a rest (`...`) role generates a parser
+# that compiles.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "schema_without_rest_role"
+
+@schema
+    pair   left:leaf right:leaf
+
+top! = IDENT IDENT                          → (pair 1 2)

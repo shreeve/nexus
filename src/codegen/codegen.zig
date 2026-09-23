@@ -332,7 +332,9 @@ const Codegen = struct {
             try w.writeAll("pub const Tag = lang.Tag;\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) {};\n");
         } else {
             try banner(w, "Tag enum (collected from grammar actions)");
-            try w.writeAll("pub const Tag = enum(u8) {\n");
+            // Non-exhaustive: at least one value of the backing integer stays unnamed.
+            const width: u8 = if (self.tags.list.items.len < 256) 8 else 16;
+            try w.print("pub const Tag = enum(u{d}) {{\n", .{width});
             for (self.tags.list.items) |t| try w.print("    @\"{f}\",\n", .{std.zig.fmtString(t)});
             try w.writeAll("    _,\n};\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) {};\n");
         }
@@ -987,47 +989,67 @@ const Codegen = struct {
             return;
         };
         try banner(w, "Schema slots");
-        try w.writeAll("/// Slot of `role` in nodes of `kind` (the head is slot 0).\nfn slotOf(kind: Tag, role: Role) ?usize {\n    return switch (kind) {\n");
+        // The switches are exhaustive enums (Tag, Role): an `else` prong is
+        // emitted only when some value is left, and a parameter no case
+        // reads is discarded (Zig rejects both unreachable prongs and
+        // unused parameters).
+        const allTags = self.schemaTags.items.len;
+        const allRoles = self.roles.items.len;
+        var slotKinds: usize = 0;
+        var restKinds: usize = 0;
         for (s.kinds) |k| {
-            var any = false;
+            if (slotCount(k) > 0) slotKinds += 1;
+            if (restRole(k) != null) restKinds += 1;
+        }
+
+        try w.writeAll("/// Slot of `role` in nodes of `kind` (the head is slot 0).\nfn slotOf(kind: Tag, role: Role) ?usize {\n");
+        if (slotKinds == 0) try w.writeAll("    _ = role;\n");
+        try w.writeAll("    return switch (kind) {\n");
+        for (s.kinds) |k| {
+            if (slotCount(k) == 0) continue;
+            try w.print("        .@\"{f}\" => switch (role) {{\n", .{std.zig.fmtString(k.tag)});
             for (k.roles, 0..) |r, i| {
                 if (r.rest) continue;
-                if (!any) try w.print("        .@\"{f}\" => switch (role) {{\n", .{std.zig.fmtString(k.tag)});
-                any = true;
                 try w.print("            .@\"{f}\" => {d},\n", .{ std.zig.fmtString(r.name), i + 1 });
             }
-            if (any) try w.writeAll("            else => null,\n        },\n");
+            if (slotCount(k) < allRoles) try w.writeAll("            else => null,\n");
+            try w.writeAll("        },\n");
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (slotKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
 
-        try w.writeAll("\n/// First slot of rest role `role` in nodes of `kind`.\nfn restSlotOf(kind: Tag, role: Role) ?usize {\n    return switch (kind) {\n");
+        try w.writeAll("\n/// First slot of rest role `role` in nodes of `kind`.\nfn restSlotOf(kind: Tag, role: Role) ?usize {\n");
+        if (restKinds == 0) try w.writeAll("    _ = role;\n");
+        try w.writeAll("    return switch (kind) {\n");
         for (s.kinds) |k| {
-            for (k.roles, 0..) |r, i| if (r.rest) {
-                try w.print("        .@\"{f}\" => if (role == .@\"{f}\") {d} else null,\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(r.name), i + 1 });
-            };
+            const i = restRole(k) orelse continue;
+            try w.print("        .@\"{f}\" => if (role == .@\"{f}\") {d} else null,\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(k.roles[i].name), i + 1 });
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (restKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
 
-        try w.writeAll("\n/// The slot role at `slot` of nodes of `kind`.\nfn roleAt(kind: Tag, slot: usize) ?Role {\n    return switch (kind) {\n");
+        try w.writeAll("\n/// The slot role at `slot` of nodes of `kind`.\nfn roleAt(kind: Tag, slot: usize) ?Role {\n");
+        if (slotKinds == 0) try w.writeAll("    _ = slot;\n");
+        try w.writeAll("    return switch (kind) {\n");
         for (s.kinds) |k| {
-            var any = false;
+            if (slotCount(k) == 0) continue;
+            try w.print("        .@\"{f}\" => switch (slot) {{\n", .{std.zig.fmtString(k.tag)});
             for (k.roles, 0..) |r, i| {
                 if (r.rest) continue;
-                if (!any) try w.print("        .@\"{f}\" => switch (slot) {{\n", .{std.zig.fmtString(k.tag)});
-                any = true;
                 try w.print("            {d} => .@\"{f}\",\n", .{ i + 1, std.zig.fmtString(r.name) });
             }
-            if (any) try w.writeAll("            else => null,\n        },\n");
+            try w.writeAll("            else => null,\n        },\n");
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (slotKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
 
         try w.writeAll("\nfn restRoleOf(kind: Tag) ?struct { role: Role, slot: usize } {\n    return switch (kind) {\n");
         for (s.kinds) |k| {
-            for (k.roles, 0..) |r, i| if (r.rest) {
-                try w.print("        .@\"{f}\" => .{{ .role = .@\"{f}\", .slot = {d} }},\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(r.name), i + 1 });
-            };
+            const i = restRole(k) orelse continue;
+            try w.print("        .@\"{f}\" => .{{ .role = .@\"{f}\", .slot = {d} }},\n", .{ std.zig.fmtString(k.tag), std.zig.fmtString(k.roles[i].name), i + 1 });
         }
-        try w.writeAll("        else => null,\n    };\n}\n");
+        if (restKinds < allTags) try w.writeAll("        else => null,\n");
+        try w.writeAll("    };\n}\n");
     }
 
     // -------------------------------------------------------------------------
@@ -1093,6 +1115,19 @@ fn viewName(allocator: Allocator, kind: []const u8) ![]const u8 {
     }
     if (out.items.len == 0) return std.fmt.allocPrint(allocator, "@\"{f}\"", .{std.zig.fmtString(kind)});
     return out.items;
+}
+
+/// Number of slot (non-rest) roles of a schema kind.
+fn slotCount(k: anytype) usize {
+    var n: usize = 0;
+    for (k.roles) |r| n += @intFromBool(!r.rest);
+    return n;
+}
+
+/// Index of the rest role of a schema kind, if it has one.
+fn restRole(k: anytype) ?usize {
+    for (k.roles, 0..) |r, i| if (r.rest) return i;
+    return null;
 }
 
 /// Undo backslash escapes of a grammar literal.

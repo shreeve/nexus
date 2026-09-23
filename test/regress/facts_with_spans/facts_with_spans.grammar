@@ -1,0 +1,15 @@
+# writeFacts is available with --spans (no @schema): it compiles even though
+# the Role enum is empty.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "facts_with_spans"
+
+top! = IDENT IDENT                          → (p 1 2)
