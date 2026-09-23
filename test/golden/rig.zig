@@ -782,7 +782,7 @@ pub const BaseParser = struct {
     nodes: NodeStore = .{},
     sides: std.ArrayListUnmanaged(SideEntry) = .empty,
     reduction: Reduction = .{},
-    /// End of the last shifted token (the position of empty reductions).
+    /// End of the last shifted token: where every reduction ends.
     lastEnd: u32 = 0,
 
     triviaTokens: std.ArrayListUnmanaged(Token) = .empty,
@@ -791,8 +791,8 @@ pub const BaseParser = struct {
 
     const ListSpare = struct { len: usize, capacity: usize };
 
-    /// The reduction in progress: its rule, where its elements' extents
-    /// start on the span stack, its extent, and the first node it built.
+    /// The reduction in progress: its rule, the stack index of its first
+    /// element, its extent, and the first node id it built.
     const Reduction = struct {
         rule: u16 = 0,
         base: u32 = 0,
