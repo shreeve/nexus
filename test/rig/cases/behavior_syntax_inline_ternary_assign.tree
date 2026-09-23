@@ -1,3 +1,12 @@
 (module
-  (fun `f` ((: `c` `Bool`)) `Int` (block (set _ `x` _ (if `c` `1` `2`)) (return `x`)))
-  (sub `main` () _ (block (call `print` (call `f` `true`)) (call `print` (call `f` `false`)))))
+  (fun
+    `f`
+    ((: `c` `Bool`)@63..70)@62..71
+    `Int`
+    (block (set _ `x` _ (if `c` `1` `2`)@85..98)@81..98 (return `x`)@101..109)@81..111)@57..111
+  (sub
+    `main`
+    ()@119..121
+    (block
+      (call `print` (call `f` `true`)@130..137)@124..138
+      (call `print` (call `f` `false`)@147..155)@141..156)@124..176)@111..176)@57..176

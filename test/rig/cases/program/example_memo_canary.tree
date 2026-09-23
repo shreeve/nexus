@@ -1,84 +1,139 @@
 (module
-  (type `Listeners` (generic_inst `Vec` (shared (fun_type (`Int`) _))))
+  (type
+    `Listeners`
+    (generic_inst `Vec` (shared (fun_type (`Int`)@383..386 _)@379..387)@378..387)@374..388)@357..388
   (struct
     `IntSource`
-    (: `value` (shared (generic_inst `Cell` `Int`)))
-    (: `listeners` (shared (generic_inst `Cell` `Listeners`)))
+    (: `value` (shared (generic_inst `Cell` `Int`)@417..426)@416..426)@409..426
+    (: `listeners` (shared (generic_inst `Cell` `Listeners`)@441..456)@440..456)@429..456
     (fun
       `new`
-      ((: `initial` `Int`))
-      (shared `IntSource`)
+      ((: `initial` `Int`)@468..480)@467..481
+      (shared `IntSource`)@485..495
       (block
         (share
           (call
             `IntSource`
-            (kwarg `value` (share (call `Cell` (kwarg `value` `initial`))))
-            (kwarg `listeners` (share (call `Cell` (kwarg `value` (call `Vec`)))))))))
+            (kwarg
+              `value`
+              (share (call `Cell` (kwarg `value` `initial`)@524..538)@519..539)@518..539)@511..539
+            (kwarg
+              `listeners`
+              (share (call `Cell` (kwarg `value` (call `Vec`)@565..570)@558..570)@553..571)@552..571)@541..571)@501..572)@500..572)@500..576)@460..576
     (fun
       `get`
-      ((: `self` (borrow_read `IntSource`)))
+      ((: `self` (borrow_read `IntSource`)@590..600)@584..600)@583..601
       `Int`
-      (block (call (member (member `self` `value`) `get`))))
+      (block (call (member (member `self` `value`)@613..623 `get`)@613..627)@613..629)@613..750)@576..750
     (sub
       `subscribe`
-      ((: `self` (borrow_read `IntSource`)) (: `listener` (shared (fun_type (`Int`) _))))
-      _
+      ((: `self` (borrow_read `IntSource`)@770..780)@764..780
+        (: `listener` (shared (fun_type (`Int`)@797..800 _)@793..801)@792..801)@782..801)@763..802
       (block
-        (set _ `listeners` _ (call (member (member `self` `listeners`) `replace`) (call `Vec`)))
-        (call (member (write `listeners`) `push`) (move `listener`))
-        (set _ `_` _ (call (member (member `self` `listeners`) `replace`) (move `listeners`)))))
+        (set
+          _
+          `listeners`
+          _
+          (call
+            (member (member `self` `listeners`)@819..833 `replace`)@819..841
+            (call `Vec`)@842..847)@819..848)@807..848
+        (call
+          (member (write `listeners`)@854..864 `push`)@853..870
+          (move `listener`)@871..880)@853..881
+        (set
+          _
+          `_`
+          _
+          (call
+            (member (member `self` `listeners`)@890..904 `replace`)@890..912
+            (move `listeners`)@913..923)@890..924)@886..924)@807..928)@750..928
     (sub
       `set`
-      ((: `self` (borrow_read `IntSource`)) (: `v` `Int`))
-      _
+      ((: `self` (borrow_read `IntSource`)@942..952)@936..952 (: `v` `Int`)@954..960)@935..961
       (block
-        (call (member (member `self` `value`) `set`) `v`)
-        (set _ `listeners` _ (call (member (member `self` `listeners`) `replace`) (call `Vec`)))
-        (for read `listener` _ `listeners` (block (call `listener` `v`)) _)
-        (set _ `_` _ (call (member (member `self` `listeners`) `replace`) (move `listeners`)))))
+        (call (member (member `self` `value`)@966..976 `set`)@966..980 `v`)@966..983
+        (set
+          _
+          `listeners`
+          _
+          (call
+            (member (member `self` `listeners`)@1000..1014 `replace`)@1000..1022
+            (call `Vec`)@1023..1028)@1000..1029)@988..1029
+        (for
+          read
+          `listener`
+          _
+          `listeners`
+          (block (call `listener` `v`)@1067..1078)@1067..1083
+          _)@1034..1083
+        (set
+          _
+          `_`
+          _
+          (call
+            (member (member `self` `listeners`)@1087..1101 `replace`)@1087..1109
+            (move `listeners`)@1110..1120)@1087..1121)@1083..1121)@966..1125)@928..1125
     (fun
       `map`
-      ((: `self` (borrow_read `IntSource`)) (: `f` (shared (fun_type (`Int`) `Int`))))
-      (shared `IntSource`)
+      ((: `self` (borrow_read `IntSource`)@1139..1149)@1133..1149
+        (: `f` (shared (fun_type (`Int`)@1159..1162 `Int`)@1155..1167)@1154..1167)@1151..1167)@1132..1168
+      (shared `IntSource`)@1172..1182
       (block
         (set
           _
           `derived`
           _
-          (call (member `IntSource` `new`) (call `f` (call (member `self` `get`)))))
+          (call
+            (member `IntSource` `new`)@1197..1210
+            (call `f` (call (member `self` `get`)@1213..1221)@1213..1223)@1211..1224)@1197..1225)@1187..1225
         (call
-          (member `self` `subscribe`)
+          (member `self` `subscribe`)@1230..1244
           (share
             (lambda
-              (captures (cap_weak `derived`) (cap_clone `f`))
-              (`v`)
-              _
+              (captures (cap_weak `derived`)@1247..1255 (cap_clone `f`)@1257..1259)@1247..1259
+              (`v`)@1246..1263
               (block
                 (if
-                  (as (call (member `derived` `upgrade`)) `d`)
-                  (block (call (member `d` `set`) (call `f` `v`)))
-                  _)))))
-        `derived`)))
+                  (as (call (member `derived` `upgrade`)@1273..1288)@1273..1290 `d`)@1273..1295
+                  (block
+                    (call (member `d` `set`)@1304..1309 (call `f` `v`)@1310..1314)@1304..1315)@1304..1315
+                  _)@1270..1315)@1270..1315)@1246..1315)@1245..1315)@1230..1316
+        `derived`)@1187..1330)@1125..1330)@390..1330
   (sub
     `main`
-    ()
-    _
+    ()@1338..1340
     (block
-      (set _ `count` _ (call (member `IntSource` `new`) `1`))
+      (set _ `count` _ (call (member `IntSource` `new`)@1351..1364 `1`)@1351..1367)@1343..1367
       (set
         _
         `doubled`
         _
-        (call (member `count` `map`) (share (lambda _ (`n`) _ (block (* `n` `2`))))))
+        (call
+          (member `count` `map`)@1380..1389
+          (share
+            (lambda _ (`n`)@1391..1394 (block (* `n` `2`)@1395..1400)@1395..1400)@1391..1400)@1390..1400)@1380..1401)@1370..1401
       (set
         _
         `squared`
         _
-        (call (member `doubled` `map`) (share (lambda _ (`n`) _ (block (* `n` `n`))))))
+        (call
+          (member `doubled` `map`)@1414..1425
+          (share
+            (lambda _ (`n`)@1427..1430 (block (* `n` `n`)@1431..1436)@1431..1436)@1427..1436)@1426..1436)@1414..1437)@1404..1437
       (call
-        (member `squared` `subscribe`)
-        (share (lambda _ (`n`) _ (block (call `print` `"squared"` `n`)))))
-      (call `print` (call (member `doubled` `get`)) (call (member `squared` `get`)))
-      (call (member `count` `set`) `3`)
-      (call (member `count` `set`) `5`)
-      (call `print` (call (member `doubled` `get`)) (call (member `squared` `get`))))))
+        (member `squared` `subscribe`)@1440..1457
+        (share
+          (lambda
+            _
+            (`n`)@1459..1462
+            (block (call `print` `"squared"` `n`)@1463..1482)@1463..1482)@1459..1482)@1458..1482)@1440..1483
+      (call
+        `print`
+        (call (member `doubled` `get`)@1492..1503)@1492..1505
+        (call (member `squared` `get`)@1507..1518)@1507..1520)@1486..1521
+      (call (member `count` `set`)@1533..1542 `3`)@1533..1545
+      (call (member `count` `set`)@1586..1595 `5`)@1586..1598
+      (call
+        `print`
+        (call (member `doubled` `get`)@1646..1657)@1646..1659
+        (call (member `squared` `get`)@1661..1672)@1661..1674)@1640..1675)@1343..1740)@1330..1740)@357..1740

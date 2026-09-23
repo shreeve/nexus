@@ -1,29 +1,44 @@
 (module
-  (struct `Node` (: `value` `Int`))
-  (fun `maybe` ((: `n` `Int`)) (optional `Int`) (block `n`))
-  (fun `fallible` ((: `n` `Int`)) (error_union `Int`) (block `n`))
+  (struct `Node` (: `value` `Int`)@50..60)@36..62
+  (fun `maybe` ((: `n` `Int`)@72..78)@71..79 (optional `Int`)@83..87 (block `n`)@90..93)@62..93
+  (fun
+    `fallible`
+    ((: `n` `Int`)@106..112)@105..113
+    (error_union `Int`)@117..121
+    (block `n`)@124..127)@93..127
   (sub
     `types`
-    ((: `a` (borrow_read `Node`))
-      (: `b` (borrow_write `Node`))
-      (: `c` (shared `Node`))
-      (: `d` (weak `Node`))
-      (: `e` (optional `Node`))
-      (: `f` (optional (shared `Node`)))
-      (: `g` (shared (optional `Node`))))
-    _
-    (block (call `print` `"types"`)))
+    ((: `a` (borrow_read `Node`)@140..145)@137..145
+      (: `b` (borrow_write `Node`)@150..155)@147..155
+      (: `c` (shared `Node`)@160..165)@157..165
+      (: `d` (weak `Node`)@170..175)@167..175
+      (: `e` (optional `Node`)@180..185)@177..185
+      (: `f` (optional (shared `Node`)@191..196)@190..198)@187..198
+      (: `g` (shared (optional `Node`)@204..209)@203..209)@200..209)@136..210
+    (block (call `print` `"types"`)@213..226)@213..228)@127..228
   (sub
     `containers`
-    ((: `v` (generic_inst `Vec` `Int`))
-      (: `s` (shared (generic_inst `Cell` (generic_inst `Vec` (shared (fun_type))))))
-      (: `c` (shared (fun_type (`Int`))))
-      (: `d` (shared (fun_type (`Int` `String`)))))
-    _
-    (block (call `print` `"containers"`)))
+    ((: `v` (generic_inst `Vec` `Int`)@246..254)@243..254
+      (:
+        `s`
+        (shared
+          (generic_inst
+            `Cell`
+            (generic_inst `Vec` (shared (fun_type _ _)@270..275)@269..275)@265..276)@260..277)@259..277)@256..277
+      (: `c` (shared (fun_type (`Int`)@287..290 _)@283..291)@282..291)@279..291
+      (: `d` (shared (fun_type (`Int` `String`)@301..312 _)@297..313)@296..313)@293..313)@242..314
+    (block (call `print` `"containers"`)@317..335)@317..337)@228..337
   (sub
     `sized`
-    ((: `a` `U8`) (: `b` `I64`) (: `c` `U64`) (: `d` `F64`) (: `e` `Bool`) (: `f` `String`))
-    _
-    (block (call `print` `"sized"`)))
-  (fun `generic` ((pre_param `T` `type`) (: `x` `T`)) `T` (block `x`)))
+    ((: `a` `U8`)@347..352
+      (: `b` `I64`)@354..360
+      (: `c` `U64`)@362..368
+      (: `d` `F64`)@370..376
+      (: `e` `Bool`)@378..385
+      (: `f` `String`)@387..396)@346..397
+    (block (call `print` `"sized"`)@400..413)@400..415)@337..415
+  (fun
+    `generic`
+    ((pre_param `T` `type`)@427..438 (: `x` `T`)@440..444)@426..445
+    `T`
+    (block `x`)@453..455)@415..455)@36..455

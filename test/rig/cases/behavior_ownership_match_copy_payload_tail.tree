@@ -1,22 +1,35 @@
 (module
   (struct
     `B`
-    (: `n` `Int`)
-    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
-  (enum `S` (variant `one` ((: `a` (shared `B`)) (: `k` `Int`))) `empty`)
+    (: `n` `Int`)@116..122
+    (drop_decl
+      ((: `self` (borrow_write `B`)@137..139)@131..139)@131..139
+      (block (call `print` `"drop"` (member `self` `n`)@158..164)@144..165)@144..167)@126..167)@105..167
+  (enum
+    `S`
+    (variant
+      `one`
+      ((: `a` (shared `B`)@183..185)@180..185 (: `k` `Int`)@187..193)@179..194)@176..194
+    `empty`)@167..204
   (fun
     `go`
-    ((: `s` `S`))
+    ((: `s` `S`)@211..215)@210..216
     `Int`
-    (block (match `s` (arm (variant_pattern `one` `a` `k`) `k`) (arm (enum_lit `empty`) `0`))))
+    (block
+      (match
+        `s`
+        (arm (variant_pattern `one` `a` `k`)@238..248 `k`)@238..253
+        (arm (enum_lit `empty`)@258..264 `0`)@258..269)@226..271)@226..271)@204..271
   (sub
     `main`
-    ()
-    _
+    ()@279..281
     (block
       (set
         _
         `s`
         `S`
-        (call (enum_lit `one`) (kwarg `a` (share (call `B` (kwarg `n` `1`)))) (kwarg `k` `3`)))
-      (call `print` (call `go` (move `s`))))))
+        (call
+          (enum_lit `one`)@291..295
+          (kwarg `a` (share (call `B` (kwarg `n` `1`)@302..306)@300..307)@299..307)@296..307
+          (kwarg `k` `3`)@309..313)@291..314)@284..314
+      (call `print` (call `go` (move `s`)@326..328)@323..329)@317..330)@284..355)@271..355)@105..355

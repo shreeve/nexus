@@ -1,12 +1,11 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@140..142
     (block
-      (set _ `x` _ `3`)
-      (set _ `name` _ `"rig"`)
-      (call `print` `"x is"` `x` `"and name is"` `name`)
-      (call `print` `x` (+ `x` `1`))
-      (call `print`)
-      (call `print` `true` `1.5`))))
+      (set _ `x` _ `3`)@145..150
+      (set _ `name` _ `"rig"`)@153..165
+      (call `print` `"x is"` `x` `"and name is"` `name`)@168..205
+      (call `print` `x` (+ `x` `1`)@217..222)@208..222
+      (call `print`)@225..232
+      (call `print` `true` `1.5`)@235..251)@145..307)@132..307)@132..307

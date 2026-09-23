@@ -1,3 +1,12 @@
 (module
-  (sub `bump` ((: `c` (borrow_write `Int`))) _ (block (set _ `c` _ (+ `c` `1`))))
-  (sub `main` () _ (block (set _ `n` _ `1`) (call `bump` (write `n`)) (call `print` `n`))))
+  (sub
+    `bump`
+    ((: `c` (borrow_write `Int`)@74..78)@71..78)@70..79
+    (block (set _ `c` _ (+ `c` `1`)@86..91)@82..91)@82..93)@62..93
+  (sub
+    `main`
+    ()@101..103
+    (block
+      (set _ `n` _ `1`)@106..111
+      (call `bump` (write `n`)@119..121)@114..122
+      (call `print` `n`)@125..133)@106..149)@93..149)@62..149

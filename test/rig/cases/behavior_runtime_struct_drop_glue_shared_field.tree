@@ -1,14 +1,19 @@
 (module
   (struct
     `Noisy`
-    (: `id` `Int`)
-    (drop_decl ((: `self` (borrow_write `Noisy`))) (block (call `print` (member `self` `id`)))))
-  (struct `Reactor` (: `count` (shared `Noisy`)))
+    (: `id` `Int`)@155..162
+    (drop_decl
+      ((: `self` (borrow_write `Noisy`)@177..183)@171..183)@171..183
+      (block (call `print` (member `self` `id`)@194..201)@188..202)@188..204)@166..204)@140..204
+  (struct `Reactor` (: `count` (shared `Noisy`)@228..234)@221..234)@204..236
   (sub
     `main`
-    ()
-    _
+    ()@244..246
     (block
-      (set _ `n` _ (share (call `Noisy` (kwarg `id` `9`))))
-      (set _ `r` `Reactor` (call `Reactor` (kwarg `count` (move `n`))))
-      (call `print` `"built"`))))
+      (set _ `n` _ (share (call `Noisy` (kwarg `id` `9`)@260..265)@254..266)@253..266)@249..266
+      (set
+        _
+        `r`
+        `Reactor`
+        (call `Reactor` (kwarg `count` (move `n`)@297..299)@290..299)@282..300)@269..300
+      (call `print` `"built"`)@303..317)@249..341)@236..341)@140..341

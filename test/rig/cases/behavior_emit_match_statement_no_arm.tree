@@ -1,6 +1,8 @@
 (module
   (sub
     `main`
-    ()
-    _
-    (block (set _ `n` _ `5`) (match `n` (arm `1` (call `print` `"one"`))) (call `print` `"end"`))))
+    ()@78..80
+    (block
+      (set _ `n` _ `5`)@83..88
+      (match `n` (arm `1` (call `print` `"one"`)@108..120)@103..120)@91..123
+      (call `print` `"end"`)@123..135)@83..153)@70..153)@70..153

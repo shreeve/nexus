@@ -1,3 +1,10 @@
 (module
-  (fun `double` ((: `n` `Int`)) `Int` (block (* `n` `2`)))
-  (sub `main` () _ (block (call `print` (call `double` `21`)))))
+  (fun
+    `double`
+    ((: `n` `Int`)@122..128)@121..129
+    `Int`
+    (block (* `n` `2`)@139..144)@139..146)@111..146
+  (sub
+    `main`
+    ()@154..156
+    (block (call `print` (call `double` `21`)@165..175)@159..175)@159..192)@146..192)@111..192

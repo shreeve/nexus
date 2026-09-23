@@ -1,1 +1,1 @@
-(module (pub (fun `helper` () `Int` (block `7`))))
+(module (pub (fun `helper` ()@14..16 `Int` (block `7`)@26..28)@4..28)@0..28)@0..28

@@ -1,57 +1,96 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@127..129
     (block
-      (set _ `n` _ `1`)
-      (set _ `count` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
-      (set _ `copied` _ (lambda (captures (cap_clone `n`)) _ _ (block (call `print` `n`))))
+      (set _ `n` _ `1`)@132..137
+      (set
+        _
+        `count`
+        (shared (generic_inst `Cell` `Int`)@148..157)@147..157
+        (share (call `Cell` (kwarg `value` `0`)@166..174)@161..175)@160..175)@140..175
+      (set
+        _
+        `copied`
+        _
+        (lambda
+          (captures (cap_clone `n`)@188..190)@188..190
+          _
+          (block (call `print` `n`)@192..199)@192..199)@187..199)@178..199
       (set
         _
         `cloned`
         _
         (lambda
-          (captures (cap_clone `count`))
+          (captures (cap_clone `count`)@212..218)@212..218
           _
+          (block
+            (call
+              (member `count` `set`)@220..229
+              (+ (call (member `count` `get`)@230..239)@230..241 `1`)@230..245)@220..246)@220..246)@211..246)@202..246
+      (set
+        _
+        `weak`
+        _
+        (lambda
+          (captures (cap_weak `count`)@257..263)@257..263
           _
-          (block (call (member `count` `set`) (+ (call (member `count` `get`)) `1`)))))
-      (set _ `weak` _ (lambda (captures (cap_weak `count`)) _ _ (block (call `print` `"weak"`))))
-      (set _ `moved` _ (lambda (captures (cap_move `n`)) _ _ (block (call `print` `n`))))
-      (set _ `tick` _ (lambda _ _ _ (block (call `print` `"tick"`))))
-      (call `copied`)
-      (set _ `add` (fun_type (`Int` `Int`) `Int`) (lambda _ (`a` `b`) _ (block (+ `a` `b`))))
+          (block (call `print` `"weak"`)@265..277)@265..277)@256..277)@249..277
+      (set
+        _
+        `moved`
+        _
+        (lambda
+          (captures (cap_move `n`)@289..291)@289..291
+          _
+          (block (call `print` `n`)@293..300)@293..300)@288..300)@280..300
+      (set
+        _
+        `tick`
+        _
+        (lambda _ _ (block (call `print` `"tick"`)@313..325)@313..325)@310..325)@303..325
+      (call `copied`)@328..336
+      (set
+        _
+        `add`
+        (fun_type (`Int` `Int`)@349..357 `Int`)@345..362
+        (lambda _ (`a` `b`)@365..371 (block (+ `a` `b`)@372..377)@372..377)@365..377)@340..377
       (set
         _
         `typed`
         _
         (lambda
-          (captures (cap_clone `count`))
-          ((: `a` `Int`))
-          _
-          (block (call (member `count` `set`) `a`))))
-      (call `add` `1` `2`)
+          (captures (cap_clone `count`)@389..395)@389..395
+          ((: `a` `Int`)@397..403)@388..404
+          (block (call (member `count` `set`)@405..414 `a`)@405..417)@405..417)@388..417)@380..417
+      (call `add` `1` `2`)@420..429
       (set
         _
         `cb`
-        (shared (fun_type _ _))
+        (shared (fun_type _ _)@438..443)@437..443
         (share
           (lambda
-            (captures (cap_clone `count`))
+            (captures (cap_clone `count`)@448..454)@448..454
             _
-            _
-            (block (call (member `count` `set`) (+ (call (member `count` `get`)) `1`))))))
-      (call `cb`)
+            (block
+              (call
+                (member `count` `set`)@456..465
+                (+ (call (member `count` `get`)@466..475)@466..477 `1`)@466..481)@456..482)@456..482)@447..482)@446..482)@433..482
+      (call `cb`)@485..489
       (set
         _
         `one`
-        (shared (fun_type (`Int`) _))
+        (shared (fun_type (`Int`)@502..505 _)@498..506)@497..506
         (share
-          (lambda (captures (cap_clone `count`)) (`a`) _ (block (call (member `count` `set`) `a`)))))
-      (call `one` `5`)
+          (lambda
+            (captures (cap_clone `count`)@511..517)@511..517
+            (`a`)@510..521
+            (block (call (member `count` `set`)@522..531 `a`)@522..534)@522..534)@510..534)@509..534)@492..534
+      (call `one` `5`)@537..543
       (set
         _
         `two`
-        (shared (fun_type (`Int` `Int`) `Int`))
-        (share (lambda _ (`a` `b`) _ (block (* `a` `b`)))))
-      (call `print` (call `two` `1` `2`)))))
+        (shared (fun_type (`Int` `Int`)@556..564 `Int`)@552..569)@551..569
+        (share
+          (lambda _ (`a` `b`)@573..579 (block (* `a` `b`)@580..585)@580..585)@573..585)@572..585)@546..585
+      (call `print` (call `two` `1` `2`)@594..603)@588..604)@132..605)@119..605)@119..605

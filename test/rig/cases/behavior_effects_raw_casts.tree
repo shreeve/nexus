@@ -1,18 +1,17 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@72..74
     (block
-      (set _ `x` `U64` `300`)
-      (set _ `f` _ `1.5`)
-      (set _ `n` `I64` `7`)
+      (set _ `x` `U64` `300`)@77..89
+      (set _ `f` _ `1.5`)@92..99
+      (set _ `n` `I64` `7`)@102..112
       (raw_block
         (block
-          (set _ `a` `U8` (builtin `truncate` `x`))
-          (set _ `b` `I32` (builtin `intFromFloat` `f`))
-          (set _ `c` `U64` (builtin `bitCast` `f`))
-          (set _ `d` `F32` (builtin `floatCast` `f`))
-          (set _ `e` `F64` (builtin `floatFromInt` `n`))
-          (set _ `g` `U8` (builtin `intCast` `n`))
-          (call `print` `a` `b` `c` `d` `e` `g`))))))
+          (set _ `a` `U8` (builtin `truncate` `x`)@131..143)@123..143
+          (set _ `b` `I32` (builtin `intFromFloat` `f`)@157..173)@148..173
+          (set _ `c` `U64` (builtin `bitCast` `f`)@187..198)@178..198
+          (set _ `d` `F32` (builtin `floatCast` `f`)@212..225)@203..225
+          (set _ `e` `F64` (builtin `floatFromInt` `n`)@239..255)@230..255
+          (set _ `g` `U8` (builtin `intCast` `n`)@268..279)@260..279
+          (call `print` `a` `b` `c` `d` `e` `g`)@284..307)@123..354)@115..354)@77..354)@64..354)@64..354

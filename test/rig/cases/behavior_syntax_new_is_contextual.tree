@@ -1,15 +1,18 @@
 (module
   (struct
     `Point`
-    (: `x` `Int`)
-    (fun `new` ((: `x` `Int`)) `Point` (block (call `Point` (kwarg `x` `x`)))))
+    (: `x` `Int`)@184..190
+    (fun
+      `new`
+      ((: `x` `Int`)@202..208)@201..209
+      `Point`
+      (block (call `Point` (kwarg `x` `x`)@229..233)@223..234)@223..236)@194..236)@169..236
   (sub
     `main`
-    ()
-    _
+    ()@244..246
     (block
-      (set _ `p` _ (call (member `Point` `new`) `3`))
-      (call `print` (member `p` `x`))
-      (set _ `x` _ `1`)
-      (set shadow `x` _ `20`)
-      (call `print` `x`))))
+      (set _ `p` _ (call (member `Point` `new`)@253..262 `3`)@253..265)@249..265
+      (call `print` (member `p` `x`)@274..277)@268..277
+      (set _ `x` _ `1`)@280..285
+      (set shadow `x` _ `20`)@288..298
+      (call `print` `x`)@301..308)@249..329)@236..329)@169..329

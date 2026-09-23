@@ -1,24 +1,37 @@
 (module
   (struct
     `B`
-    (: `n` `Int`)
-    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
-  (enum `Slot` (variant `full` ((: `b` (shared `B`)))) `empty`)
+    (: `n` `Int`)@130..136
+    (drop_decl
+      ((: `self` (borrow_write `B`)@151..153)@145..153)@145..153
+      (block (call `print` `"drop"` (member `self` `n`)@172..178)@158..179)@158..181)@140..181)@119..181
+  (enum
+    `Slot`
+    (variant `full` ((: `b` (shared `B`)@201..203)@198..203)@197..204)@193..204
+    `empty`)@181..214
   (fun
     `fill`
-    ((: `s` `Slot`))
+    ((: `s` `Slot`)@223..230)@222..231
     `Int`
     (block
-      (match `s` (arm (variant_pattern `full` `b`) (member `b` `n`)) (arm (enum_lit `empty`) `0`))))
+      (match
+        `s`
+        (arm (variant_pattern `full` `b`)@253..261 (member `b` `n`)@265..268)@253..268
+        (arm (enum_lit `empty`)@273..279 `0`)@273..284)@241..286)@241..286)@214..286
   (sub
     `main`
-    ()
-    _
+    ()@294..296
     (block
-      (set _ `a` `Slot` (member `Slot` `empty`))
-      (set _ `c` _ (call (member `Slot` `full`) (kwarg `b` (share (call `B` (kwarg `n` `1`))))))
+      (set _ `a` `Slot` (member `Slot` `empty`)@309..319)@299..319
+      (set
+        _
+        `c`
+        _
+        (call
+          (member `Slot` `full`)@326..335
+          (kwarg `b` (share (call `B` (kwarg `n` `1`)@342..346)@340..347)@339..347)@336..347)@326..348)@322..348
       (call
         `print`
-        (call `fill` (member `Slot` `empty`))
-        (call `fill` (move `c`))
-        (call `fill` (move `a`))))))
+        (call `fill` (member `Slot` `empty`)@362..372)@357..373
+        (call `fill` (move `c`)@380..382)@375..383
+        (call `fill` (move `a`)@390..392)@385..393)@351..394)@299..423)@286..423)@119..423

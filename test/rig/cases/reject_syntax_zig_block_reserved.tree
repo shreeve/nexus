@@ -1,1 +1,5 @@
-(module (sub `main` () _ (block (zig `"const x = 42; std.debug.print(\\"{any}\\\\n\\", .{x});"`))))
+(module
+  (sub
+    `main`
+    ()@124..126
+    (block (zig `"const x = 42; std.debug.print(\\"{any}\\\\n\\", .{x});"`)@129..185)@129..242)@116..242)@116..242

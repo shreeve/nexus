@@ -1,12 +1,14 @@
 //! Diagnostics shared by the compiler passes.
 //!
-//! A `Diagnostic` is a severity, a byte offset into the module source,
-//! and a message. Passes collect them in a `DiagList` and the CLI prints
-//! them as `file:line:col: error: message` (notes are indented and
-//! attach to the preceding error).
+//! A `Diagnostic` is a severity, a source range of the module (usually
+//! the span of the IR node it is about), and a message. Passes collect
+//! them and the CLI prints each as `file:line:col: error: message` at the
+//! start of the range, followed by the source line with the range
+//! underlined (notes are indented and attach to the preceding error).
 //!
-//! `firstSrcPos` recovers a source position for any IR node, and
-//! `lineCol` turns a byte offset into a 1-based line and column.
+//! Node spans come from the parser (`parser.Parser.span`); `leafSpan`
+//! is the fallback for a tree without them. `lineCol` turns a byte
+//! offset into a 1-based line and column.
 
 const std = @import("std");
 const parser = @import("parser.zig");
@@ -15,44 +17,15 @@ const Sexp = parser.Sexp;
 
 pub const Severity = enum { @"error", note };
 
+pub const Span = parser.Span;
+
 pub const Diagnostic = struct {
     severity: Severity,
+    /// Where the diagnostic points: the start of its range.
     pos: u32,
+    /// End of the range (exclusive); at most `pos` for a single point.
+    end: u32 = 0,
     message: []const u8,
-};
-
-/// An append-only list of diagnostics. Messages are allocated in
-/// `arena`, which the owner frees in one step; the list itself uses
-/// `allocator`.
-pub const DiagList = struct {
-    allocator: std.mem.Allocator,
-    arena: std.mem.Allocator,
-    items: std.ArrayListUnmanaged(Diagnostic) = .empty,
-
-    pub fn init(allocator: std.mem.Allocator, arena: std.mem.Allocator) DiagList {
-        return .{ .allocator = allocator, .arena = arena };
-    }
-
-    pub fn deinit(self: *DiagList) void {
-        self.items.deinit(self.allocator);
-    }
-
-    pub fn add(self: *DiagList, severity: Severity, pos: u32, comptime fmt: []const u8, args: anytype) std.mem.Allocator.Error!void {
-        const msg = try std.fmt.allocPrint(self.arena, fmt, args);
-        try self.items.append(self.allocator, .{ .severity = severity, .pos = pos, .message = msg });
-    }
-
-    pub fn err(self: *DiagList, pos: u32, comptime fmt: []const u8, args: anytype) std.mem.Allocator.Error!void {
-        return self.add(.@"error", pos, fmt, args);
-    }
-
-    pub fn note(self: *DiagList, pos: u32, comptime fmt: []const u8, args: anytype) std.mem.Allocator.Error!void {
-        return self.add(.note, pos, fmt, args);
-    }
-
-    pub fn hasErrors(self: *const DiagList) bool {
-        return hasErrorsIn(self.items.items);
-    }
 };
 
 pub fn hasErrorsIn(items: []const Diagnostic) bool {
@@ -78,8 +51,27 @@ pub fn write(items: []const Diagnostic, source: []const u8, file_path: []const u
         } else {
             const lc = lineCol(source, d.pos);
             try w.print("{s}:{d}:{d}: {s}: {s}\n", .{ path, lc.line, lc.col, tag, msg });
+            try writeExcerpt(source, d.pos, d.end, w);
         }
     }
+}
+
+/// The source line holding `pos`, then a line underlining the range
+/// `pos..end` on it (`^` at `pos`, `~` for the rest of the range, which
+/// stops at the end of the line). Tabs are copied into the underline so
+/// it stays aligned.
+pub fn writeExcerpt(source: []const u8, pos: u32, end: u32, w: anytype) !void {
+    const at: usize = @min(pos, source.len);
+    var start = at;
+    while (start > 0 and source[start - 1] != '\n') start -= 1;
+    var stop = at;
+    while (stop < source.len and source[stop] != '\n' and source[stop] != '\r') stop += 1;
+    try w.print("{s}\n", .{source[start..stop]});
+    for (source[start..at]) |c| try w.writeByte(if (c == '\t') '\t' else ' ');
+    try w.writeByte('^');
+    const last = @min(@as(usize, @max(end, pos)), stop);
+    if (last > at + 1) for (at + 1..last) |_| try w.writeByte('~');
+    try w.writeByte('\n');
 }
 
 pub const LineCol = struct { line: u32, col: u32 };
@@ -99,20 +91,24 @@ pub fn lineCol(source: []const u8, pos: u32) LineCol {
     return .{ .line = line, .col = col };
 }
 
-/// Position of the first source token inside `sexp`, or 0 if it has
-/// none. Used to anchor diagnostics on compound nodes.
-pub fn firstSrcPos(sexp: Sexp) u32 {
-    return switch (sexp) {
-        .src => |s| s.pos,
-        .list => |l| blk: {
-            for (l.items()) |c| {
-                const p = firstSrcPos(c);
-                if (p > 0) break :blk p;
+/// The range from the first to the end of the last source token in
+/// `sexp`: a node's span as far as its leaves tell. Keywords and
+/// punctuation are not leaves, so this is a fallback for trees without
+/// the parser's spans; it is empty at 0 for a node without leaves.
+pub fn leafSpan(sexp: Sexp) Span {
+    switch (sexp) {
+        .src => |s| return .{ .start = s.pos, .end = s.pos + s.len },
+        .list => {
+            var out: ?Span = null;
+            for (sexp.items()) |c| {
+                const cs = leafSpan(c);
+                if (cs.end == 0) continue;
+                out = if (out) |o| .{ .start = @min(o.start, cs.start), .end = @max(o.end, cs.end) } else cs;
             }
-            break :blk 0;
+            return out orelse .empty;
         },
-        else => 0,
-    };
+        else => return .empty,
+    }
 }
 
 test "lineCol: counts lines and columns from 1" {
@@ -123,14 +119,29 @@ test "lineCol: counts lines and columns from 1" {
     try std.testing.expectEqual(LineCol{ .line = 3, .col = 1 }, lineCol(src, 999));
 }
 
-test "DiagList: collects errors and notes" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var list = DiagList.init(std.testing.allocator, arena.allocator());
-    defer list.deinit();
-    try list.note(0, "n", .{});
-    try std.testing.expect(!list.hasErrors());
-    try list.err(3, "bad {s}", .{"thing"});
-    try std.testing.expect(list.hasErrors());
-    try std.testing.expectEqualStrings("bad thing", list.items.items[1].message);
+test "write: position, message, and the range underlined on its line" {
+    const src = "sub main()\n  x = foo(1, 2)\n  y\n";
+    var buf: [256]u8 = undefined;
+    var w = std.Io.Writer.fixed(&buf);
+    const at: u32 = 17; // `foo`
+    try write(&.{
+        .{ .severity = .@"error", .pos = at, .end = at + 9, .message = "bad call" },
+        .{ .severity = .note, .pos = 0, .message = "here" },
+    }, src, "m.rig", &w);
+    try std.testing.expectEqualStrings(
+        \\m.rig:2:7: error: bad call
+        \\  x = foo(1, 2)
+        \\      ^~~~~~~~~
+        \\m.rig:1:1:   note: here
+        \\sub main()
+        \\^
+        \\
+    , w.buffered());
+}
+
+test "leafSpan: from the first leaf to the end of the last" {
+    var inner = [_]Sexp{ .{ .tag = .@"+" }, .{ .src = .{ .pos = 4, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 8, .len = 2, .id = 0 } } };
+    const s = leafSpan(Sexp.listOf(&inner));
+    try std.testing.expectEqual(@as(u32, 4), s.start);
+    try std.testing.expectEqual(@as(u32, 10), s.end);
 }

@@ -1,14 +1,15 @@
 (module
   (struct
     `U`
-    (: `v` `Int`)
-    (drop_decl ((: `self` (borrow_write `U`))) (block (call `print` (+ (member `self` `v`) `100`)))))
+    (: `v` `Int`)@117..123
+    (drop_decl
+      ((: `self` (borrow_write `U`)@138..140)@132..140)@132..140
+      (block (call `print` (+ (member `self` `v`)@151..157 `100`)@151..163)@145..164)@145..166)@127..166)@106..166
   (sub
     `main`
-    ()
-    _
+    ()@174..176
     (block
-      (set _ `rc` _ (share (call `U` (kwarg `v` `1`))))
-      (set _ `rc2` _ (share (call `U` (kwarg `v` `2`))))
-      (set move `rc2` _ `rc`)
-      (call `print` (member `rc2` `v`)))))
+      (set _ `rc` _ (share (call `U` (kwarg `v` `1`)@187..191)@185..192)@184..192)@179..192
+      (set _ `rc2` _ (share (call `U` (kwarg `v` `2`)@204..208)@202..209)@201..209)@195..209
+      (set move `rc2` _ `rc`)@212..221
+      (call `print` (member `rc2` `v`)@230..235)@224..236)@179..264)@166..264)@106..264

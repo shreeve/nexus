@@ -1,3 +1,10 @@
 (module
-  (fun `maybe` ((: `c` `Bool`)) `Int` (block (if `c` (block `1`))))
-  (sub `main` () _ (block (call `print` (call `maybe` `true`)))))
+  (fun
+    `maybe`
+    ((: `c` `Bool`)@216..223)@215..224
+    `Int`
+    (block (if `c` (block `1`)@243..246 _)@234..246)@234..246)@206..246
+  (sub
+    `main`
+    ()@254..256
+    (block (call `print` (call `maybe` `true`)@265..276)@259..277)@259..278)@246..278)@206..278

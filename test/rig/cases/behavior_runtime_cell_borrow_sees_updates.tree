@@ -1,54 +1,95 @@
 (module
-  (generic_type `W` (`T`) (: `v` `T`))
-  (enum `E` (variant `held` ((: `c` (borrow_read (generic_inst `Cell` `Int`))))) `empty`)
-  (struct `View` (: `c` (borrow_read (generic_inst `Cell` `Int`))))
+  (generic_type `W` (`T`)@282..285 (: `v` `T`)@288..292)@276..294
+  (enum
+    `E`
+    (variant
+      `held`
+      ((: `c` (borrow_read (generic_inst `Cell` `Int`)@312..321)@311..321)@308..321)@307..322)@303..322
+    `empty`)@294..332
+  (struct
+    `View`
+    (: `c` (borrow_read (generic_inst `Cell` `Int`)@350..359)@349..359)@346..359)@332..361
   (struct
     `H`
-    (: `c` (generic_inst `Cell` `Int`))
+    (: `c` (generic_inst `Cell` `Int`)@375..384)@372..384
     (fun
       `cell`
-      ((read `self`))
-      (borrow_read (generic_inst `Cell` `Int`))
-      (block (read (member `self` `c`)))))
-  (type `C` (generic_inst `Cell` `Int`))
-  (fun `id` ((: `c` (borrow_read `C`))) (borrow_read `C`) (block `c`))
+      ((read `self`)@397..402)@396..403
+      (borrow_read (generic_inst `Cell` `Int`)@408..417)@407..417
+      (block (read (member `self` `c`)@423..429)@422..429)@422..431)@388..431)@361..431
+  (type `C` (generic_inst `Cell` `Int`)@440..449)@431..449
+  (fun
+    `id`
+    ((: `c` (borrow_read `C`)@461..463)@458..463)@457..464
+    (borrow_read `C`)@468..470
+    (block `c`)@473..476)@451..476
   (fun
     `inner`
-    ((: `h` (borrow_read `H`)))
-    (borrow_read (generic_inst `Cell` `Int`))
-    (block (read (member `h` `c`))))
+    ((: `h` (borrow_read `H`)@489..491)@486..491)@485..492
+    (borrow_read (generic_inst `Cell` `Int`)@497..506)@496..506
+    (block (read (member `h` `c`)@510..513)@509..513)@509..515)@476..515
   (sub
     `main`
-    ()
-    _
+    ()@523..525
     (block
-      (set _ `cell` (generic_inst `Cell` `Int`) (call `Cell` (kwarg `value` `1`)))
-      (set _ `r` _ (call `id` (read `cell`)))
-      (set _ `v` _ (call `View` (kwarg `c` (read `cell`))))
-      (set _ `o` (optional (borrow_read (generic_inst `Cell` `Int`))) (read `cell`))
-      (set _ `xs` _ (array (read `cell`)))
+      (set
+        _
+        `cell`
+        (generic_inst `Cell` `Int`)@534..543
+        (call `Cell` (kwarg `value` `1`)@551..559)@546..560)@528..560
+      (set _ `r` _ (call `id` (read `cell`)@570..575)@567..576)@563..576
+      (set _ `v` _ (call `View` (kwarg `c` (read `cell`)@591..596)@588..596)@583..597)@579..597
+      (set
+        _
+        `o`
+        (optional (borrow_read (generic_inst `Cell` `Int`)@605..614)@604..614)@603..616
+        (read `cell`)@619..624)@600..624
+      (set _ `xs` _ (array (read `cell`)@633..638)@632..639)@627..639
       (set
         _
         `w`
-        (generic_inst `W` (borrow_read (generic_inst `Cell` `Int`)))
-        (call `W` (kwarg `v` (read `cell`))))
-      (set _ `e` `E` (call (enum_lit `held`) (kwarg `c` (read `cell`))))
-      (set _ `f` _ (lambda ((: `c` (borrow_read (generic_inst `Cell` `Int`)))) _ _ (block `c`)))
-      (set _ `k` _ (call `f` (read `cell`)))
-      (call (member `cell` `set`) `5`)
+        (generic_inst `W` (borrow_read (generic_inst `Cell` `Int`)@648..657)@647..657)@645..658
+        (call `W` (kwarg `v` (read `cell`)@666..671)@663..671)@661..672)@642..672
+      (set
+        _
+        `e`
+        `E`
+        (call (enum_lit `held`)@682..687 (kwarg `c` (read `cell`)@691..696)@688..696)@682..697)@675..697
+      (set
+        _
+        `f`
+        _
+        (lambda
+          _
+          ((: `c` (borrow_read (generic_inst `Cell` `Int`)@709..718)@708..718)@705..718)@704..719
+          (block `c`)@720..721)@704..721)@700..721
+      (set _ `k` _ (call `f` (read `cell`)@730..735)@728..736)@724..736
+      (call (member `cell` `set`)@739..747 `5`)@739..750
       (call
         `print`
-        (call (member `r` `get`))
-        (call (member (member `v` `c`) `get`))
-        (call (member (index `xs` `0`) `get`))
-        (call (member (member `w` `v`) `get`))
-        (call (member `k` `get`)))
-      (if (as `o` `p`) (block (call `print` (call (member `p` `get`)))))
+        (call (member `r` `get`)@759..764)@759..766
+        (call (member (member `v` `c`)@768..771 `get`)@768..775)@768..777
+        (call (member (index `xs` `0`)@779..784 `get`)@779..788)@779..790
+        (call (member (member `w` `v`)@792..795 `get`)@792..799)@792..801
+        (call (member `k` `get`)@803..808)@803..810)@753..811
+      (if
+        (as `o` `p`)@817..823
+        (block (call `print` (call (member `p` `get`)@834..839)@834..841)@828..842)@828..845
+        _)@814..845
       (match
         `e`
-        (arm (variant_pattern `held` `c`) (call `print` (call (member `c` `get`))))
-        (arm (enum_lit `empty`) (call `print` `0`)))
-      (set _ `h` _ (call `H` (kwarg `c` (call `Cell` (kwarg `value` `3`)))))
-      (set _ `a` _ (call `inner` (read `h`)))
-      (set _ `b` _ (call (member `h` `cell`)))
-      (call `print` (call (member `a` `get`)) (call (member `b` `get`))))))
+        (arm
+          (variant_pattern `held` `c`)@857..865
+          (call `print` (call (member `c` `get`)@875..880)@875..882)@869..883)@857..883
+        (arm (enum_lit `empty`)@888..894 (call `print` `0`)@898..906)@888..906)@845..909
+      (set
+        _
+        `h`
+        _
+        (call `H` (kwarg `c` (call `Cell` (kwarg `value` `3`)@923..931)@918..932)@915..932)@913..933)@909..933
+      (set _ `a` _ (call `inner` (read `h`)@946..948)@940..949)@936..949
+      (set _ `b` _ (call (member `h` `cell`)@956..962)@956..964)@952..964
+      (call
+        `print`
+        (call (member `a` `get`)@973..978)@973..980
+        (call (member `b` `get`)@982..987)@982..989)@967..990)@528..1028)@515..1028)@276..1028

@@ -1,18 +1,20 @@
 (module
   (struct
     `Button`
-    (: `on_click` (shared (fun_type (`Int`))))
+    (: `on_click` (shared (fun_type (`Int`)@243..246 _)@239..247)@238..247)@228..247
     (sub
       `click`
-      ((: `self` (borrow_read `Button`)) (: `n` `Int`))
-      _
-      (block (call (member `self` `on_click`) `n`))))
+      ((: `self` (borrow_read `Button`)@267..274)@261..274 (: `n` `Int`)@276..282)@260..283
+      (block (call (member `self` `on_click`)@288..301 `n`)@288..304)@288..306)@251..306)@212..306
   (sub
     `main`
-    ()
-    _
+    ()@314..316
     (block
-      (set _ `total` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set
+        _
+        `total`
+        (shared (generic_inst `Cell` `Int`)@327..336)@326..336
+        (share (call `Cell` (kwarg `value` `0`)@345..353)@340..354)@339..354)@319..354
       (set
         _
         `button`
@@ -23,33 +25,56 @@
             `on_click`
             (share
               (lambda
-                ((cap_clone `total`) `n`)
                 _
-                _
-                (block (call (member `total` `set`) (+ (call (member `total` `get`)) `n`))))))))
-      (call (member `button` `click`) `4`)
-      (call (member `button` `click`) `5`)
-      (call `print` (call (member `total` `get`)))
-      (set _ `fs` (generic_inst `Vec` (shared (fun_type (`Int`) `Int`))) (call `Vec`))
-      (call (member (write `fs`) `push`) (share (lambda (`x`) _ _ (block (+ `x` `1`)))))
-      (call (member (write `fs`) `push`) (share (lambda (`x`) _ _ (block (* `x` `10`)))))
-      (for iter `f` _ (read `fs`) (block (call `print` (call `f` `3`))))
+                ((cap_clone `total`)@385..391 `n`)@384..395
+                (block
+                  (call
+                    (member `total` `set`)@396..405
+                    (+ (call (member `total` `get`)@406..415)@406..417 `n`)@406..421)@396..422)@396..422)@384..422)@383..422)@373..422)@366..423)@357..423
+      (call (member `button` `click`)@426..438 `4`)@426..441
+      (call (member `button` `click`)@444..456 `5`)@444..459
+      (call `print` (call (member `total` `get`)@468..477)@468..479)@462..480
+      (set
+        _
+        `fs`
+        (generic_inst `Vec` (shared (fun_type (`Int`)@497..500 `Int`)@493..505)@492..505)@488..506
+        (call `Vec`)@509..514)@484..514
+      (call
+        (member (write `fs`)@518..521 `push`)@517..527
+        (share (lambda _ (`x`)@529..532 (block (+ `x` `1`)@533..538)@533..538)@529..538)@528..538)@517..539
+      (call
+        (member (write `fs`)@543..546 `push`)@542..552
+        (share (lambda _ (`x`)@554..557 (block (* `x` `10`)@558..564)@558..564)@554..564)@553..564)@542..565
+      (for
+        iter
+        `f`
+        _
+        (read `fs`)@577..580
+        (block (call `print` (call `f` `3`)@591..595)@585..596)@585..600
+        _)@568..600
       (set
         _
         `later`
-        (optional (shared (fun_type)))
-        (share (lambda () _ _ (block (call `print` `"now set"`)))))
-      (if (as (move `later`) `run`) (block (call `run`)))
+        (optional (shared (fun_type _ _)@609..614)@608..614)@607..616
+        (share
+          (lambda _ ()@620..622 (block (call `print` `"now set"`)@623..639)@623..639)@620..639)@619..639)@600..639
+      (if
+        (as (move `later`)@645..651 `run`)@645..658
+        (block (call `run`)@663..668)@663..672
+        _)@642..672
       (set
         _
         `greet`
-        (shared (fun_type (`String` `Int`)))
+        (shared (fun_type (`String` `Int`)@684..695 _)@680..696)@679..696
         (share
           (lambda
-            (`name` `times`)
             _
-            _
+            (`name` `times`)@700..713
             (block
-              (set _ `i` _ `0`)
-              (while (< `i` `times`) (set += `i` _ `1`) (block (call `print` `"hi"` `name`)))))))
-      (call `greet` `"ada"` `2`))))
+              (set _ `i` _ `0`)@718..723
+              (while
+                (< `i` `times`)@734..743
+                (set += `i` _ `1`)@746..752
+                (block (call `print` `"hi"` `name`)@759..776)@759..779
+                _)@728..779)@718..779)@700..779)@699..779)@672..779
+      (call `greet` `"ada"` `2`)@779..794)@319..847)@306..847)@212..847

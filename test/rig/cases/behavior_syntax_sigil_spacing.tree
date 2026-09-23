@@ -1,27 +1,30 @@
 (module
-  (struct `Box` (: `v` `Int`))
-  (fun `show` ((: `b` (borrow_read `Box`))) `Int` (block (member `b` `v`)))
+  (struct `Box` (: `v` `Int`)@323..329)@310..331
+  (fun
+    `show`
+    ((: `b` (borrow_read `Box`)@343..347)@340..347)@339..348
+    `Int`
+    (block (member `b` `v`)@358..361)@358..363)@331..363
   (sub
     `main`
-    ()
-    _
+    ()@371..373
     (block
-      (set _ `a` _ `7`)
-      (set _ `b` _ `2`)
-      (set _ `x` _ `3`)
-      (call `print` (< `a` `x`))
-      (call `print` (* `a` `b`))
-      (call `print` (+ `a` `b`))
-      (call `print` (% `a` `b`))
-      (call `print` (- `a` `b`))
-      (set _ `y` _ (neg `x`))
-      (call `print` `y`)
-      (call `print` (builtin `sizeOf` `Box`))
-      (set _ `s` _ (share (call `Box` (kwarg `v` `10`))))
-      (set _ `t` _ (clone `s`))
-      (set _ `u` _ (move `s`))
-      (call `print` (member `u` `v`))
-      (drop `u`)
-      (call `print` (member `t` `v`))
-      (set _ `box` _ (call `Box` (kwarg `v` `1`)))
-      (call `print` (call `show` (read `box`))))))
+      (set _ `a` _ `7`)@376..381
+      (set _ `b` _ `2`)@384..389
+      (set _ `x` _ `3`)@392..397
+      (call `print` (< `a` `x`)@406..411)@400..412
+      (call `print` (* `a` `b`)@421..426)@415..427
+      (call `print` (+ `a` `b`)@436..441)@430..442
+      (call `print` (% `a` `b`)@451..456)@445..457
+      (call `print` (- `a` `b`)@466..471)@460..472
+      (set _ `y` _ (neg `x`)@479..481)@475..481
+      (call `print` `y`)@508..516
+      (call `print` (builtin `sizeOf` `Box`)@525..537)@519..538
+      (set _ `s` _ (share (call `Box` (kwarg `v` `10`)@565..570)@561..571)@560..571)@556..571
+      (set _ `t` _ (clone `s`)@590..592)@586..592
+      (set _ `u` _ (move `s`)@620..622)@616..622
+      (call `print` (member `u` `v`)@651..654)@645..655
+      (drop `u`)@658..660
+      (call `print` (member `t` `v`)@703..706)@697..707
+      (set _ `box` _ (call `Box` (kwarg `v` `1`)@720..724)@716..725)@710..725
+      (call `print` (call `show` (read `box`)@739..743)@734..744)@728..745)@376..821)@363..821)@310..821

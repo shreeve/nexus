@@ -1,9 +1,16 @@
 (module
-  (generic_enum `Option` (`T`) (variant `some` ((: `value` `T`))) `none`)
+  (generic_enum
+    `Option`
+    (`T`)@110..113
+    (variant `some` ((: `value` `T`)@121..129)@120..130)@116..130
+    `none`)@99..139
   (sub
     `main`
-    ()
-    _
+    ()@147..149
     (block
-      (set _ `o` (generic_inst `Option` `Int`) (call (enum_lit `some`) (kwarg `value` `"hello"`)))
-      (call `print` `"done"`))))
+      (set
+        _
+        `o`
+        (generic_inst `Option` `Int`)@155..166
+        (call (enum_lit `some`)@169..174 (kwarg `value` `"hello"`)@175..189)@169..190)@152..190
+      (call `print` `"done"`)@193..206)@152..261)@139..261)@99..261

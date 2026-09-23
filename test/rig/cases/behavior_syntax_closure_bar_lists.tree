@@ -1,47 +1,84 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@321..323
     (block
-      (set _ `n` _ `10`)
-      (set _ `cell` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
-      (set _ `v` (generic_inst `Vec` `Int`) (call `Vec`))
-      (call (member (write `v`) `push`) `1`)
-      (set _ `copy` _ (lambda ((cap_clone `n`)) _ _ (block (+ `n` `1`))))
-      (set _ `clone` _ (lambda ((cap_clone `cell`)) _ _ (block (call (member `cell` `get`)))))
-      (set _ `moved` _ (lambda ((cap_move `v`)) _ _ (block (call (member `v` `length`)))))
+      (set _ `n` _ `10`)@326..332
+      (set
+        _
+        `cell`
+        (shared (generic_inst `Cell` `Int`)@342..351)@341..351
+        (share (call `Cell` (kwarg `value` `0`)@360..368)@355..369)@354..369)@335..369
+      (set _ `v` (generic_inst `Vec` `Int`)@375..383 (call `Vec`)@386..391)@372..391
+      (call (member (write `v`)@395..397 `push`)@394..403 `1`)@394..406
+      (set
+        _
+        `copy`
+        _
+        (lambda
+          _
+          ((cap_clone `n`)@418..420)@417..421
+          (block (+ `n` `1`)@422..427)@422..427)@417..427)@410..427
+      (set
+        _
+        `clone`
+        _
+        (lambda
+          _
+          ((cap_clone `cell`)@439..444)@438..445
+          (block (call (member `cell` `get`)@446..454)@446..456)@446..456)@438..456)@430..456
+      (set
+        _
+        `moved`
+        _
+        (lambda
+          _
+          ((cap_move `v`)@468..470)@467..471
+          (block (call (member `v` `length`)@472..480)@472..482)@472..482)@467..482)@459..482
       (set
         _
         `weak`
         _
         (lambda
-          ((cap_weak `cell`))
           _
-          _
+          ((cap_weak `cell`)@493..498)@492..499
           (block
             (if
-              (as (call (member `cell` `upgrade`)) `c`)
-              (block (call `print` `"alive"` (call (member `c` `get`))))))))
-      (set _ `param` _ (lambda ((: `a` `Int`)) _ _ (block (* `a` `2`))))
+              (as (call (member `cell` `upgrade`)@507..519)@507..521 `c`)@507..526
+              (block
+                (call `print` `"alive"` (call (member `c` `get`)@548..553)@548..555)@533..556)@533..559
+              _)@504..559)@504..559)@492..559)@485..559
+      (set
+        _
+        `param`
+        _
+        (lambda _ ((: `a` `Int`)@568..574)@567..575 (block (* `a` `2`)@576..581)@576..581)@567..581)@559..581
       (set
         _
         `both`
         _
-        (lambda ((cap_clone `n`) (: `a` `Int`) (: `b` `Int`)) _ _ (block (+ (+ `n` `a`) `b`))))
-      (set _ `nothing` _ (lambda () _ _ (block (call `print` `"nothing"`))))
+        (lambda
+          _
+          ((cap_clone `n`)@592..594 (: `a` `Int`)@596..602 (: `b` `Int`)@604..610)@591..611
+          (block (+ (+ `n` `a`)@612..617 `b`)@612..621)@612..621)@591..621)@584..621
+      (set
+        _
+        `nothing`
+        _
+        (lambda _ ()@634..636 (block (call `print` `"nothing"`)@637..653)@637..653)@634..653)@624..653
       (set
         _
         `owned`
-        (shared (fun_type))
-        (share (lambda () _ _ (block (call `print` `"owned nothing"`)))))
+        (shared (fun_type _ _)@664..669)@663..669
+        (share
+          (lambda _ ()@673..675 (block (call `print` `"owned nothing"`)@676..698)@676..698)@673..698)@672..698)@656..698
       (call
         `print`
-        (call `copy`)
-        (call `clone`)
-        (call `moved`)
-        (call `param` `4`)
-        (call `both` `1` `2`))
-      (call `weak`)
-      (call `nothing`)
-      (call `owned`))))
+        (call `copy`)@708..714
+        (call `clone`)@716..723
+        (call `moved`)@725..732
+        (call `param` `4`)@734..742
+        (call `both` `1` `2`)@744..754)@702..755
+      (call `weak`)@758..764
+      (call `nothing`)@767..776
+      (call `owned`)@779..786)@326..848)@313..848)@313..848

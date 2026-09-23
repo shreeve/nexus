@@ -1,9 +1,8 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@84..86
     (block
-      (set _ `x` `I64` `7`)
-      (set _ `n` _ (builtin `sizeOf` (builtin `TypeOf` `x`)))
-      (call `print` `n`))))
+      (set _ `x` `I64` `7`)@89..99
+      (set _ `n` _ (builtin `sizeOf` (builtin `TypeOf` `x`)@114..124)@106..125)@102..125
+      (call `print` `n`)@128..136)@89..152)@76..152)@76..152

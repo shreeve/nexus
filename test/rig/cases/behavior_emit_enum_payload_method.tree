@@ -1,20 +1,26 @@
 (module
   (enum
     `Shape`
-    (variant `circle` ((: `radius` `Int`)))
+    (variant `circle` ((: `radius` `Int`)@78..89)@77..90)@71..90
     `point`
     (fun
       `is_point`
-      ((read `self`))
+      ((read `self`)@115..120)@114..121
       `Bool`
       (block
-        (match `self` (arm (variant_pattern `circle` `r`) `false`) (arm (enum_lit `point`) `true`)))))
+        (match
+          `self`
+          (arm (variant_pattern `circle` `r`)@151..161 `false`)@151..170
+          (arm (enum_lit `point`)@177..183 `true`)@177..191)@134..193)@134..193)@102..193)@58..193
   (sub
     `main`
-    ()
-    _
+    ()@201..203
     (block
-      (set _ `s` `Shape` (call (enum_lit `circle`) (kwarg `radius` `2`)))
-      (call `print` (call (member `s` `is_point`)))
-      (set _ `p` `Shape` (enum_lit `point`))
-      (call `print` (call (member `p` `is_point`))))))
+      (set
+        _
+        `s`
+        `Shape`
+        (call (enum_lit `circle`)@217..224 (kwarg `radius` `2`)@225..234)@217..235)@206..235
+      (call `print` (call (member `s` `is_point`)@244..254)@244..256)@238..257
+      (set _ `p` `Shape` (enum_lit `point`)@271..277)@260..277
+      (call `print` (call (member `p` `is_point`)@286..296)@286..298)@280..299)@206..326)@193..326)@58..326

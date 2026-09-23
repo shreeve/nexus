@@ -1,12 +1,16 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@119..121
     (block
       (set
         _
         `result`
         _
-        (if (> `5` `0`) (block (set _ `doubled` `Int` (* `5` `2`)) (+ `doubled` `1`)) (block `0`)))
-      (call `print` `result`))))
+        (if
+          (> `5` `0`)@136..141
+          (block
+            (set _ `doubled` `Int` (* `5` `2`)@161..166)@146..166
+            (+ `doubled` `1`)@171..182)@146..185
+          (block `0`)@194..198)@133..198)@124..198
+      (call `print` `result`)@198..211)@124..228)@111..228)@111..228

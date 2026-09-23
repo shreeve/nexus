@@ -1,16 +1,21 @@
 (module
-  (struct `Box` (: `payload` `Int`))
-  (struct `Holder` (: `inner` `Box`))
+  (struct `Box` (: `payload` `Int`)@77..89)@64..91
+  (struct `Holder` (: `inner` `Box`)@107..117)@91..119
   (fun
     `inner_of`
-    ((: `h` (borrow_read `Holder`)))
-    (borrow_read `Box`)
-    (block (read (member `h` `inner`))))
+    ((: `h` (borrow_read `Holder`)@135..142)@132..142)@131..143
+    (borrow_read `Box`)@147..151
+    (block (read (member `h` `inner`)@155..162)@154..162)@154..164)@119..164
   (sub
     `main`
-    ()
-    _
+    ()@172..174
     (block
-      (set _ `h` _ (call `Holder` (kwarg `inner` (call `Box` (kwarg `payload` `9`)))))
-      (set _ `b` _ (call `inner_of` (read `h`)))
-      (call `print` (member `b` `payload`)))))
+      (set
+        _
+        `h`
+        _
+        (call
+          `Holder`
+          (kwarg `inner` (call `Box` (kwarg `payload` `9`)@199..209)@195..210)@188..210)@181..211)@177..211
+      (set _ `b` _ (call `inner_of` (read `h`)@227..229)@218..230)@214..230
+      (call `print` (member `b` `payload`)@239..248)@233..249)@177..265)@164..265)@64..265

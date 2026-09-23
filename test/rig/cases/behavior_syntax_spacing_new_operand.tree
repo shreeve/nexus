@@ -1,25 +1,27 @@
 (module
-  (enum `Color` `red` `green`)
+  (enum `Color` `red` `green`)@215..241
   (sub
     `show`
-    ((: `c` `Color`))
-    _
+    ((: `c` `Color`)@250..258)@249..259
     (block
       (match
         `c`
-        (arm (enum_lit `red`) (call `print` `"red"`))
-        (arm (enum_lit `green`) (call `print` `"green"`)))))
-  (fun `double` ((: `n` `Int`)) `Int` (block (* `n` `2`)))
+        (arm (enum_lit `red`)@274..278 (call `print` `"red"`)@282..293)@274..293
+        (arm (enum_lit `green`)@298..304 (call `print` `"green"`)@308..321)@298..321)@262..323)@262..323)@241..323
+  (fun
+    `double`
+    ((: `n` `Int`)@334..340)@333..341
+    `Int`
+    (block (* `n` `2`)@351..356)@351..358)@323..358
   (sub
     `main`
-    ()
-    _
+    ()@366..368
     (block
-      (call `print` (* (+ `1` `2`) `3`))
-      (call `print` (neg `3`))
-      (set _ `x` _ `10`)
-      (call `print` (- `x` `3`))
-      (call `print` (- `x` `3`))
-      (call `show` (enum_lit `green`))
-      (call `print` (call `double` `4`))
-      (call `print` (call `double` `5`)))))
+      (call `print` (* (+ `1` `2`)@378..383 `3`)@377..388)@371..388
+      (call `print` (neg `3`)@422..424)@416..424
+      (set _ `x` _ `10`)@452..458
+      (call `print` (- `x` `3`)@467..472)@461..472
+      (call `print` (- `x` `3`)@505..508)@499..508
+      (call `show` (enum_lit `green`)@516..522)@511..522
+      (call `print` (call `double` `4`)@556..565)@550..565
+      (call `print` (call `double` `5`)@599..607)@593..607)@371..679)@358..679)@215..679

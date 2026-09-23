@@ -1,1 +1,8 @@
-(module (sub `main` () _ (block (set _ `x` _ `42`) (set _ `p` _ (pin `x`)) (call `print` `p`))))
+(module
+  (sub
+    `main`
+    ()@146..148
+    (block
+      (set _ `x` _ `42`)@151..157
+      (set _ `p` _ (pin `x`)@164..166)@160..166
+      (call `print` `p`)@169..177)@151..219)@138..219)@138..219

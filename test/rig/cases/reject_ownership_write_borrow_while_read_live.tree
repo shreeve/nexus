@@ -1,12 +1,14 @@
 (module
-  (struct `User` (: `name` `String`))
-  (sub `rename` ((: `u` (borrow_write `User`))) _ (block (call `print` `"rename"`)))
+  (struct `User` (: `name` `String`)@109..121)@95..123
+  (sub
+    `rename`
+    ((: `u` (borrow_write `User`)@137..142)@134..142)@133..143
+    (block (call `print` `"rename"`)@146..161)@146..163)@123..163
   (sub
     `main`
-    ()
-    _
+    ()@171..173
     (block
-      (set _ `user` _ (call `User` (kwarg `name` `"Steve"`)))
-      (set _ `r` _ (read `user`))
-      (call `rename` (write `user`))
-      (call `print` (member `r` `name`)))))
+      (set _ `user` _ (call `User` (kwarg `name` `"Steve"`)@188..201)@183..202)@176..202
+      (set _ `r` _ (read `user`)@209..214)@205..214
+      (call `rename` (write `user`)@224..229)@217..229
+      (call `print` (member `r` `name`)@238..244)@232..245)@176..311)@163..311)@95..311

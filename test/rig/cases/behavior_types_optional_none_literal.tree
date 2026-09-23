@@ -1,1 +1,7 @@
-(module (sub `main` () _ (block (set _ `x` (optional `Int`) `none`) (call `print` (?? `x` `7`)))))
+(module
+  (sub
+    `main`
+    ()@42..44
+    (block
+      (set _ `x` (optional `Int`)@50..54 `none`)@47..61
+      (call `print` (?? `x` `7`)@70..76)@64..77)@47..93)@34..93)@34..93

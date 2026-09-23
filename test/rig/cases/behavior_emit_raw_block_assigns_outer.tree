@@ -1,6 +1,8 @@
 (module
   (sub
     `main`
-    ()
-    _
-    (block (set _ `r` _ `0`) (raw_block (block (set _ `r` _ `5`))) (call `print` `r`))))
+    ()@69..71
+    (block
+      (set _ `r` _ `0`)@74..79
+      (raw_block (block (set _ `r` _ `5`)@90..95)@90..98)@82..98
+      (call `print` `r`)@98..106)@74..122)@61..122)@61..122

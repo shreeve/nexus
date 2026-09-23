@@ -1,44 +1,73 @@
 (module
   (enum
     `Shape`
-    (variant `circle` ((: `radius` `Int`)))
-    (variant `rect` ((: `w` `Int`) (: `h` `Int`)))
-    `point`)
+    (variant `circle` ((: `radius` `Int`)@102..113)@101..114)@95..114
+    (variant `rect` ((: `w` `Int`)@122..128 (: `h` `Int`)@130..136)@121..137)@117..137
+    `point`)@82..147
   (fun
     `area`
-    ((: `s` (borrow_read `Shape`)))
+    ((: `s` (borrow_read `Shape`)@159..165)@156..165)@155..166
     `Int`
     (block
       (match
         `s`
-        (arm (variant_pattern `circle` `r`) (return (* (* `3` `r`) `r`)))
-        (arm (variant_pattern `rect` `w` `h`) (return (* `w` `h`)))
-        (arm (enum_lit `point`) (return `0`)))))
+        (arm
+          (variant_pattern `circle` `r`)@188..198
+          (return (* (* `3` `r`)@209..214 `r`)@209..218)@202..218)@188..218
+        (arm
+          (variant_pattern `rect` `w` `h`)@223..234
+          (return (* `w` `h`)@245..250)@238..250)@223..250
+        (arm (enum_lit `point`)@255..261 (return `0`)@265..273)@255..273)@176..275)@176..275)@147..275
   (struct
     `Canvas`
-    (: `width` `Int`)
-    (: `height` `Int`)
+    (: `width` `Int`)@291..301
+    (: `height` `Int`)@304..315
     (fun
       `fits`
-      ((read `self`) (: `s` (borrow_read `Shape`)))
+      ((read `self`)@328..333 (: `s` (borrow_read `Shape`)@338..344)@335..344)@327..345
       `Bool`
-      (block (<= (call `area` `s`) (* (member `self` `width`) (member `self` `height`))))))
-  (generic_type `Pair` (`T`) (: `left` `T`) (: `right` `T`))
+      (block
+        (<=
+          (call `area` `s`)@358..365
+          (* (member `self` `width`)@369..379 (member `self` `height`)@382..393)@369..393)@358..393)@358..395)@319..395)@275..395
+  (generic_type `Pair` (`T`)@404..407 (: `left` `T`)@410..417 (: `right` `T`)@420..428)@395..430
   (sub
     `main`
-    ()
-    _
+    ()@438..440
     (block
       (set
         _
         `shapes`
-        (generic_inst `Pair` `Shape`)
+        (generic_inst `Pair` `Shape`)@451..462
         (call
           `Pair`
-          (kwarg `left` (call (enum_lit `circle`) (kwarg `radius` `2`)))
-          (kwarg `right` (call (enum_lit `rect`) (kwarg `w` `3`) (kwarg `h` `5`)))))
-      (call `print` (call `area` (read (member `shapes` `left`))))
-      (call `print` (call `area` (read (member `shapes` `right`))))
-      (set _ `canvas` _ (call `Canvas` (kwarg `width` `4`) (kwarg `height` `3`)))
-      (call `print` (call (member `canvas` `fits`) (read (member `shapes` `left`))))
-      (call `print` (call (member `canvas` `fits`) (read (member `shapes` `right`)))))))
+          (kwarg
+            `left`
+            (call (enum_lit `circle`)@476..483 (kwarg `radius` `2`)@484..493)@476..494)@470..494
+          (kwarg
+            `right`
+            (call
+              (enum_lit `rect`)@503..508
+              (kwarg `w` `3`)@509..513
+              (kwarg `h` `5`)@515..519)@503..520)@496..520)@465..521)@443..521
+      (call
+        `print`
+        (call `area` (read (member `shapes` `left`)@536..547)@535..547)@530..548)@524..549
+      (call
+        `print`
+        (call `area` (read (member `shapes` `right`)@564..576)@563..576)@558..577)@552..578
+      (set
+        _
+        `canvas`
+        _
+        (call `Canvas` (kwarg `width` `4`)@598..606 (kwarg `height` `3`)@608..617)@591..618)@582..618
+      (call
+        `print`
+        (call
+          (member `canvas` `fits`)@627..638
+          (read (member `shapes` `left`)@640..651)@639..651)@627..652)@621..653
+      (call
+        `print`
+        (call
+          (member `canvas` `fits`)@662..673
+          (read (member `shapes` `right`)@675..687)@674..687)@662..688)@656..689)@443..726)@430..726)@82..726

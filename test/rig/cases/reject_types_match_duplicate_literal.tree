@@ -1,12 +1,11 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@60..62
     (block
-      (set _ `n` _ `2`)
+      (set _ `n` _ `2`)@65..70
       (match
         `n`
-        (arm (range_pattern `1` `3`) (call `print` `"low"`))
-        (arm `2` (call `print` `"two"`))
-        (arm `else` (call `print` `"other"`))))))
+        (arm (range_pattern `1` `3`)@85..89 (call `print` `"low"`)@93..105)@85..105
+        (arm `2` (call `print` `"two"`)@115..127)@110..127
+        (arm `else` (call `print` `"other"`)@140..154)@132..154)@73..189)@65..189)@52..189)@52..189

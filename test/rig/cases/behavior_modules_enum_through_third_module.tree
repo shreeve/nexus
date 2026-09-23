@@ -1,11 +1,20 @@
 (module
-  (use `util`)
-  (use `geo`)
+  (use `util`)@65..73
+  (use `geo`)@74..81
   (sub
     `main`
-    ()
-    _
+    ()@91..93
     (block
-      (set _ `a` (member `util` `Shape`) (call (enum_lit `circle`) (kwarg `r` `1`)))
-      (set _ `b` (member `util` `Shape`) (call (enum_lit `sq`) (kwarg `s` `2`)))
-      (call `print` (call (member `geo` `total`) (read `a`) (read `b`))))))
+      (set
+        _
+        `a`
+        (member `util` `Shape`)@99..109
+        (call (enum_lit `circle`)@112..119 (kwarg `r` `1`)@120..124)@112..125)@96..125
+      (set
+        _
+        `b`
+        (member `util` `Shape`)@131..141
+        (call (enum_lit `sq`)@144..147 (kwarg `s` `2`)@148..152)@144..153)@128..153
+      (call
+        `print`
+        (call (member `geo` `total`)@162..171 (read `a`)@172..174 (read `b`)@176..178)@162..179)@156..180)@96..196)@83..196)@65..196

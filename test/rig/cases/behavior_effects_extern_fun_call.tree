@@ -1,4 +1,11 @@
 (module
-  (extern_fun `abs` ((: `n` `Int`)) `Int`)
-  (sub `print_abs` ((: `n` `Int`)) _ (block (raw_block (block (call `print` (call `abs` `n`))))))
-  (sub `main` () _ (block (call `print_abs` (neg `5`)) (call `print_abs` `3`))))
+  (extern_fun `abs` ((: `n` `Int`)@154..160)@153..161 `Int`)@139..168
+  (sub
+    `print_abs`
+    ((: `n` `Int`)@184..190)@183..191
+    (block
+      (raw_block (block (call `print` (call `abs` `n`)@208..214)@202..215)@202..217)@194..217)@194..217)@170..217
+  (sub
+    `main`
+    ()@225..227
+    (block (call `print_abs` (neg `5`)@240..242)@230..243 (call `print_abs` `3`)@246..258)@230..278)@217..278)@139..278

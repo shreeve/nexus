@@ -1,29 +1,45 @@
 (module
-  (struct `Point` (: `x` `Int`) (: `y` `Int`))
+  (struct `Point` (: `x` `Int`)@65..71 (: `y` `Int`)@74..80)@50..82
   (fun
     `scale`
-    ((: `p` (borrow_read `Point`)) (: `by` `Int`))
+    ((: `p` (borrow_read `Point`)@95..101)@92..101 (: `by` `Int`)@103..110)@91..111
     `Int`
-    (block (+ (* (member `p` `x`) `by`) (* (member `p` `y`) `by`))))
+    (block
+      (+
+        (* (member `p` `x`)@121..124 `by`)@121..129
+        (* (member `p` `y`)@132..135 `by`)@132..140)@121..140)@121..142)@82..142
   (sub
     `main`
-    ()
-    _
+    ()@150..152
     (block
-      (set _ `a` _ (- (+ `1` (* `2` `3`)) (/ `4` `2`)))
-      (set _ `b` _ (% (* (+ `1` `2`) `3`) `4`))
-      (set _ `c` _ (or (and (== `a` `b`) (!= `a` `0`)) (not (< `a` `b`))))
-      (set _ `d` _ (<= `a` `b`))
-      (set _ `e` _ (neg `a`))
-      (set _ `f` _ `0xff`)
-      (set _ `g` _ `1.5`)
-      (set _ `h` _ `"double"`)
-      (set _ `i` _ `'single'`)
-      (set _ `j` _ `true`)
-      (set _ `k` _ `false`)
-      (set _ `p` _ (call `Point` (kwarg `x` `1`) (kwarg `y` `2`)))
-      (call `print` (call `scale` (read `p`) `3`))
-      (call `print` (member `p` `x`))
-      (set _ `q` _ (member `Point` `new`))
-      (set _ `v` (generic_inst `Vec` `Int`) (call `Vec` (kwarg `capacity` `4`)))
-      (call (member (write `v`) `push`) `1`))))
+      (set _ `a` _ (- (+ `1` (* `2` `3`)@163..168)@159..168 (/ `4` `2`)@171..176)@159..176)@155..176
+      (set _ `b` _ (% (* (+ `1` `2`)@184..189 `3`)@183..194 `4`)@183..198)@179..198
+      (set
+        _
+        `c`
+        _
+        (or
+          (and (== `a` `b`)@205..211 (!= `a` `0`)@216..222)@205..222
+          (not (< `a` `b`)@231..236)@226..237)@205..237)@201..237
+      (set _ `d` _ (<= `a` `b`)@244..250)@240..250
+      (set _ `e` _ (neg `a`)@257..259)@253..259
+      (set _ `f` _ `0xff`)@262..270
+      (set _ `g` _ `1.5`)@273..280
+      (set _ `h` _ `"double"`)@283..295
+      (set _ `i` _ `'single'`)@298..310
+      (set _ `j` _ `true`)@313..321
+      (set _ `k` _ `false`)@324..333
+      (set
+        _
+        `p`
+        _
+        (call `Point` (kwarg `x` `1`)@346..350 (kwarg `y` `2`)@352..356)@340..357)@336..357
+      (call `print` (call `scale` (read `p`)@372..374 `3`)@366..378)@360..379
+      (call `print` (member `p` `x`)@388..391)@382..392
+      (set _ `q` _ (member `Point` `new`)@399..408)@395..408
+      (set
+        _
+        `v`
+        (generic_inst `Vec` `Int`)@414..422
+        (call `Vec` (kwarg `capacity` `4`)@429..440)@425..441)@411..441
+      (call (member (write `v`)@445..447 `push`)@444..453 `1`)@444..456)@155..457)@142..457)@50..457

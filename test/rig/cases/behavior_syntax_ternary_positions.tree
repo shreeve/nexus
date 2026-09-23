@@ -1,31 +1,35 @@
 (module
-  (enum `Size` `small` `large`)
+  (enum `Size` `small` `large`)@170..197
   (fun
     `sign`
-    ((: `n` `Int`))
+    ((: `n` `Int`)@206..212)@205..213
     `Int`
-    (block (return (if (> `n` `0`) `1` (if (< `n` `0`) (neg `1`) `0`)))))
+    (block
+      (return
+        (if
+          (> `n` `0`)@235..240
+          `1`
+          (if (< `n` `0`)@252..257 (neg `1`)@246..248 `0`)@246..264)@230..264)@223..264)@223..266)@197..266
   (fun
     `weight`
-    ((: `s` `Size`) (: `heavy` `Bool`))
+    ((: `s` `Size`)@277..284 (: `heavy` `Bool`)@286..297)@276..298
     `Int`
     (block
       (match
         `s`
-        (arm (enum_lit `small`) (if `heavy` `10` `1`))
-        (arm (enum_lit `large`) (if `heavy` `100` `50`)))))
+        (arm (enum_lit `small`)@320..326 (if `heavy` `10` `1`)@330..348)@320..348
+        (arm (enum_lit `large`)@353..359 (if `heavy` `100` `50`)@363..383)@353..383)@308..385)@308..385)@266..385
   (sub
     `main`
-    ()
-    _
+    ()@393..395
     (block
-      (set _ `x` _ `5`)
-      (call `print` (if (> `x` `3`) `1` `2`))
-      (set _ `y` `Int` (if (< `x` `3`) `10` `20`))
-      (call `print` `y`)
-      (call `print` (call `sign` `7`))
-      (call `print` (call `sign` (neg `7`)))
-      (call `print` (call `sign` `0`))
-      (call `print` (call `weight` (enum_lit `small`) `true`))
-      (call `print` (call `weight` (enum_lit `large`) `false`))
-      (call `print` (if (> `x` `9`) `x` `0`)))))
+      (set _ `x` _ `5`)@398..403
+      (call `print` (if (> `x` `3`)@417..422 `1` `2`)@412..429)@406..430
+      (set _ `y` `Int` (if (< `x` `3`)@448..453 `10` `20`)@442..461)@433..461
+      (call `print` `y`)@464..471
+      (call `print` (call `sign` `7`)@480..487)@474..487
+      (call `print` (call `sign` (neg `7`)@501..503)@496..504)@490..504
+      (call `print` (call `sign` `0`)@513..520)@507..520
+      (call `print` (call `weight` (enum_lit `small`)@536..542 `true`)@529..549)@523..549
+      (call `print` (call `weight` (enum_lit `large`)@565..571 `false`)@558..579)@552..579
+      (call `print` (if (> `x` `9`)@593..598 `x` `0`)@588..605)@582..605)@398..653)@385..653)@170..653

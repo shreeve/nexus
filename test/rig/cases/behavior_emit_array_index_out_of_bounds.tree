@@ -1,10 +1,9 @@
 (module
-  (fun `three` () `Int` (block `3`))
+  (fun `three` ()@100..102 `Int` (block `3`)@112..115)@91..115
   (sub
     `main`
-    ()
-    _
+    ()@123..125
     (block
-      (set _ `xs` _ (array `1` `2` `3`))
-      (set _ `i` _ (call `three`))
-      (call `print` (index `xs` `i`)))))
+      (set _ `xs` _ (array `1` `2` `3`)@133..142)@128..142
+      (set _ `i` _ (call `three`)@149..156)@145..156
+      (call `print` (index `xs` `i`)@165..170)@159..171)@128..209)@115..209)@91..209

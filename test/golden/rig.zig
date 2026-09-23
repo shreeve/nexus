@@ -683,13 +683,165 @@ pub const BaseLexer = struct {
 pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 
 // =============================================================================
-// Tag enum (re-exported from the language module)
+// Tag and Role enums (from @schema)
 // =============================================================================
 
-pub const Tag = lang.Tag;
+pub const Tag = enum(u8) {
+    @"module",
+    @"use",
+    @"zig",
+    @"fun",
+    @"sub",
+    @"lambda",
+    @"struct",
+    @"enum",
+    @"errors",
+    @"generic_type",
+    @"generic_enum",
+    @"type",
+    @"test",
+    @"pub",
+    @"extern",
+    @"extern_fun",
+    @"extern_sub",
+    @"drop_decl",
+    @"labeled",
+    @":",
+    @"pre_param",
+    @"default",
+    @"valued",
+    @"variant",
+    @"set",
+    @"drop",
+    @"if",
+    @"as",
+    @"while",
+    @"for",
+    @"match",
+    @"arm",
+    @"range_pattern",
+    @"variant_pattern",
+    @"enum_lit",
+    @"return",
+    @"break",
+    @"continue",
+    @"defer",
+    @"errdefer",
+    @"raw_block",
+    @"pre_block",
+    @"pre",
+    @"propagate",
+    @"try_block",
+    @"catch_block",
+    @"catch",
+    @"block",
+    @"captures",
+    @"cap_clone",
+    @"cap_move",
+    @"cap_weak",
+    @"call",
+    @"builtin",
+    @"member",
+    @"index",
+    @"array",
+    @"kwarg",
+    @"+",
+    @"-",
+    @"*",
+    @"/",
+    @"%",
+    @"==",
+    @"!=",
+    @"<",
+    @">",
+    @"<=",
+    @">=",
+    @"&",
+    @"|",
+    @"^",
+    @"<<",
+    @">>",
+    @"??",
+    @"..",
+    @"and",
+    @"or",
+    @"neg",
+    @"not",
+    @"move",
+    @"read",
+    @"write",
+    @"clone",
+    @"share",
+    @"weak",
+    @"pin",
+    @"optional",
+    @"error_union",
+    @"borrow_read",
+    @"borrow_write",
+    @"shared",
+    @"slice",
+    @"generic_inst",
+    @"array_type",
+    @"fun_type",
+    @"fixed",
+    @"shadow",
+    @"+=",
+    @"-=",
+    @"*=",
+    @"/=",
+    @"%=",
+    @"&=",
+    @"|=",
+    @"^=",
+    @"<<=",
+    @">>=",
+    @"iter",
+    @"ptr",
+};
 
-/// Roles exist only in schema mode.
-pub const Role = enum(u16) {};
+pub const Role = enum(u16) {
+    @"decls",
+    @"name",
+    @"code",
+    @"params",
+    @"returns",
+    @"body",
+    @"captures",
+    @"members",
+    @"type",
+    @"decl",
+    @"label",
+    @"stmt",
+    @"value",
+    @"op",
+    @"target",
+    @"cond",
+    @"then",
+    @"else",
+    @"step",
+    @"mode",
+    @"var",
+    @"index",
+    @"source",
+    @"subject",
+    @"arms",
+    @"pattern",
+    @"lo",
+    @"hi",
+    @"bindings",
+    @"catch",
+    @"handler",
+    @"stmts",
+    @"caps",
+    @"callee",
+    @"args",
+    @"object",
+    @"elems",
+    @"left",
+    @"right",
+    @"operand",
+    @"size",
+};
 
 /// Start symbols; `BaseParser.parse(start)` parses one.
 pub const Start = enum(u16) {
@@ -1770,126 +1922,944 @@ pub const BaseParser = struct {
 
 
 // =============================================================================
+// IR accessors (from @schema)
+// =============================================================================
+
+// Inside `ir`, generated kind and role names (a kind `tag` has the view
+// `ir.Tag`) could shadow the module's own names, so `ir` refers to them
+// through these aliases, whose names no kind or role can take.
+const @"ir.Sexp" = Sexp;
+const @"ir.Tag" = Tag;
+const @"ir.Role" = Role;
+
+/// Role-based access to schema nodes. `get`/`rest` look the slot up by the
+/// node's kind; the per-kind views (`ir.Set.target(node)`) are resolved at
+/// compile time. Asking for a role the node's kind does not have panics in
+/// safety-checked builds and yields nil (or no items) otherwise.
+pub const ir = struct {
+    /// The child in `role` (nil when absent).
+    pub fn get(node: @"ir.Sexp", role: @"ir.Role") @"ir.Sexp" {
+        const k = kindFor(node, "ir.get", role) orelse return .nil;
+        const at = slotOf(k, role) orelse return missing(k, role, "ir.get", @as(@"ir.Sexp", .nil));
+        const items = node.list.items();
+        return if (at < items.len) items[at] else .nil;
+    }
+
+    /// The children in rest role `role`.
+    pub fn rest(node: @"ir.Sexp", role: @"ir.Role") []const @"ir.Sexp" {
+        const k = kindFor(node, "ir.rest", role) orelse return &.{};
+        const at = restSlotOf(k, role) orelse return missing(k, role, "ir.rest", @as([]const @"ir.Sexp", &.{}));
+        const items = node.list.items();
+        return if (at < items.len) items[at..] else &.{};
+    }
+
+    /// Whether nodes of `kind` have `role` (slot or rest role).
+    pub fn has(kind: @"ir.Tag", role: @"ir.Role") bool {
+        return slotOf(kind, role) != null or restSlotOf(kind, role) != null;
+    }
+
+    /// The slot of `role` in nodes of `kind` (the head is slot 0), at
+    /// compile time; a compile error when `kind` has no such slot role. For
+    /// lang Parser wrappers that build or rewrite nodes:
+    /// `items[ir.slot(.set, .value)] = v`.
+    pub fn slot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime slotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no slot role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The first slot of rest role `role` in nodes of `kind`, at compile
+    /// time; a compile error when `kind` has no such rest role.
+    pub fn restSlot(comptime kind: @"ir.Tag", comptime role: @"ir.Role") usize {
+        return comptime restSlotOf(kind, role) orelse
+            @compileError("kind '" ++ @tagName(kind) ++ "' has no rest role '" ++ @tagName(role) ++ "'");
+    }
+
+    /// The fixed length of `kind` nodes: the head plus one slot per slot
+    /// role (rest children follow).
+    pub fn width(comptime kind: @"ir.Tag") usize {
+        return comptime blk: {
+            var n: usize = 1;
+            while (roleAt(kind, n) != null) n += 1;
+            break :blk n;
+        };
+    }
+
+    fn kindFor(node: @"ir.Sexp", comptime what: []const u8, role: @"ir.Role") ?@"ir.Tag" {
+        if (node.kind()) |k| return k;
+        if (std.debug.runtime_safety) std.debug.panic(what ++ "(.{s}): not a schema node: {s}", .{ @tagName(role), @tagName(node) });
+        return null;
+    }
+
+    fn missing(kind: @"ir.Tag", role: @"ir.Role", comptime what: []const u8, value: anytype) @TypeOf(value) {
+        if (std.debug.runtime_safety) {
+            const hint = if (slotOf(kind, role) != null) " (a slot role; use ir.get)" else if (restSlotOf(kind, role) != null) " (a rest role; use ir.rest)" else "";
+            std.debug.panic(what ++ ": kind '{s}' has no role '{s}'{s}", .{ @tagName(kind), @tagName(role), hint });
+        }
+        return value;
+    }
+
+    pub const Module = struct {
+        pub fn @"decls"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"module", 1, "ir.Module.decls");
+        }
+    };
+    pub const Use = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"use", 1, "ir.Use.name");
+        }
+    };
+    pub const Zig = struct {
+        pub fn @"code"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"zig", 1, "ir.Zig.code");
+        }
+    };
+    pub const Fun = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fun", 1, "ir.Fun.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fun", 2, "ir.Fun.params");
+        }
+        pub fn @"returns"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fun", 3, "ir.Fun.returns");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fun", 4, "ir.Fun.body");
+        }
+    };
+    pub const Sub = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"sub", 1, "ir.Sub.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"sub", 2, "ir.Sub.params");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"sub", 3, "ir.Sub.body");
+        }
+    };
+    pub const Lambda = struct {
+        pub fn @"captures"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"lambda", 1, "ir.Lambda.captures");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"lambda", 2, "ir.Lambda.params");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"lambda", 3, "ir.Lambda.body");
+        }
+    };
+    pub const Struct = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"struct", 1, "ir.Struct.name");
+        }
+        pub fn @"members"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"struct", 2, "ir.Struct.members");
+        }
+    };
+    pub const Enum = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"enum", 1, "ir.Enum.name");
+        }
+        pub fn @"members"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"enum", 2, "ir.Enum.members");
+        }
+    };
+    pub const Errors = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"errors", 1, "ir.Errors.name");
+        }
+        pub fn @"members"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"errors", 2, "ir.Errors.members");
+        }
+    };
+    pub const GenericType = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"generic_type", 1, "ir.GenericType.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"generic_type", 2, "ir.GenericType.params");
+        }
+        pub fn @"members"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"generic_type", 3, "ir.GenericType.members");
+        }
+    };
+    pub const GenericEnum = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"generic_enum", 1, "ir.GenericEnum.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"generic_enum", 2, "ir.GenericEnum.params");
+        }
+        pub fn @"members"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"generic_enum", 3, "ir.GenericEnum.members");
+        }
+    };
+    pub const Type = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"type", 1, "ir.Type.name");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"type", 2, "ir.Type.type");
+        }
+    };
+    pub const Test = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"test", 1, "ir.Test.name");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"test", 2, "ir.Test.body");
+        }
+    };
+    pub const Pub = struct {
+        pub fn @"decl"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pub", 1, "ir.Pub.decl");
+        }
+    };
+    pub const Extern = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern", 1, "ir.Extern.name");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern", 2, "ir.Extern.type");
+        }
+    };
+    pub const ExternFun = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern_fun", 1, "ir.ExternFun.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern_fun", 2, "ir.ExternFun.params");
+        }
+        pub fn @"returns"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern_fun", 3, "ir.ExternFun.returns");
+        }
+    };
+    pub const ExternSub = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern_sub", 1, "ir.ExternSub.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"extern_sub", 2, "ir.ExternSub.params");
+        }
+    };
+    pub const DropDecl = struct {
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"drop_decl", 1, "ir.DropDecl.params");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"drop_decl", 2, "ir.DropDecl.body");
+        }
+    };
+    pub const Labeled = struct {
+        pub fn @"label"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"labeled", 1, "ir.Labeled.label");
+        }
+        pub fn @"stmt"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"labeled", 2, "ir.Labeled.stmt");
+        }
+    };
+    pub const @":" = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@":", 1, "ir.@\":\".name");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@":", 2, "ir.@\":\".type");
+        }
+    };
+    pub const PreParam = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pre_param", 1, "ir.PreParam.name");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pre_param", 2, "ir.PreParam.type");
+        }
+    };
+    pub const Default = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"default", 1, "ir.Default.name");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"default", 2, "ir.Default.type");
+        }
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"default", 3, "ir.Default.value");
+        }
+    };
+    pub const Valued = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"valued", 1, "ir.Valued.name");
+        }
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"valued", 2, "ir.Valued.value");
+        }
+    };
+    pub const Variant = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"variant", 1, "ir.Variant.name");
+        }
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"variant", 2, "ir.Variant.params");
+        }
+    };
+    pub const Set = struct {
+        pub fn @"op"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"set", 1, "ir.Set.op");
+        }
+        pub fn @"target"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"set", 2, "ir.Set.target");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"set", 3, "ir.Set.type");
+        }
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"set", 4, "ir.Set.value");
+        }
+    };
+    pub const Drop = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"drop", 1, "ir.Drop.name");
+        }
+    };
+    pub const If = struct {
+        pub fn @"cond"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"if", 1, "ir.If.cond");
+        }
+        pub fn @"then"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"if", 2, "ir.If.then");
+        }
+        pub fn @"else"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"if", 3, "ir.If.else");
+        }
+    };
+    pub const As = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as", 1, "ir.As.value");
+        }
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"as", 2, "ir.As.name");
+        }
+    };
+    pub const While = struct {
+        pub fn @"cond"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"while", 1, "ir.While.cond");
+        }
+        pub fn @"step"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"while", 2, "ir.While.step");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"while", 3, "ir.While.body");
+        }
+        pub fn @"else"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"while", 4, "ir.While.else");
+        }
+    };
+    pub const For = struct {
+        pub fn @"mode"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"for", 1, "ir.For.mode");
+        }
+        pub fn @"var"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"for", 2, "ir.For.var");
+        }
+        pub fn @"index"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"for", 3, "ir.For.index");
+        }
+        pub fn @"source"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"for", 4, "ir.For.source");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"for", 5, "ir.For.body");
+        }
+        pub fn @"else"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"for", 6, "ir.For.else");
+        }
+    };
+    pub const Match = struct {
+        pub fn @"subject"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"match", 1, "ir.Match.subject");
+        }
+        pub fn @"arms"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"match", 2, "ir.Match.arms");
+        }
+    };
+    pub const Arm = struct {
+        pub fn @"pattern"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"arm", 1, "ir.Arm.pattern");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"arm", 2, "ir.Arm.body");
+        }
+    };
+    pub const RangePattern = struct {
+        pub fn @"lo"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"range_pattern", 1, "ir.RangePattern.lo");
+        }
+        pub fn @"hi"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"range_pattern", 2, "ir.RangePattern.hi");
+        }
+    };
+    pub const VariantPattern = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"variant_pattern", 1, "ir.VariantPattern.name");
+        }
+        pub fn @"bindings"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"variant_pattern", 2, "ir.VariantPattern.bindings");
+        }
+    };
+    pub const EnumLit = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"enum_lit", 1, "ir.EnumLit.name");
+        }
+    };
+    pub const Return = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"return", 1, "ir.Return.value");
+        }
+    };
+    pub const Break = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"break", 1, "ir.Break.value");
+        }
+        pub fn @"label"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"break", 2, "ir.Break.label");
+        }
+    };
+    pub const Continue = struct {
+        pub fn @"label"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"continue", 1, "ir.Continue.label");
+        }
+    };
+    pub const Defer = struct {
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"defer", 1, "ir.Defer.body");
+        }
+    };
+    pub const Errdefer = struct {
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"errdefer", 1, "ir.Errdefer.body");
+        }
+    };
+    pub const RawBlock = struct {
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"raw_block", 1, "ir.RawBlock.body");
+        }
+    };
+    pub const PreBlock = struct {
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pre_block", 1, "ir.PreBlock.body");
+        }
+    };
+    pub const Pre = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pre", 1, "ir.Pre.value");
+        }
+    };
+    pub const Propagate = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"propagate", 1, "ir.Propagate.value");
+        }
+    };
+    pub const TryBlock = struct {
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"try_block", 1, "ir.TryBlock.body");
+        }
+        pub fn @"catch"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"try_block", 2, "ir.TryBlock.catch");
+        }
+    };
+    pub const CatchBlock = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"catch_block", 1, "ir.CatchBlock.name");
+        }
+        pub fn @"body"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"catch_block", 2, "ir.CatchBlock.body");
+        }
+    };
+    pub const Catch = struct {
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"catch", 1, "ir.Catch.value");
+        }
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"catch", 2, "ir.Catch.name");
+        }
+        pub fn @"handler"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"catch", 3, "ir.Catch.handler");
+        }
+    };
+    pub const Block = struct {
+        pub fn @"stmts"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"block", 1, "ir.Block.stmts");
+        }
+    };
+    pub const Captures = struct {
+        pub fn @"caps"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"captures", 1, "ir.Captures.caps");
+        }
+    };
+    pub const CapClone = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"cap_clone", 1, "ir.CapClone.name");
+        }
+    };
+    pub const CapMove = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"cap_move", 1, "ir.CapMove.name");
+        }
+    };
+    pub const CapWeak = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"cap_weak", 1, "ir.CapWeak.name");
+        }
+    };
+    pub const Call = struct {
+        pub fn @"callee"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"call", 1, "ir.Call.callee");
+        }
+        pub fn @"args"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"call", 2, "ir.Call.args");
+        }
+    };
+    pub const Builtin = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"builtin", 1, "ir.Builtin.name");
+        }
+        pub fn @"args"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"builtin", 2, "ir.Builtin.args");
+        }
+    };
+    pub const Member = struct {
+        pub fn @"object"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"member", 1, "ir.Member.object");
+        }
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"member", 2, "ir.Member.name");
+        }
+    };
+    pub const Index = struct {
+        pub fn @"object"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"index", 1, "ir.Index.object");
+        }
+        pub fn @"index"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"index", 2, "ir.Index.index");
+        }
+    };
+    pub const Array = struct {
+        pub fn @"elems"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"array", 1, "ir.Array.elems");
+        }
+    };
+    pub const Kwarg = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"kwarg", 1, "ir.Kwarg.name");
+        }
+        pub fn @"value"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"kwarg", 2, "ir.Kwarg.value");
+        }
+    };
+    pub const @"+" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"+", 1, "ir.@\"+\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"+", 2, "ir.@\"+\".right");
+        }
+    };
+    pub const @"-" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"-", 1, "ir.@\"-\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"-", 2, "ir.@\"-\".right");
+        }
+    };
+    pub const @"*" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"*", 1, "ir.@\"*\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"*", 2, "ir.@\"*\".right");
+        }
+    };
+    pub const @"/" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"/", 1, "ir.@\"/\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"/", 2, "ir.@\"/\".right");
+        }
+    };
+    pub const @"%" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"%", 1, "ir.@\"%\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"%", 2, "ir.@\"%\".right");
+        }
+    };
+    pub const @"==" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"==", 1, "ir.@\"==\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"==", 2, "ir.@\"==\".right");
+        }
+    };
+    pub const @"!=" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"!=", 1, "ir.@\"!=\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"!=", 2, "ir.@\"!=\".right");
+        }
+    };
+    pub const @"<" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"<", 1, "ir.@\"<\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"<", 2, "ir.@\"<\".right");
+        }
+    };
+    pub const @">" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@">", 1, "ir.@\">\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@">", 2, "ir.@\">\".right");
+        }
+    };
+    pub const @"<=" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"<=", 1, "ir.@\"<=\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"<=", 2, "ir.@\"<=\".right");
+        }
+    };
+    pub const @">=" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@">=", 1, "ir.@\">=\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@">=", 2, "ir.@\">=\".right");
+        }
+    };
+    pub const @"&" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"&", 1, "ir.@\"&\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"&", 2, "ir.@\"&\".right");
+        }
+    };
+    pub const @"|" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"|", 1, "ir.@\"|\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"|", 2, "ir.@\"|\".right");
+        }
+    };
+    pub const @"^" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"^", 1, "ir.@\"^\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"^", 2, "ir.@\"^\".right");
+        }
+    };
+    pub const @"<<" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"<<", 1, "ir.@\"<<\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"<<", 2, "ir.@\"<<\".right");
+        }
+    };
+    pub const @">>" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@">>", 1, "ir.@\">>\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@">>", 2, "ir.@\">>\".right");
+        }
+    };
+    pub const @"??" = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"??", 1, "ir.@\"??\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"??", 2, "ir.@\"??\".right");
+        }
+    };
+    pub const @".." = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"..", 1, "ir.@\"..\".left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"..", 2, "ir.@\"..\".right");
+        }
+    };
+    pub const And = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"and", 1, "ir.And.left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"and", 2, "ir.And.right");
+        }
+    };
+    pub const Or = struct {
+        pub fn @"left"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"or", 1, "ir.Or.left");
+        }
+        pub fn @"right"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"or", 2, "ir.Or.right");
+        }
+    };
+    pub const Neg = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"neg", 1, "ir.Neg.operand");
+        }
+    };
+    pub const Not = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"not", 1, "ir.Not.operand");
+        }
+    };
+    pub const Move = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"move", 1, "ir.Move.operand");
+        }
+    };
+    pub const Read = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"read", 1, "ir.Read.operand");
+        }
+    };
+    pub const Write = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"write", 1, "ir.Write.operand");
+        }
+    };
+    pub const Clone = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"clone", 1, "ir.Clone.operand");
+        }
+    };
+    pub const Share = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"share", 1, "ir.Share.operand");
+        }
+    };
+    pub const Weak = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"weak", 1, "ir.Weak.operand");
+        }
+    };
+    pub const Pin = struct {
+        pub fn @"operand"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"pin", 1, "ir.Pin.operand");
+        }
+    };
+    pub const Optional = struct {
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"optional", 1, "ir.Optional.type");
+        }
+    };
+    pub const ErrorUnion = struct {
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"error_union", 1, "ir.ErrorUnion.type");
+        }
+    };
+    pub const BorrowRead = struct {
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"borrow_read", 1, "ir.BorrowRead.type");
+        }
+    };
+    pub const BorrowWrite = struct {
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"borrow_write", 1, "ir.BorrowWrite.type");
+        }
+    };
+    pub const Shared = struct {
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"shared", 1, "ir.Shared.type");
+        }
+    };
+    pub const Slice = struct {
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"slice", 1, "ir.Slice.type");
+        }
+    };
+    pub const GenericInst = struct {
+        pub fn @"name"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"generic_inst", 1, "ir.GenericInst.name");
+        }
+        pub fn @"args"(@"ir.node": @"ir.Sexp") []const @"ir.Sexp" {
+            return @"ir.restAt"(@"ir.node", .@"generic_inst", 2, "ir.GenericInst.args");
+        }
+    };
+    pub const ArrayType = struct {
+        pub fn @"size"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"array_type", 1, "ir.ArrayType.size");
+        }
+        pub fn @"type"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"array_type", 2, "ir.ArrayType.type");
+        }
+    };
+    pub const FunType = struct {
+        pub fn @"params"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fun_type", 1, "ir.FunType.params");
+        }
+        pub fn @"returns"(@"ir.node": @"ir.Sexp") @"ir.Sexp" {
+            return @"ir.at"(@"ir.node", .@"fun_type", 2, "ir.FunType.returns");
+        }
+    };
+};
+
+/// Slot `slot` of `node`, a node of `kind` (checked in safety builds).
+fn @"ir.at"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot] else .nil;
+}
+
+/// The children of `node` from `slot` on.
+fn @"ir.restAt"(node: Sexp, comptime kind: Tag, comptime slot: usize, comptime what: []const u8) []const Sexp {
+    @"ir.check"(node, kind, what);
+    const items = node.items();
+    return if (slot < items.len) items[slot..] else &.{};
+}
+
+fn @"ir.check"(node: Sexp, comptime kind: Tag, comptime what: []const u8) void {
+    if (std.debug.runtime_safety and !node.isKind(kind)) {
+        const actual = if (node.kind()) |k| @tagName(k) else @tagName(node);
+        std.debug.panic(what ++ ": node is '{s}', not '" ++ @tagName(kind) ++ "'", .{actual});
+    }
+}
+
+
+// =============================================================================
 // Grammar
 // =============================================================================
 
 /// Node spans and rule ids are recorded (`@schema` or `--spans`).
-pub const nodeStore = false;
+pub const nodeStore = true;
 /// Element extents are kept for side-band labels and nested nodes.
-const elemEnds = false;
+const elemEnds = true;
 /// Lists keep trailing nils: positions are fixed by the schema.
-const keepTrailingNils = false;
+const keepTrailingNils = true;
 const hasTrivia = false;
 const hasRepair = false;
-const numSymbols = 195;
+const numSymbols = 194;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
 fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"newline" => 71,
-        .@"indent" => 72,
-        .@"outdent" => 73,
-        .@"ident" => 75,
-        .@"post_if" => 76,
-        .@"new" => 90,
-        .@"drop_stmt" => 91,
-        .@"return" => 92,
-        .@"break" => 93,
-        .@"continue" => 94,
-        .@"defer" => 95,
-        .@"errdefer" => 96,
-        .@"pre" => 97,
-        .@"raw" => 98,
-        .@"pub" => 99,
-        .@"use" => 100,
-        .@"fun" => 101,
-        .@"sub" => 102,
-        .@"lparen_call" => 108,
-        .@"read_pfx" => 110,
-        .@"write_pfx" => 111,
-        .@"kwarg_name" => 112,
-        .@"enum" => 113,
-        .@"error" => 114,
-        .@"struct" => 115,
-        .@"type" => 116,
-        .@"drop" => 117,
-        .@"test" => 118,
-        .@"string_dq" => 119,
-        .@"extern" => 120,
-        .@"zig" => 121,
-        .@"string_sq" => 122,
-        .@"share_pfx" => 123,
-        .@"integer" => 127,
-        .@"suffix_q" => 130,
-        .@"suffix_bang" => 131,
-        .@"catch" => 133,
-        .@"bar_capture" => 134,
-        .@"ternary_if" => 135,
-        .@"else" => 136,
-        .@"or" => 137,
-        .@"and" => 138,
-        .@"not" => 139,
-        .@"as" => 141,
-        .@"if" => 142,
-        .@"while" => 143,
-        .@"for" => 144,
-        .@"in" => 145,
-        .@"match" => 146,
-        .@"minus_prefix" => 149,
-        .@"real" => 150,
-        .@"true" => 151,
-        .@"false" => 152,
-        .@"dot_lit" => 153,
-        .@"try" => 156,
-        .@"bar_empty" => 159,
-        .@"clone_pfx" => 160,
-        .@"move_pfx" => 161,
-        .@"pin_pfx" => 162,
-        .@"lbracket_index" => 163,
-        .@"colon" => 74,
-        .@"assign" => 77,
-        .@"comma" => 104,
-        .@"rparen" => 107,
-        .@"lparen" => 109,
-        .@"tilde" => 124,
-        .@"lbracket" => 125,
-        .@"rbracket" => 126,
-        .@"dot" => 132,
-        .@"at" => 164,
-        .@"lt" => 180,
-        .@"gt" => 181,
-        .@"bar" => 185,
-        .@"caret" => 186,
-        .@"ampersand" => 187,
-        .@"plus" => 190,
-        .@"minus" => 191,
-        .@"star" => 192,
-        .@"slash" => 193,
-        .@"percent" => 194,
-        .@"plus_assign" => 78,
-        .@"minus_assign" => 79,
-        .@"star_assign" => 80,
-        .@"slash_assign" => 81,
-        .@"percent_assign" => 82,
-        .@"amp_assign" => 83,
-        .@"bar_assign" => 84,
-        .@"caret_assign" => 85,
-        .@"lshift_assign" => 86,
-        .@"rshift_assign" => 87,
-        .@"fixed_assign" => 88,
-        .@"move_assign" => 89,
-        .@"arrow" => 103,
-        .@"fat_arrow" => 147,
-        .@"dotdot" => 148,
-        .@"eq" => 178,
-        .@"ne" => 179,
-        .@"le" => 182,
-        .@"ge" => 183,
-        .@"nullish" => 184,
-        .@"lshift" => 188,
-        .@"rshift" => 189,
+        .@"newline" => 67,
+        .@"indent" => 68,
+        .@"outdent" => 69,
+        .@"ident" => 71,
+        .@"post_if" => 72,
+        .@"new" => 86,
+        .@"drop_stmt" => 87,
+        .@"return" => 88,
+        .@"break" => 89,
+        .@"continue" => 90,
+        .@"defer" => 91,
+        .@"errdefer" => 92,
+        .@"pre" => 93,
+        .@"raw" => 94,
+        .@"pub" => 95,
+        .@"use" => 96,
+        .@"fun" => 97,
+        .@"sub" => 98,
+        .@"lparen_call" => 104,
+        .@"read_pfx" => 106,
+        .@"write_pfx" => 107,
+        .@"kwarg_name" => 108,
+        .@"enum" => 109,
+        .@"error" => 110,
+        .@"struct" => 111,
+        .@"type" => 112,
+        .@"drop" => 113,
+        .@"test" => 114,
+        .@"string_dq" => 115,
+        .@"extern" => 116,
+        .@"zig" => 117,
+        .@"string_sq" => 118,
+        .@"share_pfx" => 119,
+        .@"integer" => 123,
+        .@"suffix_q" => 127,
+        .@"suffix_bang" => 128,
+        .@"catch" => 130,
+        .@"bar_capture" => 131,
+        .@"ternary_if" => 132,
+        .@"else" => 133,
+        .@"or" => 134,
+        .@"and" => 135,
+        .@"not" => 136,
+        .@"as" => 138,
+        .@"if" => 139,
+        .@"while" => 140,
+        .@"for" => 141,
+        .@"in" => 142,
+        .@"match" => 143,
+        .@"minus_prefix" => 146,
+        .@"real" => 147,
+        .@"true" => 148,
+        .@"false" => 149,
+        .@"dot_lit" => 150,
+        .@"try" => 154,
+        .@"bar_empty" => 157,
+        .@"clone_pfx" => 158,
+        .@"move_pfx" => 159,
+        .@"pin_pfx" => 160,
+        .@"lbracket_index" => 161,
+        .@"colon" => 70,
+        .@"assign" => 73,
+        .@"comma" => 100,
+        .@"rparen" => 103,
+        .@"lparen" => 105,
+        .@"tilde" => 120,
+        .@"lbracket" => 121,
+        .@"rbracket" => 122,
+        .@"dot" => 129,
+        .@"at" => 162,
+        .@"lt" => 179,
+        .@"gt" => 180,
+        .@"bar" => 184,
+        .@"caret" => 185,
+        .@"ampersand" => 186,
+        .@"plus" => 189,
+        .@"minus" => 190,
+        .@"star" => 191,
+        .@"slash" => 192,
+        .@"percent" => 193,
+        .@"plus_assign" => 74,
+        .@"minus_assign" => 75,
+        .@"star_assign" => 76,
+        .@"slash_assign" => 77,
+        .@"percent_assign" => 78,
+        .@"amp_assign" => 79,
+        .@"bar_assign" => 80,
+        .@"caret_assign" => 81,
+        .@"lshift_assign" => 82,
+        .@"rshift_assign" => 83,
+        .@"fixed_assign" => 84,
+        .@"move_assign" => 85,
+        .@"arrow" => 99,
+        .@"fat_arrow" => 144,
+        .@"dotdot" => 145,
+        .@"eq" => 177,
+        .@"ne" => 178,
+        .@"le" => 181,
+        .@"ge" => 182,
+        .@"nullish" => 183,
+        .@"lshift" => 187,
+        .@"rshift" => 188,
         else => 2, // error
     };
 }
@@ -1897,56 +2867,56 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
-        0 => self.sexpSpread(.@"module", pass[0]),
-        1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        3 => pass[0],
-        4 => self.sexpSpread(.@"block", pass[1]),
-        5 => self.sexp(.@"block", &.{}),
-        6 => pass[0],
+        0 => self.build(&.{ .{ .tag = .@"module" } }, .tree),
+        1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"module" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        2 => self.build(&.{ pass[0] }, .spread),
+        3 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        4 => pass[0],
+        5 => self.build(&.{ .{ .tag = .@"block" } }, .tree),
+        6 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"block" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         7 => pass[0],
         8 => pass[0],
         9 => pass[0],
         10 => pass[0],
         11 => pass[0],
-        12 => self.sexp(.@"labeled", &.{pass[1], pass[2]}),
-        13 => pass[0],
-        14 => self.sexp(.@"if", &.{pass[2], pass[0]}),
-        15 => self.sexp(.@"block", &.{pass[0]}),
+        12 => pass[0],
+        13 => self.build(&.{ .{ .tag = .@"labeled" }, pass[1], pass[2] }, .tree),
+        14 => pass[0],
+        15 => self.build(&.{ .{ .tag = .@"if" }, pass[2], self.nested(self.build(&.{ .{ .tag = .@"block" }, pass[0] }, .tree), 0, 0), .nil }, .tree),
         16 => pass[0],
-        17 => self.sexp(.@"set", &.{.nil, pass[0], .nil, pass[2]}),
-        18 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        19 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"-=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        20 => self.sexp(.@"set", &.{.{ .tag = .@"*=" }, pass[0], .nil, pass[2]}),
-        21 => self.sexp(.@"set", &.{.{ .tag = .@"/=" }, pass[0], .nil, pass[2]}),
-        22 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"%=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        23 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"&=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        24 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"|=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        25 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"^=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        26 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@"<<=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        27 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .{ .tag = .@">>=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        28 => self.sexp(.@"set", &.{.{ .tag = .@"fixed" }, pass[0], .nil, pass[2]}),
-        29 => self.sexp(.@"set", &.{.{ .tag = .@"move" }, pass[0], .nil, pass[2]}),
-        30 => self.sexp(.@"set", &.{.nil, pass[0], pass[2], pass[4]}),
-        31 => self.sexp(.@"set", &.{.{ .tag = .@"fixed" }, pass[0], pass[2], pass[4]}),
-        32 => self.sexp(.@"set", &.{.{ .tag = .@"shadow" }, pass[1], .nil, pass[3]}),
-        33 => self.sexp(.@"drop", &.{pass[1]}),
-        34 => self.sexp(.@"return", &.{pass[1]}),
-        35 => self.sexp(.@"return", &.{}),
-        36 => self.sexp(.@"break", &.{pass[3], pass[2]}),
-        37 => self.sexp(.@"break", &.{.nil, pass[2]}),
-        38 => self.sexp(.@"break", &.{pass[1]}),
-        39 => self.sexp(.@"break", &.{}),
-        40 => self.sexp(.@"continue", &.{pass[2]}),
-        41 => self.sexp(.@"continue", &.{}),
-        42 => self.sexp(.@"defer", &.{pass[1]}),
-        43 => self.sexp(.@"defer", &.{pass[1]}),
-        44 => self.sexp(.@"errdefer", &.{pass[1]}),
-        45 => self.sexp(.@"errdefer", &.{pass[1]}),
-        46 => self.sexp(.@"pre_block", &.{pass[1]}),
-        47 => self.sexp(.@"raw_block", &.{pass[1]}),
+        17 => self.build(&.{ .{ .tag = .@"set" }, .nil, pass[0], .nil, pass[2] }, .tree),
+        18 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"+=" }, pass[0], .nil, pass[2] }, .tree),
+        19 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"-=" }, pass[0], .nil, pass[2] }, .tree),
+        20 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"*=" }, pass[0], .nil, pass[2] }, .tree),
+        21 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"/=" }, pass[0], .nil, pass[2] }, .tree),
+        22 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"%=" }, pass[0], .nil, pass[2] }, .tree),
+        23 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"&=" }, pass[0], .nil, pass[2] }, .tree),
+        24 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"|=" }, pass[0], .nil, pass[2] }, .tree),
+        25 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"^=" }, pass[0], .nil, pass[2] }, .tree),
+        26 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"<<=" }, pass[0], .nil, pass[2] }, .tree),
+        27 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@">>=" }, pass[0], .nil, pass[2] }, .tree),
+        28 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"fixed" }, pass[0], .nil, pass[2] }, .tree),
+        29 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"move" }, pass[0], .nil, pass[2] }, .tree),
+        30 => self.build(&.{ .{ .tag = .@"set" }, .nil, pass[0], pass[2], pass[4] }, .tree),
+        31 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"fixed" }, pass[0], pass[2], pass[4] }, .tree),
+        32 => self.build(&.{ .{ .tag = .@"set" }, .{ .tag = .@"shadow" }, pass[1], .nil, pass[3] }, .tree),
+        33 => self.build(&.{ .{ .tag = .@"drop" }, pass[1] }, .tree),
+        34 => self.build(&.{ .{ .tag = .@"return" }, .nil }, .tree),
+        35 => self.build(&.{ .{ .tag = .@"return" }, pass[1] }, .tree),
+        36 => self.build(&.{ .{ .tag = .@"break" }, .nil, .nil }, .tree),
+        37 => self.build(&.{ .{ .tag = .@"break" }, .nil, pass[2] }, .tree),
+        38 => self.build(&.{ .{ .tag = .@"break" }, pass[1], .nil }, .tree),
+        39 => self.build(&.{ .{ .tag = .@"break" }, pass[3], pass[2] }, .tree),
+        40 => self.build(&.{ .{ .tag = .@"continue" }, .nil }, .tree),
+        41 => self.build(&.{ .{ .tag = .@"continue" }, pass[2] }, .tree),
+        42 => self.build(&.{ .{ .tag = .@"defer" }, pass[1] }, .tree),
+        43 => self.build(&.{ .{ .tag = .@"defer" }, pass[1] }, .tree),
+        44 => self.build(&.{ .{ .tag = .@"errdefer" }, pass[1] }, .tree),
+        45 => self.build(&.{ .{ .tag = .@"errdefer" }, pass[1] }, .tree),
+        46 => self.build(&.{ .{ .tag = .@"pre_block" }, pass[1] }, .tree),
+        47 => self.build(&.{ .{ .tag = .@"raw_block" }, pass[1] }, .tree),
         48 => pass[0],
-        49 => self.sexp(.@"pub", &.{pass[1]}),
+        49 => self.build(&.{ .{ .tag = .@"pub" }, pass[1] }, .tree),
         50 => pass[0],
         51 => pass[0],
         52 => pass[0],
@@ -1954,13 +2924,13 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         54 => pass[0],
         55 => pass[0],
         56 => pass[0],
-        57 => self.sexp(.@"use", &.{pass[1]}),
-        58 => self.sexp(.@"fun", &.{pass[1], pass[2], pass[3], pass[4]}),
-        59 => self.sexp(.@"fun", &.{pass[1], pass[2], .nil, pass[3]}),
-        60 => self.sexp(.@"fun", &.{pass[1], .nil, pass[2], pass[3]}),
-        61 => self.sexp(.@"fun", &.{pass[1], .nil, .nil, pass[2]}),
-        62 => self.sexp(.@"sub", &.{pass[1], pass[2], .nil, pass[3]}),
-        63 => self.sexp(.@"sub", &.{pass[1], .nil, .nil, pass[2]}),
+        57 => self.build(&.{ .{ .tag = .@"use" }, pass[1] }, .tree),
+        58 => self.build(&.{ .{ .tag = .@"fun" }, pass[1], .nil, .nil, pass[2] }, .tree),
+        59 => self.build(&.{ .{ .tag = .@"fun" }, pass[1], pass[2], .nil, pass[3] }, .tree),
+        60 => self.build(&.{ .{ .tag = .@"fun" }, pass[1], .nil, pass[2], pass[3] }, .tree),
+        61 => self.build(&.{ .{ .tag = .@"fun" }, pass[1], pass[2], pass[3], pass[4] }, .tree),
+        62 => self.build(&.{ .{ .tag = .@"sub" }, pass[1], .nil, pass[2] }, .tree),
+        63 => self.build(&.{ .{ .tag = .@"sub" }, pass[1], pass[2], pass[3] }, .tree),
         64 => pass[1],
         65 => self.spreadList(pass[0], pass[1], .spread),
         66 => self.spreadList(pass[1], pass[2], .spread),
@@ -1970,63 +2940,63 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         70 => pass[0],
         71 => pass[0],
         72 => pass[0],
-        73 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        74 => self.sexp(.@"default", &.{pass[0], pass[2], pass[4]}),
-        75 => self.sexp(.@"pre_param", &.{pass[1], pass[3]}),
-        76 => self.sexp(.@"read", &.{pass[1]}),
-        77 => self.sexp(.@"write", &.{pass[1]}),
+        73 => self.build(&.{ .{ .tag = .@":" }, pass[0], pass[2] }, .tree),
+        74 => self.build(&.{ .{ .tag = .@"default" }, pass[0], pass[2], pass[4] }, .tree),
+        75 => self.build(&.{ .{ .tag = .@"pre_param" }, pass[1], pass[3] }, .tree),
+        76 => self.build(&.{ .{ .tag = .@"read" }, pass[1] }, .tree),
+        77 => self.build(&.{ .{ .tag = .@"write" }, pass[1] }, .tree),
         78 => pass[0],
         79 => pass[0],
-        80 => self.sexpPosSpread(.@"enum", pass[1], pass[3]),
+        80 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"enum" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         81 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"generic_enum" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[4].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        82 => self.sexpPosSpread(.@"errors", pass[1], pass[3]),
-        83 => self.sexpPosSpread(.@"struct", pass[1], pass[3]),
-        84 => self.sexp(.@"type", &.{pass[1], pass[3]}),
-        85 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"generic_type" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[4].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        86 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"generic_type" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        87 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        82 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"errors" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        83 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"struct" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        84 => self.build(&.{ .{ .tag = .@"type" }, pass[1], pass[3] }, .tree),
+        85 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"generic_type" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        86 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"generic_type" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[4].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        87 => self.build(&.{ pass[0] }, .spread),
         88 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
         89 => pass[0],
         90 => pass[0],
-        91 => self.sexp(.@"valued", &.{pass[0], pass[2]}),
-        92 => self.sexp(.@"variant", &.{pass[0], pass[1]}),
+        91 => self.build(&.{ .{ .tag = .@"valued" }, pass[0], pass[2] }, .tree),
+        92 => self.build(&.{ .{ .tag = .@"variant" }, pass[0], pass[1] }, .tree),
         93 => pass[0],
         94 => pass[0],
-        95 => self.sexp(.@"drop_decl", &.{pass[1], pass[2]}),
+        95 => self.build(&.{ .{ .tag = .@"drop_decl" }, pass[1], pass[2] }, .tree),
         96 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
-        97 => self.sexp(.@"test", &.{pass[1], pass[2]}),
-        98 => self.sexp(.@"extern", &.{.nil, pass[1], pass[3]}),
-        99 => self.sexp(.@"extern_fun", &.{pass[2], pass[3], pass[4]}),
-        100 => self.sexp(.@"extern_fun", &.{pass[2], .nil, pass[3]}),
-        101 => self.sexp(.@"extern_fun", &.{pass[2], pass[3], .nil}),
-        102 => self.sexp(.@"extern_fun", &.{pass[2], .nil, .nil}),
-        103 => self.sexp(.@"extern_sub", &.{pass[2], pass[3]}),
-        104 => self.sexp(.@"extern_sub", &.{pass[2], .nil}),
-        105 => self.sexp(.@"zig", &.{pass[1]}),
-        106 => self.sexp(.@"zig", &.{pass[1]}),
-        107 => self.sexp(.@"borrow_read", &.{pass[1]}),
-        108 => self.sexp(.@"borrow_write", &.{pass[1]}),
-        109 => self.sexp(.@"shared", &.{pass[1]}),
-        110 => self.sexp(.@"weak", &.{pass[1]}),
-        111 => self.sexp(.@"slice", &.{pass[2]}),
-        112 => self.sexp(.@"array_type", &.{pass[1], pass[3]}),
+        97 => self.build(&.{ .{ .tag = .@"test" }, pass[1], pass[2] }, .tree),
+        98 => self.build(&.{ .{ .tag = .@"extern" }, pass[1], pass[3] }, .tree),
+        99 => self.build(&.{ .{ .tag = .@"extern_fun" }, pass[2], .nil, .nil }, .tree),
+        100 => self.build(&.{ .{ .tag = .@"extern_fun" }, pass[2], pass[3], .nil }, .tree),
+        101 => self.build(&.{ .{ .tag = .@"extern_fun" }, pass[2], .nil, pass[3] }, .tree),
+        102 => self.build(&.{ .{ .tag = .@"extern_fun" }, pass[2], pass[3], pass[4] }, .tree),
+        103 => self.build(&.{ .{ .tag = .@"extern_sub" }, pass[2], .nil }, .tree),
+        104 => self.build(&.{ .{ .tag = .@"extern_sub" }, pass[2], pass[3] }, .tree),
+        105 => self.build(&.{ .{ .tag = .@"zig" }, pass[1] }, .tree),
+        106 => self.build(&.{ .{ .tag = .@"zig" }, pass[1] }, .tree),
+        107 => self.build(&.{ .{ .tag = .@"borrow_read" }, pass[1] }, .tree),
+        108 => self.build(&.{ .{ .tag = .@"borrow_write" }, pass[1] }, .tree),
+        109 => self.build(&.{ .{ .tag = .@"shared" }, pass[1] }, .tree),
+        110 => self.build(&.{ .{ .tag = .@"weak" }, pass[1] }, .tree),
+        111 => self.build(&.{ .{ .tag = .@"slice" }, pass[2] }, .tree),
+        112 => self.build(&.{ .{ .tag = .@"array_type" }, pass[1], pass[3] }, .tree),
         113 => self.spreadList(pass[0], pass[1], .tree),
         114 => self.spreadList(pass[1], pass[2], .spread),
         115 => self.emptyList(.spread),
-        116 => self.sexp(.@"fun_type", &.{pass[2], pass[4]}),
-        117 => self.sexp(.@"fun_type", &.{.nil, pass[3]}),
-        118 => self.sexp(.@"fun_type", &.{pass[2]}),
-        119 => self.sexp(.@"fun_type", &.{}),
+        116 => pass[0],
+        117 => .nil,
+        118 => self.build(&.{ .{ .tag = .@"fun_type" }, pass[2], pass[4] }, .tree),
+        119 => self.build(&.{ .{ .tag = .@"fun_type" }, pass[2], .nil }, .tree),
         120 => pass[0],
-        121 => self.sexp(.@"optional", &.{pass[0]}),
-        122 => self.sexp(.@"error_union", &.{pass[0]}),
+        121 => self.build(&.{ .{ .tag = .@"optional" }, pass[0] }, .tree),
+        122 => self.build(&.{ .{ .tag = .@"error_union" }, pass[0] }, .tree),
         123 => pass[0],
         124 => pass[0],
-        125 => self.sexp(.@"member", &.{pass[0], pass[2]}),
+        125 => self.build(&.{ .{ .tag = .@"member" }, pass[0], pass[2] }, .tree),
         126 => pass[0],
-        127 => self.sexpPosSpread(.@"generic_inst", pass[0], pass[2]),
-        128 => self.sexp(.@"generic_inst", &.{pass[0]}),
-        129 => pass[1],
+        127 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"generic_inst" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        128 => pass[1],
+        129 => pass[0],
         130 => pass[0],
         131 => pass[0],
         132 => pass[0],
@@ -2035,700 +3005,692 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         135 => pass[0],
         136 => pass[0],
         137 => pass[0],
-        138 => pass[0],
-        139 => self.sexp(.@"catch", &.{pass[0], pass[3], pass[5]}),
-        140 => pass[0],
-        141 => self.sexp(.@"pre", &.{pass[1]}),
-        142 => self.sexp(.@"if", &.{pass[2], pass[0], pass[4]}),
-        143 => self.sexp(.@"catch", &.{pass[0], pass[3], pass[5]}),
-        144 => self.sexp(.@"catch", &.{pass[0], .nil, pass[2]}),
-        145 => pass[0],
-        146 => self.sexp(.@"or", &.{pass[0], pass[2]}),
-        147 => pass[0],
-        148 => self.sexp(.@"and", &.{pass[0], pass[2]}),
-        149 => pass[0],
-        150 => self.sexp(.@"not", &.{pass[1]}),
+        138 => self.build(&.{ .{ .tag = .@"catch" }, pass[0], pass[3], pass[5] }, .tree),
+        139 => pass[0],
+        140 => self.build(&.{ .{ .tag = .@"pre" }, pass[1] }, .tree),
+        141 => self.build(&.{ .{ .tag = .@"if" }, pass[2], pass[0], pass[4] }, .tree),
+        142 => self.build(&.{ .{ .tag = .@"catch" }, pass[0], .nil, pass[2] }, .tree),
+        143 => self.build(&.{ .{ .tag = .@"catch" }, pass[0], pass[3], pass[5] }, .tree),
+        144 => pass[0],
+        145 => self.build(&.{ .{ .tag = .@"or" }, pass[0], pass[2] }, .tree),
+        146 => pass[0],
+        147 => self.build(&.{ .{ .tag = .@"and" }, pass[0], pass[2] }, .tree),
+        148 => pass[0],
+        149 => self.build(&.{ .{ .tag = .@"not" }, pass[1] }, .tree),
+        150 => pass[0],
         151 => pass[0],
         152 => pass[0],
-        153 => pass[0],
-        154 => self.sexpPosSpread(.@"call", pass[0], pass[1]),
-        155 => pass[0],
-        156 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        157 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        158 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        159 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        153 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"call" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        154 => pass[0],
+        155 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        156 => self.build(&.{ pass[0] }, .spread),
+        157 => self.build(&.{ pass[0] }, .spread),
+        158 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        159 => pass[0],
         160 => pass[0],
         161 => pass[0],
-        162 => pass[0],
-        163 => self.sexp(.@"as", &.{pass[0], pass[2]}),
-        164 => self.sexp(.@"if", &.{pass[1], pass[2], pass[4]}),
-        165 => self.sexp(.@"if", &.{pass[1], pass[2], pass[4]}),
-        166 => self.sexp(.@"if", &.{pass[1], pass[2]}),
-        167 => self.sexp(.@"while", &.{pass[1], .nil, pass[2], pass[4]}),
-        168 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4], pass[6]}),
-        169 => self.sexp(.@"while", &.{pass[1], .nil, pass[2]}),
-        170 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4]}),
-        171 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5], pass[7]}),
-        172 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], pass[9]}),
-        173 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], .nil, pass[3], pass[4], pass[6]}),
-        174 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], pass[3], pass[5], pass[6], pass[8]}),
-        175 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5]}),
-        176 => self.sexp(.@"for", &.{.{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7]}),
-        177 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], .nil, pass[3], pass[4]}),
-        178 => self.sexp(.@"for", &.{.{ .tag = .@"iter" }, pass[1], pass[3], pass[5], pass[6]}),
-        179 => self.sexpPosSpread(.@"match", pass[1], pass[3]),
-        180 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        181 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        182 => pass[0],
-        183 => self.sexp(.@"arm", &.{pass[0], pass[2]}),
-        184 => self.sexp(.@"arm", &.{pass[0], pass[1]}),
-        185 => pass[0],
-        186 => self.sexp(.@"range_pattern", &.{pass[0], pass[2]}),
+        162 => self.build(&.{ .{ .tag = .@"as" }, pass[0], pass[2] }, .tree),
+        163 => self.build(&.{ .{ .tag = .@"if" }, pass[1], pass[2], .nil }, .tree),
+        164 => self.build(&.{ .{ .tag = .@"if" }, pass[1], pass[2], pass[4] }, .tree),
+        165 => self.build(&.{ .{ .tag = .@"if" }, pass[1], pass[2], pass[4] }, .tree),
+        166 => self.build(&.{ .{ .tag = .@"while" }, pass[1], .nil, pass[2], .nil }, .tree),
+        167 => self.build(&.{ .{ .tag = .@"while" }, pass[1], pass[3], pass[4], .nil }, .tree),
+        168 => self.build(&.{ .{ .tag = .@"while" }, pass[1], .nil, pass[2], pass[4] }, .tree),
+        169 => self.build(&.{ .{ .tag = .@"while" }, pass[1], pass[3], pass[4], pass[6] }, .tree),
+        170 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5], .nil }, .tree),
+        171 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], .nil }, .tree),
+        172 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"ptr" }, pass[2], .nil, pass[4], pass[5], pass[7] }, .tree),
+        173 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"ptr" }, pass[2], pass[4], pass[6], pass[7], pass[9] }, .tree),
+        174 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"iter" }, pass[1], .nil, pass[3], pass[4], .nil }, .tree),
+        175 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"iter" }, pass[1], pass[3], pass[5], pass[6], .nil }, .tree),
+        176 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"iter" }, pass[1], .nil, pass[3], pass[4], pass[6] }, .tree),
+        177 => self.build(&.{ .{ .tag = .@"for" }, .{ .tag = .@"iter" }, pass[1], pass[3], pass[5], pass[6], pass[8] }, .tree),
+        178 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"match" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        179 => self.build(&.{ pass[0] }, .spread),
+        180 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        181 => pass[0],
+        182 => self.build(&.{ .{ .tag = .@"arm" }, pass[0], pass[2] }, .tree),
+        183 => self.build(&.{ .{ .tag = .@"arm" }, pass[0], pass[1] }, .tree),
+        184 => pass[0],
+        185 => self.build(&.{ .{ .tag = .@"range_pattern" }, pass[0], pass[2] }, .tree),
+        186 => pass[0],
         187 => pass[0],
         188 => pass[0],
-        189 => pass[0],
-        190 => self.sexp(.@"neg", &.{pass[1]}),
+        189 => self.build(&.{ .{ .tag = .@"neg" }, pass[1] }, .tree),
+        190 => pass[0],
         191 => pass[0],
         192 => pass[0],
         193 => pass[0],
         194 => pass[0],
-        195 => pass[0],
-        196 => self.sexp(.@"enum_lit", &.{pass[1]}),
-        197 => self.spreadList(pass[0], pass[1], .spread),
-        198 => self.spreadList(pass[1], pass[2], .spread),
-        199 => self.emptyList(.spread),
-        200 => self.sexpPosSpread(.@"variant_pattern", pass[1], pass[3]),
-        201 => self.sexp(.@"variant_pattern", &.{pass[1]}),
-        202 => self.sexp(.@"try_block", &.{pass[1], pass[2]}),
-        203 => self.sexp(.@"try_block", &.{pass[1]}),
-        204 => self.sexp(.@"catch_block", &.{pass[2], pass[4]}),
+        195 => self.build(&.{ .{ .tag = .@"enum_lit" }, pass[1] }, .tree),
+        196 => self.spreadList(pass[0], pass[1], .spread),
+        197 => self.spreadList(pass[1], pass[2], .spread),
+        198 => self.emptyList(.spread),
+        199 => pass[0],
+        200 => .nil,
+        201 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"variant_pattern" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        202 => self.build(&.{ .{ .tag = .@"try_block" }, pass[1], .nil }, .tree),
+        203 => self.build(&.{ .{ .tag = .@"try_block" }, pass[1], pass[2] }, .tree),
+        204 => self.build(&.{ .{ .tag = .@"catch_block" }, pass[2], pass[4] }, .tree),
         205 => pass[0],
-        206 => self.sexp(.@"share", &.{pass[1]}),
-        207 => self.sexp(.@"lambda", &.{pass[0], .nil, .nil, pass[1]}),
-        208 => self.sexp(.@"lambda", &.{pass[0], .nil, .nil, pass[1]}),
+        206 => self.build(&.{ .{ .tag = .@"share" }, pass[1] }, .tree),
+        207 => self.build(&.{ .{ .tag = .@"lambda" }, .nil, pass[0], pass[1] }, .tree),
+        208 => self.build(&.{ .{ .tag = .@"lambda" }, .nil, pass[0], self.nested(self.build(&.{ .{ .tag = .@"block" }, pass[1] }, .tree), 1, 1) }, .tree),
         209 => pass[0],
-        210 => self.sexp(.@"share", &.{pass[1]}),
-        211 => self.sexp(.@"lambda", &.{pass[0], .nil, .nil, pass[1]}),
+        210 => self.build(&.{ .{ .tag = .@"share" }, pass[1] }, .tree),
+        211 => self.build(&.{ .{ .tag = .@"lambda" }, .nil, pass[0], self.nested(self.build(&.{ .{ .tag = .@"block" }, pass[1] }, .tree), 1, 1) }, .tree),
         212 => self.spreadList(pass[0], pass[1], .spread),
         213 => self.spreadList(pass[1], pass[2], .spread),
         214 => self.emptyList(.spread),
         215 => blk: { var out = self.extendList(pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
         216 => self.emptyList(.tree),
         217 => pass[0],
-        218 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        219 => self.sexp(.@"cap_clone", &.{pass[1]}),
-        220 => self.sexp(.@"cap_move", &.{pass[1]}),
-        221 => self.sexp(.@"cap_weak", &.{pass[1]}),
-        222 => self.sexp(.@"block", &.{pass[0]}),
-        223 => self.sexp(.@"block", &.{pass[0]}),
-        224 => self.sexp(.@"neg", &.{pass[1]}),
-        225 => self.sexp(.@"move", &.{pass[1]}),
-        226 => self.sexp(.@"clone", &.{pass[1]}),
-        227 => self.sexp(.@"read", &.{pass[1]}),
-        228 => self.sexp(.@"write", &.{pass[1]}),
-        229 => self.sexp(.@"share", &.{pass[1]}),
-        230 => self.sexp(.@"weak", &.{pass[1]}),
-        231 => self.sexp(.@"pin", &.{pass[1]}),
-        232 => pass[0],
-        233 => self.sexp(.@"member", &.{pass[0], pass[2]}),
-        234 => self.sexp(.@"index", &.{pass[0], pass[2]}),
-        235 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-        236 => self.sexp(.@"propagate", &.{pass[0]}),
-        237 => pass[0],
-        238 => pass[0],
-        239 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        240 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        241 => self.emptyList(.spread),
-        242 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        243 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        244 => self.sexp(.@"kwarg", &.{pass[0], pass[2]}),
+        218 => self.build(&.{ .{ .tag = .@":" }, pass[0], pass[2] }, .tree),
+        219 => self.build(&.{ .{ .tag = .@"cap_clone" }, pass[1] }, .tree),
+        220 => self.build(&.{ .{ .tag = .@"cap_move" }, pass[1] }, .tree),
+        221 => self.build(&.{ .{ .tag = .@"cap_weak" }, pass[1] }, .tree),
+        222 => self.build(&.{ .{ .tag = .@"neg" }, pass[1] }, .tree),
+        223 => self.build(&.{ .{ .tag = .@"move" }, pass[1] }, .tree),
+        224 => self.build(&.{ .{ .tag = .@"clone" }, pass[1] }, .tree),
+        225 => self.build(&.{ .{ .tag = .@"read" }, pass[1] }, .tree),
+        226 => self.build(&.{ .{ .tag = .@"write" }, pass[1] }, .tree),
+        227 => self.build(&.{ .{ .tag = .@"share" }, pass[1] }, .tree),
+        228 => self.build(&.{ .{ .tag = .@"weak" }, pass[1] }, .tree),
+        229 => self.build(&.{ .{ .tag = .@"pin" }, pass[1] }, .tree),
+        230 => pass[0],
+        231 => self.build(&.{ .{ .tag = .@"member" }, pass[0], pass[2] }, .tree),
+        232 => self.build(&.{ .{ .tag = .@"index" }, pass[0], pass[2] }, .tree),
+        233 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"call" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        234 => self.build(&.{ .{ .tag = .@"propagate" }, pass[0] }, .tree),
+        235 => pass[0],
+        236 => pass[0],
+        237 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        238 => self.build(&.{ pass[0] }, .spread),
+        239 => self.emptyList(.spread),
+        240 => self.build(&.{ pass[0] }, .spread),
+        241 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        242 => self.build(&.{ .{ .tag = .@"kwarg" }, pass[0], pass[2] }, .tree),
+        243 => pass[0],
+        244 => pass[0],
         245 => pass[0],
         246 => pass[0],
         247 => pass[0],
         248 => pass[0],
         249 => pass[0],
         250 => pass[0],
-        251 => pass[0],
-        252 => pass[0],
-        253 => self.sexp(.@"enum_lit", &.{pass[1]}),
-        254 => self.sexpPosSpread(.@"builtin", pass[1], pass[3]),
-        255 => self.sexpSpread(.@"array", pass[1]),
-        256 => pass[1],
-        257 => self.spreadList(pass[0], pass[1], .spread),
-        258 => self.spreadList(pass[1], pass[2], .spread),
-        259 => self.emptyList(.spread),
-        260 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        261 => self.emptyList(.spread),
-        263 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"==" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        264 => self.sexp(.@"!=", &.{pass[0], pass[2]}),
-        265 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        266 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        267 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        268 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        251 => self.build(&.{ .{ .tag = .@"enum_lit" }, pass[1] }, .tree),
+        252 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"builtin" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        253 => self.spreadList(pass[0], pass[1], .spread),
+        254 => self.spreadList(pass[1], pass[2], .spread),
+        255 => self.emptyList(.spread),
+        256 => pass[0],
+        257 => .nil,
+        258 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"array" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        259 => pass[1],
+        261 => self.build(&.{ .{ .tag = .@"==" }, pass[0], pass[2] }, .tree),
+        262 => self.build(&.{ .{ .tag = .@"!=" }, pass[0], pass[2] }, .tree),
+        263 => self.build(&.{ .{ .tag = .@"<" }, pass[0], pass[2] }, .tree),
+        264 => self.build(&.{ .{ .tag = .@">" }, pass[0], pass[2] }, .tree),
+        265 => self.build(&.{ .{ .tag = .@"<=" }, pass[0], pass[2] }, .tree),
+        266 => self.build(&.{ .{ .tag = .@">=" }, pass[0], pass[2] }, .tree),
+        267 => pass[0],
+        268 => self.build(&.{ .{ .tag = .@"??" }, pass[0], pass[2] }, .tree),
         269 => pass[0],
-        270 => self.sexp(.@"??", &.{pass[0], pass[2]}),
+        270 => self.build(&.{ .{ .tag = .@".." }, pass[0], pass[2] }, .tree),
         271 => pass[0],
-        272 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@".." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        272 => self.build(&.{ .{ .tag = .@"|" }, pass[0], pass[2] }, .tree),
         273 => pass[0],
-        274 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        274 => self.build(&.{ .{ .tag = .@"^" }, pass[0], pass[2] }, .tree),
         275 => pass[0],
-        276 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"^" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        276 => self.build(&.{ .{ .tag = .@"&" }, pass[0], pass[2] }, .tree),
         277 => pass[0],
-        278 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        279 => pass[0],
-        280 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        281 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        282 => pass[0],
-        283 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        284 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        285 => pass[0],
-        286 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-        287 => self.sexp(.@"/", &.{pass[0], pass[2]}),
-        288 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"%" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        289 => pass[0],
-        290 => pass[0],
+        278 => self.build(&.{ .{ .tag = .@"<<" }, pass[0], pass[2] }, .tree),
+        279 => self.build(&.{ .{ .tag = .@">>" }, pass[0], pass[2] }, .tree),
+        280 => pass[0],
+        281 => self.build(&.{ .{ .tag = .@"+" }, pass[0], pass[2] }, .tree),
+        282 => self.build(&.{ .{ .tag = .@"-" }, pass[0], pass[2] }, .tree),
+        283 => pass[0],
+        284 => self.build(&.{ .{ .tag = .@"*" }, pass[0], pass[2] }, .tree),
+        285 => self.build(&.{ .{ .tag = .@"/" }, pass[0], pass[2] }, .tree),
+        286 => self.build(&.{ .{ .tag = .@"%" }, pass[0], pass[2] }, .tree),
+        287 => pass[0],
+        288 => pass[0],
         else => unreachable,
     };
 }
 
-const ruleLhs = [_]u16{ 3, 4, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 10, 10, 10, 10, 10, 10, 10, 11, 12, 12, 12, 12, 13, 13, 14, 105, 106, 106, 15, 15, 16, 16, 17, 17, 17, 17, 17, 17, 18, 18, 19, 19, 20, 21, 22, 22, 22, 23, 23, 23, 24, 24, 24, 24, 24, 24, 25, 26, 27, 28, 28, 28, 28, 29, 29, 30, 30, 31, 31, 31, 31, 31, 31, 128, 129, 129, 31, 31, 31, 31, 31, 32, 32, 32, 33, 33, 33, 33, 33, 33, 34, 34, 34, 35, 35, 35, 35, 35, 35, 35, 35, 35, 36, 36, 36, 36, 37, 37, 38, 38, 39, 39, 40, 40, 41, 42, 42, 42, 43, 43, 44, 44, 45, 45, 46, 46, 46, 47, 47, 47, 47, 48, 48, 48, 48, 48, 48, 48, 48, 49, 50, 50, 50, 51, 51, 52, 52, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 154, 155, 155, 53, 53, 54, 54, 55, 56, 56, 57, 57, 58, 58, 59, 157, 158, 158, 60, 60, 61, 61, 61, 61, 61, 62, 63, 64, 64, 64, 64, 64, 64, 64, 64, 64, 65, 65, 65, 65, 65, 66, 66, 66, 66, 67, 67, 68, 68, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 165, 166, 166, 70, 70, 168, 169, 169, 169, 169, 169, 169, 169, 170, 170, 171, 171, 172, 172, 173, 173, 174, 174, 175, 175, 175, 176, 176, 176, 177, 177, 177, 177, 140 };
-const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 2, 1, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 5, 4, 2, 2, 1, 4, 3, 2, 1, 3, 1, 2, 2, 2, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 5, 4, 4, 3, 4, 3, 2, 2, 3, 0, 3, 2, 1, 1, 1, 3, 5, 4, 2, 2, 1, 1, 5, 6, 5, 5, 4, 6, 5, 1, 3, 2, 1, 3, 2, 1, 1, 3, 1, 3, 4, 5, 4, 4, 3, 4, 3, 2, 2, 2, 2, 2, 2, 3, 4, 2, 3, 0, 5, 4, 4, 3, 1, 2, 2, 1, 1, 3, 1, 4, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 1, 2, 5, 6, 3, 1, 3, 1, 3, 1, 2, 1, 1, 1, 2, 1, 3, 1, 1, 3, 1, 1, 1, 3, 5, 5, 3, 5, 7, 3, 5, 8, 10, 7, 9, 6, 8, 5, 7, 5, 1, 3, 2, 3, 2, 1, 3, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 2, 3, 0, 5, 4, 3, 2, 5, 1, 2, 2, 2, 1, 2, 2, 2, 3, 0, 3, 1, 1, 3, 2, 2, 2, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 3, 4, 4, 2, 1, 1, 3, 1, 0, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 3, 3, 2, 3, 0, 1, 0, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 3, 4, 4, 4, 5, 5, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 9, 10, 11, 11, 11, 11, 12, 12, 13, 101, 102, 102, 14, 14, 15, 15, 16, 16, 16, 16, 16, 16, 17, 17, 18, 18, 19, 20, 21, 21, 21, 22, 22, 22, 23, 23, 23, 23, 23, 23, 24, 25, 26, 27, 27, 27, 27, 28, 28, 29, 29, 30, 30, 30, 30, 30, 30, 124, 125, 125, 126, 126, 30, 30, 30, 31, 31, 31, 32, 32, 32, 32, 32, 33, 33, 33, 34, 34, 34, 34, 34, 34, 34, 34, 34, 35, 35, 35, 35, 36, 36, 37, 37, 38, 38, 39, 39, 40, 41, 41, 41, 42, 42, 43, 43, 44, 44, 45, 45, 45, 46, 46, 46, 46, 47, 47, 47, 47, 47, 47, 47, 47, 48, 49, 49, 49, 50, 50, 51, 51, 52, 52, 52, 52, 52, 52, 52, 52, 52, 52, 151, 152, 152, 153, 153, 52, 53, 53, 54, 55, 55, 56, 56, 57, 57, 58, 155, 156, 156, 59, 59, 60, 60, 60, 60, 60, 61, 61, 61, 61, 61, 61, 61, 61, 61, 62, 62, 62, 62, 62, 63, 63, 63, 63, 64, 64, 65, 65, 66, 66, 66, 66, 66, 66, 66, 66, 66, 163, 164, 164, 165, 165, 66, 66, 167, 168, 168, 168, 168, 168, 168, 168, 169, 169, 170, 170, 171, 171, 172, 172, 173, 173, 174, 174, 174, 175, 175, 175, 176, 176, 176, 176, 137 };
+const ruleLen = [_]u8{ 0, 1, 1, 3, 2, 2, 3, 1, 1, 1, 1, 1, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 5, 5, 4, 2, 1, 2, 1, 3, 2, 4, 1, 3, 2, 2, 2, 2, 2, 2, 1, 2, 1, 1, 1, 1, 1, 1, 1, 2, 3, 4, 4, 5, 3, 4, 2, 2, 3, 0, 3, 2, 1, 1, 1, 3, 5, 4, 2, 2, 1, 1, 5, 6, 5, 5, 4, 5, 6, 1, 3, 2, 1, 3, 2, 1, 1, 3, 1, 3, 4, 3, 4, 4, 5, 3, 4, 2, 2, 2, 2, 2, 2, 3, 4, 2, 3, 0, 1, 0, 5, 4, 1, 2, 2, 1, 1, 3, 1, 4, 3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6, 1, 2, 5, 3, 6, 1, 3, 1, 3, 1, 2, 1, 1, 1, 2, 1, 3, 1, 1, 3, 1, 1, 1, 3, 3, 5, 5, 3, 5, 5, 7, 6, 8, 8, 10, 5, 7, 7, 9, 5, 1, 3, 2, 3, 2, 1, 3, 1, 1, 1, 2, 1, 1, 1, 1, 1, 2, 2, 3, 0, 1, 0, 5, 2, 3, 5, 1, 2, 2, 2, 1, 2, 2, 2, 3, 0, 3, 1, 1, 3, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 3, 4, 4, 2, 1, 1, 3, 1, 0, 1, 3, 3, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 2, 3, 0, 1, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 1 };
 
-// Parse table: 530 states x 195 symbols. 0 = error, > 0 = shift or
+// Parse table: 524 states x 194 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 530;
+const numStates = 524;
 
 const sparse = [numStates][]const i16{
-    &.{167,1},
-    &.{3,22,4,96,6,81,7,67,8,23,9,2,10,56,11,29,12,69,13,5,19,35,20,70,21,13,22,27,26,31,27,30,28,78,29,93,30,3,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,74,26,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,99,40,100,73,101,97,102,82,109,53,110,15,111,34,113,87,114,83,115,7,116,19,118,48,119,42,120,88,121,80,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-9,71,-9,73,-9},
-    &.{1,-13,71,-13,73,-13},
-    &.{5,101,8,99,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,72,100,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-53,71,-53,73,-53},
-    &.{1,-133,71,-133,72,-133,73,-133,76,-133,107,-133},
-    &.{75,102},
-    &.{1,-253,71,-253,72,-253,73,-253,74,-253,75,-253,76,-253,77,-253,78,-253,79,-253,80,-253,81,-253,82,-253,83,-253,84,-253,85,-253,86,-253,87,-253,88,-253,89,-253,97,-253,104,-253,107,-253,108,-253,109,-253,110,-253,111,-253,119,-253,122,-253,123,-253,124,-253,125,-253,126,-253,127,-253,131,-253,132,-253,133,-253,134,-253,135,-253,136,-253,137,-253,138,-253,139,-253,141,-253,142,-253,143,-253,144,-253,146,-253,148,-253,149,-253,150,-253,151,-253,152,-253,153,-253,156,-253,159,-253,160,-253,161,-253,162,-253,163,-253,164,-253,178,-253,179,-253,180,-253,181,-253,182,-253,183,-253,184,-253,185,-253,186,-253,187,-253,188,-253,189,-253,190,-253,191,-253,192,-253,193,-253,194,-253},
-    &.{35,106,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,64,55,65,107,69,71,70,103,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,126,-263,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,165,110,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-275,71,-275,72,-275,73,-275,74,-275,76,-275,104,-275,107,-275,126,-275,133,-275,135,-275,136,-275,137,-275,138,-275,141,-275,148,112,178,-275,179,-275,180,-275,181,-275,182,-275,183,-275,184,-275,185,111},
-    &.{75,114,123,113},
-    &.{18,117,61,116,75,122,112,119,124,121,157,115,160,118,161,120},
-    &.{1,-55,71,-55,73,-55},
-    &.{1,-292,71,-292,72,-292,73,-292,74,-292,76,-292,104,-292,107,-292,126,-292,133,-292,135,-292,136,-292,137,-292,138,-292,141,-292},
-    &.{64,123,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{1,-250,71,-250,72,-250,73,-250,74,-250,75,-250,76,-250,77,-250,78,-250,79,-250,80,-250,81,-250,82,-250,83,-250,84,-250,85,-250,86,-250,87,-250,88,-250,89,-250,97,-250,104,-250,107,-250,108,-250,109,-250,110,-250,111,-250,119,-250,122,-250,123,-250,124,-250,125,-250,126,-250,127,-250,131,-250,132,-250,133,-250,134,-250,135,-250,136,-250,137,-250,138,-250,139,-250,141,-250,142,-250,143,-250,144,-250,146,-250,148,-250,149,-250,150,-250,151,-250,152,-250,153,-250,156,-250,159,-250,160,-250,161,-250,162,-250,163,-250,164,-250,178,-250,179,-250,180,-250,181,-250,182,-250,183,-250,184,-250,185,-250,186,-250,187,-250,188,-250,189,-250,190,-250,191,-250,192,-250,193,-250,194,-250},
-    &.{75,125},
-    &.{5,126,72,100},
-    &.{75,127},
-    &.{64,128,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{1,-138,71,-138,72,-138,73,-138,74,-138,76,-138,104,-138,107,-138,126,-138},
+    &.{166,1},
+    &.{1,-2,3,19,4,96,6,73,7,62,8,20,9,3,10,51,11,29,12,64,18,90,19,37,20,65,21,12,25,33,26,30,27,31,28,70,29,86,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,70,32,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,95,39,96,4,97,48,98,89,105,56,106,17,107,9,109,49,110,11,111,35,112,5,114,72,115,6,116,16,117,80,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{71,99,119,98},
+    &.{1,-50,67,-50,69,-50},
+    &.{71,100},
+    &.{71,101},
+    &.{1,-250,67,-250,68,-250,69,-250,70,-250,71,-250,72,-250,73,-250,74,-250,75,-250,76,-250,77,-250,78,-250,79,-250,80,-250,81,-250,82,-250,83,-250,84,-250,85,-250,93,-250,100,-250,103,-250,104,-250,105,-250,106,-250,107,-250,115,-250,118,-250,119,-250,120,-250,121,-250,122,-250,123,-250,128,-250,129,-250,130,-250,131,-250,132,-250,133,-250,134,-250,135,-250,136,-250,138,-250,139,-250,140,-250,141,-250,143,-250,145,-250,146,-250,147,-250,148,-250,149,-250,150,-250,154,-250,157,-250,158,-250,159,-250,160,-250,161,-250,162,-250,177,-250,178,-250,179,-250,180,-250,181,-250,182,-250,183,-250,184,-250,185,-250,186,-250,187,-250,188,-250,189,-250,190,-250,191,-250,192,-250,193,-250},
+    &.{71,102},
+    &.{1,-275,67,-275,68,-275,69,-275,70,-275,72,-275,100,-275,103,-275,122,-275,130,-275,132,-275,133,-275,134,-275,135,-275,138,-275,145,-275,177,-275,178,-275,179,-275,180,-275,181,-275,182,-275,183,-275,184,-275,185,103},
+    &.{61,104,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{38,108,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{71,109},
+    &.{1,-57,67,-57,69,-57},
+    &.{1,-269,67,-269,68,-269,69,-269,70,-269,72,-269,100,-269,103,-269,122,-269,130,-269,132,-269,133,-269,134,-269,135,-269,138,-269,177,112,178,115,179,110,180,111,181,114,182,113},
+    &.{71,116},
+    &.{1,-42,67,-42,68,-42,69,-42,70,117,72,-42},
+    &.{71,119,97,120,98,118},
+    &.{61,121,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{1,-138,67,-138,68,-138,69,-138,70,-138,72,-138,100,-138,103,-138,122,-138},
     &.{1,-1},
-    &.{1,-15,71,-15,73,-15,76,-17},
-    &.{1,-142,71,-142,72,-142,73,-142,74,-142,76,-142,104,-142,107,-142,126,-142},
-    &.{1,-279,71,-279,72,-279,73,-279,74,-279,76,-279,104,-279,107,-279,126,-279,133,-279,135,-279,136,-279,137,-279,138,-279,141,-279,148,-279,178,-279,179,-279,180,-279,181,-279,182,-279,183,-279,184,-279,185,-279,186,-279,187,130},
-    &.{75,131},
-    &.{1,-57,71,-57,73,-57},
-    &.{64,132,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{1,-8,71,-8,73,-8},
-    &.{1,-10,71,-10,73,-10},
-    &.{1,-58,71,-58,73,-58},
-    &.{1,-149,71,-149,72,-149,73,-149,74,-149,76,-149,104,-149,107,-149,126,-149,133,-149,135,-149,136,-149,137,-149,138,133,141,-149},
-    &.{64,134,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{64,135,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{1,-54,71,-54,73,-54},
-    &.{1,-136,71,-136,72,-136,73,-136,74,-136,76,-136,104,-136,107,-136,126,-136},
-    &.{5,137,8,136,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,72,100,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{57,139,59,140,60,64,64,138,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,134,12,149,91,150,16,151,8,152,43,153,72,159,85,160,20,161,33,162,28,164,51},
-    &.{1,-251,71,-251,72,-251,73,-251,74,-251,75,-251,76,-251,77,-251,78,-251,79,-251,80,-251,81,-251,82,-251,83,-251,84,-251,85,-251,86,-251,87,-251,88,-251,89,-251,97,-251,104,-251,107,-251,108,-251,109,-251,110,-251,111,-251,119,-251,122,-251,123,-251,124,-251,125,-251,126,-251,127,-251,131,-251,132,-251,133,-251,134,-251,135,-251,136,-251,137,-251,138,-251,139,-251,141,-251,142,-251,143,-251,144,-251,146,-251,148,-251,149,-251,150,-251,151,-251,152,-251,153,-251,156,-251,159,-251,160,-251,161,-251,162,-251,163,-251,164,-251,178,-251,179,-251,180,-251,181,-251,182,-251,183,-251,184,-251,185,-251,186,-251,187,-251,188,-251,189,-251,190,-251,191,-251,192,-251,193,-251,194,-251},
-    &.{10,141,12,69,13,5,19,35,20,70,21,13,22,27,26,31,101,97,102,82,113,87,114,83,115,7,116,19,118,48},
-    &.{1,-139,71,-139,72,-139,73,-139,74,-139,76,-139,104,-139,107,-139,126,-139},
-    &.{1,-252,71,-252,72,-252,73,-252,74,-252,75,-252,76,-252,77,-252,78,-252,79,-252,80,-252,81,-252,82,-252,83,-252,84,-252,85,-252,86,-252,87,-252,88,-252,89,-252,97,-252,104,-252,107,-252,108,-252,109,-252,110,-252,111,-252,119,-252,122,-252,123,-252,124,-252,125,-252,126,-252,127,-252,131,-252,132,-252,133,-252,134,-252,135,-252,136,-252,137,-252,138,-252,139,-252,141,-252,142,-252,143,-252,144,-252,146,-252,148,-252,149,-252,150,-252,151,-252,152,-252,153,-252,156,-252,159,-252,160,-252,161,-252,162,-252,163,-252,164,-252,178,-252,179,-252,180,-252,181,-252,182,-252,183,-252,184,-252,185,-252,186,-252,187,-252,188,-252,189,-252,190,-252,191,-252,192,-252,193,-252,194,-252},
-    &.{1,-254,71,-254,72,-254,73,-254,74,-254,75,-254,76,-254,77,-254,78,-254,79,-254,80,-254,81,-254,82,-254,83,-254,84,-254,85,-254,86,-254,87,-254,88,-254,89,-254,97,-254,104,-254,107,-254,108,-254,109,-254,110,-254,111,-254,119,-254,122,-254,123,-254,124,-254,125,-254,126,-254,127,-254,131,-254,132,-254,133,-254,134,-254,135,-254,136,-254,137,-254,138,-254,139,-254,141,-254,142,-254,143,-254,144,-254,146,-254,148,-254,149,-254,150,-254,151,-254,152,-254,153,-254,156,-254,159,-254,160,-254,161,-254,162,-254,163,-254,164,-254,178,-254,179,-254,180,-254,181,-254,182,-254,183,-254,184,-254,185,-254,186,-254,187,-254,188,-254,189,-254,190,-254,191,-254,192,-254,193,-254,194,-254},
-    &.{36,142,37,145,38,32,39,65,40,147,41,143,45,146,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-273,71,-273,72,-273,73,-273,74,-273,76,-273,104,-273,107,-273,126,-273,133,-273,135,-273,136,-273,137,-273,138,-273,141,-273,178,-273,179,-273,180,-273,181,-273,182,-273,183,-273,184,148},
-    &.{1,-287,71,-287,72,-287,73,-287,74,-287,76,-287,104,-287,107,-287,126,-287,133,-287,135,-287,136,-287,137,-287,138,-287,141,-287,148,-287,178,-287,179,-287,180,-287,181,-287,182,-287,183,-287,184,-287,185,-287,186,-287,187,-287,188,-287,189,-287,190,-287,191,-287,192,151,193,149,194,150},
-    &.{64,152,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{119,153},
-    &.{1,-137,71,-137,72,-137,73,-137,74,-137,76,-137,104,-137,107,-137,126,-137},
-    &.{1,-140,71,-140,72,-140,73,-140,74,-140,76,-140,104,-140,107,-140,126,-140},
-    &.{75,154},
-    &.{5,156,36,155,37,145,38,32,39,65,64,55,65,107,69,71,72,100,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,157,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-132,71,-132,72,-132,73,-132,76,-132,107,-132},
-    &.{1,-291,71,-291,72,-291,73,-291,74,-291,76,-291,104,-291,107,-291,126,-291,133,-291,135,-291,136,-291,137,-291,138,-291,141,-291,148,-291,178,-291,179,-291,180,-291,181,-291,182,-291,183,-291,184,-291,185,-291,186,-291,187,-291,188,-291,189,-291,190,-291,191,-291,192,-291,193,-291,194,-291},
-    &.{1,-50,71,-50,73,-50},
-    &.{1,-135,71,-135,72,-135,73,-135,74,-135,76,-135,104,-135,107,-135,126,-135},
-    &.{1,-134,71,-134,72,-134,73,-134,76,-134,107,-134},
-    &.{36,142,37,145,38,32,39,65,40,147,41,143,45,158,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-207,71,-207,72,-207,73,-207,74,-207,76,-207,104,-207,107,-207,126,-207},
-    &.{1,-234,35,169,36,57,37,90,38,32,39,65,41,160,42,175,43,162,44,181,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,170,59,84,60,64,64,55,65,144,69,71,71,-234,72,-234,73,-234,75,109,76,-234,77,177,78,172,79,179,80,166,81,167,82,168,83,159,84,176,85,178,86,163,87,165,88,173,89,171,97,105,108,174,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,131,164,132,161,133,-234,134,12,135,-234,137,-234,138,-234,139,75,140,95,142,44,143,59,144,11,146,74,148,-234,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,163,180,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46,178,-234,179,-234,180,-234,181,-234,182,-234,183,-234,184,-234,185,-234,186,-234,187,-234,188,-234,189,-234,190,-234,191,-234,192,-234,193,-234,194,-234},
-    &.{1,-284,71,-284,72,-284,73,-284,74,-284,76,-284,104,-284,107,-284,126,-284,133,-284,135,-284,136,-284,137,-284,138,-284,141,-284,148,-284,178,-284,179,-284,180,-284,181,-284,182,-284,183,-284,184,-284,185,-284,186,-284,187,-284,188,-284,189,-284,190,183,191,182},
-    &.{1,-249,71,-249,72,-249,73,-249,74,-249,75,-249,76,-249,77,-249,78,-249,79,-249,80,-249,81,-249,82,-249,83,-249,84,-249,85,-249,86,-249,87,-249,88,-249,89,-249,97,-249,104,-249,107,-249,108,-249,109,-249,110,-249,111,-249,119,-249,122,-249,123,-249,124,-249,125,-249,126,-249,127,-249,131,-249,132,-249,133,-249,134,-249,135,-249,136,-249,137,-249,138,-249,139,-249,141,-249,142,-249,143,-249,144,-249,146,-249,148,-249,149,-249,150,-249,151,-249,152,-249,153,-249,156,-249,159,-249,160,-249,161,-249,162,-249,163,-249,164,-249,178,-249,179,-249,180,-249,181,-249,182,-249,183,-249,184,-249,185,-249,186,-249,187,-249,188,-249,189,-249,190,-249,191,-249,192,-249,193,-249,194,-249},
-    &.{5,187,35,186,36,57,37,90,38,32,39,65,41,184,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,62,188,63,185,64,55,65,144,69,71,72,100,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-151,71,-151,72,-151,73,-151,74,-151,76,-151,104,-151,107,-151,126,-151,133,-151,135,-151,136,-151,137,-151,138,-151,141,-151},
-    &.{75,189},
-    &.{76,190},
-    &.{1,-43,71,-43,72,-43,73,-43,74,191,76,-43},
-    &.{1,-52,71,-52,73,-52},
-    &.{1,-56,71,-56,73,-56},
-    &.{1,-239,71,-239,72,-239,73,-239,74,-239,75,-239,76,-239,77,-239,78,-239,79,-239,80,-239,81,-239,82,-239,83,-239,84,-239,85,-239,86,-239,87,-239,88,-239,89,-239,97,-239,104,-239,107,-239,108,-239,109,-239,110,-239,111,-239,119,-239,122,-239,123,-239,124,-239,125,-239,126,-239,127,-239,131,-239,132,-239,133,-239,134,-239,135,-239,136,-239,137,-239,138,-239,139,-239,141,-239,142,-239,143,-239,144,-239,146,-239,148,-239,149,-239,150,-239,151,-239,152,-239,153,-239,156,-239,159,-239,160,-239,161,-239,162,-239,163,-239,164,-239,178,-239,179,-239,180,-239,181,-239,182,-239,183,-239,184,-239,185,-239,186,-239,187,-239,188,-239,189,-239,190,-239,191,-239,192,-239,193,-239,194,-239},
-    &.{75,192},
-    &.{75,193},
-    &.{36,194,37,145,38,32,39,65,40,195,41,143,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{39,196,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-248,71,-248,72,-248,73,-248,74,197,75,-248,76,-248,77,-248,78,-248,79,-248,80,-248,81,-248,82,-248,83,-248,84,-248,85,-248,86,-248,87,-248,88,-248,89,-248,97,-248,108,-248,109,-248,110,-248,111,-248,119,-248,122,-248,123,-248,124,-248,125,-248,127,-248,131,-248,132,-248,133,-248,134,-248,135,-248,137,-248,138,-248,139,-248,142,-248,143,-248,144,-248,146,-248,148,-248,149,-248,150,-248,151,-248,152,-248,153,-248,156,-248,159,-248,160,-248,161,-248,162,-248,163,-248,164,-248,178,-248,179,-248,180,-248,181,-248,182,-248,183,-248,184,-248,185,-248,186,-248,187,-248,188,-248,189,-248,190,-248,191,-248,192,-248,193,-248,194,-248},
-    &.{1,-271,71,-271,72,-271,73,-271,74,-271,76,-271,104,-271,107,-271,126,-271,133,-271,135,-271,136,-271,137,-271,138,-271,141,-271,178,203,179,198,180,199,181,202,182,200,183,201},
-    &.{1,-11,71,-11,73,-11},
-    &.{1,-18,71,-18,72,-18,73,-18,76,-18},
-    &.{119,204,122,205},
-    &.{1,-3,71,-3,73,-3},
-    &.{75,206},
-    &.{75,207},
-    &.{1,-211,71,-211,72,-211,73,-211,74,-211,76,-211,107,-211},
-    &.{72,-218,75,-218,97,-218,109,-218,110,-218,111,-218,119,-218,122,-218,123,-218,124,-218,125,-218,127,-218,134,-218,139,-218,142,-218,143,-218,144,-218,146,-218,149,-218,150,-218,151,-218,152,-218,153,-218,156,-218,159,-218,160,-218,161,-218,162,-218,164,-218},
-    &.{1,-277,71,-277,72,-277,73,-277,74,-277,76,-277,104,-277,107,-277,126,-277,133,-277,135,-277,136,-277,137,-277,138,-277,141,-277,148,-277,178,-277,179,-277,180,-277,181,-277,182,-277,183,-277,184,-277,185,-277,186,208},
-    &.{75,209},
-    &.{75,212,101,211,102,210},
-    &.{1,-281,71,-281,72,-281,73,-281,74,-281,76,-281,104,-281,107,-281,126,-281,133,-281,135,-281,136,-281,137,-281,138,-281,141,-281,148,-281,178,-281,179,-281,180,-281,181,-281,182,-281,183,-281,184,-281,185,-281,186,-281,187,-281,188,213,189,214},
-    &.{1,-147,71,-147,72,-147,73,-147,74,-147,76,-147,104,-147,107,-147,126,-147,133,216,135,215,137,217},
-    &.{64,218,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{1,-41,34,220,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,71,-41,72,-41,73,-41,74,219,75,109,76,-41,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-12,71,-12,73,-12},
-    &.{5,221,72,100},
-    &.{1,-153,71,-153,72,-153,73,-153,74,-153,76,-153,104,-153,107,-153,126,-153,133,-153,135,-153,136,-153,137,-153,138,-153,141,-153},
-    &.{1,-2,71,222},
-    &.{75,223},
-    &.{1,-37,34,224,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,71,-37,72,-37,73,-37,75,109,76,-37,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-47,71,-47,72,-47,73,-47,76,-47},
-    &.{4,226,6,81,7,67,8,23,9,2,10,56,11,29,12,69,13,5,19,35,20,70,21,13,22,27,26,31,27,30,28,78,29,93,30,3,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,73,225,74,26,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,99,40,100,73,101,97,102,82,109,53,110,15,111,34,113,87,114,83,115,7,116,19,118,48,119,42,120,88,121,80,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-46,71,-46,72,-46,73,-46,76,-46},
-    &.{72,227},
-    &.{126,228},
-    &.{57,139,60,108,64,138,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,134,12,149,91,150,16,151,8,152,43,153,72,159,85,160,20,161,33,162,28,164,51},
-    &.{36,155,37,145,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{104,230,126,-261,166,229},
-    &.{1,-234,71,-234,72,-234,73,-234,74,-234,76,-234,104,-234,107,-234,108,174,126,-234,131,164,132,161,133,-234,135,-234,136,-234,137,-234,138,-234,141,-234,148,-234,163,180,178,-234,179,-234,180,-234,181,-234,182,-234,183,-234,184,-234,185,-234,186,-234,187,-234,188,-234,189,-234,190,-234,191,-234,192,-234,193,-234,194,-234},
-    &.{5,187,35,186,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,62,188,64,55,65,107,69,71,72,100,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-248,71,-248,72,-248,73,-248,74,-248,75,-248,76,-248,97,-248,104,-248,107,-248,108,-248,109,-248,110,-248,111,-248,119,-248,122,-248,123,-248,124,-248,125,-248,126,-248,127,-248,131,-248,132,-248,133,-248,134,-248,135,-248,136,-248,137,-248,138,-248,139,-248,141,-248,142,-248,143,-248,144,-248,146,-248,148,-248,149,-248,150,-248,151,-248,152,-248,153,-248,156,-248,159,-248,160,-248,161,-248,162,-248,163,-248,164,-248,178,-248,179,-248,180,-248,181,-248,182,-248,183,-248,184,-248,185,-248,186,-248,187,-248,188,-248,189,-248,190,-248,191,-248,192,-248,193,-248,194,-248},
-    &.{126,-262},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,173,231,174,25,175,89,176,62,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,172,232,173,86,174,25,175,89,176,62,177,46},
-    &.{75,233},
-    &.{104,235,145,234},
-    &.{134,236},
-    &.{104,238,134,-216,158,237},
-    &.{74,239,104,-219,134,-219},
-    &.{75,240},
-    &.{71,-81,72,-81,73,-81,74,-81,104,-81,107,-81,134,-81},
-    &.{75,241},
-    &.{75,242},
-    &.{71,-80,72,-80,73,-80,74,-80,104,-80,107,-80,134,-80},
-    &.{1,-229,71,-229,72,-229,73,-229,74,-229,76,-229,104,-229,107,-229,126,-229,133,-229,135,-229,136,-229,137,-229,138,-229,141,-229,148,-229,178,-229,179,-229,180,-229,181,-229,182,-229,183,-229,184,-229,185,-229,186,-229,187,-229,188,-229,189,-229,190,-229,191,-229,192,-229,193,-229,194,-229},
-    &.{64,138,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{77,243},
-    &.{1,-205,55,245,71,-205,72,-205,73,-205,74,-205,76,-205,104,-205,107,-205,126,-205,133,244},
-    &.{15,247,16,250,72,246,77,249,108,251,109,248},
-    &.{1,-228,71,-228,72,-228,73,-228,74,-228,76,-228,104,-228,107,-228,126,-228,133,-228,135,-228,136,-228,137,-228,138,-228,141,-228,148,-228,178,-228,179,-228,180,-228,181,-228,182,-228,183,-228,184,-228,185,-228,186,-228,187,-228,188,-228,189,-228,190,-228,191,-228,192,-228,193,-228,194,-228},
+    &.{1,-10,67,-10,69,-10},
+    &.{71,123},
+    &.{5,125,68,124},
+    &.{1,-207,67,-207,68,-207,69,-207,70,-207,72,-207,100,-207,103,-207,122,-207},
+    &.{17,131,60,133,71,127,108,128,120,130,155,132,158,129,159,126},
+    &.{1,-279,67,-279,68,-279,69,-279,70,-279,72,-279,100,-279,103,-279,122,-279,130,-279,132,-279,133,-279,134,-279,135,-279,138,-279,145,-279,177,-279,178,-279,179,-279,180,-279,181,-279,182,-279,183,-279,184,-279,185,-279,186,-279,187,134,188,135},
+    &.{61,136,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{61,137,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{71,138},
+    &.{1,-52,67,-52,69,-52},
+    &.{1,-11,67,-11,69,-11},
+    &.{1,-12,67,-12,69,-12},
+    &.{71,139},
+    &.{1,-58,67,-58,69,-58},
+    &.{1,-139,67,-139,68,-139,69,-139,70,-139,72,-139,100,-139,103,-139,122,-139},
+    &.{71,140},
+    &.{1,-150,67,-150,68,-150,69,-150,70,-150,72,-150,100,-150,103,-150,122,-150,130,-150,132,-150,133,-150,134,-150,135,-150,138,-150},
+    &.{1,-56,67,-56,69,-56},
+    &.{1,-136,67,-136,68,-136,69,-136,70,-136,72,-136,100,-136,103,-136,122,-136},
+    &.{9,141,11,29,12,64,18,90,19,37,20,65,21,12,25,33,97,48,98,89,109,49,110,11,111,35,112,5,114,72},
+    &.{1,-135,67,-135,68,-135,69,-135,70,-135,72,-135,100,-135,103,-135,122,-135},
+    &.{1,-132,67,-132,68,-132,69,-132,72,-132,103,-132},
+    &.{1,-247,67,-247,68,-247,69,-247,70,-247,71,-247,72,-247,73,-247,74,-247,75,-247,76,-247,77,-247,78,-247,79,-247,80,-247,81,-247,82,-247,83,-247,84,-247,85,-247,93,-247,100,-247,103,-247,104,-247,105,-247,106,-247,107,-247,115,-247,118,-247,119,-247,120,-247,121,-247,122,-247,123,-247,128,-247,129,-247,130,-247,131,-247,132,-247,133,-247,134,-247,135,-247,136,-247,138,-247,139,-247,140,-247,141,-247,143,-247,145,-247,146,-247,147,-247,148,-247,149,-247,150,-247,154,-247,157,-247,158,-247,159,-247,160,-247,161,-247,162,-247,177,-247,178,-247,179,-247,180,-247,181,-247,182,-247,183,-247,184,-247,185,-247,186,-247,187,-247,188,-247,189,-247,190,-247,191,-247,192,-247,193,-247},
+    &.{56,143,58,142,59,79,61,144,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,131,24,146,69,147,58,148,74,149,83,150,14,157,92,158,26,159,94,160,27,162,7},
+    &.{1,-152,67,-152,68,-152,69,-152,70,-152,72,-152,100,-152,103,-152,122,-152,130,-152,132,-152,133,-152,134,-152,135,-152,138,-152},
+    &.{1,-273,67,-273,68,-273,69,-273,70,-273,72,-273,100,-273,103,-273,122,-273,130,-273,132,-273,133,-273,134,-273,135,-273,138,-273,145,145,177,-273,178,-273,179,-273,180,-273,181,-273,182,-273,183,-273,184,146},
+    &.{1,-249,67,-249,68,-249,69,-249,70,-249,71,-249,72,-249,73,-249,74,-249,75,-249,76,-249,77,-249,78,-249,79,-249,80,-249,81,-249,82,-249,83,-249,84,-249,85,-249,93,-249,100,-249,103,-249,104,-249,105,-249,106,-249,107,-249,115,-249,118,-249,119,-249,120,-249,121,-249,122,-249,123,-249,128,-249,129,-249,130,-249,131,-249,132,-249,133,-249,134,-249,135,-249,136,-249,138,-249,139,-249,140,-249,141,-249,143,-249,145,-249,146,-249,147,-249,148,-249,149,-249,150,-249,154,-249,157,-249,158,-249,159,-249,160,-249,161,-249,162,-249,177,-249,178,-249,179,-249,180,-249,181,-249,182,-249,183,-249,184,-249,185,-249,186,-249,187,-249,188,-249,189,-249,190,-249,191,-249,192,-249,193,-249},
+    &.{1,-137,67,-137,68,-137,69,-137,70,-137,72,-137,100,-137,103,-137,122,-137},
+    &.{71,147},
+    &.{71,148},
+    &.{1,-134,67,-134,68,-134,69,-134,70,-134,72,-134,100,-134,103,-134,122,-134},
+    &.{1,-9,67,-9,69,-9},
+    &.{1,-133,67,-133,68,-133,69,-133,72,-133,103,-133},
+    &.{1,-146,67,-146,68,-146,69,-146,70,-146,72,-146,100,-146,103,-146,122,-146,130,150,132,149,134,151},
+    &.{1,-211,67,-211,68,-211,69,-211,70,-211,72,-211,103,-211},
+    &.{35,152,36,153,37,84,38,36,39,154,40,156,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,158,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-285,67,-285,68,-285,69,-285,70,-285,72,-285,100,-285,103,-285,122,-285,130,-285,132,-285,133,-285,134,-285,135,-285,138,-285,145,-285,177,-285,178,-285,179,-285,180,-285,181,-285,182,-285,183,-285,184,-285,185,-285,186,-285,187,-285,188,-285,189,-285,190,-285,191,160,192,161,193,159},
+    &.{1,-248,67,-248,68,-248,69,-248,70,-248,71,-248,72,-248,73,-248,74,-248,75,-248,76,-248,77,-248,78,-248,79,-248,80,-248,81,-248,82,-248,83,-248,84,-248,85,-248,93,-248,100,-248,103,-248,104,-248,105,-248,106,-248,107,-248,115,-248,118,-248,119,-248,120,-248,121,-248,122,-248,123,-248,128,-248,129,-248,130,-248,131,-248,132,-248,133,-248,134,-248,135,-248,136,-248,138,-248,139,-248,140,-248,141,-248,143,-248,145,-248,146,-248,147,-248,148,-248,149,-248,150,-248,154,-248,157,-248,158,-248,159,-248,160,-248,161,-248,162,-248,177,-248,178,-248,179,-248,180,-248,181,-248,182,-248,183,-248,184,-248,185,-248,186,-248,187,-248,188,-248,189,-248,190,-248,191,-248,192,-248,193,-248},
+    &.{1,-38,33,163,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,67,-38,68,-38,69,-38,70,162,71,105,72,-38,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-36,33,164,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,67,-36,68,-36,69,-36,71,105,72,-36,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{5,166,7,165,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,68,124,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-16,67,-16,69,-16,72,167},
+    &.{5,168,68,124},
+    &.{1,-53,67,-53,69,-53},
+    &.{1,-55,67,-55,69,-55},
+    &.{35,169,36,153,37,84,38,36,39,170,40,156,44,171,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-290,67,-290,68,-290,69,-290,70,-290,72,-290,100,-290,103,-290,122,-290,130,-290,132,-290,133,-290,134,-290,135,-290,138,-290},
+    &.{1,-271,67,-271,68,-271,69,-271,70,-271,72,-271,100,-271,103,-271,122,-271,130,-271,132,-271,133,-271,134,-271,135,-271,138,-271,177,-271,178,-271,179,-271,180,-271,181,-271,182,-271,183,172},
+    &.{61,173,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{1,-13,67,-13,69,-13},
+    &.{1,-131,67,-131,68,-131,69,-131,72,-131,103,-131},
+    &.{115,174},
+    &.{1,-4,67,-4,69,-4},
+    &.{1,-251,67,-251,68,-251,69,-251,70,-251,71,-251,72,-251,73,-251,74,-251,75,-251,76,-251,77,-251,78,-251,79,-251,80,-251,81,-251,82,-251,83,-251,84,-251,85,-251,93,-251,100,-251,103,-251,104,-251,105,-251,106,-251,107,-251,115,-251,118,-251,119,-251,120,-251,121,-251,122,-251,123,-251,128,-251,129,-251,130,-251,131,-251,132,-251,133,-251,134,-251,135,-251,136,-251,138,-251,139,-251,140,-251,141,-251,143,-251,145,-251,146,-251,147,-251,148,-251,149,-251,150,-251,154,-251,157,-251,158,-251,159,-251,160,-251,161,-251,162,-251,177,-251,178,-251,179,-251,180,-251,181,-251,182,-251,183,-251,184,-251,185,-251,186,-251,187,-251,188,-251,189,-251,190,-251,191,-251,192,-251,193,-251},
+    &.{1,-246,67,-246,68,-246,69,-246,70,175,71,-246,72,-246,73,-246,74,-246,75,-246,76,-246,77,-246,78,-246,79,-246,80,-246,81,-246,82,-246,83,-246,84,-246,85,-246,93,-246,104,-246,105,-246,106,-246,107,-246,115,-246,118,-246,119,-246,120,-246,121,-246,123,-246,128,-246,129,-246,130,-246,131,-246,132,-246,134,-246,135,-246,136,-246,139,-246,140,-246,141,-246,143,-246,145,-246,146,-246,147,-246,148,-246,149,-246,150,-246,154,-246,157,-246,158,-246,159,-246,160,-246,161,-246,162,-246,177,-246,178,-246,179,-246,180,-246,181,-246,182,-246,183,-246,184,-246,185,-246,186,-246,187,-246,188,-246,189,-246,190,-246,191,-246,192,-246,193,-246},
+    &.{1,-237,67,-237,68,-237,69,-237,70,-237,71,-237,72,-237,73,-237,74,-237,75,-237,76,-237,77,-237,78,-237,79,-237,80,-237,81,-237,82,-237,83,-237,84,-237,85,-237,93,-237,100,-237,103,-237,104,-237,105,-237,106,-237,107,-237,115,-237,118,-237,119,-237,120,-237,121,-237,122,-237,123,-237,128,-237,129,-237,130,-237,131,-237,132,-237,133,-237,134,-237,135,-237,136,-237,138,-237,139,-237,140,-237,141,-237,143,-237,145,-237,146,-237,147,-237,148,-237,149,-237,150,-237,154,-237,157,-237,158,-237,159,-237,160,-237,161,-237,162,-237,177,-237,178,-237,179,-237,180,-237,181,-237,182,-237,183,-237,184,-237,185,-237,186,-237,187,-237,188,-237,189,-237,190,-237,191,-237,192,-237,193,-237},
+    &.{1,-141,67,-141,68,-141,69,-141,70,-141,72,-141,100,-141,103,-141,122,-141},
+    &.{34,177,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,122,-259,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,163,180,165,179,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{5,183,34,182,35,50,36,53,37,84,38,36,40,181,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,155,66,76,68,124,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{115,185,118,184},
+    &.{1,-277,67,-277,68,-277,69,-277,70,-277,72,-277,100,-277,103,-277,122,-277,130,-277,132,-277,133,-277,134,-277,135,-277,138,-277,145,-277,177,-277,178,-277,179,-277,180,-277,181,-277,182,-277,183,-277,184,-277,185,-277,186,186},
+    &.{1,-232,34,206,35,50,36,53,37,84,38,36,40,195,41,188,42,202,43,189,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,198,58,54,59,79,61,93,62,155,66,76,67,-232,68,-232,69,-232,71,105,72,-232,73,203,74,190,75,205,76,199,77,207,78,200,79,209,80,192,81,193,82,196,83,187,84,204,85,208,93,157,104,201,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,128,197,129,191,130,-232,131,24,132,-232,134,-232,135,-232,136,10,137,44,139,66,140,91,141,2,143,55,145,-232,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,161,194,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57,177,-232,178,-232,179,-232,180,-232,181,-232,182,-232,183,-232,184,-232,185,-232,186,-232,187,-232,188,-232,189,-232,190,-232,191,-232,192,-232,193,-232},
+    &.{1,-252,67,-252,68,-252,69,-252,70,-252,71,-252,72,-252,73,-252,74,-252,75,-252,76,-252,77,-252,78,-252,79,-252,80,-252,81,-252,82,-252,83,-252,84,-252,85,-252,93,-252,100,-252,103,-252,104,-252,105,-252,106,-252,107,-252,115,-252,118,-252,119,-252,120,-252,121,-252,122,-252,123,-252,128,-252,129,-252,130,-252,131,-252,132,-252,133,-252,134,-252,135,-252,136,-252,138,-252,139,-252,140,-252,141,-252,143,-252,145,-252,146,-252,147,-252,148,-252,149,-252,150,-252,154,-252,157,-252,158,-252,159,-252,160,-252,161,-252,162,-252,177,-252,178,-252,179,-252,180,-252,181,-252,182,-252,183,-252,184,-252,185,-252,186,-252,187,-252,188,-252,189,-252,190,-252,191,-252,192,-252,193,-252},
+    &.{1,-148,67,-148,68,-148,69,-148,70,-148,72,-148,100,-148,103,-148,122,-148,130,-148,132,-148,133,-148,134,-148,135,210,138,-148},
+    &.{5,212,35,211,36,153,37,84,38,36,61,93,62,106,66,76,68,124,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-14,67,-14,69,-14},
+    &.{1,-282,67,-282,68,-282,69,-282,70,-282,72,-282,100,-282,103,-282,122,-282,130,-282,132,-282,133,-282,134,-282,135,-282,138,-282,145,-282,177,-282,178,-282,179,-282,180,-282,181,-282,182,-282,183,-282,184,-282,185,-282,186,-282,187,-282,188,-282,189,213,190,214},
+    &.{1,-18,67,-18,68,-18,69,-18,72,-18},
+    &.{71,215},
+    &.{1,-54,67,-54,69,-54},
+    &.{35,169,36,153,37,84,38,36,39,170,40,156,44,216,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{68,-218,71,-218,93,-218,105,-218,106,-218,107,-218,115,-218,118,-218,119,-218,120,-218,121,-218,123,-218,131,-218,136,-218,139,-218,140,-218,141,-218,143,-218,146,-218,147,-218,148,-218,149,-218,150,-218,154,-218,157,-218,158,-218,159,-218,160,-218,162,-218},
+    &.{1,-289,67,-289,68,-289,69,-289,70,-289,72,-289,100,-289,103,-289,122,-289,130,-289,132,-289,133,-289,134,-289,135,-289,138,-289,145,-289,177,-289,178,-289,179,-289,180,-289,181,-289,182,-289,183,-289,184,-289,185,-289,186,-289,187,-289,188,-289,189,-289,190,-289,191,-289,192,-289,193,-289},
+    &.{61,217,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{61,218,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{1,-3,67,219},
+    &.{5,221,7,220,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,68,124,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{71,222},
+    &.{100,223,142,224},
+    &.{1,-59,67,-59,69,-59},
+    &.{14,229,15,226,68,225,73,228,104,230,105,227},
+    &.{104,231},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,173,232,174,25,175,87,176,57},
+    &.{1,-228,67,-228,68,-228,69,-228,70,-228,72,-228,100,-228,103,-228,122,-228,130,-228,132,-228,133,-228,134,-228,135,-228,138,-228,145,-228,177,-228,178,-228,179,-228,180,-228,181,-228,182,-228,183,-228,184,-228,185,-228,186,-228,187,-228,188,-228,189,-228,190,-228,191,-228,192,-228,193,-228},
+    &.{1,-246,67,-246,68,-246,69,-246,70,-246,71,-246,72,-246,93,-246,100,-246,103,-246,104,-246,105,-246,106,-246,107,-246,115,-246,118,-246,119,-246,120,-246,121,-246,122,-246,123,-246,128,-246,129,-246,130,-246,131,-246,132,-246,133,-246,134,-246,135,-246,136,-246,138,-246,139,-246,140,-246,141,-246,143,-246,145,-246,146,-246,147,-246,148,-246,149,-246,150,-246,154,-246,157,-246,158,-246,159,-246,160,-246,161,-246,162,-246,177,-246,178,-246,179,-246,180,-246,181,-246,182,-246,183,-246,184,-246,185,-246,186,-246,187,-246,188,-246,189,-246,190,-246,191,-246,192,-246,193,-246},
+    &.{1,-232,67,-232,68,-232,69,-232,70,-232,72,-232,100,-232,103,-232,104,201,122,-232,128,197,129,191,130,-232,132,-232,133,-232,134,-232,135,-232,138,-232,145,-232,161,194,177,-232,178,-232,179,-232,180,-232,181,-232,182,-232,183,-232,184,-232,185,-232,186,-232,187,-232,188,-232,189,-232,190,-232,191,-232,192,-232,193,-232},
+    &.{61,144,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{1,-151,67,-151,68,-151,69,-151,70,-151,72,-151,100,-151,103,-151,122,-151,130,-151,132,-151,133,-151,134,-151,135,-151,138,-151},
+    &.{68,233},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,234,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,235,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,236,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,237,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,238,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,239,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-253,67,-253,68,-253,69,-253,70,-253,71,-253,72,-253,73,-253,74,-253,75,-253,76,-253,77,-253,78,-253,79,-253,80,-253,81,-253,82,-253,83,-253,84,-253,85,-253,93,-253,100,-253,103,-253,104,-253,105,-253,106,-253,107,-253,115,-253,118,-253,119,-253,120,-253,121,-253,122,-253,123,-253,128,-253,129,-253,130,-253,131,-253,132,-253,133,-253,134,-253,135,-253,136,-253,138,-253,139,-253,140,-253,141,-253,143,-253,145,-253,146,-253,147,-253,148,-253,149,-253,150,-253,154,-253,157,-253,158,-253,159,-253,160,-253,161,-253,162,-253,177,-253,178,-253,179,-253,180,-253,181,-253,182,-253,183,-253,184,-253,185,-253,186,-253,187,-253,188,-253,189,-253,190,-253,191,-253,192,-253,193,-253},
+    &.{71,240},
+    &.{71,241},
+    &.{70,242},
+    &.{71,243},
+    &.{1,-227,67,-227,68,-227,69,-227,70,-227,72,-227,100,-227,103,-227,122,-227,130,-227,132,-227,133,-227,134,-227,135,-227,138,-227,145,-227,177,-227,178,-227,179,-227,180,-227,181,-227,182,-227,183,-227,184,-227,185,-227,186,-227,187,-227,188,-227,189,-227,190,-227,191,-227,192,-227,193,-227},
     &.{1,-1},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,175,252,176,62,177,46},
-    &.{6,253,7,67,8,23,9,2,10,56,11,29,12,69,13,5,19,35,20,70,21,13,22,27,26,31,27,30,28,78,29,93,30,3,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,74,26,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,99,40,100,73,101,97,102,82,109,53,110,15,111,34,113,87,114,83,115,7,116,19,118,48,119,42,120,88,121,80,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-233,71,-233,72,-233,73,-233,74,-233,76,-233,104,-233,107,-233,126,-233,133,-233,135,-233,136,-233,137,-233,138,-233,141,-233,148,-233,178,-233,179,-233,180,-233,181,-233,182,-233,183,-233,184,-233,185,-233,186,-233,187,-233,188,-233,189,-233,190,-233,191,-233,192,-233,193,-233,194,-233},
-    &.{39,254,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-227,71,-227,72,-227,73,-227,74,-227,76,-227,104,-227,107,-227,126,-227,133,-227,135,-227,136,-227,137,-227,138,-227,141,-227,148,-227,178,-227,179,-227,180,-227,181,-227,182,-227,183,-227,184,-227,185,-227,186,-227,187,-227,188,-227,189,-227,190,-227,191,-227,192,-227,193,-227,194,-227},
-    &.{1,-230,71,-230,72,-230,73,-230,74,-230,76,-230,104,-230,107,-230,126,-230,133,-230,135,-230,136,-230,137,-230,138,-230,141,-230,148,-230,178,-230,179,-230,180,-230,181,-230,182,-230,183,-230,184,-230,185,-230,186,-230,187,-230,188,-230,189,-230,190,-230,191,-230,192,-230,193,-230,194,-230},
-    &.{1,-45,71,-45,72,-45,73,-45,76,-45},
-    &.{1,-44,71,-44,72,-44,73,-44,76,-44},
-    &.{1,-231,71,-231,72,-231,73,-231,74,-231,76,-231,104,-231,107,-231,126,-231,133,-231,135,-231,136,-231,137,-231,138,-231,141,-231,148,-231,178,-231,179,-231,180,-231,181,-231,182,-231,183,-231,184,-231,185,-231,186,-231,187,-231,188,-231,189,-231,190,-231,191,-231,192,-231,193,-231,194,-231},
-    &.{1,-208,71,-208,72,-208,73,-208,74,-208,76,-208,104,-208,107,-208,126,-208},
-    &.{1,-212,71,-212,72,-212,73,-212,74,-212,76,-212,107,-212},
-    &.{1,-51,71,-51,73,-51},
-    &.{72,-154,74,-154,141,255},
-    &.{72,-155,74,-155},
-    &.{1,-234,35,169,36,57,37,90,38,32,39,65,41,160,42,175,43,162,44,181,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,170,59,84,60,64,64,55,65,144,69,71,71,-234,72,-234,73,-234,74,-234,75,109,76,-234,97,105,104,-234,107,-234,108,174,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,131,164,132,161,133,-234,134,12,135,-234,137,-234,138,-234,139,75,140,95,141,-234,142,44,143,59,144,11,146,74,148,-234,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,163,180,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46,178,-234,179,-234,180,-234,181,-234,182,-234,183,-234,184,-234,185,-234,186,-234,187,-234,188,-234,189,-234,190,-234,191,-234,192,-234,193,-234,194,-234},
-    &.{1,-147,71,-147,72,-147,73,-147,74,-147,76,-147,104,-147,107,-147,126,-147,133,256,135,215,137,217,141,-147},
-    &.{5,257,72,100},
-    &.{72,-164,74,-164},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,258,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{64,259,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{64,260,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{64,261,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51},
-    &.{1,-232,71,-232,72,-232,73,-232,74,-232,76,-232,104,-232,107,-232,126,-232,133,-232,135,-232,136,-232,137,-232,138,-232,141,-232,148,-232,178,-232,179,-232,180,-232,181,-232,182,-232,183,-232,184,-232,185,-232,186,-232,187,-232,188,-232,189,-232,190,-232,191,-232,192,-232,193,-232,194,-232},
-    &.{5,262,72,100},
-    &.{108,263},
-    &.{1,-143,71,-143,72,-143,73,-143,74,-143,76,-143,104,-143,107,-143,126,-143},
-    &.{1,-48,71,-48,72,-48,73,-48,76,-48},
-    &.{107,264},
-    &.{5,266,72,100,74,265},
-    &.{34,267,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-162,71,-162,72,-162,73,-162,74,-162,76,-162,107,-162},
-    &.{75,268},
-    &.{1,-157,71,-157,72,-157,73,-157,74,-157,76,-157,104,269,107,-157},
-    &.{34,270,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-238,71,-238,72,-238,73,-238,74,-238,75,-238,76,-238,77,-238,78,-238,79,-238,80,-238,81,-238,82,-238,83,-238,84,-238,85,-238,86,-238,87,-238,88,-238,89,-238,97,-238,104,-238,107,-238,108,-238,109,-238,110,-238,111,-238,119,-238,122,-238,123,-238,124,-238,125,-238,126,-238,127,-238,131,-238,132,-238,133,-238,134,-238,135,-238,136,-238,137,-238,138,-238,139,-238,141,-238,142,-238,143,-238,144,-238,146,-238,148,-238,149,-238,150,-238,151,-238,152,-238,153,-238,156,-238,159,-238,160,-238,161,-238,162,-238,163,-238,164,-238,178,-238,179,-238,180,-238,181,-238,182,-238,183,-238,184,-238,185,-238,186,-238,187,-238,188,-238,189,-238,190,-238,191,-238,192,-238,193,-238,194,-238},
-    &.{34,271,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,272,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,273,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,274,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-160,71,-160,72,-160,73,-160,74,-160,76,-160,104,-160,107,-160},
-    &.{1,-163,71,-163,72,-163,73,-163,74,-163,76,-163,107,-163},
-    &.{34,275,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,276,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,277,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{35,281,36,57,37,90,38,32,39,65,41,160,44,283,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,170,59,84,60,64,64,55,65,144,66,282,67,280,68,279,69,71,75,109,97,105,107,-243,109,53,110,15,111,34,112,278,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-156,71,-156,72,-156,73,-156,74,-156,76,-156,107,-156},
-    &.{34,284,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,285,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,286,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,287,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{35,288,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,64,55,65,107,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-159,71,-159,72,-159,73,-159,74,-159,76,-159,107,-159},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,177,289},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,177,290},
-    &.{1,-225,71,-225,72,-225,73,-225,74,-225,76,-225,107,-225},
-    &.{1,-213,71,-213,72,-213,73,-213,74,-213,76,-213,107,-213},
-    &.{1,-224,71,-224,72,-224,73,-224,74,-224,76,-224,104,-224,107,-224,126,-224},
-    &.{1,-209,71,-209,72,-209,73,-209,74,-209,76,-209,104,-209,107,-209,126,-209},
-    &.{1,-210,71,-210,72,-210,73,-210,74,-210,76,-210,104,-210,107,-210,126,-210},
-    &.{1,-35,71,-35,72,-35,73,-35,76,-35},
-    &.{36,291,37,145,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{75,292},
-    &.{1,-255,71,-255,72,-255,73,-255,74,-255,75,-255,76,-255,77,-255,78,-255,79,-255,80,-255,81,-255,82,-255,83,-255,84,-255,85,-255,86,-255,87,-255,88,-255,89,-255,97,-255,104,-255,107,-255,108,-255,109,-255,110,-255,111,-255,119,-255,122,-255,123,-255,124,-255,125,-255,126,-255,127,-255,131,-255,132,-255,133,-255,134,-255,135,-255,136,-255,137,-255,138,-255,139,-255,141,-255,142,-255,143,-255,144,-255,146,-255,148,-255,149,-255,150,-255,151,-255,152,-255,153,-255,156,-255,159,-255,160,-255,161,-255,162,-255,163,-255,164,-255,178,-255,179,-255,180,-255,181,-255,182,-255,183,-255,184,-255,185,-255,186,-255,187,-255,188,-255,189,-255,190,-255,191,-255,192,-255,193,-255,194,-255},
-    &.{1,-59,71,-59,73,-59},
-    &.{72,-154},
-    &.{72,293},
-    &.{1,-152,71,-152,72,-152,73,-152,74,-152,76,-152,104,-152,107,-152,126,-152,133,-152,135,-152,136,-152,137,-152,138,-152,141,-152},
-    &.{31,304,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,307,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,308,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,309,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,310,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,311,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,170,312,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-107,71,-107,73,-107},
-    &.{1,-108,71,-108,73,-108},
-    &.{5,314,15,313,16,250,72,100,108,251,109,248},
-    &.{72,315},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,174,316,175,89,176,62,177,46},
-    &.{15,318,16,250,72,317,108,251,109,248},
-    &.{75,319},
-    &.{75,320},
-    &.{74,321},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,176,322,177,46},
-    &.{64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,176,323,177,46},
-    &.{37,324,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{36,325,37,145,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,134,326,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{38,327,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-226,71,-226,72,-226,73,-226,74,-226,76,-226,104,-226,107,-226,126,-226,133,-226,135,-226,136,-226,137,-226,138,-226,141,-226,148,-226,178,-226,179,-226,180,-226,181,-226,182,-226,183,-226,184,-226,185,-226,186,-226,187,-226,188,-226,189,-226,190,-226,191,-226,192,-226,193,-226,194,-226},
-    &.{75,328},
-    &.{1,-40,71,-40,72,-40,73,-40,76,-40},
-    &.{1,-49,71,-49,72,-49,73,-49,76,-49},
-    &.{1,-5,6,329,7,67,8,23,9,2,10,56,11,29,12,69,13,5,19,35,20,70,21,13,22,27,26,31,27,30,28,78,29,93,30,3,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,71,-5,73,-5,74,26,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,99,40,100,73,101,97,102,82,109,53,110,15,111,34,113,87,114,83,115,7,116,19,118,48,119,42,120,88,121,80,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{5,330,14,333,15,331,16,250,72,100,103,332,108,251,109,248},
-    &.{1,-36,71,-36,72,-36,73,-36,76,-36},
-    &.{1,-7,71,-7,72,-7,73,-7,74,-7,76,-7,104,-7,107,-7,126,-7,133,-7,136,-7},
-    &.{71,222,73,334},
-    &.{12,341,13,335,17,338,18,342,23,344,24,340,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{1,-257,71,-257,72,-257,73,-257,74,-257,75,-257,76,-257,77,-257,78,-257,79,-257,80,-257,81,-257,82,-257,83,-257,84,-257,85,-257,86,-257,87,-257,88,-257,89,-257,97,-257,104,-257,107,-257,108,-257,109,-257,110,-257,111,-257,119,-257,122,-257,123,-257,124,-257,125,-257,126,-257,127,-257,131,-257,132,-257,133,-257,134,-257,135,-257,136,-257,137,-257,138,-257,139,-257,141,-257,142,-257,143,-257,144,-257,146,-257,148,-257,149,-257,150,-257,151,-257,152,-257,153,-257,156,-257,159,-257,160,-257,161,-257,162,-257,163,-257,164,-257,178,-257,179,-257,180,-257,181,-257,182,-257,183,-257,184,-257,185,-257,186,-257,187,-257,188,-257,189,-257,190,-257,191,-257,192,-257,193,-257,194,-257},
-    &.{126,-259},
-    &.{35,346,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,64,55,65,107,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-276,71,-276,72,-276,73,-276,74,-276,76,-276,104,-276,107,-276,126,-276,133,-276,135,-276,136,-276,137,-276,138,-276,141,-276,148,-276,178,-276,179,-276,180,-276,181,-276,182,-276,183,-276,184,-276,185,-276,186,208},
-    &.{1,-274,71,-274,72,-274,73,-274,74,-274,76,-274,104,-274,107,-274,126,-274,133,-274,135,-274,136,-274,137,-274,138,-274,141,-274,178,-274,179,-274,180,-274,181,-274,182,-274,183,-274,184,-274,185,111},
-    &.{104,348,145,347},
-    &.{36,194,37,145,38,32,39,65,40,349,41,143,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{75,350},
-    &.{72,-217,75,-217,97,-217,109,-217,110,-217,111,-217,119,-217,122,-217,123,-217,124,-217,125,-217,127,-217,134,-217,139,-217,142,-217,143,-217,144,-217,146,-217,149,-217,150,-217,151,-217,152,-217,153,-217,156,-217,159,-217,160,-217,161,-217,162,-217,164,-217},
-    &.{134,-214},
-    &.{18,117,61,351,75,122,112,119,124,121,160,118,161,120},
-    &.{31,352,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{104,-221,134,-221},
-    &.{104,-222,134,-222},
-    &.{104,-223,134,-223},
-    &.{34,353,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{134,354},
-    &.{1,-204,71,-204,72,-204,73,-204,74,-204,76,-204,104,-204,107,-204,126,-204},
-    &.{12,341,13,335,17,338,18,342,23,355,24,340,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{72,356},
-    &.{75,-73,97,-73,107,-73,110,-73,111,-73,112,-73},
-    &.{31,357,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{17,360,18,342,75,122,97,345,105,359,107,358,110,339,111,337,112,119},
-    &.{75,-72,97,-72,107,-72,110,-72,111,-72,112,-72},
-    &.{1,-280,71,-280,72,-280,73,-280,74,-280,76,-280,104,-280,107,-280,126,-280,133,-280,135,-280,136,-280,137,-280,138,-280,141,-280,148,-280,178,-280,179,-280,180,-280,181,-280,182,-280,183,-280,184,-280,185,-280,186,-280,187,-280,188,213,189,214},
-    &.{1,-14,71,-14,73,-14},
-    &.{1,-150,71,-150,72,-150,73,-150,74,-150,76,-150,104,-150,107,-150,126,-150,133,-150,135,-150,136,-150,137,-150,138,-150,141,-150},
-    &.{75,361},
-    &.{36,325,37,145,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,134,362,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-168,71,-168,72,-168,73,-168,74,-168,76,-168,104,-168,107,-168,126,-168,136,363},
-    &.{1,-272,71,-272,72,-272,73,-272,74,-272,76,-272,104,-272,107,-272,126,-272,133,-272,135,-272,136,-272,137,-272,138,-272,141,-272,178,-272,179,-272,180,-272,181,-272,182,-272,183,-272},
-    &.{1,-289,71,-289,72,-289,73,-289,74,-289,76,-289,104,-289,107,-289,126,-289,133,-289,135,-289,136,-289,137,-289,138,-289,141,-289,148,-289,178,-289,179,-289,180,-289,181,-289,182,-289,183,-289,184,-289,185,-289,186,-289,187,-289,188,-289,189,-289,190,-289,191,-289,192,-289,193,-289,194,-289},
-    &.{1,-290,71,-290,72,-290,73,-290,74,-290,76,-290,104,-290,107,-290,126,-290,133,-290,135,-290,136,-290,137,-290,138,-290,141,-290,148,-290,178,-290,179,-290,180,-290,181,-290,182,-290,183,-290,184,-290,185,-290,186,-290,187,-290,188,-290,189,-290,190,-290,191,-290,192,-290,193,-290,194,-290},
-    &.{1,-288,71,-288,72,-288,73,-288,74,-288,76,-288,104,-288,107,-288,126,-288,133,-288,135,-288,136,-288,137,-288,138,-288,141,-288,148,-288,178,-288,179,-288,180,-288,181,-288,182,-288,183,-288,184,-288,185,-288,186,-288,187,-288,188,-288,189,-288,190,-288,191,-288,192,-288,193,-288,194,-288},
-    &.{1,-99,71,-99,73,-99},
-    &.{35,281,36,57,37,90,38,32,39,65,41,160,44,283,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,170,59,84,60,64,64,55,65,144,66,364,67,280,68,279,69,71,75,109,97,105,107,-243,109,53,110,15,111,34,112,278,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-258,71,-258,72,-258,73,-258,74,-258,75,-258,76,-258,77,-258,78,-258,79,-258,80,-258,81,-258,82,-258,83,-258,84,-258,85,-258,86,-258,87,-258,88,-258,89,-258,97,-258,104,-258,107,-258,108,-258,109,-258,110,-258,111,-258,119,-258,122,-258,123,-258,124,-258,125,-258,126,-258,127,-258,131,-258,132,-258,133,-258,134,-258,135,-258,136,-258,137,-258,138,-258,139,-258,141,-258,142,-258,143,-258,144,-258,146,-258,148,-258,149,-258,150,-258,151,-258,152,-258,153,-258,156,-258,159,-258,160,-258,161,-258,162,-258,163,-258,164,-258,178,-258,179,-258,180,-258,181,-258,182,-258,183,-258,184,-258,185,-258,186,-258,187,-258,188,-258,189,-258,190,-258,191,-258,192,-258,193,-258,194,-258},
-    &.{8,365,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-171,71,-171,72,-171,73,-171,74,-171,76,-171,104,-171,107,-171,126,-171,136,366},
-    &.{1,-25,71,-25,72,-25,73,-25,76,-25},
-    &.{1,-235,71,-235,72,-235,73,-235,74,-235,75,-235,76,-235,77,-235,78,-235,79,-235,80,-235,81,-235,82,-235,83,-235,84,-235,85,-235,86,-235,87,-235,88,-235,89,-235,97,-235,104,-235,107,-235,108,-235,109,-235,110,-235,111,-235,119,-235,122,-235,123,-235,124,-235,125,-235,126,-235,127,-235,131,-235,132,-235,133,-235,134,-235,135,-235,136,-235,137,-235,138,-235,139,-235,141,-235,142,-235,143,-235,144,-235,146,-235,148,-235,149,-235,150,-235,151,-235,152,-235,153,-235,156,-235,159,-235,160,-235,161,-235,162,-235,163,-235,164,-235,178,-235,179,-235,180,-235,181,-235,182,-235,183,-235,184,-235,185,-235,186,-235,187,-235,188,-235,189,-235,190,-235,191,-235,192,-235,193,-235,194,-235},
-    &.{35,367,36,57,37,90,38,32,39,65,41,160,44,368,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,170,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-28,71,-28,72,-28,73,-28,76,-28},
-    &.{1,-29,71,-29,72,-29,73,-29,76,-29},
-    &.{1,-22,71,-22,72,-22,73,-22,76,-22},
-    &.{1,-23,71,-23,72,-23,73,-23,76,-23},
-    &.{1,-24,71,-24,72,-24,73,-24,76,-24},
-    &.{1,-31,71,-31,72,-31,73,-31,76,-31},
-    &.{1,-20,71,-20,72,-20,73,-20,76,-20},
-    &.{1,-30,71,-30,72,-30,73,-30,76,-30},
-    &.{74,369},
-    &.{104,-244,107,-244},
-    &.{104,370,107,-240},
-    &.{104,-247,107,-247},
-    &.{107,371},
-    &.{107,-242},
-    &.{1,-26,71,-26,72,-26,73,-26,76,-26},
-    &.{1,-19,71,-19,72,-19,73,-19,76,-19},
-    &.{1,-27,71,-27,72,-27,73,-27,76,-27},
-    &.{1,-21,71,-21,72,-21,73,-21,76,-21},
-    &.{126,372},
-    &.{1,-286,71,-286,72,-286,73,-286,74,-286,76,-286,104,-286,107,-286,126,-286,133,-286,135,-286,136,-286,137,-286,138,-286,141,-286,148,-286,178,-286,179,-286,180,-286,181,-286,182,-286,183,-286,184,-286,185,-286,186,-286,187,-286,188,-286,189,-286,190,-286,191,-286,192,151,193,149,194,150},
-    &.{1,-285,71,-285,72,-285,73,-285,74,-285,76,-285,104,-285,107,-285,126,-285,133,-285,135,-285,136,-285,137,-285,138,-285,141,-285,148,-285,178,-285,179,-285,180,-285,181,-285,182,-285,183,-285,184,-285,185,-285,186,-285,187,-285,188,-285,189,-285,190,-285,191,-285,192,151,193,149,194,150},
-    &.{1,-16,71,-16,73,-16},
-    &.{1,-42,71,-42,72,-42,73,-42,76,-42},
-    &.{50,377,51,381,52,380,53,373,75,386,119,383,122,376,127,379,136,378,149,375,150,382,151,374,152,384,153,385},
-    &.{31,387,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{109,388},
-    &.{31,389,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{126,391,127,390},
-    &.{31,392,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{31,393,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{31,394,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-125,71,-125,72,-125,73,-125,77,-125,88,-125,104,-125,107,-125,130,-125,131,-125,134,-125},
-    &.{1,-128,71,-128,72,-128,73,-128,77,-128,88,-128,104,-128,107,-128,130,-128,131,-128,134,-128},
-    &.{1,-122,71,-122,72,-122,73,-122,77,-122,88,-122,104,-122,107,-122,130,396,131,395,134,-122},
-    &.{77,398,88,397},
-    &.{109,399},
-    &.{1,-126,71,-126,72,-126,73,-126,77,-126,88,-126,104,-126,107,-126,108,401,130,-126,131,-126,132,400,134,-126},
-    &.{1,-266,71,-266,72,-266,73,-266,74,-266,76,-266,104,-266,107,-266,126,-266,133,-266,135,-266,136,-266,137,-266,138,-266,141,-266},
-    &.{1,-267,71,-267,72,-267,73,-267,74,-267,76,-267,104,-267,107,-267,126,-267,133,-267,135,-267,136,-267,137,-267,138,-267,141,-267},
-    &.{1,-269,71,-269,72,-269,73,-269,74,-269,76,-269,104,-269,107,-269,126,-269,133,-269,135,-269,136,-269,137,-269,138,-269,141,-269},
-    &.{1,-270,71,-270,72,-270,73,-270,74,-270,76,-270,104,-270,107,-270,126,-270,133,-270,135,-270,136,-270,137,-270,138,-270,141,-270},
-    &.{1,-268,71,-268,72,-268,73,-268,74,-268,76,-268,104,-268,107,-268,126,-268,133,-268,135,-268,136,-268,137,-268,138,-268,141,-268},
-    &.{1,-265,71,-265,72,-265,73,-265,74,-265,76,-265,104,-265,107,-265,126,-265,133,-265,135,-265,136,-265,137,-265,138,-265,141,-265},
-    &.{5,402,72,100},
-    &.{1,-65,71,-65,73,-65},
-    &.{12,341,13,335,17,338,18,342,23,403,24,340,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{1,-278,71,-278,72,-278,73,-278,74,-278,76,-278,104,-278,107,-278,126,-278,133,-278,135,-278,136,-278,137,-278,138,-278,141,-278,148,-278,178,-278,179,-278,180,-278,181,-278,182,-278,183,-278,184,-278,185,-278,186,-278,187,130},
-    &.{12,341,13,335,17,338,18,342,23,404,24,340,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{72,405},
-    &.{1,-106,15,406,16,250,71,-106,73,-106,108,251,109,248},
-    &.{1,-104,14,408,15,407,16,250,71,-104,73,-104,103,332,108,251,109,248},
-    &.{31,409,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-282,71,-282,72,-282,73,-282,74,-282,76,-282,104,-282,107,-282,126,-282,133,-282,135,-282,136,-282,137,-282,138,-282,141,-282,148,-282,178,-282,179,-282,180,-282,181,-282,182,-282,183,-282,184,-282,185,-282,186,-282,187,-282,188,-282,189,-282,190,183,191,182},
-    &.{1,-283,71,-283,72,-283,73,-283,74,-283,76,-283,104,-283,107,-283,126,-283,133,-283,135,-283,136,-283,137,-283,138,-283,141,-283,148,-283,178,-283,179,-283,180,-283,181,-283,182,-283,183,-283,184,-283,185,-283,186,-283,187,-283,188,-283,189,-283,190,183,191,182},
-    &.{136,410,137,217},
-    &.{1,-146,71,-146,72,-146,73,-146,74,-146,76,-146,104,-146,107,-146,126,-146,141,-146},
-    &.{75,411},
-    &.{1,-148,71,-148,72,-148,73,-148,74,-148,76,-148,104,-148,107,-148,126,-148,133,-148,135,-148,136,-148,137,-148,138,133,141,-148},
-    &.{1,-39,34,412,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,71,-39,72,-39,73,-39,75,109,76,-39,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-4,71,-4,73,-4},
-    &.{1,-63,71,-63,73,-63},
-    &.{5,414,14,413,72,100,103,332},
-    &.{31,415,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{5,416,72,100},
-    &.{1,-6,71,-6,72,-6,73,-6,74,-6,76,-6,104,-6,107,-6,126,-6,133,-6,136,-6},
-    &.{71,-96,73,-96},
-    &.{17,360,18,342,25,417,75,122,97,345,105,418,110,339,111,337,112,119},
-    &.{18,419,75,122,112,119},
-    &.{71,-92,73,-92},
-    &.{18,420,75,122,112,119},
-    &.{71,-89,73,-89},
-    &.{71,-95,73,-95},
-    &.{71,-74,72,-74,73,-74,74,421,104,-74,107,-74},
-    &.{15,422,16,250,71,-80,73,-80,74,-80,77,423,108,251,109,248},
-    &.{71,425,73,424},
-    &.{18,426,75,122,112,119},
-    &.{104,230,126,-261,166,427},
-    &.{36,194,37,145,38,32,39,65,40,428,41,143,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{75,429},
-    &.{5,430,72,100},
-    &.{145,431},
-    &.{104,238,134,-216,158,432},
-    &.{104,-220,134,-220},
-    &.{1,-34,71,-34,72,-34,73,-34,76,-34},
-    &.{75,433},
-    &.{71,425,73,434},
-    &.{12,341,13,335,17,338,18,342,23,435,24,340,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{1,-86,71,-86,73,-86},
-    &.{1,-71,71,-71,72,-71,73,-71,103,-71},
-    &.{107,436},
-    &.{72,-69,104,438,106,437,107,-69},
-    &.{72,-165,74,-165},
-    &.{75,439},
-    &.{5,441,46,440,72,100,142,44},
-    &.{107,442},
-    &.{5,443,72,100},
-    &.{5,444,72,100},
-    &.{1,-161,71,-161,72,-161,73,-161,74,-161,76,-161,104,-161,107,-161},
-    &.{1,-158,71,-158,72,-158,73,-158,74,-158,76,-158,107,-158},
-    &.{35,445,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,64,55,65,107,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{35,281,36,57,37,90,38,32,39,65,41,160,44,447,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,170,59,84,60,64,64,55,65,144,68,446,69,71,75,109,97,105,109,53,110,15,111,34,112,278,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-237,71,-237,72,-237,73,-237,74,-237,75,-237,76,-237,77,-237,78,-237,79,-237,80,-237,81,-237,82,-237,83,-237,84,-237,85,-237,86,-237,87,-237,88,-237,89,-237,97,-237,104,-237,107,-237,108,-237,109,-237,110,-237,111,-237,119,-237,122,-237,123,-237,124,-237,125,-237,126,-237,127,-237,131,-237,132,-237,133,-237,134,-237,135,-237,136,-237,137,-237,138,-237,139,-237,141,-237,142,-237,143,-237,144,-237,146,-237,148,-237,149,-237,150,-237,151,-237,152,-237,153,-237,156,-237,159,-237,160,-237,161,-237,162,-237,163,-237,164,-237,178,-237,179,-237,180,-237,181,-237,182,-237,183,-237,184,-237,185,-237,186,-237,187,-237,188,-237,189,-237,190,-237,191,-237,192,-237,193,-237,194,-237},
-    &.{1,-236,71,-236,72,-236,73,-236,74,-236,75,-236,76,-236,77,-236,78,-236,79,-236,80,-236,81,-236,82,-236,83,-236,84,-236,85,-236,86,-236,87,-236,88,-236,89,-236,97,-236,104,-236,107,-236,108,-236,109,-236,110,-236,111,-236,119,-236,122,-236,123,-236,124,-236,125,-236,126,-236,127,-236,131,-236,132,-236,133,-236,134,-236,135,-236,136,-236,137,-236,138,-236,139,-236,141,-236,142,-236,143,-236,144,-236,146,-236,148,-236,149,-236,150,-236,151,-236,152,-236,153,-236,156,-236,159,-236,160,-236,161,-236,162,-236,163,-236,164,-236,178,-236,179,-236,180,-236,181,-236,182,-236,183,-236,184,-236,185,-236,186,-236,187,-236,188,-236,189,-236,190,-236,191,-236,192,-236,193,-236,194,-236},
-    &.{72,-187,147,-187,148,448},
-    &.{72,-196,147,-196,148,-196},
-    &.{127,449},
-    &.{72,-194,147,-194,148,-194},
-    &.{71,451,73,450},
-    &.{72,-190,147,-190,148,-190},
-    &.{72,-191,147,-191,148,-191},
-    &.{5,453,72,100,147,452},
-    &.{71,-182,73,-182},
-    &.{72,-193,147,-193,148,-193},
-    &.{72,-195,147,-195,148,-195},
-    &.{72,-197,147,-197,148,-197},
-    &.{75,454},
-    &.{72,-189,147,-189,148,-189},
-    &.{107,455},
-    &.{31,458,32,303,33,301,75,306,101,305,102,295,107,456,109,294,110,299,111,296,116,302,123,298,124,300,125,297,128,457},
-    &.{1,-110,71,-110,72,-110,73,-110,77,-110,88,-110,104,-110,107,-110,134,-110},
-    &.{126,459},
-    &.{31,460,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-111,71,-111,72,-111,73,-111,77,-111,88,-111,104,-111,107,-111,134,-111},
-    &.{1,-109,71,-109,72,-109,73,-109,77,-109,88,-109,104,-109,107,-109,134,-109},
-    &.{1,-112,71,-112,72,-112,73,-112,77,-112,88,-112,104,-112,107,-112,134,-112},
-    &.{1,-124,71,-124,72,-124,73,-124,77,-124,88,-124,104,-124,107,-124,130,-124,131,-124,134,-124},
-    &.{1,-123,71,-123,72,-123,73,-123,77,-123,88,-123,104,-123,107,-123,130,-123,131,-123,134,-123},
-    &.{34,461,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{34,462,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,144,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{31,458,32,303,33,301,75,306,101,305,102,295,107,463,109,294,110,299,111,296,116,302,123,298,124,300,125,297,128,464},
-    &.{75,465},
-    &.{31,458,32,303,33,301,75,306,101,305,102,295,107,466,109,294,110,299,111,296,116,302,123,298,124,300,125,297,128,467},
-    &.{1,-64,71,-64,73,-64},
-    &.{71,425,73,468},
-    &.{71,425,73,469},
-    &.{12,341,13,335,17,338,18,342,23,470,24,340,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{1,-105,71,-105,73,-105},
-    &.{1,-103,14,471,71,-103,73,-103,103,332},
-    &.{1,-102,71,-102,73,-102},
-    &.{1,-100,71,-100,73,-100},
-    &.{36,472,37,145,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{134,473},
-    &.{1,-38,71,-38,72,-38,73,-38,76,-38},
-    &.{5,474,72,100},
-    &.{1,-61,71,-61,73,-61},
-    &.{1,-66,71,-66,72,-66,73,-66},
-    &.{1,-62,71,-62,73,-62},
-    &.{5,475,72,100},
-    &.{72,-98},
-    &.{71,-79,72,-79,73,-79,104,-79,107,-79},
-    &.{71,-78,72,-78,73,-78,104,-78,107,-78},
-    &.{31,476,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{71,-94,73,-94},
-    &.{35,477,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,64,55,65,107,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-85,71,-85,73,-85},
-    &.{12,341,13,335,17,338,18,342,24,478,71,-91,73,-91,75,343,97,345,101,97,102,82,110,339,111,337,112,119,117,336},
-    &.{74,479},
-    &.{126,-260},
-    &.{5,480,72,100},
-    &.{145,481},
-    &.{1,-179,71,-179,72,-179,73,-179,74,-179,76,-179,104,-179,107,-179,126,-179,136,482},
-    &.{36,194,37,145,38,32,39,65,40,483,41,143,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{134,-215},
-    &.{134,484},
-    &.{1,-88,71,-88,73,-88},
-    &.{71,425,73,485},
-    &.{1,-70,71,-70,72,-70,73,-70,103,-70},
-    &.{72,-67,107,-67},
-    &.{17,486,18,342,75,122,97,345,110,339,111,337,112,119},
-    &.{134,487},
-    &.{1,-166,71,-166,72,-166,73,-166,74,-166,76,-166,104,-166,107,-166,126,-166},
-    &.{1,-167,71,-167,72,-167,73,-167,74,-167,76,-167,104,-167,107,-167,126,-167},
-    &.{1,-256,71,-256,72,-256,73,-256,74,-256,75,-256,76,-256,77,-256,78,-256,79,-256,80,-256,81,-256,82,-256,83,-256,84,-256,85,-256,86,-256,87,-256,88,-256,89,-256,97,-256,104,-256,107,-256,108,-256,109,-256,110,-256,111,-256,119,-256,122,-256,123,-256,124,-256,125,-256,126,-256,127,-256,131,-256,132,-256,133,-256,134,-256,135,-256,136,-256,137,-256,138,-256,139,-256,141,-256,142,-256,143,-256,144,-256,146,-256,148,-256,149,-256,150,-256,151,-256,152,-256,153,-256,156,-256,159,-256,160,-256,161,-256,162,-256,163,-256,164,-256,178,-256,179,-256,180,-256,181,-256,182,-256,183,-256,184,-256,185,-256,186,-256,187,-256,188,-256,189,-256,190,-256,191,-256,192,-256,193,-256,194,-256},
-    &.{1,-172,71,-172,72,-172,73,-172,74,-172,76,-172,104,-172,107,-172,126,-172,136,488},
-    &.{1,-169,71,-169,72,-169,73,-169,74,-169,76,-169,104,-169,107,-169,126,-169},
-    &.{104,-246,107,-246},
-    &.{104,-245,107,-245},
-    &.{107,-241},
-    &.{53,489,75,386,119,383,122,376,127,379,136,378,149,375,150,382,151,374,152,384,153,385},
-    &.{72,-192,147,-192,148,-192},
-    &.{1,-181,71,-181,72,-181,73,-181,74,-181,76,-181,104,-181,107,-181,126,-181},
-    &.{51,490,52,380,53,373,71,-184,73,-184,75,386,119,383,122,376,127,379,136,378,149,375,150,382,151,374,152,384,153,385},
-    &.{8,491,34,79,35,54,36,57,37,90,38,32,39,65,41,6,46,36,47,49,48,21,49,41,54,50,56,24,57,60,58,58,59,84,60,64,64,55,65,61,69,71,75,76,90,17,91,66,92,98,93,92,94,68,95,37,96,4,97,52,98,94,109,53,110,15,111,34,119,42,122,39,123,38,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{71,-186,73,-186},
-    &.{72,-198,108,492,147,-198,148,-198},
-    &.{1,-131,71,-131,72,-131,73,-131,77,-131,88,-131,104,-131,107,-131,130,-131,131,-131,134,-131},
-    &.{1,-121,71,-121,72,-121,73,-121,77,-121,88,-121,104,-121,107,-121,134,-121},
-    &.{107,493},
-    &.{104,495,107,-117,129,494},
-    &.{31,496,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-113,71,-113,72,-113,73,-113,77,-113,88,-113,104,-113,107,-113,134,-113},
-    &.{1,-33,71,-33,72,-33,73,-33,76,-33},
-    &.{1,-32,71,-32,72,-32,73,-32,76,-32},
-    &.{31,497,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{107,498},
-    &.{1,-127,71,-127,72,-127,73,-127,77,-127,88,-127,104,-127,107,-127,130,-127,131,-127,134,-127},
-    &.{1,-130,71,-130,72,-130,73,-130,77,-130,88,-130,104,-130,107,-130,130,-130,131,-130,134,-130},
-    &.{107,499},
-    &.{1,-84,71,-84,73,-84},
-    &.{1,-82,71,-82,73,-82},
-    &.{71,425,73,500},
-    &.{1,-101,71,-101,73,-101},
-    &.{1,-144,71,-144,72,-144,73,-144,74,-144,76,-144,104,-144,107,-144,126,-144,141,-144},
-    &.{5,502,36,501,37,145,38,32,39,65,64,55,65,107,69,71,72,100,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{1,-60,71,-60,73,-60},
-    &.{71,-97,73,-97},
-    &.{71,-75,72,-75,73,-75,77,503,104,-75,107,-75},
-    &.{71,-93,73,-93},
-    &.{71,-90,73,-90},
-    &.{31,504,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-177,71,-177,72,-177,73,-177,74,-177,76,-177,104,-177,107,-177,126,-177,136,505},
-    &.{36,194,37,145,38,32,39,65,40,506,41,143,64,55,65,144,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{5,507,72,100},
-    &.{5,508,72,100},
-    &.{5,509,72,100},
-    &.{1,-87,71,-87,73,-87},
-    &.{72,-69,104,438,106,510,107,-69},
-    &.{36,501,37,145,38,32,39,65,64,55,65,107,69,71,75,109,109,53,110,15,111,34,119,42,122,39,123,124,124,47,125,9,127,63,139,75,140,95,149,91,150,16,151,8,152,43,153,72,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{5,511,72,100},
-    &.{72,-188,147,-188},
-    &.{71,-183,73,-183},
-    &.{71,-185,73,-185},
-    &.{75,514,107,513,154,512},
-    &.{1,-120,71,-120,72,-120,73,-120,77,-120,88,-120,104,-120,107,-120,134,-120},
-    &.{107,-115},
-    &.{31,515,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-114,71,-114,72,-114,73,-114,77,-114,88,-114,104,-114,107,-114,134,-114},
-    &.{1,-119,71,-119,72,-119,73,-119,77,-119,88,-119,104,-119,107,-119,134,-119},
-    &.{31,516,32,303,33,301,75,306,101,305,102,295,109,294,110,299,111,296,116,302,123,298,124,300,125,297},
-    &.{1,-129,71,-129,72,-129,73,-129,77,-129,88,-129,104,-129,107,-129,130,-129,131,-129,134,-129},
-    &.{1,-83,71,-83,73,-83},
-    &.{1,-145,71,-145,72,-145,73,-145,74,-145,76,-145,104,-145,107,-145,126,-145,141,-145},
-    &.{1,-141,71,-141,72,-141,73,-141,74,-141,76,-141,104,-141,107,-141,126,-141},
-    &.{35,517,36,57,37,90,38,32,39,65,46,36,47,49,48,21,49,41,54,50,56,24,57,60,60,108,64,55,65,107,69,71,75,109,97,105,109,53,110,15,111,34,119,42,122,39,123,104,124,47,125,9,127,63,134,12,139,75,140,95,142,44,143,59,144,11,146,74,149,91,150,16,151,8,152,43,153,72,156,18,159,85,160,20,161,33,162,28,164,51,169,14,170,77,171,45,172,10,173,86,174,25,175,89,176,62,177,46},
-    &.{71,-77,72,-77,73,-77,104,-77,107,-77},
-    &.{5,518,72,100},
-    &.{5,519,72,100},
-    &.{1,-175,71,-175,72,-175,73,-175,74,-175,76,-175,104,-175,107,-175,126,-175},
-    &.{1,-180,71,-180,72,-180,73,-180,74,-180,76,-180,104,-180,107,-180,126,-180,136,520},
-    &.{1,-206,71,-206,72,-206,73,-206,74,-206,76,-206,104,-206,107,-206,126,-206},
-    &.{72,-68,107,-68},
-    &.{1,-170,71,-170,72,-170,73,-170,74,-170,76,-170,104,-170,107,-170,126,-170},
-    &.{107,521},
-    &.{72,-203,147,-203,148,-203},
-    &.{104,523,107,-201,155,522},
-    &.{104,495,107,-117,129,524},
-    &.{1,-118,71,-118,72,-118,73,-118,77,-118,88,-118,104,-118,107,-118,134,-118},
-    &.{71,-76,72,-76,73,-76,104,-76,107,-76},
-    &.{1,-173,71,-173,72,-173,73,-173,74,-173,76,-173,104,-173,107,-173,126,-173},
-    &.{1,-178,71,-178,72,-178,73,-178,74,-178,76,-178,104,-178,107,-178,126,-178,136,525},
-    &.{5,526,72,100},
-    &.{72,-202,147,-202,148,-202},
-    &.{107,-199},
-    &.{75,527},
-    &.{107,-116},
-    &.{5,528,72,100},
-    &.{1,-176,71,-176,72,-176,73,-176,74,-176,76,-176,104,-176,107,-176,126,-176},
-    &.{104,523,107,-201,155,529},
-    &.{1,-174,71,-174,72,-174,73,-174,74,-174,76,-174,104,-174,107,-174,126,-174},
-    &.{107,-200},
+    &.{73,244},
+    &.{4,246,6,73,7,62,8,20,9,3,10,51,11,29,12,64,18,90,19,37,20,65,21,12,25,33,26,30,27,31,28,70,29,86,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,69,245,70,32,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,95,39,96,4,97,48,98,89,105,56,106,17,107,9,109,49,110,11,111,35,112,5,114,72,115,6,116,16,117,80,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-204,54,247,67,-204,68,-204,69,-204,70,-204,72,-204,100,-204,103,-204,122,-204,130,248},
+    &.{71,249},
+    &.{67,-80,68,-80,69,-80,70,-80,100,-80,103,-80,131,-80},
+    &.{67,-81,68,-81,69,-81,70,-81,100,-81,103,-81,131,-81},
+    &.{71,250},
+    &.{71,251},
+    &.{70,252,100,-219,131,-219},
+    &.{131,253},
+    &.{100,254,131,-216,156,255},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,175,256,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,175,257,176,57},
+    &.{1,-226,67,-226,68,-226,69,-226,70,-226,72,-226,100,-226,103,-226,122,-226,130,-226,132,-226,133,-226,134,-226,135,-226,138,-226,145,-226,177,-226,178,-226,179,-226,180,-226,181,-226,182,-226,183,-226,184,-226,185,-226,186,-226,187,-226,188,-226,189,-226,190,-226,191,-226,192,-226,193,-226},
+    &.{1,-231,67,-231,68,-231,69,-231,70,-231,72,-231,100,-231,103,-231,122,-231,130,-231,132,-231,133,-231,134,-231,135,-231,138,-231,145,-231,177,-231,178,-231,179,-231,180,-231,181,-231,182,-231,183,-231,184,-231,185,-231,186,-231,187,-231,188,-231,189,-231,190,-231,191,-231,192,-231,193,-231},
+    &.{1,-35,67,-35,68,-35,69,-35,72,-35},
+    &.{6,258,7,62,8,20,9,3,10,51,11,29,12,64,18,90,19,37,20,65,21,12,25,33,26,30,27,31,28,70,29,86,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,70,32,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,95,39,96,4,97,48,98,89,105,56,106,17,107,9,109,49,110,11,111,35,112,5,114,72,115,6,116,16,117,80,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{68,259},
+    &.{1,-51,67,-51,69,-51},
+    &.{1,-212,67,-212,68,-212,69,-212,70,-212,72,-212,103,-212},
+    &.{1,-208,67,-208,68,-208,69,-208,70,-208,72,-208,100,-208,103,-208,122,-208},
+    &.{1,-229,67,-229,68,-229,69,-229,70,-229,72,-229,100,-229,103,-229,122,-229,130,-229,132,-229,133,-229,134,-229,135,-229,138,-229,145,-229,177,-229,178,-229,179,-229,180,-229,181,-229,182,-229,183,-229,184,-229,185,-229,186,-229,187,-229,188,-229,189,-229,190,-229,191,-229,192,-229,193,-229},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,171,260,172,8,173,81,174,25,175,87,176,57},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,172,261,173,81,174,25,175,87,176,57},
+    &.{5,264,13,263,14,265,15,226,68,124,99,262,104,230,105,227},
+    &.{14,267,15,226,68,266,104,230,105,227},
+    &.{36,268,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{35,269,36,153,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,131,270,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{37,271,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{68,-153},
+    &.{1,-146,67,-146,68,-146,69,-146,70,-146,72,-146,100,-146,103,-146,122,-146,130,272,132,149,134,151,138,-146},
+    &.{68,273},
+    &.{1,-232,34,206,35,50,36,53,37,84,38,36,40,195,41,188,42,202,43,189,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,198,58,54,59,79,61,93,62,155,66,76,67,-232,68,-232,69,-232,70,-232,71,105,72,-232,93,157,100,-232,103,-232,104,201,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,128,197,129,191,130,-232,131,24,132,-232,134,-232,135,-232,136,10,137,44,138,-232,139,66,140,91,141,2,143,55,145,-232,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,161,194,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57,177,-232,178,-232,179,-232,180,-232,181,-232,182,-232,183,-232,184,-232,185,-232,186,-232,187,-232,188,-232,189,-232,190,-232,191,-232,192,-232,193,-232},
+    &.{68,-154,70,-154},
+    &.{35,211,36,153,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{103,274},
+    &.{61,275,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{61,276,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{61,277,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7},
+    &.{71,278},
+    &.{1,-40,67,-40,68,-40,69,-40,72,-40},
+    &.{1,-37,67,-37,68,-37,69,-37,72,-37},
+    &.{1,-45,67,-45,68,-45,69,-45,72,-45},
+    &.{1,-44,67,-44,68,-44,69,-44,72,-44},
+    &.{35,279,36,153,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-49,67,-49,68,-49,69,-49,72,-49},
+    &.{68,-153,70,-153,138,280},
+    &.{68,-163,70,-163},
+    &.{5,281,68,124},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,169,282,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-224,67,-224,68,-224,69,-224,70,-224,72,-224,100,-224,103,-224,122,-224,130,-224,132,-224,133,-224,134,-224,135,-224,138,-224,145,-224,177,-224,178,-224,179,-224,180,-224,181,-224,182,-224,183,-224,184,-224,185,-224,186,-224,187,-224,188,-224,189,-224,190,-224,191,-224,192,-224,193,-224},
+    &.{5,283,68,124},
+    &.{30,285,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{56,143,59,178,61,144,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,131,24,146,69,147,58,148,74,149,83,150,14,157,92,158,26,159,94,160,27,162,7},
+    &.{100,297,122,-257,164,298},
+    &.{5,183,34,182,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,68,124,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{122,299},
+    &.{122,-258},
+    &.{1,-213,67,-213,68,-213,69,-213,70,-213,72,-213,103,-213},
+    &.{1,-210,67,-210,68,-210,69,-210,70,-210,72,-210,100,-210,103,-210,122,-210},
+    &.{1,-209,67,-209,68,-209,69,-209,70,-209,72,-209,100,-209,103,-209,122,-209},
+    &.{1,-108,67,-108,69,-108},
+    &.{1,-107,67,-107,69,-107},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,174,300,175,87,176,57},
+    &.{33,301,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-155,67,-155,68,-155,69,-155,70,-155,72,-155,103,-155},
+    &.{1,-158,67,-158,68,-158,69,-158,70,-158,72,-158,103,-158},
+    &.{33,302,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{71,303},
+    &.{33,304,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,305,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{34,306,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-161,67,-161,68,-161,69,-161,70,-161,72,-161,103,-161},
+    &.{33,307,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-236,67,-236,68,-236,69,-236,70,-236,71,-236,72,-236,73,-236,74,-236,75,-236,76,-236,77,-236,78,-236,79,-236,80,-236,81,-236,82,-236,83,-236,84,-236,85,-236,93,-236,100,-236,103,-236,104,-236,105,-236,106,-236,107,-236,115,-236,118,-236,119,-236,120,-236,121,-236,122,-236,123,-236,128,-236,129,-236,130,-236,131,-236,132,-236,133,-236,134,-236,135,-236,136,-236,138,-236,139,-236,140,-236,141,-236,143,-236,145,-236,146,-236,147,-236,148,-236,149,-236,150,-236,154,-236,157,-236,158,-236,159,-236,160,-236,161,-236,162,-236,177,-236,178,-236,179,-236,180,-236,181,-236,182,-236,183,-236,184,-236,185,-236,186,-236,187,-236,188,-236,189,-236,190,-236,191,-236,192,-236,193,-236},
+    &.{1,-162,67,-162,68,-162,69,-162,70,-162,72,-162,103,-162},
+    &.{33,308,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,309,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{34,315,35,50,36,53,37,84,38,36,40,195,43,311,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,198,58,54,59,79,61,93,62,155,63,310,64,312,65,313,66,76,71,105,93,157,103,-241,105,56,106,17,107,9,108,314,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-156,67,-156,68,-156,69,-156,70,-156,72,-156,100,316,103,-156},
+    &.{33,317,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,318,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,319,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-159,67,-159,68,-159,69,-159,70,-159,72,-159,100,-159,103,-159},
+    &.{33,320,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,321,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,322,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{38,323,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-142,67,-142,68,-142,69,-142,70,-142,72,-142,100,-142,103,-142,122,-142},
+    &.{1,-48,67,-48,68,-48,69,-48,72,-48},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,176,324},
+    &.{61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,176,325},
+    &.{5,327,14,326,15,226,68,124,104,230,105,227},
+    &.{5,328,68,124,70,329},
+    &.{1,-225,67,-225,68,-225,69,-225,70,-225,72,-225,100,-225,103,-225,122,-225,130,-225,132,-225,133,-225,134,-225,135,-225,138,-225,145,-225,177,-225,178,-225,179,-225,180,-225,181,-225,182,-225,183,-225,184,-225,185,-225,186,-225,187,-225,188,-225,189,-225,190,-225,191,-225,192,-225,193,-225},
+    &.{1,-230,67,-230,68,-230,69,-230,70,-230,72,-230,100,-230,103,-230,122,-230,130,-230,132,-230,133,-230,134,-230,135,-230,138,-230,145,-230,177,-230,178,-230,179,-230,180,-230,181,-230,182,-230,183,-230,184,-230,185,-230,186,-230,187,-230,188,-230,189,-230,190,-230,191,-230,192,-230,193,-230},
+    &.{1,-6,6,330,7,62,8,20,9,3,10,51,11,29,12,64,18,90,19,37,20,65,21,12,25,33,26,30,27,31,28,70,29,86,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,67,-6,69,-6,70,32,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,95,39,96,4,97,48,98,89,105,56,106,17,107,9,109,49,110,11,111,35,112,5,114,72,115,6,116,16,117,80,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-47,67,-47,68,-47,69,-47,72,-47},
+    &.{1,-46,67,-46,68,-46,69,-46,72,-46},
+    &.{100,331,142,332},
+    &.{71,333},
+    &.{35,152,36,153,37,84,38,36,39,334,40,156,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{11,335,12,342,16,337,17,340,22,344,23,345,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{16,346,17,340,71,127,93,341,101,347,103,348,106,343,107,338,108,128},
+    &.{71,-73,93,-73,103,-73,106,-73,107,-73,108,-73},
+    &.{30,349,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{68,350},
+    &.{71,-72,93,-72,103,-72,106,-72,107,-72,108,-72},
+    &.{34,315,35,50,36,53,37,84,38,36,40,195,43,311,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,198,58,54,59,79,61,93,62,155,63,351,64,312,65,313,66,76,71,105,93,157,103,-241,105,56,106,17,107,9,108,314,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-276,67,-276,68,-276,69,-276,70,-276,72,-276,100,-276,103,-276,122,-276,130,-276,132,-276,133,-276,134,-276,135,-276,138,-276,145,-276,177,-276,178,-276,179,-276,180,-276,181,-276,182,-276,183,-276,184,-276,185,-276,186,186},
+    &.{11,335,12,342,16,337,17,340,22,352,23,345,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{1,-265,67,-265,68,-265,69,-265,70,-265,72,-265,100,-265,103,-265,122,-265,130,-265,132,-265,133,-265,134,-265,135,-265,138,-265},
+    &.{1,-266,67,-266,68,-266,69,-266,70,-266,72,-266,100,-266,103,-266,122,-266,130,-266,132,-266,133,-266,134,-266,135,-266,138,-266},
+    &.{1,-263,67,-263,68,-263,69,-263,70,-263,72,-263,100,-263,103,-263,122,-263,130,-263,132,-263,133,-263,134,-263,135,-263,138,-263},
+    &.{1,-268,67,-268,68,-268,69,-268,70,-268,72,-268,100,-268,103,-268,122,-268,130,-268,132,-268,133,-268,134,-268,135,-268,138,-268},
+    &.{1,-267,67,-267,68,-267,69,-267,70,-267,72,-267,100,-267,103,-267,122,-267,130,-267,132,-267,133,-267,134,-267,135,-267,138,-267},
+    &.{1,-264,67,-264,68,-264,69,-264,70,-264,72,-264,100,-264,103,-264,122,-264,130,-264,132,-264,133,-264,134,-264,135,-264,138,-264},
+    &.{1,-43,67,-43,68,-43,69,-43,72,-43},
+    &.{1,-105,14,353,15,226,67,-105,69,-105,104,230,105,227},
+    &.{30,354,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{1,-101,13,356,14,355,15,226,67,-101,69,-101,99,262,104,230,105,227},
+    &.{33,357,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-7,67,-7,68,-7,69,-7,70,-7,72,-7,100,-7,103,-7,122,-7,130,-7,133,-7},
+    &.{67,219,69,358},
+    &.{1,-205,67,-205,68,-205,69,-205,70,-205,72,-205,100,-205,103,-205,122,-205},
+    &.{131,359},
+    &.{100,-222,131,-222},
+    &.{100,-221,131,-221},
+    &.{100,-223,131,-223},
+    &.{30,360,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{68,-217,71,-217,93,-217,105,-217,106,-217,107,-217,115,-217,118,-217,119,-217,120,-217,121,-217,123,-217,131,-217,136,-217,139,-217,140,-217,141,-217,143,-217,146,-217,147,-217,148,-217,149,-217,150,-217,154,-217,157,-217,158,-217,159,-217,160,-217,162,-217},
+    &.{17,131,60,361,71,127,108,128,120,130,158,129,159,126},
+    &.{131,-214},
+    &.{1,-280,67,-280,68,-280,69,-280,70,-280,72,-280,100,-280,103,-280,122,-280,130,-280,132,-280,133,-280,134,-280,135,-280,138,-280,145,-280,177,-280,178,-280,179,-280,180,-280,181,-280,182,-280,183,-280,184,-280,185,-280,186,-280,187,-280,188,-280,189,213,190,214},
+    &.{1,-281,67,-281,68,-281,69,-281,70,-281,72,-281,100,-281,103,-281,122,-281,130,-281,132,-281,133,-281,134,-281,135,-281,138,-281,145,-281,177,-281,178,-281,179,-281,180,-281,181,-281,182,-281,183,-281,184,-281,185,-281,186,-281,187,-281,188,-281,189,213,190,214},
+    &.{1,-15,67,-15,69,-15},
+    &.{11,335,12,342,16,337,17,340,22,362,23,345,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{1,-272,67,-272,68,-272,69,-272,70,-272,72,-272,100,-272,103,-272,122,-272,130,-272,132,-272,133,-272,134,-272,135,-272,138,-272,177,-272,178,-272,179,-272,180,-272,181,-272,182,-272,183,-272,184,146},
+    &.{1,-274,67,-274,68,-274,69,-274,70,-274,72,-274,100,-274,103,-274,122,-274,130,-274,132,-274,133,-274,134,-274,135,-274,138,-274,145,-274,177,-274,178,-274,179,-274,180,-274,181,-274,182,-274,183,-274,184,-274,185,103},
+    &.{30,363,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{5,364,68,124},
+    &.{1,-60,67,-60,69,-60},
+    &.{5,366,13,365,68,124,99,262},
+    &.{11,335,12,342,16,337,17,340,22,367,23,345,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{68,368},
+    &.{133,369,134,151},
+    &.{1,-144,67,-144,68,-144,69,-144,70,-144,72,-144,100,-144,103,-144,122,-144,138,-144},
+    &.{71,370},
+    &.{1,-147,67,-147,68,-147,69,-147,70,-147,72,-147,100,-147,103,-147,122,-147,130,-147,132,-147,133,-147,134,-147,135,210,138,-147},
+    &.{35,269,36,153,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,131,371,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{49,380,50,376,51,382,52,381,71,373,115,374,118,384,123,377,133,375,146,385,147,378,148,372,149,379,150,383},
+    &.{1,-261,67,-261,68,-261,69,-261,70,-261,71,-261,72,-261,73,-261,74,-261,75,-261,76,-261,77,-261,78,-261,79,-261,80,-261,81,-261,82,-261,83,-261,84,-261,85,-261,93,-261,100,-261,103,-261,104,-261,105,-261,106,-261,107,-261,115,-261,118,-261,119,-261,120,-261,121,-261,122,-261,123,-261,128,-261,129,-261,130,-261,131,-261,132,-261,133,-261,134,-261,135,-261,136,-261,138,-261,139,-261,140,-261,141,-261,143,-261,145,-261,146,-261,147,-261,148,-261,149,-261,150,-261,154,-261,157,-261,158,-261,159,-261,160,-261,161,-261,162,-261,177,-261,178,-261,179,-261,180,-261,181,-261,182,-261,183,-261,184,-261,185,-261,186,-261,187,-261,188,-261,189,-261,190,-261,191,-261,192,-261,193,-261},
+    &.{1,-288,67,-288,68,-288,69,-288,70,-288,72,-288,100,-288,103,-288,122,-288,130,-288,132,-288,133,-288,134,-288,135,-288,138,-288,145,-288,177,-288,178,-288,179,-288,180,-288,181,-288,182,-288,183,-288,184,-288,185,-288,186,-288,187,-288,188,-288,189,-288,190,-288,191,-288,192,-288,193,-288},
+    &.{1,-286,67,-286,68,-286,69,-286,70,-286,72,-286,100,-286,103,-286,122,-286,130,-286,132,-286,133,-286,134,-286,135,-286,138,-286,145,-286,177,-286,178,-286,179,-286,180,-286,181,-286,182,-286,183,-286,184,-286,185,-286,186,-286,187,-286,188,-286,189,-286,190,-286,191,-286,192,-286,193,-286},
+    &.{1,-287,67,-287,68,-287,69,-287,70,-287,72,-287,100,-287,103,-287,122,-287,130,-287,132,-287,133,-287,134,-287,135,-287,138,-287,145,-287,177,-287,178,-287,179,-287,180,-287,181,-287,182,-287,183,-287,184,-287,185,-287,186,-287,187,-287,188,-287,189,-287,190,-287,191,-287,192,-287,193,-287},
+    &.{1,-39,33,386,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,67,-39,68,-39,69,-39,71,105,72,-39,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-17,67,-17,69,-17},
+    &.{71,387},
+    &.{1,-165,67,-165,68,-165,69,-165,70,-165,72,-165,100,-165,103,-165,122,-165,133,388},
+    &.{1,-270,67,-270,68,-270,69,-270,70,-270,72,-270,100,-270,103,-270,122,-270,130,-270,132,-270,133,-270,134,-270,135,-270,138,-270,177,-270,178,-270,179,-270,180,-270,181,-270,182,-270},
+    &.{1,-99,67,-99,69,-99},
+    &.{122,389,123,390},
+    &.{73,391,84,392},
+    &.{30,393,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{1,-126,67,-126,68,-126,69,-126,73,-126,84,-126,100,-126,103,-126,104,395,127,-126,128,-126,129,394,131,-126},
+    &.{1,-128,67,-128,68,-128,69,-128,73,-128,84,-128,100,-128,103,-128,127,-128,128,-128,131,-128},
+    &.{30,396,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{30,397,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{30,398,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{105,399},
+    &.{30,400,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{1,-125,67,-125,68,-125,69,-125,73,-125,84,-125,100,-125,103,-125,127,-125,128,-125,131,-125},
+    &.{1,-122,67,-122,68,-122,69,-122,73,-122,84,-122,100,-122,103,-122,127,401,128,402,131,-122},
+    &.{105,403},
+    &.{34,404,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{122,-255},
+    &.{1,-260,67,-260,68,-260,69,-260,70,-260,71,-260,72,-260,73,-260,74,-260,75,-260,76,-260,77,-260,78,-260,79,-260,80,-260,81,-260,82,-260,83,-260,84,-260,85,-260,93,-260,100,-260,103,-260,104,-260,105,-260,106,-260,107,-260,115,-260,118,-260,119,-260,120,-260,121,-260,122,-260,123,-260,128,-260,129,-260,130,-260,131,-260,132,-260,133,-260,134,-260,135,-260,136,-260,138,-260,139,-260,140,-260,141,-260,143,-260,145,-260,146,-260,147,-260,148,-260,149,-260,150,-260,154,-260,157,-260,158,-260,159,-260,160,-260,161,-260,162,-260,177,-260,178,-260,179,-260,180,-260,181,-260,182,-260,183,-260,184,-260,185,-260,186,-260,187,-260,188,-260,189,-260,190,-260,191,-260,192,-260,193,-260},
+    &.{1,-278,67,-278,68,-278,69,-278,70,-278,72,-278,100,-278,103,-278,122,-278,130,-278,132,-278,133,-278,134,-278,135,-278,138,-278,145,-278,177,-278,178,-278,179,-278,180,-278,181,-278,182,-278,183,-278,184,-278,185,-278,186,-278,187,134,188,135},
+    &.{1,-29,67,-29,68,-29,69,-29,72,-29},
+    &.{1,-20,67,-20,68,-20,69,-20,72,-20},
+    &.{1,-233,67,-233,68,-233,69,-233,70,-233,71,-233,72,-233,73,-233,74,-233,75,-233,76,-233,77,-233,78,-233,79,-233,80,-233,81,-233,82,-233,83,-233,84,-233,85,-233,93,-233,100,-233,103,-233,104,-233,105,-233,106,-233,107,-233,115,-233,118,-233,119,-233,120,-233,121,-233,122,-233,123,-233,128,-233,129,-233,130,-233,131,-233,132,-233,133,-233,134,-233,135,-233,136,-233,138,-233,139,-233,140,-233,141,-233,143,-233,145,-233,146,-233,147,-233,148,-233,149,-233,150,-233,154,-233,157,-233,158,-233,159,-233,160,-233,161,-233,162,-233,177,-233,178,-233,179,-233,180,-233,181,-233,182,-233,183,-233,184,-233,185,-233,186,-233,187,-233,188,-233,189,-233,190,-233,191,-233,192,-233,193,-233},
+    &.{1,-26,67,-26,68,-26,69,-26,72,-26},
+    &.{1,-27,67,-27,68,-27,69,-27,72,-27},
+    &.{122,405},
+    &.{1,-28,67,-28,68,-28,69,-28,72,-28},
+    &.{1,-22,67,-22,68,-22,69,-22,72,-22},
+    &.{1,-24,67,-24,68,-24,69,-24,72,-24},
+    &.{103,406},
+    &.{103,-240},
+    &.{100,407,103,-238},
+    &.{100,-242,103,-242},
+    &.{70,408},
+    &.{100,-245,103,-245},
+    &.{34,410,35,50,36,53,37,84,38,36,40,195,43,409,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,198,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-19,67,-19,68,-19,69,-19,72,-19},
+    &.{1,-30,67,-30,68,-30,69,-30,72,-30},
+    &.{1,-21,67,-21,68,-21,69,-21,72,-21},
+    &.{1,-23,67,-23,68,-23,69,-23,72,-23},
+    &.{1,-31,67,-31,68,-31,69,-31,72,-31},
+    &.{1,-25,67,-25,68,-25,69,-25,72,-25},
+    &.{1,-149,67,-149,68,-149,69,-149,70,-149,72,-149,100,-149,103,-149,122,-149,130,-149,132,-149,133,-149,134,-149,135,-149,138,-149},
+    &.{1,-283,67,-283,68,-283,69,-283,70,-283,72,-283,100,-283,103,-283,122,-283,130,-283,132,-283,133,-283,134,-283,135,-283,138,-283,145,-283,177,-283,178,-283,179,-283,180,-283,181,-283,182,-283,183,-283,184,-283,185,-283,186,-283,187,-283,188,-283,189,-283,190,-283,191,160,192,161,193,159},
+    &.{1,-284,67,-284,68,-284,69,-284,70,-284,72,-284,100,-284,103,-284,122,-284,130,-284,132,-284,133,-284,134,-284,135,-284,138,-284,145,-284,177,-284,178,-284,179,-284,180,-284,181,-284,182,-284,183,-284,184,-284,185,-284,186,-284,187,-284,188,-284,189,-284,190,-284,191,160,192,161,193,159},
+    &.{5,411,68,124},
+    &.{1,-64,67,-64,69,-64},
+    &.{1,-168,67,-168,68,-168,69,-168,70,-168,72,-168,100,-168,103,-168,122,-168,133,412},
+    &.{7,413,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-5,67,-5,69,-5},
+    &.{71,414},
+    &.{35,152,36,153,37,84,38,36,39,415,40,156,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{142,416},
+    &.{5,417,68,124},
+    &.{67,-95,69,-95},
+    &.{14,419,15,226,67,-80,69,-80,70,-80,73,418,104,230,105,227},
+    &.{67,-92,69,-92},
+    &.{17,420,71,127,108,128},
+    &.{16,346,17,340,24,421,71,127,93,341,101,422,106,343,107,338,108,128},
+    &.{67,-74,68,-74,69,-74,70,423,100,-74,103,-74},
+    &.{17,424,71,127,108,128},
+    &.{67,-96,69,-96},
+    &.{17,425,71,127,108,128},
+    &.{67,426,69,427},
+    &.{67,-89,69,-89},
+    &.{68,-69,100,428,102,429,103,-69},
+    &.{103,430},
+    &.{1,-71,67,-71,68,-71,69,-71,99,-71},
+    &.{1,-86,67,-86,69,-86},
+    &.{11,335,12,342,16,337,17,340,22,431,23,345,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{103,432},
+    &.{67,426,69,433},
+    &.{1,-106,67,-106,69,-106},
+    &.{1,-100,67,-100,69,-100},
+    &.{1,-102,13,434,67,-102,69,-102,99,262},
+    &.{1,-103,67,-103,69,-103},
+    &.{1,-34,67,-34,68,-34,69,-34,72,-34},
+    &.{1,-8,67,-8,68,-8,69,-8,70,-8,72,-8,100,-8,103,-8,122,-8,130,-8,133,-8},
+    &.{71,435},
+    &.{100,-220,131,-220},
+    &.{100,254,131,-216,156,436},
+    &.{67,426,69,437},
+    &.{1,-66,67,-66,68,-66,69,-66},
+    &.{1,-62,67,-62,69,-62},
+    &.{5,438,68,124},
+    &.{1,-61,67,-61,69,-61},
+    &.{67,426,69,439},
+    &.{11,335,12,342,16,337,17,340,22,440,23,345,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{35,441,36,153,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{131,442},
+    &.{71,443},
+    &.{68,-195,144,-195,145,-195},
+    &.{68,-188,144,-188,145,-188},
+    &.{68,-194,144,-194,145,-194},
+    &.{68,-189,144,-189,145,-189},
+    &.{67,-181,69,-181},
+    &.{68,-190,144,-190,145,-190},
+    &.{68,-192,144,-192,145,-192},
+    &.{68,-196,144,-196,145,-196},
+    &.{67,444,69,445},
+    &.{68,-186,144,-186,145,446},
+    &.{5,448,68,124,144,447},
+    &.{71,449},
+    &.{68,-193,144,-193,145,-193},
+    &.{123,450},
+    &.{1,-41,67,-41,68,-41,69,-41,72,-41},
+    &.{68,-164,70,-164},
+    &.{5,451,45,452,68,124,139,66},
+    &.{30,453,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{122,454},
+    &.{33,455,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{33,456,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,155,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-110,67,-110,68,-110,69,-110,73,-110,84,-110,100,-110,103,-110,131,-110},
+    &.{71,457},
+    &.{30,458,31,295,32,294,71,287,97,296,98,292,103,-119,105,289,106,293,107,286,112,288,119,291,120,290,121,284,124,459,126,460},
+    &.{103,461},
+    &.{1,-112,67,-112,68,-112,69,-112,73,-112,84,-112,100,-112,103,-112,131,-112},
+    &.{1,-111,67,-111,68,-111,69,-111,73,-111,84,-111,100,-111,103,-111,131,-111},
+    &.{30,458,31,295,32,294,71,287,97,296,98,292,103,-119,105,289,106,293,107,286,112,288,119,291,120,290,121,284,124,459,126,462},
+    &.{1,-109,67,-109,68,-109,69,-109,73,-109,84,-109,100,-109,103,-109,131,-109},
+    &.{1,-123,67,-123,68,-123,69,-123,73,-123,84,-123,100,-123,103,-123,127,-123,128,-123,131,-123},
+    &.{1,-124,67,-124,68,-124,69,-124,73,-124,84,-124,100,-124,103,-124,127,-124,128,-124,131,-124},
+    &.{30,458,31,295,32,294,71,287,97,296,98,292,103,-119,105,289,106,293,107,286,112,288,119,291,120,290,121,284,124,459,126,463},
+    &.{100,297,122,-257,164,464},
+    &.{1,-234,67,-234,68,-234,69,-234,70,-234,71,-234,72,-234,73,-234,74,-234,75,-234,76,-234,77,-234,78,-234,79,-234,80,-234,81,-234,82,-234,83,-234,84,-234,85,-234,93,-234,100,-234,103,-234,104,-234,105,-234,106,-234,107,-234,115,-234,118,-234,119,-234,120,-234,121,-234,122,-234,123,-234,128,-234,129,-234,130,-234,131,-234,132,-234,133,-234,134,-234,135,-234,136,-234,138,-234,139,-234,140,-234,141,-234,143,-234,145,-234,146,-234,147,-234,148,-234,149,-234,150,-234,154,-234,157,-234,158,-234,159,-234,160,-234,161,-234,162,-234,177,-234,178,-234,179,-234,180,-234,181,-234,182,-234,183,-234,184,-234,185,-234,186,-234,187,-234,188,-234,189,-234,190,-234,191,-234,192,-234,193,-234},
+    &.{1,-235,67,-235,68,-235,69,-235,70,-235,71,-235,72,-235,73,-235,74,-235,75,-235,76,-235,77,-235,78,-235,79,-235,80,-235,81,-235,82,-235,83,-235,84,-235,85,-235,93,-235,100,-235,103,-235,104,-235,105,-235,106,-235,107,-235,115,-235,118,-235,119,-235,120,-235,121,-235,122,-235,123,-235,128,-235,129,-235,130,-235,131,-235,132,-235,133,-235,134,-235,135,-235,136,-235,138,-235,139,-235,140,-235,141,-235,143,-235,145,-235,146,-235,147,-235,148,-235,149,-235,150,-235,154,-235,157,-235,158,-235,159,-235,160,-235,161,-235,162,-235,177,-235,178,-235,179,-235,180,-235,181,-235,182,-235,183,-235,184,-235,185,-235,186,-235,187,-235,188,-235,189,-235,190,-235,191,-235,192,-235,193,-235},
+    &.{34,315,35,50,36,53,37,84,38,36,40,195,43,465,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,198,58,54,59,79,61,93,62,155,65,466,66,76,71,105,93,157,105,56,106,17,107,9,108,314,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{34,467,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-157,67,-157,68,-157,69,-157,70,-157,72,-157,103,-157},
+    &.{1,-160,67,-160,68,-160,69,-160,70,-160,72,-160,100,-160,103,-160},
+    &.{1,-65,67,-65,69,-65},
+    &.{5,468,68,124},
+    &.{5,469,68,124},
+    &.{142,470},
+    &.{5,471,68,124},
+    &.{35,152,36,153,37,84,38,36,39,472,40,156,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-176,67,-176,68,-176,69,-176,70,-176,72,-176,100,-176,103,-176,122,-176,133,473},
+    &.{34,474,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{67,-94,69,-94},
+    &.{67,-79,68,-79,69,-79,100,-79,103,-79},
+    &.{5,475,68,124},
+    &.{68,-98},
+    &.{30,476,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{70,477},
+    &.{67,-78,68,-78,69,-78,100,-78,103,-78},
+    &.{11,335,12,342,16,337,17,340,23,478,67,-91,69,-91,71,336,93,341,97,48,98,89,106,343,107,338,108,128,113,339},
+    &.{1,-87,67,-87,69,-87},
+    &.{16,479,17,340,71,127,93,341,106,343,107,338,108,128},
+    &.{68,-67,103,-67},
+    &.{1,-70,67,-70,68,-70,69,-70,99,-70},
+    &.{67,426,69,480},
+    &.{1,-254,67,-254,68,-254,69,-254,70,-254,71,-254,72,-254,73,-254,74,-254,75,-254,76,-254,77,-254,78,-254,79,-254,80,-254,81,-254,82,-254,83,-254,84,-254,85,-254,93,-254,100,-254,103,-254,104,-254,105,-254,106,-254,107,-254,115,-254,118,-254,119,-254,120,-254,121,-254,122,-254,123,-254,128,-254,129,-254,130,-254,131,-254,132,-254,133,-254,134,-254,135,-254,136,-254,138,-254,139,-254,140,-254,141,-254,143,-254,145,-254,146,-254,147,-254,148,-254,149,-254,150,-254,154,-254,157,-254,158,-254,159,-254,160,-254,161,-254,162,-254,177,-254,178,-254,179,-254,180,-254,181,-254,182,-254,183,-254,184,-254,185,-254,186,-254,187,-254,188,-254,189,-254,190,-254,191,-254,192,-254,193,-254},
+    &.{1,-84,67,-84,69,-84},
+    &.{1,-104,67,-104,69,-104},
+    &.{131,481},
+    &.{131,-215},
+    &.{1,-85,67,-85,69,-85},
+    &.{1,-63,67,-63,69,-63},
+    &.{1,-82,67,-82,69,-82},
+    &.{67,426,69,482},
+    &.{1,-143,67,-143,68,-143,69,-143,70,-143,72,-143,100,-143,103,-143,122,-143,138,-143},
+    &.{5,484,35,483,36,153,37,84,38,36,61,93,62,106,66,76,68,124,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{131,485},
+    &.{50,486,51,382,52,381,67,-183,69,-183,71,373,115,374,118,384,123,377,133,375,146,385,147,378,148,372,149,379,150,383},
+    &.{1,-180,67,-180,68,-180,69,-180,70,-180,72,-180,100,-180,103,-180,122,-180},
+    &.{52,487,71,373,115,374,118,384,123,377,133,375,146,385,147,378,148,372,149,379,150,383},
+    &.{7,488,33,88,34,71,35,50,36,53,37,84,38,36,40,41,45,40,46,38,47,47,48,18,53,34,55,77,56,23,57,52,58,54,59,79,61,93,62,82,66,76,71,75,86,21,87,28,88,60,89,59,90,15,91,61,92,97,93,85,94,63,105,56,106,17,107,9,115,6,118,46,119,43,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{67,-185,69,-185},
+    &.{68,-197,104,489,144,-197,145,-197},
+    &.{68,-191,144,-191,145,-191},
+    &.{1,-166,67,-166,68,-166,69,-166,70,-166,72,-166,100,-166,103,-166,122,-166},
+    &.{1,-167,67,-167,68,-167,69,-167,70,-167,72,-167,100,-167,103,-167,122,-167},
+    &.{1,-113,67,-113,68,-113,69,-113,73,-113,84,-113,100,-113,103,-113,131,-113},
+    &.{30,490,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{1,-32,67,-32,68,-32,69,-32,72,-32},
+    &.{1,-33,67,-33,68,-33,69,-33,72,-33},
+    &.{1,-127,67,-127,68,-127,69,-127,73,-127,84,-127,100,-127,103,-127,127,-127,128,-127,131,-127},
+    &.{100,491,103,-117,125,492},
+    &.{103,-118},
+    &.{103,493},
+    &.{1,-130,67,-130,68,-130,69,-130,73,-130,84,-130,100,-130,103,-130,127,-130,128,-130,131,-130},
+    &.{103,494},
+    &.{103,495},
+    &.{122,-256},
+    &.{103,-239},
+    &.{100,-243,103,-243},
+    &.{100,-244,103,-244},
+    &.{1,-170,67,-170,68,-170,69,-170,70,-170,72,-170,100,-170,103,-170,122,-170},
+    &.{1,-169,67,-169,68,-169,69,-169,70,-169,72,-169,100,-169,103,-169,122,-169,133,496},
+    &.{35,152,36,153,37,84,38,36,39,497,40,156,61,93,62,155,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{1,-172,67,-172,68,-172,69,-172,70,-172,72,-172,100,-172,103,-172,122,-172,133,498},
+    &.{5,499,68,124},
+    &.{5,500,68,124},
+    &.{67,-93,69,-93},
+    &.{67,-97,69,-97},
+    &.{67,-75,68,-75,69,-75,73,501,100,-75,103,-75},
+    &.{30,502,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{67,-90,69,-90},
+    &.{68,-69,100,428,102,503,103,-69},
+    &.{1,-88,67,-88,69,-88},
+    &.{5,504,68,124},
+    &.{1,-83,67,-83,69,-83},
+    &.{1,-145,67,-145,68,-145,69,-145,70,-145,72,-145,100,-145,103,-145,122,-145,138,-145},
+    &.{1,-140,67,-140,68,-140,69,-140,70,-140,72,-140,100,-140,103,-140,122,-140},
+    &.{35,483,36,153,37,84,38,36,61,93,62,106,66,76,71,105,105,56,106,17,107,9,115,6,118,46,119,107,120,95,121,78,123,42,136,10,137,44,146,69,147,58,148,74,149,83,150,14,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{67,-182,69,-182},
+    &.{68,-187,144,-187},
+    &.{67,-184,69,-184},
+    &.{71,507,103,-202,151,506,153,505},
+    &.{1,-114,67,-114,68,-114,69,-114,73,-114,84,-114,100,-114,103,-114,131,-114},
+    &.{30,508,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{103,-115},
+    &.{1,-129,67,-129,68,-129,69,-129,73,-129,84,-129,100,-129,103,-129,127,-129,128,-129,131,-129},
+    &.{1,-121,67,-121,68,-121,69,-121,73,-121,84,-121,100,-121,103,-121,131,-121},
+    &.{30,509,31,295,32,294,71,287,97,296,98,292,105,289,106,293,107,286,112,288,119,291,120,290,121,284},
+    &.{5,510,68,124},
+    &.{5,511,68,124},
+    &.{5,512,68,124},
+    &.{1,-177,67,-177,68,-177,69,-177,70,-177,72,-177,100,-177,103,-177,122,-177,133,513},
+    &.{1,-178,67,-178,68,-178,69,-178,70,-178,72,-178,100,-178,103,-178,122,-178},
+    &.{34,514,35,50,36,53,37,84,38,36,45,40,46,38,47,47,48,18,53,34,55,77,56,23,59,178,61,93,62,106,66,76,71,105,93,157,105,56,106,17,107,9,115,6,118,46,119,176,120,95,121,78,123,42,131,24,136,10,137,44,139,66,140,91,141,2,143,55,146,69,147,58,148,74,149,83,150,14,154,22,157,92,158,26,159,94,160,27,162,7,168,67,169,13,170,68,171,45,172,8,173,81,174,25,175,87,176,57},
+    &.{67,-77,68,-77,69,-77,100,-77,103,-77},
+    &.{68,-68,103,-68},
+    &.{1,-206,67,-206,68,-206,69,-206,70,-206,72,-206,100,-206,103,-206,122,-206},
+    &.{103,515},
+    &.{103,-201},
+    &.{100,516,103,-200,152,517},
+    &.{100,491,103,-117,125,518},
+    &.{1,-120,67,-120,68,-120,69,-120,73,-120,84,-120,100,-120,103,-120,131,-120},
+    &.{1,-171,67,-171,68,-171,69,-171,70,-171,72,-171,100,-171,103,-171,122,-171},
+    &.{1,-173,67,-173,68,-173,69,-173,70,-173,72,-173,100,-173,103,-173,122,-173,133,519},
+    &.{1,-174,67,-174,68,-174,69,-174,70,-174,72,-174,100,-174,103,-174,122,-174},
+    &.{5,520,68,124},
+    &.{67,-76,68,-76,69,-76,100,-76,103,-76},
+    &.{68,-203,144,-203,145,-203},
+    &.{71,521},
+    &.{103,-198},
+    &.{103,-116},
+    &.{5,522,68,124},
+    &.{1,-179,67,-179,68,-179,69,-179,70,-179,72,-179,100,-179,103,-179,122,-179},
+    &.{100,516,103,-200,152,523},
+    &.{1,-175,67,-175,68,-175,69,-175,70,-175,72,-175,100,-175,103,-175,122,-175},
+    &.{103,-199},
 };
 
 const parseTable = blk: {
@@ -2764,109 +3726,87 @@ fn startState(start: Start) u16 {
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"program" => 167,
+        .@"program" => 166,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    74, 75, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 109, 110, 111, 113, 114, 115, 116, 118, 119,
-    120, 121, 122, 123, 124, 125, 127, 134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164,
-    1, 71, 73, 72, 75, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 119, 122, 123, 124, 125, 127, 134,
-    139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 1, 71, 72, 73, 76, 107, 75, 1,
-    71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 97, 104, 107, 108, 109,
-    110, 111, 119, 122, 123, 124, 125, 126, 127, 131, 132, 133, 134, 135, 136, 137, 138, 139, 141, 142, 143, 144, 146, 148,
-    149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 163, 164, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
-    190, 191, 192, 193, 194, 75, 97, 109, 110, 111, 119, 122, 123, 124, 125, 126, 127, 134, 139, 142, 143, 144, 146, 149,
-    150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 1, 71, 72, 73, 74, 76, 104, 107, 126, 133, 135, 136, 137, 138,
-    141, 148, 178, 179, 180, 181, 182, 183, 184, 185, 75, 123, 75, 112, 124, 160, 161, 1, 71, 72, 73, 74, 76, 104,
-    107, 126, 133, 135, 136, 137, 138, 141, 75, 109, 110, 111, 119, 122, 123, 124, 125, 127, 149, 150, 151, 152, 153, 160,
-    161, 162, 164, 72, 1, 71, 72, 73, 74, 76, 104, 107, 126, 1, 1, 71, 73, 76, 1, 71, 72, 73, 74, 76,
-    104, 107, 126, 133, 135, 136, 137, 138, 141, 148, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 75, 109, 110, 111,
-    119, 122, 123, 124, 125, 127, 134, 149, 150, 151, 152, 153, 159, 160, 161, 162, 164, 101, 102, 113, 114, 115, 116, 118,
-    75, 109, 110, 111, 119, 122, 123, 124, 125, 127, 139, 149, 150, 151, 152, 153, 160, 161, 162, 164, 1, 71, 72, 73,
-    74, 76, 104, 107, 126, 133, 135, 136, 137, 138, 141, 178, 179, 180, 181, 182, 183, 184, 1, 71, 72, 73, 74, 76,
-    104, 107, 126, 133, 135, 136, 137, 138, 141, 148, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191,
-    192, 193, 194, 119, 72, 75, 109, 110, 111, 119, 122, 123, 124, 125, 127, 139, 149, 150, 151, 152, 153, 160, 161, 162,
-    164, 75, 97, 109, 110, 111, 119, 122, 123, 124, 125, 127, 134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156,
-    159, 160, 161, 162, 164, 1, 71, 72, 73, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89,
-    97, 108, 109, 110, 111, 119, 122, 123, 124, 125, 127, 131, 132, 133, 134, 135, 137, 138, 139, 142, 143, 144, 146, 148,
-    149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 163, 164, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
-    190, 191, 192, 193, 194, 1, 71, 72, 73, 74, 76, 104, 107, 126, 133, 135, 136, 137, 138, 141, 148, 178, 179, 180,
-    181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 72, 75, 97, 109, 110, 111, 119, 122, 123, 124, 125, 127, 134,
-    139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 76, 1, 71, 72, 73, 74, 76, 1,
-    71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 97, 108, 109, 110, 111,
-    119, 122, 123, 124, 125, 127, 131, 132, 133, 134, 135, 137, 138, 139, 142, 143, 144, 146, 148, 149, 150, 151, 152, 153,
-    156, 159, 160, 161, 162, 163, 164, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194,
-    1, 71, 72, 73, 74, 76, 104, 107, 126, 133, 135, 136, 137, 138, 141, 178, 179, 180, 181, 182, 183, 1, 71, 72,
-    73, 76, 119, 122, 1, 71, 72, 73, 74, 76, 107, 1, 71, 72, 73, 74, 76, 104, 107, 126, 133, 135, 136, 137,
-    138, 141, 148, 178, 179, 180, 181, 182, 183, 184, 185, 186, 75, 101, 102, 1, 71, 72, 73, 74, 76, 104, 107, 126,
-    133, 135, 136, 137, 138, 141, 148, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 1, 71, 72, 73, 74,
-    76, 104, 107, 126, 133, 135, 137, 1, 71, 72, 73, 74, 75, 76, 97, 109, 110, 111, 119, 122, 123, 124, 125, 127,
-    134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 1, 71, 1, 71, 72, 73, 75,
-    76, 97, 109, 110, 111, 119, 122, 123, 124, 125, 127, 134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159,
-    160, 161, 162, 164, 73, 74, 75, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 109, 110, 111, 113,
-    114, 115, 116, 118, 119, 120, 121, 122, 123, 124, 125, 127, 134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156,
-    159, 160, 161, 162, 164, 126, 104, 126, 1, 71, 72, 73, 74, 76, 104, 107, 108, 126, 131, 132, 133, 135, 136, 137,
-    138, 141, 148, 163, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 1, 71, 72,
-    73, 74, 75, 76, 97, 104, 107, 108, 109, 110, 111, 119, 122, 123, 124, 125, 126, 127, 131, 132, 133, 134, 135, 136,
-    137, 138, 139, 141, 142, 143, 144, 146, 148, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 163, 164, 178, 179, 180,
-    181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 104, 145, 134, 104, 134, 74, 104, 134, 71, 72,
-    73, 74, 104, 107, 134, 77, 1, 71, 72, 73, 74, 76, 104, 107, 126, 133, 72, 77, 108, 109, 72, 74, 141, 72,
-    74, 1, 71, 72, 73, 74, 75, 76, 97, 104, 107, 108, 109, 110, 111, 119, 122, 123, 124, 125, 127, 131, 132, 133,
-    134, 135, 137, 138, 139, 141, 142, 143, 144, 146, 148, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 163, 164, 178,
-    179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 1, 71, 72, 73, 74, 76, 104, 107,
-    126, 133, 135, 137, 141, 108, 107, 1, 71, 72, 73, 74, 76, 104, 107, 75, 97, 107, 109, 110, 111, 112, 119, 122,
-    123, 124, 125, 127, 134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 75, 101, 102,
-    109, 110, 111, 116, 123, 124, 125, 72, 108, 109, 74, 75, 109, 110, 111, 119, 122, 123, 124, 125, 127, 134, 139, 149,
-    150, 151, 152, 153, 160, 161, 162, 164, 1, 71, 73, 74, 75, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100,
-    101, 102, 109, 110, 111, 113, 114, 115, 116, 118, 119, 120, 121, 122, 123, 124, 125, 127, 134, 139, 142, 143, 144, 146,
-    149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 72, 103, 108, 109, 1, 71, 72, 73, 74, 76, 104, 107, 126,
-    133, 136, 71, 73, 75, 97, 101, 102, 110, 111, 112, 117, 1, 71, 72, 73, 74, 76, 104, 107, 126, 133, 135, 136,
-    137, 138, 141, 178, 179, 180, 181, 182, 183, 184, 185, 75, 97, 107, 110, 111, 112, 1, 71, 72, 73, 74, 76, 104,
-    107, 126, 136, 75, 90, 91, 92, 93, 94, 95, 96, 97, 98, 109, 110, 111, 119, 122, 123, 124, 125, 127, 134, 139,
-    142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 104, 107, 75, 119, 122, 127, 136, 149, 150,
-    151, 152, 153, 109, 126, 127, 1, 71, 72, 73, 77, 88, 104, 107, 130, 131, 134, 77, 88, 1, 71, 72, 73, 77,
-    88, 104, 107, 108, 130, 131, 132, 134, 1, 71, 73, 108, 109, 1, 71, 73, 103, 108, 109, 136, 137, 1, 71, 72,
-    73, 74, 76, 104, 107, 126, 141, 72, 103, 75, 97, 110, 111, 112, 75, 112, 71, 72, 73, 74, 104, 107, 71, 73,
-    74, 77, 108, 109, 145, 1, 71, 72, 73, 103, 72, 104, 107, 72, 142, 75, 97, 109, 110, 111, 112, 119, 122, 123,
-    124, 125, 127, 134, 139, 142, 143, 144, 146, 149, 150, 151, 152, 153, 156, 159, 160, 161, 162, 164, 72, 147, 148, 127,
-    72, 147, 75, 101, 102, 107, 109, 110, 111, 116, 123, 124, 125, 1, 71, 72, 73, 77, 88, 104, 107, 134, 1, 71,
-    73, 103, 1, 71, 72, 73, 71, 72, 73, 104, 107, 71, 73, 75, 97, 101, 102, 110, 111, 112, 117, 72, 107, 71,
-    73, 75, 119, 122, 127, 136, 149, 150, 151, 152, 153, 72, 108, 147, 148, 71, 72, 73, 77, 104, 107, 75, 107,
+    6, 1, 71, 119, 1, 67, 69, 71, 1, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81,
+    82, 83, 84, 85, 93, 100, 103, 104, 105, 106, 107, 115, 118, 119, 120, 121, 122, 123, 128, 129, 130, 131, 132, 133,
+    134, 135, 136, 138, 139, 140, 141, 143, 145, 146, 147, 148, 149, 150, 154, 157, 158, 159, 160, 161, 162, 177, 178, 179,
+    180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130,
+    132, 133, 134, 135, 138, 145, 177, 178, 179, 180, 181, 182, 183, 184, 185, 61, 61, 136, 1, 67, 68, 69, 70, 72,
+    100, 103, 122, 130, 132, 133, 134, 135, 138, 177, 178, 179, 180, 181, 182, 1, 67, 68, 69, 70, 72, 71, 97, 98,
+    1, 67, 68, 69, 70, 72, 100, 103, 122, 1, 5, 71, 108, 120, 158, 159, 1, 67, 68, 69, 70, 72, 100, 103,
+    122, 130, 132, 133, 134, 135, 138, 145, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 1, 67, 68, 69,
+    70, 72, 100, 103, 122, 130, 132, 133, 134, 135, 138, 97, 98, 109, 110, 111, 112, 114, 1, 67, 68, 69, 72, 103,
+    61, 131, 157, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 132, 133, 134, 135, 138, 145, 177, 178, 179, 180, 181,
+    182, 183, 184, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 132, 134, 1, 67, 68, 69, 70, 72, 103, 35, 33,
+    1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 132, 133, 134, 135, 138, 145, 177, 178, 179, 180, 181, 182, 183, 184,
+    185, 186, 187, 188, 189, 190, 191, 192, 193, 33, 1, 67, 68, 69, 70, 72, 33, 1, 67, 68, 69, 72, 5, 33,
+    86, 87, 88, 89, 90, 91, 92, 94, 1, 67, 69, 72, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 132, 133,
+    134, 135, 138, 177, 178, 179, 180, 181, 182, 183, 115, 1, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78,
+    79, 80, 81, 82, 83, 84, 85, 93, 104, 105, 106, 107, 115, 118, 119, 120, 121, 123, 128, 129, 130, 131, 132, 134,
+    135, 136, 139, 140, 141, 143, 145, 146, 147, 148, 149, 150, 154, 157, 158, 159, 160, 161, 162, 177, 178, 179, 180, 181,
+    182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 34, 122, 5, 34, 115, 118, 1, 67, 68, 69, 70, 72,
+    100, 103, 122, 130, 132, 133, 134, 135, 138, 145, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 34, 1, 67, 68,
+    69, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 104, 128, 129, 130, 132, 134, 135, 145, 161,
+    177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 5, 35, 1, 67, 68, 69, 70,
+    72, 100, 103, 122, 130, 132, 133, 134, 135, 138, 145, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189,
+    190, 1, 67, 68, 69, 72, 68, 71, 93, 105, 106, 107, 115, 118, 119, 120, 121, 123, 131, 136, 139, 140, 141, 143,
+    146, 147, 148, 149, 150, 154, 157, 158, 159, 160, 162, 1, 67, 100, 142, 14, 68, 73, 104, 1, 67, 68, 69, 70,
+    71, 72, 93, 100, 103, 104, 105, 106, 107, 115, 118, 119, 120, 121, 122, 123, 128, 129, 130, 131, 132, 133, 134, 135,
+    136, 138, 139, 140, 141, 143, 145, 146, 147, 148, 149, 150, 154, 157, 158, 159, 160, 161, 162, 177, 178, 179, 180, 181,
+    182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 1, 67, 68, 69, 70, 72, 100, 103, 104, 122, 128, 129,
+    130, 132, 133, 134, 135, 138, 145, 161, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192,
+    193, 68, 70, 73, 6, 69, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 67, 68, 69, 70, 100, 103, 131, 70,
+    100, 131, 131, 100, 131, 6, 5, 14, 99, 14, 68, 35, 131, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 132,
+    134, 138, 34, 1, 67, 68, 69, 70, 72, 100, 103, 104, 128, 129, 130, 132, 134, 135, 138, 145, 161, 177, 178, 179,
+    180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 68, 70, 103, 68, 70, 138, 30, 100, 122, 122,
+    34, 34, 103, 108, 1, 67, 68, 69, 70, 72, 100, 103, 5, 14, 5, 70, 6, 1, 67, 69, 23, 16, 103, 71,
+    93, 103, 106, 107, 108, 14, 1, 67, 69, 14, 1, 67, 69, 99, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130,
+    133, 67, 69, 1, 67, 68, 69, 70, 72, 100, 103, 122, 130, 132, 133, 134, 135, 138, 177, 178, 179, 180, 181, 182,
+    183, 184, 5, 99, 133, 134, 1, 67, 68, 69, 70, 72, 100, 103, 122, 138, 50, 1, 67, 68, 69, 70, 72, 100,
+    103, 122, 133, 122, 123, 73, 84, 1, 67, 68, 69, 73, 84, 100, 103, 104, 127, 128, 129, 131, 1, 67, 68, 69,
+    73, 84, 100, 103, 127, 128, 131, 105, 100, 103, 33, 86, 87, 88, 89, 90, 91, 92, 94, 142, 14, 67, 69, 70,
+    73, 71, 108, 16, 67, 68, 69, 70, 100, 103, 68, 100, 103, 1, 67, 68, 69, 99, 1, 67, 69, 99, 1, 67,
+    68, 69, 68, 144, 145, 5, 144, 123, 5, 139, 1, 67, 68, 69, 73, 84, 100, 103, 131, 30, 103, 34, 108, 67,
+    68, 69, 100, 103, 23, 67, 69, 68, 103, 50, 67, 69, 71, 115, 118, 123, 133, 146, 147, 148, 149, 150, 68, 104,
+    144, 145, 67, 68, 69, 73, 100, 103, 68, 144, 71, 103,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 48, 51, 88, 94, 95, 173, 202, 226, 228, 233, 248, 267, 268, 277, 278, 282, 308, 329, 336, 356, 378, 411,
-    412, 433, 461, 533, 563, 592, 593, 599, 672, 693, 698, 700, 707, 732, 735, 763, 775, 809, 811, 844, 893, 894, 896, 933,
-    998, 1000, 1001, 1003, 1006, 1013, 1014, 1024, 1028, 1031, 1033, 1096, 1109, 1110, 1111, 1119, 1149, 1159, 1162, 1163, 1184, 1235, 1239, 1250,
-    1252, 1260, 1283, 1289, 1299, 1335, 1337, 1347, 1348, 1350, 1361, 1363, 1376, 1381, 1387, 1389, 1399, 1401, 1406, 1408, 1414, 1420, 1421, 1426,
-    1429, 1431, 1460, 1463, 1464, 1466, 1477, 1486, 1490, 1494, 1499, 1509, 1511, 1523, 1527, 1533, 1535,
+    0, 0, 2, 4, 7, 8, 86, 111, 112, 114, 135, 141, 144, 153, 154, 155, 160, 188, 203, 210, 216, 219, 243, 255,
+    262, 263, 264, 297, 304, 310, 320, 324, 346, 347, 420, 422, 424, 426, 452, 497, 499, 529, 534, 563, 565, 567, 570, 571,
+    636, 673, 674, 675, 676, 678, 688, 695, 698, 699, 701, 702, 705, 707, 709, 722, 758, 760, 761, 764, 765, 767, 768, 769,
+    772, 780, 782, 784, 788, 789, 791, 797, 801, 806, 817, 819, 842, 844, 846, 856, 857, 867, 869, 871, 884, 895, 896, 898,
+    907, 908, 913, 915, 916, 922, 925, 930, 934, 938, 941, 943, 944, 946, 955, 957, 959, 964, 967, 969, 972, 982, 986, 992,
+    994, 996,
 };
 const expectedOf = [_]u16{
-    0, 1, 2, 2, 3, 2, 4, 5, 6, 7, 8, 9, 10, 2, 11, 12, 6, 5, 13, 5, 12, 14, 15, 16,
-    14, 17, 5, 2, 12, 2, 2, 2, 11, 12, 12, 2, 14, 3, 18, 6, 19, 14, 6, 6, 20, 21, 22, 12,
-    23, 14, 14, 5, 24, 25, 4, 22, 2, 14, 4, 20, 14, 26, 27, 6, 28, 11, 5, 29, 30, 2, 2, 6,
-    5, 5, 20, 20, 31, 32, 2, 33, 34, 2, 5, 5, 35, 28, 36, 5, 37, 38, 39, 12, 40, 2, 13, 11,
-    41, 5, 42, 33, 43, 33, 13, 44, 18, 20, 45, 46, 28, 47, 44, 12, 12, 5, 48, 49, 50, 51, 5, 52,
-    5, 5, 52, 22, 12, 53, 54, 55, 22, 15, 12, 1, 22, 20, 22, 22, 33, 33, 22, 14, 35, 2, 56, 57,
-    58, 59, 13, 57, 12, 12, 12, 12, 22, 13, 60, 14, 33, 61, 57, 25, 35, 5, 62, 25, 6, 25, 25, 25,
-    25, 62, 35, 25, 25, 25, 63, 35, 25, 25, 25, 25, 25, 35, 12, 12, 35, 35, 14, 14, 14, 33, 20, 5,
-    6, 2, 13, 13, 11, 64, 12, 12, 12, 12, 12, 12, 2, 2, 65, 13, 12, 65, 5, 5, 66, 12, 12, 20,
-    67, 20, 22, 5, 33, 33, 68, 69, 33, 70, 71, 72, 6, 44, 25, 36, 73, 48, 20, 5, 28, 49, 10, 64,
-    50, 50, 50, 25, 49, 14, 72, 13, 74, 64, 74, 74, 38, 2, 11, 5, 67, 75, 32, 22, 22, 22, 2, 63,
-    6, 76, 75, 33, 6, 25, 33, 33, 33, 33, 33, 33, 33, 33, 66, 77, 77, 77, 61, 61, 33, 33, 33, 33,
-    44, 22, 22, 2, 33, 78, 64, 79, 64, 80, 64, 64, 64, 81, 81, 81, 82, 79, 83, 11, 11, 11, 11, 11,
-    11, 13, 2, 72, 17, 72, 13, 84, 85, 64, 27, 27, 86, 87, 5, 11, 42, 2, 2, 88, 64, 13, 70, 71,
-    89, 90, 71, 90, 71, 71, 91, 92, 71, 90, 45, 20, 5, 13, 93, 50, 50, 33, 5, 71, 72, 2, 94, 61,
-    95, 57, 5, 96, 61, 13, 13, 62, 35, 25, 97, 6, 6, 98, 98, 99, 98, 71, 98, 98, 100, 71, 98, 98,
-    98, 5, 98, 61, 101, 102, 44, 64, 102, 102, 102, 81, 81, 25, 25, 101, 5, 101, 2, 71, 71, 72, 2, 103,
-    2, 2, 20, 49, 33, 13, 2, 104, 2, 13, 13, 105, 105, 64, 71, 25, 2, 106, 66, 44, 13, 93, 75, 20,
-    49, 49, 2, 71, 94, 107, 89, 49, 14, 14, 6, 75, 14, 77, 77, 61, 78, 98, 14, 108, 76, 71, 109, 81,
-    102, 61, 77, 64, 102, 33, 33, 64, 61, 81, 81, 61, 2, 2, 71, 2, 87, 24, 2, 71, 110, 71, 71, 64,
-    75, 20, 13, 13, 13, 2, 95, 20, 13, 100, 71, 71, 111, 102, 61, 64, 102, 102, 64, 81, 2, 87, 14, 25,
-    105, 13, 13, 14, 75, 14, 107, 14, 61, 98, 77, 77, 102, 105, 14, 75, 13, 98, 61, 5, 61, 13, 14, 77,
-    14, 61,
+    0, 1, 2, 3, 4, 4, 5, 4, 6, 7, 8, 4, 3, 9, 4, 10, 11, 7, 12, 13, 3, 4, 14, 12,
+    15, 16, 7, 7, 4, 3, 3, 3, 4, 3, 12, 4, 17, 3, 12, 18, 12, 19, 5, 20, 17, 21, 5, 12,
+    4, 4, 12, 3, 19, 22, 23, 24, 25, 26, 5, 27, 28, 29, 30, 14, 3, 3, 24, 17, 31, 7, 3, 19,
+    32, 3, 5, 33, 5, 12, 34, 35, 36, 37, 38, 5, 17, 39, 3, 40, 41, 4, 3, 24, 42, 26, 7, 7,
+    43, 29, 4, 44, 3, 45, 46, 7, 26, 47, 48, 7, 17, 49, 7, 7, 7, 7, 7, 7, 5, 4, 4, 50,
+    4, 26, 13, 51, 52, 53, 4, 54, 54, 4, 4, 55, 56, 57, 7, 7, 26, 26, 41, 58, 49, 3, 23, 12,
+    26, 7, 7, 59, 60, 8, 61, 8, 49, 62, 49, 63, 64, 24, 65, 7, 7, 7, 4, 41, 41, 41, 41, 24,
+    41, 66, 64, 14, 7, 26, 14, 67, 20, 68, 35, 69, 69, 23, 12, 12, 3, 3, 7, 25, 23, 23, 25, 4,
+    25, 25, 70, 23, 25, 5, 23, 25, 25, 71, 72, 25, 25, 25, 72, 25, 25, 25, 8, 12, 41, 7, 7, 73,
+    74, 26, 26, 75, 41, 41, 44, 4, 24, 76, 77, 78, 67, 49, 78, 71, 37, 76, 17, 17, 17, 17, 17, 17,
+    41, 79, 67, 80, 25, 81, 82, 12, 56, 57, 57, 57, 67, 42, 15, 56, 40, 40, 3, 76, 83, 6, 67, 14,
+    3, 84, 76, 49, 85, 86, 4, 17, 61, 87, 5, 26, 26, 26, 28, 3, 4, 88, 9, 3, 89, 90, 67, 91,
+    92, 67, 67, 67, 93, 67, 92, 92, 93, 70, 69, 5, 16, 41, 41, 5, 41, 41, 69, 41, 41, 41, 65, 65,
+    94, 94, 50, 94, 70, 41, 41, 41, 41, 41, 41, 17, 26, 26, 14, 3, 88, 95, 3, 4, 24, 96, 14, 82,
+    97, 82, 98, 99, 100, 98, 82, 98, 82, 82, 101, 65, 102, 3, 76, 65, 82, 3, 3, 103, 3, 41, 81, 4,
+    57, 57, 82, 104, 3, 14, 3, 82, 76, 24, 56, 4, 105, 105, 105, 105, 82, 105, 105, 105, 82, 105, 106, 4,
+    105, 107, 41, 64, 108, 67, 69, 25, 25, 109, 4, 110, 65, 109, 109, 110, 109, 92, 92, 110, 68, 5, 5, 111,
+    70, 23, 72, 3, 14, 14, 96, 14, 24, 88, 70, 82, 112, 14, 49, 67, 50, 112, 113, 3, 99, 114, 102, 82,
+    5, 3, 3, 56, 56, 3, 3, 3, 82, 86, 39, 56, 115, 12, 116, 95, 82, 117, 105, 12, 12, 109, 67, 41,
+    41, 92, 94, 65, 65, 92, 65, 65, 69, 65, 94, 94, 12, 88, 24, 88, 14, 14, 82, 82, 118, 67, 82, 101,
+    3, 14, 3, 86, 12, 24, 82, 119, 82, 120, 109, 67, 65, 92, 109, 67, 14, 14, 14, 88, 12, 70, 112, 114,
+    12, 65, 65, 94, 94, 109, 12, 88, 12, 14, 112, 105, 4, 65, 65, 14, 12, 94, 12, 65,
 };
 
 fn expectedIn(state: u16) []const u16 {
@@ -2877,108 +3817,120 @@ fn expectedIn(state: u16) []const u16 {
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
         1 => "end of input",
-        71 => "newline",
-        72 => "indent",
-        73 => "outdent",
-        74 => "\":\"",
-        75 => "ident",
-        76 => "post_if",
-        77 => "\"=\"",
-        78 => "\"+=\"",
-        79 => "\"-=\"",
-        80 => "\"*=\"",
-        81 => "\"/=\"",
-        82 => "\"%=\"",
-        83 => "\"&=\"",
-        84 => "\"|=\"",
-        85 => "\"^=\"",
-        86 => "\"<<=\"",
-        87 => "\">>=\"",
-        88 => "\"=!\"",
-        89 => "\"<-\"",
-        90 => "new",
-        91 => "drop_stmt",
-        92 => "return",
-        93 => "break",
-        94 => "continue",
-        95 => "defer",
-        96 => "errdefer",
-        97 => "pre",
-        98 => "raw",
-        99 => "pub",
-        100 => "use",
-        101 => "fun",
-        102 => "sub",
-        103 => "\"->\"",
-        104 => "\",\"",
-        107 => "\")\"",
-        108 => "lparen_call",
-        109 => "\"(\"",
-        110 => "read_pfx",
-        111 => "write_pfx",
-        112 => "kwarg_name",
-        113 => "enum",
-        114 => "error",
-        115 => "struct",
-        116 => "type",
-        117 => "drop",
-        118 => "test",
-        119 => "string_dq",
-        120 => "extern",
-        121 => "zig",
-        122 => "string_sq",
-        123 => "share_pfx",
-        124 => "\"~\"",
-        125 => "\"[\"",
-        126 => "\"]\"",
-        127 => "integer",
-        130 => "suffix_q",
-        131 => "suffix_bang",
-        132 => "\".\"",
-        133 => "catch",
-        134 => "bar_capture",
-        135 => "ternary_if",
-        136 => "else",
-        137 => "or",
-        138 => "and",
-        139 => "not",
-        141 => "as",
-        142 => "if",
-        143 => "while",
-        144 => "for",
-        145 => "in",
-        146 => "match",
-        147 => "\"=>\"",
-        148 => "\"..\"",
-        149 => "minus_prefix",
-        150 => "real",
-        151 => "true",
-        152 => "false",
-        153 => "dot_lit",
-        156 => "try",
-        159 => "bar_empty",
-        160 => "clone_pfx",
-        161 => "move_pfx",
-        162 => "pin_pfx",
-        163 => "lbracket_index",
-        164 => "\"@\"",
-        178 => "\"==\"",
-        179 => "\"!=\"",
-        180 => "\"<\"",
-        181 => "\">\"",
-        182 => "\"<=\"",
-        183 => "\">=\"",
-        184 => "\"??\"",
-        185 => "\"|\"",
-        186 => "\"^\"",
-        187 => "\"&\"",
-        188 => "\"<<\"",
-        189 => "\">>\"",
-        190 => "\"+\"",
-        191 => "\"-\"",
-        192 => "\"*\"",
-        193 => "\"/\"",
-        194 => "\"%\"",
+        5 => "an indented block",
+        6 => "a statement",
+        14 => "a parameter list",
+        16 => "a parameter",
+        23 => "a member",
+        30 => "a type",
+        33 => "an expression",
+        34 => "an expression",
+        35 => "a value",
+        50 => "a match arm",
+        51 => "a pattern",
+        61 => "an operand",
+        67 => "the end of the line",
+        68 => "an indented block",
+        69 => "the end of the block",
+        70 => "`:`",
+        71 => "a name",
+        72 => "`if`",
+        73 => "`=`",
+        74 => "`+=`",
+        75 => "`-=`",
+        76 => "`*=`",
+        77 => "`/=`",
+        78 => "`%=`",
+        79 => "`&=`",
+        80 => "`|=`",
+        81 => "`^=`",
+        82 => "`<<=`",
+        83 => "`>>=`",
+        84 => "`=!`",
+        85 => "`<-`",
+        86 => "`new`",
+        87 => "`-`",
+        88 => "`return`",
+        89 => "`break`",
+        90 => "`continue`",
+        91 => "`defer`",
+        92 => "`errdefer`",
+        93 => "`pre`",
+        94 => "`raw`",
+        95 => "`pub`",
+        96 => "`use`",
+        97 => "`fun`",
+        98 => "`sub`",
+        99 => "`->`",
+        100 => "`,`",
+        103 => "`)`",
+        104 => "`(`",
+        105 => "`(`",
+        106 => "`?`",
+        107 => "`!`",
+        108 => "a keyword argument",
+        109 => "`enum`",
+        110 => "`error`",
+        111 => "`struct`",
+        112 => "`type`",
+        113 => "`drop`",
+        114 => "`test`",
+        115 => "a string",
+        116 => "`extern`",
+        117 => "`zig`",
+        118 => "a string",
+        119 => "`*`",
+        120 => "`~`",
+        121 => "`[`",
+        122 => "`]`",
+        123 => "an integer",
+        127 => "`?`",
+        128 => "`!`",
+        129 => "`.`",
+        130 => "`catch`",
+        131 => "`|`",
+        132 => "`if`",
+        133 => "`else`",
+        134 => "`or`",
+        135 => "`and`",
+        136 => "`not`",
+        138 => "`as`",
+        139 => "`if`",
+        140 => "`while`",
+        141 => "`for`",
+        142 => "`in`",
+        143 => "`match`",
+        144 => "`=>`",
+        145 => "`..`",
+        146 => "`-`",
+        147 => "a number",
+        148 => "`true`",
+        149 => "`false`",
+        150 => "`.`",
+        154 => "`try`",
+        157 => "`||`",
+        158 => "`+`",
+        159 => "`<`",
+        160 => "`@`",
+        161 => "`[`",
+        162 => "`@`",
+        177 => "`==`",
+        178 => "`!=`",
+        179 => "`<`",
+        180 => "`>`",
+        181 => "`<=`",
+        182 => "`>=`",
+        183 => "`??`",
+        184 => "`|`",
+        185 => "`^`",
+        186 => "`&`",
+        187 => "`<<`",
+        188 => "`>>`",
+        189 => "`+`",
+        190 => "`-`",
+        191 => "`*`",
+        192 => "`/`",
+        193 => "`%`",
         else => "",
     };
 }
@@ -3000,20 +3952,937 @@ fn ruleSideLabels(rule: u16) []const SideLabel {
     return &.{};
 }
 
-fn slotOf(_: Tag, _: Role) ?usize {
-    return null;
+// =============================================================================
+// Schema slots
+// =============================================================================
+
+/// Slot of `role` in nodes of `kind` (the head is slot 0).
+fn slotOf(kind: Tag, role: Role) ?usize {
+    return switch (kind) {
+        .@"use" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"zig" => switch (role) {
+            .@"code" => 1,
+            else => null,
+        },
+        .@"fun" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            .@"returns" => 3,
+            .@"body" => 4,
+            else => null,
+        },
+        .@"sub" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            .@"body" => 3,
+            else => null,
+        },
+        .@"lambda" => switch (role) {
+            .@"captures" => 1,
+            .@"params" => 2,
+            .@"body" => 3,
+            else => null,
+        },
+        .@"struct" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"enum" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"errors" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"generic_type" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            else => null,
+        },
+        .@"generic_enum" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            else => null,
+        },
+        .@"type" => switch (role) {
+            .@"name" => 1,
+            .@"type" => 2,
+            else => null,
+        },
+        .@"test" => switch (role) {
+            .@"name" => 1,
+            .@"body" => 2,
+            else => null,
+        },
+        .@"pub" => switch (role) {
+            .@"decl" => 1,
+            else => null,
+        },
+        .@"extern" => switch (role) {
+            .@"name" => 1,
+            .@"type" => 2,
+            else => null,
+        },
+        .@"extern_fun" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            .@"returns" => 3,
+            else => null,
+        },
+        .@"extern_sub" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            else => null,
+        },
+        .@"drop_decl" => switch (role) {
+            .@"params" => 1,
+            .@"body" => 2,
+            else => null,
+        },
+        .@"labeled" => switch (role) {
+            .@"label" => 1,
+            .@"stmt" => 2,
+            else => null,
+        },
+        .@":" => switch (role) {
+            .@"name" => 1,
+            .@"type" => 2,
+            else => null,
+        },
+        .@"pre_param" => switch (role) {
+            .@"name" => 1,
+            .@"type" => 2,
+            else => null,
+        },
+        .@"default" => switch (role) {
+            .@"name" => 1,
+            .@"type" => 2,
+            .@"value" => 3,
+            else => null,
+        },
+        .@"valued" => switch (role) {
+            .@"name" => 1,
+            .@"value" => 2,
+            else => null,
+        },
+        .@"variant" => switch (role) {
+            .@"name" => 1,
+            .@"params" => 2,
+            else => null,
+        },
+        .@"set" => switch (role) {
+            .@"op" => 1,
+            .@"target" => 2,
+            .@"type" => 3,
+            .@"value" => 4,
+            else => null,
+        },
+        .@"drop" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"if" => switch (role) {
+            .@"cond" => 1,
+            .@"then" => 2,
+            .@"else" => 3,
+            else => null,
+        },
+        .@"as" => switch (role) {
+            .@"value" => 1,
+            .@"name" => 2,
+            else => null,
+        },
+        .@"while" => switch (role) {
+            .@"cond" => 1,
+            .@"step" => 2,
+            .@"body" => 3,
+            .@"else" => 4,
+            else => null,
+        },
+        .@"for" => switch (role) {
+            .@"mode" => 1,
+            .@"var" => 2,
+            .@"index" => 3,
+            .@"source" => 4,
+            .@"body" => 5,
+            .@"else" => 6,
+            else => null,
+        },
+        .@"match" => switch (role) {
+            .@"subject" => 1,
+            else => null,
+        },
+        .@"arm" => switch (role) {
+            .@"pattern" => 1,
+            .@"body" => 2,
+            else => null,
+        },
+        .@"range_pattern" => switch (role) {
+            .@"lo" => 1,
+            .@"hi" => 2,
+            else => null,
+        },
+        .@"variant_pattern" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"enum_lit" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"return" => switch (role) {
+            .@"value" => 1,
+            else => null,
+        },
+        .@"break" => switch (role) {
+            .@"value" => 1,
+            .@"label" => 2,
+            else => null,
+        },
+        .@"continue" => switch (role) {
+            .@"label" => 1,
+            else => null,
+        },
+        .@"defer" => switch (role) {
+            .@"body" => 1,
+            else => null,
+        },
+        .@"errdefer" => switch (role) {
+            .@"body" => 1,
+            else => null,
+        },
+        .@"raw_block" => switch (role) {
+            .@"body" => 1,
+            else => null,
+        },
+        .@"pre_block" => switch (role) {
+            .@"body" => 1,
+            else => null,
+        },
+        .@"pre" => switch (role) {
+            .@"value" => 1,
+            else => null,
+        },
+        .@"propagate" => switch (role) {
+            .@"value" => 1,
+            else => null,
+        },
+        .@"try_block" => switch (role) {
+            .@"body" => 1,
+            .@"catch" => 2,
+            else => null,
+        },
+        .@"catch_block" => switch (role) {
+            .@"name" => 1,
+            .@"body" => 2,
+            else => null,
+        },
+        .@"catch" => switch (role) {
+            .@"value" => 1,
+            .@"name" => 2,
+            .@"handler" => 3,
+            else => null,
+        },
+        .@"cap_clone" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"cap_move" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"cap_weak" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"call" => switch (role) {
+            .@"callee" => 1,
+            else => null,
+        },
+        .@"builtin" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"member" => switch (role) {
+            .@"object" => 1,
+            .@"name" => 2,
+            else => null,
+        },
+        .@"index" => switch (role) {
+            .@"object" => 1,
+            .@"index" => 2,
+            else => null,
+        },
+        .@"kwarg" => switch (role) {
+            .@"name" => 1,
+            .@"value" => 2,
+            else => null,
+        },
+        .@"+" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"-" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"*" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"/" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"%" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"==" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"!=" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"<" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@">" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"<=" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@">=" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"&" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"|" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"^" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"<<" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@">>" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"??" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@".." => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"and" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"or" => switch (role) {
+            .@"left" => 1,
+            .@"right" => 2,
+            else => null,
+        },
+        .@"neg" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"not" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"move" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"read" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"write" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"clone" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"share" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"weak" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"pin" => switch (role) {
+            .@"operand" => 1,
+            else => null,
+        },
+        .@"optional" => switch (role) {
+            .@"type" => 1,
+            else => null,
+        },
+        .@"error_union" => switch (role) {
+            .@"type" => 1,
+            else => null,
+        },
+        .@"borrow_read" => switch (role) {
+            .@"type" => 1,
+            else => null,
+        },
+        .@"borrow_write" => switch (role) {
+            .@"type" => 1,
+            else => null,
+        },
+        .@"shared" => switch (role) {
+            .@"type" => 1,
+            else => null,
+        },
+        .@"slice" => switch (role) {
+            .@"type" => 1,
+            else => null,
+        },
+        .@"generic_inst" => switch (role) {
+            .@"name" => 1,
+            else => null,
+        },
+        .@"array_type" => switch (role) {
+            .@"size" => 1,
+            .@"type" => 2,
+            else => null,
+        },
+        .@"fun_type" => switch (role) {
+            .@"params" => 1,
+            .@"returns" => 2,
+            else => null,
+        },
+        else => null,
+    };
 }
 
-fn restSlotOf(_: Tag, _: Role) ?usize {
-    return null;
+/// First slot of rest role `role` in nodes of `kind`.
+fn restSlotOf(kind: Tag, role: Role) ?usize {
+    return switch (kind) {
+        .@"module" => if (role == .@"decls") 1 else null,
+        .@"struct" => if (role == .@"members") 2 else null,
+        .@"enum" => if (role == .@"members") 2 else null,
+        .@"errors" => if (role == .@"members") 2 else null,
+        .@"generic_type" => if (role == .@"members") 3 else null,
+        .@"generic_enum" => if (role == .@"members") 3 else null,
+        .@"match" => if (role == .@"arms") 2 else null,
+        .@"variant_pattern" => if (role == .@"bindings") 2 else null,
+        .@"block" => if (role == .@"stmts") 1 else null,
+        .@"captures" => if (role == .@"caps") 1 else null,
+        .@"call" => if (role == .@"args") 2 else null,
+        .@"builtin" => if (role == .@"args") 2 else null,
+        .@"array" => if (role == .@"elems") 1 else null,
+        .@"generic_inst" => if (role == .@"args") 2 else null,
+        else => null,
+    };
 }
 
-fn roleAt(_: Tag, _: usize) ?Role {
-    return null;
+/// The slot role at `slot` of nodes of `kind`.
+fn roleAt(kind: Tag, slot: usize) ?Role {
+    return switch (kind) {
+        .@"use" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"zig" => switch (slot) {
+            1 => .@"code",
+            else => null,
+        },
+        .@"fun" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            3 => .@"returns",
+            4 => .@"body",
+            else => null,
+        },
+        .@"sub" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            3 => .@"body",
+            else => null,
+        },
+        .@"lambda" => switch (slot) {
+            1 => .@"captures",
+            2 => .@"params",
+            3 => .@"body",
+            else => null,
+        },
+        .@"struct" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"enum" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"errors" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"generic_type" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            else => null,
+        },
+        .@"generic_enum" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            else => null,
+        },
+        .@"type" => switch (slot) {
+            1 => .@"name",
+            2 => .@"type",
+            else => null,
+        },
+        .@"test" => switch (slot) {
+            1 => .@"name",
+            2 => .@"body",
+            else => null,
+        },
+        .@"pub" => switch (slot) {
+            1 => .@"decl",
+            else => null,
+        },
+        .@"extern" => switch (slot) {
+            1 => .@"name",
+            2 => .@"type",
+            else => null,
+        },
+        .@"extern_fun" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            3 => .@"returns",
+            else => null,
+        },
+        .@"extern_sub" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            else => null,
+        },
+        .@"drop_decl" => switch (slot) {
+            1 => .@"params",
+            2 => .@"body",
+            else => null,
+        },
+        .@"labeled" => switch (slot) {
+            1 => .@"label",
+            2 => .@"stmt",
+            else => null,
+        },
+        .@":" => switch (slot) {
+            1 => .@"name",
+            2 => .@"type",
+            else => null,
+        },
+        .@"pre_param" => switch (slot) {
+            1 => .@"name",
+            2 => .@"type",
+            else => null,
+        },
+        .@"default" => switch (slot) {
+            1 => .@"name",
+            2 => .@"type",
+            3 => .@"value",
+            else => null,
+        },
+        .@"valued" => switch (slot) {
+            1 => .@"name",
+            2 => .@"value",
+            else => null,
+        },
+        .@"variant" => switch (slot) {
+            1 => .@"name",
+            2 => .@"params",
+            else => null,
+        },
+        .@"set" => switch (slot) {
+            1 => .@"op",
+            2 => .@"target",
+            3 => .@"type",
+            4 => .@"value",
+            else => null,
+        },
+        .@"drop" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"if" => switch (slot) {
+            1 => .@"cond",
+            2 => .@"then",
+            3 => .@"else",
+            else => null,
+        },
+        .@"as" => switch (slot) {
+            1 => .@"value",
+            2 => .@"name",
+            else => null,
+        },
+        .@"while" => switch (slot) {
+            1 => .@"cond",
+            2 => .@"step",
+            3 => .@"body",
+            4 => .@"else",
+            else => null,
+        },
+        .@"for" => switch (slot) {
+            1 => .@"mode",
+            2 => .@"var",
+            3 => .@"index",
+            4 => .@"source",
+            5 => .@"body",
+            6 => .@"else",
+            else => null,
+        },
+        .@"match" => switch (slot) {
+            1 => .@"subject",
+            else => null,
+        },
+        .@"arm" => switch (slot) {
+            1 => .@"pattern",
+            2 => .@"body",
+            else => null,
+        },
+        .@"range_pattern" => switch (slot) {
+            1 => .@"lo",
+            2 => .@"hi",
+            else => null,
+        },
+        .@"variant_pattern" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"enum_lit" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"return" => switch (slot) {
+            1 => .@"value",
+            else => null,
+        },
+        .@"break" => switch (slot) {
+            1 => .@"value",
+            2 => .@"label",
+            else => null,
+        },
+        .@"continue" => switch (slot) {
+            1 => .@"label",
+            else => null,
+        },
+        .@"defer" => switch (slot) {
+            1 => .@"body",
+            else => null,
+        },
+        .@"errdefer" => switch (slot) {
+            1 => .@"body",
+            else => null,
+        },
+        .@"raw_block" => switch (slot) {
+            1 => .@"body",
+            else => null,
+        },
+        .@"pre_block" => switch (slot) {
+            1 => .@"body",
+            else => null,
+        },
+        .@"pre" => switch (slot) {
+            1 => .@"value",
+            else => null,
+        },
+        .@"propagate" => switch (slot) {
+            1 => .@"value",
+            else => null,
+        },
+        .@"try_block" => switch (slot) {
+            1 => .@"body",
+            2 => .@"catch",
+            else => null,
+        },
+        .@"catch_block" => switch (slot) {
+            1 => .@"name",
+            2 => .@"body",
+            else => null,
+        },
+        .@"catch" => switch (slot) {
+            1 => .@"value",
+            2 => .@"name",
+            3 => .@"handler",
+            else => null,
+        },
+        .@"cap_clone" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"cap_move" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"cap_weak" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"call" => switch (slot) {
+            1 => .@"callee",
+            else => null,
+        },
+        .@"builtin" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"member" => switch (slot) {
+            1 => .@"object",
+            2 => .@"name",
+            else => null,
+        },
+        .@"index" => switch (slot) {
+            1 => .@"object",
+            2 => .@"index",
+            else => null,
+        },
+        .@"kwarg" => switch (slot) {
+            1 => .@"name",
+            2 => .@"value",
+            else => null,
+        },
+        .@"+" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"-" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"*" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"/" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"%" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"==" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"!=" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"<" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@">" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"<=" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@">=" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"&" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"|" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"^" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"<<" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@">>" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"??" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@".." => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"and" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"or" => switch (slot) {
+            1 => .@"left",
+            2 => .@"right",
+            else => null,
+        },
+        .@"neg" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"not" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"move" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"read" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"write" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"clone" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"share" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"weak" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"pin" => switch (slot) {
+            1 => .@"operand",
+            else => null,
+        },
+        .@"optional" => switch (slot) {
+            1 => .@"type",
+            else => null,
+        },
+        .@"error_union" => switch (slot) {
+            1 => .@"type",
+            else => null,
+        },
+        .@"borrow_read" => switch (slot) {
+            1 => .@"type",
+            else => null,
+        },
+        .@"borrow_write" => switch (slot) {
+            1 => .@"type",
+            else => null,
+        },
+        .@"shared" => switch (slot) {
+            1 => .@"type",
+            else => null,
+        },
+        .@"slice" => switch (slot) {
+            1 => .@"type",
+            else => null,
+        },
+        .@"generic_inst" => switch (slot) {
+            1 => .@"name",
+            else => null,
+        },
+        .@"array_type" => switch (slot) {
+            1 => .@"size",
+            2 => .@"type",
+            else => null,
+        },
+        .@"fun_type" => switch (slot) {
+            1 => .@"params",
+            2 => .@"returns",
+            else => null,
+        },
+        else => null,
+    };
 }
 
-fn restRoleOf(_: Tag) ?struct { role: Role, slot: usize } {
-    return null;
+fn restRoleOf(kind: Tag) ?struct { role: Role, slot: usize } {
+    return switch (kind) {
+        .@"module" => .{ .role = .@"decls", .slot = 1 },
+        .@"struct" => .{ .role = .@"members", .slot = 2 },
+        .@"enum" => .{ .role = .@"members", .slot = 2 },
+        .@"errors" => .{ .role = .@"members", .slot = 2 },
+        .@"generic_type" => .{ .role = .@"members", .slot = 3 },
+        .@"generic_enum" => .{ .role = .@"members", .slot = 3 },
+        .@"match" => .{ .role = .@"arms", .slot = 2 },
+        .@"variant_pattern" => .{ .role = .@"bindings", .slot = 2 },
+        .@"block" => .{ .role = .@"stmts", .slot = 1 },
+        .@"captures" => .{ .role = .@"caps", .slot = 1 },
+        .@"call" => .{ .role = .@"args", .slot = 2 },
+        .@"builtin" => .{ .role = .@"args", .slot = 2 },
+        .@"array" => .{ .role = .@"elems", .slot = 1 },
+        .@"generic_inst" => .{ .role = .@"args", .slot = 2 },
+        else => null,
+    };
 }
 
 // =============================================================================

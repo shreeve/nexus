@@ -1,26 +1,78 @@
 (module
-  (struct `Node` (: `n` `Int`) (: `next` (optional (shared `Node`))))
-  (struct `Tree` (: `n` `Int`) (: `kids` (generic_inst `Vec` (shared `Tree`))))
+  (struct
+    `Node`
+    (: `n` `Int`)@78..84
+    (: `next` (optional (shared `Node`)@94..99)@93..101)@87..101)@64..103
+  (struct
+    `Tree`
+    (: `n` `Int`)@117..123
+    (: `kids` (generic_inst `Vec` (shared `Tree`)@136..141)@132..142)@126..142)@103..144
   (fun
     `sum`
-    ((: `t` (borrow_read (shared `Tree`))))
+    ((: `t` (borrow_read (shared `Tree`)@156..161)@155..161)@152..161)@151..162
     `Int`
     (block
-      (set _ `total` _ (member `t` `n`))
-      (for iter `k` _ (read (member `t` `kids`)) (block (set += `total` _ (call `sum` (read `k`)))))
-      `total`))
+      (set _ `total` _ (member `t` `n`)@180..183)@172..183
+      (for
+        iter
+        `k`
+        _
+        (read (member `t` `kids`)@196..202)@195..202
+        (block (set += `total` _ (call `sum` (read `k`)@220..222)@216..223)@207..223)@207..226
+        _)@186..226
+      `total`)@172..233)@144..233
   (sub
     `main`
-    ()
-    _
+    ()@241..243
     (block
-      (set _ `a` _ (share (call `Node` (kwarg `n` `1`) (kwarg `next` `none`))))
-      (set _ `b` _ (share (call `Node` (kwarg `n` `2`) (kwarg `next` (clone `a`)))))
-      (call `print` (member `b` `n`) (member `a` `n`))
-      (set _ `leaf1` _ (share (call `Tree` (kwarg `n` `3`) (kwarg `kids` (call `Vec`)))))
-      (set _ `leaf2` _ (share (call `Tree` (kwarg `n` `4`) (kwarg `kids` (call `Vec`)))))
-      (set _ `kids` (generic_inst `Vec` (shared `Tree`)) (call `Vec`))
-      (call (member (write `kids`) `push`) (move `leaf1`))
-      (call (member (write `kids`) `push`) (move `leaf2`))
-      (set _ `root` _ (share (call `Tree` (kwarg `n` `5`) (kwarg `kids` (move `kids`)))))
-      (call `print` (call `sum` (read `root`))))))
+      (set
+        _
+        `a`
+        _
+        (share
+          (call `Node` (kwarg `n` `1`)@256..260 (kwarg `next` `none`)@262..272)@251..273)@250..273)@246..273
+      (set
+        _
+        `b`
+        _
+        (share
+          (call
+            `Node`
+            (kwarg `n` `2`)@286..290
+            (kwarg `next` (clone `a`)@298..300)@292..300)@281..301)@280..301)@276..301
+      (call `print` (member `b` `n`)@310..313 (member `a` `n`)@315..318)@304..319
+      (set
+        _
+        `leaf1`
+        _
+        (share
+          (call
+            `Tree`
+            (kwarg `n` `3`)@336..340
+            (kwarg `kids` (call `Vec`)@348..353)@342..353)@331..354)@330..354)@322..354
+      (set
+        _
+        `leaf2`
+        _
+        (share
+          (call
+            `Tree`
+            (kwarg `n` `4`)@371..375
+            (kwarg `kids` (call `Vec`)@383..388)@377..388)@366..389)@365..389)@357..389
+      (set
+        _
+        `kids`
+        (generic_inst `Vec` (shared `Tree`)@402..407)@398..408
+        (call `Vec`)@411..416)@392..416
+      (call (member (write `kids`)@420..425 `push`)@419..431 (move `leaf1`)@432..438)@419..439
+      (call (member (write `kids`)@443..448 `push`)@442..454 (move `leaf2`)@455..461)@442..462
+      (set
+        _
+        `root`
+        _
+        (share
+          (call
+            `Tree`
+            (kwarg `n` `5`)@478..482
+            (kwarg `kids` (move `kids`)@490..495)@484..495)@473..496)@472..496)@465..496
+      (call `print` (call `sum` (read `root`)@509..514)@505..515)@499..516)@246..539)@233..539)@64..539

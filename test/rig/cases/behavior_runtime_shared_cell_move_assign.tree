@@ -1,12 +1,19 @@
 (module
   (sub
     `main`
-    ()
-    _
+    ()@143..145
     (block
-      (set _ `rc1` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
-      (set _ `rc2` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
-      (call (member `rc1` `set`) `10`)
-      (call (member `rc2` `set`) `20`)
-      (set move `rc1` _ `rc2`)
-      (call `print` (call (member `rc1` `get`))))))
+      (set
+        _
+        `rc1`
+        (shared (generic_inst `Cell` `Int`)@154..163)@153..163
+        (share (call `Cell` (kwarg `value` `0`)@172..180)@167..181)@166..181)@148..181
+      (set
+        _
+        `rc2`
+        (shared (generic_inst `Cell` `Int`)@190..199)@189..199
+        (share (call `Cell` (kwarg `value` `0`)@208..216)@203..217)@202..217)@184..217
+      (call (member `rc1` `set`)@220..227 `10`)@220..231
+      (call (member `rc2` `set`)@234..241 `20`)@234..245
+      (set move `rc1` _ `rc2`)@248..258
+      (call `print` (call (member `rc1` `get`)@267..274)@267..276)@261..277)@148..336)@135..336)@135..336
