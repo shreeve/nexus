@@ -548,6 +548,7 @@ pub const GrammarLowerer = struct {
 
     fn lowerLang(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         try self.requireArity(node, items, 2, 2, "(lang STRING)");
+        if (self.lang != null) return self.fail(node, "duplicate @lang", .{});
         self.lang = stripQuotes(try self.requireSrc(items[1], "language-name string"));
     }
 
@@ -639,7 +640,10 @@ pub const GrammarLowerer = struct {
             try self.requireArity(entry, et, 3, 3, "(op_map STRING STRING)");
             const lit = stripQuotes(try self.requireSrc(et[1], "op literal"));
             const tok = stripQuotes(try self.requireSrc(et[2], "op target token"));
-            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok });
+            for (self.opMappings.items) |m| if (std.mem.eql(u8, m.lit, lit))
+                return self.fail(et[1], "@op maps \"{s}\" twice", .{lit});
+            const at = self.loc(et[2]);
+            try self.opMappings.append(self.allocator, .{ .lit = lit, .tok = tok, .line = at.line, .col = at.col });
         }
     }
 
@@ -671,7 +675,10 @@ pub const GrammarLowerer = struct {
         for (items[1..]) |entry| {
             const p = try self.lowerPair(entry);
             if (p.quoted) return self.fail(entry, "@errors names rules (`rule: \"name\"`); name tokens in @display", .{});
-            try self.errorNames.append(self.allocator, .{ .rule = p.key, .name = p.name });
+            for (self.errorNames.items) |e| if (std.mem.eql(u8, e.rule, p.key))
+                return self.fail(entry, "@errors names '{s}' twice", .{p.key});
+            const at = self.loc(entry);
+            try self.errorNames.append(self.allocator, .{ .rule = p.key, .name = p.name, .line = at.line, .col = at.col });
         }
     }
 
@@ -681,7 +688,10 @@ pub const GrammarLowerer = struct {
             const p = try self.lowerPair(entry);
             if (!p.quoted and !(p.key[0] >= 'A' and p.key[0] <= 'Z'))
                 return self.fail(entry, "@display names tokens (`TOKEN: \"name\"` or `\"lit\": \"name\"`); name rules in @errors", .{});
-            try self.displayNames.append(self.allocator, .{ .token = p.key, .name = p.name });
+            for (self.displayNames.items) |d| if (std.mem.eql(u8, d.token, p.key))
+                return self.fail(entry, "@display names {s} twice", .{p.key});
+            const at = self.loc(entry);
+            try self.displayNames.append(self.allocator, .{ .token = p.key, .name = p.name, .line = at.line, .col = at.col });
         }
     }
 

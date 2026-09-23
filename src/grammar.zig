@@ -411,6 +411,9 @@ pub const ConflictEntry = struct {
 pub const DisplayName = struct {
     token: []const u8,
     name: []const u8,
+    /// Where the key is written (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 pub const RepairSpec = struct {
@@ -454,12 +457,18 @@ pub const AsDirective = struct {
 pub const OpMapping = struct {
     lit: []const u8, // "'=" (the literal in the grammar)
     tok: []const u8, // "noteq" (the lexer token type)
+    /// Where the target token is written (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// @errors directive for human-readable rule names in diagnostics
 pub const ErrorName = struct {
     rule: []const u8, // "expr"
     name: []const u8, // "expression"
+    /// Where the rule name is written (diagnostics).
+    line: u32 = 0,
+    col: u32 = 0,
 };
 
 /// @infix directive for automatic precedence-climbing expression grammar

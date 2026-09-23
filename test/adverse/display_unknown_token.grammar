@@ -1,0 +1,17 @@
+# A @display key that names no token (a misspelling) is an error, not ignored.
+# error: display_unknown_token.grammar:16:5:
+# error: @display names IDENTT, which is no token
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@display
+    IDENTT: "a name"
+top! = IDENT                                → (t 1)

@@ -265,6 +265,7 @@ const Codegen = struct {
         }
 
         try self.mapTokens();
+        try self.checkNames();
     }
 
     /// A generation error at `line` (column 1 unless given).
@@ -537,6 +538,37 @@ const Codegen = struct {
             try owner.put(self.allocator, c, sym.id);
         };
         if (failed) return error.TokenMapping;
+    }
+
+    /// @errors must name rules, @display tokens (of the grammar or the
+    /// lexer), and @op must map to lexer tokens: a misspelled name would
+    /// otherwise be ignored.
+    fn checkNames(self: *Codegen) !void {
+        var failed = false;
+        for (self.g.errorNames) |e| {
+            const sym = self.g.getSymbol(e.rule);
+            if (sym == null or self.g.symbols.items[sym.?].kind != .nonterminal) {
+                self.errLine(@max(e.line, 1), @max(e.col, 1), "@errors names '{s}', which is no rule of the grammar", .{e.rule});
+                failed = true;
+            }
+        }
+        for (self.g.displayNames) |d| {
+            if (std.ascii.eqlIgnoreCase(d.token, "eof")) continue;
+            const known = for (self.g.symbols.items) |sym| {
+                if (sym.kind == .terminal and std.ascii.eqlIgnoreCase(sym.name, d.token)) break true;
+            } else self.tokenCatOf(d.token) != null;
+            if (!known) {
+                self.errLine(@max(d.line, 1), @max(d.col, 1), "@display names {s}, which is no token of the grammar or the lexer", .{d.token});
+                failed = true;
+            }
+        }
+        for (self.g.opMappings) |m| {
+            if (self.tokenCatOf(m.tok) == null) {
+                self.errLine(@max(m.line, 1), @max(m.col, 1), "@op maps \"{s}\" to \"{s}\", which is no lexer token", .{ m.lit, m.tok });
+                failed = true;
+            }
+        }
+        if (failed) return error.UnknownName;
     }
 
     fn literalCat(self: *const Codegen, raw: []const u8) ?[]const u8 {

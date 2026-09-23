@@ -1,0 +1,17 @@
+# An @errors key that names no rule (a misspelling) is an error, not ignored.
+# error: errors_unknown_rule.grammar:16:5:
+# error: @errors names 'tpo', which is no rule
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@errors
+    tpo: "a top"
+top! = IDENT                                → (t 1)
