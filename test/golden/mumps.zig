@@ -1447,7 +1447,7 @@ const errorSymbol: u16 = 2;
 fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"ident" => identToSymbol(self, token),
+        .@"ident" => promote(self, token),
         .@"integer" => 110,
         .@"zdigits" => 111,
         .@"comment" => 113,
@@ -1505,18 +1505,18 @@ fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
     };
 }
 
-fn identToSymbol(self: *BaseParser, token: Token) u16 {
+fn promote(self: *BaseParser, token: Token) u16 {
     const text = self.source[token.pos..][0..token.len];
-    if (text.len == 0) return symIdent;
-    if (tryIdentAsFn(self, text)) |sym| return sym;
-    if (tryIdentAsIsv(self, text)) |sym| return sym;
-    if (tryIdentAsSsvn(self, text)) |sym| return sym;
-    if (getAction(self.stateStack.getLast(), symIdent) != 0) return symIdent;
-    if (tryIdentAsCmd(self, text)) |sym| return sym;
-    return symIdent;
+    if (text.len == 0) return promotableSymbol;
+    if (tryPromoteFn(self, text)) |sym| return sym;
+    if (tryPromoteIsv(self, text)) |sym| return sym;
+    if (tryPromoteSsvn(self, text)) |sym| return sym;
+    if (getAction(self.stateStack.getLast(), promotableSymbol) != 0) return promotableSymbol;
+    if (tryPromoteCmd(self, text)) |sym| return sym;
+    return promotableSymbol;
 }
 
-fn tryIdentAsFn(self: *BaseParser, text: []const u8) ?u16 {
+fn tryPromoteFn(self: *BaseParser, text: []const u8) ?u16 {
     const state = self.stateStack.getLast();
     const id = mumps.fnAs(text) orelse return null;
     const idIdx = @intFromEnum(id);
@@ -1533,7 +1533,7 @@ fn tryIdentAsFn(self: *BaseParser, text: []const u8) ?u16 {
     return null;
 }
 
-fn tryIdentAsIsv(self: *BaseParser, text: []const u8) ?u16 {
+fn tryPromoteIsv(self: *BaseParser, text: []const u8) ?u16 {
     const state = self.stateStack.getLast();
     const id = mumps.isvAs(text) orelse return null;
     const idIdx = @intFromEnum(id);
@@ -1550,7 +1550,7 @@ fn tryIdentAsIsv(self: *BaseParser, text: []const u8) ?u16 {
     return null;
 }
 
-fn tryIdentAsSsvn(self: *BaseParser, text: []const u8) ?u16 {
+fn tryPromoteSsvn(self: *BaseParser, text: []const u8) ?u16 {
     const state = self.stateStack.getLast();
     const id = mumps.ssvnAs(text) orelse return null;
     const idIdx = @intFromEnum(id);
@@ -1567,7 +1567,7 @@ fn tryIdentAsSsvn(self: *BaseParser, text: []const u8) ?u16 {
     return null;
 }
 
-fn tryIdentAsCmd(self: *BaseParser, text: []const u8) ?u16 {
+fn tryPromoteCmd(self: *BaseParser, text: []const u8) ?u16 {
     const state = self.stateStack.getLast();
     const id = mumps.cmdAs(text) orelse return null;
     const idIdx = @intFromEnum(id);
@@ -2113,7 +2113,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     };
 }
 
-const symIdent: u16 = 109;
+const promotableSymbol: u16 = 109;
 
 /// mumps.FnId ordinal -> grammar symbol (0 = none)
 const fnToSymbol = blk: {

@@ -1593,7 +1593,7 @@ const errorSymbol: u16 = 2;
 fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"ident" => identToSymbol(self, token),
+        .@"ident" => promote(self, token),
         .@"newline" => 66,
         .@"semicolon" => 67,
         .@"if_mod" => 68,
@@ -1725,14 +1725,14 @@ fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
     };
 }
 
-fn identToSymbol(self: *BaseParser, token: Token) u16 {
+fn promote(self: *BaseParser, token: Token) u16 {
     const text = self.source[token.pos..][0..token.len];
-    if (text.len == 0) return symIdent;
-    if (tryIdentAsKeyword(self, text)) |sym| return sym;
-    return symIdent;
+    if (text.len == 0) return promotableSymbol;
+    if (tryPromoteKeyword(self, text)) |sym| return sym;
+    return promotableSymbol;
 }
 
-fn tryIdentAsKeyword(self: *BaseParser, text: []const u8) ?u16 {
+fn tryPromoteKeyword(self: *BaseParser, text: []const u8) ?u16 {
     const state = self.stateStack.getLast();
     const id = ruby.keywordAs(text) orelse return null;
     const idIdx = @intFromEnum(id);
@@ -2047,7 +2047,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     };
 }
 
-const symIdent: u16 = 92;
+const promotableSymbol: u16 = 92;
 
 /// ruby.KeywordId ordinal -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {

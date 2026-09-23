@@ -121,6 +121,8 @@ const Codegen = struct {
     roles: std.ArrayListUnmanaged([]const u8) = .empty,
     /// Some action builds a nested node (`self.nested`).
     usesNested: bool = false,
+    /// The token `@as` promotes (TokenCat name, e.g. `ident`).
+    promotable: ?[]const u8 = null,
     /// The executeAction function, generated before the configuration.
     actionsCode: []const u8 = "",
 
@@ -232,6 +234,19 @@ const Codegen = struct {
             }
         }
 
+        for (self.g.asDirectives) |directive| {
+            const token = self.promotable orelse directive.token;
+            if (!std.mem.eql(u8, token, directive.token)) {
+                diag.err("@as promotes '{s}' and '{s}'; one grammar promotes one token", .{ token, directive.token });
+                return error.MultiplePromotableTokens;
+            }
+            self.promotable = token;
+            if (directive.via != null and self.g.lang == null) {
+                diag.err("@as {s} via {s}: the lookup function lives in the @lang module, and the grammar has no @lang", .{ directive.token, directive.via.? });
+                return error.ViaWithoutLang;
+            }
+        }
+
         if (self.g.repair != null and self.table.repair == null) {
             diag.err("the grammar has @repair but no repair table was computed", .{});
             return error.MissingRepairTable;
@@ -333,10 +348,11 @@ const Codegen = struct {
             try w.print("    pub const {s} = struct {{\n", .{view});
             for (k.roles, 0..) |r, i| {
                 const role = std.zig.fmtString(r.name);
+                const what = std.zig.fmtString(try std.fmt.allocPrint(self.allocator, "ir.{s}.{s}", .{ view, r.name }));
                 if (r.rest) {
-                    try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") []const @\"ir.Sexp\" {{\n            return @\"ir.restAt\"(@\"ir.node\", .@\"{f}\", {d}, \"ir.{s}.{f}\");\n        }}\n", .{ role, tag, i + 1, view, role });
+                    try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") []const @\"ir.Sexp\" {{\n            return @\"ir.restAt\"(@\"ir.node\", .@\"{f}\", {d}, \"{f}\");\n        }}\n", .{ role, tag, i + 1, what });
                 } else {
-                    try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") @\"ir.Sexp\" {{\n            return @\"ir.at\"(@\"ir.node\", .@\"{f}\", {d}, \"ir.{s}.{f}\");\n        }}\n", .{ role, tag, i + 1, view, role });
+                    try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") @\"ir.Sexp\" {{\n            return @\"ir.at\"(@\"ir.node\", .@\"{f}\", {d}, \"{f}\");\n        }}\n", .{ role, tag, i + 1, what });
                 }
             }
             try w.writeAll("    };\n");
@@ -381,10 +397,7 @@ const Codegen = struct {
     }
 
     fn hasIdentAs(self: *const Codegen) bool {
-        for (self.g.asDirectives) |directive| {
-            if (std.mem.eql(u8, directive.token, "ident")) return true;
-        }
-        return false;
+        return self.promotable != null;
     }
 
     /// tokenToSymbol: TokenCat -> grammar symbol.
@@ -398,7 +411,7 @@ const Codegen = struct {
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
 
         var emitted: std.StringHashMapUnmanaged(void) = .empty;
-        if (identAs) try w.writeAll("        .@\"ident\" => identToSymbol(self, token),\n");
+        if (self.promotable) |tok| try w.print("        .@\"{s}\" => promote(self, token),\n", .{tok});
 
         for (self.g.symbols.items) |sym| {
             if (sym.kind != .terminal or sym.name.len == 0) continue;
@@ -407,7 +420,7 @@ const Codegen = struct {
             if (std.mem.eql(u8, sym.name, "error")) continue;
 
             const lowerName = try std.ascii.allocLowerString(self.allocator, sym.name);
-            if (identAs and std.mem.eql(u8, lowerName, "ident")) continue;
+            if (self.promotable) |tok| if (std.mem.eql(u8, lowerName, tok)) continue;
             if (self.isPromotedKeyword(sym.name, identAs)) continue;
 
             // Only names that can be TokenCat fields
@@ -489,46 +502,46 @@ const Codegen = struct {
         return identAs;
     }
 
-    /// identToSymbol and the tryIdentAs* keyword promoters (`@as`).
+    /// promote and the tryPromote* keyword promoters (`@as`): the promotable
+    /// token becomes the first group keyword the state accepts.
     fn emitIdentToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
         if (!self.hasIdentAs()) return;
         try w.writeAll(
             \\
-            \\fn identToSymbol(self: *BaseParser, token: Token) u16 {
+            \\fn promote(self: *BaseParser, token: Token) u16 {
             \\    const text = self.source[token.pos..][0..token.len];
-            \\    if (text.len == 0) return symIdent;
+            \\    if (text.len == 0) return promotableSymbol;
             \\
         );
         // Ordered resolution: `@as` candidates in declared order; `self`
-        // accepts a plain IDENT if the state takes one.
+        // keeps the token itself if the state takes it.
         for (self.g.asDirectives) |directive| {
-            if (!std.mem.eql(u8, directive.token, "ident")) continue;
             if (isSelf(directive)) {
-                try w.writeAll("    if (getAction(self.stateStack.getLast(), symIdent) != 0) return symIdent;\n");
+                try w.writeAll("    if (getAction(self.stateStack.getLast(), promotableSymbol) != 0) return promotableSymbol;\n");
             } else {
-                try w.print("    if (tryIdentAs{s}(self, text)) |sym| return sym;\n", .{try capitalized(self.allocator, directive.rule)});
+                try w.print("    if (tryPromote{s}(self, text)) |sym| return sym;\n", .{try capitalized(self.allocator, directive.rule)});
             }
         }
-        try w.writeAll("    return symIdent;\n}\n");
+        try w.writeAll("    return promotableSymbol;\n}\n");
 
         // Matching mode per group: `group!` or any group after `self` is
         // permissive (any action), otherwise strict (shift only).
         var seenSelf = false;
         for (self.g.asDirectives) |directive| {
-            if (!std.mem.eql(u8, directive.token, "ident")) continue;
             if (isSelf(directive)) {
                 seenSelf = true;
                 continue;
             }
             const check: []const u8 = if (directive.permissive or seenSelf) "!= 0" else "> 0";
             const cap = try capitalized(self.allocator, directive.rule);
+            // The lang lookup is `via` when given, else `<group>As`.
             const lookup = if (self.g.lang) |lang|
-                try std.fmt.allocPrint(self.allocator, "{s}.{s}As", .{ lang, directive.rule })
+                try std.fmt.allocPrint(self.allocator, "{s}.{s}", .{ lang, directive.via orelse try std.fmt.allocPrint(self.allocator, "{s}As", .{directive.rule}) })
             else
                 try std.fmt.allocPrint(self.allocator, "{s}As", .{directive.rule});
             try w.print(
                 \\
-                \\fn tryIdentAs{s}(self: *BaseParser, text: []const u8) ?u16 {{
+                \\fn tryPromote{s}(self: *BaseParser, text: []const u8) ?u16 {{
                 \\    const state = self.stateStack.getLast();
                 \\    const id = {s}(text) orelse return null;
                 \\    const idIdx = @intFromEnum(id);
@@ -588,9 +601,15 @@ const Codegen = struct {
     /// `@as`: <rule>Id -> symbol maps (and inline keyword matchers without @lang).
     fn emitAsMaps(self: *Codegen, w: *std.Io.Writer) !void {
         if (!self.hasIdentAs()) return;
-        var symIdent = self.g.errorId;
-        if (self.g.getSymbol("IDENT")) |id| symIdent = id;
-        try w.print("\nconst symIdent: u16 = {d};\n", .{symIdent});
+        // The promotable token's own symbol (error when no rule uses it).
+        var symbol = self.g.errorId;
+        for (self.g.symbols.items) |sym| {
+            if (sym.kind == .terminal and std.ascii.eqlIgnoreCase(sym.name, self.promotable.?)) {
+                symbol = sym.id;
+                break;
+            }
+        }
+        try w.print("\nconst promotableSymbol: u16 = {d};\n", .{symbol});
 
         var emittedRules: std.StringHashMapUnmanaged(void) = .empty;
         for (self.g.asDirectives) |directive| {
@@ -792,7 +811,8 @@ const Codegen = struct {
     /// literal as written or the token name in lower case.
     fn displayName(self: *const Codegen, sym: grammar.Symbol) !?[]const u8 {
         if (sym.kind == .nonterminal) {
-            for (self.g.errorNames) |e| if (std.mem.eql(u8, e.rule, sym.name)) return e.name;
+            // By symbol: an @errors rule may be an alias (`expr = @infix`).
+            for (self.g.errorNames) |e| if (self.g.getSymbol(e.rule) == sym.id) return e.name;
             return null;
         }
         if (sym.id == self.g.errorId) return null;
