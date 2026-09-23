@@ -261,13 +261,13 @@ pub const BaseLexer = struct {
                     },
                     '(' => {
                         p += 1;
-                        self.paren +%= 1;
+                        self.paren +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
                     ')' => {
                         p += 1;
-                        self.paren -%= 1;
+                        self.paren -|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
@@ -299,19 +299,19 @@ pub const BaseLexer = struct {
                     },
                     '[' => {
                         p += 1;
-                        self.bracket +%= 1;
+                        self.bracket +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"lbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
                     ']' => {
                         p += 1;
-                        self.bracket -%= 1;
+                        self.bracket -|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"rbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
                     '{' => {
                         p += 1;
-                        self.brace +%= 1;
+                        self.brace +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"lbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
@@ -321,7 +321,7 @@ pub const BaseLexer = struct {
                     },
                     '}' => {
                         p += 1;
-                        self.brace -%= 1;
+                        self.brace -|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"rbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
@@ -398,7 +398,7 @@ pub const BaseLexer = struct {
                     },
                     '(' => {
                         p += 1;
-                        self.paren +%= 1;
+                        self.paren +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"dollar_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
@@ -486,7 +486,7 @@ pub const BaseLexer = struct {
                 if (p < n) switch (src[p]) {
                     '(' => {
                         p += 1;
-                        self.paren +%= 1;
+                        self.paren +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"proc_sub_in", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
@@ -503,7 +503,7 @@ pub const BaseLexer = struct {
                 if (p < n) switch (src[p]) {
                     '(' => {
                         p += 1;
-                        self.paren +%= 1;
+                        self.paren +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"proc_sub_out", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
@@ -525,7 +525,7 @@ pub const BaseLexer = struct {
                 if (p < n) switch (src[p]) {
                     '(' => {
                         p += 1;
-                        self.paren +%= 1;
+                        self.paren +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"at_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },

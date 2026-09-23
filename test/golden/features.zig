@@ -185,14 +185,14 @@ pub const BaseLexer = struct {
                     '(' => {
                         p += 1;
                         self.beg = 0;
-                        self.depth +%= 1;
+                        self.depth +|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },
                     ')' => {
                         p += 1;
                         self.beg = 0;
-                        self.depth -%= 1;
+                        self.depth -|= 1;
                         self.pos = @intCast(p);
                         return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
                     },

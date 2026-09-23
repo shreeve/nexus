@@ -126,11 +126,11 @@ src/
 ├── expand.zig           # Desugaring: [opt], X? X* X+, L(X), groups, @infix, start rules
 ├── frontend/
 │   ├── frontend.zig     # Section discovery, @parser parse entry, --dump-sexp printer
-│   ├── lexer_section.zig # Hand-written @lexer section parser
+│   ├── lexer_section.zig # @lexer section parser (strict, located errors)
 │   ├── lower.zig        # Strict Sexp -> GrammarIR lowering (+ negative-shape tests)
 │   ├── parser.zig       # Self-hosted frontend, generated from nexus.grammar
 │   └── lang.zig         # Lang module for the frontend (Tag enum + lexer wrapper)
-├── lexgen/              # Lexer code generation (lexgen, patterns, operators, scanners)
+├── lexgen/              # Lexer generation: regex (patterns), automaton (NFA/DFA), lexgen (codegen)
 ├── lr/                  # LR(0) automaton, lookaheads (LALR/SLR), parse table, conflicts
 └── codegen/             # Parser module emission (codegen, actions, runtime text)
 nexus.grammar        # Grammar DSL described in its own grammar format
@@ -203,7 +203,8 @@ state paren = 0
 
 ### After (Post-Token Reset)
 
-Default actions applied after every token, unless a rule overrides:
+Assignments applied whenever a rule consumes input (not for zero-width
+rules or `eof`), before the rule's own actions, which override them:
 
 ```
 after
@@ -272,26 +273,43 @@ Zero-copy: token text is retrieved by slicing into the original source.
 
 ```
 <pattern>                        → <token>
-<pattern>                        → <token>, {action}
-<pattern>  @ <guard>             → <token>, {action}
+<pattern>                        → <token>, <action>, ...
+<pattern>  @ <guard> & <guard>   → <token>, <action>, ...
+@ <guard> & <guard>              → <token>, <action>, ...     # zero-width rule
 ```
+
+Every pattern is compiled, with all the others, into one minimized DFA
+(`src/lexgen/`): nothing is recognized by shape and no token name has special
+meaning. Each call to `matchRules()`:
+
+1. skips spaces and tabs; their count (saturating at 255) is the token's `pre`;
+2. tries the zero-width rules (guards only, no pattern) in order;
+3. returns `eof` at the end of input;
+4. otherwise takes the **longest match** among the rules whose guards hold,
+   **ties going to the earlier rule**; if nothing matches, one byte becomes
+   an `err` token;
+5. applies the `after` assignments, then the rule's actions.
+
+`eof` and `err` must be declared in `tokens`. A rule that can never match
+(an earlier rule always wins), a pattern that matches the empty string or
+can only start with a space or tab, and a zero-width rule that would match
+forever are generation errors, as is anything the pattern language below
+does not include.
 
 #### Patterns
 
-Regex-like syntax for matching input:
-
 | Syntax | Meaning |
 |--------|---------|
-| `'x'` | Literal character |
-| `"xy"` | Literal string |
-| `[abc]` | Character class |
-| `[a-z]` | Character range |
-| `[^x]` | Negated class |
-| `.` | Any character (except newline) |
-| `X*` | Zero or more |
-| `X+` | One or more |
-| `X?` | Optional |
-| `(X)` | Grouping |
+| `'x'` `'xy'` `"xy"` | Literal bytes (escapes `\n \r \t \0 \\ \' \" \xHH`) |
+| `[abc]` `[a-z]` `[^x]` | Byte class, range, negated class (`\d \w \s` and escapes inside) |
+| `.` | Any byte, including newline |
+| `\n` `\d` ... | A bare escape is a one-byte atom (or class) |
+| `r1 r2` | Sequence |
+| `r1 \| r2` | Alternation |
+| `(r)` | Grouping; `( )` is the empty string |
+| `r*` `r+` `r?` | Repetition |
+| `r{n}` `r{n,}` `r{n,m}` | Bounded repetition (n, m ≤ 255) |
+| `r1 / r2` | Trailing context: match `r1` only when `r2` follows; `r2` is not part of the token (one side must be fixed-length) |
 
 Examples:
 
@@ -299,11 +317,20 @@ Examples:
 '#' [^\n]*                                  → comment
 '"' ([^"\\$\n] | '\\' . | '$')* '"'         → string_dq
 "'" ([^'\n] | "''")* "'"                    → string_sq
+'0x' [0-9a-fA-F]{1,16}                      → integer
 [0-9]+                                      → integer
+"if"                                        → kw_if    # beats ident on "if" (earlier rule)
 [a-zA-Z_][a-zA-Z0-9_]* '?'?                 → ident
+'?' / [0-9]+ [A-Z]                          → question, {pat = 1}
 "**"                                        → power
 .                                           → err
 ```
+
+Escape conventions come from the pattern itself (`'\\' .` for backslash
+escapes, `'""'` for doubled quotes). An unterminated string is not a string:
+its opening quote falls to the `.` rule. A grammar that wants a different
+recovery says so, e.g. `'"' ([^"\n] | '""')* → err` (one `err` token to
+the end of the line).
 
 #### Guards
 
@@ -316,8 +343,11 @@ Conditional rules based on state:
 | `@ pre > 0` | When preceded by whitespace |
 | `@ pat & dep > 0` | Multiple conditions (AND) |
 
-`pre` is a pseudo-variable — the whitespace count computed at the start of
-each `matchRules()` call. It can be read in guards but is not a state variable.
+Comparisons are `== != > < >= <=`; `!` negates a condition. `pre` is a
+pseudo-variable, the whitespace count of the current token; it can be read
+in guards and assigned by actions but is not a state variable. Guards are
+evaluated at the start of the token; the generated lexer has one DFA start
+state per combination of guard outcomes.
 
 ```
 '!' @ pre > 0                               → exclaim_ws
@@ -330,12 +360,16 @@ each `matchRules()` call. It can be read in guards but is not a state variable.
 
 | Action | Effect |
 |--------|--------|
-| `{var = val}` | Set variable to value |
-| `{var++}` | Increment variable |
-| `{var--}` | Decrement variable |
-| `{var = counted('x')}` | Count occurrences of char `x` in consumed input |
-| `skip` | Don't emit token (discard) |
-| `simd_to 'x'` | SIMD-accelerated scan to character |
+| `{var = val}` | Set a state variable (or `pre`) |
+| `{var++}` `{var--}` | Increment / decrement (saturating) |
+| `{pre = counted('x')}` | Zero-width rules only: consume a run of `x` (blanks between allowed) and store the count |
+| `skip` | Discard the match and continue; its bytes count toward the next token's `pre` |
+| `hold` | Emit the token zero-width at the match start; nothing is consumed (the pattern is lookahead) |
+| `rewind(n)` | The token is the first `n` bytes of the match (the rest is lookahead), like `/` |
+| `simd_to 'x'` | Asserts the pattern scans a run of bytes other than `x` (`[^x]*`); such runs are scanned 16 bytes at a time whether or not this is written |
+
+`→ skip` (without the action) emits the built-in `skip` token, for a lang
+`Lexer` wrapper that wants to see it (Rig's line continuations).
 
 Examples:
 
@@ -343,41 +377,34 @@ Examples:
 '\n'                                        → newline, {beg = 1}
 '('                                         → lparen, {paren++}
 ';' [^\n]*                                  → comment, simd_to '\n'
-@ beg & pre > 0                             → indent, {pre = counted('.')}
+[ \t\r]+                                    → skip, skip
+')' @ pat & !dep                            → patend, hold, {pat = 0}
 ```
 
-### The `counted('x')` Action
+### Zero-Width Rules
 
-Counts occurrences of a specific character in consumed input. Typically used
-with empty-pattern guard rules to count structural markers like dots:
-
-```
-@ beg & pre > 0                             → indent, {pre = counted('.')}
-```
-
-The generated code scans forward, counting each `.` (skipping whitespace
-between them), and stores the count in the token's `pre` field.
-
-### Empty-Pattern Guard Rules
-
-Rules with no pattern and only guards emit zero-width tokens based on state.
-These run before character dispatch in the generated lexer:
+Rules with no pattern and only guards emit a token covering the leading
+whitespace (plus anything `counted` consumes), before any pattern is tried:
 
 ```
 @ beg & pre > 0                             → indent, {pre = counted('.')}
 @ !beg & pre > 1                            → spaces, {pre = 0}
 ```
 
-### The `@code` Directive (Lexer Section)
+With `hold`, a zero-width rule consumes nothing, not even the whitespace. A
+zero-width rule must be able to stop: it needs a guard that is false at
+`pre = 0` (and then consumes the whitespace), or an action that changes a
+state variable its guards test.
 
-Import a function from the `@lang` module into the generated lexer:
+### The `@code` Directive (Lexer Section)
 
 ```
 @code = checkPatternMode
 ```
 
-The generated lexer emits a wrapper that calls into the language module. This
-handles complex, language-specific logic that doesn't fit declarative rules.
+Adds `pub fn checkPatternMode(self) bool` to the generated lexer, calling
+`lang.checkPatternMode(source, pos)` at the current position, for a lang
+`Lexer` wrapper to use.
 
 ### Rewriter-Classified Tokens
 

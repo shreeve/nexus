@@ -64,11 +64,11 @@ zig build test-lowerer                    # lowerer negative-shape suite only
 - `src/check.zig` — undefined-symbol validation and the `nexus check` lint
 - `src/expand.zig` — desugaring (`[opt]` expansion, `X? X* X+`, `L(X)`, groups, `@infix`, start rules)
 - `src/frontend/frontend.zig` — section discovery, `@parser` parse entry, `--dump-sexp` printer
-- `src/frontend/lexer_section.zig` — hand-written `@lexer` section parser
+- `src/frontend/lexer_section.zig` — `@lexer` section parser (strict, located errors)
 - `src/frontend/lower.zig` — strict Sexp → GrammarIR lowering, plus its negative-shape tests
 - `src/frontend/parser.zig` — self-hosted frontend (generated)
 - `src/frontend/lang.zig` — lang module for `src/frontend/parser.zig`
-- `src/lexgen/` — lexer code generation (`lexgen.zig` core, `patterns.zig`, `operators.zig`, `scanners.zig`)
+- `src/lexgen/` — lexer generation: `regex.zig` (pattern parser), `automaton.zig` (NFA, DFA, minimization), `lexgen.zig` (code emission)
 - `src/lr/` — `automaton.zig` (LR(0)), `lookahead.zig` (LALR/SLR), `table.zig` (parse table + conflict resolution), `conflicts.zig` (reporting)
 - `src/codegen/` — `codegen.zig` (parser module emission), `actions.zig` (action templates), `runtime.zig` (fixed runtime text)
 - `nexus.grammar` — grammar DSL in its own format; opens with the canonical Sexp schema
@@ -345,9 +345,19 @@ Both the generator internals AND generated output follow these conventions.
 - **Rig** (`/Users/shreeve/Data/Code/rig/`) — copy grammar + lang module, run `nexus rig.grammar src/parser.zig`
 - **Nexis** (`/Users/shreeve/Data/Code/nexis/`) — copy grammar + lang module, run `nexus nexis.grammar src/parser.zig`
 
-## String Literal Scanning
+## Lexer Generation
 
-The inline string scanner generator detects the escape convention from the grammar pattern. If the pattern contains a doubled delimiter literal (e.g., `'""'` or `"''"`), it generates doubled-quote escape handling. Otherwise, it generates backslash escape handling. This is a heuristic based on pattern text, not full structural parsing.
+`src/lexgen/` is a real lexer generator: `regex.zig` parses every rule's
+pattern into an AST (located errors for anything outside the pattern
+language), `automaton.zig` builds a Thompson NFA, subset-constructs one DFA
+with a start state per guard configuration, and minimizes it, and
+`lexgen.zig` emits it as a direct-coded scanner (a labeled `switch` per DFA
+state). Longest match wins; ties go to the earlier rule. Token names carry
+no behavior: escape conventions, number shapes and comments come from the
+patterns. Fast paths (tight self-loops, SIMD scans of `[^x]*` runs, in-place
+returns for final states, a precheck for the widest looping class) are
+derived from the automaton. `src/frontend/lexer_section.zig` parses the
+`@lexer` section and reports every problem as `file:line:col: error:`.
 
 ## Self-Hosting
 

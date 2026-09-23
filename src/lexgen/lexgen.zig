@@ -310,8 +310,8 @@ pub const LexerGenerator = struct {
             end = if (n == 0) .start else .{ .fromStart = n };
         }
         if (r.hold) end = .start;
+        if (hasCounted(r)) return self.fail(r, 0, "counted() belongs on a zero-width rule (no pattern), where it counts the bytes after the leading whitespace", .{});
         if (end == .start or (end == .fromStart and end.fromStart == 0)) {
-            if (hasCounted(r)) return self.fail(r, 0, "a zero-width token consumes nothing, so counted() has nothing to count", .{});
             if (r.isSkip) return self.fail(r, 0, "a zero-width token cannot be skipped", .{});
             if (r.guards.len == 0 or !changesGuardedState(r)) {
                 return self.fail(r, 0, "this zero-width rule would match forever: it must assign a state variable its guards test", .{});
@@ -706,8 +706,8 @@ pub const LexerGenerator = struct {
             const lhsPrefix = if (isPre) "" else "self.";
             switch (act.kind) {
                 .set => try self.print("{s}{s}{s} = {d};\n", .{ ind, lhsPrefix, v, act.value.? }),
-                .inc => try self.print("{s}self.{s} +%= 1;\n", .{ ind, v }),
-                .dec => try self.print("{s}self.{s} -%= 1;\n", .{ ind, v }),
+                .inc => try self.print("{s}self.{s} +|= 1;\n", .{ ind, v }),
+                .dec => try self.print("{s}self.{s} -|= 1;\n", .{ ind, v }),
                 .counted => {
                     var b1: [8]u8 = undefined;
                     const cl = byteLit(&b1, act.char.?);
