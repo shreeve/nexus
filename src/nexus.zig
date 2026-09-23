@@ -22,109 +22,6 @@ const version = "0.10.3";
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 // =============================================================================
-// Source Infrastructure — absolute byte offsets and span-based diagnostics
-// =============================================================================
-
-const Source = struct {
-    path: []const u8,
-    text: []const u8,
-    line_starts: []const u32,
-
-    fn init(allocator: Allocator, path: []const u8, text: []const u8) !Source {
-        var starts: std.ArrayListUnmanaged(u32) = .empty;
-        try starts.append(allocator, 0);
-        for (text, 0..) |c, i| {
-            if (c == '\n' and i + 1 < text.len) {
-                try starts.append(allocator, @intCast(i + 1));
-            }
-        }
-        return .{
-            .path = path,
-            .text = text,
-            .line_starts = try starts.toOwnedSlice(allocator),
-        };
-    }
-
-    fn deinit(self: *const Source, allocator: Allocator) void {
-        allocator.free(self.line_starts);
-    }
-
-    fn location(self: *const Source, offset: u32) Location {
-        var lo: usize = 0;
-        var hi: usize = self.line_starts.len;
-        while (lo + 1 < hi) {
-            const mid = (lo + hi) / 2;
-            if (self.line_starts[mid] <= offset) {
-                lo = mid;
-            } else {
-                hi = mid;
-            }
-        }
-        return .{
-            .line = @intCast(lo + 1),
-            .col = @intCast(offset - self.line_starts[lo] + 1),
-        };
-    }
-
-    fn lineText(self: *const Source, line: u32) []const u8 {
-        if (line == 0 or line > self.line_starts.len) return "";
-        const start = self.line_starts[line - 1];
-        var end = start;
-        while (end < self.text.len and self.text[end] != '\n') : (end += 1) {}
-        return self.text[start..end];
-    }
-};
-
-const Location = struct {
-    line: u32,
-    col: u32,
-};
-
-const Span = struct {
-    start: u32,
-    end: u32,
-
-    fn text(self: Span, source: *const Source) []const u8 {
-        const s: usize = @min(self.start, source.text.len);
-        const e: usize = @min(self.end, source.text.len);
-        return source.text[s..e];
-    }
-
-    fn location(self: Span, source: *const Source) Location {
-        return source.location(self.start);
-    }
-};
-
-const Diagnostic = struct {
-    span: Span,
-    message: []const u8,
-    severity: Severity,
-
-    const Severity = enum { err, warning, note };
-
-    fn print(self: *const Diagnostic, source: *const Source) void {
-        const loc = source.location(self.span.start);
-        const sev = switch (self.severity) {
-            .err => "error",
-            .warning => "warning",
-            .note => "note",
-        };
-        std.debug.print("{s}:{d}:{d}: {s}: {s}\n", .{
-            source.path, loc.line, loc.col, sev, self.message,
-        });
-        const line = source.lineText(loc.line);
-        if (line.len > 0) {
-            std.debug.print("  {s}\n", .{line});
-            var i: u32 = 0;
-            while (i + 1 < loc.col) : (i += 1) {
-                std.debug.print(" ", .{});
-            }
-            std.debug.print("  ^\n", .{});
-        }
-    }
-};
-
-// =============================================================================
 // Lexer DSL Data Structures
 // =============================================================================
 
@@ -169,8 +66,6 @@ const Action = struct {
         inc, // {var++}
         dec, // {var--}
         counted, // {var = counted('x')}
-        skip, // skip
-        simdTo, // simd_to 'x'
     };
 };
 
@@ -185,17 +80,10 @@ const LexerRule = struct {
     isSkip: bool = false,
 };
 
-/// Default action
-const DefaultAction = struct {
-    variable: []const u8,
-    value: i32,
-};
-
 /// Complete lexer specification
 const LexerSpec = struct {
     allocator: Allocator,
     states: std.ArrayListUnmanaged(StateVar),
-    defaults: std.ArrayListUnmanaged(DefaultAction),
     tokens: std.ArrayListUnmanaged(TokenDef),
     rules: std.ArrayListUnmanaged(LexerRule),
     codeFunctions: std.ArrayListUnmanaged([]const u8),
@@ -205,7 +93,6 @@ const LexerSpec = struct {
         return .{
             .allocator = allocator,
             .states = .empty,
-            .defaults = .empty,
             .tokens = .empty,
             .rules = .empty,
             .codeFunctions = .empty,
@@ -218,7 +105,6 @@ const LexerSpec = struct {
             self.allocator.free(rule.actions);
         }
         self.states.deinit(self.allocator);
-        self.defaults.deinit(self.allocator);
         self.tokens.deinit(self.allocator);
         self.rules.deinit(self.allocator);
         self.codeFunctions.deinit(self.allocator);
@@ -466,7 +352,8 @@ const LexerParser = struct {
                 continue;
             }
 
-            // Parse defaults block
+            // `after` block: parsed for syntax only; the generated lexer
+            // clears a `beg` state variable itself (see generateMatchRules).
             if (self.expectStr("after")) {
                 try self.parseDefaultsBlock();
                 continue;
@@ -543,8 +430,8 @@ const LexerParser = struct {
                 continue;
             };
             if (!self.expect('=')) return error.ExpectedEquals;
-            const value = self.parseInt() orelse return error.ExpectedValue;
-            try self.spec.defaults.append(self.allocator, .{ .variable = name, .value = value });
+            _ = name;
+            _ = self.parseInt() orelse return error.ExpectedValue;
             self.skipWhitespace();
             if (self.peek() == '\n' or self.peek() == '#') self.skipToNextLine();
         }
@@ -1007,7 +894,6 @@ const LexerGenerator = struct {
                     const ch = charToZigLiteral(action.char.?);
                     try self.print("{{ var count: u8 = 0; while (self.pos < self.source.len and self.source[self.pos] == {s}) {{ self.pos += 1; count +|= 1; while (self.pos < self.source.len and isWhitespace(self.source[self.pos])) self.pos += 1; }} self.{s} = count; }}\n", .{ ch.buf[0..ch.len], action.variable.? });
                 },
-                else => {},
             }
         }
     }
@@ -1428,7 +1314,6 @@ const LexerGenerator = struct {
                     },
                     .inc => try self.print("            self.{s} += 1;\n", .{action.variable.?}),
                     .dec => try self.print("            self.{s} -= 1;\n", .{action.variable.?}),
-                    else => {},
                 }
             }
 
@@ -3711,20 +3596,13 @@ const ParserRule = struct {
     id: u16,
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
-    action: ?ParserAction, // Semantic action
+    action: ?[]const u8, // Action template text, e.g. (set 2 ...3)
     actionOffset: u8 = 0, // Position offset for start rules with marker tokens
     nullable: bool = false,
     firsts: ParserSymbolSet = .empty,
     excludeChar: u8 = 0, // X "c" - exclude rule when next char matches
     preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
     preferShift: bool = false, // > hint - prefer shift on S/R conflict
-
-    const ParserAction = struct {
-        template: []const u8, // Original action string like (set 2? ...3)
-        kind: Kind,
-
-        const Kind = enum { sexp, passthrough, nil, spread };
-    };
 };
 
 /// LR Item: rule with dot position (A → α • β)
@@ -3798,12 +3676,6 @@ const InfixOp = struct {
     const Assoc = enum { left, right, none };
 };
 
-/// @code directive for injecting code at specific locations
-const CodeBlock = struct {
-    location: []const u8, // "imports", "sexp", "parser", "bottom"
-    code: []const u8, // raw Zig code to inject
-};
-
 // =============================================================================
 // GrammarIR — Semantic IR for grammar files (consumed by processGrammar)
 //
@@ -3819,7 +3691,6 @@ const GrammarIR = struct {
     errorNames: []const ErrorName,
     infix: ?InfixDecl = null,
     lang: ?[]const u8 = null,
-    codeBlocks: []const CodeBlock,
     expectConflicts: ?u32 = null,
 };
 
@@ -3889,7 +3760,6 @@ const GrammarLowerer = struct {
     infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
     infixBase: ?[]const u8 = null,
     lang: ?[]const u8 = null,
-    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .empty,
     expectConflicts: ?u32 = null,
 
     const LoweringError = error{ ShapeError, OutOfMemory };
@@ -3908,7 +3778,6 @@ const GrammarLowerer = struct {
                 .ops = try self.infixOps.toOwnedSlice(allocator),
             } else null,
             .lang = self.lang,
-            .codeBlocks = try self.codeBlocks.toOwnedSlice(allocator),
             .expectConflicts = self.expectConflicts,
         };
     }
@@ -4001,7 +3870,6 @@ const GrammarLowerer = struct {
         switch (t.tag) {
             .lang => try self.lowerLang(entry, t.items),
             .conflicts => try self.lowerConflicts(entry, t.items),
-            .code => try self.lowerCode(entry, t.items),
             .as => try self.lowerAs(entry, t.items),
             .op => try self.lowerOp(entry, t.items),
             .errors => try self.lowerErrors(entry, t.items),
@@ -4024,16 +3892,6 @@ const GrammarLowerer = struct {
         const text = try self.requireSrc(items[1], "conflict count");
         self.expectConflicts = std.fmt.parseInt(u32, text, 10) catch
             return self.shapeError(items[1], "integer");
-    }
-
-    fn lowerCode(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
-        if (items.len != 3) return self.shapeError(node, "(code IDENT CODE_BLOCK)");
-        const location = try self.requireSrc(items[1], "@code location ident");
-        const body = try self.requireSrc(items[2], "@code body");
-        try self.codeBlocks.append(self.allocator, .{
-            .location = location,
-            .code = std.mem.trim(u8, body, " \t\n\r"),
-        });
     }
 
     fn lowerAs(self: *GrammarLowerer, node: frontend.Sexp, items: []const frontend.Sexp) LoweringError!void {
@@ -4436,12 +4294,10 @@ const ParserGenerator = struct {
     // Directives
     asDirectives: std.ArrayListUnmanaged(AsDirective) = .empty,
     opMappings: std.ArrayListUnmanaged(OpMapping) = .empty,
-    errorNames: std.ArrayListUnmanaged(ErrorName) = .empty,
     infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
     infixBase: ?[]const u8 = null,
     lang: ?[]const u8 = null,
     lexerSpec: ?*const LexerSpec = null,
-    codeBlocks: std.ArrayListUnmanaged(CodeBlock) = .empty,
 
     // LALR(1) per-item lookaheads (indexed by [state.id][reductionIndex])
     lalrLookaheads: []const []const ParserSymbolSet = &[_][]const ParserSymbolSet{},
@@ -4492,9 +4348,7 @@ const ParserGenerator = struct {
         self.acceptRules.deinit(self.allocator);
         self.asDirectives.deinit(self.allocator);
         self.opMappings.deinit(self.allocator);
-        self.errorNames.deinit(self.allocator);
         self.infixOps.deinit(self.allocator);
-        self.codeBlocks.deinit(self.allocator);
         self.collectedTags.deinit(self.allocator);
         self.tagList.deinit(self.allocator);
         self.xExcludes.deinit(self.allocator);
@@ -4867,7 +4721,7 @@ const ParserGenerator = struct {
                         .id = ruleId,
                         .lhs = lhsId,
                         .rhs = try rhs.toOwnedSlice(self.allocator),
-                        .action = if (expandedAlt.action) |a| .{ .template = a, .kind = .sexp } else null,
+                        .action = expandedAlt.action,
                         .excludeChar = expandedAlt.excludeChar,
                         .preferReduce = expandedAlt.preferReduce,
                         .preferShift = expandedAlt.preferShift,
@@ -4950,7 +4804,6 @@ const ParserGenerator = struct {
         // Copy directives from IR
         for (ir.asDirectives) |d| try self.asDirectives.append(self.allocator, d);
         for (ir.opMappings) |m| try self.opMappings.append(self.allocator, m);
-        for (ir.errorNames) |e| try self.errorNames.append(self.allocator, e);
         if (ir.infix) |infix| {
             for (infix.ops) |op| try self.infixOps.append(self.allocator, op);
             self.infixBase = infix.baseRule;
@@ -4962,7 +4815,6 @@ const ParserGenerator = struct {
         if (self.infixOps.items.len > 0 and self.infixBase != null) {
             try self.generateInfixChain();
         }
-        for (ir.codeBlocks) |b| try self.codeBlocks.append(self.allocator, b);
     }
 
     /// Validate that all referenced symbols are defined.
@@ -5120,7 +4972,7 @@ const ParserGenerator = struct {
                     .id = ruleId,
                     .lhs = grpId,
                     .rhs = try rhs.toOwnedSlice(self.allocator),
-                    .action = if (actionTemplate) |t| .{ .template = t, .kind = .sexp } else null,
+                    .action = actionTemplate,
                 });
                 try self.symbols.items[grpId].rules.append(self.allocator, ruleId);
 
@@ -5175,7 +5027,7 @@ const ParserGenerator = struct {
             .id = listRuleId,
             .lhs = listId,
             .rhs = try listRhs.toOwnedSlice(self.allocator),
-            .action = .{ .template = "(!1 ...2)", .kind = .sexp },
+            .action = "(!1 ...2)",
         });
         try self.symbols.items[listId].rules.append(self.allocator, listRuleId);
 
@@ -5189,7 +5041,7 @@ const ParserGenerator = struct {
             .id = tailRule1Id,
             .lhs = tailId,
             .rhs = try tailRhs1.toOwnedSlice(self.allocator),
-            .action = .{ .template = "(!2 ...3)", .kind = .sexp },
+            .action = "(!2 ...3)",
         });
         try self.symbols.items[tailId].rules.append(self.allocator, tailRule1Id);
 
@@ -5199,7 +5051,7 @@ const ParserGenerator = struct {
             .id = tailRule2Id,
             .lhs = tailId,
             .rhs = &[_]u16{},
-            .action = .{ .template = "()", .kind = .sexp },
+            .action = "()",
             .nullable = true,
             .preferShift = true,
         });
@@ -5290,7 +5142,7 @@ const ParserGenerator = struct {
                     .id = ruleId,
                     .lhs = thisId,
                     .rhs = try rhs.toOwnedSlice(self.allocator),
-                    .action = .{ .template = actionStr, .kind = .sexp },
+                    .action = actionStr,
                 });
                 try self.symbols.items[thisId].rules.append(self.allocator, ruleId);
             }
@@ -5303,7 +5155,7 @@ const ParserGenerator = struct {
                 .id = passthroughId,
                 .lhs = thisId,
                 .rhs = try passRhs.toOwnedSlice(self.allocator),
-                .action = .{ .template = "1", .kind = .passthrough },
+                .action = "1",
             });
             try self.symbols.items[thisId].rules.append(self.allocator, passthroughId);
         }
@@ -5317,7 +5169,7 @@ const ParserGenerator = struct {
             .id = infixRuleId,
             .lhs = infixId,
             .rhs = try infixRhs.toOwnedSlice(self.allocator),
-            .action = .{ .template = "1", .kind = .passthrough },
+            .action = "1",
         });
         try self.symbols.items[infixId].rules.append(self.allocator, infixRuleId);
     }
@@ -5370,7 +5222,7 @@ const ParserGenerator = struct {
             .id = rule1Id,
             .lhs = starId,
             .rhs = try rhs1.toOwnedSlice(self.allocator),
-            .action = .{ .template = "(!1 ...2)", .kind = .sexp },
+            .action = "(!1 ...2)",
         });
         try self.symbols.items[starId].rules.append(self.allocator, rule1Id);
 
@@ -5380,7 +5232,7 @@ const ParserGenerator = struct {
             .id = rule2Id,
             .lhs = starId,
             .rhs = &[_]u16{},
-            .action = .{ .template = "()", .kind = .sexp },
+            .action = "()",
             .nullable = true,
         });
         try self.symbols.items[starId].rules.append(self.allocator, rule2Id);
@@ -5405,7 +5257,7 @@ const ParserGenerator = struct {
             .id = ruleId,
             .lhs = plusId,
             .rhs = try rhs.toOwnedSlice(self.allocator),
-            .action = .{ .template = "(!1 ...2)", .kind = .sexp },
+            .action = "(!1 ...2)",
         });
         try self.symbols.items[plusId].rules.append(self.allocator, ruleId);
 
@@ -6171,15 +6023,6 @@ const ParserGenerator = struct {
             try writer.print("const {s} = @import(\"{s}.zig\");\n", .{ name, name });
         }
 
-        // Inject @code imports blocks
-        for (self.codeBlocks.items) |block| {
-            if (std.mem.eql(u8, block.location, "imports")) {
-                try writer.writeAll("\n// === @code imports ===\n");
-                try writer.writeAll(block.code);
-                try writer.writeAll("\n");
-            }
-        }
-
         try writer.writeAll(
             \\
             \\// SIMD helpers (fallback if simd.zig not available)
@@ -6266,22 +6109,6 @@ const ParserGenerator = struct {
             \\    }
             \\
         );
-
-        // Inject @code sexp blocks
-        for (self.codeBlocks.items) |block| {
-            if (std.mem.eql(u8, block.location, "sexp")) {
-                try writer.writeAll("\n    // === @code sexp ===\n");
-                // Indent each line by 4 spaces
-                var lines = std.mem.splitScalar(u8, block.code, '\n');
-                while (lines.next()) |line| {
-                    if (line.len > 0) {
-                        try writer.writeAll("    ");
-                        try writer.writeAll(line);
-                    }
-                    try writer.writeAll("\n");
-                }
-            }
-        }
 
         try writer.writeAll(
             \\};
@@ -6514,7 +6341,7 @@ const ParserGenerator = struct {
                     try writer.print(" {s}", .{self.symbols.items[symId].name});
                 }
                 if (rule.action) |action| {
-                    try writer.print(" \xe2\x86\x92 {s}", .{action.template});
+                    try writer.print(" \xe2\x86\x92 {s}", .{action});
                 }
                 try writer.writeAll("\n");
             }
@@ -6857,22 +6684,6 @@ const ParserGenerator = struct {
                     \\        return self.doParse(SYM_{s});
                     \\    }}
                 , .{ fname, name, name });
-            }
-        }
-
-        // Inject @code parser blocks
-        for (self.codeBlocks.items) |block| {
-            if (std.mem.eql(u8, block.location, "parser")) {
-                try writer.writeAll("\n    // === @code parser ===\n");
-                // Indent each line by 4 spaces
-                var lines = std.mem.splitScalar(u8, block.code, '\n');
-                while (lines.next()) |line| {
-                    if (line.len > 0) {
-                        try writer.writeAll("    ");
-                        try writer.writeAll(line);
-                    }
-                    try writer.writeAll("\n");
-                }
             }
         }
 
@@ -7222,15 +7033,6 @@ const ParserGenerator = struct {
             \\
         );
 
-        // Inject @code bottom blocks
-        for (self.codeBlocks.items) |block| {
-            if (std.mem.eql(u8, block.location, "bottom")) {
-                try writer.writeAll("\n// === @code bottom ===\n");
-                try writer.writeAll(block.code);
-                try writer.writeAll("\n");
-            }
-        }
-
         return try output.toOwnedSlice();
     }
 
@@ -7240,7 +7042,7 @@ const ParserGenerator = struct {
             return;
         }
 
-        const template = rule.action.?.template;
+        const template = rule.action.?;
         const offset = rule.actionOffset;
 
         // Handle simple cases
@@ -7619,7 +7421,7 @@ const ParserGenerator = struct {
     fn collectAllTags(self: *ParserGenerator) !void {
         for (self.rules.items) |rule| {
             if (rule.action) |action| {
-                try self.collectTagsFromAction(action.template);
+                try self.collectTagsFromAction(action);
             }
         }
     }
@@ -8239,12 +8041,6 @@ pub fn main(init: std.process.Init) !void {
         return err;
     };
     defer allocator.free(sourceText);
-
-    const source = Source.init(allocator, grammarFile, sourceText) catch {
-        std.debug.print("Error indexing source for {s}\n", .{grammarFile});
-        return;
-    };
-    defer source.deinit(allocator);
 
     std.debug.print("📖 Reading grammar from {s}\n", .{grammarFile});
 

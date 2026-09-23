@@ -1,7 +1,7 @@
 //! Nexus — Build Configuration
 //!
 //! Builds the nexus tool that reads .grammar files and generates
-//! parser.zig (lexer + SLR(1) parser producing S-expressions).
+//! parser.zig (lexer + LALR(1) parser producing S-expressions).
 //!
 //! Usage:
 //!   zig build                    — build nexus
