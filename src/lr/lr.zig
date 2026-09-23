@@ -55,6 +55,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     }
     a.free(costs);
     if (unproductive) return error.GenerationFailed;
+    try checkCycles(a, g, opts.path);
 
     const la = try lookahead.compute(g, &auto, opts.mode);
 
@@ -82,6 +83,80 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     };
 
     return .{ .automaton = auto, .lookaheads = la, .table = tbl };
+}
+
+/// Reject a cyclic grammar: a rule that derives itself (a ⇒+ a, through
+/// rules whose other elements can be empty). Such a grammar is infinitely
+/// ambiguous, and when a declared conflict resolves the cycle's way the
+/// parser reduces around it forever.
+fn checkCycles(a: Allocator, g: *const Grammar, path: []const u8) Error!void {
+    const nsym = g.symbols.items.len;
+    const nullable = try a.alloc(bool, nsym);
+    defer a.free(nullable);
+    @memset(nullable, false);
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (g.rules.items) |rule| {
+            if (nullable[rule.lhs]) continue;
+            const all = for (rule.rhs) |s| {
+                if (!nullable[s]) break false;
+            } else true;
+            if (all) {
+                nullable[rule.lhs] = true;
+                changed = true;
+            }
+        }
+    }
+    // unit[r] = the nonterminal rule r derives alone (the rest nullable).
+    const state = try a.alloc(u8, nsym); // 0 new, 1 on the path, 2 done
+    defer a.free(state);
+    @memset(state, 0);
+    var path_: std.ArrayListUnmanaged(u16) = .empty; // rules on the path
+    defer path_.deinit(a);
+    for (g.symbols.items, 0..) |sym, i| {
+        if (sym.kind != .nonterminal or state[i] != 0) continue;
+        if (try cycleFrom(a, g, nullable, state, &path_, @intCast(i))) |at| {
+            const rules = path_.items[at..];
+            const first = g.rules.items[rules[0]];
+            var text: std.Io.Writer.Allocating = .init(a);
+            defer text.deinit();
+            for (rules, 0..) |r, k| {
+                if (k > 0) text.writer.writeAll(" ⇒ ") catch return error.OutOfMemory;
+                conflicts.writeSymbol(&text.writer, g, g.rules.items[r].lhs) catch return error.OutOfMemory;
+            }
+            text.writer.writeAll(" ⇒ ") catch return error.OutOfMemory;
+            conflicts.writeSymbol(&text.writer, g, first.lhs) catch return error.OutOfMemory;
+            if (first.line > 0) std.debug.print("{s}:{d}:{d}: ", .{ path, first.line, @max(first.col, 1) }) else std.debug.print("{s}:1:1: ", .{path});
+            std.debug.print("error: the grammar is cyclic ({s}): a rule that derives itself gives some input infinitely many parses\n", .{text.written()});
+            return error.GenerationFailed;
+        }
+    }
+}
+
+/// Depth-first search along unit derivations from `sym`; returns the index
+/// in `path` where a cycle starts.
+fn cycleFrom(a: Allocator, g: *const Grammar, nullable: []const bool, state: []u8, path: *std.ArrayListUnmanaged(u16), sym: u16) Error!?usize {
+    state[sym] = 1;
+    for (g.symbols.items[sym].rules.items) |ri| {
+        const rule = g.rules.items[ri];
+        for (rule.rhs, 0..) |b, k| {
+            if (g.symbols.items[b].kind != .nonterminal) continue;
+            const rest = for (rule.rhs, 0..) |s, j| {
+                if (j != k and !nullable[s]) break false;
+            } else true;
+            if (!rest) continue;
+            try path.append(a, ri);
+            if (state[b] == 1) {
+                // The cycle starts at the first path rule whose lhs is b.
+                for (path.items, 0..) |r, at| if (g.rules.items[r].lhs == b) return at;
+            }
+            if (state[b] == 0) if (try cycleFrom(a, g, nullable, state, path, b)) |at| return at;
+            _ = path.pop();
+        }
+    }
+    state[sym] = 2;
+    return null;
 }
 
 test {
