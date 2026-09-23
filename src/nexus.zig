@@ -2959,7 +2959,8 @@ const LexerGenerator = struct {
         for (self.spec.rules.items) |rule| {
             if (std.mem.eql(u8, rule.token, "real")) {
                 if (std.mem.indexOf(u8, rule.pattern, "'.'") != null) hasDecimal = true;
-                if (std.mem.indexOf(u8, rule.pattern, "[Ee]") != null) hasExponent = true;
+                if (std.mem.indexOf(u8, rule.pattern, "[Ee]") != null or
+                    std.mem.indexOf(u8, rule.pattern, "[eE]") != null) hasExponent = true;
                 if (rule.pattern.len > 0 and rule.pattern[0] == '[') {
                     const cc = parseCharClass(rule.pattern);
                     if (cc != null and std.mem.startsWith(u8, rule.pattern[cc.?.endPos..], "* '.'"))

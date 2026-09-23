@@ -250,7 +250,7 @@ pub const BaseLexer = struct {
     }
 
     /// Scan number (generated from grammar)
-    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var hasDecimal = false;        // Decimal integer
+    fn scanNumber(self: *Self, start: u32, ws: u8) Token {        var hasDecimal = false;        var hasExponent = false;        // Decimal integer
         if (isDigit(self.source[self.pos])) {
             while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
                 self.pos += 1;
@@ -267,8 +267,25 @@ pub const BaseLexer = struct {
                 }
             }
         }
+        // Exponent part
+        if (self.pos < self.source.len) {
+            const e = self.source[self.pos];
+            if (e == 'E' or e == 'e') {
+                var expPos = self.pos + 1;
+                if (expPos < self.source.len and (self.source[expPos] == '+' or self.source[expPos] == '-')) {
+                    expPos += 1;
+                }
+                if (expPos < self.source.len and isDigit(self.source[expPos])) {
+                    hasExponent = true;
+                    self.pos = expPos;
+                    while (self.pos < self.source.len and isDigit(self.source[self.pos])) {
+                        self.pos += 1;
+                    }
+                }
+            }
+        }
         // Classify
-        const tokenCat: TokenCat = if (hasDecimal)
+        const tokenCat: TokenCat = if (hasDecimal or hasExponent)
             .@"real"
         else
             .@"integer";
