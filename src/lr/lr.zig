@@ -12,7 +12,6 @@ pub const table = @import("table.zig");
 pub const conflicts = @import("conflicts.zig");
 pub const expected = @import("expected.zig");
 pub const repair = @import("repair.zig");
-pub const compress = @import("compress.zig");
 const legacy = @import("legacy.zig");
 
 pub const ParseMode = lookahead.ParseMode;
@@ -130,6 +129,5 @@ fn verify(g: *const Grammar, auto: *const automaton.Automaton, tbl: *const table
 
 test {
     _ = @import("bitset.zig");
-    _ = @import("compress.zig");
     _ = @import("tests.zig");
 }

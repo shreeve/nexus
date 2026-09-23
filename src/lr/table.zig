@@ -1,8 +1,11 @@
 //! Parse table construction: ACTION/GOTO from the automaton and lookaheads,
 //! conflict resolution (`X "c"` hints, `<`/`>` hints, default shift, lowest
 //! rule wins reduce/reduce), and the derived tables codegen emits: expected
-//! sets for diagnostics, tolerant-repair candidates, and the row-compressed
-//! form of ACTION/GOTO.
+//! sets for diagnostics and tolerant-repair candidates.
+//!
+//! Generated parsers index ACTION/GOTO densely ([state][symbol]). A
+//! row-displacement (comb vector) form was measured and rejected: it made
+//! the MUMPS parser 256 KB smaller but parsed 5-10% slower (MUMPS and Rig).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -15,7 +18,6 @@ const bitset = @import("bitset.zig");
 const SetArray = bitset.SetArray;
 const expected = @import("expected.zig");
 const repair = @import("repair.zig");
-const compress = @import("compress.zig");
 
 // =============================================================================
 // Parse Table Generation
@@ -94,8 +96,6 @@ pub const Table = struct {
     expected: expected.Expected,
     /// Tolerant-repair insertion candidates per state (grammars with `@repair`).
     repair: ?repair.Repair = null,
-    /// ACTION/GOTO row-compressed (the form generated parsers use).
-    compact: compress.Compact,
 };
 
 /// The characters of a rule's `X "c"` hints.
@@ -256,7 +256,6 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
 
     const exp = try expected.compute(g, auto, la, rows);
     const rep: ?repair.Repair = if (g.repair) |spec| try repair.compute(g, auto, la, rows, spec) else null;
-    const compact = try compress.compress(a, rows);
 
     return .{
         .rows = rows,
@@ -266,6 +265,5 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
         .hints = try hints.toOwnedSlice(a),
         .expected = exp,
         .repair = rep,
-        .compact = compact,
     };
 }

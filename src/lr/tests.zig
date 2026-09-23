@@ -1,7 +1,6 @@
 //! Unit tests of the LR core on small grammars: LALR(1) lookaheads against
 //! a canonical LR(1) reference, SLR vs LALR, conflict classification and
-//! the manifest, hints, examples, expected sets, repair ranking, and the
-//! compressed table.
+//! the manifest, hints, examples, expected sets, and repair ranking.
 
 const std = @import("std");
 const testing = std.testing;
@@ -14,7 +13,6 @@ const lookahead = lr.lookahead;
 const table = lr.table;
 const conflicts = lr.conflicts;
 const repair = lr.repair;
-const compress = lr.compress;
 
 // =============================================================================
 // Test grammars
@@ -544,7 +542,7 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
 }
 
 // =============================================================================
-// Expected sets, repair, compression
+// Expected sets and repair
 // =============================================================================
 
 test "expected sets name @errors nonterminals, then remaining terminals" {
@@ -644,24 +642,4 @@ test "ranking puts holes above cheaper structure" {
     const tbl = try table.build(&g, &auto, la);
     const q = stateWith(&auto, 2, 4);
     try testing.expectEqualSlices(u16, &.{ sym(&g, "ID"), sym(&g, "\")\"") }, tbl.repair.?.forState(q));
-}
-
-test "compressed table answers every lookup like the dense table" {
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const a = arena.allocator();
-    const b = try generate(a, &.{
-        "prog → stmt",
-        "stmt → IF ID stmt",
-        "stmt → IF ID stmt ELSE stmt",
-        "stmt → val \";\"",
-        "stmt → ref \";\"",
-        "val → ID",
-        "ref → ID",
-    }, &.{"prog"}, .lalr);
-    for (b.tbl.rows, 0..) |row, s| {
-        for (row, 0..) |cell, y| {
-            try testing.expectEqual(compress.encode(cell), b.tbl.compact.get(@intCast(s), @intCast(y)));
-        }
-    }
 }
