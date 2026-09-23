@@ -18,7 +18,6 @@ const Grammar = grammar.Grammar;
 const Rule = grammar.Rule;
 const ActionTree = grammar.ActionTree;
 const ActionList = grammar.ActionList;
-const ActionItem = grammar.ActionItem;
 const ActionElem = grammar.ActionElem;
 
 /// Tags referenced by actions (heads and child tag literals, nested lists

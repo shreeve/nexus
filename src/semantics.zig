@@ -29,6 +29,7 @@ const diag = @import("diag.zig");
 const grammar = @import("grammar.zig");
 const expand = @import("expand.zig");
 const writeSymbol = @import("lr/conflicts.zig").writeSymbol;
+const writeRule = @import("lr/conflicts.zig").writeRule;
 const GrammarIR = grammar.GrammarIR;
 const Grammar = grammar.Grammar;
 const Schema = grammar.Schema;
@@ -103,7 +104,6 @@ const Resolver = struct {
     markers: std.ArrayListUnmanaged([]const u8) = .empty,
     /// Kinds some action builds.
     built: std.StringHashMapUnmanaged(void) = .empty,
-    drift: std.ArrayListUnmanaged(u8) = .empty,
     /// Heads and tag literals used but not declared, in first-seen order.
     undeclaredKinds: std.ArrayListUnmanaged(Use) = .empty,
     undeclaredTags: std.ArrayListUnmanaged(TagUse) = .empty,
@@ -913,7 +913,7 @@ const TypeChecker = struct {
         const b = it.next() orelse return;
         if (self.producer(s, b, e == .spread)) |pr| {
             try w.writeAll(" (from ");
-            try @import("lr/conflicts.zig").writeRule(w, g, pr);
+            try writeRule(w, g, pr);
             const pl = g.rules.items[pr].line;
             if (pl > 0) try w.print(", line {d}", .{pl});
             try w.writeAll(")");
