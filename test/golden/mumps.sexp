@@ -1,6 +1,15 @@
 (grammar
   (lang `"mumps"`)
-  (conflicts `44`)
+  (manifest
+    (conflict `shift` `deviceparam → expr` _ `1` `# USE dev:(x): the parentheses group an expression, the same value as a one-parameter list`)
+    (conflict `shift` `IDENT* → ε` _ `2` `# pattern code letters after a repeat count run as far as they go`)
+    (conflict `shift` `rlvn → IDENT` _ `1` `# name= after USE dev: is a keyword device parameter`)
+    (conflict `shift` `rgvn → "^" "|" expr "|" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
+    (conflict `shift` `rgvn → "^" "|" expr "," expr "|" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
+    (conflict `shift` `rgvn → "^" "[" expr "]" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
+    (conflict `shift` `rgvn → "^" "[" expr "," expr "]" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
+    (conflict `reduce` `lname → "@" atom` `tstartargs → "@" atom` `34` `# TSTART @x: the indirect argument is a local-name list`)
+    (conflict `reduce` `actual? → ε` `L(actual?)? → ε` `2` `# an empty () argument list holds one absent actual`))
   (as
     `ident`
     _
@@ -448,10 +457,10 @@
         (ref `expr`))
       (node
         `setmulti`
-        (spread `2`)
         (named
           `value`
-          (pos `5`)))
+          (pos `5`))
+        (spread `2`))
       _)
     (alt
       _
@@ -1544,14 +1553,21 @@
       _
       ((quantified
           (ref `banghash`)
-          (one_plus))
-        (group
-          opt
-          ((ref `tabcol`))))
+          (one_plus)))
       (node
         `posformat`
-        (spread `1`)
-        (pos `2`))
+        (spread `1`))
+      _)
+    (alt
+      _
+      ((quantified
+          (ref `banghash`)
+          (one_plus))
+        (ref `tabcol`))
+      (node
+        `posformat`
+        (pos `2`)
+        (spread `1`))
       _)
     (alt
       _

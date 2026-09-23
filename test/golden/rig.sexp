@@ -1,5 +1,4 @@
 (grammar
-  (conflicts `0`)
   (rule
     (name `name`)
     (alt

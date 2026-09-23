@@ -1,6 +1,34 @@
 (grammar
   (lang `"ruby"`)
-  (conflicts `66`)
+  (manifest
+    (conflict `shift` `stmt_list → sep stmt_list` _ `2` `# a newline after a separator is another separator, not the end of the list`)
+    (conflict `shift` `stmt_list → sep` _ `2` `# a newline after a separator is another separator, not the end of the list`)
+    (conflict `shift` `asgn → mlhs ASSIGN mrhs` _ `1` `# a comma after a multiple assignment's values adds another value`)
+    (conflict `shift` `call → call "." IDENT` _ `6` `# a following [ or do binds to this method call`)
+    (conflict `shift` `call → call "." IDENT call_args` _ `2` `# do binds to the innermost call with arguments`)
+    (conflict `shift` `call → call "&." IDENT` _ `2` `# do binds to the innermost call`)
+    (conflict `shift` `call → call "&." IDENT call_args` _ `2` `# do binds to the innermost call with arguments`)
+    (conflict `shift` `call → IDENT call_args` _ `2` `# do binds to the innermost call with arguments`)
+    (conflict `shift` `call → SUPER` _ `2` `# [ after super starts its argument array`)
+    (conflict `shift` `call → YIELD` _ `2` `# [ after yield starts its argument array`)
+    (conflict `shift` `arg → expr` _ `1` `# (expr) after a method name is a parenthesized expression`)
+    (conflict `shift` `primary → IDENT` _ `4` `# do or [ after a bare name binds to that name as a method call`)
+    (conflict `shift` `rescues → ε` _ `5` `# each rescue clause joins the begin block`)
+    (conflict `shift` `infix(">" ">=" "<" "<=") → infix("|" "^") ">" infix("|" "^")` _ `1` `# | after a comparison operand continues the operand (| binds tighter)`)
+    (conflict `shift` `infix(">" ">=" "<" "<=") → infix("|" "^") ">=" infix("|" "^")` _ `1` `# | after a comparison operand continues the operand (| binds tighter)`)
+    (conflict `shift` `infix(">" ">=" "<" "<=") → infix("|" "^") "<" infix("|" "^")` _ `1` `# | after a comparison operand continues the operand (| binds tighter)`)
+    (conflict `shift` `infix(">" ">=" "<" "<=") → infix("|" "^") "<=" infix("|" "^")` _ `1` `# | after a comparison operand continues the operand (| binds tighter)`)
+    (conflict `shift` `infix(">" ">=" "<" "<=") → infix("|" "^")` _ `1` `# | after a comparison operand continues the operand (| binds tighter)`)
+    (conflict `reduce` `lhs → IDENT` `primary → IDENT` `1` `# a name before a comma is an assignment target (multiple assignment)`)
+    (conflict `reduce` `lhs → IVAR` `primary → IVAR` `1` `# an instance variable before a comma is an assignment target`)
+    (conflict `reduce` `lhs → CVAR` `primary → CVAR` `1` `# a class variable before a comma is an assignment target`)
+    (conflict `reduce` `lhs → GVAR` `primary → GVAR` `1` `# a global before a comma is an assignment target`)
+    (conflict `reduce` `lhs → CONSTANT` `primary → CONSTANT` `1` `# a constant before a comma is an assignment target`)
+    (conflict `reduce` `lhs → call "." IDENT` `call → call "." IDENT` `1` `# an attribute before a comma is an assignment target`)
+    (conflict `reduce` `lhs → call "[" "]"` `call → call "[" "]"` `1` `# an index before a comma is an assignment target`)
+    (conflict `reduce` `lhs → call "[" index_args "]"` `call → call "[" index_args "]"` `1` `# an index before a comma is an assignment target`)
+    (conflict `reduce` `arg → "**" expr` `pair → "**" expr` `4` `# **expr in call arguments is a double splat argument`)
+    (conflict `reduce` `cmd_arg → "**" expr` `pair → "**" expr` `16` `# **expr in command arguments is a double splat argument`))
   (as
     `ident`
     _
@@ -1460,8 +1488,8 @@
         (ref `stmts`))
       (node
         `when`
-        (spread `2`)
-        (pos `4`))
+        (pos `4`)
+        (spread `2`))
       _))
   (rule
     (name `begin_stmt`)

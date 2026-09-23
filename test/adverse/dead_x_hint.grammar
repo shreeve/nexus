@@ -13,7 +13,7 @@ tokens
 [a-zA-Z]+                                   → ident
 .                                           → err
 @parser
-@conflicts = 0
+# (no @conflicts block: the grammar must be conflict-free)
 program! = entry ":" IDENT                  → (entry 1 3)
          | entry                            → (entry 1)
 entry    = name                             → 1

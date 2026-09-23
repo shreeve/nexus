@@ -177,7 +177,6 @@ pub const GrammarIR = struct {
     errorNames: []const ErrorName,
     infix: ?InfixDecl = null,
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null, // legacy `@conflicts = N`; replaced by `conflicts`
     /// `@schema`: present means the grammar is in schema mode.
     schema: ?Schema = null,
     /// `@conflicts` manifest; empty means the grammar must be conflict-free.
@@ -200,11 +199,10 @@ pub const ParsedRule = struct {
 
 pub const ParsedAlternative = struct {
     elements: []const ParsedElement,
-    action: ?[]const u8 = null, // legacy template text; replaced by actionTree
     actionTree: ?ActionTree = null,
     /// `~ "reason"`: exempt from the schema coverage gate.
     optOut: ?[]const u8 = null,
-    excludeChar: u8 = 0, // legacy; replaced by excludeChars
+    /// `X "c"` hints: characters that force a shift when adjacent.
     excludeChars: []const u8 = &.{},
     preferReduce: bool = false,
     preferShift: bool = false,
@@ -331,9 +329,6 @@ pub const ActionElem = union(enum) {
     tagLit: []const u8,
     /// A nested `(kind …)` node.
     node: *const ActionList,
-    /// A reference to a pattern label by name. Not produced by the 1.0
-    /// frontend (labels fill roles through the schema); reserved.
-    label: []const u8,
 };
 
 /// The canonical text of an action: `N`, `_`, or `(head item ...)` with
@@ -384,7 +379,6 @@ fn renderElem(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), elem: Acti
         .nil => try out.append(allocator, '_'),
         .tagLit => |t| try out.appendSlice(allocator, t),
         .node => |l| try renderList(allocator, out, l.*),
-        .label => |l| try out.appendSlice(allocator, l),
     }
 }
 
@@ -526,14 +520,11 @@ pub const Rule = struct {
     id: u16,
     lhs: u16, // Nonterminal symbol ID
     rhs: []const u16, // Sequence of symbol IDs
-    action: ?[]const u8, // Action template text (legacy; replaced by actionTree)
     /// Action with every label resolved to a position and, in schema mode,
     /// every role placed in its slot (nils filled). Null = pass through 1.
     actionTree: ?ActionTree = null,
-    actionOffset: u8 = 0, // Position offset for start rules with marker tokens
     nullable: bool = false,
     firsts: SymbolSet = .empty,
-    excludeChar: u8 = 0, // X "c" (legacy; replaced by excludeChars)
     excludeChars: []const u8 = &.{}, // X "c" - chars that force shift when adjacent
     preferReduce: bool = false, // < hint - prefer reduce on S/R conflict
     preferShift: bool = false, // > hint - prefer shift on S/R conflict
@@ -546,7 +537,7 @@ pub const Rule = struct {
     line: u32 = 0,
     col: u32 = 0,
 
-    /// `pos` is 1-based like action positions (codegen adds actionOffset).
+    /// `pos` is 1-based like action positions.
     pub const SideLabel = struct { role: []const u8, pos: u16 };
 };
 
@@ -579,7 +570,6 @@ pub const Grammar = struct {
     errorNames: []const ErrorName = &.{},
     displayNames: []const DisplayName = &.{},
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null, // legacy; replaced by `conflicts`
     schema: ?Schema = null,
     conflicts: []const ConflictEntry = &.{},
     trivia: []const []const u8 = &.{},

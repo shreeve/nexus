@@ -59,7 +59,7 @@ pub const TagSet = struct {
 
 /// Emit the Zig expression for `rule`'s action.
 pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule) !void {
-    var e = Emitter{ .allocator = allocator, .offset = rule.actionOffset, .fixed = g.schema != null };
+    var e = Emitter{ .allocator = allocator, .fixed = g.schema != null };
     const tree = rule.actionTree orelse {
         // Default: nothing, the one element, or an untagged list.
         try writer.writeAll(switch (rule.rhs.len) {
@@ -71,22 +71,21 @@ pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Gramm
     };
     switch (tree) {
         .nil => try writer.writeAll(".nil"),
-        .pass => |p| try writer.print("pass[{d}]", .{e.index(p)}),
+        .pass => |p| try writer.print("pass[{d}]", .{Emitter.index(p)}),
         .list => |l| try e.list(writer, l, "blk"),
     }
 }
 
 const Emitter = struct {
     allocator: Allocator,
-    /// Added to every position (the start-marker offset).
-    offset: u8,
     /// Schema mode: fixed-length lists, no trailing-nil stripping.
     fixed: bool,
     /// Counter for the labels of nested list blocks.
     depth: usize = 0,
 
-    fn index(self: *const Emitter, pos: u16) usize {
-        return @as(usize, pos) - 1 + self.offset;
+    /// The value-stack index of action position `pos` (1-based).
+    fn index(pos: u16) usize {
+        return @as(usize, pos) - 1;
     }
 
     fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
@@ -94,7 +93,7 @@ const Emitter = struct {
 
         // (!A ...B): element A consed onto the list at B.
         if (l.head == .ref and l.items.len == 1 and l.items[0].elem == .spread and l.head.ref == .ref) {
-            return w.print("self.spreadList(pass[{d}], pass[{d}])", .{ self.index(l.head.ref.ref), self.index(l.items[0].elem.spread) });
+            return w.print("self.spreadList(pass[{d}], pass[{d}])", .{ index(l.head.ref.ref), index(l.items[0].elem.spread) });
         }
 
         if (self.fixed) return self.fixedList(w, l, label);
@@ -160,16 +159,17 @@ const Emitter = struct {
                 hasOther = true;
             },
             .node => {},
-            .label => hasOther = true,
         };
         const plain = firstIsTag and !hasTilde and !hasOther;
         const bare = plain and !hasNil and !hasChildTag and !hasNested(l);
 
         if (bare and spreadCount == 1 and posCount == 0) {
-            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ fmtTag(tag.?), self.index(spreadPos) });
+            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ fmtTag(tag.?), index(spreadPos) });
         }
-        if (bare and spreadCount == 1 and posCount == 1) {
-            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ fmtTag(tag.?), self.index(firstPos), self.index(spreadPos) });
+        // `(tag N ...M)`; `(tag ...M N)` keeps its order through buildList.
+        const posBeforeSpread = l.items.len == 2 and l.items[0].elem == .ref;
+        if (bare and spreadCount == 1 and posCount == 1 and posBeforeSpread) {
+            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ fmtTag(tag.?), index(firstPos), index(spreadPos) });
         }
         if (plain and spreadCount == 0) {
             try w.print("self.sexp(.@\"{f}\", &.{{", .{fmtTag(tag.?)});
@@ -204,7 +204,7 @@ const Emitter = struct {
             };
         }
         if (extend) |n| {
-            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, self.index(n), label });
+            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
         } else {
             try w.print("{s}: {{ var out: std.ArrayListUnmanaged(Sexp) = .empty; ", .{label});
         }
@@ -217,7 +217,7 @@ const Emitter = struct {
             if (extend != null and i == 0) continue;
             switch (item.elem) {
                 .spread => |p| {
-                    const at = self.index(p);
+                    const at = index(p);
                     try w.print("for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} " ++ allocFailed ++ "; ", .{ at, label });
                 },
                 else => {
@@ -253,9 +253,9 @@ const Emitter = struct {
     /// One item's Sexp value (spreads are handled by the list builders).
     fn value(self: *Emitter, w: anytype, e: ActionElem) anyerror!void {
         switch (e) {
-            .ref => |p| try w.print("pass[{d}]", .{self.index(p)}),
+            .ref => |p| try w.print("pass[{d}]", .{index(p)}),
             .symId => |p| {
-                const at = self.index(p);
+                const at = index(p);
                 try w.print("if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}", .{ at, at });
             },
             .nil => try w.writeAll(".nil"),
@@ -271,14 +271,14 @@ const Emitter = struct {
                 if (range.lo) |lo| {
                     try w.writeAll("self.nested(");
                     try self.list(w, n.*, label);
-                    try w.print(", {d}, {d})", .{ self.index(lo), self.index(range.hi) });
+                    try w.print(", {d}, {d})", .{ index(lo), index(range.hi) });
                 } else {
                     try w.writeAll("self.nestedEmpty(");
                     try self.list(w, n.*, label);
                     try w.writeAll(")");
                 }
             },
-            .spread, .label => unreachable,
+            .spread => unreachable,
         }
     }
 };
@@ -297,7 +297,7 @@ const Range = struct {
         switch (e) {
             .ref, .spread, .symId => |p| self.add(p),
             .node => |n| self.addList(n.*),
-            .nil, .tagLit, .label => {},
+            .nil, .tagLit => {},
         }
     }
 

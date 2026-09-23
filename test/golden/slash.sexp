@@ -1,6 +1,5 @@
 (grammar
   (lang `"slash"`)
-  (conflicts `0`)
   (as
     `ident`
     _

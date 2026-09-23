@@ -142,7 +142,8 @@ tokens
 # consuming until the enclosing close token" behavior — the same resolution
 # Clojure's reader uses. These conflicts are inherent to left-recursive list
 # accumulation and are resolved identically across all form-start tokens.
-@conflicts = 108
+@conflicts
+    shift  forms → ε  108  # a form list extends until its closing token, as Clojure's reader reads it
 
 # Start symbols:
 #   program — a full file (zero or more top-level forms)

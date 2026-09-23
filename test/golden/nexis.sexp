@@ -5,7 +5,8 @@
     (op_map `"#{"` `"hash_lbrace"`)
     (op_map `"#("` `"hash_lparen"`)
     (op_map `"#_"` `"hash_discard"`))
-  (conflicts `108`)
+  (manifest
+    (conflict `shift` `forms → ε` _ `108` `# a form list extends until its closing token, as Clojure's reader reads it`))
   (rule
     (start `program`)
     (alt

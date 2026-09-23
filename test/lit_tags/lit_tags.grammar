@@ -40,7 +40,6 @@ tokens
 
 @parser
 
-@conflicts = 0
 
 program! = body                             → (module ...1)
 

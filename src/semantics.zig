@@ -742,7 +742,7 @@ const TypeChecker = struct {
     }
 
     fn sym(rule: grammar.Rule, pos: u16) u16 {
-        return rule.rhs[pos - 1 + rule.actionOffset];
+        return rule.rhs[pos - 1];
     }
 
     fn ruleResult(self: *TypeChecker, rule: grammar.Rule, out: *std.DynamicBitSetUnmanaged, items: *std.DynamicBitSetUnmanaged) void {
@@ -796,7 +796,6 @@ const TypeChecker = struct {
                 .tag => |t| if (self.kindIndex.get(t)) |k| out.set(Types.firstKind + k) else out.set(Types.list),
                 else => out.set(Types.list),
             },
-            .label => {},
         }
     }
 
@@ -1140,4 +1139,43 @@ test "without a schema, expanded actions keep the 0.10 trailing-nil cut" {
         \\
     );
     try expectActions(&g2, a, "top", &.{ "(p 1)", "(p 1 2 x)", "(p 1 _ x 2)", "(p 1 2 x 3)" });
+}
+
+test "synthesized symbols are named in source syntax; identical ones are shared" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\top! = ID? item+ L(item, ";") [L(item?)] (item !"!") (A | B C)* sum
+        \\     | (item !"!") (A | B C)+
+        \\sum  = @infix
+        \\item = ID | STRING
+        \\@infix item
+        \\    "+" left, "-" left
+        \\    "*" left
+        \\
+    );
+    const names = [_][]const u8{
+        "ID?",                "item+",             "item*",
+        "L(item, \";\")",     "L(item, \";\").tail", "L(item?)",
+        "L(item?)?",          "L(item?).tail",     "(item !\"!\")",
+        "(A | B C)",          "(A | B C)*",        "(A | B C)+",
+        "infix(\"+\" \"-\")", "infix(\"*\")",
+    };
+    for (names) |n| if (g.getSymbol(n) == null) {
+        std.debug.print("no symbol {s}\n", .{n});
+        return error.TestExpectedEqual;
+    };
+    // The group and the choice each appear twice but are one symbol.
+    const group = g.getSymbol("(item !\"!\")").?;
+    try testing.expectEqual(@as(usize, 1), g.symbols.items[group].rules.items.len);
+    try testing.expectEqual(@as(usize, 2), g.symbols.items[g.getSymbol("(A | B C)").?].rules.items.len);
+    try expectActions(&g, a, "(item !\"!\")", &.{"1"});
+    // Rule texts, as conflict reports and manifests print them.
+    const lr = @import("lr/conflicts.zig");
+    const top = g.symbols.items[g.getSymbol("top").?].rules.items;
+    try testing.expectEqualStrings("top → ID? item+ L(item, \";\") L(item?)? (item !\"!\") (A | B C)* infix", try lr.ruleText(a, &g, top[0]));
+    const level = g.symbols.items[g.getSymbol("infix(\"+\" \"-\")").?].rules.items;
+    try testing.expectEqualStrings("infix(\"+\" \"-\") → infix(\"+\" \"-\") \"+\" infix(\"*\")", try lr.ruleText(a, &g, level[0]));
 }

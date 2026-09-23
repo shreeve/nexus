@@ -1,0 +1,18 @@
+# `(tag ...1 2)` builds the spread items first, then element 2, in the
+# order the action writes them.
+
+@lexer
+tokens
+    name
+    num
+    eof
+    err
+[0-9]+                                      → num
+[a-z]+                                      → name
+.                                           → err
+
+@parser
+@lang = "spread_before_position"
+
+top! = NAME+ NUM                            → (after ...1 2)
+     | NUM NAME+                            → (before 1 ...2)

@@ -1,5 +1,22 @@
 (grammar
-  (conflicts `19`)
+  (manifest
+    (conflict `shift` `if → IF cond block` _ `1` `# dangling else: ELSE binds to the nearest if`)
+    (conflict `shift` `while → WHILE cond block` _ `1` `# ELSE binds to the nearest while`)
+    (conflict `shift` `while → WHILE cond ":" expr block` _ `1` `# ELSE binds to the nearest while`)
+    (conflict `shift` `for → FOR "*" IDENT IN expr block` _ `1` `# ELSE binds to the nearest for`)
+    (conflict `shift` `for → FOR "*" IDENT "," IDENT IN expr block` _ `1` `# ELSE binds to the nearest for`)
+    (conflict `shift` `for → FOR IDENT IN expr block` _ `1` `# ELSE binds to the nearest for`)
+    (conflict `shift` `for → FOR IDENT "," IDENT IN expr block` _ `1` `# ELSE binds to the nearest for`)
+    (conflict `shift` `postif → infix IF expr` _ `1` `# ELSE binds to the nearest postfix if`)
+    (conflict `shift` `return → RETURN expr` _ `1` `# a postfix guard binds to the return statement`)
+    (conflict `shift` `return → RETURN` _ `1` `# a postfix guard binds to the return statement`)
+    (conflict `shift` `break → BREAK ":" IDENT` _ `1` `# a postfix guard binds to the break statement`)
+    (conflict `shift` `break → BREAK` _ `2` `# break :label names the loop to break`)
+    (conflict `shift` `continue → CONTINUE ":" IDENT` _ `1` `# a postfix guard binds to the continue statement`)
+    (conflict `shift` `continue → CONTINUE` _ `2` `# continue :label names the loop to continue`)
+    (conflict `shift` `unary → call` _ `1` `# call: starts a typed assignment or constant`)
+    (conflict `shift` `args → ε` _ `1` `# .{} is an empty struct literal, not empty call arguments`)
+    (conflict `shift` `arg → term` _ `1` `# a ternary if binds to the term before it`))
   (as
     `ident`
     _

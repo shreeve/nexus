@@ -60,62 +60,12 @@ pub fn entries(a: Allocator, tbl: *const Table) ![]Entry {
 // Rule and symbol text
 // =============================================================================
 
-/// A symbol as the grammar author wrote it. Symbols the desugarer
-/// synthesized print in source syntax, built from their rules (never from
-/// the numeric ids in their internal names): `X?`, `X*`, `X+`, `L(X)`,
-/// `L(X?)`, `L(X, sep)`, `L(X).tail` (a list's repetition), and `(A B)` for a
-/// group.
+/// A symbol by name. Symbols the desugarer synthesizes are named in source
+/// syntax (see expand.zig): `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`,
+/// `L(X).tail` (a list's repetition), `(A !B)` for a group, `(A | B C)` for
+/// a repeated choice, and `infix("+" "-")` for an `@infix` level.
 pub fn writeSymbol(w: *std.Io.Writer, g: *const Grammar, sym: u16) std.Io.Writer.Error!void {
-    const s = &g.symbols.items[sym];
-    const name = s.name;
-    if (s.kind == .nonterminal and name.len > 0 and name[0] == '_') {
-        const rules = s.rules.items;
-        const rhsOf = struct {
-            fn f(gg: *const Grammar, r: u16) []const u16 {
-                return gg.rules.items[r].rhs;
-            }
-        }.f;
-        if (std.mem.startsWith(u8, name, "_opt_") and rules.len == 2) {
-            try writeSymbol(w, g, rhsOf(g, rules[0])[0]);
-            return w.writeByte('?');
-        }
-        if (std.mem.startsWith(u8, name, "_star_") and rules.len == 2) {
-            try writeSymbol(w, g, rhsOf(g, rules[0])[0]);
-            return w.writeByte('*');
-        }
-        if (std.mem.startsWith(u8, name, "_plus_") and rules.len == 1) {
-            try writeSymbol(w, g, rhsOf(g, rules[0])[0]);
-            return w.writeByte('+');
-        }
-        if (std.mem.startsWith(u8, name, "_list_") and rules.len == 1) {
-            // _list → item _tail;  _tail → sep item _tail | ε
-            const rhs = rhsOf(g, rules[0]);
-            try writeList(w, g, rhs[0], rhs[1]);
-            return;
-        }
-        if (std.mem.startsWith(u8, name, "_tail_") and rules.len == 2) {
-            const rhs = rhsOf(g, rules[0]);
-            try writeList(w, g, rhs[1], sym);
-            return w.writeAll(".tail");
-        }
-        if (std.mem.startsWith(u8, name, "_grp_") and rules.len == 1) {
-            try w.writeByte('(');
-            try writeSeq(w, g, rhsOf(g, rules[0]));
-            return w.writeByte(')');
-        }
-    }
-    try w.writeAll(name);
-}
-
-fn writeList(w: *std.Io.Writer, g: *const Grammar, item: u16, tail: u16) !void {
-    const sep = g.rules.items[g.symbols.items[tail].rules.items[0]].rhs[0];
-    try w.writeAll("L(");
-    try writeSymbol(w, g, item);
-    if (!std.mem.eql(u8, g.symbols.items[sep].name, "\",\"")) {
-        try w.writeAll(", ");
-        try writeSymbol(w, g, sep);
-    }
-    try w.writeByte(')');
+    try w.writeAll(g.symbols.items[sym].name);
 }
 
 /// Symbols separated by spaces, start markers omitted.
@@ -343,9 +293,8 @@ pub const Options = struct {
 
 pub const CheckError = error{ ConflictDrift, OutOfMemory, WriteFailed };
 
-/// Compare the actual conflicts with the grammar's declaration and fail on
-/// any drift. The declaration is the `@conflicts` manifest when present;
-/// otherwise the legacy `@conflicts = N` total; otherwise "no conflicts".
+/// Compare the actual conflicts with the grammar's `@conflicts` manifest
+/// (no manifest: no conflicts) and fail on any drift.
 pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *const Table, opts: Options) CheckError!void {
     const actual = try entries(a, tbl);
     defer a.free(actual);
@@ -403,12 +352,6 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});
             try writeConflict(w, a, g, auto, tbl.conflictList[e.first]);
-        }
-    } else if (g.expectConflicts) |n| {
-        if (tbl.conflicts != n) {
-            drift = true;
-            try located(w, opts.path, 0);
-            try w.print("{d} conflicts, but @conflicts = {d}\n", .{ tbl.conflicts, n });
         }
     } else if (actual.len > 0) {
         drift = true;

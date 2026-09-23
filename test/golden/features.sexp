@@ -1,6 +1,5 @@
 (grammar
   (lang `"features"`)
-  (conflicts `0`)
   (rule
     (name `name`)
     (alt

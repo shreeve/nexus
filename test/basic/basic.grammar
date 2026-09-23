@@ -34,7 +34,6 @@ tokens
 
 @lang = "basic"
 
-@conflicts = 0
 
 name = IDENT
 

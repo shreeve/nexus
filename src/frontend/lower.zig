@@ -52,9 +52,7 @@ pub const GrammarLowerer = struct {
     infixBase: ?[]const u8 = null,
     infixLoc: diag.Source.Loc = .{ .line = 0, .col = 0 },
     lang: ?[]const u8 = null,
-    expectConflicts: ?u32 = null,
     conflicts: std.ArrayListUnmanaged(ConflictEntry) = .empty,
-    hasManifest: bool = false,
     kinds: std.ArrayListUnmanaged(Schema.Kind) = .empty,
     hasSchema: bool = false,
     extraTags: std.ArrayListUnmanaged([]const u8) = .empty,
@@ -67,8 +65,6 @@ pub const GrammarLowerer = struct {
         try self.lowerRoot(sexp);
         if (self.tagsNode) |node| if (!self.hasSchema)
             return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
-        if (self.hasManifest and self.expectConflicts != null)
-            return self.fail(sexp, "use either `@conflicts = N` or an `@conflicts` block, not both", .{});
         return GrammarIR{
             .rules = try self.rules.toOwnedSlice(allocator),
             .startSymbols = try self.startSymbols.toOwnedSlice(allocator),
@@ -82,7 +78,6 @@ pub const GrammarLowerer = struct {
                 .col = self.infixLoc.col,
             } else null,
             .lang = self.lang,
-            .expectConflicts = self.expectConflicts,
             .schema = if (self.hasSchema) Schema{
                 .kinds = try self.kinds.toOwnedSlice(allocator),
                 .extraTags = try self.extraTags.toOwnedSlice(allocator),
@@ -235,15 +230,15 @@ pub const GrammarLowerer = struct {
         self.lang = stripQuotes(try self.requireSrc(items[1], "language-name string"));
     }
 
+    /// `@conflicts = N` is not a declaration: conflicts are declared one by
+    /// one in an `@conflicts` block. The form is recognized only to say so.
     fn lowerConflictCount(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         try self.requireArity(node, items, 2, 2, "(conflicts INTEGER)");
-        if (self.expectConflicts != null) return self.fail(node, "duplicate `@conflicts = N`", .{});
-        self.expectConflicts = try self.parseCount(items[1], "conflict count");
+        return self.fail(node, "`@conflicts = N` is not supported: delete it and declare each conflict in an `@conflicts` block (without one the grammar must be conflict-free; generation prints the block to paste)", .{});
     }
 
     fn lowerManifest(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         if (items.len < 2) return self.shapeError(node, "(manifest CONFLICT+)");
-        self.hasManifest = true;
         for (items[1..]) |entry| {
             const et = try self.requireTag(entry, .conflict);
             try self.requireArity(entry, et, 6, 6, "(conflict KIND CRULE OVER COUNT REASON)");
@@ -586,10 +581,8 @@ pub const GrammarLowerer = struct {
         const l = self.loc(if (firstPos(items[2]) != null) items[2] else if (items[3] != .nil) items[3] else ruleName);
         return .{
             .elements = elems,
-            .action = if (actionTree) |t| try grammar.renderAction(self.allocator, t) else null,
             .actionTree = actionTree,
             .optOut = if (optOut) |o| stripQuotes(o) else null,
-            .excludeChar = if (excludeChars.len > 0) excludeChars[excludeChars.len - 1] else 0,
             .excludeChars = excludeChars,
             .preferReduce = hint != null and hint.?[0] == '<',
             .preferShift = hint != null and hint.?[0] == '>',
@@ -978,8 +971,8 @@ test "lowerer rejects entry with unknown tag" {
 test "lowerer rejects (lang) with no STRING" {
     try expectShapeError(root(&.{L(&.{T(.lang)})}));
 }
-test "lowerer rejects (conflicts) with non-numeric count" {
-    try expectLowerError(root(&.{L(&.{ T(.conflicts), sX })}));
+test "lowerer rejects @conflicts = N" {
+    try expectLowerError(root(&.{L(&.{ T(.conflicts), sThree })}));
 }
 test "lowerer rejects (as) with no entries" {
     try expectShapeError(root(&.{L(&.{ T(.as), sX, .nil })}));
@@ -1046,12 +1039,6 @@ test "lowerer rejects a conflict rule without an arrow" {
 }
 test "lowerer rejects a conflict rule that is not a src" {
     try expectShapeError(root(&.{L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, L(&.{T(.opt)}), .nil, sThree, sComment }) })}));
-}
-test "lowerer rejects both @conflicts forms" {
-    try expectLowerError(root(&.{
-        L(&.{ T(.conflicts), sThree }),
-        L(&.{ T(.manifest), L(&.{ T(.conflict), sShift, crule(), .nil, sThree, sComment }) }),
-    }));
 }
 
 // --- Schema ---

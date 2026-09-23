@@ -621,7 +621,7 @@ const Codegen = struct {
             if (self.options.emitComments) {
                 try a.print("        // {s} =", .{self.g.symbols.items[rule.lhs].name});
                 for (rule.rhs) |symId| try a.print(" {s}", .{self.g.symbols.items[symId].name});
-                if (rule.action) |action| try a.print(" \xe2\x86\x92 {s}", .{action});
+                if (rule.actionTree) |tree| try a.print(" \xe2\x86\x92 {s}", .{try grammar.renderAction(self.allocator, tree)});
                 try a.writeAll("\n");
             }
             try a.print("        {d} => ", .{ruleIdx});
@@ -937,7 +937,7 @@ const Codegen = struct {
             any = true;
             try w.print("        {d} => &.{{", .{rule.id});
             for (rule.sideLabels) |label| {
-                try w.print(" .{{ .role = .@\"{f}\", .pass = {d} }},", .{ std.zig.fmtString(label.role), label.pos - 1 + rule.actionOffset });
+                try w.print(" .{{ .role = .@\"{f}\", .pass = {d} }},", .{ std.zig.fmtString(label.role), label.pos - 1 });
             }
             try w.writeAll(" },\n");
         }

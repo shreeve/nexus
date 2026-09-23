@@ -154,6 +154,11 @@ const Expander = struct {
     g: *Grammar,
     ir: *const GrammarIR,
     opts: Options,
+    /// Source position of the alternative being expanded: the location of
+    /// the rules synthesized for it (`X?`, `L(X)`, groups, ...), which are
+    /// shared with later alternatives that use the same construct.
+    originLine: u32 = 0,
+    originCol: u32 = 0,
 
     fn alloc(self: *Expander) Allocator {
         return self.g.allocator;
@@ -198,6 +203,8 @@ const Expander = struct {
         }
 
         if (g.symbolMap.get("EOF")) |eofId| g.endId = eofId;
+        self.originLine = 0;
+        self.originCol = 0;
 
         try self.addStartRules();
 
@@ -206,7 +213,6 @@ const Expander = struct {
         g.errorNames = ir.errorNames;
         g.displayNames = ir.displayNames;
         g.lang = ir.lang;
-        g.expectConflicts = ir.expectConflicts;
         g.schema = ir.schema;
         g.conflicts = ir.conflicts;
         g.trivia = ir.trivia;
@@ -222,6 +228,10 @@ const Expander = struct {
         const id: u16 = @intCast(g.rules.items.len);
         var r = rule;
         r.id = id;
+        if (r.line == 0) {
+            r.line = self.originLine;
+            r.col = self.originCol;
+        }
         try g.rules.append(g.allocator, r);
         try g.symbols.items[rule.lhs].rules.append(g.allocator, id);
         return id;
@@ -257,7 +267,6 @@ const Expander = struct {
                 .id = 0,
                 .lhs = g.acceptId,
                 .rhs = try g.allocator.dupe(u16, &.{ startSymbol, g.endId }),
-                .action = null,
             });
             try g.startSymbols.append(g.allocator, startSymbol);
             try g.acceptRules.append(g.allocator, ruleId);
@@ -271,7 +280,6 @@ const Expander = struct {
                 .id = 0,
                 .lhs = acceptId,
                 .rhs = try g.allocator.dupe(u16, &.{ markerId, startId, g.endId }),
-                .action = null,
             });
             try g.startSymbols.append(g.allocator, startId);
             try g.acceptRules.append(g.allocator, ruleId);
@@ -290,6 +298,8 @@ const Expander = struct {
     fn expandAlternative(self: *Expander, lhsId: u16, alt: ParsedAlternative, resolved: ?Resolved) Error!void {
         const a = self.alloc();
         try self.checkElements(alt);
+        self.originLine = alt.line;
+        self.originCol = alt.col;
 
         const layout = try Layout.of(a, alt.elements);
         var vars: std.ArrayListUnmanaged(usize) = .empty;
@@ -384,9 +394,7 @@ const Expander = struct {
                 .id = 0,
                 .lhs = lhsId,
                 .rhs = try symbols.toOwnedSlice(a),
-                .action = if (mapped) |t| try grammar.renderAction(a, t) else null,
                 .actionTree = mapped,
-                .excludeChar = alt.excludeChar,
                 .excludeChars = alt.excludeChars,
                 .preferReduce = alt.preferReduce,
                 .preferShift = alt.preferShift,
@@ -458,7 +466,7 @@ const Expander = struct {
                 .symId => |p| if (try self.at(p) == absent) .nil else .{ .symId = try self.at(p) },
                 .spread => |p| if (try self.at(p) != absent) .{ .spread = try self.at(p) } else if (self.legacy) .nil else null,
                 .node => |l| .{ .node = try self.listPtr(l.*) },
-                .nil, .tagLit, .label => e,
+                .nil, .tagLit => e,
             };
         }
 
@@ -533,24 +541,8 @@ const Expander = struct {
             .ident => try self.nameSymbol(elem.value, false),
             .token => try self.nameSymbol(elem.value, true),
             .string => try g.addSymbol(elem.value, .terminal),
-            .group => try self.groupRule(elem.subElements, "_grp_"),
-            .choice => blk: {
-                // A repeated choice, (A | B)* or (A | B)+: one rule per alternative.
-                const name = try std.fmt.allocPrint(g.allocator, "_choice_{d}", .{g.rules.items.len});
-                const id = try g.addSymbol(name, .nonterminal);
-                for (elem.choices) |choice| {
-                    var rhs: std.ArrayListUnmanaged(u16) = .empty;
-                    for (choice) |sub| try rhs.append(g.allocator, try self.processElement(sub));
-                    _ = try self.addRule(.{
-                        .id = 0,
-                        .lhs = id,
-                        .rhs = try rhs.toOwnedSlice(g.allocator),
-                        .action = null,
-                        .actionTree = try groupAction(g.allocator, choice),
-                    });
-                }
-                break :blk id;
-            },
+            .group => try self.groupRule(elem.subElements),
+            .choice => try self.choiceRule(elem.choices),
             // Multi-element [A B] groups are expanded into alternatives, and
             // nested ones are rejected by checkElements.
             .optGroup => unreachable,
@@ -559,23 +551,54 @@ const Expander = struct {
         };
     }
 
-    /// A `( ... )` group: a rule over its elements whose value leaves out
-    /// the `!X` elements.
-    fn groupRule(self: *Expander, elements: []const ParsedElement, prefix: []const u8) Error!u16 {
+    /// The symbols of a group or choice alternative, and its source-syntax
+    /// text: the elements' names separated by spaces, `!` marking a
+    /// skipped element.
+    fn sequence(self: *Expander, elements: []const ParsedElement, text: *std.ArrayListUnmanaged(u8)) Error![]const u16 {
+        const a = self.alloc();
+        var rhs: std.ArrayListUnmanaged(u16) = .empty;
+        for (elements, 0..) |sub, i| {
+            const id = try self.processElement(sub);
+            try rhs.append(a, id);
+            if (i > 0) try text.append(a, ' ');
+            if (sub.skip) try text.append(a, '!');
+            try text.appendSlice(a, self.g.symbols.items[id].name);
+        }
+        return rhs.toOwnedSlice(a);
+    }
+
+    /// A `( ... )` group: the rule `(A B) → A B` whose value leaves out the
+    /// `!X` elements. Identical groups share one symbol.
+    fn groupRule(self: *Expander, elements: []const ParsedElement) Error!u16 {
         const g = self.g;
         if (elements.len == 0) return g.errorId;
-        const name = try std.fmt.allocPrint(g.allocator, "{s}{d}", .{ prefix, g.rules.items.len });
-        const id = try g.addSymbol(name, .nonterminal);
-        var rhs: std.ArrayListUnmanaged(u16) = .empty;
-        for (elements) |sub| try rhs.append(g.allocator, try self.processElement(sub));
-        const tree = try groupAction(g.allocator, elements);
-        _ = try self.addRule(.{
-            .id = 0,
-            .lhs = id,
-            .rhs = try rhs.toOwnedSlice(g.allocator),
-            .action = if (tree) |t| try grammar.renderAction(g.allocator, t) else null,
-            .actionTree = tree,
-        });
+        var text: std.ArrayListUnmanaged(u8) = .empty;
+        try text.append(g.allocator, '(');
+        const rhs = try self.sequence(elements, &text);
+        try text.append(g.allocator, ')');
+        if (g.getSymbol(text.items)) |existing| return existing;
+        const id = try g.addSymbol(try text.toOwnedSlice(g.allocator), .nonterminal);
+        _ = try self.addRule(.{ .id = 0, .lhs = id, .rhs = rhs, .actionTree = try groupAction(g.allocator, elements) });
+        return id;
+    }
+
+    /// A repeated choice, `(A | B)*` or `(A | B)+`: the symbol `(A | B)`
+    /// with one rule per alternative. Identical choices share one symbol.
+    fn choiceRule(self: *Expander, choices: []const []const ParsedElement) Error!u16 {
+        const g = self.g;
+        var text: std.ArrayListUnmanaged(u8) = .empty;
+        try text.append(g.allocator, '(');
+        const rhss = try g.allocator.alloc([]const u16, choices.len);
+        for (choices, 0..) |choice, i| {
+            if (i > 0) try text.appendSlice(g.allocator, " | ");
+            rhss[i] = try self.sequence(choice, &text);
+        }
+        try text.append(g.allocator, ')');
+        if (g.getSymbol(text.items)) |existing| return existing;
+        const id = try g.addSymbol(try text.toOwnedSlice(g.allocator), .nonterminal);
+        for (choices, rhss) |choice, rhs| {
+            _ = try self.addRule(.{ .id = 0, .lhs = id, .rhs = rhs, .actionTree = try groupAction(g.allocator, choice) });
+        }
         return id;
     }
 
@@ -589,37 +612,40 @@ const Expander = struct {
         else
             try g.addSymbol("\",\"", .terminal);
 
-        // One rule set per (item, item optionality, separator).
-        const suffix: []const u8 = if (optionalItems) "opt" else "";
-        const listName = try std.fmt.allocPrint(g.allocator, "_list_{d}{s}_{d}", .{ itemId, suffix, sepId });
-        const tailName = try std.fmt.allocPrint(g.allocator, "_tail_{d}{s}_{d}", .{ itemId, suffix, sepId });
+        // One rule set per (item, item optionality, separator), named in
+        // source syntax: `L(X)`, `L(X?)`, `L(X, sep)`, and `L(X).tail` for
+        // the repetition after the first item. `","` is the default
+        // separator.
+        const sepName = g.symbols.items[sepId].name;
+        const listName = if (std.mem.eql(u8, sepName, "\",\""))
+            try std.fmt.allocPrint(g.allocator, "L({s})", .{g.symbols.items[effectiveItemId].name})
+        else
+            try std.fmt.allocPrint(g.allocator, "L({s}, {s})", .{ g.symbols.items[effectiveItemId].name, sepName });
         if (g.getSymbol(listName)) |existing| return existing;
+        const tailName = try std.fmt.allocPrint(g.allocator, "{s}.tail", .{listName});
 
         const listId = try g.addSymbol(listName, .nonterminal);
         const tailId = try g.addSymbol(tailName, .nonterminal);
 
-        // _list → item _tail → (!1 ...2)
+        // L(X) → X L(X).tail → (!1 ...2)
         _ = try self.addRule(.{
             .id = 0,
             .lhs = listId,
             .rhs = try g.allocator.dupe(u16, &.{ effectiveItemId, tailId }),
-            .action = "(!1 ...2)",
             .actionTree = try consTree(g.allocator, 1),
         });
-        // _tail → sep item _tail → (!2 ...3)
+        // L(X).tail → sep X L(X).tail → (!2 ...3)
         _ = try self.addRule(.{
             .id = 0,
             .lhs = tailId,
             .rhs = try g.allocator.dupe(u16, &.{ sepId, effectiveItemId, tailId }),
-            .action = "(!2 ...3)",
             .actionTree = try consTree(g.allocator, 2),
         });
-        // _tail → ε → ()
+        // L(X).tail → ε → ()
         _ = try self.addRule(.{
             .id = 0,
             .lhs = tailId,
             .rhs = &[_]u16{},
-            .action = "()",
             .actionTree = emptyList,
             .nullable = true,
             .preferShift = true,
@@ -630,46 +656,44 @@ const Expander = struct {
 
     fn createOptionalRule(self: *Expander, symId: u16) Error!u16 {
         const g = self.g;
-        const name = try std.fmt.allocPrint(g.allocator, "_opt_{d}", .{symId});
+        const name = try std.fmt.allocPrint(g.allocator, "{s}?", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const optId = try g.addSymbol(name, .nonterminal);
-        _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = try g.allocator.dupe(u16, &.{symId}), .action = null });
-        _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = &[_]u16{}, .action = null, .nullable = true });
+        _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = try g.allocator.dupe(u16, &.{symId}) });
+        _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = &[_]u16{}, .nullable = true });
         g.symbols.items[optId].nullable = true;
         return optId;
     }
 
     fn createZeroPlusRule(self: *Expander, symId: u16) Error!u16 {
         const g = self.g;
-        const name = try std.fmt.allocPrint(g.allocator, "_star_{d}", .{symId});
+        const name = try std.fmt.allocPrint(g.allocator, "{s}*", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const starId = try g.addSymbol(name, .nonterminal);
-        // star → sym star → (!1 ...2)
+        // X* → X X* → (!1 ...2)
         _ = try self.addRule(.{
             .id = 0,
             .lhs = starId,
             .rhs = try g.allocator.dupe(u16, &.{ symId, starId }),
-            .action = "(!1 ...2)",
             .actionTree = try consTree(g.allocator, 1),
         });
-        // star → ε → ()
-        _ = try self.addRule(.{ .id = 0, .lhs = starId, .rhs = &[_]u16{}, .action = "()", .actionTree = emptyList, .nullable = true });
+        // X* → ε → ()
+        _ = try self.addRule(.{ .id = 0, .lhs = starId, .rhs = &[_]u16{}, .actionTree = emptyList, .nullable = true });
         g.symbols.items[starId].nullable = true;
         return starId;
     }
 
     fn createOnePlusRule(self: *Expander, symId: u16) Error!u16 {
         const g = self.g;
-        const name = try std.fmt.allocPrint(g.allocator, "_plus_{d}", .{symId});
+        const name = try std.fmt.allocPrint(g.allocator, "{s}+", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const starId = try self.createZeroPlusRule(symId);
         const plusId = try g.addSymbol(name, .nonterminal);
-        // plus → sym star → (!1 ...2)
+        // X+ → X X* → (!1 ...2)
         _ = try self.addRule(.{
             .id = 0,
             .lhs = plusId,
             .rhs = try g.allocator.dupe(u16, &.{ symId, starId }),
-            .action = "(!1 ...2)",
             .actionTree = try consTree(g.allocator, 1),
         });
         return plusId;
@@ -686,10 +710,20 @@ const Expander = struct {
         }
         std.mem.sort(u32, levels.items, {}, std.sort.asc(u32));
 
+        // Each level is named by its operators: `infix("+" "-")`.
         var levelIds: std.ArrayListUnmanaged(u16) = .empty;
         for (levels.items) |level| {
-            const name = try std.fmt.allocPrint(g.allocator, "_infix_{d}", .{level});
-            try levelIds.append(g.allocator, try g.addSymbol(name, .nonterminal));
+            var name: std.ArrayListUnmanaged(u8) = .empty;
+            try name.appendSlice(g.allocator, "infix(");
+            var first = true;
+            for (infix.ops) |op| {
+                if (op.prec != level) continue;
+                if (!first) try name.append(g.allocator, ' ');
+                first = false;
+                try name.print(g.allocator, "\"{s}\"", .{op.op});
+            }
+            try name.append(g.allocator, ')');
+            try levelIds.append(g.allocator, try g.addSymbol(try name.toOwnedSlice(g.allocator), .nonterminal));
         }
 
         for (levels.items, 0..) |level, i| {
@@ -716,18 +750,19 @@ const Expander = struct {
                     .id = 0,
                     .lhs = thisId,
                     .rhs = try g.allocator.dupe(u16, &rhs),
-                    .action = try grammar.renderAction(g.allocator, tree),
                     .actionTree = tree,
                     .kind = kind,
+                    .line = infix.line,
+                    .col = infix.col,
                 });
             }
-            // this_level → next_level
-            _ = try self.addRule(.{ .id = 0, .lhs = thisId, .rhs = try g.allocator.dupe(u16, &.{nextId}), .action = "1", .actionTree = .{ .pass = 1 } });
+            // this level → the next tighter level
+            _ = try self.addRule(.{ .id = 0, .lhs = thisId, .rhs = try g.allocator.dupe(u16, &.{nextId}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
         }
 
         // `infix` → the loosest level
         const infixId = try g.addSymbol("infix", .nonterminal);
-        _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{levelIds.items[0]}), .action = "1", .actionTree = .{ .pass = 1 } });
+        _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{levelIds.items[0]}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
     }
 };
 

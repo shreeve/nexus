@@ -322,7 +322,35 @@ tokens
 @parser
 
 @lang = "ruby"
-@conflicts = 66
+@conflicts
+    shift  stmt_list → sep stmt_list                                          2  # a newline after a separator is another separator, not the end of the list
+    shift  stmt_list → sep                                                    2  # a newline after a separator is another separator, not the end of the list
+    shift  asgn → mlhs ASSIGN mrhs                                            1  # a comma after a multiple assignment's values adds another value
+    shift  call → call "." IDENT                                              6  # a following [ or do binds to this method call
+    shift  call → call "." IDENT call_args                                    2  # do binds to the innermost call with arguments
+    shift  call → call "&." IDENT                                             2  # do binds to the innermost call
+    shift  call → call "&." IDENT call_args                                   2  # do binds to the innermost call with arguments
+    shift  call → IDENT call_args                                             2  # do binds to the innermost call with arguments
+    shift  call → SUPER                                                       2  # [ after super starts its argument array
+    shift  call → YIELD                                                       2  # [ after yield starts its argument array
+    shift  arg → expr                                                         1  # (expr) after a method name is a parenthesized expression
+    shift  primary → IDENT                                                    4  # do or [ after a bare name binds to that name as a method call
+    shift  rescues → ε                                                        5  # each rescue clause joins the begin block
+    shift  infix(">" ">=" "<" "<=") → infix("|" "^") ">" infix("|" "^")       1  # | after a comparison operand continues the operand (| binds tighter)
+    shift  infix(">" ">=" "<" "<=") → infix("|" "^") ">=" infix("|" "^")      1  # | after a comparison operand continues the operand (| binds tighter)
+    shift  infix(">" ">=" "<" "<=") → infix("|" "^") "<" infix("|" "^")       1  # | after a comparison operand continues the operand (| binds tighter)
+    shift  infix(">" ">=" "<" "<=") → infix("|" "^") "<=" infix("|" "^")      1  # | after a comparison operand continues the operand (| binds tighter)
+    shift  infix(">" ">=" "<" "<=") → infix("|" "^")                          1  # | after a comparison operand continues the operand (| binds tighter)
+    reduce lhs → IDENT over primary → IDENT                                   1  # a name before a comma is an assignment target (multiple assignment)
+    reduce lhs → IVAR over primary → IVAR                                     1  # an instance variable before a comma is an assignment target
+    reduce lhs → CVAR over primary → CVAR                                     1  # a class variable before a comma is an assignment target
+    reduce lhs → GVAR over primary → GVAR                                     1  # a global before a comma is an assignment target
+    reduce lhs → CONSTANT over primary → CONSTANT                             1  # a constant before a comma is an assignment target
+    reduce lhs → call "." IDENT over call → call "." IDENT                    1  # an attribute before a comma is an assignment target
+    reduce lhs → call "[" "]" over call → call "[" "]"                        1  # an index before a comma is an assignment target
+    reduce lhs → call "[" index_args "]" over call → call "[" index_args "]"  1  # an index before a comma is an assignment target
+    reduce arg → "**" expr over pair → "**" expr                              4  # **expr in call arguments is a double splat argument
+    reduce cmd_arg → "**" expr over pair → "**" expr                          16  # **expr in command arguments is a double splat argument
 
 @as ident = [keyword!]
 
@@ -662,7 +690,7 @@ for_stmt = FOR IDENT IN expr do_sep stmts END → (for 2 4 6)
 case_stmt  = CASE expr then_sep when_clause+ opt_else END → (case 2 ...4 5)
            | CASE then_sep when_clause+ opt_else END      → (case _ ...3 4)
 
-when_clause = WHEN L(arg) then_sep stmts → (when ...2 4)
+when_clause = WHEN L(arg) then_sep stmts → (when 4 ...2)
 
 # ==============================================================================
 # BEGIN / RESCUE / ENSURE
