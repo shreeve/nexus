@@ -1463,6 +1463,8 @@ pub const BaseParser = struct {
     lastMatchedId: u16 = 0,
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
+    /// A parse has begun (the next one re-reads the input).
+    started: bool = false,
 
     stateStack: std.ArrayListUnmanaged(u16) = .empty,
     valueStack: std.ArrayListUnmanaged(Sexp) = .empty,
@@ -1659,6 +1661,16 @@ pub const BaseParser = struct {
     fn begin(self: *BaseParser, start: Start) !void {
         // Token positions are u32.
         if (self.source.len > std.math.maxInt(u32)) return error.InputTooLarge;
+        // Every parse reads the input from the start (a parser may parse
+        // again, e.g. tolerantly after a failed strict parse). Node ids
+        // keep counting, so earlier trees stay valid.
+        if (self.started) {
+            self.lexer = Lexer.init(self.source);
+            self.current = self.lexer.next();
+            self.lastMatchedId = 0;
+            self.triviaTokens.clearRetainingCapacity();
+        }
+        self.started = true;
         self.stateStack.clearRetainingCapacity();
         self.valueStack.clearRetainingCapacity();
         self.failure = null;
