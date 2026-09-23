@@ -1,0 +1,12 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` _ `3`)
+      (set _ `name` _ `"rig"`)
+      (call `print` `"x is"` `x` `"and name is"` `name`)
+      (call `print` `x` (+ `x` `1`))
+      (call `print`)
+      (call `print` `true` `1.5`))))

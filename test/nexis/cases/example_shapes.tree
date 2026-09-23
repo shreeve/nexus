@@ -1,0 +1,191 @@
+(program
+  (list
+    (symbol `defprotocol`)
+    (symbol `Shape`)
+    (list (symbol `area`) (vector (symbol `s`)))
+    (list (symbol `describe`) (vector (symbol `s`))))
+  (list
+    (symbol `defrecord`)
+    (symbol `Circle`)
+    (vector (symbol `radius`))
+    (symbol `Shape`)
+    (list
+      (symbol `area`)
+      (vector (symbol `c`))
+      (list
+        (symbol `let`)
+        (vector (symbol `r`) (list (symbol `get`) (symbol `c`) (keyword `:radius`)))
+        (list (symbol `*`) (int `314`) (symbol `r`) (symbol `r`))))
+    (list
+      (symbol `describe`)
+      (vector (symbol `c`))
+      (list
+        (symbol `str`)
+        (string `"Circle r="`)
+        (list (symbol `get`) (symbol `c`) (keyword `:radius`)))))
+  (list
+    (symbol `defrecord`)
+    (symbol `Rectangle`)
+    (vector (symbol `width`) (symbol `height`))
+    (symbol `Shape`)
+    (list
+      (symbol `area`)
+      (vector (symbol `r`))
+      (list
+        (symbol `*`)
+        (list (symbol `get`) (symbol `r`) (keyword `:width`))
+        (list (symbol `get`) (symbol `r`) (keyword `:height`))))
+    (list
+      (symbol `describe`)
+      (vector (symbol `r`))
+      (list
+        (symbol `str`)
+        (string `"Rectangle "`)
+        (list (symbol `get`) (symbol `r`) (keyword `:width`))
+        (string `"x"`)
+        (list (symbol `get`) (symbol `r`) (keyword `:height`)))))
+  (list (symbol `defrecord`) (symbol `Triangle`) (vector (symbol `base`) (symbol `height`)))
+  (list
+    (symbol `extend-type`)
+    (symbol `Triangle`)
+    (symbol `Shape`)
+    (list
+      (symbol `area`)
+      (vector (symbol `t`))
+      (list
+        (symbol `*`)
+        (list (symbol `get`) (symbol `t`) (keyword `:base`))
+        (list (symbol `get`) (symbol `t`) (keyword `:height`))))
+    (list
+      (symbol `describe`)
+      (vector (symbol `t`))
+      (list
+        (symbol `str`)
+        (string `"Triangle b="`)
+        (list (symbol `get`) (symbol `t`) (keyword `:base`))
+        (string `" h="`)
+        (list (symbol `get`) (symbol `t`) (keyword `:height`)))))
+  (list
+    (symbol `extend-protocol`)
+    (symbol `Shape`)
+    (keyword `:fixnum`)
+    (list (symbol `area`) (vector (symbol `n`)) (list (symbol `*`) (symbol `n`) (symbol `n`)))
+    (list
+      (symbol `describe`)
+      (vector (symbol `n`))
+      (list (symbol `str`) (string `"Square of side "`) (symbol `n`)))
+    (keyword `:string`)
+    (list (symbol `area`) (vector (symbol `_`)) (int `0`))
+    (list
+      (symbol `describe`)
+      (vector (symbol `s`))
+      (list (symbol `str`) (string `"Label: "`) (symbol `s`))))
+  (list
+    (symbol `extend-protocol`)
+    (symbol `Shape`)
+    (keyword `:any`)
+    (list (symbol `area`) (vector (symbol `_`)) (int `0`))
+    (list
+      (symbol `describe`)
+      (vector (symbol `x`))
+      (list (symbol `str`) (string `"Unknown: "`) (symbol `x`))))
+  (list
+    (symbol `def`)
+    (symbol `label-by-shape`)
+    (map
+      (list (symbol `->Circle`) (int `5`))
+      (keyword `:small-circle`)
+      (list (symbol `->Rectangle`) (int `3`) (int `4`))
+      (keyword `:small-rect`)
+      (list (symbol `->Triangle`) (int `6`) (int `4`))
+      (keyword `:triangle`)
+      (int `42`)
+      (keyword `:answer`)
+      (string `"hi"`)
+      (keyword `:greeting`)))
+  (list (symbol `def`) (symbol `total-area`) (list (symbol `atom`) (int `0`)))
+  (list
+    (symbol `defn`)
+    (symbol `report`)
+    (vector (symbol `shape`))
+    (list
+      (symbol `swap!`)
+      (symbol `total-area`)
+      (symbol `+`)
+      (list (symbol `area`) (symbol `shape`)))
+    (list
+      (symbol `let`)
+      (vector
+        (symbol `label`)
+        (list (symbol `get`) (symbol `label-by-shape`) (symbol `shape`) (keyword `:no-label`)))
+      (list
+        (symbol `str`)
+        (list (symbol `describe`) (symbol `shape`))
+        (string `" => area="`)
+        (list (symbol `area`) (symbol `shape`))
+        (string `" label="`)
+        (symbol `label`)
+        (string `" satisfies?="`)
+        (list (symbol `satisfies?`) (symbol `Shape`) (symbol `shape`)))))
+  (list (symbol `println`) (string `"=== shapes + areas demo ==="`))
+  (list (symbol `println`) (string `""`))
+  (list
+    (symbol `def`)
+    (symbol `shapes`)
+    (vector
+      (list (symbol `->Circle`) (int `5`))
+      (list (symbol `->Rectangle`) (int `3`) (int `4`))
+      (list (symbol `->Triangle`) (int `6`) (int `4`))
+      (int `42`)
+      (string `"hi"`)
+      (keyword `:unknown-shape`)))
+  (list (symbol `println`) (string `"Per-shape reports:"`))
+  (list
+    (symbol `for`)
+    (vector (symbol `s`) (symbol `shapes`))
+    (list (symbol `println`) (string `"  "`) (list (symbol `report`) (symbol `s`))))
+  (list (symbol `println`) (string `""`))
+  (list (symbol `println`) (string `"Aggregate state (atom):"`))
+  (list
+    (symbol `println`)
+    (string `"  total area ="`)
+    (list (symbol `deref`) (symbol `total-area`)))
+  (list (symbol `println`) (string `""`))
+  (list (symbol `println`) (string `"Equality probes (5.3a structural eq):"`))
+  (list
+    (symbol `println`)
+    (string `"  (= (->Circle 5) (->Circle 5)) =>"`)
+    (list (symbol `=`) (list (symbol `->Circle`) (int `5`)) (list (symbol `->Circle`) (int `5`))))
+  (list
+    (symbol `println`)
+    (string `"  (= (->Circle 5) (->Circle 7)) =>"`)
+    (list (symbol `=`) (list (symbol `->Circle`) (int `5`)) (list (symbol `->Circle`) (int `7`))))
+  (list (symbol `println`) (string `"  records-as-map-keys: lookup by fresh constructor:"`))
+  (list
+    (symbol `println`)
+    (string `"    (get label-by-shape (->Circle 5)) =>"`)
+    (list (symbol `get`) (symbol `label-by-shape`) (list (symbol `->Circle`) (int `5`))))
+  (list (symbol `println`) (string `""`))
+  (list (symbol `println`) (string `"Dispatch table snapshot (5.3d satisfies?):"`))
+  (list
+    (symbol `println`)
+    (string `"  Shape ⊇ Circle    ?"`)
+    (list (symbol `satisfies?`) (symbol `Shape`) (list (symbol `->Circle`) (int `5`))))
+  (list
+    (symbol `println`)
+    (string `"  Shape ⊇ Triangle  ?"`)
+    (list (symbol `satisfies?`) (symbol `Shape`) (list (symbol `->Triangle`) (int `6`) (int `4`))))
+  (list
+    (symbol `println`)
+    (string `"  Shape ⊇ :fixnum   ?"`)
+    (list (symbol `satisfies?`) (symbol `Shape`) (int `42`)))
+  (list
+    (symbol `println`)
+    (string `"  Shape ⊇ :string   ?"`)
+    (list (symbol `satisfies?`) (symbol `Shape`) (string `"hi"`)))
+  (list
+    (symbol `println`)
+    (string `"  Shape ⊇ :keyword  ? (caught by :any) =>"`)
+    (list (symbol `satisfies?`) (symbol `Shape`) (keyword `:anything`)))
+  (list (symbol `println`) (string `""`))
+  (list (symbol `println`) (string `"=== demo complete ==="`)))

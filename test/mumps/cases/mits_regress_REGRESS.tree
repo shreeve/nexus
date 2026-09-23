@@ -1,0 +1,183 @@
+(routine
+  (label `REGRESS`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/regress/REGRESS"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"ac8b68a indir UAF: 50x repeated XECUTE"`))
+          (expr (num `50`))
+          (expr (str `"$$INDIRUAF^REGRESS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"2b49ec5 \\$I returns new value"`))
+          (expr (num `1`))
+          (expr (str `"$$INCRET^REGRESS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"2b49ec5 \\$I mutates source"`))
+          (expr (num `1`))
+          (expr (str `"$$INCMUT^REGRESS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"2b49ec5 cache holds active routine"`))
+          (expr (str `"ok"`))
+          (expr (str `"$$CACHEHOLD^REGRESS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"2b49ec5 100K nested unique X"`))
+          (expr (str `"ok"`))
+          (expr (str `"$$NESTSTRESS^REGRESS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"256f75f i64 boundary add"`))
+          (expr (str `"1000000000000000000"`))
+          (expr (str `"999999999999999999+1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"256f75f i64 boundary mul"`))
+          (expr (num `100000000000000000`))
+          (expr (str `"10000000000000000*10"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"4f23114 tight literal loop"`))
+          (expr (num `1000000`))
+          (expr (str `"$$LITLOOP^REGRESS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"256f75f FOR 100K iterations"`))
+          (expr (num `100000`))
+          (expr (str `"$$FORHOT^REGRESS()"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/regress/REGRESS"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `INDIRUAF` _ ((new _ `i` `result`) (set _ (= (lvar `result`) (expr (num `0`))))))
+  (` ` _ (new _ `c`) (set _ (= (lvar `c`) (expr (str `"S y=42"`)))))
+  (` `)
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `50`))))
+    (xecute _ ((expr (lvar `c`))))
+    (set _ (= (lvar `result`) (expr (lvar `result`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `result`))))
+  (` `)
+  (label `INCRET` _ ((new _ `x`)))
+  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))
+  (` `)
+  (label
+    `INCMUT`
+    _
+    ((new _ `x`) (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))))
+  (` ` _ (quit _ (expr (lvar `x`))))
+  (` `)
+  (label `CACHEHOLD` _ ((new _ `r` `A` `C`)))
+  (` `)
+  (` ` _ (set _ (= (lvar `C`) (expr (str `"$$INNER1^REGRESS()"`)))))
+  (` ` _ (xecute _ ((expr (str `"S A="`) (`_` (lvar `C`))))))
+  (` ` _ (quit _ (expr (lvar `A`))))
+  (` `)
+  (label `INNER1` _ ((new _ `i` `x`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10000`))))
+    (xecute _ ((expr (str `"S x="`) (`_` (lvar `i`))))))
+  (` ` _ (quit _ (expr (str `"ok"`))))
+  (` `)
+  (label `NESTSTRESS` _ ((new _ `r` `A` `C`)))
+  (` `)
+  (` ` _ (set _ (= (lvar `C`) (expr (str `"$$INNER2^REGRESS()"`)))))
+  (` ` _ (xecute _ ((expr (str `"S A="`) (`_` (lvar `C`))))))
+  (` ` _ (quit _ (expr (lvar `A`))))
+  (` `)
+  (label `INNER2` _ ((new _ `i` `x`)))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100000`))))
+    (xecute _ ((expr (str `"S x="`) (`_` (lvar `i`))))))
+  (` ` _ (quit _ (expr (str `"ok"`))))
+  (` `)
+  (label `LITLOOP` _ ((new _ `i` `s`) (set _ (= (lvar `s`) (expr (num `0`))))))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `1000000`))))
+    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label `FORHOT` _ ((new _ `i` `c`) (set _ (= (lvar `c`) (expr (num `0`))))))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100000`))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`)))))

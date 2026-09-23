@@ -1,0 +1,23 @@
+; examples/metadata.nx — metadata on Vars and collections.
+;
+; A defn given a docstring, an attribute map or ^meta on its name
+; puts them on its Var, with :arglists; (doc name) prints them.
+; with-meta returns an equal collection carrying a map that never
+; takes part in equality, hashing or printing.
+
+(defn area
+  "The area of a w by h rectangle."
+  {:units :cm2}
+  [w h]
+  (* w h))
+
+(doc area)
+(println (:units (meta (var area))))
+
+(def ^:private secret 42)
+(println (:private (meta (var secret))) secret)
+
+(let [v [1 2 3]
+      tagged (with-meta v {:source "example"})]
+  (println (= v tagged) (meta v) (meta tagged) tagged)
+  (println (meta (vary-meta tagged assoc :checked true))))

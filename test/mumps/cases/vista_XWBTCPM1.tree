@@ -1,0 +1,273 @@
+(routine
+  (label `XWBTCPM1`)
+  (` `)
+  (` ` _ (quit))
+  (label `ZISTCP` (`XWBTSKT`))
+  (` `)
+  (` ` _ (new _ `XWBENV` `XWBVOL` `Y`))
+  (` `
+    _
+    (do _ (call (ref `GETENV` _ `%ZOSV`)))
+    (set
+      _
+      (= (lvar `XWBENV`) (expr (lvar `Y`)))
+      (=
+        (lvar `XWBVOL`)
+        (expr (intrinsic `P`#212 ((expr (lvar `Y`)) (expr (str `"^"`)) (expr (num `2`))))))))
+  (` `
+    _
+    (quit
+      (postcond
+        (expr
+          (`'` (extrinsic ((`SEMAPHOR` `XWBTCPL`) ((expr (lvar `XWBTSKT`)) (expr (str `"LOCK"`))))))))))
+  (` ` _ (do _ (call (ref `UPDTREC` _ `XWBTCPL`) ((expr (lvar `XWBTSKT`)) (expr (num `3`))))))
+  (` ` _ (do _ (call (ref `MARKER` _ `XWBTCP`) ((expr (lvar `XWBTSKT`)) (expr (`-` (num `1`)))))))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `LISTEN` _ `%ZISTCPS`)
+        ((expr (lvar `XWBTSKT`))
+          (expr (str `"NT^XWBTCPM"`))
+          (expr (str `"D STAT^XWBTCPM1("`) (`_` (lvar `XWBTSKT`)) (`_` (str `")"`)))))))
+  (` `)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `%`)
+        (expr
+          (extrinsic ((`SEMAPHOR` `XWBTCPL`) ((expr (lvar `XWBTSKT`)) (expr (str `"UNLOCK"`)))))))))
+  (` ` _ (do _ (call (ref `UPDTREC` _ `XWBTCPL`) ((expr (lvar `XWBTSKT`)) (expr (num `6`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `OLD`)
+  (` `)
+  (` ` _ (new _ `XWBTCNT`))
+  (` ` _ (set _ (= (lvar `XWBTCNT`) (expr (num `0`)))))
+  (` ` _ (do _ (call (ref `READCONN`))))
+  (` `)
+  (` `
+    _
+    (if
+      (expr (intrinsic `P`#212 ((expr (lvar `MSG`)) (expr (str `"^"`)))) (`=` (str `"TCPconnect"`))))
+    (do))
+  (` . `#1
+    _
+    (new _ `DZ` `%T` `NATIP`)
+    (set _ (= (lvar `DZ`) (expr (str `""`))) (= (lvar `%T`) (expr (num `0`)))))
+  (` . `#1)
+  (` . `#1
+    _
+    (set _ (= (lvar `NATIP`) (expr (extrinsic (`GETPEER` `%ZOSV`)))))
+    (set
+      (postcond (expr (`'` (intrinsic `L`#209 ((expr (lvar `NATIP`)))))))
+      (=
+        (lvar `NATIP`)
+        (expr (intrinsic `P`#212 ((expr (lvar `MSG`)) (expr (str `"^"`)) (expr (num `2`))))))))
+  (` . `#1
+    _
+    (if
+      (expr
+        (lvar `NATIP`)
+        (`'=` (intrinsic `P`#212 ((expr (lvar `MSG`)) (expr (str `"^"`)) (expr (num `2`)))))))
+    (set _ (setfn `P` (lvar `MSG`) (expr (str `"^"`)) (expr (num `2`)) (expr (lvar `NATIP`)))))
+  (` . `#1
+    _
+    (if (expr (`'` (extrinsic (`NEWJOB` `XWBTCPM`)))))
+    (do
+      _
+      (call (ref `LOG`) ((expr (str `"No New Jobs"`))))
+      (call (ref `QSND`) ((expr (str `"reject"`)))))
+    (quit))
+  (` . `#1)
+  (` . `#1)
+  (` . `#1
+    _
+    (do
+      _
+      (call (ref `QSND`) ((expr (str `"accept"`))))
+      (call (ref `LOG`) ((expr (str `"accept"`))))))
+  (` . `#1
+    _
+    (do
+      _
+      (call
+        (ref `EN` _ `XWBTCPC`)
+        ((expr (intrinsic `P`#212 ((expr (lvar `MSG`)) (expr (str `"^"`)) (expr (num `2`)))))
+          (expr (intrinsic `P`#212 ((expr (lvar `MSG`)) (expr (str `"^"`)) (expr (num `3`)))))
+          (expr (intrinsic `P`#212 ((expr (lvar `DZ`)) (expr (str `"^"`)))))
+          (expr (lvar `XWBVER`))
+          (expr (intrinsic `P`#212 ((expr (lvar `MSG`)) (expr (str `"^"`)) (expr (num `4`)))))))))
+  (` ` _ (quit))
+  (` `)
+  (label `READCONN`)
+  (` ` _ (new _ `CON` `VL` `LEN` `MSG2`))
+  (` `
+    _
+    (set _ (= (lvar `CON`) (expr (extrinsic (`BREAD` ((expr (num `6`)) (expr (lvar `XWBTIME`))))))))
+    (if (expr (lvar `CON`) (`=` (str `""`))))
+    (set _ (= (lvar `CON`) (expr (str `"Timeout"`))))
+    (do _ (call (ref `LOG`) ((expr (lvar `CON`)))))
+    (quit))
+  (` `
+    _
+    (if (expr (intrinsic `E`#203 ((expr (lvar `CON`)) (expr (num `6`)))) (`=` (str `"|"`))))
+    (do))
+  (` . `#1
+    _
+    (set
+      _
+      (= (lvar `VL`) (expr (extrinsic (`BREAD` ((expr (num `1`)))))))
+      (= (lvar `VL`) (expr (intrinsic `A`#200 ((expr (lvar `VL`))))))))
+  (` . `#1 _ (set _ (= (lvar `XWBVER`) (expr (extrinsic (`BREAD` ((expr (lvar `VL`)))))))))
+  (` . `#1 _ (set _ (= (lvar `LEN`) (expr (extrinsic (`BREAD` ((expr (num `5`)))))))))
+  (` . `#1 _ (set _ (= (lvar `MSG`) (expr (extrinsic (`BREAD` ((expr (`+` (lvar `LEN`))))))))))
+  (` `
+    _
+    (else)
+    (set
+      _
+      (= (lvar `X`) (expr (intrinsic `E`#203 ((expr (lvar `CON`)) (expr (num `6`))))))
+      (=
+        (lvar `LEN`)
+        (expr
+          (intrinsic `E`#203 ((expr (lvar `CON`)) (expr (num `1`)) (expr (num `5`))))
+          (`-` (num `1`))))
+      (= (lvar `MSG2`) (expr (extrinsic (`BREAD` ((expr (lvar `LEN`)))))))
+      (= (lvar `MSG`) (expr (lvar `X`) (`_` (lvar `MSG2`))))
+      (= (lvar `XWBVER`) (expr (num `0`)))))
+  (` ` _ (do _ (call (ref `LOG`) ((expr (str `"Connect: "`) (`_` (lvar `MSG`)))))))
+  (` ` _ (quit))
+  (` `)
+  (label `BREAD` (`L` `TO`))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `XWBTIME` ((expr (num `1`))))
+        (expr (intrinsic `G`#206 ((expr (lvar `TO`)) (expr (num `5`))))))))
+  (` ` _ (quit _ (expr (extrinsic ((`BREAD` `XWBRW`) ((expr (lvar `L`))))))))
+  (` `)
+  (label `QSND` (`H`))
+  (` ` _ (do _ (call (ref `QSND` _ `XWBRW`) ((expr (lvar `H`))))))
+  (` ` _ (quit))
+  (label `LOG` (`H`))
+  (` `
+    _
+    (do
+      (postcond (expr (intrinsic `G`#206 ((expr (lvar `XWBDEBUG`))))))
+      (call (ref `LOG` _ `XWBDLOG`) ((expr (lvar `H`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `NODE` (`P`))
+  (` ` _ (new _ `X` `Y` `BV`))
+  (` `
+    _
+    (if (expr (`'` (intrinsic `D`#202 ((expr (lvar `XWBENV`)))))))
+    (do _ (call (ref `GETENV` _ `%ZOSV`)))
+    (set _ (= (lvar `XWBENV`) (expr (lvar `Y`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `BV`)
+        (expr (intrinsic `P`#212 ((expr (lvar `XWBENV`)) (expr (str `"^"`)) (expr (num `4`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `IX1`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `%ZIS`
+                 ((expr (num `14.7`)) (expr (str `"B"`)) (expr (lvar `BV`)) (expr (num `0`))))))))))
+    (if (expr (lvar `IX1`) (`'>` (num `0`))))
+    (quit _ (expr (str `"Box-Vol 1"`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `IX1`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `XWB`
+                 ((expr (num `8994.1`))
+                   (expr (num `1`))
+                   (expr (num `7`))
+                   (expr (str `"B"`))
+                   (expr (lvar `IX1`))
+                   (expr (num `0`))))))))))
+    (if (expr (lvar `IX1`) (`'>` (num `0`))))
+    (quit _ (expr (str `"Box-Vol 2"`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `IX2`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `XWB`
+                 ((expr (num `8994.1`))
+                   (expr (num `1`))
+                   (expr (num `7`))
+                   (expr (lvar `IX1`))
+                   (expr (num `1`))
+                   (expr (str `"B"`))
+                   (expr (lvar `P`))
+                   (expr (num `0`))))))))))
+    (if (expr (lvar `IX2`) (`'>` (num `0`))))
+    (quit _ (expr (str `"Port"`))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr
+               (gvar
+                 `XWB`
+                 ((expr (num `8994.1`))
+                   (expr (num `1`))
+                   (expr (num `7`))
+                   (expr (lvar `IX1`))
+                   (expr (num `1`))
+                   (expr (lvar `IX2`))
+                   (expr (num `0`)))))))))))
+  (` ` _ (quit _ (expr (lvar `X`))))
+  (` `)
+  (label `STAT` (`P`))
+  (` `)
+  (` ` _ (new _ `X`))
+  (` ` _ (set _ (= (lvar `X`) (expr (extrinsic (`NODE` ((expr (lvar `P`)))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `ZISQUIT`)
+        (expr
+          (expr
+            (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `"^"`)) (expr (num `2`))))
+            (`>` (num `3`)))))))
+  (` ` _ (quit)))

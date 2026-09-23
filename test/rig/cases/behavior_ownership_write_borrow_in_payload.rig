@@ -1,0 +1,47 @@
+# A write borrow held in an enum payload, an optional, a generic field,
+# or an array element still writes through to the borrowed value.
+
+struct Box
+  n: Int
+
+enum Slot
+  held(b: !Box)
+  empty
+
+type W(T)
+  v: T
+
+sub main()
+  b = Box(n: 1)
+  if true
+    s: Slot = .held(b: !b)
+    match s
+      .held(r) => r.n = 2
+      .empty => print(0)
+  print(b.n)
+  if true
+    o: (!Box)? = !b
+    if <o as r
+      r.n = 3
+  print(b.n)
+  if true
+    w: W(!Box) = W(v: !b)
+    w.v.n = 4
+  print(b.n)
+  if true
+    xs = [!b]
+    xs[0].n = 5
+  print(b.n)
+  x = 1
+  if true
+    ints = [!x]
+    print(ints[0] + 1)
+  print(x)
+
+# expect:
+# 2
+# 3
+# 4
+# 5
+# 2
+# 1

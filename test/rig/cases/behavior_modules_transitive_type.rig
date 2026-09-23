@@ -1,0 +1,23 @@
+# A type from a module the program reaches only through an import
+# (`lib` returns an `a.B`) is dropped, matched, and called like any
+# other.
+
+use lib
+
+sub main()
+  x = lib.make(1)
+  w = ~x
+  s = lib.slot(2)
+  match s
+    .full(b) => print("full", b.get())
+    .empty => print("empty")
+  p = lib.plain(3)
+  q = <p
+  print(x.get(), q.n)
+
+# expect:
+# full 2
+# 1 3
+# drop 3
+# drop 2
+# drop 1

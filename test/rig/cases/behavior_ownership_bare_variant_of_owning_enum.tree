@@ -1,0 +1,24 @@
+(module
+  (struct
+    `B`
+    (: `n` `Int`)
+    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
+  (enum `Slot` (variant `full` ((: `b` (shared `B`)))) `empty`)
+  (fun
+    `fill`
+    ((: `s` `Slot`))
+    `Int`
+    (block
+      (match `s` (arm (variant_pattern `full` `b`) (member `b` `n`)) (arm (enum_lit `empty`) `0`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` `Slot` (member `Slot` `empty`))
+      (set _ `c` _ (call (member `Slot` `full`) (kwarg `b` (share (call `B` (kwarg `n` `1`))))))
+      (call
+        `print`
+        (call `fill` (member `Slot` `empty`))
+        (call `fill` (move `c`))
+        (call `fill` (move `a`))))))

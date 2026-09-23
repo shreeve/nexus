@@ -1,0 +1,87 @@
+(routine
+  (label `FUNCS`)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr (intrinsic `P`#212 ((expr (str `"a^b^c"`)) (expr (str `"^"`)) (expr (num `2`))))))
+      (=
+        (lvar `Y`)
+        (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `3`))))))
+      (= (lvar `Z`) (expr (intrinsic `L`#209 ((expr (lvar `X`))))))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr
+          (select
+            ((expr (lvar `A`) (`=` (num `1`))) (expr (str `"one"`)))
+            ((expr (lvar `A`) (`=` (num `2`))) (expr (str `"two"`)))
+            ((expr (num `1`)) (expr (str `"other"`))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (intrinsic `O`#211 ((expr (gvar `G` ((expr (lvar `X`)))))))))
+      (=
+        (lvar `Y`)
+        (expr (intrinsic `O`#211 ((expr (gvar `G` ((expr (lvar `X`))))) (expr (`-` (num `1`)))))))
+      (= (lvar `Z`) (expr (intrinsic `D`#202 ((expr (gvar `G`))))))
+      (=
+        (lvar `W`)
+        (expr (intrinsic `G`#206 ((expr (gvar `G` ((expr (num `1`))))) (expr (str `"dflt"`))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (extrinsic ((`EXT` `RTN`) ((expr (num `1`)) (byref `Y`))))))
+      (= (lvar `Y`) (expr (extrinsic (`LOCAL` (_)))))
+      (= (lvar `Z`) (expr (extrinsic (routine `RTN`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (text `LABEL` (expr (num `1`)) `RTN`)))
+      (=
+        (lvar `Y`)
+        (expr (intrinsic `TR`#222 ((expr (lvar `X`)) (expr (str `"ab"`)) (expr (str `"AB"`))))))
+      (=
+        (lvar `Z`)
+        (expr (intrinsic `J`#208 ((expr (lvar `X`)) (expr (num `10`)) (expr (num `2`))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (intrinsic `H`#304)))
+      (= (lvar `Y`) (expr (intrinsic `J`#208)))
+      (= (lvar `Z`) (expr (intrinsic `T`#221)))
+      (= (lvar `A`) (expr (intrinsic `IO`#305)))
+      (= (lvar `B`) (expr (intrinsic `ZV`#336)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `X`)
+        (expr (intrinsic `NA`#210 ((expr (gvar `G` ((expr (num `1`)) (expr (num `2`)))))))))
+      (= (lvar `Y`) (expr (intrinsic `QS`#214 ((expr (lvar `X`)) (expr (num `1`))))))
+      (= (lvar `Z`) (expr (intrinsic `QL`#213 ((expr (lvar `X`))))))
+      (= (lvar `W`) (expr (intrinsic `Q`#215 ((expr (gvar `G`))))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (intrinsic `C`#201 ((expr (num `65`)) (expr (num `66`))))))
+      (= (lvar `Y`) (expr (intrinsic `A`#200 ((expr (str `"A"`))))))
+      (= (lvar `Z`) (expr (intrinsic `F`#204 ((expr (lvar `X`)) (expr (str `"B"`))))))
+      (=
+        (lvar `W`)
+        (expr (intrinsic `FN`#205 ((expr (lvar `X`)) (expr (str `","`)) (expr (num `2`))))))))
+  (` `
+    _
+    (set _ (= (lvar `X`) (expr (ssvn `JOB`#401 ((expr (intrinsic `J`#208)) (expr (str `"x"`))))))))
+  (` ` _ (quit)))

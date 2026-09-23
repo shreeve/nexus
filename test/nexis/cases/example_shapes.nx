@@ -1,0 +1,149 @@
+; examples/shapes.nx
+;
+; ============================================================
+; DEMO: shapes + areas via protocols + records.
+; ============================================================
+;
+; Demonstrates the protocols + records surface end-to-end via a
+; non-trivial program. This file is a
+; near-line-for-line port of the canonical Clojure example.
+;
+; Run:
+;   $ ./bin/nexis run examples/shapes.nx
+;
+; Demonstrates:
+;   - defprotocol with multiple methods
+;   - defrecord with inline protocol clauses
+;   - extend-type over a record defined elsewhere
+;   - extend-protocol over a built-in kind (`:fixnum` / `:string`)
+;   - extend-protocol with `:any` default fallback
+;   - satisfies? predicate
+;   - structural record equality (records-as-map-keys)
+;   - atoms + str + case working alongside protocols and records.
+
+(defprotocol Shape
+  (area [s])
+  (describe [s]))
+
+; -------------------------------------------------------------
+; Records with inline protocol impls
+; -------------------------------------------------------------
+
+(defrecord Circle [radius]
+  Shape
+  (area [c]
+    ; nexis v1 ships fixnum/bignum only — no fractional arithmetic.
+    ; Areas reported in centipi-units (radius² × 314). Output is
+    ; illustrative; what matters is dispatch correctness.
+    (let [r (get c :radius)]
+      (* 314 r r)))
+  (describe [c] (str "Circle r=" (get c :radius))))
+
+(defrecord Rectangle [width height]
+  Shape
+  (area [r] (* (get r :width) (get r :height)))
+  (describe [r]
+    (str "Rectangle " (get r :width) "x" (get r :height))))
+
+(defrecord Triangle [base height])
+
+; -------------------------------------------------------------
+; extend-type over a record defined elsewhere (5.3d)
+; -------------------------------------------------------------
+
+(extend-type Triangle
+  Shape
+  (area [t] (* (get t :base) (get t :height)))
+  (describe [t]
+    (str "Triangle b=" (get t :base) " h=" (get t :height))))
+
+; -------------------------------------------------------------
+; extend-protocol over built-in kinds (5.3d)
+; -------------------------------------------------------------
+
+(extend-protocol Shape
+  ; Treat a bare fixnum as a square's side-length.
+  :fixnum
+  (area [n] (* n n))
+  (describe [n] (str "Square of side " n))
+  ; Strings ship as labels, area zero.
+  :string
+  (area [_] 0)
+  (describe [s] (str "Label: " s)))
+
+; -------------------------------------------------------------
+; :any default fallback for unknown kinds (5.3d)
+; -------------------------------------------------------------
+
+(extend-protocol Shape
+  :any
+  (area [_] 0)
+  (describe [x] (str "Unknown: " x)))
+
+; -------------------------------------------------------------
+; Structural equality + records-as-map-keys (5.3a)
+; -------------------------------------------------------------
+
+(def label-by-shape
+  {(->Circle 5)         :small-circle
+   (->Rectangle 3 4)    :small-rect
+   (->Triangle 6 4)     :triangle
+   42                   :answer
+   "hi"                 :greeting})
+
+; -------------------------------------------------------------
+; Atoms for stateful tracking + case
+; -------------------------------------------------------------
+
+(def total-area (atom 0))
+
+(defn report [shape]
+  (swap! total-area + (area shape))
+  (let [label (get label-by-shape shape :no-label)]
+    (str (describe shape)
+         " => area=" (area shape)
+         " label=" label
+         " satisfies?=" (satisfies? Shape shape))))
+
+; -------------------------------------------------------------
+; Drive the dispatch surface
+; -------------------------------------------------------------
+
+(println "=== shapes + areas demo ===")
+(println "")
+
+(def shapes
+  [(->Circle 5)
+   (->Rectangle 3 4)
+   (->Triangle 6 4)
+   42
+   "hi"
+   :unknown-shape])
+
+(println "Per-shape reports:")
+(for [s shapes]
+  (println "  " (report s)))
+
+(println "")
+(println "Aggregate state (atom):")
+(println "  total area =" (deref total-area))
+
+(println "")
+(println "Equality probes (5.3a structural eq):")
+(println "  (= (->Circle 5) (->Circle 5)) =>" (= (->Circle 5) (->Circle 5)))
+(println "  (= (->Circle 5) (->Circle 7)) =>" (= (->Circle 5) (->Circle 7)))
+(println "  records-as-map-keys: lookup by fresh constructor:")
+(println "    (get label-by-shape (->Circle 5)) =>"
+         (get label-by-shape (->Circle 5)))
+
+(println "")
+(println "Dispatch table snapshot (5.3d satisfies?):")
+(println "  Shape ⊇ Circle    ?" (satisfies? Shape (->Circle 5)))
+(println "  Shape ⊇ Triangle  ?" (satisfies? Shape (->Triangle 6 4)))
+(println "  Shape ⊇ :fixnum   ?" (satisfies? Shape 42))
+(println "  Shape ⊇ :string   ?" (satisfies? Shape "hi"))
+(println "  Shape ⊇ :keyword  ? (caught by :any) =>"
+         (satisfies? Shape :anything))
+
+(println "")
+(println "=== demo complete ===")

@@ -1,0 +1,12 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set
+        _
+        `result`
+        _
+        (if (> `5` `0`) (block (set _ `doubled` `Int` (* `5` `2`)) (+ `doubled` `1`)) (block `0`)))
+      (call `print` `result`))))

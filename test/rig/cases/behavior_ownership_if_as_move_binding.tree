@@ -1,0 +1,19 @@
+(module
+  (struct
+    `Noisy`
+    (: `id` `Int`)
+    (drop_decl
+      ((: `self` (borrow_write `Noisy`)))
+      (block (call `print` `"drop"` (member `self` `id`)))))
+  (sub `eat` ((: `n` (shared `Noisy`))) _ (block (call `print` `"eat"` (member `n` `id`))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `rc` _ (share (call `Noisy` (kwarg `id` `1`))))
+      (set _ `w` _ (weak `rc`))
+      (if
+        (as (call (member `w` `upgrade`)) `n`)
+        (block (call `eat` (move `n`)) (call `print` `"after eat"`)))
+      (call `print` `"end"`))))

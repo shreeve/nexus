@@ -1,0 +1,22 @@
+# Comparing a temporary optional handle with `none` drops the temporary.
+
+struct B
+  n: Int
+
+  drop self: !B
+    print("drop", self.n)
+
+sub main()
+  rc = *B(n: 1)
+  w = ~rc
+  print(w.upgrade() == none)
+  if w.upgrade() != none
+    print("alive")
+  -rc
+  print(w.upgrade() == none)
+
+# expect:
+# false
+# alive
+# drop 1
+# true

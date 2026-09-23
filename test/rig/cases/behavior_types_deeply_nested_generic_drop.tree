@@ -1,0 +1,83 @@
+(module
+  (struct
+    `P`
+    (: `n` `Int`)
+    (drop_decl ((: `self` (borrow_write `P`))) (block (call `print` `"drop"` (member `self` `n`)))))
+  (generic_type `Box` (`T`) (: `value` `T`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `h` (shared `P`) (share (call `P` (kwarg `n` `5`))))
+      (set
+        _
+        `b`
+        (generic_inst
+          `Box`
+          (generic_inst
+            `Box`
+            (generic_inst
+              `Box`
+              (generic_inst
+                `Box`
+                (generic_inst
+                  `Box`
+                  (generic_inst
+                    `Box`
+                    (generic_inst
+                      `Box`
+                      (generic_inst `Box` (generic_inst `Box` (generic_inst `Box` (shared `P`)))))))))))
+        (call
+          `Box`
+          (kwarg
+            `value`
+            (call
+              `Box`
+              (kwarg
+                `value`
+                (call
+                  `Box`
+                  (kwarg
+                    `value`
+                    (call
+                      `Box`
+                      (kwarg
+                        `value`
+                        (call
+                          `Box`
+                          (kwarg
+                            `value`
+                            (call
+                              `Box`
+                              (kwarg
+                                `value`
+                                (call
+                                  `Box`
+                                  (kwarg
+                                    `value`
+                                    (call
+                                      `Box`
+                                      (kwarg
+                                        `value`
+                                        (call
+                                          `Box`
+                                          (kwarg `value` (call `Box` (kwarg `value` (move `h`))))))))))))))))))))))
+      (set _ `c` _ (move `b`))
+      (call
+        `print`
+        (member
+          (member
+            (member
+              (member
+                (member
+                  (member
+                    (member
+                      (member (member (member (member `c` `value`) `value`) `value`) `value`)
+                      `value`)
+                    `value`)
+                  `value`)
+                `value`)
+              `value`)
+            `value`)
+          `n`)))))

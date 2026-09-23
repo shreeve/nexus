@@ -1,0 +1,31 @@
+# A multi-character lexer literal written with single quotes ('+=', '->')
+# is the same token as the parser literal "+=" / "->".
+#
+# Today: the parser literal is not matched to the single-quoted lexer rule,
+# so tokenToSymbol has no entry for `.plus_assign` / `.arrow` and those
+# alternatives are silently unreachable (lit_tags.grammar has this shape).
+# Found while building the test harness.
+
+@lexer
+tokens
+    ident
+    integer
+    assign
+    plus_assign
+    arrow
+    eof
+    err
+'+='                                        → plus_assign
+'='                                         → assign
+'->'                                        → arrow
+[0-9]+                                      → integer
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "single_quoted_multichar_literal"
+
+top! = stmt                                 → 1
+stmt = IDENT "=" INTEGER                    → (set fixed 1 _ 3)
+     | IDENT "->" INTEGER                   → (set move 1 _ 3)
+     | IDENT "+=" INTEGER                   → (set += 1 _ 3)

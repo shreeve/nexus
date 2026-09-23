@@ -1,0 +1,16 @@
+# Invalid guard operator
+# error: bad_guard_op.grammar:11:
+# error: ~~
+@lexer
+state
+    beg = 1
+tokens
+    ident
+    eof
+    err
+@ beg ~~ 1 → ident
+[a-zA-Z]+ → ident
+. → err
+@parser
+@conflicts = 0
+program! = IDENT → (module 1)

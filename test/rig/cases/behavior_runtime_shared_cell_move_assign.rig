@@ -1,0 +1,13 @@
+# `rc1 <- rc2` on shared cells: rc1's old box is dropped at the
+# assignment, rc1 takes over rc2's box, and rc2 is not dropped again.
+
+sub main()
+  rc1: *Cell(Int) = *Cell(value: 0)
+  rc2: *Cell(Int) = *Cell(value: 0)
+  rc1.set(10)
+  rc2.set(20)
+  rc1 <- rc2
+  print(rc1.get())     # 20: rc1 now refers to rc2's old box
+
+# expect:
+# 20

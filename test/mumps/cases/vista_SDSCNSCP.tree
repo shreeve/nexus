@@ -1,0 +1,438 @@
+(routine
+  (label `SDSCNSCP`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (quit))
+  (label `EN`)
+  (` `
+    _
+    (new _ `ZTQUEUED` `POP` `ZTRTN` `ZTDTH` `ZTDESC` `ZTSAVE` `SDSCDVSL` `SDSCDVLN` `DIR` `X` `Y`))
+  (` ` _ (new _ `DTOUT` `DUOUT`))
+  (` `)
+  (` `
+    _
+    (do _ (call (ref `GETDATE` _ `SDSCOMP`)))
+    (if (expr (lvar `SDSCTDT`) (`=` (str `""`))))
+    (goto _ ((ref `EXIT`))))
+  (` `)
+  (` ` _ (do _ (call (ref `DIV` _ `SDSCUTL`))))
+  (` ` _ (do _ (call (ref _ _ `DIR`))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic `G`#206 ((expr (lvar `DTOUT`))))
+        (`!` (expr (intrinsic `G`#206 ((expr (lvar `DUOUT`))))))))
+    (goto _ ((ref `EXIT`))))
+  (` ` _ (set _ (= (lvar `SDSCDVSL`) (expr (lvar `Y`))) (= (lvar `SDSCDVLN`) (expr (lvar `SCLN`)))))
+  (` ` _ (kill _ (lvar `SCLN`) (lvar `DIR`)))
+  (` `)
+  (` ` _ (do _ (call (ref `TYPE` _ `SDSCUTL`))))
+  (` `
+    _
+    (if (expr (lvar `SDTYPE`) (`'=` (str `"S"`))))
+    (write _ (posformat `!` `!`) (expr (str `"You do not have privileges to run this report."`)))
+    (quit))
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"This option will permanently remove the outpatient encounters that are at a"`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!`)
+      (expr (str `"NEW status when both the Encounter SC value and the ASCD value are 'NO' from"`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!`)
+      (expr (str `"the SDSC SERVICE CONNECTED CHANGES file (#409.48)."`))
+      (posformat `!`)))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"Y"`)))
+      (= (lvar `DIR` ((expr (str `"A"`)))) (expr (str `"Are you sure you want to continue"`)))
+      (= (lvar `DIR` ((expr (str `"B"`)))) (expr (str `"N"`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `DIR` ((expr (str `"?"`))))
+        (expr (str `"YES to remove encounters from the Review file, NO to Exit."`)))))
+  (` ` _ (do _ (call (ref _ _ `DIR`))))
+  (` `
+    _
+    (if
+      (expr
+        (expr (`'` (lvar `Y`)))
+        (`!` (expr (intrinsic `G`#206 ((expr (lvar `DTOUT`))))))
+        (`!` (expr (intrinsic `G`#206 ((expr (lvar `DUOUT`))))))))
+    (goto _ ((ref `EXIT`))))
+  (` `)
+  (` `
+    _
+    (kill _ (lvar `%ZIS`) (lvar `IOP`) (lvar `IOC`) (lvar `ZTIO`))
+    (set _ (= (lvar `%ZIS`) (expr (str `"QM"`))))
+    (do _ (call (ref _ _ `%ZIS`)))
+    (goto (postcond (expr (lvar `POP`))) ((ref `EXIT`))))
+  (` `
+    _
+    (if (expr (intrinsic `D`#202 ((expr (lvar `IO` ((expr (str `"Q"`)))))))))
+    (do)
+    (goto _ ((ref `EXIT`))))
+  (` . `#1
+    _
+    (set
+      _
+      (= (lvar `ZTRTN`) (expr (str `"BEG^SDSCNSCP"`)))
+      (= (lvar `ZTDTH`) (expr (intrinsic `H`#304)))
+      (= (lvar `ZTDESC`) (expr (str `"Purge ASCD NSC Encounters"`)))))
+  (` . `#1
+    _
+    (set
+      _
+      (= (lvar `ZTSAVE` ((expr (str `"SDSCDVSL"`)))) (expr (str `""`)))
+      (= (lvar `ZTSAVE` ((expr (str `"SDSCDVLN"`)))) (expr (str `""`)))
+      (= (lvar `ZTSAVE` ((expr (str `"SDEDT"`)))) (expr (str `""`)))))
+  (` . `#1
+    _
+    (set
+      _
+      (= (lvar `ZTSAVE` ((expr (str `"SDSCTDT"`)))) (expr (str `""`)))
+      (= (lvar `ZTIO`) (expr (lvar `ION`)))))
+  (` . `#1
+    _
+    (kill _ (lvar `IO` ((expr (str `"Q"`)))))
+    (do _ (call (ref _ _ `%ZTLOAD`)))
+    (write _ (posformat `!`) (expr (str `"REQUEST QUEUED"`))))
+  (` `)
+  (label `BEG`)
+  (` ` _ (new _ `SDSCDIV` `SDSCDNM` `SDI` `SDGTOT` `SDPG`))
+  (` ` _ (set _ (= (lvar `SDGTOT`) (expr (num `0`))) (= (lvar `SDPG`) (expr (num `1`)))))
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `SDSCDIV`)
+        (expr
+          (select
+            ((expr (lvar `SDSCDVSL`) (`'[` (lvar `SDSCDVLN`))) (expr (lvar `SDSCDVSL`)))
+            ((expr (num `1`)) (expr (str `""`))))))))
+  (` `
+    _
+    (if (expr (lvar `SDSCDIV`) (`=` (str `""`))))
+    (set _ (= (lvar `SDSCDNM`) (expr (str `"ALL"`))))
+    (do _ (call (ref `FND`)))
+    (goto _ ((ref `EXIT`))))
+  (` ` _ (if (expr (lvar `SDSCDIV`) (`'=` (str `""`)))) (do))
+  (` . `#1
+    _
+    (for
+      (lvar `SDI`)
+      (range
+        (expr (num `1`))
+        (expr (num `1`))
+        (expr (intrinsic `L`#209 ((expr (lvar `SDSCDVSL`)) (expr (str `","`)))))))
+    (set
+      _
+      (=
+        (lvar `SDSCDIV`)
+        (expr (intrinsic `P`#212 ((expr (lvar `SDSCDVSL`)) (expr (str `","`)) (expr (lvar `SDI`)))))))
+    (quit (postcond (expr (lvar `SDSCDIV`) (`=` (str `""`)))))
+    (do))
+  (` .. `#2
+    _
+    (set
+      _
+      (=
+        (lvar `SDSCDNM`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr (gvar `DG` ((expr (num `40.8`)) (expr (lvar `SDSCDIV`)) (expr (num `0`)))))
+              (expr (str `"^"`))
+              (expr (num `1`))))))))
+  (` .. `#2 _ (do _ (call (ref `FND`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"Grand total of NSC Records Purged: "`))
+      (expr (lvar `SDGTOT`))))
+  (` ` _ (goto _ ((ref `EXIT`))))
+  (` `)
+  (label `FND`)
+  (` `
+    _
+    (new
+      _
+      `SDOEDT`
+      `SDOE0`
+      `SDEDIV`
+      `SDOE`
+      `SDSCDATA`
+      `SDL`
+      `SDV0`
+      `SDPRV`
+      `SCVST`
+      `SDCNT`
+      `DFN`
+      `DIK`
+      `DA`))
+  (` `)
+  (` ` _ (do _ (call (ref `HDR`))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `SDOEDT`) (expr (lvar `SDSCTDT`) (`-` (num `1`))))
+      (setmulti (expr (num `0`)) (lvar `SDL`) (lvar `SDCNT`))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `SDOEDT`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (gvar `SDSC` ((expr (num `409.48`)) (expr (str `"AE"`)) (expr (lvar `SDOEDT`))))))))))
+    (quit
+      (postcond
+        (expr
+          (lvar `SDOEDT`)
+          (`\\` (num `1`))
+          (`>` (lvar `SDEDT`))
+          (`!` (expr (lvar `SDOEDT`) (`=` (str `""`)))))))
+    (do))
+  (` . `#1 _ (set _ (= (lvar `SDOE`) (expr (str `""`)))))
+  (` . `#1
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `SDOE`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `SDSC`
+                 ((expr (num `409.48`))
+                   (expr (str `"AE"`))
+                   (expr (lvar `SDOEDT`))
+                   (expr (lvar `SDOE`))))))))))
+    (quit (postcond (expr (lvar `SDOE`) (`=` (str `""`)))))
+    (do))
+  (` .. `#2
+    _
+    (set
+      _
+      (= (lvar `SDOE0`) (expr (extrinsic ((`GETOE` `SDOE`) ((expr (lvar `SDOE`)))))))
+      (=
+        (lvar `SDSCDATA`)
+        (expr
+          (intrinsic
+            `G`#206
+            ((expr (gvar `SDSC` ((expr (num `409.48`)) (expr (lvar `SDOE`)) (expr (num `0`)))))))))))
+  (` .. `#2
+    _
+    (quit (postcond (expr (lvar `SDOE0`) (`=` (str `""`)))))
+    (quit (postcond (expr (lvar `SDSCDATA`) (`=` (str `""`))))))
+  (` .. `#2)
+  (` .. `#2
+    _
+    (if
+      (expr
+        (intrinsic `P`#212 ((expr (lvar `SDSCDATA`)) (expr (lvar `U`)) (expr (num `5`))))
+        (`'=` (str `"N"`))))
+    (quit))
+  (` .. `#2
+    _
+    (set
+      _
+      (=
+        (lvar `SDEDIV`)
+        (expr (intrinsic `P`#212 ((expr (lvar `SDSCDATA`)) (expr (lvar `U`)) (expr (num `12`)))))))
+    (quit (postcond (expr (lvar `SDEDIV`) (`=` (str `""`))))))
+  (` .. `#2
+    _
+    (if (expr (lvar `SDSCDIV`) (`'=` (str `""`))))
+    (quit (postcond (expr (lvar `SDEDIV`) (`'=` (lvar `SDSCDIV`))))))
+  (` .. `#2)
+  (` .. `#2
+    _
+    (if
+      (expr
+        (intrinsic `P`#212 ((expr (lvar `SDSCDATA`)) (expr (lvar `U`)) (expr (num `9`))))
+        (`'=` (num `0`))))
+    (quit))
+  (` .. `#2)
+  (` .. `#2
+    _
+    (set
+      _
+      (=
+        (lvar `SDV0`)
+        (expr (intrinsic `P`#212 ((expr (lvar `SDOE0`)) (expr (lvar `U`)) (expr (num `5`))))))
+      (=
+        (lvar `SCVST`)
+        (expr
+          (extrinsic
+            ((`GET1` `DIQ`)
+              ((expr (num `9000010`))
+                (expr (lvar `SDV0`) (`_` (str `","`)))
+                (expr (num `80001`))
+                (expr (str `"I"`)))))))))
+  (` .. `#2 _ (if (expr (lvar `SCVST`) (`'=` (num `0`)))) (quit))
+  (` .. `#2
+    _
+    (set
+      _
+      (=
+        (lvar `DFN`)
+        (expr (intrinsic `P`#212 ((expr (lvar `SDOE0`)) (expr (lvar `U`)) (expr (str `"2Z"`)))))))
+    (do _ (call (ref `DEM` _ `VADPT`))))
+  (` .. `#2
+    _
+    (set
+      _
+      (= (lvar `SDCNT`) (expr (lvar `SDCNT`) (`+` (num `1`))))
+      (= (lvar `SDGTOT`) (expr (lvar `SDGTOT`) (`+` (num `1`))))
+      (=
+        (lvar `SCVST`)
+        (expr
+          (select
+            ((expr (lvar `SCVST`)) (expr (str `"Y"`)))
+            ((expr (lvar `SCVST`) (`=` (num `0`))) (expr (str `"NO"`)))
+            ((expr (num `1`)) (expr (str `""`))))))))
+  (` .. `#2
+    _
+    (set
+      _
+      (=
+        (lvar `SDPRV`)
+        (expr
+          (extrinsic
+            ((`GET1` `DIQ`)
+              ((expr (num `200`))
+                (expr (extrinsic ((`PRIMVPRV` `PXUTL1`) ((expr (lvar `SDV0`))))) (`_` (str `","`)))
+                (expr (num `.01`))
+                (expr (str `"E"`)))))))
+      (= (lvar `SDL`) (expr (lvar `SDL`) (`+` (num `1`))))))
+  (` .. `#2
+    _
+    (write
+      _
+      (posformat `!`)
+      (expr (extrinsic ((`FMTE` `XLFDT`) ((expr (lvar `SDOEDT`)) (expr (num `2`))))))
+      (? (expr (num `16`)))
+      (expr (lvar `SDOE`))
+      (? (expr (num `30`)))
+      (expr
+        (intrinsic
+          `E`#203
+          ((expr (lvar `VADM` ((expr (num `1`))))) (expr (num `1`)) (expr (num `25`)))))
+      (? (expr (num `55`)))
+      (expr (intrinsic `E`#203 ((expr (lvar `SDPRV`)) (expr (num `1`)) (expr (num `19`)))))
+      (? (expr (num `75`)))
+      (expr (lvar `SCVST`))))
+  (` .. `#2
+    _
+    (set _ (= (lvar `DIK`) (expr (str `"^SDSC(409.48,"`))) (= (lvar `DA`) (expr (lvar `SDOE`))))
+    (do _ (call (ref _ _ `DIK`))))
+  (` .. `#2 _ (do _ (call (ref `KVA` _ `VADPT`))))
+  (` .. `#2
+    _
+    (if
+      (expr
+        (intrinsic `E`#203 ((expr (lvar `IOST`)) (expr (num `1`)) (expr (num `2`))))
+        (`'=` (str `"C-"`)))
+      (expr (lvar `SDL`) (`+` (num `4`)) (`>` (lvar `IOSL`))))
+    (do _ (call (ref `HDR`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"Number of NSC Records Purged: "`))
+      (expr (lvar `SDCNT`))
+      (expr (str `" for "`) (`_` (lvar `SDSCDNM`)))))
+  (` ` _ (quit))
+  (` `)
+  (label `HDR`)
+  (` ` _ (new _ `SDHDR` `I`))
+  (` ` _ (set _ (= (lvar `SDHDR`) (expr (str `"Purge ASCD NSC Encounters"`)))))
+  (` ` _ (write _ (expr (@name (lvar `IOF`)))))
+  (` `
+    _
+    (write
+      _
+      (expr (lvar `SDHDR`))
+      (? (expr (num `67`)))
+      (expr (str `"PAGE: "`))
+      (expr (lvar `SDPG`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!`)
+      (? (expr (num `5`)))
+      (expr (str `"For Encounters Dated "`))
+      (expr (extrinsic ((`FMTE` `XLFDT`) ((expr (lvar `SDSCTDT`)) (expr (num `2`))))))
+      (expr (str `" THRU "`))
+      (expr (extrinsic ((`FMTE` `XLFDT`) ((expr (lvar `SDEDT`)) (expr (num `2`))))))
+      (expr (str `" For Division: "`))
+      (expr (lvar `SDSCDNM`))
+      (posformat `!` `!`)))
+  (` `
+    _
+    (write
+      _
+      (expr (str `"Encounter Date"`))
+      (? (expr (num `16`)))
+      (expr (str `"Encounter No."`))
+      (? (expr (num `30`)))
+      (expr (str `"Patient Name"`))
+      (? (expr (num `55`)))
+      (expr (str `"Provider"`))
+      (? (expr (num `73`)))
+      (expr (str `"SC Val"`))))
+  (` `
+    _
+    (write _ (posformat `!`))
+    (for (lvar `I`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `79`))))
+    (write _ (expr (str `"-"`))))
+  (` ` _ (set _ (= (lvar `SDPG`) (expr (lvar `SDPG`) (`+` (num `1`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `EXIT`)
+  (` `
+    _
+    (kill
+      _
+      (lvar `SDEDT`)
+      (lvar `SDOPT`)
+      (lvar `SDSCBDT`)
+      (lvar `SDSCCR`)
+      (lvar `SDSCEDT`)
+      (lvar `SDSCTAT`)
+      (lvar `SDSCTDT`)
+      (lvar `SDTYPE`)))
+  (` ` _ (quit)))

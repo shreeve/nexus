@@ -1,0 +1,9 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` `I64` `7`)
+      (set _ `n` _ (builtin `sizeOf` (builtin `TypeOf` `x`)))
+      (call `print` `n`))))

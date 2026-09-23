@@ -1,0 +1,79 @@
+(module
+  (sub
+    `each_n`
+    ((: `n` `Int`) (: `f` (shared (fun_type (`Int`)))))
+    _
+    (block (set _ `i` _ `0`) (while (< `i` `n`) (set += `i` _ `1`) (block (call `f` `i`)))))
+  (sub `twice` ((: `f` (shared (fun_type)))) _ (block (call `f`) (call `f`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set
+        _
+        `sig`
+        (shared (generic_inst `Signal` `Int`))
+        (share (call `Signal` (kwarg `value` `0`))))
+      (call
+        (member `sig` `subscribe`)
+        (share
+          (lambda
+            ((cap_weak `sig`))
+            _
+            _
+            (block
+              (if
+                (as (call (member `sig` `upgrade`)) `s`)
+                (block (call `print` `"got"` (call (member `s` `get`)))))))))
+      (call (member `sig` `set`) `4`)
+      (set _ `total` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (call
+        `each_n`
+        `3`
+        (share
+          (lambda
+            ((cap_clone `total`) `i`)
+            _
+            _
+            (block
+              (call (member `total` `set`) (+ (call (member `total` `get`)) `i`))
+              (call `print` `"seen"` `i`)))))
+      (call `print` (call (member `total` `get`)))
+      (call
+        `each_n`
+        `2`
+        (share
+          (lambda
+            (`i`)
+            _
+            _
+            (block (if (== `i` `0`) (block (call `print` `"zero"`)) (block (call `print` `"one"`)))))))
+      (call
+        `twice`
+        (share
+          (lambda
+            ()
+            _
+            _
+            (block
+              (call `each_n` `2` (share (lambda (`i`) _ _ (block (call `print` `"inner"` `i`)))))
+              (call `print` `"outer"`)))))
+      (set _ `handlers` (generic_inst `Vec` (shared (fun_type))) (call `Vec`))
+      (call
+        (member (write `handlers`) `push`)
+        (share
+          (lambda
+            ((cap_clone `total`))
+            _
+            _
+            (block (set _ `n` _ (call (member `total` `get`))) (call `print` `"handler"` `n`)))))
+      (for iter `h` _ (read `handlers`) (block (call `h`)))
+      (set _ `n` _ `3`)
+      (set
+        _
+        `r`
+        _
+        (call (lambda ((cap_clone `n`)) _ _ (block (set _ `m` _ (* `n` `2`)) (+ `m` `1`)))))
+      (call `print` `r`)
+      (call `each_n` `2` (share (lambda (`i`) _ _ (block (call `print` `"trailing"` `i`))))))))

@@ -1,0 +1,9 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `k` _ `4`)
+      (set _ `g` _ (lambda ((cap_clone `k`)) _ _ (block `k`)))
+      (call `print` (call `g`)))))

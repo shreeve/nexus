@@ -1,0 +1,643 @@
+(routine
+  (label `SUBS`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/indirection/SUBS"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@\`x(\`\`a\`\`)\` full sub-string"`))
+          (expr (num `1`))
+          (expr (str `"$$FULLSUB1^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@var holding multi-sub string"`))
+          (expr (str `"deep"`))
+          (expr (str `"$$MULTSTR^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@var with computed sub"`))
+          (expr (str `"e2"`))
+          (expr (str `"$$COMPSUB^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@X@(@s1,@s2) — both subs from vars"`))
+          (expr (num `55`))
+          (expr (str `"$$ATSUBS^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@X@(s1,@s2) — mixed literal + indir sub"`))
+          (expr (num `66`))
+          (expr (str `"$$ATMIX^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@X@(expr,expr2) computed"`))
+          (expr (num `100`))
+          (expr (str `"$$ATCOMP^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@@var compound (a→b→c→42)"`))
+          (expr (num `42`))
+          (expr (str `"$$DBLRW^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@@var write to chain end"`))
+          (expr (str `"wrote"`))
+          (expr (str `"$$DBLAT^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$O via @, walk to count"`)) (expr (num `10`)) (expr (str `"$$WALK^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$O via @ reverse + accumulate"`))
+          (expr (str `"cba"`))
+          (expr (str `"$$WALKR^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$Q via @ over multilevel"`)) (expr (num `4`)) (expr (str `"$$QWALK^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$NA + @ via subscripted"`))
+          (expr (str `"10"`))
+          (expr (str `"$$NARNDS^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL @X@(sub) leaf"`)) (expr (num `0`)) (expr (str `"$$KAS1^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL @X@() preserves siblings"`))
+          (expr (num `2`))
+          (expr (str `"$$KAS2^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL @X (root) all gone"`))
+          (expr (num `0`))
+          (expr (str `"$$KASROOT^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL multi-arg via @"`)) (expr (num `0`)) (expr (str `"$$KMUL^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@a + @b arithmetic"`)) (expr (num `15`)) (expr (str `"$$AADD^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@a _ @b concat"`)) (expr (str `"helloworld"`)) (expr (str `"$$ACAT^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@a > @b comparison"`)) (expr (num `1`)) (expr (str `"$$ACMP^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@a ? \`3N\` pattern via @"`)) (expr (num `1`)) (expr (str `"$$APAT^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"S (@x,@y)=val both via @"`))
+          (expr (num `84`))
+          (expr (str `"$$MTIND^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"S @x=@y both indirected"`))
+          (expr (num `99`))
+          (expr (str `"$$BOTHIND^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"FOR with @-target accumulator"`))
+          (expr (num `55`))
+          (expr (str `"$$FORAT^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"IF @flag"`)) (expr (str `"yes"`)) (expr (str `"$$IFAT^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"Q:@cond exits early"`)) (expr (str `"early"`)) (expr (str `"$$QAT^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@-of-$P piece-name"`)) (expr (num `42`)) (expr (str `"$$PIECENAME^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@-of-$E char-derived name"`))
+          (expr (str `"V"`))
+          (expr (str `"$$ECHAR^SUBS()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"@-of-concatenated parts"`))
+          (expr (num `77`))
+          (expr (str `"$$CONCATAT^SUBS()"`))))))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/indirection/SUBS"`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (label `FULLSUB1` _ ((new _ `x`) (set _ (= (lvar `x` ((expr (str `"a"`)))) (expr (num `1`))))))
+  (` ` _ (quit _ (expr (@name (str `"x(""a"")"`)))))
+  (` `)
+  (label
+    `MULTSTR`
+    _
+    ((new _ `x` `nm`)
+      (set
+        _
+        (=
+          (lvar `x` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))
+          (expr (str `"deep"`)))
+        (= (lvar `nm`) (expr (str `"x(""a"",""b"",""c"")"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `nm`)))))
+  (` `)
+  (label
+    `COMPSUB`
+    _
+    ((new _ `x` `nm` `i`)
+      (set
+        _
+        (= (lvar `i`) (expr (num `2`)))
+        (= (lvar `x` ((expr (str `"e2"`)))) (expr (str `"e2"`))))))
+  (` `)
+  (` `)
+  (` ` _ (set _ (= (lvar `nm`) (expr (str `"x(""e"`) (`_` (lvar `i`)) (`_` (str `""")"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `nm`)))))
+  (` `)
+  (` `)
+  (label
+    `ATSUBS`
+    _
+    ((new _ `x` `nm` `k1` `k2`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"k"`)) (expr (str `"m"`)))) (expr (num `55`)))
+        (= (lvar `nm`) (expr (str `"x"`)))
+        (= (lvar `k1`) (expr (str `"k"`)))
+        (= (lvar `k2`) (expr (str `"m"`))))))
+  (` `)
+  (` ` _ (quit _ (expr (@subs (lvar `nm`) ((expr (lvar `k1`)) (expr (lvar `k2`)))))))
+  (` `)
+  (label
+    `ATMIX`
+    _
+    ((new _ `x` `nm` `k`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"a"`)) (expr (str `"z"`)))) (expr (num `66`)))
+        (= (lvar `nm`) (expr (str `"x"`)))
+        (= (lvar `k`) (expr (str `"z"`))))))
+  (` ` _ (quit _ (expr (@subs (lvar `nm`) ((expr (str `"a"`)) (expr (lvar `k`)))))))
+  (` `)
+  (label
+    `ATCOMP`
+    _
+    ((new _ `x` `nm`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"a"`)) (expr (str `"b"`)))) (expr (num `100`)))
+        (= (lvar `nm`) (expr (str `"x"`))))))
+  (` ` _ (quit _ (expr (@subs (lvar `nm`) ((expr (str `"a"`)) (expr (str `"b"`)))))))
+  (` `)
+  (label
+    `DBLRW`
+    _
+    ((new _ `a` `b` `c`)
+      (set
+        _
+        (= (lvar `a`) (expr (str `"b"`)))
+        (= (lvar `b`) (expr (str `"c"`)))
+        (= (lvar `c`) (expr (num `42`))))))
+  (` ` _ (quit _ (expr (@name (@name (lvar `a`))))))
+  (` `)
+  (label
+    `DBLAT`
+    _
+    ((new _ `a` `b` `c`)
+      (set _ (= (lvar `a`) (expr (str `"b"`))) (= (lvar `b`) (expr (str `"c"`))))))
+  (` `)
+  (` ` _ (set _ (@name (@name (lvar `a`)) (expr (str `"wrote"`)))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label `WALK` _ ((new _ `x` `nm` `c` `k` `i`) (set _ (= (lvar `nm`) (expr (str `"x"`))))))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (set _ (= (lvar `x` ((expr (lvar `i`)))) (expr (num `1`)))))
+  (` `
+    _
+    (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set
+      _
+      (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (@subs (lvar `nm`) ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label
+    `WALKR`
+    _
+    ((new _ `x` `nm` `r` `k`)
+      (set
+        _
+        (= (lvar `nm`) (expr (str `"x"`)))
+        (= (lvar `x` ((expr (str `"a"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"b"`)))) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"c"`)))) (expr (num `1`))))))
+  (` `
+    _
+    (set _ (= (lvar `r`) (expr (str `""`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set
+      _
+      (=
+        (lvar `k`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr (@subs (lvar `nm`) ((expr (lvar `k`))))) (expr (`-` (num `1`))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `r`) (expr (lvar `r`) (`_` (lvar `k`))))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (` `)
+  (label `QWALK` _ ((new _ `x` `nm` `c` `k`) (set _ (= (lvar `nm`) (expr (str `"x"`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (str `"a"`)) (expr (str `"x"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"a"`)) (expr (str `"y"`)))) (expr (num `2`)))
+      (= (lvar `x` ((expr (str `"b"`)))) (expr (num `3`)))
+      (= (lvar `x` ((expr (str `"c"`)) (expr (str `"z"`)))) (expr (num `4`)))))
+  (` `
+    _
+    (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (lvar `nm`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `Q`#215 ((expr (@name (lvar `k`))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label
+    `NARNDS`
+    _
+    ((new _ `x` `nm`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"k"`)))) (expr (num `10`)))
+        (= (lvar `nm`) (expr (intrinsic `NA`#210 ((expr (lvar `x` ((expr (str `"k"`))))))))))))
+  (` ` _ (quit _ (expr (@name (lvar `nm`)))))
+  (` `)
+  (label
+    `KAS1`
+    _
+    ((new _ `x` `nm`)
+      (set
+        _
+        (= (lvar `x` ((expr (str `"k"`)))) (expr (num `1`)))
+        (= (lvar `nm`) (expr (str `"x"`))))))
+  (` ` _ (kill _ (@subs (lvar `nm`) ((expr (str `"k"`))))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (lvar `x` ((expr (str `"k"`))))))))))
+  (` `)
+  (label `KAS2` _ ((new _ `x` `nm` `c` `k`) (set _ (= (lvar `nm`) (expr (str `"x"`))))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `x` ((expr (str `"a"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"b"`)))) (expr (num `1`)))
+      (= (lvar `x` ((expr (str `"c"`)))) (expr (num `1`)))))
+  (` ` _ (kill _ (@subs (lvar `nm`) ((expr (str `"b"`))))))
+  (` `
+    _
+    (set _ (= (lvar `c`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
+  (` ` _ (quit _ (expr (lvar `c`))))
+  (` `)
+  (label
+    `KASROOT`
+    _
+    ((new _ `x` `nm`)
+      (set
+        _
+        (= (lvar `x`) (expr (num `1`)))
+        (= (lvar `x` ((expr (str `"a"`)))) (expr (num `2`)))
+        (= (lvar `nm`) (expr (str `"x"`))))))
+  (` ` _ (kill _ (@args (lvar `nm`))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (lvar `x`)))))))
+  (` `)
+  (label
+    `KMUL`
+    _
+    ((new _ `a` `b` `nx` `ny`)
+      (set
+        _
+        (= (lvar `a`) (expr (num `1`)))
+        (= (lvar `b`) (expr (num `2`)))
+        (= (lvar `nx`) (expr (str `"a"`)))
+        (= (lvar `ny`) (expr (str `"b"`))))))
+  (` ` _ (kill _ (@args (lvar `nx`)) (@args (lvar `ny`))))
+  (` `
+    _
+    (quit
+      _
+      (expr (intrinsic `D`#202 ((expr (lvar `a`)))) (`+` (intrinsic `D`#202 ((expr (lvar `b`))))))))
+  (` `)
+  (label
+    `AADD`
+    _
+    ((new _ `a` `b` `na` `nb`)
+      (set
+        _
+        (= (lvar `a`) (expr (num `10`)))
+        (= (lvar `b`) (expr (num `5`)))
+        (= (lvar `na`) (expr (str `"a"`)))
+        (= (lvar `nb`) (expr (str `"b"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `na`)) (`+` (@name (lvar `nb`))))))
+  (` `)
+  (label
+    `ACAT`
+    _
+    ((new _ `a` `b` `na` `nb`)
+      (set
+        _
+        (= (lvar `a`) (expr (str `"hello"`)))
+        (= (lvar `b`) (expr (str `"world"`)))
+        (= (lvar `na`) (expr (str `"a"`)))
+        (= (lvar `nb`) (expr (str `"b"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `na`)) (`_` (@name (lvar `nb`))))))
+  (` `)
+  (label
+    `ACMP`
+    _
+    ((new _ `a` `b` `na` `nb`)
+      (set
+        _
+        (= (lvar `a`) (expr (num `10`)))
+        (= (lvar `b`) (expr (num `5`)))
+        (= (lvar `na`) (expr (str `"a"`)))
+        (= (lvar `nb`) (expr (str `"b"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `na`)) (`>` (@name (lvar `nb`))))))
+  (` `)
+  (label
+    `APAT`
+    _
+    ((new _ `s` `p` `np`)
+      (set
+        _
+        (= (lvar `s`) (expr (str `"123"`)))
+        (= (lvar `p`) (expr (str `"3N"`)))
+        (= (lvar `np`) (expr (str `"p"`))))))
+  (` ` _ (quit _ (expr (lvar `s`) (?@ (@name (lvar `np`))))))
+  (` `)
+  (label
+    `MTIND`
+    _
+    ((new _ `a` `b` `na` `nb`)
+      (set _ (= (lvar `na`) (expr (str `"a"`))) (= (lvar `nb`) (expr (str `"b"`))))))
+  (` ` _ (set _ (setmulti (expr (num `42`)) (@name (lvar `na`)) (@name (lvar `nb`)))))
+  (` ` _ (quit _ (expr (lvar `a`) (`+` (lvar `b`)))))
+  (` `)
+  (label
+    `BOTHIND`
+    _
+    ((new _ `a` `b` `na` `nb`)
+      (set
+        _
+        (= (lvar `a`) (expr (num `99`)))
+        (= (lvar `b`) (expr (num `0`)))
+        (= (lvar `na`) (expr (str `"a"`)))
+        (= (lvar `nb`) (expr (str `"b"`))))))
+  (` ` _ (set _ (@name (lvar `nb`) (expr (@name (lvar `na`))))))
+  (` ` _ (quit _ (expr (lvar `b`))))
+  (` `)
+  (label
+    `FORAT`
+    _
+    ((new _ `x` `nm` `s` `i`)
+      (set _ (= (lvar `nm`) (expr (str `"x"`))) (= (lvar `s`) (expr (num `0`))))))
+  (` `
+    _
+    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (set
+      _
+      (@name (lvar `nm`) (expr (lvar `i`)))
+      (= (lvar `s`) (expr (lvar `s`) (`+` (@name (lvar `nm`)))))))
+  (` ` _ (quit _ (expr (lvar `s`))))
+  (` `)
+  (label
+    `IFAT`
+    _
+    ((new _ `flag` `nm` `r`)
+      (set
+        _
+        (= (lvar `flag`) (expr (num `1`)))
+        (= (lvar `nm`) (expr (str `"flag"`)))
+        (= (lvar `r`) (expr (str `"no"`))))))
+  (` ` _ (if (expr (@name (lvar `nm`)))) (set _ (= (lvar `r`) (expr (str `"yes"`)))))
+  (` ` _ (quit _ (expr (lvar `r`))))
+  (` `)
+  (label
+    `QAT`
+    _
+    ((new _ `cond` `nm`)
+      (set _ (= (lvar `cond`) (expr (num `1`))) (= (lvar `nm`) (expr (str `"cond"`))))))
+  (` ` _ (quit (postcond (expr (@name (lvar `nm`)))) (expr (str `"early"`))))
+  (` ` _ (quit _ (expr (str `"late"`))))
+  (` `)
+  (label
+    `PIECENAME`
+    _
+    ((new _ `s` `parts`)
+      (set _ (= (lvar `s`) (expr (str `"x|y|z"`))))
+      (set
+        _
+        (=
+          (lvar `parts`)
+          (expr (intrinsic `P`#212 ((expr (lvar `s`)) (expr (str `"|"`)) (expr (num `1`)))))))))
+  (` ` _ (new _ `x`) (set _ (= (lvar `x`) (expr (num `42`)))))
+  (` ` _ (quit _ (expr (@name (lvar `parts`)))))
+  (` `)
+  (label
+    `ECHAR`
+    _
+    ((new _ `s` `which` `V`)
+      (set _ (= (lvar `s`) (expr (str `"V"`))))
+      (set _ (= (lvar `which`) (expr (intrinsic `E`#203 ((expr (lvar `s`)) (expr (num `1`)))))))
+      (set _ (= (lvar `V`) (expr (str `"V"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `which`)))))
+  (` `)
+  (label
+    `CONCATAT`
+    _
+    ((new _ `a` `b`) (set _ (= (lvar `a`) (expr (num `77`))) (= (lvar `b`) (expr (str `"a"`))))))
+  (` ` _ (quit _ (expr (@name (lvar `b`))))))

@@ -1,0 +1,18 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` `U64` `300`)
+      (set _ `f` _ `1.5`)
+      (set _ `n` `I64` `7`)
+      (raw_block
+        (block
+          (set _ `a` `U8` (builtin `truncate` `x`))
+          (set _ `b` `I32` (builtin `intFromFloat` `f`))
+          (set _ `c` `U64` (builtin `bitCast` `f`))
+          (set _ `d` `F32` (builtin `floatCast` `f`))
+          (set _ `e` `F64` (builtin `floatFromInt` `n`))
+          (set _ `g` `U8` (builtin `intCast` `n`))
+          (call `print` `a` `b` `c` `d` `e` `g`))))))

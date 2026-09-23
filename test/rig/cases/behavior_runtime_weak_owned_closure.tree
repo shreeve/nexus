@@ -1,0 +1,40 @@
+(module
+  (struct `H` (: `cb` (weak (fun_type))))
+  (sub
+    `call`
+    ((: `w` (borrow_read (weak (fun_type)))))
+    _
+    (block
+      (if (as (call (member `w` `upgrade`)) `g`) (block (call `g`)) (block (call `print` `"gone"`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `f` (shared (fun_type (`Int`) `Int`)) (share (lambda (`a`) _ _ (block (+ `a` `1`)))))
+      (set
+        _
+        `g`
+        (shared (fun_type (`Int`) `Int`))
+        (share
+          (lambda
+            ((cap_weak `f`) `a`)
+            _
+            _
+            (block
+              (if (as (call (member `f` `upgrade`)) `h`) (block (return (* (call `h` `a`) `10`))))
+              `0`))))
+      (set _ `w` (weak (fun_type (`Int`) `Int`)) (weak `f`))
+      (if
+        (as (call (member `w` `upgrade`)) `h`)
+        (block (call `print` (call `h` `1`) (call `g` `1`))))
+      (drop `f`)
+      (call `print` (call `g` `1`))
+      (set _ `s` (shared (fun_type)) (share (lambda () _ _ (block (call `print` `"hi"`)))))
+      (set _ `holder` _ (call `H` (kwarg `cb` (weak `s`))))
+      (call `call` (read (member `holder` `cb`)))
+      (set _ `v` (generic_inst `Vec` (weak (fun_type))) (call `Vec`))
+      (call (member (write `v`) `push`) (weak `s`))
+      (for iter `x` _ (read `v`) (block (call `call` (read `x`))))
+      (drop `s`)
+      (call `call` (read (member `holder` `cb`))))))

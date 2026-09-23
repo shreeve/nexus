@@ -1,0 +1,37 @@
+# `a if c else b` is an expression anywhere a value goes: a call
+# argument, a typed binding, a match arm, a paren-free argument, and
+# nested in its own `else` branch.
+
+enum Size
+  small
+  large
+
+fun sign(n: Int) -> Int
+  return 1 if n > 0 else -1 if n < 0 else 0
+
+fun weight(s: Size, heavy: Bool) -> Int
+  match s
+    .small => 10 if heavy else 1
+    .large => 100 if heavy else 50
+
+sub main()
+  x = 5
+  print(1 if x > 3 else 2)
+  y: Int = 10 if x < 3 else 20
+  print y
+  print sign(7)
+  print sign(-7)
+  print sign(0)
+  print weight(.small, true)
+  print weight(.large, false)
+  print x if x > 9 else 0
+
+# expect:
+# 1
+# 20
+# 1
+# -1
+# 0
+# 10
+# 50
+# 0

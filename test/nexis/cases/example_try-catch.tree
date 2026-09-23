@@ -1,0 +1,58 @@
+(program
+  (list
+    (symbol `defn`)
+    (symbol `safe-divide`)
+    (vector (symbol `a`) (symbol `b`))
+    (list
+      (symbol `try`)
+      (list
+        (symbol `do`)
+        (list
+          (symbol `when`)
+          (list (symbol `<`) (symbol `b`) (int `1`))
+          (list (symbol `throw`) (keyword `:div-by-zero`)))
+        (symbol `a`))
+      (list (symbol `catch`) (symbol `any`) (symbol `e`) (symbol `e`))
+      (list (symbol `finally`) (keyword `:always-runs`))))
+  (list (symbol `println`) (list (symbol `safe-divide`) (int `42`) (int `1`)))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `try`)
+      (list (symbol `/`) (int `1`) (int `0`))
+      (list (symbol `catch`) (keyword `:divide-by-zero`) (symbol `e`) (keyword `:dz`))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `try`)
+      (list
+        (symbol `throw`)
+        (map (keyword `:error`) (keyword `:boom`) (keyword `:detail`) (int `7`)))
+      (list (symbol `catch`) (keyword `:other`) (symbol `e`) (keyword `:not-this`))
+      (list (symbol `catch`) (keyword `:boom`) (symbol `e`) (list (keyword `:detail`) (symbol `e`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `try`)
+      (list
+        (symbol `try`)
+        (list (symbol `throw`) (keyword `:x`))
+        (list (symbol `finally`) (list (symbol `println`) (keyword `:cleanup`))))
+      (list (symbol `catch`) (symbol `any`) (symbol `e`) (vector (keyword `:outer`) (symbol `e`)))))
+  (list
+    (symbol `println`)
+    (list
+      (symbol `try`)
+      (list
+        (symbol `throw`)
+        (list
+          (symbol `ex-info`)
+          (string `"missing"`)
+          (map (keyword `:error`) (keyword `:not-found`) (keyword `:id`) (int `3`))))
+      (list
+        (symbol `catch`)
+        (keyword `:not-found`)
+        (symbol `e`)
+        (vector
+          (list (symbol `ex-message`) (symbol `e`))
+          (list (keyword `:id`) (list (symbol `ex-data`) (symbol `e`))))))))

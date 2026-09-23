@@ -1,0 +1,11 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `i` _ `0`)
+      (while
+        (< `i` `10`)
+        _
+        (block (set += `i` _ `1`) (call `print` `i`) (if (> `i` `3`) (block (break))))))))

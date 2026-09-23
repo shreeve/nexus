@@ -1,0 +1,26 @@
+(module
+  (struct
+    `B`
+    (: `n` `Int`)
+    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `v` (generic_inst `Vec` (shared `B`)) (call `Vec`))
+      (for
+        iter
+        `i`
+        _
+        (.. `0` `4`)
+        (block (call (member (write `v`) `push`) (share (call `B` (kwarg `n` `i`))))))
+      (set _ `x` _ (call (member (write `v`) `pop`)))
+      (call `print` (== `x` `none`))
+      (if (as (call (member (write `v`) `pop`)) `y`) (block (call `print` `"y"` (member `y` `n`))))
+      (set _ `_` _ (call (member (write `v`) `pop`)))
+      (while
+        (as (call (member (write `v`) `pop`)) `z`)
+        _
+        (block (call `print` `"z"` (member `z` `n`))))
+      (call `print` `"end"` (call (member `v` `length`))))))

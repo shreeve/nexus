@@ -1,0 +1,648 @@
+(routine
+  (label `FNV3`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/functions/FNV3"`))))))
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0696  numexpr=0000"`))
+          (expr (str `"0 "`))
+          (expr (str `"$FN(0000,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0697  numexpr=1"`)) (expr (str `"1+"`)) (expr (str `"$FN(1,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0698  numexpr=-1"`)) (expr (str `"1-"`)) (expr (str `"$FN(-1,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0699  numexpr=0020.00000"`))
+          (expr (str `"20+"`))
+          (expr (str `"$FN(0020.00000,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0700  numexpr=-00020.00000"`))
+          (expr (str `"20-"`))
+          (expr (str `"$FN(-00020.00000,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0701  numexpr=31267"`))
+          (expr (str `"31,267+"`))
+          (expr (str `"$FN(31267,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0702  numexpr=-31267"`))
+          (expr (str `"31,267-"`))
+          (expr (str `"$FN(-31267,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0703  numexpr=000000000000000000000000262999219"`))
+          (expr (str `"262,999,219+"`))
+          (expr (str `"$FN(000000000000000000000000262999219,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0704  numexpr=-000000000000000000000000262999219"`))
+          (expr (str `"262,999,219-"`))
+          (expr (str `"$FN(-000000000000000000000000262999219,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0705  numexpr=000.000789200"`))
+          (expr (str `".0007892+"`))
+          (expr (str `"$FN(000.000789200,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0706  numexpr=-000.000789200"`))
+          (expr (str `".0007892-"`))
+          (expr (str `"$FN(-000.000789200,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0707  numexpr=00670.00789200"`))
+          (expr (str `"670.007892+"`))
+          (expr (str `"$FN(00670.00789200,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0708  numexpr=-00670.00789200"`))
+          (expr (str `"670.007892-"`))
+          (expr (str `"$FN(-00670.00789200,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0709  numexpr=981000000000"`))
+          (expr (str `"981,000,000,000+"`))
+          (expr (str `"$FN(981000000000,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0710  numexpr=-981000000000"`))
+          (expr (str `"981,000,000,000-"`))
+          (expr (str `"$FN(-981000000000,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0711  numexpr=1E25"`))
+          (expr (str `"10,000,000,000,000,000,000,000,000+"`))
+          (expr (str `"$FN(1E25,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0712  numexpr=-1E25"`))
+          (expr (str `"10,000,000,000,000,000,000,000,000-"`))
+          (expr (str `"$FN(-1E25,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0713  numexpr=1E-25"`))
+          (expr (str `".0000000000000000000000001+"`))
+          (expr (str `"$FN(1E-25,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0714  numexpr=-1E-25"`))
+          (expr (str `".0000000000000000000000001-"`))
+          (expr (str `"$FN(-1E-25,""T,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0715  fncodexpr is a"`))
+          (expr (str `"262,999,219+"`))
+          (expr (str `"$FN(000000000000000000000000262999219,""T+,"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0716  fncodexpr is a"`))
+          (expr (str `"262,999,219-"`))
+          (expr (str `"$FN(-000000000000000000000000262999219,""+,T"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0717  fncodexpr is a"`))
+          (expr (str `".0007892+"`))
+          (expr (str `"$FN(000.000789200,""+T,"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0718  fncodexpr is a"`))
+          (expr (str `".0007892-"`))
+          (expr (str `"$FN(-000.000789200,"",+T"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0719  fncodexpr is a"`))
+          (expr (str `"670.007892+"`))
+          (expr (str `"$FN(00670.00789200,"",T+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0720  numexpr=0000"`))
+          (expr (str `"0 "`))
+          (expr (str `"$FN(0000,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0721  numexpr=1"`)) (expr (str `"1 "`)) (expr (str `"$FN(1,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0722  numexpr=-1"`)) (expr (str `"1 "`)) (expr (str `"$FN(-1,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0723  numexpr=0020.00000"`))
+          (expr (str `"20 "`))
+          (expr (str `"$FN(0020.00000,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0724  numexpr=-00020.00000"`))
+          (expr (str `"20 "`))
+          (expr (str `"$FN(-00020.00000,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0725  numexpr=31267"`))
+          (expr (str `"31,267 "`))
+          (expr (str `"$FN(31267,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0726  numexpr=-31267"`))
+          (expr (str `"31,267 "`))
+          (expr (str `"$FN(-31267,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0727  numexpr=000000000000000000000000262999219"`))
+          (expr (str `"262,999,219 "`))
+          (expr (str `"$FN(000000000000000000000000262999219,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0728  numexpr=-000000000000000000000000262999219"`))
+          (expr (str `"262,999,219 "`))
+          (expr (str `"$FN(-000000000000000000000000262999219,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0729  numexpr=000.000789200"`))
+          (expr (str `".0007892 "`))
+          (expr (str `"$FN(000.000789200,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0730  numexpr=-000.000789200"`))
+          (expr (str `".0007892 "`))
+          (expr (str `"$FN(-000.000789200,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0731  numexpr=00670.00789200"`))
+          (expr (str `"670.007892 "`))
+          (expr (str `"$FN(00670.00789200,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0732  numexpr=-00670.00789200"`))
+          (expr (str `"670.007892 "`))
+          (expr (str `"$FN(-00670.00789200,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0733  numexpr=981000000000"`))
+          (expr (str `"981,000,000,000 "`))
+          (expr (str `"$FN(981000000000,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0734  numexpr=-981000000000"`))
+          (expr (str `"981,000,000,000 "`))
+          (expr (str `"$FN(-981000000000,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0735  numexpr=1E25"`))
+          (expr (str `"10,000,000,000,000,000,000,000,000 "`))
+          (expr (str `"$FN(1E25,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0736  numexpr=-1E25"`))
+          (expr (str `"10,000,000,000,000,000,000,000,000 "`))
+          (expr (str `"$FN(-1E25,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0737  numexpr=1E-25"`))
+          (expr (str `".0000000000000000000000001 "`))
+          (expr (str `"$FN(1E-25,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0738  numexpr=-1E-25"`))
+          (expr (str `".0000000000000000000000001 "`))
+          (expr (str `"$FN(-1E-25,""T,-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0739  fncodexpr is a"`))
+          (expr (str `".0007892 "`))
+          (expr (str `"$FN(-000.000789200,""T-,"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0740  fncodexpr is a"`))
+          (expr (str `"670.007892 "`))
+          (expr (str `"$FN(00670.00789200,""-,T"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0741  fncodexpr is a"`))
+          (expr (str `"670.007892 "`))
+          (expr (str `"$FN(-00670.00789200,""-T,"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0742  fncodexpr is a"`))
+          (expr (str `"981,000,000,000 "`))
+          (expr (str `"$FN(981000000000,"",-T"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0743  fncodexpr is a"`))
+          (expr (str `"981,000,000,000 "`))
+          (expr (str `"$FN(-981000000000,"",T-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0766  numexpr=0000"`))
+          (expr (str `"0"`))
+          (expr (str `"$FN(0000,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0767  numexpr=1"`)) (expr (str `"+1"`)) (expr (str `"$FN(1,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0768  numexpr=-1"`)) (expr (str `"1"`)) (expr (str `"$FN(-1,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0769  numexpr=0020.00000"`))
+          (expr (str `"+20"`))
+          (expr (str `"$FN(0020.00000,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0770  numexpr=-00020.00000"`))
+          (expr (str `"20"`))
+          (expr (str `"$FN(-00020.00000,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0771  numexpr=31267"`))
+          (expr (str `"+31,267"`))
+          (expr (str `"$FN(31267,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0772  numexpr=-31267"`))
+          (expr (str `"31,267"`))
+          (expr (str `"$FN(-31267,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0773  numexpr=000000000000000000000262999219"`))
+          (expr (str `"+262,999,219"`))
+          (expr (str `"$FN(000000000000000000000262999219,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0774  numexpr=-000000000000000000000262999219"`))
+          (expr (str `"262,999,219"`))
+          (expr (str `"$FN(-000000000000000000000262999219,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0775  numexpr=000.000789200"`))
+          (expr (str `"+.0007892"`))
+          (expr (str `"$FN(000.000789200,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0776  numexpr=-000.000789200"`))
+          (expr (str `".0007892"`))
+          (expr (str `"$FN(-000.000789200,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0777  numexpr=00670.00789200"`))
+          (expr (str `"+670.007892"`))
+          (expr (str `"$FN(00670.00789200,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0778  numexpr=-00670.00789200"`))
+          (expr (str `"670.007892"`))
+          (expr (str `"$FN(-00670.00789200,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0779  numexpr=981000000000"`))
+          (expr (str `"+981,000,000,000"`))
+          (expr (str `"$FN(981000000000,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0780  numexpr=-981000000000"`))
+          (expr (str `"981,000,000,000"`))
+          (expr (str `"$FN(-981000000000,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0781  numexpr=1E25"`))
+          (expr (str `"+10,000,000,000,000,000,000,000,000"`))
+          (expr (str `"$FN(1E25,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0782  numexpr=-1E25"`))
+          (expr (str `"10,000,000,000,000,000,000,000,000"`))
+          (expr (str `"$FN(-1E25,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0783  numexpr=1E-25"`))
+          (expr (str `"+.0000000000000000000000001"`))
+          (expr (str `"$FN(1E-25,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0784  numexpr=-1E-25"`))
+          (expr (str `".0000000000000000000000001"`))
+          (expr (str `"$FN(-1E-25,"",+-"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0785  fncodexpr is a"`))
+          (expr (str `"+.0007892"`))
+          (expr (str `"$FN(000.000789200,"",-+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0786  fncodexpr is a"`))
+          (expr (str `".0007892"`))
+          (expr (str `"$FN(-000.000789200,""-+,"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0787  fncodexpr is a"`))
+          (expr (str `"+670.007892"`))
+          (expr (str `"$FN(00670.00789200,""-,+"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0788  fncodexpr is a"`))
+          (expr (str `"670.007892"`))
+          (expr (str `"$FN(-00670.00789200,""+-,"")"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"III-0789  fncodexpr is a"`))
+          (expr (str `"+981,000,000,000"`))
+          (expr (str `"$FN(981000000000,""+,-"")"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/functions/FNV3"`))))))
+  (` ` _ (quit)))

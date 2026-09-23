@@ -1,0 +1,11 @@
+(grammar
+  (rule (start `program`) (alt _ ((ref `body`)) `(module ...1)`))
+  (rule (start `expr`) (alt _ ((ref `expr`)) `1`))
+  (rule (name `name`) (alt _ ((tok `IDENT`))))
+  (rule
+    (name `body`)
+    (alt _ ((ref `stmt`)) `(1)`)
+    (alt _ ((ref `body`) (tok `NEWLINE`) (ref `stmt`)) `(...1 3)`)
+    (alt _ ((ref `body`) (tok `NEWLINE`)) `1`)
+    (alt _ () `()`))
+  (rule (name `stmt`) (alt _ ((ref `expr`))) (alt _ ((lit `"return"`) (ref `expr`)) `(return 2)`)))

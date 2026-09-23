@@ -1,0 +1,11 @@
+(grammar
+  (rule
+    (name `a`)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(tag 1 2 3)`)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(tag 1 _ 3)`)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(tag nil ...2)`)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(~1 2 key:3 else:_)`)
+    (alt _ ((tok `P`) (tok `Q`) (tok `R`)) `(set += 1 _ 3)`)
+    (alt _ ((tok `P`)) `1`)
+    (alt _ ((tok `P`) (tok `Q`)))
+    (alt _ () `_`)))

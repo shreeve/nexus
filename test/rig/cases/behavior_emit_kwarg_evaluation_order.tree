@@ -1,0 +1,10 @@
+(module
+  (fun `note` ((: `n` `Int`)) `Int` (block (call `print` `n`) `n`))
+  (fun `pair` ((: `a` `Int`) (: `b` `Int`)) `Int` (block (+ (* `a` `10`) `b`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `p` _ (call `pair` (kwarg `b` (call `note` `2`)) (kwarg `a` (call `note` `1`))))
+      (call `print` `p`))))

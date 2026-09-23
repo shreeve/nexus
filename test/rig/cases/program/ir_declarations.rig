@@ -1,0 +1,59 @@
+# Top-level declaration forms.
+
+use math
+
+pub struct User
+  name: String
+  age: Int = 0
+
+  fun greet(?self) -> String
+    self.name
+
+  sub birthday(!self)
+    print(self.age)
+
+  fun new(name: String) -> User
+    User(name: name)
+
+enum Color
+  red
+  green
+  blue
+
+enum Status
+  ok = 200
+  missing = 404
+
+enum Shape
+  circle(radius: Int)
+  rect(w: Int, h: Int)
+  point
+
+error NetworkError
+  timeout
+  refused
+
+type Box(T)
+  value: T
+
+  fun get(?self) -> T
+    self.value
+
+type Maybe(T)
+  some(value: T)
+  none
+
+struct Guard
+  id: Int
+
+  drop self: !Guard
+    print(self.id)
+
+extern fun abs(x: Int) -> Int
+extern sub log_msg(msg: String)
+
+fun add(a: Int, b: Int) -> Int
+  a + b
+
+sub main()
+  print(add(1, 2))

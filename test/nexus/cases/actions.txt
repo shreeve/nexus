@@ -1,0 +1,8 @@
+a = P Q R                           → (tag 1 2 3)
+  | P Q R                           → (tag 1 _ 3)
+  | P Q R                           → (tag nil ...2)
+  | P Q R                           → (~1 2 key:3 else:_)
+  | P Q R                           → (set += 1 _ 3)
+  | P                               → 1
+  | P Q
+  |                                 → _

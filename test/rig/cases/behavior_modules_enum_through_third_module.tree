@@ -1,0 +1,11 @@
+(module
+  (use `util`)
+  (use `geo`)
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` (member `util` `Shape`) (call (enum_lit `circle`) (kwarg `r` `1`)))
+      (set _ `b` (member `util` `Shape`) (call (enum_lit `sq`) (kwarg `s` `2`)))
+      (call `print` (call (member `geo` `total`) (read `a`) (read `b`))))))

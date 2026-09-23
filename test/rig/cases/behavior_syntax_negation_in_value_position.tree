@@ -1,0 +1,24 @@
+(module
+  (enum `Sign` `plus` `minus`)
+  (fun
+    `pick`
+    ((: `c` `Bool`) (: `x` `Int`))
+    `Int`
+    (block (set _ `y` _ (if `c` (block (drop `x`)) (block `x`))) `y`))
+  (fun
+    `apply`
+    ((: `s` `Sign`) (: `n` `Int`))
+    `Int`
+    (block
+      (match `s` (arm (enum_lit `plus`) (block `n`)) (arm (enum_lit `minus`) (block (drop `n`))))))
+  (fun `tail` ((: `x` `Int`)) `Int` (block (+ (neg `x`) `1`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` (call `pick` `true` `4`))
+      (call `print` (call `pick` `false` `4`))
+      (call `print` (call `apply` (enum_lit `minus`) `5`))
+      (call `print` (call `apply` (enum_lit `plus`) `5`))
+      (call `print` (call `tail` `3`)))))

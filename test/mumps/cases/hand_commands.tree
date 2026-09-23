@@ -1,0 +1,84 @@
+(routine
+  (label `CMDS`)
+  (` `
+    _
+    (set
+      _
+      (= (lvar `X`) (expr (num `1`)))
+      (= (lvar `Y` ((expr (num `1`)) (expr (num `2`)))) (expr (str `"a"`)))
+      (= (gvar `G` ((expr (lvar `X`)))) (expr (lvar `Y` ((expr (num `1`)) (expr (num `2`))))))))
+  (` `
+    _
+    (set
+      _
+      (setfn `P` (lvar `X`) (expr (str `"^"`)) (expr (num `2`)) (expr (num `5`)))
+      (setmulti (expr (num `0`)) (lvar `A`) (lvar `B`) (lvar `C`))))
+  (` `
+    _
+    (write
+      _
+      (posformat `!`)
+      (expr (str `"Hello"`))
+      (? (expr (num `10`)))
+      (expr (lvar `X`))
+      (posformat `#`)))
+  (` `
+    _
+    (write (postcond (expr (lvar `X`) (`>` (num `0`)))) (expr (str `"pos"`)))
+    (write (postcond (expr (`'` (lvar `X`)))) (expr (str `"zero"`))))
+  (` ` _ (kill _ (lvar `X`) (lvar `Y`)) (kill) (kill _ (exclusive `A` `B`)))
+  (` ` _ (new _ `I` `J`) (new _ (exclusive `K`)))
+  (` `
+    _
+    (for (lvar `I`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
+    (set _ (= (lvar `J`) (expr (lvar `I`)))))
+  (` ` _ (for) (quit (postcond (expr (lvar `X`)))) (set _ (= (lvar `X`) (expr (num `1`)))))
+  (` `
+    _
+    (for
+      (lvar `I`)
+      (expr (num `1`))
+      (expr (num `2`))
+      (range (expr (num `3`)) (expr (num `1`)) (expr (num `5`)))
+      (expr (str `"a"`)))
+    (write _ (expr (lvar `I`))))
+  (` ` _ (if (expr (lvar `X`) (`=` (num `1`)))) (write _ (expr (str `"one"`))))
+  (` ` _ (else) (write _ (expr (str `"other"`))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `LABEL`))
+      (call (ref `LABEL` _ `RTN`))
+      (call (ref _ _ `RTN`))
+      (call (ref `LABEL` (expr (num `2`)) `RTN`))
+      (@args (lvar `X`))
+      (call (ref `LBL`) ((expr (num `1`)) (byref `Y`)))))
+  (` ` _ (goto _ ((ref `LABEL`) (postcond (expr (lvar `X`) (`=` (num `1`))))) ((ref `END`))))
+  (` ` _ (xecute _ ((expr (str `"S Y=2"`)))))
+  (` `
+    _
+    (lock _ (lock+ (gvar `G` ((expr (num `1`)))) (expr (num `5`))))
+    (lock _ (lock- (gvar `G` ((expr (num `1`))))))
+    (lock))
+  (` ` _ (merge _ (= (lvar `A`) (lvar `B`)) (= (gvar `G`) (lvar `A`))))
+  (` `
+    _
+    (open _ ((expr (num `51`)) (expr (str `"R"`)) (expr (num `10`))))
+    (use _ ((expr (num `51`))))
+    (close _ ((expr (num `51`)))))
+  (` `
+    _
+    (read
+      _
+      ((lvar `X`) (expr (num `10`)))
+      (posformat `!`)
+      (prompt `"Prompt: "`)
+      (# (lvar `Y`) (expr (num `5`)))
+      (char (lvar `Z`))))
+  (` ` _ (hang _ (expr (num `1`))) (hang))
+  (` ` _ (job _ ((ref `LABEL` _ `RTN`))))
+  (` ` _ (tstart) (tcommit) (trollback))
+  (` ` _ (quit (postcond (expr (lvar `X`) (`=` (num `2`)))) (expr (lvar `X`))))
+  (` ` _ (set _ (= (lvar `x`) (expr (num `1`)))) (write _ (expr (lvar `x`))) (quit))
+  (label `END` _ ((quit))))

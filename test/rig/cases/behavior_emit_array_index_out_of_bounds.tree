@@ -1,0 +1,10 @@
+(module
+  (fun `three` () `Int` (block `3`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `xs` _ (array `1` `2` `3`))
+      (set _ `i` _ (call `three`))
+      (call `print` (index `xs` `i`)))))

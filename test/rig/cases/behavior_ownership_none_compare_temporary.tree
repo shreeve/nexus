@@ -1,0 +1,16 @@
+(module
+  (struct
+    `B`
+    (: `n` `Int`)
+    (drop_decl ((: `self` (borrow_write `B`))) (block (call `print` `"drop"` (member `self` `n`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `rc` _ (share (call `B` (kwarg `n` `1`))))
+      (set _ `w` _ (weak `rc`))
+      (call `print` (== (call (member `w` `upgrade`)) `none`))
+      (if (!= (call (member `w` `upgrade`)) `none`) (block (call `print` `"alive"`)))
+      (drop `rc`)
+      (call `print` (== (call (member `w` `upgrade`)) `none`)))))

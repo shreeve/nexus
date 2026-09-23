@@ -1,0 +1,19 @@
+# Action positions of any size work: `(p 1 11 10)` over eleven elements
+# picks elements 1, 11 and 10.
+#
+# Today: positions are read as one digit, so `11` and `10` both become
+# element 1 and the action silently compiles to `pass[1], pass[1], pass[1]`.
+# (architecture.md Appendix A: tendigit.grammar; SPEC §3.2)
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "ten_positions"
+
+top! = IDENT IDENT IDENT IDENT IDENT IDENT IDENT IDENT IDENT IDENT IDENT → (p 1 11 10)

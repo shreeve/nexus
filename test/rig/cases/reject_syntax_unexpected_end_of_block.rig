@@ -1,0 +1,8 @@
+# A block that ends in the middle of a construct is reported at the end
+# of the last token, where the missing part belongs.
+
+sub main()
+  x = 1
+  match x
+
+# error: unexpected end of block

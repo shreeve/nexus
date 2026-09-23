@@ -1,0 +1,733 @@
+(routine
+  (label `PRCPENLM`)
+  (label `V`)
+  (` `)
+  (` `
+    _
+    (do _ (call (ref _ _ `PRCPUSEL`)))
+    (quit (postcond (expr (`'` (intrinsic `G`#206 ((expr (lvar `PRCP` ((expr (str `"I"`))))))))))))
+  (label `ENTERNEW`)
+  (` ` _ (new _ `CLREND` `COLUMN` `LINE` `PRCPINPT` `PRCPDATA` `PRCPSU` `PRCPTYPE` `X`))
+  (` `
+    _
+    (kill _ (lvar `X`))
+    (set
+      _
+      (=
+        (lvar `X` ((expr (num `1`))))
+        (expr
+          (str `"You have the option to edit ALL "`)
+          (`_`
+            (select
+              ((expr (lvar `PRCP` ((expr (str `"DPTYPE"`)))) (`=` (str `"W"`)))
+                (expr (str `"WAREHOUSE"`)))
+              ((expr (lvar `PRCP` ((expr (str `"DPTYPE"`)))) (`=` (str `"P"`)))
+                (expr (str `"PRIMARY"`)))
+              ((expr (num `1`)) (expr (str `"SECONDARY"`)))))
+          (`_` (str `" inventory points you have access to."`)))))
+    (do _ (call (ref `DISPLAY` _ `PRCPUX2`) ((expr (num `2`)) (expr (num `40`)) (byref `X`)))))
+  (` ` _ (set _ (= (lvar `PRCPSU`) (expr (num `1`)))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic
+          `G`#206
+          ((expr (gvar `VA` ((expr (num `200`)) (expr (lvar `DUZ`)) (expr (num `400`)))))))
+        (`+` (num `0`))
+        (`=` (num `4`))))
+    (set _ (= (lvar `PRCPSU`) (expr (num `0`)))))
+  (` `
+    _
+    (for)
+    (set
+      _
+      (=
+        (lvar `PRCPINPT`)
+        (expr
+          (extrinsic
+            ((`INVPT` `PRCPUINV`)
+              ((expr (lvar `PRC` ((expr (str `"SITE"`)))))
+                (expr (lvar `PRCP` ((expr (str `"DPTYPE"`)))))
+                (expr (num `1`))
+                (expr (lvar `PRCPSU`))
+                (expr (str `""`))))))))
+    (quit (postcond (expr (`'` (lvar `PRCPINPT`)))))
+    (do))
+  (` .   `#1
+    _
+    (set
+      _
+      (=
+        (lvar `PRCPTYPE`)
+        (expr
+          (intrinsic
+            `P`#212
+            ((expr
+               (intrinsic
+                 `G`#206
+                 ((expr
+                    (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`))))))))
+              (expr (str `"^"`))
+              (expr (num `3`))))))))
+  (` .   `#1
+    _
+    (lock
+      _
+      (lock+
+        (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`))))
+        (expr (num `1`))))
+    (if (expr (`'` (intrinsic `T`#221))))
+    (do
+      _
+      (call
+        (ref `SHOWWHO` _ `PRCPULOC`)
+        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-0"`))) (expr (num `0`)))))
+    (quit))
+  (` .   `#1
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`))))
+    (lock
+      _
+      (lock+
+        (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `5`))))
+        (expr (num `1`))))
+    (if (expr (`'` (intrinsic `T`#221))))
+    (do)
+    (quit))
+  (` .   .   `#2
+    _
+    (do
+      _
+      (call
+        (ref `SHOWWHO` _ `PRCPULOC`)
+        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-0"`))) (expr (num `5`))))))
+  (` .   .   `#2
+    _
+    (lock _ (lock- (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`)))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `ADD` _ `PRCPULOC`)
+        ((expr (num `445`))
+          (expr (lvar `PRCPINPT`) (`_` (str `"-0"`)))
+          (expr (num `0`))
+          (expr (str `"Enter/Edit Inventory Parameters"`))))))
+  (` .   `#1
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`))))
+    (do
+      _
+      (call
+        (ref `ADD` _ `PRCPULOC`)
+        ((expr (num `445`))
+          (expr (lvar `PRCPINPT`) (`_` (str `"-5"`)))
+          (expr (num `0`))
+          (expr (str `"Enter/Edit Inventory Parameters"`))))))
+  (` .   `#1 _ (do _ (call (ref `EN` _ `VALM`) ((expr (str `"PRCP INVENTORY PARAMETERS"`))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `CLEAR` _ `PRCPULOC`)
+        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-0"`))) (expr (num `0`))))))
+  (` .   `#1
+    _
+    (lock _ (lock- (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`)))))))
+  (` .   `#1 _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`)))) (do))
+  (` .   .   `#2
+    _
+    (do
+      _
+      (call
+        (ref `CLEAR` _ `PRCPULOC`)
+        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-5"`))) (expr (num `0`))))))
+  (` .   .   `#2
+    _
+    (lock _ (lock- (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `5`)))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `HDR`)
+  (` `
+    _
+    (set
+      _
+      (=
+        (lvar `VALMHDR` ((expr (num `1`))))
+        (expr
+          (str `"INVENTORY POINT: "`)
+          (`_` (extrinsic ((`INVNAME` `PRCPUX1`) ((expr (lvar `PRCPINPT`))))))
+          (`_` (str `"    TOTAL NUMBER OF ITEMS: "`))
+          (`_`
+            (`+`
+              (intrinsic
+                `P`#212
+                ((expr
+                   (intrinsic
+                     `G`#206
+                     ((expr
+                        (gvar
+                          `PRCP`
+                          ((expr (num `445`))
+                            (expr (lvar `PRCPINPT`))
+                            (expr (num `1`))
+                            (expr (num `0`))))))))
+                  (expr (str `"^"`))
+                  (expr (num `4`))))))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `INIT`)
+  (` `
+    _
+    (kill _ (lvar `PRCPDATA`) (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (str `"PRCPENLM"`))))))
+  (` ` _ (do _ (call (ref `DIQ`) ((expr (str `".01:22"`))))))
+  (` `
+    _
+    (do _ (call (ref `DESCRIP`)) (call (ref `SPECIAL`)) (call (ref `FLAGS`)) (call (ref `USERS`))))
+  (` `
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"W"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))))
+    (do _ (call (ref `DISTRPTS` _ `PRCPENL1`))))
+  (` `
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"P"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"S"`))))))
+    (do _ (call (ref `STOCKED` _ `PRCPENL1`))))
+  (` `
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"W"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))))
+    (do _ (call (ref `FCP` _ `PRCPENL1`))))
+  (` `
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))))
+    (do _ (call (ref `MISCOSTS` _ `PRCPENL1`))))
+  (` ` _ (do _ (call (ref `PURGE` _ `PRCPENL1`))))
+  (` ` _ (set _ (= (lvar `VALMCNT`) (expr (lvar `LINE`)))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `DESCRIP`)
+  (` `
+    _
+    (set
+      _
+      (= (lvar `LINE`) (expr (num `1`)))
+      (= (lvar `COLUMN`) (expr (num `1`)))
+      (= (lvar `CLREND`) (expr (num `80`)))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Description"`))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `0`))
+          (expr (lvar `IORVON`))
+          (expr (lvar `IORVOFF`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Type of Inventory Point   "`))
+          (expr (lvar `LINE`) (`+` (num `1`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `.7`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Abbreviated Name          "`))
+          (expr (lvar `LINE`) (`+` (num `2`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `.8`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Keep Perpetual Inventory  "`))
+          (expr (lvar `LINE`) (`+` (num `3`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `.5`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Keep Transaction Register "`))
+          (expr (lvar `LINE`) (`+` (num `4`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `.6`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `""`))
+          (expr (lvar `LINE`) (`+` (num `5`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `SPECIAL`)
+  (` ` _ (new _ `COUNT` `ORD`))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `LINE`) (expr (num `7`)))
+      (= (lvar `COLUMN`) (expr (num `1`)))
+      (= (lvar `CLREND`) (expr (num `80`)))
+      (= (lvar `ORD`) (expr (num `0`)))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Special Parameters"`))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `0`))
+          (expr (lvar `IORVON`))
+          (expr (lvar `IORVOFF`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Months Inactive Before Item Deletion"`))
+          (expr (lvar `LINE`) (`+` (num `1`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `12`))))))
+  (` ` _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"W"`)))) (do))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Cost Center                         "`))
+          (expr (lvar `LINE`) (`+` (num `2`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `.9`))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Default Picking Ticket Printer      "`))
+          (expr (lvar `LINE`) (`+` (num `3`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `16`))))))
+  (` .   `#1 _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `3`))))))
+  (` ` _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"P"`)))) (do))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Primary Updated By Warehouse        "`))
+          (expr (lvar `LINE`) (`+` (num `2`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `14`))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Special Inventory Point Type        "`))
+          (expr (lvar `LINE`) (`+` (num `3`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `15`))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Department Number                   "`))
+          (expr (lvar `LINE`) (`+` (num `4`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `5`))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Issue Book Sort                     "`))
+          (expr (lvar `LINE`) (`+` (num `5`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `5.5`))))))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Regular Whse Issues Schedule        "`))
+          (expr (lvar `LINE`) (`+` (num `6`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `9`))))))
+  (` .   `#1 _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `6`))))))
+  (` .   `#1
+    _
+    (if
+      (expr
+        (intrinsic
+          `G`#206
+          ((expr
+             (lvar
+               `PRCPDATA`
+               ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `15`)) (expr (str `"E"`)))))))
+        (`=` (str `"SPD"`))))
+    (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`)))))
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"SPD Picking Ticket Printer          "`))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `16`))))))
+  (` ` _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`)))) (do))
+  (` .   `#1
+    _
+    (set _ (= (lvar `ORD`) (expr (extrinsic ((`SSCHK` `PRCPENE1`) ((expr (lvar `PRCPINPT`)))))))))
+  (` .   `#1
+    _
+    (if (expr (`'` (lvar `ORD`))))
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Supply Station Provider             "`))
+          (expr (lvar `LINE`) (`+` (num `2`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `22`))))))
+  (` .   `#1
+    _
+    (if (expr (lvar `ORD`)))
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"(Supply Station Provider)           "`))
+          (expr (lvar `LINE`) (`+` (num `2`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `22`))))))
+  (` .   `#1 _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `2`))))))
+  (` ` _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `""`)) (expr (lvar `LINE`)) (expr (lvar `COLUMN`)) (expr (lvar `CLREND`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `FLAGS`)
+  (` `
+    _
+    (set
+      _
+      (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))
+      (= (lvar `COLUMN`) (expr (num `1`)))
+      (= (lvar `CLREND`) (expr (num `80`)))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Flags"`))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `0`))
+          (expr (lvar `IORVON`))
+          (expr (lvar `IORVOFF`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Print Emergency Stock Levels "`))
+          (expr (lvar `LINE`) (`+` (num `1`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `7`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Automatic Purge              "`))
+          (expr (lvar `LINE`) (`+` (num `2`)))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `7.9`))))))
+  (` ` _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `2`))))))
+  (` `
+    _
+    (if (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))
+    (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`)))))
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Regular Whse Issues Due Date "`))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `10`))))))
+  (` ` _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `""`)) (expr (lvar `LINE`)) (expr (lvar `COLUMN`)) (expr (lvar `CLREND`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `USERS`)
+  (` ` _ (new _ `USER`))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))
+      (= (lvar `COLUMN`) (expr (num `1`)))
+      (= (lvar `CLREND`) (expr (num `80`)))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"Inventory Users"`))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))
+          (expr (num `0`))
+          (expr (lvar `IORVON`))
+          (expr (lvar `IORVOFF`))))))
+  (` `
+    _
+    (set _ (= (lvar `USER`) (expr (num `0`))))
+    (for (lvar `LINE`) (range (expr (lvar `LINE`) (`+` (num `1`))) (expr (num `1`))))
+    (set
+      _
+      (=
+        (lvar `USER`)
+        (expr
+          (intrinsic
+            `O`#211
+            ((expr
+               (gvar
+                 `PRCP`
+                 ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `4`)) (expr (lvar `USER`))))))))))
+    (quit (postcond (expr (`'` (lvar `USER`)))))
+    (do))
+  (` .   `#1
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"     : "`) (`_` (extrinsic ((`USER` `PRCPUREP`) ((expr (lvar `USER`)))))))
+          (expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (lvar `CLREND`))))))
+  (` .   `#1
+    _
+    (if
+      (expr
+        (extrinsic
+          ((`KEY` `PRCPUREP`)
+            ((expr
+               (str `"PRCP"`)
+               (`_`
+                 (intrinsic
+                   `TR`#222
+                   ((expr (lvar `PRCPTYPE`)) (expr (str `"WSP"`)) (expr (str `"W2"`)))))
+               (`_` (str `" MGRKEY"`)))
+              (expr (lvar `USER`)))))))
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `"*** MANAGER ***"`))
+          (expr (lvar `LINE`))
+          (expr (num `65`))
+          (expr (lvar `CLREND`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET`)
+        ((expr (str `""`)) (expr (lvar `LINE`)) (expr (lvar `COLUMN`)) (expr (lvar `CLREND`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `EXIT`)
+  (` ` _ (kill _ (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (str `"PRCPENLM"`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `DIQ` (`DR`))
+  (` ` _ (new _ `D0` `DA` `DIC` `DIQ` `DIQ2`))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DA`) (expr (lvar `PRCPINPT`)))
+      (= (lvar `DIQ` ((expr (num `0`)))) (expr (str `"E"`)))
+      (= (lvar `DIC`) (expr (str `"^PRCP(445,"`)))
+      (= (lvar `DIQ`) (expr (str `"PRCPDATA"`))))
+    (do _ (call (ref `EN` _ `DIQ1`))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `SET` (`STRING` `LINE` `COLUMN` `CLREND` `FIELD` `ON` `OFF`))
+  (` `
+    _
+    (if (expr (intrinsic `G`#206 ((expr (lvar `FIELD`))))))
+    (set
+      _
+      (=
+        (lvar `STRING`)
+        (expr
+          (lvar `STRING`)
+          (`_` (str `": "`))
+          (`_`
+            (intrinsic
+              `G`#206
+              ((expr
+                 (lvar
+                   `PRCPDATA`
+                   ((expr (num `445`))
+                     (expr (lvar `PRCPINPT`))
+                     (expr (lvar `FIELD`))
+                     (expr (str `"E"`))))))))))))
+  (` `
+    _
+    (if (expr (lvar `STRING`) (`=` (str `""`))))
+    (do
+      _
+      (call
+        (ref `SET` _ `VALM10`)
+        ((expr (lvar `LINE`)) (expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `80`))))))))
+    (quit))
+  (` `
+    _
+    (if
+      (expr
+        (`'`
+          (intrinsic
+            `D`#202
+            ((expr (@subs (lvar `VALMAR`) ((expr (lvar `LINE`)) (expr (num `0`))))))))))
+    (do
+      _
+      (call
+        (ref `SET` _ `VALM10`)
+        ((expr (lvar `LINE`)) (expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `80`)))))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `SET` _ `VALM10`)
+        ((expr (lvar `LINE`))
+          (expr
+            (extrinsic
+              ((`SETSTR` `VALM1`)
+                ((expr (lvar `STRING`))
+                  (expr (@subs (lvar `VALMAR`) ((expr (lvar `LINE`)) (expr (num `0`)))))
+                  (expr (lvar `COLUMN`))
+                  (expr (lvar `CLREND`))))))))))
+  (` `
+    _
+    (if
+      (expr
+        (intrinsic `G`#206 ((expr (lvar `ON`))))
+        (`]` (str `""`))
+        (`!` (expr (intrinsic `G`#206 ((expr (lvar `OFF`)))) (`]` (str `""`))))))
+    (do
+      _
+      (call
+        (ref `CNTRL` _ `VALM10`)
+        ((expr (lvar `LINE`))
+          (expr (lvar `COLUMN`))
+          (expr (intrinsic `L`#209 ((expr (lvar `STRING`)))))
+          (expr (lvar `ON`))
+          (expr (lvar `OFF`))))))
+  (` ` _ (quit))
+  (` `)
+  (` `)
+  (label `ADDNEW`)
+  (` `)
+  (` `
+    _
+    (if (expr (`'` (intrinsic `G`#206 ((expr (lvar `PRC` ((expr (str `"SITE"`))))))))))
+    (set _ (= (lvar `PRCF` ((expr (str `"X"`)))) (expr (str `"S"`))))
+    (do _ (call (ref _ _ `PRCFSITE`))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"SO^W:Warehouse;P:Primary"`)))
+      (=
+        (lvar `DIR` ((expr (str `"A"`))))
+        (expr (str `"Select the type of inventory point to edit"`))))
+    (do _ (call (ref _ _ `DIR`)))
+    (kill _ (lvar `DIR`))
+    (if (expr (lvar `Y`) (`'=` (str `"W"`))) (expr (lvar `Y`) (`'=` (str `"P"`))))
+    (quit))
+  (` ` _ (set _ (= (lvar `PRCP` ((expr (str `"DPTYPE"`)))) (expr (lvar `Y`)))))
+  (` ` _ (do _ (call (ref `ENTERNEW`))))
+  (` ` _ (kill _ (lvar `PRCP`)))
+  (` ` _ (goto _ ((ref `ADDNEW`)))))

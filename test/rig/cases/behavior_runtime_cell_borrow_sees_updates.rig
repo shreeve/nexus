@@ -1,0 +1,56 @@
+# A read borrow of a `Cell` (or of a value holding one) is held by
+# pointer, so it sees later `set`s however it was kept: returned from a
+# function, stored in a view, an optional, an array, a generic field, or
+# an enum payload, or taken from a field of a borrowed struct.
+
+type W(T)
+  v: T
+
+enum E
+  held(c: ?Cell(Int))
+  empty
+
+struct View
+  c: ?Cell(Int)
+
+struct H
+  c: Cell(Int)
+
+  fun cell(?self) -> ?Cell(Int)
+    ?self.c
+
+type C = Cell(Int)
+
+fun id(c: ?C) -> ?C
+  c
+
+fun inner(h: ?H) -> ?Cell(Int)
+  ?h.c
+
+sub main()
+  cell: Cell(Int) = Cell(value: 1)
+  r = id(?cell)
+  v = View(c: ?cell)
+  o: (?Cell(Int))? = ?cell
+  xs = [?cell]
+  w: W(?Cell(Int)) = W(v: ?cell)
+  e: E = .held(c: ?cell)
+  f = |c: ?Cell(Int)| c
+  k = f(?cell)
+  cell.set(5)
+  print(r.get(), v.c.get(), xs[0].get(), w.v.get(), k.get())
+  if o as p
+    print(p.get())
+  match e
+    .held(c) => print(c.get())
+    .empty => print(0)
+  h = H(c: Cell(value: 3))
+  a = inner(?h)
+  b = h.cell()
+  print(a.get(), b.get())
+
+# expect:
+# 5 5 5 5 5
+# 5
+# 5
+# 3 3

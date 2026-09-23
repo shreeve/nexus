@@ -1,0 +1,13 @@
+# The `else` block of a `for` runs when the loop ends without `break`.
+
+sub main()
+  v: Vec(Int) = Vec()
+  (!v).push(1)
+  for n in v
+    print(n)
+  else
+    print("done")
+
+# expect:
+# 1
+# done

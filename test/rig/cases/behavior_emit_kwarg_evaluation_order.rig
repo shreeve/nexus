@@ -1,0 +1,17 @@
+# Keyword arguments run in source order even when bound out of order.
+
+fun note(n: Int) -> Int
+  print(n)
+  n
+
+fun pair(a: Int, b: Int) -> Int
+  a * 10 + b
+
+sub main()
+  p = pair(b: (note(2)), a: (note(1)))
+  print(p)
+
+# expect:
+# 2
+# 1
+# 12

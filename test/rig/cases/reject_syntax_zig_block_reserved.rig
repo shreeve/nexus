@@ -1,0 +1,7 @@
+# Inline `zig "..."` source splicing is reserved; `raw` blocks and
+# `extern` declarations are the escape hatches.
+
+sub main()
+  zig "const x = 42; std.debug.print(\"{any}\\n\", .{x});"
+
+# error: inline `zig "..."` raw-Zig escape is reserved

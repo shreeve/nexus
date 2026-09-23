@@ -1,0 +1,19 @@
+(program
+  (list
+    (symbol `let`)
+    (vector
+      (symbol `project-id`)
+      (keyword `:nexis`)
+      (symbol `version`)
+      (keyword `:v0-2-alpha`)
+      (symbol `tags`)
+      (set (keyword `:phase-3`) (keyword `:collections`) (keyword `:ready`)))
+    (map
+      (keyword `:project`)
+      (symbol `project-id`)
+      (keyword `:version`)
+      (symbol `version`)
+      (keyword `:tags`)
+      (symbol `tags`)
+      (keyword `:status`)
+      (keyword `:shipped`))))

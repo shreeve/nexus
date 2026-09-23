@@ -1,0 +1,15 @@
+(module
+  (extern_sub `srand` ((: `seed` `U32`)))
+  (extern_fun `rand` () `Int`)
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (raw_block
+        (block
+          (call `srand` `7`)
+          (set _ `a` _ (call `rand`))
+          (call `srand` `7`)
+          (set _ `b` _ (call `rand`))
+          (call `print` (== `a` `b`)))))))

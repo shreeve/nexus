@@ -1,0 +1,10 @@
+# Two arms that match the same value are rejected.
+
+sub main()
+  n = 2
+  match n
+    1..3 => print("low")
+    2 => print("two")
+    else => print("other")
+
+# error: overlaps an earlier arm

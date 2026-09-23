@@ -1,0 +1,16 @@
+# `print` takes any number of values and prints them on one line,
+# separated by single spaces; with none it prints an empty line.
+
+sub main()
+  x = 3
+  name = "rig"
+  print("x is", x, "and name is", name)
+  print x, x + 1
+  print()
+  print(true, 1.5)
+
+# expect:
+# x is 3 and name is rig
+# 3 4
+#
+# true 1.5

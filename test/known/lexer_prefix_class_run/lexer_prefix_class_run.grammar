@@ -1,0 +1,18 @@
+# '#' [0-9a-f]+ matches the whole run: `#ff00aa` is one token.
+#
+# Today: the prefix-scanner shape lexes exactly two characters (`#` and one
+# digit).
+# (architecture.md Appendix A: lexprobe.grammar; SPEC §5)
+
+@lexer
+tokens
+    hex
+    eof
+    err
+'#' [0-9a-f]+                               → hex
+.                                           → err
+
+@parser
+@lang = "lexer_prefix_class_run"
+
+top! = HEX                                  → (hex 1)

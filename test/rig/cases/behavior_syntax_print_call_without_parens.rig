@@ -1,0 +1,11 @@
+# A paren-free call takes the rest of the line as its arguments:
+# `print double(21)` is `print(double(21))`.
+
+fun double(n: Int) -> Int
+  n * 2
+
+sub main()
+  print double(21)
+
+# expect:
+# 42

@@ -1,0 +1,7 @@
+# The smallest meaningful Rig program.
+
+sub main()
+  print "hello, rig"
+
+# expect:
+# hello, rig

@@ -1,0 +1,18 @@
+(module
+  (struct `Box` (: `payload` `Int`))
+  (struct
+    `Pair`
+    (: `a` (shared `Box`))
+    (sub
+      `take`
+      ((read `self`))
+      _
+      (block (set _ `x` _ (move (member `self` `a`))) (call `print` (member `x` `payload`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `p` _ (call `Pair` (kwarg `a` (share (call `Box` (kwarg `payload` `1`))))))
+      (call (member `p` `take`))
+      (call `print` `"back"`))))

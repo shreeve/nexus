@@ -1,0 +1,20 @@
+(module
+  (enum
+    `Shape`
+    (variant `circle` ((: `radius` `Int`)))
+    `point`
+    (fun
+      `is_point`
+      ((read `self`))
+      `Bool`
+      (block
+        (match `self` (arm (variant_pattern `circle` `r`) `false`) (arm (enum_lit `point`) `true`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `s` `Shape` (call (enum_lit `circle`) (kwarg `radius` `2`)))
+      (call `print` (call (member `s` `is_point`)))
+      (set _ `p` `Shape` (enum_lit `point`))
+      (call `print` (call (member `p` `is_point`))))))

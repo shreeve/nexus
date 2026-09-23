@@ -1,0 +1,19 @@
+(routine
+  (label `INDIR`)
+  (` `
+    _
+    (set
+      _
+      (@name (lvar `X`) (expr (num `1`)))
+      (= (@subs (lvar `X`) ((expr (num `1`)))) (expr (num `2`)))
+      (= (lvar `Y`) (expr (@name (lvar `Z`))))))
+  (` ` _ (do _ (@args (lvar `LBL`))) (write _ (expr (@name (lvar `FMT`)))))
+  (` `
+    _
+    (set
+      _
+      (= (lvar `A`) (expr (naked (expr (num `1`)))))
+      (= (lvar `B`) (expr (gvar `G` ((expr (num `1`)) (expr (num `2`))))))
+      (= (lvar `C`) (expr (gvar `G` ((expr (num `3`))) (expr (str `"NS"`)))))))
+  (` ` _ (kill _ (@args (lvar `X`))))
+  (` ` _ (quit)))

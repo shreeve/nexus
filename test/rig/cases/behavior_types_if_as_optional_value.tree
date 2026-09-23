@@ -1,0 +1,7 @@
+(module
+  (fun
+    `describe`
+    ((: `m` (optional `Int`)))
+    `Int`
+    (block (if (as `m` `v`) (block (* `v` `2`)) (block `0`))))
+  (sub `main` () _ (block (call `print` (call `describe` `4`) (call `describe` `none`)))))

@@ -1,0 +1,25 @@
+(module
+  (enum `Color` `red` `green`)
+  (sub
+    `show`
+    ((: `c` `Color`))
+    _
+    (block
+      (match
+        `c`
+        (arm (enum_lit `red`) (call `print` `"red"`))
+        (arm (enum_lit `green`) (call `print` `"green"`)))))
+  (fun `double` ((: `n` `Int`)) `Int` (block (* `n` `2`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` (* (+ `1` `2`) `3`))
+      (call `print` (neg `3`))
+      (set _ `x` _ `10`)
+      (call `print` (- `x` `3`))
+      (call `print` (- `x` `3`))
+      (call `show` (enum_lit `green`))
+      (call `print` (call `double` `4`))
+      (call `print` (call `double` `5`)))))

@@ -1,0 +1,25 @@
+# generated-has: pub fn parseExpr
+#
+# Every start symbol gets its parse method, also when the start symbol's
+# own rule is an alias (`expr = IDENT`, one element, no action).
+#
+# Today: `expr` is resolved as an alias of IDENT and no parseExpr() is
+# generated; the declared start symbol silently disappears. basic.grammar
+# (`expr = @infix`) and ruby.grammar (`expr = kw_not`) have this shape.
+# Found while building the test harness.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z_][a-zA-Z0-9_]*                      → ident
+.                                           → err
+
+@parser
+@lang = "alias_start"
+
+program! = expr expr                        → (p 1 2)
+expr!    = expr                             → 1
+
+expr = IDENT

@@ -1,0 +1,9 @@
+# Missing @parser section — lexer only, no rules
+# error: @parser
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z]+ → ident
+. → err

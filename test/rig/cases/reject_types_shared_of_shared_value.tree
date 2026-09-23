@@ -1,0 +1,10 @@
+(module
+  (struct `Noisy` (: `id` `Int`))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `inner` _ (share (call `Noisy` (kwarg `id` `4`))))
+      (set _ `outer` _ (share (move `inner`)))
+      (call `print` (member `outer` `id`)))))

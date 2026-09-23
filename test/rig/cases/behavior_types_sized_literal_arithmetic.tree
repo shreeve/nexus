@@ -1,0 +1,11 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `a` `U8` `200`)
+      (set _ `b` _ (+ `a` `55`))
+      (set _ `c` `I64` `5000000000`)
+      (call `print` `b`)
+      (call `print` (* `c` `2`)))))

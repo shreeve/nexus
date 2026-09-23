@@ -1,0 +1,152 @@
+(routine
+  (label `ENXGNTEG`)
+  (` `)
+  (` `)
+  (` `
+    _
+    (set _ (= (lvar `XT4`) (expr (str `"I 1"`))) (= (lvar `X`) (expr (text _ (expr (num `3`))))))
+    (write
+      _
+      (posformat `!` `!`)
+      (expr (str `"Checksum routine created on "`))
+      (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `4`)))))
+      (expr (str `" by KERNEL V"`))
+      (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `3`)))))
+      (posformat `!`)))
+  (label
+    `CONT`
+    _
+    ((for (lvar `XT1`) (range (expr (num `1`)) (expr (num `1`))))
+      (set _ (= (lvar `XT2`) (expr (text `ROU` (expr (lvar `XT1`))))))
+      (quit (postcond (expr (lvar `XT2`) (`=` (str `""`)))))
+      (set
+        _
+        (=
+          (lvar `X`)
+          (expr (intrinsic `P`#212 ((expr (lvar `XT2`)) (expr (str `" "`)) (expr (num `1`))))))
+        (=
+          (lvar `XT3`)
+          (expr (intrinsic `P`#212 ((expr (lvar `XT2`)) (expr (str `";"`)) (expr (num `3`)))))))
+      (xecute _ ((expr (lvar `XT4`))))
+      (if (expr (intrinsic `T`#221)))
+      (write _ (posformat `!`) (expr (lvar `X`)))
+      (xecute _ ((expr (gvar `%ZOSF` ((expr (str `"TEST"`)))))))
+      (set (postcond (expr (`'` (intrinsic `T`#221)))) (= (lvar `XT3`) (expr (num `0`))))
+      (xecute (postcond (expr (lvar `XT3`))) ((expr (gvar `%ZOSF` ((expr (str `"RSUM"`)))))))
+      (write
+        _
+        (? (expr (num `10`)))
+        (expr
+          (select
+            ((expr (`'` (lvar `XT3`))) (expr (str `"Routine not in UCI"`)))
+            ((expr (lvar `XT3`) (`'=` (lvar `Y`)))
+              (expr
+                (str `"Calculated "`)
+                (`_` (intrinsic `C`#201 ((expr (num `7`)))))
+                (`_` (lvar `Y`))
+                (`_` (str `", off by "`))
+                (`_` (expr (lvar `Y`) (`-` (lvar `XT3`))))))
+            ((expr (num `1`)) (expr (str `"ok"`))))))))
+  (` `)
+  (` `
+    _
+    (kill
+      _
+      (lvar `%1`)
+      (lvar `%2`)
+      (lvar `%3`)
+      (lvar `X`)
+      (lvar `Y`)
+      (lvar `XT1`)
+      (lvar `XT2`)
+      (lvar `XT3`)
+      (lvar `XT4`))
+    (quit))
+  (label
+    `ONE`
+    _
+    ((set
+       _
+       (= (lvar `XT4`) (expr (str `"I $D(^UTILITY($J,X))"`)))
+       (= (lvar `X`) (expr (text _ (expr (num `3`))))))
+      (write
+        _
+        (posformat `!` `!`)
+        (expr (str `"Checksum routine created on "`))
+        (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `4`)))))
+        (expr (str `" by KERNEL V"`))
+        (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `3`)))))
+        (posformat `!`))))
+  (` `
+    _
+    (write _ (posformat `!`) (expr (str `"Check a subset of routines:"`)))
+    (kill _ (gvar `UTILITY` ((expr (intrinsic `J`#208)))))
+    (xecute _ ((expr (gvar `%ZOSF` ((expr (str `"RSEL"`))))))))
+  (` ` _ (write _ (posformat `!`)) (goto _ ((ref `CONT`))))
+  (label `ROU`)
+  (label `ENEQ1`)
+  (label `ENEQ2`)
+  (label `ENEQ3`)
+  (label `ENFAR1`)
+  (label `ENFAR2`)
+  (label `ENFAR3`)
+  (label `ENFAR4`)
+  (label `ENFAUTL`)
+  (label `ENFAVAL`)
+  (label `ENFAXMTM`)
+  (label `ENLIB3`)
+  (label `ENWONEW2`)
+  (label `ENXGI001`)
+  (label `ENXGI002`)
+  (label `ENXGI003`)
+  (label `ENXGI004`)
+  (label `ENXGI005`)
+  (label `ENXGI006`)
+  (label `ENXGI007`)
+  (label `ENXGI008`)
+  (label `ENXGI009`)
+  (label `ENXGI00A`)
+  (label `ENXGI00B`)
+  (label `ENXGI00C`)
+  (label `ENXGI00D`)
+  (label `ENXGI00E`)
+  (label `ENXGI00F`)
+  (label `ENXGI00G`)
+  (label `ENXGI00H`)
+  (label `ENXGI00I`)
+  (label `ENXGI00J`)
+  (label `ENXGI00K`)
+  (label `ENXGI00L`)
+  (label `ENXGI00M`)
+  (label `ENXGI00N`)
+  (label `ENXGI00O`)
+  (label `ENXGI00P`)
+  (label `ENXGI00Q`)
+  (label `ENXGI00R`)
+  (label `ENXGI00S`)
+  (label `ENXGI00T`)
+  (label `ENXGI00U`)
+  (label `ENXGI00V`)
+  (label `ENXGI00W`)
+  (label `ENXGI00X`)
+  (label `ENXGI00Y`)
+  (label `ENXGI00Z`)
+  (label `ENXGI010`)
+  (label `ENXGI011`)
+  (label `ENXGI012`)
+  (label `ENXGI013`)
+  (label `ENXGI014`)
+  (label `ENXGI015`)
+  (label `ENXGI016`)
+  (label `ENXGI017`)
+  (label `ENXGI018`)
+  (label `ENXGIEN`)
+  (label `ENXGINI1`)
+  (label `ENXGINI2`)
+  (label `ENXGINI3`)
+  (label `ENXGINI4`)
+  (label `ENXGINI5`)
+  (label `ENXGINIT`)
+  (label `ENXGIPR`)
+  (label `ENXGIPS`)
+  (label `ENXGIPS1`))

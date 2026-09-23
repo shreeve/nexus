@@ -1,0 +1,20 @@
+# A struct with a shared-handle field and no user `drop` still gets
+# compiler-generated drop glue: dropping `r` drops the Noisy it holds.
+
+struct Noisy
+  id: Int
+
+  drop self: !Noisy
+    print(self.id)
+
+struct Reactor
+  count: *Noisy
+
+sub main()
+  n = *Noisy(id: 9)
+  r: Reactor = Reactor(count: <n)
+  print("built")
+
+# expect:
+# built
+# 9

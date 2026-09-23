@@ -1,0 +1,15 @@
+(module
+  (struct
+    `Box`
+    (: `payload` `Int`)
+    (drop_decl ((: `self` (borrow_write `Box`))) (block (call `print` `"drop"`))))
+  (sub `eat` ((: `rc` (shared `Box`))) _ (block (call `print` (member `rc` `payload`))))
+  (sub
+    `go`
+    ((: `c` `Bool`))
+    _
+    (block
+      (set _ `rc` _ (share (call `Box` (kwarg `payload` `1`))))
+      (if `c` (block (call `eat` (move `rc`))))
+      (call `print` `"after"`)))
+  (sub `main` () _ (block (call `go` `true`) (call `go` `false`))))

@@ -1,0 +1,8 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` `I32` (neg `1`))
+      (raw_block (block (set _ `y` `U32` (builtin `bitCast` `x`)) (call `print` `y`))))))

@@ -1,0 +1,12 @@
+# Lexer rule missing arrow
+# error: no_arrow.grammar:8:
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z]+ ident
+. → err
+@parser
+@conflicts = 0
+program! = IDENT → (module 1)

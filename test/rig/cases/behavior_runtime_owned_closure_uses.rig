@@ -1,0 +1,40 @@
+# Owned closures are ordinary shared handles: held in a struct field and
+# called through it, stored in a Vec and called for their values, held
+# in an optional, and given several parameters of different types.
+
+struct Button
+  on_click: *sub(Int)
+
+  sub click(self: ?Button, n: Int)
+    self.on_click(n)
+
+sub main()
+  total: *Cell(Int) = *Cell(value: 0)
+  button = Button(on_click: *|+total, n| total.set(total.get() + n))
+  button.click(4)
+  button.click(5)
+  print(total.get())
+
+  fs: Vec(*fun(Int) Int) = Vec()
+  (!fs).push(*|x| x + 1)
+  (!fs).push(*|x| x * 10)
+  for f in ?fs
+    print(f(3))
+
+  later: (*sub())? = *|| print("now set")
+  if <later as run
+    run()
+
+  greet: *sub(String, Int) = *|name, times|
+    i = 0
+    while i < times : i += 1
+      print("hi", name)
+  greet("ada", 2)
+
+# expect:
+# 9
+# 4
+# 30
+# now set
+# hi ada
+# hi ada

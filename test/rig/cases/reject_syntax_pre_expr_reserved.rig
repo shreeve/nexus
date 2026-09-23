@@ -1,0 +1,8 @@
+# A `pre <expr>` expression modifier is reserved; only `pre` function
+# parameters are supported compile-time forms.
+
+sub main()
+  x = pre 42
+  print(x)
+
+# error: `pre` expression / block is reserved

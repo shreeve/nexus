@@ -1,0 +1,14 @@
+# Strings take the escapes `\n`, `\t`, `\\`, `\"`, `\xNN`, and `\u{N}`.
+
+sub main()
+  print("a\tb")
+  print("q\"x\\y")
+  print("\x41\u{42}\u{1F389}")
+  print("line\nbreak")
+
+# expect:
+# a	b
+# q"x\y
+# AB🎉
+# line
+# break

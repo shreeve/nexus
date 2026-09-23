@@ -1,0 +1,267 @@
+(routine
+  (label `BASIC`)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/globals/BASIC"`))))))
+  (` `)
+  (` `)
+  (` ` _ (kill _ (gvar `MITS`)))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"set/get unsubscripted"`)) (expr (num `42`)) (expr (str `"$$SETGET^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"set/get subscripted"`)) (expr (num `1`)) (expr (str `"$$SUBSET^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"set/get deep subscript"`))
+          (expr (num `99`))
+          (expr (str `"$$DEEPSET^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"set numeric value coerces"`))
+          (expr (str `"123"`))
+          (expr (str `"$$NUMSTR^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"empty string value preserved"`))
+          (expr (str `""`))
+          (expr (str `"$$EMPTYVAL^BASIC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$D undefined global"`)) (expr (num `0`)) (expr (str `"$$DUND^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$D defined value"`)) (expr (num `1`)) (expr (str `"$$DDEF^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$D root with descendants only"`))
+          (expr (num `10`))
+          (expr (str `"$$DDESC^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$D both value and descendants"`))
+          (expr (num `11`))
+          (expr (str `"$$DBOTH^BASIC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$G undefined global"`)) (expr (str `"NA"`)) (expr (str `"$$GETUND^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$G defined ignores default"`))
+          (expr (str `"real"`))
+          (expr (str `"$$GETDEF^BASIC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL of leaf"`)) (expr (num `0`)) (expr (str `"$$KLEAF^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL of root removes subtree"`))
+          (expr (num `0`))
+          (expr (str `"$$KROOT^BASIC()"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"KILL preserves siblings"`)) (expr (num `1`)) (expr (str `"$$KSIB^BASIC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"write then read in same test"`))
+          (expr (str `"persisted"`))
+          (expr (str `"$$PERSIST^BASIC()"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"$O simple chain"`)) (expr (str `"abc"`)) (expr (str `"$$O3^BASIC()"`))))))
+  (` `)
+  (` `)
+  (` ` _ (kill _ (gvar `MITS`)))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/globals/BASIC"`))))))
+  (` ` _ (quit))
+  (` `)
+  (label `SETGET` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (num `42`))))))
+  (` ` _ (quit _ (expr (gvar `MITS`))))
+  (` `)
+  (label
+    `SUBSET`
+    _
+    ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `1`))))))
+  (` ` _ (quit _ (expr (gvar `MITS` ((expr (str `"a"`)))))))
+  (` `)
+  (label
+    `DEEPSET`
+    _
+    ((kill _ (gvar `MITS`))
+      (set
+        _
+        (=
+          (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))
+          (expr (num `99`))))))
+  (` ` _ (quit _ (expr (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`)))))))
+  (` `)
+  (label `NUMSTR` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (num `123`))))))
+  (` ` _ (quit _ (expr (gvar `MITS`))))
+  (` `)
+  (label `EMPTYVAL` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (str `""`))))))
+  (` ` _ (quit _ (expr (gvar `MITS`))))
+  (` `)
+  (label `DUND` _ ((kill _ (gvar `MITS`))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
+  (` `)
+  (label `DDEF` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (num `1`))))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
+  (` `)
+  (label
+    `DDESC`
+    _
+    ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS` ((expr (str `"leaf"`)))) (expr (num `1`))))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
+  (` `)
+  (label
+    `DBOTH`
+    _
+    ((kill _ (gvar `MITS`))
+      (set
+        _
+        (= (gvar `MITS`) (expr (num `1`)))
+        (= (gvar `MITS` ((expr (str `"leaf"`)))) (expr (num `2`))))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
+  (` `)
+  (label `GETUND` _ ((kill _ (gvar `MITS`))))
+  (` ` _ (quit _ (expr (intrinsic `G`#206 ((expr (gvar `MITS`)) (expr (str `"NA"`)))))))
+  (` `)
+  (label `GETDEF` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (str `"real"`))))))
+  (` ` _ (quit _ (expr (intrinsic `G`#206 ((expr (gvar `MITS`)) (expr (str `"NA"`)))))))
+  (` `)
+  (label
+    `KLEAF`
+    _
+    ((kill _ (gvar `MITS`))
+      (set _ (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `1`))))
+      (kill _ (gvar `MITS` ((expr (str `"a"`)))))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"a"`))))))))))
+  (` `)
+  (label
+    `KROOT`
+    _
+    ((kill _ (gvar `MITS`))
+      (set
+        _
+        (= (gvar `MITS`) (expr (num `1`)))
+        (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `2`))))
+      (kill _ (gvar `MITS`))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"a"`))))))))))
+  (` `)
+  (label
+    `KSIB`
+    _
+    ((kill _ (gvar `MITS`))
+      (set
+        _
+        (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `1`)))
+        (= (gvar `MITS` ((expr (str `"b"`)))) (expr (num `1`))))
+      (kill _ (gvar `MITS` ((expr (str `"a"`)))))))
+  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"b"`))))))))))
+  (` `)
+  (label
+    `PERSIST`
+    _
+    ((kill _ (gvar `MITS`))
+      (set _ (= (gvar `MITS` ((expr (str `"k"`)))) (expr (str `"persisted"`))))))
+  (` ` _ (quit _ (expr (gvar `MITS` ((expr (str `"k"`)))))))
+  (` `)
+  (label
+    `O3`
+    _
+    ((kill _ (gvar `MITS`))
+      (set
+        _
+        (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `1`)))
+        (= (gvar `MITS` ((expr (str `"b"`)))) (expr (num `1`)))
+        (= (gvar `MITS` ((expr (str `"c"`)))) (expr (num `1`))))))
+  (` `
+    _
+    (new _ `r` `k`)
+    (set _ (= (lvar `r`) (expr (str `""`))) (= (lvar `k`) (expr (str `""`))))
+    (for)
+    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (gvar `MITS` ((expr (lvar `k`))))))))))
+    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
+    (set _ (= (lvar `r`) (expr (lvar `r`) (`_` (lvar `k`))))))
+  (` ` _ (quit _ (expr (lvar `r`)))))

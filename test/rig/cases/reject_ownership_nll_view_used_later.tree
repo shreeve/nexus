@@ -1,0 +1,18 @@
+(module
+  (struct
+    `Box`
+    (: `n` `Int`)
+    (sub `bump` ((write `self`)) _ (block (set += (member `self` `n`) _ `1`)))
+    (drop_decl
+      ((: `self` (borrow_write `Box`)))
+      (block (call `print` `"drop"` (member `self` `n`)))))
+  (struct `View` (: `box` (borrow_read `Box`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `x` _ (call `Box` (kwarg `n` `1`)))
+      (set _ `v` _ (call `View` (kwarg `box` (read `x`))))
+      (call (member (write `x`) `bump`))
+      (call `print` (member (member `v` `box`) `n`)))))

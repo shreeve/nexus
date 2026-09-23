@@ -1,0 +1,4 @@
+(module
+  (pub (struct `Box` (: `value` `Int`)))
+  (pub
+    (fun `make_box` ((: `v` `Int`)) (shared `Box`) (block (share (call `Box` (kwarg `value` `v`)))))))

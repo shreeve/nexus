@@ -1,0 +1,7 @@
+(module
+  (struct `Point` (: `x` `Int`))
+  (sub
+    `main`
+    ()
+    _
+    (block (set _ `p` _ (call `Point` (kwarg `x` `42`))) (call `print` (member `p` `x`)))))

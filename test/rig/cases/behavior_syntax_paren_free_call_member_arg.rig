@@ -1,0 +1,12 @@
+# A paren-free call takes the rest of the line as its arguments, so a
+# member access belongs to the argument: `print p.x` is `print(p.x)`.
+
+struct Point
+  x: Int
+
+sub main()
+  p = Point(x: 42)
+  print p.x
+
+# expect:
+# 42

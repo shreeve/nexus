@@ -1,0 +1,15 @@
+# `if m as v` runs its branch with `v` bound to the value inside the
+# optional `m`, and the `else` branch when `m` is `none`; as a value it
+# yields either branch.
+
+fun describe(m: Int?) -> Int
+  if m as v
+    v * 2
+  else
+    0
+
+sub main()
+  print(describe(4), describe(none))
+
+# expect:
+# 8 0

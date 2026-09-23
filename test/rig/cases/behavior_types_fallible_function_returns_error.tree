@@ -1,0 +1,14 @@
+(module
+  (errors `ParseError` `empty`)
+  (fun
+    `parse_len`
+    ((: `s` `String`))
+    (error_union `Int`)
+    (block (if (== `s` `""`) (block (return (member `ParseError` `empty`)))) (member `s` `len`)))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` (catch (call `parse_len` `"abc"`) _ (neg `1`)))
+      (call `print` (catch (call `parse_len` `""`) _ (neg `1`))))))

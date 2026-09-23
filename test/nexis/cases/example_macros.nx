@@ -1,0 +1,28 @@
+; examples/macros.nx — a small tour of the step-#8b host macros.
+;
+; `when` / `when-not` short conditional bodies.
+; `and` / `or` short-circuit booleans (with gensym hygiene so
+; expressions evaluate exactly once even when the expansion
+; structurally references the value twice).
+; `cond` for multi-way branches.
+; `let`, `fn`, `loop` rename to the compiler primitives
+; `let*`, `fn*`, `loop*`.
+;
+; All run through bin/nexis with no stdlib required.
+
+(defn abs [n]
+  (when-not (< n 0) n))
+
+; sum 1..n using loop/recur. `loop` is a rename macro to
+; `loop*`; `recur` is a special form.
+(defn sum-up-to [n]
+  (loop [i 0 acc 0]
+    (if (< i (+ n 1))
+      (recur (+ i 1) (+ acc i))
+      acc)))
+
+; or with gensym: side-effects evaluate once.
+(defn first-truthy [a b c]
+  (or a b c))
+
+(sum-up-to 10)  ; -> 55

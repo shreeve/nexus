@@ -1,0 +1,13 @@
+# References undefined nonterminal
+# error: undefined_rule.grammar:13:
+# error: bogus
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-zA-Z]+ → ident
+. → err
+@parser
+@conflicts = 0
+program! = bogus → (module 1)

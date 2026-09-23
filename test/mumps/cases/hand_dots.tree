@@ -1,0 +1,9 @@
+(routine
+  (label `DOTS`)
+  (` ` _ (if (expr (lvar `X`))) (do))
+  (` . `#1 _ (set _ (= (lvar `Y`) (expr (num `1`)))))
+  (` . `#1 _ (if (expr (lvar `Y`))) (do))
+  (` . . `#2 _ (write _ (expr (str `"deep"`)) (posformat `!`)))
+  (` . . `#2 _ (quit))
+  (` . `#1 _ (write _ (expr (str `"back"`))))
+  (` ` _ (quit)))

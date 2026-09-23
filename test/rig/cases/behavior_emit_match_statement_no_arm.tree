@@ -1,0 +1,6 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block (set _ `n` _ `5`) (match `n` (arm `1` (call `print` `"one"`))) (call `print` `"end"`))))

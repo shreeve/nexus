@@ -1,0 +1,25 @@
+# Errors cross modules: an imported function fails with its module's
+# error set, and the importer names and matches those errors, or fails
+# with them itself.
+use parsing
+
+fun checked(s: String) -> Int!
+  return parsing.ParseError.empty if s == "?"
+  parsing.parse(s)!
+
+fun name(s: String) -> String
+  n = checked(s) catch |err|
+    match err
+      .empty => return "empty"
+      .bad_digit => return "bad digit"
+      else => return "other"
+  "ok"
+
+sub main()
+  print(name(""), name("x"), name("?"), name("abc"))
+  e: parsing.ParseError = .bad_digit
+  print(e, parsing.parse("x") catch |err| 1 if err == e else 2)
+
+# expect:
+# empty bad digit empty ok
+# .bad_digit 1

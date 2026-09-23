@@ -1,0 +1,12 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `rc1` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (set _ `rc2` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `0`))))
+      (call (member `rc1` `set`) `10`)
+      (call (member `rc2` `set`) `20`)
+      (set move `rc1` _ `rc2`)
+      (call `print` (call (member `rc1` `get`))))))

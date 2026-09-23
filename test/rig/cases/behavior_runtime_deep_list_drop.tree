@@ -1,0 +1,39 @@
+(module
+  (struct
+    `Node`
+    (: `value` `Int`)
+    (: `seen` (shared (generic_inst `Cell` `Int`)))
+    (: `next` (optional (shared `Node`)))
+    (drop_decl
+      ((: `self` (borrow_write `Node`)))
+      (block
+        (if
+          (!= (call (member (member `self` `seen`) `get`)) (+ (member `self` `value`) `1`))
+          (block (call `print` `"out of order at"` (member `self` `value`))))
+        (call (member (member `self` `seen`) `set`) (member `self` `value`)))))
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `n` _ `200000`)
+      (set _ `seen` (shared (generic_inst `Cell` `Int`)) (share (call `Cell` (kwarg `value` `n`))))
+      (set _ `head` (optional (shared `Node`)) `none`)
+      (set _ `i` _ `0`)
+      (while
+        (< `i` `n`)
+        _
+        (block
+          (set
+            _
+            `head`
+            _
+            (share
+              (call
+                `Node`
+                (kwarg `value` `i`)
+                (kwarg `seen` (clone `seen`))
+                (kwarg `next` (move `head`)))))
+          (set += `i` _ `1`)))
+      (drop `head`)
+      (call `print` `"dropped down to"` (call (member `seen` `get`))))))

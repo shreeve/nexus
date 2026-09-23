@@ -1,0 +1,9 @@
+(module
+  (generic_enum `Option` (`T`) (variant `some` ((: `value` `T`))) `none`)
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (set _ `o` (generic_inst `Option` `Int`) (call (enum_lit `some`) (kwarg `value` `"hello"`)))
+      (call `print` `"done"`))))

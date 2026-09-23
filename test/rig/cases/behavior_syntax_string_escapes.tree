@@ -1,0 +1,10 @@
+(module
+  (sub
+    `main`
+    ()
+    _
+    (block
+      (call `print` `"a\\tb"`)
+      (call `print` `"q\\"x\\\\y"`)
+      (call `print` `"\\x41\\u{42}\\u{1F389}"`)
+      (call `print` `"line\\nbreak"`))))

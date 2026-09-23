@@ -1,0 +1,16 @@
+# `|~rc|` weak-captures a shared handle without consuming it. The
+# closure survives several calls and its weak handle is dropped before
+# the outer strong handle.
+
+sub main()
+  rc: *Cell(Int) = *Cell(value: 1)
+  watch = |~rc|
+    print('observing weak')
+  watch()
+  watch()
+  print(rc.get())
+
+# expect:
+# observing weak
+# observing weak
+# 1

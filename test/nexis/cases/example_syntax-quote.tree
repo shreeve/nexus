@@ -1,0 +1,6 @@
+(program
+  (list
+    (symbol `def`)
+    (symbol `parts`)
+    (list (symbol `quote`) (list (symbol `b`) (symbol `c`) (symbol `d`))))
+  (syntax-quote (list (symbol `a`) (unquote-splicing (symbol `parts`)) (symbol `e`))))

@@ -1,0 +1,19 @@
+@lang = "demo"
+@conflicts = 3
+
+@as ident = [keyword, command!, self, intrinsic!]
+
+@op = [ "'=" → "noteq", "'<" → "notlt" ]
+
+@errors expr: "expression", STRING: "string literal"
+
+@infix unary
+    "||" left
+    "==" none, "!=" none
+    "+" left, "-" left
+    "**" right
+
+program! = expr                     → (module 1)
+expr     = @infix
+unary    = "-" unary                → (neg 2)
+         | IDENT

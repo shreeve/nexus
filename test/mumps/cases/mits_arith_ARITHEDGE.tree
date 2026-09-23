@@ -1,0 +1,277 @@
+(routine
+  (label `ARITHEDGE`)
+  (` `)
+  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/arith/ARITHEDGE"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(+,+) +"`)) (expr (num `5`)) (expr (str `"3+2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(+,-) +"`)) (expr (num `1`)) (expr (str `"3+-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(-,-) +"`)) (expr (`-` (num `5`))) (expr (str `"-3+-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(+,+) -"`)) (expr (num `1`)) (expr (str `"3-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(+,-) -"`)) (expr (num `5`)) (expr (str `"3--2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(-,-) -"`)) (expr (`-` (num `1`))) (expr (str `"-3--2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(+,+) *"`)) (expr (num `6`)) (expr (str `"3*2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(+,-) *"`)) (expr (`-` (num `6`))) (expr (str `"3*-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(-,-) *"`)) (expr (num `6`)) (expr (str `"-3*-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"(+,+) /"`)) (expr (num `1.5`)) (expr (str `"3/2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(+,-) /"`)) (expr (`-` (num `1.5`))) (expr (str `"3/-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"(-,-) /"`)) (expr (num `1.5`)) (expr (str `"-3/-2"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"\\ pos by pos"`)) (expr (num `2`)) (expr (str `"5\\2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"\\ neg by pos truncates toward 0"`))
+          (expr (`-` (num `2`)))
+          (expr (str `"-5\\2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"\\ pos by neg truncates toward 0"`))
+          (expr (`-` (num `2`)))
+          (expr (str `"5\\-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"\\ neg by neg"`)) (expr (num `2`)) (expr (str `"-5\\-2"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"# pos by pos"`)) (expr (num `1`)) (expr (str `"7#3"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"# neg by pos result is positive"`)) (expr (num `2`)) (expr (str `"-7#3"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"# pos by neg result is negative"`))
+          (expr (`-` (num `2`)))
+          (expr (str `"7#-3"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"# neg by neg"`)) (expr (`-` (num `1`))) (expr (str `"-7#-3"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do _ (call (ref `RUN` _ `TEST`) ((expr (str `"0+0"`)) (expr (num `0`)) (expr (str `"0+0"`))))))
+  (` `
+    _
+    (do _ (call (ref `RUN` _ `TEST`) ((expr (str `"0*0"`)) (expr (num `0`)) (expr (str `"0*0"`))))))
+  (` `
+    _
+    (do _ (call (ref `RUN` _ `TEST`) ((expr (str `"0*5"`)) (expr (num `0`)) (expr (str `"0*5"`))))))
+  (` `
+    _
+    (do _ (call (ref `RUN` _ `TEST`) ((expr (str `"0/5"`)) (expr (num `0`)) (expr (str `"0/5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"0\\\\ 5"`)) (expr (num `0`)) (expr (str `"0\\5"`))))))
+  (` `
+    _
+    (do _ (call (ref `RUN` _ `TEST`) ((expr (str `"0#5"`)) (expr (num `0`)) (expr (str `"0#5"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"x+0=x"`)) (expr (num `42`)) (expr (str `"42+0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"x-0=x"`)) (expr (num `42`)) (expr (str `"42-0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"x*1=x"`)) (expr (num `42`)) (expr (str `"42*1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"x/1=x"`)) (expr (num `42`)) (expr (str `"42/1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"x*0=0"`)) (expr (num `0`)) (expr (str `"42*0"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `".5+-.5"`)) (expr (num `0`)) (expr (str `".5+-.5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"-.5+.5"`)) (expr (num `0`)) (expr (str `"-.5+.5"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"-.0+0"`)) (expr (num `0`)) (expr (str `"-.0+0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `".0001*10000"`)) (expr (num `1`)) (expr (str `".0001*10000"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"3-1+2"`)) (expr (num `4`)) (expr (str `"3-1+2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"3+1-2"`)) (expr (num `2`)) (expr (str `"3+1-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"3-1-2"`)) (expr (num `0`)) (expr (str `"3-1-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call (ref `RUN` _ `TEST`) ((expr (str `"2*3+1"`)) (expr (num `7`)) (expr (str `"2*3+1"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"2*-3+1"`)) (expr (`-` (num `5`))) (expr (str `"2*-3+1"`))))))
+  (` `)
+  (` `)
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"** integer power"`)) (expr (num `16`)) (expr (str `"2**4"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"** zero exponent"`)) (expr (num `1`)) (expr (str `"5**0"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"** negative exponent"`)) (expr (num `.25`)) (expr (str `"2**-2"`))))))
+  (` `
+    _
+    (do
+      _
+      (call
+        (ref `RUN` _ `TEST`)
+        ((expr (str `"** decimal exponent (sqrt)"`)) (expr (num `2`)) (expr (str `"4**.5"`))))))
+  (` `)
+  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/arith/ARITHEDGE"`))))))
+  (` ` _ (quit)))

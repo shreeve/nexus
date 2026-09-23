@@ -1,0 +1,50 @@
+# A Cell is interior-mutable: `set` and `replace` change it through a
+# read borrow, and through a `?self` method of a struct holding one. A
+# by-value parameter holding a Cell is the callee's own copy, which it
+# may lend out.
+
+struct Counter
+  hits: Cell(Int)
+  name: String
+
+  sub hit(?self)
+    self.hits.set(self.hits.get() + 1)
+
+sub bump(c: ?Cell(Int), by: Int)
+  c.set(c.get() + by)
+
+fun swap(c: ?Cell(Int), v: Int) -> Int
+  c.replace(v)
+
+fun lent(c: Counter) -> Int
+  bump(?c.hits, 100)
+  c.hits.get()
+
+sub main()
+  c: Cell(Int) = Cell(value: 1)
+  bump(?c, 10)
+  print(c.get())
+  old = swap(?c, 5)
+  print(old, c.get())
+  r = ?c
+  r.set(7)
+  print(c.get())
+
+  k = Counter(hits: Cell(value: 0), name: "k")
+  k.hit()
+  k.hit()
+  print(k.name, k.hits.get())
+  print(lent(k), k.hits.get())
+
+  box = *Counter(hits: Cell(value: 40), name: "shared")
+  box.hit()
+  bump(?box.hits, 1)
+  print(box.name, box.hits.get())
+
+# expect:
+# 11
+# 11 5
+# 7
+# k 2
+# 102 2
+# shared 42
