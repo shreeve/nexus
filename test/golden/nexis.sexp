@@ -5,7 +5,7 @@
     (op_map `"#{"` `"hash_lbrace"`)
     (op_map `"#("` `"hash_lparen"`)
     (op_map `"#_"` `"hash_discard"`))
-  (conflicts `114`)
+  (conflicts `108`)
   (rule
     (start `program`)
     (alt
