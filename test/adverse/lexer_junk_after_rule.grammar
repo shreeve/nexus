@@ -1,0 +1,13 @@
+# A rule line ends after its actions.
+# error: lexer_junk_after_rule.grammar:10:15:
+# error: unexpected name 'junk'
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'ab' → word junk
+. → err
+@parser
+top! = WORD → 1

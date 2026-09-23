@@ -1,0 +1,13 @@
+# A {...} action closes on its line.
+# error: lexer_brace_unclosed.grammar:10:24:
+# error: expected "}"
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' → plus, {mode = 1
+. → err
+@parser
+top! = WORD → 1

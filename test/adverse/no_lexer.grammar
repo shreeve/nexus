@@ -1,0 +1,5 @@
+# A grammar file needs an @lexer section.
+# error: no_lexer.grammar:1:1:
+# error: no @lexer section
+@parser
+program! = IDENT → (module 1)

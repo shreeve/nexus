@@ -1,0 +1,13 @@
+# A zero-width rule is located at its @.
+# error: lexer_zero_width_guard.grammar:10:1:
+# error: guard tests 'nope'
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+@ nope → plus
+. → err
+@parser
+top! = WORD → 1

@@ -1,0 +1,13 @@
+# pre can only be assigned.
+# error: lexer_pre_increment.grammar:10:1:
+# error: 'pre' can only be assigned
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' → plus, {pre++}
+. → err
+@parser
+top! = WORD → 1

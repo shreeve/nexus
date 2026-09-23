@@ -1,8 +1,8 @@
 //! Grammar data shared by every stage of the generator.
 //!
-//!   - Lexer spec: the parsed `@lexer` section (state vars, tokens, rules).
-//!   - Grammar IR: the lowered `@parser` section (rules, alternatives,
-//!     elements, directives), produced by frontend/lower.zig.
+//!   - Lexer spec: the lowered `@lexer` section (state vars, tokens, rules).
+//!   - Grammar IR: the lowered grammar file (rules, alternatives, elements,
+//!     directives, and the lexer spec), produced by frontend/lower.zig.
 //!   - Symbols and rules: the desugared BNF grammar the LR stages consume.
 
 const std = @import("std");
@@ -163,7 +163,7 @@ pub fn findTokenForLiteral(spec: *const LexerSpec, text: []const u8) ?[]const u8
 }
 
 // =============================================================================
-// Grammar IR (the lowered @parser section)
+// Grammar IR (the lowered grammar file)
 //
 // The self-hosted frontend (frontend/parser.zig + frontend/lower.zig)
 // produces this IR from .grammar files; expand.zig consumes it.
@@ -187,6 +187,11 @@ pub const GrammarIR = struct {
     trivia: []const []const u8 = &.{},
     /// `@repair`: the tolerant-repair alphabet; null = no tolerant driver.
     repair: ?RepairSpec = null,
+    /// The @lexer section; null when the file has none.
+    lexer: ?LexerSpec = null,
+    /// Whether the file has a @parser section (text without section
+    /// markers is @parser-section text).
+    hasParser: bool = true,
 };
 
 pub const ParsedRule = struct {

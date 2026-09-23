@@ -811,6 +811,13 @@ pub const BaseParser = struct {
         return expectedIn(state);
     }
 
+    /// The reader-facing name of a grammar symbol, as `writeError` prints
+    /// it: its `@errors` or `@display` name, a literal as written, a token
+    /// name in lower case; empty for other rules.
+    pub fn symbolText(sym: u16) []const u8 {
+        return symbolName(sym);
+    }
+
     // -------------------------------------------------------------------------
     // Tolerant repair
     // -------------------------------------------------------------------------

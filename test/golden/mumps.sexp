@@ -1,4 +1,387 @@
 (grammar
+  (section `lexer`)
+  (state
+    `state`
+    (assign `beg` `1`)
+    (assign `pat` `0`)
+    (assign `dep` `0`))
+  (tokens `tokens` `ident` `integer` `zdigits` `real` `string` `indent` `spaces` `patend` `comment` `dot` `caret` `at` `dollar` `lparen` `rparen` `comma` `colon` `pipe` `eq` `plus` `minus` `star` `slash` `backslash` `underscore` `not` `lt` `gt` `question` `lbracket` `rbracket` `exclaim` `hash` `exclaim_ws` `hash_ws` `colon_ws` `ampersand` `starstar` `noteq` `notlt` `notgt` `notques` `notlbracket` `notrbracket` `notampersand` `notexclaim` `lteq` `gteq` `eqeq` `sortsafter` `followseq` `sortsaftereq` `quesat` `newline` `eof` `err`)
+  (after
+    `after`
+    (assign `beg` `0`))
+  (lex_rule
+    _
+    (guards
+      `@`
+      (guard _ `pat` _ _)
+      (guard _ `pre` `>` `0`))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`)
+    (set_action `pre` `0`))
+  (lex_rule
+    _
+    (guards
+      `@`
+      (guard _ `beg` _ _)
+      (guard _ `pre` `>` `0`))
+    `indent`
+    (counted `pre` `counted` `'.'`))
+  (lex_rule
+    _
+    (guards
+      `@`
+      (guard `!` `beg` _ _)
+      (guard _ `pre` `>` `1`))
+    `spaces`
+    (set_action `pre` `0`))
+  (lex_rule
+    `"\\r\\n"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule
+    `"\\r\\n"`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`)
+    (set_action `dep` `0`))
+  (lex_rule
+    `'\\n'`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule
+    `'\\n'`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`)
+    (set_action `dep` `0`))
+  (lex_rule
+    `'\\r'`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule
+    `'\\r'`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`)
+    (set_action `dep` `0`))
+  (lex_rule
+    `';' [^\\n]*`
+    _
+    `comment`
+    (lex_action `simd_to` `'\\n'`))
+  (lex_rule `'"' ([^"\\n] | '""')* '"'` _ `string`)
+  (lex_rule
+    `[0-9]+`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `integer`)
+  (lex_rule
+    `[0-9]* '.' [0-9]+ [Ee] [+-]? [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `real`)
+  (lex_rule
+    `[0-9]+ [Ee] [+-]? [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `real`)
+  (lex_rule
+    `[0-9]* '.' [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `real`)
+  (lex_rule
+    `'0' [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `zdigits`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule
+    `'?@'`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `quesat`)
+  (lex_rule
+    `'?' / [0-9.]+ [Ee] [+-]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`)
+  (lex_rule
+    `'?' / [0-9.]+ [Ee] [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`)
+  (lex_rule
+    `'?' / [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'.(]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`
+    (set_action `pat` `1`))
+  (lex_rule
+    `'?' / [0-9.]+ [ACELNPUacelnpu"(]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`
+    (set_action `pat` `1`))
+  (lex_rule
+    `'?' / [0-9.]+ "'"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`
+    (set_action `pat` `1`))
+  (lex_rule
+    `'?' / [0-9.]+ "'?"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`)
+  (lex_rule
+    `'?'`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `question`)
+  (lex_rule
+    `"'?" / [0-9.]+ [Ee] [+-]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`)
+  (lex_rule
+    `"'?" / [0-9.]+ [Ee] [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`)
+  (lex_rule
+    `"'?" / [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'.(]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`
+    (set_action `pat` `1`))
+  (lex_rule
+    `"'?" / [0-9.]+ [ACELNPUacelnpu"(]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`
+    (set_action `pat` `1`))
+  (lex_rule
+    `"'?" / [0-9.]+ "'"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`
+    (set_action `pat` `1`))
+  (lex_rule
+    `"'?" / [0-9.]+ "'?"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`)
+  (lex_rule
+    `"'?"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `notques`)
+  (lex_rule
+    `"'" / [0-9.]+ [Ee] [+-]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `not`)
+  (lex_rule
+    `"'" / [0-9.]+ [Ee] [0-9]+`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `not`)
+  (lex_rule
+    `"'" / [0-9.]+ [Ee] [0-9]+ [ACELNPUacelnpu"'.(]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `not`
+    (set_action `pat` `1`))
+  (lex_rule
+    `"'" / [0-9.]+ [ACELNPUacelnpu"(]`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `not`
+    (set_action `pat` `1`))
+  (lex_rule
+    `"'" / [0-9.]+ "'"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `not`
+    (set_action `pat` `1`))
+  (lex_rule
+    `"'" / [0-9.]+ "'?"`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `not`)
+  (lex_rule
+    `'('`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `lparen`
+    (step_action `dep` `++`))
+  (lex_rule
+    `')'`
+    (guards
+      `@`
+      (guard _ `pat` _ _)
+      (guard _ `dep` _ _))
+    `rparen`
+    (step_action `dep` `--`))
+  (lex_rule
+    `')'`
+    (guards
+      `@`
+      (guard _ `pat` _ _)
+      (guard `!` `dep` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`))
+  (lex_rule
+    `[A-Za-z]`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `ident`)
+  (lex_rule
+    `','`
+    (guards
+      `@`
+      (guard _ `pat` _ _)
+      (guard `!` `dep` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`))
+  (lex_rule
+    `':'`
+    (guards
+      `@`
+      (guard _ `pat` _ _)
+      (guard `!` `dep` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`))
+  (lex_rule `[%A-Za-z][A-Za-z0-9]*` _ `ident`)
+  (lex_rule `"]]="` _ `sortsaftereq`)
+  (lex_rule `"'="` _ `noteq`)
+  (lex_rule `"'<"` _ `notlt`)
+  (lex_rule `"'>"` _ `notgt`)
+  (lex_rule `"'["` _ `notlbracket`)
+  (lex_rule `"']"` _ `notrbracket`)
+  (lex_rule `"'&"` _ `notampersand`)
+  (lex_rule `"'!"` _ `notexclaim`)
+  (lex_rule `"**"` _ `starstar`)
+  (lex_rule `"<="` _ `lteq`)
+  (lex_rule `">="` _ `gteq`)
+  (lex_rule `"=="` _ `eqeq`)
+  (lex_rule `"]]"` _ `sortsafter`)
+  (lex_rule `"]="` _ `followseq`)
+  (lex_rule `'.'` _ `dot`)
+  (lex_rule `'^'` _ `caret`)
+  (lex_rule `'@'` _ `at`)
+  (lex_rule `'$'` _ `dollar`)
+  (lex_rule `'('` _ `lparen`)
+  (lex_rule `')'` _ `rparen`)
+  (lex_rule `','` _ `comma`)
+  (lex_rule
+    `':'`
+    (guards
+      `@`
+      (guard _ `pre` _ _))
+    `colon_ws`)
+  (lex_rule `':'` _ `colon`)
+  (lex_rule `'|'` _ `pipe`)
+  (lex_rule `'='` _ `eq`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'/'` _ `slash`)
+  (lex_rule `'\\\\'` _ `backslash`)
+  (lex_rule
+    `'_'`
+    (guards
+      `@`
+      (guard `!` `pat` _ _))
+    `underscore`)
+  (lex_rule `"'"` _ `not`)
+  (lex_rule `'<'` _ `lt`)
+  (lex_rule `'>'` _ `gt`)
+  (lex_rule
+    `'?'`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `question`)
+  (lex_rule `'['` _ `lbracket`)
+  (lex_rule `']'` _ `rbracket`)
+  (lex_rule
+    `'!'`
+    (guards
+      `@`
+      (guard _ `pre` _ _))
+    `exclaim_ws`)
+  (lex_rule `'!'` _ `exclaim`)
+  (lex_rule
+    `'#'`
+    (guards
+      `@`
+      (guard _ `pre` _ _))
+    `hash_ws`)
+  (lex_rule `'#'` _ `hash`)
+  (lex_rule `'&'` _ `ampersand`)
+  (lex_rule
+    `'_'`
+    (guards
+      `@`
+      (guard _ `pat` _ _))
+    `patend`
+    (lex_action `hold` _)
+    (set_action `pat` `0`))
+  (lex_rule `.` _ `err`)
+  (code `checkPatternMode`)
+  (section `parser`)
   (lang `"mumps"`)
   (manifest
     (conflict `shift` `deviceparam → expr` _ `1` `# USE dev:(x): the parentheses group an expression, the same value as a one-parameter list`)

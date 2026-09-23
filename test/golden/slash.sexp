@@ -1,4 +1,97 @@
 (grammar
+  (section `lexer`)
+  (state
+    `state`
+    (assign `paren` `0`)
+    (assign `brace` `0`)
+    (assign `bracket` `0`))
+  (tokens `tokens` `ident` `integer` `string_sq` `string_dq` `variable` `var_braced` `dollar_paren` `at_paren` `proc_sub_in` `proc_sub_out` `lparen` `rparen` `lbrace` `rbrace` `lbracket` `rbracket` `semi` `and_and` `or_or` `amp` `pipe` `lt` `gt` `gt_gt` `amp_gt` `amp_gt_gt` `fd_lt` `fd_gt` `fd_dup_out` `fd_dup_in` `heredoc_open` `heredoc_open_lit` `heredoc_body` `str_open` `str_body` `assign` `name_eq` `indent` `outdent` `comment` `err` `eof`)
+  (lex_rule `"&&"` _ `and_and`)
+  (lex_rule `"||"` _ `or_or`)
+  (lex_rule `"&>>"` _ `amp_gt_gt`)
+  (lex_rule `"&>"` _ `amp_gt`)
+  (lex_rule `">>"` _ `gt_gt`)
+  (lex_rule `'<' '<' "'" [A-Za-z_] [A-Za-z0-9_]* "'"` _ `heredoc_open_lit`)
+  (lex_rule `'<' '<' [A-Za-z_] [A-Za-z0-9_]*` _ `heredoc_open`)
+  (lex_rule
+    `"<("`
+    _
+    `proc_sub_in`
+    (step_action `paren` `++`))
+  (lex_rule
+    `">("`
+    _
+    `proc_sub_out`
+    (step_action `paren` `++`))
+  (lex_rule `[0-9]+ '>' '&' [0-9]+` _ `fd_dup_out`)
+  (lex_rule `[0-9]+ '<' '&' [0-9]+` _ `fd_dup_in`)
+  (lex_rule `[0-9]+ '>'` _ `fd_gt`)
+  (lex_rule `[0-9]+ '<'` _ `fd_lt`)
+  (lex_rule `">"` _ `gt`)
+  (lex_rule `"<"` _ `lt`)
+  (lex_rule `"|"` _ `pipe`)
+  (lex_rule `";"` _ `semi`)
+  (lex_rule `"&"` _ `amp`)
+  (lex_rule `"="` _ `assign`)
+  (lex_rule
+    `"("`
+    _
+    `lparen`
+    (step_action `paren` `++`))
+  (lex_rule
+    `")"`
+    _
+    `rparen`
+    (step_action `paren` `--`))
+  (lex_rule
+    `"{"`
+    _
+    `lbrace`
+    (step_action `brace` `++`))
+  (lex_rule
+    `"}"`
+    _
+    `rbrace`
+    (step_action `brace` `--`))
+  (lex_rule
+    `"["`
+    _
+    `lbracket`
+    (step_action `bracket` `++`))
+  (lex_rule
+    `"]"`
+    _
+    `rbracket`
+    (step_action `bracket` `--`))
+  (lex_rule `"'" ([^'\\n] | "''")* "'"` _ `string_sq`)
+  (lex_rule `'"' ([^"\\\\\\n] | "\\\\" .)* '"'` _ `string_dq`)
+  (lex_rule `'$' '{' [^}\\n]+ '}'` _ `var_braced`)
+  (lex_rule `'$' [A-Za-z_] [A-Za-z0-9_]*` _ `variable`)
+  (lex_rule `'$' [0-9]` _ `variable`)
+  (lex_rule `'$' '?'` _ `variable`)
+  (lex_rule `'$' '#'` _ `variable`)
+  (lex_rule `'$' '!'` _ `variable`)
+  (lex_rule `'$' '@'` _ `variable`)
+  (lex_rule `'$' '*'` _ `variable`)
+  (lex_rule `'$' '$'` _ `variable`)
+  (lex_rule
+    `"$("`
+    _
+    `dollar_paren`
+    (step_action `paren` `++`))
+  (lex_rule
+    `"@("`
+    _
+    `at_paren`
+    (step_action `paren` `++`))
+  (lex_rule `'#' [^\\n]*` _ `comment`)
+  (lex_rule `"\\r\\n"` _ `semi`)
+  (lex_rule `'\\n'` _ `semi`)
+  (lex_rule `'\\r'` _ `semi`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `[A-Za-z_./\\-+~@%!*?:,^][A-Za-z0-9_./\\-+~@%!*?:,^]*` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (lang `"slash"`)
   (as
     `ident`

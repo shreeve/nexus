@@ -1,4 +1,125 @@
 (grammar
+  (section `lexer`)
+  (state
+    `state`
+    (assign `paren` `0`)
+    (assign `brack` `0`)
+    (assign `brace` `0`))
+  (tokens `tokens` `ident` `constant` `ivar` `cvar` `gvar` `integer` `float` `rational` `imaginary` `string_sq` `string_dq` `symbol` `label` `pct_w` `pct_i` `plus` `minus` `star` `slash` `percent` `power` `eq` `ne` `eqq` `cmp` `match_op` `nmatch` `lt` `gt` `le` `ge` `oror` `andand` `bang` `ampersand` `pipe` `caret` `tilde` `lshift` `rshift` `assign` `plus_eq` `minus_eq` `star_eq` `slash_eq` `percent_eq` `power_eq` `pipe_eq` `amp_eq` `caret_eq` `lshift_eq` `rshift_eq` `oror_eq` `andand_eq` `lparen` `rparen` `lbracket` `rbracket` `lbrace` `rbrace` `comma` `dot` `dotdot` `dotdotdot` `colon` `semicolon` `question` `fat_arrow` `arrow` `scope` `safe_nav` `dstr_beg` `str_content` `embexpr_beg` `embexpr_end` `dstr_end` `plus_u` `minus_u` `star_splat` `amp_block` `cmd_ident` `lbrace_block` `then_sep` `do_sep` `if_mod` `unless_mod` `while_mod` `until_mod` `rescue_mod` `do_block` `do_cond` `not_kw` `or_kw` `and_kw` `begin_kw` `if` `unless` `elsif` `else` `end` `while` `until` `for` `in` `case` `when` `then` `def` `class` `module` `rescue` `ensure` `return` `break` `next` `yield` `super` `defined` `alias` `undef` `retry` `redo` `self` `true` `false` `nil` `kw__file__` `kw__line__` `kw__encoding__` `newline` `comment` `eof` `err`)
+  (lex_rule
+    `[ \\t\\r]+`
+    _
+    `skip`
+    (lex_action `skip` _))
+  (lex_rule
+    `"\\\\\\n"`
+    _
+    `skip`
+    (lex_action `skip` _))
+  (lex_rule `'#' [^\\n]*` _ `comment`)
+  (lex_rule `'\\n'` _ `newline`)
+  (lex_rule `'"' ([^"\\\\] | '\\\\' .)* '"'` _ `string_dq`)
+  (lex_rule `"'" ([^'\\\\] | '\\\\' .)* "'"` _ `string_sq`)
+  (lex_rule `'0' [xX] [0-9a-fA-F] [0-9a-fA-F_]*` _ `integer`)
+  (lex_rule `'0' [bB] [01] [01_]*` _ `integer`)
+  (lex_rule `'0' [oO] [0-7] [0-7_]*` _ `integer`)
+  (lex_rule `[0-9] [0-9_]* '.' [0-9] [0-9_]* 'ri'` _ `imaginary`)
+  (lex_rule `[0-9] [0-9_]* '.' [0-9] [0-9_]* 'r'` _ `rational`)
+  (lex_rule `[0-9] [0-9_]* '.' [0-9] [0-9_]* 'i'` _ `imaginary`)
+  (lex_rule `[0-9] [0-9_]* '.' [0-9] [0-9_]* ([eE] [+-]? [0-9] [0-9_]*)?` _ `float`)
+  (lex_rule `[0-9] [0-9_]* [eE] [+-]? [0-9] [0-9_]*` _ `float`)
+  (lex_rule `[0-9] [0-9_]* 'ri'` _ `imaginary`)
+  (lex_rule `[0-9] [0-9_]* 'r'` _ `rational`)
+  (lex_rule `[0-9] [0-9_]* 'i'` _ `imaginary`)
+  (lex_rule `[0-9] [0-9_]*` _ `integer`)
+  (lex_rule `"==="` _ `eqq`)
+  (lex_rule `"<=>"` _ `cmp`)
+  (lex_rule `"..."` _ `dotdotdot`)
+  (lex_rule `"**="` _ `power_eq`)
+  (lex_rule `"<<="` _ `lshift_eq`)
+  (lex_rule `">>="` _ `rshift_eq`)
+  (lex_rule `"||="` _ `oror_eq`)
+  (lex_rule `"&&="` _ `andand_eq`)
+  (lex_rule `"**"` _ `power`)
+  (lex_rule `"=~"` _ `match_op`)
+  (lex_rule `"!~"` _ `nmatch`)
+  (lex_rule `"=="` _ `eq`)
+  (lex_rule `"!="` _ `ne`)
+  (lex_rule `"<="` _ `le`)
+  (lex_rule `">="` _ `ge`)
+  (lex_rule `"||"` _ `oror`)
+  (lex_rule `"&&"` _ `andand`)
+  (lex_rule `"<<"` _ `lshift`)
+  (lex_rule `">>"` _ `rshift`)
+  (lex_rule `"+="` _ `plus_eq`)
+  (lex_rule `"-="` _ `minus_eq`)
+  (lex_rule `"*="` _ `star_eq`)
+  (lex_rule `"/="` _ `slash_eq`)
+  (lex_rule `"%="` _ `percent_eq`)
+  (lex_rule `"|="` _ `pipe_eq`)
+  (lex_rule `"&="` _ `amp_eq`)
+  (lex_rule `"^="` _ `caret_eq`)
+  (lex_rule `"=>"` _ `fat_arrow`)
+  (lex_rule `"->"` _ `arrow`)
+  (lex_rule `"::"` _ `scope`)
+  (lex_rule `"&."` _ `safe_nav`)
+  (lex_rule `".."` _ `dotdot`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'/'` _ `slash`)
+  (lex_rule `'%'` _ `percent`)
+  (lex_rule `'<'` _ `lt`)
+  (lex_rule `'>'` _ `gt`)
+  (lex_rule `'!'` _ `bang`)
+  (lex_rule `'?'` _ `question`)
+  (lex_rule `'|'` _ `pipe`)
+  (lex_rule `'&'` _ `ampersand`)
+  (lex_rule `'^'` _ `caret`)
+  (lex_rule `'~'` _ `tilde`)
+  (lex_rule `'='` _ `assign`)
+  (lex_rule
+    `'('`
+    _
+    `lparen`
+    (step_action `paren` `++`))
+  (lex_rule
+    `')'`
+    _
+    `rparen`
+    (step_action `paren` `--`))
+  (lex_rule
+    `'{'`
+    _
+    `lbrace`
+    (step_action `brace` `++`))
+  (lex_rule
+    `'}'`
+    _
+    `rbrace`
+    (step_action `brace` `--`))
+  (lex_rule
+    `'['`
+    _
+    `lbracket`
+    (step_action `brack` `++`))
+  (lex_rule
+    `']'`
+    _
+    `rbracket`
+    (step_action `brack` `--`))
+  (lex_rule `','` _ `comma`)
+  (lex_rule `':'` _ `colon`)
+  (lex_rule `';'` _ `semicolon`)
+  (lex_rule `'.'` _ `dot`)
+  (lex_rule `"@@" [a-zA-Z_][a-zA-Z0-9_]*` _ `cvar`)
+  (lex_rule `'$' [a-zA-Z_][a-zA-Z0-9_]*` _ `gvar`)
+  (lex_rule `'$' [0-9]+` _ `gvar`)
+  (lex_rule `'@' [a-zA-Z_][a-zA-Z0-9_]*` _ `ivar`)
+  (lex_rule `[A-Z][a-zA-Z0-9_]*` _ `constant`)
+  (lex_rule `[a-z_][a-zA-Z0-9_]* [?!]?` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (lang `"ruby"`)
   (manifest
     (conflict `shift` `stmt_list → sep stmt_list` _ `2` `# a newline after a separator is another separator, not the end of the list`)

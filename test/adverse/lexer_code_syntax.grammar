@@ -1,0 +1,13 @@
+# @code names a function: @code = name.
+# error: lexer_code_syntax.grammar:10:7:
+# error: expected "="
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+@code checkIt
+. → err
+@parser
+top! = WORD → 1

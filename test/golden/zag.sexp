@@ -1,4 +1,101 @@
 (grammar
+  (lang `"zag"`)
+  (section `lexer`)
+  (state
+    `state`
+    (assign `beg` `1`)
+    (assign `paren` `0`)
+    (assign `brace` `0`))
+  (after
+    `after`
+    (assign `beg` `0`))
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `plus` `minus` `minus_prefix` `star` `slash` `percent` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `const_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `lparen` `rparen` `lbrace` `rbrace` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `pipe` `indent` `outdent` `newline` `post_if` `ternary_if` `dot_lbrace` `bar_capture` `comment` `eof` `err`)
+  (lex_rule `'#' [^\\n]*` _ `comment`)
+  (lex_rule `"\\\\\\n"` _ `skip`)
+  (lex_rule
+    `"\\r\\n"`
+    _
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule
+    `'\\n'`
+    _
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule
+    `'\\r'`
+    _
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule `'"' ([^"\\\\$\\n] | '\\\\' . | '$')* '"'` _ `string_dq`)
+  (lex_rule `"'" ([^'\\n] | "''")* "'"` _ `string_sq`)
+  (lex_rule `'0' [xX] [0-9a-fA-F]+` _ `integer`)
+  (lex_rule `'0' [bB] [01]+` _ `integer`)
+  (lex_rule `'0' [oO] [0-7]+` _ `integer`)
+  (lex_rule `[0-9]* '.' [0-9]+` _ `real`)
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `"**"` _ `power`)
+  (lex_rule `"=="` _ `eq`)
+  (lex_rule `"!="` _ `ne`)
+  (lex_rule `"<="` _ `le`)
+  (lex_rule `">="` _ `ge`)
+  (lex_rule `"&&"` _ `and_sym`)
+  (lex_rule `"||"` _ `or_sym`)
+  (lex_rule `"=!"` _ `const_assign`)
+  (lex_rule `"+="` _ `plus_assign`)
+  (lex_rule `"-="` _ `minus_assign`)
+  (lex_rule `"*="` _ `star_assign`)
+  (lex_rule `"/="` _ `slash_assign`)
+  (lex_rule `"->"` _ `arrow`)
+  (lex_rule `"=>"` _ `fat_arrow`)
+  (lex_rule `"|>"` _ `pipe`)
+  (lex_rule `"??"` _ `nullish`)
+  (lex_rule `".."` _ `dotdot`)
+  (lex_rule `"<<"` _ `lshift`)
+  (lex_rule `">>"` _ `rshift`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'/'` _ `slash`)
+  (lex_rule `'%'` _ `percent`)
+  (lex_rule `'<'` _ `lt`)
+  (lex_rule `'>'` _ `gt`)
+  (lex_rule `'!'` _ `not_sym`)
+  (lex_rule `'?'` _ `question`)
+  (lex_rule `'|'` _ `bar`)
+  (lex_rule `'&'` _ `ampersand`)
+  (lex_rule `'^'` _ `caret`)
+  (lex_rule `'~'` _ `tilde`)
+  (lex_rule `'@'` _ `at`)
+  (lex_rule `'='` _ `assign`)
+  (lex_rule
+    `'('`
+    _
+    `lparen`
+    (step_action `paren` `++`))
+  (lex_rule
+    `')'`
+    _
+    `rparen`
+    (step_action `paren` `--`))
+  (lex_rule
+    `'{'`
+    _
+    `lbrace`
+    (step_action `brace` `++`))
+  (lex_rule
+    `'}'`
+    _
+    `rbrace`
+    (step_action `brace` `--`))
+  (lex_rule `'['` _ `lbracket`)
+  (lex_rule `']'` _ `rbracket`)
+  (lex_rule `','` _ `comma`)
+  (lex_rule `':'` _ `colon`)
+  (lex_rule `'.'` _ `dot`)
+  (lex_rule `[a-zA-Z_][a-zA-Z0-9_]* '?'?` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (manifest
     (conflict `shift` `if → IF cond block` _ `1` `# dangling else: ELSE binds to the nearest if`)
     (conflict `shift` `while → WHILE cond block` _ `1` `# ELSE binds to the nearest while`)

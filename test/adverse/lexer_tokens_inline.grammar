@@ -1,0 +1,8 @@
+# Token names go on the indented lines of the tokens block.
+# error: lexer_tokens_inline.grammar:5:8:
+# error: unexpected name 'eof'
+@lexer
+tokens eof err
+. → err
+@parser
+top! = ERR → 1

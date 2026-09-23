@@ -1,0 +1,13 @@
+# A quoted byte must close on its line.
+# error: lexer_unterminated_byte.grammar:10:34:
+# error: unterminated quoted byte
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+@ mode → plus, {mode = counted('a)}
+. → err
+@parser
+top! = WORD → 1

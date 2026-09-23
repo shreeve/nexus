@@ -125,8 +125,7 @@ src/
 ├── check.zig            # Symbol validation and `nexus check` lint
 ├── expand.zig           # Desugaring: [opt], X? X* X+, L(X), groups, @infix, start rules
 ├── frontend/
-│   ├── frontend.zig     # Section discovery, @parser parse entry, --dump-sexp printer
-│   ├── lexer_section.zig # @lexer section parser (strict, located errors)
+│   ├── frontend.zig     # Grammar-file parse entry, --dump-sexp printer
 │   ├── lower.zig        # Strict Sexp -> GrammarIR lowering (+ negative-shape tests)
 │   ├── parser.zig       # Self-hosted frontend, generated from nexus.grammar
 │   └── lang.zig         # Lang module for the frontend (Tag enum + lexer wrapper)

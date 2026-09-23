@@ -1,0 +1,13 @@
+# Actions assign declared state variables.
+# error: lexer_action_undeclared.grammar:10:1:
+# error: action assigns 'nope'
+@lexer
+state
+    mode = 0
+    flag = false
+tokens
+    word, num, plus, eof, err
+'+' → plus, {nope = 1}
+. → err
+@parser
+top! = WORD → 1

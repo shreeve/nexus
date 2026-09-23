@@ -1,4 +1,41 @@
 (grammar
+  (section `lexer`)
+  (state
+    `state`
+    (assign `beg` `1`)
+    (assign `depth` `0`))
+  (after
+    `after`
+    (assign `beg` `0`))
+  (tokens `tokens` `ident` `integer` `string_dq` `plus` `minus` `star` `assign` `comma` `colon` `lparen` `rparen` `arrow` `newline` `comment` `eof` `err`)
+  (lex_rule `'#' [^\\n]*` _ `comment`)
+  (lex_rule `'"' ([^"\\\\$\\n] | '\\\\' . | '$')* '"'` _ `string_dq`)
+  (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
+  (lex_rule `'*'` _ `star`)
+  (lex_rule `'='` _ `assign`)
+  (lex_rule `','` _ `comma`)
+  (lex_rule `':'` _ `colon`)
+  (lex_rule `"->"` _ `arrow`)
+  (lex_rule
+    `'('`
+    _
+    `lparen`
+    (step_action `depth` `++`))
+  (lex_rule
+    `')'`
+    _
+    `rparen`
+    (step_action `depth` `--`))
+  (lex_rule
+    `'\\n'`
+    _
+    `newline`
+    (set_action `beg` `1`))
+  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
+  (lex_rule `.` _ `err`)
+  (section `parser`)
   (lang `"features"`)
   (rule
     (name `name`)
