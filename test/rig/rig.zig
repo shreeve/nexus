@@ -35,7 +35,7 @@ pub const Tag = parser.Tag;
 
 /// The declared return type of a `fun`; `_` for a `sub`, which has none.
 pub fn returnType(fun_or_sub: Sexp) Sexp {
-    return if (fun_or_sub.isKind(.@"fun")) ir.Fun.returns(fun_or_sub) else .nil;
+    return if (fun_or_sub.isKind(.fun)) ir.Fun.returns(fun_or_sub) else .nil;
 }
 
 /// Every child of a node, in slot order (absent optional slots are `_`),
@@ -58,7 +58,7 @@ pub const BindingKind = enum {
     default,
     fixed,
     shadow,
-    @"move",
+    move,
     @"+=",
     @"-=",
     @"*=",
@@ -74,7 +74,7 @@ pub const BindingKind = enum {
     /// plain binding or assignment.
     pub fn operator(k: BindingKind) ?Tag {
         return switch (k) {
-            .default, .fixed, .shadow, .@"move" => null,
+            .default, .fixed, .shadow, .move => null,
             .@"+=" => .@"+",
             .@"-=" => .@"-",
             .@"*=" => .@"*",
@@ -99,7 +99,7 @@ pub fn bindingKindOf(kind_slot: Sexp) BindingKindError!BindingKind {
     return switch (kind_slot.tag) {
         .fixed => .fixed,
         .shadow => .shadow,
-        .@"move" => .@"move",
+        .move => .move,
         .@"+=" => .@"+=",
         .@"-=" => .@"-=",
         .@"*=" => .@"*=",
@@ -123,39 +123,39 @@ pub fn bindingKindOf(kind_slot: Sexp) BindingKindError!BindingKind {
 /// `fun new(...)` and `Point.new(...)` stay ordinary names.
 const keywords = std.StaticStringMap(TokenCat).initComptime(.{
     .{ "and", .@"and" },
-    .{ "as", .@"as" },
+    .{ "as", .as },
     .{ "break", .@"break" },
     .{ "catch", .@"catch" },
     .{ "continue", .@"continue" },
     .{ "defer", .@"defer" },
-    .{ "drop", .@"drop" },
+    .{ "drop", .drop },
     .{ "else", .@"else" },
     .{ "enum", .@"enum" },
     .{ "errdefer", .@"errdefer" },
     .{ "error", .@"error" },
     .{ "extern", .@"extern" },
-    .{ "false", .@"false" },
+    .{ "false", .false },
     .{ "for", .@"for" },
-    .{ "fun", .@"fun" },
+    .{ "fun", .fun },
     .{ "if", .@"if" },
-    .{ "in", .@"in" },
-    .{ "match", .@"match" },
-    .{ "new", .@"new" },
-    .{ "not", .@"not" },
+    .{ "in", .in },
+    .{ "match", .match },
+    .{ "new", .new },
+    .{ "not", .not },
     .{ "or", .@"or" },
-    .{ "pre", .@"pre" },
+    .{ "pre", .pre },
     .{ "pub", .@"pub" },
-    .{ "raw", .@"raw" },
+    .{ "raw", .raw },
     .{ "return", .@"return" },
     .{ "struct", .@"struct" },
-    .{ "sub", .@"sub" },
+    .{ "sub", .sub },
     .{ "test", .@"test" },
-    .{ "true", .@"true" },
+    .{ "true", .true },
     .{ "try", .@"try" },
-    .{ "type", .@"type" },
-    .{ "use", .@"use" },
+    .{ "type", .type },
+    .{ "use", .use },
     .{ "while", .@"while" },
-    .{ "zig", .@"zig" },
+    .{ "zig", .zig },
 });
 
 /// The token category of a reserved word, or null for a plain name.
@@ -168,28 +168,28 @@ pub fn keyword(word: []const u8) ?TokenCat {
 // =============================================================================
 
 const zig_keywords = std.StaticStringMap(void).initComptime(.{
-    .{"addrspace"},   .{"align"},       .{"allowzero"},   .{"and"},
-    .{"anyframe"},    .{"anytype"},     .{"asm"},         .{"break"},
-    .{"callconv"},    .{"catch"},       .{"comptime"},    .{"const"},
-    .{"continue"},    .{"defer"},       .{"else"},        .{"enum"},
-    .{"errdefer"},    .{"error"},       .{"export"},      .{"extern"},
-    .{"fn"},          .{"for"},         .{"if"},          .{"inline"},
-    .{"linksection"}, .{"noalias"},     .{"noinline"},    .{"nosuspend"},
-    .{"opaque"},      .{"or"},          .{"orelse"},      .{"packed"},
-    .{"pub"},         .{"resume"},      .{"return"},      .{"struct"},
-    .{"suspend"},     .{"switch"},      .{"test"},        .{"threadlocal"},
-    .{"try"},         .{"union"},       .{"unreachable"}, .{"var"},
+    .{"addrspace"},   .{"align"},   .{"allowzero"},   .{"and"},
+    .{"anyframe"},    .{"anytype"}, .{"asm"},         .{"break"},
+    .{"callconv"},    .{"catch"},   .{"comptime"},    .{"const"},
+    .{"continue"},    .{"defer"},   .{"else"},        .{"enum"},
+    .{"errdefer"},    .{"error"},   .{"export"},      .{"extern"},
+    .{"fn"},          .{"for"},     .{"if"},          .{"inline"},
+    .{"linksection"}, .{"noalias"}, .{"noinline"},    .{"nosuspend"},
+    .{"opaque"},      .{"or"},      .{"orelse"},      .{"packed"},
+    .{"pub"},         .{"resume"},  .{"return"},      .{"struct"},
+    .{"suspend"},     .{"switch"},  .{"test"},        .{"threadlocal"},
+    .{"try"},         .{"union"},   .{"unreachable"}, .{"var"},
     .{"volatile"},    .{"while"},
 });
 
 const zig_primitives = std.StaticStringMap(void).initComptime(.{
-    .{"anyerror"},       .{"anyopaque"},     .{"bool"},        .{"c_char"},
-    .{"c_int"},          .{"c_long"},        .{"c_longdouble"}, .{"c_longlong"},
-    .{"c_short"},        .{"c_uint"},        .{"c_ulong"},     .{"c_ulonglong"},
-    .{"c_ushort"},       .{"comptime_float"}, .{"comptime_int"}, .{"f128"},
-    .{"f16"},            .{"f32"},           .{"f64"},         .{"f80"},
-    .{"false"},          .{"isize"},         .{"noreturn"},    .{"null"},
-    .{"true"},           .{"type"},          .{"undefined"},   .{"usize"},
+    .{"anyerror"}, .{"anyopaque"},      .{"bool"},         .{"c_char"},
+    .{"c_int"},    .{"c_long"},         .{"c_longdouble"}, .{"c_longlong"},
+    .{"c_short"},  .{"c_uint"},         .{"c_ulong"},      .{"c_ulonglong"},
+    .{"c_ushort"}, .{"comptime_float"}, .{"comptime_int"}, .{"f128"},
+    .{"f16"},      .{"f32"},            .{"f64"},          .{"f80"},
+    .{"false"},    .{"isize"},          .{"noreturn"},     .{"null"},
+    .{"true"},     .{"type"},           .{"undefined"},    .{"usize"},
     .{"void"},
 });
 
@@ -634,7 +634,7 @@ pub const Lexer = struct {
                 if (!isValue(self.last_cat)) return .@"if";
                 return if (self.elseFollows()) .ternary_if else .post_if;
             },
-            .@"new" => return if (self.atStatementStart() and self.nextIsName()) .@"new" else .ident,
+            .new => return if (self.atStatementStart() and self.nextIsName()) .new else .ident,
             else => return kw,
         };
         if (self.inParens() and self.nextCat() == .colon) return .kwarg_name;
@@ -825,8 +825,17 @@ pub const Lexer = struct {
 /// `!` touching one of these is a suffix, not a prefix.
 fn isValue(cat: TokenCat) bool {
     return switch (cat) {
-        .ident, .integer, .real, .string_sq, .string_dq, .@"true", .@"false",
-        .rparen, .rbracket, .suffix_q, .suffix_bang,
+        .ident,
+        .integer,
+        .real,
+        .string_sq,
+        .string_dq,
+        .true,
+        .false,
+        .rparen,
+        .rbracket,
+        .suffix_q,
+        .suffix_bang,
         => true,
         else => false,
     };
@@ -1002,12 +1011,12 @@ pub const Parser = struct {
         for (items, 0..) |child, i| walked[i] = try self.walk(child);
         const out: Sexp = .{ .list = parser.List.withId(walked, sexp.list.id) };
         switch (out.kind() orelse return out) {
-            .@"lambda" => try self.splitBars(out, walked),
+            .lambda => try self.splitBars(out, walked),
             .@"for" => normFor(walked),
             // The body's value is returned.
-            .@"fun" => if (ir.Fun.returns(out) != .nil) valueTail(ir.Fun.body(out)),
+            .fun => if (ir.Fun.returns(out) != .nil) valueTail(ir.Fun.body(out)),
             // The expression's value is bound.
-            .@"set" => valueTail(ir.Set.value(out)),
+            .set => valueTail(ir.Set.value(out)),
             else => {},
         }
         return out;
@@ -1021,7 +1030,7 @@ pub const Parser = struct {
         var params: std.ArrayListUnmanaged(Sexp) = .empty;
         for (bars.items()) |e| {
             const is_capture = if (e.kind()) |k| switch (k) {
-                .@"cap_clone", .@"cap_move", .@"cap_weak" => true,
+                .cap_clone, .cap_move, .cap_weak => true,
                 else => false,
             } else false;
             if (!is_capture) {
@@ -1034,11 +1043,11 @@ pub const Parser = struct {
             }
             try caps.append(self.allocator(), e);
         }
-        items[ir.slot(.@"lambda", .captures)] = if (caps.items.len > 0) try self.base.newNode(.@"captures", caps.items, .{
+        items[ir.slot(.lambda, .captures)] = if (caps.items.len > 0) try self.base.newNode(.captures, caps.items, .{
             .start = self.span(caps.items[0]).start,
             .end = self.span(caps.items[caps.items.len - 1]).end,
         }) else .nil;
-        items[ir.slot(.@"lambda", .params)] = if (params.items.len > 0) .{ .list = parser.List.withId(params.items, bars.list.id) } else .nil;
+        items[ir.slot(.lambda, .params)] = if (params.items.len > 0) .{ .list = parser.List.withId(params.items, bars.list.id) } else .nil;
     }
 
     /// `sexp` (already walked, so its lists are freshly allocated) is in
@@ -1047,8 +1056,8 @@ pub const Parser = struct {
         const kind = sexp.kind() orelse return;
         const items = @constCast(sexp.items());
         switch (kind) {
-            .@"drop" => items[0] = .{ .tag = .@"neg" },
-            .@"block" => {
+            .drop => items[0] = .{ .tag = .neg },
+            .block => {
                 const stmts = ir.Block.stmts(sexp);
                 if (stmts.len > 0) valueTail(stmts[stmts.len - 1]);
             },
@@ -1056,7 +1065,7 @@ pub const Parser = struct {
                 valueTail(ir.If.then(sexp));
                 valueTail(ir.If.@"else"(sexp));
             },
-            .@"match" => for (ir.Match.arms(sexp)) |arm| valueTail(ir.Arm.body(arm)),
+            .match => for (ir.Match.arms(sexp)) |arm| valueTail(ir.Arm.body(arm)),
             else => {},
         }
     }
@@ -1068,7 +1077,7 @@ pub const Parser = struct {
         const source = ir.For.source(node);
         const kind = source.kind() orelse return;
         switch (kind) {
-            .@"read", .@"write", .@"move" => {
+            .read, .write, .move => {
                 items[ir.slot(.@"for", .mode)] = .{ .tag = kind };
                 items[ir.slot(.@"for", .source)] = ir.get(source, .operand);
             },
@@ -1098,7 +1107,7 @@ test "keywords are reserved; `new` only at statement start" {
     try testing.expectEqual(TokenCat.@"else", keyword("else").?);
     try testing.expect(keyword("fn") == null);
     try testing.expect(keyword("var") == null);
-    try expectCats("new x = 1", &.{ .@"new", .ident, .assign, .integer });
+    try expectCats("new x = 1", &.{ .new, .ident, .assign, .integer });
     try expectCats("p = Point.new(1)", &.{ .ident, .assign, .ident, .dot, .ident, .lparen_call, .integer, .rparen });
 }
 
@@ -1120,7 +1129,7 @@ test "spacing decides prefix vs infix" {
 test "minus: infix, negation, drop" {
     try expectCats("a - b", &.{ .ident, .minus, .ident });
     try expectCats("a -b", &.{ .ident, .minus_prefix, .ident });
-    try expectCats("-x", &.{.drop_stmt, .ident});
+    try expectCats("-x", &.{ .drop_stmt, .ident });
     try expectCats("-x + 1", &.{ .minus_prefix, .ident, .plus, .integer });
     try expectCats("y = -x", &.{ .ident, .assign, .minus_prefix, .ident });
 }
@@ -1151,9 +1160,9 @@ test "closure bar lists: typed parameters, empty bars, owned star" {
 
 test "layout: a closure body inside brackets is laid out in blocks" {
     try expectCats("f(*|x|\n  g(x)\n  h)\ny", &.{
-        .ident,  .lparen_call, .share_pfx, .bar_capture, .ident, .bar_capture,
-        .indent, .ident,       .lparen_call, .ident,     .rparen, .newline,
-        .ident,  .outdent,     .rparen,    .newline,     .ident,
+        .ident,  .lparen_call, .share_pfx,   .bar_capture, .ident,  .bar_capture,
+        .indent, .ident,       .lparen_call, .ident,       .rparen, .newline,
+        .ident,  .outdent,     .rparen,      .newline,     .ident,
     });
     // Coming back to the closure's line ends the body.
     try expectCats("f(||\n  g\n, 1)", &.{ .ident, .lparen_call, .bar_empty, .indent, .ident, .outdent, .comma, .integer, .rparen });
@@ -1177,7 +1186,7 @@ test "parser: for-source sigil moves into the mode slot" {
     defer p.deinit();
     const tree = try p.parseProgram();
     const loop = ir.Module.decls(tree)[0];
-    try testing.expectEqual(Tag.@"read", ir.For.mode(loop).tag);
+    try testing.expectEqual(Tag.read, ir.For.mode(loop).tag);
     try testing.expectEqualStrings("xs", ir.For.source(loop).getText(p.base.source));
 }
 
@@ -1191,7 +1200,7 @@ test "parser: bar lists split into captures and parameters, all with node ids" {
     try testing.expectEqual(ir.Module.decls(raw)[0].list.id, set.list.id);
     const lambda = ir.Set.value(set);
     const captures = ir.Lambda.captures(lambda);
-    try testing.expect(captures.isKind(.@"captures"));
+    try testing.expect(captures.isKind(.captures));
     try testing.expectEqual(@as(usize, 1), ir.Lambda.params(lambda).items().len);
     const s = p.span(lambda);
     try testing.expectEqualStrings("|+c, a| a + c", source[s.start..s.end]);
