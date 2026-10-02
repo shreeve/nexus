@@ -72,10 +72,6 @@ in `build.zig` on `addPassthruArgs`.
    instructions in 8% more cycles: a code-generation or layout effect of
    LLVM 22, not extra work. Generated parsers got faster (VistA +2.4%, Rig
    +3.7%). Worth a profile only if generation time starts to matter.
-5. **A misleading progress line.** `Lexer: N states, …` (src/main.zig)
-   counts lexer *state variables* (MUMPS declares 3, `nexus.grammar` none),
-   not DFA states. Say "state variables" (or report the DFA size); check
-   `tools/cli` and doc examples for the old text.
 
 ## Tips
 
