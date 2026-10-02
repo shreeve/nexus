@@ -158,7 +158,7 @@ fn checkCycles(a: Allocator, g: *const Grammar, path: []const u8) Error!void {
     const state = try a.alloc(u8, nsym); // 0 new, 1 on the path, 2 done
     defer a.free(state);
     @memset(state, 0);
-    var path_: std.ArrayListUnmanaged(u16) = .empty; // rules on the path
+    var path_: std.ArrayList(u16) = .empty; // rules on the path
     defer path_.deinit(a);
     for (g.symbols.items, 0..) |sym, i| {
         if (sym.kind != .nonterminal or state[i] != 0) continue;
@@ -182,7 +182,7 @@ fn checkCycles(a: Allocator, g: *const Grammar, path: []const u8) Error!void {
 
 /// Depth-first search along unit derivations from `sym`; returns the index
 /// in `path` where a cycle starts.
-fn cycleFrom(a: Allocator, g: *const Grammar, nullable: []const bool, state: []u8, path: *std.ArrayListUnmanaged(u16), sym: u16) Error!?usize {
+fn cycleFrom(a: Allocator, g: *const Grammar, nullable: []const bool, state: []u8, path: *std.ArrayList(u16), sym: u16) Error!?usize {
     state[sym] = 1;
     for (g.symbols.items[sym].rules.items) |ri| {
         const rule = g.rules.items[ri];

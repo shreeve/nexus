@@ -24,7 +24,7 @@ const ActionElem = grammar.ActionElem;
 /// included), in first-seen order over the rules.
 pub const TagSet = struct {
     map: std.StringHashMapUnmanaged(u16) = .empty,
-    list: std.ArrayListUnmanaged([]const u8) = .empty,
+    list: std.ArrayList([]const u8) = .empty,
 
     pub fn collect(self: *TagSet, allocator: Allocator, rules: []const Rule) !void {
         for (rules) |rule| {
@@ -279,7 +279,7 @@ const Emitter = struct {
         if (extend) |n| {
             try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
         } else {
-            try w.print("{s}: {{ var out: std.ArrayListUnmanaged(Sexp) = .empty; ", .{label});
+            try w.print("{s}: {{ var out: std.ArrayList(Sexp) = .empty; ", .{label});
         }
         if (headValue(l.head)) |_| {
             try w.writeAll("out.append(self.allocator(), ");
@@ -341,7 +341,7 @@ const Emitter = struct {
                 defer self.use = use;
                 self.depth += 1;
                 var buf: [16]u8 = undefined;
-                const label = try std.fmt.bufPrint(&buf, "blk{d}", .{self.depth});
+                const label = try std.mem.print(&buf, "blk{d}", .{self.depth});
                 var range: Range = .{};
                 range.addList(n.*);
                 if (range.lo) |lo| {
@@ -412,7 +412,7 @@ fn isTagLiteral(t: []const u8) bool {
 /// the quotes, `\c` escapes read as `c`.
 fn literalText(allocator: Allocator, name: []const u8) ![]const u8 {
     const body = name[1 .. name.len - 1];
-    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < body.len) : (i += 1) {
         if (body[i] == '\\' and i + 1 < body.len) i += 1;

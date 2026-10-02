@@ -101,49 +101,49 @@ pub const Lexer = struct {
         const pre: u8 = @intCast(@min(self.base.pos - ws_start, 255));
 
         if (self.base.pos >= src.len) {
-            return .{ .cat = .@"eof", .pre = pre, .pos = self.base.pos, .len = 0 };
+            return .{ .cat = .eof, .pre = pre, .pos = self.base.pos, .len = 0 };
         }
 
         const start = self.base.pos;
         const c = src[start];
 
         switch (c) {
-            '(' => return self.single(.@"lparen", start, pre),
-            ')' => return self.single(.@"rparen", start, pre),
-            '[' => return self.single(.@"lbracket", start, pre),
-            ']' => return self.single(.@"rbracket", start, pre),
-            '{' => return self.single(.@"lbrace", start, pre),
-            '}' => return self.single(.@"rbrace", start, pre),
-            '\'' => return self.single(.@"quote_tok", start, pre),
-            '`' => return self.single(.@"syntax_quote_tok", start, pre),
-            '@' => return self.single(.@"deref_tok", start, pre),
-            '^' => return self.single(.@"caret", start, pre),
+            '(' => return self.single(.lparen, start, pre),
+            ')' => return self.single(.rparen, start, pre),
+            '[' => return self.single(.lbracket, start, pre),
+            ']' => return self.single(.rbracket, start, pre),
+            '{' => return self.single(.lbrace, start, pre),
+            '}' => return self.single(.rbrace, start, pre),
+            '\'' => return self.single(.quote_tok, start, pre),
+            '`' => return self.single(.syntax_quote_tok, start, pre),
+            '@' => return self.single(.deref_tok, start, pre),
+            '^' => return self.single(.caret, start, pre),
             '~' => {
                 if (start + 1 < src.len and src[start + 1] == '@') {
                     self.base.pos += 2;
-                    return .{ .cat = .@"unquote_splicing_tok", .pre = pre, .pos = start, .len = 2 };
+                    return .{ .cat = .unquote_splicing_tok, .pre = pre, .pos = start, .len = 2 };
                 }
-                return self.single(.@"unquote_tok", start, pre);
+                return self.single(.unquote_tok, start, pre);
             },
             '#' => {
                 if (start + 1 < src.len) {
                     switch (src[start + 1]) {
                         '{' => {
                             self.base.pos += 2;
-                            return .{ .cat = .@"hash_lbrace", .pre = pre, .pos = start, .len = 2 };
+                            return .{ .cat = .hash_lbrace, .pre = pre, .pos = start, .len = 2 };
                         },
                         '(' => {
                             self.base.pos += 2;
-                            return .{ .cat = .@"hash_lparen", .pre = pre, .pos = start, .len = 2 };
+                            return .{ .cat = .hash_lparen, .pre = pre, .pos = start, .len = 2 };
                         },
                         '_' => {
                             self.base.pos += 2;
-                            return .{ .cat = .@"hash_discard", .pre = pre, .pos = start, .len = 2 };
+                            return .{ .cat = .hash_discard, .pre = pre, .pos = start, .len = 2 };
                         },
                         else => {},
                     }
                 }
-                return self.single(.@"err", start, pre);
+                return self.single(.err, start, pre);
             },
             '"' => return self.scanString(start, pre),
             '\\' => return self.scanChar(start, pre),
@@ -158,7 +158,7 @@ pub const Lexer = struct {
             },
             else => {
                 if (isIdentStart(c)) return self.scanIdent(start, pre);
-                return self.single(.@"err", start, pre);
+                return self.single(.err, start, pre);
             },
         }
     }
@@ -205,7 +205,7 @@ pub const Lexer = struct {
             const ch = src[self.base.pos];
             if (ch == '"') {
                 self.base.pos += 1;
-                return .{ .cat = .@"string", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return .{ .cat = .string, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
             }
             if (ch == '\\') {
                 // Accept any next byte; detailed escape validation is the
@@ -216,7 +216,7 @@ pub const Lexer = struct {
             if (ch == '\n') break; // no multi-line strings (PLAN §7.2).
             self.base.pos += 1;
         }
-        return .{ .cat = .@"err", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
     }
 
     fn scanChar(self: *Lexer, start: u32, pre: u8) Token {
@@ -224,7 +224,7 @@ pub const Lexer = struct {
         // start points at '\\'. A char literal needs at least one char after.
         self.base.pos = start + 1;
         if (self.base.pos >= src.len) {
-            return .{ .cat = .@"err", .pre = pre, .pos = start, .len = 1 };
+            return .{ .cat = .err, .pre = pre, .pos = start, .len = 1 };
         }
 
         // `\u{HEX}` — unicode scalar.
@@ -233,9 +233,9 @@ pub const Lexer = struct {
             while (self.base.pos < src.len and isHexDigit(src[self.base.pos])) : (self.base.pos += 1) {}
             if (self.base.pos < src.len and src[self.base.pos] == '}') {
                 self.base.pos += 1;
-                return .{ .cat = .@"char", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return .{ .cat = .char, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
             }
-            return .{ .cat = .@"err", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+            return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
         }
 
         // `\name` — named character (alpha run). `\a` and friends fall out of
@@ -243,12 +243,12 @@ pub const Lexer = struct {
         if (isNamedCharStart(src[self.base.pos])) {
             self.base.pos += 1;
             while (self.base.pos < src.len and isAlpha(src[self.base.pos])) : (self.base.pos += 1) {}
-            return .{ .cat = .@"char", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+            return .{ .cat = .char, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
         }
 
         // `\<any>` — any single literal character (incl. punctuation).
         self.base.pos += 1;
-        return .{ .cat = .@"char", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return .{ .cat = .char, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
     }
 
     inline fn isNamedCharStart(c: u8) bool {
@@ -268,21 +268,21 @@ pub const Lexer = struct {
         // keyword whose body starts with `-` — matching Clojure.
         self.base.pos = start + 1;
         if (self.base.pos >= src.len) {
-            return .{ .cat = .@"err", .pre = pre, .pos = start, .len = 1 };
+            return .{ .cat = .err, .pre = pre, .pos = start, .len = 1 };
         }
         const first = src[self.base.pos];
         if (!isIdentStart(first) and first != '-') {
-            return .{ .cat = .@"err", .pre = pre, .pos = start, .len = 1 };
+            return .{ .cat = .err, .pre = pre, .pos = start, .len = 1 };
         }
         while (self.base.pos < src.len and isIdentCont(src[self.base.pos])) : (self.base.pos += 1) {}
-        return .{ .cat = .@"keyword", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return .{ .cat = .keyword, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
     }
 
     fn scanIdent(self: *Lexer, start: u32, pre: u8) Token {
         const src = self.base.source;
         self.base.pos = start + 1;
         while (self.base.pos < src.len and isIdentCont(src[self.base.pos])) : (self.base.pos += 1) {}
-        return .{ .cat = .@"ident", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return .{ .cat = .ident, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
     }
 
     fn scanNumber(self: *Lexer, start: u32, pre: u8, has_minus: bool) Token {
@@ -297,18 +297,18 @@ pub const Lexer = struct {
                 const hex_body = self.base.pos;
                 while (self.base.pos < src.len and isHexDigit(src[self.base.pos])) : (self.base.pos += 1) {}
                 if (self.base.pos == hex_body) {
-                    return .{ .cat = .@"err", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                    return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
                 }
-                return .{ .cat = .@"integer", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return .{ .cat = .integer, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
             }
             if (d == 'b' or d == 'B') {
                 self.base.pos += 2;
                 const bin_body = self.base.pos;
                 while (self.base.pos < src.len and isBinDigit(src[self.base.pos])) : (self.base.pos += 1) {}
                 if (self.base.pos == bin_body) {
-                    return .{ .cat = .@"err", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                    return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
                 }
-                return .{ .cat = .@"integer", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return .{ .cat = .integer, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
             }
         }
 
@@ -332,6 +332,6 @@ pub const Lexer = struct {
                 while (self.base.pos < src.len and isAsciiDigit(src[self.base.pos])) : (self.base.pos += 1) {}
             }
         }
-        return .{ .cat = if (is_real) .@"real" else .@"integer", .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return .{ .cat = if (is_real) .real else .integer, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
     }
 };

@@ -67,7 +67,7 @@ pub const LexerGenerator = struct {
     /// Token end for each consuming rule.
     ends: []TokenEnd = &.{},
     /// Byte tables emitted as `cls<N>` constants.
-    tables: std.ArrayListUnmanaged(ByteSet) = .empty,
+    tables: std.ArrayList(ByteSet) = .empty,
     /// States whose accepting rule must be saved before leaving them.
     saves: []bool = &.{},
 
@@ -147,9 +147,9 @@ pub const LexerGenerator = struct {
         const a = self.arena.allocator();
         const rules = self.spec.rules.items;
 
-        var consuming: std.ArrayListUnmanaged(u32) = .empty;
-        var ends: std.ArrayListUnmanaged(TokenEnd) = .empty;
-        var fulls: std.ArrayListUnmanaged(*const regex.Node) = .empty;
+        var consuming: std.ArrayList(u32) = .empty;
+        var ends: std.ArrayList(TokenEnd) = .empty;
+        var fulls: std.ArrayList(*const regex.Node) = .empty;
         for (rules, 0..) |*r, i| {
             if (r.pattern.len == 0) {
                 try self.checkZeroWidth(r);
@@ -170,7 +170,7 @@ pub const LexerGenerator = struct {
         try self.checkZeroWidthCycles();
 
         // Guard atoms of consuming rules, and the live rules per configuration.
-        var atoms: std.ArrayListUnmanaged(Atom) = .empty;
+        var atoms: std.ArrayList(Atom) = .empty;
         for (self.consuming) |ri| {
             for (rules[ri].guards) |g| {
                 const at = atomOf(g);
@@ -185,9 +185,9 @@ pub const LexerGenerator = struct {
         self.atoms = atoms.items;
 
         const masks = @as(usize, 1) << @intCast(self.atoms.len);
-        var liveSets: std.ArrayListUnmanaged([]const u32) = .empty;
+        var liveSets: std.ArrayList([]const u32) = .empty;
         self.startOfMask = try a.alloc(u32, masks);
-        var live: std.ArrayListUnmanaged(u32) = .empty;
+        var live: std.ArrayList(u32) = .empty;
         for (0..masks) |mask| {
             live.clearRetainingCapacity();
             for (self.consuming, 0..) |ri, k| {
@@ -324,13 +324,13 @@ pub const LexerGenerator = struct {
     fn checkZeroWidthCycles(self: *LexerGenerator) !void {
         const a = self.arena.allocator();
         const rules = self.spec.rules.items;
-        var nodes: std.ArrayListUnmanaged(u32) = .empty;
+        var nodes: std.ArrayList(u32) = .empty;
         for (rules, 0..) |*r, i| {
             if (r.pattern.len == 0) {
                 try nodes.append(a, @intCast(i));
                 continue;
             }
-            const k = std.mem.indexOfScalar(u32, self.consuming, @intCast(i)) orelse continue;
+            const k = std.mem.findScalar(u32, self.consuming, @intCast(i)) orelse continue;
             const e = self.ends[k];
             if (e == .start or (e == .fromStart and e.fromStart == 0)) try nodes.append(a, @intCast(i));
         }
@@ -364,7 +364,7 @@ pub const LexerGenerator = struct {
         for (0..n) |w| {
             if (!edge[v * n + w]) continue;
             if (color[w] == 1) {
-                const at = std.mem.indexOfScalar(usize, stack[0 .. depth + 1], w).?;
+                const at = std.mem.findScalar(usize, stack[0 .. depth + 1], w).?;
                 return stack[at .. depth + 1];
             }
             if (color[w] == 0) if (try self.cycleFrom(w, n, edge, color, stack, depth + 1)) |c| return c;
@@ -718,8 +718,8 @@ pub const LexerGenerator = struct {
             '\t' => "'\\t'",
             '\\' => "'\\\\'",
             '\'' => "'\\''",
-            0x20...0x26, 0x28...0x5b, 0x5d...0x7e => std.fmt.bufPrint(buf, "'{c}'", .{b}) catch unreachable,
-            else => std.fmt.bufPrint(buf, "0x{X:0>2}", .{b}) catch unreachable,
+            0x20...0x26, 0x28...0x5b, 0x5d...0x7e => std.mem.print(buf, "'{c}'", .{b}) catch unreachable,
+            else => std.mem.print(buf, "0x{X:0>2}", .{b}) catch unreachable,
         };
     }
 
@@ -953,7 +953,7 @@ pub const LexerGenerator = struct {
             try self.print("{s}if (", .{ind});
             try self.emitGuards(r.guards);
             try self.write(") {\n");
-            const inner = try std.fmt.allocPrint(self.arena.allocator(), "{s}    ", .{ind});
+            const inner = try self.arena.allocator().print("{s}    ", .{ind});
             try self.emitActions(r.actions, inner, "p");
             if (r.hold) {
                 try self.print(
@@ -1029,15 +1029,15 @@ pub const LexerGenerator = struct {
         const select: u32 = dfa.numStates;
         try self.print("{s}dfa: switch (@as(u16, {d})) {{\n", .{ ind, if (multi) select else self.startOfMask[0] });
         if (multi) {
-            const selInd = try std.fmt.allocPrint(a, "{s}    ", .{ind});
+            const selInd = try a.print("{s}    ", .{ind});
             try self.print("{s}{d} => {{\n", .{ selInd, select });
-            try self.emitSelect(0, 0, try std.fmt.allocPrint(a, "{s}    ", .{selInd}));
+            try self.emitSelect(0, 0, try a.print("{s}    ", .{selInd}));
             try self.print("{s}}},\n", .{selInd});
         }
 
-        const inner = try std.fmt.allocPrint(a, "{s}    ", .{ind});
-        const inner2 = try std.fmt.allocPrint(a, "{s}        ", .{ind});
-        const inner3 = try std.fmt.allocPrint(a, "{s}            ", .{ind});
+        const inner = try a.print("{s}    ", .{ind});
+        const inner2 = try a.print("{s}        ", .{ind});
+        const inner3 = try a.print("{s}            ", .{ind});
 
         // States that are only entered by in-place finishes need no prong.
         var s: u32 = 0;
@@ -1050,7 +1050,7 @@ pub const LexerGenerator = struct {
 
             // Group transitions by target.
             var loop: ByteSet = .{};
-            var targets: std.ArrayListUnmanaged(struct { t: u32, set: ByteSet }) = .empty;
+            var targets: std.ArrayList(struct { t: u32, set: ByteSet }) = .empty;
             for (0..nc) |c| {
                 const t = dfa.trans[s * nc + c];
                 if (t == automaton.none) continue;
@@ -1106,7 +1106,7 @@ pub const LexerGenerator = struct {
                             try self.print(" => {{ p += 1; {s} }},\n", .{joined});
                         } else {
                             try self.write(" => {\n");
-                            const deep = try std.fmt.allocPrint(a, "{s}    ", .{inner3});
+                            const deep = try a.print("{s}    ", .{inner3});
                             try self.print("{s}p += 1;\n", .{deep});
                             try self.emitFinish(dfa.accept[x.t], "p", deep);
                             try self.print("{s}}},\n", .{inner3});
@@ -1129,7 +1129,7 @@ pub const LexerGenerator = struct {
 
         // Fallback: the scan died after passing an accepting state.
         if (anySave) {
-            var saved = std.AutoArrayHashMapUnmanaged(u32, void).empty;
+            var saved = std.array_hash_map.Auto(u32, void).empty;
             for (self.saves, 0..) |sv, st| {
                 if (sv) try saved.put(a, dfa.accept[st], {});
             }
@@ -1175,7 +1175,7 @@ pub const LexerGenerator = struct {
         try self.print("{s}if (", .{ind});
         try self.emitGuardExpr(.{ .variable = at.variable, .op = at.op, .value = at.value });
         try self.write(") {\n");
-        const deeper = try std.fmt.allocPrint(self.arena.allocator(), "{s}    ", .{ind});
+        const deeper = try self.arena.allocator().print("{s}    ", .{ind});
         try self.emitSelect(fixed | bit, bits | bit, deeper);
         try self.print("{s}}} else {{\n", .{ind});
         try self.emitSelect(fixed | bit, bits, deeper);

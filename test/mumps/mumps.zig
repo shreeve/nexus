@@ -63,7 +63,7 @@ pub const Lexer = struct {
         if (self.base.pat != 0 and wsCount > 0) {
             self.base.pat = 0;
             self.base.pos = wsStart;
-            return Token{ .cat = .@"patend", .pre = 0, .pos = wsStart, .len = 0 };
+            return Token{ .cat = .patend, .pre = 0, .pos = wsStart, .len = 0 };
         }
 
         // Indent with dot-counting at line start
@@ -78,7 +78,7 @@ pub const Lexer = struct {
                 }
             }
             self.base.aux = dotCount;
-            return Token{ .cat = .@"indent", .pre = dotCount, .pos = wsStart, .len = @intCast(self.base.pos - wsStart) };
+            return Token{ .cat = .indent, .pre = dotCount, .pos = wsStart, .len = @intCast(self.base.pos - wsStart) };
         }
 
         // Spaces with adjacency exclusion: 2+ spaces mid-line signals an
@@ -87,7 +87,7 @@ pub const Lexer = struct {
             const prevCh: u8 = if (wsStart > 0) src[wsStart - 1] else 0;
             const nextCh: u8 = if (self.base.pos < src.len) src[self.base.pos] else 0;
             if (prevCh != ',' and prevCh != '(' and nextCh != ',' and nextCh != ')') {
-                return Token{ .cat = .@"spaces", .pre = 0, .pos = wsStart, .len = wsCount };
+                return Token{ .cat = .spaces, .pre = 0, .pos = wsStart, .len = wsCount };
             }
             // Excluded: whitespace absorbed into the next token's pre field.
             // Don't rewind -- lex the next real token from current position.
@@ -97,9 +97,9 @@ pub const Lexer = struct {
         if (self.base.pos >= src.len) {
             if (self.base.pat != 0) {
                 self.base.pat = 0;
-                return Token{ .cat = .@"patend", .pre = wsCount, .pos = self.base.pos, .len = 0 };
+                return Token{ .cat = .patend, .pre = wsCount, .pos = self.base.pos, .len = 0 };
             }
-            return Token{ .cat = .@"eof", .pre = wsCount, .pos = self.base.pos, .len = 0 };
+            return Token{ .cat = .eof, .pre = wsCount, .pos = self.base.pos, .len = 0 };
         }
 
         // Pattern mode: dedicated handler for all pattern-specific tokens
@@ -120,15 +120,15 @@ pub const Lexer = struct {
         }
 
         // Reclassify leading-zero integers (01, 007) as zdigits for labels
-        if (tok.cat == .@"integer" and tok.len > 1 and src[tok.pos] == '0') {
-            tok.cat = .@"zdigits";
+        if (tok.cat == .integer and tok.len > 1 and src[tok.pos] == '0') {
+            tok.cat = .zdigits;
         }
 
         // Pattern mode entry after ?, '?, and ' tokens.
         // checkPatternMode does lookahead to disambiguate pattern starts
         // (like ?1N) from non-pattern uses (like ?1E+2 or bare ?).
         switch (tok.cat) {
-            .@"question", .@"notques", .@"not" => {
+            .question, .notques, .not => {
                 if (self.base.pat == 0) {
                     if (checkPatternMode(self.base.source, self.base.pos))
                         self.base.pat = 1;
@@ -153,13 +153,13 @@ pub const Lexer = struct {
         if (c == '\n' or c == '\r') {
             self.base.pat = 0;
             self.base.dep = 0;
-            return Token{ .cat = .@"patend", .pre = wsCount, .pos = pos, .len = 0 };
+            return Token{ .cat = .patend, .pre = wsCount, .pos = pos, .len = 0 };
         }
 
         // Underscore: always exits pattern mode (hold)
         if (c == '_') {
             self.base.pat = 0;
-            return Token{ .cat = .@"patend", .pre = wsCount, .pos = pos, .len = 0 };
+            return Token{ .cat = .patend, .pre = wsCount, .pos = pos, .len = 0 };
         }
 
         // At depth 0, these characters terminate the pattern (hold).
@@ -168,7 +168,7 @@ pub const Lexer = struct {
             switch (c) {
                 '!', ')', ',', ':', '+' => {
                     self.base.pat = 0;
-                    return Token{ .cat = .@"patend", .pre = wsCount, .pos = pos, .len = 0 };
+                    return Token{ .cat = .patend, .pre = wsCount, .pos = pos, .len = 0 };
                 },
                 else => {},
             }
@@ -180,7 +180,7 @@ pub const Lexer = struct {
             'A'...'Z', 'a'...'z' => {
                 self.base.pos += 1;
                 self.base.beg = 0;
-                return Token{ .cat = .@"ident", .pre = wsCount, .pos = pos, .len = 1 };
+                return Token{ .cat = .ident, .pre = wsCount, .pos = pos, .len = 1 };
             },
             // Repetition count: digits only (no decimal/exponent)
             '0'...'9' => {
@@ -188,28 +188,28 @@ pub const Lexer = struct {
                     self.base.pos += 1;
                 }
                 self.base.beg = 0;
-                return Token{ .cat = .@"integer", .pre = wsCount, .pos = pos, .len = @intCast(self.base.pos - pos) };
+                return Token{ .cat = .integer, .pre = wsCount, .pos = pos, .len = @intCast(self.base.pos - pos) };
             },
             // Dot is a range separator in patterns (1.3 = "1 to 3 of"),
             // not a decimal point. Emit as dot to prevent number scanning.
             '.' => {
                 self.base.pos += 1;
                 self.base.beg = 0;
-                return Token{ .cat = .@"dot", .pre = wsCount, .pos = pos, .len = 1 };
+                return Token{ .cat = .dot, .pre = wsCount, .pos = pos, .len = 1 };
             },
             // Open paren: alternation group, track depth
             '(' => {
                 self.base.dep += 1;
                 self.base.pos += 1;
                 self.base.beg = 0;
-                return Token{ .cat = .@"lparen", .pre = wsCount, .pos = pos, .len = 1 };
+                return Token{ .cat = .lparen, .pre = wsCount, .pos = pos, .len = 1 };
             },
             // Close paren at dep > 0 (dep == 0 handled above as patend)
             ')' => {
                 self.base.dep -= 1;
                 self.base.pos += 1;
                 self.base.beg = 0;
-                return Token{ .cat = .@"rparen", .pre = wsCount, .pos = pos, .len = 1 };
+                return Token{ .cat = .rparen, .pre = wsCount, .pos = pos, .len = 1 };
             },
             // Fall through to matchRules for mode-invariant tokens:
             // string literal, question mark, apostrophe

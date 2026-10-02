@@ -274,7 +274,7 @@ pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 pub const Tag = lang.Tag;
 
 /// Roles exist only in schema mode.
-pub const Role = enum(u16) {};
+pub const Role = enum(u16) { _ };
 
 /// Start symbols; `BaseParser.parse(start)` parses one.
 pub const Start = enum(u16) {
@@ -420,7 +420,7 @@ pub const NodeInfo = struct { span: Span, rule: u16 };
 /// NodeInfo per NodeId, in fixed-size chunks that never move (appending
 /// never copies the store).
 const NodeStore = struct {
-    chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
+    chunks: std.ArrayList(*[chunkLen]NodeInfo) = .empty,
     len: u32 = 0,
 
     const chunkLen = 128;
@@ -519,8 +519,8 @@ pub const BaseParser = struct {
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
-    stateStack: std.ArrayListUnmanaged(u16) = .empty,
-    valueStack: std.ArrayListUnmanaged(Sexp) = .empty,
+    stateStack: std.ArrayList(u16) = .empty,
+    valueStack: std.ArrayList(Sexp) = .empty,
     /// Spare capacity of the lists `keepList` returned, by address.
     listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
     /// Node id of the list `extendList` is growing (0 = none).
@@ -537,14 +537,14 @@ pub const BaseParser = struct {
     starts: []u32 = &.{},
     ends: []u32 = &.{},
     nodes: NodeStore = .{},
-    sides: std.ArrayListUnmanaged(SideEntry) = .empty,
+    sides: std.ArrayList(SideEntry) = .empty,
     reduction: Reduction = .{},
     /// End of the last shifted token: where every reduction ends.
     lastEnd: u32 = 0,
 
-    triviaTokens: std.ArrayListUnmanaged(Token) = .empty,
+    triviaTokens: std.ArrayList(Token) = .empty,
     failure: ?Failure = null,
-    scratch: std.ArrayListUnmanaged(u16) = .empty,
+    scratch: std.ArrayList(u16) = .empty,
 
     const ListSpare = struct { len: usize, capacity: usize };
 
@@ -590,7 +590,7 @@ pub const BaseParser = struct {
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
         while (true) {
-            const state = self.stateStack.getLast();
+            const state = self.stateStack.last().?;
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
@@ -598,7 +598,7 @@ pub const BaseParser = struct {
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                return self.valueStack.getLast();
+                return self.valueStack.last().?;
             } else {
                 self.recordFailure(state, sym);
                 return error.ParseError;
@@ -639,9 +639,9 @@ pub const BaseParser = struct {
         try self.begin(start);
         var result: Tolerant = .{ .sexp = .nil, .failure = null, .repairs = 0, .complete = false };
         // Configurations repaired since the last consumed token (rule 4).
-        var tried: std.ArrayListUnmanaged(RepairKey) = .empty;
+        var tried: std.ArrayList(RepairKey) = .empty;
         while (true) {
-            const state = self.stateStack.getLast();
+            const state = self.stateStack.last().?;
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
@@ -650,7 +650,7 @@ pub const BaseParser = struct {
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                result.sexp = self.valueStack.getLast();
+                result.sexp = self.valueStack.last().?;
                 result.complete = true;
                 break;
             } else {
@@ -681,7 +681,7 @@ pub const BaseParser = struct {
     /// The insertion rules 3 and 4 allow before `next`, best first; null
     /// when there is none.
     fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
-        const state = self.stateStack.getLast();
+        const state = self.stateStack.last().?;
         const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
         const real = nextClass == .none or nextClass == .hole;
         for (repairCandidates(state)) |candidate| {
@@ -1080,7 +1080,7 @@ pub const BaseParser = struct {
     /// for an action that appends to it. A list from `keepList` is reused
     /// with its spare capacity, so a left-recursive list grows in amortized
     /// O(1) per element; it keeps its node id.
-    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayListUnmanaged(Sexp) {
+    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
         self.extending = 0;
         if (base != .list) return .empty;
         self.extending = base.list.id;
@@ -1088,16 +1088,18 @@ pub const BaseParser = struct {
         if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
             if (spare.len == items.len) {
                 _ = self.listSpare.remove(@intFromPtr(items.ptr));
-                return .{ .items = @constCast(items), .capacity = spare.capacity };
+                var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+                out.items.len = items.len;
+                return out;
             }
         };
-        var out: std.ArrayListUnmanaged(Sexp) = .empty;
+        var out: std.ArrayList(Sexp) = .empty;
         try out.appendSlice(self.allocator(), items);
         return out;
     }
 
     /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -1117,7 +1119,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
+    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
         return self.node(items, use);
@@ -1239,7 +1241,7 @@ pub const BaseParser = struct {
         try stack.appendSlice(self.allocator(), self.stateStack.items);
         for (symbols) |sym| {
             while (true) {
-                const action = getAction(stack.getLast(), sym);
+                const action = getAction(stack.last().?, sym);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
@@ -1248,7 +1250,7 @@ pub const BaseParser = struct {
                 }
                 const rule: u16 = @intCast(-action - 2);
                 stack.shrinkRetainingCapacity(stack.items.len - ruleLen[rule]);
-                const next = getAction(stack.getLast(), ruleLhs[rule]);
+                const next = getAction(stack.last().?, ruleLhs[rule]);
                 if (next <= 0) return false;
                 try stack.append(self.allocator(), @intCast(next));
             }
@@ -1397,7 +1399,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"module", pass[0]),
-        1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        1 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
         3 => pass[0],
         4 => self.sexp(.@"assign", &.{pass[0], pass[2]}),
@@ -1413,8 +1415,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         14 => pass[0],
         15 => pass[0],
         16 => pass[1],
-        19 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        20 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        19 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        20 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         21 => pass[0],
         22 => self.sexp(.@"*", &.{pass[0], pass[2]}),
         23 => pass[0],
@@ -1476,7 +1478,7 @@ const sparse = [numStates][]const i16{
 
 const parseTable = blk: {
     @setEvalBranchQuota(100000);
-    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
+    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
         while (i < row.len) : (i += 2) {

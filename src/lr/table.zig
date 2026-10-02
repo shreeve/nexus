@@ -86,7 +86,7 @@ pub const Table = struct {
     rows: [][]ParseAction,
     /// Sorted by state (then by terminal id). State s's overrides are
     /// `xExcludes.items[xExcludeStart[s]..xExcludeStart[s + 1]]`.
-    xExcludes: std.ArrayListUnmanaged(XExclude) = .empty,
+    xExcludes: std.ArrayList(XExclude) = .empty,
     xExcludeStart: []const u32,
     /// Number of unresolved conflicts (= conflictList.len).
     conflicts: u32 = 0,
@@ -129,13 +129,13 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
     const numSymbols = g.symbols.items.len;
 
     const rows = try a.alloc([]ParseAction, numStates);
-    var xExcludes: std.ArrayListUnmanaged(XExclude) = .empty;
-    var conflictList: std.ArrayListUnmanaged(Conflict) = .empty;
+    var xExcludes: std.ArrayList(XExclude) = .empty;
+    var conflictList: std.ArrayList(Conflict) = .empty;
 
     // Hint bookkeeping: hints[hintStart[r]..][0..hintChars(r).len] are rule r's.
     const hintStart = try a.alloc(u32, g.rules.items.len);
     defer a.free(hintStart);
-    var hints: std.ArrayListUnmanaged(HintUse) = .empty;
+    var hints: std.ArrayList(HintUse) = .empty;
     for (g.rules.items, 0..) |*rule, r| {
         hintStart[r] = @intCast(hints.items.len);
         for (hintChars(rule)) |c| try hints.append(a, .{ .rule = @intCast(r), .char = c, .used = false });
@@ -144,7 +144,7 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
     var reduceUnion = try SetArray.init(a, 1, numSymbols);
     defer reduceUnion.deinit(a);
     const cellTerminals = reduceUnion.get(0);
-    var cellRules: std.ArrayListUnmanaged(u16) = .empty;
+    var cellRules: std.ArrayList(u16) = .empty;
     defer cellRules.deinit(a);
 
     for (rows, 0..) |*rowSlot, si| {

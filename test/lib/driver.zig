@@ -26,23 +26,20 @@
 //!
 //! The start rule defaults to the first `parse*` method of the parser. Any
 //! method `fn (*Parser) !Sexp` whose name starts with `parse` can be named.
-//! The driver adapts to the Sexp representation at compile time: lists may
-//! be a slice (0.10.x) or a struct with `items()` (1.0).
 
 const std = @import("std");
 const parser = @import("parser.zig");
 
 const Sexp = parser.Sexp;
-// 0.10.x emits no `Parser` alias for a grammar without @lang.
-const P = if (@hasDecl(parser, "Parser")) parser.Parser else parser.BaseParser;
+const P = parser.Parser;
 
 const width = 100;
 
 // Generated API the driver never calls must still compile: make the compiler
 // analyze it.
 comptime {
-    if (@hasDecl(parser, "nodeStore") and parser.nodeStore) _ = &parser.BaseParser.writeFacts;
-    if (@hasDecl(Sexp, "write")) _ = &Sexp.write;
+    if (parser.nodeStore) _ = &parser.BaseParser.writeFacts;
+    _ = &Sexp.write;
 }
 
 // -----------------------------------------------------------------------------
@@ -55,8 +52,8 @@ fn isStart(comptime name: []const u8) bool {
     const info = @typeInfo(F);
     if (info != .@"fn") return false;
     const f = info.@"fn";
-    if (f.params.len != 1) return false;
-    if (f.params[0].type != *P) return false;
+    if (f.param_types.len != 1) return false;
+    if (f.param_types[0] != *P) return false;
     const R = f.return_type orelse return false;
     const ri = @typeInfo(R);
     if (ri != .error_union) return false;
@@ -65,8 +62,8 @@ fn isStart(comptime name: []const u8) bool {
 
 const start_names = blk: {
     var names: []const []const u8 = &.{};
-    for (@typeInfo(P).@"struct".decls) |d| {
-        if (isStart(d.name)) names = names ++ .{d.name};
+    for (@typeInfo(P).@"struct".decl_names) |name| {
+        if (isStart(name)) names = names ++ .{name};
     }
     break :blk names;
 };
@@ -84,23 +81,16 @@ fn currentToken(p: *P) parser.Token {
         const B = @TypeOf(p.base);
         if (@hasField(B, "current")) return p.base.current;
     }
-    return .{ .pos = 0, .len = 0, .cat = @enumFromInt(0), .pre = 0 };
+    return .{ .pos = 0, .len = 0, .cat = @fromBackingInt(@intCast(0)), .pre = 0 };
 }
 
 // -----------------------------------------------------------------------------
 // Tree rendering
 // -----------------------------------------------------------------------------
 
-fn listItems(l: anytype) []const Sexp {
-    const L = @TypeOf(l);
-    if (L == []const Sexp) return l;
-    if (L == []Sexp) return l;
-    return l.items();
-}
-
 // Spans are printed when the parser records them (`nodeStore`: `@schema`
 // or `--spans`); without a node store `span()` only hulls the leaves.
-const has_spans = @hasDecl(P, "span") and (!@hasDecl(parser, "nodeStore") or parser.nodeStore);
+const has_spans = parser.nodeStore;
 
 const Printer = struct {
     src: []const u8,
@@ -134,7 +124,7 @@ const Printer = struct {
         switch (s) {
             .nil => try self.out.writeByte('_'),
             .tag => |t| {
-                if (std.enums.tagName(@TypeOf(t), t)) |n| try self.out.writeAll(n) else try self.out.print("?tag{d}", .{@intFromEnum(t)});
+                if (std.enums.tagName(@TypeOf(t), t)) |n| try self.out.writeAll(n) else try self.out.print("?tag{d}", .{@backingInt(t)});
             },
             .src => |x| {
                 const lo: usize = @min(@as(usize, x.pos), self.src.len);
@@ -157,7 +147,7 @@ const Printer = struct {
         switch (s) {
             .list => |l| {
                 try self.out.writeByte('(');
-                for (listItems(l), 0..) |it, i| {
+                for (l.items(), 0..) |it, i| {
                     if (i > 0) try self.out.writeByte(' ');
                     try self.compact(it);
                 }
@@ -184,7 +174,7 @@ const Printer = struct {
                     sub.spanSuffix(s) catch {};
                     n += @intCast(d.fullCount());
                 }
-                for (listItems(l), 0..) |it, i| {
+                for (l.items(), 0..) |it, i| {
                     if (i > 0) n += 1;
                     n += self.flatLen(it, limit -| n);
                     if (n > limit) return n;
@@ -201,7 +191,7 @@ const Printer = struct {
     fn pretty(self: *Printer, s: Sexp, indent: usize) !void {
         const room = width -| indent;
         if (s != .list or self.flatLen(s, room) <= room) return self.compact(s);
-        const items = listItems(s.list);
+        const items = s.list.items();
         try self.out.writeByte('(');
         for (items, 0..) |it, i| {
             if (i > 0) {
@@ -260,7 +250,7 @@ pub fn main(init: std.process.Init) !void {
     var mode: Mode = .pretty;
     var spans = true;
     var rounds: usize = 1;
-    var files: std.ArrayListUnmanaged([]const u8) = .empty;
+    var files: std.ArrayList([]const u8) = .empty;
     const cwd = std.Io.Dir.cwd();
 
     var i: usize = 1;
@@ -375,7 +365,7 @@ fn bench(
     out: *std.Io.Writer,
 ) !void {
     const cwd = std.Io.Dir.cwd();
-    var srcs: std.ArrayListUnmanaged([]const u8) = .empty;
+    var srcs: std.ArrayList([]const u8) = .empty;
     var bytes: usize = 0;
     for (paths) |path| {
         const src = try cwd.readFileAlloc(io, path, arena, .limited(1 << 28));

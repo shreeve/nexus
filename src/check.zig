@@ -66,7 +66,7 @@ fn markReachableElements(elements: []const ParsedElement, ir: *const GrammarIR, 
 /// right-hand side has it.
 fn firstUse(g: *const Grammar, sym: u16) struct { line: u32, col: u32 } {
     for (g.rules.items) |rule| {
-        if (std.mem.indexOfScalar(u16, rule.rhs, sym) != null and rule.line > 0) return .{ .line = rule.line, .col = rule.col };
+        if (std.mem.findScalar(u16, rule.rhs, sym) != null and rule.line > 0) return .{ .line = rule.line, .col = rule.col };
     }
     return .{ .line = 1, .col = 1 };
 }

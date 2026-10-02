@@ -618,7 +618,7 @@ pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 pub const Tag = lang.Tag;
 
 /// Roles exist only in schema mode.
-pub const Role = enum(u16) {};
+pub const Role = enum(u16) { _ };
 
 /// Start symbols; `BaseParser.parse(start)` parses one.
 pub const Start = enum(u16) {
@@ -764,7 +764,7 @@ pub const NodeInfo = struct { span: Span, rule: u16 };
 /// NodeInfo per NodeId, in fixed-size chunks that never move (appending
 /// never copies the store).
 const NodeStore = struct {
-    chunks: std.ArrayListUnmanaged(*[chunkLen]NodeInfo) = .empty,
+    chunks: std.ArrayList(*[chunkLen]NodeInfo) = .empty,
     len: u32 = 0,
 
     const chunkLen = 128;
@@ -863,8 +863,8 @@ pub const BaseParser = struct {
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
-    stateStack: std.ArrayListUnmanaged(u16) = .empty,
-    valueStack: std.ArrayListUnmanaged(Sexp) = .empty,
+    stateStack: std.ArrayList(u16) = .empty,
+    valueStack: std.ArrayList(Sexp) = .empty,
     /// Spare capacity of the lists `keepList` returned, by address.
     listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
     /// Node id of the list `extendList` is growing (0 = none).
@@ -881,14 +881,14 @@ pub const BaseParser = struct {
     starts: []u32 = &.{},
     ends: []u32 = &.{},
     nodes: NodeStore = .{},
-    sides: std.ArrayListUnmanaged(SideEntry) = .empty,
+    sides: std.ArrayList(SideEntry) = .empty,
     reduction: Reduction = .{},
     /// End of the last shifted token: where every reduction ends.
     lastEnd: u32 = 0,
 
-    triviaTokens: std.ArrayListUnmanaged(Token) = .empty,
+    triviaTokens: std.ArrayList(Token) = .empty,
     failure: ?Failure = null,
-    scratch: std.ArrayListUnmanaged(u16) = .empty,
+    scratch: std.ArrayList(u16) = .empty,
 
     const ListSpare = struct { len: usize, capacity: usize };
 
@@ -934,7 +934,7 @@ pub const BaseParser = struct {
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
         while (true) {
-            const state = self.stateStack.getLast();
+            const state = self.stateStack.last().?;
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
@@ -942,7 +942,7 @@ pub const BaseParser = struct {
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                return self.valueStack.getLast();
+                return self.valueStack.last().?;
             } else {
                 self.recordFailure(state, sym);
                 return error.ParseError;
@@ -983,9 +983,9 @@ pub const BaseParser = struct {
         try self.begin(start);
         var result: Tolerant = .{ .sexp = .nil, .failure = null, .repairs = 0, .complete = false };
         // Configurations repaired since the last consumed token (rule 4).
-        var tried: std.ArrayListUnmanaged(RepairKey) = .empty;
+        var tried: std.ArrayList(RepairKey) = .empty;
         while (true) {
-            const state = self.stateStack.getLast();
+            const state = self.stateStack.last().?;
             const sym = self.lookahead();
             const action = self.actionFor(state, sym);
             if (action > 0) {
@@ -994,7 +994,7 @@ pub const BaseParser = struct {
             } else if (action < -1) {
                 try self.reduce(@intCast(-action - 2));
             } else if (action == -1) {
-                result.sexp = self.valueStack.getLast();
+                result.sexp = self.valueStack.last().?;
                 result.complete = true;
                 break;
             } else {
@@ -1025,7 +1025,7 @@ pub const BaseParser = struct {
     /// The insertion rules 3 and 4 allow before `next`, best first; null
     /// when there is none.
     fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
-        const state = self.stateStack.getLast();
+        const state = self.stateStack.last().?;
         const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
         const real = nextClass == .none or nextClass == .hole;
         for (repairCandidates(state)) |candidate| {
@@ -1424,7 +1424,7 @@ pub const BaseParser = struct {
     /// for an action that appends to it. A list from `keepList` is reused
     /// with its spare capacity, so a left-recursive list grows in amortized
     /// O(1) per element; it keeps its node id.
-    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayListUnmanaged(Sexp) {
+    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
         self.extending = 0;
         if (base != .list) return .empty;
         self.extending = base.list.id;
@@ -1432,16 +1432,18 @@ pub const BaseParser = struct {
         if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
             if (spare.len == items.len) {
                 _ = self.listSpare.remove(@intFromPtr(items.ptr));
-                return .{ .items = @constCast(items), .capacity = spare.capacity };
+                var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+                out.items.len = items.len;
+                return out;
             }
         };
-        var out: std.ArrayListUnmanaged(Sexp) = .empty;
+        var out: std.ArrayList(Sexp) = .empty;
         try out.appendSlice(self.allocator(), items);
         return out;
     }
 
     /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -1461,7 +1463,7 @@ pub const BaseParser = struct {
     }
 
     /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayListUnmanaged(Sexp), comptime use: ListUse) Sexp {
+    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
         return self.node(items, use);
@@ -1583,7 +1585,7 @@ pub const BaseParser = struct {
         try stack.appendSlice(self.allocator(), self.stateStack.items);
         for (symbols) |sym| {
             while (true) {
-                const action = getAction(stack.getLast(), sym);
+                const action = getAction(stack.last().?, sym);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
@@ -1592,7 +1594,7 @@ pub const BaseParser = struct {
                 }
                 const rule: u16 = @intCast(-action - 2);
                 stack.shrinkRetainingCapacity(stack.items.len - ruleLen[rule]);
-                const next = getAction(stack.getLast(), ruleLhs[rule]);
+                const next = getAction(stack.last().?, ruleLhs[rule]);
                 if (next <= 0) return false;
                 try stack.append(self.allocator(), @intCast(next));
             }
@@ -1792,9 +1794,9 @@ fn promote(self: *BaseParser, token: Token) u16 {
 }
 
 fn tryPromoteKeyword(self: *BaseParser, text: []const u8) ?u16 {
-    const state = self.stateStack.getLast();
+    const state = self.stateStack.last().?;
     const id = lang.keywordAs(text) orelse return null;
-    const idIdx = @intFromEnum(id);
+    const idIdx = @backingInt(id);
     const sym = keywordToSymbol[idIdx];
     if (sym != 0 and getAction(state, sym) > 0) {
         self.lastMatchedId = @intCast(idIdx);
@@ -1812,7 +1814,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"module", pass[0]),
-        1 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        1 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
         3 => pass[0],
         4 => pass[0],
@@ -1854,7 +1856,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         40 => self.sexpPosSpread(.@"enum", pass[1], pass[3]),
         41 => self.sexpPosSpread(.@"errors", pass[1], pass[3]),
         42 => self.sexpPosSpread(.@"struct", pass[1], pass[3]),
-        43 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        43 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         44 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
         45 => pass[0],
         46 => pass[0],
@@ -1863,7 +1865,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         49 => pass[0],
         50 => self.sexp(.@"comptime_param", &.{pass[1], pass[3]}),
         51 => pass[0],
-        52 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        52 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         53 => self.sexp(.@"aligned", &.{pass[0], pass[2], pass[4]}),
         54 => self.sexp(.@"default", &.{pass[0], pass[2], pass[4]}),
         55 => self.spreadList(pass[0], pass[1], .spread),
@@ -1925,7 +1927,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         111 => self.sexp(.@"for", &.{pass[1], .nil, pass[3], pass[4]}),
         112 => self.sexp(.@"for", &.{pass[1], pass[3], pass[5], pass[6]}),
         113 => self.sexpPosSpread(.@"match", pass[1], pass[3]),
-        114 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        114 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         115 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
         116 => pass[0],
         117 => pass[0],
@@ -1963,9 +1965,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         149 => self.sexp(.@"comptime", &.{pass[1]}),
         150 => self.sexp(.@"inline", &.{pass[1]}),
         151 => self.sexp(.@"typed_assign", &.{pass[0], pass[2], pass[4]}),
-        152 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        153 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        154 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        152 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        153 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        154 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         155 => self.sexp(.@"*=", &.{pass[0], pass[2]}),
         156 => self.sexp(.@"/=", &.{pass[0], pass[2]}),
         157 => self.sexp(.@"typed_const", &.{pass[0], pass[2], pass[4]}),
@@ -1977,7 +1979,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         163 => self.sexp(.@"bit_not", &.{pass[1]}),
         164 => pass[0],
         165 => self.sexp(.@"deref", &.{pass[0]}),
-        166 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        166 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         167 => self.sexp(.@"index", &.{pass[0], pass[2]}),
         168 => self.spreadList(pass[0], pass[1], .spread),
         169 => self.spreadList(pass[1], pass[2], .spread),
@@ -2025,36 +2027,36 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         211 => self.sexp(.@"pair", &.{pass[1], pass[3]}),
         212 => self.sexp(.@"lambda", &.{pass[1], .nil, pass[2]}),
         213 => self.sexp(.@"lambda", &.{.nil, .nil, pass[1]}),
-        216 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        216 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         217 => pass[0],
-        218 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"||" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        218 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"||" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         219 => pass[0],
-        220 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        220 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         221 => pass[0],
-        222 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        222 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         223 => pass[0],
-        224 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"^" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        224 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"^" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         225 => pass[0],
-        226 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        226 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         227 => pass[0],
-        228 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"==" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        228 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"==" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         229 => self.sexp(.@"!=", &.{pass[0], pass[2]}),
-        230 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        231 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        232 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        233 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        230 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        231 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        232 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        233 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         234 => pass[0],
-        235 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@".." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        235 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@".." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         236 => pass[0],
-        237 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        238 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        237 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        238 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         239 => pass[0],
-        240 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        241 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        240 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        241 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         242 => pass[0],
         243 => self.sexp(.@"*", &.{pass[0], pass[2]}),
         244 => self.sexp(.@"/", &.{pass[0], pass[2]}),
-        245 => blk: { var out: std.ArrayListUnmanaged(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"%" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        245 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"%" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         246 => pass[0],
         247 => self.sexp(.@"**", &.{pass[0], pass[2]}),
         248 => pass[0],
@@ -2067,60 +2069,60 @@ const promotableSymbol: u16 = 60;
 
 /// lang.KeywordId ordinal -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {
-    var arr: [512]u16 = .{0} ** 512;
-    if (@hasField(lang.KeywordId, "NEWLINE")) arr[@intFromEnum(lang.KeywordId.NEWLINE)] = 58;
-    if (@hasField(lang.KeywordId, "IDENT")) arr[@intFromEnum(lang.KeywordId.IDENT)] = 60;
-    if (@hasField(lang.KeywordId, "EXTERN")) arr[@intFromEnum(lang.KeywordId.EXTERN)] = 61;
-    if (@hasField(lang.KeywordId, "CONST")) arr[@intFromEnum(lang.KeywordId.CONST)] = 62;
-    if (@hasField(lang.KeywordId, "ZIG")) arr[@intFromEnum(lang.KeywordId.ZIG)] = 63;
-    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@intFromEnum(lang.KeywordId.STRING_SQ)] = 64;
-    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@intFromEnum(lang.KeywordId.STRING_DQ)] = 65;
-    if (@hasField(lang.KeywordId, "PUB")) arr[@intFromEnum(lang.KeywordId.PUB)] = 66;
-    if (@hasField(lang.KeywordId, "EXPORT")) arr[@intFromEnum(lang.KeywordId.EXPORT)] = 67;
-    if (@hasField(lang.KeywordId, "PACKED")) arr[@intFromEnum(lang.KeywordId.PACKED)] = 68;
-    if (@hasField(lang.KeywordId, "CALLCONV")) arr[@intFromEnum(lang.KeywordId.CALLCONV)] = 69;
-    if (@hasField(lang.KeywordId, "INDENT")) arr[@intFromEnum(lang.KeywordId.INDENT)] = 70;
-    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@intFromEnum(lang.KeywordId.OUTDENT)] = 71;
-    if (@hasField(lang.KeywordId, "FUN")) arr[@intFromEnum(lang.KeywordId.FUN)] = 72;
-    if (@hasField(lang.KeywordId, "SUB")) arr[@intFromEnum(lang.KeywordId.SUB)] = 73;
-    if (@hasField(lang.KeywordId, "USE")) arr[@intFromEnum(lang.KeywordId.USE)] = 74;
-    if (@hasField(lang.KeywordId, "TYPE")) arr[@intFromEnum(lang.KeywordId.TYPE)] = 75;
-    if (@hasField(lang.KeywordId, "TEST")) arr[@intFromEnum(lang.KeywordId.TEST)] = 77;
-    if (@hasField(lang.KeywordId, "OPAQUE")) arr[@intFromEnum(lang.KeywordId.OPAQUE)] = 78;
-    if (@hasField(lang.KeywordId, "ENUM")) arr[@intFromEnum(lang.KeywordId.ENUM)] = 79;
-    if (@hasField(lang.KeywordId, "ERROR")) arr[@intFromEnum(lang.KeywordId.ERROR)] = 80;
-    if (@hasField(lang.KeywordId, "STRUCT")) arr[@intFromEnum(lang.KeywordId.STRUCT)] = 81;
-    if (@hasField(lang.KeywordId, "COMPTIME")) arr[@intFromEnum(lang.KeywordId.COMPTIME)] = 82;
-    if (@hasField(lang.KeywordId, "ALIGN")) arr[@intFromEnum(lang.KeywordId.ALIGN)] = 83;
-    if (@hasField(lang.KeywordId, "VOLATILE")) arr[@intFromEnum(lang.KeywordId.VOLATILE)] = 91;
-    if (@hasField(lang.KeywordId, "INTEGER")) arr[@intFromEnum(lang.KeywordId.INTEGER)] = 94;
-    if (@hasField(lang.KeywordId, "FN")) arr[@intFromEnum(lang.KeywordId.FN)] = 95;
-    if (@hasField(lang.KeywordId, "AS")) arr[@intFromEnum(lang.KeywordId.AS)] = 101;
-    if (@hasField(lang.KeywordId, "BAR_CAPTURE")) arr[@intFromEnum(lang.KeywordId.BAR_CAPTURE)] = 102;
-    if (@hasField(lang.KeywordId, "IF")) arr[@intFromEnum(lang.KeywordId.IF)] = 103;
-    if (@hasField(lang.KeywordId, "ELSE")) arr[@intFromEnum(lang.KeywordId.ELSE)] = 104;
-    if (@hasField(lang.KeywordId, "WHILE")) arr[@intFromEnum(lang.KeywordId.WHILE)] = 105;
-    if (@hasField(lang.KeywordId, "FOR")) arr[@intFromEnum(lang.KeywordId.FOR)] = 106;
-    if (@hasField(lang.KeywordId, "IN")) arr[@intFromEnum(lang.KeywordId.IN)] = 107;
-    if (@hasField(lang.KeywordId, "MATCH")) arr[@intFromEnum(lang.KeywordId.MATCH)] = 108;
-    if (@hasField(lang.KeywordId, "TERNARY_IF")) arr[@intFromEnum(lang.KeywordId.TERNARY_IF)] = 112;
-    if (@hasField(lang.KeywordId, "CATCH")) arr[@intFromEnum(lang.KeywordId.CATCH)] = 114;
-    if (@hasField(lang.KeywordId, "RETURN")) arr[@intFromEnum(lang.KeywordId.RETURN)] = 115;
-    if (@hasField(lang.KeywordId, "POST_IF")) arr[@intFromEnum(lang.KeywordId.POST_IF)] = 116;
-    if (@hasField(lang.KeywordId, "BREAK")) arr[@intFromEnum(lang.KeywordId.BREAK)] = 117;
-    if (@hasField(lang.KeywordId, "CONTINUE")) arr[@intFromEnum(lang.KeywordId.CONTINUE)] = 118;
-    if (@hasField(lang.KeywordId, "DEFER")) arr[@intFromEnum(lang.KeywordId.DEFER)] = 119;
-    if (@hasField(lang.KeywordId, "ERRDEFER")) arr[@intFromEnum(lang.KeywordId.ERRDEFER)] = 120;
-    if (@hasField(lang.KeywordId, "INLINE")) arr[@intFromEnum(lang.KeywordId.INLINE)] = 121;
-    if (@hasField(lang.KeywordId, "MINUS_PREFIX")) arr[@intFromEnum(lang.KeywordId.MINUS_PREFIX)] = 127;
-    if (@hasField(lang.KeywordId, "TRY")) arr[@intFromEnum(lang.KeywordId.TRY)] = 128;
-    if (@hasField(lang.KeywordId, "REAL")) arr[@intFromEnum(lang.KeywordId.REAL)] = 135;
-    if (@hasField(lang.KeywordId, "TRUE")) arr[@intFromEnum(lang.KeywordId.TRUE)] = 136;
-    if (@hasField(lang.KeywordId, "FALSE")) arr[@intFromEnum(lang.KeywordId.FALSE)] = 137;
-    if (@hasField(lang.KeywordId, "NULL")) arr[@intFromEnum(lang.KeywordId.NULL)] = 138;
-    if (@hasField(lang.KeywordId, "UNREACHABLE")) arr[@intFromEnum(lang.KeywordId.UNREACHABLE)] = 139;
-    if (@hasField(lang.KeywordId, "UNDEFINED")) arr[@intFromEnum(lang.KeywordId.UNDEFINED)] = 140;
-    if (@hasField(lang.KeywordId, "DOT_LBRACE")) arr[@intFromEnum(lang.KeywordId.DOT_LBRACE)] = 142;
+    var arr: [512]u16 = @splat(0);
+    if (@hasField(lang.KeywordId, "NEWLINE")) arr[@backingInt(lang.KeywordId.NEWLINE)] = 58;
+    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 60;
+    if (@hasField(lang.KeywordId, "EXTERN")) arr[@backingInt(lang.KeywordId.EXTERN)] = 61;
+    if (@hasField(lang.KeywordId, "CONST")) arr[@backingInt(lang.KeywordId.CONST)] = 62;
+    if (@hasField(lang.KeywordId, "ZIG")) arr[@backingInt(lang.KeywordId.ZIG)] = 63;
+    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 64;
+    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 65;
+    if (@hasField(lang.KeywordId, "PUB")) arr[@backingInt(lang.KeywordId.PUB)] = 66;
+    if (@hasField(lang.KeywordId, "EXPORT")) arr[@backingInt(lang.KeywordId.EXPORT)] = 67;
+    if (@hasField(lang.KeywordId, "PACKED")) arr[@backingInt(lang.KeywordId.PACKED)] = 68;
+    if (@hasField(lang.KeywordId, "CALLCONV")) arr[@backingInt(lang.KeywordId.CALLCONV)] = 69;
+    if (@hasField(lang.KeywordId, "INDENT")) arr[@backingInt(lang.KeywordId.INDENT)] = 70;
+    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@backingInt(lang.KeywordId.OUTDENT)] = 71;
+    if (@hasField(lang.KeywordId, "FUN")) arr[@backingInt(lang.KeywordId.FUN)] = 72;
+    if (@hasField(lang.KeywordId, "SUB")) arr[@backingInt(lang.KeywordId.SUB)] = 73;
+    if (@hasField(lang.KeywordId, "USE")) arr[@backingInt(lang.KeywordId.USE)] = 74;
+    if (@hasField(lang.KeywordId, "TYPE")) arr[@backingInt(lang.KeywordId.TYPE)] = 75;
+    if (@hasField(lang.KeywordId, "TEST")) arr[@backingInt(lang.KeywordId.TEST)] = 77;
+    if (@hasField(lang.KeywordId, "OPAQUE")) arr[@backingInt(lang.KeywordId.OPAQUE)] = 78;
+    if (@hasField(lang.KeywordId, "ENUM")) arr[@backingInt(lang.KeywordId.ENUM)] = 79;
+    if (@hasField(lang.KeywordId, "ERROR")) arr[@backingInt(lang.KeywordId.ERROR)] = 80;
+    if (@hasField(lang.KeywordId, "STRUCT")) arr[@backingInt(lang.KeywordId.STRUCT)] = 81;
+    if (@hasField(lang.KeywordId, "COMPTIME")) arr[@backingInt(lang.KeywordId.COMPTIME)] = 82;
+    if (@hasField(lang.KeywordId, "ALIGN")) arr[@backingInt(lang.KeywordId.ALIGN)] = 83;
+    if (@hasField(lang.KeywordId, "VOLATILE")) arr[@backingInt(lang.KeywordId.VOLATILE)] = 91;
+    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 94;
+    if (@hasField(lang.KeywordId, "FN")) arr[@backingInt(lang.KeywordId.FN)] = 95;
+    if (@hasField(lang.KeywordId, "AS")) arr[@backingInt(lang.KeywordId.AS)] = 101;
+    if (@hasField(lang.KeywordId, "BAR_CAPTURE")) arr[@backingInt(lang.KeywordId.BAR_CAPTURE)] = 102;
+    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 103;
+    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 104;
+    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 105;
+    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 106;
+    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 107;
+    if (@hasField(lang.KeywordId, "MATCH")) arr[@backingInt(lang.KeywordId.MATCH)] = 108;
+    if (@hasField(lang.KeywordId, "TERNARY_IF")) arr[@backingInt(lang.KeywordId.TERNARY_IF)] = 112;
+    if (@hasField(lang.KeywordId, "CATCH")) arr[@backingInt(lang.KeywordId.CATCH)] = 114;
+    if (@hasField(lang.KeywordId, "RETURN")) arr[@backingInt(lang.KeywordId.RETURN)] = 115;
+    if (@hasField(lang.KeywordId, "POST_IF")) arr[@backingInt(lang.KeywordId.POST_IF)] = 116;
+    if (@hasField(lang.KeywordId, "BREAK")) arr[@backingInt(lang.KeywordId.BREAK)] = 117;
+    if (@hasField(lang.KeywordId, "CONTINUE")) arr[@backingInt(lang.KeywordId.CONTINUE)] = 118;
+    if (@hasField(lang.KeywordId, "DEFER")) arr[@backingInt(lang.KeywordId.DEFER)] = 119;
+    if (@hasField(lang.KeywordId, "ERRDEFER")) arr[@backingInt(lang.KeywordId.ERRDEFER)] = 120;
+    if (@hasField(lang.KeywordId, "INLINE")) arr[@backingInt(lang.KeywordId.INLINE)] = 121;
+    if (@hasField(lang.KeywordId, "MINUS_PREFIX")) arr[@backingInt(lang.KeywordId.MINUS_PREFIX)] = 127;
+    if (@hasField(lang.KeywordId, "TRY")) arr[@backingInt(lang.KeywordId.TRY)] = 128;
+    if (@hasField(lang.KeywordId, "REAL")) arr[@backingInt(lang.KeywordId.REAL)] = 135;
+    if (@hasField(lang.KeywordId, "TRUE")) arr[@backingInt(lang.KeywordId.TRUE)] = 136;
+    if (@hasField(lang.KeywordId, "FALSE")) arr[@backingInt(lang.KeywordId.FALSE)] = 137;
+    if (@hasField(lang.KeywordId, "NULL")) arr[@backingInt(lang.KeywordId.NULL)] = 138;
+    if (@hasField(lang.KeywordId, "UNREACHABLE")) arr[@backingInt(lang.KeywordId.UNREACHABLE)] = 139;
+    if (@hasField(lang.KeywordId, "UNDEFINED")) arr[@backingInt(lang.KeywordId.UNDEFINED)] = 140;
+    if (@hasField(lang.KeywordId, "DOT_LBRACE")) arr[@backingInt(lang.KeywordId.DOT_LBRACE)] = 142;
     break :blk arr;
 };
 const keywordFallbackSymbol: u16 = 0;
@@ -2656,7 +2658,7 @@ const sparse = [numStates][]const i16{
 
 const parseTable = blk: {
     @setEvalBranchQuota(100000);
-    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
+    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
     for (sparse, 0..) |row, state| {
         var i: usize = 0;
         while (i < row.len) : (i += 2) {

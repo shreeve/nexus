@@ -575,7 +575,7 @@ pub const Lexer = struct {
         }
         // Anything else, up to a blank or a character that starts a token.
         var e = p + 1;
-        while (e < s.len and !isBlank(s[e]) and s[e] != '\n' and std.mem.indexOfScalar(u8, "=!<>&,(){}@'#", s[e]) == null) e += 1;
+        while (e < s.len and !isBlank(s[e]) and s[e] != '\n' and std.mem.findScalar(u8, "=!<>&,(){}@'#", s[e]) == null) e += 1;
         return self.take(.err, p, e - p);
     }
 
@@ -639,7 +639,7 @@ pub const Lexer = struct {
 
     fn fail(self: *Lexer, pos: usize, len: usize, comptime fmt: []const u8, args: anytype) Token {
         var problem: Problem = .{ .pos = @intCast(pos) };
-        const written = std.fmt.bufPrint(&problem.buf, fmt, args) catch problem.buf[0..];
+        const written = std.mem.print(&problem.buf, fmt, args) catch problem.buf[0..];
         problem.len = @intCast(written.len);
         self.problem = problem;
         return make(.err, pos, len);

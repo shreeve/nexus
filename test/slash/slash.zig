@@ -72,7 +72,7 @@ pub const Tag = enum(u8) {
     @"for",
     cmd_def,
     str_def,
-    @"match",
+    match,
     match_arms,
     match_arm,
 
@@ -132,7 +132,7 @@ pub const Lexer = struct {
 
     // Indentation tracking
     indent_level: u32 = 0,
-    indent_stack: [64]u32 = [_]u32{0} ** 64,
+    indent_stack: [64]u32 = @splat(0),
     indent_depth: u8 = 0,
     pending_outdents: u8 = 0,
     queued: ?Token = null,
@@ -764,8 +764,23 @@ fn trimAscii(bytes: []const u8) []const u8 {
 /// ident rule: `[A-Za-z_./\-+~@%!*?:,^][A-Za-z0-9_./\-+~@%!*?:,^]*`).
 fn isBareWordContinue(c: u8) bool {
     return switch (c) {
-        'A'...'Z', 'a'...'z', '0'...'9',
-        '_', '.', '/', '-', '+', '~', '@', '%', '!', '*', '?', ':', ',', '^',
+        'A'...'Z',
+        'a'...'z',
+        '0'...'9',
+        '_',
+        '.',
+        '/',
+        '-',
+        '+',
+        '~',
+        '@',
+        '%',
+        '!',
+        '*',
+        '?',
+        ':',
+        ',',
+        '^',
         => true,
         else => false,
     };
@@ -777,8 +792,22 @@ fn isBareWordContinue(c: u8) bool {
 /// token an INTEGER instead).
 fn isBareWordStart(c: u8) bool {
     return switch (c) {
-        'A'...'Z', 'a'...'z',
-        '_', '.', '/', '-', '+', '~', '@', '%', '!', '*', '?', ':', ',', '^',
+        'A'...'Z',
+        'a'...'z',
+        '_',
+        '.',
+        '/',
+        '-',
+        '+',
+        '~',
+        '@',
+        '%',
+        '!',
+        '*',
+        '?',
+        ':',
+        ',',
+        '^',
         => true,
         else => c >= 0x80,
     };

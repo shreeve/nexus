@@ -197,7 +197,7 @@ const Parser = struct {
     }
 
     fn parseAlt(self: *Parser, depth: u32) ParseError!*const Node {
-        var branches: std.ArrayListUnmanaged(*const Node) = .empty;
+        var branches: std.ArrayList(*const Node) = .empty;
         try branches.append(self.arena, try self.parseSeq(depth));
         while (true) {
             self.skipSpace();
@@ -210,7 +210,7 @@ const Parser = struct {
     }
 
     fn parseSeq(self: *Parser, depth: u32) ParseError!*const Node {
-        var items: std.ArrayListUnmanaged(*const Node) = .empty;
+        var items: std.ArrayList(*const Node) = .empty;
         while (true) {
             self.skipSpace();
             const c = self.peek() orelse break;
@@ -372,7 +372,7 @@ const Parser = struct {
         const open = self.pos;
         const delim = self.text[self.pos];
         self.pos += 1;
-        var bytes: std.ArrayListUnmanaged(u8) = .empty;
+        var bytes: std.ArrayList(u8) = .empty;
         while (true) {
             if (self.pos >= self.text.len) return self.fail(open, "unterminated quoted literal");
             const c = self.text[self.pos];
@@ -569,13 +569,13 @@ pub fn firstSet(n: *const Node) ByteSet {
 }
 
 /// If `n` matches exactly one string, write it to `out` and return it.
-pub fn literal(n: *const Node, out: *std.ArrayListUnmanaged(u8), gpa: Allocator) !?[]const u8 {
+pub fn literal(n: *const Node, out: *std.ArrayList(u8), gpa: Allocator) !?[]const u8 {
     out.clearRetainingCapacity();
     if (!try appendLiteral(n, out, gpa)) return null;
     return out.items;
 }
 
-fn appendLiteral(n: *const Node, out: *std.ArrayListUnmanaged(u8), gpa: Allocator) !bool {
+fn appendLiteral(n: *const Node, out: *std.ArrayList(u8), gpa: Allocator) !bool {
     switch (n.*) {
         .empty => return true,
         .set => |b| {
@@ -661,7 +661,7 @@ fn expectParseError(text: []const u8, offset: usize, needle: []const u8) !void {
     defer arena.deinit();
     var d: Diagnostic = .{};
     try testing.expectError(error.InvalidPattern, parse(arena.allocator(), text, &d));
-    if (std.mem.indexOf(u8, d.message, needle) == null) {
+    if (std.mem.find(u8, d.message, needle) == null) {
         std.debug.print("message: {s}\n", .{d.message});
         return error.TestUnexpectedResult;
     }
@@ -736,7 +736,7 @@ test "regex: queries" {
     try testing.expect(fs.has('.') and fs.has('7') and !fs.has('a'));
     try testing.expect(!nullable(p.main));
 
-    var buf: std.ArrayListUnmanaged(u8) = .empty;
+    var buf: std.ArrayList(u8) = .empty;
     defer buf.deinit(testing.allocator);
     const lit = try parse(a, "\"]]=\"", &d);
     try testing.expectEqualStrings("]]=", (try literal(lit.main, &buf, testing.allocator)).?);

@@ -60,11 +60,11 @@ pub const Result = struct {
 /// The complete, ordered Tag inventory of a schema: kinds in declaration
 /// order, then `tag(...)` values, then `extraTags`, without duplicates.
 pub fn schemaTags(allocator: Allocator, schema: Schema) ![]const []const u8 {
-    var out: std.ArrayListUnmanaged([]const u8) = .empty;
+    var out: std.ArrayList([]const u8) = .empty;
     var seen: std.StringHashMapUnmanaged(void) = .empty;
     defer seen.deinit(allocator);
     const add = struct {
-        fn f(a: Allocator, o: *std.ArrayListUnmanaged([]const u8), s: *std.StringHashMapUnmanaged(void), t: []const u8) !void {
+        fn f(a: Allocator, o: *std.ArrayList([]const u8), s: *std.StringHashMapUnmanaged(void), t: []const u8) !void {
             if (s.contains(t)) return;
             try s.put(a, t, {});
             try o.append(a, t);
@@ -101,12 +101,12 @@ const Resolver = struct {
     /// Tags declared outside kinds: `tag(...)` values and `@tags`.
     declaredTags: std.StringHashMapUnmanaged(void) = .empty,
     /// Marker values used in unrestricted `tag` roles, in first-seen order.
-    markers: std.ArrayListUnmanaged([]const u8) = .empty,
+    markers: std.ArrayList([]const u8) = .empty,
     /// Kinds some action builds.
     built: std.StringHashMapUnmanaged(void) = .empty,
     /// Heads and tag literals used but not declared, in first-seen order.
-    undeclaredKinds: std.ArrayListUnmanaged(Use) = .empty,
-    undeclaredTags: std.ArrayListUnmanaged(TagUse) = .empty,
+    undeclaredKinds: std.ArrayList(Use) = .empty,
+    undeclaredTags: std.ArrayList(TagUse) = .empty,
 
     /// One construction of an undeclared kind, for the inventory printout.
     const Use = struct { tag: []const u8, list: ActionList, ctx: Ctx };
@@ -135,14 +135,14 @@ const Resolver = struct {
 
         const aliases = try self.aliasTargets();
 
-        var resolved: std.ArrayListUnmanaged([]const Resolved) = .empty;
+        var resolved: std.ArrayList([]const Resolved) = .empty;
         for (self.ir.rules) |rule| {
-            var alts: std.ArrayListUnmanaged(Resolved) = .empty;
+            var alts: std.ArrayList(Resolved) = .empty;
             for (rule.alternatives) |alt| try alts.append(a, try self.resolveAlternative(rule, alt, &aliases));
             try resolved.append(a, try alts.toOwnedSlice(a));
         }
 
-        var infix: std.ArrayListUnmanaged(Resolved) = .empty;
+        var infix: std.ArrayList(Resolved) = .empty;
         if (self.ir.infix) |decl| for (decl.ops) |op| {
             const items = try a.dupe(ActionItem, &.{ .{ .elem = .{ .ref = 1 } }, .{ .elem = .{ .ref = 3 } } });
             const list: ActionList = .{ .head = .{ .tag = op.op }, .items = items };
@@ -154,7 +154,7 @@ const Resolver = struct {
         if (self.failed) return error.SemanticError;
 
         var schema = self.schema;
-        var extra: std.ArrayListUnmanaged([]const u8) = .empty;
+        var extra: std.ArrayList([]const u8) = .empty;
         try extra.appendSlice(a, schema.extraTags);
         for (self.markers.items) |m| if (!containsName(extra.items, m)) try extra.append(a, m);
         schema.extraTags = try extra.toOwnedSlice(a);
@@ -179,7 +179,7 @@ const Resolver = struct {
         const layout = try Layout.of(self.a, alt.elements);
 
         // Pattern labels, with their positions.
-        var labels: std.ArrayListUnmanaged(Label) = .empty;
+        var labels: std.ArrayList(Label) = .empty;
         for (1..layout.slots.len + 1) |p| {
             const e = layout.element(alt.elements, p);
             const name = e.label orelse continue;
@@ -188,7 +188,7 @@ const Resolver = struct {
         }
 
         var out: Resolved = .{ .tree = alt.actionTree };
-        var sides: std.ArrayListUnmanaged(Resolved.SideLabel) = .empty;
+        var sides: std.ArrayList(Resolved.SideLabel) = .empty;
         if (alt.actionTree) |tree| switch (tree) {
             .list => |l| {
                 const kind: ?u16 = switch (l.head) {
@@ -218,13 +218,13 @@ const Resolver = struct {
     /// Place a list's items: a kind-headed list gets its slots in schema
     /// order; any other list is plumbing and keeps its items. Nested lists
     /// are placed too. `labels` fill roles of this (top-level) list only.
-    fn place(self: *Resolver, ctx: Ctx, l: ActionList, labels: []const Label, sides: ?*std.ArrayListUnmanaged(Resolved.SideLabel)) Error!ActionList {
+    fn place(self: *Resolver, ctx: Ctx, l: ActionList, labels: []const Label, sides: ?*std.ArrayList(Resolved.SideLabel)) Error!ActionList {
         const a = self.a;
         const tag = switch (l.head) {
             .tag => |t| t,
             else => {
                 // Plumbing: no roles, nested lists placed.
-                var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+                var items: std.ArrayList(ActionItem) = .empty;
                 for (l.items) |item| {
                     if (item.role) |r| self.err(ctx, "role '{s}' in a list without a kind (roles belong to schema nodes)", .{r});
                     try self.noteTag(ctx, item.elem, null);
@@ -246,7 +246,7 @@ const Resolver = struct {
 
         const slots = try a.alloc(?ActionElem, slotCount);
         @memset(slots, null);
-        var rest: std.ArrayListUnmanaged(ActionElem) = .empty;
+        var rest: std.ArrayList(ActionElem) = .empty;
         var next: usize = 0;
         var named = false;
 
@@ -325,7 +325,7 @@ const Resolver = struct {
             }
         }
 
-        var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+        var items: std.ArrayList(ActionItem) = .empty;
         for (slots, 0..) |s, i| {
             const role = roles[i];
             if (s == null and !role.optional)
@@ -377,7 +377,7 @@ const Resolver = struct {
     }
 
     fn checkInventory(self: *Resolver) Error!void {
-        var unbuilt: std.ArrayListUnmanaged([]const u8) = .empty;
+        var unbuilt: std.ArrayList([]const u8) = .empty;
         for (self.schema.kinds) |k| {
             if (!k.wrapper and !self.built.contains(k.tag)) try unbuilt.append(self.a, k.tag);
         }
@@ -570,7 +570,7 @@ fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
 /// A string literal's text: without its quotes, `\c` escapes read as `c`.
 fn unquote(a: Allocator, lit: []const u8) ![]const u8 {
     const body = lit[1 .. lit.len - 1];
-    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < body.len) : (i += 1) {
         if (body[i] == '\\' and i + 1 < body.len) i += 1;
@@ -703,7 +703,7 @@ pub fn writeKind(w: *std.Io.Writer, k: Schema.Kind) !void {
 /// A set of possible values: nil, leaf, tag, untagged list, and one bit per
 /// schema kind.
 const Types = struct {
-    bits: std.DynamicBitSetUnmanaged,
+    bits: std.bit_set.Dynamic,
 
     const nil = 0;
     const leaf = 1;
@@ -728,8 +728,8 @@ const TypeChecker = struct {
     width: usize = 0,
     /// Per symbol: the values it can produce, and the items of the lists it
     /// can produce.
-    result: []std.DynamicBitSetUnmanaged = &.{},
-    items: []std.DynamicBitSetUnmanaged = &.{},
+    result: []std.bit_set.Dynamic = &.{},
+    items: []std.bit_set.Dynamic = &.{},
     kindIndex: std.StringHashMapUnmanaged(u16) = .empty,
     reported: std.AutoHashMapUnmanaged(u64, void) = .empty,
 
@@ -739,18 +739,18 @@ const TypeChecker = struct {
         for (self.schema.kinds, 0..) |k, i| try self.kindIndex.put(a, k.tag, @intCast(i));
         self.width = Types.firstKind + self.schema.kinds.len;
         const n = g.symbols.items.len;
-        self.result = try a.alloc(std.DynamicBitSetUnmanaged, n);
-        self.items = try a.alloc(std.DynamicBitSetUnmanaged, n);
+        self.result = try a.alloc(std.bit_set.Dynamic, n);
+        self.items = try a.alloc(std.bit_set.Dynamic, n);
         for (g.symbols.items, 0..) |symbol, i| {
-            self.result[i] = try std.DynamicBitSetUnmanaged.initEmpty(a, self.width);
-            self.items[i] = try std.DynamicBitSetUnmanaged.initEmpty(a, self.width);
+            self.result[i] = try std.bit_set.Dynamic.initEmpty(a, self.width);
+            self.items[i] = try std.bit_set.Dynamic.initEmpty(a, self.width);
             if (symbol.kind == .terminal) self.result[i].set(Types.leaf);
         }
 
         // Fixpoint: add each rule's possible results to its lhs until
         // nothing changes.
-        var scratch = try std.DynamicBitSetUnmanaged.initEmpty(a, self.width);
-        var scratchItems = try std.DynamicBitSetUnmanaged.initEmpty(a, self.width);
+        var scratch = try std.bit_set.Dynamic.initEmpty(a, self.width);
+        var scratchItems = try std.bit_set.Dynamic.initEmpty(a, self.width);
         var changed = true;
         while (changed) {
             changed = false;
@@ -773,7 +773,7 @@ const TypeChecker = struct {
         if (self.failed) return error.SemanticError;
     }
 
-    fn unionInto(dst: *std.DynamicBitSetUnmanaged, src: std.DynamicBitSetUnmanaged) bool {
+    fn unionInto(dst: *std.bit_set.Dynamic, src: std.bit_set.Dynamic) bool {
         var changed = false;
         var it = src.iterator(.{});
         while (it.next()) |b| if (!dst.isSet(b)) {
@@ -787,7 +787,7 @@ const TypeChecker = struct {
         return rule.rhs[pos - 1];
     }
 
-    fn ruleResult(self: *TypeChecker, rule: grammar.Rule, out: *std.DynamicBitSetUnmanaged, items: *std.DynamicBitSetUnmanaged) void {
+    fn ruleResult(self: *TypeChecker, rule: grammar.Rule, out: *std.bit_set.Dynamic, items: *std.bit_set.Dynamic) void {
         const tree = rule.actionTree orelse {
             switch (rule.rhs.len) {
                 0 => out.set(Types.nil),
@@ -812,7 +812,7 @@ const TypeChecker = struct {
         }
     }
 
-    fn listResult(self: *TypeChecker, rule: grammar.Rule, l: ActionList, out: *std.DynamicBitSetUnmanaged, items: *std.DynamicBitSetUnmanaged) void {
+    fn listResult(self: *TypeChecker, rule: grammar.Rule, l: ActionList, out: *std.bit_set.Dynamic, items: *std.bit_set.Dynamic) void {
         switch (l.head) {
             .tag => |t| if (self.kindIndex.get(t)) |k| {
                 out.set(Types.firstKind + k);
@@ -827,7 +827,7 @@ const TypeChecker = struct {
 
     /// The values an item contributes to a list (a spread contributes its
     /// list's items).
-    fn elemInto(self: *TypeChecker, rule: grammar.Rule, e: ActionElem, out: *std.DynamicBitSetUnmanaged) void {
+    fn elemInto(self: *TypeChecker, rule: grammar.Rule, e: ActionElem, out: *std.bit_set.Dynamic) void {
         switch (e) {
             .ref => |p| _ = unionInto(out, self.result[sym(rule, p)]),
             .spread => |p| _ = unionInto(out, self.items[sym(rule, p)]),
@@ -841,8 +841,8 @@ const TypeChecker = struct {
         }
     }
 
-    fn allowed(self: *TypeChecker, role: Schema.Role, forRest: bool) !std.DynamicBitSetUnmanaged {
-        var set = try std.DynamicBitSetUnmanaged.initEmpty(self.a, self.width);
+    fn allowed(self: *TypeChecker, role: Schema.Role, forRest: bool) !std.bit_set.Dynamic {
+        var set = try std.bit_set.Dynamic.initEmpty(self.a, self.width);
         if (role.optional or forRest) set.set(Types.nil);
         switch (role.type) {
             .any => {
@@ -873,7 +873,7 @@ const TypeChecker = struct {
         const kind = self.schema.kinds[k];
         const roles = kind.roles;
         const slotCount = if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
-        var actual = try std.DynamicBitSetUnmanaged.initEmpty(self.a, self.width);
+        var actual = try std.bit_set.Dynamic.initEmpty(self.a, self.width);
         for (l.items, 0..) |item, i| {
             const forRest = i >= slotCount;
             const role = roles[@min(i, roles.len - 1)];
@@ -903,7 +903,7 @@ const TypeChecker = struct {
         }
     }
 
-    fn report(self: *TypeChecker, ruleId: u16, role: Schema.Role, kind: Schema.Kind, e: ActionElem, bad: std.DynamicBitSetUnmanaged, what: ?[]const u8) Error!void {
+    fn report(self: *TypeChecker, ruleId: u16, role: Schema.Role, kind: Schema.Kind, e: ActionElem, bad: std.bit_set.Dynamic, what: ?[]const u8) Error!void {
         const rule = self.g.rules.items[ruleId];
         // One message per source alternative and role.
         var h = std.hash.Wyhash.init(rule.line);
@@ -921,7 +921,7 @@ const TypeChecker = struct {
         diag.errLine(self.path, rule.line, rule.col, "{s}", .{out.written()});
     }
 
-    fn describe(self: *TypeChecker, w: *std.Io.Writer, ruleId: u16, role: Schema.Role, kind: Schema.Kind, e: ActionElem, bad: std.DynamicBitSetUnmanaged, what: ?[]const u8) !void {
+    fn describe(self: *TypeChecker, w: *std.Io.Writer, ruleId: u16, role: Schema.Role, kind: Schema.Kind, e: ActionElem, bad: std.bit_set.Dynamic, what: ?[]const u8) !void {
         const g = self.g;
         const rule = g.rules.items[ruleId];
         try w.writeAll("rule '");
@@ -964,15 +964,15 @@ const TypeChecker = struct {
     /// A rule of nonterminal `s` (or of the nonterminals it passes through)
     /// whose result includes type bit `b`.
     fn producer(self: *TypeChecker, s: u16, b: usize, asItem: bool) ?u16 {
-        var visited = std.DynamicBitSetUnmanaged.initEmpty(self.a, self.g.symbols.items.len) catch return null;
+        var visited = std.bit_set.Dynamic.initEmpty(self.a, self.g.symbols.items.len) catch return null;
         return self.findProducer(s, b, asItem, &visited);
     }
 
-    fn findProducer(self: *TypeChecker, s: u16, b: usize, asItem: bool, visited: *std.DynamicBitSetUnmanaged) ?u16 {
+    fn findProducer(self: *TypeChecker, s: u16, b: usize, asItem: bool, visited: *std.bit_set.Dynamic) ?u16 {
         if (visited.isSet(s)) return null;
         visited.set(s);
-        var one = std.DynamicBitSetUnmanaged.initEmpty(self.a, self.width) catch return null;
-        var items = std.DynamicBitSetUnmanaged.initEmpty(self.a, self.width) catch return null;
+        var one = std.bit_set.Dynamic.initEmpty(self.a, self.width) catch return null;
+        var items = std.bit_set.Dynamic.initEmpty(self.a, self.width) catch return null;
         for (self.g.symbols.items[s].rules.items) |ri| {
             one.unsetAll();
             items.unsetAll();
@@ -1005,7 +1005,7 @@ const TypeChecker = struct {
         if (role.optional) try w.writeAll(" or nil");
     }
 
-    fn writeTypes(self: *TypeChecker, w: *std.Io.Writer, set: std.DynamicBitSetUnmanaged) !void {
+    fn writeTypes(self: *TypeChecker, w: *std.Io.Writer, set: std.bit_set.Dynamic) !void {
         var it = set.iterator(.{});
         var first = true;
         while (it.next()) |b| {
@@ -1048,7 +1048,7 @@ fn expandText(a: Allocator, text: []const u8) !Grammar {
 
 /// The rendered actions of the rules of nonterminal `lhs`, in order.
 fn actionsOf(a: Allocator, g: *const Grammar, lhs: []const u8) ![]const []const u8 {
-    var out: std.ArrayListUnmanaged([]const u8) = .empty;
+    var out: std.ArrayList([]const u8) = .empty;
     const id = g.getSymbol(lhs).?;
     for (g.symbols.items[id].rules.items) |ri| {
         const r = g.rules.items[ri];
@@ -1199,10 +1199,10 @@ test "synthesized symbols are named in source syntax; identical ones are shared"
         \\
     );
     const names = [_][]const u8{
-        "ID?",                "item+",             "item*",
+        "ID?",                "item+",               "item*",
         "L(item, \";\")",     "L(item, \";\").tail", "L(item?)",
-        "L(item?)?",          "L(item?).tail",     "(item !\"!\")",
-        "(A | B C)",          "(A | B C)*",        "(A | B C)+",
+        "L(item?)?",          "L(item?).tail",       "(item !\"!\")",
+        "(A | B C)",          "(A | B C)*",          "(A | B C)+",
         "infix(\"+\" \"-\")", "infix(\"*\")",
     };
     for (names) |n| if (g.getSymbol(n) == null) {

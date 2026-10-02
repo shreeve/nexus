@@ -55,24 +55,24 @@ pub const GrammarLowerer = struct {
     /// Position of the first `tokens` keyword.
     tokensAt: ?u32 = null,
     hasParser: bool = false,
-    scratch: std.ArrayListUnmanaged(u8) = .empty,
+    scratch: std.ArrayList(u8) = .empty,
 
-    rules: std.ArrayListUnmanaged(ParsedRule) = .empty,
-    startSymbols: std.ArrayListUnmanaged([]const u8) = .empty,
-    asDirectives: std.ArrayListUnmanaged(AsDirective) = .empty,
-    opMappings: std.ArrayListUnmanaged(OpMapping) = .empty,
-    errorNames: std.ArrayListUnmanaged(ErrorName) = .empty,
-    displayNames: std.ArrayListUnmanaged(DisplayName) = .empty,
-    infixOps: std.ArrayListUnmanaged(InfixOp) = .empty,
+    rules: std.ArrayList(ParsedRule) = .empty,
+    startSymbols: std.ArrayList([]const u8) = .empty,
+    asDirectives: std.ArrayList(AsDirective) = .empty,
+    opMappings: std.ArrayList(OpMapping) = .empty,
+    errorNames: std.ArrayList(ErrorName) = .empty,
+    displayNames: std.ArrayList(DisplayName) = .empty,
+    infixOps: std.ArrayList(InfixOp) = .empty,
     infixBase: ?[]const u8 = null,
     infixLoc: diag.Source.Loc = .{ .line = 0, .col = 0 },
     lang: ?[]const u8 = null,
-    conflicts: std.ArrayListUnmanaged(ConflictEntry) = .empty,
-    kinds: std.ArrayListUnmanaged(Schema.Kind) = .empty,
+    conflicts: std.ArrayList(ConflictEntry) = .empty,
+    kinds: std.ArrayList(Schema.Kind) = .empty,
     hasSchema: bool = false,
-    extraTags: std.ArrayListUnmanaged([]const u8) = .empty,
+    extraTags: std.ArrayList([]const u8) = .empty,
     tagsNode: ?Sexp = null,
-    trivia: std.ArrayListUnmanaged([]const u8) = .empty,
+    trivia: std.ArrayList([]const u8) = .empty,
     repair: ?grammar.RepairSpec = null,
 
     pub fn lower(allocator: Allocator, sexp: Sexp, source: diag.Source) LowerError!GrammarIR {
@@ -375,7 +375,7 @@ pub const GrammarLowerer = struct {
     fn lowerLexRule(self: *GrammarLowerer, node: Sexp, items: []const Sexp, spec: *LexerSpec) LowerError!void {
         if (items.len < 4) return self.shapeError(node, "(lex_rule PATTERN GUARDS TOKEN ACTION...)");
         const pattern = try self.optSrc(items[1], "pattern") orelse "";
-        var guards: std.ArrayListUnmanaged(Guard) = .empty;
+        var guards: std.ArrayList(Guard) = .empty;
         var at: u32 = srcPos(items[1]);
         if (items[2] != .nil) {
             const gt = try self.requireTag(items[2], .guards);
@@ -408,7 +408,7 @@ pub const GrammarLowerer = struct {
             .line = where.line,
             .col = where.col,
         };
-        var actions: std.ArrayListUnmanaged(Action) = .empty;
+        var actions: std.ArrayList(Action) = .empty;
         for (items[4..]) |a| try self.lowerLexAction(a, &rule, &actions);
         if (rule.hold and rule.rewind != null) return self.failAt(at, "a rule cannot both hold and rewind", .{});
         if (rule.hold and rule.isSkip) return self.failAt(at, "a held (zero-width) rule cannot also skip", .{});
@@ -437,7 +437,7 @@ pub const GrammarLowerer = struct {
         return .{ .variable = variable, .op = op, .value = value, .negated = negated };
     }
 
-    fn lowerLexAction(self: *GrammarLowerer, node: Sexp, rule: *LexerRule, actions: *std.ArrayListUnmanaged(Action)) LowerError!void {
+    fn lowerLexAction(self: *GrammarLowerer, node: Sexp, rule: *LexerRule, actions: *std.ArrayList(Action)) LowerError!void {
         const t = taggedItems(node) orelse return self.shapeError(node, "lexer action");
         switch (t.tag) {
             .set_action => {
@@ -466,7 +466,7 @@ pub const GrammarLowerer = struct {
                 const arg = t.items[2];
                 // `word(arg)` or `word arg`: the parentheses are not in the tree.
                 const argText = try self.optSrc(arg, "action argument");
-                const parens = argText != null and std.mem.indexOfScalar(u8, self.source.text[srcPos(wordNode) + word.len .. srcPos(arg)], '(') != null;
+                const parens = argText != null and std.mem.findScalar(u8, self.source.text[srcPos(wordNode) + word.len .. srcPos(arg)], '(') != null;
                 const quoted = argText != null and argText.?[0] == '\'';
                 if (std.mem.eql(u8, word, "skip") or std.mem.eql(u8, word, "hold")) {
                     if (arg != .nil) return self.fail(arg, "`{s}` takes no argument", .{word});
@@ -601,7 +601,7 @@ pub const GrammarLowerer = struct {
     /// compares it with whitespace normalized and `->` read as `→`).
     fn lowerRuleText(self: *GrammarLowerer, node: Sexp) LowerError![]const u8 {
         const t = try self.requireSrc(node, "conflict rule text");
-        if (std.mem.indexOf(u8, t, "\u{2192}") == null and std.mem.indexOf(u8, t, "->") == null)
+        if (std.mem.find(u8, t, "\u{2192}") == null and std.mem.find(u8, t, "->") == null)
             return self.fail(node, "a conflict entry names a rule as `lhs → rhs`, not '{s}'", .{t});
         return t;
     }
@@ -660,8 +660,8 @@ pub const GrammarLowerer = struct {
 
     /// The text of a string literal's body: `\"` is `"`, `\\` is `\`.
     fn unescape(allocator: Allocator, body: []const u8) LowerError![]const u8 {
-        if (std.mem.indexOfScalar(u8, body, '\\') == null) return body;
-        var out: std.ArrayListUnmanaged(u8) = .empty;
+        if (std.mem.findScalar(u8, body, '\\') == null) return body;
+        var out: std.ArrayList(u8) = .empty;
         var i: usize = 0;
         while (i < body.len) : (i += 1) {
             if (body[i] == '\\' and i + 1 < body.len and (body[i + 1] == '"' or body[i + 1] == '\\')) i += 1;
@@ -730,7 +730,7 @@ pub const GrammarLowerer = struct {
         if (names.len < 2) return self.shapeError(dt[1], "(kinds NAME+)");
         const roleNodes = try self.requireTag(dt[2], .roles);
 
-        var roles: std.ArrayListUnmanaged(Schema.Role) = .empty;
+        var roles: std.ArrayList(Schema.Role) = .empty;
         for (roleNodes[1..], 0..) |roleNode, i| {
             const role = try self.lowerRole(roleNode);
             if (role.rest and i + 1 != roleNodes.len - 1)
@@ -740,7 +740,7 @@ pub const GrammarLowerer = struct {
             try roles.append(self.allocator, role);
         }
 
-        var side: std.ArrayListUnmanaged([]const u8) = .empty;
+        var side: std.ArrayList([]const u8) = .empty;
         if (dt[3] != .nil) {
             const st = try self.requireTag(dt[3], .sides);
             if (st.len < 2) return self.shapeError(dt[3], "(sides IDENT+)");
@@ -790,7 +790,7 @@ pub const GrammarLowerer = struct {
     fn lowerRoleType(self: *GrammarLowerer, node: Sexp) LowerError!Schema.RoleType {
         const tt = try self.requireTag(node, .type);
         if (tt.len < 2) return self.shapeError(node, "(type ATOM+)");
-        var kinds: std.ArrayListUnmanaged([]const u8) = .empty;
+        var kinds: std.ArrayList([]const u8) = .empty;
         var builtin: ?Schema.RoleType = null;
         for (tt[1..]) |atom| {
             if (taggedItems(atom)) |at| {
@@ -798,7 +798,7 @@ pub const GrammarLowerer = struct {
                 const head = try self.requireSrc(at.items[1], "tag");
                 if (!std.mem.eql(u8, head, "tag"))
                     return self.fail(at.items[1], "only `tag(...)` takes a value list, not '{s}(...)'", .{head});
-                var values: std.ArrayListUnmanaged([]const u8) = .empty;
+                var values: std.ArrayList([]const u8) = .empty;
                 for (at.items[2..]) |v| try values.append(self.allocator, stripQuotes(try self.requireSrc(v, "tag value")));
                 if (builtin != null or tt.len > 2) return self.fail(atom, "`tag(...)` cannot be combined with other types", .{});
                 builtin = .{ .tag = try values.toOwnedSlice(self.allocator) };
@@ -830,7 +830,7 @@ pub const GrammarLowerer = struct {
         return .{ .kinds = try kinds.toOwnedSlice(self.allocator) };
     }
 
-    fn lowerNames(self: *GrammarLowerer, node: Sexp, items: []const Sexp, what: []const u8, out: *std.ArrayListUnmanaged([]const u8)) LowerError!void {
+    fn lowerNames(self: *GrammarLowerer, node: Sexp, items: []const Sexp, what: []const u8, out: *std.ArrayList([]const u8)) LowerError!void {
         if (items.len < 2) return self.shapeError(node, what);
         for (items[1..]) |n| try out.append(self.allocator, stripQuotes(try self.requireSrc(n, "name")));
     }
@@ -847,12 +847,12 @@ pub const GrammarLowerer = struct {
     fn lowerRepair(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
         if (items.len < 2) return self.shapeError(node, "(repair REPAIR_LINE+)");
         if (self.repair != null) return self.fail(node, "duplicate @repair", .{});
-        var holes: std.ArrayListUnmanaged([]const u8) = .empty;
-        var structure: std.ArrayListUnmanaged([]const u8) = .empty;
-        var terminators: std.ArrayListUnmanaged([]const u8) = .empty;
-        var holeLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
-        var structureLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
-        var terminatorLocs: std.ArrayListUnmanaged(grammar.RepairSpec.Loc) = .empty;
+        var holes: std.ArrayList([]const u8) = .empty;
+        var structure: std.ArrayList([]const u8) = .empty;
+        var terminators: std.ArrayList([]const u8) = .empty;
+        var holeLocs: std.ArrayList(grammar.RepairSpec.Loc) = .empty;
+        var structureLocs: std.ArrayList(grammar.RepairSpec.Loc) = .empty;
+        var terminatorLocs: std.ArrayList(grammar.RepairSpec.Loc) = .empty;
         for (items[1..]) |line| {
             const lt = try self.requireTag(line, .repair_line);
             if (lt.len < 3) return self.shapeError(line, "(repair_line IDENT NAME+)");
@@ -898,7 +898,7 @@ pub const GrammarLowerer = struct {
             try self.startSymbols.append(self.allocator, name);
         }
 
-        var alts: std.ArrayListUnmanaged(ParsedAlternative) = .empty;
+        var alts: std.ArrayList(ParsedAlternative) = .empty;
         for (items[2..]) |altNode| try alts.append(self.allocator, try self.lowerAlt(altNode, items[1]));
 
         const l = self.loc(node);
@@ -921,13 +921,13 @@ pub const GrammarLowerer = struct {
         // (exclude "c") hints are consumed here: they set the alternative's
         // excluded characters and never reach the element list.
         const rawChildren = try self.requireList(items[2], "element list");
-        var elements: std.ArrayListUnmanaged(ParsedElement) = .empty;
-        var exclude: std.ArrayListUnmanaged(u8) = .empty;
+        var elements: std.ArrayList(ParsedElement) = .empty;
+        var exclude: std.ArrayList(u8) = .empty;
         for (rawChildren) |child| {
             if (taggedItems(child)) |ct| if (ct.tag == .exclude) {
                 try self.requireArity(child, ct.items, 2, 2, "(exclude STRING)");
                 const c = try self.hintChar(ct.items[1]);
-                if (std.mem.indexOfScalar(u8, exclude.items, c) == null) try exclude.append(self.allocator, c);
+                if (std.mem.findScalar(u8, exclude.items, c) == null) try exclude.append(self.allocator, c);
                 continue;
             };
             try elements.append(self.allocator, try self.lowerElement(child));
@@ -1055,7 +1055,7 @@ pub const GrammarLowerer = struct {
         const kind = try self.flag(node, items[1], &.{ .many, .opt }, "(group KIND ...): KIND must be _, many or opt");
         const bodies = items[2..];
 
-        var lowered: std.ArrayListUnmanaged([]const ParsedElement) = .empty;
+        var lowered: std.ArrayList([]const ParsedElement) = .empty;
         for (bodies) |body| {
             const elems = try self.lowerAltBody(body);
             if (elems.len == 0) return self.shapeError(body, "non-empty group alternative");
@@ -1111,7 +1111,7 @@ pub const GrammarLowerer = struct {
 
     fn lowerAltBody(self: *GrammarLowerer, node: Sexp) LowerError![]const ParsedElement {
         const items = try self.requireList(node, "element list");
-        var out: std.ArrayListUnmanaged(ParsedElement) = .empty;
+        var out: std.ArrayList(ParsedElement) = .empty;
         for (items) |child| try out.append(self.allocator, try self.lowerElement(child));
         return out.toOwnedSlice(self.allocator);
     }
@@ -1192,7 +1192,7 @@ pub const GrammarLowerer = struct {
             },
             else => .none,
         };
-        var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+        var items: std.ArrayList(ActionItem) = .empty;
         for (t.items[first..]) |item| try items.append(self.allocator, try self.lowerActionItem(item, length));
         return .{ .head = head, .items = try items.toOwnedSlice(self.allocator) };
     }

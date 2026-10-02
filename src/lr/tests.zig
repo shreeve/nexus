@@ -29,14 +29,14 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
     g.endId = try g.addSymbol("$end", .terminal);
     g.errorId = try g.addSymbol("error", .terminal);
     for (rules) |text| {
-        const arrow = std.mem.indexOf(u8, text, "→").?;
+        const arrow = std.mem.find(u8, text, "→").?;
         _ = try g.addSymbol(std.mem.trim(u8, text[0..arrow], " "), .nonterminal);
     }
     for (rules) |text| {
-        const arrow = std.mem.indexOf(u8, text, "→").?;
+        const arrow = std.mem.find(u8, text, "→").?;
         const lhs = g.getSymbol(std.mem.trim(u8, text[0..arrow], " ")).?;
-        var rhs: std.ArrayListUnmanaged(u16) = .empty;
-        var excl: std.ArrayListUnmanaged(u8) = .empty;
+        var rhs: std.ArrayList(u16) = .empty;
+        var excl: std.ArrayList(u8) = .empty;
         var rule: grammar.Rule = .{ .id = @intCast(g.rules.items.len), .lhs = lhs, .rhs = &.{} };
         var it = std.mem.tokenizeScalar(u8, text[arrow + "→".len ..], ' ');
         while (it.next()) |tok| {
@@ -59,8 +59,8 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
     }
     for (starts) |name| {
         const start = g.getSymbol(name).?;
-        const marker = try g.addSymbol(try std.fmt.allocPrint(a, "{s}!", .{name}), .terminal);
-        const acc = try g.addSymbol(try std.fmt.allocPrint(a, "$accept_{s}", .{name}), .nonterminal);
+        const marker = try g.addSymbol(try a.print("{s}!", .{name}), .terminal);
+        const acc = try g.addSymbol(try a.print("$accept_{s}", .{name}), .nonterminal);
         const id: u16 = @intCast(g.rules.items.len);
         try g.rules.append(a, .{ .id = id, .lhs = acc, .rhs = try a.dupe(u16, &.{ marker, start, g.endId }) });
         try g.symbols.items[acc].rules.append(a, id);
@@ -112,7 +112,7 @@ fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u8) u16 {
 const Lr1 = struct { rule: u16, dot: u8, la: u16 };
 
 fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: []const Lr1) ![]Lr1 {
-    var items: std.ArrayListUnmanaged(Lr1) = .empty;
+    var items: std.ArrayList(Lr1) = .empty;
     try items.appendSlice(a, seed);
     var i: usize = 0;
     while (i < items.items.len) : (i += 1) {
@@ -120,7 +120,7 @@ fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: [
         const rhs = g.rules.items[it.rule].rhs;
         if (it.dot >= rhs.len or g.symbols.items[rhs[it.dot]].kind != .nonterminal) continue;
         // FIRST(rest la)
-        var firsts: std.ArrayListUnmanaged(u16) = .empty;
+        var firsts: std.ArrayList(u16) = .empty;
         var allNullable = true;
         for (rhs[it.dot + 1 ..]) |s| {
             var fit = la.first.get(s).iterator();
@@ -155,8 +155,8 @@ fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: [
 fn canonicalLalr(a: Allocator, b: *const Built) ![][][]u16 {
     const g = &b.g;
     const auto = &b.auto;
-    var states: std.ArrayListUnmanaged([]Lr1) = .empty;
-    var lr0: std.ArrayListUnmanaged(u16) = .empty; // LR(0) state of each LR(1) state
+    var states: std.ArrayList([]Lr1) = .empty;
+    var lr0: std.ArrayList(u16) = .empty; // LR(0) state of each LR(1) state
     for (g.acceptRules.items, auto.startStates.items) |r, s0| {
         try states.append(a, try lr1Closure(a, g, b.la, &.{.{ .rule = r, .dot = 0, .la = g.endId }}));
         try lr0.append(a, s0);
@@ -164,7 +164,7 @@ fn canonicalLalr(a: Allocator, b: *const Built) ![][][]u16 {
     var i: usize = 0;
     while (i < states.items.len) : (i += 1) {
         for (auto.states.items[lr0.items[i]].transitions) |t| {
-            var kernel: std.ArrayListUnmanaged(Lr1) = .empty;
+            var kernel: std.ArrayList(Lr1) = .empty;
             for (states.items[i]) |it| {
                 const rhs = g.rules.items[it.rule].rhs;
                 if (it.dot < rhs.len and rhs[it.dot] == t.symbol)
@@ -187,12 +187,12 @@ fn canonicalLalr(a: Allocator, b: *const Built) ![][][]u16 {
     for (auto.states.items, 0..) |s, si| {
         ref[si] = try a.alloc([]u16, s.reductions.len);
         for (s.reductions, 0..) |red, ri| {
-            var set: std.ArrayListUnmanaged(u16) = .empty;
+            var set: std.ArrayList(u16) = .empty;
             for (states.items, lr0.items) |items, s0| {
                 if (s0 != si) continue;
                 for (items) |it| {
                     if (it.rule == red.ruleId and it.dot == red.dot and
-                        std.mem.indexOfScalar(u16, set.items, it.la) == null)
+                        std.mem.findScalar(u16, set.items, it.la) == null)
                         try set.append(a, it.la);
                 }
             }
@@ -208,7 +208,7 @@ fn expectLalrMatchesCanonical(a: Allocator, b: *const Built) !void {
     for (b.auto.states.items, 0..) |s, si| {
         for (s.reductions, 0..) |red, ri| {
             if (b.g.isAcceptRule(red.ruleId)) continue;
-            var got: std.ArrayListUnmanaged(u16) = .empty;
+            var got: std.ArrayList(u16) = .empty;
             var it = b.la.sets[si][ri].iterator();
             while (it.next()) |t| try got.append(a, t);
             try testing.expectEqualSlices(u16, ref[si][ri], got.items);
@@ -280,11 +280,11 @@ test "LALR lookaheads equal merged canonical LR(1) on random grammars" {
     var tested: usize = 0;
     var round: usize = 0;
     while (round < 600) : (round += 1) {
-        var rules: std.ArrayListUnmanaged([]const u8) = .empty;
+        var rules: std.ArrayList([]const u8) = .empty;
         for (nts) |lhs| {
             const n = 1 + rand.uintLessThan(usize, 3);
             for (0..n) |_| {
-                var text: std.ArrayListUnmanaged(u8) = .empty;
+                var text: std.ArrayList(u8) = .empty;
                 try text.print(a, "{s} →", .{lhs});
                 const len = rand.uintLessThan(usize, 4);
                 if (len == 0) try text.appendSlice(a, " ε");
@@ -355,10 +355,10 @@ test "classifies shift and reduce conflicts; manifest text; shortest example" {
     out.clearRetainingCapacity();
     try conflicts.writeConflict(&out.writer, a, &b.g, &b.auto, sr.?);
     const text = out.written();
-    try testing.expect(std.mem.indexOf(u8, text, "example: IF ID stmt • ELSE\n") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "stmt → IF ID stmt •   (reduce)") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "stmt → IF ID stmt • ELSE stmt   (shift)") != null);
-    try testing.expect(std.mem.indexOf(u8, text, "prog!") == null);
+    try testing.expect(std.mem.find(u8, text, "example: IF ID stmt • ELSE\n") != null);
+    try testing.expect(std.mem.find(u8, text, "stmt → IF ID stmt •   (reduce)") != null);
+    try testing.expect(std.mem.find(u8, text, "stmt → IF ID stmt • ELSE stmt   (shift)") != null);
+    try testing.expect(std.mem.find(u8, text, "prog!") == null);
 }
 
 test "manifest check: match, count change, winner flip, missing, undeclared" {
@@ -465,7 +465,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
     try testing.expectEqual(@as(u32, 0), x.tbl.xExcludeStart[st]);
     try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[st + 1]);
     try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[x.auto.states.items.len]);
-    try testing.expect(std.mem.indexOfScalar(u8, &chars, '(') != null and std.mem.indexOfScalar(u8, &chars, '[') != null);
+    try testing.expect(std.mem.findScalar(u8, &chars, '(') != null and std.mem.findScalar(u8, &chars, '[') != null);
     for (xs) |e| try testing.expect(x.tbl.rows[e.state][sym(&x.g, if (e.char == '(') "\"(\"" else "\"[\"")] == .reduce);
     var sink: std.Io.Writer.Allocating = .init(a);
     const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
@@ -518,7 +518,7 @@ test "manifest rule texts normalize arrows, blanks and empty right-hand sides" {
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
-    if (std.mem.indexOf(u8, haystack, needle) == null) {
+    if (std.mem.find(u8, haystack, needle) == null) {
         std.debug.print("missing:\n{s}\nin:\n{s}\n", .{ needle, haystack });
         return error.TestExpectedEqual;
     }

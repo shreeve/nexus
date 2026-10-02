@@ -45,7 +45,7 @@ fn reportSyntaxError(p: *const parser.Parser, source: diag.Source) void {
         return;
     };
     // An invalid pattern earlier on the line is the first error there.
-    if (p.lexer.lastPattern) |pat| if (std.mem.indexOfScalar(u8, source.text[pat.pos..tok.pos], '\n') == null) {
+    if (p.lexer.lastPattern) |pat| if (std.mem.findScalar(u8, source.text[pat.pos..tok.pos], '\n') == null) {
         var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
         defer arena.deinit();
         var d: regex.Diagnostic = .{};
