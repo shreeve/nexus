@@ -228,19 +228,20 @@ These hold on every commit; the suite checks each one.
 ## Performance
 
 Measured with `test/bench/run` and recorded in
-[test/bench/BASELINE.md](../test/bench/BASELINE.md) (Apple M5, ReleaseFast):
+[test/bench/BASELINE.md](../test/bench/BASELINE.md) (Apple M5, ReleaseFast,
+one thread):
 
-| | 0.10.3 | 1.0.0 |
-|---|---:|---:|
-| generate MUMPS (909 lines, 831 states), ms | 29.1 | 17.2 |
-| lex VistA (86.5 MB), MB/s | 331 | 348 |
-| parse VistA, MB/s | 36.3 | 49.6 |
-| lex Rig (3.8 MB), MB/s | 341 | 354 |
-| parse Rig, MB/s | 52.2 | 60.9 |
+| | |
+|---|---:|
+| generate MUMPS (909 lines, 830 states), ms | 18.7 |
+| lex VistA (86.5 MB), MB/s | 344 |
+| parse VistA, MB/s | 50.7 |
+| lex Rig (3.8 MB), MB/s | 366 |
+| parse Rig, MB/s | 59.0 |
 
 The node store (`@schema` or `--spans`) costs about 5% of parse time on
-MUMPS and 3% on Rig. LALR lookahead computation went from 24 ms to 0.3 ms
-on MUMPS with DeRemer-Pennello.
+MUMPS and 3% on Rig. The DeRemer–Pennello lookahead computation takes about
+0.3 ms of the MUMPS generation time.
 
 ## Tests
 
@@ -283,4 +284,4 @@ measures; `test/lexfuzz/fuzz.py` fuzzes the lexer generator.
 | `src/codegen/runtime_template.zig`, `runtime.zig` | the runtime and its section extraction |
 | `nexus.grammar` | the grammar-file grammar |
 | `test/` | the suite ([test/README.md](../test/README.md)) |
-| `docs/zig-0.16/` | Zig 0.16 notes for contributors |
+| [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md) | Zig 0.17 reference for contributors |

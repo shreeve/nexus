@@ -1,11 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Zig 0.17.** Nexus builds with Zig 0.17, and the parsers it generates are
+  Zig 0.17 code: `@backingInt` and `@fromBackingInt`, `std.ArrayList`,
+  `last()`, `@splat` table initializers, struct-of-arrays `@typeInfo`, and a
+  non-exhaustive `Role` enum when a grammar has no roles. Regenerate parsers
+  with Zig 0.17.
+- String literals in generated code keep UTF-8 text as written.
+
+### Removed
+
+- The `legacy` generator (Nexus 0.10.3) in `test/run`, `test/diff` and
+  `test/bench/run`, and `docs/PORTING.md` (it remains at tag `v1.0.0`).
+
+### Performance
+
+Apple M5, ReleaseFast: generated parsers parse VistA 2% and Rig 4% faster;
+generating a large grammar's parser takes about 1 ms longer.
+
 ## 1.0.0 — 2026-09-23
 
 Nexus 1.0 keeps what 0.10 did (one grammar file, one Zig module, a combined
 lexer and LR parser, S-expression actions next to the rules) and rebuilds
 everything underneath it. Porting a 0.10 grammar takes a few edits and keeps
-its trees: see [docs/PORTING.md](docs/PORTING.md).
+its trees: see [docs/PORTING.md](https://github.com/shreeve/nexus/blob/v1.0.0/docs/PORTING.md).
 
 ### Added
 

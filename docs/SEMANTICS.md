@@ -578,8 +578,8 @@ actions, with these differences: lists drop trailing nils (positions of
 what is present stay stable); `role:v` items are positional; labels other
 than `_:X` are errors; the `Tag` enum comes from the lang module (or from the actions,
 plus a `_` catch-all, without `@lang`); there is no `ir`; spans and facts
-need `--spans`. This is how the 0.10 grammars run on 1.0 unchanged in shape
-([PORTING.md](PORTING.md)).
+need `--spans`. The MUMPS, Ruby, Zag, Slash and Nexis grammars in `test/`
+use this mode.
 
 ## Lineage: Solar
 

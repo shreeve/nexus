@@ -13,8 +13,7 @@
 # The generator runs in the grammar's directory (as `nexus g.grammar out`),
 # like the golden checks do, with $NEXUS_FLAGS (if set) as extra options.
 # Generation fails if the generator exits
-# non-zero, crashes, or writes no parser (0.10.x prints an error and still
-# exits 0).
+# non-zero, crashes, or writes no parser.
 
 set -uo pipefail
 

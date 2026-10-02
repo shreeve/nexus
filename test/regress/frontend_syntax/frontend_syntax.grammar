@@ -1,4 +1,4 @@
-# Frontend syntax that 0.10 could not read: a token named X, `[X, ...]`
+# Frontend syntax the reader accepts: a token named X, `[X, ...]`
 # (with the comma), an indented @errors block, L(X, sep), an alternative
 # continued on an indented line, and trailing comments after actions (the
 # comment is not part of the action).
