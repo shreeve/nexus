@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-10-02
 
 ### Changed
 
@@ -10,6 +10,8 @@
   non-exhaustive `Role` enum when a grammar has no roles. Regenerate parsers
   with Zig 0.17.
 - String literals in generated code keep UTF-8 text as written.
+- The generation summary reports the lexer's DFA states:
+  `Lexer: 65 tokens, 25 rules, 32 DFA states`.
 
 ### Removed
 

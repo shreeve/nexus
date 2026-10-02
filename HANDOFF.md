@@ -8,17 +8,18 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 
 - **Zig 0.17.0, all in.** Nexus builds with Zig 0.17.0 and every parser it
   generates is Zig 0.17 code. Nothing supports an older Zig.
-- **Branch `zig-0.17`**, three commits on top of `main` (`c7543cc`): the
-  Zig 0.17 port, the removal of the 0.10.3 legacy tooling with a docs
-  refresh, and this file. Not pushed; it lands on `main` through a pull
-  request once the owner has reviewed it.
+- **Nexus 1.1.0** (`src/version.zig`, `CHANGELOG.md`): the Zig 0.17 release.
+  Grammar files are those of 1.0; the generated code is Zig 0.17.
+- **Branch `zig-0.17`** on top of `main` (`c7543cc`): the Zig 0.17 port,
+  the removal of the 0.10.3 legacy tooling with a docs refresh, this file,
+  the lexer's DFA size in the generation summary, and the 1.1.0 release.
+  It lands on `main` through a pull request the owner reviews; `v1.1.0` is
+  tagged on `main` after the merge.
 - **The suite is green:** `./test/run` → 517 passed, 0 failed, 0 known.
   The frontend is a fixed point; every golden was regenerated and reviewed.
 - **Benchmarks** are current in [test/bench/BASELINE.md](test/bench/BASELINE.md):
   MUMPS generation 18.7 ms (the `test/bench/run` minimum, process start
   included), VistA parsing 50.7 MB/s, Rig parsing 59.0 MB/s.
-- `src/version.zig` says `1.0.0`; `CHANGELOG.md` has an `Unreleased`
-  section for the port.
 
 Verify before you change anything:
 
@@ -35,11 +36,8 @@ in `build.zig` on `addPassthruArgs`.
 
 ## Open work, in order
 
-1. **Merge `zig-0.17`.** Push the branch, open a pull request, merge when
-   the owner approves. Decide the release number with the owner (the
-   generated code now needs Zig 0.17), then update `src/version.zig` (it is
-   stamped into every generated file header, so `./test/run --update gen`
-   follows) and turn `Unreleased` in `CHANGELOG.md` into that release.
+1. **Merge `zig-0.17` and tag `v1.1.0`.** The owner reviews and merges the
+   pull request; tag `v1.1.0` on the merge commit and push the tag.
 2. **Downstream moves to Zig 0.17.** em, rig and nexis use Nexus 1.x through
    `zig build parser` with `../nexus/bin/nexus`. This Nexus emits Zig 0.17
    code, so each project moves to Zig 0.17 before it regenerates its parser.
