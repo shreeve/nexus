@@ -1,0 +1,14 @@
+# A quantifier is written right after what it repeats
+# error: lexer_pattern_quantifier_spaced.grammar:9:7:
+# error: a quantifier must directly follow what it repeats
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+[a-z] +         → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1
