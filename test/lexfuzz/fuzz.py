@@ -248,10 +248,11 @@ def reference(spec, src):
 M_VALUES = range(-3, 4)     # every guard constant is in -1..2
 PRE_VALUES = range(0, 3)
 
-def wins_somewhere(rules, i):
+def wins_somewhere(rules, i, zw=None):
     """A text (not starting with a blank) and a configuration in which rule
     i wins, or None. Texts run up to one byte past the rule's shortest
-    match (at least 4 bytes)."""
+    match (at least 4 bytes); a configuration where the zero-width rule zw
+    fires (before any pattern is tried) is no candidate."""
     r = rules[i]
     shortest = lengths(r["main"])[0] + (lengths(r["trail"])[0] if r["trail"] else 0)
     for L in range(1, max(4, shortest + 1) + 1):
@@ -260,6 +261,7 @@ def wins_somewhere(rules, i):
             s = "".join(t)
             for m in M_VALUES:
                 for pre in PRE_VALUES:
+                    if zw is not None and holds(zw["guard"], m, pre): continue
                     b = best_match(rules, s, 0, m, pre)
                     if b is not None and b[0] == i: return (s, m, pre)
     return None
@@ -292,7 +294,7 @@ def justified(spec, msg, line_of):
         if "never all true together" in msg:
             ok = any(holds(rules[i]["guard"], m, pre) for m in range(-128, 128) for pre in range(256))
             return "its guards hold at some value" if ok else None
-        w = wins_somewhere(rules, i)
+        w = wins_somewhere(rules, i, spec["zw"])
         return None if w is None else "rule t%d wins on %r with m=%d pre=%d" % ((i,) + w)
     if "space or tab" in msg:
         i = line_of(msg)

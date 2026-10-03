@@ -103,6 +103,10 @@ Grammar files:
 - **Breaking: a rule that can win only after a leading blank is dead**
   (the scanner skips blanks first), and so reported. A space before a
   quantifier (`'a' +`) says to remove the space.
+- **Breaking: a rule a zero-width rule shadows is dead**, and so
+  reported: a zero-width rule whose guards hold only where an earlier
+  zero-width rule's do (`@ pre > 1` after `@ pre > 0`), and a rule with a
+  pattern live only where a zero-width rule fires first.
 - **Breaking: an endless reduce chain is a generation error**, including
   an empty reduction alternating with a unit reduction (`d → b`,
   `b → ε`), whose generated parser pushed forever.

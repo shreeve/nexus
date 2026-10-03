@@ -226,9 +226,9 @@ pub const LexerGenerator = struct {
             if (s.* != automaton.none) s.* = self.dfa.starts[s.*];
         }
 
-        // A rule whose pattern cannot win anywhere is reported: every rule
-        // must be able to produce its token in some configuration.
-        try self.checkReachable(fulls.items);
+        // A rule that cannot produce its token in any configuration is
+        // reported.
+        try self.checkReachable(fulls.items, try self.checkShadowing());
 
         self.saves = try a.alloc(bool, self.dfa.numStates);
         for (0..self.dfa.numStates) |s| self.saves[s] = self.needsSave(@intCast(s));
@@ -629,27 +629,120 @@ pub const LexerGenerator = struct {
         return end;
     }
 
-    /// Every consuming rule must win for some input in some configuration;
-    /// a rule shadowed everywhere is dead code in the grammar.
-    fn checkReachable(self: *LexerGenerator, fulls: []const *const regex.Node) !void {
+    /// Most guard atoms, over all rules, that `checkShadowing` enumerates.
+    const maxShadowAtoms = 16;
+
+    /// Which configurations of the consuming rules' atoms reach the DFA
+    /// (`reaches`), and for one that never does, the zero-width rule that
+    /// fires there first (`by`).
+    const Shadowing = struct { reaches: []bool, by: []u32 };
+
+    /// A zero-width rule fires whenever its guards hold, before any
+    /// pattern is tried, so it shadows the zero-width rules after it and
+    /// every consuming rule in each configuration where it holds. Fails on
+    /// a zero-width rule an earlier one shadows everywhere. Configurations
+    /// range over the atoms of all rules, the consuming rules' first, so a
+    /// mask's low bits are the DFA's configuration. Past maxShadowAtoms,
+    /// every realizable configuration is taken to reach the DFA.
+    fn checkShadowing(self: *LexerGenerator) !Shadowing {
         const a = self.arena.allocator();
+        const rules = self.spec.rules.items;
+        const dfaAtoms = self.atoms;
+        const dfaMasks = self.startOfMask.len;
+        const out: Shadowing = .{ .reaches = try a.alloc(bool, dfaMasks), .by = try a.alloc(u32, dfaMasks) };
+        for (out.reaches, self.startOfMask) |*r, s| r.* = s != automaton.none;
+        @memset(out.by, automaton.none);
+        var all: std.ArrayList(Atom) = .empty;
+        try all.appendSlice(a, dfaAtoms);
+        var zeroWidth = false;
+        for (rules) |r| if (r.pattern.len == 0) {
+            zeroWidth = true;
+            for (r.guards) |g| {
+                const at = atomOf(g);
+                for (all.items) |x| {
+                    if (x.eql(at)) break;
+                } else try all.append(a, at);
+            }
+        };
+        if (!zeroWidth or all.items.len > maxShadowAtoms) return out;
+        self.atoms = all.items;
+        defer self.atoms = dfaAtoms;
+        const realizable = try self.realizableMasks();
+        const fires = try a.alloc(bool, rules.len);
+        @memset(fires, false);
+        @memset(out.reaches, false);
+        for (realizable, 0..) |ok, mask| {
+            if (!ok) continue;
+            const m = mask & (dfaMasks - 1);
+            if (self.firstZeroWidth(mask)) |i| {
+                fires[i] = true;
+                if (out.by[m] == automaton.none) out.by[m] = i;
+            } else out.reaches[m] = true;
+        }
+        for (rules, fires) |*r, fired| {
+            if (r.pattern.len != 0 or fired) continue;
+            // Guards that can hold together (checkZeroWidth) hold in some
+            // realizable configuration.
+            const mask = for (realizable, 0..) |ok, m| {
+                if (ok and self.guardsHold(r.guards, m)) break m;
+            } else unreachable;
+            return self.fail(r, 0, "this rule can never match: whenever its guards hold, the zero-width rule on line {d} fires first", .{rules[self.firstZeroWidth(mask).?].line});
+        }
+        return out;
+    }
+
+    /// The first zero-width rule whose guards hold in configuration `mask`.
+    fn firstZeroWidth(self: *const LexerGenerator, mask: usize) ?u32 {
+        for (self.spec.rules.items, 0..) |*r, i| {
+            if (r.pattern.len == 0 and self.guardsHold(r.guards, mask)) return @intCast(i);
+        }
+        return null;
+    }
+
+    /// Every consuming rule must win for some input in some configuration
+    /// that reaches the DFA; a rule shadowed everywhere is dead code in the
+    /// grammar.
+    fn checkReachable(self: *LexerGenerator, fulls: []const *const regex.Node, shadowing: Shadowing) !void {
+        const a = self.arena.allocator();
+        const rules = self.spec.rules.items;
         const winners = try a.alloc(bool, self.consuming.len);
         @memset(winners, false);
-        for (self.dfa.accept) |acc| {
-            if (acc != automaton.none) winners[acc] = true;
+        // The accepting states reachable from the starts that reach the DFA.
+        const nc = self.dfa.classes.count;
+        const seen = try a.alloc(bool, self.dfa.numStates);
+        @memset(seen, false);
+        var stack: std.ArrayList(u32) = .empty;
+        for (self.startOfMask, shadowing.reaches) |s, reaches| {
+            if (!reaches or seen[s]) continue;
+            seen[s] = true;
+            try stack.append(a, s);
+        }
+        while (stack.pop()) |s| {
+            if (self.dfa.accept[s] != automaton.none) winners[self.dfa.accept[s]] = true;
+            for (self.dfa.trans[s * nc ..][0..nc]) |t| {
+                if (t == automaton.none or seen[t]) continue;
+                seen[t] = true;
+                try stack.append(a, t);
+            }
         }
         for (winners, 0..) |w, k| {
             if (w) continue;
-            const r = &self.spec.rules.items[self.consuming[k]];
+            const r = &rules[self.consuming[k]];
             // Name the rule that wins a shortest text this one matches, in a
             // configuration where this one is live.
-            const mask = for (self.startOfMask, 0..) |s, m| {
-                if (s != automaton.none and self.guardsHold(r.guards, m)) break m;
-            } else return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
+            const mask = for (self.startOfMask, shadowing.reaches, 0..) |s, reaches, m| {
+                if (s != automaton.none and reaches and self.guardsHold(r.guards, m)) break m;
+            } else {
+                for (self.startOfMask, shadowing.by, 0..) |s, by, m| {
+                    if (s != automaton.none and self.guardsHold(r.guards, m))
+                        return self.fail(r, 0, "this rule can never match: whenever its guards hold, the zero-width rule on line {d} fires first", .{rules[by].line});
+                }
+                return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
+            };
             var single = try self.buildDfa(fulls[k .. k + 1], &.{&[_]u32{0}});
             const text = (try single.shortestAccepted(a, 0)).?;
             const m = self.dfa.longestMatchFrom(self.startOfMask[mask], text).?;
-            const winner = &self.spec.rules.items[self.consuming[m.rule]];
+            const winner = &rules[self.consuming[m.rule]];
             return self.fail(r, 0, "this rule can never match: on every text it matches, an earlier rule matches as much (e.g. \"{f}\" goes to the rule on line {d}; longest match, ties to the earlier rule)", .{ std.zig.fmtString(text), winner.line });
         }
     }

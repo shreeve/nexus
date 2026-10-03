@@ -286,7 +286,9 @@ Its token covers the leading whitespace just skipped (and whatever
 `counted()` consumes); with `hold` it is empty and the whitespace is
 scanned again, so a guard on `pre` alone cannot stop it. It must require
 whitespace (a guard false at `pre = 0`) or change a variable its guards
-test.
+test. It fires whenever its guards hold, so a zero-width rule whose
+guards hold only where an earlier one's do, or a rule with a pattern live
+only where a zero-width rule fires, is dead, and an error.
 
 Below, a line that starts with blanks gets an `indent` token whose `pre` is
 the number of dots after the blanks (MUMPS block structure), a `?` starts a
@@ -998,6 +1000,7 @@ early:
 | `the tokens block must declare 'eof'` | the `tokens` block lacks `eof` or `err` |
 | `token 'x' is not declared in the tokens block` | a lexer rule names an undeclared token |
 | `this rule can never match: ... goes to the rule on line N` | an earlier rule shadows it |
+| `this rule can never match: whenever its guards hold, the zero-width rule on line N fires first` | a zero-width rule shadows it |
 | `this pattern matches the empty string` | use `+` rather than `*`, or a zero-width rule |
 | `undefined rule 'x'` / `undefined token 'X'` | a name nothing defines |
 | `rule 'x' is unreachable: no start symbol reaches it` | a rule no start symbol uses, directly or through other rules |

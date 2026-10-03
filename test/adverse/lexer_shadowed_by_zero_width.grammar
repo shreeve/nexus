@@ -1,0 +1,16 @@
+# Zero-width rules fire before any pattern is tried: a consuming rule
+# live only where one of them fires never matches.
+# error: lexer_shadowed_by_zero_width.grammar:11:1:
+# error: this rule can never match: whenever its guards hold, the zero-width rule on line 10 fires first
+@lexer
+state
+    m = 0
+tokens
+    t, z, c, eof, err
+@ m                             → z, {m = 0}
+'a' @ m                         → t
+'a'                             → c
+.                               → err
+
+@parser
+top! = ERR → 1
