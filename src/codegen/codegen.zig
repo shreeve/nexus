@@ -175,39 +175,10 @@ const Codegen = struct {
         try list.append(self.allocator, name);
     }
 
-    fn roleDeclared(self: *const Codegen, name: []const u8) bool {
-        for (self.roles.items) |r| if (std.mem.eql(u8, r, name)) return true;
-        return false;
-    }
-
+    /// Checks of what only the generator knows. The schema's checks (every
+    /// tag an action produces is declared; side-band labels exist only for
+    /// declared side roles, in schema mode) are semantics.resolve's.
     fn validate(self: *Codegen) !void {
-        // Schema mode: every tag an action produces is in the Tag enum.
-        if (self.schema() != null) {
-            var missing: usize = 0;
-            for (self.tags.list.items) |t| {
-                const declared = for (self.schemaTags.items) |s| {
-                    if (std.mem.eql(u8, s, t)) break true;
-                } else false;
-                if (!declared) {
-                    diag.err("tag '{s}' is produced by an action but not declared in @schema or @tags", .{t});
-                    missing += 1;
-                }
-            }
-            if (missing > 0) return error.UndeclaredTag;
-        }
-
-        for (self.g.rules.items) |rule| {
-            if (rule.sideLabels.len == 0) continue;
-            if (self.schema() == null) {
-                self.errLine(rule.line, null, "side-band roles need @schema", .{});
-                return error.SideLabelWithoutSchema;
-            }
-            for (rule.sideLabels) |label| if (!self.roleDeclared(label.role)) {
-                self.errLine(rule.line, null, "side-band role '{s}' is not declared in @schema", .{label.role});
-                return error.UnknownRole;
-            };
-        }
-
         for (self.g.trivia) |name| {
             if (self.tokenCatOf(name) == null) {
                 self.errDirective("@trivia", name, "@trivia names '{s}', which is not a lexer token", .{name});
@@ -802,11 +773,8 @@ const Codegen = struct {
             } else false;
             if (named) continue;
             if (self.g.lang == null) {
-                {
-                    self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
-                    return error.UnknownKeyword;
-                }
-                continue;
+                self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
+                return error.UnknownKeyword;
             }
             if (!any) try w.writeAll("\n// Every @as keyword terminal is a field of some group's Id enum.\ncomptime {\n");
             any = true;
