@@ -3,9 +3,6 @@
 # FORMAT as written between the quotes in FILE. Adding the test that
 # prints a message means deleting its line here; tools/messages fails on
 # an entry whose message a test prints or that FILE does not have.
-src/codegen/codegen.zig	tag '{s}' is produced by an action but not declared in @schema or @tags	untested: needs an adverse test
-src/codegen/codegen.zig	side-band roles need @schema	untested: needs an adverse test
-src/codegen/codegen.zig	side-band role '{s}' is not declared in @schema	untested: needs an adverse test
 src/codegen/codegen.zig	@trivia names '{s}', which is not a lexer token	untested: needs an adverse test
 src/codegen/codegen.zig	@as promotes '{s}' and '{s}'; one grammar promotes one token	untested: needs an adverse test
 src/codegen/codegen.zig	the grammar has @repair but no repair table was computed	internal invariant: lr.run computes the repair table whenever the grammar has @repair

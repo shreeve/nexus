@@ -116,6 +116,8 @@ const Codegen = struct {
     tokenMap: std.ArrayList(struct { cat: []const u8, sym: u16 }) = .empty,
     /// The executeAction function, generated before the configuration.
     actionsCode: []const u8 = "",
+    /// Per rule, how the parser takes its value (see `emitRuleTables`).
+    ruleValues: []u32 = &.{},
 
     fn schema(self: *const Codegen) ?Schema {
         return self.g.schema;
@@ -134,7 +136,6 @@ const Codegen = struct {
         try self.validate();
 
         self.actionsCode = try self.generateActions();
-        self.usesNested = std.mem.find(u8, self.actionsCode, "self.nested(") != null;
 
         try writeHeader(w, self.g.lang);
         try w.writeAll(lexerDecls);
@@ -176,39 +177,10 @@ const Codegen = struct {
         try list.append(self.allocator, name);
     }
 
-    fn roleDeclared(self: *const Codegen, name: []const u8) bool {
-        for (self.roles.items) |r| if (std.mem.eql(u8, r, name)) return true;
-        return false;
-    }
-
+    /// Checks of what only the generator knows. The schema's checks (every
+    /// tag an action produces is declared; side-band labels exist only for
+    /// declared side roles, in schema mode) are semantics.resolve's.
     fn validate(self: *Codegen) !void {
-        // Schema mode: every tag an action produces is in the Tag enum.
-        if (self.schema() != null) {
-            var missing: usize = 0;
-            for (self.tags.list.items) |t| {
-                const declared = for (self.schemaTags.items) |s| {
-                    if (std.mem.eql(u8, s, t)) break true;
-                } else false;
-                if (!declared) {
-                    diag.err("tag '{s}' is produced by an action but not declared in @schema or @tags", .{t});
-                    missing += 1;
-                }
-            }
-            if (missing > 0) return error.UndeclaredTag;
-        }
-
-        for (self.g.rules.items) |rule| {
-            if (rule.sideLabels.len == 0) continue;
-            if (self.schema() == null) {
-                self.errLine(rule.line, null, "side-band roles need @schema", .{});
-                return error.SideLabelWithoutSchema;
-            }
-            for (rule.sideLabels) |label| if (!self.roleDeclared(label.role)) {
-                self.errLine(rule.line, null, "side-band role '{s}' is not declared in @schema", .{label.role});
-                return error.UnknownRole;
-            };
-        }
-
         for (self.g.trivia) |name| {
             if (self.tokenCatOf(name) == null) {
                 self.errDirective("@trivia", name, "@trivia names '{s}', which is not a lexer token", .{name});
@@ -323,16 +295,15 @@ const Codegen = struct {
 
         try w.writeAll("\n/// Start symbols; `BaseParser.parse(start)` parses one.\npub const Start = enum(u16) {\n");
         for (self.g.startSymbols.items) |symId| {
-            if (self.markerOf(symId) == null) continue;
+            if (try self.markerOf(symId) == null) continue;
             try w.print("    @\"{s}\" = {d},\n", .{ self.g.symbols.items[symId].name, symId });
         }
         try w.writeAll("};\n");
     }
 
-    fn markerOf(self: *const Codegen, startSym: u16) ?u16 {
-        var buf: [256]u8 = undefined;
-        const name = std.mem.print(&buf, "{s}!", .{self.g.symbols.items[startSym].name}) catch return null;
-        return self.g.getSymbol(name);
+    /// The marker token (`name!`) that selects start symbol `startSym`.
+    fn markerOf(self: *const Codegen, startSym: u16) !?u16 {
+        return self.g.getSymbol(try self.allocator.print("{s}!", .{self.g.symbols.items[startSym].name}));
     }
 
     fn emitRuntime(self: *Codegen, w: *std.Io.Writer) !void {
@@ -340,7 +311,7 @@ const Codegen = struct {
 
         var methods: std.Io.Writer.Allocating = .init(self.allocator);
         for (self.g.startSymbols.items) |symId| {
-            if (self.markerOf(symId) == null) continue;
+            if (try self.markerOf(symId) == null) continue;
             const name = self.g.symbols.items[symId].name;
             try methods.writer.print(
                 \\    pub fn parse{s}(self: *BaseParser) !Sexp {{
@@ -407,6 +378,8 @@ const Codegen = struct {
             \\const keepTrailingNils = {};
             \\const hasTrivia = {};
             \\const hasRepair = {};
+            \\/// `@as` groups the promotable token may become (see `promote`).
+            \\const asGroups = {d};
             \\const numSymbols = {d};
             \\const endSymbol: u16 = {d};
             \\const errorSymbol: u16 = {d};
@@ -417,6 +390,7 @@ const Codegen = struct {
             self.schema() != null,
             self.g.trivia.len > 0,
             self.table.repair != null,
+            self.asGroups(),
             self.g.symbols.items.len,
             self.g.endId,
             self.g.errorId,
@@ -433,17 +407,12 @@ const Codegen = struct {
         return self.promotable != null;
     }
 
-    /// tokenToSymbol: TokenCat -> grammar symbol.
+    /// tokenToSymbol: TokenCat -> grammar symbol, computed once per token.
     fn emitTokenToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
-        const identAs = self.hasIdentAs();
-        try w.writeAll(if (identAs)
-            "\nfn tokenToSymbol(self: *BaseParser, token: Token) u16 {\n"
-        else
-            "\nfn tokenToSymbol(_: *BaseParser, token: Token) u16 {\n");
-        try w.writeAll("    return switch (token.cat) {\n");
+        try w.writeAll("\nfn tokenToSymbol(token: Token) u16 {\n    return switch (token.cat) {\n");
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
-
-        if (self.promotable) |tok| try w.print("        .@\"{s}\" => promote(self, token),\n", .{tok});
+        // The promotable token's symbol depends on the state (`promote`).
+        if (self.promotable) |tok| try w.print("        .@\"{s}\" => {s},\n", .{ tok, if (self.asGroups() > 0) "needsPromotion" else "promotableSymbol" });
         for (self.tokenMap.items) |m| try w.print("        .@\"{s}\" => {d},\n", .{ m.cat, m.sym });
         try w.print("        else => {d}, // error\n    }};\n}}\n", .{self.g.errorId});
     }
@@ -593,82 +562,81 @@ const Codegen = struct {
         return identAs;
     }
 
-    /// promote and the tryPromote* keyword promoters (`@as`): the promotable
-    /// token becomes the first group keyword the state accepts.
+    /// The `@as` groups a token may be promoted to (`self` excluded), in
+    /// declared order; the runtime caches one keyword lookup per group.
+    fn asGroups(self: *const Codegen) usize {
+        var n: usize = 0;
+        for (self.g.asDirectives) |directive| n += @intFromBool(!isSelf(directive));
+        return n;
+    }
+
+    /// promote (`@as`): the promotable token becomes the first group
+    /// keyword the state accepts, in declared order; `self` keeps the token
+    /// itself if the state takes it. A group named after `self`, or with
+    /// `!`, is permissive (any action), otherwise strict (shift only).
     fn emitIdentToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
-        if (!self.hasIdentAs()) return;
+        if (self.asGroups() == 0) {
+            try w.writeAll("\nfn promote(_: *BaseParser, _: Token) u16 {\n    unreachable; // no @as group\n}\n");
+            return;
+        }
         try w.writeAll(
             \\
             \\fn promote(self: *BaseParser, token: Token) u16 {
+            \\    // The ordinal of a match made in an earlier state (before a
+            \\    // reduction) is not this match's.
+            \\    self.lastMatchedId = 0;
             \\    const text = self.source[token.pos..][0..token.len];
             \\    if (text.len == 0) return promotableSymbol;
             \\
         );
-        // Ordered resolution: `@as` candidates in declared order; `self`
-        // keeps the token itself if the state takes it.
-        for (self.g.asDirectives) |directive| {
-            if (isSelf(directive)) {
-                try w.writeAll("    if (getAction(self.stateStack.last().?, promotableSymbol) != 0) return promotableSymbol;\n");
-            } else {
-                try w.print("    if (tryPromote{s}(self, text)) |sym| return sym;\n", .{try capitalized(self.allocator, directive.rule)});
-            }
-        }
-        try w.writeAll("    return promotableSymbol;\n}\n");
-
-        // Matching mode per group: `group!` or any group after `self` is
-        // permissive (any action), otherwise strict (shift only).
         var seenSelf = false;
+        var group: usize = 0;
         for (self.g.asDirectives) |directive| {
             if (isSelf(directive)) {
                 seenSelf = true;
+                try w.writeAll("    if (getAction(self.stateStack.last().?, promotableSymbol) != 0) return promotableSymbol;\n");
                 continue;
             }
-            const check: []const u8 = if (directive.permissive or seenSelf) "!= 0" else "> 0";
-            const cap = try capitalized(self.allocator, directive.rule);
             // The lang lookup is `via` when given, else `<group>As`.
             const lookup = if (self.g.lang != null)
                 try self.allocator.print("lang.{s}", .{directive.via orelse try self.allocator.print("{s}As", .{directive.rule})})
             else
                 try self.allocator.print("{s}As", .{directive.rule});
-            try w.print(
-                \\
-                \\fn tryPromote{s}(self: *BaseParser, text: []const u8) ?u16 {{
-                \\    const state = self.stateStack.last().?;
-                \\    const id = {s}(text) orelse return null;
-                \\    const idIdx = @backingInt(id);
-                \\    const sym = {s}ToSymbol[idIdx];
-                \\    if (sym != 0 and getAction(state, sym) {s}) {{
-                \\        self.lastMatchedId = @intCast(idIdx);
-                \\        return sym;
-                \\    }}
-                \\
-            , .{ cap, lookup, directive.rule, check });
-            if (self.g.lang != null) try w.print(
-                \\    const fallback = {s}FallbackSymbol;
-                \\    if (fallback != 0 and getAction(state, fallback) {s}) {{
-                \\        self.lastMatchedId = @intCast(idIdx);
-                \\        return fallback;
-                \\    }}
-                \\
-            , .{ directive.rule, check });
-            try w.writeAll("    return null;\n}\n");
+            const fallback = if (self.g.lang != null) try self.allocator.print("{s}FallbackSymbol", .{directive.rule}) else "0";
+            try w.print("    if (self.tryPromote({d}, text, {s}, &{s}ToSymbol, {s}, {})) |sym| return sym;\n", .{
+                group, lookup, directive.rule, fallback, directive.permissive or seenSelf,
+            });
+            group += 1;
         }
+        try w.writeAll("    return promotableSymbol;\n}\n");
     }
 
     fn isSelf(directive: grammar.AsDirective) bool {
         return std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token);
     }
 
-    /// executeAction: one switch arm per reducible rule. Accept rules are
-    /// never reduced (the table accepts on end of input before them).
+    /// executeAction: one switch arm per rule whose action builds a value.
+    /// A rule whose value is nil or one of its elements has no arm: the
+    /// parser takes the value itself (`ruleValue`). Accept rules are never
+    /// reduced (the table accepts on end of input before them).
     fn generateActions(self: *Codegen) ![]const u8 {
         var out: std.Io.Writer.Allocating = .init(self.allocator);
         const w = &out.writer;
         var arms: std.Io.Writer.Allocating = .init(self.allocator);
         const a = &arms.writer;
         const reaches = try actions.treeSymbols(self.allocator, self.g);
-        for (self.g.rules.items, 0..) |rule, ruleIdx| {
+        var uses: actions.Uses = .{};
+        self.ruleValues = try self.allocator.alloc(u32, self.g.rules.items.len);
+        for (self.g.rules.items, self.ruleValues, 0..) |rule, *value, ruleIdx| {
+            value.* = 0;
             if (self.g.isAcceptRule(@intCast(ruleIdx))) continue;
+            if (actions.copyOf(rule)) |copy| {
+                value.* = switch (copy) {
+                    .nil => 1,
+                    .element => |i| @as(u32, i) + 2,
+                };
+                continue;
+            }
             if (self.options.emitComments) {
                 try a.print("        // {s} =", .{self.g.symbols.items[rule.lhs].name});
                 for (rule.rhs) |symId| try a.print(" {s}", .{self.g.symbols.items[symId].name});
@@ -676,16 +644,15 @@ const Codegen = struct {
                 try a.writeAll("\n");
             }
             try a.print("        {d} => ", .{ruleIdx});
-            try actions.generateRuleAction(self.allocator, a, self.g, rule, reaches[rule.lhs]);
+            try actions.generateRuleAction(self.allocator, a, self.g, rule, reaches[rule.lhs], &uses);
             try a.writeAll(",\n");
         }
-        const body = arms.written();
+        self.usesNested = uses.nested;
         try w.writeAll("\nfn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {\n");
-        try w.writeAll("    @setEvalBranchQuota(1_000_000);\n");
-        if (std.mem.find(u8, body, "self.") == null) try w.writeAll("    _ = self;\n");
-        if (std.mem.find(u8, body, "pass") == null) try w.writeAll("    _ = pass;\n");
+        if (!uses.self) try w.writeAll("    _ = self;\n");
+        if (!uses.pass) try w.writeAll("    _ = pass;\n");
         try w.writeAll("    return switch (ruleId) {\n");
-        try w.writeAll(body);
+        try w.writeAll(arms.written());
         try w.writeAll("        else => unreachable,\n    };\n}\n");
         return out.written();
     }
@@ -800,11 +767,8 @@ const Codegen = struct {
             } else false;
             if (named) continue;
             if (self.g.lang == null) {
-                {
-                    self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
-                    return error.UnknownKeyword;
-                }
-                continue;
+                self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
+                return error.UnknownKeyword;
             }
             if (!any) try w.writeAll("\n// Every @as keyword terminal is a field of some group's Id enum.\ncomptime {\n");
             any = true;
@@ -839,59 +803,41 @@ const Codegen = struct {
             if (i > 0) try w.writeAll(", ");
             try w.print("{d}", .{rule.rhs.len});
         }
+        try w.print(" }};\n/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.\nconst ruleValue = [_]{s}{{ ", .{if (longest + 1 > 255) "u16" else "u8"});
+        for (self.ruleValues, 0..) |value, i| {
+            if (i > 0) try w.writeAll(", ");
+            try w.print("{d}", .{value});
+        }
         try w.writeAll(" };\n");
     }
 
-    /// The parse table (sparse rows expanded to a dense table at comptime).
+    /// The parse table as a literal, one row of actions per state: no
+    /// comptime work, so its size meets no evaluation quota.
     fn emitParseTable(self: *Codegen, w: *std.Io.Writer) !void {
         const rows = self.table.rows;
         try w.print(
             \\
             \\// Parse table: {d} states x {d} symbols. 0 = error, > 0 = shift or
             \\// goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-            \\const numStates = {d};
+            \\const parseTable = [_][numSymbols]i16{{
             \\
-            \\const sparse = [numStates][]const i16{{
-            \\
-        , .{ rows.len, self.g.symbols.items.len, rows.len });
-
+        , .{ rows.len, self.g.symbols.items.len });
         for (rows) |row| {
-            try w.writeAll("    &.{");
-            var first = true;
+            try w.writeAll("    .{");
             for (row, 0..) |action, sym| {
                 const value: i16 = switch (action) {
-                    .shift => |s| @intCast(s),
+                    .shift => |t| @intCast(t),
                     .reduce => |r| -@as(i16, @intCast(r)) - 2,
-                    .gotoState => |s| @intCast(s),
+                    .gotoState => |t| @intCast(t),
                     .accept => -1,
-                    .err => continue,
+                    .err => 0,
                 };
-                if (!first) try w.writeAll(",");
-                try w.print("{d},{d}", .{ sym, value });
-                first = false;
+                if (sym > 0) try w.writeByte(',');
+                try w.print("{d}", .{value});
             }
             try w.writeAll("},\n");
         }
-        try w.writeAll(
-            \\};
-            \\
-            \\const parseTable = blk: {
-            \\    @setEvalBranchQuota(100000);
-            \\    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
-            \\    for (sparse, 0..) |row, state| {
-            \\        var i: usize = 0;
-            \\        while (i < row.len) : (i += 2) {
-            \\            t[state][@intCast(row[i])] = row[i + 1];
-            \\        }
-            \\    }
-            \\    break :blk t;
-            \\};
-            \\
-            \\fn getAction(state: u16, sym: u16) i16 {
-            \\    return parseTable[state][sym];
-            \\}
-            \\
-        );
+        try w.writeAll("};\n");
     }
 
     /// `X "c"` exclusions (grouped by state) and the runtime shift override.
@@ -901,30 +847,9 @@ const Codegen = struct {
         for (self.table.xExcludes.items) |x| {
             try w.print("    .{{ .sym = {d}, .shift = {d} }},\n", .{ x.sym, x.shift });
         }
+        try w.writeAll("};\n/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].\nconst xExcludeStart = [_]u32{");
+        if (self.table.xExcludes.items.len > 0) try writeList(w, u32, self.table.xExcludeStart);
         try w.writeAll("};\n");
-        if (self.table.xExcludes.items.len == 0) {
-            try w.writeAll(
-                \\
-                \\fn getImmediateShift(_: u16, _: u16) ?i16 {
-                \\    return null;
-                \\}
-                \\
-            );
-            return;
-        }
-        try w.writeAll("/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].\nconst xExcludeStart = [_]u32{");
-        try writeList(w, u32, self.table.xExcludeStart);
-        try w.writeAll(
-            \\};
-            \\
-            \\fn getImmediateShift(state: u16, sym: u16) ?i16 {
-            \\    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-            \\        if (x.sym == sym) return @intCast(x.shift);
-            \\    }
-            \\    return null;
-            \\}
-            \\
-        );
     }
 
     /// Initial state and marker token per start symbol.
@@ -932,7 +857,7 @@ const Codegen = struct {
         var states: std.Io.Writer.Allocating = .init(self.allocator);
         var markers: std.Io.Writer.Allocating = .init(self.allocator);
         for (self.g.startSymbols.items, self.automaton.startStates.items) |sym, state| {
-            const marker = self.markerOf(sym) orelse continue;
+            const marker = try self.markerOf(sym) orelse continue;
             const name = self.g.symbols.items[sym].name;
             try states.writer.print("        .@\"{s}\" => {d},\n", .{ name, state });
             try markers.writer.print("        .@\"{s}\" => {d},\n", .{ name, marker });
@@ -985,15 +910,7 @@ const Codegen = struct {
         try writeList(w, u32, e.offsets);
         try w.writeAll("};\nconst expectedOf = [_]u16{");
         try writeList(w, u16, e.ofState);
-        try w.writeAll(
-            \\};
-            \\
-            \\fn expectedIn(state: u16) []const u16 {
-            \\    const i = expectedOf[state];
-            \\    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
-            \\}
-            \\
-        );
+        try w.writeAll("};\n");
 
         try w.writeAll("\nfn symbolName(sym: u16) []const u8 {\n    return switch (sym) {\n");
         for (self.g.symbols.items) |sym| {
@@ -1019,7 +936,7 @@ const Codegen = struct {
 
     fn emitRepair(self: *Codegen, w: *std.Io.Writer) !void {
         const r = self.table.repair orelse {
-            try w.writeAll("\nfn repairCandidates(_: u16) []const u16 {\n    return &.{};\n}\n");
+            try w.writeAll("\nconst repairTokens = [_]u16{};\nconst repairOffsets = [_]u32{};\n");
             try w.writeAll("\nfn repairClass(_: u16) RepairClass {\n    return .none;\n}\n");
             return;
         };
@@ -1029,10 +946,6 @@ const Codegen = struct {
         try writeList(w, u32, r.offsets);
         try w.writeAll(
             \\};
-            \\
-            \\fn repairCandidates(state: u16) []const u16 {
-            \\    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
-            \\}
             \\
             \\/// The `@repair` class of a grammar symbol.
             \\fn repairClass(sym: u16) RepairClass {
@@ -1173,7 +1086,7 @@ const Codegen = struct {
             try w.writeAll("pub const Parser = BaseParser;\n");
         }
         for (self.g.startSymbols.items) |symId| {
-            if (self.markerOf(symId) == null) continue;
+            if (try self.markerOf(symId) == null) continue;
             const name = self.g.symbols.items[symId].name;
             const fname = try capitalized(self.allocator, name);
             try w.print(

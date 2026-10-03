@@ -727,23 +727,21 @@ pub const Sexp = union(enum) {
     /// Print the tree on one line: `_`, tags by name, leaves as their text
     /// followed by `#id` when the id attribute is non-zero, strings quoted.
     pub fn write(self: Sexp, source: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
-        switch (self) {
+        try writeNested(self, w, source, writeAtom);
+    }
+
+    fn writeAtom(source: []const u8, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
+        switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| try w.writeAll(nameOf(t)),
-            .src => |s| {
-                try w.writeAll(source[s.pos..][0..s.len]);
-                if (s.id != 0) try w.print("#{d}", .{s.id});
+            .src => |x| {
+                try w.writeAll(source[x.pos..][0..x.len]);
+                if (x.id != 0) try w.print("#{d}", .{x.id});
             },
-            .str => |s| try w.print("\"{s}\"", .{s}),
-            .list => |l| {
-                try w.writeAll("(");
-                for (l.items(), 0..) |item, i| {
-                    if (i > 0) try w.writeAll(" ");
-                    try item.write(source, w);
-                }
-                try w.writeAll(")");
-            },
+            .str => |x| try w.print("\"{s}\"", .{x}),
+            .list => |l| return l.items(),
         }
+        return null;
     }
 };
 
@@ -751,6 +749,95 @@ pub const Sexp = union(enum) {
 /// (without a schema, Role is empty and a collected Tag is non-exhaustive).
 fn nameOf(value: anytype) []const u8 {
     return std.enums.tagName(@TypeOf(value), value) orelse "?";
+}
+
+/// The explicit stack of a tree walk: per open list, its items not yet
+/// visited. Ordinary input builds trees of any depth (a long operator
+/// chain is a tree as deep as it is long), so no walk of a tree recurses
+/// on the native stack. Shallow walks use the frames inline; deeper ones
+/// move them to page memory.
+const Walk = struct {
+    small: [32][]const Sexp = undefined,
+    big: [][]const Sexp = &.{},
+    len: usize = 0,
+
+    fn frames(self: *Walk) [][]const Sexp {
+        return if (self.big.len > 0) self.big else &self.small;
+    }
+
+    fn push(self: *Walk, items: []const Sexp) error{OutOfMemory}!void {
+        var f = self.frames();
+        if (self.len == f.len) {
+            const grown = try std.heap.page_allocator.alloc([]const Sexp, f.len * 2);
+            @memcpy(grown[0..self.len], f);
+            if (self.big.len > 0) std.heap.page_allocator.free(self.big);
+            self.big = grown;
+            f = grown;
+        }
+        f[self.len] = items;
+        self.len += 1;
+    }
+
+    /// The unvisited items of the innermost open list.
+    fn top(self: *Walk) ?*[]const Sexp {
+        return if (self.len == 0) null else &self.frames()[self.len - 1];
+    }
+
+    fn pop(self: *Walk) void {
+        self.len -= 1;
+    }
+
+    /// The next item in pre-order, closing the lists it leaves; null at
+    /// the end of the walk.
+    fn next(self: *Walk) ?Sexp {
+        while (self.top()) |rest| {
+            if (rest.len > 0) {
+                defer rest.* = rest.*[1..];
+                return rest.*[0];
+            }
+            self.pop();
+        }
+        return null;
+    }
+
+    fn deinit(self: *Walk) void {
+        if (self.big.len > 0) std.heap.page_allocator.free(self.big);
+    }
+};
+
+/// Write `root` as nested parentheses with a space between items.
+/// `atom(ctx, w, s)` writes a value and returns null, or returns the items
+/// of a list to open.
+fn writeNested(
+    root: Sexp,
+    w: *std.Io.Writer,
+    ctx: anytype,
+    comptime atom: fn (@TypeOf(ctx), *std.Io.Writer, Sexp) std.Io.Writer.Error!?[]const Sexp,
+) std.Io.Writer.Error!void {
+    var walk: Walk = .{};
+    defer walk.deinit();
+    var s = root;
+    while (true) {
+        // Whether the next item of the innermost list follows another.
+        var sep = true;
+        if (try atom(ctx, w, s)) |items| {
+            try w.writeByte('(');
+            walk.push(items) catch return error.WriteFailed;
+            sep = false;
+        }
+        while (true) {
+            const rest = walk.top() orelse return;
+            if (rest.len > 0) {
+                if (sep) try w.writeByte(' ');
+                s = rest.*[0];
+                rest.* = rest.*[1..];
+                break;
+            }
+            walk.pop();
+            try w.writeByte(')');
+            sep = true;
+        }
+    }
 }
 
 
@@ -785,6 +872,38 @@ const NodeStore = struct {
         return &self.chunks.items[id / chunkLen][id % chunkLen];
     }
 };
+
+/// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+inline fn getAction(state: u16, sym: u16) i16 {
+    return parseTable[state][sym];
+}
+
+/// What `state` expects, reader-named: list `expectedOf[state]` of
+/// `expectedSymbols`.
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
+
+/// The `X "c"` override of `state` for `sym`: the state to shift to.
+fn getImmediateShift(state: u16, sym: u16) ?i16 {
+    if (xExcludes.len == 0) return null;
+    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
+        if (x.sym == sym) return @intCast(x.shift);
+    }
+    return null;
+}
+
+/// The tokens tolerant repair may insert in `state`, best first.
+fn repairCandidates(state: u16) []const u16 {
+    if (!hasRepair) return &.{};
+    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
+}
+
+/// The symbol `tokenToSymbol` gives the promotable token when `@as`
+/// decides it per state; no grammar symbol has it.
+const needsPromotion: u16 = std.math.maxInt(u16);
 
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
@@ -858,17 +977,27 @@ pub const BaseParser = struct {
     pendingInsert: ?u16 = null,
     /// `@as` keyword ordinal of `current`, stored in its `src.id`.
     lastMatchedId: u16 = 0,
+    /// The `@as` lookups of `current`, one per group: the keyword ordinal
+    /// plus one, `noKeyword`, or 0 before the lookup. A lookup does not
+    /// depend on the state, so it runs once per token.
+    keywordIds: [asGroups]u32 = @splat(0),
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
+    /// The free bytes of the allocator's current chunk, and the size of
+    /// its next one (see `allocator`).
+    bumpPos: usize = 0,
+    bumpEnd: usize = 0,
+    bumpNext: usize = bumpFirst,
+
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Spare capacity of the lists `keepList` returned, by address.
-    listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
-    /// Node id of the list `extendList` is growing (0 = none).
-    extending: NodeId = 0,
+    /// Per value-stack entry, the list `keepList` left there with its
+    /// capacity, for `extendList` to grow in place. Indexed like
+    /// `valueStack`, sized to its capacity.
+    spares: []Spare = &.{},
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -890,7 +1019,7 @@ pub const BaseParser = struct {
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
 
-    const ListSpare = struct { len: usize, capacity: usize };
+    const Spare = struct { items: [*]const Sexp, len: u32, capacity: u32 };
 
     /// The reduction in progress: its rule and where it starts (it ends at
     /// `lastEnd`); with `elemEnds`, also the stack index of its first
@@ -909,7 +1038,7 @@ pub const BaseParser = struct {
             .source = source,
             .current = undefined,
         };
-        p.current = p.lexer.next();
+        p.setCurrent(p.lexer.next());
         return p;
     }
 
@@ -917,8 +1046,75 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
+    /// The parse's allocator: a bump allocator over chunks of the arena
+    /// (single-threaded, so allocation is a bounds check and an add; the
+    /// arena's own allocation is atomic). Everything is freed by `deinit`.
     fn allocator(self: *BaseParser) std.mem.Allocator {
-        return self.arena.allocator();
+        return .{ .ptr = self, .vtable = &bumpVTable };
+    }
+
+    /// `n` items for a list: the allocator's fast path, inline.
+    inline fn allocItems(self: *BaseParser, n: usize) error{OutOfMemory}![]Sexp {
+        const start = std.mem.alignForward(usize, self.bumpPos, @alignOf(Sexp));
+        const end = start + n * @sizeOf(Sexp);
+        if (end > self.bumpEnd) return self.allocator().alloc(Sexp, n);
+        self.bumpPos = end;
+        return @as([*]Sexp, @ptrFromInt(start))[0..n];
+    }
+
+    const bumpVTable: std.mem.Allocator.VTable = .{
+        .alloc = bumpAlloc,
+        .resize = bumpResize,
+        .remap = bumpRemap,
+        .free = bumpFree,
+    };
+
+    /// Chunks grow from `bumpFirst` to `bumpLast` bytes; a request larger
+    /// than `bumpLast / 4` goes to the arena by itself.
+    const bumpFirst = 4096;
+    const bumpLast = 1 << 20;
+
+    fn bumpAlloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = alignment.forward(self.bumpPos);
+        if (start + len <= self.bumpEnd) {
+            self.bumpPos = start + len;
+            return @ptrFromInt(start);
+        }
+        return self.bumpRefill(len, alignment, ra);
+    }
+
+    fn bumpRefill(self: *BaseParser, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const arena = self.arena.allocator();
+        if (len > bumpLast / 4) return arena.rawAlloc(len, alignment, ra);
+        const size = @max(self.bumpNext, len + alignment.toByteUnits());
+        const chunk = arena.rawAlloc(size, .@"16", ra) orelse return null;
+        self.bumpNext = @min(size * 2, bumpLast);
+        const start = alignment.forward(@intFromPtr(chunk));
+        self.bumpPos = start + len;
+        self.bumpEnd = @intFromPtr(chunk) + size;
+        return @ptrFromInt(start);
+    }
+
+    /// The last allocation grows or shrinks in place; any other only
+    /// shrinks.
+    fn bumpResize(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, new_len: usize, _: usize) bool {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len != self.bumpPos) return new_len <= memory.len;
+        if (start + new_len > self.bumpEnd) return false;
+        self.bumpPos = start + new_len;
+        return true;
+    }
+
+    fn bumpRemap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        return if (bumpResize(ctx, memory, alignment, new_len, ra)) memory.ptr else null;
+    }
+
+    fn bumpFree(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len == self.bumpPos) self.bumpPos = start;
     }
 
     pub fn parseProgram(self: *BaseParser) !Sexp {
@@ -968,9 +1164,11 @@ pub const BaseParser = struct {
     ///   4. An insertion must let the offending token be consumed (shifted,
     ///      or accepted at end of input). At end of input or a structure
     ///      token, when none does, a candidate the state can shift is
-    ///      inserted anyway, never twice in the same configuration (stack
-    ///      depth, state, token) since the last token was consumed, so
-    ///      several insertions can complete an unfinished construct.
+    ///      inserted anyway, so several insertions can complete an
+    ///      unfinished construct. Since the last token was consumed, the
+    ///      same token is inserted in the same state again only on a
+    ///      shallower stack: a repeat at the same depth is a cycle, and one
+    ///      on a deeper stack only nests the construct further.
     ///   5. With no admissible insertion the offending token is deleted,
     ///      except end of input, which is never deleted: the parse ends
     ///      there, incomplete.
@@ -1036,7 +1234,7 @@ pub const BaseParser = struct {
         const depth: u32 = @intCast(self.stateStack.items.len);
         for (repairCandidates(state)) |candidate| {
             const seen = for (tried) |k| {
-                if (k.depth == depth and k.state == state and k.token == candidate) break true;
+                if (k.depth <= depth and k.state == state and k.token == candidate) break true;
             } else false;
             if (!seen and try self.accepts(&.{candidate})) return candidate;
         }
@@ -1051,7 +1249,7 @@ pub const BaseParser = struct {
         // keep counting, so earlier trees stay valid.
         if (self.started) {
             self.lexer = Lexer.init(self.source);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
             self.lastMatchedId = 0;
             self.triviaTokens.clearRetainingCapacity();
         }
@@ -1064,17 +1262,62 @@ pub const BaseParser = struct {
         try self.stateStack.append(self.allocator(), startState(start));
         if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
-        if (nodeStore) {
-            if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
-        }
+        try self.ensureNodeStore();
         if (hasTrivia) try self.skipTrivia();
     }
 
     inline fn lookahead(self: *BaseParser) u16 {
         if (self.injectedToken) |marker| return marker;
         if (self.pendingInsert) |token| return token;
-        return tokenToSymbol(self, self.current);
+        const sym = tokenToSymbol(self.current);
+        if (asGroups > 0 and sym == needsPromotion) return promote(self, self.current);
+        return sym;
     }
+
+    /// Make `tok` the current token (forgetting the keyword lookups of the
+    /// one before).
+    inline fn setCurrent(self: *BaseParser, tok: Token) void {
+        self.current = tok;
+        if (asGroups > 0) self.keywordIds = @splat(0);
+    }
+
+    /// `@as` promotion of the current token, `text`, to one group: the
+    /// group's symbol for the keyword, else the group's fallback symbol,
+    /// when the state takes it (with any action when `permissive`, else by
+    /// a shift). The keyword's ordinal becomes the leaf's id.
+    inline fn tryPromote(
+        self: *BaseParser,
+        comptime group: usize,
+        text: []const u8,
+        comptime lookup: anytype,
+        comptime toSymbol: []const u16,
+        comptime fallback: u16,
+        comptime permissive: bool,
+    ) ?u16 {
+        const id = self.keywordId(group, text, lookup) orelse return null;
+        const state = self.stateStack.last().?;
+        for ([_]u16{ toSymbol[id], fallback }) |sym| {
+            if (sym == 0) continue;
+            const action = getAction(state, sym);
+            if (if (permissive) action != 0 else action > 0) {
+                self.lastMatchedId = id;
+                return sym;
+            }
+        }
+        return null;
+    }
+
+    /// The ordinal `lookup` gives the current token's `text` in `group`,
+    /// looked up once per token.
+    inline fn keywordId(self: *BaseParser, comptime group: usize, text: []const u8, comptime lookup: anytype) ?u16 {
+        const known = self.keywordIds[group];
+        if (known != 0) return if (known == noKeyword) null else @intCast(known - 1);
+        const id: ?u16 = if (lookup(text)) |k| @backingInt(k) else null;
+        self.keywordIds[group] = if (id) |i| @as(u32, i) + 1 else noKeyword;
+        return id;
+    }
+
+    const noKeyword = std.math.maxInt(u32);
 
     /// The table action, with the `X "c"` override: when the table reduces
     /// on the hinted token and it touches the previous token, shift
@@ -1128,6 +1371,15 @@ pub const BaseParser = struct {
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
         if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
         if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
+        const old = self.spares.len;
+        self.spares = try a.realloc(self.spares, capacity);
+        @memset(self.spares[old..], .{ .items = &.{}, .len = 0, .capacity = 0 });
+    }
+
+    /// The value-stack index of `pass[0]`, the first element of the
+    /// reduction in progress.
+    fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
+        return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -1156,8 +1408,13 @@ pub const BaseParser = struct {
         }
 
         // The action reads its elements in place on the value stack; the
-        // result then replaces them (a reduction of nothing pushes it).
-        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
+        // result then replaces them (a reduction of nothing pushes it). A
+        // rule whose value is nil or one of its elements has no action.
+        const result: Sexp = switch (ruleValue[ruleId]) {
+            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            1 => .nil,
+            else => |n| self.valueStack.items[base + n - 2],
+        };
         if (self.outOfMemory) return error.OutOfMemory;
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
@@ -1179,19 +1436,39 @@ pub const BaseParser = struct {
     /// Move the nodes of an empty value (a subtree that consumed nothing)
     /// to `at`.
     fn placeEmpty(self: *BaseParser, value: Sexp, at: u32) void {
-        if (value != .list) return;
-        const l = value.list;
-        if (l.id != 0 and l.id < self.nodes.len) {
-            const info = self.nodes.at(l.id);
-            if (!info.span.isEmpty()) return;
+        // Most empty values are leaves or flat lists: no walk.
+        if (!self.placeNode(value, at)) return;
+        for (value.list.items()) |item| {
+            if (item == .list) break;
+        } else return;
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = value;
+        while (true) {
+            if (self.placeNode(s, at)) walk.push(s.list.items()) catch {
+                self.outOfMemory = true;
+                return;
+            };
+            s = walk.next() orelse return;
+        }
+    }
+
+    /// Place an empty list's node at `at`; whether its items need placing
+    /// too (false for a non-list, or a node already placed).
+    inline fn placeNode(self: *BaseParser, s: Sexp, at: u32) bool {
+        if (s != .list) return false;
+        const id = s.list.id;
+        if (id != 0 and id < self.nodes.len) {
+            const info = self.nodes.at(id);
+            if (!info.span.isEmpty()) return false;
             info.span = .{ .start = at, .end = at };
         }
-        for (l.items()) |child| self.placeEmpty(child, at);
+        return true;
     }
 
     /// Fetch the next token, moving trivia to the trivia channel.
     fn advance(self: *BaseParser) !void {
-        self.current = self.lexer.next();
+        self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
     }
 
@@ -1199,7 +1476,7 @@ pub const BaseParser = struct {
         while (isTrivia(self.current.cat)) {
             try self.triviaTokens.append(self.allocator(), self.current);
             _ = takeLexerId(&self.lexer);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
         }
     }
 
@@ -1263,19 +1540,46 @@ pub const BaseParser = struct {
     /// tokens (keywords, punctuation) that are not in the tree. Any other
     /// list spans the hull of its children.
     pub fn span(self: *const BaseParser, s: Sexp) Span {
-        switch (s) {
-            .src => |x| return .{ .start = x.pos, .end = x.pos + x.len },
-            .list => |l| {
-                if (nodeStore and l.id != 0 and l.id < self.nodes.len) return self.nodes.at(l.id).span;
-                var result: ?Span = null;
-                for (l.items()) |child| {
-                    const cs = self.span(child);
-                    if (cs.isEmpty()) continue;
-                    result = if (result) |r| .{ .start = r.start, .end = cs.end } else cs;
+        if (self.ownSpan(s)) |own| return own;
+        // The hull of the children is the extent from the first to the
+        // last non-empty own span below the list.
+        const first = self.edgeSpan(s, .first) orelse return .empty;
+        const last = self.edgeSpan(s, .last).?;
+        return .{ .start = first.start, .end = last.end };
+    }
+
+    /// The span of a value that is not a hull: a leaf's, a node's, empty
+    /// for any other non-list; null for a list without a node id.
+    fn ownSpan(self: *const BaseParser, s: Sexp) ?Span {
+        return switch (s) {
+            .src => |x| .{ .start = x.pos, .end = x.pos + x.len },
+            .list => |l| if (nodeStore and l.id != 0 and l.id < self.nodes.len) self.nodes.at(l.id).span else null,
+            else => .empty,
+        };
+    }
+
+    /// The first (or last) non-empty own span below a list, in tree order.
+    fn edgeSpan(self: *const BaseParser, root: Sexp, comptime edge: enum { first, last }) ?Span {
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = root;
+        while (true) {
+            if (self.ownSpan(s)) |own| {
+                if (!own.isEmpty()) return own;
+            } else walk.push(s.list.items()) catch @panic("out of memory");
+            s = while (walk.top()) |rest| {
+                if (rest.len == 0) {
+                    walk.pop();
+                    continue;
                 }
-                return result orelse .empty;
-            },
-            else => return .empty,
+                if (edge == .first) {
+                    defer rest.* = rest.*[1..];
+                    break rest.*[0];
+                } else {
+                    defer rest.len -= 1;
+                    break rest.*[rest.len - 1];
+                }
+            } else return null;
         }
     }
 
@@ -1298,7 +1602,7 @@ pub const BaseParser = struct {
     /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
     /// is null). Without a node store the node has no id.
     pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
-        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        const out = try self.allocItems(children.len + 1);
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], children);
         return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
@@ -1313,8 +1617,13 @@ pub const BaseParser = struct {
 
     fn wrapperNodeId(self: *BaseParser, extent: Span) !NodeId {
         if (!nodeStore) return 0;
-        if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
+        try self.ensureNodeStore();
         return self.nodes.add(self.allocator(), .{ .span = extent, .rule = wrapperRule });
+    }
+
+    /// Start the node store with its unused entry 0 (node ids are 1-based).
+    fn ensureNodeStore(self: *BaseParser) !void {
+        if (nodeStore and self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
@@ -1365,7 +1674,8 @@ pub const BaseParser = struct {
 
     /// A list node over exactly `items` (fixed positions).
     fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
-        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        @memcpy(out, items);
         return self.node(out, use);
     }
 
@@ -1398,12 +1708,18 @@ pub const BaseParser = struct {
         return len;
     }
 
-    /// The default action: nothing, the one element, or an untagged list.
-    fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
-        if (pass.len == 0) return .nil;
-        if (pass.len == 1) return pass[0];
-        const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
-        return self.node(out, use);
+    /// `~N` of an element that is no leaf: an empty leaf where element `i`
+    /// starts. Without a node store element starts are not kept: it is
+    /// placed at the first element from `i` on that spans something, else
+    /// at the next token.
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+        const pos = if (nodeStore)
+            self.starts[self.stackIndex(pass) + i]
+        else for (pass[i..]) |e| {
+            const s = self.span(e);
+            if (!s.isEmpty()) break s.start;
+        } else self.current.pos;
+        return .{ .src = .{ .pos = pos, .len = 0, .id = 0 } };
     }
 
     /// `()`: an empty list.
@@ -1414,57 +1730,53 @@ pub const BaseParser = struct {
     /// `[head, ...tail]`
     fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
-        const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
+        const out = self.allocItems(rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of `base` (a list, else nothing)
-    /// for an action that appends to it. A list from `keepList` is reused
-    /// with its spare capacity, so a left-recursive list grows in amortized
-    /// O(1) per element; it keeps its node id.
-    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
-        self.extending = 0;
+    /// Start a list holding the items of element `n` (a list, else
+    /// nothing) for an action that appends to it. A list `keepList` left
+    /// on the value stack is reused with its spare capacity, so a
+    /// left-recursive list grows in amortized O(1) per element; it keeps
+    /// its node id.
+    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+        const base = pass[n];
         if (base != .list) return .empty;
-        self.extending = base.list.id;
         const items = base.list.items();
-        if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
-            if (spare.len == items.len) {
-                _ = self.listSpare.remove(@intFromPtr(items.ptr));
-                var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
-                out.items.len = items.len;
-                return out;
-            }
-        };
+        const spare = self.spares[self.stackIndex(pass) + n];
+        if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
+            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            out.items.len = items.len;
+            return out;
+        }
         var out: std.ArrayList(Sexp) = .empty;
         try out.appendSlice(self.allocator(), items);
         return out;
     }
 
-    /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
+    /// Finish a list from `extendList(pass, n)`, recording its spare
+    /// capacity where the reduction's value goes. It takes over the node
+    /// id of element `n` (still on the value stack), so that nested
+    /// extensions each keep their own.
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, use);
+        return self.keepListNils(out, pass, n, use);
     }
 
     /// `keepList` keeping trailing nils: a list of one item per element
     /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        if (out.items.len > 0 and out.capacity > out.items.len) {
-            self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
-                .len = out.items.len,
-                .capacity = out.capacity,
-            }) catch return self.oomNil();
-        }
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
+        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
-            if (self.extending != 0) {
-                id = self.extending;
+            const base = pass[n];
+            id = if (base == .list) base.list.id else 0;
+            if (id != 0) {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        self.extending = 0;
         return .{ .list = List.withId(out.items, id) };
     }
 
@@ -1475,32 +1787,51 @@ pub const BaseParser = struct {
         return self.node(items, use);
     }
 
+    /// An item of a list an action builds from its elements alone.
+    const Item = union(enum) { elem: u16, tag: Tag, nil };
+
+    /// A list node over `items`, static data (so the action function needs
+    /// no temporaries for it); unless positions are fixed (`trim` false,
+    /// or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        var len = items.len;
+        if (trim and !keepTrailingNils) {
+            while (len > 0) : (len -= 1) switch (items[len - 1]) {
+                .elem => |i| if (pass[i] != .nil) break,
+                .tag => break,
+                .nil => {},
+            };
+        }
+        const out = self.allocItems(len) catch return self.oomNil();
+        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+            .elem => |i| pass[i],
+            .tag => |t| .{ .tag = t },
+            .nil => .nil,
+        };
+        return self.node(out, use);
+    }
+
     /// `(tag items...)`
-    inline fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
+        const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
         return self.node(out, .tree);
     }
 
     /// `(tag ...spread)`
-    inline fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
-        const items = spread.items();
-        const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
-        out[0] = .{ .tag = tag };
-        @memcpy(out[1..], items[0..len]);
-        return self.node(out, .tree);
+    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) Sexp {
+        return self.sexp(tag, spread.items());
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    inline fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
-        const out = self.allocator().alloc(Sexp, if (bare) 1 else len + 2) catch return self.oomNil();
+        const out = self.allocItems(if (bare) 1 else len + 2) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         if (!bare) {
             out[1] = pos;
@@ -1559,11 +1890,15 @@ pub const BaseParser = struct {
         try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
     }
 
+    /// `Parse error at ` and `writeError`'s text on standard error.
     pub fn printError(self: *const BaseParser) void {
-        var buf: [512]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buf);
-        self.writeError(&w) catch {};
-        std.debug.print("Parse error at {s}\n", .{w.buffered()});
+        var buffer: [256]u8 = undefined;
+        const stderr = std.debug.lockStderr(&buffer);
+        defer std.debug.unlockStderr();
+        const w = &stderr.file_writer.interface;
+        w.writeAll("Parse error at ") catch return;
+        self.writeError(w) catch return;
+        w.writeByte('\n') catch return;
     }
 
     /// What `state` accepts, reader-named: the `@errors` rules it waits
@@ -1583,26 +1918,31 @@ pub const BaseParser = struct {
     // Tolerant repair
     // -------------------------------------------------------------------------
 
-    /// Whether `symbols` can be consumed from the current state, simulating
-    /// reductions on a scratch copy of the state stack.
+    /// Whether `symbols` can be consumed from the current state. The
+    /// simulation leaves the state stack as it is: reductions pop the
+    /// states it pushed (`scratch`), then hide states of the real stack
+    /// (`depth` of them stay in view).
     fn accepts(self: *BaseParser, symbols: []const u16) !bool {
-        const stack = &self.scratch;
-        stack.clearRetainingCapacity();
-        try stack.appendSlice(self.allocator(), self.stateStack.items);
+        const pushed = &self.scratch;
+        pushed.clearRetainingCapacity();
+        var depth = self.stateStack.items.len;
         for (symbols) |sym| {
             while (true) {
-                const action = getAction(stack.last().?, sym);
+                const top = pushed.last() orelse self.stateStack.items[depth - 1];
+                const action = getAction(top, sym);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
-                    try stack.append(self.allocator(), @intCast(action));
+                    try pushed.append(self.allocator(), @intCast(action));
                     break;
                 }
                 const rule: u16 = @intCast(-action - 2);
-                stack.shrinkRetainingCapacity(stack.items.len - ruleLen[rule]);
-                const next = getAction(stack.last().?, ruleLhs[rule]);
+                const fromPushed = @min(ruleLen[rule], pushed.items.len);
+                pushed.shrinkRetainingCapacity(pushed.items.len - fromPushed);
+                depth -= ruleLen[rule] - fromPushed;
+                const next = getAction(pushed.last() orelse self.stateStack.items[depth - 1], ruleLhs[rule]);
                 if (next <= 0) return false;
-                try stack.append(self.allocator(), @intCast(next));
+                try pushed.append(self.allocator(), @intCast(next));
             }
         }
         return true;
@@ -1623,48 +1963,58 @@ pub const BaseParser = struct {
     /// for a list without a node id.
     pub fn writeFacts(self: *const BaseParser, w: *std.Io.Writer, root: Sexp) std.Io.Writer.Error!void {
         if (!nodeStore) @compileError("writeFacts needs the node store (@schema or --spans)");
-        try self.factsOf(w, root);
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = root;
+        while (true) {
+            if (s == .list) {
+                if (s.list.id != 0) try self.nodeFacts(w, s);
+                walk.push(s.list.items()) catch return error.WriteFailed;
+            }
+            s = walk.next() orelse return;
+        }
     }
 
-    fn factsOf(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
-        if (s != .list) return;
+    /// The facts of one node: its `node` line, its `role` and `side` lines.
+    fn nodeFacts(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
         const l = s.list;
         const items = l.items();
-        if (l.id != 0) {
-            const k = s.kind();
-            const sp = self.span(s);
-            try w.print("(node {d} ", .{l.id});
-            if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
-            try w.print(" {d} {d})\n", .{ sp.start, sp.end });
-            var i: usize = if (k != null) 1 else 0;
-            while (i < items.len) : (i += 1) {
-                if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
-                    try w.print("(role {d} ", .{l.id});
-                    try writeName(w, nameOf(rest.role));
-                    for (items[i..]) |child| {
-                        try w.writeByte(' ');
-                        try self.factChild(w, child);
-                    }
-                    try w.writeAll(")\n");
-                    break;
-                };
-                if (items[i] == .nil) continue;
+        const k = s.kind();
+        const sp = self.span(s);
+        try w.print("(node {d} ", .{l.id});
+        if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
+        try w.print(" {d} {d})\n", .{ sp.start, sp.end });
+        var i: usize = if (k != null) 1 else 0;
+        while (i < items.len) : (i += 1) {
+            if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
                 try w.print("(role {d} ", .{l.id});
-                if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
-                try w.writeByte(' ');
-                try self.factChild(w, items[i]);
+                try writeName(w, nameOf(rest.role));
+                for (items[i..]) |child| {
+                    try w.writeByte(' ');
+                    try factChild(w, child);
+                }
                 try w.writeAll(")\n");
-            }
-            for (self.sidesOf(l.id)) |e| {
-                try w.print("(side {d} ", .{l.id});
-                try writeName(w, nameOf(e.role));
-                try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
-            }
+                break;
+            };
+            if (items[i] == .nil) continue;
+            try w.print("(role {d} ", .{l.id});
+            if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
+            try w.writeByte(' ');
+            try factChild(w, items[i]);
+            try w.writeAll(")\n");
         }
-        for (items) |child| try self.factsOf(w, child);
+        for (self.sidesOf(l.id)) |e| {
+            try w.print("(side {d} ", .{l.id});
+            try writeName(w, nameOf(e.role));
+            try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
+        }
     }
 
-    fn factChild(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+    fn factChild(w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+        try writeNested(s, w, {}, factAtom);
+    }
+
+    fn factAtom(_: void, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
         switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| {
@@ -1676,15 +2026,9 @@ pub const BaseParser = struct {
                 try w.writeAll("str ");
                 try writeQuoted(w, x);
             },
-            .list => |l| if (l.id != 0) try w.print("{d}", .{l.id}) else {
-                try w.writeByte('(');
-                for (l.items(), 0..) |child, i| {
-                    if (i > 0) try w.writeByte(' ');
-                    try self.factChild(w, child);
-                }
-                try w.writeByte(')');
-            },
+            .list => |l| if (l.id != 0) try w.print("{d}", .{l.id}) else return l.items(),
         }
+        return null;
     }
 
     /// A name as a bare symbol, or quoted when it has s-expression syntax.
@@ -1723,14 +2067,16 @@ const elemEnds = false;
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
+/// `@as` groups the promotable token may become (see `promote`).
+const asGroups = 1;
 const numSymbols = 177;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
-fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
+fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"ident" => promote(self, token),
+        .@"ident" => needsPromotion,
         .@"newline" => 58,
         .@"string_sq" => 64,
         .@"string_dq" => 65,
@@ -1793,274 +2139,189 @@ fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
 }
 
 fn promote(self: *BaseParser, token: Token) u16 {
+    // The ordinal of a match made in an earlier state (before a
+    // reduction) is not this match's.
+    self.lastMatchedId = 0;
     const text = self.source[token.pos..][0..token.len];
     if (text.len == 0) return promotableSymbol;
-    if (tryPromoteKeyword(self, text)) |sym| return sym;
+    if (self.tryPromote(0, text, lang.keywordAs, &keywordToSymbol, keywordFallbackSymbol, false)) |sym| return sym;
     return promotableSymbol;
 }
 
-fn tryPromoteKeyword(self: *BaseParser, text: []const u8) ?u16 {
-    const state = self.stateStack.last().?;
-    const id = lang.keywordAs(text) orelse return null;
-    const idIdx = @backingInt(id);
-    const sym = keywordToSymbol[idIdx];
-    if (sym != 0 and getAction(state, sym) > 0) {
-        self.lastMatchedId = @intCast(idIdx);
-        return sym;
-    }
-    const fallback = keywordFallbackSymbol;
-    if (fallback != 0 and getAction(state, fallback) > 0) {
-        self.lastMatchedId = @intCast(idIdx);
-        return fallback;
-    }
-    return null;
-}
-
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"module", pass[0]),
         1 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        3 => pass[0],
-        4 => pass[0],
-        5 => pass[0],
-        6 => pass[0],
-        7 => pass[0],
-        8 => self.sexp(.@"labeled", &.{pass[1], pass[2]}),
-        9 => pass[0],
-        10 => self.sexp(.@"extern_const", &.{pass[2], pass[4]}),
-        11 => self.sexp(.@"extern_var", &.{pass[1], pass[3]}),
-        12 => self.sexp(.@"zig", &.{pass[1]}),
-        13 => self.sexp(.@"zig", &.{pass[1]}),
-        14 => pass[0],
-        15 => self.sexp(.@"pub", &.{pass[1]}),
-        16 => self.sexp(.@"extern", &.{pass[1]}),
-        17 => self.sexp(.@"export", &.{pass[1]}),
-        18 => self.sexp(.@"packed", &.{pass[1]}),
-        19 => self.sexp(.@"callconv", &.{pass[1], pass[2]}),
-        20 => pass[0],
-        21 => pass[0],
-        22 => pass[0],
-        23 => pass[0],
-        24 => pass[0],
-        25 => pass[0],
-        26 => pass[0],
-        27 => pass[0],
+        2 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
+        8 => self.buildOf(&.{ .{ .tag = .@"labeled" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        10 => self.buildOf(&.{ .{ .tag = .@"extern_const" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        11 => self.buildOf(&.{ .{ .tag = .@"extern_var" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        12 => self.buildOf(&.{ .{ .tag = .@"zig" }, .{ .elem = 1 } }, pass, .tree, true),
+        13 => self.buildOf(&.{ .{ .tag = .@"zig" }, .{ .elem = 1 } }, pass, .tree, true),
+        15 => self.buildOf(&.{ .{ .tag = .@"pub" }, .{ .elem = 1 } }, pass, .tree, true),
+        16 => self.buildOf(&.{ .{ .tag = .@"extern" }, .{ .elem = 1 } }, pass, .tree, true),
+        17 => self.buildOf(&.{ .{ .tag = .@"export" }, .{ .elem = 1 } }, pass, .tree, true),
+        18 => self.buildOf(&.{ .{ .tag = .@"packed" }, .{ .elem = 1 } }, pass, .tree, true),
+        19 => self.buildOf(&.{ .{ .tag = .@"callconv" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
         28 => self.sexpSpread(.@"block", pass[1]),
-        29 => self.sexp(.@"block", &.{}),
-        30 => self.sexp(.@"fun", &.{pass[1], pass[2], pass[3], pass[4]}),
-        31 => self.sexp(.@"fun", &.{pass[1], pass[2], .nil, pass[3]}),
-        32 => self.sexp(.@"fun", &.{pass[1], .nil, pass[2], pass[3]}),
-        33 => self.sexp(.@"fun", &.{pass[1], .nil, .nil, pass[2]}),
-        34 => self.sexp(.@"sub", &.{pass[1], pass[2], .nil, pass[3]}),
-        35 => self.sexp(.@"sub", &.{pass[1], .nil, .nil, pass[2]}),
-        36 => self.sexp(.@"use", &.{pass[1]}),
-        37 => self.sexp(.@"type", &.{pass[1], pass[3]}),
-        38 => self.sexp(.@"test", &.{pass[1], pass[2]}),
-        39 => self.sexp(.@"opaque", &.{pass[1]}),
+        29 => self.buildOf(&.{ .{ .tag = .@"block" } }, pass, .tree, true),
+        30 => self.buildOf(&.{ .{ .tag = .@"fun" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
+        31 => self.buildOf(&.{ .{ .tag = .@"fun" }, .{ .elem = 1 }, .{ .elem = 2 }, .nil, .{ .elem = 3 } }, pass, .tree, true),
+        32 => self.buildOf(&.{ .{ .tag = .@"fun" }, .{ .elem = 1 }, .nil, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
+        33 => self.buildOf(&.{ .{ .tag = .@"fun" }, .{ .elem = 1 }, .nil, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        34 => self.buildOf(&.{ .{ .tag = .@"sub" }, .{ .elem = 1 }, .{ .elem = 2 }, .nil, .{ .elem = 3 } }, pass, .tree, true),
+        35 => self.buildOf(&.{ .{ .tag = .@"sub" }, .{ .elem = 1 }, .nil, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        36 => self.buildOf(&.{ .{ .tag = .@"use" }, .{ .elem = 1 } }, pass, .tree, true),
+        37 => self.buildOf(&.{ .{ .tag = .@"type" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        38 => self.buildOf(&.{ .{ .tag = .@"test" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        39 => self.buildOf(&.{ .{ .tag = .@"opaque" }, .{ .elem = 1 } }, pass, .tree, true),
         40 => self.sexpPosSpread(.@"enum", pass[1], pass[3]),
         41 => self.sexpPosSpread(.@"errors", pass[1], pass[3]),
         42 => self.sexpPosSpread(.@"struct", pass[1], pass[3]),
         43 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        44 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        45 => pass[0],
-        46 => pass[0],
-        47 => self.sexp(.@"valued", &.{pass[0], pass[2]}),
-        48 => pass[0],
-        49 => pass[0],
-        50 => self.sexp(.@"comptime_param", &.{pass[1], pass[3]}),
-        51 => pass[0],
+        44 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
+        47 => self.buildOf(&.{ .{ .tag = .@"valued" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        50 => self.buildOf(&.{ .{ .tag = .@"comptime_param" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
         52 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@":" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        53 => self.sexp(.@"aligned", &.{pass[0], pass[2], pass[4]}),
-        54 => self.sexp(.@"default", &.{pass[0], pass[2], pass[4]}),
-        55 => self.build(&.{ pass[0] }, .spread),
-        56 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .spread); },
-        57 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
-        58 => pass[1],
-        59 => pass[0],
-        60 => self.sexp(.@"error_union", &.{pass[1]}),
-        61 => self.sexp(.@"?", &.{pass[1]}),
-        62 => self.sexp(.@"ptr", &.{pass[1]}),
-        63 => self.sexp(.@"const_ptr", &.{pass[2]}),
-        64 => self.sexp(.@"volatile_ptr", &.{pass[2]}),
-        65 => self.sexp(.@"slice", &.{pass[2]}),
-        66 => self.sexp(.@"sentinel_slice", &.{pass[2], pass[4]}),
-        67 => self.sexp(.@"array_type", &.{pass[1], pass[3]}),
-        68 => self.sexp(.@"many_ptr", &.{pass[3]}),
-        69 => self.sexp(.@"sentinel_ptr", &.{pass[3], pass[5]}),
-        70 => self.build(&.{ pass[0] }, .tree),
-        71 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .tree); },
-        72 => self.sexp(.@"fn_type", &.{pass[2], pass[4]}),
-        73 => self.sexp(.@"fn_type", &.{.nil, pass[3]}),
-        74 => pass[0],
-        75 => pass[0],
-        76 => pass[0],
-        77 => pass[0],
-        78 => pass[0],
-        79 => pass[0],
-        80 => pass[0],
-        81 => pass[0],
-        82 => pass[0],
-        83 => pass[0],
-        84 => pass[0],
-        85 => pass[0],
-        86 => pass[0],
-        87 => pass[0],
-        88 => pass[0],
-        89 => pass[0],
-        90 => pass[0],
-        91 => pass[0],
-        92 => self.sexp(.@"as", &.{pass[0], pass[2]}),
-        93 => self.sexp(.@"as", &.{pass[0], pass[2]}),
-        94 => self.sexp(.@"if", &.{pass[1], pass[2], pass[5], pass[6]}),
-        95 => self.sexp(.@"if", &.{pass[1], pass[2], pass[5], pass[6]}),
-        96 => self.sexp(.@"if", &.{pass[1], pass[2], pass[4]}),
-        97 => self.sexp(.@"if", &.{pass[1], pass[2], pass[4]}),
-        98 => self.sexp(.@"if", &.{pass[1], pass[2]}),
-        99 => self.sexp(.@"while", &.{pass[1], .nil, pass[2], pass[4]}),
-        100 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4], pass[6]}),
-        101 => self.sexp(.@"while", &.{pass[1], .nil, pass[2]}),
-        102 => self.sexp(.@"while", &.{pass[1], pass[3], pass[4]}),
-        103 => self.sexp(.@"for_ptr", &.{pass[2], .nil, pass[4], pass[5], pass[7]}),
-        104 => self.sexp(.@"for_ptr", &.{pass[2], pass[4], pass[6], pass[7], pass[9]}),
-        105 => self.sexp(.@"for", &.{pass[1], .nil, pass[3], pass[4], pass[6]}),
-        106 => self.sexp(.@"for", &.{pass[1], pass[3], pass[5], pass[6], pass[8]}),
-        107 => self.sexp(.@"for_ptr", &.{pass[2], .nil, pass[4], pass[5]}),
-        108 => self.sexp(.@"for_ptr", &.{pass[2], pass[4], pass[6], pass[7]}),
-        109 => self.sexp(.@"for", &.{pass[1], .nil, pass[3], pass[4]}),
-        110 => self.sexp(.@"for", &.{pass[1], pass[3], pass[5], pass[6]}),
+        53 => self.buildOf(&.{ .{ .tag = .@"aligned" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        54 => self.buildOf(&.{ .{ .tag = .@"default" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        55 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        56 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        57 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .tree); },
+        60 => self.buildOf(&.{ .{ .tag = .@"error_union" }, .{ .elem = 1 } }, pass, .tree, true),
+        61 => self.buildOf(&.{ .{ .tag = .@"?" }, .{ .elem = 1 } }, pass, .tree, true),
+        62 => self.buildOf(&.{ .{ .tag = .@"ptr" }, .{ .elem = 1 } }, pass, .tree, true),
+        63 => self.buildOf(&.{ .{ .tag = .@"const_ptr" }, .{ .elem = 2 } }, pass, .tree, true),
+        64 => self.buildOf(&.{ .{ .tag = .@"volatile_ptr" }, .{ .elem = 2 } }, pass, .tree, true),
+        65 => self.buildOf(&.{ .{ .tag = .@"slice" }, .{ .elem = 2 } }, pass, .tree, true),
+        66 => self.buildOf(&.{ .{ .tag = .@"sentinel_slice" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        67 => self.buildOf(&.{ .{ .tag = .@"array_type" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        68 => self.buildOf(&.{ .{ .tag = .@"many_ptr" }, .{ .elem = 3 } }, pass, .tree, true),
+        69 => self.buildOf(&.{ .{ .tag = .@"sentinel_ptr" }, .{ .elem = 3 }, .{ .elem = 5 } }, pass, .tree, true),
+        70 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
+        71 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        72 => self.buildOf(&.{ .{ .tag = .@"fn_type" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        73 => self.buildOf(&.{ .{ .tag = .@"fn_type" }, .nil, .{ .elem = 3 } }, pass, .tree, true),
+        92 => self.buildOf(&.{ .{ .tag = .@"as" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        93 => self.buildOf(&.{ .{ .tag = .@"as" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        94 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 5 }, .{ .elem = 6 } }, pass, .tree, true),
+        95 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 5 }, .{ .elem = 6 } }, pass, .tree, true),
+        96 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        97 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        98 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        99 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .nil, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        100 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 }, .{ .elem = 6 } }, pass, .tree, true),
+        101 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        102 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
+        103 => self.buildOf(&.{ .{ .tag = .@"for_ptr" }, .{ .elem = 2 }, .nil, .{ .elem = 4 }, .{ .elem = 5 }, .{ .elem = 7 } }, pass, .tree, true),
+        104 => self.buildOf(&.{ .{ .tag = .@"for_ptr" }, .{ .elem = 2 }, .{ .elem = 4 }, .{ .elem = 6 }, .{ .elem = 7 }, .{ .elem = 9 } }, pass, .tree, true),
+        105 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .nil, .{ .elem = 3 }, .{ .elem = 4 }, .{ .elem = 6 } }, pass, .tree, true),
+        106 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 5 }, .{ .elem = 6 }, .{ .elem = 8 } }, pass, .tree, true),
+        107 => self.buildOf(&.{ .{ .tag = .@"for_ptr" }, .{ .elem = 2 }, .nil, .{ .elem = 4 }, .{ .elem = 5 } }, pass, .tree, true),
+        108 => self.buildOf(&.{ .{ .tag = .@"for_ptr" }, .{ .elem = 2 }, .{ .elem = 4 }, .{ .elem = 6 }, .{ .elem = 7 } }, pass, .tree, true),
+        109 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .nil, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
+        110 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 5 }, .{ .elem = 6 } }, pass, .tree, true),
         111 => self.sexpPosSpread(.@"match", pass[1], pass[3]),
         112 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        113 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        114 => pass[0],
-        115 => pass[0],
-        116 => self.sexp(.@"enum_pattern", &.{pass[1]}),
-        117 => pass[0],
-        118 => self.sexp(.@"range_pattern", &.{pass[0], pass[2]}),
-        119 => self.sexp(.@"arm", &.{pass[0], pass[2], pass[4]}),
-        120 => self.sexp(.@"arm", &.{pass[0], pass[2], pass[3]}),
-        121 => self.sexp(.@"arm", &.{pass[0], .nil, pass[2]}),
-        122 => self.sexp(.@"arm", &.{pass[0], .nil, pass[1]}),
-        123 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-        124 => self.sexp(.@"if", &.{pass[2], pass[0]}),
-        125 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-        126 => self.sexp(.@"??", &.{pass[0], pass[2]}),
-        127 => self.sexp(.@"catch", &.{pass[0], pass[3], pass[4]}),
-        128 => self.sexp(.@"catch", &.{pass[0], pass[2]}),
-        129 => self.sexp(.@"return", &.{pass[1], pass[3]}),
-        130 => self.sexp(.@"return", &.{.nil, pass[2]}),
-        131 => self.sexp(.@"return", &.{pass[1]}),
-        132 => self.sexp(.@"return", &.{}),
-        133 => self.sexp(.@"break", &.{.nil, pass[2], pass[4]}),
-        134 => self.sexp(.@"break", &.{pass[3], pass[2]}),
-        135 => self.sexp(.@"break", &.{.nil, pass[2]}),
-        136 => self.sexp(.@"break", &.{.nil, .nil, pass[2]}),
-        137 => self.sexp(.@"break", &.{pass[1]}),
-        138 => self.sexp(.@"break", &.{}),
-        139 => self.sexp(.@"continue", &.{pass[2], pass[4]}),
-        140 => self.sexp(.@"continue", &.{pass[2]}),
-        141 => self.sexp(.@"continue", &.{.nil, pass[2]}),
-        142 => self.sexp(.@"continue", &.{}),
-        143 => self.sexp(.@"defer", &.{pass[1]}),
-        144 => self.sexp(.@"defer", &.{pass[1]}),
-        145 => self.sexp(.@"errdefer", &.{pass[1]}),
-        146 => self.sexp(.@"errdefer", &.{pass[1]}),
-        147 => self.sexp(.@"comptime", &.{pass[1]}),
-        148 => self.sexp(.@"inline", &.{pass[1]}),
-        149 => self.sexp(.@"typed_assign", &.{pass[0], pass[2], pass[4]}),
+        113 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
+        116 => self.buildOf(&.{ .{ .tag = .@"enum_pattern" }, .{ .elem = 1 } }, pass, .tree, true),
+        118 => self.buildOf(&.{ .{ .tag = .@"range_pattern" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        119 => self.buildOf(&.{ .{ .tag = .@"arm" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        120 => self.buildOf(&.{ .{ .tag = .@"arm" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
+        121 => self.buildOf(&.{ .{ .tag = .@"arm" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        122 => self.buildOf(&.{ .{ .tag = .@"arm" }, .{ .elem = 0 }, .nil, .{ .elem = 1 } }, pass, .tree, true),
+        123 => self.buildOf(&.{ .{ .tag = .@"ternary" }, .{ .elem = 2 }, .{ .elem = 0 }, .{ .elem = 4 } }, pass, .tree, true),
+        124 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 2 }, .{ .elem = 0 } }, pass, .tree, true),
+        125 => self.buildOf(&.{ .{ .tag = .@"ternary" }, .{ .elem = 2 }, .{ .elem = 0 }, .{ .elem = 4 } }, pass, .tree, true),
+        126 => self.buildOf(&.{ .{ .tag = .@"??" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        127 => self.buildOf(&.{ .{ .tag = .@"catch" }, .{ .elem = 0 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
+        128 => self.buildOf(&.{ .{ .tag = .@"catch" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        129 => self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        130 => self.buildOf(&.{ .{ .tag = .@"return" }, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        131 => self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 } }, pass, .tree, true),
+        132 => self.buildOf(&.{ .{ .tag = .@"return" } }, pass, .tree, true),
+        133 => self.buildOf(&.{ .{ .tag = .@"break" }, .nil, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        134 => self.buildOf(&.{ .{ .tag = .@"break" }, .{ .elem = 3 }, .{ .elem = 2 } }, pass, .tree, true),
+        135 => self.buildOf(&.{ .{ .tag = .@"break" }, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        136 => self.buildOf(&.{ .{ .tag = .@"break" }, .nil, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        137 => self.buildOf(&.{ .{ .tag = .@"break" }, .{ .elem = 1 } }, pass, .tree, true),
+        138 => self.buildOf(&.{ .{ .tag = .@"break" } }, pass, .tree, true),
+        139 => self.buildOf(&.{ .{ .tag = .@"continue" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        140 => self.buildOf(&.{ .{ .tag = .@"continue" }, .{ .elem = 2 } }, pass, .tree, true),
+        141 => self.buildOf(&.{ .{ .tag = .@"continue" }, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        142 => self.buildOf(&.{ .{ .tag = .@"continue" } }, pass, .tree, true),
+        143 => self.buildOf(&.{ .{ .tag = .@"defer" }, .{ .elem = 1 } }, pass, .tree, true),
+        144 => self.buildOf(&.{ .{ .tag = .@"defer" }, .{ .elem = 1 } }, pass, .tree, true),
+        145 => self.buildOf(&.{ .{ .tag = .@"errdefer" }, .{ .elem = 1 } }, pass, .tree, true),
+        146 => self.buildOf(&.{ .{ .tag = .@"errdefer" }, .{ .elem = 1 } }, pass, .tree, true),
+        147 => self.buildOf(&.{ .{ .tag = .@"comptime" }, .{ .elem = 1 } }, pass, .tree, true),
+        148 => self.buildOf(&.{ .{ .tag = .@"inline" }, .{ .elem = 1 } }, pass, .tree, true),
+        149 => self.buildOf(&.{ .{ .tag = .@"typed_assign" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
         150 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         151 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         152 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        153 => self.sexp(.@"*=", &.{pass[0], pass[2]}),
-        154 => self.sexp(.@"/=", &.{pass[0], pass[2]}),
-        155 => self.sexp(.@"typed_const", &.{pass[0], pass[2], pass[4]}),
-        156 => self.sexp(.@"const", &.{pass[0], pass[2]}),
-        157 => self.sexp(.@"not", &.{pass[1]}),
-        158 => self.sexp(.@"neg", &.{pass[1]}),
-        159 => self.sexp(.@"try", &.{pass[1]}),
-        160 => self.sexp(.@"addr_of", &.{pass[1]}),
-        161 => self.sexp(.@"bit_not", &.{pass[1]}),
-        162 => pass[0],
-        163 => self.sexp(.@"deref", &.{pass[0]}),
+        153 => self.buildOf(&.{ .{ .tag = .@"*=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        154 => self.buildOf(&.{ .{ .tag = .@"/=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        155 => self.buildOf(&.{ .{ .tag = .@"typed_const" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, true),
+        156 => self.buildOf(&.{ .{ .tag = .@"const" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        157 => self.buildOf(&.{ .{ .tag = .@"not" }, .{ .elem = 1 } }, pass, .tree, true),
+        158 => self.buildOf(&.{ .{ .tag = .@"neg" }, .{ .elem = 1 } }, pass, .tree, true),
+        159 => self.buildOf(&.{ .{ .tag = .@"try" }, .{ .elem = 1 } }, pass, .tree, true),
+        160 => self.buildOf(&.{ .{ .tag = .@"addr_of" }, .{ .elem = 1 } }, pass, .tree, true),
+        161 => self.buildOf(&.{ .{ .tag = .@"bit_not" }, .{ .elem = 1 } }, pass, .tree, true),
+        163 => self.buildOf(&.{ .{ .tag = .@"deref" }, .{ .elem = 0 } }, pass, .tree, true),
         164 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        165 => self.sexp(.@"index", &.{pass[0], pass[2]}),
-        166 => self.build(&.{ pass[0] }, .spread),
-        167 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .spread); },
+        165 => self.buildOf(&.{ .{ .tag = .@"index" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        166 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        167 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         168 => self.sexpPosSpread(.@"call", pass[0], pass[1]),
         169 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-        170 => pass[0],
-        171 => self.build(&.{ pass[0] }, .spread),
-        172 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .spread); },
-        173 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        171 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        172 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        173 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
         174 => self.emptyList(.spread),
-        175 => self.sexp(.@"ternary", &.{pass[2], pass[0], pass[4]}),
-        176 => pass[0],
-        177 => self.sexp(.@"neg", &.{pass[1]}),
-        178 => self.sexp(.@"not", &.{pass[1]}),
-        179 => pass[0],
-        180 => pass[0],
-        181 => pass[0],
-        182 => pass[0],
-        183 => pass[0],
-        184 => pass[0],
-        185 => pass[0],
-        186 => pass[0],
-        187 => self.sexp(.@"null", &.{}),
-        188 => self.sexp(.@"unreachable", &.{}),
-        189 => self.sexp(.@"undefined", &.{}),
-        190 => self.sexp(.@"?", &.{pass[1]}),
+        175 => self.buildOf(&.{ .{ .tag = .@"ternary" }, .{ .elem = 2 }, .{ .elem = 0 }, .{ .elem = 4 } }, pass, .tree, true),
+        177 => self.buildOf(&.{ .{ .tag = .@"neg" }, .{ .elem = 1 } }, pass, .tree, true),
+        178 => self.buildOf(&.{ .{ .tag = .@"not" }, .{ .elem = 1 } }, pass, .tree, true),
+        187 => self.buildOf(&.{ .{ .tag = .@"null" } }, pass, .tree, true),
+        188 => self.buildOf(&.{ .{ .tag = .@"unreachable" } }, pass, .tree, true),
+        189 => self.buildOf(&.{ .{ .tag = .@"undefined" } }, pass, .tree, true),
+        190 => self.buildOf(&.{ .{ .tag = .@"?" }, .{ .elem = 1 } }, pass, .tree, true),
         191 => self.sexpPosSpread(.@"builtin", pass[1], pass[3]),
-        192 => pass[0],
-        193 => pass[0],
         194 => self.sexpSpread(.@"array", pass[1]),
-        195 => pass[1],
-        196 => self.build(&.{ pass[0] }, .spread),
-        197 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .spread); },
+        196 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        197 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         198 => self.sexpSpread(.@"anon_init", pass[1]),
         199 => self.sexpSpread(.@"anon_init", pass[1]),
-        200 => self.sexp(.@"anon_init", &.{}),
-        201 => self.build(&.{ pass[0] }, .spread),
-        202 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .spread); },
+        200 => self.buildOf(&.{ .{ .tag = .@"anon_init" } }, pass, .tree, true),
+        201 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        202 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         203 => self.sexpPosSpread(.@"record", pass[0], pass[2]),
-        204 => self.sexp(.@"pair", &.{pass[0], pass[2]}),
-        205 => self.sexp(.@"pair", &.{pass[1], pass[3]}),
-        206 => self.sexp(.@"lambda", &.{pass[1], .nil, pass[2]}),
-        207 => self.sexp(.@"lambda", &.{.nil, .nil, pass[1]}),
+        204 => self.buildOf(&.{ .{ .tag = .@"pair" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        205 => self.buildOf(&.{ .{ .tag = .@"pair" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        206 => self.buildOf(&.{ .{ .tag = .@"lambda" }, .{ .elem = 1 }, .nil, .{ .elem = 2 } }, pass, .tree, true),
+        207 => self.buildOf(&.{ .{ .tag = .@"lambda" }, .nil, .nil, .{ .elem = 1 } }, pass, .tree, true),
         210 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        211 => pass[0],
         212 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"||" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        213 => pass[0],
         214 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        215 => pass[0],
         216 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"|" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        217 => pass[0],
         218 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"^" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        219 => pass[0],
         220 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        221 => pass[0],
         222 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"==" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        223 => self.sexp(.@"!=", &.{pass[0], pass[2]}),
+        223 => self.buildOf(&.{ .{ .tag = .@"!=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         224 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         225 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         226 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         227 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        228 => pass[0],
         229 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@".." }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        230 => pass[0],
         231 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"<<" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         232 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@">>" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        233 => pass[0],
         234 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         235 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        236 => pass[0],
-        237 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-        238 => self.sexp(.@"/", &.{pass[0], pass[2]}),
+        237 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        238 => self.buildOf(&.{ .{ .tag = .@"/" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         239 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"%" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        240 => pass[0],
-        241 => self.sexp(.@"**", &.{pass[0], pass[2]}),
-        242 => pass[0],
-        243 => pass[0],
+        241 => self.buildOf(&.{ .{ .tag = .@"**" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         else => unreachable,
     };
 }
@@ -2171,503 +2432,485 @@ comptime {
 
 const ruleLhs = [_]u16{ 3, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 8, 8, 9, 9, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 16, 17, 18, 19, 20, 21, 21, 21, 22, 22, 22, 22, 23, 23, 23, 23, 23, 85, 85, 24, 25, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 26, 96, 96, 26, 26, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 27, 27, 27, 28, 28, 28, 28, 28, 29, 29, 29, 29, 30, 30, 30, 30, 30, 30, 30, 30, 31, 32, 32, 32, 33, 33, 34, 34, 35, 35, 35, 35, 36, 36, 36, 37, 38, 38, 39, 39, 39, 39, 40, 40, 40, 40, 40, 40, 41, 41, 41, 41, 42, 42, 43, 43, 44, 45, 46, 46, 46, 46, 46, 46, 47, 47, 48, 48, 48, 48, 48, 48, 49, 49, 49, 129, 129, 49, 49, 49, 130, 130, 50, 50, 51, 51, 52, 52, 52, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 53, 139, 139, 53, 53, 53, 142, 142, 54, 55, 56, 57, 57, 144, 146, 147, 147, 148, 148, 149, 149, 150, 150, 151, 151, 152, 152, 153, 153, 153, 153, 153, 153, 153, 154, 154, 155, 155, 155, 156, 156, 156, 157, 157, 157, 157, 158, 158, 98 };
 const ruleLen = [_]u8{ 1, 1, 3, 2, 1, 1, 1, 1, 3, 1, 5, 4, 2, 2, 1, 2, 2, 2, 2, 3, 1, 1, 1, 1, 1, 1, 1, 1, 3, 2, 5, 4, 4, 3, 4, 3, 2, 4, 3, 2, 5, 5, 5, 1, 3, 2, 1, 3, 1, 1, 4, 1, 3, 5, 5, 1, 3, 1, 2, 1, 2, 2, 2, 3, 3, 3, 5, 4, 4, 6, 1, 3, 5, 4, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 4, 7, 7, 5, 5, 3, 5, 7, 3, 5, 8, 10, 7, 9, 6, 8, 5, 7, 5, 1, 3, 2, 1, 2, 1, 3, 5, 4, 3, 2, 5, 3, 5, 3, 5, 3, 4, 3, 2, 1, 5, 4, 3, 3, 2, 1, 5, 3, 3, 1, 2, 2, 2, 2, 2, 2, 5, 3, 3, 3, 3, 3, 5, 3, 2, 2, 2, 2, 2, 1, 3, 3, 4, 1, 3, 2, 4, 1, 1, 3, 1, 0, 5, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 5, 1, 1, 3, 3, 1, 3, 3, 3, 2, 1, 3, 4, 3, 4, 3, 2, 3, 3, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 3, 1, 1 };
+/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
+const ruleValue = [_]u8{ 0, 0, 0, 2, 2, 2, 2, 2, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 2, 2, 0, 2, 0, 0, 0, 0, 0, 0, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 2, 0, 0, 2, 0, 0, 0, 2, 0, 2, 2 };
 
 // Parse table: 465 states x 177 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 465;
-
-const sparse = [numStates][]const i16{
-    &.{143,2},
-    &.{145,3},
-    &.{3,4,4,12,5,5,6,6,7,10,8,9,9,8,10,14,12,38,13,39,14,7,15,43,16,44,17,45,18,40,19,42,20,41,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,59,11,60,69,61,16,63,20,64,72,65,73,66,15,67,17,68,18,69,19,72,59,73,60,74,13,75,64,77,65,78,66,79,61,80,63,81,62,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,103,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-1},
-    &.{1,-2,58,105},
-    &.{1,-3,58,-3,71,-3},
-    &.{1,-6,58,-6,71,-6},
-    &.{1,-7,58,-7,71,-7},
-    &.{1,-8,58,-8,71,-8},
-    &.{1,-9,58,-9,71,-9},
-    &.{60,106},
-    &.{1,-11,58,-11,71,-11},
-    &.{60,107},
-    &.{1,-16,58,-16,71,-16},
-    &.{9,108,10,14,12,38,13,39,15,43,16,44,17,45,18,40,19,42,20,41,61,109,66,15,67,17,68,18,69,19,72,59,73,60,75,64,77,65,78,66,79,61,80,63,81,62},
-    &.{9,110,10,14,12,38,13,39,15,43,16,44,17,45,18,40,19,42,20,41,60,112,61,109,62,111,66,15,67,17,68,18,69,19,72,59,73,60,75,64,77,65,78,66,79,61,80,63,81,62},
-    &.{9,113,10,14,12,38,13,39,15,43,16,44,17,45,18,40,19,42,20,41,61,109,66,15,67,17,68,18,69,19,72,59,73,60,75,64,77,65,78,66,79,61,80,63,81,62},
-    &.{9,114,10,14,12,38,13,39,15,43,16,44,17,45,18,40,19,42,20,41,61,109,66,15,67,17,68,18,69,19,72,59,73,60,75,64,77,65,78,66,79,61,80,63,81,62},
-    &.{60,115},
-    &.{64,116,65,117},
-    &.{1,-76,58,-76,59,-76,70,-76,71,-76,84,-76,86,-76,92,-76,97,-76,99,-76,100,-76,102,-76,114,-76,140,-76},
-    &.{1,-77,58,-77,59,-77,70,-77,71,-77,84,-77,86,-77,92,-77,97,-77,99,-77,100,-77,102,-77,114,-77,140,-77},
-    &.{1,-78,58,-78,59,-78,70,-78,71,-78,84,-78,86,-78,92,-78,97,-78,99,-78,100,-78,102,-78,114,-78,140,-78},
-    &.{1,-79,58,-79,59,-79,70,-79,71,-79,84,-79,86,-79,92,-79,97,-79,99,-79,100,-79,102,-79,114,-79,140,-79},
-    &.{1,-80,58,-80,59,-80,70,-80,71,-80,84,-80,86,-80,92,-80,97,-80,99,-80,100,-80,102,-80,114,-80,140,-80},
-    &.{1,-81,58,-81,59,-81,70,-81,71,-81,84,-81,86,-81,92,-81,97,-81,99,-81,100,-81,102,-81,114,-81,140,-81},
-    &.{1,-82,58,-82,59,-82,70,-82,71,-82,84,-82,86,-82,92,-82,97,-82,99,-82,100,-82,102,-82,114,-82,140,-82},
-    &.{1,-83,58,-83,59,-83,70,-83,71,-83,84,-83,86,-83,92,-83,97,-83,99,-83,100,-83,102,-83,114,-83,140,-83},
-    &.{1,-84,58,-84,59,-84,70,-84,71,-84,84,-84,86,-84,92,-84,97,-84,99,-84,100,-84,102,-84,114,-84,140,-84},
-    &.{1,-85,58,-85,59,-85,70,-85,71,-85,84,-85,86,-85,92,-85,97,-85,99,-85,100,-85,102,-85,114,-85,140,-85},
-    &.{1,-86,58,-86,59,-86,70,-86,71,-86,84,-86,86,-86,92,-86,97,-86,99,-86,100,-86,102,-86,114,-86,140,-86},
-    &.{1,-87,58,-87,59,-87,70,-87,71,-87,84,-87,86,-87,92,-87,97,-87,99,-87,100,-87,102,-87,114,-87,140,-87},
-    &.{1,-88,58,-88,59,-88,70,-88,71,-88,84,-88,86,-88,92,-88,97,-88,99,-88,100,-88,102,-88,114,-88,140,-88},
-    &.{1,-89,58,-89,59,-89,70,-89,71,-89,84,-89,86,-89,92,-89,97,-89,99,-89,100,-89,102,-89,114,-89,140,-89},
-    &.{1,-90,58,-90,59,-90,70,-90,71,-90,84,-90,86,-90,92,-90,97,-90,99,-90,100,-90,102,-90,114,-90,140,-90},
-    &.{1,-91,58,-91,59,-91,70,-91,71,-91,84,-91,86,-91,92,-91,97,-91,99,-91,100,-91,102,-91,114,-91,140,-91},
-    &.{1,-92,58,-92,59,-92,70,-92,71,-92,84,-92,86,-92,92,-92,97,-92,99,-92,100,-92,101,118,102,-92,110,119,111,120,112,121,114,-92,140,-92},
-    &.{1,-22,58,-22,71,-22},
-    &.{1,-23,58,-23,71,-23},
-    &.{1,-24,58,-24,71,-24},
-    &.{1,-25,58,-25,71,-25},
-    &.{1,-26,58,-26,71,-26},
-    &.{1,-27,58,-27,71,-27},
-    &.{1,-28,58,-28,71,-28},
-    &.{1,-29,58,-29,71,-29},
-    &.{4,123,27,122,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,123,27,124,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{60,126,89,125},
-    &.{4,127,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-134,4,128,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,58,-134,59,-134,60,69,64,72,65,73,70,-134,71,-134,82,55,84,-134,86,-134,87,98,88,79,91,83,92,-134,93,70,94,87,95,84,97,-134,98,37,99,-134,100,-134,101,46,102,-134,103,47,104,48,106,49,113,50,114,129,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,140,-134,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-140,4,132,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,58,-140,59,130,60,69,64,72,65,73,70,-140,71,-140,82,55,84,-140,86,-140,87,98,88,79,91,83,92,-140,93,70,94,87,95,84,97,-140,98,37,99,-140,100,-140,101,46,102,-140,103,47,104,48,106,49,113,50,114,131,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,140,-140,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-144,58,-144,59,133,70,-144,71,-144,84,-144,86,-144,92,-144,97,-144,99,-144,100,-144,102,-144,114,134,140,-144},
-    &.{4,136,11,135,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,70,137,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,139,11,138,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,70,137,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,140,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,141,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-164,51,153,52,154,53,157,54,81,57,82,58,-164,59,142,60,69,64,72,65,73,70,-164,71,-164,76,143,84,-164,86,-164,87,156,88,79,89,-164,91,150,92,-164,93,70,94,87,95,152,97,-164,99,-164,100,-164,101,-164,102,-164,107,149,108,-164,110,-164,111,-164,112,-164,114,-164,120,144,121,145,122,146,123,147,124,148,125,155,127,-164,129,151,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,140,-164,159,-164,160,-164,161,-164,162,-164,163,-164,164,-164,165,-164,166,-164,167,-164,168,-164,169,-164,170,-164,171,-164,172,-164,173,-164,174,-164,175,-164,176,-164},
-    &.{1,-245,58,-245,59,-245,70,-245,71,-245,84,-245,86,-245,92,-245,97,-245,99,-245,100,-245,101,-245,102,-245,110,-245,111,-245,112,-245,114,-245,140,-245,159,158},
-    &.{60,159},
-    &.{60,160},
-    &.{60,161},
-    &.{60,162},
-    &.{60,163},
-    &.{60,164},
-    &.{65,165},
-    &.{60,166},
-    &.{1,-172,58,-172,59,-172,60,-172,64,-172,65,-172,70,-172,71,-172,76,-172,84,-172,86,-172,87,-172,88,-172,89,-172,91,-172,92,-172,93,-172,94,-172,95,-172,97,-172,99,-172,100,-172,101,-172,102,-172,107,-172,108,-172,110,-172,111,-172,112,-172,114,-172,120,-172,121,-172,122,-172,123,-172,124,-172,125,-172,127,-172,131,-172,132,-172,133,-172,134,-172,135,-172,136,-172,137,-172,138,-172,140,-172,159,-172,160,-172,161,-172,162,-172,163,-172,164,-172,165,-172,166,-172,167,-172,168,-172,169,-172,170,-172,171,-172,172,-172,173,-172,174,-172,175,-172,176,-172},
-    &.{1,-213,58,-213,59,-213,70,-213,71,-213,84,-213,86,-213,92,-213,97,-213,99,-213,100,-213,101,-213,102,-213,110,-213,111,-213,112,-213,114,-213,140,-213,159,-213,160,167},
-    &.{1,-182,58,-182,59,-182,60,-182,64,-182,65,-182,70,-182,71,-182,76,-182,84,-182,86,-182,87,-182,88,-182,89,-182,91,-182,92,-182,93,-182,94,-182,95,-182,97,-182,99,-182,100,-182,101,-182,102,-182,107,-182,108,-182,109,-182,110,-182,111,-182,112,-182,114,-182,120,-182,121,-182,122,-182,123,-182,124,-182,125,-182,127,-182,131,-182,132,-182,133,-182,134,-182,135,-182,136,-182,137,-182,138,-182,140,-182,141,168,159,-182,160,-182,161,-182,162,-182,163,-182,164,-182,165,-182,166,-182,167,-182,168,-182,169,-182,170,-182,171,-182,172,-182,173,-182,174,-182,175,-182,176,-182},
-    &.{1,-183,58,-183,59,-183,60,-183,64,-183,65,-183,70,-183,71,-183,76,-183,84,-183,86,-183,87,-183,88,-183,89,-183,91,-183,92,-183,93,-183,94,-183,95,-183,97,-183,99,-183,100,-183,101,-183,102,-183,107,-183,108,-183,109,-183,110,-183,111,-183,112,-183,114,-183,120,-183,121,-183,122,-183,123,-183,124,-183,125,-183,127,-183,131,-183,132,-183,133,-183,134,-183,135,-183,136,-183,137,-183,138,-183,140,-183,159,-183,160,-183,161,-183,162,-183,163,-183,164,-183,165,-183,166,-183,167,-183,168,-183,169,-183,170,-183,171,-183,172,-183,173,-183,174,-183,175,-183,176,-183},
-    &.{1,-184,58,-184,59,-184,60,-184,64,-184,65,-184,70,-184,71,-184,76,-184,84,-184,86,-184,87,-184,88,-184,89,-184,91,-184,92,-184,93,-184,94,-184,95,-184,97,-184,99,-184,100,-184,101,-184,102,-184,107,-184,108,-184,109,-184,110,-184,111,-184,112,-184,114,-184,120,-184,121,-184,122,-184,123,-184,124,-184,125,-184,127,-184,131,-184,132,-184,133,-184,134,-184,135,-184,136,-184,137,-184,138,-184,140,-184,159,-184,160,-184,161,-184,162,-184,163,-184,164,-184,165,-184,166,-184,167,-184,168,-184,169,-184,170,-184,171,-184,172,-184,173,-184,174,-184,175,-184,176,-184},
-    &.{1,-185,58,-185,59,-185,60,-185,64,-185,65,-185,70,-185,71,-185,76,-185,84,-185,86,-185,87,-185,88,-185,89,-185,91,-185,92,-185,93,-185,94,-185,95,-185,97,-185,99,-185,100,-185,101,-185,102,-185,107,-185,108,-185,109,-185,110,-185,111,-185,112,-185,114,-185,120,-185,121,-185,122,-185,123,-185,124,-185,125,-185,127,-185,131,-185,132,-185,133,-185,134,-185,135,-185,136,-185,137,-185,138,-185,140,-185,159,-185,160,-185,161,-185,162,-185,163,-185,164,-185,165,-185,166,-185,167,-185,168,-185,169,-185,170,-185,171,-185,172,-185,173,-185,174,-185,175,-185,176,-185},
-    &.{1,-186,58,-186,59,-186,60,-186,64,-186,65,-186,70,-186,71,-186,76,-186,84,-186,86,-186,87,-186,88,-186,89,-186,91,-186,92,-186,93,-186,94,-186,95,-186,97,-186,99,-186,100,-186,101,-186,102,-186,107,-186,108,-186,109,-186,110,-186,111,-186,112,-186,114,-186,120,-186,121,-186,122,-186,123,-186,124,-186,125,-186,127,-186,131,-186,132,-186,133,-186,134,-186,135,-186,136,-186,137,-186,138,-186,140,-186,159,-186,160,-186,161,-186,162,-186,163,-186,164,-186,165,-186,166,-186,167,-186,168,-186,169,-186,170,-186,171,-186,172,-186,173,-186,174,-186,175,-186,176,-186},
-    &.{1,-187,58,-187,59,-187,60,-187,64,-187,65,-187,70,-187,71,-187,76,-187,84,-187,86,-187,87,-187,88,-187,89,-187,91,-187,92,-187,93,-187,94,-187,95,-187,97,-187,99,-187,100,-187,101,-187,102,-187,107,-187,108,-187,109,-187,110,-187,111,-187,112,-187,114,-187,120,-187,121,-187,122,-187,123,-187,124,-187,125,-187,127,-187,131,-187,132,-187,133,-187,134,-187,135,-187,136,-187,137,-187,138,-187,140,-187,159,-187,160,-187,161,-187,162,-187,163,-187,164,-187,165,-187,166,-187,167,-187,168,-187,169,-187,170,-187,171,-187,172,-187,173,-187,174,-187,175,-187,176,-187},
-    &.{1,-188,58,-188,59,-188,60,-188,64,-188,65,-188,70,-188,71,-188,76,-188,84,-188,86,-188,87,-188,88,-188,89,-188,91,-188,92,-188,93,-188,94,-188,95,-188,97,-188,99,-188,100,-188,101,-188,102,-188,107,-188,108,-188,109,-188,110,-188,111,-188,112,-188,114,-188,120,-188,121,-188,122,-188,123,-188,124,-188,125,-188,127,-188,131,-188,132,-188,133,-188,134,-188,135,-188,136,-188,137,-188,138,-188,140,-188,159,-188,160,-188,161,-188,162,-188,163,-188,164,-188,165,-188,166,-188,167,-188,168,-188,169,-188,170,-188,171,-188,172,-188,173,-188,174,-188,175,-188,176,-188},
-    &.{1,-189,58,-189,59,-189,60,-189,64,-189,65,-189,70,-189,71,-189,76,-189,84,-189,86,-189,87,-189,88,-189,89,-189,91,-189,92,-189,93,-189,94,-189,95,-189,97,-189,99,-189,100,-189,101,-189,102,-189,107,-189,108,-189,109,-189,110,-189,111,-189,112,-189,114,-189,120,-189,121,-189,122,-189,123,-189,124,-189,125,-189,127,-189,131,-189,132,-189,133,-189,134,-189,135,-189,136,-189,137,-189,138,-189,140,-189,159,-189,160,-189,161,-189,162,-189,163,-189,164,-189,165,-189,166,-189,167,-189,168,-189,169,-189,170,-189,171,-189,172,-189,173,-189,174,-189,175,-189,176,-189},
-    &.{1,-190,58,-190,59,-190,60,-190,64,-190,65,-190,70,-190,71,-190,76,-190,84,-190,86,-190,87,-190,88,-190,89,-190,91,-190,92,-190,93,-190,94,-190,95,-190,97,-190,99,-190,100,-190,101,-190,102,-190,107,-190,108,-190,109,-190,110,-190,111,-190,112,-190,114,-190,120,-190,121,-190,122,-190,123,-190,124,-190,125,-190,127,-190,131,-190,132,-190,133,-190,134,-190,135,-190,136,-190,137,-190,138,-190,140,-190,159,-190,160,-190,161,-190,162,-190,163,-190,164,-190,165,-190,166,-190,167,-190,168,-190,169,-190,170,-190,171,-190,172,-190,173,-190,174,-190,175,-190,176,-190},
-    &.{1,-191,58,-191,59,-191,60,-191,64,-191,65,-191,70,-191,71,-191,76,-191,84,-191,86,-191,87,-191,88,-191,89,-191,91,-191,92,-191,93,-191,94,-191,95,-191,97,-191,99,-191,100,-191,101,-191,102,-191,107,-191,108,-191,109,-191,110,-191,111,-191,112,-191,114,-191,120,-191,121,-191,122,-191,123,-191,124,-191,125,-191,127,-191,131,-191,132,-191,133,-191,134,-191,135,-191,136,-191,137,-191,138,-191,140,-191,159,-191,160,-191,161,-191,162,-191,163,-191,164,-191,165,-191,166,-191,167,-191,168,-191,169,-191,170,-191,171,-191,172,-191,173,-191,174,-191,175,-191,176,-191},
-    &.{53,169,54,81,57,82,60,69,64,72,65,73,88,79,91,83,93,70,94,87,95,84,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{60,170},
-    &.{1,-194,58,-194,59,-194,60,-194,64,-194,65,-194,70,-194,71,-194,76,-194,84,-194,86,-194,87,-194,88,-194,89,-194,91,-194,92,-194,93,-194,94,-194,95,-194,97,-194,99,-194,100,-194,101,-194,102,-194,107,-194,108,-194,109,-194,110,-194,111,-194,112,-194,114,-194,120,-194,121,-194,122,-194,123,-194,124,-194,125,-194,127,-194,131,-194,132,-194,133,-194,134,-194,135,-194,136,-194,137,-194,138,-194,140,-194,159,-194,160,-194,161,-194,162,-194,163,-194,164,-194,165,-194,166,-194,167,-194,168,-194,169,-194,170,-194,171,-194,172,-194,173,-194,174,-194,175,-194,176,-194},
-    &.{1,-195,58,-195,59,-195,60,-195,64,-195,65,-195,70,-195,71,-195,76,-195,84,-195,86,-195,87,-195,88,-195,89,-195,91,-195,92,-195,93,-195,94,-195,95,-195,97,-195,99,-195,100,-195,101,-195,102,-195,107,-195,108,-195,109,-195,110,-195,111,-195,112,-195,114,-195,120,-195,121,-195,122,-195,123,-195,124,-195,125,-195,127,-195,131,-195,132,-195,133,-195,134,-195,135,-195,136,-195,137,-195,138,-195,140,-195,159,-195,160,-195,161,-195,162,-195,163,-195,164,-195,165,-195,166,-195,167,-195,168,-195,169,-195,170,-195,171,-195,172,-195,173,-195,174,-195,175,-195,176,-195},
-    &.{4,173,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,50,171,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,92,-176,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,130,172,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,174,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,173,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,50,176,53,67,54,81,56,178,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,107,179,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,130,172,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,139,175,140,177,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-215,58,-215,59,-215,70,-215,71,-215,84,-215,86,-215,92,-215,97,-215,99,-215,100,-215,101,-215,102,-215,110,-215,111,-215,112,-215,114,-215,140,-215,159,-215,160,-215,161,180},
-    &.{11,182,23,184,24,181,60,186,70,137,82,185,85,183},
-    &.{1,-217,58,-217,59,-217,70,-217,71,-217,84,-217,86,-217,92,-217,97,-217,99,-217,100,-217,101,-217,102,-217,110,-217,111,-217,112,-217,114,-217,140,-217,159,-217,160,-217,161,-217,162,187},
-    &.{1,-219,58,-219,59,-219,70,-219,71,-219,84,-219,86,-219,92,-219,97,-219,99,-219,100,-219,101,-219,102,-219,110,-219,111,-219,112,-219,114,-219,140,-219,159,-219,160,-219,161,-219,162,-219,163,188},
-    &.{1,-221,58,-221,59,-221,70,-221,71,-221,84,-221,86,-221,92,-221,97,-221,99,-221,100,-221,101,-221,102,-221,110,-221,111,-221,112,-221,114,-221,127,189,140,-221,159,-221,160,-221,161,-221,162,-221,163,-221},
-    &.{1,-223,58,-223,59,-223,70,-223,71,-223,84,-223,86,-223,92,-223,97,-223,99,-223,100,-223,101,-223,102,-223,110,-223,111,-223,112,-223,114,-223,127,-223,140,-223,159,-223,160,-223,161,-223,162,-223,163,-223},
-    &.{1,-230,58,-230,59,-230,70,-230,71,-230,84,-230,86,-230,92,-230,97,-230,99,-230,100,-230,101,-230,102,-230,110,-230,111,-230,112,-230,114,-230,127,-230,140,-230,159,-230,160,-230,161,-230,162,-230,163,-230,164,190,165,191,166,192,167,193,168,194,169,195},
-    &.{1,-232,58,-232,59,-232,70,-232,71,-232,84,-232,86,-232,92,-232,97,-232,99,-232,100,-232,101,-232,102,-232,108,196,110,-232,111,-232,112,-232,114,-232,127,-232,140,-232,159,-232,160,-232,161,-232,162,-232,163,-232,164,-232,165,-232,166,-232,167,-232,168,-232,169,-232,170,197,171,198},
-    &.{1,-235,58,-235,59,-235,70,-235,71,-235,84,-235,86,-235,92,-235,97,-235,99,-235,100,-235,101,-235,102,-235,108,-235,110,-235,111,-235,112,-235,114,-235,127,-235,140,-235,159,-235,160,-235,161,-235,162,-235,163,-235,164,-235,165,-235,166,-235,167,-235,168,-235,169,-235,170,-235,171,-235,172,199,173,200},
-    &.{1,-238,58,-238,59,-238,70,-238,71,-238,84,-238,86,-238,89,201,92,-238,97,-238,99,-238,100,-238,101,-238,102,-238,108,-238,110,-238,111,-238,112,-238,114,-238,127,-238,140,-238,159,-238,160,-238,161,-238,162,-238,163,-238,164,-238,165,-238,166,-238,167,-238,168,-238,169,-238,170,-238,171,-238,172,-238,173,-238,174,202,175,203},
-    &.{1,-242,58,-242,59,-242,70,-242,71,-242,84,-242,86,-242,89,-242,92,-242,97,-242,99,-242,100,-242,101,-242,102,-242,108,-242,110,-242,111,-242,112,-242,114,-242,127,-242,140,-242,159,-242,160,-242,161,-242,162,-242,163,-242,164,-242,165,-242,166,-242,167,-242,168,-242,169,-242,170,-242,171,-242,172,-242,173,-242,174,-242,175,-242},
-    &.{1,-244,58,-244,59,-244,70,-244,71,-244,84,-244,86,-244,89,-244,92,-244,97,-244,99,-244,100,-244,101,-244,102,-244,108,-244,110,-244,111,-244,112,-244,114,-244,127,-244,140,-244,159,-244,160,-244,161,-244,162,-244,163,-244,164,-244,165,-244,166,-244,167,-244,168,-244,169,-244,170,-244,171,-244,172,-244,173,-244,174,-244,175,-244,176,204},
-    &.{48,205,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{48,207,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{48,208,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{48,209,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{48,210,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{1,-1},
-    &.{1,-1},
-    &.{1,-5,4,12,6,212,7,10,8,9,9,8,10,14,12,38,13,39,14,7,15,43,16,44,17,45,18,40,19,42,20,41,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,58,-5,59,11,60,69,61,16,63,20,64,72,65,73,66,15,67,17,68,18,69,19,71,-5,72,59,73,60,74,13,75,64,77,65,78,66,79,61,80,63,81,62,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,12,6,213,7,10,8,9,9,8,10,14,12,38,13,39,14,7,15,43,16,44,17,45,18,40,19,42,20,41,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,59,11,60,69,61,16,63,20,64,72,65,73,66,15,67,17,68,18,69,19,72,59,73,60,74,13,75,64,77,65,78,66,79,61,80,63,81,62,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-38,58,-38,71,-38},
-    &.{1,-17,58,-17,71,-17},
-    &.{9,110,10,14,12,38,13,39,15,43,16,44,17,45,18,40,19,42,20,41,61,109,66,15,67,17,68,18,69,19,72,59,73,60,75,64,77,65,78,66,79,61,80,63,81,62},
-    &.{1,-18,58,-18,71,-18},
-    &.{60,214},
-    &.{59,215},
-    &.{1,-19,58,-19,71,-19},
-    &.{1,-20,58,-20,71,-20},
-    &.{9,216,10,14,12,38,13,39,15,43,16,44,17,45,18,40,19,42,20,41,61,109,66,15,67,17,68,18,69,19,72,59,73,60,75,64,77,65,78,66,79,61,80,63,81,62},
-    &.{1,-14,58,-14,71,-14},
-    &.{1,-15,58,-15,71,-15},
-    &.{4,217,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,218,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,219,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,221,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,99,220,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{11,222,70,137},
-    &.{59,-93,70,-93,99,223,100,224},
-    &.{11,225,59,226,70,137},
-    &.{60,227},
-    &.{84,229,105,228},
-    &.{70,230},
-    &.{1,-133,58,-133,59,-133,70,-133,71,-133,84,-133,86,-133,92,-133,97,-133,99,-133,100,-133,102,-133,114,231,140,-133},
-    &.{4,232,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{60,233},
-    &.{4,234,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-139,58,-139,59,-139,70,-139,71,-139,84,-139,86,-139,92,-139,97,-139,99,-139,100,-139,102,-139,114,-139,140,-139},
-    &.{60,235},
-    &.{4,236,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-145,58,-145,59,-145,70,-145,71,-145,84,-145,86,-145,92,-145,97,-145,99,-145,100,-145,102,-145,114,-145,140,-145},
-    &.{1,-146,58,-146,59,-146,70,-146,71,-146,84,-146,86,-146,92,-146,97,-146,99,-146,100,-146,102,-146,114,-146,140,-146},
-    &.{4,12,5,237,6,6,7,10,8,9,9,8,10,14,12,38,13,39,14,7,15,43,16,44,17,45,18,40,19,42,20,41,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,59,11,60,69,61,16,63,20,64,72,65,73,66,15,67,17,68,18,69,19,71,238,72,59,73,60,74,13,75,64,77,65,78,66,79,61,80,63,81,62,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-147,58,-147,59,-147,70,-147,71,-147,84,-147,86,-147,92,-147,97,-147,99,-147,100,-147,102,-147,114,-147,140,-147},
-    &.{1,-148,58,-148,59,-148,70,-148,71,-148,84,-148,86,-148,92,-148,97,-148,99,-148,100,-148,102,-148,114,-148,140,-148},
-    &.{1,-149,58,-149,59,-149,70,-149,71,-149,84,-149,86,-149,92,-149,97,-149,99,-149,100,-149,102,-149,114,-149,140,-149},
-    &.{1,-150,58,-150,59,-150,70,-150,71,-150,84,-150,86,-150,92,-150,97,-150,99,-150,100,-150,102,-150,114,-150,140,-150},
-    &.{26,239,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{4,246,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,247,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,248,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,249,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,250,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,251,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{60,253,89,252},
-    &.{4,254,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,50,171,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,92,-176,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,130,172,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-170,58,-170,59,-170,60,-170,64,-170,65,-170,70,-170,71,-170,76,-170,84,255,86,-170,87,-170,88,-170,89,-170,91,-170,92,-170,93,-170,94,-170,95,-170,97,-170,99,-170,100,-170,101,-170,102,-170,107,-170,108,-170,110,-170,111,-170,112,-170,114,-170,120,-170,121,-170,122,-170,123,-170,124,-170,125,-170,127,-170,131,-170,132,-170,133,-170,134,-170,135,-170,136,-170,137,-170,138,-170,140,-170,159,-170,160,-170,161,-170,162,-170,163,-170,164,-170,165,-170,166,-170,167,-170,168,-170,169,-170,170,-170,171,-170,172,-170,173,-170,174,-170,175,-170,176,-170},
-    &.{4,257,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,50,256,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,97,-176,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,130,172,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-168,58,-168,59,-168,60,-168,64,-168,65,-168,70,-168,71,-168,76,-168,84,-168,86,-168,87,-168,88,-168,89,-168,91,-168,92,-168,93,-168,94,-168,95,-168,97,-168,99,-168,100,-168,101,-168,102,-168,107,-168,108,-168,110,-168,111,-168,112,-168,114,-168,120,-168,121,-168,122,-168,123,-168,124,-168,125,-168,127,-168,131,-168,132,-168,133,-168,134,-168,135,-168,136,-168,137,-168,138,-168,140,-168,159,-168,160,-168,161,-168,162,-168,163,-168,164,-168,165,-168,166,-168,167,-168,168,-168,169,-168,170,-168,171,-168,172,-168,173,-168,174,-168,175,-168,176,-168},
-    &.{1,-178,58,-178,59,-178,60,-178,64,-178,65,-178,70,-178,71,-178,76,-178,84,-178,86,-178,87,-178,88,-178,89,-178,91,-178,92,-178,93,-178,94,-178,95,-178,97,-178,99,-178,100,-178,101,-178,102,-178,107,-178,108,-178,110,258,111,-178,112,-178,114,-178,120,-178,121,-178,122,-178,123,-178,124,-178,125,-178,127,-178,131,-178,132,-178,133,-178,134,-178,135,-178,136,-178,137,-178,138,-178,140,-178,159,-178,160,-178,161,-178,162,-178,163,-178,164,-178,165,-178,166,-178,167,-178,168,-178,169,-178,170,-178,171,-178,172,-178,173,-178,174,-178,175,-178,176,-178},
-    &.{52,259,53,157,54,81,57,82,60,69,64,72,65,73,87,156,88,79,91,83,93,70,94,87,95,84,125,155,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{52,260,53,157,54,81,57,82,60,69,64,72,65,73,87,156,88,79,91,83,93,70,94,87,95,84,125,155,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{1,-181,58,-181,59,-181,60,-181,64,-181,65,-181,70,-181,71,-181,76,-181,84,-181,86,-181,87,-181,88,-181,89,-181,91,-181,92,-181,93,-181,94,-181,95,-181,97,-181,99,-181,100,-181,101,-181,102,-181,107,-181,108,-181,110,-181,111,-181,112,-181,114,-181,120,-181,121,-181,122,-181,123,-181,124,-181,125,-181,127,-181,131,-181,132,-181,133,-181,134,-181,135,-181,136,-181,137,-181,138,-181,140,-181,159,-181,160,-181,161,-181,162,-181,163,-181,164,-181,165,-181,166,-181,167,-181,168,-181,169,-181,170,-181,171,-181,172,-181,173,-181,174,-181,175,-181,176,-181},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,148,261,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{11,264,23,184,24,262,25,263,60,186,70,137,82,185,85,183,86,265},
-    &.{11,267,23,184,24,266,60,186,70,137,82,185,85,183},
-    &.{70,268},
-    &.{70,269},
-    &.{70,270},
-    &.{76,271},
-    &.{11,272,70,137},
-    &.{1,-41,58,-41,71,-41},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,149,273,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{55,275,60,276,142,274},
-    &.{1,-192,58,-192,59,-192,60,-192,64,-192,65,-192,70,-192,71,-192,76,-192,84,-192,86,-192,87,-192,88,-192,89,-192,91,-192,92,-192,93,-192,94,-192,95,-192,97,-192,99,-192,100,-192,101,-192,102,-192,107,-192,108,-192,109,-192,110,-192,111,-192,112,-192,114,-192,120,-192,121,-192,122,-192,123,-192,124,-192,125,-192,127,-192,131,-192,132,-192,133,-192,134,-192,135,-192,136,-192,137,-192,138,-192,140,-192,159,-192,160,-192,161,-192,162,-192,163,-192,164,-192,165,-192,166,-192,167,-192,168,-192,169,-192,170,-192,171,-192,172,-192,173,-192,174,-192,175,-192,176,-192},
-    &.{95,277},
-    &.{92,278},
-    &.{84,279,92,-175,97,-175,140,-175},
-    &.{84,-173,92,-173,97,-173,140,-173},
-    &.{97,280},
-    &.{84,282,140,281},
-    &.{140,283},
-    &.{1,-202,58,-202,59,-202,60,-202,64,-202,65,-202,70,-202,71,-202,76,-202,84,-202,86,-202,87,-202,88,-202,89,-202,91,-202,92,-202,93,-202,94,-202,95,-202,97,-202,99,-202,100,-202,101,-202,102,-202,107,-202,108,-202,109,-202,110,-202,111,-202,112,-202,114,-202,120,-202,121,-202,122,-202,123,-202,124,-202,125,-202,127,-202,131,-202,132,-202,133,-202,134,-202,135,-202,136,-202,137,-202,138,-202,140,-202,159,-202,160,-202,161,-202,162,-202,163,-202,164,-202,165,-202,166,-202,167,-202,168,-202,169,-202,170,-202,171,-202,172,-202,173,-202,174,-202,175,-202,176,-202},
-    &.{84,-198,140,-198},
-    &.{60,284},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,150,285,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{11,286,70,137},
-    &.{1,-209,58,-209,59,-209,60,-209,64,-209,65,-209,70,-209,71,-209,76,-209,84,-209,86,-209,87,-209,88,-209,89,-209,91,-209,92,-209,93,-209,94,-209,95,-209,97,-209,99,-209,100,-209,101,-209,102,-209,107,-209,108,-209,109,-209,110,-209,111,-209,112,-209,114,-209,120,-209,121,-209,122,-209,123,-209,124,-209,125,-209,127,-209,131,-209,132,-209,133,-209,134,-209,135,-209,136,-209,137,-209,138,-209,140,-209,159,-209,160,-209,161,-209,162,-209,163,-209,164,-209,165,-209,166,-209,167,-209,168,-209,169,-209,170,-209,171,-209,172,-209,173,-209,174,-209,175,-209,176,-209},
-    &.{70,-59,84,287,86,-59},
-    &.{70,-57,84,-57,86,-57},
-    &.{60,288},
-    &.{59,289,70,-53,84,-53,86,-53},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,151,290,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,152,291,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,153,292,154,92,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,154,293,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,154,294,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,154,295,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,154,296,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,154,297,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,154,298,155,93,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,155,299,156,94,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,156,300,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,156,301,157,95,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,157,302,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,157,303,158,96},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,158,304},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,158,305},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,158,306},
-    &.{48,97,49,206,53,67,54,81,57,82,60,69,64,72,65,73,87,98,88,79,91,83,93,70,94,87,95,84,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,158,307},
-    &.{1,-159,58,-159,59,-159,70,-159,71,-159,84,-159,86,-159,89,-159,92,-159,97,-159,99,-159,100,-159,101,-159,102,-159,108,-159,110,-159,111,-159,112,-159,114,-159,127,-159,140,-159,159,-159,160,-159,161,-159,162,-159,163,-159,164,-159,165,-159,166,-159,167,-159,168,-159,169,-159,170,-159,171,-159,172,-159,173,-159,174,-159,175,-159,176,-159},
-    &.{1,-164,51,153,52,154,53,157,54,81,57,82,58,-164,59,-164,60,69,64,72,65,73,70,-164,71,-164,84,-164,86,-164,87,156,88,79,89,-164,91,150,92,-164,93,70,94,87,95,152,97,-164,99,-164,100,-164,101,-164,102,-164,107,149,108,-164,110,-164,111,-164,112,-164,114,-164,125,155,127,-164,129,151,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,140,-164,159,-164,160,-164,161,-164,162,-164,163,-164,164,-164,165,-164,166,-164,167,-164,168,-164,169,-164,170,-164,171,-164,172,-164,173,-164,174,-164,175,-164,176,-164},
-    &.{1,-160,58,-160,59,-160,70,-160,71,-160,84,-160,86,-160,89,-160,92,-160,97,-160,99,-160,100,-160,101,-160,102,-160,108,-160,110,-160,111,-160,112,-160,114,-160,127,-160,140,-160,159,-160,160,-160,161,-160,162,-160,163,-160,164,-160,165,-160,166,-160,167,-160,168,-160,169,-160,170,-160,171,-160,172,-160,173,-160,174,-160,175,-160,176,-160},
-    &.{1,-161,58,-161,59,-161,70,-161,71,-161,84,-161,86,-161,89,-161,92,-161,97,-161,99,-161,100,-161,101,-161,102,-161,108,-161,110,-161,111,-161,112,-161,114,-161,127,-161,140,-161,159,-161,160,-161,161,-161,162,-161,163,-161,164,-161,165,-161,166,-161,167,-161,168,-161,169,-161,170,-161,171,-161,172,-161,173,-161,174,-161,175,-161,176,-161},
-    &.{1,-162,58,-162,59,-162,70,-162,71,-162,84,-162,86,-162,89,-162,92,-162,97,-162,99,-162,100,-162,101,-162,102,-162,108,-162,110,-162,111,-162,112,-162,114,-162,127,-162,140,-162,159,-162,160,-162,161,-162,162,-162,163,-162,164,-162,165,-162,166,-162,167,-162,168,-162,169,-162,170,-162,171,-162,172,-162,173,-162,174,-162,175,-162,176,-162},
-    &.{1,-163,58,-163,59,-163,70,-163,71,-163,84,-163,86,-163,89,-163,92,-163,97,-163,99,-163,100,-163,101,-163,102,-163,108,-163,110,-163,111,-163,112,-163,114,-163,127,-163,140,-163,159,-163,160,-163,161,-163,162,-163,163,-163,164,-163,165,-163,166,-163,167,-163,168,-163,169,-163,170,-163,171,-163,172,-163,173,-163,174,-163,175,-163,176,-163},
-    &.{1,-1},
-    &.{1,-4,58,-4,71,-4},
-    &.{1,-10,58,-10,71,-10},
-    &.{59,308},
-    &.{26,309,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-21,58,-21,71,-21},
-    &.{1,-126,58,-126,59,-126,70,-126,71,-126,84,-126,86,-126,92,-126,97,-126,99,-126,100,-126,102,310,114,-126,140,-126},
-    &.{102,311},
-    &.{1,-128,58,-128,59,-128,70,-128,71,-128,84,-128,86,-128,92,-128,97,-128,99,-128,100,-128,102,-128,114,-128,140,-128},
-    &.{60,312},
-    &.{1,-130,58,-130,59,-130,70,-130,71,-130,84,-130,86,-130,92,-130,97,-130,99,-130,100,-130,102,-130,114,-130,140,-130},
-    &.{1,-100,58,-100,59,-100,70,-100,71,-100,84,-100,86,-100,92,-100,97,-100,99,-100,100,-100,102,313,114,-100,140,-100},
-    &.{60,314},
-    &.{60,315},
-    &.{1,-103,58,-103,59,-103,70,-103,71,-103,84,-103,86,-103,92,-103,97,-103,99,-103,100,-103,102,316,114,-103,140,-103},
-    &.{4,317,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{84,319,105,318},
-    &.{4,320,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{60,321},
-    &.{32,322,33,325,34,324,35,323,53,326,54,81,57,82,60,69,64,72,65,73,88,79,91,83,93,70,94,87,95,84,107,327,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{4,328,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-132,58,-132,59,-132,70,-132,71,-132,84,-132,86,-132,92,-132,97,-132,99,-132,100,-132,102,-132,114,-132,140,-132},
-    &.{1,-137,4,330,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,58,-137,59,-137,60,69,64,72,65,73,70,-137,71,-137,82,55,84,-137,86,-137,87,98,88,79,91,83,92,-137,93,70,94,87,95,84,97,-137,98,37,99,-137,100,-137,101,46,102,-137,103,47,104,48,106,49,113,50,114,329,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,140,-137,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-138,58,-138,59,-138,70,-138,71,-138,84,-138,86,-138,92,-138,97,-138,99,-138,100,-138,102,-138,114,-138,140,-138},
-    &.{1,-142,58,-142,59,-142,70,-142,71,-142,84,-142,86,-142,92,-142,97,-142,99,-142,100,-142,102,-142,114,331,140,-142},
-    &.{1,-143,58,-143,59,-143,70,-143,71,-143,84,-143,86,-143,92,-143,97,-143,99,-143,100,-143,102,-143,114,-143,140,-143},
-    &.{58,105,71,332},
-    &.{1,-31,58,-31,59,-31,60,-31,64,-31,65,-31,70,-31,71,-31,76,-31,84,-31,86,-31,87,-31,88,-31,89,-31,91,-31,92,-31,93,-31,94,-31,95,-31,97,-31,99,-31,100,-31,101,-31,102,-31,107,-31,108,-31,109,-31,110,-31,111,-31,112,-31,114,-31,120,-31,121,-31,122,-31,123,-31,124,-31,125,-31,127,-31,131,-31,132,-31,133,-31,134,-31,135,-31,136,-31,137,-31,138,-31,140,-31,159,-31,160,-31,161,-31,162,-31,163,-31,164,-31,165,-31,166,-31,167,-31,168,-31,169,-31,170,-31,171,-31,172,-31,173,-31,174,-31,175,-31,176,-31},
-    &.{76,333,124,334},
-    &.{1,-61,58,-61,70,-61,71,-61,76,-61,83,-61,84,-61,86,-61,97,-61,124,-61},
-    &.{26,335,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{26,336,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{26,337,60,240,62,338,87,241,88,242,89,243,90,339,91,244,94,245},
-    &.{59,341,89,343,92,340,93,342},
-    &.{95,344},
-    &.{1,-152,58,-152,59,-152,70,-152,71,-152,84,-152,86,-152,92,-152,97,-152,99,-152,100,-152,102,-152,114,-152,140,-152},
-    &.{1,-153,58,-153,59,-153,70,-153,71,-153,84,-153,86,-153,92,-153,97,-153,99,-153,100,-153,102,-153,114,-153,140,-153},
-    &.{1,-154,58,-154,59,-154,70,-154,71,-154,84,-154,86,-154,92,-154,97,-154,99,-154,100,-154,102,-154,114,-154,140,-154},
-    &.{1,-155,58,-155,59,-155,70,-155,71,-155,84,-155,86,-155,92,-155,97,-155,99,-155,100,-155,102,-155,114,-155,140,-155},
-    &.{1,-156,58,-156,59,-156,70,-156,71,-156,84,-156,86,-156,92,-156,97,-156,99,-156,100,-156,102,-156,114,-156,140,-156},
-    &.{1,-158,58,-158,59,-158,70,-158,71,-158,84,-158,86,-158,92,-158,97,-158,99,-158,100,-158,102,-158,114,-158,140,-158},
-    &.{1,-165,58,-165,59,-165,60,-165,64,-165,65,-165,70,-165,71,-165,76,-165,84,-165,86,-165,87,-165,88,-165,89,-165,91,-165,92,-165,93,-165,94,-165,95,-165,97,-165,99,-165,100,-165,101,-165,102,-165,107,-165,108,-165,110,-165,111,-165,112,-165,114,-165,120,-165,121,-165,122,-165,123,-165,124,-165,125,-165,127,-165,131,-165,132,-165,133,-165,134,-165,135,-165,136,-165,137,-165,138,-165,140,-165,159,-165,160,-165,161,-165,162,-165,163,-165,164,-165,165,-165,166,-165,167,-165,168,-165,169,-165,170,-165,171,-165,172,-165,173,-165,174,-165,175,-165,176,-165},
-    &.{1,-166,58,-166,59,-166,60,-166,64,-166,65,-166,70,-166,71,-166,76,-166,84,-166,86,-166,87,-166,88,-166,89,-166,91,-166,92,-166,93,-166,94,-166,95,-166,97,-166,99,-166,100,-166,101,-166,102,-166,107,-166,108,-166,110,-166,111,-166,112,-166,114,-166,120,-166,121,-166,122,-166,123,-166,124,-166,125,-166,127,-166,131,-166,132,-166,133,-166,134,-166,135,-166,136,-166,137,-166,138,-166,140,-166,159,-166,160,-166,161,-166,162,-166,163,-166,164,-166,165,-166,166,-166,167,-166,168,-166,169,-166,170,-166,171,-166,172,-166,173,-166,174,-166,175,-166,176,-166},
-    &.{84,-173,92,345},
-    &.{51,346,52,154,53,157,54,81,57,82,60,69,64,72,65,73,87,156,88,79,91,83,93,70,94,87,95,84,125,155,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{97,347},
-    &.{84,-173,97,280},
-    &.{4,348,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-179,58,-179,59,-179,60,-179,64,-179,65,-179,70,-179,71,-179,76,-179,84,-179,86,-179,87,-179,88,-179,89,-179,91,-179,92,-179,93,-179,94,-179,95,-179,97,-179,99,-179,100,-179,101,-179,102,-179,107,-179,108,-179,110,-179,111,-179,112,-179,114,-179,120,-179,121,-179,122,-179,123,-179,124,-179,125,-179,127,-179,131,-179,132,-179,133,-179,134,-179,135,-179,136,-179,137,-179,138,-179,140,-179,159,-179,160,-179,161,-179,162,-179,163,-179,164,-179,165,-179,166,-179,167,-179,168,-179,169,-179,170,-179,171,-179,172,-179,173,-179,174,-179,175,-179,176,-179},
-    &.{1,-180,58,-180,59,-180,60,-180,64,-180,65,-180,70,-180,71,-180,76,-180,84,-180,86,-180,87,-180,88,-180,89,-180,91,-180,92,-180,93,-180,94,-180,95,-180,97,-180,99,-180,100,-180,101,-180,102,-180,107,-180,108,-180,110,-180,111,-180,112,-180,114,-180,120,-180,121,-180,122,-180,123,-180,124,-180,125,-180,127,-180,131,-180,132,-180,133,-180,134,-180,135,-180,136,-180,137,-180,138,-180,140,-180,159,-180,160,-180,161,-180,162,-180,163,-180,164,-180,165,-180,166,-180,167,-180,168,-180,169,-180,170,-180,171,-180,172,-180,173,-180,174,-180,175,-180,176,-180},
-    &.{1,-212,58,-212,59,-212,70,-212,71,-212,84,-212,86,-212,92,-212,97,-212,99,-212,100,-212,101,-212,102,-212,110,-212,111,-212,112,-212,114,-212,140,-212,159,-212,160,167},
-    &.{11,350,25,349,70,137,86,265},
-    &.{11,351,70,137},
-    &.{1,-35,58,-35,71,-35},
-    &.{26,352,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{11,353,70,137},
-    &.{1,-37,58,-37,71,-37},
-    &.{12,358,13,359,21,354,22,355,23,356,60,357,72,59,73,60,82,185},
-    &.{12,358,13,359,21,360,22,355,23,356,60,357,72,59,73,60,82,185},
-    &.{12,358,13,359,21,361,22,355,23,356,60,357,72,59,73,60,82,185},
-    &.{26,362,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-40,58,-40,71,-40},
-    &.{1,-214,58,-214,59,-214,70,-214,71,-214,84,-214,86,-214,92,-214,97,-214,99,-214,100,-214,101,-214,102,-214,110,-214,111,-214,112,-214,114,-214,140,-214,159,-214,160,-214,161,180},
-    &.{84,364,140,363},
-    &.{84,-203,140,-203},
-    &.{59,365},
-    &.{4,173,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,50,366,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,97,-176,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,130,172,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-196,58,-196,59,-196,60,-196,64,-196,65,-196,70,-196,71,-196,76,-196,84,-196,86,-196,87,-196,88,-196,89,-196,91,-196,92,-196,93,-196,94,-196,95,-196,97,-196,99,-196,100,-196,101,-196,102,-196,107,-196,108,-196,109,-196,110,-196,111,-196,112,-196,114,-196,120,-196,121,-196,122,-196,123,-196,124,-196,125,-196,127,-196,131,-196,132,-196,133,-196,134,-196,135,-196,136,-196,137,-196,138,-196,140,-196,159,-196,160,-196,161,-196,162,-196,163,-196,164,-196,165,-196,166,-196,167,-196,168,-196,169,-196,170,-196,171,-196,172,-196,173,-196,174,-196,175,-196,176,-196},
-    &.{4,367,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-197,58,-197,59,-197,60,-197,64,-197,65,-197,70,-197,71,-197,76,-197,84,-197,86,-197,87,-197,88,-197,89,-197,91,-197,92,-197,93,-197,94,-197,95,-197,97,-197,99,-197,100,-197,101,-197,102,-197,107,-197,108,-197,109,-197,110,-197,111,-197,112,-197,114,-197,120,-197,121,-197,122,-197,123,-197,124,-197,125,-197,127,-197,131,-197,132,-197,133,-197,134,-197,135,-197,136,-197,137,-197,138,-197,140,-197,159,-197,160,-197,161,-197,162,-197,163,-197,164,-197,165,-197,166,-197,167,-197,168,-197,169,-197,170,-197,171,-197,172,-197,173,-197,174,-197,175,-197,176,-197},
-    &.{1,-200,58,-200,59,-200,60,-200,64,-200,65,-200,70,-200,71,-200,76,-200,84,-200,86,-200,87,-200,88,-200,89,-200,91,-200,92,-200,93,-200,94,-200,95,-200,97,-200,99,-200,100,-200,101,-200,102,-200,107,-200,108,-200,109,-200,110,-200,111,-200,112,-200,114,-200,120,-200,121,-200,122,-200,123,-200,124,-200,125,-200,127,-200,131,-200,132,-200,133,-200,134,-200,135,-200,136,-200,137,-200,138,-200,140,-200,159,-200,160,-200,161,-200,162,-200,163,-200,164,-200,165,-200,166,-200,167,-200,168,-200,169,-200,170,-200,171,-200,172,-200,173,-200,174,-200,175,-200,176,-200},
-    &.{56,368,107,179},
-    &.{1,-201,58,-201,59,-201,60,-201,64,-201,65,-201,70,-201,71,-201,76,-201,84,-201,86,-201,87,-201,88,-201,89,-201,91,-201,92,-201,93,-201,94,-201,95,-201,97,-201,99,-201,100,-201,101,-201,102,-201,107,-201,108,-201,109,-201,110,-201,111,-201,112,-201,114,-201,120,-201,121,-201,122,-201,123,-201,124,-201,125,-201,127,-201,131,-201,132,-201,133,-201,134,-201,135,-201,136,-201,137,-201,138,-201,140,-201,159,-201,160,-201,161,-201,162,-201,163,-201,164,-201,165,-201,166,-201,167,-201,168,-201,169,-201,170,-201,171,-201,172,-201,173,-201,174,-201,175,-201,176,-201},
-    &.{76,369},
-    &.{1,-216,58,-216,59,-216,70,-216,71,-216,84,-216,86,-216,92,-216,97,-216,99,-216,100,-216,101,-216,102,-216,110,-216,111,-216,112,-216,114,-216,140,-216,159,-216,160,-216,161,-216,162,187},
-    &.{1,-208,58,-208,59,-208,60,-208,64,-208,65,-208,70,-208,71,-208,76,-208,84,-208,86,-208,87,-208,88,-208,89,-208,91,-208,92,-208,93,-208,94,-208,95,-208,97,-208,99,-208,100,-208,101,-208,102,-208,107,-208,108,-208,109,-208,110,-208,111,-208,112,-208,114,-208,120,-208,121,-208,122,-208,123,-208,124,-208,125,-208,127,-208,131,-208,132,-208,133,-208,134,-208,135,-208,136,-208,137,-208,138,-208,140,-208,159,-208,160,-208,161,-208,162,-208,163,-208,164,-208,165,-208,166,-208,167,-208,168,-208,169,-208,170,-208,171,-208,172,-208,173,-208,174,-208,175,-208,176,-208},
-    &.{23,370,60,186,82,185},
-    &.{59,371},
-    &.{26,372,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-218,58,-218,59,-218,70,-218,71,-218,84,-218,86,-218,92,-218,97,-218,99,-218,100,-218,101,-218,102,-218,110,-218,111,-218,112,-218,114,-218,140,-218,159,-218,160,-218,161,-218,162,-218,163,188},
-    &.{1,-220,58,-220,59,-220,70,-220,71,-220,84,-220,86,-220,92,-220,97,-220,99,-220,100,-220,101,-220,102,-220,110,-220,111,-220,112,-220,114,-220,127,189,140,-220,159,-220,160,-220,161,-220,162,-220,163,-220},
-    &.{1,-222,58,-222,59,-222,70,-222,71,-222,84,-222,86,-222,92,-222,97,-222,99,-222,100,-222,101,-222,102,-222,110,-222,111,-222,112,-222,114,-222,127,-222,140,-222,159,-222,160,-222,161,-222,162,-222,163,-222},
-    &.{1,-224,58,-224,59,-224,70,-224,71,-224,84,-224,86,-224,92,-224,97,-224,99,-224,100,-224,101,-224,102,-224,110,-224,111,-224,112,-224,114,-224,127,-224,140,-224,159,-224,160,-224,161,-224,162,-224,163,-224},
-    &.{1,-225,58,-225,59,-225,70,-225,71,-225,84,-225,86,-225,92,-225,97,-225,99,-225,100,-225,101,-225,102,-225,110,-225,111,-225,112,-225,114,-225,127,-225,140,-225,159,-225,160,-225,161,-225,162,-225,163,-225},
-    &.{1,-226,58,-226,59,-226,70,-226,71,-226,84,-226,86,-226,92,-226,97,-226,99,-226,100,-226,101,-226,102,-226,110,-226,111,-226,112,-226,114,-226,127,-226,140,-226,159,-226,160,-226,161,-226,162,-226,163,-226},
-    &.{1,-227,58,-227,59,-227,70,-227,71,-227,84,-227,86,-227,92,-227,97,-227,99,-227,100,-227,101,-227,102,-227,110,-227,111,-227,112,-227,114,-227,127,-227,140,-227,159,-227,160,-227,161,-227,162,-227,163,-227},
-    &.{1,-228,58,-228,59,-228,70,-228,71,-228,84,-228,86,-228,92,-228,97,-228,99,-228,100,-228,101,-228,102,-228,110,-228,111,-228,112,-228,114,-228,127,-228,140,-228,159,-228,160,-228,161,-228,162,-228,163,-228},
-    &.{1,-229,58,-229,59,-229,70,-229,71,-229,84,-229,86,-229,92,-229,97,-229,99,-229,100,-229,101,-229,102,-229,110,-229,111,-229,112,-229,114,-229,127,-229,140,-229,159,-229,160,-229,161,-229,162,-229,163,-229},
-    &.{1,-231,58,-231,59,-231,70,-231,71,-231,84,-231,86,-231,92,-231,97,-231,99,-231,100,-231,101,-231,102,-231,110,-231,111,-231,112,-231,114,-231,127,-231,140,-231,159,-231,160,-231,161,-231,162,-231,163,-231,164,-231,165,-231,166,-231,167,-231,168,-231,169,-231,170,197,171,198},
-    &.{1,-233,58,-233,59,-233,70,-233,71,-233,84,-233,86,-233,92,-233,97,-233,99,-233,100,-233,101,-233,102,-233,108,-233,110,-233,111,-233,112,-233,114,-233,127,-233,140,-233,159,-233,160,-233,161,-233,162,-233,163,-233,164,-233,165,-233,166,-233,167,-233,168,-233,169,-233,170,-233,171,-233,172,199,173,200},
-    &.{1,-234,58,-234,59,-234,70,-234,71,-234,84,-234,86,-234,92,-234,97,-234,99,-234,100,-234,101,-234,102,-234,108,-234,110,-234,111,-234,112,-234,114,-234,127,-234,140,-234,159,-234,160,-234,161,-234,162,-234,163,-234,164,-234,165,-234,166,-234,167,-234,168,-234,169,-234,170,-234,171,-234,172,199,173,200},
-    &.{1,-236,58,-236,59,-236,70,-236,71,-236,84,-236,86,-236,89,201,92,-236,97,-236,99,-236,100,-236,101,-236,102,-236,108,-236,110,-236,111,-236,112,-236,114,-236,127,-236,140,-236,159,-236,160,-236,161,-236,162,-236,163,-236,164,-236,165,-236,166,-236,167,-236,168,-236,169,-236,170,-236,171,-236,172,-236,173,-236,174,202,175,203},
-    &.{1,-237,58,-237,59,-237,70,-237,71,-237,84,-237,86,-237,89,201,92,-237,97,-237,99,-237,100,-237,101,-237,102,-237,108,-237,110,-237,111,-237,112,-237,114,-237,127,-237,140,-237,159,-237,160,-237,161,-237,162,-237,163,-237,164,-237,165,-237,166,-237,167,-237,168,-237,169,-237,170,-237,171,-237,172,-237,173,-237,174,202,175,203},
-    &.{1,-239,58,-239,59,-239,70,-239,71,-239,84,-239,86,-239,89,-239,92,-239,97,-239,99,-239,100,-239,101,-239,102,-239,108,-239,110,-239,111,-239,112,-239,114,-239,127,-239,140,-239,159,-239,160,-239,161,-239,162,-239,163,-239,164,-239,165,-239,166,-239,167,-239,168,-239,169,-239,170,-239,171,-239,172,-239,173,-239,174,-239,175,-239},
-    &.{1,-240,58,-240,59,-240,70,-240,71,-240,84,-240,86,-240,89,-240,92,-240,97,-240,99,-240,100,-240,101,-240,102,-240,108,-240,110,-240,111,-240,112,-240,114,-240,127,-240,140,-240,159,-240,160,-240,161,-240,162,-240,163,-240,164,-240,165,-240,166,-240,167,-240,168,-240,169,-240,170,-240,171,-240,172,-240,173,-240,174,-240,175,-240},
-    &.{1,-241,58,-241,59,-241,70,-241,71,-241,84,-241,86,-241,89,-241,92,-241,97,-241,99,-241,100,-241,101,-241,102,-241,108,-241,110,-241,111,-241,112,-241,114,-241,127,-241,140,-241,159,-241,160,-241,161,-241,162,-241,163,-241,164,-241,165,-241,166,-241,167,-241,168,-241,169,-241,170,-241,171,-241,172,-241,173,-241,174,-241,175,-241},
-    &.{1,-243,58,-243,59,-243,70,-243,71,-243,84,-243,86,-243,89,-243,92,-243,97,-243,99,-243,100,-243,101,-243,102,-243,108,-243,110,-243,111,-243,112,-243,114,-243,127,-243,140,-243,159,-243,160,-243,161,-243,162,-243,163,-243,164,-243,165,-243,166,-243,167,-243,168,-243,169,-243,170,-243,171,-243,172,-243,173,-243,174,-243,175,-243},
-    &.{26,373,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-13,58,-13,71,-13},
-    &.{4,374,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,375,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,376,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{11,379,28,378,70,137,99,377,101,46},
-    &.{59,-94,70,-94},
-    &.{100,380},
-    &.{11,381,70,137},
-    &.{11,382,70,137},
-    &.{4,383,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{60,384},
-    &.{11,385,70,137},
-    &.{105,386},
-    &.{58,388,71,387},
-    &.{58,-114,71,-114},
-    &.{11,391,70,137,99,389,109,390},
-    &.{70,-119,99,-119,108,392,109,-119},
-    &.{70,-117,99,-117,108,-117,109,-117},
-    &.{60,393},
-    &.{1,-131,58,-131,59,-131,70,-131,71,-131,84,-131,86,-131,92,-131,97,-131,99,-131,100,-131,102,-131,114,-131,140,-131},
-    &.{4,394,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-136,58,-136,59,-136,70,-136,71,-136,84,-136,86,-136,92,-136,97,-136,99,-136,100,-136,102,-136,114,-136,140,-136},
-    &.{4,395,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-30,58,-30,59,-30,60,-30,64,-30,65,-30,70,-30,71,-30,76,-30,84,-30,86,-30,87,-30,88,-30,89,-30,91,-30,92,-30,93,-30,94,-30,95,-30,97,-30,99,-30,100,-30,101,-30,102,-30,107,-30,108,-30,109,-30,110,-30,111,-30,112,-30,114,-30,120,-30,121,-30,122,-30,123,-30,124,-30,125,-30,127,-30,131,-30,132,-30,133,-30,134,-30,135,-30,136,-30,137,-30,138,-30,140,-30,159,-30,160,-30,161,-30,162,-30,163,-30,164,-30,165,-30,166,-30,167,-30,168,-30,169,-30,170,-30,171,-30,172,-30,173,-30,174,-30,175,-30,176,-30},
-    &.{4,396,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{4,397,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-62,58,-62,70,-62,71,-62,76,-62,83,-62,84,-62,86,-62,97,-62,124,-62},
-    &.{1,-63,58,-63,70,-63,71,-63,76,-63,83,-63,84,-63,86,-63,97,-63,124,-63},
-    &.{1,-64,58,-64,70,-64,71,-64,76,-64,83,-64,84,-64,86,-64,97,-64,124,-64},
-    &.{26,398,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{26,399,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{26,400,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{53,401,54,81,57,82,60,69,64,72,65,73,88,79,91,83,93,70,94,87,95,84,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{92,402},
-    &.{59,404,92,403},
-    &.{26,407,60,240,87,241,88,242,89,243,91,244,94,245,96,405,97,406},
-    &.{1,-167,58,-167,59,-167,60,-167,64,-167,65,-167,70,-167,71,-167,76,-167,84,-167,86,-167,87,-167,88,-167,89,-167,91,-167,92,-167,93,-167,94,-167,95,-167,97,-167,99,-167,100,-167,101,-167,102,-167,107,-167,108,-167,110,-167,111,-167,112,-167,114,-167,120,-167,121,-167,122,-167,123,-167,124,-167,125,-167,127,-167,131,-167,132,-167,133,-167,134,-167,135,-167,136,-167,137,-167,138,-167,140,-167,159,-167,160,-167,161,-167,162,-167,163,-167,164,-167,165,-167,166,-167,167,-167,168,-167,169,-167,170,-167,171,-167,172,-167,173,-167,174,-167,175,-167,176,-167},
-    &.{1,-169,58,-169,59,-169,60,-169,64,-169,65,-169,70,-169,71,-169,76,-169,84,-169,86,-169,87,-169,88,-169,89,-169,91,-169,92,-169,93,-169,94,-169,95,-169,97,-169,99,-169,100,-169,101,-169,102,-169,107,-169,108,-169,110,-169,111,-169,112,-169,114,-169,120,-169,121,-169,122,-169,123,-169,124,-169,125,-169,127,-169,131,-169,132,-169,133,-169,134,-169,135,-169,136,-169,137,-169,138,-169,140,-169,159,-169,160,-169,161,-169,162,-169,163,-169,164,-169,165,-169,166,-169,167,-169,168,-169,169,-169,170,-169,171,-169,172,-169,173,-169,174,-169,175,-169,176,-169},
-    &.{1,-171,58,-171,59,-171,60,-171,64,-171,65,-171,70,-171,71,-171,76,-171,84,-171,86,-171,87,-171,88,-171,89,-171,91,-171,92,-171,93,-171,94,-171,95,-171,97,-171,99,-171,100,-171,101,-171,102,-171,107,-171,108,-171,110,-171,111,-171,112,-171,114,-171,120,-171,121,-171,122,-171,123,-171,124,-171,125,-171,127,-171,131,-171,132,-171,133,-171,134,-171,135,-171,136,-171,137,-171,138,-171,140,-171,159,-171,160,-171,161,-171,162,-171,163,-171,164,-171,165,-171,166,-171,167,-171,168,-171,169,-171,170,-171,171,-171,172,-171,173,-171,174,-171,175,-171,176,-171},
-    &.{102,408},
-    &.{11,409,70,137},
-    &.{1,-33,58,-33,71,-33},
-    &.{1,-34,58,-34,71,-34},
-    &.{70,-60},
-    &.{1,-36,58,-36,71,-36},
-    &.{58,411,71,410},
-    &.{58,-45,71,-45},
-    &.{58,-48,71,-48},
-    &.{58,-53,59,289,71,-53,76,412},
-    &.{58,-50,71,-50},
-    &.{58,-51,71,-51},
-    &.{58,411,71,413},
-    &.{58,411,71,414},
-    &.{1,-39,58,-39,71,-39},
-    &.{1,-205,58,-205,59,-205,60,-205,64,-205,65,-205,70,-205,71,-205,76,-205,84,-205,86,-205,87,-205,88,-205,89,-205,91,-205,92,-205,93,-205,94,-205,95,-205,97,-205,99,-205,100,-205,101,-205,102,-205,107,-205,108,-205,109,-205,110,-205,111,-205,112,-205,114,-205,120,-205,121,-205,122,-205,123,-205,124,-205,125,-205,127,-205,131,-205,132,-205,133,-205,134,-205,135,-205,136,-205,137,-205,138,-205,140,-205,159,-205,160,-205,161,-205,162,-205,163,-205,164,-205,165,-205,166,-205,167,-205,168,-205,169,-205,170,-205,171,-205,172,-205,173,-205,174,-205,175,-205,176,-205},
-    &.{55,415,60,276},
-    &.{4,416,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{97,417},
-    &.{84,-174,92,-174,97,-174,140,-174},
-    &.{84,-199,140,-199},
-    &.{4,418,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{70,-58,84,-58,86,-58},
-    &.{26,419,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{58,-54,70,-54,71,-54,76,421,83,420,84,-54,86,-54},
-    &.{1,-12,58,-12,71,-12},
-    &.{1,-125,58,-125,59,-125,70,-125,71,-125,84,-125,86,-125,92,-125,97,-125,99,-125,100,-125,102,-125,114,-125,140,-125},
-    &.{1,-127,58,-127,59,-127,70,-127,71,-127,84,-127,86,-127,92,-127,97,-127,99,-127,100,-127,102,-127,114,-127,140,-127},
-    &.{1,-129,58,-129,59,-129,70,-129,71,-129,84,-129,86,-129,92,-129,97,-129,99,-129,100,-129,102,-129,114,-129,140,-129},
-    &.{60,422},
-    &.{1,-98,58,-98,59,-98,70,-98,71,-98,84,-98,86,-98,92,-98,97,-98,99,-98,100,-98,102,-98,114,-98,140,-98},
-    &.{1,-99,58,-99,59,-99,70,-99,71,-99,84,-99,86,-99,92,-99,97,-99,99,-99,100,-99,102,-99,114,-99,140,-99},
-    &.{59,-95,70,-95},
-    &.{1,-101,58,-101,59,-101,70,-101,71,-101,84,-101,86,-101,92,-101,97,-101,99,-101,100,-101,102,-101,114,-101,140,-101},
-    &.{1,-104,58,-104,59,-104,70,-104,71,-104,84,-104,86,-104,92,-104,97,-104,99,-104,100,-104,102,423,114,-104,140,-104},
-    &.{11,424,70,137},
-    &.{105,425},
-    &.{1,-111,58,-111,59,-111,70,-111,71,-111,84,-111,86,-111,92,-111,97,-111,99,-111,100,-111,102,426,114,-111,140,-111},
-    &.{4,427,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-113,58,-113,59,-113,70,-113,71,-113,84,-113,86,-113,92,-113,97,-113,99,-113,100,-113,102,-113,114,-113,140,-113},
-    &.{33,325,34,324,35,428,53,326,54,81,57,82,58,-116,60,69,64,72,65,73,71,-116,88,79,91,83,93,70,94,87,95,84,107,327,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{60,429},
-    &.{4,430,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{58,-124,71,-124},
-    &.{33,431,53,326,54,81,57,82,60,69,64,72,65,73,88,79,91,83,93,70,94,87,95,84,107,327,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{70,-118,99,-118,108,-118,109,-118},
-    &.{1,-135,58,-135,59,-135,70,-135,71,-135,84,-135,86,-135,92,-135,97,-135,99,-135,100,-135,102,-135,114,-135,140,-135},
-    &.{1,-141,58,-141,59,-141,70,-141,71,-141,84,-141,86,-141,92,-141,97,-141,99,-141,100,-141,102,-141,114,-141,140,-141},
-    &.{1,-151,58,-151,59,-151,70,-151,71,-151,84,-151,86,-151,92,-151,97,-151,99,-151,100,-151,102,-151,114,-151,140,-151},
-    &.{1,-157,58,-157,59,-157,70,-157,71,-157,84,-157,86,-157,92,-157,97,-157,99,-157,100,-157,102,-157,114,-157,140,-157},
-    &.{1,-65,58,-65,70,-65,71,-65,76,-65,83,-65,84,-65,86,-65,97,-65,124,-65},
-    &.{1,-66,58,-66,70,-66,71,-66,76,-66,83,-66,84,-66,86,-66,97,-66,124,-66},
-    &.{1,-67,58,-67,70,-67,71,-67,76,-67,83,-67,84,-67,86,-67,97,-67,124,-67},
-    &.{92,432},
-    &.{26,433,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{26,434,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{53,435,54,81,57,82,60,69,64,72,65,73,88,79,91,83,93,70,94,87,95,84,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{84,437,97,436},
-    &.{26,438,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{84,-72,97,-72},
-    &.{51,439,52,154,53,157,54,81,57,82,60,69,64,72,65,73,87,156,88,79,91,83,93,70,94,87,95,84,125,155,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{1,-32,58,-32,71,-32},
-    &.{1,-42,58,-42,71,-42},
-    &.{12,358,13,359,22,440,23,356,58,-47,60,357,71,-47,72,59,73,60,82,185},
-    &.{4,441,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{1,-44,58,-44,71,-44},
-    &.{1,-43,58,-43,71,-43},
-    &.{84,-204,140,-204},
-    &.{84,-206,140,-206},
-    &.{1,-193,58,-193,59,-193,60,-193,64,-193,65,-193,70,-193,71,-193,76,-193,84,-193,86,-193,87,-193,88,-193,89,-193,91,-193,92,-193,93,-193,94,-193,95,-193,97,-193,99,-193,100,-193,101,-193,102,-193,107,-193,108,-193,109,-193,110,-193,111,-193,112,-193,114,-193,120,-193,121,-193,122,-193,123,-193,124,-193,125,-193,127,-193,131,-193,132,-193,133,-193,134,-193,135,-193,136,-193,137,-193,138,-193,140,-193,159,-193,160,-193,161,-193,162,-193,163,-193,164,-193,165,-193,166,-193,167,-193,168,-193,169,-193,170,-193,171,-193,172,-193,173,-193,174,-193,175,-193,176,-193},
-    &.{84,-207,140,-207},
-    &.{58,-52,70,-52,71,-52,84,-52,86,-52},
-    &.{53,442,54,81,57,82,60,69,64,72,65,73,88,79,91,83,93,70,94,87,95,84,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85},
-    &.{4,443,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{11,444,28,445,70,137,101,46},
-    &.{11,446,70,137},
-    &.{1,-109,58,-109,59,-109,70,-109,71,-109,84,-109,86,-109,92,-109,97,-109,99,-109,100,-109,102,447,114,-109,140,-109},
-    &.{4,448,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{11,449,70,137},
-    &.{11,450,70,137},
-    &.{58,-115,71,-115},
-    &.{11,452,70,137,109,451},
-    &.{58,-123,71,-123},
-    &.{70,-120,99,-120,109,-120},
-    &.{26,453,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-69,58,-69,70,-69,71,-69,76,-69,83,-69,84,-69,86,-69,97,-69,124,-69},
-    &.{1,-70,58,-70,70,-70,71,-70,76,-70,83,-70,84,-70,86,-70,97,-70,124,-70},
-    &.{92,454},
-    &.{26,455,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{26,456,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-75,58,-75,70,-75,71,-75,76,-75,83,-75,84,-75,86,-75,97,-75,124,-75},
-    &.{1,-177,58,-177,59,-177,60,-177,64,-177,65,-177,70,-177,71,-177,76,-177,84,-177,86,-177,87,-177,88,-177,89,-177,91,-177,92,-177,93,-177,94,-177,95,-177,97,-177,99,-177,100,-177,101,-177,102,-177,107,-177,108,-177,110,-177,111,-177,112,-177,114,-177,120,-177,121,-177,122,-177,123,-177,124,-177,125,-177,127,-177,131,-177,132,-177,133,-177,134,-177,135,-177,136,-177,137,-177,138,-177,140,-177,159,-177,160,-177,161,-177,162,-177,163,-177,164,-177,165,-177,166,-177,167,-177,168,-177,169,-177,170,-177,171,-177,172,-177,173,-177,174,-177,175,-177,176,-177},
-    &.{58,-46,71,-46},
-    &.{58,-49,71,-49},
-    &.{58,-55,70,-55,71,-55,84,-55,86,-55},
-    &.{58,-56,70,-56,71,-56,84,-56,86,-56},
-    &.{1,-96,58,-96,59,-96,70,-96,71,-96,84,-96,86,-96,92,-96,97,-96,99,-96,100,-96,102,-96,114,-96,140,-96},
-    &.{1,-97,58,-97,59,-97,70,-97,71,-97,84,-97,86,-97,92,-97,97,-97,99,-97,100,-97,102,-97,114,-97,140,-97},
-    &.{1,-102,58,-102,59,-102,70,-102,71,-102,84,-102,86,-102,92,-102,97,-102,99,-102,100,-102,102,-102,114,-102,140,-102},
-    &.{11,457,70,137},
-    &.{11,458,70,137},
-    &.{1,-107,58,-107,59,-107,70,-107,71,-107,84,-107,86,-107,92,-107,97,-107,99,-107,100,-107,102,-107,114,-107,140,-107},
-    &.{1,-112,58,-112,59,-112,70,-112,71,-112,84,-112,86,-112,92,-112,97,-112,99,-112,100,-112,102,459,114,-112,140,-112},
-    &.{4,460,28,21,29,22,30,23,31,24,36,25,37,26,38,27,39,28,40,29,41,30,42,31,43,32,44,33,45,34,46,35,47,36,48,97,49,57,53,67,54,81,57,82,60,69,64,72,65,73,82,55,87,98,88,79,91,83,93,70,94,87,95,84,98,37,101,46,103,47,104,48,106,49,113,50,115,51,116,52,117,53,118,54,119,56,125,99,126,100,127,101,128,102,131,71,132,74,133,75,134,76,135,77,136,78,137,80,138,85,147,58,148,68,149,86,150,88,151,89,152,90,153,91,154,92,155,93,156,94,157,95,158,96},
-    &.{58,-122,71,-122},
-    &.{1,-68,58,-68,70,-68,71,-68,76,-68,83,-68,84,-68,86,-68,97,-68,124,-68},
-    &.{26,461,60,240,87,241,88,242,89,243,91,244,94,245},
-    &.{1,-74,58,-74,70,-74,71,-74,76,-74,83,-74,84,-74,86,-74,97,-74,124,-74},
-    &.{84,-73,97,-73},
-    &.{1,-105,58,-105,59,-105,70,-105,71,-105,84,-105,86,-105,92,-105,97,-105,99,-105,100,-105,102,-105,114,-105,140,-105},
-    &.{1,-110,58,-110,59,-110,70,-110,71,-110,84,-110,86,-110,92,-110,97,-110,99,-110,100,-110,102,462,114,-110,140,-110},
-    &.{11,463,70,137},
-    &.{58,-121,71,-121},
-    &.{1,-71,58,-71,70,-71,71,-71,76,-71,83,-71,84,-71,86,-71,97,-71,124,-71},
-    &.{11,464,70,137},
-    &.{1,-108,58,-108,59,-108,70,-108,71,-108,84,-108,86,-108,92,-108,97,-108,99,-108,100,-108,102,-108,114,-108,140,-108},
-    &.{1,-106,58,-106,59,-106,70,-106,71,-106,84,-106,86,-106,92,-106,97,-106,99,-106,100,-106,102,-106,114,-106,140,-106},
+const parseTable = [_][numSymbols]i16{
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,4,12,5,6,10,9,8,14,0,38,39,7,43,44,45,40,42,41,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,11,69,16,0,20,72,73,15,17,18,19,0,0,59,60,13,64,0,65,66,61,63,62,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,103,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-16,0,0,0,0,0,0,0,0,0,0,0,0,-16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,108,14,0,38,39,0,43,44,45,40,42,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,15,17,18,19,0,0,59,60,0,64,0,65,66,61,63,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,110,14,0,38,39,0,43,44,45,40,42,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,112,109,111,0,0,0,15,17,18,19,0,0,59,60,0,64,0,65,66,61,63,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,113,14,0,38,39,0,43,44,45,40,42,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,15,17,18,19,0,0,59,60,0,64,0,65,66,61,63,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,114,14,0,38,39,0,43,44,45,40,42,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,15,17,18,19,0,0,59,60,0,64,0,65,66,61,63,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,115,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,116,117,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,-76,0,0,0,0,0,0,0,0,0,0,-76,-76,0,0,0,0,0,0,0,0,0,0,0,0,-76,0,-76,0,0,0,0,0,-76,0,0,0,0,-76,0,-76,-76,0,-76,0,0,0,0,0,0,0,0,0,0,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,-77,0,0,0,0,0,0,0,0,0,0,-77,-77,0,0,0,0,0,0,0,0,0,0,0,0,-77,0,-77,0,0,0,0,0,-77,0,0,0,0,-77,0,-77,-77,0,-77,0,0,0,0,0,0,0,0,0,0,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,-78,0,0,0,0,0,0,0,0,0,0,-78,-78,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,-78,0,0,0,0,0,-78,0,0,0,0,-78,0,-78,-78,0,-78,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,-79,0,0,0,0,0,0,0,0,0,0,-79,-79,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,-79,0,0,0,0,0,-79,0,0,0,0,-79,0,-79,-79,0,-79,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-80,-80,0,0,0,0,0,0,0,0,0,0,-80,-80,0,0,0,0,0,0,0,0,0,0,0,0,-80,0,-80,0,0,0,0,0,-80,0,0,0,0,-80,0,-80,-80,0,-80,0,0,0,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,-81,0,0,0,0,0,0,0,0,0,0,-81,-81,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,-81,0,0,0,0,0,-81,0,0,0,0,-81,0,-81,-81,0,-81,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-82,-82,0,0,0,0,0,0,0,0,0,0,-82,-82,0,0,0,0,0,0,0,0,0,0,0,0,-82,0,-82,0,0,0,0,0,-82,0,0,0,0,-82,0,-82,-82,0,-82,0,0,0,0,0,0,0,0,0,0,0,-82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,-83,0,0,0,0,0,0,0,0,0,0,-83,-83,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,-83,0,0,0,0,0,-83,0,0,0,0,-83,0,-83,-83,0,-83,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,-84,0,0,0,0,0,0,0,0,0,0,-84,-84,0,0,0,0,0,0,0,0,0,0,0,0,-84,0,-84,0,0,0,0,0,-84,0,0,0,0,-84,0,-84,-84,0,-84,0,0,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-85,-85,0,0,0,0,0,0,0,0,0,0,-85,-85,0,0,0,0,0,0,0,0,0,0,0,0,-85,0,-85,0,0,0,0,0,-85,0,0,0,0,-85,0,-85,-85,0,-85,0,0,0,0,0,0,0,0,0,0,0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-86,-86,0,0,0,0,0,0,0,0,0,0,-86,-86,0,0,0,0,0,0,0,0,0,0,0,0,-86,0,-86,0,0,0,0,0,-86,0,0,0,0,-86,0,-86,-86,0,-86,0,0,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-87,-87,0,0,0,0,0,0,0,0,0,0,-87,-87,0,0,0,0,0,0,0,0,0,0,0,0,-87,0,-87,0,0,0,0,0,-87,0,0,0,0,-87,0,-87,-87,0,-87,0,0,0,0,0,0,0,0,0,0,0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-88,-88,0,0,0,0,0,0,0,0,0,0,-88,-88,0,0,0,0,0,0,0,0,0,0,0,0,-88,0,-88,0,0,0,0,0,-88,0,0,0,0,-88,0,-88,-88,0,-88,0,0,0,0,0,0,0,0,0,0,0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-89,-89,0,0,0,0,0,0,0,0,0,0,-89,-89,0,0,0,0,0,0,0,0,0,0,0,0,-89,0,-89,0,0,0,0,0,-89,0,0,0,0,-89,0,-89,-89,0,-89,0,0,0,0,0,0,0,0,0,0,0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-90,-90,0,0,0,0,0,0,0,0,0,0,-90,-90,0,0,0,0,0,0,0,0,0,0,0,0,-90,0,-90,0,0,0,0,0,-90,0,0,0,0,-90,0,-90,-90,0,-90,0,0,0,0,0,0,0,0,0,0,0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-91,-91,0,0,0,0,0,0,0,0,0,0,-91,-91,0,0,0,0,0,0,0,0,0,0,0,0,-91,0,-91,0,0,0,0,0,-91,0,0,0,0,-91,0,-91,-91,0,-91,0,0,0,0,0,0,0,0,0,0,0,-91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-92,-92,0,0,0,0,0,0,0,0,0,0,-92,-92,0,0,0,0,0,0,0,0,0,0,0,0,-92,0,-92,0,0,0,0,0,-92,0,0,0,0,-92,0,-92,-92,118,-92,0,0,0,0,0,0,0,119,120,121,0,-92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,0,0,0,0,0,0,0,0,0,0,0,0,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,0,0,0,0,0,0,0,0,0,0,0,0,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,0,0,0,0,0,0,0,0,0,0,0,0,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,0,0,0,0,0,0,0,0,0,0,0,0,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,0,0,0,0,0,0,0,0,0,0,0,0,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,0,0,0,0,0,0,0,0,0,0,0,0,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-28,0,0,0,0,0,0,0,0,0,0,0,0,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,0,0,0,0,0,0,0,0,0,0,0,0,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,123,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,122,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,123,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,124,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,126,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-134,0,0,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,-134,-134,69,0,0,0,72,73,0,0,0,0,-134,-134,0,0,0,0,0,0,0,0,0,0,55,0,-134,0,-134,98,79,0,0,83,-134,70,87,84,0,-134,37,-134,-134,46,-134,47,48,0,49,0,0,0,0,0,0,50,129,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,-134,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-140,0,0,132,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,-140,130,69,0,0,0,72,73,0,0,0,0,-140,-140,0,0,0,0,0,0,0,0,0,0,55,0,-140,0,-140,98,79,0,0,83,-140,70,87,84,0,-140,37,-140,-140,46,-140,47,48,0,49,0,0,0,0,0,0,50,131,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,-140,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-144,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-144,133,0,0,0,0,0,0,0,0,0,0,-144,-144,0,0,0,0,0,0,0,0,0,0,0,0,-144,0,-144,0,0,0,0,0,-144,0,0,0,0,-144,0,-144,-144,0,-144,0,0,0,0,0,0,0,0,0,0,0,134,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-144,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,136,0,0,0,0,0,0,135,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,139,0,0,0,0,0,0,138,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,140,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-164,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,153,154,157,81,0,0,82,-164,142,69,0,0,0,72,73,0,0,0,0,-164,-164,0,0,0,0,143,0,0,0,0,0,0,0,-164,0,-164,156,79,-164,0,150,-164,70,87,152,0,-164,0,-164,-164,-164,-164,0,0,0,0,149,-164,0,-164,-164,-164,0,-164,0,0,0,0,0,144,145,146,147,148,155,0,-164,0,151,0,71,74,75,76,77,78,80,85,0,-164,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164},
+    .{0,-245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-245,-245,0,0,0,0,0,0,0,0,0,0,-245,-245,0,0,0,0,0,0,0,0,0,0,0,0,-245,0,-245,0,0,0,0,0,-245,0,0,0,0,-245,0,-245,-245,-245,-245,0,0,0,0,0,0,0,-245,-245,-245,0,-245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,158,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,159,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,160,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,161,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,162,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,163,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,164,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,165,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,166,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-172,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-172,-172,-172,0,0,0,-172,-172,0,0,0,0,-172,-172,0,0,0,0,-172,0,0,0,0,0,0,0,-172,0,-172,-172,-172,-172,0,-172,-172,-172,-172,-172,0,-172,0,-172,-172,-172,-172,0,0,0,0,-172,-172,0,-172,-172,-172,0,-172,0,0,0,0,0,-172,-172,-172,-172,-172,-172,0,-172,0,0,0,-172,-172,-172,-172,-172,-172,-172,-172,0,-172,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172,-172},
+    .{0,-213,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-213,-213,0,0,0,0,0,0,0,0,0,0,-213,-213,0,0,0,0,0,0,0,0,0,0,0,0,-213,0,-213,0,0,0,0,0,-213,0,0,0,0,-213,0,-213,-213,-213,-213,0,0,0,0,0,0,0,-213,-213,-213,0,-213,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-213,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-213,167,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-182,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-182,-182,-182,0,0,0,-182,-182,0,0,0,0,-182,-182,0,0,0,0,-182,0,0,0,0,0,0,0,-182,0,-182,-182,-182,-182,0,-182,-182,-182,-182,-182,0,-182,0,-182,-182,-182,-182,0,0,0,0,-182,-182,-182,-182,-182,-182,0,-182,0,0,0,0,0,-182,-182,-182,-182,-182,-182,0,-182,0,0,0,-182,-182,-182,-182,-182,-182,-182,-182,0,-182,168,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182,-182},
+    .{0,-183,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-183,-183,-183,0,0,0,-183,-183,0,0,0,0,-183,-183,0,0,0,0,-183,0,0,0,0,0,0,0,-183,0,-183,-183,-183,-183,0,-183,-183,-183,-183,-183,0,-183,0,-183,-183,-183,-183,0,0,0,0,-183,-183,-183,-183,-183,-183,0,-183,0,0,0,0,0,-183,-183,-183,-183,-183,-183,0,-183,0,0,0,-183,-183,-183,-183,-183,-183,-183,-183,0,-183,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183,-183},
+    .{0,-184,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-184,-184,-184,0,0,0,-184,-184,0,0,0,0,-184,-184,0,0,0,0,-184,0,0,0,0,0,0,0,-184,0,-184,-184,-184,-184,0,-184,-184,-184,-184,-184,0,-184,0,-184,-184,-184,-184,0,0,0,0,-184,-184,-184,-184,-184,-184,0,-184,0,0,0,0,0,-184,-184,-184,-184,-184,-184,0,-184,0,0,0,-184,-184,-184,-184,-184,-184,-184,-184,0,-184,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184,-184},
+    .{0,-185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-185,-185,-185,0,0,0,-185,-185,0,0,0,0,-185,-185,0,0,0,0,-185,0,0,0,0,0,0,0,-185,0,-185,-185,-185,-185,0,-185,-185,-185,-185,-185,0,-185,0,-185,-185,-185,-185,0,0,0,0,-185,-185,-185,-185,-185,-185,0,-185,0,0,0,0,0,-185,-185,-185,-185,-185,-185,0,-185,0,0,0,-185,-185,-185,-185,-185,-185,-185,-185,0,-185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185,-185},
+    .{0,-186,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-186,-186,-186,0,0,0,-186,-186,0,0,0,0,-186,-186,0,0,0,0,-186,0,0,0,0,0,0,0,-186,0,-186,-186,-186,-186,0,-186,-186,-186,-186,-186,0,-186,0,-186,-186,-186,-186,0,0,0,0,-186,-186,-186,-186,-186,-186,0,-186,0,0,0,0,0,-186,-186,-186,-186,-186,-186,0,-186,0,0,0,-186,-186,-186,-186,-186,-186,-186,-186,0,-186,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186,-186},
+    .{0,-187,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-187,-187,-187,0,0,0,-187,-187,0,0,0,0,-187,-187,0,0,0,0,-187,0,0,0,0,0,0,0,-187,0,-187,-187,-187,-187,0,-187,-187,-187,-187,-187,0,-187,0,-187,-187,-187,-187,0,0,0,0,-187,-187,-187,-187,-187,-187,0,-187,0,0,0,0,0,-187,-187,-187,-187,-187,-187,0,-187,0,0,0,-187,-187,-187,-187,-187,-187,-187,-187,0,-187,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187,-187},
+    .{0,-188,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-188,-188,-188,0,0,0,-188,-188,0,0,0,0,-188,-188,0,0,0,0,-188,0,0,0,0,0,0,0,-188,0,-188,-188,-188,-188,0,-188,-188,-188,-188,-188,0,-188,0,-188,-188,-188,-188,0,0,0,0,-188,-188,-188,-188,-188,-188,0,-188,0,0,0,0,0,-188,-188,-188,-188,-188,-188,0,-188,0,0,0,-188,-188,-188,-188,-188,-188,-188,-188,0,-188,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188,-188},
+    .{0,-189,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-189,-189,-189,0,0,0,-189,-189,0,0,0,0,-189,-189,0,0,0,0,-189,0,0,0,0,0,0,0,-189,0,-189,-189,-189,-189,0,-189,-189,-189,-189,-189,0,-189,0,-189,-189,-189,-189,0,0,0,0,-189,-189,-189,-189,-189,-189,0,-189,0,0,0,0,0,-189,-189,-189,-189,-189,-189,0,-189,0,0,0,-189,-189,-189,-189,-189,-189,-189,-189,0,-189,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189,-189},
+    .{0,-190,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-190,-190,-190,0,0,0,-190,-190,0,0,0,0,-190,-190,0,0,0,0,-190,0,0,0,0,0,0,0,-190,0,-190,-190,-190,-190,0,-190,-190,-190,-190,-190,0,-190,0,-190,-190,-190,-190,0,0,0,0,-190,-190,-190,-190,-190,-190,0,-190,0,0,0,0,0,-190,-190,-190,-190,-190,-190,0,-190,0,0,0,-190,-190,-190,-190,-190,-190,-190,-190,0,-190,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190,-190},
+    .{0,-191,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-191,-191,-191,0,0,0,-191,-191,0,0,0,0,-191,-191,0,0,0,0,-191,0,0,0,0,0,0,0,-191,0,-191,-191,-191,-191,0,-191,-191,-191,-191,-191,0,-191,0,-191,-191,-191,-191,0,0,0,0,-191,-191,-191,-191,-191,-191,0,-191,0,0,0,0,0,-191,-191,-191,-191,-191,-191,0,-191,0,0,0,-191,-191,-191,-191,-191,-191,-191,-191,0,-191,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191,-191},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,169,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,170,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-194,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-194,-194,-194,0,0,0,-194,-194,0,0,0,0,-194,-194,0,0,0,0,-194,0,0,0,0,0,0,0,-194,0,-194,-194,-194,-194,0,-194,-194,-194,-194,-194,0,-194,0,-194,-194,-194,-194,0,0,0,0,-194,-194,-194,-194,-194,-194,0,-194,0,0,0,0,0,-194,-194,-194,-194,-194,-194,0,-194,0,0,0,-194,-194,-194,-194,-194,-194,-194,-194,0,-194,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194,-194},
+    .{0,-195,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-195,-195,-195,0,0,0,-195,-195,0,0,0,0,-195,-195,0,0,0,0,-195,0,0,0,0,0,0,0,-195,0,-195,-195,-195,-195,0,-195,-195,-195,-195,-195,0,-195,0,-195,-195,-195,-195,0,0,0,0,-195,-195,-195,-195,-195,-195,0,-195,0,0,0,0,0,-195,-195,-195,-195,-195,-195,0,-195,0,0,0,-195,-195,-195,-195,-195,-195,-195,-195,0,-195,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195,-195},
+    .{0,0,0,0,173,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,171,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,-176,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,172,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,174,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,173,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,176,0,0,67,81,0,178,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,179,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,172,71,74,75,76,77,78,80,85,175,177,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-215,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-215,-215,0,0,0,0,0,0,0,0,0,0,-215,-215,0,0,0,0,0,0,0,0,0,0,0,0,-215,0,-215,0,0,0,0,0,-215,0,0,0,0,-215,0,-215,-215,-215,-215,0,0,0,0,0,0,0,-215,-215,-215,0,-215,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-215,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-215,-215,180,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,182,0,0,0,0,0,0,0,0,0,0,0,184,181,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,186,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,185,0,0,183,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-217,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-217,-217,0,0,0,0,0,0,0,0,0,0,-217,-217,0,0,0,0,0,0,0,0,0,0,0,0,-217,0,-217,0,0,0,0,0,-217,0,0,0,0,-217,0,-217,-217,-217,-217,0,0,0,0,0,0,0,-217,-217,-217,0,-217,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-217,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-217,-217,-217,187,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-219,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-219,-219,0,0,0,0,0,0,0,0,0,0,-219,-219,0,0,0,0,0,0,0,0,0,0,0,0,-219,0,-219,0,0,0,0,0,-219,0,0,0,0,-219,0,-219,-219,-219,-219,0,0,0,0,0,0,0,-219,-219,-219,0,-219,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-219,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-219,-219,-219,-219,188,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-221,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-221,-221,0,0,0,0,0,0,0,0,0,0,-221,-221,0,0,0,0,0,0,0,0,0,0,0,0,-221,0,-221,0,0,0,0,0,-221,0,0,0,0,-221,0,-221,-221,-221,-221,0,0,0,0,0,0,0,-221,-221,-221,0,-221,0,0,0,0,0,0,0,0,0,0,0,0,189,0,0,0,0,0,0,0,0,0,0,0,0,-221,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-221,-221,-221,-221,-221,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-223,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-223,-223,0,0,0,0,0,0,0,0,0,0,-223,-223,0,0,0,0,0,0,0,0,0,0,0,0,-223,0,-223,0,0,0,0,0,-223,0,0,0,0,-223,0,-223,-223,-223,-223,0,0,0,0,0,0,0,-223,-223,-223,0,-223,0,0,0,0,0,0,0,0,0,0,0,0,-223,0,0,0,0,0,0,0,0,0,0,0,0,-223,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-223,-223,-223,-223,-223,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-230,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-230,-230,0,0,0,0,0,0,0,0,0,0,-230,-230,0,0,0,0,0,0,0,0,0,0,0,0,-230,0,-230,0,0,0,0,0,-230,0,0,0,0,-230,0,-230,-230,-230,-230,0,0,0,0,0,0,0,-230,-230,-230,0,-230,0,0,0,0,0,0,0,0,0,0,0,0,-230,0,0,0,0,0,0,0,0,0,0,0,0,-230,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-230,-230,-230,-230,-230,190,191,192,193,194,195,0,0,0,0,0,0,0},
+    .{0,-232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-232,-232,0,0,0,0,0,0,0,0,0,0,-232,-232,0,0,0,0,0,0,0,0,0,0,0,0,-232,0,-232,0,0,0,0,0,-232,0,0,0,0,-232,0,-232,-232,-232,-232,0,0,0,0,0,196,0,-232,-232,-232,0,-232,0,0,0,0,0,0,0,0,0,0,0,0,-232,0,0,0,0,0,0,0,0,0,0,0,0,-232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-232,-232,-232,-232,-232,-232,-232,-232,-232,-232,-232,197,198,0,0,0,0,0},
+    .{0,-235,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-235,-235,0,0,0,0,0,0,0,0,0,0,-235,-235,0,0,0,0,0,0,0,0,0,0,0,0,-235,0,-235,0,0,0,0,0,-235,0,0,0,0,-235,0,-235,-235,-235,-235,0,0,0,0,0,-235,0,-235,-235,-235,0,-235,0,0,0,0,0,0,0,0,0,0,0,0,-235,0,0,0,0,0,0,0,0,0,0,0,0,-235,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-235,-235,-235,-235,-235,-235,-235,-235,-235,-235,-235,-235,-235,199,200,0,0,0},
+    .{0,-238,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-238,-238,0,0,0,0,0,0,0,0,0,0,-238,-238,0,0,0,0,0,0,0,0,0,0,0,0,-238,0,-238,0,0,201,0,0,-238,0,0,0,0,-238,0,-238,-238,-238,-238,0,0,0,0,0,-238,0,-238,-238,-238,0,-238,0,0,0,0,0,0,0,0,0,0,0,0,-238,0,0,0,0,0,0,0,0,0,0,0,0,-238,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-238,-238,-238,-238,-238,-238,-238,-238,-238,-238,-238,-238,-238,-238,-238,202,203,0},
+    .{0,-242,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-242,-242,0,0,0,0,0,0,0,0,0,0,-242,-242,0,0,0,0,0,0,0,0,0,0,0,0,-242,0,-242,0,0,-242,0,0,-242,0,0,0,0,-242,0,-242,-242,-242,-242,0,0,0,0,0,-242,0,-242,-242,-242,0,-242,0,0,0,0,0,0,0,0,0,0,0,0,-242,0,0,0,0,0,0,0,0,0,0,0,0,-242,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,-242,0},
+    .{0,-244,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-244,-244,0,0,0,0,0,0,0,0,0,0,-244,-244,0,0,0,0,0,0,0,0,0,0,0,0,-244,0,-244,0,0,-244,0,0,-244,0,0,0,0,-244,0,-244,-244,-244,-244,0,0,0,0,0,-244,0,-244,-244,-244,0,-244,0,0,0,0,0,0,0,0,0,0,0,0,-244,0,0,0,0,0,0,0,0,0,0,0,0,-244,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,-244,204},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,205,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,207,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,208,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,209,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,210,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-5,0,0,12,0,212,10,9,8,14,0,38,39,7,43,44,45,40,42,41,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,-5,11,69,16,0,20,72,73,15,17,18,19,0,-5,59,60,13,64,0,65,66,61,63,62,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,12,0,213,10,9,8,14,0,38,39,7,43,44,45,40,42,41,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,11,69,16,0,20,72,73,15,17,18,19,0,0,59,60,13,64,0,65,66,61,63,62,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-38,0,0,0,0,0,0,0,0,0,0,0,0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,110,14,0,38,39,0,43,44,45,40,42,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,15,17,18,19,0,0,59,60,0,64,0,65,66,61,63,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,214,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,215,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-20,0,0,0,0,0,0,0,0,0,0,0,0,-20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,216,14,0,38,39,0,43,44,45,40,42,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,15,17,18,19,0,0,59,60,0,64,0,65,66,61,63,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,217,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,218,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,219,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,221,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,220,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,222,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-93,0,0,0,0,0,0,0,0,0,0,-93,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,223,224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,225,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,226,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,227,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,229,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,228,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,230,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-133,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-133,-133,0,0,0,0,0,0,0,0,0,0,-133,-133,0,0,0,0,0,0,0,0,0,0,0,0,-133,0,-133,0,0,0,0,0,-133,0,0,0,0,-133,0,-133,-133,0,-133,0,0,0,0,0,0,0,0,0,0,0,231,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-133,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,232,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,233,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,234,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-139,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-139,-139,0,0,0,0,0,0,0,0,0,0,-139,-139,0,0,0,0,0,0,0,0,0,0,0,0,-139,0,-139,0,0,0,0,0,-139,0,0,0,0,-139,0,-139,-139,0,-139,0,0,0,0,0,0,0,0,0,0,0,-139,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-139,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,235,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,236,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-145,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-145,-145,0,0,0,0,0,0,0,0,0,0,-145,-145,0,0,0,0,0,0,0,0,0,0,0,0,-145,0,-145,0,0,0,0,0,-145,0,0,0,0,-145,0,-145,-145,0,-145,0,0,0,0,0,0,0,0,0,0,0,-145,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-145,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-146,-146,0,0,0,0,0,0,0,0,0,0,-146,-146,0,0,0,0,0,0,0,0,0,0,0,0,-146,0,-146,0,0,0,0,0,-146,0,0,0,0,-146,0,-146,-146,0,-146,0,0,0,0,0,0,0,0,0,0,0,-146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,12,237,6,10,9,8,14,0,38,39,7,43,44,45,40,42,41,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,11,69,16,0,20,72,73,15,17,18,19,0,238,59,60,13,64,0,65,66,61,63,62,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-147,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-147,-147,0,0,0,0,0,0,0,0,0,0,-147,-147,0,0,0,0,0,0,0,0,0,0,0,0,-147,0,-147,0,0,0,0,0,-147,0,0,0,0,-147,0,-147,-147,0,-147,0,0,0,0,0,0,0,0,0,0,0,-147,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-147,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-148,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-148,-148,0,0,0,0,0,0,0,0,0,0,-148,-148,0,0,0,0,0,0,0,0,0,0,0,0,-148,0,-148,0,0,0,0,0,-148,0,0,0,0,-148,0,-148,-148,0,-148,0,0,0,0,0,0,0,0,0,0,0,-148,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-148,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-149,-149,0,0,0,0,0,0,0,0,0,0,-149,-149,0,0,0,0,0,0,0,0,0,0,0,0,-149,0,-149,0,0,0,0,0,-149,0,0,0,0,-149,0,-149,-149,0,-149,0,0,0,0,0,0,0,0,0,0,0,-149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-150,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-150,-150,0,0,0,0,0,0,0,0,0,0,-150,-150,0,0,0,0,0,0,0,0,0,0,0,0,-150,0,-150,0,0,0,0,0,-150,0,0,0,0,-150,0,-150,-150,0,-150,0,0,0,0,0,0,0,0,0,0,0,-150,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-150,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,239,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,246,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,247,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,248,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,249,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,250,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,251,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,253,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,254,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,171,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,-176,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,172,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-170,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-170,-170,-170,0,0,0,-170,-170,0,0,0,0,-170,-170,0,0,0,0,-170,0,0,0,0,0,0,0,255,0,-170,-170,-170,-170,0,-170,-170,-170,-170,-170,0,-170,0,-170,-170,-170,-170,0,0,0,0,-170,-170,0,-170,-170,-170,0,-170,0,0,0,0,0,-170,-170,-170,-170,-170,-170,0,-170,0,0,0,-170,-170,-170,-170,-170,-170,-170,-170,0,-170,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170,-170},
+    .{0,0,0,0,257,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,256,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,-176,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,172,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-168,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-168,-168,-168,0,0,0,-168,-168,0,0,0,0,-168,-168,0,0,0,0,-168,0,0,0,0,0,0,0,-168,0,-168,-168,-168,-168,0,-168,-168,-168,-168,-168,0,-168,0,-168,-168,-168,-168,0,0,0,0,-168,-168,0,-168,-168,-168,0,-168,0,0,0,0,0,-168,-168,-168,-168,-168,-168,0,-168,0,0,0,-168,-168,-168,-168,-168,-168,-168,-168,0,-168,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168,-168},
+    .{0,-178,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-178,-178,-178,0,0,0,-178,-178,0,0,0,0,-178,-178,0,0,0,0,-178,0,0,0,0,0,0,0,-178,0,-178,-178,-178,-178,0,-178,-178,-178,-178,-178,0,-178,0,-178,-178,-178,-178,0,0,0,0,-178,-178,0,258,-178,-178,0,-178,0,0,0,0,0,-178,-178,-178,-178,-178,-178,0,-178,0,0,0,-178,-178,-178,-178,-178,-178,-178,-178,0,-178,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178,-178},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,259,157,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,156,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,155,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,260,157,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,156,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,155,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-181,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-181,-181,-181,0,0,0,-181,-181,0,0,0,0,-181,-181,0,0,0,0,-181,0,0,0,0,0,0,0,-181,0,-181,-181,-181,-181,0,-181,-181,-181,-181,-181,0,-181,0,-181,-181,-181,-181,0,0,0,0,-181,-181,0,-181,-181,-181,0,-181,0,0,0,0,0,-181,-181,-181,-181,-181,-181,0,-181,0,0,0,-181,-181,-181,-181,-181,-181,-181,-181,0,-181,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181,-181},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,261,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,264,0,0,0,0,0,0,0,0,0,0,0,184,262,263,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,186,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,185,0,0,183,265,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,267,0,0,0,0,0,0,0,0,0,0,0,184,266,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,186,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,185,0,0,183,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,268,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,269,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,270,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,271,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,272,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-41,0,0,0,0,0,0,0,0,0,0,0,0,-41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,273,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,275,0,0,0,0,276,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,274,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-192,-192,-192,0,0,0,-192,-192,0,0,0,0,-192,-192,0,0,0,0,-192,0,0,0,0,0,0,0,-192,0,-192,-192,-192,-192,0,-192,-192,-192,-192,-192,0,-192,0,-192,-192,-192,-192,0,0,0,0,-192,-192,-192,-192,-192,-192,0,-192,0,0,0,0,0,-192,-192,-192,-192,-192,-192,0,-192,0,0,0,-192,-192,-192,-192,-192,-192,-192,-192,0,-192,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192,-192},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,277,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,278,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,279,0,0,0,0,0,0,0,-175,0,0,0,0,-175,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-175,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-173,0,0,0,0,0,0,0,-173,0,0,0,0,-173,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-173,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,280,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,282,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,281,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,283,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-202,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-202,-202,-202,0,0,0,-202,-202,0,0,0,0,-202,-202,0,0,0,0,-202,0,0,0,0,0,0,0,-202,0,-202,-202,-202,-202,0,-202,-202,-202,-202,-202,0,-202,0,-202,-202,-202,-202,0,0,0,0,-202,-202,-202,-202,-202,-202,0,-202,0,0,0,0,0,-202,-202,-202,-202,-202,-202,0,-202,0,0,0,-202,-202,-202,-202,-202,-202,-202,-202,0,-202,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202,-202},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-198,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-198,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,284,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,285,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,286,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-209,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-209,-209,-209,0,0,0,-209,-209,0,0,0,0,-209,-209,0,0,0,0,-209,0,0,0,0,0,0,0,-209,0,-209,-209,-209,-209,0,-209,-209,-209,-209,-209,0,-209,0,-209,-209,-209,-209,0,0,0,0,-209,-209,-209,-209,-209,-209,0,-209,0,0,0,0,0,-209,-209,-209,-209,-209,-209,0,-209,0,0,0,-209,-209,-209,-209,-209,-209,-209,-209,0,-209,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209,-209},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-59,0,0,0,0,0,0,0,0,0,0,0,0,0,287,0,-59,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-57,0,0,0,0,0,0,0,0,0,0,0,0,0,-57,0,-57,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,288,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,289,0,0,0,0,0,0,0,0,0,0,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,-53,0,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,290,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,291,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,292,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,293,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,294,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,295,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,296,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,297,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,298,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,299,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,300,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,301,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,302,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,303,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,304,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,305,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,306,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,206,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,307,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-159,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-159,-159,0,0,0,0,0,0,0,0,0,0,-159,-159,0,0,0,0,0,0,0,0,0,0,0,0,-159,0,-159,0,0,-159,0,0,-159,0,0,0,0,-159,0,-159,-159,-159,-159,0,0,0,0,0,-159,0,-159,-159,-159,0,-159,0,0,0,0,0,0,0,0,0,0,0,0,-159,0,0,0,0,0,0,0,0,0,0,0,0,-159,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159,-159},
+    .{0,-164,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,153,154,157,81,0,0,82,-164,-164,69,0,0,0,72,73,0,0,0,0,-164,-164,0,0,0,0,0,0,0,0,0,0,0,0,-164,0,-164,156,79,-164,0,150,-164,70,87,152,0,-164,0,-164,-164,-164,-164,0,0,0,0,149,-164,0,-164,-164,-164,0,-164,0,0,0,0,0,0,0,0,0,0,155,0,-164,0,151,0,71,74,75,76,77,78,80,85,0,-164,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164,-164},
+    .{0,-160,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-160,-160,0,0,0,0,0,0,0,0,0,0,-160,-160,0,0,0,0,0,0,0,0,0,0,0,0,-160,0,-160,0,0,-160,0,0,-160,0,0,0,0,-160,0,-160,-160,-160,-160,0,0,0,0,0,-160,0,-160,-160,-160,0,-160,0,0,0,0,0,0,0,0,0,0,0,0,-160,0,0,0,0,0,0,0,0,0,0,0,0,-160,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160,-160},
+    .{0,-161,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-161,-161,0,0,0,0,0,0,0,0,0,0,-161,-161,0,0,0,0,0,0,0,0,0,0,0,0,-161,0,-161,0,0,-161,0,0,-161,0,0,0,0,-161,0,-161,-161,-161,-161,0,0,0,0,0,-161,0,-161,-161,-161,0,-161,0,0,0,0,0,0,0,0,0,0,0,0,-161,0,0,0,0,0,0,0,0,0,0,0,0,-161,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161,-161},
+    .{0,-162,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-162,-162,0,0,0,0,0,0,0,0,0,0,-162,-162,0,0,0,0,0,0,0,0,0,0,0,0,-162,0,-162,0,0,-162,0,0,-162,0,0,0,0,-162,0,-162,-162,-162,-162,0,0,0,0,0,-162,0,-162,-162,-162,0,-162,0,0,0,0,0,0,0,0,0,0,0,0,-162,0,0,0,0,0,0,0,0,0,0,0,0,-162,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162,-162},
+    .{0,-163,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-163,-163,0,0,0,0,0,0,0,0,0,0,-163,-163,0,0,0,0,0,0,0,0,0,0,0,0,-163,0,-163,0,0,-163,0,0,-163,0,0,0,0,-163,0,-163,-163,-163,-163,0,0,0,0,0,-163,0,-163,-163,-163,0,-163,0,0,0,0,0,0,0,0,0,0,0,0,-163,0,0,0,0,0,0,0,0,0,0,0,0,-163,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163,-163},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,308,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,309,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,0,0,0,0,0,0,0,0,0,0,0,0,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-126,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-126,-126,0,0,0,0,0,0,0,0,0,0,-126,-126,0,0,0,0,0,0,0,0,0,0,0,0,-126,0,-126,0,0,0,0,0,-126,0,0,0,0,-126,0,-126,-126,0,310,0,0,0,0,0,0,0,0,0,0,0,-126,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-126,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,311,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-128,-128,0,0,0,0,0,0,0,0,0,0,-128,-128,0,0,0,0,0,0,0,0,0,0,0,0,-128,0,-128,0,0,0,0,0,-128,0,0,0,0,-128,0,-128,-128,0,-128,0,0,0,0,0,0,0,0,0,0,0,-128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,312,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-130,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-130,-130,0,0,0,0,0,0,0,0,0,0,-130,-130,0,0,0,0,0,0,0,0,0,0,0,0,-130,0,-130,0,0,0,0,0,-130,0,0,0,0,-130,0,-130,-130,0,-130,0,0,0,0,0,0,0,0,0,0,0,-130,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-130,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100,-100,0,0,0,0,0,0,0,0,0,0,-100,-100,0,0,0,0,0,0,0,0,0,0,0,0,-100,0,-100,0,0,0,0,0,-100,0,0,0,0,-100,0,-100,-100,0,313,0,0,0,0,0,0,0,0,0,0,0,-100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,314,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,315,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-103,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-103,-103,0,0,0,0,0,0,0,0,0,0,-103,-103,0,0,0,0,0,0,0,0,0,0,0,0,-103,0,-103,0,0,0,0,0,-103,0,0,0,0,-103,0,-103,-103,0,316,0,0,0,0,0,0,0,0,0,0,0,-103,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-103,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,317,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,319,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,318,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,320,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,321,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,322,325,324,323,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,326,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,327,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,328,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-132,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-132,-132,0,0,0,0,0,0,0,0,0,0,-132,-132,0,0,0,0,0,0,0,0,0,0,0,0,-132,0,-132,0,0,0,0,0,-132,0,0,0,0,-132,0,-132,-132,0,-132,0,0,0,0,0,0,0,0,0,0,0,-132,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-132,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-137,0,0,330,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,-137,-137,69,0,0,0,72,73,0,0,0,0,-137,-137,0,0,0,0,0,0,0,0,0,0,55,0,-137,0,-137,98,79,0,0,83,-137,70,87,84,0,-137,37,-137,-137,46,-137,47,48,0,49,0,0,0,0,0,0,50,329,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,-137,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-138,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-138,-138,0,0,0,0,0,0,0,0,0,0,-138,-138,0,0,0,0,0,0,0,0,0,0,0,0,-138,0,-138,0,0,0,0,0,-138,0,0,0,0,-138,0,-138,-138,0,-138,0,0,0,0,0,0,0,0,0,0,0,-138,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-138,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-142,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-142,-142,0,0,0,0,0,0,0,0,0,0,-142,-142,0,0,0,0,0,0,0,0,0,0,0,0,-142,0,-142,0,0,0,0,0,-142,0,0,0,0,-142,0,-142,-142,0,-142,0,0,0,0,0,0,0,0,0,0,0,331,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-142,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-143,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-143,-143,0,0,0,0,0,0,0,0,0,0,-143,-143,0,0,0,0,0,0,0,0,0,0,0,0,-143,0,-143,0,0,0,0,0,-143,0,0,0,0,-143,0,-143,-143,0,-143,0,0,0,0,0,0,0,0,0,0,0,-143,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-143,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,332,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,-31,-31,0,0,0,-31,-31,0,0,0,0,-31,-31,0,0,0,0,-31,0,0,0,0,0,0,0,-31,0,-31,-31,-31,-31,0,-31,-31,-31,-31,-31,0,-31,0,-31,-31,-31,-31,0,0,0,0,-31,-31,-31,-31,-31,-31,0,-31,0,0,0,0,0,-31,-31,-31,-31,-31,-31,0,-31,0,0,0,-31,-31,-31,-31,-31,-31,-31,-31,0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,333,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,334,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-61,0,0,0,0,0,0,0,0,0,0,0,-61,-61,0,0,0,0,-61,0,0,0,0,0,0,-61,-61,0,-61,0,0,0,0,0,0,0,0,0,0,-61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,335,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,336,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,337,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,338,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,339,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,341,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,343,0,0,340,342,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,344,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-152,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-152,-152,0,0,0,0,0,0,0,0,0,0,-152,-152,0,0,0,0,0,0,0,0,0,0,0,0,-152,0,-152,0,0,0,0,0,-152,0,0,0,0,-152,0,-152,-152,0,-152,0,0,0,0,0,0,0,0,0,0,0,-152,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-152,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-153,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-153,-153,0,0,0,0,0,0,0,0,0,0,-153,-153,0,0,0,0,0,0,0,0,0,0,0,0,-153,0,-153,0,0,0,0,0,-153,0,0,0,0,-153,0,-153,-153,0,-153,0,0,0,0,0,0,0,0,0,0,0,-153,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-153,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-154,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-154,-154,0,0,0,0,0,0,0,0,0,0,-154,-154,0,0,0,0,0,0,0,0,0,0,0,0,-154,0,-154,0,0,0,0,0,-154,0,0,0,0,-154,0,-154,-154,0,-154,0,0,0,0,0,0,0,0,0,0,0,-154,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-154,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-155,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-155,-155,0,0,0,0,0,0,0,0,0,0,-155,-155,0,0,0,0,0,0,0,0,0,0,0,0,-155,0,-155,0,0,0,0,0,-155,0,0,0,0,-155,0,-155,-155,0,-155,0,0,0,0,0,0,0,0,0,0,0,-155,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-155,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-156,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-156,-156,0,0,0,0,0,0,0,0,0,0,-156,-156,0,0,0,0,0,0,0,0,0,0,0,0,-156,0,-156,0,0,0,0,0,-156,0,0,0,0,-156,0,-156,-156,0,-156,0,0,0,0,0,0,0,0,0,0,0,-156,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-156,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-158,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-158,-158,0,0,0,0,0,0,0,0,0,0,-158,-158,0,0,0,0,0,0,0,0,0,0,0,0,-158,0,-158,0,0,0,0,0,-158,0,0,0,0,-158,0,-158,-158,0,-158,0,0,0,0,0,0,0,0,0,0,0,-158,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-158,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-165,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-165,-165,-165,0,0,0,-165,-165,0,0,0,0,-165,-165,0,0,0,0,-165,0,0,0,0,0,0,0,-165,0,-165,-165,-165,-165,0,-165,-165,-165,-165,-165,0,-165,0,-165,-165,-165,-165,0,0,0,0,-165,-165,0,-165,-165,-165,0,-165,0,0,0,0,0,-165,-165,-165,-165,-165,-165,0,-165,0,0,0,-165,-165,-165,-165,-165,-165,-165,-165,0,-165,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165,-165},
+    .{0,-166,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-166,-166,-166,0,0,0,-166,-166,0,0,0,0,-166,-166,0,0,0,0,-166,0,0,0,0,0,0,0,-166,0,-166,-166,-166,-166,0,-166,-166,-166,-166,-166,0,-166,0,-166,-166,-166,-166,0,0,0,0,-166,-166,0,-166,-166,-166,0,-166,0,0,0,0,0,-166,-166,-166,-166,-166,-166,0,-166,0,0,0,-166,-166,-166,-166,-166,-166,-166,-166,0,-166,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166,-166},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-173,0,0,0,0,0,0,0,345,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,346,154,157,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,156,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,155,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,347,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-173,0,0,0,0,0,0,0,0,0,0,0,0,280,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,348,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-179,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-179,-179,-179,0,0,0,-179,-179,0,0,0,0,-179,-179,0,0,0,0,-179,0,0,0,0,0,0,0,-179,0,-179,-179,-179,-179,0,-179,-179,-179,-179,-179,0,-179,0,-179,-179,-179,-179,0,0,0,0,-179,-179,0,-179,-179,-179,0,-179,0,0,0,0,0,-179,-179,-179,-179,-179,-179,0,-179,0,0,0,-179,-179,-179,-179,-179,-179,-179,-179,0,-179,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179,-179},
+    .{0,-180,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-180,-180,-180,0,0,0,-180,-180,0,0,0,0,-180,-180,0,0,0,0,-180,0,0,0,0,0,0,0,-180,0,-180,-180,-180,-180,0,-180,-180,-180,-180,-180,0,-180,0,-180,-180,-180,-180,0,0,0,0,-180,-180,0,-180,-180,-180,0,-180,0,0,0,0,0,-180,-180,-180,-180,-180,-180,0,-180,0,0,0,-180,-180,-180,-180,-180,-180,-180,-180,0,-180,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180,-180},
+    .{0,-212,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-212,-212,0,0,0,0,0,0,0,0,0,0,-212,-212,0,0,0,0,0,0,0,0,0,0,0,0,-212,0,-212,0,0,0,0,0,-212,0,0,0,0,-212,0,-212,-212,-212,-212,0,0,0,0,0,0,0,-212,-212,-212,0,-212,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-212,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-212,167,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,350,0,0,0,0,0,0,0,0,0,0,0,0,0,349,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,265,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,351,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,0,0,0,0,0,0,0,0,0,0,0,0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,352,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,353,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-37,0,0,0,0,0,0,0,0,0,0,0,0,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,358,359,0,0,0,0,0,0,0,354,355,356,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,357,0,0,0,0,0,0,0,0,0,0,0,59,60,0,0,0,0,0,0,0,0,185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,358,359,0,0,0,0,0,0,0,360,355,356,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,357,0,0,0,0,0,0,0,0,0,0,0,59,60,0,0,0,0,0,0,0,0,185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,358,359,0,0,0,0,0,0,0,361,355,356,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,357,0,0,0,0,0,0,0,0,0,0,0,59,60,0,0,0,0,0,0,0,0,185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,362,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-40,0,0,0,0,0,0,0,0,0,0,0,0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-214,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-214,-214,0,0,0,0,0,0,0,0,0,0,-214,-214,0,0,0,0,0,0,0,0,0,0,0,0,-214,0,-214,0,0,0,0,0,-214,0,0,0,0,-214,0,-214,-214,-214,-214,0,0,0,0,0,0,0,-214,-214,-214,0,-214,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-214,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-214,-214,180,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,364,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,363,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-203,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-203,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,365,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,173,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,366,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,-176,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,172,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-196,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-196,-196,-196,0,0,0,-196,-196,0,0,0,0,-196,-196,0,0,0,0,-196,0,0,0,0,0,0,0,-196,0,-196,-196,-196,-196,0,-196,-196,-196,-196,-196,0,-196,0,-196,-196,-196,-196,0,0,0,0,-196,-196,-196,-196,-196,-196,0,-196,0,0,0,0,0,-196,-196,-196,-196,-196,-196,0,-196,0,0,0,-196,-196,-196,-196,-196,-196,-196,-196,0,-196,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196,-196},
+    .{0,0,0,0,367,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-197,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-197,-197,-197,0,0,0,-197,-197,0,0,0,0,-197,-197,0,0,0,0,-197,0,0,0,0,0,0,0,-197,0,-197,-197,-197,-197,0,-197,-197,-197,-197,-197,0,-197,0,-197,-197,-197,-197,0,0,0,0,-197,-197,-197,-197,-197,-197,0,-197,0,0,0,0,0,-197,-197,-197,-197,-197,-197,0,-197,0,0,0,-197,-197,-197,-197,-197,-197,-197,-197,0,-197,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197,-197},
+    .{0,-200,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-200,-200,-200,0,0,0,-200,-200,0,0,0,0,-200,-200,0,0,0,0,-200,0,0,0,0,0,0,0,-200,0,-200,-200,-200,-200,0,-200,-200,-200,-200,-200,0,-200,0,-200,-200,-200,-200,0,0,0,0,-200,-200,-200,-200,-200,-200,0,-200,0,0,0,0,0,-200,-200,-200,-200,-200,-200,0,-200,0,0,0,-200,-200,-200,-200,-200,-200,-200,-200,0,-200,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200,-200},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,368,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,179,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-201,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-201,-201,-201,0,0,0,-201,-201,0,0,0,0,-201,-201,0,0,0,0,-201,0,0,0,0,0,0,0,-201,0,-201,-201,-201,-201,0,-201,-201,-201,-201,-201,0,-201,0,-201,-201,-201,-201,0,0,0,0,-201,-201,-201,-201,-201,-201,0,-201,0,0,0,0,0,-201,-201,-201,-201,-201,-201,0,-201,0,0,0,-201,-201,-201,-201,-201,-201,-201,-201,0,-201,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201,-201},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,369,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-216,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-216,-216,0,0,0,0,0,0,0,0,0,0,-216,-216,0,0,0,0,0,0,0,0,0,0,0,0,-216,0,-216,0,0,0,0,0,-216,0,0,0,0,-216,0,-216,-216,-216,-216,0,0,0,0,0,0,0,-216,-216,-216,0,-216,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-216,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-216,-216,-216,187,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-208,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-208,-208,-208,0,0,0,-208,-208,0,0,0,0,-208,-208,0,0,0,0,-208,0,0,0,0,0,0,0,-208,0,-208,-208,-208,-208,0,-208,-208,-208,-208,-208,0,-208,0,-208,-208,-208,-208,0,0,0,0,-208,-208,-208,-208,-208,-208,0,-208,0,0,0,0,0,-208,-208,-208,-208,-208,-208,0,-208,0,0,0,-208,-208,-208,-208,-208,-208,-208,-208,0,-208,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208,-208},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,370,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,186,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,371,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,372,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-218,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-218,-218,0,0,0,0,0,0,0,0,0,0,-218,-218,0,0,0,0,0,0,0,0,0,0,0,0,-218,0,-218,0,0,0,0,0,-218,0,0,0,0,-218,0,-218,-218,-218,-218,0,0,0,0,0,0,0,-218,-218,-218,0,-218,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-218,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-218,-218,-218,-218,188,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-220,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-220,-220,0,0,0,0,0,0,0,0,0,0,-220,-220,0,0,0,0,0,0,0,0,0,0,0,0,-220,0,-220,0,0,0,0,0,-220,0,0,0,0,-220,0,-220,-220,-220,-220,0,0,0,0,0,0,0,-220,-220,-220,0,-220,0,0,0,0,0,0,0,0,0,0,0,0,189,0,0,0,0,0,0,0,0,0,0,0,0,-220,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-220,-220,-220,-220,-220,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-222,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-222,-222,0,0,0,0,0,0,0,0,0,0,-222,-222,0,0,0,0,0,0,0,0,0,0,0,0,-222,0,-222,0,0,0,0,0,-222,0,0,0,0,-222,0,-222,-222,-222,-222,0,0,0,0,0,0,0,-222,-222,-222,0,-222,0,0,0,0,0,0,0,0,0,0,0,0,-222,0,0,0,0,0,0,0,0,0,0,0,0,-222,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-222,-222,-222,-222,-222,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-224,-224,0,0,0,0,0,0,0,0,0,0,-224,-224,0,0,0,0,0,0,0,0,0,0,0,0,-224,0,-224,0,0,0,0,0,-224,0,0,0,0,-224,0,-224,-224,-224,-224,0,0,0,0,0,0,0,-224,-224,-224,0,-224,0,0,0,0,0,0,0,0,0,0,0,0,-224,0,0,0,0,0,0,0,0,0,0,0,0,-224,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-224,-224,-224,-224,-224,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-225,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-225,-225,0,0,0,0,0,0,0,0,0,0,-225,-225,0,0,0,0,0,0,0,0,0,0,0,0,-225,0,-225,0,0,0,0,0,-225,0,0,0,0,-225,0,-225,-225,-225,-225,0,0,0,0,0,0,0,-225,-225,-225,0,-225,0,0,0,0,0,0,0,0,0,0,0,0,-225,0,0,0,0,0,0,0,0,0,0,0,0,-225,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-225,-225,-225,-225,-225,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-226,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-226,-226,0,0,0,0,0,0,0,0,0,0,-226,-226,0,0,0,0,0,0,0,0,0,0,0,0,-226,0,-226,0,0,0,0,0,-226,0,0,0,0,-226,0,-226,-226,-226,-226,0,0,0,0,0,0,0,-226,-226,-226,0,-226,0,0,0,0,0,0,0,0,0,0,0,0,-226,0,0,0,0,0,0,0,0,0,0,0,0,-226,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-226,-226,-226,-226,-226,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-227,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-227,-227,0,0,0,0,0,0,0,0,0,0,-227,-227,0,0,0,0,0,0,0,0,0,0,0,0,-227,0,-227,0,0,0,0,0,-227,0,0,0,0,-227,0,-227,-227,-227,-227,0,0,0,0,0,0,0,-227,-227,-227,0,-227,0,0,0,0,0,0,0,0,0,0,0,0,-227,0,0,0,0,0,0,0,0,0,0,0,0,-227,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-227,-227,-227,-227,-227,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-228,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-228,-228,0,0,0,0,0,0,0,0,0,0,-228,-228,0,0,0,0,0,0,0,0,0,0,0,0,-228,0,-228,0,0,0,0,0,-228,0,0,0,0,-228,0,-228,-228,-228,-228,0,0,0,0,0,0,0,-228,-228,-228,0,-228,0,0,0,0,0,0,0,0,0,0,0,0,-228,0,0,0,0,0,0,0,0,0,0,0,0,-228,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-228,-228,-228,-228,-228,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-229,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-229,-229,0,0,0,0,0,0,0,0,0,0,-229,-229,0,0,0,0,0,0,0,0,0,0,0,0,-229,0,-229,0,0,0,0,0,-229,0,0,0,0,-229,0,-229,-229,-229,-229,0,0,0,0,0,0,0,-229,-229,-229,0,-229,0,0,0,0,0,0,0,0,0,0,0,0,-229,0,0,0,0,0,0,0,0,0,0,0,0,-229,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-229,-229,-229,-229,-229,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-231,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-231,-231,0,0,0,0,0,0,0,0,0,0,-231,-231,0,0,0,0,0,0,0,0,0,0,0,0,-231,0,-231,0,0,0,0,0,-231,0,0,0,0,-231,0,-231,-231,-231,-231,0,0,0,0,0,0,0,-231,-231,-231,0,-231,0,0,0,0,0,0,0,0,0,0,0,0,-231,0,0,0,0,0,0,0,0,0,0,0,0,-231,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-231,-231,-231,-231,-231,-231,-231,-231,-231,-231,-231,197,198,0,0,0,0,0},
+    .{0,-233,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-233,-233,0,0,0,0,0,0,0,0,0,0,-233,-233,0,0,0,0,0,0,0,0,0,0,0,0,-233,0,-233,0,0,0,0,0,-233,0,0,0,0,-233,0,-233,-233,-233,-233,0,0,0,0,0,-233,0,-233,-233,-233,0,-233,0,0,0,0,0,0,0,0,0,0,0,0,-233,0,0,0,0,0,0,0,0,0,0,0,0,-233,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-233,-233,-233,-233,-233,-233,-233,-233,-233,-233,-233,-233,-233,199,200,0,0,0},
+    .{0,-234,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-234,-234,0,0,0,0,0,0,0,0,0,0,-234,-234,0,0,0,0,0,0,0,0,0,0,0,0,-234,0,-234,0,0,0,0,0,-234,0,0,0,0,-234,0,-234,-234,-234,-234,0,0,0,0,0,-234,0,-234,-234,-234,0,-234,0,0,0,0,0,0,0,0,0,0,0,0,-234,0,0,0,0,0,0,0,0,0,0,0,0,-234,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-234,-234,-234,-234,-234,-234,-234,-234,-234,-234,-234,-234,-234,199,200,0,0,0},
+    .{0,-236,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-236,-236,0,0,0,0,0,0,0,0,0,0,-236,-236,0,0,0,0,0,0,0,0,0,0,0,0,-236,0,-236,0,0,201,0,0,-236,0,0,0,0,-236,0,-236,-236,-236,-236,0,0,0,0,0,-236,0,-236,-236,-236,0,-236,0,0,0,0,0,0,0,0,0,0,0,0,-236,0,0,0,0,0,0,0,0,0,0,0,0,-236,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-236,-236,-236,-236,-236,-236,-236,-236,-236,-236,-236,-236,-236,-236,-236,202,203,0},
+    .{0,-237,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-237,-237,0,0,0,0,0,0,0,0,0,0,-237,-237,0,0,0,0,0,0,0,0,0,0,0,0,-237,0,-237,0,0,201,0,0,-237,0,0,0,0,-237,0,-237,-237,-237,-237,0,0,0,0,0,-237,0,-237,-237,-237,0,-237,0,0,0,0,0,0,0,0,0,0,0,0,-237,0,0,0,0,0,0,0,0,0,0,0,0,-237,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-237,-237,-237,-237,-237,-237,-237,-237,-237,-237,-237,-237,-237,-237,-237,202,203,0},
+    .{0,-239,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-239,-239,0,0,0,0,0,0,0,0,0,0,-239,-239,0,0,0,0,0,0,0,0,0,0,0,0,-239,0,-239,0,0,-239,0,0,-239,0,0,0,0,-239,0,-239,-239,-239,-239,0,0,0,0,0,-239,0,-239,-239,-239,0,-239,0,0,0,0,0,0,0,0,0,0,0,0,-239,0,0,0,0,0,0,0,0,0,0,0,0,-239,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,-239,0},
+    .{0,-240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-240,-240,0,0,0,0,0,0,0,0,0,0,-240,-240,0,0,0,0,0,0,0,0,0,0,0,0,-240,0,-240,0,0,-240,0,0,-240,0,0,0,0,-240,0,-240,-240,-240,-240,0,0,0,0,0,-240,0,-240,-240,-240,0,-240,0,0,0,0,0,0,0,0,0,0,0,0,-240,0,0,0,0,0,0,0,0,0,0,0,0,-240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,-240,0},
+    .{0,-241,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-241,-241,0,0,0,0,0,0,0,0,0,0,-241,-241,0,0,0,0,0,0,0,0,0,0,0,0,-241,0,-241,0,0,-241,0,0,-241,0,0,0,0,-241,0,-241,-241,-241,-241,0,0,0,0,0,-241,0,-241,-241,-241,0,-241,0,0,0,0,0,0,0,0,0,0,0,0,-241,0,0,0,0,0,0,0,0,0,0,0,0,-241,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,-241,0},
+    .{0,-243,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-243,-243,0,0,0,0,0,0,0,0,0,0,-243,-243,0,0,0,0,0,0,0,0,0,0,0,0,-243,0,-243,0,0,-243,0,0,-243,0,0,0,0,-243,0,-243,-243,-243,-243,0,0,0,0,0,-243,0,-243,-243,-243,0,-243,0,0,0,0,0,0,0,0,0,0,0,0,-243,0,0,0,0,0,0,0,0,0,0,0,0,-243,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,-243,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,373,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,374,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,375,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,376,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,379,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,378,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,377,0,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-94,0,0,0,0,0,0,0,0,0,0,-94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,380,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,381,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,382,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,383,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,384,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,385,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,386,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,388,0,0,0,0,0,0,0,0,0,0,0,0,387,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-114,0,0,0,0,0,0,0,0,0,0,0,0,-114,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,391,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,389,0,0,0,0,0,0,0,0,0,390,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-119,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-119,0,0,0,0,0,0,0,0,392,-119,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-117,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-117,0,0,0,0,0,0,0,0,-117,-117,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,393,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-131,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-131,-131,0,0,0,0,0,0,0,0,0,0,-131,-131,0,0,0,0,0,0,0,0,0,0,0,0,-131,0,-131,0,0,0,0,0,-131,0,0,0,0,-131,0,-131,-131,0,-131,0,0,0,0,0,0,0,0,0,0,0,-131,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-131,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,394,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-136,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-136,-136,0,0,0,0,0,0,0,0,0,0,-136,-136,0,0,0,0,0,0,0,0,0,0,0,0,-136,0,-136,0,0,0,0,0,-136,0,0,0,0,-136,0,-136,-136,0,-136,0,0,0,0,0,0,0,0,0,0,0,-136,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-136,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,395,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,-30,-30,0,0,0,-30,-30,0,0,0,0,-30,-30,0,0,0,0,-30,0,0,0,0,0,0,0,-30,0,-30,-30,-30,-30,0,-30,-30,-30,-30,-30,0,-30,0,-30,-30,-30,-30,0,0,0,0,-30,-30,-30,-30,-30,-30,0,-30,0,0,0,0,0,-30,-30,-30,-30,-30,-30,0,-30,0,0,0,-30,-30,-30,-30,-30,-30,-30,-30,0,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30},
+    .{0,0,0,0,396,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,397,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-62,0,0,0,0,0,0,0,0,0,0,0,-62,-62,0,0,0,0,-62,0,0,0,0,0,0,-62,-62,0,-62,0,0,0,0,0,0,0,0,0,0,-62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-63,0,0,0,0,0,0,0,0,0,0,0,-63,-63,0,0,0,0,-63,0,0,0,0,0,0,-63,-63,0,-63,0,0,0,0,0,0,0,0,0,0,-63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-64,0,0,0,0,0,0,0,0,0,0,0,-64,-64,0,0,0,0,-64,0,0,0,0,0,0,-64,-64,0,-64,0,0,0,0,0,0,0,0,0,0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,398,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,399,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,400,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,401,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,402,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,404,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,403,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,407,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,405,406,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-167,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-167,-167,-167,0,0,0,-167,-167,0,0,0,0,-167,-167,0,0,0,0,-167,0,0,0,0,0,0,0,-167,0,-167,-167,-167,-167,0,-167,-167,-167,-167,-167,0,-167,0,-167,-167,-167,-167,0,0,0,0,-167,-167,0,-167,-167,-167,0,-167,0,0,0,0,0,-167,-167,-167,-167,-167,-167,0,-167,0,0,0,-167,-167,-167,-167,-167,-167,-167,-167,0,-167,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167,-167},
+    .{0,-169,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-169,-169,-169,0,0,0,-169,-169,0,0,0,0,-169,-169,0,0,0,0,-169,0,0,0,0,0,0,0,-169,0,-169,-169,-169,-169,0,-169,-169,-169,-169,-169,0,-169,0,-169,-169,-169,-169,0,0,0,0,-169,-169,0,-169,-169,-169,0,-169,0,0,0,0,0,-169,-169,-169,-169,-169,-169,0,-169,0,0,0,-169,-169,-169,-169,-169,-169,-169,-169,0,-169,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169,-169},
+    .{0,-171,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-171,-171,-171,0,0,0,-171,-171,0,0,0,0,-171,-171,0,0,0,0,-171,0,0,0,0,0,0,0,-171,0,-171,-171,-171,-171,0,-171,-171,-171,-171,-171,0,-171,0,-171,-171,-171,-171,0,0,0,0,-171,-171,0,-171,-171,-171,0,-171,0,0,0,0,0,-171,-171,-171,-171,-171,-171,0,-171,0,0,0,-171,-171,-171,-171,-171,-171,-171,-171,0,-171,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171,-171},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,408,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,409,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,0,0,0,0,0,0,0,0,0,0,0,0,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-34,0,0,0,0,0,0,0,0,0,0,0,0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-36,0,0,0,0,0,0,0,0,0,0,0,0,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,411,0,0,0,0,0,0,0,0,0,0,0,0,410,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-45,0,0,0,0,0,0,0,0,0,0,0,0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-48,0,0,0,0,0,0,0,0,0,0,0,0,-48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-53,289,0,0,0,0,0,0,0,0,0,0,0,-53,0,0,0,0,412,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-50,0,0,0,0,0,0,0,0,0,0,0,0,-50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-51,0,0,0,0,0,0,0,0,0,0,0,0,-51,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,411,0,0,0,0,0,0,0,0,0,0,0,0,413,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,411,0,0,0,0,0,0,0,0,0,0,0,0,414,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-39,0,0,0,0,0,0,0,0,0,0,0,0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-205,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-205,-205,-205,0,0,0,-205,-205,0,0,0,0,-205,-205,0,0,0,0,-205,0,0,0,0,0,0,0,-205,0,-205,-205,-205,-205,0,-205,-205,-205,-205,-205,0,-205,0,-205,-205,-205,-205,0,0,0,0,-205,-205,-205,-205,-205,-205,0,-205,0,0,0,0,0,-205,-205,-205,-205,-205,-205,0,-205,0,0,0,-205,-205,-205,-205,-205,-205,-205,-205,0,-205,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205,-205},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,415,0,0,0,0,276,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,416,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,417,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-174,0,0,0,0,0,0,0,-174,0,0,0,0,-174,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-174,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-199,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-199,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,418,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-58,0,0,0,0,0,0,0,0,0,0,0,0,0,-58,0,-58,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,419,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-54,0,0,0,0,0,0,0,0,0,0,0,-54,-54,0,0,0,0,421,0,0,0,0,0,0,420,-54,0,-54,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-125,-125,0,0,0,0,0,0,0,0,0,0,-125,-125,0,0,0,0,0,0,0,0,0,0,0,0,-125,0,-125,0,0,0,0,0,-125,0,0,0,0,-125,0,-125,-125,0,-125,0,0,0,0,0,0,0,0,0,0,0,-125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-127,-127,0,0,0,0,0,0,0,0,0,0,-127,-127,0,0,0,0,0,0,0,0,0,0,0,0,-127,0,-127,0,0,0,0,0,-127,0,0,0,0,-127,0,-127,-127,0,-127,0,0,0,0,0,0,0,0,0,0,0,-127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-129,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-129,-129,0,0,0,0,0,0,0,0,0,0,-129,-129,0,0,0,0,0,0,0,0,0,0,0,0,-129,0,-129,0,0,0,0,0,-129,0,0,0,0,-129,0,-129,-129,0,-129,0,0,0,0,0,0,0,0,0,0,0,-129,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-129,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,422,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-98,-98,0,0,0,0,0,0,0,0,0,0,-98,-98,0,0,0,0,0,0,0,0,0,0,0,0,-98,0,-98,0,0,0,0,0,-98,0,0,0,0,-98,0,-98,-98,0,-98,0,0,0,0,0,0,0,0,0,0,0,-98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-99,-99,0,0,0,0,0,0,0,0,0,0,-99,-99,0,0,0,0,0,0,0,0,0,0,0,0,-99,0,-99,0,0,0,0,0,-99,0,0,0,0,-99,0,-99,-99,0,-99,0,0,0,0,0,0,0,0,0,0,0,-99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-95,0,0,0,0,0,0,0,0,0,0,-95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-101,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-101,-101,0,0,0,0,0,0,0,0,0,0,-101,-101,0,0,0,0,0,0,0,0,0,0,0,0,-101,0,-101,0,0,0,0,0,-101,0,0,0,0,-101,0,-101,-101,0,-101,0,0,0,0,0,0,0,0,0,0,0,-101,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-101,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-104,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-104,-104,0,0,0,0,0,0,0,0,0,0,-104,-104,0,0,0,0,0,0,0,0,0,0,0,0,-104,0,-104,0,0,0,0,0,-104,0,0,0,0,-104,0,-104,-104,0,423,0,0,0,0,0,0,0,0,0,0,0,-104,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-104,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,424,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,425,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-111,-111,0,0,0,0,0,0,0,0,0,0,-111,-111,0,0,0,0,0,0,0,0,0,0,0,0,-111,0,-111,0,0,0,0,0,-111,0,0,0,0,-111,0,-111,-111,0,426,0,0,0,0,0,0,0,0,0,0,0,-111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,427,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-113,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-113,-113,0,0,0,0,0,0,0,0,0,0,-113,-113,0,0,0,0,0,0,0,0,0,0,0,0,-113,0,-113,0,0,0,0,0,-113,0,0,0,0,-113,0,-113,-113,0,-113,0,0,0,0,0,0,0,0,0,0,0,-113,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-113,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,325,324,428,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,326,81,0,0,82,-116,0,69,0,0,0,72,73,0,0,0,0,0,-116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,327,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,429,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,430,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-124,0,0,0,0,0,0,0,0,0,0,0,0,-124,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,431,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,326,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,327,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-118,0,0,0,0,0,0,0,0,-118,-118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-135,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-135,-135,0,0,0,0,0,0,0,0,0,0,-135,-135,0,0,0,0,0,0,0,0,0,0,0,0,-135,0,-135,0,0,0,0,0,-135,0,0,0,0,-135,0,-135,-135,0,-135,0,0,0,0,0,0,0,0,0,0,0,-135,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-135,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-141,-141,0,0,0,0,0,0,0,0,0,0,-141,-141,0,0,0,0,0,0,0,0,0,0,0,0,-141,0,-141,0,0,0,0,0,-141,0,0,0,0,-141,0,-141,-141,0,-141,0,0,0,0,0,0,0,0,0,0,0,-141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-151,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-151,-151,0,0,0,0,0,0,0,0,0,0,-151,-151,0,0,0,0,0,0,0,0,0,0,0,0,-151,0,-151,0,0,0,0,0,-151,0,0,0,0,-151,0,-151,-151,0,-151,0,0,0,0,0,0,0,0,0,0,0,-151,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-151,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-157,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-157,-157,0,0,0,0,0,0,0,0,0,0,-157,-157,0,0,0,0,0,0,0,0,0,0,0,0,-157,0,-157,0,0,0,0,0,-157,0,0,0,0,-157,0,-157,-157,0,-157,0,0,0,0,0,0,0,0,0,0,0,-157,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-157,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,0,0,0,0,0,0,0,0,0,0,0,-65,-65,0,0,0,0,-65,0,0,0,0,0,0,-65,-65,0,-65,0,0,0,0,0,0,0,0,0,0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,-66,-66,0,0,0,0,-66,0,0,0,0,0,0,-66,-66,0,-66,0,0,0,0,0,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,-67,-67,0,0,0,0,-67,0,0,0,0,0,0,-67,-67,0,-67,0,0,0,0,0,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,432,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,433,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,434,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,435,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,437,0,0,0,0,0,0,0,0,0,0,0,0,436,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,438,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,439,154,157,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,156,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,155,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,0,0,0,0,0,0,0,0,0,0,0,0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-42,0,0,0,0,0,0,0,0,0,0,0,0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,358,359,0,0,0,0,0,0,0,0,440,356,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-47,0,357,0,0,0,0,0,0,0,0,0,0,-47,59,60,0,0,0,0,0,0,0,0,185,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,441,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-44,0,0,0,0,0,0,0,0,0,0,0,0,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-43,0,0,0,0,0,0,0,0,0,0,0,0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-204,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-204,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-206,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-206,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-193,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-193,-193,-193,0,0,0,-193,-193,0,0,0,0,-193,-193,0,0,0,0,-193,0,0,0,0,0,0,0,-193,0,-193,-193,-193,-193,0,-193,-193,-193,-193,-193,0,-193,0,-193,-193,-193,-193,0,0,0,0,-193,-193,-193,-193,-193,-193,0,-193,0,0,0,0,0,-193,-193,-193,-193,-193,-193,0,-193,0,0,0,-193,-193,-193,-193,-193,-193,-193,-193,0,-193,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193,-193},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-207,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-207,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-52,0,0,0,0,0,0,0,0,0,0,0,-52,-52,0,0,0,0,0,0,0,0,0,0,0,0,-52,0,-52,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,442,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,83,0,70,87,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,443,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,444,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,445,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,446,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-109,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-109,-109,0,0,0,0,0,0,0,0,0,0,-109,-109,0,0,0,0,0,0,0,0,0,0,0,0,-109,0,-109,0,0,0,0,0,-109,0,0,0,0,-109,0,-109,-109,0,447,0,0,0,0,0,0,0,0,0,0,0,-109,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-109,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,448,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,449,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,450,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-115,0,0,0,0,0,0,0,0,0,0,0,0,-115,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,452,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,451,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-123,0,0,0,0,0,0,0,0,0,0,0,0,-123,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-120,0,0,0,0,0,0,0,0,0,-120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,453,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,-69,-69,0,0,0,0,-69,0,0,0,0,0,0,-69,-69,0,-69,0,0,0,0,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,-70,-70,0,0,0,0,-70,0,0,0,0,0,0,-70,-70,0,-70,0,0,0,0,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,454,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,455,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,456,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,0,0,0,0,0,0,0,0,0,0,0,-75,-75,0,0,0,0,-75,0,0,0,0,0,0,-75,-75,0,-75,0,0,0,0,0,0,0,0,0,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-177,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-177,-177,-177,0,0,0,-177,-177,0,0,0,0,-177,-177,0,0,0,0,-177,0,0,0,0,0,0,0,-177,0,-177,-177,-177,-177,0,-177,-177,-177,-177,-177,0,-177,0,-177,-177,-177,-177,0,0,0,0,-177,-177,0,-177,-177,-177,0,-177,0,0,0,0,0,-177,-177,-177,-177,-177,-177,0,-177,0,0,0,-177,-177,-177,-177,-177,-177,-177,-177,0,-177,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177,-177},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-46,0,0,0,0,0,0,0,0,0,0,0,0,-46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-49,0,0,0,0,0,0,0,0,0,0,0,0,-49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-55,0,0,0,0,0,0,0,0,0,0,0,-55,-55,0,0,0,0,0,0,0,0,0,0,0,0,-55,0,-55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-56,0,0,0,0,0,0,0,0,0,0,0,-56,-56,0,0,0,0,0,0,0,0,0,0,0,0,-56,0,-56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-96,-96,0,0,0,0,0,0,0,0,0,0,-96,-96,0,0,0,0,0,0,0,0,0,0,0,0,-96,0,-96,0,0,0,0,0,-96,0,0,0,0,-96,0,-96,-96,0,-96,0,0,0,0,0,0,0,0,0,0,0,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-97,-97,0,0,0,0,0,0,0,0,0,0,-97,-97,0,0,0,0,0,0,0,0,0,0,0,0,-97,0,-97,0,0,0,0,0,-97,0,0,0,0,-97,0,-97,-97,0,-97,0,0,0,0,0,0,0,0,0,0,0,-97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-102,-102,0,0,0,0,0,0,0,0,0,0,-102,-102,0,0,0,0,0,0,0,0,0,0,0,0,-102,0,-102,0,0,0,0,0,-102,0,0,0,0,-102,0,-102,-102,0,-102,0,0,0,0,0,0,0,0,0,0,0,-102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,457,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,458,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-107,-107,0,0,0,0,0,0,0,0,0,0,-107,-107,0,0,0,0,0,0,0,0,0,0,0,0,-107,0,-107,0,0,0,0,0,-107,0,0,0,0,-107,0,-107,-107,0,-107,0,0,0,0,0,0,0,0,0,0,0,-107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-112,-112,0,0,0,0,0,0,0,0,0,0,-112,-112,0,0,0,0,0,0,0,0,0,0,0,0,-112,0,-112,0,0,0,0,0,-112,0,0,0,0,-112,0,-112,-112,0,459,0,0,0,0,0,0,0,0,0,0,0,-112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,460,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,21,22,23,24,0,0,0,0,25,26,27,28,29,30,31,32,33,34,35,36,97,57,0,0,0,67,81,0,0,82,0,0,69,0,0,0,72,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,98,79,0,0,83,0,70,87,84,0,0,37,0,0,46,0,47,48,0,49,0,0,0,0,0,0,50,0,51,52,53,54,56,0,0,0,0,0,99,100,101,102,0,0,71,74,75,76,77,78,80,85,0,0,0,0,0,0,0,0,58,68,86,88,89,90,91,92,93,94,95,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-122,0,0,0,0,0,0,0,0,0,0,0,0,-122,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,-68,-68,0,0,0,0,-68,0,0,0,0,0,0,-68,-68,0,-68,0,0,0,0,0,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,461,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,242,243,0,244,0,0,245,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,0,0,0,0,0,0,0,0,0,0,0,-74,-74,0,0,0,0,-74,0,0,0,0,0,0,-74,-74,0,-74,0,0,0,0,0,0,0,0,0,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-105,-105,0,0,0,0,0,0,0,0,0,0,-105,-105,0,0,0,0,0,0,0,0,0,0,0,0,-105,0,-105,0,0,0,0,0,-105,0,0,0,0,-105,0,-105,-105,0,-105,0,0,0,0,0,0,0,0,0,0,0,-105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-110,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-110,-110,0,0,0,0,0,0,0,0,0,0,-110,-110,0,0,0,0,0,0,0,0,0,0,0,0,-110,0,-110,0,0,0,0,0,-110,0,0,0,0,-110,0,-110,-110,0,462,0,0,0,0,0,0,0,0,0,0,0,-110,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-110,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,463,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-121,0,0,0,0,0,0,0,0,0,0,0,0,-121,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,0,0,0,0,0,0,0,0,0,0,0,-71,-71,0,0,0,0,-71,0,0,0,0,0,0,-71,-71,0,-71,0,0,0,0,0,0,0,0,0,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,464,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-108,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-108,-108,0,0,0,0,0,0,0,0,0,0,-108,-108,0,0,0,0,0,0,0,0,0,0,0,0,-108,0,-108,0,0,0,0,0,-108,0,0,0,0,-108,0,-108,-108,0,-108,0,0,0,0,0,0,0,0,0,0,0,-108,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-108,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-106,-106,0,0,0,0,0,0,0,0,0,0,-106,-106,0,0,0,0,0,0,0,0,0,0,0,0,-106,0,-106,0,0,0,0,0,-106,0,0,0,0,-106,0,-106,-106,0,-106,0,0,0,0,0,0,0,0,0,0,0,-106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 };
-
-const parseTable = blk: {
-    @setEvalBranchQuota(100000);
-    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
-    for (sparse, 0..) |row, state| {
-        var i: usize = 0;
-        while (i < row.len) : (i += 2) {
-            t[state][@intCast(row[i])] = row[i + 1];
-        }
-    }
-    break :blk t;
-};
-
-fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
-}
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)
 const xExcludes = [_]struct { sym: u16, shift: u16 }{
 };
-
-fn getImmediateShift(_: u16, _: u16) ?i16 {
-    return null;
-}
+/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
+const xExcludeStart = [_]u32{};
 
 fn startState(start: Start) u16 {
     return switch (start) {
@@ -2768,11 +3011,6 @@ const expectedOf = [_]u16{
     43, 61, 61, 49, 43, 43, 61, 15, 59, 59, 82, 82, 10, 10, 10, 38, 38, 10, 10, 2, 59, 61, 43, 61,
     65, 10, 10, 38, 59, 61, 38, 10, 10,
 };
-
-fn expectedIn(state: u16) []const u16 {
-    const i = expectedOf[state];
-    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
-}
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
@@ -2881,9 +3119,8 @@ fn isTrivia(_: TokenCat) bool {
     return false;
 }
 
-fn repairCandidates(_: u16) []const u16 {
-    return &.{};
-}
+const repairTokens = [_]u16{};
+const repairOffsets = [_]u32{};
 
 fn repairClass(_: u16) RepairClass {
     return .none;

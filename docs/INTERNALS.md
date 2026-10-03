@@ -148,8 +148,9 @@ the reductions that want it: `<` and `X "c"` let a reduction win (an
 `X "c"` win also records a run-time override that shifts that terminal when
 it touches the previous token), `>` suppresses the report, a shift otherwise
 wins, and among reductions the lowest-numbered rule wins. The tables stay
-dense (`[state][symbol]`); a row-displacement form was measured and made
-the MUMPS parser 256 KB smaller but 5-10% slower.
+dense (`[state][symbol]`), emitted as array literals that need no comptime
+work; a row-displacement form was measured and made the MUMPS parser 256 KB
+smaller but 5-10% slower.
 
 `conflicts.zig` aggregates the unresolved cells into manifest entries
 (`shift rule` / `reduce winner over loser`, with cell counts), compares them

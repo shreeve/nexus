@@ -887,23 +887,21 @@ pub const Sexp = union(enum) {
     /// Print the tree on one line: `_`, tags by name, leaves as their text
     /// followed by `#id` when the id attribute is non-zero, strings quoted.
     pub fn write(self: Sexp, source: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
-        switch (self) {
+        try writeNested(self, w, source, writeAtom);
+    }
+
+    fn writeAtom(source: []const u8, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
+        switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| try w.writeAll(nameOf(t)),
-            .src => |s| {
-                try w.writeAll(source[s.pos..][0..s.len]);
-                if (s.id != 0) try w.print("#{d}", .{s.id});
+            .src => |x| {
+                try w.writeAll(source[x.pos..][0..x.len]);
+                if (x.id != 0) try w.print("#{d}", .{x.id});
             },
-            .str => |s| try w.print("\"{s}\"", .{s}),
-            .list => |l| {
-                try w.writeAll("(");
-                for (l.items(), 0..) |item, i| {
-                    if (i > 0) try w.writeAll(" ");
-                    try item.write(source, w);
-                }
-                try w.writeAll(")");
-            },
+            .str => |x| try w.print("\"{s}\"", .{x}),
+            .list => |l| return l.items(),
         }
+        return null;
     }
 };
 
@@ -911,6 +909,95 @@ pub const Sexp = union(enum) {
 /// (without a schema, Role is empty and a collected Tag is non-exhaustive).
 fn nameOf(value: anytype) []const u8 {
     return std.enums.tagName(@TypeOf(value), value) orelse "?";
+}
+
+/// The explicit stack of a tree walk: per open list, its items not yet
+/// visited. Ordinary input builds trees of any depth (a long operator
+/// chain is a tree as deep as it is long), so no walk of a tree recurses
+/// on the native stack. Shallow walks use the frames inline; deeper ones
+/// move them to page memory.
+const Walk = struct {
+    small: [32][]const Sexp = undefined,
+    big: [][]const Sexp = &.{},
+    len: usize = 0,
+
+    fn frames(self: *Walk) [][]const Sexp {
+        return if (self.big.len > 0) self.big else &self.small;
+    }
+
+    fn push(self: *Walk, items: []const Sexp) error{OutOfMemory}!void {
+        var f = self.frames();
+        if (self.len == f.len) {
+            const grown = try std.heap.page_allocator.alloc([]const Sexp, f.len * 2);
+            @memcpy(grown[0..self.len], f);
+            if (self.big.len > 0) std.heap.page_allocator.free(self.big);
+            self.big = grown;
+            f = grown;
+        }
+        f[self.len] = items;
+        self.len += 1;
+    }
+
+    /// The unvisited items of the innermost open list.
+    fn top(self: *Walk) ?*[]const Sexp {
+        return if (self.len == 0) null else &self.frames()[self.len - 1];
+    }
+
+    fn pop(self: *Walk) void {
+        self.len -= 1;
+    }
+
+    /// The next item in pre-order, closing the lists it leaves; null at
+    /// the end of the walk.
+    fn next(self: *Walk) ?Sexp {
+        while (self.top()) |rest| {
+            if (rest.len > 0) {
+                defer rest.* = rest.*[1..];
+                return rest.*[0];
+            }
+            self.pop();
+        }
+        return null;
+    }
+
+    fn deinit(self: *Walk) void {
+        if (self.big.len > 0) std.heap.page_allocator.free(self.big);
+    }
+};
+
+/// Write `root` as nested parentheses with a space between items.
+/// `atom(ctx, w, s)` writes a value and returns null, or returns the items
+/// of a list to open.
+fn writeNested(
+    root: Sexp,
+    w: *std.Io.Writer,
+    ctx: anytype,
+    comptime atom: fn (@TypeOf(ctx), *std.Io.Writer, Sexp) std.Io.Writer.Error!?[]const Sexp,
+) std.Io.Writer.Error!void {
+    var walk: Walk = .{};
+    defer walk.deinit();
+    var s = root;
+    while (true) {
+        // Whether the next item of the innermost list follows another.
+        var sep = true;
+        if (try atom(ctx, w, s)) |items| {
+            try w.writeByte('(');
+            walk.push(items) catch return error.WriteFailed;
+            sep = false;
+        }
+        while (true) {
+            const rest = walk.top() orelse return;
+            if (rest.len > 0) {
+                if (sep) try w.writeByte(' ');
+                s = rest.*[0];
+                rest.* = rest.*[1..];
+                break;
+            }
+            walk.pop();
+            try w.writeByte(')');
+            sep = true;
+        }
+    }
 }
 
 
@@ -945,6 +1032,38 @@ const NodeStore = struct {
         return &self.chunks.items[id / chunkLen][id % chunkLen];
     }
 };
+
+/// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+inline fn getAction(state: u16, sym: u16) i16 {
+    return parseTable[state][sym];
+}
+
+/// What `state` expects, reader-named: list `expectedOf[state]` of
+/// `expectedSymbols`.
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
+
+/// The `X "c"` override of `state` for `sym`: the state to shift to.
+fn getImmediateShift(state: u16, sym: u16) ?i16 {
+    if (xExcludes.len == 0) return null;
+    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
+        if (x.sym == sym) return @intCast(x.shift);
+    }
+    return null;
+}
+
+/// The tokens tolerant repair may insert in `state`, best first.
+fn repairCandidates(state: u16) []const u16 {
+    if (!hasRepair) return &.{};
+    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
+}
+
+/// The symbol `tokenToSymbol` gives the promotable token when `@as`
+/// decides it per state; no grammar symbol has it.
+const needsPromotion: u16 = std.math.maxInt(u16);
 
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
@@ -1018,17 +1137,27 @@ pub const BaseParser = struct {
     pendingInsert: ?u16 = null,
     /// `@as` keyword ordinal of `current`, stored in its `src.id`.
     lastMatchedId: u16 = 0,
+    /// The `@as` lookups of `current`, one per group: the keyword ordinal
+    /// plus one, `noKeyword`, or 0 before the lookup. A lookup does not
+    /// depend on the state, so it runs once per token.
+    keywordIds: [asGroups]u32 = @splat(0),
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
+    /// The free bytes of the allocator's current chunk, and the size of
+    /// its next one (see `allocator`).
+    bumpPos: usize = 0,
+    bumpEnd: usize = 0,
+    bumpNext: usize = bumpFirst,
+
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Spare capacity of the lists `keepList` returned, by address.
-    listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
-    /// Node id of the list `extendList` is growing (0 = none).
-    extending: NodeId = 0,
+    /// Per value-stack entry, the list `keepList` left there with its
+    /// capacity, for `extendList` to grow in place. Indexed like
+    /// `valueStack`, sized to its capacity.
+    spares: []Spare = &.{},
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -1050,7 +1179,7 @@ pub const BaseParser = struct {
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
 
-    const ListSpare = struct { len: usize, capacity: usize };
+    const Spare = struct { items: [*]const Sexp, len: u32, capacity: u32 };
 
     /// The reduction in progress: its rule and where it starts (it ends at
     /// `lastEnd`); with `elemEnds`, also the stack index of its first
@@ -1069,7 +1198,7 @@ pub const BaseParser = struct {
             .source = source,
             .current = undefined,
         };
-        p.current = p.lexer.next();
+        p.setCurrent(p.lexer.next());
         return p;
     }
 
@@ -1077,8 +1206,75 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
+    /// The parse's allocator: a bump allocator over chunks of the arena
+    /// (single-threaded, so allocation is a bounds check and an add; the
+    /// arena's own allocation is atomic). Everything is freed by `deinit`.
     fn allocator(self: *BaseParser) std.mem.Allocator {
-        return self.arena.allocator();
+        return .{ .ptr = self, .vtable = &bumpVTable };
+    }
+
+    /// `n` items for a list: the allocator's fast path, inline.
+    inline fn allocItems(self: *BaseParser, n: usize) error{OutOfMemory}![]Sexp {
+        const start = std.mem.alignForward(usize, self.bumpPos, @alignOf(Sexp));
+        const end = start + n * @sizeOf(Sexp);
+        if (end > self.bumpEnd) return self.allocator().alloc(Sexp, n);
+        self.bumpPos = end;
+        return @as([*]Sexp, @ptrFromInt(start))[0..n];
+    }
+
+    const bumpVTable: std.mem.Allocator.VTable = .{
+        .alloc = bumpAlloc,
+        .resize = bumpResize,
+        .remap = bumpRemap,
+        .free = bumpFree,
+    };
+
+    /// Chunks grow from `bumpFirst` to `bumpLast` bytes; a request larger
+    /// than `bumpLast / 4` goes to the arena by itself.
+    const bumpFirst = 4096;
+    const bumpLast = 1 << 20;
+
+    fn bumpAlloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = alignment.forward(self.bumpPos);
+        if (start + len <= self.bumpEnd) {
+            self.bumpPos = start + len;
+            return @ptrFromInt(start);
+        }
+        return self.bumpRefill(len, alignment, ra);
+    }
+
+    fn bumpRefill(self: *BaseParser, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const arena = self.arena.allocator();
+        if (len > bumpLast / 4) return arena.rawAlloc(len, alignment, ra);
+        const size = @max(self.bumpNext, len + alignment.toByteUnits());
+        const chunk = arena.rawAlloc(size, .@"16", ra) orelse return null;
+        self.bumpNext = @min(size * 2, bumpLast);
+        const start = alignment.forward(@intFromPtr(chunk));
+        self.bumpPos = start + len;
+        self.bumpEnd = @intFromPtr(chunk) + size;
+        return @ptrFromInt(start);
+    }
+
+    /// The last allocation grows or shrinks in place; any other only
+    /// shrinks.
+    fn bumpResize(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, new_len: usize, _: usize) bool {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len != self.bumpPos) return new_len <= memory.len;
+        if (start + new_len > self.bumpEnd) return false;
+        self.bumpPos = start + new_len;
+        return true;
+    }
+
+    fn bumpRemap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        return if (bumpResize(ctx, memory, alignment, new_len, ra)) memory.ptr else null;
+    }
+
+    fn bumpFree(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len == self.bumpPos) self.bumpPos = start;
     }
 
     pub fn parseProgram(self: *BaseParser) !Sexp {
@@ -1128,9 +1324,11 @@ pub const BaseParser = struct {
     ///   4. An insertion must let the offending token be consumed (shifted,
     ///      or accepted at end of input). At end of input or a structure
     ///      token, when none does, a candidate the state can shift is
-    ///      inserted anyway, never twice in the same configuration (stack
-    ///      depth, state, token) since the last token was consumed, so
-    ///      several insertions can complete an unfinished construct.
+    ///      inserted anyway, so several insertions can complete an
+    ///      unfinished construct. Since the last token was consumed, the
+    ///      same token is inserted in the same state again only on a
+    ///      shallower stack: a repeat at the same depth is a cycle, and one
+    ///      on a deeper stack only nests the construct further.
     ///   5. With no admissible insertion the offending token is deleted,
     ///      except end of input, which is never deleted: the parse ends
     ///      there, incomplete.
@@ -1196,7 +1394,7 @@ pub const BaseParser = struct {
         const depth: u32 = @intCast(self.stateStack.items.len);
         for (repairCandidates(state)) |candidate| {
             const seen = for (tried) |k| {
-                if (k.depth == depth and k.state == state and k.token == candidate) break true;
+                if (k.depth <= depth and k.state == state and k.token == candidate) break true;
             } else false;
             if (!seen and try self.accepts(&.{candidate})) return candidate;
         }
@@ -1211,7 +1409,7 @@ pub const BaseParser = struct {
         // keep counting, so earlier trees stay valid.
         if (self.started) {
             self.lexer = Lexer.init(self.source);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
             self.lastMatchedId = 0;
             self.triviaTokens.clearRetainingCapacity();
         }
@@ -1224,17 +1422,62 @@ pub const BaseParser = struct {
         try self.stateStack.append(self.allocator(), startState(start));
         if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
-        if (nodeStore) {
-            if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
-        }
+        try self.ensureNodeStore();
         if (hasTrivia) try self.skipTrivia();
     }
 
     inline fn lookahead(self: *BaseParser) u16 {
         if (self.injectedToken) |marker| return marker;
         if (self.pendingInsert) |token| return token;
-        return tokenToSymbol(self, self.current);
+        const sym = tokenToSymbol(self.current);
+        if (asGroups > 0 and sym == needsPromotion) return promote(self, self.current);
+        return sym;
     }
+
+    /// Make `tok` the current token (forgetting the keyword lookups of the
+    /// one before).
+    inline fn setCurrent(self: *BaseParser, tok: Token) void {
+        self.current = tok;
+        if (asGroups > 0) self.keywordIds = @splat(0);
+    }
+
+    /// `@as` promotion of the current token, `text`, to one group: the
+    /// group's symbol for the keyword, else the group's fallback symbol,
+    /// when the state takes it (with any action when `permissive`, else by
+    /// a shift). The keyword's ordinal becomes the leaf's id.
+    inline fn tryPromote(
+        self: *BaseParser,
+        comptime group: usize,
+        text: []const u8,
+        comptime lookup: anytype,
+        comptime toSymbol: []const u16,
+        comptime fallback: u16,
+        comptime permissive: bool,
+    ) ?u16 {
+        const id = self.keywordId(group, text, lookup) orelse return null;
+        const state = self.stateStack.last().?;
+        for ([_]u16{ toSymbol[id], fallback }) |sym| {
+            if (sym == 0) continue;
+            const action = getAction(state, sym);
+            if (if (permissive) action != 0 else action > 0) {
+                self.lastMatchedId = id;
+                return sym;
+            }
+        }
+        return null;
+    }
+
+    /// The ordinal `lookup` gives the current token's `text` in `group`,
+    /// looked up once per token.
+    inline fn keywordId(self: *BaseParser, comptime group: usize, text: []const u8, comptime lookup: anytype) ?u16 {
+        const known = self.keywordIds[group];
+        if (known != 0) return if (known == noKeyword) null else @intCast(known - 1);
+        const id: ?u16 = if (lookup(text)) |k| @backingInt(k) else null;
+        self.keywordIds[group] = if (id) |i| @as(u32, i) + 1 else noKeyword;
+        return id;
+    }
+
+    const noKeyword = std.math.maxInt(u32);
 
     /// The table action, with the `X "c"` override: when the table reduces
     /// on the hinted token and it touches the previous token, shift
@@ -1288,6 +1531,15 @@ pub const BaseParser = struct {
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
         if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
         if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
+        const old = self.spares.len;
+        self.spares = try a.realloc(self.spares, capacity);
+        @memset(self.spares[old..], .{ .items = &.{}, .len = 0, .capacity = 0 });
+    }
+
+    /// The value-stack index of `pass[0]`, the first element of the
+    /// reduction in progress.
+    fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
+        return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -1316,8 +1568,13 @@ pub const BaseParser = struct {
         }
 
         // The action reads its elements in place on the value stack; the
-        // result then replaces them (a reduction of nothing pushes it).
-        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
+        // result then replaces them (a reduction of nothing pushes it). A
+        // rule whose value is nil or one of its elements has no action.
+        const result: Sexp = switch (ruleValue[ruleId]) {
+            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            1 => .nil,
+            else => |n| self.valueStack.items[base + n - 2],
+        };
         if (self.outOfMemory) return error.OutOfMemory;
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
@@ -1339,19 +1596,39 @@ pub const BaseParser = struct {
     /// Move the nodes of an empty value (a subtree that consumed nothing)
     /// to `at`.
     fn placeEmpty(self: *BaseParser, value: Sexp, at: u32) void {
-        if (value != .list) return;
-        const l = value.list;
-        if (l.id != 0 and l.id < self.nodes.len) {
-            const info = self.nodes.at(l.id);
-            if (!info.span.isEmpty()) return;
+        // Most empty values are leaves or flat lists: no walk.
+        if (!self.placeNode(value, at)) return;
+        for (value.list.items()) |item| {
+            if (item == .list) break;
+        } else return;
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = value;
+        while (true) {
+            if (self.placeNode(s, at)) walk.push(s.list.items()) catch {
+                self.outOfMemory = true;
+                return;
+            };
+            s = walk.next() orelse return;
+        }
+    }
+
+    /// Place an empty list's node at `at`; whether its items need placing
+    /// too (false for a non-list, or a node already placed).
+    inline fn placeNode(self: *BaseParser, s: Sexp, at: u32) bool {
+        if (s != .list) return false;
+        const id = s.list.id;
+        if (id != 0 and id < self.nodes.len) {
+            const info = self.nodes.at(id);
+            if (!info.span.isEmpty()) return false;
             info.span = .{ .start = at, .end = at };
         }
-        for (l.items()) |child| self.placeEmpty(child, at);
+        return true;
     }
 
     /// Fetch the next token, moving trivia to the trivia channel.
     fn advance(self: *BaseParser) !void {
-        self.current = self.lexer.next();
+        self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
     }
 
@@ -1359,7 +1636,7 @@ pub const BaseParser = struct {
         while (isTrivia(self.current.cat)) {
             try self.triviaTokens.append(self.allocator(), self.current);
             _ = takeLexerId(&self.lexer);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
         }
     }
 
@@ -1423,19 +1700,46 @@ pub const BaseParser = struct {
     /// tokens (keywords, punctuation) that are not in the tree. Any other
     /// list spans the hull of its children.
     pub fn span(self: *const BaseParser, s: Sexp) Span {
-        switch (s) {
-            .src => |x| return .{ .start = x.pos, .end = x.pos + x.len },
-            .list => |l| {
-                if (nodeStore and l.id != 0 and l.id < self.nodes.len) return self.nodes.at(l.id).span;
-                var result: ?Span = null;
-                for (l.items()) |child| {
-                    const cs = self.span(child);
-                    if (cs.isEmpty()) continue;
-                    result = if (result) |r| .{ .start = r.start, .end = cs.end } else cs;
+        if (self.ownSpan(s)) |own| return own;
+        // The hull of the children is the extent from the first to the
+        // last non-empty own span below the list.
+        const first = self.edgeSpan(s, .first) orelse return .empty;
+        const last = self.edgeSpan(s, .last).?;
+        return .{ .start = first.start, .end = last.end };
+    }
+
+    /// The span of a value that is not a hull: a leaf's, a node's, empty
+    /// for any other non-list; null for a list without a node id.
+    fn ownSpan(self: *const BaseParser, s: Sexp) ?Span {
+        return switch (s) {
+            .src => |x| .{ .start = x.pos, .end = x.pos + x.len },
+            .list => |l| if (nodeStore and l.id != 0 and l.id < self.nodes.len) self.nodes.at(l.id).span else null,
+            else => .empty,
+        };
+    }
+
+    /// The first (or last) non-empty own span below a list, in tree order.
+    fn edgeSpan(self: *const BaseParser, root: Sexp, comptime edge: enum { first, last }) ?Span {
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = root;
+        while (true) {
+            if (self.ownSpan(s)) |own| {
+                if (!own.isEmpty()) return own;
+            } else walk.push(s.list.items()) catch @panic("out of memory");
+            s = while (walk.top()) |rest| {
+                if (rest.len == 0) {
+                    walk.pop();
+                    continue;
                 }
-                return result orelse .empty;
-            },
-            else => return .empty,
+                if (edge == .first) {
+                    defer rest.* = rest.*[1..];
+                    break rest.*[0];
+                } else {
+                    defer rest.len -= 1;
+                    break rest.*[rest.len - 1];
+                }
+            } else return null;
         }
     }
 
@@ -1458,7 +1762,7 @@ pub const BaseParser = struct {
     /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
     /// is null). Without a node store the node has no id.
     pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
-        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        const out = try self.allocItems(children.len + 1);
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], children);
         return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
@@ -1473,8 +1777,13 @@ pub const BaseParser = struct {
 
     fn wrapperNodeId(self: *BaseParser, extent: Span) !NodeId {
         if (!nodeStore) return 0;
-        if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
+        try self.ensureNodeStore();
         return self.nodes.add(self.allocator(), .{ .span = extent, .rule = wrapperRule });
+    }
+
+    /// Start the node store with its unused entry 0 (node ids are 1-based).
+    fn ensureNodeStore(self: *BaseParser) !void {
+        if (nodeStore and self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
@@ -1525,7 +1834,8 @@ pub const BaseParser = struct {
 
     /// A list node over exactly `items` (fixed positions).
     fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
-        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        @memcpy(out, items);
         return self.node(out, use);
     }
 
@@ -1558,12 +1868,18 @@ pub const BaseParser = struct {
         return len;
     }
 
-    /// The default action: nothing, the one element, or an untagged list.
-    fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
-        if (pass.len == 0) return .nil;
-        if (pass.len == 1) return pass[0];
-        const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
-        return self.node(out, use);
+    /// `~N` of an element that is no leaf: an empty leaf where element `i`
+    /// starts. Without a node store element starts are not kept: it is
+    /// placed at the first element from `i` on that spans something, else
+    /// at the next token.
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+        const pos = if (nodeStore)
+            self.starts[self.stackIndex(pass) + i]
+        else for (pass[i..]) |e| {
+            const s = self.span(e);
+            if (!s.isEmpty()) break s.start;
+        } else self.current.pos;
+        return .{ .src = .{ .pos = pos, .len = 0, .id = 0 } };
     }
 
     /// `()`: an empty list.
@@ -1574,57 +1890,53 @@ pub const BaseParser = struct {
     /// `[head, ...tail]`
     fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
-        const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
+        const out = self.allocItems(rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of `base` (a list, else nothing)
-    /// for an action that appends to it. A list from `keepList` is reused
-    /// with its spare capacity, so a left-recursive list grows in amortized
-    /// O(1) per element; it keeps its node id.
-    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
-        self.extending = 0;
+    /// Start a list holding the items of element `n` (a list, else
+    /// nothing) for an action that appends to it. A list `keepList` left
+    /// on the value stack is reused with its spare capacity, so a
+    /// left-recursive list grows in amortized O(1) per element; it keeps
+    /// its node id.
+    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+        const base = pass[n];
         if (base != .list) return .empty;
-        self.extending = base.list.id;
         const items = base.list.items();
-        if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
-            if (spare.len == items.len) {
-                _ = self.listSpare.remove(@intFromPtr(items.ptr));
-                var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
-                out.items.len = items.len;
-                return out;
-            }
-        };
+        const spare = self.spares[self.stackIndex(pass) + n];
+        if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
+            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            out.items.len = items.len;
+            return out;
+        }
         var out: std.ArrayList(Sexp) = .empty;
         try out.appendSlice(self.allocator(), items);
         return out;
     }
 
-    /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
+    /// Finish a list from `extendList(pass, n)`, recording its spare
+    /// capacity where the reduction's value goes. It takes over the node
+    /// id of element `n` (still on the value stack), so that nested
+    /// extensions each keep their own.
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, use);
+        return self.keepListNils(out, pass, n, use);
     }
 
     /// `keepList` keeping trailing nils: a list of one item per element
     /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        if (out.items.len > 0 and out.capacity > out.items.len) {
-            self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
-                .len = out.items.len,
-                .capacity = out.capacity,
-            }) catch return self.oomNil();
-        }
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
+        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
-            if (self.extending != 0) {
-                id = self.extending;
+            const base = pass[n];
+            id = if (base == .list) base.list.id else 0;
+            if (id != 0) {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        self.extending = 0;
         return .{ .list = List.withId(out.items, id) };
     }
 
@@ -1635,32 +1947,51 @@ pub const BaseParser = struct {
         return self.node(items, use);
     }
 
+    /// An item of a list an action builds from its elements alone.
+    const Item = union(enum) { elem: u16, tag: Tag, nil };
+
+    /// A list node over `items`, static data (so the action function needs
+    /// no temporaries for it); unless positions are fixed (`trim` false,
+    /// or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        var len = items.len;
+        if (trim and !keepTrailingNils) {
+            while (len > 0) : (len -= 1) switch (items[len - 1]) {
+                .elem => |i| if (pass[i] != .nil) break,
+                .tag => break,
+                .nil => {},
+            };
+        }
+        const out = self.allocItems(len) catch return self.oomNil();
+        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+            .elem => |i| pass[i],
+            .tag => |t| .{ .tag = t },
+            .nil => .nil,
+        };
+        return self.node(out, use);
+    }
+
     /// `(tag items...)`
-    inline fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
+        const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
         return self.node(out, .tree);
     }
 
     /// `(tag ...spread)`
-    inline fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
-        const items = spread.items();
-        const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
-        out[0] = .{ .tag = tag };
-        @memcpy(out[1..], items[0..len]);
-        return self.node(out, .tree);
+    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) Sexp {
+        return self.sexp(tag, spread.items());
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    inline fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
-        const out = self.allocator().alloc(Sexp, if (bare) 1 else len + 2) catch return self.oomNil();
+        const out = self.allocItems(if (bare) 1 else len + 2) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         if (!bare) {
             out[1] = pos;
@@ -1719,11 +2050,15 @@ pub const BaseParser = struct {
         try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
     }
 
+    /// `Parse error at ` and `writeError`'s text on standard error.
     pub fn printError(self: *const BaseParser) void {
-        var buf: [512]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buf);
-        self.writeError(&w) catch {};
-        std.debug.print("Parse error at {s}\n", .{w.buffered()});
+        var buffer: [256]u8 = undefined;
+        const stderr = std.debug.lockStderr(&buffer);
+        defer std.debug.unlockStderr();
+        const w = &stderr.file_writer.interface;
+        w.writeAll("Parse error at ") catch return;
+        self.writeError(w) catch return;
+        w.writeByte('\n') catch return;
     }
 
     /// What `state` accepts, reader-named: the `@errors` rules it waits
@@ -1743,26 +2078,31 @@ pub const BaseParser = struct {
     // Tolerant repair
     // -------------------------------------------------------------------------
 
-    /// Whether `symbols` can be consumed from the current state, simulating
-    /// reductions on a scratch copy of the state stack.
+    /// Whether `symbols` can be consumed from the current state. The
+    /// simulation leaves the state stack as it is: reductions pop the
+    /// states it pushed (`scratch`), then hide states of the real stack
+    /// (`depth` of them stay in view).
     fn accepts(self: *BaseParser, symbols: []const u16) !bool {
-        const stack = &self.scratch;
-        stack.clearRetainingCapacity();
-        try stack.appendSlice(self.allocator(), self.stateStack.items);
+        const pushed = &self.scratch;
+        pushed.clearRetainingCapacity();
+        var depth = self.stateStack.items.len;
         for (symbols) |sym| {
             while (true) {
-                const action = getAction(stack.last().?, sym);
+                const top = pushed.last() orelse self.stateStack.items[depth - 1];
+                const action = getAction(top, sym);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
-                    try stack.append(self.allocator(), @intCast(action));
+                    try pushed.append(self.allocator(), @intCast(action));
                     break;
                 }
                 const rule: u16 = @intCast(-action - 2);
-                stack.shrinkRetainingCapacity(stack.items.len - ruleLen[rule]);
-                const next = getAction(stack.last().?, ruleLhs[rule]);
+                const fromPushed = @min(ruleLen[rule], pushed.items.len);
+                pushed.shrinkRetainingCapacity(pushed.items.len - fromPushed);
+                depth -= ruleLen[rule] - fromPushed;
+                const next = getAction(pushed.last() orelse self.stateStack.items[depth - 1], ruleLhs[rule]);
                 if (next <= 0) return false;
-                try stack.append(self.allocator(), @intCast(next));
+                try pushed.append(self.allocator(), @intCast(next));
             }
         }
         return true;
@@ -1783,48 +2123,58 @@ pub const BaseParser = struct {
     /// for a list without a node id.
     pub fn writeFacts(self: *const BaseParser, w: *std.Io.Writer, root: Sexp) std.Io.Writer.Error!void {
         if (!nodeStore) @compileError("writeFacts needs the node store (@schema or --spans)");
-        try self.factsOf(w, root);
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = root;
+        while (true) {
+            if (s == .list) {
+                if (s.list.id != 0) try self.nodeFacts(w, s);
+                walk.push(s.list.items()) catch return error.WriteFailed;
+            }
+            s = walk.next() orelse return;
+        }
     }
 
-    fn factsOf(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
-        if (s != .list) return;
+    /// The facts of one node: its `node` line, its `role` and `side` lines.
+    fn nodeFacts(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
         const l = s.list;
         const items = l.items();
-        if (l.id != 0) {
-            const k = s.kind();
-            const sp = self.span(s);
-            try w.print("(node {d} ", .{l.id});
-            if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
-            try w.print(" {d} {d})\n", .{ sp.start, sp.end });
-            var i: usize = if (k != null) 1 else 0;
-            while (i < items.len) : (i += 1) {
-                if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
-                    try w.print("(role {d} ", .{l.id});
-                    try writeName(w, nameOf(rest.role));
-                    for (items[i..]) |child| {
-                        try w.writeByte(' ');
-                        try self.factChild(w, child);
-                    }
-                    try w.writeAll(")\n");
-                    break;
-                };
-                if (items[i] == .nil) continue;
+        const k = s.kind();
+        const sp = self.span(s);
+        try w.print("(node {d} ", .{l.id});
+        if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
+        try w.print(" {d} {d})\n", .{ sp.start, sp.end });
+        var i: usize = if (k != null) 1 else 0;
+        while (i < items.len) : (i += 1) {
+            if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
                 try w.print("(role {d} ", .{l.id});
-                if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
-                try w.writeByte(' ');
-                try self.factChild(w, items[i]);
+                try writeName(w, nameOf(rest.role));
+                for (items[i..]) |child| {
+                    try w.writeByte(' ');
+                    try factChild(w, child);
+                }
                 try w.writeAll(")\n");
-            }
-            for (self.sidesOf(l.id)) |e| {
-                try w.print("(side {d} ", .{l.id});
-                try writeName(w, nameOf(e.role));
-                try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
-            }
+                break;
+            };
+            if (items[i] == .nil) continue;
+            try w.print("(role {d} ", .{l.id});
+            if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
+            try w.writeByte(' ');
+            try factChild(w, items[i]);
+            try w.writeAll(")\n");
         }
-        for (items) |child| try self.factsOf(w, child);
+        for (self.sidesOf(l.id)) |e| {
+            try w.print("(side {d} ", .{l.id});
+            try writeName(w, nameOf(e.role));
+            try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
+        }
     }
 
-    fn factChild(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+    fn factChild(w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+        try writeNested(s, w, {}, factAtom);
+    }
+
+    fn factAtom(_: void, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
         switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| {
@@ -1836,15 +2186,9 @@ pub const BaseParser = struct {
                 try w.writeAll("str ");
                 try writeQuoted(w, x);
             },
-            .list => |l| if (l.id != 0) try w.print("{d}", .{l.id}) else {
-                try w.writeByte('(');
-                for (l.items(), 0..) |child, i| {
-                    if (i > 0) try w.writeByte(' ');
-                    try self.factChild(w, child);
-                }
-                try w.writeByte(')');
-            },
+            .list => |l| if (l.id != 0) try w.print("{d}", .{l.id}) else return l.items(),
         }
+        return null;
     }
 
     /// A name as a bare symbol, or quoted when it has s-expression syntax.
@@ -1883,11 +2227,13 @@ const elemEnds = false;
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
+/// `@as` groups the promotable token may become (see `promote`).
+const asGroups = 0;
 const numSymbols = 44;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
-fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
+fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
         .@"integer" => 19,
@@ -1915,142 +2261,114 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
     };
 }
 
+fn promote(_: *BaseParser, _: Token) u16 {
+    unreachable; // no @as group
+}
+
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"program", pass[0]),
-        1 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        1 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
         2 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         3 => self.emptyList(.spread),
-        4 => pass[0],
-        5 => pass[0],
-        6 => pass[0],
-        7 => pass[0],
-        8 => pass[0],
-        9 => pass[0],
-        10 => pass[0],
-        11 => pass[0],
-        12 => pass[0],
-        13 => pass[0],
-        14 => pass[0],
-        15 => pass[0],
-        16 => pass[0],
-        17 => self.sexp(.@"int", &.{pass[0]}),
-        18 => self.sexp(.@"real", &.{pass[0]}),
-        19 => self.sexp(.@"string", &.{pass[0]}),
-        20 => self.sexp(.@"char", &.{pass[0]}),
-        21 => self.sexp(.@"keyword", &.{pass[0]}),
-        22 => self.sexp(.@"symbol", &.{pass[0]}),
+        17 => self.buildOf(&.{ .{ .tag = .@"int" }, .{ .elem = 0 } }, pass, .tree, true),
+        18 => self.buildOf(&.{ .{ .tag = .@"real" }, .{ .elem = 0 } }, pass, .tree, true),
+        19 => self.buildOf(&.{ .{ .tag = .@"string" }, .{ .elem = 0 } }, pass, .tree, true),
+        20 => self.buildOf(&.{ .{ .tag = .@"char" }, .{ .elem = 0 } }, pass, .tree, true),
+        21 => self.buildOf(&.{ .{ .tag = .@"keyword" }, .{ .elem = 0 } }, pass, .tree, true),
+        22 => self.buildOf(&.{ .{ .tag = .@"symbol" }, .{ .elem = 0 } }, pass, .tree, true),
         23 => self.sexpSpread(.@"list", pass[1]),
         24 => self.sexpSpread(.@"vector", pass[1]),
         25 => self.sexpSpread(.@"map", pass[1]),
         26 => self.sexpSpread(.@"set", pass[1]),
-        27 => self.sexp(.@"quote", &.{pass[1]}),
-        28 => self.sexp(.@"syntax-quote", &.{pass[1]}),
-        29 => self.sexp(.@"unquote", &.{pass[1]}),
-        30 => self.sexp(.@"unquote-splicing", &.{pass[1]}),
-        31 => self.sexp(.@"deref", &.{pass[1]}),
+        27 => self.buildOf(&.{ .{ .tag = .@"quote" }, .{ .elem = 1 } }, pass, .tree, true),
+        28 => self.buildOf(&.{ .{ .tag = .@"syntax-quote" }, .{ .elem = 1 } }, pass, .tree, true),
+        29 => self.buildOf(&.{ .{ .tag = .@"unquote" }, .{ .elem = 1 } }, pass, .tree, true),
+        30 => self.buildOf(&.{ .{ .tag = .@"unquote-splicing" }, .{ .elem = 1 } }, pass, .tree, true),
+        31 => self.buildOf(&.{ .{ .tag = .@"deref" }, .{ .elem = 1 } }, pass, .tree, true),
         32 => self.sexpSpread(.@"anon-fn", pass[1]),
-        33 => self.sexp(.@"discard", &.{pass[1]}),
-        34 => self.sexp(.@"with-meta-raw", &.{pass[2], pass[1]}),
+        33 => self.buildOf(&.{ .{ .tag = .@"discard" }, .{ .elem = 1 } }, pass, .tree, true),
+        34 => self.buildOf(&.{ .{ .tag = .@"with-meta-raw" }, .{ .elem = 2 }, .{ .elem = 1 } }, pass, .tree, true),
         else => unreachable,
     };
 }
 
 const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 6, 6, 6, 6, 6, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 41, 43 };
 const ruleLen = [_]u8{ 1, 2, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 2, 2, 2, 2, 2, 3, 2, 3, 3, 3 };
+/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
+const ruleValue = [_]u8{ 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 // Parse table: 60 states x 44 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 60;
-
-const sparse = [numStates][]const i16{
-    &.{40,2},
-    &.{42,3},
-    &.{1,-5,3,4,4,6,5,5,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,38,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{1,-1},
-    &.{1,-2,4,40,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{1,-4,19,-4,20,-4,21,-4,22,-4,23,-4,24,-4,25,-4,26,-4,27,-4,28,-4,29,-4,30,-4,31,-4,32,-4,33,-4,34,-4,35,-4,36,-4,37,-4,38,-4,39,-4},
-    &.{1,-6,19,-6,20,-6,21,-6,22,-6,23,-6,24,-6,25,-6,26,-6,27,-6,28,-6,29,-6,30,-6,31,-6,32,-6,33,-6,34,-6,35,-6,36,-6,37,-6,38,-6,39,-6},
-    &.{1,-7,19,-7,20,-7,21,-7,22,-7,23,-7,24,-7,25,-7,26,-7,27,-7,28,-7,29,-7,30,-7,31,-7,32,-7,33,-7,34,-7,35,-7,36,-7,37,-7,38,-7,39,-7},
-    &.{1,-8,19,-8,20,-8,21,-8,22,-8,23,-8,24,-8,25,-8,26,-8,27,-8,28,-8,29,-8,30,-8,31,-8,32,-8,33,-8,34,-8,35,-8,36,-8,37,-8,38,-8,39,-8},
-    &.{1,-9,19,-9,20,-9,21,-9,22,-9,23,-9,24,-9,25,-9,26,-9,27,-9,28,-9,29,-9,30,-9,31,-9,32,-9,33,-9,34,-9,35,-9,36,-9,37,-9,38,-9,39,-9},
-    &.{1,-10,19,-10,20,-10,21,-10,22,-10,23,-10,24,-10,25,-10,26,-10,27,-10,28,-10,29,-10,30,-10,31,-10,32,-10,33,-10,34,-10,35,-10,36,-10,37,-10,38,-10,39,-10},
-    &.{1,-11,19,-11,20,-11,21,-11,22,-11,23,-11,24,-11,25,-11,26,-11,27,-11,28,-11,29,-11,30,-11,31,-11,32,-11,33,-11,34,-11,35,-11,36,-11,37,-11,38,-11,39,-11},
-    &.{1,-12,19,-12,20,-12,21,-12,22,-12,23,-12,24,-12,25,-12,26,-12,27,-12,28,-12,29,-12,30,-12,31,-12,32,-12,33,-12,34,-12,35,-12,36,-12,37,-12,38,-12,39,-12},
-    &.{1,-13,19,-13,20,-13,21,-13,22,-13,23,-13,24,-13,25,-13,26,-13,27,-13,28,-13,29,-13,30,-13,31,-13,32,-13,33,-13,34,-13,35,-13,36,-13,37,-13,38,-13,39,-13},
-    &.{1,-14,19,-14,20,-14,21,-14,22,-14,23,-14,24,-14,25,-14,26,-14,27,-14,28,-14,29,-14,30,-14,31,-14,32,-14,33,-14,34,-14,35,-14,36,-14,37,-14,38,-14,39,-14},
-    &.{1,-15,19,-15,20,-15,21,-15,22,-15,23,-15,24,-15,25,-15,26,-15,27,-15,28,-15,29,-15,30,-15,31,-15,32,-15,33,-15,34,-15,35,-15,36,-15,37,-15,38,-15,39,-15},
-    &.{1,-16,19,-16,20,-16,21,-16,22,-16,23,-16,24,-16,25,-16,26,-16,27,-16,28,-16,29,-16,30,-16,31,-16,32,-16,33,-16,34,-16,35,-16,36,-16,37,-16,38,-16,39,-16},
-    &.{1,-17,19,-17,20,-17,21,-17,22,-17,23,-17,24,-17,25,-17,26,-17,27,-17,28,-17,29,-17,30,-17,31,-17,32,-17,33,-17,34,-17,35,-17,36,-17,37,-17,38,-17,39,-17},
-    &.{1,-18,19,-18,20,-18,21,-18,22,-18,23,-18,24,-18,25,-18,26,-18,27,-18,28,-18,29,-18,30,-18,31,-18,32,-18,33,-18,34,-18,35,-18,36,-18,37,-18,38,-18,39,-18},
-    &.{1,-19,19,-19,20,-19,21,-19,22,-19,23,-19,24,-19,25,-19,26,-19,27,-19,28,-19,29,-19,30,-19,31,-19,32,-19,33,-19,34,-19,35,-19,36,-19,37,-19,38,-19,39,-19},
-    &.{1,-20,19,-20,20,-20,21,-20,22,-20,23,-20,24,-20,25,-20,26,-20,27,-20,28,-20,29,-20,30,-20,31,-20,32,-20,33,-20,34,-20,35,-20,36,-20,37,-20,38,-20,39,-20},
-    &.{1,-21,19,-21,20,-21,21,-21,22,-21,23,-21,24,-21,25,-21,26,-21,27,-21,28,-21,29,-21,30,-21,31,-21,32,-21,33,-21,34,-21,35,-21,36,-21,37,-21,38,-21,39,-21},
-    &.{1,-22,19,-22,20,-22,21,-22,22,-22,23,-22,24,-22,25,-22,26,-22,27,-22,28,-22,29,-22,30,-22,31,-22,32,-22,33,-22,34,-22,35,-22,36,-22,37,-22,38,-22,39,-22},
-    &.{1,-23,19,-23,20,-23,21,-23,22,-23,23,-23,24,-23,25,-23,26,-23,27,-23,28,-23,29,-23,30,-23,31,-23,32,-23,33,-23,34,-23,35,-23,36,-23,37,-23,38,-23,39,-23},
-    &.{1,-24,19,-24,20,-24,21,-24,22,-24,23,-24,24,-24,25,-24,26,-24,27,-24,28,-24,29,-24,30,-24,31,-24,32,-24,33,-24,34,-24,35,-24,36,-24,37,-24,38,-24,39,-24},
-    &.{4,6,5,41,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,26,-5,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,6,5,42,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,28,-5,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,6,5,43,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,30,-5,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,6,5,44,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,30,-5,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,45,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,46,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,47,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,48,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,49,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,6,5,50,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,26,-5,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,51,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,52,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{1,-1},
-    &.{1,-1},
-    &.{1,-3,19,-3,20,-3,21,-3,22,-3,23,-3,24,-3,25,-3,26,-3,27,-3,28,-3,29,-3,30,-3,31,-3,32,-3,33,-3,34,-3,35,-3,36,-3,37,-3,38,-3,39,-3},
-    &.{4,40,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,26,54,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,40,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,28,55,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,40,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,30,56,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{4,40,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,30,57,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{1,-29,19,-29,20,-29,21,-29,22,-29,23,-29,24,-29,25,-29,26,-29,27,-29,28,-29,29,-29,30,-29,31,-29,32,-29,33,-29,34,-29,35,-29,36,-29,37,-29,38,-29,39,-29},
-    &.{1,-30,19,-30,20,-30,21,-30,22,-30,23,-30,24,-30,25,-30,26,-30,27,-30,28,-30,29,-30,30,-30,31,-30,32,-30,33,-30,34,-30,35,-30,36,-30,37,-30,38,-30,39,-30},
-    &.{1,-31,19,-31,20,-31,21,-31,22,-31,23,-31,24,-31,25,-31,26,-31,27,-31,28,-31,29,-31,30,-31,31,-31,32,-31,33,-31,34,-31,35,-31,36,-31,37,-31,38,-31,39,-31},
-    &.{1,-32,19,-32,20,-32,21,-32,22,-32,23,-32,24,-32,25,-32,26,-32,27,-32,28,-32,29,-32,30,-32,31,-32,32,-32,33,-32,34,-32,35,-32,36,-32,37,-32,38,-32,39,-32},
-    &.{1,-33,19,-33,20,-33,21,-33,22,-33,23,-33,24,-33,25,-33,26,-33,27,-33,28,-33,29,-33,30,-33,31,-33,32,-33,33,-33,34,-33,35,-33,36,-33,37,-33,38,-33,39,-33},
-    &.{4,40,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,26,58,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{1,-35,19,-35,20,-35,21,-35,22,-35,23,-35,24,-35,25,-35,26,-35,27,-35,28,-35,29,-35,30,-35,31,-35,32,-35,33,-35,34,-35,35,-35,36,-35,37,-35,38,-35,39,-35},
-    &.{4,59,6,7,7,8,8,9,9,10,10,11,11,12,12,13,13,14,14,15,15,16,16,17,17,18,18,19,19,20,20,21,21,22,22,23,23,24,24,25,25,26,27,27,29,28,31,29,32,30,33,31,34,32,35,33,36,34,37,35,38,36,39,37},
-    &.{1,-1},
-    &.{1,-25,19,-25,20,-25,21,-25,22,-25,23,-25,24,-25,25,-25,26,-25,27,-25,28,-25,29,-25,30,-25,31,-25,32,-25,33,-25,34,-25,35,-25,36,-25,37,-25,38,-25,39,-25},
-    &.{1,-26,19,-26,20,-26,21,-26,22,-26,23,-26,24,-26,25,-26,26,-26,27,-26,28,-26,29,-26,30,-26,31,-26,32,-26,33,-26,34,-26,35,-26,36,-26,37,-26,38,-26,39,-26},
-    &.{1,-27,19,-27,20,-27,21,-27,22,-27,23,-27,24,-27,25,-27,26,-27,27,-27,28,-27,29,-27,30,-27,31,-27,32,-27,33,-27,34,-27,35,-27,36,-27,37,-27,38,-27,39,-27},
-    &.{1,-28,19,-28,20,-28,21,-28,22,-28,23,-28,24,-28,25,-28,26,-28,27,-28,28,-28,29,-28,30,-28,31,-28,32,-28,33,-28,34,-28,35,-28,36,-28,37,-28,38,-28,39,-28},
-    &.{1,-34,19,-34,20,-34,21,-34,22,-34,23,-34,24,-34,25,-34,26,-34,27,-34,28,-34,29,-34,30,-34,31,-34,32,-34,33,-34,34,-34,35,-34,36,-34,37,-34,38,-34,39,-34},
-    &.{1,-36,19,-36,20,-36,21,-36,22,-36,23,-36,24,-36,25,-36,26,-36,27,-36,28,-36,29,-36,30,-36,31,-36,32,-36,33,-36,34,-36,35,-36,36,-36,37,-36,38,-36,39,-36},
+const parseTable = [_][numSymbols]i16{
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0},
+    .{0,-5,0,4,6,5,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,38,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-2,0,0,40,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,-4,0,0,0,0},
+    .{0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,-6,0,0,0,0},
+    .{0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,-7,0,0,0,0},
+    .{0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,-8,0,0,0,0},
+    .{0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,-9,0,0,0,0},
+    .{0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,-10,0,0,0,0},
+    .{0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,-11,0,0,0,0},
+    .{0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,-12,0,0,0,0},
+    .{0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,-13,0,0,0,0},
+    .{0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,-14,0,0,0,0},
+    .{0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,-15,0,0,0,0},
+    .{0,-16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,-16,0,0,0,0},
+    .{0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,-17,0,0,0,0},
+    .{0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,-18,0,0,0,0},
+    .{0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,-19,0,0,0,0},
+    .{0,-20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,-20,0,0,0,0},
+    .{0,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,-21,0,0,0,0},
+    .{0,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,-22,0,0,0,0},
+    .{0,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,-23,0,0,0,0},
+    .{0,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,-24,0,0,0,0},
+    .{0,0,0,0,6,41,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,-5,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,6,42,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,-5,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,6,43,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,-5,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,6,44,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,-5,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,45,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,46,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,47,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,48,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,49,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,6,50,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,-5,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,51,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,52,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,-3,0,0,0,0},
+    .{0,0,0,0,40,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,54,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,40,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,55,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,40,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,56,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,0,0,0,40,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,57,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,-29,0,0,0,0},
+    .{0,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,-30,0,0,0,0},
+    .{0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,-31,0,0,0,0},
+    .{0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,0,0,0,0},
+    .{0,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,0,0,0,0},
+    .{0,0,0,0,40,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,58,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,0,0,0},
+    .{0,0,0,0,59,0,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,0,27,0,28,0,29,30,31,32,33,34,35,36,37,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,-25,0,0,0,0},
+    .{0,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,-26,0,0,0,0},
+    .{0,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,-27,0,0,0,0},
+    .{0,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,-28,0,0,0,0},
+    .{0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,-34,0,0,0,0},
+    .{0,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,0,0,0,0},
 };
-
-const parseTable = blk: {
-    @setEvalBranchQuota(100000);
-    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
-    for (sparse, 0..) |row, state| {
-        var i: usize = 0;
-        while (i < row.len) : (i += 2) {
-            t[state][@intCast(row[i])] = row[i + 1];
-        }
-    }
-    break :blk t;
-};
-
-fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
-}
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)
 const xExcludes = [_]struct { sym: u16, shift: u16 }{
 };
-
-fn getImmediateShift(_: u16, _: u16) ?i16 {
-    return null;
-}
+/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
+const xExcludeStart = [_]u32{};
 
 fn startState(start: Start) u16 {
     return switch (start) {
@@ -2084,11 +2402,6 @@ const expectedOf = [_]u16{
     4, 4, 5, 4, 2, 3, 4, 4, 4, 4, 4, 4,
 };
 
-fn expectedIn(state: u16) []const u16 {
-    const i = expectedOf[state];
-    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
-}
-
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
         1 => "end of input",
@@ -2121,9 +2434,8 @@ fn isTrivia(_: TokenCat) bool {
     return false;
 }
 
-fn repairCandidates(_: u16) []const u16 {
-    return &.{};
-}
+const repairTokens = [_]u16{};
+const repairOffsets = [_]u32{};
 
 fn repairClass(_: u16) RepairClass {
     return .none;

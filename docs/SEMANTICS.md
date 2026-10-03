@@ -260,6 +260,9 @@ The module exports:
 |---|---|
 | `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols |
 | `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
+| `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
+| `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()` |
+| `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, and the `state` that rejected it (`lastError()`) |
 | `ir.get(node, role)` | a slot by role name (nil when empty) |
 | `ir.rest(node, role)` | a rest role's children |
 | `ir.has(kind, role)` | whether a kind has a role |
@@ -273,6 +276,9 @@ The module exports:
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
 `writeFacts(w, root)`, `trivia()`, `lastError()`, `writeError(w)`,
 `printError()`, `lineCol(pos)`, `expected(state)`, `symbolText(symbol)`.
+A parse fails with `error.ParseError` (see `lastError()`),
+`error.OutOfMemory`, or `error.InputTooLarge` (input over 4 GiB: positions
+are 32-bit).
 
 `ir.get` and `ir.rest` look the slot up by the node's kind at run time;
 asking for a role the kind lacks panics in safety-checked builds (and names
@@ -502,8 +508,10 @@ the actions' inventory, ready to paste:
 
 ## Spans and node ids
 
-Every list the parser builds for the tree gets a node id (dense, from 1 per
-parse) and an entry in the node store: its span and the rule that built it.
+Every list the parser builds for the tree gets a node id and an entry in
+the node store: its span and the rule that built it. Ids are dense, from 1,
+in the order the nodes are built; a parser that parses again keeps
+counting, so the trees of earlier parses stay valid.
 
 - A node spans its reduction: from its first token to its last, including
   tokens that are not in the tree (keywords, punctuation). `(1 + 2)` passed
@@ -515,9 +523,8 @@ parse) and an entry in the node store: its span and the rule that built it.
   spread into its node, left-recursive accumulators) get no id: nothing can
   reach them.
 
-The store costs one 12-byte entry per node: about 3% of parse time on Rig
-and 5% on MUMPS (see `test/bench/BASELINE.md`). Grammars without `@schema`
-get it with `nexus --spans`.
+The store costs one 12-byte entry per node. Grammars without `@schema` get
+it with `nexus --spans`.
 
 ## Facts
 
@@ -566,9 +573,11 @@ is unaffected. The rules:
    statement boundary never invents meaning); at end of input or before a
    `structure` token any candidate may.
 4. An insertion must let the offending token be consumed. At end of input
-   or before structure, a shiftable candidate may be inserted anyway, never
-   twice in the same configuration, so several insertions can complete an
-   unfinished construct.
+   or before structure, a shiftable candidate may be inserted anyway, so
+   several insertions can complete an unfinished construct; until a token
+   is consumed, the same token is inserted in the same state again only on
+   a shallower stack (a repeat would be a cycle, or nest the construct
+   deeper without finishing it).
 5. With no admissible insertion the offending token is deleted; end of
    input is never deleted.
 6. At most `budget` repairs; then the parse stops, incomplete.

@@ -1,0 +1,16 @@
+# A tag may have any name, `pass` and `self` included: whether the action
+# function reads its parameters is decided from the actions themselves, not
+# from the text they were written as. `prog! = A → (pass)` reads no element,
+# so the parser discards the `pass` parameter (or it would not compile).
+
+@lexer
+tokens
+    a
+    eof
+    err
+'a'                                         → a
+.                                           → err
+
+@parser
+
+prog! = A                                   → (pass)
