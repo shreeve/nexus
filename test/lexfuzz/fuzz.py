@@ -248,10 +248,13 @@ def reference(spec, src):
 M_VALUES = range(-3, 4)     # every guard constant is in -1..2
 PRE_VALUES = range(0, 3)
 
-def wins_somewhere(rules, i, maxlen=4):
-    """A text of at most maxlen bytes (not starting with a blank) and a
-    configuration in which rule i wins, or None."""
-    for L in range(1, maxlen + 1):
+def wins_somewhere(rules, i):
+    """A text (not starting with a blank) and a configuration in which rule
+    i wins, or None. Texts run up to one byte past the rule's shortest
+    match (at least 4 bytes)."""
+    r = rules[i]
+    shortest = lengths(r["main"])[0] + (lengths(r["trail"])[0] if r["trail"] else 0)
+    for L in range(1, max(4, shortest + 1) + 1):
         for t in itertools.product("abcd ", repeat=L):
             if t[0] == " ": continue
             s = "".join(t)
@@ -415,4 +418,5 @@ pub fn main(init: std.process.Init) !void {
     if not a.keep: shutil.rmtree(work)
     sys.exit(1 if mism else 0)
 
-main()
+if __name__ == "__main__":
+    main()

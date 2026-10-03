@@ -76,8 +76,10 @@ optional:
 | `start` | the parser's first `parse*` method | start rule for `cases/*` |
 | `flags` | none | extra generator options, e.g. `--spans` |
 
-A case is any file in `cases/` except `*.tree`, `*.md` and `README*`; its
-golden is the same name with the extension replaced by `.tree`. A
+A case is any file in `cases/` except `*.tree`, `*.args`, `*.md` and
+`README*`; its golden is the same name with the extension replaced by
+`.tree`, and a `*.args` file of the same name holds extra driver
+arguments for it. A
 subdirectory `cases/<s>/` uses the start rule `parse<S>` (`expr/` →
 `parseExpr`), or `<s>` itself when it starts with `parse`.
 
@@ -204,7 +206,8 @@ them all with `bin/nexus` into one driver, lexes random inputs, and compares
 every token (cat, pos, len, pre) with a reference computed from the lexer's
 definition with its own set-of-positions matcher. A spec the generator
 rejects passes only when the model confirms the rejection (a dead rule wins
-on no short text in any configuration, guards never hold together, held
+in no configuration on any text up to one byte past its shortest match,
+guards never hold together, held
 rules can re-enable each other, ...), and an accepted spec whose held rules
 can loop fails. The DFA itself is also checked
 against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
