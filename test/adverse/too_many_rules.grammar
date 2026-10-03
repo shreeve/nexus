@@ -1,0 +1,28 @@
+# A grammar may expand into at most 32766 rules (a reduction is the
+# table entry -(r + 2), an i16). Each alternative here is within its own
+# limit (2^14 variants); together they exceed the grammar's.
+# error: too_many_rules.grammar:26:9:
+# error: the grammar expands into more than 32766 rules, the parse table's limit
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = [x] [x] [x] [x] [x] [x] [x] [x] [x] [x] [x] [x] [x] [x]         → (t)
+     | [y] [y] [y] [y] [y] [y] [y] [y] [y] [y] [y] [y] [y] [y]         → (t)
+x = IDENT
+y = INTEGER

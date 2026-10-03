@@ -85,6 +85,10 @@ pub fn schemaTags(allocator: Allocator, schema: Schema) ![]const []const u8 {
 
 /// Resolve every action of a schema-mode grammar (`ir.schema` non-null).
 pub fn resolve(allocator: Allocator, ir: *const GrammarIR, lexerSpec: ?*const LexerSpec, path: []const u8) Error!Result {
+    expand.checkPatterns(ir, path) catch |e| return switch (e) {
+        error.ExpandError => error.SemanticError,
+        error.OutOfMemory => error.OutOfMemory,
+    };
     var r = Resolver{ .a = allocator, .ir = ir, .schema = ir.schema.?, .lexer = lexerSpec, .path = path };
     return r.run();
 }
@@ -147,7 +151,7 @@ const Resolver = struct {
             const items = try a.dupe(ActionItem, &.{ .{ .elem = .{ .ref = 1 } }, .{ .elem = .{ .ref = 3 } } });
             const list: ActionList = .{ .head = .{ .tag = op.op }, .items = items };
             const ctx: Ctx = .{ .rule = "@infix", .line = decl.line, .col = decl.col };
-            try infix.append(a, .{ .tree = .{ .list = try self.place(ctx, list, &.{}, null) }, .kind = self.kindIndex.get(op.op) });
+            try infix.append(a, .{ .tree = .{ .list = try self.place(ctx, list, null) }, .kind = self.kindIndex.get(op.op) });
         };
 
         try self.checkInventory();
@@ -161,15 +165,11 @@ const Resolver = struct {
         return .{ .resolved = try resolved.toOwnedSlice(a), .infix = try infix.toOwnedSlice(a), .schema = schema };
     }
 
-    /// `name = TOKEN` aliases: name → token.
+    /// The aliases expansion substitutes: name → target.
     fn aliasTargets(self: *Resolver) !std.StringHashMapUnmanaged([]const u8) {
         var out: std.StringHashMapUnmanaged([]const u8) = .empty;
         for (self.ir.rules) |rule| {
-            if (rule.alternatives.len != 1) continue;
-            const alt = rule.alternatives[0];
-            if (alt.elements.len != 1 or alt.actionTree != null) continue;
-            const e = alt.elements[0];
-            if (e.quantifier == .one and (e.kind == .token or e.kind == .ident)) try out.put(self.a, rule.name, e.value);
+            if (expand.aliasTarget(self.ir, rule)) |target| try out.put(self.a, rule.name, target);
         }
         return out;
     }
@@ -184,11 +184,27 @@ const Resolver = struct {
             const e = layout.element(alt.elements, p);
             const name = e.label orelse continue;
             if (std.mem.eql(u8, name, "_")) continue;
-            try labels.append(self.a, .{ .name = name, .pos = @intCast(p), .line = e.line, .col = e.col, .lits = try literalTexts(self.a, e) });
+            const lctx: Ctx = .{ .rule = rule.name, .line = e.line, .col = e.col };
+            if (layout.whole(p)) |f| if (several(f)) {
+                const what = if (e.kind == .choice) "a choice with an alternative of several elements" else "a group of several elements";
+                self.err(lctx, "label '{s}' names {s}; label those elements instead", .{ name, what });
+                continue;
+            };
+            const s = layout.slots[p - 1];
+            try labels.append(self.a, .{
+                .name = name,
+                .pos = @intCast(p),
+                .line = e.line,
+                .col = e.col,
+                .lits = try literalTexts(self.a, e),
+                .slot = s,
+                .single = layout.forms[s.elem] == null and e.quantifier == .one and expand.isToken(e),
+            });
         }
 
         var out: Resolved = .{ .tree = alt.actionTree };
         var sides: std.ArrayList(Resolved.SideLabel) = .empty;
+        var merged: std.ArrayList([2]u16) = .empty;
         if (alt.actionTree) |tree| switch (tree) {
             .list => |l| {
                 const kind: ?u16 = switch (l.head) {
@@ -196,11 +212,12 @@ const Resolver = struct {
                     else => null,
                 };
                 out.kind = kind;
-                const placed = try self.place(ctx, l, labels.items, &sides);
+                const placed = try self.place(ctx, l, .{ .labels = labels.items, .sides = &sides, .merged = &merged });
                 out.tree = .{ .list = placed };
             },
             else => {},
         };
+        out.merged = try merged.toOwnedSlice(self.a);
         const constructsKind = out.kind != null;
         if (!constructsKind) for (labels.items) |lab| {
             self.err(.{ .rule = rule.name, .line = lab.line, .col = lab.col }, "label '{s}' fills a role, but the action builds no schema node", .{lab.name});
@@ -213,12 +230,30 @@ const Resolver = struct {
 
     /// A pattern label. `lits`: the texts a labeled string literal or
     /// choice of string literals can match (null for other elements).
-    const Label = struct { name: []const u8, pos: u16, line: u32, col: u32, lits: ?[]const []const u8 = null };
+    /// `single`: the element is always present and one value (a token), so
+    /// in a rest role it is one item rather than a spread.
+    const Label = struct {
+        name: []const u8,
+        pos: u16,
+        line: u32,
+        col: u32,
+        lits: ?[]const []const u8 = null,
+        slot: expand.Slot,
+        single: bool,
+    };
+
+    /// What the labels of an alternative fill in its top-level list: the
+    /// labels, and where to record side-band labels and merged positions.
+    const Top = struct {
+        labels: []const Label,
+        sides: *std.ArrayList(Resolved.SideLabel),
+        merged: *std.ArrayList([2]u16),
+    };
 
     /// Place a list's items: a kind-headed list gets its slots in schema
     /// order; any other list is plumbing and keeps its items. Nested lists
-    /// are placed too. `labels` fill roles of this (top-level) list only.
-    fn place(self: *Resolver, ctx: Ctx, l: ActionList, labels: []const Label, sides: ?*std.ArrayList(Resolved.SideLabel)) Error!ActionList {
+    /// are placed too. Labels (`top`) fill roles of the top-level list only.
+    fn place(self: *Resolver, ctx: Ctx, l: ActionList, top: ?Top) Error!ActionList {
         const a = self.a;
         const tag = switch (l.head) {
             .tag => |t| t,
@@ -235,13 +270,18 @@ const Resolver = struct {
         };
         const ki = self.kindIndex.get(tag) orelse {
             try self.undeclaredKinds.append(self.a, .{ .tag = tag, .list = l, .ctx = ctx });
-            for (l.items) |item| try self.noteTag(ctx, item.elem, null);
+            for (l.items) |item| {
+                try self.noteTag(ctx, item.elem, null);
+                // Nested lists still count: a declared kind built inside
+                // is built.
+                _ = try self.placeElem(ctx, item.elem);
+            }
             return l;
         };
         try self.built.put(a, tag, {});
         const kind = self.schema.kinds[ki];
         const roles = kind.roles;
-        const slotCount = if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
+        const slotCount = slotsOf(roles);
         const restRole: ?Schema.Role = if (slotCount < roles.len) roles[slotCount] else null;
 
         const slots = try a.alloc(?ActionElem, slotCount);
@@ -299,12 +339,30 @@ const Resolver = struct {
             }
         }
 
-        for (labels) |lab| {
+        const labels: []const Label = if (top) |t| t.labels else &.{};
+        for (labels, 0..) |lab, li| {
             const lctx: Ctx = .{ .rule = ctx.rule, .line = lab.line, .col = lab.col };
             if (roleIndex(roles, lab.name)) |ri| {
                 if (ri < slotCount) {
                     if (slots[ri] != null) {
-                        self.err(lctx, "role '{s}' of '{s}' is filled by the label and by the action", .{ lab.name, tag });
+                        const prior = for (labels[0..li]) |p| {
+                            if (std.mem.eql(u8, p.name, lab.name)) break p;
+                        } else {
+                            self.err(lctx, "role '{s}' of '{s}' is filled by the label and by the action", .{ lab.name, tag });
+                            continue;
+                        };
+                        if (!exclusive(labels[0..li], lab)) {
+                            self.err(lctx, "role '{s}' of '{s}' is labeled twice", .{ lab.name, tag });
+                            continue;
+                        }
+                        if (roles[ri].type == .tag and (prior.lits == null) != (lab.lits == null)) {
+                            self.err(lctx, "role '{s}' of '{s}' takes a literal's tag in one alternative and another value in this one", .{ lab.name, tag });
+                            continue;
+                        }
+                        // The same role in another alternative of the same
+                        // choice: whichever is present fills the slot.
+                        if (lab.lits) |lits| for (lits) |t| try self.noteTag(lctx, .{ .tagLit = t }, roles[ri]);
+                        try top.?.merged.append(a, .{ prior.pos, lab.pos });
                         continue;
                     }
                     // A tag role labeling literals takes the tag the
@@ -316,10 +374,10 @@ const Resolver = struct {
                     };
                     slots[ri] = .{ .ref = lab.pos };
                 } else {
-                    try rest.append(a, .{ .spread = lab.pos });
+                    try rest.append(a, if (lab.single) .{ .ref = lab.pos } else .{ .spread = lab.pos });
                 }
             } else if (containsName(kind.side, lab.name)) {
-                if (sides) |s| try s.append(a, .{ .role = lab.name, .pos = lab.pos });
+                try top.?.sides.append(a, .{ .role = lab.name, .pos = lab.pos });
             } else {
                 self.err(lctx, "label '{s}' is neither a role nor a side-band role of '{s}' (roles: {f})", .{ lab.name, tag, fmtRoles(kind) });
             }
@@ -340,7 +398,7 @@ const Resolver = struct {
         return switch (e) {
             .node => |n| blk: {
                 const p = try self.a.create(ActionList);
-                p.* = try self.place(ctx, n.*, &.{}, null);
+                p.* = try self.place(ctx, n.*, null);
                 break :blk .{ .node = p };
             },
             else => e,
@@ -461,29 +519,23 @@ const Resolver = struct {
         for (1..layout.slots.len + 1) |p| {
             const e = layout.element(alt.elements, p);
             if (used[p] or e.label != null or e.skip) continue;
+            if (layout.whole(p)) |f| {
+                // A choice or labeled group not used as a whole: its
+                // elements are checked one by one (their internal
+                // positions). Which alternative matched is a value of its
+                // own when none of them carries one.
+                if (f.alts.len < 2 or self.anyBearing(f.alts, aliases)) continue;
+            } else if (!self.valueBearing(e, aliases)) continue;
             const s = layout.slots[p - 1];
-            if (s.kind == .choice) {
-                // A choice not used as a whole: its elements are checked
-                // one by one (their internal positions).
+            if (p > layout.length) {
+                // Covered when the whole is used and this is its
+                // alternative's only element, or when the whole is labeled.
+                if (used[layout.pos[s.elem]] and layout.forms[s.elem].?.alts[s.alt.?].len == 1) continue;
+                if (alt.elements[s.elem].label != null) continue;
+                self.err(ctx, "choice element '{f}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{expand.fmtElement(e)});
                 continue;
             }
-            if (!self.valueBearing(e, aliases)) continue;
-            if (s.kind == .choiceElem) {
-                // Covered when the whole choice is used and this is its
-                // alternative's only element.
-                const choice = alt.elements[s.elem];
-                const choicePos = for (layout.slots[0..layout.length], 1..) |cs, q| {
-                    if (cs.elem == s.elem) break q;
-                } else unreachable;
-                if (used[choicePos] and choice.choices[s.sub].len == 1) continue;
-                if (choice.label != null) continue;
-            }
-            const where = if (p <= layout.length) "element" else "choice element";
-            if (p <= layout.length) {
-                self.err(ctx, "{s} {d} ({s}) carries a value the action does not use; use it, label it, or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ where, p, e.value });
-            } else {
-                self.err(ctx, "{s} '{s}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ where, e.value });
-            }
+            self.err(ctx, "element {d} ({f}) carries a value the action does not use; use it, label it, or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ p, expand.fmtElement(e) });
         }
     }
 
@@ -512,25 +564,27 @@ const Resolver = struct {
     }
 
     /// Whether an element's value matters: rule references, lists and
-    /// groups, and tokens whose text varies (a lexer pattern that is not a
-    /// single literal, or an `@as` fallback terminal). Literals and keyword
-    /// or structure tokens carry no value.
+    /// groups, tokens whose text varies (a lexer pattern that is not a
+    /// single literal, or an `@as` fallback terminal), and any optional or
+    /// repeated element (its presence or count). Literals and keyword or
+    /// structure tokens carry no value.
     fn valueBearing(self: *Resolver, e: ParsedElement, aliases: *const std.StringHashMapUnmanaged([]const u8)) bool {
         if (e.skip) return false;
         if (e.label) |l| if (std.mem.eql(u8, l, "_")) return false;
+        if (e.quantifier != .one) return true;
         return switch (e.kind) {
             .string => false,
             .token => self.tokenBearing(e.value),
             .ident => if (aliases.get(e.value)) |target| (if (isUpper(target)) self.tokenBearing(target) else true) else true,
-            .reqList, .optList => true,
-            .group => for (e.subElements) |sub| {
-                if (self.valueBearing(sub, aliases)) break true;
-            } else false,
-            .choice => for (e.choices) |c| {
-                for (c) |sub| if (self.valueBearing(sub, aliases)) return true;
-            } else false,
-            .optGroup => true,
+            .reqList, .optList, .optGroup => true,
+            .group => self.anyBearing(&.{e.subElements}, aliases),
+            .choice => self.anyBearing(e.choices, aliases),
         };
+    }
+
+    fn anyBearing(self: *Resolver, alts: []const []const ParsedElement, aliases: *const std.StringHashMapUnmanaged([]const u8)) bool {
+        for (alts) |alt| for (alt) |e| if (self.valueBearing(e, aliases)) return true;
+        return false;
     }
 
     fn tokenBearing(self: *Resolver, name: []const u8) bool {
@@ -546,8 +600,28 @@ const Resolver = struct {
     }
 };
 
+/// Whether some alternative of an inline element has several elements, so
+/// the element as a whole is not one value.
+fn several(f: expand.Inline) bool {
+    for (f.alts) |alt| if (alt.len != 1) return true;
+    return false;
+}
+
+/// Whether `lab` and every earlier label of the same name sit in different
+/// alternatives of one choice (at most one of them is ever present).
+fn exclusive(earlier: []const Resolver.Label, lab: Resolver.Label) bool {
+    const alt = lab.slot.alt orelse return false;
+    for (earlier) |p| {
+        if (!std.mem.eql(u8, p.name, lab.name)) continue;
+        const palt = p.slot.alt orelse return false;
+        if (p.slot.elem != lab.slot.elem or palt == alt) return false;
+    }
+    return true;
+}
+
 /// The texts a string literal element, or a choice whose every alternative
-/// is one string literal, can match; null for any other element.
+/// is one string literal, can match; null for any other element. An
+/// optional choice qualifies too (absent, it gives nil).
 fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
     switch (e.kind) {
         .string => {
@@ -555,7 +629,7 @@ fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
             return try a.dupe([]const u8, &.{try unquote(a, e.value)});
         },
         .choice => {
-            if (e.quantifier != .one) return null;
+            if (e.quantifier != .one and e.quantifier != .optional) return null;
             const out = try a.alloc([]const u8, e.choices.len);
             for (e.choices, 0..) |c, i| {
                 if (c.len != 1 or c[0].kind != .string or c[0].quantifier != .one) return null;
@@ -599,6 +673,11 @@ fn isLiteralPattern(pattern: []const u8) bool {
         if (p[i] == q) return i == p.len - 1;
     }
     return false;
+}
+
+/// The number of slot roles: all but a trailing rest role.
+fn slotsOf(roles: []const Schema.Role) usize {
+    return if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
 }
 
 fn roleIndex(roles: []const Schema.Role, name: []const u8) ?usize {
@@ -665,7 +744,7 @@ fn writeName(w: *std.Io.Writer, prefix: []const u8, name: []const u8) !void {
 }
 
 /// One declared kind as an `@schema` line.
-pub fn writeKind(w: *std.Io.Writer, k: Schema.Kind) !void {
+fn writeKind(w: *std.Io.Writer, k: Schema.Kind) !void {
     try writeName(w, "    ", k.tag);
     for (k.roles) |r| {
         try w.writeByte(' ');
@@ -774,13 +853,9 @@ const TypeChecker = struct {
     }
 
     fn unionInto(dst: *std.bit_set.Dynamic, src: std.bit_set.Dynamic) bool {
-        var changed = false;
-        var it = src.iterator(.{});
-        while (it.next()) |b| if (!dst.isSet(b)) {
-            dst.set(b);
-            changed = true;
-        };
-        return changed;
+        if (src.subsetOf(dst.*)) return false;
+        dst.setUnion(src);
+        return true;
     }
 
     fn sym(rule: grammar.Rule, pos: u16) u16 {
@@ -872,7 +947,7 @@ const TypeChecker = struct {
         const k = self.kindIndex.get(t) orelse return;
         const kind = self.schema.kinds[k];
         const roles = kind.roles;
-        const slotCount = if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
+        const slotCount = slotsOf(roles);
         var actual = try std.bit_set.Dynamic.initEmpty(self.a, self.width);
         for (l.items, 0..) |item, i| {
             const forRest = i >= slotCount;
@@ -896,9 +971,10 @@ const TypeChecker = struct {
                 },
                 else => self.elemInto(rule, item.elem, &actual),
             }
-            var bad = try actual.clone(self.a);
-            var it = ok.iterator(.{});
-            while (it.next()) |b| bad.unset(b);
+            // The values the role does not allow.
+            var bad = ok;
+            bad.toggleAll();
+            bad.setIntersection(actual);
             if (bad.count() > 0) try self.report(ruleId, role, kind, item.elem, bad, null);
         }
     }
@@ -1199,10 +1275,9 @@ test "synthesized symbols are named in source syntax; identical ones are shared"
         \\
     );
     const names = [_][]const u8{
-        "ID?",                "item+",               "item*",
-        "L(item, \";\")",     "L(item, \";\").tail", "L(item?)",
-        "L(item?)?",          "L(item?).tail",       "(item !\"!\")",
-        "(A | B C)",          "(A | B C)*",          "(A | B C)+",
+        "ID?",                "item+",        "L(item, \";\")",
+        "L(item?)",           "L(item?)?",    "(item !\"!\")",
+        "(A | B C)",          "(A | B C)*",   "(A | B C)+",
         "infix(\"+\" \"-\")", "infix(\"*\")",
     };
     for (names) |n| if (g.getSymbol(n) == null) {
@@ -1220,6 +1295,22 @@ test "synthesized symbols are named in source syntax; identical ones are shared"
     try testing.expectEqualStrings("top → ID? item+ L(item, \";\") L(item?)? (item !\"!\") (A | B C)* infix", try lr.ruleText(a, &g, top[0]));
     const level = g.symbols.items[g.getSymbol("infix(\"+\" \"-\")").?].rules.items;
     try testing.expectEqualStrings("infix(\"+\" \"-\") → infix(\"+\" \"-\") \"+\" infix(\"*\")", try lr.ruleText(a, &g, level[0]));
+}
+
+test "more symbols than a u16 numbers is a located expansion error" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // Two alternatives of 33,000 distinct literals each: 66,000 terminals
+    // in two rules.
+    var text: std.ArrayList(u8) = .empty;
+    try text.appendSlice(a, "@parser\ntop! =");
+    for (0..66_000) |i| {
+        if (i == 33_000) try text.appendSlice(a, "\n     |");
+        try text.print(a, " \"t{d}\"", .{i});
+    }
+    try text.append(a, '\n');
+    try testing.expectError(error.ExpandError, expandText(a, text.items));
 }
 
 test "a tag role labeling literals takes the matched literal's text as its tag" {

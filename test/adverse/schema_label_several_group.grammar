@@ -1,0 +1,26 @@
+# A label on a group whose elements are positions (it has labels inside)
+# names several values, not one.
+# error: schema_label_several_group.grammar:26:8:
+# error: label 'x' names a group of several elements
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t x:leaf? y:leaf
+top! = x:(IDENT y:INTEGER)                  → (t)

@@ -12,6 +12,34 @@
   link) is a usage error, and nothing is written.
 - Output replaces its file atomically: a failed write leaves the previous
   file intact.
+- **`X*`, `X+` and `L(X)` are left-recursive.** A list of n items costs
+  O(n) time and memory in the generated parser, where each item copied the
+  rest of the list (a 40,000-line MUMPS routine took 7.8 s and 19 GB).
+  Trees are unchanged. The `L(X).tail` rules are gone, and conflicts that
+  involve a list move to the rule that ends it: regenerate, and replace
+  the manifest entries `nexus check` reports (em's `mumps.grammar`:
+  `shift L(expr).tail → ε 2` becomes `shift viewarg → expr ":" L(expr) 1`,
+  and `shift IDENT* → ε 2` becomes `shift patatom → repcount IDENT+ 1`).
+  A list followed by its own separator (`L(X) "," "*"`) needs no declared
+  conflict.
+- Labels inside a top-level `( ... )` or `( ... )?` group fill roles, and a
+  choice inside a `[...]` group or another choice becomes a rule of its
+  own; both were errors.
+- **The coverage gate counts presence, repetition and choice as values**:
+  an unused `T?`, `T*` or choice between fixed texts (`("+=" | "-=")`) is
+  an error, since leaving it out lets different inputs build the same
+  node. Use it, label it, drop it with `!X`, or opt out with `~ "reason"`.
+  Coverage errors show groups, choices and lists in source syntax.
+- One role may be labeled in different alternatives of a choice (whichever
+  matched fills it); an optional choice of literals can fill a tag role
+  (`op:("+=" | "-=")?`); labeled tokens in a rest role are one item each
+  (`items:IDENT "," items:IDENT`). All three were errors.
+- A label on a choice with an alternative of several elements is an error
+  (`eq:("=" | ":" "=")`); for a side-band role it was dropped for that
+  alternative. Label the elements instead.
+- **A label that cannot fill a role is an error**, where it was ignored:
+  one inside a repeated group or choice (`(A | x:B)*`), or inside a group
+  nested in a group or choice. Move that part into a named rule.
 
 ### Removed
 
@@ -28,6 +56,25 @@
   length limit of their own; an alternative has at most 65534 elements
   (counting those in its groups and choices), and a grammar at most 65535
   symbols, both located errors.
+- A multi-element `[A B]` group inside a group or a choice crashed the
+  generator; it is a located error.
+- Groups and choices nested more than 64 deep in a pattern, and action
+  nodes nested more than 64 deep, are located errors.
+- Aliases that form a cycle (`x = y`, `y = x`) are reported as an alias
+  cycle, not as an undefined rule.
+- An `@infix` base that aliases a token used nowhere else gave a false
+  "undefined rule".
+- A rule named `infix` merged silently with the `@infix` chain; with
+  `@infix` declared it is an error (rename the rule).
+- The coverage gate judged a name defined in two blocks as an alias of its
+  last block's token; it is a rule, as for expansion.
+- A declared kind built only inside an undeclared kind was reported as
+  unbuilt and left out of the paste-ready `@schema` block.
+- Two labels on one slot role report "labeled twice", not "filled by the
+  label and by the action".
+- Without a schema, a nested node after an absent optional element was cut
+  with the trailing nils: `"a" [b] → (p 1 2 (q 1))` gave `(p a)` for `a`;
+  it gives `(p a _ (q a))`.
 
 ## 1.1.0 — 2026-10-02
 

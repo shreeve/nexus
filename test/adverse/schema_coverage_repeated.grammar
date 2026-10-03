@@ -1,0 +1,25 @@
+# A repeated fixed token carries a value: how many there are.
+# error: schema_coverage_repeated.grammar:25:8:
+# error: element 1 (PLUS*) carries a value the action does not use
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf
+top! = PLUS* IDENT                          → (t 2)

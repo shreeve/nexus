@@ -1,0 +1,36 @@
+# Labels in mutually exclusive places:
+#   - one role labeled in different alternatives of a choice is filled by
+#     whichever alternative matched;
+#   - an optional choice of literals fills a tag role with the matched
+#     literal's text, or nil when absent;
+#   - single tokens labeled into a rest role are one item each.
+
+@lexer
+tokens
+    ident
+    integer
+    plus
+    minus
+    colon
+    comma
+    eof
+    err
+'+'                                         → plus
+'-'                                         → minus
+':'                                         → colon
+','                                         → comma
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "label_alternatives"
+
+@schema
+    ref   name:leaf
+    sign  op:tag? value:leaf
+    pair  ...items:leaf
+
+top! = (":" name:IDENT | name:INTEGER ":")     → (ref)
+     | op:("+" | "-")? value:INTEGER            → (sign)
+     | items:IDENT "," items:IDENT              → (pair)

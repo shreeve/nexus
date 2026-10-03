@@ -1,0 +1,20 @@
+# A list followed by its own separator needs no declared conflict: the
+# list is left-recursive, so after `a,` the next token decides whether
+# the list goes on (`b`) or has ended (`*`).
+
+@lexer
+tokens
+    ident
+    comma
+    star
+    eof
+    err
+','                                         → comma
+'*'                                         → star
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "list_then_separator"
+
+top! = L(IDENT) "," "*"                     → (top ...1)

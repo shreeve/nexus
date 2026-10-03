@@ -344,18 +344,25 @@ kind with that role, the labeled value fills it, so most actions need no
 positions at all (`→ (let)` above).
 
 - A label on an optional element (`[":" type:name]`) gives nil when the
-  element is absent; on a list (`args:[L(expr)]`) the items fill a rest role.
+  element is absent; on a list (`args:[L(expr)]`) the items fill a rest role,
+  and labeled tokens (`items:IDENT "," items:IDENT`) are one item each.
 - A label on a choice, `(A | B):role` or `role:(A | B)`, labels whichever
-  alternative matched. When the role is a `tag` role and every alternative
+  alternative matched (an alternative of several elements has no one value:
+  label its elements). When the role is a `tag` role and every alternative
   is a literal, the tag is the matched literal's text: `op:("+=" | "-=")`
-  gives the tag `+=` or `-=`.
+  gives the tag `+=` or `-=` (and `op:("+=" | "-=")?` nil when absent).
+- One role may be labeled in different alternatives of a choice,
+  `(":" name:IDENT | name:INTEGER ":")`: whichever matched fills it.
 - A label naming a side-band role (`eq:"="` for `let ... | eq`) records the
   element's span in the role store: `parser.sideRole(node, .eq)`.
 - `_:X` drops a value on purpose (as does `!X`).
 
 A label that is neither a role nor a side-band role of the kind the action
 builds is an error, and so is a label on an alternative that builds no
-schema node. Labels inside a `( ... )` group are not supported.
+schema node. Labels inside a top-level `( ... )` or `( ... )?` group fill
+roles as if the group's elements were written in place (nil when the
+optional group is absent). A label deeper down, or inside a repeated group
+or choice, is an error: move that part into a named rule.
 
 ## What generation checks
 
@@ -373,9 +380,12 @@ its rule, when:
 - **Coverage.** Every value-bearing element of a pattern is used by the
   action, labeled, or dropped with `!X` or `_:X`; an alternative opts out
   with `→ (...)  ~ "reason"`. Value-bearing are rules, lists, groups, the
-  `@as` token and its keywords, and tokens whose text varies (a lexer rule
-  produces them from a pattern that is not a single literal). Literals,
-  fixed-text tokens, and tokens only a lang wrapper produces carry no value.
+  `@as` token and its keywords, tokens whose text varies (a lexer rule
+  produces them from a pattern that is not a single literal), any optional
+  or repeated element (`";"?`, `NEWLINE*`: whether it is there, how many),
+  and a choice between fixed texts (`("+=" | "-=")`: which one matched).
+  Literals, fixed-text tokens, and tokens only a lang wrapper produces
+  carry no value.
 - **Types.** The generator computes, by fixpoint over the expanded grammar,
   the set of values every rule can produce (nil, leaf, tag, untagged list,
   and each kind) and checks every role against its declared type. The
@@ -499,8 +509,9 @@ parse) and an entry in the node store: its span and the rule that built it.
 - A nested node (`value:(num 2)`) spans the elements it references.
 - A leaf spans its token. A list without an id (built by a wrapper with
   `List.of`) spans the hull of its children.
-- Untagged lists that are only ever spliced into another list (the insides
-  of `L(X)`, left-recursive accumulators) get no id: nothing can reach them.
+- Untagged lists that are only ever spliced into another list (an `L(X)`
+  spread into its node, left-recursive accumulators) get no id: nothing can
+  reach them.
 
 The store costs one 12-byte entry per node: about 3% of parse time on Rig
 and 5% on MUMPS (see `test/bench/BASELINE.md`). Grammars without `@schema`

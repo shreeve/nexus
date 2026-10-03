@@ -1,0 +1,28 @@
+# A declared kind built inside an undeclared one is still built: only the
+# undeclared kind is reported, and the paste block lists both.
+# error: schema_undeclared_kind_nested.grammar:28:8:
+# error: undeclared kind 'foo'
+# error:     inner v:leaf
+# absent: is declared but no rule builds it
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    inner v:leaf
+top! = IDENT                                → (foo (inner 1))

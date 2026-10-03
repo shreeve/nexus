@@ -1,0 +1,27 @@
+# A label on a choice names whichever alternative matched; when an
+# alternative has several elements there is no one value to record, so
+# the label is an error (not dropped for that alternative).
+# error: schema_label_several.grammar:27:19:
+# error: label 'eq' names a choice with an alternative of several elements
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf | eq
+top! = name:IDENT eq:("=" | COLON EQ)       → (t)
