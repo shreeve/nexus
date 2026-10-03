@@ -258,7 +258,10 @@ The module exports:
 
 | Name | What |
 |---|---|
-| `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols |
+| `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols (all generated from the grammar) |
+| `Token`, `TokenCat` | a token (8 bytes: `pos`, `len`, `cat`, `pre`, the count of blanks before it) and the token categories |
+| `BaseLexer` | the generated scanner: `init(source)`, `next()`, `text(token)`, `makeToken(cat, pre, start, end)`; fields `source`, `pos`, `aux` and the `@lexer` state variables |
+| `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
 | `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
 | `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()` |
@@ -270,13 +273,20 @@ The module exports:
 | `ir.Let.name(node)` ... | per-kind views, one function per role (`ir.@"+".left` for quoted kinds) |
 | `Parser` | the lang module's `Parser` wrapper, or `BaseParser` |
 | `parseProgram(allocator, source)` | per start symbol: a new parser and its tree; `deinit()` the parser when done |
+| `nodeStore` | whether the parser records spans and node ids (`@schema` or `--spans`) |
+| `maxExpected` | the most symbols any state expects: room for `expectedNames` |
 
-`BaseParser` methods: `init`, `deinit`, `parse<Start>()`, `parse(start)`,
+`BaseParser` methods: `init(allocator, source)`, `deinit()`,
+`reset(source)` (parse new input in the memory the parser holds; earlier
+trees are gone), `allocator()` (the allocator that holds the trees, freed
+by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `parseTolerant(start, budget)`, `span(sexp)`, `ruleOf(sexp)`, `nodeCount()`,
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
 `writeFacts(w, root)`, `trivia()`, `lastError()`, `writeError(w)`,
-`printError()`, `lineCol(pos)`, `expected(state)`, `symbolText(symbol)`.
-A parse fails with `error.ParseError` (see `lastError()`),
+`printError()`, `lineCol(pos)`, `expected(state)`,
+`expectedNames(state, buf)`, `symbolText(symbol)`; fields `source` and
+`lexer` (the lexer as it stood at the error, for a lang Lexer's own error
+message). A parse fails with `error.ParseError` (see `lastError()`),
 `error.OutOfMemory`, or `error.InputTooLarge` (input over 4 GiB: positions
 are 32-bit).
 
@@ -555,6 +565,9 @@ offending token's span, category and state, and `writeError(w)` writes
 state at generation time: the `@errors`-named rules the state is waiting
 for, then the tokens none of them can begin with. Tokens print with their
 `@display` names, else as their literal or their name in lower case.
+`BaseParser.expectedNames(state, &buf)` gives those names, each once (two
+tokens with one `@display` name are named once), for a consumer that
+words its own message; `buf` is a `[parser.maxExpected][]const u8`.
 
 ## Tolerant parsing
 
@@ -582,24 +595,35 @@ is unaffected. The rules:
    input is never deleted.
 6. At most `budget` repairs; then the parse stops, incomplete.
 
-## Lang wrappers
+## The lang module
 
-A lang `Parser` wrapper may rewrite the tree (the generated `Parser` alias
-picks it up when the lang module declares one). With a schema it builds
-nodes through the same contract: `newNode(.kind, children, span)` gives a
-node an id and a span, `ir.slot`/`ir.width` place its children at compile
-time, `List.withId(items, id)` keeps an id (and so the span) on a rewritten
-node, and `@wrapper` declares kinds that only the wrapper builds. The
-wrapper is returned by value from `parseX(allocator, source)`, so it must
-be movable.
+`@lang = "name"` makes the parser import `name.zig`, which imports the
+generated module as `parser.zig` (generate it under that name). The parser
+reads only these declarations from it, each optional:
+
+| Declaration | Contract |
+|---|---|
+| `Lexer` | a wrapper over the generated scanner: a field `base: BaseLexer`, `pub fn init(source: []const u8) Lexer` and `pub fn next(self: *Lexer) Token`. The parser calls nothing else. Setting `base.aux` before returning a token gives its leaf that id (`src.id`). A token whose length the wrapper computes is built with `BaseLexer.makeToken`, so a match over 65535 bytes is an `err` token as in the scanner. A wrapper without `base: BaseLexer` is a compile error. |
+| `Parser` | a wrapper over the generated parser: a field `base: BaseParser`, `pub fn init(allocator, source) Parser`, `pub fn deinit(self: *Parser) void`, and `pub fn parse<Start>(self: *Parser) !Sexp` per start symbol it offers. Everything it does not forward is `p.base.X`; generic code reaches the generated parser as `if (Parser == BaseParser) &p else &p.base`. It is returned by value from `parseX(allocator, source)`, so it must be movable. |
+| `GId`, `gAs` | per `@as` group `g`: an enum whose field names are the group's keyword terminals (values from 1 become the leaf's id), and `pub fn gAs(text: []const u8) ?GId` (or the function `@as ... via` names); see [GRAMMAR.md](GRAMMAR.md#as-keywords-that-are-also-names) |
+| `f` | per `@code = f`: `pub fn f(source: []const u8, pos: u32) bool`, called by the lexer method of that name |
+
+`Tag` comes from the grammar, never from the lang module.
+
+A `Parser` wrapper may rewrite the tree. With a schema it builds nodes
+through the same contract as the parser: `newNode(.kind, children, span)`
+gives a node an id and a span, `ir.slot`/`ir.width` place its children at
+compile time, `List.withId(items, id)` keeps an id (and so the span) on a
+rewritten node, `@wrapper` declares kinds that only the wrapper builds, and
+`allocator()` holds what it allocates.
 
 ## Without a schema
 
 A grammar without `@schema` builds the same `Sexp` trees from the same
 actions, with these differences: lists drop trailing nils (positions of
 what is present stay stable); `role:v` items are positional; labels other
-than `_:X` are errors; the `Tag` enum comes from the lang module (or from the actions,
-plus a `_` catch-all, without `@lang`); there is no `ir`; spans and facts
+than `_:X` are errors; the `Tag` enum holds the tags the actions produce,
+then the `@tags` names; there is no `ir`; spans and facts
 need `--spans`. The MUMPS, Ruby, Zag, Slash and Nexis grammars in `test/`
 use this mode.
 

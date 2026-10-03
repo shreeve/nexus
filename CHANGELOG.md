@@ -38,25 +38,52 @@ under "Migrating a lang module" below.
 
 ### Migrating a lang module
 
-- **Tag**: delete the hand-written `Tag` enum (slash, zag, nexis,
-  nanoruby; where other code names it, `pub const Tag = parser.Tag;`). A
-  tag the generated enum lacks is one no action builds: list it in
-  `@tags` if the lang code needs it.
-- **Lexer wrappers**: delete the wrapper's `text` and `reset` (all of rig,
-  em, nexis, slash, zag, nanoruby have them; nothing calls them), and
-  rename `base.matchRules()` to `base.next()` (rig, zag, nanoruby). Code
-  that read a token's text through the wrapper reads `base.text(tok)`.
-- **Hand-built tokens**: build every token whose length is computed with
-  `parser.BaseLexer.makeToken(cat, pre, start, end)` instead of
-  `.len = @intCast(end - start)` (rig's identifier probe, nanoruby's
-  symbols, `%w` arrays and string segments, slash's heredocs and UTF-8
-  extensions; nexis keeps its own long-token encoding through `aux`).
-- **Error reporting**: read the failing token from `p.lastError()` (rig's
-  `diagnostic`, nexis's `loader.zig`), and replace hand-made expected
-  lists with `BaseParser.expectedNames` (rig's `expectedHint` and em's
-  `writeExpected` drop their own dedupe).
-- **Allocation in a Parser wrapper**: `self.base.allocator()` for
-  `self.base.arena.allocator()` (rig).
+Regenerate the parser, then, in the lang module:
+
+- **Tag**: delete a hand-written `Tag` enum. A tag the generated enum
+  lacks is one no action builds: list it in `@tags` if the lang code
+  needs it. Code elsewhere that names the lang module's `Tag` uses
+  `pub const Tag = parser.Tag;`.
+- **Lexer wrapper**: delete its `text` and `reset` (nothing calls them),
+  rename `base.matchRules()` to `base.next()`, and read a token's text
+  with `base.text(tok)`.
+- **Hand-built tokens**: build a token whose length is computed with
+  `parser.BaseLexer.makeToken(cat, pre, start, end)`, not
+  `.len = @intCast(end - start)`.
+- **Errors**: take the failing token from `lastError()` (`span`, `cat`,
+  `state`) instead of `current`, and the expected names from
+  `BaseParser.expectedNames(state, &buf)` with
+  `var buf: [parser.maxExpected][]const u8`.
+- **Parser wrapper**: allocate with `self.base.allocator()`, not
+  `self.base.arena.allocator()`.
+
+Per repository:
+
+- **rig** (`src/rig.zig`): delete `Lexer.text`; `matchRules()` → `next()`
+  (21 sites); the identifier probe's `.len = @intCast(end - pos)` →
+  `makeToken`; `diagnostic` and the bracket probes read `lastError()`
+  instead of `base.current`; `expectedHint` loops over `expectedNames`
+  and drops its dedupe; `allocator()` returns `self.base.allocator()`.
+  `pub const Tag = parser.Tag;` stays (rig's code names it).
+- **em** (`src/mumps.zig`): delete `Lexer.text` and `Lexer.reset`.
+  `frontend.zig`'s `writeExpected` can take its names from
+  `expectedNames`.
+- **nexis** (`src/nexis.zig`): replace the `Tag` enum with
+  `pub const Tag = parser.Tag;` (`reader.zig` names `nexis.Tag`); delete
+  `Lexer.text`, `Lexer.reset` and the unused `keyword_as`; `loader.zig`
+  locates a parse error with `parser.lastError().?.span`, not
+  `parser.current`. Its scanner keeps its own long-token encoding through
+  `aux` (`srcLen`).
+- **slash** (Nexus 0.10.3; the port in this repository's `test/slash` is
+  the 1.x form): delete `Tag`, `Lexer.text` and `Lexer.reset`; the
+  heredoc, string-definition and UTF-8 identifier and variable tokens use
+  `makeToken`.
+- **zag** (Nexus 0.10.3; see `test/zag`): delete `Tag`, `Lexer.text` and
+  `Lexer.reset`; `matchRules()` → `next()` (5 sites).
+- **nanoruby** (Nexus 0.10.3; see `test/ruby`): delete `Tag`,
+  `Lexer.text` and `Lexer.reset`; `matchRules()` → `next()` (4 sites);
+  symbols, `%w`/`%i` arrays, number extension and string segments use
+  `makeToken`.
 
 ### Changed
 
@@ -113,6 +140,11 @@ under "Migrating a lang module" below.
 
 ### Fixed
 
+- An `@as` keyword whose Id value is 512 or more read past the group's
+  symbol map (a panic in safe builds); the maps are sized from the Id
+  enum, so any `u16` value works.
+- A tag literal written with an escape (`op:"\x41"` for the tag `A`)
+  generated a parser that did not compile.
 - A rule with more than 255 elements crashed the generator. Rules have no
   length limit of their own; an alternative has at most 65534 elements
   (counting those in its groups and choices), and a grammar at most 65535

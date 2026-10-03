@@ -360,7 +360,8 @@ tokens the same way. `Lexer` is the lexer the parser drives: the lang
 module's `Lexer` when it declares one (a wrapper that holds a
 `base: BaseLexer` and rewrites its token stream: indentation, keyword
 classification, synthetic tokens; it has `init(source)` and `next()`),
-else `BaseLexer`.
+else `BaseLexer`. [The lang module](SEMANTICS.md#the-lang-module) lists
+everything a lang module may declare.
 
 ## The @parser section
 
@@ -862,7 +863,7 @@ An `X "c"` hint that decides nothing is an error.
 
 | Directive | Section | Purpose |
 |---|---|---|
-| `@lang = "name"` | any | the lang module (`name.zig`, imported by the parser) |
+| `@lang = "name"` | any | the lang module (`name.zig`, imported by the parser; see [SEMANTICS.md](SEMANTICS.md#the-lang-module)) |
 | `@code = fn` | @lexer | a lexer method calling `lang.fn(source, pos)` |
 | `@schema` | any | node kinds and their roles ([SEMANTICS.md](SEMANTICS.md)) |
 | `@tags a b ...` | any | extra `Tag` values for a lang wrapper |
