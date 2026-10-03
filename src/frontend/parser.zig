@@ -1301,6 +1301,12 @@ pub const BaseParser = struct {
     /// Finish a list from `extendList`, recording its spare capacity.
     fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
+        return self.keepListNils(out, use);
+    }
+
+    /// `keepList` keeping trailing nils: a list of one item per element
+    /// (`X*`, `L(X?)`, ...).
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
                 .len = out.items.len,

@@ -499,8 +499,9 @@ parse) and an entry in the node store: its span and the rule that built it.
 - A nested node (`value:(num 2)`) spans the elements it references.
 - A leaf spans its token. A list without an id (built by a wrapper with
   `List.of`) spans the hull of its children.
-- Untagged lists that are only ever spliced into another list (the insides
-  of `L(X)`, left-recursive accumulators) get no id: nothing can reach them.
+- Untagged lists that are only ever spliced into another list (an `L(X)`
+  spread into its node, left-recursive accumulators) get no id: nothing can
+  reach them.
 
 The store costs one 12-byte entry per node: about 3% of parse time on Rig
 and 5% on MUMPS (see `test/bench/BASELINE.md`). Grammars without `@schema`

@@ -1,8 +1,8 @@
-# A list followed by its own separator is ambiguous: the conflict is
-# reported like any other (it must be declared in @conflicts), never
-# resolved silently inside the list's expansion.
+# A list followed by an optional item of its own kind is ambiguous: the
+# conflict is reported like any other (it must be declared in @conflicts),
+# never resolved silently inside the list's expansion.
 # error: list_tail_conflict.grammar:21:1:
-# error: undeclared conflict: shift  L(IDENT).tail → ε
+# error: undeclared conflict: reduce IDENT* → IDENT* IDENT over IDENT? → IDENT
 @lexer
 tokens
     ident
@@ -18,4 +18,4 @@ tokens
 @parser
 @lang = "list_tail_conflict"
 
-top! = L(IDENT) "," "*"                     → (top ...1)
+top! = IDENT* IDENT?                        → (top ...1 2)

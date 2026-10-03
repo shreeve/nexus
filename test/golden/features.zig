@@ -1101,6 +1101,12 @@ pub const BaseParser = struct {
     /// Finish a list from `extendList`, recording its spare capacity.
     fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
+        return self.keepListNils(out, use);
+    }
+
+    /// `keepList` keeping trailing nils: a list of one item per element
+    /// (`X*`, `L(X?)`, ...).
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
                 .len = out.items.len,
@@ -1373,7 +1379,7 @@ const elemEnds = false;
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
-const numSymbols = 29;
+const numSymbols = 28;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
@@ -1381,16 +1387,16 @@ fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
         .@"newline" => 9,
-        .@"ident" => 17,
-        .@"integer" => 18,
-        .@"string_dq" => 19,
+        .@"ident" => 16,
+        .@"integer" => 17,
+        .@"string_dq" => 18,
         .@"assign" => 10,
         .@"lparen" => 12,
         .@"rparen" => 13,
         .@"comma" => 14,
-        .@"plus" => 26,
-        .@"minus" => 27,
-        .@"star" => 28,
+        .@"plus" => 25,
+        .@"minus" => 26,
+        .@"star" => 27,
         else => 2, // error
     };
 }
@@ -1406,74 +1412,71 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         5 => pass[0],
         6 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
         7 => pass[0],
-        8 => self.spreadList(pass[0], pass[1], .spread),
-        9 => self.spreadList(pass[1], pass[2], .spread),
-        10 => self.emptyList(.spread),
-        11 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        12 => self.emptyList(.spread),
+        8 => self.build(&.{ pass[0] }, .spread),
+        9 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, .spread); },
+        10 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
+        11 => self.emptyList(.spread),
+        12 => pass[0],
         13 => pass[0],
         14 => pass[0],
-        15 => pass[0],
-        16 => pass[1],
-        19 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        20 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        21 => pass[0],
-        22 => self.sexp(.@"*", &.{pass[0], pass[2]}),
+        15 => pass[1],
+        18 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        19 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        20 => pass[0],
+        21 => self.sexp(.@"*", &.{pass[0], pass[2]}),
+        22 => pass[0],
         23 => pass[0],
-        24 => pass[0],
         else => unreachable,
     };
 }
 
-const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 4, 6, 6, 15, 16, 16, 7, 7, 8, 8, 8, 8, 21, 23, 24, 24, 24, 25, 25, 11 };
-const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 1, 4, 1, 2, 3, 0, 1, 0, 1, 1, 1, 3, 3, 3, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 4, 6, 6, 15, 15, 7, 7, 8, 8, 8, 8, 20, 22, 23, 23, 23, 24, 24, 11 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 1, 4, 1, 1, 3, 1, 0, 1, 1, 1, 3, 3, 3, 3, 3, 1, 3, 1, 1 };
 
-// Parse table: 41 states x 29 symbols. 0 = error, > 0 = shift or
+// Parse table: 39 states x 28 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 41;
+const numStates = 39;
 
 const sparse = [numStates][]const i16{
-    &.{20,2},
-    &.{22,3},
-    &.{3,13,4,15,5,7,6,4,8,14,11,5,12,12,17,9,18,11,19,8,24,10,25,6},
-    &.{4,16,6,4,8,14,11,5,12,12,17,9,18,11,19,8,24,10,25,6},
-    &.{1,-25,9,-25,10,18,12,17,13,-25,14,-25,26,-25,27,-25,28,-25},
+    &.{19,2},
+    &.{21,3},
+    &.{3,12,4,14,5,7,6,4,8,13,11,5,12,11,16,6,17,8,18,10,23,15,24,9},
+    &.{4,16,6,4,8,13,11,5,12,11,16,6,17,8,18,10,23,15,24,9},
+    &.{1,-24,9,-24,10,18,12,17,13,-24,14,-24,25,-24,26,-24,27,-24},
     &.{1,-7,9,-7,13,-7,14,-7},
-    &.{1,-23,9,-23,13,-23,14,-23,26,-23,27,-23,28,19},
-    &.{1,-2,9,20},
-    &.{1,-17,9,-17,10,-17,12,-17,13,-17,14,-17,26,-17,27,-17,28,-17},
-    &.{1,-15,9,-15,10,-15,12,-15,13,-15,14,-15,26,-15,27,-15,28,-15},
-    &.{1,-26,9,-26,13,-26,14,-26,26,21,27,22},
-    &.{1,-16,9,-16,10,-16,12,-16,13,-16,14,-16,26,-16,27,-16,28,-16},
-    &.{4,23,6,4,8,14,11,5,12,12,17,9,18,11,19,8,24,10,25,6},
+    &.{1,-14,9,-14,10,-14,12,-14,13,-14,14,-14,25,-14,26,-14,27,-14},
+    &.{1,-2,9,19},
+    &.{1,-15,9,-15,10,-15,12,-15,13,-15,14,-15,25,-15,26,-15,27,-15},
+    &.{1,-22,9,-22,13,-22,14,-22,25,-22,26,-22,27,20},
+    &.{1,-16,9,-16,10,-16,12,-16,13,-16,14,-16,25,-16,26,-16,27,-16},
+    &.{4,21,6,4,8,13,11,5,12,11,16,6,17,8,18,10,23,15,24,9},
     &.{1,-1},
-    &.{1,-9,9,-9,10,-9,12,-9,13,-9,14,-9,26,-9,27,-9,28,-9},
+    &.{1,-9,9,-9,10,-9,12,-9,13,-9,14,-9,25,-9,26,-9,27,-9},
     &.{1,-3,9,-3},
+    &.{1,-25,9,-25,13,-25,14,-25,25,23,26,24},
     &.{1,-1},
-    &.{4,28,6,4,7,26,8,14,11,5,12,12,13,-14,15,27,17,9,18,11,19,8,24,10,25,6},
-    &.{4,29,6,4,8,14,11,5,12,12,17,9,18,11,19,8,24,10,25,6},
-    &.{6,30,8,14,12,12,17,9,18,11,19,8},
-    &.{1,-5,4,31,6,4,8,14,9,-5,11,5,12,12,17,9,18,11,19,8,24,10,25,6},
-    &.{6,32,8,14,12,12,17,9,18,11,19,8,25,33},
-    &.{6,32,8,14,12,12,17,9,18,11,19,8,25,34},
-    &.{13,35},
+    &.{4,28,6,4,7,26,8,13,11,5,12,11,13,-13,15,27,16,6,17,8,18,10,23,15,24,9},
+    &.{4,29,6,4,8,13,11,5,12,11,16,6,17,8,18,10,23,15,24,9},
+    &.{1,-5,4,30,6,4,8,13,9,-5,11,5,12,11,16,6,17,8,18,10,23,15,24,9},
+    &.{6,31,8,13,12,11,16,6,17,8,18,10},
+    &.{13,32},
     &.{1,-1},
+    &.{6,34,8,13,12,11,16,6,17,8,18,10,24,33},
+    &.{6,34,8,13,12,11,16,6,17,8,18,10,24,35},
     &.{1,-1},
     &.{13,36},
-    &.{13,-13},
-    &.{13,-12,14,38,16,37},
+    &.{13,-12,14,37},
+    &.{13,-10,14,-10},
     &.{1,-6,9,-6,13,-6,14,-6},
-    &.{1,-24,9,-24,12,17,13,-24,14,-24,26,-24,27,-24,28,-24},
     &.{1,-4,9,-4},
-    &.{1,-25,9,-25,12,17,13,-25,14,-25,26,-25,27,-25,28,-25},
-    &.{1,-21,9,-21,13,-21,14,-21,26,-21,27,-21,28,19},
-    &.{1,-22,9,-22,13,-22,14,-22,26,-22,27,-22,28,19},
-    &.{1,-18,9,-18,10,-18,12,-18,13,-18,14,-18,26,-18,27,-18,28,-18},
-    &.{1,-8,9,-8,10,-8,12,-8,13,-8,14,-8,26,-8,27,-8,28,-8},
-    &.{13,-10},
-    &.{4,39,6,4,8,14,11,5,12,12,17,9,18,11,19,8,24,10,25,6},
-    &.{13,-12,14,38,16,40},
-    &.{13,-11},
+    &.{1,-23,9,-23,12,17,13,-23,14,-23,25,-23,26,-23,27,-23},
+    &.{1,-17,9,-17,10,-17,12,-17,13,-17,14,-17,25,-17,26,-17,27,-17},
+    &.{1,-20,9,-20,13,-20,14,-20,25,-20,26,-20,27,20},
+    &.{1,-24,9,-24,12,17,13,-24,14,-24,25,-24,26,-24,27,-24},
+    &.{1,-21,9,-21,13,-21,14,-21,25,-21,26,-21,27,20},
+    &.{1,-8,9,-8,10,-8,12,-8,13,-8,14,-8,25,-8,26,-8,27,-8},
+    &.{4,38,6,4,8,13,11,5,12,11,16,6,17,8,18,10,23,15,24,9},
+    &.{13,-11,14,-11},
 };
 
 const parseTable = blk: {
@@ -1510,24 +1513,24 @@ fn startState(start: Start) u16 {
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"program" => 20,
-        .@"expr" => 22,
+        .@"program" => 19,
+        .@"expr" => 21,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    12, 17, 18, 19, 1, 9, 10, 12, 13, 14, 26, 27, 28, 1, 9, 13, 14, 1, 9, 13, 14, 26, 27, 28,
-    1, 9, 1, 9, 13, 14, 26, 27, 1, 12, 13, 17, 18, 19, 1, 9, 12, 17, 18, 19, 13, 13, 14, 1,
-    9, 12, 13, 14, 26, 27, 28,
+    12, 16, 17, 18, 1, 9, 10, 12, 13, 14, 25, 26, 27, 1, 9, 13, 14, 1, 9, 1, 9, 13, 14, 25,
+    26, 27, 1, 1, 9, 13, 14, 25, 26, 12, 13, 16, 17, 18, 1, 9, 12, 16, 17, 18, 13, 13, 14, 1,
+    9, 12, 13, 14, 25, 26, 27,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 4, 13, 17, 24, 26, 32, 33, 38, 44, 45, 47, 55,
+    0, 0, 4, 13, 17, 19, 26, 27, 33, 38, 44, 45, 47, 55,
 };
 const expectedOf = [_]u16{
-    0, 0, 1, 1, 2, 3, 4, 5, 2, 2, 6, 2, 1, 7, 2, 5, 7, 8, 1, 1, 9, 1, 1, 10,
-    7, 7, 10, 10, 11, 3, 12, 5, 12, 4, 4, 2, 2, 10, 1, 11, 10,
+    0, 0, 1, 1, 2, 3, 2, 4, 2, 5, 2, 1, 6, 2, 4, 7, 6, 8, 1, 9, 1, 10, 6, 1,
+    1, 6, 10, 11, 11, 3, 4, 12, 2, 5, 12, 5, 2, 1, 11,
 };
 
 fn expectedIn(state: u16) []const u16 {
@@ -1543,12 +1546,12 @@ fn symbolName(sym: u16) []const u8 {
         12 => "\"(\"",
         13 => "\")\"",
         14 => "\",\"",
-        17 => "ident",
-        18 => "integer",
-        19 => "string_dq",
-        26 => "\"+\"",
-        27 => "\"-\"",
-        28 => "\"*\"",
+        16 => "ident",
+        17 => "integer",
+        18 => "string_dq",
+        25 => "\"+\"",
+        26 => "\"-\"",
+        27 => "\"*\"",
         else => "",
     };
 }

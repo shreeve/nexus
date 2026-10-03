@@ -734,8 +734,7 @@ const Expander = struct {
             try self.addSymbol("\",\"", .terminal);
 
         // One rule set per (item, item optionality, separator), named in
-        // source syntax: `L(X)`, `L(X?)`, `L(X, sep)`, and `L(X).tail` for
-        // the repetition after the first item. `","` is the default
+        // source syntax: `L(X)`, `L(X?)`, `L(X, sep)`. `","` is the default
         // separator.
         const sepName = g.symbols.items[sepId].name;
         const listName = if (std.mem.eql(u8, sepName, "\",\""))
@@ -743,31 +742,14 @@ const Expander = struct {
         else
             try g.allocator.print("L({s}, {s})", .{ g.symbols.items[effectiveItemId].name, sepName });
         if (g.getSymbol(listName)) |existing| return existing;
-        const tailName = try g.allocator.print("{s}.tail", .{listName});
-
         const listId = try self.addSymbol(listName, .nonterminal);
-        const tailId = try self.addSymbol(tailName, .nonterminal);
-
-        // L(X) → X L(X).tail → (!1 ...2)
+        // L(X) → X → (1) | L(X) sep X → (...1 3)
+        _ = try self.addRule(.{ .id = 0, .lhs = listId, .rhs = try g.allocator.dupe(u16, &.{effectiveItemId}), .actionTree = singleton });
         _ = try self.addRule(.{
             .id = 0,
             .lhs = listId,
-            .rhs = try g.allocator.dupe(u16, &.{ effectiveItemId, tailId }),
-            .actionTree = try consTree(g.allocator, 1),
-        });
-        // L(X).tail → sep X L(X).tail → (!2 ...3)
-        _ = try self.addRule(.{
-            .id = 0,
-            .lhs = tailId,
-            .rhs = try g.allocator.dupe(u16, &.{ sepId, effectiveItemId, tailId }),
-            .actionTree = try consTree(g.allocator, 2),
-        });
-        // L(X).tail → ε → ()
-        _ = try self.addRule(.{
-            .id = 0,
-            .lhs = tailId,
-            .rhs = &[_]u16{},
-            .actionTree = emptyList,
+            .rhs = try g.allocator.dupe(u16, &.{ listId, sepId, effectiveItemId }),
+            .actionTree = try appendTree(g.allocator, 3),
         });
         return listId;
     }
@@ -787,15 +769,14 @@ const Expander = struct {
         const name = try g.allocator.print("{s}*", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const starId = try self.addSymbol(name, .nonterminal);
-        // X* → X X* → (!1 ...2)
+        // X* → ε → () | X* X → (...1 2)
+        _ = try self.addRule(.{ .id = 0, .lhs = starId, .rhs = &[_]u16{}, .actionTree = emptyList });
         _ = try self.addRule(.{
             .id = 0,
             .lhs = starId,
-            .rhs = try g.allocator.dupe(u16, &.{ symId, starId }),
-            .actionTree = try consTree(g.allocator, 1),
+            .rhs = try g.allocator.dupe(u16, &.{ starId, symId }),
+            .actionTree = try appendTree(g.allocator, 2),
         });
-        // X* → ε → ()
-        _ = try self.addRule(.{ .id = 0, .lhs = starId, .rhs = &[_]u16{}, .actionTree = emptyList });
         return starId;
     }
 
@@ -803,14 +784,14 @@ const Expander = struct {
         const g = self.g;
         const name = try g.allocator.print("{s}+", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
-        const starId = try self.createZeroPlusRule(symId);
         const plusId = try self.addSymbol(name, .nonterminal);
-        // X+ → X X* → (!1 ...2)
+        // X+ → X → (1) | X+ X → (...1 2)
+        _ = try self.addRule(.{ .id = 0, .lhs = plusId, .rhs = try g.allocator.dupe(u16, &.{symId}), .actionTree = singleton });
         _ = try self.addRule(.{
             .id = 0,
             .lhs = plusId,
-            .rhs = try g.allocator.dupe(u16, &.{ symId, starId }),
-            .actionTree = try consTree(g.allocator, 1),
+            .rhs = try g.allocator.dupe(u16, &.{ plusId, symId }),
+            .actionTree = try appendTree(g.allocator, 2),
         });
         return plusId;
     }
@@ -902,10 +883,15 @@ fn isAliasRule(rule: ParsedRule) ?[]const u8 {
 
 const emptyList: ActionTree = .{ .list = .{ .head = .none, .items = &.{} } };
 
-/// `(!N ...N+1)`: element N consed onto the list at N+1.
-fn consTree(allocator: Allocator, n: u16) !ActionTree {
-    const items = try allocator.dupe(ActionItem, &.{.{ .elem = .{ .spread = n + 1 } }});
-    return .{ .list = .{ .head = .{ .ref = .{ .ref = n } }, .items = items } };
+/// The lists `X*`, `X+` and `L(X)` build are left-recursive, so the
+/// generated parser extends each in place (amortized O(1) per item) and
+/// keeps its stack flat. They hold one item per element, nils included.
+const singleton: ActionTree = .{ .list = .{ .head = .none, .items = &.{.{ .elem = .{ .ref = 1 } }}, .keepNils = true } };
+
+/// `(...1 N)`: the list at 1 with element N appended.
+fn appendTree(allocator: Allocator, n: u16) !ActionTree {
+    const items = try allocator.dupe(ActionItem, &.{ .{ .elem = .{ .spread = 1 } }, .{ .elem = .{ .ref = n } } });
+    return .{ .list = .{ .head = .none, .items = items, .keepNils = true } };
 }
 
 /// The value of a `( ... )` group or a choice alternative: nil when every

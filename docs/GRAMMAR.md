@@ -462,11 +462,13 @@ helper rule).
 `X?` and `[X]` are the same. On a rule name the alternative is expanded
 (one variant with the rule, one without); on a token a rule `TOKEN?` is
 introduced. Generated rules are named in
-source syntax (`L(expr)`, `L(expr).tail`, `IDENT*`, `(A | B)`), which is
-how conflict reports and `@conflicts` entries name them.
+source syntax (`L(expr)`, `IDENT*`, `(A | B)`), which is how conflict
+reports and `@conflicts` entries name them.
 
-A list rule is greedy: `L(expr) "," tail` can never reach its `tail`,
-because every comma continues the list. Write such lists out as rules.
+`X*`, `X+` and `L(X)` are left-recursive (`L(X) → X | L(X) sep X`): the
+parser builds each list in place, in time and memory linear in its length,
+and a list ends where the next tokens cannot continue it: in
+`L(IDENT) "," "*"`, the comma before `*` follows the list.
 
 ## Actions
 

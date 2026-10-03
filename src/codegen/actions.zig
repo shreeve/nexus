@@ -266,7 +266,8 @@ const Emitter = struct {
     /// A leading `...N` whose N is not used again extends that list in
     /// place (amortized O(1) growth of left-recursive lists; each reduced
     /// value is consumed once). Trailing nils are dropped by the runtime
-    /// (keepList/finishList) unless the schema fixes positions.
+    /// (keepList/finishList) unless the schema fixes positions or the list
+    /// keeps its nils.
     fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         var extend: ?u16 = null;
         if (l.head == .none and l.items.len > 0 and l.items[0].elem == .spread) {
@@ -301,7 +302,8 @@ const Emitter = struct {
             }
         }
         if (extend != null) {
-            try w.print("break :{s} self.keepList(&out, {s}); }}", .{ label, self.listUse(l) });
+            const keep = if (l.keepNils) "keepListNils" else "keepList";
+            try w.print("break :{s} self.{s}(&out, {s}); }}", .{ label, keep, self.listUse(l) });
         } else {
             try w.print("break :{s} " ++ listFromOwned ++ "; }}", .{ label, self.listUse(l) });
         }

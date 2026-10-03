@@ -1199,10 +1199,9 @@ test "synthesized symbols are named in source syntax; identical ones are shared"
         \\
     );
     const names = [_][]const u8{
-        "ID?",                "item+",               "item*",
-        "L(item, \";\")",     "L(item, \";\").tail", "L(item?)",
-        "L(item?)?",          "L(item?).tail",       "(item !\"!\")",
-        "(A | B C)",          "(A | B C)*",          "(A | B C)+",
+        "ID?",                "item+",        "L(item, \";\")",
+        "L(item?)",           "L(item?)?",    "(item !\"!\")",
+        "(A | B C)",          "(A | B C)*",   "(A | B C)+",
         "infix(\"+\" \"-\")", "infix(\"*\")",
     };
     for (names) |n| if (g.getSymbol(n) == null) {

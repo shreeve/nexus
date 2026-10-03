@@ -13,6 +13,17 @@
 - Output replaces its file atomically: a failed write leaves the previous
   file intact.
 
+- **`X*`, `X+` and `L(X)` are left-recursive.** A list of n items costs
+  O(n) time and memory in the generated parser, where each item copied the
+  rest of the list (a 40,000-line MUMPS routine took 7.8 s and 19 GB).
+  Trees are unchanged. The `L(X).tail` rules are gone, and conflicts that
+  involve a list move to the rule that ends it: regenerate, and replace
+  the manifest entries `nexus check` reports (em's `mumps.grammar`:
+  `shift L(expr).tail → ε 2` becomes `shift viewarg → expr ":" L(expr) 1`,
+  and `shift IDENT* → ε 2` becomes `shift patatom → repcount IDENT+ 1`).
+  A list followed by its own separator (`L(X) "," "*"`) needs no declared
+  conflict.
+
 ### Removed
 
 - `--slr`. Nexus builds LALR(1) tables only.

@@ -112,7 +112,10 @@ expander resolves.
   absent position;
 - `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`, `( ... )` groups and
   repeated choices become shared synthesized rules named in source syntax
-  (`L(X).tail`, `(A | B)`), which is how reports and manifests name them;
+  (`L(X)`, `(A | B)`), which is how reports and manifests name them. The
+  lists are left-recursive (`X* → ε | X* X → (...1 2)`), so code
+  generation extends them in place and the parse stack stays flat; their
+  actions keep nils, one item per element;
 - `@infix` becomes one rule per precedence level (`infix("+" "-")`) with
   left, right or no associativity built into the recursion;
 - each start symbol `x` gets a marker terminal `x!` and an accept rule

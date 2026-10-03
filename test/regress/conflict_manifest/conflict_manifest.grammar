@@ -1,5 +1,5 @@
 # A @conflicts manifest entry is read back exactly as the generator prints
-# it, including generated symbols (`L(IDENT).tail`), `ε` and `over`.
+# it, including generated symbols (`L(IDENT)`), `ε` and `over`.
 
 @lexer
 tokens
@@ -16,8 +16,8 @@ tokens
 @lang = "conflict_manifest"
 
 @conflicts
-    shift  L(IDENT).tail → ε                     1  # two names are the `item? item` form
-    reduce L(IDENT).tail → ε over items → IDENT  1  # a lone item is the [item] form
+    shift  L(IDENT) → IDENT                     1  # two names are the `item? item` form
+    reduce L(IDENT) → IDENT over items → IDENT  1  # a lone item is the [item] form
 
 top!  = items                               → 1
 items = L(item) [item]                      → (i 1 2)
