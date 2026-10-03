@@ -322,16 +322,15 @@ const Codegen = struct {
 
         try w.writeAll("\n/// Start symbols; `BaseParser.parse(start)` parses one.\npub const Start = enum(u16) {\n");
         for (self.g.startSymbols.items) |symId| {
-            if (self.markerOf(symId) == null) continue;
+            if (try self.markerOf(symId) == null) continue;
             try w.print("    @\"{s}\" = {d},\n", .{ self.g.symbols.items[symId].name, symId });
         }
         try w.writeAll("};\n");
     }
 
-    fn markerOf(self: *const Codegen, startSym: u16) ?u16 {
-        var buf: [256]u8 = undefined;
-        const name = std.mem.print(&buf, "{s}!", .{self.g.symbols.items[startSym].name}) catch return null;
-        return self.g.getSymbol(name);
+    /// The marker token (`name!`) that selects start symbol `startSym`.
+    fn markerOf(self: *const Codegen, startSym: u16) !?u16 {
+        return self.g.getSymbol(try self.allocator.print("{s}!", .{self.g.symbols.items[startSym].name}));
     }
 
     fn emitRuntime(self: *Codegen, w: *std.Io.Writer) !void {
@@ -339,7 +338,7 @@ const Codegen = struct {
 
         var methods: std.Io.Writer.Allocating = .init(self.allocator);
         for (self.g.startSymbols.items) |symId| {
-            if (self.markerOf(symId) == null) continue;
+            if (try self.markerOf(symId) == null) continue;
             const name = self.g.symbols.items[symId].name;
             try methods.writer.print(
                 \\    pub fn parse{s}(self: *BaseParser) !Sexp {{
@@ -935,7 +934,7 @@ const Codegen = struct {
         var states: std.Io.Writer.Allocating = .init(self.allocator);
         var markers: std.Io.Writer.Allocating = .init(self.allocator);
         for (self.g.startSymbols.items, self.automaton.startStates.items) |sym, state| {
-            const marker = self.markerOf(sym) orelse continue;
+            const marker = try self.markerOf(sym) orelse continue;
             const name = self.g.symbols.items[sym].name;
             try states.writer.print("        .@\"{s}\" => {d},\n", .{ name, state });
             try markers.writer.print("        .@\"{s}\" => {d},\n", .{ name, marker });
@@ -1176,7 +1175,7 @@ const Codegen = struct {
             try w.writeAll("pub const Parser = BaseParser;\n");
         }
         for (self.g.startSymbols.items) |symId| {
-            if (self.markerOf(symId) == null) continue;
+            if (try self.markerOf(symId) == null) continue;
             const name = self.g.symbols.items[symId].name;
             const fname = try capitalized(self.allocator, name);
             try w.print(
