@@ -1,0 +1,24 @@
+# Action nodes nested deeper than the limit are an error at the
+# alternative, not a stack overflow.
+# error: action_too_deep.grammar:24:8:
+# error: action nodes nested too deeply (the limit is 64)
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT                                → (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t (t 1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))

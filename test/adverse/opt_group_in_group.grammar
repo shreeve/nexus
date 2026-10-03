@@ -1,0 +1,24 @@
+# A multi-element [...] group expands into positions of the alternative,
+# so it can only appear at the top level of a pattern, not inside a group.
+# error: opt_group_in_group.grammar:24:21:
+# error: a multi-element [...] group inside a group or choice is not supported
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT (PLUS [IDENT COLON]) INTEGER   → (t 1 3)

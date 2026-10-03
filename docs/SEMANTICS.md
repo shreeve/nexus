@@ -355,7 +355,10 @@ positions at all (`→ (let)` above).
 
 A label that is neither a role nor a side-band role of the kind the action
 builds is an error, and so is a label on an alternative that builds no
-schema node. Labels inside a `( ... )` group are not supported.
+schema node. Labels inside a top-level `( ... )` or `( ... )?` group fill
+roles as if the group's elements were written in place (nil when the
+optional group is absent). A label deeper down, or inside a repeated group
+or choice, is an error: move that part into a named rule.
 
 ## What generation checks
 

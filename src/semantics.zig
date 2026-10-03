@@ -85,6 +85,10 @@ pub fn schemaTags(allocator: Allocator, schema: Schema) ![]const []const u8 {
 
 /// Resolve every action of a schema-mode grammar (`ir.schema` non-null).
 pub fn resolve(allocator: Allocator, ir: *const GrammarIR, lexerSpec: ?*const LexerSpec, path: []const u8) Error!Result {
+    expand.checkPatterns(ir, path) catch |e| return switch (e) {
+        error.ExpandError => error.SemanticError,
+        error.OutOfMemory => error.OutOfMemory,
+    };
     var r = Resolver{ .a = allocator, .ir = ir, .schema = ir.schema.?, .lexer = lexerSpec, .path = path };
     return r.run();
 }
@@ -461,22 +465,16 @@ const Resolver = struct {
         for (1..layout.slots.len + 1) |p| {
             const e = layout.element(alt.elements, p);
             if (used[p] or e.label != null or e.skip) continue;
-            const s = layout.slots[p - 1];
-            if (s.kind == .choice) {
-                // A choice not used as a whole: its elements are checked
-                // one by one (their internal positions).
-                continue;
-            }
+            // A choice or labeled group not used as a whole: its elements
+            // are checked one by one (their internal positions).
+            if (layout.whole(p) != null) continue;
             if (!self.valueBearing(e, aliases)) continue;
-            if (s.kind == .choiceElem) {
-                // Covered when the whole choice is used and this is its
-                // alternative's only element.
-                const choice = alt.elements[s.elem];
-                const choicePos = for (layout.slots[0..layout.length], 1..) |cs, q| {
-                    if (cs.elem == s.elem) break q;
-                } else unreachable;
-                if (used[choicePos] and choice.choices[s.sub].len == 1) continue;
-                if (choice.label != null) continue;
+            const s = layout.slots[p - 1];
+            if (p > layout.length) {
+                // Covered when the whole is used and this is its
+                // alternative's only element, or when the whole is labeled.
+                if (used[layout.pos[s.elem]] and layout.forms[s.elem].?.alts[s.alt.?].len == 1) continue;
+                if (alt.elements[s.elem].label != null) continue;
             }
             const where = if (p <= layout.length) "element" else "choice element";
             if (p <= layout.length) {

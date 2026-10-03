@@ -1,0 +1,24 @@
+# Groups nested deeper than the limit are a located error, not a stack
+# overflow.
+# error: pattern_too_deep.grammar:24:84:
+# error: groups and choices nested too deeply (the limit is 64)
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((INTEGER))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))  → (t 1 2)

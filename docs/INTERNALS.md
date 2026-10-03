@@ -105,11 +105,13 @@ expander resolves.
 `src/expand.zig` produces the plain BNF grammar the LR stages consume:
 
 - aliases (`name = TOKEN`) are recorded and substituted, never reduced;
-- `[...]` groups, `[X]` on a rule name or list, and choices are expanded
-  into one alternative per combination; `Layout` maps every action position
-  to its element in each variant (or to absent), so actions keep their
-  positions. Without a schema, an expanded action is cut before a trailing
-  absent position;
+- at the top level of a pattern, `[...]` groups, `[X]` on a rule name or
+  list, choices and groups with labels inside are expanded into one
+  alternative per combination (`inlineForm`); `Layout` maps every action
+  position to its element in each variant (or to absent), so actions keep
+  their positions. Without a schema, an expanded action is cut before a
+  trailing absent position. `checkPatterns` rejects what has no position:
+  labels deeper down, a nested `[A B]`, and nesting beyond 64 levels;
 - `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`, `( ... )` groups and
   repeated choices become shared synthesized rules named in source syntax
   (`L(X)`, `(A | B)`), which is how reports and manifests name them. The

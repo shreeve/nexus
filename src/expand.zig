@@ -1,17 +1,20 @@
 //! Desugaring: turns the lowered GrammarIR into the plain BNF Grammar the LR
-//! stages consume. Registers symbols and aliases; expands `[opt]` groups and
-//! `(A | B)` choices into explicit alternatives (stable action positions);
-//! maps every alternative's action tree onto its expanded right-hand side;
-//! synthesizes rules for `X?`, `X*`, `X+`, `L(X)`, `( ... )` groups, the
+//! stages consume. Registers symbols and aliases; expands `[opt]` groups,
+//! `(A | B)` choices and labeled `( ... )` groups at the top level of a
+//! pattern into explicit alternatives (stable action positions); maps every
+//! alternative's action tree onto its expanded right-hand side; synthesizes
+//! rules for `X?`, `X*`, `X+`, `L(X)`, the other groups and choices, the
 //! `@infix` precedence chain, and one entry rule per start symbol.
 //!
 //! Action positions. A pattern's positions are its top-level elements in
 //! order, where a multi-element `[A B]` group counts one position per
-//! element and a choice counts one. The elements inside choice
-//! alternatives get further "internal" positions after those (see
+//! element and a choice counts one. The elements inside a top-level choice
+//! or labeled group get further "internal" positions after those (see
 //! `Layout`), which the semantic layer uses to address labeled elements;
 //! a grammar cannot write them. Expansion maps each position to the
-//! element's index in the expanded right-hand side, or to "absent".
+//! element's index in the expanded right-hand side, or to "absent". Below
+//! that level nothing is addressable: a group or choice nested in another,
+//! or repeated, becomes a synthesized rule, and labels there are errors.
 //!
 //! Absent positions. In schema mode an absent `N` is nil and an absent
 //! `...N` contributes nothing. Without a schema an absent `N`, `~N` or
@@ -63,8 +66,10 @@ pub const Options = struct {
     infix: ?[]const Resolved = null,
 };
 
-/// Process parsed grammar into internal representation
+/// Desugar the IR into plain BNF. In schema mode, `opts.resolved` comes
+/// from `semantics.resolve`, which has run `checkPatterns`.
 pub fn processGrammar(g: *Grammar, ir: *const GrammarIR, opts: Options) Error!void {
+    if (opts.resolved == null) try checkPatterns(ir, opts.path);
     var x = Expander{ .g = g, .ir = ir, .opts = opts };
     return x.run();
 }
@@ -73,57 +78,113 @@ pub fn processGrammar(g: *Grammar, ir: *const GrammarIR, opts: Options) Error!vo
 // Positions
 // =============================================================================
 
-/// Where one action position points in a pattern.
-pub const Slot = struct {
-    /// Index of the top-level element.
-    elem: u16,
-    kind: Kind,
-    /// optGroup: sub-element index. choiceElem: alternative index.
-    sub: u16 = 0,
-    /// choiceElem: element index within the alternative.
-    subElem: u16 = 0,
-
-    pub const Kind = enum { plain, optSub, choice, choiceElem };
+/// A top-level element that expansion writes inline: one variant per
+/// alternative (plus an absent variant when `optional`), each with the
+/// alternative's elements in the right-hand side. The elements of `[A B]`
+/// and `[X]` are positions of their own (`spliced`); a choice, or a group
+/// with labels inside, is one position, and its elements get internal
+/// positions.
+pub const Inline = struct {
+    alts: []const []const ParsedElement,
+    optional: bool,
+    spliced: bool,
 };
+
+/// The inline form of a top-level element, or null when expansion gives it
+/// one symbol (a token, a rule, or a synthesized rule).
+pub fn inlineForm(a: Allocator, e: ParsedElement) !?Inline {
+    const optional = e.quantifier == .optional;
+    switch (e.kind) {
+        .optGroup => return .{ .alts = try a.dupe([]const ParsedElement, &.{e.subElements}), .optional = true, .spliced = true },
+        .ident, .optList => if (optional) {
+            const one = try a.dupe(ParsedElement, &.{e});
+            one[0].quantifier = .one;
+            return .{ .alts = try a.dupe([]const ParsedElement, &.{one}), .optional = true, .spliced = true };
+        },
+        .choice => if (once(e)) return .{ .alts = e.choices, .optional = optional, .spliced = false },
+        .group => if (once(e) and hasLabel(e.subElements)) return .{ .alts = try a.dupe([]const ParsedElement, &.{e.subElements}), .optional = optional, .spliced = false },
+        else => {},
+    }
+    return null;
+}
+
+/// Not repeated: quantifier one or optional.
+fn once(e: ParsedElement) bool {
+    return e.quantifier == .one or e.quantifier == .optional;
+}
+
+fn hasLabel(elements: []const ParsedElement) bool {
+    for (elements) |e| if (e.label) |l| if (!std.mem.eql(u8, l, "_")) return true;
+    return false;
+}
+
+/// Where one action position points: top-level element `elem`, or (`alt`
+/// set) element `sub` of one of its inline alternatives.
+pub const Slot = struct { elem: u16, alt: ?u16 = null, sub: u16 = 0 };
 
 /// The positions of a pattern: `slots[p - 1]` for position p. The first
 /// `length` are the positions a grammar writes; the rest are internal
-/// positions of the elements inside choice alternatives.
+/// positions of the elements of choices and labeled groups.
 pub const Layout = struct {
     slots: []const Slot,
     length: usize,
+    /// Per top-level element: its inline form, or null.
+    forms: []const ?Inline,
+    /// Per top-level element: its position (the first, for `[A B]`).
+    pos: []const u16,
+    /// Per top-level element: the position of the first element of its
+    /// inline alternatives.
+    first: []const u16,
 
-    pub fn of(allocator: Allocator, elements: []const ParsedElement) !Layout {
+    pub fn of(a: Allocator, elements: []const ParsedElement) !Layout {
+        const forms = try a.alloc(?Inline, elements.len);
+        const pos = try a.alloc(u16, elements.len);
+        const first = try a.alloc(u16, elements.len);
         var slots: std.ArrayList(Slot) = .empty;
         for (elements, 0..) |e, i| {
             const idx: u16 = @intCast(i);
-            if (e.kind == .optGroup) {
-                for (0..e.subElements.len) |j| try slots.append(allocator, .{ .elem = idx, .kind = .optSub, .sub = @intCast(j) });
-            } else if (e.kind == .choice) {
-                try slots.append(allocator, .{ .elem = idx, .kind = .choice });
-            } else {
-                try slots.append(allocator, .{ .elem = idx, .kind = .plain });
-            }
+            forms[i] = try inlineForm(a, e);
+            pos[i] = @intCast(slots.items.len + 1);
+            first[i] = pos[i];
+            if (forms[i]) |f| if (f.spliced) {
+                for (0..f.alts[0].len) |j| try slots.append(a, .{ .elem = idx, .alt = 0, .sub = @intCast(j) });
+                continue;
+            };
+            try slots.append(a, .{ .elem = idx });
         }
         const length = slots.items.len;
-        for (elements, 0..) |e, i| {
-            if (e.kind != .choice) continue;
-            for (e.choices, 0..) |alt, a| for (0..alt.len) |j| {
-                try slots.append(allocator, .{ .elem = @intCast(i), .kind = .choiceElem, .sub = @intCast(a), .subElem = @intCast(j) });
+        for (forms, 0..) |form, i| {
+            const f = form orelse continue;
+            if (f.spliced) continue;
+            first[i] = @intCast(slots.items.len + 1);
+            for (f.alts, 0..) |alt, ai| for (0..alt.len) |j| {
+                try slots.append(a, .{ .elem = @intCast(i), .alt = @intCast(ai), .sub = @intCast(j) });
             };
         }
-        return .{ .slots = try slots.toOwnedSlice(allocator), .length = length };
+        return .{ .slots = try slots.toOwnedSlice(a), .length = length, .forms = forms, .pos = pos, .first = first };
     }
 
     /// The element at position p (1-based).
     pub fn element(self: Layout, elements: []const ParsedElement, p: usize) ParsedElement {
         const s = self.slots[p - 1];
-        const e = elements[s.elem];
-        return switch (s.kind) {
-            .plain, .choice => e,
-            .optSub => e.subElements[s.sub],
-            .choiceElem => e.choices[s.sub][s.subElem],
-        };
+        const alt = s.alt orelse return elements[s.elem];
+        return self.forms[s.elem].?.alts[alt][s.sub];
+    }
+
+    /// The inline form of position p when p is a choice or a labeled group
+    /// as a whole; null for any other position.
+    pub fn whole(self: Layout, p: usize) ?Inline {
+        const s = self.slots[p - 1];
+        if (s.alt != null) return null;
+        return self.forms[s.elem];
+    }
+
+    /// The position of element `sub` of inline alternative `alt` of
+    /// top-level element `elem`.
+    pub fn position(self: Layout, elem: usize, alt: usize, sub: usize) usize {
+        var p: usize = self.first[elem];
+        for (self.forms[elem].?.alts[0..alt]) |prior| p += prior.len;
+        return p + sub;
     }
 };
 
@@ -132,23 +193,77 @@ const absent: u16 = 0;
 /// A choice position whose chosen alternative has several elements.
 const multi: u16 = std.math.maxInt(u16);
 
-/// Whether expansion turns this top-level element into variants: `[A B]`
-/// groups, `[X]` on a rule name or list, and non-repeated choices.
-fn isVariable(e: ParsedElement) bool {
-    return switch (e.kind) {
-        .optGroup => true,
-        .choice => e.quantifier == .one or e.quantifier == .optional,
-        .ident, .optList => e.quantifier == .optional,
-        else => false,
-    };
+/// Deepest nesting of groups and choices in a pattern, and of nodes in an
+/// action, that generation accepts (as for lexer patterns).
+pub const maxDepth = 64;
+
+/// Checks of every pattern that need no schema: each label sits where it
+/// addresses a value (and has an @schema to fill), a multi-element `[A B]`
+/// group appears only at the top level, and nesting stays within
+/// `maxDepth`. Schema mode runs them before resolving (semantics.zig).
+pub fn checkPatterns(ir: *const GrammarIR, path: []const u8) Error!void {
+    const c: PatternChecker = .{ .path = path, .schema = ir.schema != null };
+    for (ir.rules) |rule| for (rule.alternatives) |alt| try c.alternative(alt);
 }
 
-fn radix(e: ParsedElement) usize {
-    return switch (e.kind) {
-        .choice => e.choices.len + @intFromBool(e.quantifier == .optional),
-        else => 2,
-    };
-}
+const PatternChecker = struct {
+    path: []const u8,
+    schema: bool,
+
+    fn fail(self: PatternChecker, line: u32, col: u32, comptime fmt: []const u8, args: anytype) Error {
+        diag.errLine(self.path, line, col, fmt, args);
+        return error.ExpandError;
+    }
+
+    fn alternative(self: PatternChecker, alt: ParsedAlternative) Error!void {
+        for (alt.elements) |e| {
+            try self.label(e, true);
+            // The elements of an inline element are positions, so they
+            // may be labeled; below them nothing is a position.
+            const inlined = switch (e.kind) {
+                .optGroup => true,
+                .choice => once(e),
+                .group => once(e) and hasLabel(e.subElements),
+                else => false,
+            };
+            try self.children(e, inlined, 2);
+        }
+        if (alt.actionTree) |t| switch (t) {
+            .list => |l| try self.action(alt, l, 1),
+            else => {},
+        };
+    }
+
+    fn children(self: PatternChecker, e: ParsedElement, addressable: bool, depth: usize) Error!void {
+        switch (e.kind) {
+            .group, .optGroup => for (e.subElements) |c| try self.nested(c, addressable, depth),
+            .choice => for (e.choices) |alt| for (alt) |c| try self.nested(c, addressable, depth),
+            else => {},
+        }
+    }
+
+    fn nested(self: PatternChecker, e: ParsedElement, addressable: bool, depth: usize) Error!void {
+        if (depth > maxDepth) return self.fail(e.line, e.col, "groups and choices nested too deeply (the limit is {d})", .{maxDepth});
+        if (e.kind == .optGroup) return self.fail(e.line, e.col, "a multi-element [...] group inside a group or choice is not supported; move it into a named rule", .{});
+        try self.label(e, addressable);
+        try self.children(e, false, depth + 1);
+    }
+
+    fn label(self: PatternChecker, e: ParsedElement, addressable: bool) Error!void {
+        const name = e.label orelse return;
+        if (std.mem.eql(u8, name, "_")) return;
+        if (!self.schema) return self.fail(e.line, e.col, "pattern label '{s}' needs an @schema (labels fill schema roles)", .{name});
+        if (!addressable) return self.fail(e.line, e.col, "label '{s}' is inside a repeated or nested group or choice, where it cannot fill a role; move that part into a named rule", .{name});
+    }
+
+    fn action(self: PatternChecker, alt: ParsedAlternative, l: ActionList, depth: usize) Error!void {
+        if (depth > maxDepth) return self.fail(alt.line, alt.col, "action nodes nested too deeply (the limit is {d})", .{maxDepth});
+        for (l.items) |item| switch (item.elem) {
+            .node => |n| try self.action(alt, n.*, depth + 1),
+            else => {},
+        };
+    }
+};
 
 // =============================================================================
 // Expander
@@ -321,7 +436,6 @@ const Expander = struct {
 
     fn expandAlternative(self: *Expander, lhsId: u16, alt: ParsedAlternative, resolved: ?Resolved) Error!void {
         const a = self.alloc();
-        try self.checkElements(alt);
         self.originLine = alt.line;
         self.originCol = alt.col;
 
@@ -330,16 +444,15 @@ const Expander = struct {
             .list => |l| try self.checkSpreads(alt, layout, l),
             else => {},
         };
+        // The inline elements, each with its number of variants.
         var vars: std.ArrayList(usize) = .empty;
-        for (alt.elements, 0..) |e, i| if (isVariable(e)) try vars.append(a, i);
-
         var total: usize = 1;
-        for (vars.items) |i| {
-            total = std.math.mul(usize, total, radix(alt.elements[i])) catch maxRules + 1;
-            if (total > maxRules) break;
-        }
-        if (total > maxRules)
-            return self.fail(alt.line, alt.col, "this alternative's [...] groups and choices expand into more than {d} rules (one per combination); move some into helper rules", .{maxRules});
+        for (layout.forms, 0..) |form, i| if (form) |f| {
+            try vars.append(a, i);
+            total = std.math.mul(usize, total, radix(f)) catch maxRules + 1;
+            if (total > maxRules)
+                return self.fail(alt.line, alt.col, "this alternative's [...] groups and choices expand into more than {d} rules (one per combination); move some into helper rules", .{maxRules});
+        };
 
         // Without a schema, a leading `role:N` names the head tag only when
         // the alternative is not expanded (otherwise the key is dropped).
@@ -353,60 +466,31 @@ const Expander = struct {
         const posMap = try a.alloc(u16, layout.slots.len + 1);
 
         for (0..total) |combo| {
-            // Mixed-radix digits, the first variable element least significant.
+            // Mixed-radix digits, the first inline element least significant.
             var rest = combo;
             for (vars.items, 0..) |i, d| {
-                const r = radix(alt.elements[i]);
+                const r = radix(layout.forms[i].?);
                 digits[d] = rest % r;
                 rest /= r;
             }
 
             var rhs: std.ArrayList(ParsedElement) = .empty;
             @memset(posMap, absent);
-            var p: usize = 1;
             var d: usize = 0;
-            for (alt.elements, 0..) |e, i| {
-                if (!isVariable(e)) {
+            for (alt.elements, layout.forms, 0..) |e, form, i| {
+                const f = form orelse {
                     try rhs.append(a, e);
-                    posMap[p] = @intCast(rhs.items.len);
-                    p += 1;
+                    posMap[layout.pos[i]] = @intCast(rhs.items.len);
                     continue;
-                }
+                };
                 const digit = digits[d];
                 d += 1;
-                switch (e.kind) {
-                    .optGroup => {
-                        for (e.subElements) |sub| {
-                            if (digit == 1) {
-                                try rhs.append(a, sub);
-                                posMap[p] = @intCast(rhs.items.len);
-                            }
-                            p += 1;
-                        }
-                    },
-                    .choice => {
-                        const optional = e.quantifier == .optional;
-                        if (!optional or digit > 0) {
-                            const ai = if (optional) digit - 1 else digit;
-                            const choice = e.choices[ai];
-                            for (choice, 0..) |sub, j| {
-                                try rhs.append(a, sub);
-                                posMap[internalPos(layout, i, ai, j)] = @intCast(rhs.items.len);
-                            }
-                            posMap[p] = if (choice.len == 1) @intCast(rhs.items.len) else multi;
-                        }
-                        p += 1;
-                    },
-                    else => {
-                        if (digit == 1) {
-                            var one = e;
-                            one.quantifier = .one;
-                            try rhs.append(a, one);
-                            posMap[p] = @intCast(rhs.items.len);
-                        }
-                        p += 1;
-                    },
+                const ai = chosen(f, digit) orelse continue;
+                for (f.alts[ai], 0..) |sub, j| {
+                    try rhs.append(a, sub);
+                    posMap[layout.position(i, ai, j)] = @intCast(rhs.items.len);
                 }
+                if (!f.spliced) posMap[layout.pos[i]] = if (f.alts[ai].len == 1) @intCast(rhs.items.len) else multi;
             }
 
             var symbols: std.ArrayList(u16) = .empty;
@@ -415,7 +499,7 @@ const Expander = struct {
             const mapped: ?ActionTree = if (tree) |t|
                 try self.mapTree(t, posMap, vars.items.len > 0, alt)
             else if (vars.items.len > 0)
-                try self.expandedDefault(alt, digits, rhs.items.len)
+                try self.expandedDefault(layout, digits, rhs.items.len)
             else
                 null;
 
@@ -441,44 +525,43 @@ const Expander = struct {
         }
     }
 
+    fn radix(f: Inline) usize {
+        return f.alts.len + @intFromBool(f.optional);
+    }
+
+    /// The alternative an inline element's digit selects, or null for its
+    /// absent variant (digit 0 of an optional element).
+    fn chosen(f: Inline, digit: usize) ?usize {
+        if (!f.optional) return digit;
+        return if (digit == 0) null else digit - 1;
+    }
+
     /// The default action (no `→`) of one variant of an expanded
     /// alternative: every element's value in order, with nil for each
     /// absent optional element, exactly as when the optional element is
     /// not expanded (`[T]`, `T?`: a rule that yields nil). A chosen choice
     /// alternative contributes its elements. One value is passed through.
-    fn expandedDefault(self: *Expander, alt: ParsedAlternative, digits: []const usize, rhsLen: usize) Error!ActionTree {
+    fn expandedDefault(self: *Expander, layout: Layout, digits: []const usize, rhsLen: usize) Error!ActionTree {
         const a = self.alloc();
         var items: std.ArrayList(ActionItem) = .empty;
         var at: u16 = 0; // rhs elements placed so far
         var d: usize = 0;
-        for (alt.elements) |e| {
-            if (!isVariable(e)) {
+        for (layout.forms) |form| {
+            const f = form orelse {
                 at += 1;
                 try items.append(a, .{ .elem = .{ .ref = at } });
                 continue;
-            }
+            };
             const digit = digits[d];
             d += 1;
-            switch (e.kind) {
-                .optGroup => for (e.subElements) |_| {
-                    if (digit == 1) {
-                        at += 1;
-                        try items.append(a, .{ .elem = .{ .ref = at } });
-                    } else try items.append(a, .{ .elem = .nil });
-                },
-                .choice => {
-                    const optional = e.quantifier == .optional;
-                    if (optional and digit == 0) {
-                        try items.append(a, .{ .elem = .nil });
-                    } else for (e.choices[if (optional) digit - 1 else digit]) |_| {
-                        at += 1;
-                        try items.append(a, .{ .elem = .{ .ref = at } });
-                    }
-                },
-                else => if (digit == 1) {
+            if (chosen(f, digit)) |ai| {
+                for (f.alts[ai]) |_| {
                     at += 1;
                     try items.append(a, .{ .elem = .{ .ref = at } });
-                } else try items.append(a, .{ .elem = .nil }),
+                }
+            } else {
+                // Absent: nil per position (a spliced [A B] has several).
+                for (0..if (f.spliced) f.alts[0].len else 1) |_| try items.append(a, .{ .elem = .nil });
             }
         }
         std.debug.assert(at == rhsLen);
@@ -488,35 +571,6 @@ const Expander = struct {
             else => .nil,
         };
         return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(a), .keepNils = true } };
-    }
-
-    fn internalPos(layout: Layout, elem: usize, alt: usize, j: usize) usize {
-        for (layout.slots[layout.length..], layout.length..) |s, k| {
-            if (s.elem == elem and s.sub == alt and s.subElem == j) return k + 1;
-        }
-        unreachable;
-    }
-
-    /// Constructs expansion does not support, and labels without a schema.
-    fn checkElements(self: *Expander, alt: ParsedAlternative) Error!void {
-        for (alt.elements) |e| {
-            try self.checkLabel(e);
-            switch (e.kind) {
-                .optGroup => for (e.subElements) |sub| {
-                    try self.checkLabel(sub);
-                    try self.checkNested(sub, "a [...] group");
-                },
-                .choice => for (e.choices) |choice| for (choice) |sub| {
-                    try self.checkLabel(sub);
-                    try self.checkNested(sub, "a choice");
-                },
-                .group => for (e.subElements) |sub| {
-                    if (sub.label != null and !std.mem.eql(u8, sub.label.?, "_"))
-                        return self.fail(sub.line, sub.col, "labels inside a ( ... ) group are not supported; label the group's rule instead", .{});
-                },
-                else => {},
-            }
-        }
     }
 
     /// Without a schema, `...N` of a token (which is never a list) would
@@ -553,17 +607,6 @@ const Expander = struct {
             } else true,
             else => false,
         };
-    }
-
-    fn checkLabel(self: *Expander, e: ParsedElement) Error!void {
-        const label = e.label orelse return;
-        if (self.schemaMode() or std.mem.eql(u8, label, "_")) return;
-        return self.fail(e.line, e.col, "pattern label '{s}' needs an @schema (labels fill schema roles)", .{label});
-    }
-
-    fn checkNested(self: *Expander, e: ParsedElement, where: []const u8) Error!void {
-        if (e.kind == .optGroup or e.kind == .choice)
-            return self.fail(e.line, e.col, "a multi-element [...] group or a choice inside {s} is not supported; use a helper rule", .{where});
     }
 
     // --- Action mapping ---
@@ -665,7 +708,7 @@ const Expander = struct {
             .group => try self.groupRule(elem.subElements),
             .choice => try self.choiceRule(elem.choices),
             // Multi-element [A B] groups are expanded into alternatives, and
-            // nested ones are rejected by checkElements.
+            // nested ones are rejected by checkPatterns.
             .optGroup => unreachable,
             .reqList => try self.createRequiredList(elem.value, elem.optionalItems, elem.listSeparator),
             .optList => try self.createOptionalRule(try self.createRequiredList(elem.value, elem.optionalItems, elem.listSeparator)),

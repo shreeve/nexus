@@ -1,0 +1,24 @@
+# A multi-element [...] group is rejected at any depth below the top level:
+# here inside a group inside a top-level [...] group.
+# error: opt_group_nested_deep.grammar:24:28:
+# error: a multi-element [...] group inside a group or choice is not supported
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT [PLUS (COLON [IDENT INTEGER])]  → (t 1)

@@ -1,0 +1,26 @@
+# A label inside a group nested in another group is not a position of the
+# pattern (only the elements of a top-level group are).
+# error: label_in_group_in_group.grammar:26:21:
+# error: label 'x' is inside a repeated or nested group or choice
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t x:leaf?
+top! = IDENT (PLUS (x:INTEGER COLON))       → (t) ~ "the name is not a value"

@@ -12,7 +12,6 @@
   link) is a usage error, and nothing is written.
 - Output replaces its file atomically: a failed write leaves the previous
   file intact.
-
 - **`X*`, `X+` and `L(X)` are left-recursive.** A list of n items costs
   O(n) time and memory in the generated parser, where each item copied the
   rest of the list (a 40,000-line MUMPS routine took 7.8 s and 19 GB).
@@ -23,6 +22,12 @@
   and `shift IDENT* → ε 2` becomes `shift patatom → repcount IDENT+ 1`).
   A list followed by its own separator (`L(X) "," "*"`) needs no declared
   conflict.
+- Labels inside a top-level `( ... )` or `( ... )?` group fill roles, and a
+  choice inside a `[...]` group or another choice becomes a rule of its
+  own; both were errors.
+- **A label that cannot fill a role is an error**, where it was ignored:
+  one inside a repeated group or choice (`(A | x:B)*`), or inside a group
+  nested in a group or choice. Move that part into a named rule.
 
 ### Removed
 
@@ -39,6 +44,10 @@
   length limit of their own; an alternative has at most 65534 elements
   (counting those in its groups and choices), and a grammar at most 65535
   symbols, both located errors.
+- A multi-element `[A B]` group inside a group or a choice crashed the
+  generator; it is a located error.
+- Groups and choices nested more than 64 deep in a pattern, and action
+  nodes nested more than 64 deep, are located errors.
 
 ## 1.1.0 — 2026-10-02
 

@@ -1,0 +1,26 @@
+# A label inside a repeated group cannot fill a role (each repetition has
+# its own value).
+# error: label_in_repeated_group.grammar:26:15:
+# error: label 'x' is inside a repeated or nested group or choice
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t x:leaf?
+top! = IDENT (x:INTEGER PLUS)+              → (t) ~ "the name is not a value"

@@ -454,10 +454,12 @@ g h
 | `X "c"` | nothing: a [hint](#conflicts-and-hints) | none |
 | `@infix` | the [operator chain](#infix) | its value |
 
-`[...]` and choices are expanded into alternatives (one per combination), so
-an action's positions stay the same whichever combination matched. A
-choice inside a `[...]` group or another choice is not supported (use a
-helper rule).
+`[...]` and choices at the top level of a pattern are expanded into
+alternatives (one per combination), so an action's positions stay the same
+whichever combination matched. A choice inside a group or another choice
+becomes a rule of its own, as a repeated choice does. A multi-element
+`[A B]` group is allowed only at the top level (elsewhere, use a helper
+rule).
 
 `X?` and `[X]` are the same. On a rule name the alternative is expanded
 (one variant with the rule, one without); on a token a rule `TOKEN?` is
