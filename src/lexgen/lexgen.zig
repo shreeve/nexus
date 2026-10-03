@@ -994,7 +994,8 @@ pub const LexerGenerator = struct {
                 .counted => {
                     var b1: [8]u8 = undefined;
                     const cl = byteLit(&b1, act.char.?);
-                    const conv = if (isPre) "count" else "@bitCast(count)";
+                    // The count saturates: at 255 for pre, at 127 for an i8.
+                    const conv = if (isPre) "count" else "@intCast(@min(count, 127))";
                     try self.print(
                         \\{s}{{
                         \\{s}    var count: u8 = 0;
