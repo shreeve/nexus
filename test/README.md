@@ -12,8 +12,9 @@ test/bench/run              # generation time and parse throughput
 The summary line reads `N passed, M failed, K known`. The suite is green
 when nothing fails and no known-failing test has started passing. It
 always rebuilds `bin/nexus` first (`zig build`), so a stale binary is never
-tested. `zig build test` runs it too. It needs bash, perl and Zig 0.17,
-and runs on macOS and Linux with the systems' own tools.
+tested. `zig build test` runs it too. It needs bash, perl, python3 (for
+`tools/lexfuzz`) and Zig 0.17, and runs on macOS and Linux with the
+systems' own tools.
 
 ## What is checked
 
@@ -32,6 +33,8 @@ and runs on macOS and Linux with the systems' own tools.
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
 | `unit/nexus` | the generator's own Zig unit tests (`zig build unit`) |
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
+| `tools/fmt` | the `zig fmt --check` command of `AGENTS.md` passes |
+| `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
 | `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
@@ -198,6 +201,8 @@ them all with `bin/nexus` into one driver, lexes random inputs, and compares
 every token (cat, pos, len, pre) with a reference computed from the lexer's
 definition with its own set-of-positions matcher. The DFA itself is also checked
 against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
+The suite runs a small fixed-seed round as `tools/lexfuzz`; larger seeds and
+counts are run by hand.
 
 ## Benchmarks
 

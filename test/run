@@ -414,6 +414,32 @@ check_cli() {
     return 0
 }
 
+# check_fmt: the `zig fmt --check` command of AGENTS.md passes (it is read
+# from there, so the documented command is the one tested).
+check_fmt() {
+    local cmd out rc
+    cmd=$(grep -m1 '^zig fmt --check ' AGENTS.md)
+    if [[ -z "$cmd" ]]; then REASON="AGENTS.md has no zig fmt --check command"; return 1; fi
+    out=$(eval "with_timeout $TIMEOUT $cmd" 2>&1)
+    rc=$?
+    printf '$ %s\n%s\n' "$cmd" "$out" >>"$LOG"
+    if [[ $rc -ne 0 ]]; then REASON="zig fmt --check: $(head -1 <<<"$out")"; return 1; fi
+    return 0
+}
+
+# check_lexfuzz: generated lexers agree with test/lexfuzz/fuzz.py's
+# reference matcher on a fixed seed (a small run; larger ones are manual).
+check_lexfuzz() {
+    local fuzz=test/lexfuzz/fuzz.py args=(--seed 1 --specs 12 --inputs 100 --keep "$WORK/out/lexfuzz")
+    if ! command -v python3 >/dev/null; then REASON="python3 not found"; return 1; fi
+    python3 "$fuzz" --help 2>/dev/null | grep -q -- '-O ' && args+=(-O Debug)
+    if ! with_timeout 300 python3 "$fuzz" "${args[@]}" >>"$LOG" 2>&1 </dev/null; then
+        REASON="$(grep -m1 -E 'MISMATCH|unexpected|error' "$LOG" || tail -1 "$LOG")"
+        return 1
+    fi
+    return 0
+}
+
 check_doc_fragment() { # check_doc_fragment <file>: a doc's grammar fragment parses
     local out rc
     out=$(with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$1" "$WORK/out/$(key_of "$1").sexp" 2>&1 </dev/null)
@@ -453,6 +479,8 @@ worker() {
         diff-tool)   check_diff_tool; ok=$? ;;
         cli)         check_cli; ok=$? ;;
         doc-frag)    check_doc_fragment "$a"; ok=$? ;;
+        fmt)         check_fmt; ok=$? ;;
+        lexfuzz)     check_lexfuzz; ok=$? ;;
         doc-bad)     REASON=$a; ok=1 ;;
         *)           REASON="unknown task kind $kind"; ok=1 ;;
     esac
@@ -540,7 +568,7 @@ add() { # add <id> <kind> [args...]
     selected "$1" || return 1
     local IFS=$'\x1f' to=$EARLY
     case $2 in
-        unit-nexus|unit-lang|diff-tool) to=$LONG ;;
+        unit-nexus|unit-lang|diff-tool|lexfuzz) to=$LONG ;;
         case|bug) to=$LATE ;;
     esac
     printf '%s\n' "$*" >>"$to"
@@ -598,6 +626,8 @@ add bootstrap bootstrap
 add unit/nexus unit-nexus
 add tools/diff diff-tool
 add tools/cli cli
+add tools/fmt fmt
+add tools/lexfuzz lexfuzz
 
 # Doc tests: the examples of the Markdown docs, extracted into suites
 # (test/lib/doctest; see test/README.md).
