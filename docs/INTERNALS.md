@@ -202,9 +202,8 @@ chain from every empty-reduction cell on an explicit stack.
 
 `conflicts.zig` aggregates the unresolved cells into manifest entries
 (`shift rule` / `reduce winner over loser`, with cell counts), compares them
-with `@conflicts` (both sides normalized: `->` is `→`, blank runs are one
-space, `ε` for an empty right-hand side; quoted literals compare as
-written), and on any drift prints each new conflict with its state, items,
+with `@conflicts` (both sides normalized as
+[GRAMMAR.md](GRAMMAR.md#conflicts-and-hints) describes), and on any drift prints each new conflict with its state, items,
 and a shortest symbol path from a start state (breadth-first over the
 automaton), then the whole actual manifest. It also fails `X "c"` hints
 that decide nothing. `expected.zig`
@@ -234,7 +233,7 @@ compiles and has its own tests against a small hand-written fixture.
 `runtime.zig` extracts its `// @section NAME ... // @end` blocks and fills
 `// @slot NAME` lines; everything outside the sections (the fixture, the
 tests) is never emitted. The template refers to a fixed set of generated
-names (`getAction`, `executeAction`, `tokenToSymbol`, `slotOf`, ...), listed
+names (`parseTable`, `executeAction`, `tokenToSymbol`, `slotOf`, ...), listed
 at its top.
 
 At run time the parser keeps the state stack, the value stack, the spare
@@ -303,6 +302,7 @@ check them:
 2. Regenerate the frontend (the bootstrap loop above) and the goldens
    (`./test/run --update gen`).
 3. Give `CHANGELOG.md`'s Unreleased section the version and the date.
+4. Commit, and tag the commit `vX.Y.Z`.
 
 ## Performance
 

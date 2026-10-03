@@ -260,7 +260,7 @@ The module exports:
 |---|---|
 | `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols (all generated from the grammar) |
 | `Token`, `TokenCat` | a token (8 bytes: `pos`, `len`, `cat`, `pre`, the count of blanks before it) and the token categories |
-| `BaseLexer` | the generated scanner: `init(source)`, `next()`, `text(token)`, `makeToken(cat, pre, start, end)`; fields `source`, `pos`, `aux` and the `@lexer` state variables |
+| `BaseLexer` | the generated scanner ([GRAMMAR.md](GRAMMAR.md#the-generated-lexer)) |
 | `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
 | `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
@@ -630,8 +630,8 @@ rewritten node, `@wrapper` declares kinds that only the wrapper builds, and
 A grammar without `@schema` builds the same `Sexp` trees from the same
 actions, with these differences: lists drop trailing nils (positions of
 what is present stay stable); `role:v` items are positional; labels other
-than `_:X` are errors; the `Tag` enum holds the tags the actions produce,
-then the `@tags` names; there is no `ir`; spans and facts
+than `_:X` are errors; the `Tag` enum is as
+[GRAMMAR.md, "Actions"](GRAMMAR.md#actions) describes; there is no `ir`; spans and facts
 need `--spans`. The MUMPS, Ruby, Zag, Slash and Nexis grammars in `test/`
 use this mode.
 
