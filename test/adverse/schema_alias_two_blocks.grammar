@@ -1,0 +1,28 @@
+# A name defined in two blocks is a rule, not an alias, for the coverage
+# gate as for expansion: its value must be used.
+# error: schema_alias_two_blocks.grammar:26:8:
+# error: element 2 (nm) carries a value the action does not use
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t
+top! = COLON nm                             → (t)
+nm = IDENT
+nm = PLUS

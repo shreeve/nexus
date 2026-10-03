@@ -300,8 +300,13 @@ const Expander = struct {
         g.errorId = try self.addSymbol("error", .terminal);
 
         for (ir.rules) |rule| {
-            if (self.isStart(rule.name) or self.blocks(rule.name) != 1) continue;
-            if (isAliasRule(rule)) |target| try g.aliases.put(g.allocator, rule.name, target);
+            if (aliasTarget(ir, rule)) |target| try g.aliases.put(g.allocator, rule.name, target);
+        }
+        for (ir.rules) |rule| {
+            if (g.aliases.contains(rule.name)) try self.checkAliasChain(rule);
+            // `@infix` in a pattern names the operator chain's entry rule.
+            if (ir.infix != null and std.mem.eql(u8, rule.name, "infix"))
+                return self.fail(rule.line, rule.col, "a rule named 'infix' clashes with the @infix chain, which patterns name `@infix`; rename the rule", .{});
         }
         for (ir.rules) |rule| {
             if (g.aliases.contains(rule.name)) continue;
@@ -373,19 +378,26 @@ const Expander = struct {
         return id;
     }
 
+    /// An alias chain must end in a symbol: `x = y`, `y = x` names none.
+    fn checkAliasChain(self: *Expander, rule: ParsedRule) Error!void {
+        const aliases = &self.g.aliases;
+        var cur = rule.name;
+        for (0..aliases.count()) |_| {
+            cur = aliases.get(cur) orelse return;
+            if (!std.mem.eql(u8, cur, rule.name)) continue;
+            var text: std.ArrayList(u8) = .empty;
+            try text.appendSlice(self.alloc(), rule.name);
+            cur = rule.name;
+            while (true) {
+                cur = aliases.get(cur).?;
+                try text.print(self.alloc(), " = {s}", .{cur});
+                if (std.mem.eql(u8, cur, rule.name)) break;
+            }
+            return self.fail(rule.line, rule.col, "alias cycle: {s}", .{text.items});
+        }
+    }
+
     // --- Start symbols ---
-
-    fn isStart(self: *const Expander, name: []const u8) bool {
-        for (self.ir.startSymbols) |s| if (std.mem.eql(u8, s, name)) return true;
-        return false;
-    }
-
-    /// Number of `name = ...` blocks for `name`.
-    fn blocks(self: *const Expander, name: []const u8) usize {
-        var n: usize = 0;
-        for (self.ir.rules) |r| n += @intFromBool(std.mem.eql(u8, r.name, name));
-        return n;
-    }
 
     /// One accept rule per start symbol x: `$accept_x → x! x $end`. The
     /// marker terminal `x!` is what `parseX` injects first to select that
@@ -686,13 +698,9 @@ const Expander = struct {
     /// (uppercase names are terminals).
     fn nameSymbol(self: *Expander, name: []const u8, forceTerminal: bool) Error!u16 {
         const g = self.g;
-        if (g.getSymbol(name)) |id| return id;
         var resolved = name;
-        var hops: usize = 0;
-        while (g.aliases.get(resolved)) |target| : (hops += 1) {
-            if (hops > 100) break;
-            resolved = target;
-        }
+        while (g.aliases.get(resolved)) |target| resolved = target;
+        if (g.symbolMap.get(resolved)) |id| return id;
         const kind: Symbol.Kind = if (forceTerminal or (resolved.len > 0 and resolved[0] >= 'A' and resolved[0] <= 'Z'))
             .terminal
         else
@@ -841,7 +849,9 @@ const Expander = struct {
 
     fn generateInfixChain(self: *Expander, infix: InfixDecl) Error!void {
         const g = self.g;
-        const baseId = g.getSymbol(infix.baseRule) orelse try self.addSymbolAt(infix.baseRule, .nonterminal, infix.line, infix.col);
+        self.originLine = infix.line;
+        self.originCol = infix.col;
+        const baseId = try self.nameSymbol(infix.baseRule, false);
 
         // Precedence levels, ascending (level 1 binds loosest).
         var levels: std.ArrayList(u32) = .empty;
@@ -913,8 +923,15 @@ fn isEntryIdiom(name: []const u8, alt: ParsedAlternative) bool {
     return e.kind == .ident and e.quantifier == .one and e.label == null and !e.skip and std.mem.eql(u8, e.value, name);
 }
 
-fn isAliasRule(rule: ParsedRule) ?[]const u8 {
-    if (rule.alternatives.len != 1) return null;
+/// The target of `name = X` when the rule is an alias, which expansion
+/// substitutes for every use of the name: the only block for the name, not
+/// a start symbol, one alternative of one unlabeled token or rule name,
+/// no action. Semantics judges values through the same definition.
+pub fn aliasTarget(ir: *const GrammarIR, rule: ParsedRule) ?[]const u8 {
+    for (ir.startSymbols) |s| if (std.mem.eql(u8, s, rule.name)) return null;
+    var blocks: usize = 0;
+    for (ir.rules) |r| blocks += @intFromBool(std.mem.eql(u8, r.name, rule.name));
+    if (blocks != 1 or rule.alternatives.len != 1) return null;
     const alt = rule.alternatives[0];
     if (alt.elements.len != 1) return null;
     const elem = alt.elements[0];

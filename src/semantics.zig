@@ -165,15 +165,11 @@ const Resolver = struct {
         return .{ .resolved = try resolved.toOwnedSlice(a), .infix = try infix.toOwnedSlice(a), .schema = schema };
     }
 
-    /// `name = TOKEN` aliases: name → token.
+    /// The aliases expansion substitutes: name → target.
     fn aliasTargets(self: *Resolver) !std.StringHashMapUnmanaged([]const u8) {
         var out: std.StringHashMapUnmanaged([]const u8) = .empty;
         for (self.ir.rules) |rule| {
-            if (rule.alternatives.len != 1) continue;
-            const alt = rule.alternatives[0];
-            if (alt.elements.len != 1 or alt.actionTree != null) continue;
-            const e = alt.elements[0];
-            if (e.quantifier == .one and (e.kind == .token or e.kind == .ident)) try out.put(self.a, rule.name, e.value);
+            if (expand.aliasTarget(self.ir, rule)) |target| try out.put(self.a, rule.name, target);
         }
         return out;
     }

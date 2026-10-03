@@ -48,6 +48,14 @@
   generator; it is a located error.
 - Groups and choices nested more than 64 deep in a pattern, and action
   nodes nested more than 64 deep, are located errors.
+- Aliases that form a cycle (`x = y`, `y = x`) are reported as an alias
+  cycle, not as an undefined rule.
+- An `@infix` base that aliases a token used nowhere else gave a false
+  "undefined rule".
+- A rule named `infix` merged silently with the `@infix` chain; with
+  `@infix` declared it is an error (rename the rule).
+- The coverage gate judged a name defined in two blocks as an alias of its
+  last block's token; it is a rule, as for expansion.
 
 ## 1.1.0 — 2026-10-02
 
