@@ -387,7 +387,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
             }
         }
         set.shrinkRetainingCapacity(k);
-        startIds[si] = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc, true);
+        startIds[si] = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc);
     }
 
     var work: u32 = 0;
@@ -406,7 +406,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
             if (seed.items.len == 0) continue;
             stamp += 1;
             try closure(a, nfa, seed.items, mark, stamp, &set);
-            const id = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc, false);
+            const id = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc);
             trans.items[work * nc + c] = id;
         }
     }
@@ -437,11 +437,7 @@ fn intern(
     set: []const u32,
     nfa: *const Nfa,
     nc: u16,
-    isStart: bool,
 ) Error!u32 {
-    // Start states are kept distinct from equal non-start sets only through
-    // their (non-accepting) content; a start set never contains accept states.
-    _ = isStart;
     if (map.get(set)) |id| return id;
     const key = try a.dupe(u32, set);
     const id: u32 = @intCast(keys.items.len);
