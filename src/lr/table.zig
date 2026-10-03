@@ -37,7 +37,7 @@ const repair = @import("repair.zig");
 //   - No shift: the lowest-numbered rule of R reduces; every other rule of R
 //     is a reduce/reduce conflict ("winner over loser").
 //   - Shift: the rules of R that beat a shift are those with `<` and those
-//     with an `X "c"` hint naming this terminal (the literal `"c"`). If none,
+//     with an `X "c"` hint naming this terminal (check.resolveHints). If none,
 //     the shift stays and every rule of R without `>` is a shift/reduce
 //     conflict. Otherwise the lowest such rule reduces (an `X "c"` win also
 //     records the runtime shift override) and the rest of R are
@@ -72,12 +72,11 @@ pub const Conflict = struct {
     pub const Kind = enum { shift, reduce };
 };
 
-/// An `X "c"` hint: the literal terminal `"c"` it names (null when the
-/// grammar has none), and whether it decided any cell.
+/// An `X "c"` hint: the terminal it names, and whether it decided any cell.
 pub const HintUse = struct {
     rule: u16,
     char: u8,
-    terminal: ?u16,
+    terminal: u16,
     used: bool = false,
 };
 
@@ -97,17 +96,6 @@ pub const Table = struct {
     /// Tolerant-repair insertion candidates per state (grammars with `@repair`).
     repair: ?repair.Repair = null,
 };
-
-/// The byte of a one-byte literal terminal (`"("`, or one escape, decoded
-/// the way `X "c"` reads it: grammar.escapeAt), else null.
-fn literalChar(g: *const Grammar, sym: u16) ?u8 {
-    const name = g.symbols.items[sym].name;
-    if (g.symbols.items[sym].kind != .terminal or name.len < 3 or name[0] != '"' or name[name.len - 1] != '"') return null;
-    const inner = name[1 .. name.len - 1];
-    if (inner[0] != '\\') return if (inner.len == 1) inner[0] else null;
-    const e = grammar.escapeAt(inner, 0) orelse return null;
-    return if (e.len == inner.len) e.byte else null;
-}
 
 /// Whether `sym` is the marker terminal (`x!`) that selects a start symbol:
 /// the first symbol of an accept rule `$accept_x → x! x $end`. Markers never
@@ -129,18 +117,14 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
     var xExcludes: std.ArrayList(XExclude) = .empty;
     var conflictList: std.ArrayList(Conflict) = .empty;
 
-    // Every hint, resolved to its literal terminal: rule r's hints are
+    // Every hint and its terminal: rule r's hints are
     // hints[hintStart[r]..hintStart[r + 1]].
-    var literalOf: [256]?u16 = @splat(null);
-    for (0..numSymbols) |s| {
-        if (literalChar(g, @intCast(s))) |c| literalOf[c] = @intCast(s);
-    }
     const hintStart = try a.alloc(u32, g.rules.items.len + 1);
     defer a.free(hintStart);
     var hints: std.ArrayList(HintUse) = .empty;
     for (g.rules.items, 0..) |rule, r| {
         hintStart[r] = @intCast(hints.items.len);
-        for (rule.excludeChars) |c| try hints.append(a, .{ .rule = @intCast(r), .char = c, .terminal = literalOf[c] });
+        for (rule.excludeChars, rule.hintTerminals) |c, t| try hints.append(a, .{ .rule = @intCast(r), .char = c, .terminal = t });
     }
     hintStart[g.rules.items.len] = @intCast(hints.items.len);
 

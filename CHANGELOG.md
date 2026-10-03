@@ -197,6 +197,13 @@ Tests:
 
 ### Fixed
 
+- An `X "c"` hint names the terminal of the token `"c"` stands for,
+  whether the grammar writes that token as `"c"` or by name (`LPAREN`).
+  A `"c"` that names no token, a token the grammar does not use, text that
+  lexer states make two terminals, the `@as` token, another literal's
+  terminal, or one terminal named twice on an alternative is a located
+  error. Tokens are bound to terminals before the LR stage, so `"(" and
+  LPAREN are the same token` is reported before conflicts.
 - A generated parser hung on an empty reduction alternating with a unit
   reduction (`d → b`, `b → ε`); every endless reduce chain is a generation
   error.

@@ -831,7 +831,7 @@ Hints resolve a conflict on purpose; a hinted conflict is not a conflict:
 |---|---|---|
 | `>` | after an alternative's elements | its reductions lose to shifts, silently |
 | `<` | after an alternative's elements | its reductions win over shifts |
-| `X "c"` | among an alternative's elements | its reduction wins over shifting the literal terminal `"c"` (one byte, escapes as in literals), except when it directly follows the previous token (no whitespace): then the parser shifts. The parser grammar must use the literal `"c"` |
+| `X "c"` | among an alternative's elements | its reduction wins over shifting the terminal `"c"` names (one byte, escapes as in literals), except when that token directly follows the previous token (no whitespace): then the parser shifts. `"c"` names a terminal the way a literal in a rule does: the literal `"c"` if the parser grammar writes it, else the token the lexer gives exactly `"c"` (or `@op` maps it to), written by name (`LPAREN`) |
 
 `<` makes a reduction win. Below, statements follow each other with no
 separator, and `!` is both a postfix operator (factorial) and a prefix
@@ -905,9 +905,15 @@ f(x) g (y)
 (exprs (call `f` (var `x`)) (var `g`) (var `y`))
 ```
 
-An `X "c"` hint that decides nothing is an error, and so is one whose
-literal `"c"` the parser grammar does not use. A hint counts as used when
-it decides a cell for any rule its alternative expands into.
+An `X "c"` hint that decides nothing is an error. So is one whose `"c"`
+names no terminal: no lexer rule's pattern is exactly `"c"` and no `@op`
+maps it; the parser grammar uses none of its tokens; lexer rules in
+different states make `"c"` two tokens the grammar uses; it is the token
+`@as` promotes; or the grammar writes that token as another literal. Two
+hints of one alternative name different terminals. A hint applies to its
+terminal, so to every lexeme of that token: with `'(' → open` and
+`'[' → open`, `X "("` also shifts a touching `[`. A hint counts as used
+when it decides a cell for any rule its alternative expands into.
 
 ## Directives
 
@@ -1014,7 +1020,12 @@ early:
 | `undeclared conflict: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
 | `position 5 is past the end of the pattern (2 elements)` | an action refers to a missing element |
 | `X ":" on name ... has no effect` | a hint that decides nothing |
-| `X "(" on expr → ... names no terminal` | a hint whose literal the grammar does not use |
+| `X "(" on expr → ... names no token` | no lexer rule's pattern is exactly that text, and no `@op` maps it |
+| `X "(" on expr → ... names no terminal` | the parser grammar uses no token the lexer gives that text |
+| `X "(" on expr → ... is ambiguous` | lexer rules in different states make that text two terminals of the grammar |
+| `X "(" on expr → ... names the terminal "["` | the grammar writes that token as another literal |
+| `X "[" on expr → ... names OPEN, as X "(" does` | two hints of one alternative name one terminal |
+| `X "%" on expr → ... the token @as promotes` | a hint names the promotable token |
 
 `nexus check grammar` runs every check generation runs, and writes
 nothing.

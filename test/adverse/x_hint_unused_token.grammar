@@ -1,0 +1,24 @@
+# An `X "c"` hint names the terminal of the token the lexer gives "c";
+# when the parser grammar uses that token neither by name nor as a
+# literal, the hint names no terminal (and could decide nothing).
+# error: x_hint_unused_token.grammar:22:10:
+# error: X "(" on expr → IDENT names no terminal: the parser grammar uses no token the lexer gives that text (lparen)
+@lexer
+tokens
+    ident
+    lparen
+    lbrack
+    rbrack
+    eof
+    err
+'\n'                                        → skip, skip
+'('                                         → lparen
+'['                                         → lbrack
+']'                                         → rbrack
+[a-z]+                                      → ident
+.                                           → err
+@parser
+exprs! = expr+                              → (exprs ...1)
+expr   = IDENT X "("                        → (var 1)
+       | IDENT LBRACK expr RBRACK           → (call 1 3)
+       | LBRACK expr RBRACK                 → 2

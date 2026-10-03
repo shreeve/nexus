@@ -13,7 +13,7 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 - **Zig 0.17.0 only.** Nexus and every parser it generates are Zig 0.17
   code.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
-  `./test/run` → 726 passed, 0 failed, 1 known; the generated code is byte
+  `./test/run` → 737 passed, 0 failed, 0 known; the generated code is byte
   for byte the same on both.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
 - `src/version.zig` says `1.1.0` until the release (Open work 1).
@@ -58,13 +58,10 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 4. **Deferred by the owner until em's grammar work is done:** the
    schemaless tree rules for a leading `role:N` head (named only in
    unexpanded alternatives) and for `!X` in a rule's default action.
-5. **Known bug:** `test/known/x_hint_named_token` (an `X "c"` hint whose
-   token the grammar names, `LPAREN` for `"("`, needs the lexer's literal
-   map in the LR stage).
-6. **Untested messages:** `test/lib/messages.allow` lists the generator
+5. **Untested messages:** `test/lib/messages.allow` lists the generator
    messages no test prints, each with its reason; an adverse test that
    prints one deletes its line.
-7. **Smaller items:**
+6. **Smaller items:**
    - `./test/run --update` does not write `.tree` files for
      `test/regress` suites; write them with the suite's built driver.
    - A lang `Parser` wrapper that returns `error.ParseError` on its own

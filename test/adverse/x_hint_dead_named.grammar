@@ -1,0 +1,19 @@
+# A hint that names a terminal written by name and decides nothing says
+# which terminal: `"(" (LPAREN)`.
+# error: x_hint_dead_named.grammar:19:10:
+# error: X "(" on name → IDENT has no effect: it decides no shift/reduce conflict between this rule and "(" (LPAREN); remove the hint
+@lexer
+tokens
+    ident
+    lparen
+    rparen
+    eof
+    err
+'\n'                                        → skip, skip
+'('                                         → lparen
+')'                                         → rparen
+[a-z]+                                      → ident
+.                                           → err
+@parser
+call!  = name LPAREN RPAREN                 → (call 1)
+name   = IDENT X "("                        → 1

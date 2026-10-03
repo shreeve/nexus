@@ -408,9 +408,8 @@ fn located(w: *std.Io.Writer, path: []const u8, at: Loc) !void {
     try w.print("{s}:{d}:{d}: error: ", .{ path, @max(at.line, 1), @max(at.col, 1) });
 }
 
-/// Fail on `X "c"` hints that decide nothing, and on hints whose literal
-/// the grammar does not have. A hint decides a cell when its rule's
-/// reduction on the literal terminal `"c"` beats the shift by it; it
+/// Fail on `X "c"` hints that decide nothing. A hint decides a cell when
+/// its rule's reduction on the terminal it names beats the shift by it; it
 /// decides none when the LR(1) lookaheads already separate the cases, or a
 /// lower rule wins every cell it could. Hints are grouped by source
 /// alternative (lhs, line, column), so a hint that decides a cell for any
@@ -438,15 +437,12 @@ pub fn checkHints(a: Allocator, g: *const Grammar, tbl: *const Table, opts: Opti
         try writeHintChar(w, h.char);
         try w.writeAll(" on ");
         try writeRule(w, g, h.rule);
-        if (h.terminal == null) {
-            try w.writeAll(" names no terminal: the parser grammar has no literal ");
-            try writeHintChar(w, h.char);
-            try w.writeAll(" (a hint names the literal whose shift it beats)\n");
-        } else {
-            try w.writeAll(" has no effect: it decides no shift/reduce conflict between this rule and ");
-            try writeHintChar(w, h.char);
-            try w.writeAll("; remove the hint\n");
-        }
+        try w.writeAll(" has no effect: it decides no shift/reduce conflict between this rule and ");
+        try writeHintChar(w, h.char);
+        // A terminal written by name: which one.
+        const name = g.symbols.items[h.terminal].name;
+        if (name[0] != '"') try w.print(" ({s})", .{name});
+        try w.writeAll("; remove the hint\n");
         try opts.emit(out.written());
     }
     if (failed) return error.ConflictDrift;
@@ -461,7 +457,7 @@ fn sameHint(g: *const Grammar, x: table.HintUse, y: table.HintUse) bool {
 
 /// A hint's character as the grammar writes it: `"c"`, with `\n`, `\t`,
 /// `\r`, `\\` and `\"` escaped.
-fn writeHintChar(w: *std.Io.Writer, c: u8) !void {
+pub fn writeHintChar(w: *std.Io.Writer, c: u8) !void {
     try w.writeByte('"');
     switch (c) {
         '\n' => try w.writeAll("\\n"),

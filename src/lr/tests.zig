@@ -22,7 +22,8 @@ const repair = lr.repair;
 /// start markers, one accept rule per start symbol) from rules written
 /// `lhs → sym sym ...`. Lowercase names are nonterminals, everything else
 /// (UPPER tokens, quoted literals) terminals; `ε` is the empty rhs. A rule
-/// may end with hints: `<`, `>`, and `X "c"` (any number).
+/// may end with hints: `<`, `>`, and `X "c"` (any number), which names the
+/// literal terminal `"c"` some rule uses (as check.resolveHints does).
 fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !Grammar {
     var g = Grammar.init(a);
     g.acceptId = try g.addSymbol("$accept", .nonterminal);
@@ -32,11 +33,14 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
         const arrow = std.mem.find(u8, text, "→").?;
         _ = try g.addSymbol(std.mem.trim(u8, text[0..arrow], " "), .nonterminal);
     }
-    for (rules) |text| {
+    // Each rule's hinted literals, resolved once every symbol exists.
+    const hinted = try a.alloc([]const []const u8, rules.len);
+    for (rules, hinted) |text, *hintNames| {
         const arrow = std.mem.find(u8, text, "→").?;
         const lhs = g.getSymbol(std.mem.trim(u8, text[0..arrow], " ")).?;
         var rhs: std.ArrayList(u16) = .empty;
         var excl: std.ArrayList(u8) = .empty;
+        var names: std.ArrayList([]const u8) = .empty;
         var rule: grammar.Rule = .{ .id = @intCast(g.rules.items.len), .lhs = lhs, .rhs = &.{} };
         var it = std.mem.tokenizeScalar(u8, text[arrow + "→".len ..], ' ');
         while (it.next()) |tok| {
@@ -46,7 +50,9 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
             } else if (std.mem.eql(u8, tok, ">")) {
                 rule.preferShift = true;
             } else if (std.mem.eql(u8, tok, "X")) {
-                try excl.append(a, it.next().?[1]);
+                const lit = it.next().?;
+                try excl.append(a, lit[1]);
+                try names.append(a, lit);
             } else {
                 const kind: grammar.Symbol.Kind = if (tok[0] >= 'a' and tok[0] <= 'z') .nonterminal else .terminal;
                 try rhs.append(a, try g.addSymbol(tok, kind));
@@ -54,8 +60,14 @@ fn build(a: Allocator, rules: []const []const u8, starts: []const []const u8) !G
         }
         rule.rhs = try rhs.toOwnedSlice(a);
         rule.excludeChars = try excl.toOwnedSlice(a);
+        hintNames.* = try names.toOwnedSlice(a);
         try g.rules.append(a, rule);
         try g.symbols.items[lhs].rules.append(a, rule.id);
+    }
+    for (g.rules.items, hinted) |*rule, hintNames| {
+        const terminals = try a.alloc(u16, hintNames.len);
+        for (hintNames, terminals) |name, *t| t.* = g.getSymbol(name).?;
+        rule.hintTerminals = terminals;
     }
     for (starts) |name| {
         const start = g.getSymbol(name).?;
@@ -539,7 +551,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
     );
 }
 
-test "a hint names its literal terminal, escapes included; a missing literal is an error" {
+test "a hint names its literal terminal, escapes included" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -563,18 +575,6 @@ test "a hint names its literal terminal, escapes included; a missing literal is 
     try testing.expectEqual(@as(usize, 1), esc.tbl.xExcludes.items.len);
     try testing.expectEqual(sym(&esc.g, "\"\\\\\""), esc.tbl.xExcludes.items[0].sym);
     try conflicts.checkHints(a, &esc.g, &esc.tbl, opts);
-
-    // No literal "(" in the grammar: the hint names nothing.
-    const missing = try generate(a, &.{
-        "prog → es",
-        "es → es e",
-        "es → e",
-        "e → ID X \"(\"",
-        "e → ID LPAREN ID",
-        "e → LPAREN ID",
-    }, &.{"prog"});
-    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &missing.g, &missing.tbl, opts));
-    try expectContains(sink.written(), "X \"(\" on e → ID names no terminal: the parser grammar has no literal \"(\"");
 }
 
 test "several `<` rules in one cell: the lowest reduces, the rest are reduce/reduce conflicts" {

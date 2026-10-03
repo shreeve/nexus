@@ -1,0 +1,25 @@
+# An `X "c"` hint names a terminal, not a text: "(" names OPEN, the token
+# of '(', and OPEN is '[' too, so a touching "[" opens a call as a
+# touching "(" does, and a spaced one starts a new expression.
+
+@lexer
+tokens
+    ident
+    open
+    close
+    eof
+    err
+'\n'                                        → skip, skip
+'('                                         → open
+'['                                         → open
+[)\]]                                       → close
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+exprs! = expr+                              → (exprs ...1)
+
+expr   = IDENT X "("                        → (var 1)
+       | IDENT OPEN expr CLOSE              → (call 1 3)
+       | OPEN expr CLOSE                    → 2

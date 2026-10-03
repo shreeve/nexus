@@ -1,0 +1,23 @@
+# '(' and '[' are one token (open), which the parser grammar writes as
+# "[". An `X "("` hint names that terminal through another spelling; a
+# hint names a literal terminal by the literal itself.
+# error: x_hint_other_literal.grammar:21:10:
+# error: X "(" on expr → IDENT names the terminal "[": a hint names a literal terminal by that literal
+@lexer
+tokens
+    ident
+    open
+    close
+    eof
+    err
+'\n'                                        → skip, skip
+'('                                         → open
+'['                                         → open
+[)\]]                                       → close
+[a-z]+                                      → ident
+.                                           → err
+@parser
+exprs! = expr+                              → (exprs ...1)
+expr   = IDENT X "("                        → (var 1)
+       | IDENT "[" expr CLOSE               → (call 1 3)
+       | "[" expr CLOSE                     → 2

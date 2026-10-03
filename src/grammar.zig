@@ -91,24 +91,34 @@ pub const LexerSpec = struct {
 };
 
 // =============================================================================
-// Lexer spec queries (used by parser code generation)
+// Lexer spec queries (token binding and hint resolution, check.zig)
 // =============================================================================
 
-/// The token the lexer produces for exactly the one-byte text `ch`
-/// (see findTokenForLiteral).
-pub fn findTokenForChar(spec: *const LexerSpec, ch: u8) ?[]const u8 {
-    return findTokenForLiteral(spec, &[_]u8{ch});
+/// The one string lexer rule `rule` matches and makes its token of, when
+/// its pattern is a plain literal. Rules whose token is not the matched
+/// text (hold, rewind, trailing context, skip) have none.
+pub fn ruleLiteral(rule: *const LexerRule) ?[]const u8 {
+    if (rule.isSkip or rule.hold or rule.rewind != null) return null;
+    return rule.literal;
+}
+
+/// The byte of a one-byte literal terminal named `name` (`"("`, or one
+/// escape, `"\\x28"`), else null.
+pub fn oneByteLiteral(name: []const u8) ?u8 {
+    if (name.len < 3 or name[0] != '"' or name[name.len - 1] != '"') return null;
+    const inner = name[1 .. name.len - 1];
+    if (inner[0] != '\\') return if (inner.len == 1) inner[0] else null;
+    const e = escapeAt(inner, 0) orelse return null;
+    return if (e.len == inner.len) e.byte else null;
 }
 
 /// The token of the rule whose pattern is exactly the literal `text`: the
-/// first unguarded such rule, else the first guarded one. `text` is the
-/// body of a string literal, escapes undecoded. Rules whose token is not
-/// the matched text (hold, rewind, trailing context, skip) never qualify.
+/// first unguarded such rule, else the first guarded one (see
+/// ruleLiteral). `text` is the body of a string literal, escapes undecoded.
 pub fn findTokenForLiteral(spec: *const LexerSpec, text: []const u8) ?[]const u8 {
     var guarded: ?[]const u8 = null;
-    for (spec.rules.items) |rule| {
-        const rl = rule.literal orelse continue;
-        if (rule.isSkip or rule.hold or rule.rewind != null) continue;
+    for (spec.rules.items) |*rule| {
+        const rl = ruleLiteral(rule) orelse continue;
         if (!decodesTo(text, rl)) continue;
         if (rule.guards.len == 0) return rule.token;
         if (guarded == null) guarded = rule.token;
@@ -529,6 +539,9 @@ pub const Rule = struct {
     actionTree: ?ActionTree = null,
     /// `X "c"` hints: characters that force a shift when adjacent.
     excludeChars: []const u8 = &.{},
+    /// The terminal each `X "c"` hint names, in the order of excludeChars
+    /// (check.resolveHints).
+    hintTerminals: []const u16 = &.{},
     /// `<` / `>` hints: prefer reduce / shift on a shift/reduce conflict.
     preferReduce: bool = false,
     preferShift: bool = false,
@@ -580,6 +593,13 @@ pub const Grammar = struct {
     trivia: []const []const u8 = &.{},
     repair: ?RepairSpec = null,
 
+    /// Which terminal each lexer token reaches the parser as, in the order
+    /// of the generated tokenToSymbol (check.bindTokens).
+    tokenMap: []const TokenBinding = &.{},
+
+    /// Lexer token (TokenCat name) `cat` is grammar terminal `sym`.
+    pub const TokenBinding = struct { cat: []const u8, sym: u16 };
+
     pub fn init(allocator: Allocator) Grammar {
         return .{ .allocator = allocator };
     }
@@ -605,6 +625,36 @@ pub const Grammar = struct {
         var resolved = name;
         while (self.aliases.get(resolved)) |target| resolved = target;
         return self.symbolMap.get(resolved);
+    }
+
+    /// The token `@as` promotes (TokenCat name, e.g. `ident`); one grammar
+    /// promotes one token (codegen checks the directives agree).
+    pub fn promotable(self: *const Grammar) ?[]const u8 {
+        return if (self.asDirectives.len > 0) self.asDirectives[0].token else null;
+    }
+
+    /// The terminal lexer token `cat` reaches the parser as (tokenMap).
+    pub fn terminalOf(self: *const Grammar, cat: []const u8) ?u16 {
+        for (self.tokenMap) |m| if (std.mem.eql(u8, m.cat, cat)) return m.sym;
+        return null;
+    }
+
+    /// Whether terminal `name` reaches the parser by `@as` promotion of an
+    /// identifier rather than as its own token category:
+    ///   1. it names an `@as` group (CMD for `@as ident = [cmd]`);
+    ///   2. a declared lexer token of that name makes it direct;
+    ///   3. else it is a keyword of the lang module, which only a grammar
+    ///      with `@as` and `@lang` may name (check.validateSymbols).
+    pub fn isPromotedKeyword(self: *const Grammar, spec: ?*const LexerSpec, name: []const u8) bool {
+        if (name[0] < 'A' or name[0] > 'Z') return false;
+        for (self.asDirectives) |directive| {
+            if (std.ascii.eqlIgnoreCase(name, directive.rule)) return true;
+        }
+        if (spec) |sp| {
+            for (sp.tokens.items) |tok| if (std.ascii.eqlIgnoreCase(tok, name)) return false;
+            for (sp.rules.items) |rule| if (std.ascii.eqlIgnoreCase(rule.token, name)) return false;
+        }
+        return self.promotable() != null;
     }
 
     pub fn isAcceptRule(self: *const Grammar, ruleId: u16) bool {

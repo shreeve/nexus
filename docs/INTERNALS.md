@@ -18,7 +18,7 @@ grammar file
   │  semantics.zig resolve: schema, inventory, role placement, coverage
   │  expand.zig    → Grammar (plain BNF: symbols, rules, action trees)
   │  semantics.zig checkTypes: static result types
-  │  check.zig     every symbol defined, every rule reachable
+  │  check.zig     every symbol defined, every rule reachable, tokens bound, X hints resolved
   │  lr/           grammar facts → LR(0) → lookaheads → table → checks
   ▼  codegen/      generated sections + runtime template
 parser module
@@ -161,6 +161,13 @@ and every capitalized terminal a lexer token or an `@as` group (an
 undefined name is located where it is written), and every rule is
 reachable from a start symbol, where `@infix` and the synthesized rules
 are real edges. An `@infix` table no rule uses is an error there as well.
+It then binds each lexer token to the terminal it reaches the parser as
+(`bindTokens`: a named terminal is the token of its name, unless `@as`
+promotes it; a literal is its `@op` token, else the token of the lexer
+rule whose pattern is exactly that text; one token, one terminal), the
+table codegen emits as `tokenToSymbol`, and resolves each `X "c"` hint
+to a terminal through it (`resolveHints`), so the LR stage receives
+terminal ids and never sees the lexer.
 
 ### LR
 
@@ -184,7 +191,7 @@ merged canonical LR(1) on random grammars.
 
 `table.zig` resolves each (state, terminal) cell once from the shift (or
 accept) and the reductions that want it: `<` and an `X "c"` hint naming
-the literal terminal `"c"` let a reduction win (an `X "c"` win also
+this terminal (resolved before LR) let a reduction win (an `X "c"` win also
 records a run-time override that shifts that terminal when it touches the
 previous token), `>` suppresses the report, a shift or accept otherwise
 wins, and among reductions the lowest-numbered rule wins. The tables stay
@@ -200,7 +207,7 @@ space, `ε` for an empty right-hand side; quoted literals compare as
 written), and on any drift prints each new conflict with its state, items,
 and a shortest symbol path from a start state (breadth-first over the
 automaton), then the whole actual manifest. It also fails `X "c"` hints
-that decide nothing or name no literal of the grammar. `expected.zig`
+that decide nothing. `expected.zig`
 computes each state's expected list (the `@errors`-named rules it waits
 for, then the terminals none of them starts), and `repair.zig` ranks the
 `@repair` insertion candidates per state by class and by the minimum
@@ -319,7 +326,7 @@ current numbers and how to compare two builds.
 | `src/lexgen/lexgen.zig` | lexer checks and direct-coded emission |
 | `src/semantics.zig` | schema, placement, coverage, static types |
 | `src/expand.zig` | desugaring to BNF |
-| `src/check.zig` | defined symbols, reachable rules |
+| `src/check.zig` | defined symbols, reachable rules, token binding, hint resolution |
 | `src/lr/` | grammar facts, automaton, lookaheads, table, conflicts, expected sets, repair |
 | `src/codegen/codegen.zig` | module composition and grammar-specific code |
 | `src/codegen/actions.zig` | action trees to Zig |

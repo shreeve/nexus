@@ -25,8 +25,6 @@ const grammar = @import("../grammar.zig");
 const Grammar = grammar.Grammar;
 const LexerSpec = grammar.LexerSpec;
 const Schema = grammar.Schema;
-const findTokenForChar = grammar.findTokenForChar;
-const findTokenForLiteral = grammar.findTokenForLiteral;
 const Automaton = @import("../lr/automaton.zig").Automaton;
 const Table = @import("../lr/table.zig").Table;
 const actions = @import("actions.zig");
@@ -115,8 +113,6 @@ const Codegen = struct {
     usesNested: bool = false,
     /// The token `@as` promotes (TokenCat name, e.g. `ident`).
     promotable: ?[]const u8 = null,
-    /// tokenToSymbol's cases, in order (see mapTokens).
-    tokenMap: std.ArrayList(struct { cat: []const u8, sym: u16 }) = .empty,
     /// The executeAction function, generated before the configuration.
     actionsCode: []const u8 = "",
     /// Per rule, how the parser takes its value (see `emitRuleTables`).
@@ -215,7 +211,6 @@ const Codegen = struct {
             return error.MissingRepairTable;
         }
 
-        try self.mapTokens();
         try self.checkNames();
     }
 
@@ -415,76 +410,8 @@ const Codegen = struct {
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
         // The promotable token's symbol depends on the state (`promote`).
         if (self.promotable) |tok| try w.print("        .@\"{s}\" => {s},\n", .{ tok, if (self.asGroups() > 0) "needsPromotion" else "promotableSymbol" });
-        for (self.tokenMap.items) |m| try w.print("        .@\"{s}\" => {d},\n", .{ m.cat, m.sym });
+        for (self.g.tokenMap) |m| try w.print("        .@\"{s}\" => {d},\n", .{ m.cat, m.sym });
         try w.print("        else => {d}, // error\n    }};\n}}\n", .{self.g.errorId});
-    }
-
-    /// Which lexer token category each grammar terminal is (tokenToSymbol):
-    /// a named terminal is the category of its name (unless `@as` promotes
-    /// it); a string literal is its `@op` category, else the category of the
-    /// lexer rule whose pattern is exactly that text. A category names one
-    /// terminal: a literal no lexer token produces, and two terminals for
-    /// one category (`"+"` and PLUS), are errors (either would leave
-    /// alternatives no input can reach).
-    fn mapTokens(self: *Codegen) !void {
-        var owner: std.StringHashMapUnmanaged(u16) = .empty;
-        if (self.promotable) |tok| try owner.put(self.allocator, tok, self.g.errorId);
-        var failed = false;
-        // Literals already reported as sharing a token.
-        var shared: std.AutoHashMapUnmanaged(u16, void) = .empty;
-
-        for (self.g.symbols.items) |sym| {
-            if (sym.kind != .terminal or sym.name.len == 0) continue;
-            if (sym.name[0] == '$' or sym.name[0] == '"') continue;
-            if (std.mem.endsWith(u8, sym.name, "!")) continue;
-            if (std.mem.eql(u8, sym.name, "error")) continue;
-
-            const lowerName = try std.ascii.allocLowerString(self.allocator, sym.name);
-            if (self.promotable) |tok| if (std.mem.eql(u8, lowerName, tok)) continue;
-            if (self.isPromotedKeyword(sym.name)) continue;
-
-            // Only names that can be TokenCat fields
-            var valid = lowerName[0] >= 'a' and lowerName[0] <= 'z';
-            for (lowerName) |ch| {
-                if (!((ch >= 'a' and ch <= 'z') or (ch >= '0' and ch <= '9') or ch == '_')) valid = false;
-            }
-            if (valid and !owner.contains(lowerName)) {
-                try self.tokenMap.append(self.allocator, .{ .cat = lowerName, .sym = sym.id });
-                try owner.put(self.allocator, lowerName, sym.id);
-            }
-        }
-
-        // String literals: `@op` mappings first, then one-byte literals, then
-        // longer ones (the order of the generated switch).
-        for (0..3) |phase| for (self.g.symbols.items) |sym| {
-            if (sym.kind != .terminal or sym.name.len < 3 or sym.name[0] != '"') continue;
-            const raw = sym.name[1 .. sym.name.len - 1];
-            const literal = try grammar.decode(self.allocator, raw);
-            const cat: ?[]const u8 = switch (phase) {
-                0 => for (self.g.opMappings) |m| {
-                    if (std.mem.eql(u8, literal, m.lit)) break m.tok;
-                } else null,
-                1 => if (literal.len == 1) self.literalCat(raw) else null,
-                else => if (literal.len > 1) self.literalCat(raw) else null,
-            };
-            const c = cat orelse {
-                if (phase == 2 and !self.mapped(sym.id) and !shared.contains(sym.id)) {
-                    self.errAtUse(sym.id, "the literal {s} is no token: no lexer rule's pattern is exactly that text (and no @op maps it)", .{sym.name});
-                    failed = true;
-                }
-                continue;
-            };
-            if (owner.get(c)) |other| {
-                if (other == sym.id) continue;
-                self.errAtUse(sym.id, "{s} and {s} are the same token ({s}); write one of them", .{ sym.name, self.symbolLabel(other), c });
-                try shared.put(self.allocator, sym.id, {});
-                failed = true;
-                continue;
-            }
-            try self.tokenMap.append(self.allocator, .{ .cat = c, .sym = sym.id });
-            try owner.put(self.allocator, c, sym.id);
-        };
-        if (failed) return error.TokenMapping;
     }
 
     /// @errors must name rules, @display tokens (of the grammar or the
@@ -518,46 +445,12 @@ const Codegen = struct {
         if (failed) return error.UnknownName;
     }
 
-    fn literalCat(self: *const Codegen, raw: []const u8) ?[]const u8 {
-        const spec = self.lexerSpec orelse return null;
-        return findTokenForLiteral(spec, raw);
-    }
-
-    fn mapped(self: *const Codegen, sym: u16) bool {
-        for (self.tokenMap.items) |m| if (m.sym == sym) return true;
-        return false;
-    }
-
-    /// How a diagnostic names terminal `sym` (the promoted token: its name).
-    fn symbolLabel(self: *const Codegen, sym: u16) []const u8 {
-        if (sym == self.g.errorId) return self.promotable orelse "error";
-        return self.g.symbols.items[sym].name;
-    }
-
     /// A generation error at the first rule that uses symbol `sym`.
     fn errAtUse(self: *const Codegen, sym: u16, comptime fmt: []const u8, args: anytype) void {
         for (self.g.rules.items) |rule| {
             if (rule.line > 0 and std.mem.findScalar(u16, rule.rhs, sym) != null) return self.errLine(rule.line, rule.col, fmt, args);
         }
         self.errLine(1, 1, fmt, args);
-    }
-
-    /// Whether terminal `name` reaches the parser by `@as` promotion of an
-    /// identifier rather than as its own token category:
-    ///   1. it names an `@as` group (CMD for `@as ident = [cmd]`);
-    ///   2. a declared lexer token of that name makes it direct;
-    ///   3. else it is a keyword of the lang module, which only a grammar
-    ///      with `@as` and `@lang` may name (check.validateSymbols).
-    fn isPromotedKeyword(self: *const Codegen, name: []const u8) bool {
-        if (name[0] < 'A' or name[0] > 'Z') return false;
-        for (self.g.asDirectives) |directive| {
-            if (std.ascii.eqlIgnoreCase(name, directive.rule)) return true;
-        }
-        if (self.lexerSpec) |spec| {
-            for (spec.tokens.items) |tok| if (std.ascii.eqlIgnoreCase(tok, name)) return false;
-            for (spec.rules.items) |rule| if (std.ascii.eqlIgnoreCase(rule.token, name)) return false;
-        }
-        return self.hasIdentAs();
     }
 
     /// The `@as` groups a token may be promoted to (`self` excluded), in
@@ -748,7 +641,7 @@ const Codegen = struct {
         for (self.g.symbols.items) |sym| {
             if (sym.kind != .terminal or sym.name.len == 0 or sym.name[0] < 'A' or sym.name[0] > 'Z') continue;
             if (std.mem.endsWith(u8, sym.name, "!")) continue;
-            if (!self.isPromotedKeyword(sym.name)) continue;
+            if (!self.g.isPromotedKeyword(self.lexerSpec, sym.name)) continue;
             if (std.ascii.eqlIgnoreCase(sym.name, self.promotable.?)) continue;
             const used = for (self.g.rules.items) |rule| {
                 if (std.mem.findScalar(u16, rule.rhs, sym.id) != null) break true;

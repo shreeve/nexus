@@ -285,6 +285,17 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             fail();
         };
         if (unreached > 0) fail();
+        // Each lexer token's terminal, then each `X "c"` hint's.
+        const unbound = check.bindTokens(&g, &lexerSpec, grammarFile) catch {
+            diag.err("out of memory", .{});
+            fail();
+        };
+        if (unbound > 0) fail();
+        const unresolved = check.resolveHints(&g, &lexerSpec, grammarFile) catch {
+            diag.err("out of memory", .{});
+            fail();
+        };
+        if (unresolved > 0) fail();
 
         var result = lr.run(&g, .{ .path = grammarFile }) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
