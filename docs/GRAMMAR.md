@@ -634,8 +634,8 @@ terminal the current state accepts; otherwise it stays `TOKEN`.
 - With `@lang`, group `g` is looked up with `lang.gAs(text) ?lang.GId`
   (or `@as TOKEN via fn = [g]` / `[g via fn]`: `lang.fn(text)`), where `GId`
   is an enum whose field names are the grammar's keyword terminals
-  (`IF`, `THEN`, ...). The enum value becomes the leaf's id (`src.id`),
-  so give keywords values from 1 up to 511 (0 means "no id"). A terminal
+  (`IF`, `THEN`, ...). The enum value becomes the leaf's id (`src.id`, a
+  `u16`), so give keywords values from 1 (0 means "no id"). A terminal
   named like the group in capitals (`G`) receives every value that has no
   terminal of its own.
 - Without `@lang`, group `g` is the single word `g`, promoted to `G`.

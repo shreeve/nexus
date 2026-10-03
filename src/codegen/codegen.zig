@@ -715,10 +715,7 @@ const Codegen = struct {
             }
 
             try w.print("\n/// {s} ordinal -> grammar symbol (0 = none)\nconst {s}ToSymbol = blk: {{\n", .{ idType, directive.rule });
-            try w.writeAll(if (targets.items.len > 0 or fallbackId != null)
-                "    var arr: [512]u16 = @splat(0);\n"
-            else
-                "    const arr: [512]u16 = @splat(0);\n");
+            try w.print("    {s} arr: [idCount({s})]u16 = @splat(0);\n", .{ if (targets.items.len > 0 or fallbackId != null) "var" else "const", idType });
             for (targets.items) |term| {
                 try w.print("    if (@hasField({s}, \"{s}\")) arr[@backingInt({s}.{s})] = {d};\n", .{ idType, term.name, idType, term.name, term.id });
             }

@@ -905,6 +905,14 @@ fn repairCandidates(state: u16) []const u16 {
 /// decides it per state; no grammar symbol has it.
 const needsPromotion: u16 = std.math.maxInt(u16);
 
+/// The length of an `@as` group's symbol map: an entry for every value of
+/// its Id enum up to the largest it names.
+fn idCount(comptime Id: type) usize {
+    var n: usize = 0;
+    for (@typeInfo(Id).@"enum".field_values) |v| n = @max(n, v + 1);
+    return n;
+}
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -1284,7 +1292,9 @@ pub const BaseParser = struct {
     /// `@as` promotion of the current token, `text`, to one group: the
     /// group's symbol for the keyword, else the group's fallback symbol,
     /// when the state takes it (with any action when `permissive`, else by
-    /// a shift). The keyword's ordinal becomes the leaf's id.
+    /// a shift). The keyword's ordinal becomes the leaf's id. (A
+    /// non-exhaustive Id enum may give an ordinal past the map: it has no
+    /// symbol of its own.)
     inline fn tryPromote(
         self: *BaseParser,
         comptime group: usize,
@@ -1296,7 +1306,7 @@ pub const BaseParser = struct {
     ) ?u16 {
         const id = self.keywordId(group, text, lookup) orelse return null;
         const state = self.stateStack.last().?;
-        for ([_]u16{ toSymbol[id], fallback }) |sym| {
+        for ([_]u16{ if (id < toSymbol.len) toSymbol[id] else 0, fallback }) |sym| {
             if (sym == 0) continue;
             const action = getAction(state, sym);
             if (if (permissive) action != 0 else action > 0) {
@@ -2330,7 +2340,7 @@ const promotableSymbol: u16 = 60;
 
 /// lang.KeywordId ordinal -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {
-    var arr: [512]u16 = @splat(0);
+    var arr: [idCount(lang.KeywordId)]u16 = @splat(0);
     if (@hasField(lang.KeywordId, "NEWLINE")) arr[@backingInt(lang.KeywordId.NEWLINE)] = 58;
     if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 60;
     if (@hasField(lang.KeywordId, "EXTERN")) arr[@backingInt(lang.KeywordId.EXTERN)] = 61;

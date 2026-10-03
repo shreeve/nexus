@@ -1,0 +1,25 @@
+# An `@as` group's symbol map has one entry per value of its Id enum, so
+# an Id value of any size is looked up in bounds: `later` (LATER = 600,
+# no terminal of the grammar) stays an identifier.
+
+@lexer
+tokens
+    ident, number, eq, eof, err
+'\n'                                        → skip, skip
+'='                                         → eq
+[0-9]+                                      → number
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@lang = "as_large_id"
+@as IDENT = [kw]
+
+prog! = stmt+                               → (prog ...1)
+
+stmt  = PRINT expr                          → (print 2)
+      | IDENT "=" expr                      → (set 1 3)
+
+expr  = IDENT
+      | NUMBER
