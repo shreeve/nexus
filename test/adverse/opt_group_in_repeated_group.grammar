@@ -1,0 +1,24 @@
+# A multi-element [...] group inside a repeated group is rejected, not
+# expanded into a crash.
+# error: opt_group_in_repeated_group.grammar:24:21:
+# error: a multi-element [...] group inside a group or choice is not supported
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT (PLUS [IDENT COLON])* INTEGER  → (t 1 3)

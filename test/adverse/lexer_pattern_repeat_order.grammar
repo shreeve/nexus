@@ -1,0 +1,14 @@
+# A repeat range runs from low to high
+# error: lexer_pattern_repeat_order.grammar:9:4:
+# error: repeat bound {n,m} requires n <= m
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'{3,2}        → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

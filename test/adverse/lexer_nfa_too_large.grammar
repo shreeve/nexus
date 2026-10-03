@@ -1,0 +1,13 @@
+# Bounded repeats expand into copies, and nesting multiplies them: an NFA
+# over 200000 states is an error before the DFA is built
+# error: lexer_nfa_too_large.grammar:9:1:
+# error: the lexer NFA has more than 200000 states
+@lexer
+tokens
+    t, eof, err
+
+(('a'{255}){255}){2}    → t
+.                       → err
+
+@parser
+top! = ERR → 1

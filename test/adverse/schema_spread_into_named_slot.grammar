@@ -1,0 +1,25 @@
+# A slot role named in the action takes one value, not a spread.
+# error: schema_spread_into_named_slot.grammar:25:8:
+# error: role 'name' of 't' takes one value; only the rest role takes a spread
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf?
+top! = IDENT*                               → (t name:...1)

@@ -1,0 +1,14 @@
+# A repeat count that does not fit 32 bits
+# error: lexer_pattern_repeat_huge.grammar:9:5:
+# error: repeat count is too large
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'{99999999999} → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

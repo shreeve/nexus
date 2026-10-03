@@ -1,0 +1,22 @@
+# Two guards on one variable that are always opposite (m < 2, m >= 2) make
+# only two configurations possible; the lexer selects between their start
+# states with one test, and no start state exists for the impossible two.
+
+@lexer
+state
+    m = 0
+tokens
+    low, high, bump, eof, err
+'+'                 → bump, {m++}
+'a'     @ m < 2     → low
+'a'     @ m >= 2    → high
+.                   → err
+
+@parser
+
+toks! = items                   → (toks ...1)
+items = items item              → (...1 2)
+      | item                    → (1)
+item  = LOW                     → (low 1)
+      | HIGH                    → (high 1)
+      | BUMP                    → (bump 1)

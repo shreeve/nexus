@@ -1,0 +1,14 @@
+# A zero-width rule cannot skip
+# error: lexer_zero_width_skip.grammar:9:1:
+# error: a zero-width rule cannot skip
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+@ pre > 1       → t, skip
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

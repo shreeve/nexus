@@ -1,0 +1,29 @@
+# Zero-width rules that step a variable toward a false guard fire a bounded
+# number of times, so they are accepted: `tick` fires while k counts down
+# from 2, and `mark` before each 'c' while m counts up to 1 (from -2, then
+# never again). A held token after blanks needs no assignment: the next
+# token starts after the blanks, where pre is 0.
+
+@lexer
+state
+    k = 2
+    m = -2
+tokens
+    tick, mark, c, spaced, bang, eof, err
+@ k > 0                     → tick, hold, {k--}
+'c'     @ m < 1             → mark, hold, {m++}
+'c'                         → c
+'!'     @ pre > 0           → spaced, hold
+'!'                         → bang
+.                           → err
+
+@parser
+
+toks! = items               → (toks ...1)
+items = items item          → (...1 2)
+      | item                → (1)
+item  = TICK                → (tick 1)
+      | MARK                → (mark 1)
+      | C                   → (c 1)
+      | SPACED              → (spaced 1)
+      | BANG                → (bang 1)

@@ -1,0 +1,14 @@
+# An empty literal is an error; ( ) is the empty string
+# error: lexer_pattern_empty_literal.grammar:9:5:
+# error: empty literal; use ( ) for the empty string
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' ''          → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

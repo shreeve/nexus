@@ -1,0 +1,14 @@
+# Repeat counts go up to 255
+# error: lexer_pattern_repeat_over_255.grammar:9:4:
+# error: repeat count exceeds 255
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'{256}        → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

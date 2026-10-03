@@ -1,0 +1,17 @@
+# An @code function is imported from the lang module, so it needs @lang;
+# the error belongs at the @code line.
+# Today: it is reported at 1:1, because the lexer spec keeps no location
+# for @code (the check runs during lexer emission).
+# error: lexer_code_needs_lang.grammar:12:1:
+# error: @code = foo needs @lang
+@lexer
+tokens
+    t, eof, err
+
+# imported from a lang module this grammar does not name
+@code = foo
+'x'                         → t
+.                           → err
+
+@parser
+top! = ERR → 1

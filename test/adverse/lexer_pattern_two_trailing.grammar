@@ -1,0 +1,14 @@
+# A pattern has at most one trailing context
+# error: lexer_pattern_two_trailing.grammar:9:11:
+# error: a pattern may contain only one trailing-context '/'
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' / 'b' / 'c' → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

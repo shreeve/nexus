@@ -1,0 +1,29 @@
+# Labels inside a top-level ( ... ) or ( ... )? group fill roles: the
+# group is expanded like a one-alternative choice, so its elements are
+# positions of the pattern (nil when an optional group is absent).
+
+@lexer
+tokens
+    ident
+    integer
+    colon
+    eq
+    comma
+    eof
+    err
+':'                                         → colon
+'='                                         → eq
+','                                         → comma
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "labeled_group"
+
+@schema
+    decl  name:leaf type:leaf? value:leaf?
+    pair  key:leaf val:leaf
+
+top! = name:IDENT (":" type:IDENT)? ("=" value:INTEGER)?   → (decl)
+     | "," (key:IDENT "=" val:IDENT)                       → (pair)

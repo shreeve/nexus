@@ -1,0 +1,26 @@
+# Aliases that lead back to themselves name no symbol: the cycle is
+# reported, not an undefined rule.
+# error: alias_cycle.grammar:25:1:
+# error: alias cycle: x = y = x
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = PLUS x                               → (t 2)
+x = y
+y = x

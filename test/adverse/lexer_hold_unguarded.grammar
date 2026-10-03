@@ -1,0 +1,13 @@
+# A held token with nothing to turn it off would be returned forever
+# whenever its pattern matches
+# error: lexer_hold_unguarded.grammar:8:1:
+# error: this zero-width rule would match forever: it must assign a state variable its guards test
+@lexer
+tokens
+    t, word, eof, err
+'a'                         → t, hold
+[a-z]+                      → word
+.                           → err
+
+@parser
+top! = (T | WORD)*          → (top ...1)

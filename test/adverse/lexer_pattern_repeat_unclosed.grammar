@@ -1,0 +1,14 @@
+# A repeat count needs its closing brace
+# error: lexer_pattern_repeat_unclosed.grammar:9:8:
+# error: expected '}' to close the repeat count
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'{2,3 'b'     → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

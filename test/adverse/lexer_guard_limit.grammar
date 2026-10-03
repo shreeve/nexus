@@ -1,0 +1,25 @@
+# The DFA has a start state per combination of guard conditions, so the
+# consuming rules may test at most 10 distinct ones; the error points at
+# the rule that brings in the eleventh
+# error: lexer_guard_limit.grammar:21:1:
+# error: more than 10 distinct guard conditions
+@lexer
+state
+    m = 0
+tokens
+    t, eof, err
+'a'     @ m == 0    → t
+'a'     @ m == 1    → t
+'a'     @ m == 2    → t
+'a'     @ m == 3    → t
+'a'     @ m == 4    → t
+'a'     @ m == 5    → t
+'a'     @ m == 6    → t
+'a'     @ m == 7    → t
+'a'     @ m == 8    → t
+'a'     @ m == 9    → t
+'a'     @ m == 10   → t
+.                   → err
+
+@parser
+top! = ERR → 1

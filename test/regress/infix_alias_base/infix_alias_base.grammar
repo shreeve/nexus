@@ -1,0 +1,24 @@
+# The base of an @infix chain may be an alias of a token the grammar uses
+# nowhere else: the chain's operands are that token.
+
+@lexer
+tokens
+    ident
+    plus
+    star
+    eof
+    err
+'+'                                         → plus
+'*'                                         → star
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "infix_alias_base"
+
+top! = @infix
+atom = IDENT
+
+@infix atom
+    "+" left
+    "*" left

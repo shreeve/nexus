@@ -1,0 +1,14 @@
+# A zero-width rule whose guards can never all hold is dead too
+# error: lexer_zero_width_impossible.grammar:9:1:
+# error: this rule can never match: its guards are never all true together
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+@ m > 5 & m < 3 & pre > 0       → t, {m = 0}
+'a'                             → u
+.                               → err
+
+@parser
+top! = ERR → 1

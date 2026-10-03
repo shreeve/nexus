@@ -1,0 +1,25 @@
+# `after` runs after every token that consumes input, so not after a held
+# (zero-width) token: the `y` after `mark` still sees b = 1 and is `first`;
+# the next `y` sees b = 0.
+
+@lexer
+state
+    m = 0
+    b = 1
+after
+    b = 0
+tokens
+    mark, first, other, eof, err
+'y'     @ !m                → mark, hold, {m = 1}
+'y'     @ b                 → first
+'y'                         → other
+.                           → err
+
+@parser
+
+toks! = items               → (toks ...1)
+items = items item          → (...1 2)
+      | item                → (1)
+item  = MARK                → (mark 1)
+      | FIRST               → (first 1)
+      | OTHER               → (other 1)

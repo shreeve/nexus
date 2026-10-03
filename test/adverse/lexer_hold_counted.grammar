@@ -1,0 +1,14 @@
+# A held rule consumes nothing, so it has nothing to count
+# error: lexer_hold_counted.grammar:9:1:
+# error: a held rule consumes nothing, so counted() has nothing to count
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+@ pre > 1       → t, hold, {m = counted('.')}
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

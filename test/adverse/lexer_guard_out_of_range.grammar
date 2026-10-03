@@ -1,0 +1,13 @@
+# `pre` is a byte count (0..255): a guard no value can satisfy makes the
+# rule dead
+# error: lexer_guard_out_of_range.grammar:8:1:
+# error: this rule can never match: its guards are never all true together
+@lexer
+tokens
+    t, u, eof, err
+'a'     @ pre > 300             → t
+'a'                             → u
+.                               → err
+
+@parser
+top! = ERR → 1

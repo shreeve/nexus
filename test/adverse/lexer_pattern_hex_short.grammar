@@ -1,0 +1,14 @@
+# \x takes exactly two hex digits
+# error: lexer_pattern_hex_short.grammar:9:2:
+# error: \x needs two hex digits
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'\x4'          → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

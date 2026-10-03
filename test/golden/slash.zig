@@ -224,38 +224,38 @@ pub const BaseLexer = struct {
                     continue :dfa 4;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '\\', '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
-                    '\n' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '\\', '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '\r' => { p += 1; continue :dfa 3; },
                     '"' => { p += 1; continue :dfa 5; },
                     '#' => { p += 1; continue :dfa 6; },
                     '$' => { p += 1; continue :dfa 7; },
                     '&' => { p += 1; continue :dfa 8; },
                     '\'' => { p += 1; continue :dfa 9; },
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"lparen", pre, start, p); },
-                    ')' => { p += 1; self.paren -|= 1; self.pos = @intCast(p); return token(.@"rparen", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    ')' => { p += 1; self.paren -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '0'...'9' => { p += 1; continue :dfa 12; },
-                    ';' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
+                    ';' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '<' => { p += 1; continue :dfa 14; },
-                    '=' => { p += 1; self.pos = @intCast(p); return token(.@"assign", pre, start, p); },
+                    '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"assign", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '>' => { p += 1; continue :dfa 16; },
                     '@' => { p += 1; continue :dfa 17; },
-                    '[' => { p += 1; self.bracket +|= 1; self.pos = @intCast(p); return token(.@"lbracket", pre, start, p); },
-                    ']' => { p += 1; self.bracket -|= 1; self.pos = @intCast(p); return token(.@"rbracket", pre, start, p); },
-                    '{' => { p += 1; self.brace +|= 1; self.pos = @intCast(p); return token(.@"lbrace", pre, start, p); },
+                    '[' => { p += 1; self.bracket +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    ']' => { p += 1; self.bracket -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '{' => { p += 1; self.brace +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '|' => { p += 1; continue :dfa 21; },
-                    '}' => { p += 1; self.brace -|= 1; self.pos = @intCast(p); return token(.@"rbrace", pre, start, p); },
+                    '}' => { p += 1; self.brace -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 break :dfa;
             },
             3 => {
                 if (p < n) switch (src[p]) {
-                    '\n' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
+                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"semi", pre, start, p);
+                return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             4 => {
                 while (p < n and cls1[src[p]]) p += 1;
@@ -275,7 +275,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             6 => {
                 p = scanUntil(src, p, &.{'\n'});
@@ -290,28 +290,28 @@ pub const BaseLexer = struct {
                     continue :dfa 35;
                 }
                 if (p < n) switch (src[p]) {
-                    '!' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '#' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '$' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"dollar_paren", pre, start, p); },
-                    '*' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '0'...'9' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '?' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '@' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '!' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '#' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '$' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"dollar_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '*' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '0'...'9' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '?' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '@' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '{' => { p += 1; continue :dfa 36; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             8 => {
                 if (p < n) switch (src[p]) {
-                    '&' => { p += 1; self.pos = @intCast(p); return token(.@"and_and", pre, start, p); },
+                    '&' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"and_and", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '>' => { p += 1; continue :dfa 38; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"amp", pre, start, p);
+                return .{ .cat = .@"amp", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             9 => {
                 acc = 44;
@@ -325,7 +325,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             12 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
@@ -341,21 +341,21 @@ pub const BaseLexer = struct {
                 acc = 14;
                 accEnd = p;
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"proc_sub_in", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"proc_sub_in", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '<' => { p += 1; continue :dfa 44; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"lt", pre, start, p);
+                return .{ .cat = .@"lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             16 => {
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"proc_sub_out", pre, start, p); },
-                    '>' => { p += 1; self.pos = @intCast(p); return token(.@"gt_gt", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"proc_sub_out", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"gt_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"gt", pre, start, p);
+                return .{ .cat = .@"gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             17 => {
                 if (p < n and cls1[src[p]]) {
@@ -363,19 +363,19 @@ pub const BaseLexer = struct {
                     continue :dfa 4;
                 }
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"at_paren", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"at_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"ident", pre, start, p);
+                return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             21 => {
                 if (p < n) switch (src[p]) {
-                    '|' => { p += 1; self.pos = @intCast(p); return token(.@"or_or", pre, start, p); },
+                    '|' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"or_or", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"pipe", pre, start, p);
+                return .{ .cat = .@"pipe", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             24 => {
                 p = scanUntil(src, p, &.{'\n', '"', '\\'});
@@ -406,11 +406,11 @@ pub const BaseLexer = struct {
             },
             38 => {
                 if (p < n) switch (src[p]) {
-                    '>' => { p += 1; self.pos = @intCast(p); return token(.@"amp_gt_gt", pre, start, p); },
+                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"amp_gt_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"amp_gt", pre, start, p);
+                return .{ .cat = .@"amp_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             39 => {
                 p = scanUntil(src, p, &.{'\n', '\''});
@@ -1593,6 +1593,12 @@ pub const BaseParser = struct {
     /// stack), so that nested extensions each keep their own.
     fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), base: Sexp, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
+        return self.keepListNils(out, base, use);
+    }
+
+    /// `keepList` keeping trailing nils: a list of one item per element
+    /// (`X*`, `L(X?)`, ...).
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), base: Sexp, comptime use: ListUse) Sexp {
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
                 .len = out.items.len,
@@ -1879,7 +1885,7 @@ const hasTrivia = false;
 const hasRepair = false;
 /// `@as` groups the promotable token may become (see `promote`).
 const asGroups = 1;
-const numSymbols = 96;
+const numSymbols = 93;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
@@ -1891,40 +1897,40 @@ fn tokenToSymbol(token: Token) u16 {
         .@"and_and" => 39,
         .@"or_or" => 40,
         .@"amp" => 41,
-        .@"pipe" => 44,
-        .@"lparen" => 45,
-        .@"rparen" => 46,
-        .@"lbrace" => 47,
-        .@"rbrace" => 48,
-        .@"name_eq" => 54,
-        .@"lbracket" => 55,
-        .@"rbracket" => 56,
-        .@"integer" => 59,
-        .@"string_sq" => 60,
-        .@"string_dq" => 61,
-        .@"variable" => 62,
-        .@"var_braced" => 63,
-        .@"dollar_paren" => 64,
-        .@"at_paren" => 65,
-        .@"proc_sub_in" => 66,
-        .@"proc_sub_out" => 67,
-        .@"assign" => 68,
-        .@"indent" => 71,
-        .@"outdent" => 72,
-        .@"str_open" => 79,
-        .@"str_body" => 80,
-        .@"lt" => 82,
-        .@"fd_lt" => 83,
-        .@"gt" => 84,
-        .@"fd_gt" => 85,
-        .@"gt_gt" => 86,
-        .@"amp_gt" => 87,
-        .@"amp_gt_gt" => 88,
-        .@"fd_dup_out" => 89,
-        .@"fd_dup_in" => 90,
-        .@"heredoc_open" => 91,
-        .@"heredoc_body" => 92,
-        .@"heredoc_open_lit" => 93,
+        .@"pipe" => 43,
+        .@"lparen" => 44,
+        .@"rparen" => 45,
+        .@"lbrace" => 46,
+        .@"rbrace" => 47,
+        .@"name_eq" => 51,
+        .@"lbracket" => 52,
+        .@"rbracket" => 53,
+        .@"integer" => 56,
+        .@"string_sq" => 57,
+        .@"string_dq" => 58,
+        .@"variable" => 59,
+        .@"var_braced" => 60,
+        .@"dollar_paren" => 61,
+        .@"at_paren" => 62,
+        .@"proc_sub_in" => 63,
+        .@"proc_sub_out" => 64,
+        .@"assign" => 65,
+        .@"indent" => 68,
+        .@"outdent" => 69,
+        .@"str_open" => 76,
+        .@"str_body" => 77,
+        .@"lt" => 79,
+        .@"fd_lt" => 80,
+        .@"gt" => 81,
+        .@"fd_gt" => 82,
+        .@"gt_gt" => 83,
+        .@"amp_gt" => 84,
+        .@"amp_gt_gt" => 85,
+        .@"fd_dup_out" => 86,
+        .@"fd_dup_in" => 87,
+        .@"heredoc_open" => 88,
+        .@"heredoc_body" => 89,
+        .@"heredoc_open_lit" => 90,
         else => 2, // error
     };
 }
@@ -1942,8 +1948,8 @@ fn promote(self: *BaseParser, token: Token) u16 {
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
-        1 => self.spreadList(pass[0], pass[1], .spread),
-        2 => self.emptyList(.spread),
+        1 => self.emptyList(.spread),
+        2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
         3 => self.sexpPosSpread(.@"sequence", pass[0], pass[1]),
         13 => self.sexp(.@"seq_always", &.{pass[1]}),
         14 => self.sexp(.@"seq_always", &.{.nil}),
@@ -1951,82 +1957,80 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         16 => self.sexp(.@"seq_or", &.{pass[1]}),
         17 => self.sexp(.@"seq_bg", &.{pass[1]}),
         18 => self.sexp(.@"seq_bg", &.{.nil}),
-        20 => self.spreadList(pass[0], pass[1], .spread),
-        21 => self.emptyList(.spread),
-        22 => self.spreadList(pass[0], pass[1], .spread),
-        23 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
-        27 => self.sexp(.@"subshell", &.{pass[1]}),
-        28 => self.sexp(.@"subshell", &.{pass[1], pass[3]}),
-        29 => self.sexp(.@"block", &.{pass[1]}),
-        30 => self.sexp(.@"block", &.{pass[1], pass[3]}),
-        31 => self.spreadList(pass[0], pass[1], .spread),
-        32 => self.emptyList(.spread),
-        33 => self.spreadList(pass[0], pass[1], .spread),
-        34 => self.sexpSpread(.@"redirects", pass[0]),
-        35 => self.spreadList(pass[0], pass[1], .spread),
-        36 => self.emptyList(.spread),
-        37 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        38 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        39 => self.spreadList(pass[0], pass[1], .spread),
-        40 => self.emptyList(.spread),
-        41 => self.spreadList(pass[0], pass[1], .spread),
-        42 => self.sexpSpread(.@"env_binds", pass[0]),
-        43 => self.sexpSpread(.@"assigns", pass[0]),
-        44 => self.sexp(.@"env_bind", &.{pass[0], pass[1]}),
-        45 => self.sexp(.@"scalar", &.{pass[0]}),
-        46 => self.sexpSpread(.@"list", pass[1]),
-        47 => self.spreadList(pass[0], pass[1], .spread),
-        48 => self.emptyList(.spread),
-        49 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .spread); },
+        20 => self.build(&.{ pass[0] }, .spread),
+        21 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        22 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
+        26 => self.sexp(.@"subshell", &.{pass[1]}),
+        27 => self.sexp(.@"subshell", &.{pass[1], pass[3]}),
+        28 => self.sexp(.@"block", &.{pass[1]}),
+        29 => self.sexp(.@"block", &.{pass[1], pass[3]}),
+        30 => self.build(&.{ pass[0] }, .spread),
+        31 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        32 => self.sexpSpread(.@"redirects", pass[0]),
+        33 => self.emptyList(.spread),
+        34 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        35 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        36 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        37 => self.build(&.{ pass[0] }, .spread),
+        38 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        39 => self.sexpSpread(.@"env_binds", pass[0]),
+        40 => self.sexpSpread(.@"assigns", pass[0]),
+        41 => self.sexp(.@"env_bind", &.{pass[0], pass[1]}),
+        42 => self.sexp(.@"scalar", &.{pass[0]}),
+        43 => self.sexpSpread(.@"list", pass[1]),
+        44 => self.emptyList(.spread),
+        45 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        46 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .spread); },
+        49 => self.sexp(.@"word", &.{pass[0]}),
+        50 => self.sexp(.@"word", &.{pass[0]}),
+        51 => self.sexp(.@"word", &.{pass[0]}),
         52 => self.sexp(.@"word", &.{pass[0]}),
-        53 => self.sexp(.@"word", &.{pass[0]}),
-        54 => self.sexp(.@"word", &.{pass[0]}),
-        55 => self.sexp(.@"word", &.{pass[0]}),
-        56 => self.sexp(.@"var", &.{pass[0]}),
-        57 => self.sexp(.@"var_braced", &.{pass[0]}),
-        58 => self.sexp(.@"cmd_subst", &.{pass[1]}),
-        59 => self.sexp(.@"list_capture", &.{pass[1]}),
-        60 => self.sexp(.@"proc_sub_in", &.{pass[1]}),
-        61 => self.sexp(.@"proc_sub_out", &.{pass[1]}),
-        63 => self.sexp(.@"word", &.{pass[0]}),
-        64 => self.sexp(.@"word", &.{pass[0]}),
-        65 => self.sexp(.@"if", &.{pass[1], pass[2], .nil}),
-        66 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
-        68 => self.sexp(.@"cond_and", &.{pass[0], pass[2]}),
-        69 => self.sexp(.@"cond_or", &.{pass[0], pass[2]}),
-        70 => self.sexp(.@"else", &.{pass[1]}),
-        71 => self.sexp(.@"elif", &.{pass[1]}),
-        72 => self.sexp(.@"body", &.{pass[1]}),
-        73 => self.sexp(.@"body", &.{pass[1]}),
-        74 => self.sexp(.@"while", &.{pass[1], pass[2]}),
-        75 => self.sexp(.@"for", &.{pass[1], pass[3], pass[4]}),
-        76 => self.sexp(.@"match", &.{pass[1], pass[2]}),
-        77 => self.sexpSpread(.@"match_arms", pass[1]),
-        78 => self.sexpSpread(.@"match_arms", pass[1]),
-        79 => self.spreadList(pass[0], pass[1], .spread),
-        80 => self.emptyList(.spread),
-        81 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        84 => self.sexp(.@"match_arm", &.{pass[0], pass[1]}),
-        85 => self.sexp(.@"cmd_def", &.{pass[1], pass[2]}),
-        86 => self.sexp(.@"str_def", &.{pass[1], pass[2]}),
-        87 => self.spreadList(pass[0], pass[1], .spread),
-        88 => self.sexpSpread(.@"words", pass[0]),
-        89 => self.sexp(.@"redir_read", &.{pass[1]}),
-        90 => self.sexp(.@"redir_read_fd", &.{pass[0], pass[1]}),
-        91 => self.sexp(.@"redir_write", &.{pass[1]}),
-        92 => self.sexp(.@"redir_write_fd", &.{pass[0], pass[1]}),
-        93 => self.sexp(.@"redir_append", &.{pass[1]}),
-        94 => self.sexp(.@"redir_both", &.{pass[1]}),
-        95 => self.sexp(.@"redir_both_append", &.{pass[1]}),
-        96 => self.sexp(.@"redir_dup_out", &.{pass[0]}),
-        97 => self.sexp(.@"redir_dup_in", &.{pass[0]}),
-        98 => self.sexp(.@"redir_heredoc", &.{pass[0], pass[1]}),
-        99 => self.sexp(.@"redir_heredoc_lit", &.{pass[0], pass[1]}),
+        53 => self.sexp(.@"var", &.{pass[0]}),
+        54 => self.sexp(.@"var_braced", &.{pass[0]}),
+        55 => self.sexp(.@"cmd_subst", &.{pass[1]}),
+        56 => self.sexp(.@"list_capture", &.{pass[1]}),
+        57 => self.sexp(.@"proc_sub_in", &.{pass[1]}),
+        58 => self.sexp(.@"proc_sub_out", &.{pass[1]}),
+        60 => self.sexp(.@"word", &.{pass[0]}),
+        61 => self.sexp(.@"word", &.{pass[0]}),
+        62 => self.sexp(.@"if", &.{pass[1], pass[2], .nil}),
+        63 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
+        65 => self.sexp(.@"cond_and", &.{pass[0], pass[2]}),
+        66 => self.sexp(.@"cond_or", &.{pass[0], pass[2]}),
+        67 => self.sexp(.@"else", &.{pass[1]}),
+        68 => self.sexp(.@"elif", &.{pass[1]}),
+        69 => self.sexp(.@"body", &.{pass[1]}),
+        70 => self.sexp(.@"body", &.{pass[1]}),
+        71 => self.sexp(.@"while", &.{pass[1], pass[2]}),
+        72 => self.sexp(.@"for", &.{pass[1], pass[3], pass[4]}),
+        73 => self.sexp(.@"match", &.{pass[1], pass[2]}),
+        74 => self.sexpSpread(.@"match_arms", pass[1]),
+        75 => self.sexpSpread(.@"match_arms", pass[1]),
+        76 => self.emptyList(.spread),
+        77 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        78 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        81 => self.sexp(.@"match_arm", &.{pass[0], pass[1]}),
+        82 => self.sexp(.@"cmd_def", &.{pass[1], pass[2]}),
+        83 => self.sexp(.@"str_def", &.{pass[1], pass[2]}),
+        84 => self.build(&.{ pass[0] }, .spread),
+        85 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass[0], .spread); },
+        86 => self.sexpSpread(.@"words", pass[0]),
+        87 => self.sexp(.@"redir_read", &.{pass[1]}),
+        88 => self.sexp(.@"redir_read_fd", &.{pass[0], pass[1]}),
+        89 => self.sexp(.@"redir_write", &.{pass[1]}),
+        90 => self.sexp(.@"redir_write_fd", &.{pass[0], pass[1]}),
+        91 => self.sexp(.@"redir_append", &.{pass[1]}),
+        92 => self.sexp(.@"redir_both", &.{pass[1]}),
+        93 => self.sexp(.@"redir_both_append", &.{pass[1]}),
+        94 => self.sexp(.@"redir_dup_out", &.{pass[0]}),
+        95 => self.sexp(.@"redir_dup_in", &.{pass[0]}),
+        96 => self.sexp(.@"redir_heredoc", &.{pass[0], pass[1]}),
+        97 => self.sexp(.@"redir_heredoc_lit", &.{pass[0], pass[1]}),
         else => unreachable,
     };
 }
 
-const promotableSymbol: u16 = 58;
+const promotableSymbol: u16 = 55;
 
 /// lang.KeywordId ordinal -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {
@@ -2035,48 +2039,48 @@ const keywordToSymbol = blk: {
     if (@hasField(lang.KeywordId, "AND_AND")) arr[@backingInt(lang.KeywordId.AND_AND)] = 39;
     if (@hasField(lang.KeywordId, "OR_OR")) arr[@backingInt(lang.KeywordId.OR_OR)] = 40;
     if (@hasField(lang.KeywordId, "AMP")) arr[@backingInt(lang.KeywordId.AMP)] = 41;
-    if (@hasField(lang.KeywordId, "PIPE")) arr[@backingInt(lang.KeywordId.PIPE)] = 44;
-    if (@hasField(lang.KeywordId, "LPAREN")) arr[@backingInt(lang.KeywordId.LPAREN)] = 45;
-    if (@hasField(lang.KeywordId, "RPAREN")) arr[@backingInt(lang.KeywordId.RPAREN)] = 46;
-    if (@hasField(lang.KeywordId, "LBRACE")) arr[@backingInt(lang.KeywordId.LBRACE)] = 47;
-    if (@hasField(lang.KeywordId, "RBRACE")) arr[@backingInt(lang.KeywordId.RBRACE)] = 48;
-    if (@hasField(lang.KeywordId, "NAME_EQ")) arr[@backingInt(lang.KeywordId.NAME_EQ)] = 54;
-    if (@hasField(lang.KeywordId, "LBRACKET")) arr[@backingInt(lang.KeywordId.LBRACKET)] = 55;
-    if (@hasField(lang.KeywordId, "RBRACKET")) arr[@backingInt(lang.KeywordId.RBRACKET)] = 56;
-    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 58;
-    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 59;
-    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 60;
-    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 61;
-    if (@hasField(lang.KeywordId, "VARIABLE")) arr[@backingInt(lang.KeywordId.VARIABLE)] = 62;
-    if (@hasField(lang.KeywordId, "VAR_BRACED")) arr[@backingInt(lang.KeywordId.VAR_BRACED)] = 63;
-    if (@hasField(lang.KeywordId, "DOLLAR_PAREN")) arr[@backingInt(lang.KeywordId.DOLLAR_PAREN)] = 64;
-    if (@hasField(lang.KeywordId, "AT_PAREN")) arr[@backingInt(lang.KeywordId.AT_PAREN)] = 65;
-    if (@hasField(lang.KeywordId, "PROC_SUB_IN")) arr[@backingInt(lang.KeywordId.PROC_SUB_IN)] = 66;
-    if (@hasField(lang.KeywordId, "PROC_SUB_OUT")) arr[@backingInt(lang.KeywordId.PROC_SUB_OUT)] = 67;
-    if (@hasField(lang.KeywordId, "ASSIGN")) arr[@backingInt(lang.KeywordId.ASSIGN)] = 68;
-    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 69;
-    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 70;
-    if (@hasField(lang.KeywordId, "INDENT")) arr[@backingInt(lang.KeywordId.INDENT)] = 71;
-    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@backingInt(lang.KeywordId.OUTDENT)] = 72;
-    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 73;
-    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 74;
-    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 75;
-    if (@hasField(lang.KeywordId, "MATCH")) arr[@backingInt(lang.KeywordId.MATCH)] = 76;
-    if (@hasField(lang.KeywordId, "CMD")) arr[@backingInt(lang.KeywordId.CMD)] = 78;
-    if (@hasField(lang.KeywordId, "STR_OPEN")) arr[@backingInt(lang.KeywordId.STR_OPEN)] = 79;
-    if (@hasField(lang.KeywordId, "STR_BODY")) arr[@backingInt(lang.KeywordId.STR_BODY)] = 80;
-    if (@hasField(lang.KeywordId, "LT")) arr[@backingInt(lang.KeywordId.LT)] = 82;
-    if (@hasField(lang.KeywordId, "FD_LT")) arr[@backingInt(lang.KeywordId.FD_LT)] = 83;
-    if (@hasField(lang.KeywordId, "GT")) arr[@backingInt(lang.KeywordId.GT)] = 84;
-    if (@hasField(lang.KeywordId, "FD_GT")) arr[@backingInt(lang.KeywordId.FD_GT)] = 85;
-    if (@hasField(lang.KeywordId, "GT_GT")) arr[@backingInt(lang.KeywordId.GT_GT)] = 86;
-    if (@hasField(lang.KeywordId, "AMP_GT")) arr[@backingInt(lang.KeywordId.AMP_GT)] = 87;
-    if (@hasField(lang.KeywordId, "AMP_GT_GT")) arr[@backingInt(lang.KeywordId.AMP_GT_GT)] = 88;
-    if (@hasField(lang.KeywordId, "FD_DUP_OUT")) arr[@backingInt(lang.KeywordId.FD_DUP_OUT)] = 89;
-    if (@hasField(lang.KeywordId, "FD_DUP_IN")) arr[@backingInt(lang.KeywordId.FD_DUP_IN)] = 90;
-    if (@hasField(lang.KeywordId, "HEREDOC_OPEN")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN)] = 91;
-    if (@hasField(lang.KeywordId, "HEREDOC_BODY")) arr[@backingInt(lang.KeywordId.HEREDOC_BODY)] = 92;
-    if (@hasField(lang.KeywordId, "HEREDOC_OPEN_LIT")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN_LIT)] = 93;
+    if (@hasField(lang.KeywordId, "PIPE")) arr[@backingInt(lang.KeywordId.PIPE)] = 43;
+    if (@hasField(lang.KeywordId, "LPAREN")) arr[@backingInt(lang.KeywordId.LPAREN)] = 44;
+    if (@hasField(lang.KeywordId, "RPAREN")) arr[@backingInt(lang.KeywordId.RPAREN)] = 45;
+    if (@hasField(lang.KeywordId, "LBRACE")) arr[@backingInt(lang.KeywordId.LBRACE)] = 46;
+    if (@hasField(lang.KeywordId, "RBRACE")) arr[@backingInt(lang.KeywordId.RBRACE)] = 47;
+    if (@hasField(lang.KeywordId, "NAME_EQ")) arr[@backingInt(lang.KeywordId.NAME_EQ)] = 51;
+    if (@hasField(lang.KeywordId, "LBRACKET")) arr[@backingInt(lang.KeywordId.LBRACKET)] = 52;
+    if (@hasField(lang.KeywordId, "RBRACKET")) arr[@backingInt(lang.KeywordId.RBRACKET)] = 53;
+    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 55;
+    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 56;
+    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 57;
+    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 58;
+    if (@hasField(lang.KeywordId, "VARIABLE")) arr[@backingInt(lang.KeywordId.VARIABLE)] = 59;
+    if (@hasField(lang.KeywordId, "VAR_BRACED")) arr[@backingInt(lang.KeywordId.VAR_BRACED)] = 60;
+    if (@hasField(lang.KeywordId, "DOLLAR_PAREN")) arr[@backingInt(lang.KeywordId.DOLLAR_PAREN)] = 61;
+    if (@hasField(lang.KeywordId, "AT_PAREN")) arr[@backingInt(lang.KeywordId.AT_PAREN)] = 62;
+    if (@hasField(lang.KeywordId, "PROC_SUB_IN")) arr[@backingInt(lang.KeywordId.PROC_SUB_IN)] = 63;
+    if (@hasField(lang.KeywordId, "PROC_SUB_OUT")) arr[@backingInt(lang.KeywordId.PROC_SUB_OUT)] = 64;
+    if (@hasField(lang.KeywordId, "ASSIGN")) arr[@backingInt(lang.KeywordId.ASSIGN)] = 65;
+    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 66;
+    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 67;
+    if (@hasField(lang.KeywordId, "INDENT")) arr[@backingInt(lang.KeywordId.INDENT)] = 68;
+    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@backingInt(lang.KeywordId.OUTDENT)] = 69;
+    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 70;
+    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 71;
+    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 72;
+    if (@hasField(lang.KeywordId, "MATCH")) arr[@backingInt(lang.KeywordId.MATCH)] = 73;
+    if (@hasField(lang.KeywordId, "CMD")) arr[@backingInt(lang.KeywordId.CMD)] = 75;
+    if (@hasField(lang.KeywordId, "STR_OPEN")) arr[@backingInt(lang.KeywordId.STR_OPEN)] = 76;
+    if (@hasField(lang.KeywordId, "STR_BODY")) arr[@backingInt(lang.KeywordId.STR_BODY)] = 77;
+    if (@hasField(lang.KeywordId, "LT")) arr[@backingInt(lang.KeywordId.LT)] = 79;
+    if (@hasField(lang.KeywordId, "FD_LT")) arr[@backingInt(lang.KeywordId.FD_LT)] = 80;
+    if (@hasField(lang.KeywordId, "GT")) arr[@backingInt(lang.KeywordId.GT)] = 81;
+    if (@hasField(lang.KeywordId, "FD_GT")) arr[@backingInt(lang.KeywordId.FD_GT)] = 82;
+    if (@hasField(lang.KeywordId, "GT_GT")) arr[@backingInt(lang.KeywordId.GT_GT)] = 83;
+    if (@hasField(lang.KeywordId, "AMP_GT")) arr[@backingInt(lang.KeywordId.AMP_GT)] = 84;
+    if (@hasField(lang.KeywordId, "AMP_GT_GT")) arr[@backingInt(lang.KeywordId.AMP_GT_GT)] = 85;
+    if (@hasField(lang.KeywordId, "FD_DUP_OUT")) arr[@backingInt(lang.KeywordId.FD_DUP_OUT)] = 86;
+    if (@hasField(lang.KeywordId, "FD_DUP_IN")) arr[@backingInt(lang.KeywordId.FD_DUP_IN)] = 87;
+    if (@hasField(lang.KeywordId, "HEREDOC_OPEN")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN)] = 88;
+    if (@hasField(lang.KeywordId, "HEREDOC_BODY")) arr[@backingInt(lang.KeywordId.HEREDOC_BODY)] = 89;
+    if (@hasField(lang.KeywordId, "HEREDOC_OPEN_LIT")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN_LIT)] = 90;
     break :blk arr;
 };
 const keywordFallbackSymbol: u16 = 0;
@@ -2092,180 +2096,170 @@ comptime {
     if (!(@hasField(lang.KeywordId, "CMD"))) @compileError("CMD is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CMD: rules using it could never match");
 }
 
-const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 43, 7, 8, 9, 9, 10, 10, 11, 11, 49, 49, 50, 12, 51, 51, 13, 13, 52, 52, 53, 14, 15, 16, 17, 17, 57, 57, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 77, 77, 30, 31, 31, 32, 33, 34, 81, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 95 };
-const ruleLen = [_]u8{ 1, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 2, 0, 2, 2, 2, 1, 1, 3, 4, 3, 4, 2, 0, 2, 1, 2, 0, 2, 3, 2, 0, 2, 1, 1, 2, 1, 3, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 2, 0, 2, 2, 1, 2, 3, 3, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3 };
+const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 7, 8, 9, 9, 10, 10, 11, 11, 48, 48, 12, 49, 49, 13, 13, 50, 50, 14, 15, 16, 17, 17, 54, 54, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 74, 74, 30, 31, 31, 32, 33, 34, 78, 78, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 92 };
+const ruleLen = [_]u8{ 1, 0, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 1, 2, 2, 2, 1, 1, 3, 4, 3, 4, 1, 2, 1, 0, 2, 2, 3, 1, 2, 1, 1, 2, 1, 3, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 0, 2, 2, 2, 1, 2, 3, 3, 1, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3 };
 /// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
-const ruleValue = [_]u8{ 2, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+const ruleValue = [_]u8{ 2, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-// Parse table: 166 states x 96 symbols. 0 = error, > 0 = shift or
+// Parse table: 156 states x 93 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
 const parseTable = [_][numSymbols]i16{
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0},
-    .{0,0,0,16,37,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,40,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-21,0,0,0,0,0,0,41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,-21,-21,0,43,42,0,-21,-21,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,-27,-27,0,0,-27,0,-27,-27,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-28,-28,-28,-28,0,0,-28,0,-28,-28,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-28,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-42,-42,-42,-42,0,0,0,0,-42,0,-42,0,0,0,44,0,39,0,0,0,-42,-42,-42,-42,-42,-42,-42,-42,-42,-42,0,0,0,0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-54,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-54,-54,-54,-54,0,0,-54,0,-54,-54,-54,0,0,0,0,0,-54,0,-54,0,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,0,0,-54,-54,0,0,0,0,0,0,0,0,0,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,0,-54,0,0},
-    .{0,-59,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-59,-59,-59,-59,0,0,-59,0,-59,-59,-59,0,0,0,0,0,-59,0,-59,0,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,0,0,-59,-59,0,0,0,0,0,0,0,0,0,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,0,-59,0,0},
-    .{0,0,0,0,46,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,47,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-56,-56,-56,-56,0,0,-56,0,-56,-56,-56,0,0,0,0,0,-56,0,-56,0,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,0,0,-56,-56,0,0,0,0,0,0,0,0,0,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,0,-56,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,-6,-6,-6,0,0,0,0,-6,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,54,0,3,5,0,0,4,22,0,6,0,0,0,18,0,0,55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,53,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,-12,-12,-12,0,0,0,0,-12,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,69,49,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,58,0,-38,-38,-38,-38,0,0,-38,0,-38,-38,-38,0,0,62,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,-38,-38,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,-7,-7,-7,0,0,0,0,-7,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,54,0,3,5,0,0,4,22,0,6,0,0,0,18,0,0,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,53,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,7,25,12,31,33,8,9,10,32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,-10,-10,-10,0,0,0,0,-10,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,-14,-14,-14,0,0,0,0,-14,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-55,-55,-55,-55,0,0,-55,0,-55,-55,-55,0,0,0,0,0,-55,0,-55,0,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,0,0,-55,-55,0,0,0,0,0,0,0,0,0,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,0,-55,0,0},
-    .{0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,-11,-11,-11,0,0,0,0,-11,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,-8,-8,-8,0,0,0,0,-8,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-4,0,0,0,0,77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,80,78,76,75,79,0,0,0,0,-4,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,-9,-9,-9,0,0,0,0,-9,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-45,-45,-45,-45,0,0,0,0,-45,0,-45,0,0,0,0,0,0,0,0,0,-44,-44,-44,-44,-44,-44,-44,-44,-44,-44,0,0,0,0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-57,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-57,-57,-57,-57,0,0,-57,0,-57,-57,-57,0,0,0,0,0,-57,0,-57,0,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,0,0,-57,-57,0,0,0,0,0,0,0,0,0,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,0,-57,0,0},
-    .{0,0,0,0,81,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-58,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-58,-58,-58,-58,0,0,-58,0,-58,-58,-58,0,0,0,0,0,-58,0,-58,0,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,0,0,-58,-58,0,0,0,0,0,0,0,0,0,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,0,-58,0,0},
-    .{0,0,0,0,82,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,-13,-13,-13,0,0,0,0,-13,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,84,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,86,0,0,49,87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,85,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-23,0,0,0,0,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,-23,-23,90,0,42,0,-23,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,91,5,0,0,4,22,0,6,0,0,0,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,53,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,-25,-25,0,0,0,0,-25,-25,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-43,-43,-43,-43,0,0,0,0,-43,0,-43,0,0,0,0,0,0,0,0,0,-43,-43,-43,-43,-43,-43,-43,-43,-43,-43,0,0,0,0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-42,-42,-42,-42,0,0,0,0,-42,0,-42,0,0,0,92,0,39,0,0,0,-42,-42,-42,-42,-42,-42,-42,-42,-42,-42,0,0,0,0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,93,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-64,-64,-64,-64,0,0,-64,0,-64,-64,-64,0,0,0,0,0,-64,0,-64,0,-64,-64,-64,-64,-64,-64,-64,-64,-64,-64,-64,0,0,-64,-64,0,0,0,0,0,0,0,0,0,-64,-64,-64,-64,-64,-64,-64,-64,-64,-64,0,-64,0,0},
-    .{0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,-66,-66,-66,0,0,-66,0,-66,-66,-66,0,0,0,0,0,-66,0,-66,0,-66,-66,-66,-66,-66,-66,-66,-66,-66,-66,-66,0,0,-66,-66,0,0,0,0,0,0,0,0,0,-66,-66,-66,-66,-66,-66,-66,-66,-66,-66,0,-66,0,0},
-    .{0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,-65,-65,-65,0,0,-65,0,-65,-65,-65,0,0,0,0,0,-65,0,-65,0,-65,-65,-65,-65,-65,-65,-65,-65,-65,-65,-65,0,0,-65,-65,0,0,0,0,0,0,0,0,0,-65,-65,-65,-65,-65,-65,-65,-65,-65,-65,0,-65,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-44,-44,-44,-44,-44,-44,-44,-44,-44,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,-69,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,103,0,0,0,0,0,0,0,0,0,0,0,0,0,102,101,0,0,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,104,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-53,-53,-53,-53,0,0,-53,0,-53,-53,-53,0,0,0,0,0,-53,0,0,0,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,0,0,-53,-53,0,0,0,0,0,0,0,0,0,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,0,-53,0,0},
-    .{0,-98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-98,-98,-98,-98,0,0,-98,0,-98,-98,-98,0,0,0,0,0,-98,0,0,0,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,0,0,-98,-98,0,0,0,0,0,0,0,0,0,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,0,-98,0,0},
-    .{0,-52,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-52,-52,-52,-52,0,0,-52,0,-52,-52,-52,0,0,0,0,0,-52,0,0,0,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,0,0,-52,-52,0,0,0,0,0,0,0,0,0,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,0,-52,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-39,-39,-39,-39,0,0,-39,0,-39,-39,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-39,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-99,-99,-99,-99,0,0,-99,0,-99,-99,-99,0,0,0,0,0,-99,0,0,0,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,0,0,-99,-99,0,0,0,0,0,0,0,0,0,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,0,-99,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,106,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,108,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,109,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,110,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,69,49,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,58,0,-38,-38,-38,-38,0,0,-38,0,-38,-38,-38,0,0,111,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,-38,-38,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,112,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,113,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,114,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,115,0,0,0,0,0,0,0,0,0,0,0,0,0,102,101,0,0,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,69,49,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,58,0,-38,-38,-38,-38,0,0,-38,0,-38,-38,-38,0,0,116,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,-38,-38,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,0,0,0,0,117,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,118,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-4,0,0,0,0,77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,119,78,76,75,79,0,0,0,0,-4,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-16,0,0,0,120,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,-16,-16,-16,-16,0,0,0,34,-16,38,-16,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,-16,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-20,0,0,0,121,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,-20,-20,-20,-20,0,0,0,34,-20,38,-20,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,-20,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-5,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,122,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,123,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,124,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,128,0,49,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,-50,126,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-46,-46,-46,-46,0,0,0,0,-46,0,-46,0,0,0,0,0,-46,0,0,0,-46,-46,-46,-46,-46,-46,-46,-46,-46,-46,0,0,0,0,-46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-47,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-47,-47,-47,-47,0,0,0,0,-47,0,-47,0,0,0,0,0,-47,0,0,0,-47,-47,-47,-47,-47,-47,-47,-47,-47,-47,0,0,0,0,-47,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-63,-63,-63,-63,0,0,-63,0,-63,-63,-63,0,0,0,0,0,-63,0,-63,0,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,0,0,-63,-63,0,0,0,0,0,0,0,0,0,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,0,-63,0,0},
-    .{0,-23,0,0,0,0,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,-23,-23,129,0,42,0,-23,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,-24,-24,0,0,0,0,-24,-24,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,-26,-26,0,0,-26,0,-26,-26,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-41,-41,-41,-41,0,0,0,0,-41,0,-41,0,0,0,0,0,0,0,0,0,-41,-41,-41,-41,-41,-41,-41,-41,-41,-41,0,0,0,0,-41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-60,-60,-60,-60,0,0,-60,0,-60,-60,-60,0,0,0,0,0,-60,0,-60,0,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,0,0,-60,-60,0,0,0,0,0,0,0,0,0,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,0,-60,0,0},
-    .{0,-61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-61,-61,-61,-61,0,0,-61,0,-61,-61,-61,0,0,0,0,0,-61,0,-61,0,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,0,0,-61,-61,0,0,0,0,0,0,0,0,0,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,0,-61,0,0},
-    .{0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,-78,-78,-78,0,0,0,0,-78,0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,133,0,0,0,0,0,0,0,0,131,0,134,0,0,130,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,132,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,133,0,0,0,0,0,0,0,0,135,0,134,0,0,130,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,132,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,136,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-87,-87,-87,-87,0,0,0,0,-87,0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,137,28,0,14,0,3,5,26,0,4,22,17,6,0,0,0,18,0,20,0,0,0,27,29,23,0,0,0,0,35,24,0,0,0,0,0,0,0,0,0,0,34,0,38,0,0,0,0,0,30,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,15,0,0,0,21,19,0,11,0,13,36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,138,0,3,5,0,0,4,22,0,6,0,0,0,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,53,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,139,0,3,5,0,0,4,22,0,6,0,0,0,18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,53,39,0,0,0,7,25,12,31,33,8,9,10,32,2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,140,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,-67,-67,-67,0,0,0,0,-67,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,141,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-92,-92,-92,-92,0,0,-92,0,-92,-92,-92,0,0,0,0,0,-92,0,0,0,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,0,0,-92,-92,0,0,0,0,0,0,0,0,0,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,0,-92,0,0},
-    .{0,-97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-97,-97,-97,-97,0,0,-97,0,-97,-97,-97,0,0,0,0,0,-97,0,0,0,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,0,0,-97,-97,0,0,0,0,0,0,0,0,0,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,0,-97,0,0},
-    .{0,-100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-100,-100,-100,-100,0,0,-100,0,-100,-100,-100,0,0,0,0,0,-100,0,0,0,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,0,0,-100,-100,0,0,0,0,0,0,0,0,0,-100,-100,-100,-100,-100,-100,-100,-100,-100,-100,0,-100,0,0},
-    .{0,-95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-95,-95,-95,-95,0,0,-95,0,-95,-95,-95,0,0,0,0,0,-95,0,0,0,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,0,0,-95,-95,0,0,0,0,0,0,0,0,0,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,0,-95,0,0},
-    .{0,-93,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-93,-93,-93,-93,0,0,-93,0,-93,-93,-93,0,0,0,0,0,-93,0,0,0,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,0,0,-93,-93,0,0,0,0,0,0,0,0,0,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,0,-93,0,0},
-    .{0,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-96,-96,-96,-96,0,0,-96,0,-96,-96,-96,0,0,0,0,0,-96,0,0,0,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,0,0,-96,-96,0,0,0,0,0,0,0,0,0,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,0,-96,0,0},
-    .{0,-94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-94,-94,-94,-94,0,0,-94,0,-94,-94,-94,0,0,0,0,0,-94,0,0,0,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,0,0,-94,-94,0,0,0,0,0,0,0,0,0,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,0,-94,0,0},
-    .{0,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-37,-37,-37,-37,0,0,-37,0,-37,-37,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-37,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-101,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-101,-101,-101,-101,0,0,-101,0,-101,-101,-101,0,0,0,0,0,-101,0,0,0,-101,-101,-101,-101,-101,-101,-101,-101,-101,-101,-101,0,0,-101,-101,0,0,0,0,0,0,0,0,0,-101,-101,-101,-101,-101,-101,-101,-101,-101,-101,0,-101,0,0},
-    .{0,-91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-91,-91,-91,-91,0,0,-91,0,-91,-91,-91,0,0,0,0,0,-91,0,0,0,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,0,0,-91,-91,0,0,0,0,0,0,0,0,0,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,0,-91,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,133,0,0,0,0,0,0,0,0,0,0,0,0,0,142,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,0,0,0,0,0,0,0,0,0,132,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,-76,-76,-76,0,0,0,0,-76,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-40,-40,-40,-40,0,0,-40,0,-40,-40,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-40,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,-18,-18,-18,0,0,0,0,-18,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,-17,-17,-17,0,0,0,0,-17,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,-15,-15,-15,0,0,0,0,-15,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,-19,-19,-19,0,0,0,0,-19,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-62,-62,-62,-62,0,0,-62,0,-62,-62,-62,0,0,0,0,0,-62,0,-62,0,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,0,0,-62,-62,0,0,0,0,0,0,0,0,0,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,0,-62,0,0},
-    .{0,-29,0,0,0,0,0,0,0,0,0,0,145,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,143,0,-29,-29,-29,-29,0,0,-29,0,-29,-29,-29,0,144,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,-29,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-88,-88,-88,-88,0,0,0,0,-88,0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-31,0,0,0,0,0,0,0,0,0,0,146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,143,0,-31,-31,-31,-31,0,0,0,0,-31,0,-31,0,144,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-51,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-50,0,0,0,0,0,0,51,0,-50,147,7,25,12,31,33,8,9,10,32,2,50,0,0,-50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,148,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,-22,-22,0,0,0,0,-22,-22,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,150,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-50,0,0,0,0,0,0,51,0,0,151,7,25,12,31,33,8,9,10,32,2,50,0,0,-50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,152,0,0,0,0,0,0,153,0,0,0,0,0,0,0,0,0,-82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-82,0,0,0,0,154,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,155,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,156,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,157,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,-71,0,0,0,0,0,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,-70,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,-68,-68,-68,0,0,0,0,-68,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,159,0,0,158,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,160,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,161,0,-34,-34,-34,-34,0,0,-34,0,-34,-34,-34,162,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-34,-34,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-36,-36,-36,-36,0,0,-36,0,-36,-36,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-36,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,-30,-30,-30,0,0,-30,0,-30,-30,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,-32,-32,-32,0,0,0,0,-32,0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-49,0,0,0,0,0,0,0,0,-49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-48,-48,-48,-48,0,0,0,0,-48,0,-48,0,0,0,0,0,-48,0,0,0,-48,-48,-48,-48,-48,-48,-48,-48,-48,-48,0,0,0,0,-48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,-79,-79,-79,0,0,0,0,-79,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,152,0,0,0,0,0,0,153,0,0,0,0,0,0,0,0,0,-82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-82,0,0,0,0,163,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,133,0,0,0,0,0,0,0,0,0,0,164,0,0,130,0,0,-85,0,0,0,0,0,0,0,0,0,-85,0,0,0,0,0,51,0,0,0,7,25,12,31,33,8,9,10,32,2,50,0,0,0,-85,0,0,0,0,0,0,0,0,132,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-80,-80,-80,-80,0,0,0,0,-80,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,-74,-74,-74,0,0,0,0,-74,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,-75,-75,-75,0,0,0,0,-75,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,-72,-72,-72,0,0,0,0,-72,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,-73,-73,-73,0,0,0,0,-73,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,-77,-77,-77,0,0,0,0,-77,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,161,0,-34,-34,-34,-34,0,0,-34,0,-34,-34,-34,165,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-34,-34,0,0,0,0,0,0,0,0,0,71,57,66,68,65,67,61,59,63,64,0,70,0,0},
-    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,0,0,-35,0,-35,-35,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,-33,-33,0,0,-33,0,-33,-33,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0},
+    .{0,0,0,15,38,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-21,0,0,0,0,0,0,40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,-21,-21,41,42,0,-21,-21,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,-26,-26,0,-26,0,-26,-26,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,-27,-27,0,-27,0,-27,-27,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-39,-39,-39,-39,0,0,0,-39,0,-39,0,0,0,-39,0,0,0,-39,-39,-39,-39,-39,-39,-39,-39,-39,-39,0,0,0,0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-53,-53,-53,-53,0,-53,0,-53,-53,-53,0,0,0,-53,0,-53,0,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,0,0,-53,-53,0,0,0,0,0,0,0,0,0,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,0,-53,0,0},
+    .{0,-54,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-54,-54,-54,-54,0,-54,0,-54,-54,-54,0,0,0,-54,0,-54,0,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,0,0,-54,-54,0,0,0,0,0,0,0,0,0,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,0,-54,0,0},
+    .{0,0,0,0,43,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,44,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-56,-56,-56,-56,0,-56,0,-56,-56,-56,0,0,0,-56,0,-56,0,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,0,0,-56,-56,0,0,0,0,0,0,0,0,0,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,0,-56,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,47,0,0,51,48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,49,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,-6,-6,-6,0,0,0,-6,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,0,-35,0,-35,-35,-35,0,52,0,-35,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,0,-35,-35,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,-35,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,-12,-12,-12,0,0,0,-12,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-52,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-52,-52,-52,-52,0,-52,0,-52,-52,-52,0,0,0,-52,0,-52,0,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,0,0,-52,-52,0,0,0,0,0,0,0,0,0,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,0,-52,0,0},
+    .{0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,-7,-7,-7,0,0,0,-7,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,54,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,-10,-10,-10,0,0,0,-10,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,-14,-14,-14,0,0,0,-14,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,32,17,6,7,24,11,35,36,8,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-55,-55,-55,-55,0,-55,0,-55,-55,-55,0,0,0,-55,0,-55,0,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,0,0,-55,-55,0,0,0,0,0,0,0,0,0,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,0,-55,0,0},
+    .{0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,-11,-11,-11,0,0,0,-11,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,-8,-8,-8,0,0,0,-8,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,57,-3,-3,-3,-3,0,0,0,-3,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,-9,-9,-9,0,0,0,-9,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,59,0,2,4,0,0,3,23,0,5,0,0,0,14,0,0,60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,39,0,0,0,0,0,58,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,59,0,2,4,0,0,3,23,0,5,0,0,0,14,0,0,61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,39,0,0,0,0,0,58,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-51,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-51,-51,-51,-51,0,-51,0,-51,-51,-51,0,0,0,-51,0,-51,0,-51,-51,-51,-51,-51,-51,-51,-51,-51,-51,-51,0,0,-51,-51,0,0,0,0,0,0,0,0,0,-51,-51,-51,-51,-51,-51,-51,-51,-51,-51,0,-51,0,0},
+    .{0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-42,-42,-42,-42,0,0,0,-42,0,-42,0,0,0,12,0,0,0,-41,-41,-41,-41,-41,-41,-41,-41,-41,-41,0,0,0,0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,64,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,65,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,66,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,-13,-13,-13,0,0,0,-13,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,67,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,-22,-22,0,-22,0,-22,-22,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-24,0,0,0,0,0,0,68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,-24,-24,0,42,0,-24,-24,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,69,4,0,0,3,23,0,5,0,0,0,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,39,0,0,0,0,0,58,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-63,-63,-63,-63,0,-63,0,-63,-63,-63,0,0,0,-63,0,-63,0,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,0,0,-63,-63,0,0,0,0,0,0,0,0,0,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,0,-63,0,0},
+    .{0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-43,-43,-43,-43,0,0,0,-43,0,-43,0,0,0,-43,0,0,0,-43,-43,-43,-43,-43,-43,-43,-43,-43,-43,0,0,0,0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-44,-44,-44,-44,0,0,0,-44,0,-44,0,0,0,-44,0,0,0,-44,-44,-44,-44,-44,-44,-44,-44,-44,-44,0,0,0,0,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-46,0,-46,73,-46,-46,-46,-46,-46,-46,-46,-46,-46,-46,-46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-62,-62,-62,-62,0,-62,0,-62,-62,-62,0,0,0,-62,0,-62,0,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,0,0,-62,-62,0,0,0,0,0,0,0,0,0,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,0,-62,0,0},
+    .{0,-61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-61,-61,-61,-61,0,-61,0,-61,-61,-61,0,0,0,-61,0,-61,0,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,0,0,-61,-61,0,0,0,0,0,0,0,0,0,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,0,-61,0,0},
+    .{0,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,86,51,77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,76,0,-37,-37,-37,-37,0,-37,0,-37,-37,-37,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,-37,-37,0,0,0,0,0,0,0,0,0,88,83,84,87,75,81,85,80,82,78,0,79,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,93,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,0,-35,0,-35,-35,-35,0,95,0,-35,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,0,-35,-35,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,-35,0,0},
+    .{0,-5,0,0,0,0,98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,99,97,96,100,0,0,0,-5,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,12,0,0,0,-41,-41,-41,-41,-41,-41,-41,-41,-41,-41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,-66,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,103,0,0,0,0,0,0,0,0,0,0,0,0,0,102,101,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,104,0,0,0,0,0,0,0,0,0,0,0,0,0,102,101,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-40,-40,-40,-40,0,0,0,-40,0,-40,0,0,0,-40,0,0,0,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,0,0,0,0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,108,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,-23,-23,0,-23,0,-23,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,-25,-25,0,-25,0,-25,-25,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-59,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-59,-59,-59,-59,0,-59,0,-59,-59,-59,0,0,0,-59,0,-59,0,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,0,0,-59,-59,0,0,0,0,0,0,0,0,0,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,0,-59,0,0},
+    .{0,-60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-60,-60,-60,-60,0,-60,0,-60,-60,-60,0,0,0,-60,0,-60,0,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,0,0,-60,-60,0,0,0,0,0,0,0,0,0,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,0,-60,0,0},
+    .{0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-85,-85,-85,-85,0,0,0,-85,0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,110,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,-48,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,112,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-50,-50,-50,-50,0,-50,0,-50,-50,-50,0,0,0,-50,0,0,0,-50,-50,-50,-50,-50,-50,-50,-50,-50,-50,-50,0,0,-50,-50,0,0,0,0,0,0,0,0,0,-50,-50,-50,-50,-50,-50,-50,-50,-50,-50,0,-50,0,0},
+    .{0,-49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-49,-49,-49,-49,0,-49,0,-49,-49,-49,0,0,0,-49,0,0,0,-49,-49,-49,-49,-49,-49,-49,-49,-49,-49,-49,0,0,-49,-49,0,0,0,0,0,0,0,0,0,-49,-49,-49,-49,-49,-49,-49,-49,-49,-49,0,-49,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,113,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,114,0,0,0},
+    .{0,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-96,-96,-96,-96,0,-96,0,-96,-96,-96,0,0,0,-96,0,0,0,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,0,0,-96,-96,0,0,0,0,0,0,0,0,0,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,0,-96,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,115,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-97,-97,-97,-97,0,-97,0,-97,-97,-97,0,0,0,-97,0,0,0,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,0,0,-97,-97,0,0,0,0,0,0,0,0,0,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,0,-97,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,116,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,117,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,118,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-36,-36,-36,-36,0,-36,0,-36,-36,-36,0,0,0,-36,0,0,0,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,0,0,-36,-36,0,0,0,0,0,0,0,0,0,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,0,-36,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,119,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,-75,-75,-75,0,0,0,-75,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,123,0,0,0,0,0,0,0,0,122,0,125,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,124,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,123,0,0,0,0,0,0,0,0,126,0,125,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,124,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,127,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,-84,-84,-84,0,0,0,-84,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,128,27,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,86,51,77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,76,0,-38,-38,-38,-38,0,-38,0,-38,-38,-38,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,-38,-38,0,0,0,0,0,0,0,0,0,88,83,84,87,75,81,85,80,82,78,0,79,0,0},
+    .{0,0,0,0,0,129,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,130,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,0,0,0,0,0,0,39,0,34,0,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,0,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,-4,-4,-4,0,0,0,-4,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-16,0,0,0,131,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,-16,-16,-16,-16,0,0,39,-16,34,-16,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,-16,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-20,0,0,0,132,0,13,0,2,4,25,0,3,23,16,5,0,0,0,14,0,18,0,0,0,26,28,21,0,0,0,0,37,22,0,0,0,-20,-20,-20,-20,0,0,39,-20,34,-20,0,0,33,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,29,0,0,-20,30,31,0,19,0,20,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,133,0,2,4,0,0,3,23,0,5,0,0,0,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,39,0,0,0,0,0,58,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,134,0,2,4,0,0,3,23,0,5,0,0,0,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,39,0,0,0,0,0,58,12,0,0,0,32,17,6,7,24,11,35,36,8,9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,135,0,0,0,0,0,0,0,0,0,0,0,0,0,-64,-64,-64,-64,0,0,0,-64,0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,136,0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,-73,-73,-73,0,0,0,-73,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,123,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,0,0,0,0,0,0,0,0,0,124,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-30,0,0,0,0,0,0,0,0,0,0,139,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,0,-30,-30,-30,-30,0,0,0,-30,0,-30,140,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,0,0,0,0,0,0,0,0,0,88,83,84,87,75,81,85,80,82,78,0,79,0,0},
+    .{0,-57,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-57,-57,-57,-57,0,-57,0,-57,-57,-57,0,0,0,-57,0,-57,0,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,0,0,-57,-57,0,0,0,0,0,0,0,0,0,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,0,-57,0,0},
+    .{0,-58,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-58,-58,-58,-58,0,-58,0,-58,-58,-58,0,0,0,-58,0,-58,0,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,0,0,-58,-58,0,0,0,0,0,0,0,0,0,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,0,-58,0,0},
+    .{0,-28,0,0,0,0,0,0,0,0,0,0,141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,0,-28,-28,-28,-28,0,-28,0,-28,-28,-28,140,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-28,-28,0,0,0,0,0,0,0,0,0,88,83,84,87,75,81,85,80,82,78,0,79,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-47,0,-47,0,-47,-47,-47,-47,-47,-47,-47,-47,-47,-47,-47,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-45,-45,-45,-45,0,0,0,-45,0,-45,0,0,0,-45,0,0,0,-45,-45,-45,-45,-45,-45,-45,-45,-45,-45,0,0,0,0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-93,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-93,-93,-93,-93,0,-93,0,-93,-93,-93,0,0,0,-93,0,0,0,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,0,0,-93,-93,0,0,0,0,0,0,0,0,0,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,0,-93,0,0},
+    .{0,-98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-98,-98,-98,-98,0,-98,0,-98,-98,-98,0,0,0,-98,0,0,0,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,0,0,-98,-98,0,0,0,0,0,0,0,0,0,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,0,-98,0,0},
+    .{0,-99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-99,-99,-99,-99,0,-99,0,-99,-99,-99,0,0,0,-99,0,0,0,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,0,0,-99,-99,0,0,0,0,0,0,0,0,0,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,0,-99,0,0},
+    .{0,-94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-94,-94,-94,-94,0,-94,0,-94,-94,-94,0,0,0,-94,0,0,0,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,0,0,-94,-94,0,0,0,0,0,0,0,0,0,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,0,-94,0,0},
+    .{0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-90,-90,-90,-90,0,-90,0,-90,-90,-90,0,0,0,-90,0,0,0,-90,-90,-90,-90,-90,-90,-90,-90,-90,-90,-90,0,0,-90,-90,0,0,0,0,0,0,0,0,0,-90,-90,-90,-90,-90,-90,-90,-90,-90,-90,0,-90,0,0},
+    .{0,-91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-91,-91,-91,-91,0,-91,0,-91,-91,-91,0,0,0,-91,0,0,0,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,0,0,-91,-91,0,0,0,0,0,0,0,0,0,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,0,-91,0,0},
+    .{0,-95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-95,-95,-95,-95,0,-95,0,-95,-95,-95,0,0,0,-95,0,0,0,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,0,0,-95,-95,0,0,0,0,0,0,0,0,0,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,0,-95,0,0},
+    .{0,-92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-92,-92,-92,-92,0,-92,0,-92,-92,-92,0,0,0,-92,0,0,0,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,0,0,-92,-92,0,0,0,0,0,0,0,0,0,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,0,-92,0,0},
+    .{0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-89,-89,-89,-89,0,-89,0,-89,-89,-89,0,0,0,-89,0,0,0,-89,-89,-89,-89,-89,-89,-89,-89,-89,-89,-89,0,0,-89,-89,0,0,0,0,0,0,0,0,0,-89,-89,-89,-89,-89,-89,-89,-89,-89,-89,0,-89,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,142,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,143,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,-86,0,0,0,-86,-86,-86,-86,-86,-86,-86,-86,-86,-86,-86,0,0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,144,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-88,0,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,145,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,147,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,148,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,-18,-18,-18,0,0,0,-18,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,-17,-17,-17,0,0,0,-17,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,-15,-15,-15,0,0,0,-15,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,-19,-19,-19,0,0,0,-19,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,-68,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,-67,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,-65,-65,-65,0,0,0,-65,0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,150,0,0,149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,29,0,92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,-32,-32,-32,0,-32,0,-32,-32,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,-32,0,0,0,0,0,0,0,0,0,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,0,-32,0,0},
+    .{0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,-31,-31,-31,0,0,0,-31,0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,152,0,-34,-34,-34,-34,0,-34,0,-34,-34,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-34,-34,0,0,0,0,0,0,0,0,0,88,83,84,87,75,81,85,80,82,78,0,79,0,0},
+    .{0,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,-29,-29,-29,0,-29,0,-29,-29,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,-77,-77,-77,0,0,0,-77,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-87,0,0,0,0,-87,0,0,0,-87,-87,-87,-87,-87,-87,-87,-87,-87,-87,-87,0,0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,153,0,0,0,0,0,0,154,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,-76,-76,-76,0,0,0,-76,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,-72,-72,-72,0,0,0,-72,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,-71,-71,-71,0,0,0,-71,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,-69,-69,-69,0,0,0,-69,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,-70,-70,-70,0,0,0,-70,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,-74,-74,-74,0,0,0,-74,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,-33,-33,0,-33,0,-33,-33,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,0,0,0,0,0,0,0,0,0,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,0,-33,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,123,0,0,0,0,0,0,0,0,0,0,155,0,0,121,0,0,-82,0,0,0,0,0,0,0,0,-82,0,0,0,50,0,0,0,32,17,6,7,24,11,35,36,8,9,46,0,0,0,-82,0,0,0,0,0,0,0,0,124,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
 // X "c" excludes: shift the hinted token instead of reducing when it
@@ -2285,42 +2279,40 @@ fn startState(start: Start) u16 {
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"program" => 94,
+        .@"program" => 91,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    45, 47, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69, 73, 74, 76, 78, 79, 1, 38, 39, 40, 41,
-    44, 46, 47, 48, 71, 72, 1, 38, 39, 40, 41, 46, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    72, 1, 38, 39, 40, 41, 44, 46, 47, 48, 54, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71,
-    72, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
-    58, 1, 38, 39, 40, 41, 46, 48, 72, 45, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 1, 1, 38,
-    39, 40, 41, 44, 46, 47, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 82, 83, 84,
-    85, 86, 87, 88, 89, 90, 91, 93, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 1, 38, 39, 40, 41, 46,
-    48, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 72, 54, 55, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    68, 46, 1, 38, 39, 40, 41, 46, 47, 48, 71, 72, 47, 71, 39, 40, 47, 71, 92, 75, 1, 38, 39, 40,
-    41, 45, 46, 47, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69, 72, 73, 74, 76, 78, 79, 1,
-    46, 48, 72, 80, 48, 54, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 1, 38, 39, 40, 41, 46,
-    48, 70, 72, 1, 38, 39, 40, 41, 44, 46, 47, 48, 71, 72, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91,
-    93, 1, 38, 39, 40, 41, 46, 48, 72, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 56, 47, 54, 56,
-    58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 47, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    68, 71, 38, 48, 72, 72, 47, 69, 71, 47, 56, 71, 38, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66,
-    67, 68, 72, 48, 72,
+    44, 46, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 70, 71, 73, 75, 76, 1, 38, 39, 40, 41,
+    43, 45, 46, 47, 68, 69, 1, 38, 39, 40, 41, 45, 47, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64,
+    69, 1, 38, 39, 40, 41, 43, 45, 46, 47, 51, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 68,
+    69, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 90, 55, 51, 52, 55, 56, 57, 58, 59, 60, 61, 62, 63,
+    64, 65, 1, 38, 39, 40, 41, 45, 47, 69, 1, 38, 39, 40, 41, 43, 45, 46, 47, 51, 55, 56, 57, 58,
+    59, 60, 61, 62, 63, 64, 65, 68, 69, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 90, 1, 51, 55, 56,
+    57, 58, 59, 60, 61, 62, 63, 64, 65, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 44, 51, 55, 56, 57,
+    58, 59, 60, 61, 62, 63, 64, 45, 77, 51, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 46, 68,
+    51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 39, 40, 46, 68, 72, 47, 53, 89, 1, 38, 39, 40, 41,
+    44, 45, 46, 47, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 69, 70, 71, 73, 75, 76, 1, 38,
+    39, 40, 41, 45, 47, 67, 69, 1, 38, 39, 40, 41, 45, 47, 69, 79, 80, 81, 82, 83, 84, 85, 86, 87,
+    88, 90, 1, 38, 39, 40, 41, 43, 45, 46, 47, 68, 69, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 90,
+    69, 46, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 68, 38, 47, 69, 46, 66, 68, 38, 47, 51,
+    55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 69,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 19, 30, 49, 84, 96, 97, 105, 117, 118, 152, 162, 180, 193, 194, 204, 206, 210, 211, 212, 239, 243, 244,
-    245, 258, 267, 289, 308, 309, 324, 338, 341, 342, 345, 348, 363, 365,
+    0, 0, 19, 30, 49, 84, 85, 98, 106, 140, 141, 153, 163, 175, 176, 177, 190, 192, 203, 207, 208, 209, 210, 211,
+    238, 247, 266, 288, 289, 303, 306, 309, 324,
 };
 const expectedOf = [_]u16{
-    0, 1, 1, 2, 2, 2, 3, 4, 4, 1, 1, 5, 4, 6, 7, 8, 9, 7, 10, 6, 7, 8, 11, 7,
-    7, 4, 7, 7, 7, 7, 12, 4, 1, 4, 1, 7, 6, 9, 1, 13, 14, 2, 8, 15, 12, 3, 14, 14,
-    16, 4, 4, 4, 16, 11, 17, 17, 9, 5, 10, 10, 10, 5, 2, 10, 18, 5, 5, 5, 5, 10, 18, 5,
-    19, 17, 10, 1, 1, 7, 20, 20, 21, 14, 14, 22, 23, 24, 3, 3, 4, 2, 15, 2, 12, 4, 4, 7,
-    5, 5, 1, 7, 1, 8, 8, 25, 10, 10, 10, 10, 10, 10, 10, 2, 10, 10, 5, 7, 2, 7, 7, 21,
-    7, 7, 4, 26, 7, 27, 28, 29, 28, 15, 16, 23, 16, 30, 31, 32, 23, 32, 17, 17, 7, 33, 16, 26,
-    2, 2, 7, 34, 3, 31, 7, 16, 31, 35, 36, 7, 25, 25, 7, 7, 7, 26, 2, 36, 31, 2,
+    0, 1, 2, 2, 2, 3, 4, 4, 1, 1, 5, 4, 6, 7, 8, 9, 7, 4, 7, 10, 5, 7, 7, 11,
+    4, 7, 7, 7, 7, 12, 12, 5, 4, 3, 1, 1, 1, 7, 9, 1, 2, 2, 12, 13, 13, 14, 4, 3,
+    3, 15, 4, 4, 8, 9, 16, 16, 8, 7, 17, 18, 18, 18, 19, 3, 20, 13, 13, 13, 2, 2, 4, 4,
+    7, 15, 21, 10, 8, 8, 22, 22, 8, 10, 8, 10, 10, 10, 8, 10, 10, 7, 10, 10, 1, 7, 1, 8,
+    1, 1, 7, 23, 23, 12, 12, 24, 7, 10, 25, 4, 4, 26, 15, 3, 8, 8, 8, 8, 8, 8, 8, 8,
+    8, 16, 27, 28, 28, 29, 20, 27, 20, 7, 7, 7, 7, 18, 18, 7, 30, 16, 26, 7, 26, 2, 29, 7,
+    28, 29, 7, 24, 24, 7, 7, 7, 26, 29, 31, 29,
 };
 
 fn expectedIn(state: u16) []const u16 {
@@ -2335,48 +2327,48 @@ fn symbolName(sym: u16) []const u8 {
         39 => "and_and",
         40 => "or_or",
         41 => "amp",
-        44 => "pipe",
-        45 => "lparen",
-        46 => "rparen",
-        47 => "lbrace",
-        48 => "rbrace",
-        54 => "name_eq",
-        55 => "lbracket",
-        56 => "rbracket",
-        58 => "ident",
-        59 => "integer",
-        60 => "string_sq",
-        61 => "string_dq",
-        62 => "variable",
-        63 => "var_braced",
-        64 => "dollar_paren",
-        65 => "at_paren",
-        66 => "proc_sub_in",
-        67 => "proc_sub_out",
-        68 => "assign",
-        69 => "if",
-        70 => "else",
-        71 => "indent",
-        72 => "outdent",
-        73 => "while",
-        74 => "for",
-        75 => "in",
-        76 => "match",
-        78 => "cmd",
-        79 => "str_open",
-        80 => "str_body",
-        82 => "lt",
-        83 => "fd_lt",
-        84 => "gt",
-        85 => "fd_gt",
-        86 => "gt_gt",
-        87 => "amp_gt",
-        88 => "amp_gt_gt",
-        89 => "fd_dup_out",
-        90 => "fd_dup_in",
-        91 => "heredoc_open",
-        92 => "heredoc_body",
-        93 => "heredoc_open_lit",
+        43 => "pipe",
+        44 => "lparen",
+        45 => "rparen",
+        46 => "lbrace",
+        47 => "rbrace",
+        51 => "name_eq",
+        52 => "lbracket",
+        53 => "rbracket",
+        55 => "ident",
+        56 => "integer",
+        57 => "string_sq",
+        58 => "string_dq",
+        59 => "variable",
+        60 => "var_braced",
+        61 => "dollar_paren",
+        62 => "at_paren",
+        63 => "proc_sub_in",
+        64 => "proc_sub_out",
+        65 => "assign",
+        66 => "if",
+        67 => "else",
+        68 => "indent",
+        69 => "outdent",
+        70 => "while",
+        71 => "for",
+        72 => "in",
+        73 => "match",
+        75 => "cmd",
+        76 => "str_open",
+        77 => "str_body",
+        79 => "lt",
+        80 => "fd_lt",
+        81 => "gt",
+        82 => "fd_gt",
+        83 => "gt_gt",
+        84 => "amp_gt",
+        85 => "amp_gt_gt",
+        86 => "fd_dup_out",
+        87 => "fd_dup_in",
+        88 => "heredoc_open",
+        89 => "heredoc_body",
+        90 => "heredoc_open_lit",
         else => "",
     };
 }
