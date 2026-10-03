@@ -275,6 +275,12 @@ const NodeStore = struct {
     }
 };
 
+/// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+inline fn getAction(state: u16, sym: u16) i16 {
+    return parseTable[state][sym];
+}
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -1476,10 +1482,6 @@ const parseTable = blk: {
     }
     break :blk t;
 };
-
-fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
-}
 
 /// Hand-built from the table, with `expr` named "an expression".
 fn expectedIn(state: u16) []const u16 {

@@ -429,6 +429,12 @@ const NodeStore = struct {
     }
 };
 
+/// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+inline fn getAction(state: u16, sym: u16) i16 {
+    return parseTable[state][sym];
+}
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -1465,41 +1471,23 @@ const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 3, 3, 3 };
 
 // Parse table: 15 states x 14 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 15;
-
-const sparse = [numStates][]const i16{
-    &.{12,1},
-    &.{3,2,4,3,5,5,7,4},
-    &.{1,-1},
-    &.{1,-2,6,7},
-    &.{8,8,10,10,11,9},
-    &.{1,-3,6,-3},
-    &.{1,-1},
-    &.{1,-5,5,11,6,-5,7,4},
-    &.{9,12},
-    &.{9,13},
-    &.{9,14},
-    &.{1,-4,6,-4},
-    &.{1,-6,6,-6},
-    &.{1,-8,6,-8},
-    &.{1,-7,6,-7},
+const parseTable = [_][numSymbols]i16{
+    .{0,0,0,0,0,0,0,0,0,0,0,0,1,0},
+    .{0,0,0,2,3,5,0,4,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-2,0,0,0,0,7,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,8,0,10,9,0,0},
+    .{0,-3,0,0,0,0,-3,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-5,0,0,0,11,-5,4,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,12,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,13,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,14,0,0,0,0},
+    .{0,-4,0,0,0,0,-4,0,0,0,0,0,0,0},
+    .{0,-6,0,0,0,0,-6,0,0,0,0,0,0,0},
+    .{0,-8,0,0,0,0,-8,0,0,0,0,0,0,0},
+    .{0,-7,0,0,0,0,-7,0,0,0,0,0,0,0},
 };
-
-const parseTable = blk: {
-    @setEvalBranchQuota(100000);
-    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
-    for (sparse, 0..) |row, state| {
-        var i: usize = 0;
-        while (i < row.len) : (i += 2) {
-            t[state][@intCast(row[i])] = row[i + 1];
-        }
-    }
-    break :blk t;
-};
-
-fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
-}
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)

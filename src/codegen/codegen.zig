@@ -812,56 +812,33 @@ const Codegen = struct {
         try w.writeAll(" };\n");
     }
 
-    /// The parse table (sparse rows expanded to a dense table at comptime).
+    /// The parse table as a literal, one row of actions per state: no
+    /// comptime work, so its size meets no evaluation quota.
     fn emitParseTable(self: *Codegen, w: *std.Io.Writer) !void {
         const rows = self.table.rows;
         try w.print(
             \\
             \\// Parse table: {d} states x {d} symbols. 0 = error, > 0 = shift or
             \\// goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-            \\const numStates = {d};
+            \\const parseTable = [_][numSymbols]i16{{
             \\
-            \\const sparse = [numStates][]const i16{{
-            \\
-        , .{ rows.len, self.g.symbols.items.len, rows.len });
-
+        , .{ rows.len, self.g.symbols.items.len });
         for (rows) |row| {
-            try w.writeAll("    &.{");
-            var first = true;
+            try w.writeAll("    .{");
             for (row, 0..) |action, sym| {
                 const value: i16 = switch (action) {
-                    .shift => |s| @intCast(s),
+                    .shift => |t| @intCast(t),
                     .reduce => |r| -@as(i16, @intCast(r)) - 2,
-                    .gotoState => |s| @intCast(s),
+                    .gotoState => |t| @intCast(t),
                     .accept => -1,
-                    .err => continue,
+                    .err => 0,
                 };
-                if (!first) try w.writeAll(",");
-                try w.print("{d},{d}", .{ sym, value });
-                first = false;
+                if (sym > 0) try w.writeByte(',');
+                try w.print("{d}", .{value});
             }
             try w.writeAll("},\n");
         }
-        try w.writeAll(
-            \\};
-            \\
-            \\const parseTable = blk: {
-            \\    @setEvalBranchQuota(100000);
-            \\    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
-            \\    for (sparse, 0..) |row, state| {
-            \\        var i: usize = 0;
-            \\        while (i < row.len) : (i += 2) {
-            \\            t[state][@intCast(row[i])] = row[i + 1];
-            \\        }
-            \\    }
-            \\    break :blk t;
-            \\};
-            \\
-            \\fn getAction(state: u16, sym: u16) i16 {
-            \\    return parseTable[state][sym];
-            \\}
-            \\
-        );
+        try w.writeAll("};\n");
     }
 
     /// `X "c"` exclusions (grouped by state) and the runtime shift override.
