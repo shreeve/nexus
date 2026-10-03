@@ -1698,6 +1698,20 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
+    /// `~N` of an element that is no leaf: an empty leaf where element `i`
+    /// starts. Without a node store element starts are not kept: it is
+    /// placed at the first element from `i` on that spans something, else
+    /// at the next token.
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+        const pos = if (nodeStore)
+            self.starts[(@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp) + i]
+        else for (pass[i..]) |e| {
+            const s = self.span(e);
+            if (!s.isEmpty()) break s.start;
+        } else self.current.pos;
+        return .{ .src = .{ .pos = pos, .len = 0, .id = 0 } };
+    }
+
     /// `()`: an empty list.
     fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
         return self.node(&.{}, use);

@@ -933,6 +933,20 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
+    /// `~N` of an element that is no leaf: an empty leaf where element `i`
+    /// starts. Without a node store element starts are not kept: it is
+    /// placed at the first element from `i` on that spans something, else
+    /// at the next token.
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+        const pos = if (nodeStore)
+            self.starts[(@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp) + i]
+        else for (pass[i..]) |e| {
+            const s = self.span(e);
+            if (!s.isEmpty()) break s.start;
+        } else self.current.pos;
+        return .{ .src = .{ .pos = pos, .len = 0, .id = 0 } };
+    }
+
     /// `()`: an empty list.
     fn emptyList(self: *BaseParser, comptime use: ListUse) Sexp {
         return self.node(&.{}, use);
@@ -1721,6 +1735,16 @@ test "a list that reaches the tree keeps its node id as it grows" {
     try testing.expectEqual(m.list.id, innerList.list.id);
     try testing.expectEqual(l.list.id, outerList.list.id);
     try testing.expectEqual(@as(u32, 2), p.nodeCount());
+}
+
+test "~N of an element that is no leaf is an empty leaf where it starts" {
+    var p = BaseParser.init(testing.allocator, "a = b");
+    defer p.deinit();
+    try p.begin(.prog);
+    try p.pushEntry(9, .{ .src = .{ .pos = 0, .len = 1, .id = 0 } }, 0, 1);
+    try p.pushEntry(10, .nil, 2, 2);
+    const leaf = p.emptyLeaf(p.valueStack.items, 1);
+    try testing.expectEqual(Src{ .pos = 2, .len = 0, .id = 0 }, leaf.src);
 }
 
 test "side-band roles record a span without a tree slot" {

@@ -350,7 +350,7 @@ const Emitter = struct {
             .ref => |p| try w.print("pass[{d}]", .{index(p)}),
             .symId => |p| {
                 const at = index(p);
-                try w.print("if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}", .{ at, at });
+                try w.print("if (pass[{d}] == .src) pass[{d}] else self.emptyLeaf(pass, {d})", .{ at, at, at });
             },
             .nil => try w.writeAll(".nil"),
             .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
