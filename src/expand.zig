@@ -19,8 +19,8 @@
 //! Absent positions. In schema mode an absent `N` is nil and an absent
 //! `...N` contributes nothing. Without a schema an absent `N`, `~N` or
 //! `...N` becomes nil, and in an expanded alternative the action is cut
-//! before the first absent position that is followed by no present one
-//! (trailing nils dropped).
+//! before the first absent position that is followed by no present one or
+//! nested node (trailing nils dropped).
 
 const std = @import("std");
 const diag = @import("diag.zig");
@@ -1038,23 +1038,23 @@ fn roleHead(tree: ActionTree) ActionTree {
 /// The trailing-nil cut of an expanded alternative's action without a
 /// schema: the items from the first absent position after the last present
 /// one on are dropped. `original` and `mapped` are parallel (schema-less
-/// mapping keeps every item).
+/// mapping keeps every item). A nested node is a value, never a nil: it
+/// counts as present.
 fn trailingCut(original: []const ActionItem, mapped: []const ActionItem) []const ActionItem {
     var lastPresent: ?usize = null;
     var firstRef: ?usize = null;
-    for (original, 0..) |item, i| {
-        const isRef = switch (item.elem) {
-            .ref, .spread, .symId => true,
-            else => false,
-        };
-        if (!isRef) continue;
-        if (firstRef == null) firstRef = i;
-        if (mapped[i].elem != .nil) lastPresent = i;
-    }
+    for (original, mapped, 0..) |item, m, i| switch (item.elem) {
+        .ref, .spread, .symId, .litTag => {
+            if (firstRef == null) firstRef = i;
+            if (m.elem != .nil) lastPresent = i;
+        },
+        .node => lastPresent = i,
+        .nil, .tagLit => {},
+    };
     const start = firstRef orelse return mapped;
     const cutFrom = if (lastPresent) |lp| blk: {
         for (original[lp + 1 ..], lp + 1..) |item, i| switch (item.elem) {
-            .ref, .spread, .symId => break :blk i,
+            .ref, .spread, .symId, .litTag => break :blk i,
             else => {},
         };
         return mapped;

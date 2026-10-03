@@ -1,0 +1,19 @@
+# Without a schema, an expanded action drops what follows its last present
+# position, but a nested node is a value, not a trailing nil: `(q 1)`
+# stays when the [b] before it is absent.
+
+@lexer
+tokens
+    kw_a
+    kw_b
+    eof
+    err
+"a"                                         → kw_a
+"b"                                         → kw_b
+.                                           → err
+
+@parser
+@lang = "trailing_cut_node"
+
+top! = "a" [b]                              → (p 1 2 (q 1))
+b    = "b"

@@ -72,6 +72,9 @@
   unbuilt and left out of the paste-ready `@schema` block.
 - Two labels on one slot role report "labeled twice", not "filled by the
   label and by the action".
+- Without a schema, a nested node after an absent optional element was cut
+  with the trailing nils: `"a" [b] → (p 1 2 (q 1))` gave `(p a)` for `a`;
+  it gives `(p a _ (q a))`.
 
 ## 1.1.0 — 2026-10-02
 
