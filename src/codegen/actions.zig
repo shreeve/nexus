@@ -152,22 +152,14 @@ pub const Uses = struct {
 /// tree (see `treeSymbols`).
 pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool, uses: *Uses) !void {
     var e = Emitter{ .allocator = allocator, .g = g, .rule = rule, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread", .uses = uses };
+    // A rule whose value is nil or one of its elements has no action
+    // (`copyOf`); the default action of several elements is their list.
     const tree = rule.actionTree orelse {
-        // Default: nothing, the one element, or an untagged list.
-        if (rule.rhs.len == 0) return writer.writeAll(".nil");
-        uses.pass = true;
-        if (rule.rhs.len == 1) return writer.writeAll("pass[0]");
         uses.self = true;
-        return writer.print("self.list(pass, {s})", .{e.use});
+        uses.pass = true;
+        return writer.print("self.build(pass, {s})", .{e.use});
     };
-    switch (tree) {
-        .nil => try writer.writeAll(".nil"),
-        .pass => |p| {
-            uses.pass = true;
-            try writer.print("pass[{d}]", .{Emitter.index(p)});
-        },
-        .list => |l| try e.list(writer, l, "blk"),
-    }
+    try e.list(writer, tree.list, "blk");
 }
 
 const Emitter = struct {
