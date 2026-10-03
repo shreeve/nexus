@@ -1621,11 +1621,15 @@ pub const BaseParser = struct {
         try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
     }
 
+    /// `Parse error at ` and `writeError`'s text on standard error.
     pub fn printError(self: *const BaseParser) void {
-        var buf: [512]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buf);
-        self.writeError(&w) catch {};
-        std.debug.print("Parse error at {s}\n", .{w.buffered()});
+        var buffer: [256]u8 = undefined;
+        const stderr = std.debug.lockStderr(&buffer);
+        defer std.debug.unlockStderr();
+        const w = &stderr.file_writer.interface;
+        w.writeAll("Parse error at ") catch return;
+        self.writeError(w) catch return;
+        w.writeByte('\n') catch return;
     }
 
     /// What `state` accepts, reader-named: the `@errors` rules it waits
