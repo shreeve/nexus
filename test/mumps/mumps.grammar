@@ -168,9 +168,8 @@ after
 # ==============================================================================
 #
 # MUMPS comments start with ; and run to end of line.
-# SIMD acceleration used since comments can be long.
 
-';' [^\n]*                                  → comment, simd_to '\n'
+';' [^\n]*                                  → comment
 
 # ==============================================================================
 # STRING LITERALS

@@ -454,7 +454,6 @@ pub const LexerGenerator = struct {
 
     fn checkZeroWidth(self: *LexerGenerator, r: *const LexerRule) !void {
         if (r.rewind != null) return self.fail(r, 0, "rewind(n) needs a pattern; a rule without one is already zero-width", .{});
-        if (r.isSimd) return self.fail(r, 0, "simd_to needs a pattern with a [^c]* run", .{});
         if (r.isSkip) return self.fail(r, 0, "a zero-width rule cannot skip", .{});
         if (r.hold and hasCounted(r)) return self.fail(r, 0, "a held rule consumes nothing, so counted() has nothing to count", .{});
         const consumesWs = !r.hold and requiresWhitespace(r.guards);
@@ -476,10 +475,6 @@ pub const LexerGenerator = struct {
         }
         if (p.trail == null and regex.nullable(p.main)) {
             return self.fail(r, 0, "this pattern matches the empty string; a token must consume at least one byte (use + rather than *, or a zero-width rule)", .{});
-        }
-        if (r.isSimd) {
-            const c = r.simdChar.?;
-            if (!hasScanLoop(full, c)) return self.fail(r, 0, "simd_to '{f}' does not correspond to a run of bytes other than it (such as [^{f}]*) in the pattern", .{ std.zig.fmtChar(c), std.zig.fmtChar(c) });
         }
         var end: TokenEnd = .whole;
         if (p.trail) |t| {
@@ -512,16 +507,6 @@ pub const LexerGenerator = struct {
             }
         }
         return end;
-    }
-
-    fn hasScanLoop(n: *const regex.Node, c: u8) bool {
-        return switch (n.*) {
-            .empty, .set => false,
-            .concat, .alt => |kids| for (kids) |k| {
-                if (hasScanLoop(k, c)) break true;
-            } else false,
-            .repeat => |r| (r.max == null and r.sub.* == .set and !r.sub.set.has(c) and r.sub.set.count() >= 256 - maxSimdStops) or hasScanLoop(r.sub, c),
-        };
     }
 
     /// Every consuming rule must win for some input in some configuration;

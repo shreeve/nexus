@@ -11,30 +11,30 @@
   (tokens `tokens` `ident` `number` `string` `eof` `err` `comment`)@207..262
   (code `checkMode`)@264..281
   (lex_rule `[ \\t]+` _ `skip` (lex_action `skip` _)@329..333)@283..333
-  (lex_rule `'#' [^\\n]*` _ `comment` (lex_action `simd_to` `'\\n'`)@383..395)@334..395
-  (lex_rule `'\\n'` _ `ident` (set_action `beg` `1`)@443..452)@396..452
-  (lex_rule `'('` _ `ident` (step_action `paren` `++`)@500..509)@453..509
+  (lex_rule `'#' [^\\n]*` _ `comment`)@334..381
+  (lex_rule `'\\n'` _ `ident` (set_action `beg` `1`)@429..438)@382..438
+  (lex_rule `'('` _ `ident` (step_action `paren` `++`)@486..495)@439..495
   (lex_rule
     `')'`
-    (guards `@` (guard _ `paren` `>` `0`)@516..525)@514..525
+    (guards `@` (guard _ `paren` `>` `0`)@502..511)@500..511
     `ident`
-    (step_action `paren` `--`)@557..566)@510..566
+    (step_action `paren` `--`)@543..552)@496..552
   (lex_rule
     `'.'+`
-    (guards `@` (guard _ `beg` _ _)@574..577 (guard `!` `flag` _ _)@580..585)@572..585
+    (guards `@` (guard _ `beg` _ _)@560..563 (guard `!` `flag` _ _)@566..571)@558..571
     `ident`
-    (counted `beg` `counted` `'.'`)@614..634
-    (lex_action `hold` _)@636..640)@567..640
+    (counted `beg` `counted` `'.'`)@600..620
+    (lex_action `hold` _)@622..626)@553..626
   (lex_rule
     _
-    (guards `@` (guard _ `pre` `>=` `2`)@643..651 (guard _ `beg` `==` `1`)@654..662)@641..662
+    (guards `@` (guard _ `pre` `>=` `2`)@629..637 (guard _ `beg` `==` `1`)@640..648)@627..648
     `ident`
-    (set_action `flag` `false`)@688..702)@641..702
-  (lex_rule `"<=>"` _ `ident` (lex_action `rewind` `1`)@749..758)@703..758
-  (lex_rule `[0-9]+ / '.' [a-z]` _ `number`)@759..804
-  (lex_rule `'"' ([^"\\\\\\n] | '\\\\' .)* '"'` _ `string`)@805..851
-  (lex_rule `.` _ `err`)@852..895
-  (section `parser`)@897..904
+    (set_action `flag` `false`)@674..688)@627..688
+  (lex_rule `"<=>"` _ `ident` (lex_action `rewind` `1`)@735..744)@689..744
+  (lex_rule `[0-9]+ / '.' [a-z]` _ `number`)@745..790
+  (lex_rule `'"' ([^"\\\\\\n] | '\\\\' .)* '"'` _ `string`)@791..837
+  (lex_rule `.` _ `err`)@838..881
+  (section `parser`)@883..890
   (rule
-    (start `top`)@906..910
-    (alt _ ((tok `IDENT`)@913..918)@913..918 (node `top` (pos `1`)@951..952)@946..953 _)@913..953)@906..953)@77..954
+    (start `top`)@892..896
+    (alt _ ((tok `IDENT`)@899..904)@899..904 (node `top` (pos `1`)@937..938)@932..939 _)@899..939)@892..939)@77..940

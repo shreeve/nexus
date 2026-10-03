@@ -5,6 +5,9 @@
 ### Removed
 
 - `--slr`. Nexus builds LALR(1) tables only.
+- The `simd_to 'c'` lexer action, which changed nothing (the lexer scans
+  `[^c]*` runs with SIMD on its own). Writing it is a syntax error: delete
+  it (em's `mumps.grammar` has one, on its comment rule).
 
 ### Fixed
 

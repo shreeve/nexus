@@ -298,7 +298,6 @@ lex_actions =                                           → ()
             | lex_actions "," lex_action                → (...1 3)
 
 lex_action  = word:IDENT                                → (lex_action)
-            | word:IDENT arg:QUOTED                     → (lex_action)
             | word:IDENT "(" arg:(INTEGER | QUOTED) ")" → (lex_action)
             | LBRACE name:IDENT "=" value:(INTEGER | IDENT) RBRACE
                                                         → (set_action)

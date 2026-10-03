@@ -63,9 +63,6 @@ pub const LexerRule = struct {
     guards: []const Guard,
     token: []const u8,
     actions: []const Action,
-    /// `simd_to 'c'`: asserts the pattern scans a `[^c]*` run (accelerated).
-    isSimd: bool = false,
-    simdChar: ?u8 = null,
     /// `skip` action: the match is discarded and scanning continues.
     isSkip: bool = false,
     /// `hold`: the token is zero-width; the pattern is lookahead only.

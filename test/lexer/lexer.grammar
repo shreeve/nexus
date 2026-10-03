@@ -46,7 +46,7 @@ tokens
 
 '\n'                                        → newline, {beg = 1}
 "\\\n"                                      → skip, skip
-'#' [^\n]*                                  → comment, simd_to '\n'
+'#' [^\n]*                                  → comment
 
 # Strings: backslash escapes, doubled-quote escapes
 '"' ([^"\\\n] | '\\' .)* '"'                → str

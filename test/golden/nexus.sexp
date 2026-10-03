@@ -1191,16 +1191,6 @@
       ((label
           `word`
           (tok `IDENT`))
-        (label
-          `arg`
-          (tok `QUOTED`)))
-      (node `lex_action`)
-      _)
-    (alt
-      _
-      ((label
-          `word`
-          (tok `IDENT`))
         (lit `"("`)
         (label
           `arg`

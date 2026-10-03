@@ -20,7 +20,7 @@ tokens
 @code = checkMode
 
 [ \t]+                              → skip, skip
-'#' [^\n]*                          → comment, simd_to '\n'
+'#' [^\n]*                          → comment
 '\n'                                → ident, {beg = 1}
 '('                                 → ident, {paren++}
 ')' @ paren > 0                     → ident, {paren--}

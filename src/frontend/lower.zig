@@ -463,27 +463,22 @@ pub const GrammarLowerer = struct {
                 try self.requireArity(node, t.items, 3, 3, "(lex_action WORD ARG)");
                 const wordNode = t.items[1];
                 const word = try self.requireSrc(wordNode, "action");
+                // `word(arg)`: the parentheses are not in the tree.
                 const arg = t.items[2];
-                // `word(arg)` or `word arg`: the parentheses are not in the tree.
                 const argText = try self.optSrc(arg, "action argument");
-                const parens = argText != null and std.mem.findScalar(u8, self.source.text[srcPos(wordNode) + word.len .. srcPos(arg)], '(') != null;
                 const quoted = argText != null and argText.?[0] == '\'';
                 if (std.mem.eql(u8, word, "skip") or std.mem.eql(u8, word, "hold")) {
                     if (arg != .nil) return self.fail(arg, "`{s}` takes no argument", .{word});
                     if (word[0] == 's') rule.isSkip = true else rule.hold = true;
-                } else if (std.mem.eql(u8, word, "simd_to")) {
-                    if (!quoted or parens) return self.fail(if (arg == .nil) wordNode else arg, "expected a quoted byte after simd_to, as in simd_to '\\n'", .{});
-                    rule.isSimd = true;
-                    rule.simdChar = try self.quotedByte(arg);
                 } else if (std.mem.eql(u8, word, "rewind")) {
-                    if (!parens or quoted) return self.fail(if (arg == .nil) wordNode else arg, "rewind takes a byte count, as in rewind(1)", .{});
+                    if (argText == null or quoted) return self.fail(if (arg == .nil) wordNode else arg, "rewind takes a byte count, as in rewind(1)", .{});
                     const n = std.fmt.parseInt(i32, argText.?, 10) catch -1;
                     if (n < 0 or n > 65535) return self.fail(wordNode, "rewind({s}) is out of range", .{argText.?});
                     rule.rewind = @intCast(n);
                 } else if (std.mem.eql(u8, word, "counting") or std.mem.eql(u8, word, "matching")) {
                     return self.fail(wordNode, "{s}() describes balanced nesting, which no finite automaton can recognize; use trailing context '/' for bounded lookahead or handle nesting in the lang Lexer wrapper", .{word});
                 } else {
-                    return self.fail(wordNode, "unknown lexer action '{s}' (expected {{...}}, skip, hold, rewind(n), or simd_to 'c')", .{word});
+                    return self.fail(wordNode, "unknown lexer action '{s}' (expected {{...}}, skip, hold, or rewind(n))", .{word});
                 }
             },
             else => return self.shapeError(node, "lexer action"),

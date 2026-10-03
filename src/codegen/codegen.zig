@@ -4,7 +4,6 @@
 //!   header        version line, `std`, the `@lang` import
 //!   lexer         the lexer declarations from lexgen (TokenCat, Token,
 //!                 the lexer struct, the Lexer alias)
-//!   support       fallback `simd` helpers, when the lexer calls them
 //!   enums         Tag, Role, Start
 //!   runtime       the template sections `sexp`, `parser` (with the
 //!                 `parse<Start>` methods in its `startMethods` slot) and,
@@ -69,7 +68,6 @@ pub fn lexerModule(allocator: Allocator, lang: ?[]const u8, lexerDecls: []const 
     const w = &output.writer;
     try writeHeader(w, lang);
     try w.writeAll(lexerDecls);
-    try writeSimdSupport(w, lexerDecls);
     return output.toOwnedSlice();
 }
 
@@ -80,24 +78,6 @@ fn writeHeader(w: *std.Io.Writer, lang: ?[]const u8) !void {
     if (lang) |name| try w.print("const lang = @import(\"{s}.zig\");\n", .{name});
     try w.writeAll("\n");
 }
-
-/// The `simd` helpers, when the lexer calls them (`simd_to` rules).
-fn writeSimdSupport(w: *std.Io.Writer, lexerDecls: []const u8) !void {
-    if (std.mem.find(u8, lexerDecls, "simd.") != null) try w.writeAll(simdSupport);
-}
-
-/// Fallback for the `simd.findByte` calls a generated lexer may make.
-const simdSupport =
-    \\
-    \\// SIMD helpers (fallback if simd.zig not available)
-    \\const simd = struct {
-    \\    fn findByte(haystack: []const u8, needle: u8) usize {
-    \\        for (haystack, 0..) |c, i| if (c == needle) return i;
-    \\        return haystack.len;
-    \\    }
-    \\};
-    \\
-;
 
 fn banner(w: *std.Io.Writer, title: []const u8) !void {
     try w.print(
@@ -158,7 +138,6 @@ const Codegen = struct {
 
         try writeHeader(w, self.g.lang);
         try w.writeAll(lexerDecls);
-        try writeSimdSupport(w, lexerDecls);
         try self.emitEnums(w);
         try self.emitRuntime(w);
         try self.emitConfig(w);

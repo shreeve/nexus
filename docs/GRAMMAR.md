@@ -237,7 +237,6 @@ unless the rule's own action sets the same variable.
 | `skip` | discard the token and scan on; its bytes count toward the next token's `pre` |
 | `hold` | emit the token with zero width at the match start; nothing is consumed |
 | `rewind(n)` | end the token after its first `n` bytes; the rest is scanned again |
-| `simd_to 'c'` | accepted and checked: the pattern must contain a `[^c]*` run. The generator scans such runs with SIMD on its own, so this changes nothing |
 
 `→ skip, skip` and `→ comment, skip` both discard what they match. A rule
 whose token is `skip` without the `skip` action returns a token of the

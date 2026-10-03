@@ -83,11 +83,7 @@
     (lex_action `hold` _)
     (set_action `pat` `0`)
     (set_action `dep` `0`))
-  (lex_rule
-    `';' [^\\n]*`
-    _
-    `comment`
-    (lex_action `simd_to` `'\\n'`))
+  (lex_rule `';' [^\\n]*` _ `comment`)
   (lex_rule `'"' ([^"\\n] | '""')* '"'` _ `string`)
   (lex_rule
     `[0-9]+`
