@@ -89,8 +89,6 @@ pub const Table = struct {
     /// `xExcludes.items[xExcludeStart[s]..xExcludeStart[s + 1]]`.
     xExcludes: std.ArrayList(XExclude) = .empty,
     xExcludeStart: []const u32,
-    /// Number of unresolved conflicts (= conflictList.len).
-    conflicts: u32 = 0,
     /// Every unresolved conflict, by state, then terminal.
     conflictList: []const Conflict = &.{},
     /// Every `X "c"` hint of every rule, in rule order.
@@ -270,7 +268,6 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
         .rows = rows,
         .xExcludes = xExcludes,
         .xExcludeStart = xExcludeStart,
-        .conflicts = @intCast(conflictList.items.len),
         .conflictList = try conflictList.toOwnedSlice(a),
         .hints = try hints.toOwnedSlice(a),
         .expected = exp,

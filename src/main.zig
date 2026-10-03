@@ -294,8 +294,8 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             g.rules.items.len,
             result.automaton.states.items.len,
         });
-        if (result.table.conflicts > 0)
-            diag.info("   {d} conflicts (as declared)", .{result.table.conflicts});
+        if (result.table.conflictList.len > 0)
+            diag.info("   {d} conflicts (as declared)", .{result.table.conflictList.len});
 
         // Emit the combined lexer + parser module
         finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerSpec, lexerDecls, .{

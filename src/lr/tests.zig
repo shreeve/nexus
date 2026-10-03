@@ -232,7 +232,7 @@ test "LALR resolves the classic L = R grammar (SLR(1) cannot)" {
         "r → l",
     };
     const lalr = try generate(a, &rules, &.{"s"});
-    try testing.expectEqual(@as(u32, 0), lalr.tbl.conflicts);
+    try testing.expectEqual(0, lalr.tbl.conflictList.len);
     // In the state after `l`, `r → l •` reduces only on $end.
     const q = try stateWith(&lalr.auto, 0, 1);
     const red = lalr.auto.states.items[q].reductions;
@@ -422,7 +422,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → IF ID stmt ELSE stmt",
         "stmt → ID",
     }, &.{"prog"});
-    try testing.expectEqual(@as(u32, 0), shiftHint.tbl.conflicts);
+    try testing.expectEqual(0, shiftHint.tbl.conflictList.len);
     const q = try stateWith(&shiftHint.auto, 1, 3);
     try testing.expect(shiftHint.tbl.rows[q][sym(&shiftHint.g, "ELSE")] == .shift);
 
@@ -432,7 +432,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → IF ID stmt ELSE stmt",
         "stmt → ID",
     }, &.{"prog"});
-    try testing.expectEqual(@as(u32, 0), reduceHint.tbl.conflicts);
+    try testing.expectEqual(0, reduceHint.tbl.conflictList.len);
     try testing.expect(reduceHint.tbl.rows[try stateWith(&reduceHint.auto, 1, 3)][sym(&reduceHint.g, "ELSE")] == .reduce);
 
     // `name X "(" X "["`: both characters reduce in the table and record a
@@ -497,7 +497,7 @@ test "a hint names its literal terminal, escapes included; a missing literal is 
         \\e → "\\" ID
         ,
     }, &.{"prog"});
-    try testing.expectEqual(@as(u32, 0), esc.tbl.conflicts);
+    try testing.expectEqual(0, esc.tbl.conflictList.len);
     try testing.expectEqual(@as(usize, 1), esc.tbl.xExcludes.items.len);
     try testing.expectEqual(sym(&esc.g, "\"\\\\\""), esc.tbl.xExcludes.items[0].sym);
     try conflicts.checkHints(a, &esc.g, &esc.tbl, opts);
@@ -611,7 +611,7 @@ test "a start marker adds no conflicts and every start alternative is reachable"
     };
     const one = try generate(a, &rules, &.{"program"});
     const two = try generate(a, &rules, &.{ "program", "form" });
-    try testing.expectEqual(one.tbl.conflicts, two.tbl.conflicts);
+    try testing.expectEqual(one.tbl.conflictList.len, two.tbl.conflictList.len);
     // From form's entry state (after the injected marker), both of form's
     // rules can start.
     const entry = try stateWith(&two.auto, two.g.acceptRules.items[1], 1);

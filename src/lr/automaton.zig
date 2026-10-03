@@ -16,7 +16,6 @@
 //! grammar, never on hashing or the host.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const Grammar = grammar.Grammar;
 
@@ -52,11 +51,6 @@ pub const Automaton = struct {
     states: std.ArrayList(State) = .empty,
     /// Initial state of each start symbol (parallel to Grammar.startSymbols).
     startStates: std.ArrayList(u16) = .empty,
-
-    pub fn deinit(self: *Automaton, allocator: Allocator) void {
-        self.states.deinit(allocator);
-        self.startStates.deinit(allocator);
-    }
 };
 
 /// Most parser states: the parse table encodes a shift to state s as the
