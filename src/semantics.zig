@@ -641,18 +641,9 @@ fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
     }
 }
 
-/// A string literal's text: without its quotes, its escapes decoded
-/// (grammar.escapeAt; the lowerer has rejected any unknown escape).
+/// A string literal's text: without its quotes, its escapes decoded.
 fn unquote(a: Allocator, lit: []const u8) ![]const u8 {
-    const body = lit[1 .. lit.len - 1];
-    var out: std.ArrayList(u8) = .empty;
-    var i: usize = 0;
-    while (i < body.len) {
-        const e: grammar.Escape = if (body[i] == '\\') grammar.escapeAt(body, i).? else .{ .byte = body[i], .len = 1 };
-        try out.append(a, e.byte);
-        i += e.len;
-    }
-    return out.toOwnedSlice(a);
+    return grammar.decode(a, lit[1 .. lit.len - 1]);
 }
 
 fn isUpper(s: []const u8) bool {

@@ -458,7 +458,7 @@ const Codegen = struct {
         for (0..3) |phase| for (self.g.symbols.items) |sym| {
             if (sym.kind != .terminal or sym.name.len < 3 or sym.name[0] != '"') continue;
             const raw = sym.name[1 .. sym.name.len - 1];
-            const literal = try unescapeLiteral(self.allocator, raw);
+            const literal = try grammar.decode(self.allocator, raw);
             const cat: ?[]const u8 = switch (phase) {
                 0 => for (self.g.opMappings) |m| {
                     if (std.mem.eql(u8, literal, m.lit)) break m.tok;
@@ -1146,17 +1146,6 @@ fn slotCount(k: anytype) usize {
 fn restRole(k: anytype) ?usize {
     for (k.roles, 0..) |r, i| if (r.rest) return i;
     return null;
-}
-
-/// Undo backslash escapes of a grammar literal.
-fn unescapeLiteral(allocator: Allocator, raw: []const u8) ![]const u8 {
-    var out: std.ArrayList(u8) = .empty;
-    var i: usize = 0;
-    while (i < raw.len) : (i += 1) {
-        if (raw[i] == '\\' and i + 1 < raw.len) i += 1;
-        try out.append(allocator, raw[i]);
-    }
-    return out.items;
 }
 
 // =============================================================================

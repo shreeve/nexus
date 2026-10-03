@@ -273,19 +273,19 @@ const Emitter = struct {
         const bare = plain and !hasNil and !hasChildTag and !hasNested(l);
 
         if (bare and spreadCount == 1 and posCount == 0) {
-            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ fmtTag(tag.?), index(spreadPos) });
+            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ std.zig.fmtString(tag.?), index(spreadPos) });
         }
         // `(tag N ...M)`; `(tag ...M N)` keeps its order through buildList.
         const posBeforeSpread = l.items.len == 2 and l.items[0].elem == .ref;
         if (bare and spreadCount == 1 and posCount == 1 and posBeforeSpread) {
-            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ fmtTag(tag.?), index(firstPos), index(spreadPos) });
+            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ std.zig.fmtString(tag.?), index(firstPos), index(spreadPos) });
         }
         if (plain and spreadCount == 0) {
             if (staticItems(l)) {
                 try self.staticList(w, l);
                 return w.writeAll(", pass, .tree, true)");
             }
-            try w.print("self.sexp(.@\"{f}\", &.{{", .{fmtTag(tag.?)});
+            try w.print("self.sexp(.@\"{f}\", &.{{", .{std.zig.fmtString(tag.?)});
             for (l.items, 0..) |item, i| {
                 if (i > 0) try w.writeAll(", ");
                 try self.value(w, item.elem);
@@ -320,7 +320,7 @@ const Emitter = struct {
         var first = true;
         switch (l.head) {
             .tag => |t| {
-                try w.print(" .{{ .tag = .@\"{f}\" }}", .{fmtTag(t)});
+                try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)});
                 first = false;
             },
             .ref => |h| {
@@ -342,8 +342,8 @@ const Emitter = struct {
         switch (e) {
             .ref => |p| try w.print(" .{{ .elem = {d} }}", .{index(p)}),
             .nil => try w.writeAll(" .nil"),
-            .tagLit => |t| try w.print(" .{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
-            .litTag => |p| try w.print(" .{{ .tag = .@\"{f}\" }}", .{fmtTag(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
+            .tagLit => |t| try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
+            .litTag => |p| try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
             .spread, .symId, .node => unreachable,
         }
     }
@@ -411,7 +411,7 @@ const Emitter = struct {
 
     fn headExpr(self: *Emitter, w: anytype, head: ActionList.Head) anyerror!void {
         switch (head) {
-            .tag => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
+            .tag => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
             .ref => |e| try self.value(w, e),
             .none => unreachable,
         }
@@ -426,8 +426,8 @@ const Emitter = struct {
                 try w.print("if (pass[{d}] == .src) pass[{d}] else self.emptyLeaf(pass, {d})", .{ at, at, at });
             },
             .nil => try w.writeAll(".nil"),
-            .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
-            .litTag => |p| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
+            .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
+            .litTag => |p| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
             .node => |n| {
                 // A nested node gets its own node id, spanning the
                 // pattern elements it references.
@@ -523,28 +523,9 @@ fn isTagLiteral(t: []const u8) bool {
 }
 
 /// The text a string-literal terminal (`"+="`) matches: its name without
-/// the quotes, `\c` escapes read as `c`.
+/// the quotes, its escapes decoded.
 fn literalText(allocator: Allocator, name: []const u8) ![]const u8 {
-    const body = name[1 .. name.len - 1];
-    var out: std.ArrayList(u8) = .empty;
-    var i: usize = 0;
-    while (i < body.len) : (i += 1) {
-        if (body[i] == '\\' and i + 1 < body.len) i += 1;
-        try out.append(allocator, body[i]);
-    }
-    return out.toOwnedSlice(allocator);
-}
-
-/// A tag name inside `@"..."` (escapes `\`).
-fn fmtTag(t: []const u8) std.fmt.Alt([]const u8, writeTag) {
-    return .{ .data = t };
-}
-
-fn writeTag(t: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
-    for (t) |c| {
-        if (c == '\\' or c == '"') try w.writeByte('\\');
-        try w.writeByte(c);
-    }
+    return grammar.decode(allocator, name[1 .. name.len - 1]);
 }
 
 // =============================================================================

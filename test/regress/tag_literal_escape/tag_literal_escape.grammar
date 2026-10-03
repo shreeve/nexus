@@ -1,0 +1,23 @@
+# A literal used as a tag means its text through its escapes: `"\x41"`
+# is the tag `A`, in the schema and in the generated Tag value alike, and
+# `"\\"` is the tag `\`.
+
+@lexer
+tokens
+    ident, a, bs, eof, err
+'\n'                                        → skip, skip
+'A'                                         → a
+'\\'                                        → bs
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@schema
+    prog   ...stmts
+    pair   left:leaf op:tag("A" | "\\") right:leaf
+
+prog! = stmt+                               → (prog ...1)
+
+stmt  = left:IDENT op:"\x41" right:IDENT    → (pair)
+      | left:IDENT op:"\\" right:IDENT      → (pair)

@@ -142,6 +142,19 @@ pub fn escapeAt(s: []const u8, i: usize) ?Escape {
     return .{ .byte = byte, .len = 2 };
 }
 
+/// The bytes of the string body `text`, its escapes decoded. (The lowerer
+/// rejects an unknown escape; one would read as a plain backslash.)
+pub fn decode(allocator: Allocator, text: []const u8) ![]const u8 {
+    var out: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < text.len) {
+        const e = (if (text[i] == '\\') escapeAt(text, i) else null) orelse Escape{ .byte = text[i], .len = 1 };
+        try out.append(allocator, e.byte);
+        i += e.len;
+    }
+    return out.toOwnedSlice(allocator);
+}
+
 /// Whether the string body `text`, its escapes decoded, is `bytes`.
 fn decodesTo(text: []const u8, bytes: []const u8) bool {
     var i: usize = 0;
@@ -160,6 +173,9 @@ test "a literal names a lexer literal through its escapes" {
     try std.testing.expect(!decodesTo("abc", "ab"));
     try std.testing.expect(escapeAt("\\q", 0) == null);
     try std.testing.expect(escapeAt("\\x4", 0) == null);
+    const bytes = try decode(std.testing.allocator, "a\\x41\\\\\\n");
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqualStrings("aA\\\n", bytes);
 }
 
 // =============================================================================
