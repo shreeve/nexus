@@ -64,7 +64,9 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\                  file to output-file (default: standard output)
     \\
     \\An output-file of - is standard output. Output replaces the file
-    \\atomically, and never the grammar file itself.
+    \\atomically (through a symlink, the file it names), keeping its mode;
+    \\other hard links to it keep the old contents. The grammar file itself
+    \\is never replaced.
     \\
     \\Options:
     \\  --spans         Record node spans and rule ids (always on with @schema)
@@ -353,8 +355,14 @@ fn writeReplacing(io: Io, path: []const u8, bytes: []const u8) !void {
         defer file.close(io);
         return file.writeStreamingAll(io, bytes);
     };
-    var af = try cwd.createFileAtomic(io, path, .{ .replace = true });
+    // Through a symlink, the file it names is replaced, in its own
+    // directory, and keeps its mode. (Another hard link to the file keeps
+    // the old contents: a replace makes a new file.)
+    var buf: [std.Io.Dir.max_path_bytes]u8 = undefined;
+    const target = if (stat != null) buf[0..try cwd.realPathFile(io, path, &buf)] else path;
+    var af = try cwd.createFileAtomic(io, target, .{ .replace = true });
     defer af.deinit(io);
+    if (stat) |st| try af.file.setPermissions(io, st.permissions);
     try af.file.writeStreamingAll(io, bytes);
     try af.replace(io);
 }

@@ -151,7 +151,9 @@ Command line and build:
 - An output path that names the grammar file (through any spelling or
   link) is a usage error, and nothing is written.
 - Output replaces its file atomically: a failed write leaves the previous
-  file intact. A device or pipe (`/dev/null`) is written in place.
+  file intact. Through a symlink, the file it names is replaced, and the
+  file keeps its mode; other hard links to it keep the old contents. A
+  device or pipe (`/dev/null`) is written in place.
 - `check` is the command wherever it is the first non-option argument;
   `--dump-sexp` with `check`, `--spans` or `-c` is a usage error; a failed
   write to standard output is an error, not a stack trace (a broken pipe is

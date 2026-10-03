@@ -211,8 +211,9 @@ nexus --help
 ```
 
 Options: `--spans` (node spans without a schema), `-c` (rules as comments
-in the output). The output file is replaced atomically, and never when it
-is the grammar file. Exit status: 0 success, 1 error, 2 usage.
+in the output). The output file is replaced atomically (through a
+symlink, the file it names), keeping its mode, and never when it is the
+grammar file; other hard links to it keep the old contents. Exit status: 0 success, 1 error, 2 usage.
 
 ## Documentation
 
