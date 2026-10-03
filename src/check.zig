@@ -91,21 +91,8 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec, path: []c
         }
         // Check uppercase identifiers exist in lexer tokens (case-insensitive)
         else if (sym.kind == .terminal and sym.name[0] >= 'A' and sym.name[0] <= 'Z') {
-            // Skip if it's a start symbol marker (ends with !)
-            if (sym.name[sym.name.len - 1] == '!') continue;
-
-            // Skip if there's a matching lowercase nonterminal (@as keyword)
-            // e.g., SET terminal has a matching 'set' nonterminal rule
+            // An @as group `g` promotes its words to the terminal `G`.
             var isAsKeyword = false;
-            for (g.symbols.items) |other| {
-                if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(sym.name, other.name)) {
-                    isAsKeyword = true;
-                    break;
-                }
-            }
-            if (isAsKeyword) continue;
-
-            // Skip if it matches an @as directive rule name (e.g., SYSVAR from @as=[ident,sysvar])
             for (g.asDirectives) |directive| {
                 if (std.ascii.eqlIgnoreCase(directive.rule, sym.name)) {
                     isAsKeyword = true;
