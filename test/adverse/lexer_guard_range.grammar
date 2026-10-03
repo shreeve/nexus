@@ -1,0 +1,15 @@
+# A guard compares a state variable (an i8) with a value it can hold.
+# error: lexer_guard_range.grammar:12:14:
+# error: value 1000 for 'd' is out of range (-128..127)
+@lexer
+state
+    d = 0
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ @ d > 1000 → ident
+. → err
+@parser
+s = IDENT

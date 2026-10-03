@@ -1,0 +1,14 @@
+# A guard on `pre` (the u8 count of blanks before a token) compares it
+# with a value it can hold.
+# error: lexer_pre_guard_range.grammar:11:16:
+# error: value 300 for 'pre' is out of range (0..255)
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ @ pre > 300 → ident
+. → err
+@parser
+s = IDENT

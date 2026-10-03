@@ -256,14 +256,25 @@ pub const GrammarLowerer = struct {
         }
     }
 
-    /// A state value: an integer that fits an i8, `true` (1) or `false` (0).
+    /// A value assigned to `name`: an integer (see `valueOf`), `true` (1)
+    /// or `false` (0).
     fn stateValue(self: *GrammarLowerer, name: []const u8, node: Sexp) LowerError!i32 {
         const t = self.text(node);
         if (std.mem.eql(u8, t, "true")) return 1;
         if (std.mem.eql(u8, t, "false")) return 0;
-        const v = std.fmt.parseInt(i32, t, 10) catch
+        // An INTEGER starts with a digit or `-`; anything else is a name.
+        if (t[0] != '-' and !std.ascii.isDigit(t[0]))
             return self.fail(node, "state variable '{s}' needs an integer, true, or false; found '{s}'", .{ name, t });
-        if (v < -128 or v > 127) return self.fail(node, "value {d} for '{s}' does not fit a state variable (i8, -128..127)", .{ v, name });
+        return self.valueOf(name, node);
+    }
+
+    /// An integer `name` can hold: a state variable is an i8, `pre` the u8
+    /// count of blanks before the token.
+    fn valueOf(self: *GrammarLowerer, name: []const u8, node: Sexp) LowerError!i32 {
+        const t = self.text(node);
+        const lo: i32, const hi: i32 = if (std.mem.eql(u8, name, "pre")) .{ 0, 255 } else .{ -128, 127 };
+        const v = std.fmt.parseInt(i32, t, 10) catch hi + 1;
+        if (v < lo or v > hi) return self.fail(node, "value {s} for '{s}' is out of range ({d}..{d})", .{ t, name, lo, hi });
         return v;
     }
 
@@ -338,11 +349,7 @@ pub const GrammarLowerer = struct {
         const op = for (ops) |o| {
             if (std.mem.eql(u8, o[0], opText)) break o[1];
         } else unreachable;
-        const valueNode = ir.Guard.value(node);
-        const valueText = self.text(valueNode);
-        const value = std.fmt.parseInt(i32, valueText, 10) catch
-            return self.fail(valueNode, "guard value {s} is out of range", .{valueText});
-        return .{ .variable = variable, .op = op, .value = value, .negated = negated };
+        return .{ .variable = variable, .op = op, .value = try self.valueOf(variable, ir.Guard.value(node)), .negated = negated };
     }
 
     fn lowerLexAction(self: *GrammarLowerer, node: Sexp, rule: *LexerRule, actions: *std.ArrayList(Action)) LowerError!void {
