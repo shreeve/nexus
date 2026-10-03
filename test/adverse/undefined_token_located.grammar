@@ -1,0 +1,14 @@
+# An undefined symbol is reported where it is written, not at the start
+# of its alternative.
+# error: undefined_token_located.grammar:14:17:
+# error: undefined token 'FOO'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT IDENT FOO → 1

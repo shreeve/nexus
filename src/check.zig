@@ -89,18 +89,36 @@ const Walk = struct {
     }
 };
 
-/// Where `sym` is first used: the location of the first rule whose
-/// right-hand side has it.
-fn firstUse(g: *const Grammar, sym: u16) struct { line: u32, col: u32 } {
+const Loc = struct { line: u32, col: u32 };
+
+/// Where the symbol `name` is first written in a rule, else the first
+/// alternative that uses symbol `sym` (a synthesized name).
+fn firstUse(g: *const Grammar, ir: *const GrammarIR, sym: u16, name: []const u8) Loc {
+    for (ir.rules) |rule| for (rule.alternatives) |alt| {
+        if (usedIn(alt.elements, name)) |at| return at;
+    };
     for (g.rules.items) |rule| {
         if (std.mem.findScalar(u16, rule.rhs, sym) != null and rule.line > 0) return .{ .line = rule.line, .col = rule.col };
     }
     return .{ .line = 1, .col = 1 };
 }
 
+fn usedIn(elements: []const ParsedElement, name: []const u8) ?Loc {
+    for (elements) |e| {
+        const names = switch (e.kind) {
+            .ident, .token, .reqList, .optList => std.mem.eql(u8, e.value, name),
+            else => false,
+        } or (e.listSeparator != null and std.mem.eql(u8, e.listSeparator.?, name));
+        if (names) return .{ .line = e.line, .col = e.col };
+        if (usedIn(e.subElements, name)) |at| return at;
+        for (e.choices) |c| if (usedIn(c, name)) |at| return at;
+    }
+    return null;
+}
+
 /// Validate that all referenced symbols are defined, reporting each
 /// undefined one where it is first used. Returns the error count.
-pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec, path: []const u8) u32 {
+pub fn validateSymbols(g: *const Grammar, ir: *const GrammarIR, lexerSpec: *const LexerSpec, path: []const u8) u32 {
     var errors: u32 = 0;
 
     for (g.symbols.items, 0..) |sym, symId| {
@@ -111,7 +129,7 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec, path: []c
         // Check nonterminals have at least one rule
         if (sym.kind == .nonterminal) {
             if (sym.rules.items.len == 0) {
-                const at = firstUse(g, @intCast(symId));
+                const at = firstUse(g, ir, @intCast(symId), sym.name);
                 diag.errLine(path, at.line, at.col, "undefined rule '{s}'", .{sym.name});
                 errors += 1;
             }
@@ -156,7 +174,7 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec, path: []c
             }
 
             if (!found) {
-                const at = firstUse(g, @intCast(symId));
+                const at = firstUse(g, ir, @intCast(symId), sym.name);
                 diag.errLine(path, at.line, at.col, "undefined token '{s}'", .{sym.name});
                 errors += 1;
             }
