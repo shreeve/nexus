@@ -92,9 +92,7 @@ const Options = struct {
 
 pub fn main(init: std.process.Init) !void {
     // Nexus is a short-lived CLI: read one grammar, emit one parser, exit.
-    // Everything is allocated from the process arena (no per-allocation
-    // tracking cost; `free`/`deinit` calls are no-ops). Swap in `init.gpa`
-    // to hunt allocation bugs.
+    // Everything lives in the process arena and is freed at exit.
     const allocator = init.arena.allocator();
     const io = init.io;
 
@@ -175,14 +173,12 @@ fn writeStdout(io: Io, bytes: []const u8) !void {
 fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: []const u8) !void {
     const sourceText = try readGrammar(allocator, io, grammarFile);
 
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+    const parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
         if (err != error.ParseError) diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
         fail();
     };
-    defer parsed.parser.deinit();
 
     var output: std.Io.Writer.Allocating = .init(allocator);
-    defer output.deinit();
     const writer = &output.writer;
     try frontend.dumpSexp(writer, parsed.sexp, sourceText, 0);
     try writer.writeByte('\n');
@@ -202,11 +198,10 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     // The whole file through the self-hosted frontend, lowered into the
     // lexer spec and GrammarIR (whose strings are slices of sourceText).
-    var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
+    const parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
         if (err != error.ParseError) diag.err("failed to parse {s}: {any}", .{ grammarFile, err });
         fail();
     };
-    defer parsed.parser.deinit();
 
     var ir = GrammarLowerer.lowerParsed(allocator, &parsed) catch |err| {
         if (err == error.OutOfMemory) diag.err("out of memory", .{});
@@ -221,10 +216,8 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         diag.errLine(grammarFile, end.line, end.col, "no @parser section (a grammar file ends with an @parser section, which may be empty)", .{});
         fail();
     }
-    lexerSpec.langName = ir.lang;
 
     var lexerGen = LexerGenerator.init(allocator, &lexerSpec);
-    defer lexerGen.deinit();
 
     const lexerDecls = lexerGen.generateDecls() catch |err| switch (err) {
         error.LexerGenerationError => std.process.exit(1),
@@ -250,7 +243,6 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
-        defer g.deinit();
         // Schema mode: resolve every action against @schema first.
         var sem: ?semantics.Result = null;
         if (ir.schema != null) sem = semantics.resolve(allocator, &ir, &lexerSpec, grammarFile) catch |err| {
@@ -279,9 +271,8 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
         var result = lr.run(&g, .{ .path = grammarFile }) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
-            std.process.exit(1);
+            fail();
         };
-        defer result.automaton.deinit(allocator);
 
         diag.info("   Generated: {d} symbols, {d} rules, {d} states", .{
             g.symbols.items.len,

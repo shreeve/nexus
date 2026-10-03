@@ -97,6 +97,7 @@ pub const GrammarLowerer = struct {
         const source = self.source;
         try self.lowerRoot(sexp);
         if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
+        if (self.lexer) |*spec| spec.langName = self.lang;
         if (self.codeNode) |node| if (self.lang == null)
             return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
         if (self.tagsNode) |node| if (!self.hasSchema)
@@ -274,9 +275,7 @@ pub const GrammarLowerer = struct {
         if (std.mem.eql(u8, self.text(nameNode), "lexer")) {
             if (self.lexer != null) return self.fail(node, "duplicate @lexer section", .{});
             if (self.section == .parser) return self.fail(node, "the @lexer section comes before @parser", .{});
-            var spec = LexerSpec.init(self.allocator);
-            spec.fileName = self.source.path;
-            self.lexer = spec;
+            self.lexer = .{ .fileName = self.source.path };
             self.section = .lexer;
         } else {
             if (self.hasParser) return self.fail(node, "duplicate @parser section", .{});
@@ -365,10 +364,8 @@ pub const GrammarLowerer = struct {
 
         var literal: ?[]const u8 = null;
         if (pattern.len > 0) {
-            var arena = std.heap.ArenaAllocator.init(self.allocator);
-            defer arena.deinit();
             var d: regex.Diagnostic = .{};
-            const parsed = regex.parse(arena.allocator(), pattern, &d) catch |e| switch (e) {
+            const parsed = regex.parse(self.allocator, pattern, &d) catch |e| switch (e) {
                 error.OutOfMemory => return error.OutOfMemory,
                 error.InvalidPattern => return self.failAt(at + d.offset, "{s}", .{d.message}),
             };
@@ -458,10 +455,8 @@ pub const GrammarLowerer = struct {
     fn quotedByte(self: *GrammarLowerer, node: Sexp) LowerError!u8 {
         const quoted = self.text(node);
         const at = node.src.pos;
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
         var d: regex.Diagnostic = .{};
-        const p = regex.parse(arena.allocator(), quoted, &d) catch |err| switch (err) {
+        const p = regex.parse(self.allocator, quoted, &d) catch |err| switch (err) {
             error.OutOfMemory => return error.OutOfMemory,
             error.InvalidPattern => return self.failAt(at + d.offset, "{s}", .{d.message}),
         };

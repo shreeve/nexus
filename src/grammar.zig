@@ -77,40 +77,19 @@ pub const LexerRule = struct {
     col: u32 = 0,
 };
 
-/// Complete lexer specification
+/// Complete lexer specification. Like every generator structure, it lives
+/// in the run's arena and is never freed on its own.
 pub const LexerSpec = struct {
-    allocator: Allocator,
-    states: std.ArrayList(StateVar),
-    tokens: std.ArrayList(TokenDef),
-    rules: std.ArrayList(LexerRule),
-    codeFunctions: std.ArrayList([]const u8),
+    states: std.ArrayList(StateVar) = .empty,
+    tokens: std.ArrayList(TokenDef) = .empty,
+    rules: std.ArrayList(LexerRule) = .empty,
+    codeFunctions: std.ArrayList([]const u8) = .empty,
+    /// `@lang`: the module the generated lexer imports.
     langName: ?[]const u8 = null,
     /// `after` block: assignments applied whenever a token consumes input.
     afterActions: std.ArrayList(Action) = .empty,
     /// Grammar file name, for diagnostics.
     fileName: []const u8 = "",
-
-    pub fn init(allocator: Allocator) LexerSpec {
-        return .{
-            .allocator = allocator,
-            .states = .empty,
-            .tokens = .empty,
-            .rules = .empty,
-            .codeFunctions = .empty,
-        };
-    }
-
-    pub fn deinit(self: *LexerSpec) void {
-        for (self.rules.items) |rule| {
-            self.allocator.free(rule.guards);
-            self.allocator.free(rule.actions);
-        }
-        self.states.deinit(self.allocator);
-        self.tokens.deinit(self.allocator);
-        self.rules.deinit(self.allocator);
-        self.codeFunctions.deinit(self.allocator);
-        self.afterActions.deinit(self.allocator);
-    }
 };
 
 // =============================================================================
@@ -523,10 +502,6 @@ pub const Symbol = struct {
     pub fn init(id: u16, name: []const u8, kind: Kind) Symbol {
         return .{ .id = id, .name = name, .kind = kind };
     }
-
-    pub fn deinit(self: *Symbol, allocator: Allocator) void {
-        self.rules.deinit(allocator);
-    }
 };
 
 /// Production rule: lhs → rhs with optional action
@@ -557,7 +532,8 @@ pub const Rule = struct {
 };
 
 /// The desugared grammar: symbols, BNF rules, start/accept bookkeeping, and
-/// the directives later stages need. Built from a GrammarIR by expand.zig.
+/// the directives later stages need. Built from a GrammarIR by expand.zig,
+/// in the run's arena (`allocator`).
 pub const Grammar = struct {
     allocator: Allocator,
 
@@ -591,21 +567,6 @@ pub const Grammar = struct {
 
     pub fn init(allocator: Allocator) Grammar {
         return .{ .allocator = allocator };
-    }
-
-    pub fn deinit(self: *Grammar) void {
-        for (self.symbols.items) |*sym| sym.deinit(self.allocator);
-        self.symbols.deinit(self.allocator);
-        self.symbolMap.deinit(self.allocator);
-        self.aliases.deinit(self.allocator);
-
-        for (self.rules.items) |*rule| {
-            self.allocator.free(rule.rhs);
-        }
-        self.rules.deinit(self.allocator);
-
-        self.startSymbols.deinit(self.allocator);
-        self.acceptRules.deinit(self.allocator);
     }
 
     /// Most symbols a grammar may have: ids are u16, and so is the count.
