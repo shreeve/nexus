@@ -2,7 +2,7 @@
 # rig.grammar — Rig lexer and parser grammar
 # ==============================================================================
 #
-# Processed by Nexus 1.0 into src/parser.zig (`zig build parser`). The
+# Processed by Nexus 2.0 into src/parser.zig (`zig build parser`). The
 # @schema at the top of the parser section declares every IR node kind and
 # its roles; Nexus checks every action against it and generates the IR
 # accessors (`parser.ir`) the compiler reads the tree with.
