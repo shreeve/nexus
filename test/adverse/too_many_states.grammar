@@ -1,0 +1,40 @@
+# Fourteen optional rule references expand into 2^14 alternatives whose
+# prefixes are all distinct, so the LR(0) automaton needs more states than
+# the parse table can number (a shift to state s is the i16 s).
+# error: too_many_states.grammar:40:
+# error: the grammar needs more than 32767 parser states
+@lexer
+tokens
+    ta, tb, tc, td, te, tf, tg, th, ti, tj, tk, tl, tm, tn, x, eof, err
+'a' → ta
+'b' → tb
+'c' → tc
+'d' → td
+'e' → te
+'f' → tf
+'g' → tg
+'h' → th
+'i' → ti
+'j' → tj
+'k' → tk
+'l' → tl
+'m' → tm
+'n' → tn
+'x' → x
+.   → err
+@parser
+a = TA
+b = TB
+c = TC
+d = TD
+e = TE
+f = TF
+g = TG
+h = TH
+i = TI
+j = TJ
+k = TK
+l = TL
+m = TM
+n = TN
+top! = [a] [b] [c] [d] [e] [f] [g] [h] [i] [j] [k] [l] [m] [n] X

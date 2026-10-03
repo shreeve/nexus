@@ -118,13 +118,13 @@ fn literalChar(g: *const Grammar, sym: u16) ?u8 {
     return null;
 }
 
-/// Whether `sym` is the synthetic marker terminal (`name!`) that selects a
-/// start symbol; markers never appear in reports or expected sets.
+/// Whether `sym` is the marker terminal (`x!`) that selects a start symbol:
+/// the first symbol of an accept rule `$accept_x → x! x $end`. Markers never
+/// appear in reports or expected sets.
 pub fn isStartMarker(g: *const Grammar, sym: u16) bool {
-    const name = g.symbols.items[sym].name;
-    if (name.len < 2 or name[name.len - 1] != '!') return false;
-    for (g.startSymbols.items) |s| {
-        if (std.mem.eql(u8, g.symbols.items[s].name, name[0 .. name.len - 1])) return true;
+    for (g.acceptRules.items) |r| {
+        const rhs = g.rules.items[r].rhs;
+        if (rhs.len == 3 and rhs[0] == sym) return true;
     }
     return false;
 }

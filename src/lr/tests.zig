@@ -91,13 +91,13 @@ fn sym(g: *const Grammar, name: []const u8) u16 {
 }
 
 /// The state whose kernel contains `lhs → rhs[0..dot] • ...` for rule `ruleId`.
-fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u8) u16 {
+fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u16) !u16 {
     for (auto.states.items, 0..) |s, i| {
         for (s.kernel) |item| {
             if (item.ruleId == ruleId and item.dot == dot) return @intCast(i);
         }
     }
-    unreachable;
+    return error.TestNoSuchState;
 }
 
 // =============================================================================
@@ -234,7 +234,7 @@ test "LALR resolves the classic L = R grammar (SLR(1) cannot)" {
     const lalr = try generate(a, &rules, &.{"s"});
     try testing.expectEqual(@as(u32, 0), lalr.tbl.conflicts);
     // In the state after `l`, `r → l •` reduces only on $end.
-    const q = stateWith(&lalr.auto, 0, 1);
+    const q = try stateWith(&lalr.auto, 0, 1);
     const red = lalr.auto.states.items[q].reductions;
     try testing.expectEqual(@as(usize, 1), red.len);
     try testing.expectEqual(@as(usize, 1), lalr.la.sets[q][0].count());
@@ -257,7 +257,7 @@ test "lookaheads through nullable symbols (reads) and right recursion (includes)
     }, &.{"s"});
     try expectLalrMatchesCanonical(a, b);
     // After `x`, `opt → ε` reduces on what can follow: B (tail) or C.
-    const q = stateWith(&b.auto, 0, 1);
+    const q = try stateWith(&b.auto, 0, 1);
     const reds = b.auto.states.items[q].reductions;
     try testing.expectEqual(@as(usize, 1), reds.len);
     try testing.expectEqual(@as(usize, 2), b.la.sets[q][0].count());
@@ -423,7 +423,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → ID",
     }, &.{"prog"});
     try testing.expectEqual(@as(u32, 0), shiftHint.tbl.conflicts);
-    const q = stateWith(&shiftHint.auto, 1, 3);
+    const q = try stateWith(&shiftHint.auto, 1, 3);
     try testing.expect(shiftHint.tbl.rows[q][sym(&shiftHint.g, "ELSE")] == .shift);
 
     const reduceHint = try generate(a, &.{
@@ -433,7 +433,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → ID",
     }, &.{"prog"});
     try testing.expectEqual(@as(u32, 0), reduceHint.tbl.conflicts);
-    try testing.expect(reduceHint.tbl.rows[stateWith(&reduceHint.auto, 1, 3)][sym(&reduceHint.g, "ELSE")] == .reduce);
+    try testing.expect(reduceHint.tbl.rows[try stateWith(&reduceHint.auto, 1, 3)][sym(&reduceHint.g, "ELSE")] == .reduce);
 
     // `name X "(" X "["`: both characters reduce in the table and record a
     // runtime shift override.
@@ -588,7 +588,7 @@ test "a start marker adds no conflicts and every start alternative is reachable"
     try testing.expectEqual(one.tbl.conflicts, two.tbl.conflicts);
     // From form's entry state (after the injected marker), both of form's
     // rules can start.
-    const entry = stateWith(&two.auto, two.g.acceptRules.items[1], 1);
+    const entry = try stateWith(&two.auto, two.g.acceptRules.items[1], 1);
     try testing.expect(two.tbl.rows[entry][sym(&two.g, "ID")] == .shift);
     try testing.expect(two.tbl.rows[entry][sym(&two.g, "\"(\"")] == .shift);
 }
@@ -727,7 +727,7 @@ test "expected sets name @errors nonterminals, then remaining terminals" {
         "expr → NUM",
     };
     var b = try generate(a, &rules, &.{"prog"});
-    const q = stateWith(&b.auto, 0, 1); // prog → "(" • args ")"
+    const q = try stateWith(&b.auto, 0, 1); // prog → "(" • args ")"
     // Without names: every terminal with an action.
     const plain = b.tbl.expected.forState(q);
     try testing.expectEqualSlices(u16, &.{ sym(&b.g, "\")\""), sym(&b.g, "\",\""), sym(&b.g, "ID"), sym(&b.g, "NUM") }, sortedCopy(a, plain));
@@ -773,16 +773,16 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     const tbl = try table.build(&g, &auto, la);
     const rep = tbl.repair.?;
     // After `ID "(" args`: `)` closes the call (structure).
-    const afterArgs = stateWith(&auto, 5, 3);
+    const afterArgs = try stateWith(&auto, 5, 3);
     try testing.expectEqualSlices(u16, &.{sym(&g, "\")\"")}, rep.forState(afterArgs));
     // After `ID "(" args ","`: the hole ID comes first.
-    const afterComma = stateWith(&auto, 7, 2);
+    const afterComma = try stateWith(&auto, 7, 2);
     try testing.expectEqualSlices(u16, &.{sym(&g, "ID")}, rep.forState(afterComma));
     // Further fabrications an inserted ID commits to: in `ID "=" •` the rest
     // `ID NEWLINE` (2); in `ID "=" ID •`, NEWLINE (1).
-    const eq1 = stateWith(&auto, 4, 2);
+    const eq1 = try stateWith(&auto, 4, 2);
     try testing.expectEqual(@as(u32, 2), repair.costAt(&g, la, auto.states.items[eq1], sym(&g, "ID")));
-    const eq2 = stateWith(&auto, 4, 3);
+    const eq2 = try stateWith(&auto, 4, 3);
     try testing.expectEqual(@as(u32, 1), repair.costAt(&g, la, auto.states.items[eq2], sym(&g, "ID")));
 
     // Names must be tokens of the parser grammar.
@@ -810,6 +810,6 @@ test "ranking puts holes above cheaper structure" {
     const la = try lookahead.compute(&g, &auto, try repair.insertCosts(a, &g));
     g.repair = .{ .holes = &.{"ID"}, .structure = &.{"\")\""} };
     const tbl = try table.build(&g, &auto, la);
-    const q = stateWith(&auto, 2, 4);
+    const q = try stateWith(&auto, 2, 4);
     try testing.expectEqualSlices(u16, &.{ sym(&g, "ID"), sym(&g, "\")\"") }, tbl.repair.?.forState(q));
 }
