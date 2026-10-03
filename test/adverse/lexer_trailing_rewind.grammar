@@ -1,0 +1,14 @@
+# Trailing context and rewind(n) both shorten the token; use one
+# error: lexer_trailing_rewind.grammar:9:1:
+# error: use either trailing context '/' or rewind(n), not both
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' / 'b'       → t, rewind(1)
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

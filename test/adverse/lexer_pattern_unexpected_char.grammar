@@ -1,0 +1,14 @@
+# Punctuation outside quotes is not part of the pattern language
+# error: lexer_pattern_unexpected_char.grammar:9:5:
+# error: unexpected character in pattern; quote literal text
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' ,          → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

@@ -1,0 +1,13 @@
+# Lists in an action nest at most 64 levels deep.
+# error: nesting_action.grammar:13:207:
+# error: nested too deeply: at most 64 levels of ( ) and [ ]
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT → (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a 1)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))

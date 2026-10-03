@@ -37,8 +37,6 @@ pub const Repair = struct {
     }
 };
 
-pub const Error = error{ OutOfMemory, InvalidRepairToken };
-
 /// Cost of a symbol no finite string derives (or of an item nothing advances).
 pub const infinite = std.math.maxInt(u32);
 
@@ -74,19 +72,61 @@ pub fn validate(g: *const Grammar, spec: RepairSpec) ?BadToken {
 
 /// Minimal number of terminals each symbol derives: 1 for a terminal, the
 /// cheapest rule for a nonterminal (0 for ε), `infinite` if it derives no
-/// finite string (fixed point).
+/// finite string. Knuth's generalization of Dijkstra's algorithm: symbols
+/// settle cheapest first, and a rule offers its lhs a cost once every
+/// symbol of its right-hand side has settled, so the time is linear in the
+/// grammar's size (times a heap's log), whatever its depth.
 pub fn insertCosts(a: Allocator, g: *const Grammar) ![]u32 {
-    const costs = try a.alloc(u32, g.symbols.items.len);
-    for (g.symbols.items, 0..) |sym, i| costs[i] = if (sym.kind == .terminal) 1 else infinite;
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (g.rules.items) |rule| {
-            const total = seqCost(costs, rule.rhs);
-            if (total < costs[rule.lhs]) {
-                costs[rule.lhs] = total;
-                changed = true;
-            }
+    const n = g.symbols.items.len;
+    const rules = g.rules.items;
+    // Every occurrence of a symbol in a right-hand side, by symbol:
+    // the rules of sym's occurrences are users[start[sym]..start[sym + 1]].
+    const start = try a.alloc(u32, n + 1);
+    defer a.free(start);
+    @memset(start, 0);
+    for (rules) |rule| for (rule.rhs) |s| {
+        start[s + 1] += 1;
+    };
+    for (1..n + 1) |i| start[i] += start[i - 1];
+    const users = try a.alloc(u16, start[n]);
+    defer a.free(users);
+    const fill = try a.dupe(u32, start[0..n]);
+    defer a.free(fill);
+    for (rules, 0..) |rule, r| for (rule.rhs) |s| {
+        users[fill[s]] = @intCast(r);
+        fill[s] += 1;
+    };
+    // Per rule: right-hand-side occurrences not yet settled, and the cost so far.
+    const pending = try a.alloc(u32, rules.len);
+    defer a.free(pending);
+    const sum = try a.alloc(u32, rules.len);
+    defer a.free(sum);
+
+    const Offer = struct { cost: u32, sym: u16 };
+    var heap: std.PriorityQueue(Offer, void, struct {
+        fn order(_: void, x: Offer, y: Offer) std.math.Order {
+            return std.math.order(x.cost, y.cost);
+        }
+    }.order) = .empty;
+    defer heap.deinit(a);
+    for (rules, 0..) |rule, r| {
+        pending[r] = @intCast(rule.rhs.len);
+        sum[r] = 0;
+        if (rule.rhs.len == 0) try heap.push(a, .{ .cost = 0, .sym = rule.lhs });
+    }
+    for (g.symbols.items, 0..) |sym, i| {
+        if (sym.kind == .terminal) try heap.push(a, .{ .cost = 1, .sym = @intCast(i) });
+    }
+
+    const costs = try a.alloc(u32, n);
+    @memset(costs, infinite);
+    while (heap.pop()) |offer| {
+        if (costs[offer.sym] != infinite) continue;
+        costs[offer.sym] = offer.cost;
+        for (users[start[offer.sym]..start[offer.sym + 1]]) |r| {
+            sum[r] +|= offer.cost;
+            pending[r] -= 1;
+            if (pending[r] == 0) try heap.push(a, .{ .cost = sum[r], .sym = rules[r].lhs });
         }
     }
     return costs;
@@ -103,7 +143,8 @@ fn seqCost(costs: []const u32, seq: []const u16) u32 {
 /// terminal of the nonterminal after the dot) of the rest of that item. For
 /// the nonterminal case this is a lower bound (the nonterminal's cheapest
 /// yield less the inserted token itself).
-pub fn costAt(g: *const Grammar, la: Lookaheads, costs: []const u32, state: State, token: u16) u32 {
+pub fn costAt(g: *const Grammar, la: Lookaheads, state: State, token: u16) u32 {
+    const costs = la.costs;
     var best: u32 = infinite;
     for (state.items) |item| {
         const rhs = g.rules.items[item.ruleId].rhs;
@@ -119,11 +160,9 @@ pub fn costAt(g: *const Grammar, la: Lookaheads, costs: []const u32, state: Stat
     return best;
 }
 
-pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: []const []const ParseAction, spec: RepairSpec) Error!Repair {
+/// The candidates of every state; `spec` has passed `validate`.
+pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: []const []const ParseAction, spec: RepairSpec) Allocator.Error!Repair {
     const a = g.allocator;
-    if (validate(g, spec) != null) return error.InvalidRepairToken;
-    const costs = try insertCosts(a, g);
-    defer a.free(costs);
 
     const Candidate = struct { id: u16, class: u8, cost: u32 };
     var candidates: std.ArrayList(Candidate) = .empty;
@@ -140,7 +179,7 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
             for (c[0]) |name| {
                 const id = g.getSymbol(name).?;
                 if (rows[si][id] == .err) continue;
-                try candidates.append(a, .{ .id = id, .class = c[1], .cost = costAt(g, la, costs, state, id) });
+                try candidates.append(a, .{ .id = id, .class = c[1], .cost = costAt(g, la, state, id) });
             }
         }
         std.mem.sort(Candidate, candidates.items, {}, struct {

@@ -1,0 +1,25 @@
+# A slot filled by the action cannot also be filled by a label.
+# error: schema_label_and_action.grammar:25:8:
+# error: role 'name' of 't' is filled by the label and by the action
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf
+top! = name:IDENT                           → (t 1)

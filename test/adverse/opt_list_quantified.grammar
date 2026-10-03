@@ -1,0 +1,13 @@
+# [...] is already optional: it takes no quantifier.
+# error: opt_list_quantified.grammar:13:12:
+# error: an element takes one quantifier
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT [L(IDENT)]?

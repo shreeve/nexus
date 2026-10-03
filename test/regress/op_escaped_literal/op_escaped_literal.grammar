@@ -1,0 +1,16 @@
+# An @op literal is decoded like every literal: "\x27=" maps the grammar's
+# "'=" (written plainly in the rule) to `noteq`, whose pattern is not
+# exactly that text.
+
+@lexer
+tokens
+    ident, noteq, eof, err
+'\n'                                        → skip, skip
+'\'' [=<]                                   → noteq
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@op = ["\x27=" → "noteq"]
+
+top! = IDENT "'=" IDENT                     → (ne 1 3)

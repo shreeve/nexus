@@ -1,0 +1,28 @@
+# A count stored in a state variable (an i8) saturates at 127: 200 dots
+# give 127, not a negative number. Each line starts with a blank, then
+# dots (spaces between them allowed), then an x that shows the count.
+
+@lexer
+state
+    d = 0
+tokens
+    ind, neg, deep, mid, x, newline, eof, err
+@ pre > 0                   → ind, {d = counted('.')}
+'\n'                        → newline
+'x'     @ d < 0             → neg
+'x'     @ d == 127          → deep
+'x'     @ d > 0             → mid
+'x'                         → x
+.                           → err
+
+@parser
+
+toks! = items               → (toks ...1)
+items = items item          → (...1 2)
+      | item                → (1)
+item  = IND                 → (ind)
+      | NEG                 → (neg 1)
+      | DEEP                → (deep 1)
+      | MID                 → (mid 1)
+      | X                   → (x 1)
+      | NEWLINE             → _

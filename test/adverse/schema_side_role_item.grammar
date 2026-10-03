@@ -1,0 +1,26 @@
+# A side-band role records a span, not a slot: only a pattern label
+# fills it, never a `role:` item.
+# error: schema_side_role_item.grammar:26:8:
+# error: 'eq' is a side-band role of 't'; side-band roles are filled by pattern labels
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf | eq
+top! = IDENT EQ                             → (t 1 eq:2)

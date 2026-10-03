@@ -1,6 +1,7 @@
-//! Lookahead sets for reductions: nullable and FIRST for every symbol, then
-//! either FOLLOW(lhs) (SLR(1)) or the LALR(1) lookaheads computed by the
-//! DeRemer–Pennello relations over the LR(0) automaton.
+//! Lookahead sets for reductions: nullable (insert cost 0) and FIRST (a
+//! union over the left-corner relation, by digraph) for every symbol, then
+//! the LALR(1) lookaheads computed by the DeRemer–Pennello relations over
+//! the LR(0) automaton.
 //!
 //! Every set is a bit set over symbol ids (only terminal bits are ever set).
 
@@ -14,133 +15,62 @@ const bitset = @import("bitset.zig");
 const BitSet = bitset.BitSet;
 const SetArray = bitset.SetArray;
 
-pub const ParseMode = enum { lalr, slr };
-
-/// The lookahead set of every reduction: `sets[state][i]` belongs to the i-th
-/// reduction item of `state` (`State.reductions[i]`). In SLR mode the sets
-/// of reductions with the same lhs are the same FOLLOW set. `first[sym]` is
-/// FIRST(sym) (for a terminal, the terminal itself); `nullable[sym]` says
-/// whether sym derives the empty string.
+/// The lookahead set of every reduction, with the grammar facts the later
+/// stages share. `sets[state][i]` belongs to the i-th reduction item of
+/// `state` (`State.reductions[i]`). `costs[sym]` is the fewest terminals sym
+/// derives (`repair.insertCosts`); `nullable[sym]` says whether sym derives
+/// the empty string (cost 0); `first[sym]` is FIRST(sym) (for a terminal,
+/// the terminal itself).
 pub const Lookaheads = struct {
-    mode: ParseMode,
     sets: []const []const BitSet,
-    first: SetArray,
+    costs: []const u32,
     nullable: []const bool,
+    first: SetArray,
 };
 
-pub fn compute(g: *const Grammar, auto: *const Automaton, mode: ParseMode) !Lookaheads {
+/// `costs` from `repair.insertCosts`; every nonterminal must derive some
+/// finite input (DeRemer–Pennello assumes a reduced grammar).
+pub fn compute(g: *const Grammar, auto: *const Automaton, costs: []const u32) !Lookaheads {
     const a = g.allocator;
-    const nullable = try computeNullable(g);
-    const first = try computeFirst(g, nullable);
-
-    const sets = switch (mode) {
-        .slr => try slrSets(g, auto, nullable, first),
-        .lalr => try lalrSets(a, g, auto, nullable),
+    const nullable = try a.alloc(bool, costs.len);
+    for (nullable, costs) |*n, c| n.* = c == 0;
+    return .{
+        .sets = try lalrSets(a, g, auto, nullable),
+        .costs = costs,
+        .nullable = nullable,
+        .first = try computeFirst(a, g, nullable),
     };
-    return .{ .mode = mode, .sets = sets, .first = first, .nullable = nullable };
 }
 
 // =============================================================================
-// Nullable and FIRST
+// FIRST
 // =============================================================================
 //
 // FIRST(X) = the terminals that can begin a string derived from X:
 //   FIRST(t) = { t } for a terminal t;
-//   FIRST(A) = the union of FIRST(rhs) over A's rules, where
-//   FIRST(X1 X2 ... Xn) = FIRST(X1) ∪ (FIRST(X2 ... Xn) if X1 is nullable).
+//   FIRST(A) = the union of FIRST(Xi) over A's rules A → X1 ... Xn and every
+//              i whose X1 ... X(i-1) are nullable.
+// That is a union over the left-corner relation (A, Xi), which `digraph`
+// computes in one pass.
 //
 // =============================================================================
 
-/// Which symbols derive ε (fixed point).
-fn computeNullable(g: *const Grammar) ![]bool {
-    const nullable = try g.allocator.alloc(bool, g.symbols.items.len);
-    @memset(nullable, false);
-
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (g.rules.items) |rule| {
-            if (nullable[rule.lhs]) continue;
-            const all = for (rule.rhs) |s| {
-                if (!nullable[s]) break false;
-            } else true;
-            if (all) {
-                nullable[rule.lhs] = true;
-                changed = true;
-            }
-        }
-    }
-    return nullable;
-}
-
-fn computeFirst(g: *const Grammar, nullable: []const bool) !SetArray {
+fn computeFirst(a: Allocator, g: *const Grammar, nullable: []const bool) !SetArray {
     const n = g.symbols.items.len;
-    const first = try SetArray.init(g.allocator, n, n);
+    const first = try SetArray.init(a, n, n);
     for (g.symbols.items, 0..) |sym, i| {
         if (sym.kind == .terminal) first.get(i).set(i);
     }
-
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (g.rules.items) |rule| {
-            const lhs = first.get(rule.lhs);
-            for (rule.rhs) |s| {
-                if (lhs.unionWith(first.get(s))) changed = true;
-                if (!nullable[s]) break;
-            }
+    var edges: std.ArrayList([2]u32) = .empty;
+    defer edges.deinit(a);
+    for (g.rules.items) |rule| {
+        for (rule.rhs) |s| {
+            if (g.symbols.items[s].kind == .terminal) first.get(rule.lhs).set(s) else try edges.append(a, .{ rule.lhs, s });
+            if (!nullable[s]) break;
         }
     }
+    try digraph(a, try Relation.build(a, n, edges.items), first);
     return first;
-}
-
-// =============================================================================
-// SLR(1): FOLLOW sets
-// =============================================================================
-//
-// FOLLOW(A) = the terminals that can appear right after A:
-//   for every rule B → α A β: FIRST(β) ⊆ FOLLOW(A), and
-//   FOLLOW(B) ⊆ FOLLOW(A) when β is nullable.
-//
-// =============================================================================
-
-fn slrSets(g: *const Grammar, auto: *const Automaton, nullable: []const bool, first: SetArray) ![]const []const BitSet {
-    const a = g.allocator;
-    const n = g.symbols.items.len;
-    const follow = try SetArray.init(a, n, n);
-
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (g.rules.items) |rule| {
-            // Walk right to left, carrying "FIRST of the rest, plus FOLLOW(lhs)
-            // while the rest is nullable".
-            var restNullable = true;
-            var i = rule.rhs.len;
-            while (i > 0) {
-                i -= 1;
-                const s = rule.rhs[i];
-                if (g.symbols.items[s].kind == .nonterminal) {
-                    const f = follow.get(s);
-                    if (restNullable and f.unionWith(follow.get(rule.lhs))) changed = true;
-                    var j = i + 1;
-                    while (j < rule.rhs.len) : (j += 1) {
-                        if (f.unionWith(first.get(rule.rhs[j]))) changed = true;
-                        if (!nullable[rule.rhs[j]]) break;
-                    }
-                }
-                if (!nullable[s]) restNullable = false;
-            }
-        }
-    }
-
-    const sets = try a.alloc([]const BitSet, auto.states.items.len);
-    for (auto.states.items, 0..) |state, si| {
-        const row = try a.alloc(BitSet, state.reductions.len);
-        for (state.reductions, 0..) |item, ri| row[ri] = follow.get(g.rules.items[item.ruleId].lhs);
-        sets[si] = row;
-    }
-    return sets;
 }
 
 // =============================================================================

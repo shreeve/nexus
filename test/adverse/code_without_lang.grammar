@@ -1,0 +1,15 @@
+# `@code = f` imports f from the lang module: it needs @lang (reported
+# at the @code line).
+# error: code_without_lang.grammar:12:9:
+# error: @code = look needs @lang (the function is imported from the lang module)
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+@code = look
+. → err
+@parser
+s = IDENT

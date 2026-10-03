@@ -1,0 +1,15 @@
+# Without a `name!` rule the first rule is the start symbol, even an
+# alias; the rules after it are then unreachable.
+# error: unreachable_alias_start.grammar:15:1:
+# error: rule 's' is unreachable: no start symbol reaches it
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+name = IDENT
+s    = name name                            → (s 1 2)

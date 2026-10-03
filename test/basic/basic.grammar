@@ -32,9 +32,6 @@ tokens
 
 @parser
 
-@lang = "basic"
-
-
 name = IDENT
 
 program! = body                             → (module ...1)

@@ -1,0 +1,3 @@
+later = 1
+print later
+x = later

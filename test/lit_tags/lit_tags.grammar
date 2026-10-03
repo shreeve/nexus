@@ -6,8 +6,8 @@
 #   2. An operator-name child Tag literal (`+=`) is validated as a tag name
 #      and emitted without any `key:val` annotation leaking into the name.
 #
-# The grammar has no @lang, so the Tag enum is collected from the actions,
-# child-position Tag literals included.
+# The Tag enum is collected from the actions, child-position Tag literals
+# included, followed by the `@tags` names (`@tags` needs no @schema).
 
 @lexer
 
@@ -31,6 +31,7 @@ tokens
 
 @parser
 
+@tags  extra  "+="
 
 program! = body                             → (module ...1)
 

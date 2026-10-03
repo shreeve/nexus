@@ -31,7 +31,7 @@ while [[ $# -gt 0 ]]; do
         -n) GEN_N=$2; PARSE_N=$2; shift ;;
         --nexus) NEXUS_ARG=$2; shift ;;
         gen|parse) PARTS+=("$1") ;;
-        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
         *) echo "unknown argument $1" >&2; exit 2 ;;
     esac
     shift
@@ -70,7 +70,7 @@ GRAMMARS=(
 
 if want gen; then
     echo
-    echo "## Generation time ($GEN_N runs each, wall clock including process start)"
+    echo "## Generation time ($GEN_N runs each, wall clock of the nexus process)"
     echo
     echo "| grammar | mean ms | min ms | output lines | output KB |"
     echo "|---|---:|---:|---:|---:|"
@@ -80,17 +80,22 @@ if want gen; then
         tmp="$OUT/gen_$name.zig"
         (cd "$dir" && "$NEXUS" "$file" "$tmp") >/dev/null 2>&1
         [[ -s "$tmp" ]] || { echo "| $name | generation failed | | | |"; continue; }
+        # List-form system() with the output redirected once: no shell
+        # starts per run, so the time is nexus alone.
         perl -MTime::HiRes=time -e '
             my ($n, $dir, $nexus, $file, $tmp) = @ARGV;
             chdir $dir or die;
+            open my $report, ">&", \*STDOUT or die;
+            open STDOUT, ">", "/dev/null" or die;
+            open STDERR, ">", "/dev/null" or die;
             my ($sum, $min) = (0, 1e9);
             for (1..$n) {
                 my $t = time;
-                system("$nexus \Q$file\E \Q$tmp\E >/dev/null 2>&1");
+                system($nexus, $file, $tmp) == 0 or do { print $report "failed -\n"; exit 1 };
                 my $d = (time - $t) * 1000;
                 $sum += $d; $min = $d if $d < $min;
             }
-            printf "%.1f %.1f\n", $sum / $n, $min;
+            printf $report "%.1f %.1f\n", $sum / $n, $min;
         ' "$GEN_N" "$dir" "$NEXUS" "$file" "$tmp" | {
             read -r mean min
             printf '| %s | %s | %s | %d | %d |\n' "$name" "$mean" "$min" "$(wc -l <"$tmp")" "$(( $(wc -c <"$tmp") / 1024 ))"
@@ -142,6 +147,7 @@ if want parse; then
     # Keep only the Rig sources that parse on their own, then repeat them.
     "$OUT/rig/driver" --start parseTree --hash --list "$OUT/rig.src" 2>/dev/null |
         awk -F'\t' '$2 == "ok" { print $1 }' >"$OUT/rig.ok"
+    [[ -s "$OUT/rig.ok" ]] || { echo "no Rig source in $RIG_CORPUS parses on its own" >&2; exit 1; }
     : >"$big"
     while [[ $(wc -c <"$big") -lt 4000000 ]]; do
         while read -r f; do cat "$f"; echo; done <"$OUT/rig.ok" >>"$big"

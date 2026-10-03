@@ -1,0 +1,14 @@
+# A class shorthand like \d is a set, not a range end
+# error: lexer_pattern_range_shorthand.grammar:9:4:
+# error: a class shorthand cannot end a range
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+[a-\d]          → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

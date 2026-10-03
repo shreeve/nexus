@@ -1,0 +1,14 @@
+# An unrecognized @lexer line is quoted to at most 60 bytes.
+# error: lexer_long_line.grammar:11:1:
+# error: unrecognized line in the @lexer section: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+. → err
+@parser
+s = IDENT

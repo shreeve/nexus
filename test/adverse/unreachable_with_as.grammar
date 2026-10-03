@@ -1,0 +1,16 @@
+# Unreachable rules are found with @as too.
+# error: unreachable_with_as.grammar:16:1:
+# error: rule 'dead' is unreachable: no start symbol reaches it
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@as IDENT = [kw]
+
+prog! = KW IDENT                            → (p 2)
+dead  = IDENT                               → (d 1)

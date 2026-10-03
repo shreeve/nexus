@@ -1,0 +1,28 @@
+# Tolerant repair cannot be driven into an endless insertion. At the end
+# of `{`, inserting OPEN lets the state shift but never finishes `item`:
+# each insertion nests the construct one level deeper, in the same state.
+# The driver inserts it once, refuses to repeat it on a deeper stack, and
+# ends the parse incomplete, however large the budget (the lang module
+# passes 1,000,000; each further insertion would have copied the whole
+# state stack).
+
+@lexer
+tokens
+    open
+    close
+    word
+    eof
+    err
+'{'                                         → open
+'}'                                         → close
+[a-z]+                                      → word
+.                                           → err
+
+@parser
+@lang = "repair_runaway"
+@repair
+    structure  OPEN CLOSE
+
+top! = item                                 → (top 1)
+item = OPEN item CLOSE                      → (blk 2)
+     | WORD                                 → 1

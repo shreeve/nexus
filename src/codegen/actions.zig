@@ -1,12 +1,14 @@
 //! Action codegen: compiles a rule's action tree (grammar.ActionTree) into
 //! the Zig expression `executeAction` returns for it, and collects the tags
-//! actions use (for the auto-extracted Tag enum).
+//! actions use (for the generated Tag enum). A rule whose value is nil or
+//! one of its elements gets no expression: `ruleValue` takes it.
 //!
-//! Two modes. Without a schema, lists drop trailing nils (at run time), and
-//! common shapes use dedicated builders: `(tag ...N)` is `sexpSpread`,
-//! `(tag M ...N)` is `sexpPosSpread`, `(tag a b)` is `sexp`. With a schema,
-//! every list has exactly the items its action places (fixed length, nils
-//! kept), in order.
+//! A list whose items are all elements, tags or nil is static data that
+//! `buildOf` reads; a spread uses a dedicated builder (`(tag ...N)` is
+//! `sexpSpread`, `(tag M ...N)` is `sexpPosSpread`), and `(...N x)` extends
+//! a left-recursive list in place. Without a schema, lists drop trailing
+//! nils (at run time); with a schema, every list has exactly the items its
+//! action places (fixed length, nils kept), in order.
 //!
 //! The emitted code touches the Sexp list representation only through the
 //! helpers in the "Runtime surface" section at the bottom.
@@ -48,7 +50,7 @@ pub const TagSet = struct {
         };
     }
 
-    fn register(self: *TagSet, allocator: Allocator, tag: []const u8) !void {
+    pub fn register(self: *TagSet, allocator: Allocator, tag: []const u8) !void {
         if (!self.map.contains(tag)) {
             const owned = try allocator.dupe(u8, tag);
             try self.map.put(allocator, owned, @intCast(self.list.items.len));
@@ -117,21 +119,49 @@ fn markElem(tree: []bool, rule: Rule, e: ActionElem) void {
     }
 }
 
-/// Emit the Zig expression for `rule`'s action. `reachesTree` is whether
-/// the rule's value can reach the tree (see `treeSymbols`).
-pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool) !void {
-    var e = Emitter{ .allocator = allocator, .g = g, .rule = rule, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread" };
-    const tree = rule.actionTree orelse {
-        // Default: nothing, the one element, or an untagged list.
-        if (rule.rhs.len == 0) return writer.writeAll(".nil");
-        if (rule.rhs.len == 1) return writer.writeAll("pass[0]");
-        return writer.print("self.list(pass, {s})", .{e.use});
+/// The value of a rule whose action builds nothing: nil, or one of its
+/// elements as it is. The parser takes it without calling the action
+/// function.
+pub const Copy = union(enum) { nil, element: u16 };
+
+pub fn copyOf(rule: Rule) ?Copy {
+    const tree = rule.actionTree orelse return switch (rule.rhs.len) {
+        0 => .nil,
+        1 => .{ .element = 0 },
+        else => null,
     };
-    switch (tree) {
-        .nil => try writer.writeAll(".nil"),
-        .pass => |p| try writer.print("pass[{d}]", .{Emitter.index(p)}),
-        .list => |l| try e.list(writer, l, "blk"),
-    }
+    return switch (tree) {
+        .nil => .nil,
+        .pass => |p| .{ .element = p - 1 },
+        .list => null,
+    };
+}
+
+/// What the emitted actions refer to, so that `executeAction` discards
+/// the parameters none reads and the module keeps element extents only
+/// when some action builds a nested node.
+pub const Uses = struct {
+    /// Some action reads its elements (`pass`).
+    pass: bool = false,
+    /// Some action calls a builder (`self`).
+    self: bool = false,
+    /// Some action builds a nested node over elements (`self.nested`).
+    nested: bool = false,
+};
+
+/// Emit the Zig expression for `rule`'s action, recording in `uses` what
+/// it refers to. `reachesTree` is whether the rule's value can reach the
+/// tree (see `treeSymbols`).
+pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool, uses: *Uses) !void {
+    var e = Emitter{ .allocator = allocator, .g = g, .rule = rule, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread", .uses = uses };
+    // A rule whose value is nil or one of its elements has no action
+    // (`copyOf`); the default action of several elements is their list.
+    const tree = rule.actionTree orelse {
+        uses.self = true;
+        uses.pass = true;
+        return writer.print("self.build(pass, {s})", .{e.use});
+    };
+    try e.list(writer, tree.list, "blk");
 }
 
 const Emitter = struct {
@@ -145,6 +175,7 @@ const Emitter = struct {
     /// The `ListUse` of the rule's own untagged list (`.tree` or
     /// `.spread`); nested lists always reach the tree.
     use: []const u8,
+    uses: *Uses,
 
     /// The value-stack index of action position `pos` (1-based).
     fn index(pos: u16) usize {
@@ -152,6 +183,9 @@ const Emitter = struct {
     }
 
     fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+        // Every list is built by a builder.
+        self.uses.self = true;
+        if (readsElements(l)) self.uses.pass = true;
         if (l.head == .none and l.items.len == 0) return w.print(emptyList, .{self.use});
 
         // (!A ...B): element A consed onto the list at B (A nil when it is
@@ -175,6 +209,10 @@ const Emitter = struct {
         };
         if (!spreads) {
             // Every item is one Sexp: allocate the list in one step.
+            if (staticItems(l)) {
+                try self.staticList(w, l);
+                return w.print(", pass, {s}, false)", .{self.listUse(l)});
+            }
             try w.writeAll(listFromSlicePrefix);
             var first = true;
             if (headValue(l.head)) |_| {
@@ -237,15 +275,19 @@ const Emitter = struct {
         const bare = plain and !hasNil and !hasChildTag and !hasNested(l);
 
         if (bare and spreadCount == 1 and posCount == 0) {
-            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ fmtTag(tag.?), index(spreadPos) });
+            return w.print("self.sexpSpread(.@\"{f}\", pass[{d}])", .{ std.zig.fmtString(tag.?), index(spreadPos) });
         }
         // `(tag N ...M)`; `(tag ...M N)` keeps its order through buildList.
         const posBeforeSpread = l.items.len == 2 and l.items[0].elem == .ref;
         if (bare and spreadCount == 1 and posCount == 1 and posBeforeSpread) {
-            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ fmtTag(tag.?), index(firstPos), index(spreadPos) });
+            return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ std.zig.fmtString(tag.?), index(firstPos), index(spreadPos) });
         }
         if (plain and spreadCount == 0) {
-            try w.print("self.sexp(.@\"{f}\", &.{{", .{fmtTag(tag.?)});
+            if (staticItems(l)) {
+                try self.staticList(w, l);
+                return w.writeAll(", pass, .tree, true)");
+            }
+            try w.print("self.sexp(.@\"{f}\", &.{{", .{std.zig.fmtString(tag.?)});
             for (l.items, 0..) |item, i| {
                 if (i > 0) try w.writeAll(", ");
                 try self.value(w, item.elem);
@@ -253,6 +295,59 @@ const Emitter = struct {
             return w.writeAll("})");
         }
         try self.buildList(w, l, label);
+    }
+
+    /// Whether every item of a list without spreads is an element, a tag
+    /// or nil: the list is then static data (`buildOf`).
+    fn staticItems(l: ActionList) bool {
+        switch (l.head) {
+            .ref => |h| if (!staticItem(h)) return false,
+            else => {},
+        }
+        for (l.items) |item| if (!staticItem(item.elem)) return false;
+        return true;
+    }
+
+    fn staticItem(e: ActionElem) bool {
+        return switch (e) {
+            .ref, .nil, .tagLit, .litTag => true,
+            .spread, .symId, .node => false,
+        };
+    }
+
+    /// `self.buildOf(&.{ items... }` for a list of static items.
+    fn staticList(self: *Emitter, w: anytype, l: ActionList) anyerror!void {
+        self.uses.pass = true;
+        try w.writeAll("self.buildOf(&.{");
+        var first = true;
+        switch (l.head) {
+            .tag => |t| {
+                try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)});
+                first = false;
+            },
+            .ref => |h| {
+                try self.staticValue(w, h);
+                first = false;
+            },
+            .none => {},
+        }
+        for (l.items) |it| {
+            if (!first) try w.writeAll(",");
+            first = false;
+            try self.staticValue(w, it.elem);
+        }
+        try w.writeAll(" }");
+    }
+
+    /// One static item as an `Item` literal.
+    fn staticValue(self: *Emitter, w: anytype, e: ActionElem) anyerror!void {
+        switch (e) {
+            .ref => |p| try w.print(" .{{ .elem = {d} }}", .{index(p)}),
+            .nil => try w.writeAll(" .nil"),
+            .tagLit => |t| try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
+            .litTag => |p| try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
+            .spread, .symId, .node => unreachable,
+        }
     }
 
     fn hasNested(l: ActionList) bool {
@@ -266,7 +361,8 @@ const Emitter = struct {
     /// A leading `...N` whose N is not used again extends that list in
     /// place (amortized O(1) growth of left-recursive lists; each reduced
     /// value is consumed once). Trailing nils are dropped by the runtime
-    /// (keepList/finishList) unless the schema fixes positions.
+    /// (keepList/finishList) unless the schema fixes positions or the list
+    /// keeps its nils.
     fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         var extend: ?u16 = null;
         if (l.head == .none and l.items.len > 0 and l.items[0].elem == .spread) {
@@ -277,7 +373,7 @@ const Emitter = struct {
             };
         }
         if (extend) |n| {
-            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
+            try w.print("{s}: {{ var out = self.extendList(pass, {d}) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
         } else {
             try w.print("{s}: {{ var out: std.ArrayList(Sexp) = .empty; ", .{label});
         }
@@ -301,7 +397,8 @@ const Emitter = struct {
             }
         }
         if (extend != null) {
-            try w.print("break :{s} self.keepList(&out, {s}); }}", .{ label, self.listUse(l) });
+            const keep = if (l.keepNils) "keepListNils" else "keepList";
+            try w.print("break :{s} self.{s}(&out, pass, {d}, {s}); }}", .{ label, keep, index(extend.?), self.listUse(l) });
         } else {
             try w.print("break :{s} " ++ listFromOwned ++ "; }}", .{ label, self.listUse(l) });
         }
@@ -316,7 +413,7 @@ const Emitter = struct {
 
     fn headExpr(self: *Emitter, w: anytype, head: ActionList.Head) anyerror!void {
         switch (head) {
-            .tag => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
+            .tag => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
             .ref => |e| try self.value(w, e),
             .none => unreachable,
         }
@@ -328,11 +425,11 @@ const Emitter = struct {
             .ref => |p| try w.print("pass[{d}]", .{index(p)}),
             .symId => |p| {
                 const at = index(p);
-                try w.print("if (pass[{d}] == .src) pass[{d}] else .{{ .src = .{{ .pos = 0, .len = 0, .id = 0 }} }}", .{ at, at });
+                try w.print("if (pass[{d}] == .src) pass[{d}] else self.emptyLeaf(pass, {d})", .{ at, at, at });
             },
             .nil => try w.writeAll(".nil"),
-            .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
-            .litTag => |p| try w.print(".{{ .tag = .@\"{f}\" }}", .{fmtTag(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
+            .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
+            .litTag => |p| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
             .node => |n| {
                 // A nested node gets its own node id, spanning the
                 // pattern elements it references.
@@ -345,6 +442,7 @@ const Emitter = struct {
                 var range: Range = .{};
                 range.addList(n.*);
                 if (range.lo) |lo| {
+                    self.uses.nested = true;
                     try w.writeAll("self.nested(");
                     try self.list(w, n.*, label);
                     try w.print(", {d}, {d})", .{ index(lo), index(range.hi) });
@@ -386,6 +484,24 @@ const Range = struct {
     }
 };
 
+/// Whether a list reads any element (`pass`).
+fn readsElements(l: ActionList) bool {
+    switch (l.head) {
+        .ref => |h| if (readsElement(h)) return true,
+        else => {},
+    }
+    for (l.items) |item| if (readsElement(item.elem)) return true;
+    return false;
+}
+
+fn readsElement(e: ActionElem) bool {
+    return switch (e) {
+        .ref, .spread, .symId => true,
+        .node => |n| readsElements(n.*),
+        .nil, .tagLit, .litTag => false,
+    };
+}
+
 fn refersTo(e: ActionElem, pos: u16) bool {
     return switch (e) {
         .ref, .spread, .symId, .litTag => |p| p == pos,
@@ -409,28 +525,9 @@ fn isTagLiteral(t: []const u8) bool {
 }
 
 /// The text a string-literal terminal (`"+="`) matches: its name without
-/// the quotes, `\c` escapes read as `c`.
+/// the quotes, its escapes decoded.
 fn literalText(allocator: Allocator, name: []const u8) ![]const u8 {
-    const body = name[1 .. name.len - 1];
-    var out: std.ArrayList(u8) = .empty;
-    var i: usize = 0;
-    while (i < body.len) : (i += 1) {
-        if (body[i] == '\\' and i + 1 < body.len) i += 1;
-        try out.append(allocator, body[i]);
-    }
-    return out.toOwnedSlice(allocator);
-}
-
-/// A tag name inside `@"..."` (escapes `\`).
-fn fmtTag(t: []const u8) std.fmt.Alt([]const u8, writeTag) {
-    return .{ .data = t };
-}
-
-fn writeTag(t: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
-    for (t) |c| {
-        if (c == '\\' or c == '"') try w.writeByte('\\');
-        try w.writeByte(c);
-    }
+    return grammar.decode(allocator, name[1 .. name.len - 1]);
 }
 
 // =============================================================================

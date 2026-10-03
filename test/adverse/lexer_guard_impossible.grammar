@@ -1,0 +1,15 @@
+# Guards on one variable are not independent: m == 1 and m == 2 never hold
+# together, so the rule could never fire
+# error: lexer_guard_impossible.grammar:10:1:
+# error: this rule can never match: its guards are never all true together
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'     @ m == 1 & m == 2       → t
+'a'                             → u
+.                               → err
+
+@parser
+top! = ERR → 1

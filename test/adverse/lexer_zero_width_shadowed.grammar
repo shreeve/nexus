@@ -1,0 +1,14 @@
+# A zero-width rule fires whenever its guards hold, so one whose guards
+# hold only where an earlier one's do never fires.
+# error: lexer_zero_width_shadowed.grammar:10:1:
+# error: this rule can never match: whenever its guards hold, the zero-width rule on line 9 fires first
+@lexer
+tokens
+    a, b, c, eof, err
+'c'                             → c
+@ pre > 0                       → a
+@ pre > 1                       → b
+.                               → err
+
+@parser
+top! = ERR → 1

@@ -1,0 +1,14 @@
+# A repeat count starts with a number
+# error: lexer_pattern_repeat_no_number.grammar:9:5:
+# error: expected a number in the repeat count
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'{,3}         → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

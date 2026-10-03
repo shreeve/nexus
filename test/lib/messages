@@ -1,0 +1,169 @@
+#!/usr/bin/perl
+# Check that every diagnostic the generator can print is printed by a test.
+#
+# Usage:
+#   test/lib/messages ALLOW CORPUS SRC.zig...
+#
+# Extracts the format string of every error in the SRC files:
+# the last string argument (or a `const NAME = "..."` it names) of a call
+# to a report function (err, errAt, errLine, fail, failAt, failLine,
+# errDirective, errAtUse, usageError, report), the text after `error: `
+# of a std.debug.print, and each piece of a message written to
+# a writer: the string of every `.writeAll(` and `.print(` from a call to
+# `located` (or the start of `fn describe`) up to the next `emit(` call or
+# `fn`. Test blocks, comments and multiline strings are skipped, and so
+# are formats with almost no fixed text ("{s}"). Each
+# format, with its {...} placeholders as wildcards, must match a line of
+# CORPUS (the output of the generator over every test grammar, and the
+# texts tools/cli expects), unless ALLOW lists it.
+#
+# ALLOW has one line per message no test prints:
+#   FILE<TAB>FORMAT<TAB>REASON
+# with FORMAT as written in the source (between the quotes). An entry
+# whose message a test prints, or that is in no SRC file, fails too, so
+# the list only ever shrinks to what is untested.
+#
+# Prints the problems, one per line; exit status 1 if there are any.
+
+use strict;
+use warnings;
+
+my ($allowFile, $corpusFile, @srcs) = @ARGV;
+die "usage: test/lib/messages ALLOW CORPUS SRC.zig...\n" unless @srcs;
+
+my %report = map { $_ => 1 } qw(err errAt errLine fail failAt failLine errDirective errAtUse usageError report);
+
+# Zig tokens: [kind, text, line]; kind is s (string literal), w (word) or p.
+sub tokens {
+    my ($text) = @_;
+    my @t;
+    my $line = 1;
+    pos($text) = 0;
+    while (pos($text) < length $text) {
+        if ($text =~ /\G\n/gc) { $line++ }
+        elsif ($text =~ /\G[ \t\r]+/gc) { }
+        elsif ($text =~ /\G\/\/[^\n]*/gc) { }
+        elsif ($text =~ /\G\\\\[^\n]*/gc) { }
+        elsif ($text =~ /\G"((?:[^"\\\n]|\\.)*)"/gc) { push @t, ['s', $1, $line] }
+        elsif ($text =~ /\G'(?:[^'\\\n]|\\[^\n]*?)'/gc) { push @t, ['p', 'char', $line] }
+        elsif ($text =~ /\G(\@?[A-Za-z_][A-Za-z0-9_]*)/gc) { push @t, ['w', $1, $line] }
+        elsif ($text =~ /\G(.)/gcs) { push @t, ['p', $1, $line] }
+    }
+    return @t;
+}
+
+# file → format → first line
+my %found;
+my @order;
+sub found {
+    my ($file, $fmt, $line) = @_;
+    return if exists $found{$file}{$fmt};
+    $found{$file}{$fmt} = $line;
+    push @order, [$file, $fmt];
+}
+
+for my $file (@srcs) {
+    open my $fh, '<', $file or die "$file: $!\n";
+    my $text = do { local $/; <$fh> };
+    close $fh;
+    # Blank out top-level test blocks, keeping the line count.
+    $text =~ s{^test "[^\n]*\{\n.*?^\}\n}{my $b = $&; $b =~ tr/\n//cd; $b}gmse;
+    my @t = tokens($text);
+    # String constants a report call may name.
+    my %const;
+    for my $i (0 .. $#t - 4) {
+        $const{$t[$i + 1][1]} = $t[$i + 3][1]
+            if $t[$i][1] eq 'const' && $t[$i + 2][1] eq '=' && $t[$i + 3][0] eq 's' && $t[$i + 4][1] eq ';';
+    }
+    my $writing = 0;
+    for my $i (0 .. $#t - 1) {
+        if ($t[$i][1] eq 'fn') { $writing = $t[$i + 1][1] eq 'describe' }
+        next unless $t[$i][0] eq 'w' && $t[$i + 1][1] eq '(';
+        my $name = $t[$i][1];
+        next if $i > 0 && $t[$i - 1][1] eq 'fn';
+        if ($name eq 'located') { $writing = 1; next }
+        if ($name eq 'emit') { $writing = 0; next }
+        if ($writing && ($name eq 'writeAll' || $name eq 'print') && $t[$i - 1][1] eq '.' && $t[$i + 2][0] eq 's') {
+            (my $piece = $t[$i + 2][1]) =~ s/(\\n)+$//;
+            (my $fixed = $piece) =~ s/\{[^{}]*\}//g;
+            found($file, $piece, $t[$i + 2][2]) if ($fixed =~ tr/A-Za-z//) >= 4;
+            next;
+        }
+        my $isPrint = $name eq 'print' && $i >= 2 && $t[$i - 1][1] eq '.' && $t[$i - 2][1] eq 'debug';
+        next unless $report{$name} || $isPrint;
+        # The call's top-level string arguments, `"a" ++ "b"` joined.
+        my ($depth, @strs) = (0);
+        for (my $j = $i + 1; $j <= $#t; $j++) {
+            my ($k, $x) = @{$t[$j]};
+            if ($k eq 'p' && $x =~ /^[(\[{]$/) { $depth++ }
+            elsif ($k eq 'p' && $x =~ /^[)\]}]$/) { last if --$depth == 0 }
+            elsif ($k eq 's' && $depth == 1) {
+                if (@strs && $t[$j - 1][1] eq '+' && $t[$j - 2][1] eq '+' && $t[$j - 3][0] eq 's') { $strs[-1][0] .= $x; $strs[-1][2] = $j }
+                else { push @strs, [$x, $t[$j][2], $j] }
+            }
+            elsif ($k eq 'w' && $depth == 1 && exists $const{$x} && $t[$j + 1][1] =~ /^[,)]$/) { push @strs, [$const{$x}, $t[$j][2], $j] }
+        }
+        next unless @strs;
+        my ($fmt, $line, $end) = @{$isPrint ? $strs[0] : $strs[-1]};
+        # `"prefix: " ++ fmt` is a wrapper's, not a message.
+        next if $end + 3 <= $#t && $t[$end + 1][1] eq '+' && $t[$end + 2][1] eq '+' && $t[$end + 3][0] ne 's';
+        if ($isPrint) {
+            next unless $fmt =~ s/^.*?\berror: //;
+        }
+        $fmt =~ s/\\n$//;
+        (my $fixed = $fmt) =~ s/\{[^{}]*\}//g;
+        next if ($fixed =~ tr/A-Za-z//) < 4;
+        found($file, $fmt, $line);
+    }
+}
+
+# A format as a regex: {...} placeholders match anything.
+sub pattern {
+    my ($fmt) = @_;
+    my $re = '';
+    pos($fmt) = 0;
+    while (pos($fmt) < length $fmt) {
+        if ($fmt =~ /\G\{\{/gc) { $re .= '\{' }
+        elsif ($fmt =~ /\G\}\}/gc) { $re .= '\}' }
+        elsif ($fmt =~ /\G\{[^{}]*\}/gc) { $re .= '.*' }
+        elsif ($fmt =~ /\G\\x([0-9a-fA-F]{2})/gc) { $re .= quotemeta chr hex $1 }
+        elsif ($fmt =~ /\G\\n/gc) { $re .= '\n' }
+        elsif ($fmt =~ /\G\\t/gc) { $re .= '\t' }
+        elsif ($fmt =~ /\G\\(.)/gc) { $re .= quotemeta $1 }
+        elsif ($fmt =~ /\G(.)/gcs) { $re .= quotemeta $1 }
+    }
+    return qr/$re/;
+}
+
+open my $ch, '<', $corpusFile or die "$corpusFile: $!\n";
+my $corpus = do { local $/; <$ch> };
+close $ch;
+
+my %allow;
+my @problems;
+open my $ah, '<', $allowFile or die "$allowFile: $!\n";
+while (my $l = <$ah>) {
+    chomp $l;
+    next if $l =~ /^\s*(#|$)/;
+    my ($file, $fmt, $why) = split /\t/, $l, 3;
+    if (!defined $why || $why !~ /\S/) { push @problems, "$allowFile:$.: not FILE<TAB>FORMAT<TAB>REASON"; next }
+    if (!exists $found{$file}{$fmt}) { push @problems, "$allowFile:$.: \"$fmt\" is not a message of $file (remove the entry)"; next }
+    $allow{$file}{$fmt} = $.;
+}
+close $ah;
+
+my ($n, $tested) = (0, 0);
+for my $m (@order) {
+    my ($file, $fmt) = @$m;
+    $n++;
+    my $printed = $corpus =~ pattern($fmt);
+    $tested++ if $printed;
+    if ($printed && $allow{$file}{$fmt}) {
+        push @problems, "$allowFile:$allow{$file}{$fmt}: \"$fmt\" is printed by a test (remove the entry)";
+    } elsif (!$printed && !$allow{$file}{$fmt}) {
+        push @problems, "$file:$found{$file}{$fmt}: no test prints \"$fmt\"";
+    }
+}
+print "$_\n" for @problems;
+printf STDERR "%d messages, %d printed by tests, %d allowed untested\n", $n, $tested, scalar map { keys %$_ } values %allow;
+exit(@problems ? 1 : 0);

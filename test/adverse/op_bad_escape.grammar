@@ -1,0 +1,15 @@
+# The token name an @op entry maps to is a string with checked escapes.
+# error: op_bad_escape.grammar:13:19:
+# error: unknown escape sequence
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@op = ["+" → "id\q"]
+
+s = IDENT "+"

@@ -1,0 +1,14 @@
+# A ')' with no '(' before it
+# error: lexer_pattern_unbalanced_paren.grammar:9:5:
+# error: unbalanced ')'
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' )       → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

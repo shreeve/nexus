@@ -3,17 +3,17 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Nexus — Universal Parser Generator</title>
+  <title>Nexus — a parser generator for Zig</title>
 
-  <meta name="description" content="Define a grammar. Get a parser. Any language. Nexus is a self-hosting, universal parser generator that reads .grammar files and produces combined lexer + LALR(1)/SLR(1) parser modules.">
-  <meta property="og:title" content="Nexus — Universal Parser Generator">
-  <meta property="og:description" content="Define a grammar. Get a parser. Any language.">
+  <meta name="description" content="One grammar file in. One standalone Zig module out: a DFA lexer, an LALR(1) parser, and a verified semantic layer.">
+  <meta property="og:title" content="Nexus — a parser generator for Zig">
+  <meta property="og:description" content="One grammar file in. One standalone Zig module out: a DFA lexer, an LALR(1) parser, and a verified semantic layer.">
   <meta property="og:image" content="https://shreeve.github.io/nexus/nexus-social.png">
   <meta property="og:url" content="https://shreeve.github.io/nexus/">
   <meta property="og:type" content="website">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Nexus — Universal Parser Generator">
-  <meta name="twitter:description" content="Define a grammar. Get a parser. Any language.">
+  <meta name="twitter:title" content="Nexus — a parser generator for Zig">
+  <meta name="twitter:description" content="One grammar file in. One standalone Zig module out: a DFA lexer, an LALR(1) parser, and a verified semantic layer.">
   <meta name="twitter:image" content="https://shreeve.github.io/nexus/nexus-social.png">
 
   <meta name="theme-color" content="#ffffff">
@@ -340,10 +340,10 @@
   <!-- Hero -->
   <div class="hero">
     <img src="nexus-logo-720w.png" alt="Nexus logo">
-    <h1>Universal Parser Generator</h1>
+    <h1>Nexus</h1>
     <p class="tagline">
-      One tool reads any <code>.grammar</code> file and produces a combined
-      lexer + LALR(1)/SLR(1) parser. One tool, any language, zero language-specific code in the engine.
+      One grammar file in. One standalone Zig module out: a DFA lexer, an
+      LALR(1) parser, and a verified semantic layer.
     </p>
     <div class="hero-buttons">
       <a class="btn btn-primary" href="https://github.com/shreeve/nexus">
@@ -361,16 +361,22 @@
   <!-- How It Works -->
   <section>
     <h2>How It Works</h2>
-    <p>Write two files &mdash; a grammar and a language module &mdash; and Nexus generates a complete, production-ready parser.</p>
+    <p>
+      Write one grammar file: the tokens as regular expressions, the syntax
+      as LALR(1) rules, and next to each rule the tree it builds. When the
+      language needs layout or keyword classification, add a Zig lang
+      module. Nexus writes one Zig module you can vendor: a DFA lexer, an
+      LALR(1) parser and, with <code>@schema</code>, a verified semantic
+      layer. No runtime library, no allocation while lexing, the same bytes
+      on every run.
+    </p>
 
     <div class="pipeline">
-      <div class="node"><strong>{lang}.grammar</strong>tokens + rules</div>
-      <span class="arrow">+</span>
-      <div class="node"><strong>{lang}.zig</strong>lang module</div>
+      <div class="node"><strong>calc.grammar</strong>tokens, rules, trees</div>
       <span class="arrow">&rarr;</span>
-      <div class="node"><strong>nexus</strong>generator engine</div>
+      <div class="node"><strong>nexus</strong>checks and generates</div>
       <span class="arrow">&rarr;</span>
-      <div class="node"><strong>parser.zig</strong>lexer + parser</div>
+      <div class="node"><strong>parser.zig</strong>lexer, parser, tree API</div>
     </div>
   </section>
 
@@ -378,61 +384,73 @@
 
   <!-- Example Grammar -->
   <section>
-    <h2>Example: Expression Grammar</h2>
+    <h2>Example</h2>
     <p>
-      A complete grammar for arithmetic expressions with operator precedence,
-      associativity, parentheses, and multiple start symbols.
+      A calculator with <code>let</code> statements: a schema for its tree,
+      comments kept aside as trivia, and an operator-precedence chain. The
+      same grammar is the tour in the README, where the test suite
+      generates, compiles and runs it.
     </p>
 
     <div class="code-block">
       <div class="code-header">
-        <span class="code-filename">basic.grammar</span>
+        <span class="code-filename">calc.grammar</span>
         <span class="code-label">Input</span>
       </div>
-      <pre><span class="kw">@lexer</span>
+      <pre data-grammar><span class="kw">@lexer</span>
 
 <span class="kw">tokens</span>
-    <span class="tok">integer</span>, <span class="tok">ident</span>, <span class="tok">plus</span>, <span class="tok">minus</span>, <span class="tok">star</span>, <span class="tok">slash</span>,
-    <span class="tok">power</span>, <span class="tok">lparen</span>, <span class="tok">rparen</span>, <span class="tok">newline</span>, <span class="tok">eof</span>, <span class="tok">err</span>
+    ident, number, let
+    eq, plus, minus, star, slash, lparen, rparen
+    newline, comment, eof, err
 
-<span class="str">'+'</span>                              <span class="op">&rarr;</span> <span class="tok">plus</span>
-<span class="str">'-'</span>                              <span class="op">&rarr;</span> <span class="tok">minus</span>
-<span class="str">'*'</span>                              <span class="op">&rarr;</span> <span class="tok">star</span>
-<span class="str">'/'</span>                              <span class="op">&rarr;</span> <span class="tok">slash</span>
-<span class="str">"**"</span>                             <span class="op">&rarr;</span> <span class="tok">power</span>
-<span class="str">'('</span>                              <span class="op">&rarr;</span> <span class="tok">lparen</span>
-<span class="str">')'</span>                              <span class="op">&rarr;</span> <span class="tok">rparen</span>
-<span class="str">'\n'</span>                             <span class="op">&rarr;</span> <span class="tok">newline</span>
-<span class="sym">[0-9]+</span>                           <span class="op">&rarr;</span> <span class="tok">integer</span>
-<span class="sym">[a-zA-Z_][a-zA-Z0-9_]*</span>           <span class="op">&rarr;</span> <span class="tok">ident</span>
-<span class="sym">.</span>                                <span class="op">&rarr;</span> <span class="tok">err</span>
+<span class="str">'#'</span> <span class="sym">[^\n]*</span>                 <span class="op">→</span> <span class="tok">comment</span>
+<span class="str">'\n'</span>                       <span class="op">→</span> <span class="tok">newline</span>
+<span class="str">'='</span>                        <span class="op">→</span> <span class="tok">eq</span>
+<span class="str">'+'</span>                        <span class="op">→</span> <span class="tok">plus</span>
+<span class="str">'-'</span>                        <span class="op">→</span> <span class="tok">minus</span>
+<span class="str">'*'</span>                        <span class="op">→</span> <span class="tok">star</span>
+<span class="str">'/'</span>                        <span class="op">→</span> <span class="tok">slash</span>
+<span class="str">'('</span>                        <span class="op">→</span> <span class="tok">lparen</span>
+<span class="str">')'</span>                        <span class="op">→</span> <span class="tok">rparen</span>
+<span class="sym">[0-9]+</span>                     <span class="op">→</span> <span class="tok">number</span>
+<span class="str">"let"</span>                      <span class="op">→</span> <span class="tok">let</span>
+<span class="sym">[a-zA-Z_]</span><span class="sym">[a-zA-Z0-9_]*</span>     <span class="op">→</span> <span class="tok">ident</span>
+<span class="sym">.</span>                          <span class="op">→</span> <span class="tok">err</span>
 
 <span class="kw">@parser</span>
 
-<span class="kw">@lang</span> = <span class="str">"basic"</span>
+<span class="kw">@schema</span>
+    program    ...stmts
+    let        name:leaf value
+    <span class="str">"+"</span>, <span class="str">"-"</span>   left right
+    <span class="str">"*"</span>, <span class="str">"/"</span>   left right
+    neg        value
+    num        value:leaf
+    var        name:leaf
 
-<span class="rul">name</span>     = <span class="tok">IDENT</span>
-<span class="rul">program!</span> = <span class="rul">body</span>                  <span class="op">&rarr;</span> <span class="sym">(module ...1)</span>
-<span class="rul">expr!</span>    = <span class="rul">expr</span>                  <span class="op">&rarr;</span> <span class="sym">1</span>
+<span class="kw">@trivia</span> <span class="tok">COMMENT</span>
 
-<span class="rul">body</span>     = <span class="rul">stmt</span>                  <span class="op">&rarr;</span> <span class="sym">(1)</span>
-         | <span class="rul">body</span> <span class="tok">NEWLINE</span> <span class="rul">stmt</span>     <span class="op">&rarr;</span> <span class="sym">(...1 3)</span>
-         | <span class="rul">body</span> <span class="tok">NEWLINE</span>          <span class="op">&rarr;</span> <span class="sym">1</span>
+<span class="rul">program!</span> = stmts                            <span class="op">→</span> <span class="sym">(program ...1)</span>
 
-<span class="rul">stmt</span>     = <span class="rul">expr</span>
+<span class="rul">stmts</span>    = stmt                             <span class="op">→</span> <span class="sym">(1)</span>
+         | stmts <span class="tok">NEWLINE</span> stmt               <span class="op">→</span> <span class="sym">(...1 3)</span>
+         | stmts <span class="tok">NEWLINE</span>                    <span class="op">→</span> 1
+
+<span class="rul">stmt</span>     = <span class="tok">LET</span> name:<span class="tok">IDENT</span> <span class="str">"="</span> value:expr    <span class="op">→</span> <span class="sym">(let)</span>
+         | expr
+
 <span class="rul">expr</span>     = <span class="kw">@infix</span>
 
-<span class="rul">unary</span>    = <span class="str">"-"</span> <span class="rul">unary</span>             <span class="op">&rarr;</span> <span class="sym">(neg 2)</span>
-         | <span class="rul">atom</span>
+<span class="rul">atom</span>     = <span class="tok">NUMBER</span>                           <span class="op">→</span> <span class="sym">(num 1)</span>
+         | <span class="tok">IDENT</span>                            <span class="op">→</span> <span class="sym">(var 1)</span>
+         | <span class="str">"-"</span> value:atom                   <span class="op">→</span> <span class="sym">(neg)</span>
+         | <span class="str">"("</span> expr <span class="str">")"</span>                     <span class="op">→</span> 2
 
-<span class="rul">atom</span>     = <span class="rul">name</span>
-         | <span class="tok">INTEGER</span>
-         | <span class="str">"("</span> <span class="rul">expr</span> <span class="str">")"</span>          <span class="op">&rarr;</span> <span class="sym">2</span>
-
-<span class="kw">@infix</span> <span class="rul">unary</span>
-    <span class="str">"+"</span>  <span class="sym">left</span>,  <span class="str">"-"</span>  <span class="sym">left</span>
-    <span class="str">"*"</span>  <span class="sym">left</span>,  <span class="str">"/"</span>  <span class="sym">left</span>
-    <span class="str">"**"</span> <span class="sym">right</span></pre>
+<span class="kw">@infix</span> atom
+    <span class="str">"+"</span> <span class="sym">left</span>, <span class="str">"-"</span> <span class="sym">left</span>
+    <span class="str">"*"</span> <span class="sym">left</span>, <span class="str">"/"</span> <span class="sym">left</span>
+</pre>
     </div>
 
     <div class="code-block">
@@ -440,11 +458,22 @@
         <span class="code-filename">terminal</span>
         <span class="code-label">Generate</span>
       </div>
-      <pre><span class="sym">$</span> ./bin/nexus basic.grammar src/parser.zig
-
-<span class="cmt">Generated parser.zig — switch-based lexer, LALR(1) parse tables,</span>
-<span class="cmt">Tag enum, Sexp output, and all reduction actions in one module.</span></pre>
+      <pre><span class="sym">$</span> nexus calc.grammar src/parser.zig
+Reading grammar from calc.grammar
+   Lexer: 14 tokens, 13 rules, 16 DFA states
+   Parser: 5 rules, 1 start symbols
+   Generated: 23 symbols, 18 rules, 31 states
+Generated: src/parser.zig</pre>
     </div>
+
+    <p>
+      The input <code>let x = 1 + 2 * 3   # seven</code> parses to
+      <code>(let `x` (+ (num `1`) (* (num `2`) (num `3`))))</code>, and a
+      compiler reads it by role (<code>ir.Let.value(node)</code>), with a
+      source span for every node. Had an action built a node the schema
+      does not allow, generation would have failed with
+      <code>file:line:col: error:</code> naming the rule.
+    </p>
   </section>
 
   <hr class="divider">
@@ -454,28 +483,28 @@
     <h2>Key Features</h2>
     <div class="features">
       <div class="feature-card">
+        <h3>Verified Semantic Layer</h3>
+        <p>With <code>@schema</code>, every node kind has named, typed roles. Generation proves every rule builds nodes of the declared shape and generates the accessors.</p>
+      </div>
+      <div class="feature-card">
+        <h3>A Real Lexer Generator</h3>
+        <p>Patterns compile to one minimized DFA, emitted as direct-coded Zig with guards, trailing context, zero-width tokens and SIMD scans. Tokens are 8 bytes and zero-copy.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Conflict Manifest</h3>
+        <p>Every remaining LALR(1) conflict is declared in <code>@conflicts</code> with a reason. Any change fails generation and prints the manifest ready to paste.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Tolerant Parsing</h3>
+        <p>Syntax errors name what was expected, trivia keeps its positions, and <code>parseTolerant</code> repairs a broken buffer from a generated table.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Nothing Silent</h3>
+        <p>A dead lexer rule, an unreachable rule or a value an action drops is a located error, and nothing is written.</p>
+      </div>
+      <div class="feature-card">
         <h3>Self-Hosting</h3>
-        <p>Nexus parses its own grammar format using a parser it generated from itself. No hand-written bootstrap parser.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Language-Agnostic</h3>
-        <p>The engine contains zero language-specific code. All language knowledge lives in your two input files.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Declarative Lexer</h3>
-        <p>Regex-like patterns, state guards, actions, and SIMD-accelerated scanning &mdash; all from grammar declarations.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Operator Precedence</h3>
-        <p><code>@infix</code> auto-generates a full precedence chain from a simple table of operators and associativity.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Context-Sensitive Keywords</h3>
-        <p><code>@as</code> resolves identifier-keyword ambiguity at parse time with ordered priority and state checks.</p>
-      </div>
-      <div class="feature-card">
-        <h3>Zero-Copy Tokens</h3>
-        <p>8-byte packed tokens reference the original source. No string allocations during lexing.</p>
+        <p>Nexus parses its grammar files with a parser it generates from its own schema-mode grammar.</p>
       </div>
     </div>
   </section>
@@ -485,55 +514,20 @@
   <!-- Validated Languages -->
   <section>
     <h2>Validated Languages</h2>
-    <p>Each of these grammars generates, compiles and parses its test corpus in the Nexus test suite.</p>
-
-    <table class="lang-table">
-      <thead>
-        <tr>
-          <th>Language</th>
-          <th>Grammar</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Rig</td>
-          <td><code>rig.grammar</code></td>
-          <td>Systems language with visible ownership (its schema-mode grammar lives in the Rig repository)</td>
-        </tr>
-        <tr>
-          <td>Zag</td>
-          <td><code>zag.grammar</code></td>
-          <td>Systems language with indent-based blocks and token reclassification</td>
-        </tr>
-        <tr>
-          <td>Slash</td>
-          <td><code>slash.grammar</code></td>
-          <td>Scripting language with heredocs, regex literals, and indent/outdent</td>
-        </tr>
-        <tr>
-          <td>MUMPS</td>
-          <td><code>mumps.grammar</code></td>
-          <td>Legacy healthcare language with pattern mode, dot-level counting, and context-sensitive commands</td>
-        </tr>
-        <tr>
-          <td>Ruby subset</td>
-          <td><code>ruby.grammar</code></td>
-          <td>Newline-sensitive statements, modifiers, blocks and symbols</td>
-        </tr>
-        <tr>
-          <td>Nexis</td>
-          <td><code>nexis.grammar</code></td>
-          <td>A Clojure-flavored reader: anonymous functions, syntax-quote, metadata</td>
-        </tr>
-      </tbody>
-    </table>
+    <p>
+      Rig, MUMPS (the language of VistA: pattern mode, dot levels,
+      context-sensitive commands), a Ruby subset, Zag, Slash, Nexis (a
+      Clojure reader) and Nexus's own grammar files: each grammar generates,
+      compiles and parses its cases in the test suite. The
+      <a href="https://github.com/shreeve/nexus#validated-languages">README's table</a>
+      gives their sizes, states and declared conflicts.
+    </p>
   </section>
 
   <!-- Footer -->
   <footer>
     <p>
-      Nexus is open source under the MIT license. Built with Zig.
+      Nexus is open source under the MIT license. Requires Zig 0.17.
     </p>
     <p style="margin-top: 8px;">
       <a href="https://github.com/shreeve/nexus">GitHub</a> &middot;

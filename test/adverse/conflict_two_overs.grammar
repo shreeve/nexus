@@ -1,0 +1,16 @@
+# A `reduce` entry names one rule `over` one other.
+# error: conflict_two_overs.grammar:14:41:
+# error: a conflict entry has one `over`
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@conflicts
+    reduce  s → IDENT  over  s → a  over  s → b  1  # why
+
+s = IDENT

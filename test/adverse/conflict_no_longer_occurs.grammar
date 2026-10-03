@@ -1,0 +1,30 @@
+# A declared conflict the grammar does not have is drift.
+# error: conflict_no_longer_occurs.grammar:22:5:
+# error: declared conflict no longer occurs: shift stmt → val ";"
+@lexer
+tokens
+    id
+    q
+    colon
+    semi
+    eof
+    err
+'?'                                         → q
+':'                                         → colon
+';'                                         → semi
+[a-z]+                                      → id
+.                                           → err
+
+@parser
+@conflicts
+    shift  stmt → "?" ID stmt      1  # dangling else
+    reduce val → ID over ref → ID  1  # a value first
+    shift  stmt → val ";"          1  # gone
+
+prog! = stmt
+stmt  = "?" ID stmt
+      | "?" ID stmt ":" stmt
+      | val ";"
+      | ref ";"
+val   = ID                                  → (val 1)
+ref   = ID                                  → (ref 1)

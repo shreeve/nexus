@@ -1,0 +1,20 @@
+# An element inside a choice that carries a value the action never uses is
+# reported by the coverage gate at the rule, naming the element.
+# error: coverage_choice_element.grammar:20:8:
+# error: choice element 'IDENT' carries a value the action does not use
+@lexer
+tokens
+    a, b, c, ident, eof, err
+'a' → a
+'b' → b
+'c' → c
+[x-z]+ → ident
+[ \n]+ → skip
+. → err
+
+@parser
+
+@schema
+    k  v:leaf
+
+top! = A (B IDENT | C) → (k 1)

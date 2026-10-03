@@ -1,0 +1,27 @@
+# A @conflicts entry may name a literal that holds `->`: the manifest's
+# `->` arrow reads as `→`, but text inside quotes compares as written, so
+# the manifest Nexus prints for this grammar matches it when pasted back.
+
+@lexer
+tokens
+    ident
+    arrow
+    kw_if
+    kw_else
+    eof
+    err
+'\n'                                        → skip, skip
+"->"                                        → arrow
+"if"                                        → kw_if
+"else"                                      → kw_else
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@conflicts
+    shift  stmt -> KW_IF IDENT "->" stmt  1  # else binds to the nearest if
+
+stmt! = KW_IF IDENT "->" stmt               → (if 2 4)
+      | KW_IF IDENT "->" stmt KW_ELSE stmt  → (if 2 4 6)
+      | IDENT

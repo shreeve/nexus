@@ -1,0 +1,13 @@
+# An `X "c"` hint belongs to the whole alternative, not to a group inside it.
+# error: exclude_in_group.grammar:13:14:
+# error: an `X "c"` hint applies to the whole alternative; write it outside ( ) and [ ]
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = (IDENT X "x" IDENT)

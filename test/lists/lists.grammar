@@ -1,0 +1,54 @@
+# lists.grammar — the synthesized lists `X*`, `X+`, `L(X)`, `L(X, sep)`
+# and `L(X?)` without a schema: one item per element, nils included
+# (a list printed whole keeps its trailing nils), and memory linear in
+# the list's length (lists.zig), also for a list an action extends after
+# a rule passed it on (`grow`).
+
+@lexer
+
+tokens
+    ident
+    star
+    plus
+    comma
+    slash
+    query
+    equals
+    minus
+    amp
+    caret
+    semi
+    eof
+    err
+
+'*'                                         → star
+'+'                                         → plus
+','                                         → comma
+'/'                                         → slash
+'?'                                         → query
+'='                                         → equals
+'-'                                         → minus
+'&'                                         → amp
+'^'                                         → caret
+';'                                         → semi
+'\n'                                        → skip, skip
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@lang = "lists"
+
+top!  = form*                               → (top ...1)
+
+form  = "*" IDENT* ";"                      → (star 2)
+      | "+" IDENT+ ";"                      → (plus 2)
+      | "," L(IDENT) ";"                    → (list 2)
+      | "/" L(IDENT, "/") ";"               → (sep 2)
+      | "?" L(IDENT?) ";"                   → (opt 2)
+      | "=" (IDENT | !"-")* ";"             → (nils 2)
+      | "&" grow ";"                        → (grow 2)
+
+grow  = hat IDENT                           → (...1 2)
+      | IDENT                               → (1)
+hat   = "^" grow                            → 2

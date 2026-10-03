@@ -1,0 +1,21 @@
+# Reducing the empty rule b on X leads to a unit reduction d → b and back to
+# the same state, with nothing consumed: the generated parser pushed forever
+# on "x" and "xc". A loop through reductions of any length is rejected.
+# error: empty_unit_reduction_loop.grammar:21:
+# error: leads back to the same state
+@lexer
+tokens
+    x
+    c
+    eof
+    err
+'x'   → x
+'c'   → c
+.     → err
+
+@parser
+top! = a
+a = d a C → (a 2)
+  | X
+d = b → (d)
+b = <

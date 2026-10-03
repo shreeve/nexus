@@ -1,0 +1,16 @@
+# A grammar has one @conflicts block.
+# error: conflicts_twice.grammar:14:1:
+# error: duplicate @conflicts
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@conflicts
+@conflicts
+
+s = IDENT

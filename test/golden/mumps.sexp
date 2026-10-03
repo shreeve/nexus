@@ -83,11 +83,7 @@
     (lex_action `hold` _)
     (set_action `pat` `0`)
     (set_action `dep` `0`))
-  (lex_rule
-    `';' [^\\n]*`
-    _
-    `comment`
-    (lex_action `simd_to` `'\\n'`))
+  (lex_rule `';' [^\\n]*` _ `comment`)
   (lex_rule `'"' ([^"\\n] | '""')* '"'` _ `string`)
   (lex_rule
     `[0-9]+`
@@ -384,9 +380,9 @@
   (section `parser`)
   (lang `"mumps"`)
   (manifest
-    (conflict `shift` `L(expr).tail → ε` _ `2` `# a comma after a list item continues the list`)
+    (conflict `shift` `viewarg → expr ":" L(expr)` _ `1` `# a comma after a list item continues the list`)
     (conflict `shift` `deviceparam → expr` _ `1` `# USE dev:(x): the parentheses group an expression, the same value as a one-parameter list`)
-    (conflict `shift` `IDENT* → ε` _ `2` `# pattern code letters after a repeat count run as far as they go`)
+    (conflict `shift` `patatom → repcount IDENT+` _ `1` `# pattern code letters after a repeat count run as far as they go`)
     (conflict `shift` `rlvn → IDENT` _ `1` `# name= after USE dev: is a keyword device parameter`)
     (conflict `shift` `rgvn → "^" "|" expr "|" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
     (conflict `shift` `rgvn → "^" "|" expr "," expr "|" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)

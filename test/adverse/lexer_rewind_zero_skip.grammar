@@ -1,0 +1,13 @@
+# rewind(0) makes the token zero-width, and skipping it would rescan the
+# same bytes forever
+# error: lexer_rewind_zero_skip.grammar:8:1:
+# error: a zero-width token cannot be skipped
+@lexer
+tokens
+    word, eof, err
+'ab'                        → word, rewind(0), skip
+[a-z]+                      → word
+.                           → err
+
+@parser
+top! = WORD                 → 1

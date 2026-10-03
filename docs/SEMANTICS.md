@@ -18,8 +18,8 @@ Contents: [An example](#an-example) · [The generated API](#the-generated-api) �
 [Labels](#labels) · [What generation checks](#what-generation-checks) ·
 [Spans and node ids](#spans-and-node-ids) ·
 [Facts](#facts) · [Trivia](#trivia) · [Syntax errors](#syntax-errors) ·
-[Tolerant parsing](#tolerant-parsing) · [Lang wrappers](#lang-wrappers) ·
-[Without a schema](#without-a-schema) · [Lineage: Solar](#lineage-solar)
+[Tolerant parsing](#tolerant-parsing) · [The lang module](#the-lang-module) ·
+[Without a schema](#without-a-schema) · [Lineage](#lineage)
 
 ## An example
 
@@ -258,21 +258,39 @@ The module exports:
 
 | Name | What |
 |---|---|
-| `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols |
+| `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols (all generated from the grammar) |
+| `Token`, `TokenCat` | a token (8 bytes: `pos`, `len`, `cat`, `pre`, the count of blanks before it) and the token categories |
+| `BaseLexer` | the generated scanner: `init(source)`, `next()`, `text(token)`, `makeToken(cat, pre, start, end)`; fields `source`, `pos`, `aux` and the `@lexer` state variables |
+| `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
 | `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
+| `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
+| `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()` |
+| `NodeId` | a node's id (`u32`; 0 is none) |
+| `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, and the `state` that rejected it (`lastError()`) |
+| `Tolerant` | the result of `parseTolerant` (see [Tolerant parsing](#tolerant-parsing)) |
 | `ir.get(node, role)` | a slot by role name (nil when empty) |
 | `ir.rest(node, role)` | a rest role's children |
 | `ir.has(kind, role)` | whether a kind has a role |
 | `ir.slot(kind, role)`, `ir.restSlot(kind, role)`, `ir.width(kind)` | compile-time slot numbers (the head is slot 0) and the fixed width |
 | `ir.Let.name(node)` ... | per-kind views, one function per role (`ir.@"+".left` for quoted kinds) |
 | `Parser` | the lang module's `Parser` wrapper, or `BaseParser` |
-| `parseProgram(allocator, source)` | per start symbol: a new parser and its tree; `deinit()` the parser when done |
+| `parseProgram(allocator, source)` | per start symbol: a new parser and its tree, as `.parser` and `.sexp`; `deinit()` the parser when done |
+| `nodeStore` | whether the parser records spans and node ids (`@schema` or `--spans`) |
+| `maxExpected` | the most symbols any state expects: room for `expectedNames` |
 
-`BaseParser` methods: `init`, `deinit`, `parse<Start>()`, `parse(start)`,
+`BaseParser` methods: `init(allocator, source)`, `deinit()`,
+`reset(source)` (parse new input in the memory the parser holds; earlier
+trees are gone), `allocator()` (the allocator that holds the trees, freed
+by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `parseTolerant(start, budget)`, `span(sexp)`, `ruleOf(sexp)`, `nodeCount()`,
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
 `writeFacts(w, root)`, `trivia()`, `lastError()`, `writeError(w)`,
-`printError()`, `lineCol(pos)`, `expected(state)`, `symbolText(symbol)`.
+`printError()`, `lineCol(pos)`, `expected(state)`,
+`expectedNames(state, buf)`, `symbolText(symbol)`; fields `source` and
+`lexer` (the lexer as it stood at the error, for a lang Lexer's own error
+message). A parse fails with `error.ParseError` (see `lastError()`),
+`error.OutOfMemory`, or `error.InputTooLarge` (input over 4 GiB: positions
+are 32-bit).
 
 `ir.get` and `ir.rest` look the slot up by the node's kind at run time;
 asking for a role the kind lacks panics in safety-checked builds (and names
@@ -287,7 +305,9 @@ time, so a misspelled role is a compile error.
 ```
 
 One line per kind (or per group of kinds with the same roles). Kinds that
-are not identifiers are quoted (`"+"`). Roles are listed in slot order:
+are not identifiers are quoted (`"+"`); a quoted kind, `tag(...)` value or
+`@tags` name reads its escapes as a string literal does (`"\x2b"` is `+`).
+Roles are listed in slot order:
 
 | Role | Meaning |
 |---|---|
@@ -344,18 +364,28 @@ kind with that role, the labeled value fills it, so most actions need no
 positions at all (`→ (let)` above).
 
 - A label on an optional element (`[":" type:name]`) gives nil when the
-  element is absent; on a list (`args:[L(expr)]`) the items fill a rest role.
+  element is absent; on a list (`args:[L(expr)]`) the items fill a rest role,
+  and labeled tokens (`items:IDENT "," items:IDENT`, or a name that
+  aliases a token) are one item each. A labeled token that can be absent
+  (optional, or in a choice alternative) cannot add an item to a rest
+  role: an error.
 - A label on a choice, `(A | B):role` or `role:(A | B)`, labels whichever
-  alternative matched. When the role is a `tag` role and every alternative
+  alternative matched (an alternative of several elements has no one value:
+  label its elements). When the role is a `tag` role and every alternative
   is a literal, the tag is the matched literal's text: `op:("+=" | "-=")`
-  gives the tag `+=` or `-=`.
+  gives the tag `+=` or `-=` (and `op:("+=" | "-=")?` nil when absent).
+- One role may be labeled in different alternatives of a choice,
+  `(":" name:IDENT | name:INTEGER ":")`: whichever matched fills it.
 - A label naming a side-band role (`eq:"="` for `let ... | eq`) records the
   element's span in the role store: `parser.sideRole(node, .eq)`.
 - `_:X` drops a value on purpose (as does `!X`).
 
 A label that is neither a role nor a side-band role of the kind the action
 builds is an error, and so is a label on an alternative that builds no
-schema node. Labels inside a `( ... )` group are not supported.
+schema node. Labels inside a top-level `( ... )` or `( ... )?` group fill
+roles as if the group's elements were written in place (nil when the
+optional group is absent). A label deeper down, or inside a repeated group
+or choice, is an error: move that part into a named rule.
 
 ## What generation checks
 
@@ -373,9 +403,13 @@ its rule, when:
 - **Coverage.** Every value-bearing element of a pattern is used by the
   action, labeled, or dropped with `!X` or `_:X`; an alternative opts out
   with `→ (...)  ~ "reason"`. Value-bearing are rules, lists, groups, the
-  `@as` token and its keywords, and tokens whose text varies (a lexer rule
-  produces them from a pattern that is not a single literal). Literals,
-  fixed-text tokens, and tokens only a lang wrapper produces carry no value.
+  `@as` token and its keywords, tokens whose text varies (a lexer rule
+  produces them from a pattern that is not a single literal), any optional
+  or repeated element (`";"?`, `[";"]`, `NEWLINE*`: whether it is there,
+  how many), and a choice between fixed texts (`("+=" | "-=")`: which one
+  matched).
+  Literals, fixed-text tokens, and tokens only a lang wrapper produces
+  carry no value.
 - **Types.** The generator computes, by fixpoint over the expanded grammar,
   the set of values every rule can produce (nil, leaf, tag, untagged list,
   and each kind) and checks every role against its declared type. The
@@ -490,21 +524,25 @@ the actions' inventory, ready to paste:
 
 ## Spans and node ids
 
-Every list the parser builds for the tree gets a node id (dense, from 1 per
-parse) and an entry in the node store: its span and the rule that built it.
+Every list the parser builds for the tree gets a node id and an entry in
+the node store: its span and the rule that built it. Ids are dense, from 1,
+in the order the nodes are built; a parser that parses again keeps
+counting, so the trees of earlier parses stay valid (until `reset`).
 
 - A node spans its reduction: from its first token to its last, including
   tokens that are not in the tree (keywords, punctuation). `(1 + 2)` passed
   through by `→ 2` keeps the span of the `+` node inside it.
 - A nested node (`value:(num 2)`) spans the elements it references.
 - A leaf spans its token. A list without an id (built by a wrapper with
-  `List.of`) spans the hull of its children.
-- Untagged lists that are only ever spliced into another list (the insides
-  of `L(X)`, left-recursive accumulators) get no id: nothing can reach them.
+  `List.of`, or any list without the node store) spans the hull of its
+  children: from the least start to the greatest end, in whatever order
+  they are in the list.
+- Untagged lists that are only ever spliced into another list (an `L(X)`
+  spread into its node, left-recursive accumulators) get no id: nothing can
+  reach them.
 
-The store costs one 12-byte entry per node: about 3% of parse time on Rig
-and 5% on MUMPS (see `test/bench/BASELINE.md`). Grammars without `@schema`
-get it with `nexus --spans`.
+The store costs one 12-byte entry per node. Grammars without `@schema` get
+it with `nexus --spans`.
 
 ## Facts
 
@@ -535,6 +573,9 @@ offending token's span, category and state, and `writeError(w)` writes
 state at generation time: the `@errors`-named rules the state is waiting
 for, then the tokens none of them can begin with. Tokens print with their
 `@display` names, else as their literal or their name in lower case.
+`BaseParser.expectedNames(state, &buf)` gives those names, each once (two
+tokens with one `@display` name are named once), for a consumer that
+words its own message; `buf` is a `[parser.maxExpected][]const u8`.
 
 ## Tolerant parsing
 
@@ -553,66 +594,50 @@ is unaffected. The rules:
    statement boundary never invents meaning); at end of input or before a
    `structure` token any candidate may.
 4. An insertion must let the offending token be consumed. At end of input
-   or before structure, a shiftable candidate may be inserted anyway, never
-   twice in the same configuration, so several insertions can complete an
-   unfinished construct.
+   or before structure, a shiftable candidate may be inserted anyway, so
+   several insertions can complete an unfinished construct; until a token
+   is consumed, the same token is inserted in the same state again only on
+   a shallower stack (a repeat would be a cycle, or nest the construct
+   deeper without finishing it).
 5. With no admissible insertion the offending token is deleted; end of
    input is never deleted.
 6. At most `budget` repairs; then the parse stops, incomplete.
 
-## Lang wrappers
+## The lang module
 
-A lang `Parser` wrapper may rewrite the tree (the generated `Parser` alias
-picks it up when the lang module declares one). With a schema it builds
-nodes through the same contract: `newNode(.kind, children, span)` gives a
-node an id and a span, `ir.slot`/`ir.width` place its children at compile
-time, `List.withId(items, id)` keeps an id (and so the span) on a rewritten
-node, and `@wrapper` declares kinds that only the wrapper builds. The
-wrapper is returned by value from `parseX(allocator, source)`, so it must
-be movable.
+`@lang = "name"` makes the parser import `name.zig`, which imports the
+generated module as `parser.zig` (generate it under that name). The parser
+reads only these declarations from it, each optional:
+
+| Declaration | Contract |
+|---|---|
+| `Lexer` | a wrapper over the generated scanner: a field `base: BaseLexer`, `pub fn init(source: []const u8) Lexer` and `pub fn next(self: *Lexer) Token`. The parser calls nothing else. Setting `base.aux` before returning a token gives its leaf that id (`src.id`). A token whose length the wrapper computes is built with `BaseLexer.makeToken`, so a match over 65535 bytes is an `err` token as in the scanner. A wrapper without `base: BaseLexer` is a compile error. |
+| `Parser` | a wrapper over the generated parser: a field `base: BaseParser`, `pub fn init(allocator, source) Parser`, `pub fn deinit(self: *Parser) void`, and `pub fn parse<Start>(self: *Parser) !Sexp` per start symbol it offers. Everything it does not forward is `p.base.X`; generic code reaches the generated parser as `if (Parser == BaseParser) &p else &p.base`. It is returned by value from `parseX(allocator, source)`, so it must be movable. |
+| `GId`, `gAs` | per `@as` group `g`: an enum whose field names are the group's keyword terminals (values from 1 become the leaf's id), and `pub fn gAs(text: []const u8) ?GId` (or the function `@as ... via` names); see [GRAMMAR.md](GRAMMAR.md#as-keywords-that-are-also-names) |
+| `f` | per `@code = f`: `pub fn f(source: []const u8, pos: u32) bool`, called by the lexer method of that name |
+
+`Tag` comes from the grammar, never from the lang module.
+
+A `Parser` wrapper may rewrite the tree. With a schema it builds nodes
+through the same contract as the parser: `newNode(.kind, children, span)`
+gives a node an id and a span, `ir.slot`/`ir.width` place its children at
+compile time, `List.withId(items, id)` keeps an id (and so the span) on a
+rewritten node, `@wrapper` declares kinds that only the wrapper builds, and
+`allocator()` holds what it allocates.
 
 ## Without a schema
 
 A grammar without `@schema` builds the same `Sexp` trees from the same
 actions, with these differences: lists drop trailing nils (positions of
 what is present stay stable); `role:v` items are positional; labels other
-than `_:X` are errors; the `Tag` enum comes from the lang module (or from the actions,
-plus a `_` catch-all, without `@lang`); there is no `ir`; spans and facts
+than `_:X` are errors; the `Tag` enum holds the tags the actions produce,
+then the `@tags` names; there is no `ir`; spans and facts
 need `--spans`. The MUMPS, Ruby, Zag, Slash and Nexis grammars in `test/`
 use this mode.
 
-## Lineage: Solar
+## Lineage
 
-The semantic layer follows ideas from Solar, the LALR(1) generator of
-Rip (`src/grammar/solar.rip` in the Rip repository), which
-annotates each rule with a kind and one part per action element, keeps node
-and role stores beside the tree, labels pattern symbols the action drops,
-gates annotation coverage with `~ reason` opt-outs, and repairs editor
-buffers from a generated table with the same rules as
-[Tolerant parsing](#tolerant-parsing) above.
-
-What Nexus adopted: node kinds and named roles, side-band roles and pattern
-labels, spans in a node store, the coverage gate and its opt-out, the
-repair table and the tolerant driver's rules (first error kept, only
-terminators before real input, deletion as the fallback, a budget), and a
-trivia channel.
-
-What is different in Nexus:
-
-- **The schema shapes the tree.** Solar's annotations describe positions
-  and never change the parser's output; Nexus declares each kind once, and
-  the generator places every role in a fixed slot, so the tree and the
-  schema cannot disagree.
-- **Types.** Roles have types, and a fixpoint over the grammar proves every
-  role's value has its type at generation time.
-- **Coverage per value.** Solar requires every constructor rule to be
-  annotated; Nexus requires every value-bearing element to be used,
-  labeled or dropped, so no value is discarded by accident.
-- **Declared repair alphabet.** Solar's fabricable tokens are
-  conventional names (`IDENTIFIER`, `TERMINATOR`, `INDENT`, ...); Nexus
-  grammars declare theirs in `@repair`.
-- **Zig, without side maps.** Node ids live in the list itself (the
-  24-byte `Sexp` has room), the node store is chunked arrays, spans are byte
-  offsets, and the accessors are generated Zig resolved at compile time
-  where possible. Trivia is filtered by the parser from declared tokens.
-- **Facts.** `writeFacts` exports the tree as relations.
+The node and role stores, side-band roles, pattern labels, the coverage
+gate and the tolerant-repair rules follow Solar, the LALR(1) generator of
+Rip. Nexus adds typed roles proven by fixpoint, fixed-slot nodes, a
+declared repair alphabet and the facts export.

@@ -56,9 +56,6 @@ tokens
 
 @parser
 
-@lang = "features"
-
-
 name = IDENT
 
 program! = body                             → (module ...1)

@@ -85,7 +85,11 @@
     (kind_decl
       (kinds `grammar`)
       (roles
-        (role rest `entries` _ _))
+        (role
+          rest
+          `entries`
+          (type `section` `state` `after` `tokens` `code` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `rule`)
+          _))
       _
       _)
     (kind_decl
@@ -289,16 +293,6 @@
         (role
           _
           `name`
-          (type `leaf`)
-          _))
-      _
-      _)
-    (kind_decl
-      (kinds `conflicts`)
-      (roles
-        (role
-          _
-          `count`
           (type `leaf`)
           _))
       _
@@ -732,7 +726,11 @@
     (kind_decl
       (kinds `quantified` `skip_q`)
       (roles
-        (role _ `element` _ _)
+        (role
+          _
+          `element`
+          (type `ref` `tok` `lit` `list_req` `at_ref` `"group"`)
+          _)
         (role
           _
           `quant`
@@ -743,7 +741,11 @@
     (kind_decl
       (kinds `skip`)
       (roles
-        (role _ `element` _ _))
+        (role
+          _
+          `element`
+          (type `ref` `tok` `lit` `list_req` `at_ref` `"group"`)
+          _))
       _
       _)
     (kind_decl
@@ -764,7 +766,11 @@
           `name`
           (type `leaf`)
           _)
-        (role _ `element` _ _))
+        (role
+          _
+          `element`
+          (type `ref` `tok` `lit` `list_req` `at_ref` `"group"` `quantified`)
+          _))
       _
       _)
     (kind_decl
@@ -805,7 +811,11 @@
           `role`
           (type `leaf`)
           _)
-        (role _ `value` _ _))
+        (role
+          _
+          `value`
+          (type `pos` `spread` `symid` `null` `"tag"` `"node"` `list` `keep`)
+          _))
       _
       _)
     (kind_decl
@@ -816,13 +826,21 @@
           `head`
           (type `leaf`)
           _)
-        (role rest `items` _ _))
+        (role
+          rest
+          `items`
+          (type `named` `pos` `spread` `symid` `null` `"tag"` `"node"` `list` `keep`)
+          _))
       _
       _)
     (kind_decl
       (kinds `list`)
       (roles
-        (role rest `items` _ _))
+        (role
+          rest
+          `items`
+          (type `named` `pos` `spread` `symid` `null` `"tag"` `"node"` `list` `keep`)
+          _))
       _
       _)
     (kind_decl
@@ -833,7 +851,11 @@
           `n`
           (type `leaf`)
           _)
-        (role rest `items` _ _))
+        (role
+          rest
+          `items`
+          (type `named` `pos` `spread` `symid` `null` `"tag"` `"node"` `list` `keep`)
+          _))
       _
       _))
   (rule
@@ -1191,23 +1213,10 @@
       ((label
           `word`
           (tok `IDENT`))
-        (label
-          `arg`
-          (tok `QUOTED`)))
-      (node `lex_action`)
-      _)
-    (alt
-      _
-      ((label
-          `word`
-          (tok `IDENT`))
         (lit `"("`)
         (label
           `arg`
-          (group
-            _
-            ((tok `INTEGER`))
-            ((tok `QUOTED`))))
+          (tok `INTEGER`))
         (lit `")"`))
       (node `lex_action`)
       _)
@@ -1268,16 +1277,6 @@
           `name`
           (tok `STRING`)))
       (node `lang`)
-      _)
-    (alt
-      _
-      ((lit `"@"`)
-        (tok `KW_CONFLICTS`)
-        (lit `"="`)
-        (label
-          `count`
-          (tok `INTEGER`)))
-      (node `conflicts`)
       _)
     (alt
       _

@@ -188,11 +188,8 @@ const Parser = struct {
             if (self.peek() == '/') return self.fail(self.pos, "a pattern may contain only one trailing-context '/'");
             if (nullable(trail.?)) return self.fail(slash, "trailing context after '/' must not match the empty string");
         }
-        if (self.pos < self.text.len) {
-            const c = self.text[self.pos];
-            if (c == ')') return self.fail(self.pos, "unbalanced ')'");
-            return self.fail(self.pos, "unexpected character in pattern");
-        }
+        // parseAlt stops only at the end, at '/', or at a ')' it did not open.
+        if (self.pos < self.text.len) return self.fail(self.pos, "unbalanced ')'");
         return .{ .main = main, .trail = trail };
     }
 
@@ -215,6 +212,9 @@ const Parser = struct {
             self.skipSpace();
             const c = self.peek() orelse break;
             if (c == '|' or c == ')' or c == '/') break;
+            if (items.items.len > 0 and (c == '*' or c == '+' or c == '?' or c == '{')) {
+                return self.fail(self.pos, "a quantifier must directly follow what it repeats; remove the space before it");
+            }
             try items.append(self.arena, try self.parsePostfix(depth));
         }
         return switch (items.items.len) {
@@ -323,9 +323,10 @@ const Parser = struct {
                     var end = self.pos;
                     while (end < self.text.len and (std.ascii.isAlphanumeric(self.text[end]) or self.text[end] == '_')) end += 1;
                     const word = self.text[start..end];
-                    if (std.mem.eql(u8, word, "counting") or std.mem.eql(u8, word, "matching")) {
-                        return self.fail(start, "counting()/matching() describe balanced nesting, which no finite automaton can recognize; use trailing context '/' for bounded lookahead or handle nesting in the lang Lexer wrapper");
-                    }
+                    // The lowerer words the same rejection for the action form.
+                    const nesting = "() describes balanced nesting, which no finite automaton can recognize; use trailing context '/' for bounded lookahead or handle nesting in the lang Lexer wrapper";
+                    if (std.mem.eql(u8, word, "counting")) return self.fail(start, "counting" ++ nesting);
+                    if (std.mem.eql(u8, word, "matching")) return self.fail(start, "matching" ++ nesting);
                     return self.fail(start, "bare word in pattern; quote literal text as 'x' or \"x\"");
                 }
                 return self.fail(self.pos, "unexpected character in pattern; quote literal text as 'x' or \"x\"");
@@ -346,11 +347,12 @@ const Parser = struct {
             '0' => return 0,
             '\\', '\'', '"' => return e,
             'x' => {
-                if (self.pos + 2 > self.text.len) return self.fail(backslash, "\\x needs two hex digits");
-                const v = std.fmt.parseInt(u8, self.text[self.pos..][0..2], 16) catch
+                const digits = self.text[self.pos..@min(self.pos + 2, self.text.len)];
+                if (digits.len < 2 or !std.ascii.isHex(digits[0]) or !std.ascii.isHex(digits[1])) {
                     return self.fail(backslash, "\\x needs two hex digits");
+                }
                 self.pos += 2;
-                return v;
+                return std.fmt.parseInt(u8, digits, 16) catch unreachable;
             },
             else => {},
         }
@@ -764,4 +766,6 @@ test "regex: located errors" {
     try expectParseError("'\\q'", 1, "unknown escape");
     try expectParseError("[^\\x00-\\xff]", 0, "matches no byte");
     try expectParseError("''", 0, "empty literal");
+    try expectParseError("'\\x+A'", 1, "two hex digits");
+    try expectParseError("'a' +", 4, "directly follow");
 }

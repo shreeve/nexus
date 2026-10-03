@@ -20,8 +20,10 @@ tokens
 @lang = "generated_names"
 
 @conflicts
-    shift  (NAME | NUM)* → ε  3  # a name after the run joins the run
-    shift  (NAME !",")* → ε   2  # a name after the pairs joins the pairs
+    shift  (NAME | NUM)* → ε                      1  # a leading ";" starts the pairs
+    shift  (NAME !",")? → ε                       1  # a name after a leading "," starts the pair
+    reduce (NAME | NUM) → NAME over NAME? → NAME  1  # a name after the run joins the run
 
 top! = (NAME | NUM)* NAME? ";"              → (run ...1 2)
      | ";" (NAME !",")* NAME? ";"           → (pairs ...2 3)
+     | "," (NAME !",")? NAME ";"            → (pair 2 3)

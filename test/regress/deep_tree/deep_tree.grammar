@@ -1,0 +1,24 @@
+# A left-associative chain of N additions is a tree N levels deep, from
+# input of 2N+1 bytes. Printing it (`Sexp.write`) and taking its span (the
+# hull of a list without a node id) keep their stack on the heap: with
+# N = 1,000,000 a walk that recursed on the native stack would overflow it.
+#
+# The case file holds N; the lang module's Parser builds the input
+# `x+x+...+x`, parses it, walks the tree, and returns a summary string.
+
+@lexer
+tokens
+    ident
+    plus
+    eof
+    err
+'+'                                         → plus
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "deep_tree"
+
+prog! = sum                                 → (prog 1)
+sum   = sum "+" IDENT                       → (1 3)
+      | IDENT

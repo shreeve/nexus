@@ -1,0 +1,19 @@
+# A grammar has one @infix table.
+# error: infix_twice.grammar:15:1:
+# error: duplicate @infix
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@infix atom
+    "+" left
+@infix atom
+    "-" left
+
+s = atom
+atom = IDENT

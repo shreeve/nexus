@@ -1,0 +1,30 @@
+# "(" is a different token in different lexer states (popen after a
+# pattern operator, lparen elsewhere). The grammar uses both, so the
+# token an `X "("` hint names is ambiguous: a located error naming both
+# terminals, never the first rule's token.
+# error: x_hint_ambiguous_token.grammar:27:10:
+# error: X "(" on expr → IDENT is ambiguous: lexer rules make that text POPEN or LPAREN
+@lexer
+state
+    pat = 0
+tokens
+    ident
+    lparen
+    popen
+    rparen
+    query
+    eof
+    err
+'\n'                                        → skip, skip
+'(' @ pat                                   → popen, {pat = 0}
+'('                                         → lparen
+')'                                         → rparen
+'?'                                         → query, {pat = 1}
+[a-z]+                                      → ident
+.                                           → err
+@parser
+exprs! = expr+                              → (exprs ...1)
+expr   = IDENT X "("                        → (var 1)
+       | IDENT LPAREN expr RPAREN           → (call 1 3)
+       | LPAREN expr RPAREN                 → 2
+       | QUERY POPEN expr RPAREN            → (pat 3)

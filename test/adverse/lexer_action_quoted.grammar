@@ -1,0 +1,10 @@
+# A lexer action is a word, `word(arg)` or `{...}`; a word followed by a
+# quoted byte (as in `simd_to '\n'`) is a syntax error.
+# error: lexer_action_quoted.grammar:8:39:
+# error: syntax error: unexpected quoted byte
+@lexer
+tokens
+    comment, eof, err
+'#' [^\n]*       → comment, simd_to '\n'
+. → err
+@parser

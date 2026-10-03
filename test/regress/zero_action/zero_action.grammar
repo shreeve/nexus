@@ -1,4 +1,4 @@
-# error: zero_action.grammar:20:49:
+# error: zero_action.grammar:19:49:
 #
 # `0` is not an element position: `→ 0` and `→ (0 1 2)` are rejected with a
 # location.
@@ -14,7 +14,6 @@ tokens
 .                                           → err
 
 @parser
-@lang = "zero_action"
 
 top! = item                                 → 1
 item = IDENT IDENT                          → 0

@@ -1,0 +1,14 @@
+# ( ) is the empty string: repeating it means nothing
+# error: lexer_pattern_quantified_empty.grammar:9:8:
+# error: quantifier applied to an empty pattern
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' ( )*        → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

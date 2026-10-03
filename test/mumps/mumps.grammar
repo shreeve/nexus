@@ -168,9 +168,8 @@ after
 # ==============================================================================
 #
 # MUMPS comments start with ; and run to end of line.
-# SIMD acceleration used since comments can be long.
 
-';' [^\n]*                                  → comment, simd_to '\n'
+';' [^\n]*                                  → comment
 
 # ==============================================================================
 # STRING LITERALS
@@ -411,9 +410,9 @@ after
 @lang = "mumps"
 
 @conflicts
-    shift  L(expr).tail → ε                             2  # a comma after a list item continues the list
+    shift  viewarg → expr ":" L(expr)                   1  # a comma after a list item continues the list
     shift  deviceparam → expr                           1  # USE dev:(x): the parentheses group an expression, the same value as a one-parameter list
-    shift  IDENT* → ε                                   2  # pattern code letters after a repeat count run as far as they go
+    shift  patatom → repcount IDENT+                    1  # pattern code letters after a repeat count run as far as they go
     shift  rlvn → IDENT                                 1  # name= after USE dev: is a keyword device parameter
     shift  rgvn → "^" "|" expr "|" IDENT                1  # ( after an extended global name starts its subscripts
     shift  rgvn → "^" "|" expr "," expr "|" IDENT       1  # ( after an extended global name starts its subscripts

@@ -1,0 +1,23 @@
+# An `X "c"` hint names the terminal of the token a parser literal "c"
+# would stand for: the lexer rule whose pattern is exactly that text. A
+# character class that matches "(" makes no such rule, so the hint names
+# no terminal, though OPEN covers "(".
+# error: x_hint_class_token.grammar:21:10:
+# error: X "(" on expr → IDENT names no token
+@lexer
+tokens
+    ident
+    open
+    close
+    eof
+    err
+'\n'                                        → skip, skip
+[(\[]                                       → open
+[)\]]                                       → close
+[a-z]+                                      → ident
+.                                           → err
+@parser
+exprs! = expr+                              → (exprs ...1)
+expr   = IDENT X "("                        → (var 1)
+       | IDENT OPEN expr CLOSE              → (call 1 3)
+       | OPEN expr CLOSE                    → 2

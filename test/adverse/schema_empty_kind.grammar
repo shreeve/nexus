@@ -1,0 +1,16 @@
+# A kind has a name.
+# error: schema_empty_kind.grammar:14:5:
+# error: empty kind name
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    "" a
+
+s = IDENT → (k 1)

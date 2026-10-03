@@ -1,0 +1,24 @@
+# A labeled token is one item of a rest role, also when the label is on a
+# name that aliases the token.
+
+@lexer
+tokens
+    ident
+    integer
+    colon
+    comma
+    eof
+    err
+'\n'                                        → skip, skip
+':'                                         → colon
+','                                         → comma
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    pair  ...items:leaf
+
+name  = IDENT
+top!  = items:name "," items:name           → (pair)

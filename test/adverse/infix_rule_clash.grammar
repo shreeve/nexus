@@ -1,0 +1,28 @@
+# `@infix` in a pattern names the operator chain's entry rule, so a rule
+# named `infix` would silently merge with it.
+# error: infix_rule_clash.grammar:25:1:
+# error: a rule named 'infix' clashes with the @infix chain
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = COLON @infix                         → (t 2)
+infix = INTEGER
+atom = IDENT
+@infix atom
+    "+" left

@@ -1,0 +1,1 @@
+(prog (print `print`#1 `5`) (set `x`#9 `y`#9) (print `print`#1 `z`#9))

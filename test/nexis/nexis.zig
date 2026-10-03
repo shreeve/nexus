@@ -2,8 +2,6 @@
 //! `nexis.grammar`.
 //!
 //! Responsibilities:
-//!   - `Tag` enum whose variants match every tagged S-expression emitted by
-//!     the grammar's parser actions.
 //!   - `Lexer` wrapper that fully replaces nexus's generated `BaseLexer`
 //!     tokenization. The generated scanner is tailored to imperative-language
 //!     conventions (hardcoded integer/keyword/ident shapes, no support for
@@ -12,51 +10,9 @@
 //!     Overriding `Lexer` here is the clean fix: the parser continues to
 //!     drive `self.lexer.next()` but our scanner produces exactly the token
 //!     shapes §7.2 of PLAN.md and FORMS.md §2 demand.
-//!   - `keyword_as`: promotion hook — unused in v1 (nexis has no
-//!     context-sensitive keywords at the reader level).
 
 const std = @import("std");
 const parser = @import("parser.zig");
-
-/// Tag enum mirroring the canonical S-expression schema emitted by
-/// `nexis.grammar`. Every variant corresponds to a tagged sexp the generated
-/// parser produces; `src/reader.zig` consumes exactly this set.
-pub const Tag = enum(u8) {
-    // Top-level wrappers
-    program,
-
-    // Atom leaves (Appendix C §28.2 — atom datum variants)
-    int,
-    real,
-    string,
-    char,
-    keyword,
-    symbol,
-
-    // Compound collection literals
-    list,
-    vector,
-    map,
-    set,
-
-    // Reader macros (user-visible conventional tags from PLAN §28.2)
-    quote,
-    @"syntax-quote",
-    unquote,
-    @"unquote-splicing",
-    deref,
-
-    // Internal reader-stage tags consumed and rewritten by src/reader.zig
-    @"anon-fn",
-    discard,
-    @"with-meta-raw",
-};
-
-/// Keyword-promotion hook required by the generated parser. nexis does not
-/// use the `@as` promotion machinery in v1.
-pub fn keyword_as(_: []const u8, _: u16) ?u16 {
-    return null;
-}
 
 // =============================================================================
 // Lexer — full hand-written replacement
@@ -64,20 +20,13 @@ pub fn keyword_as(_: []const u8, _: u16) ?u16 {
 
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
+const makeToken = parser.BaseLexer.makeToken;
 
 pub const Lexer = struct {
     base: parser.BaseLexer,
 
     pub fn init(source: []const u8) Lexer {
         return .{ .base = parser.BaseLexer.init(source) };
-    }
-
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
     }
 
     pub fn next(self: *Lexer) Token {
@@ -205,7 +154,7 @@ pub const Lexer = struct {
             const ch = src[self.base.pos];
             if (ch == '"') {
                 self.base.pos += 1;
-                return .{ .cat = .string, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return makeToken(.string, pre, start, self.base.pos);
             }
             if (ch == '\\') {
                 // Accept any next byte; detailed escape validation is the
@@ -216,7 +165,7 @@ pub const Lexer = struct {
             if (ch == '\n') break; // no multi-line strings (PLAN §7.2).
             self.base.pos += 1;
         }
-        return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return makeToken(.err, pre, start, self.base.pos);
     }
 
     fn scanChar(self: *Lexer, start: u32, pre: u8) Token {
@@ -233,9 +182,9 @@ pub const Lexer = struct {
             while (self.base.pos < src.len and isHexDigit(src[self.base.pos])) : (self.base.pos += 1) {}
             if (self.base.pos < src.len and src[self.base.pos] == '}') {
                 self.base.pos += 1;
-                return .{ .cat = .char, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return makeToken(.char, pre, start, self.base.pos);
             }
-            return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+            return makeToken(.err, pre, start, self.base.pos);
         }
 
         // `\name` — named character (alpha run). `\a` and friends fall out of
@@ -243,12 +192,12 @@ pub const Lexer = struct {
         if (isNamedCharStart(src[self.base.pos])) {
             self.base.pos += 1;
             while (self.base.pos < src.len and isAlpha(src[self.base.pos])) : (self.base.pos += 1) {}
-            return .{ .cat = .char, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+            return makeToken(.char, pre, start, self.base.pos);
         }
 
         // `\<any>` — any single literal character (incl. punctuation).
         self.base.pos += 1;
-        return .{ .cat = .char, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return makeToken(.char, pre, start, self.base.pos);
     }
 
     inline fn isNamedCharStart(c: u8) bool {
@@ -275,14 +224,14 @@ pub const Lexer = struct {
             return .{ .cat = .err, .pre = pre, .pos = start, .len = 1 };
         }
         while (self.base.pos < src.len and isIdentCont(src[self.base.pos])) : (self.base.pos += 1) {}
-        return .{ .cat = .keyword, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return makeToken(.keyword, pre, start, self.base.pos);
     }
 
     fn scanIdent(self: *Lexer, start: u32, pre: u8) Token {
         const src = self.base.source;
         self.base.pos = start + 1;
         while (self.base.pos < src.len and isIdentCont(src[self.base.pos])) : (self.base.pos += 1) {}
-        return .{ .cat = .ident, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return makeToken(.ident, pre, start, self.base.pos);
     }
 
     fn scanNumber(self: *Lexer, start: u32, pre: u8, has_minus: bool) Token {
@@ -297,18 +246,18 @@ pub const Lexer = struct {
                 const hex_body = self.base.pos;
                 while (self.base.pos < src.len and isHexDigit(src[self.base.pos])) : (self.base.pos += 1) {}
                 if (self.base.pos == hex_body) {
-                    return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                    return makeToken(.err, pre, start, self.base.pos);
                 }
-                return .{ .cat = .integer, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return makeToken(.integer, pre, start, self.base.pos);
             }
             if (d == 'b' or d == 'B') {
                 self.base.pos += 2;
                 const bin_body = self.base.pos;
                 while (self.base.pos < src.len and isBinDigit(src[self.base.pos])) : (self.base.pos += 1) {}
                 if (self.base.pos == bin_body) {
-                    return .{ .cat = .err, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                    return makeToken(.err, pre, start, self.base.pos);
                 }
-                return .{ .cat = .integer, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+                return makeToken(.integer, pre, start, self.base.pos);
             }
         }
 
@@ -332,6 +281,26 @@ pub const Lexer = struct {
                 while (self.base.pos < src.len and isAsciiDigit(src[self.base.pos])) : (self.base.pos += 1) {}
             }
         }
-        return .{ .cat = if (is_real) .real else .integer, .pre = pre, .pos = start, .len = @intCast(self.base.pos - start) };
+        return makeToken(if (is_real) .real else .integer, pre, start, self.base.pos);
     }
 };
+
+test "an identifier or string longer than a token can hold is an err token" {
+    const source = try std.testing.allocator.alloc(u8, 65536 + 1 + 65538);
+    defer std.testing.allocator.free(source);
+    const ident = source[0..65536];
+    const string = source[65537..];
+    @memset(ident, 'a');
+    source[65536] = ' ';
+    string[0] = '"';
+    @memset(string[1 .. string.len - 1], 'b');
+    string[string.len - 1] = '"';
+    var lx = Lexer.init(source);
+    for ([_]u32{ 0, 65537 }) |pos| {
+        const tok = lx.next();
+        try std.testing.expectEqual(TokenCat.err, tok.cat);
+        try std.testing.expectEqual(pos, tok.pos);
+        try std.testing.expectEqual(std.math.maxInt(u16), tok.len);
+    }
+    try std.testing.expectEqual(TokenCat.eof, lx.next().cat);
+}

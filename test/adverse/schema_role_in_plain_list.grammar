@@ -1,0 +1,26 @@
+# A `role:` item belongs to a schema node; a list without a kind has no
+# roles.
+# error: schema_role_in_plain_list.grammar:26:8:
+# error: role 'x' in a list without a kind
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf
+top! = IDENT                                → (x:1)

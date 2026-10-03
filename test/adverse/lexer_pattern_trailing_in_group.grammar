@@ -1,0 +1,14 @@
+# Trailing context is only allowed at the top level
+# error: lexer_pattern_trailing_in_group.grammar:9:6:
+# error: trailing-context '/' is only allowed at the top level
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+('a' / 'b')     → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

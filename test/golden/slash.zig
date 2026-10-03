@@ -97,7 +97,7 @@ pub const BaseLexer = struct {
         };
     }
 
-    /// Get the text slice for a token (zero-copy into source)
+    /// The text of a token (a slice of the source).
     pub fn text(self: *const Self, tok: Token) []const u8 {
         const start: usize = tok.pos;
         const end: usize = @min(start + tok.len, self.source.len);
@@ -105,23 +105,11 @@ pub const BaseLexer = struct {
         return self.source[start..end];
     }
 
-    /// Reset lexer to beginning
-    pub fn reset(self: *Self) void {
-        self.pos = 0;
-        self.paren = 0;
-        self.brace = 0;
-        self.bracket = 0;
-    }
-
-    /// Get next token
-    pub fn next(self: *Self) Token {
-        return self.matchRules();
-    }
-
-    /// The token of `cat` from `start` to `end`. A match longer than a
-    /// Token can hold (65535 bytes) is an `err` token of that length;
-    /// the scan goes on after the whole match.
-    inline fn token(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+    /// The token of `cat` from `start` to `end`, as the scanner builds
+    /// it: a match longer than a Token can hold is an `err` token 65535
+    /// bytes long, and the scan goes on after the whole match. A lang
+    /// Lexer wrapper builds its tokens with it too.
+    pub inline fn makeToken(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
         if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
         return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
     }
@@ -202,8 +190,8 @@ pub const BaseLexer = struct {
         return p;
     }
 
-    /// Match the next token.
-    pub fn matchRules(self: *Self) Token {
+    /// Scan the next token.
+    pub fn next(self: *Self) Token {
         const src = self.source;
         const n = src.len;
         var p: usize = self.pos;
@@ -224,43 +212,43 @@ pub const BaseLexer = struct {
                     continue :dfa 4;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '\\', '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
-                    '\n' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '\\', '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '\r' => { p += 1; continue :dfa 3; },
                     '"' => { p += 1; continue :dfa 5; },
                     '#' => { p += 1; continue :dfa 6; },
                     '$' => { p += 1; continue :dfa 7; },
                     '&' => { p += 1; continue :dfa 8; },
                     '\'' => { p += 1; continue :dfa 9; },
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"lparen", pre, start, p); },
-                    ')' => { p += 1; self.paren -|= 1; self.pos = @intCast(p); return token(.@"rparen", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    ')' => { p += 1; self.paren -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '0'...'9' => { p += 1; continue :dfa 12; },
-                    ';' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
+                    ';' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '<' => { p += 1; continue :dfa 14; },
-                    '=' => { p += 1; self.pos = @intCast(p); return token(.@"assign", pre, start, p); },
+                    '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"assign", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '>' => { p += 1; continue :dfa 16; },
                     '@' => { p += 1; continue :dfa 17; },
-                    '[' => { p += 1; self.bracket +|= 1; self.pos = @intCast(p); return token(.@"lbracket", pre, start, p); },
-                    ']' => { p += 1; self.bracket -|= 1; self.pos = @intCast(p); return token(.@"rbracket", pre, start, p); },
-                    '{' => { p += 1; self.brace +|= 1; self.pos = @intCast(p); return token(.@"lbrace", pre, start, p); },
+                    '[' => { p += 1; self.bracket +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    ']' => { p += 1; self.bracket -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rbracket", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '{' => { p += 1; self.brace +|= 1; self.pos = @intCast(p); return .{ .cat = .@"lbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '|' => { p += 1; continue :dfa 21; },
-                    '}' => { p += 1; self.brace -|= 1; self.pos = @intCast(p); return token(.@"rbrace", pre, start, p); },
+                    '}' => { p += 1; self.brace -|= 1; self.pos = @intCast(p); return .{ .cat = .@"rbrace", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 break :dfa;
             },
             3 => {
                 if (p < n) switch (src[p]) {
-                    '\n' => { p += 1; self.pos = @intCast(p); return token(.@"semi", pre, start, p); },
+                    '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"semi", pre, start, p);
+                return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             4 => {
                 while (p < n and cls1[src[p]]) p += 1;
                 self.pos = @intCast(p);
-                return token(.@"ident", pre, start, p);
+                return makeToken(.@"ident", pre, start, p);
             },
             5 => {
                 acc = 44;
@@ -270,17 +258,17 @@ pub const BaseLexer = struct {
                     continue :dfa 24;
                 }
                 if (p < n) switch (src[p]) {
-                    '"' => { p += 1; self.pos = @intCast(p); return token(.@"string_dq", pre, start, p); },
+                    '"' => { p += 1; self.pos = @intCast(p); return makeToken(.@"string_dq", pre, start, p); },
                     '\\' => { p += 1; continue :dfa 26; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             6 => {
                 p = scanUntil(src, p, &.{'\n'});
                 self.pos = @intCast(p);
-                return token(.@"comment", pre, start, p);
+                return makeToken(.@"comment", pre, start, p);
             },
             7 => {
                 acc = 44;
@@ -290,28 +278,28 @@ pub const BaseLexer = struct {
                     continue :dfa 35;
                 }
                 if (p < n) switch (src[p]) {
-                    '!' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '#' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '$' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"dollar_paren", pre, start, p); },
-                    '*' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '0'...'9' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '?' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
-                    '@' => { p += 1; self.pos = @intCast(p); return token(.@"variable", pre, start, p); },
+                    '!' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '#' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '$' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"dollar_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '*' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '0'...'9' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '?' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '@' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"variable", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '{' => { p += 1; continue :dfa 36; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             8 => {
                 if (p < n) switch (src[p]) {
-                    '&' => { p += 1; self.pos = @intCast(p); return token(.@"and_and", pre, start, p); },
+                    '&' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"and_and", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '>' => { p += 1; continue :dfa 38; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"amp", pre, start, p);
+                return .{ .cat = .@"amp", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             9 => {
                 acc = 44;
@@ -325,7 +313,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             12 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
@@ -335,27 +323,27 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"integer", pre, start, p);
+                return makeToken(.@"integer", pre, start, p);
             },
             14 => {
                 acc = 14;
                 accEnd = p;
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"proc_sub_in", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"proc_sub_in", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '<' => { p += 1; continue :dfa 44; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"lt", pre, start, p);
+                return .{ .cat = .@"lt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             16 => {
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"proc_sub_out", pre, start, p); },
-                    '>' => { p += 1; self.pos = @intCast(p); return token(.@"gt_gt", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"proc_sub_out", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"gt_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"gt", pre, start, p);
+                return .{ .cat = .@"gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             17 => {
                 if (p < n and cls1[src[p]]) {
@@ -363,24 +351,24 @@ pub const BaseLexer = struct {
                     continue :dfa 4;
                 }
                 if (p < n) switch (src[p]) {
-                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return token(.@"at_paren", pre, start, p); },
+                    '(' => { p += 1; self.paren +|= 1; self.pos = @intCast(p); return .{ .cat = .@"at_paren", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"ident", pre, start, p);
+                return .{ .cat = .@"ident", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             21 => {
                 if (p < n) switch (src[p]) {
-                    '|' => { p += 1; self.pos = @intCast(p); return token(.@"or_or", pre, start, p); },
+                    '|' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"or_or", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"pipe", pre, start, p);
+                return .{ .cat = .@"pipe", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             24 => {
                 p = scanUntil(src, p, &.{'\n', '"', '\\'});
                 if (p < n) switch (src[p]) {
-                    '"' => { p += 1; self.pos = @intCast(p); return token(.@"string_dq", pre, start, p); },
+                    '"' => { p += 1; self.pos = @intCast(p); return makeToken(.@"string_dq", pre, start, p); },
                     '\\' => { p += 1; continue :dfa 26; },
                     else => {},
                 };
@@ -395,7 +383,7 @@ pub const BaseLexer = struct {
             35 => {
                 while (p < n and cls5[src[p]]) p += 1;
                 self.pos = @intCast(p);
-                return token(.@"variable", pre, start, p);
+                return makeToken(.@"variable", pre, start, p);
             },
             36 => {
                 if (p < n) switch (src[p]) {
@@ -406,11 +394,11 @@ pub const BaseLexer = struct {
             },
             38 => {
                 if (p < n) switch (src[p]) {
-                    '>' => { p += 1; self.pos = @intCast(p); return token(.@"amp_gt_gt", pre, start, p); },
+                    '>' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"amp_gt_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"amp_gt", pre, start, p);
+                return .{ .cat = .@"amp_gt", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
             },
             39 => {
                 p = scanUntil(src, p, &.{'\n', '\''});
@@ -428,7 +416,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"string_sq", pre, start, p);
+                return makeToken(.@"string_sq", pre, start, p);
             },
             41 => {
                 acc = 12;
@@ -438,7 +426,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"fd_lt", pre, start, p);
+                return makeToken(.@"fd_lt", pre, start, p);
             },
             42 => {
                 acc = 11;
@@ -448,7 +436,7 @@ pub const BaseLexer = struct {
                     else => {},
                 };
                 self.pos = @intCast(p);
-                return token(.@"fd_gt", pre, start, p);
+                return makeToken(.@"fd_gt", pre, start, p);
             },
             44 => {
                 if (p < n and cls3[src[p]]) {
@@ -464,7 +452,7 @@ pub const BaseLexer = struct {
             49 => {
                 p = scanUntil(src, p, &.{'\n', '}'});
                 if (p < n) switch (src[p]) {
-                    '}' => { p += 1; self.pos = @intCast(p); return token(.@"var_braced", pre, start, p); },
+                    '}' => { p += 1; self.pos = @intCast(p); return makeToken(.@"var_braced", pre, start, p); },
                     else => {},
                 };
                 break :dfa;
@@ -493,22 +481,22 @@ pub const BaseLexer = struct {
             54 => {
                 while (p < n and cls5[src[p]]) p += 1;
                 self.pos = @intCast(p);
-                return token(.@"heredoc_open", pre, start, p);
+                return makeToken(.@"heredoc_open", pre, start, p);
             },
             56 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
                 self.pos = @intCast(p);
-                return token(.@"fd_dup_in", pre, start, p);
+                return makeToken(.@"fd_dup_in", pre, start, p);
             },
             57 => {
                 while (p < n and src[p] -% '0' <= 9) p += 1;
                 self.pos = @intCast(p);
-                return token(.@"fd_dup_out", pre, start, p);
+                return makeToken(.@"fd_dup_out", pre, start, p);
             },
             58 => {
                 while (p < n and cls5[src[p]]) p += 1;
                 if (p < n) switch (src[p]) {
-                    '\'' => { p += 1; self.pos = @intCast(p); return token(.@"heredoc_open_lit", pre, start, p); },
+                    '\'' => { p += 1; self.pos = @intCast(p); return makeToken(.@"heredoc_open_lit", pre, start, p); },
                     else => {},
                 };
                 break :dfa;
@@ -519,27 +507,27 @@ pub const BaseLexer = struct {
             44 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return token(.@"err", pre, start, p);
+                return makeToken(.@"err", pre, start, p);
             },
             14 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return token(.@"lt", pre, start, p);
+                return makeToken(.@"lt", pre, start, p);
             },
             25 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return token(.@"string_sq", pre, start, p);
+                return makeToken(.@"string_sq", pre, start, p);
             },
             12 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return token(.@"fd_lt", pre, start, p);
+                return makeToken(.@"fd_lt", pre, start, p);
             },
             11 => {
                 p = accEnd;
                 self.pos = @intCast(p);
-                return token(.@"fd_gt", pre, start, p);
+                return makeToken(.@"fd_gt", pre, start, p);
             },
             else => {},
         }
@@ -548,13 +536,63 @@ pub const BaseLexer = struct {
     }
 };
 
+/// The lexer the parser drives: the lang module's `Lexer` wrapper, if it
+/// declares one.
 pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 
 // =============================================================================
-// Tag enum (re-exported from the language module)
+// Tag enum (the tags the actions produce, then @tags)
 // =============================================================================
 
-pub const Tag = lang.Tag;
+pub const Tag = enum(u8) {
+    @"sequence",
+    @"seq_always",
+    @"seq_and",
+    @"seq_or",
+    @"seq_bg",
+    @"pipeline",
+    @"subshell",
+    @"block",
+    @"redirects",
+    @"command",
+    @"env_binds",
+    @"assigns",
+    @"env_bind",
+    @"scalar",
+    @"list",
+    @"word",
+    @"var",
+    @"var_braced",
+    @"cmd_subst",
+    @"list_capture",
+    @"proc_sub_in",
+    @"proc_sub_out",
+    @"if",
+    @"cond_and",
+    @"cond_or",
+    @"else",
+    @"elif",
+    @"body",
+    @"while",
+    @"for",
+    @"match",
+    @"match_arms",
+    @"match_arm",
+    @"cmd_def",
+    @"str_def",
+    @"words",
+    @"redir_read",
+    @"redir_read_fd",
+    @"redir_write",
+    @"redir_write_fd",
+    @"redir_append",
+    @"redir_both",
+    @"redir_both_append",
+    @"redir_dup_out",
+    @"redir_dup_in",
+    @"redir_heredoc",
+    @"redir_heredoc_lit",
+};
 
 /// Roles exist only in schema mode.
 pub const Role = enum(u16) { _ };
@@ -664,31 +702,120 @@ pub const Sexp = union(enum) {
 
     /// Print the tree on one line: `_`, tags by name, leaves as their text
     /// followed by `#id` when the id attribute is non-zero, strings quoted.
+    /// error.WriteFailed also reports the walk running out of memory.
     pub fn write(self: Sexp, source: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
-        switch (self) {
+        try writeNested(self, w, source, writeAtom);
+    }
+
+    fn writeAtom(source: []const u8, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
+        switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| try w.writeAll(nameOf(t)),
-            .src => |s| {
-                try w.writeAll(source[s.pos..][0..s.len]);
-                if (s.id != 0) try w.print("#{d}", .{s.id});
+            .src => |x| {
+                try w.writeAll(source[x.pos..][0..x.len]);
+                if (x.id != 0) try w.print("#{d}", .{x.id});
             },
-            .str => |s| try w.print("\"{s}\"", .{s}),
-            .list => |l| {
-                try w.writeAll("(");
-                for (l.items(), 0..) |item, i| {
-                    if (i > 0) try w.writeAll(" ");
-                    try item.write(source, w);
-                }
-                try w.writeAll(")");
-            },
+            .str => |x| try w.print("\"{s}\"", .{x}),
+            .list => |l| return l.items(),
         }
+        return null;
     }
 };
 
 /// The name of a Tag or Role value, "?" for one the enum does not name
-/// (without a schema, Role is empty and a collected Tag is non-exhaustive).
+/// (without a schema Role is empty, and so is Tag when no action builds a
+/// tag: both are then non-exhaustive).
 fn nameOf(value: anytype) []const u8 {
     return std.enums.tagName(@TypeOf(value), value) orelse "?";
+}
+
+/// The explicit stack of a tree walk: per open list, its items not yet
+/// visited. Ordinary input builds trees of any depth (a long operator
+/// chain is a tree as deep as it is long), so no walk of a tree recurses
+/// on the native stack. Shallow walks use the frames inline; deeper ones
+/// move them to page memory.
+const Walk = struct {
+    small: [32][]const Sexp = undefined,
+    big: [][]const Sexp = &.{},
+    len: usize = 0,
+
+    fn frames(self: *Walk) [][]const Sexp {
+        return if (self.big.len > 0) self.big else &self.small;
+    }
+
+    fn push(self: *Walk, items: []const Sexp) error{OutOfMemory}!void {
+        var f = self.frames();
+        if (self.len == f.len) {
+            const grown = try std.heap.page_allocator.alloc([]const Sexp, f.len * 2);
+            @memcpy(grown[0..self.len], f);
+            if (self.big.len > 0) std.heap.page_allocator.free(self.big);
+            self.big = grown;
+            f = grown;
+        }
+        f[self.len] = items;
+        self.len += 1;
+    }
+
+    /// The unvisited items of the innermost open list.
+    fn top(self: *Walk) ?*[]const Sexp {
+        return if (self.len == 0) null else &self.frames()[self.len - 1];
+    }
+
+    fn pop(self: *Walk) void {
+        self.len -= 1;
+    }
+
+    /// The next item in pre-order, closing the lists it leaves; null at
+    /// the end of the walk.
+    fn next(self: *Walk) ?Sexp {
+        while (self.top()) |rest| {
+            if (rest.len > 0) {
+                defer rest.* = rest.*[1..];
+                return rest.*[0];
+            }
+            self.pop();
+        }
+        return null;
+    }
+
+    fn deinit(self: *Walk) void {
+        if (self.big.len > 0) std.heap.page_allocator.free(self.big);
+    }
+};
+
+/// Write `root` as nested parentheses with a space between items.
+/// `atom(ctx, w, s)` writes a value and returns null, or returns the items
+/// of a list to open.
+fn writeNested(
+    root: Sexp,
+    w: *std.Io.Writer,
+    ctx: anytype,
+    comptime atom: fn (@TypeOf(ctx), *std.Io.Writer, Sexp) std.Io.Writer.Error!?[]const Sexp,
+) std.Io.Writer.Error!void {
+    var walk: Walk = .{};
+    defer walk.deinit();
+    var s = root;
+    while (true) {
+        // Whether the next item of the innermost list follows another.
+        var sep = true;
+        if (try atom(ctx, w, s)) |items| {
+            try w.writeByte('(');
+            walk.push(items) catch return error.WriteFailed;
+            sep = false;
+        }
+        while (true) {
+            const rest = walk.top() orelse return;
+            if (rest.len > 0) {
+                if (sep) try w.writeByte(' ');
+                s = rest.*[0];
+                rest.* = rest.*[1..];
+                break;
+            }
+            walk.pop();
+            try w.writeByte(')');
+            sep = true;
+        }
+    }
 }
 
 
@@ -697,7 +824,7 @@ fn nameOf(value: anytype) []const u8 {
 // =============================================================================
 
 /// Per node: its source span and the rule that built it.
-pub const NodeInfo = struct { span: Span, rule: u16 };
+const NodeInfo = struct { span: Span, rule: u16 };
 
 /// NodeInfo per NodeId, in fixed-size chunks that never move (appending
 /// never copies the store).
@@ -724,11 +851,51 @@ const NodeStore = struct {
     }
 };
 
+/// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+inline fn getAction(state: u16, sym: u16) i16 {
+    return parseTable[state][sym];
+}
+
+/// What `state` expects, reader-named: list `expectedOf[state]` of
+/// `expectedSymbols`.
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
+
+/// The `X "c"` override of `state` for `sym`: the state to shift to.
+fn getImmediateShift(state: u16, sym: u16) ?i16 {
+    if (xExcludes.len == 0) return null;
+    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
+        if (x.sym == sym) return @intCast(x.shift);
+    }
+    return null;
+}
+
+/// The tokens tolerant repair may insert in `state`, best first.
+fn repairCandidates(state: u16) []const u16 {
+    if (!hasRepair) return &.{};
+    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
+}
+
+/// The symbol `tokenToSymbol` gives the promotable token when `@as`
+/// decides it per state; no grammar symbol has it.
+const needsPromotion: u16 = std.math.maxInt(u16);
+
+/// The length of an `@as` group's symbol map: an entry for every value of
+/// its Id enum up to the largest it names.
+fn idCount(comptime Id: type) usize {
+    var n: usize = 0;
+    for (@typeInfo(Id).@"enum".field_values) |v| n = @max(n, v + 1);
+    return n;
+}
+
 /// A side-band role recorded at reduce time (not placed in the tree).
-pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
+const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
 /// A side-band label of a rule: `role` is recorded from element `pass`.
-pub const SideLabel = struct { role: Role, pass: u16 };
+const SideLabel = struct { role: Role, pass: u16 };
 
 /// A parse error: the offending token and the state that rejected it.
 pub const Failure = struct {
@@ -756,7 +923,7 @@ pub const Tolerant = struct {
 };
 
 /// A token's role in tolerant repair, from `@repair`.
-pub const RepairClass = enum {
+const RepairClass = enum {
     /// Not fabricable: real input.
     none,
     /// `holes`: a value-carrying token that may be minted with empty text.
@@ -774,15 +941,14 @@ pub const RepairClass = enum {
 /// e.g. MUMPS stores the dot level of a line there). The parser stores it in
 /// the token's `src.id` unless an `@as` keyword match supplies the id.
 fn takeLexerId(lexer: *Lexer) u16 {
-    if (comptime @hasField(Lexer, "aux")) {
-        const id = lexer.aux;
-        lexer.aux = 0;
-        return id;
-    } else if (comptime @hasField(Lexer, "base") and @hasField(@FieldType(Lexer, "base"), "aux")) {
-        const id = lexer.base.aux;
-        lexer.base.aux = 0;
-        return id;
-    } else return 0;
+    const base: *BaseLexer = if (Lexer == BaseLexer) lexer else &lexer.base;
+    defer base.aux = 0;
+    return base.aux;
+}
+
+comptime {
+    if (Lexer != BaseLexer and !(@hasField(Lexer, "base") and @FieldType(Lexer, "base") == BaseLexer))
+        @compileError("the lang module's Lexer wrapper must hold the generated lexer in a field `base: BaseLexer`");
 }
 
 pub const BaseParser = struct {
@@ -796,17 +962,30 @@ pub const BaseParser = struct {
     pendingInsert: ?u16 = null,
     /// `@as` keyword ordinal of `current`, stored in its `src.id`.
     lastMatchedId: u16 = 0,
+    /// The `@as` lookups of `current`, one per group: the keyword ordinal
+    /// plus one, `noKeyword`, or 0 before the lookup. A lookup does not
+    /// depend on the state, so it runs once per token.
+    keywordIds: [asGroups]u32 = @splat(0),
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
+    /// The free bytes of the allocator's current chunk, and the size of
+    /// its next one (see `allocator`).
+    bumpPos: usize = 0,
+    bumpEnd: usize = 0,
+    bumpNext: usize = bumpFirst,
+
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Spare capacity of the lists `keepList` returned, by address.
-    listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
-    /// Node id of the list `extendList` is growing (0 = none).
-    extending: NodeId = 0,
+    /// Per value-stack entry, the list `keepList` left there with its
+    /// capacity, for `extendList` to grow in place. Indexed like
+    /// `valueStack`, sized to its capacity. An entry only ever describes a
+    /// live buffer: `extendList` clears the one it takes (its buffer may
+    /// move and be freed), a rule passing a list on moves the entry with
+    /// it, and each parse starts with none (its memory is reused).
+    spares: []Spare = &.{},
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -828,7 +1007,13 @@ pub const BaseParser = struct {
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
 
-    const ListSpare = struct { len: usize, capacity: usize };
+    const Spare = struct {
+        items: [*]const Sexp,
+        len: u32,
+        capacity: u32,
+
+        const none: Spare = .{ .items = &.{}, .len = 0, .capacity = 0 };
+    };
 
     /// The reduction in progress: its rule and where it starts (it ends at
     /// `lastEnd`); with `elemEnds`, also the stack index of its first
@@ -847,7 +1032,7 @@ pub const BaseParser = struct {
             .source = source,
             .current = undefined,
         };
-        p.current = p.lexer.next();
+        p.setCurrent(p.lexer.next());
         return p;
     }
 
@@ -855,8 +1040,87 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
-    fn allocator(self: *BaseParser) std.mem.Allocator {
-        return self.arena.allocator();
+    /// Start over on `source`, keeping the memory the parser holds for the
+    /// next parses: the trees, node ids and errors of earlier parses, and
+    /// everything from `allocator`, are gone.
+    pub fn reset(self: *BaseParser, source: []const u8) void {
+        var arena = self.arena;
+        _ = arena.reset(.retain_capacity);
+        self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined };
+        self.setCurrent(self.lexer.next());
+    }
+
+    /// The parser's allocator, which holds the trees: a bump allocator over
+    /// chunks of the arena (single-threaded, so allocation is a bounds check
+    /// and an add; the arena's own allocation is atomic). A lang Parser
+    /// wrapper allocates what it builds here too. Everything is freed by
+    /// `deinit` (or `reset`).
+    pub fn allocator(self: *BaseParser) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &bumpVTable };
+    }
+
+    /// `n` items for a list: the allocator's fast path, inline.
+    inline fn allocItems(self: *BaseParser, n: usize) error{OutOfMemory}![]Sexp {
+        const start = std.mem.alignForward(usize, self.bumpPos, @alignOf(Sexp));
+        const end = start + n * @sizeOf(Sexp);
+        if (end > self.bumpEnd) return self.allocator().alloc(Sexp, n);
+        self.bumpPos = end;
+        return @as([*]Sexp, @ptrFromInt(start))[0..n];
+    }
+
+    const bumpVTable: std.mem.Allocator.VTable = .{
+        .alloc = bumpAlloc,
+        .resize = bumpResize,
+        .remap = bumpRemap,
+        .free = bumpFree,
+    };
+
+    /// Chunks grow from `bumpFirst` to `bumpLast` bytes; a request larger
+    /// than `bumpLast / 4` goes to the arena by itself.
+    const bumpFirst = 4096;
+    const bumpLast = 1 << 20;
+
+    fn bumpAlloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = alignment.forward(self.bumpPos);
+        if (start + len <= self.bumpEnd) {
+            self.bumpPos = start + len;
+            return @ptrFromInt(start);
+        }
+        return self.bumpRefill(len, alignment, ra);
+    }
+
+    fn bumpRefill(self: *BaseParser, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const arena = self.arena.allocator();
+        if (len > bumpLast / 4) return arena.rawAlloc(len, alignment, ra);
+        const size = @max(self.bumpNext, len + alignment.toByteUnits());
+        const chunk = arena.rawAlloc(size, .@"16", ra) orelse return null;
+        self.bumpNext = @min(size * 2, bumpLast);
+        const start = alignment.forward(@intFromPtr(chunk));
+        self.bumpPos = start + len;
+        self.bumpEnd = @intFromPtr(chunk) + size;
+        return @ptrFromInt(start);
+    }
+
+    /// The last allocation grows or shrinks in place; any other only
+    /// shrinks.
+    fn bumpResize(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, new_len: usize, _: usize) bool {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len != self.bumpPos) return new_len <= memory.len;
+        if (start + new_len > self.bumpEnd) return false;
+        self.bumpPos = start + new_len;
+        return true;
+    }
+
+    fn bumpRemap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        return if (bumpResize(ctx, memory, alignment, new_len, ra)) memory.ptr else null;
+    }
+
+    fn bumpFree(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len == self.bumpPos) self.bumpPos = start;
     }
 
     pub fn parseProgram(self: *BaseParser) !Sexp {
@@ -902,9 +1166,11 @@ pub const BaseParser = struct {
     ///   4. An insertion must let the offending token be consumed (shifted,
     ///      or accepted at end of input). At end of input or a structure
     ///      token, when none does, a candidate the state can shift is
-    ///      inserted anyway, never twice in the same configuration (stack
-    ///      depth, state, token) since the last token was consumed, so
-    ///      several insertions can complete an unfinished construct.
+    ///      inserted anyway, so several insertions can complete an
+    ///      unfinished construct. Since the last token was consumed, the
+    ///      same token is inserted in the same state again only on a
+    ///      shallower stack: a repeat at the same depth is a cycle, and one
+    ///      on a deeper stack only nests the construct further.
     ///   5. With no admissible insertion the offending token is deleted,
     ///      except end of input, which is never deleted: the parse ends
     ///      there, incomplete.
@@ -943,7 +1209,7 @@ pub const BaseParser = struct {
                 } else if (sym == endSymbol) {
                     break;
                 } else {
-                    try self.advance();
+                    try self.deleteToken();
                     tried.clearRetainingCapacity();
                     result.deletions += 1;
                 }
@@ -957,24 +1223,27 @@ pub const BaseParser = struct {
     const RepairKey = struct { depth: u32, state: u16, token: u16 };
 
     /// The insertion rules 3 and 4 allow before `next`, best first; null
-    /// when there is none.
+    /// when there is none. An insertion already tried in this state, at
+    /// this depth or above, since the last consumed token is not repeated.
     fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
         const state = self.stateStack.last().?;
         const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
         const real = nextClass == .none or nextClass == .hole;
-        for (repairCandidates(state)) |candidate| {
-            if (real and repairClass(candidate) != .terminator) continue;
-            if (try self.accepts(&.{ candidate, next })) return candidate;
-        }
-        if (real) return null;
         const depth: u32 = @intCast(self.stateStack.items.len);
         for (repairCandidates(state)) |candidate| {
-            const seen = for (tried) |k| {
-                if (k.depth == depth and k.state == state and k.token == candidate) break true;
-            } else false;
-            if (!seen and try self.accepts(&.{candidate})) return candidate;
+            if (real and repairClass(candidate) != .terminator) continue;
+            if (!wasTried(tried, depth, state, candidate) and try self.accepts(candidate, next)) return candidate;
+        }
+        if (real) return null;
+        for (repairCandidates(state)) |candidate| {
+            if (!wasTried(tried, depth, state, candidate) and try self.accepts(candidate, null)) return candidate;
         }
         return null;
+    }
+
+    fn wasTried(tried: []const RepairKey, depth: u32, state: u16, token: u16) bool {
+        for (tried) |k| if (k.depth <= depth and k.state == state and k.token == token) return true;
+        return false;
     }
 
     fn begin(self: *BaseParser, start: Start) !void {
@@ -985,11 +1254,12 @@ pub const BaseParser = struct {
         // keep counting, so earlier trees stay valid.
         if (self.started) {
             self.lexer = Lexer.init(self.source);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
             self.lastMatchedId = 0;
             self.triviaTokens.clearRetainingCapacity();
         }
         self.started = true;
+        @memset(self.spares, .none);
         self.stateStack.clearRetainingCapacity();
         self.valueStack.clearRetainingCapacity();
         self.failure = null;
@@ -998,17 +1268,64 @@ pub const BaseParser = struct {
         try self.stateStack.append(self.allocator(), startState(start));
         if (nodeStore) self.lastEnd = 0;
         self.injectedToken = startMarker(start);
-        if (nodeStore) {
-            if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
-        }
+        try self.ensureNodeStore();
         if (hasTrivia) try self.skipTrivia();
     }
 
     inline fn lookahead(self: *BaseParser) u16 {
         if (self.injectedToken) |marker| return marker;
         if (self.pendingInsert) |token| return token;
-        return tokenToSymbol(self, self.current);
+        const sym = tokenToSymbol(self.current);
+        if (asGroups > 0 and sym == needsPromotion) return promote(self, self.current);
+        return sym;
     }
+
+    /// Make `tok` the current token (forgetting the keyword lookups of the
+    /// one before).
+    inline fn setCurrent(self: *BaseParser, tok: Token) void {
+        self.current = tok;
+        if (asGroups > 0) self.keywordIds = @splat(0);
+    }
+
+    /// `@as` promotion of the current token, `text`, to one group: the
+    /// group's symbol for the keyword, else the group's fallback symbol,
+    /// when the state takes it (with any action when `permissive`, else by
+    /// a shift). The keyword's ordinal becomes the leaf's id. (A
+    /// non-exhaustive Id enum may give an ordinal past the map: it has no
+    /// symbol of its own.)
+    inline fn tryPromote(
+        self: *BaseParser,
+        comptime group: usize,
+        text: []const u8,
+        comptime lookup: anytype,
+        comptime toSymbol: []const u16,
+        comptime fallback: u16,
+        comptime permissive: bool,
+    ) ?u16 {
+        const id = self.keywordId(group, text, lookup) orelse return null;
+        const state = self.stateStack.last().?;
+        for ([_]u16{ if (id < toSymbol.len) toSymbol[id] else 0, fallback }) |sym| {
+            if (sym == 0) continue;
+            const action = getAction(state, sym);
+            if (if (permissive) action != 0 else action > 0) {
+                self.lastMatchedId = id;
+                return sym;
+            }
+        }
+        return null;
+    }
+
+    /// The ordinal `lookup` gives the current token's `text` in `group`,
+    /// looked up once per token.
+    inline fn keywordId(self: *BaseParser, comptime group: usize, text: []const u8, comptime lookup: anytype) ?u16 {
+        const known = self.keywordIds[group];
+        if (known != 0) return if (known == noKeyword) null else @intCast(known - 1);
+        const id: ?u16 = if (lookup(text)) |k| @backingInt(k) else null;
+        self.keywordIds[group] = if (id) |i| @as(u32, i) + 1 else noKeyword;
+        return id;
+    }
+
+    const noKeyword = std.math.maxInt(u32);
 
     /// The table action, with the `X "c"` override: when the table reduces
     /// on the hinted token and it touches the previous token, shift
@@ -1032,7 +1349,10 @@ pub const BaseParser = struct {
             self.pendingInsert = null;
         } else {
             const tok = self.current;
-            const id = if (self.lastMatchedId != 0) self.lastMatchedId else takeLexerId(&self.lexer);
+            // The lexer's id is taken even when an `@as` ordinal replaces
+            // it, so it never reaches the next token.
+            const lexerId = takeLexerId(&self.lexer);
+            const id = if (self.lastMatchedId != 0) self.lastMatchedId else lexerId;
             self.lastMatchedId = 0;
             const end = tok.pos + tok.len;
             try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
@@ -1062,6 +1382,15 @@ pub const BaseParser = struct {
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
         if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
         if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
+        const old = self.spares.len;
+        self.spares = try a.realloc(self.spares, capacity);
+        @memset(self.spares[old..], .none);
+    }
+
+    /// The value-stack index of `pass[0]`, the first element of the
+    /// reduction in progress.
+    fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
+        return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -1090,8 +1419,21 @@ pub const BaseParser = struct {
         }
 
         // The action reads its elements in place on the value stack; the
-        // result then replaces them (a reduction of nothing pushes it).
-        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
+        // result then replaces them (a reduction of nothing pushes it). A
+        // rule whose value is nil or one of its elements has no action.
+        // A list passed on keeps its spare, to grow in place in the rule
+        // that extends it.
+        const result: Sexp = switch (ruleValue[ruleId]) {
+            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            1 => .nil,
+            else => |n| blk: {
+                if (n > 2) {
+                    self.spares[base] = self.spares[base + n - 2];
+                    self.spares[base + n - 2] = .none;
+                }
+                break :blk self.valueStack.items[base + n - 2];
+            },
+        };
         if (self.outOfMemory) return error.OutOfMemory;
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
@@ -1113,27 +1455,53 @@ pub const BaseParser = struct {
     /// Move the nodes of an empty value (a subtree that consumed nothing)
     /// to `at`.
     fn placeEmpty(self: *BaseParser, value: Sexp, at: u32) void {
-        if (value != .list) return;
-        const l = value.list;
-        if (l.id != 0 and l.id < self.nodes.len) {
-            const info = self.nodes.at(l.id);
-            if (!info.span.isEmpty()) return;
+        // Most empty values are leaves or flat lists: no walk.
+        if (!self.placeNode(value, at)) return;
+        for (value.list.items()) |item| {
+            if (item == .list) break;
+        } else return;
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = value;
+        while (true) {
+            if (self.placeNode(s, at)) walk.push(s.list.items()) catch {
+                self.outOfMemory = true;
+                return;
+            };
+            s = walk.next() orelse return;
+        }
+    }
+
+    /// Place an empty list's node at `at`; whether its items need placing
+    /// too (false for a non-list, or a node already placed).
+    inline fn placeNode(self: *BaseParser, s: Sexp, at: u32) bool {
+        if (s != .list) return false;
+        const id = s.list.id;
+        if (id != 0 and id < self.nodes.len) {
+            const info = self.nodes.at(id);
+            if (!info.span.isEmpty()) return false;
             info.span = .{ .start = at, .end = at };
         }
-        for (l.items()) |child| self.placeEmpty(child, at);
+        return true;
     }
 
     /// Fetch the next token, moving trivia to the trivia channel.
     fn advance(self: *BaseParser) !void {
-        self.current = self.lexer.next();
+        self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
+    }
+
+    /// Drop the current token, and its lexer id with it.
+    fn deleteToken(self: *BaseParser) !void {
+        _ = takeLexerId(&self.lexer);
+        try self.advance();
     }
 
     fn skipTrivia(self: *BaseParser) !void {
         while (isTrivia(self.current.cat)) {
             try self.triviaTokens.append(self.allocator(), self.current);
             _ = takeLexerId(&self.lexer);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
         }
     }
 
@@ -1195,22 +1563,32 @@ pub const BaseParser = struct {
     /// Source span of a value. Leaves span their token. A list with a node
     /// id spans its reduction: first to last consumed token, including
     /// tokens (keywords, punctuation) that are not in the tree. Any other
-    /// list spans the hull of its children.
+    /// list spans the hull of its children: from the least start to the
+    /// greatest end of the non-empty spans below it, whatever order an
+    /// action put them in. Panics if the walk runs out of memory (its stack
+    /// is far smaller than the tree it walks).
     pub fn span(self: *const BaseParser, s: Sexp) Span {
-        switch (s) {
-            .src => |x| return .{ .start = x.pos, .end = x.pos + x.len },
-            .list => |l| {
-                if (nodeStore and l.id != 0 and l.id < self.nodes.len) return self.nodes.at(l.id).span;
-                var result: ?Span = null;
-                for (l.items()) |child| {
-                    const cs = self.span(child);
-                    if (cs.isEmpty()) continue;
-                    result = if (result) |r| .{ .start = r.start, .end = cs.end } else cs;
-                }
-                return result orelse .empty;
-            },
-            else => return .empty,
+        if (self.ownSpan(s)) |own| return own;
+        var hull: ?Span = null;
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var x = s;
+        while (true) {
+            if (self.ownSpan(x)) |own| {
+                if (!own.isEmpty()) hull = if (hull) |h| .{ .start = @min(h.start, own.start), .end = @max(h.end, own.end) } else own;
+            } else walk.push(x.list.items()) catch @panic("out of memory");
+            x = walk.next() orelse return hull orelse .empty;
         }
+    }
+
+    /// The span of a value that is not a hull: a leaf's, a node's, empty
+    /// for any other non-list; null for a list without a node id.
+    fn ownSpan(self: *const BaseParser, s: Sexp) ?Span {
+        return switch (s) {
+            .src => |x| .{ .start = x.pos, .end = x.pos + x.len },
+            .list => |l| if (nodeStore and l.id != 0 and l.id < self.nodes.len) self.nodes.at(l.id).span else null,
+            else => .empty,
+        };
     }
 
     /// The rule that built a list node (null without a node id, or for a
@@ -1232,7 +1610,7 @@ pub const BaseParser = struct {
     /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
     /// is null). Without a node store the node has no id.
     pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
-        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        const out = try self.allocItems(children.len + 1);
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], children);
         return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
@@ -1247,8 +1625,13 @@ pub const BaseParser = struct {
 
     fn wrapperNodeId(self: *BaseParser, extent: Span) !NodeId {
         if (!nodeStore) return 0;
-        if (self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
+        try self.ensureNodeStore();
         return self.nodes.add(self.allocator(), .{ .span = extent, .rule = wrapperRule });
+    }
+
+    /// Start the node store with its unused entry 0 (node ids are 1-based).
+    fn ensureNodeStore(self: *BaseParser) !void {
+        if (nodeStore and self.nodes.len == 0) _ = try self.nodes.add(self.allocator(), .{ .span = .empty, .rule = 0 });
     }
 
     /// Number of node ids in use (ids run 1 .. nodeCount()).
@@ -1299,7 +1682,8 @@ pub const BaseParser = struct {
 
     /// A list node over exactly `items` (fixed positions).
     fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
-        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        @memcpy(out, items);
         return self.node(out, use);
     }
 
@@ -1332,12 +1716,18 @@ pub const BaseParser = struct {
         return len;
     }
 
-    /// The default action: nothing, the one element, or an untagged list.
-    fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
-        if (pass.len == 0) return .nil;
-        if (pass.len == 1) return pass[0];
-        const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
-        return self.node(out, use);
+    /// `~N` of an element that is no leaf: an empty leaf where element `i`
+    /// starts. Without a node store element starts are not kept: it is
+    /// placed at the first element from `i` on that spans something, else
+    /// at the next token.
+    fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
+        const pos = if (nodeStore)
+            self.starts[self.stackIndex(pass) + i]
+        else for (pass[i..]) |e| {
+            const s = self.span(e);
+            if (!s.isEmpty()) break s.start;
+        } else self.current.pos;
+        return .{ .src = .{ .pos = pos, .len = 0, .id = 0 } };
     }
 
     /// `()`: an empty list.
@@ -1348,51 +1738,54 @@ pub const BaseParser = struct {
     /// `[head, ...tail]`
     fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
-        const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
+        const out = self.allocItems(rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of `base` (a list, else nothing)
-    /// for an action that appends to it. A list from `keepList` is reused
-    /// with its spare capacity, so a left-recursive list grows in amortized
-    /// O(1) per element; it keeps its node id.
-    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
-        self.extending = 0;
+    /// Start a list holding the items of element `n` (a list, else
+    /// nothing) for an action that appends to it. A list `keepList` left
+    /// on the value stack is reused with its spare capacity, so a
+    /// left-recursive list grows in amortized O(1) per element; it keeps
+    /// its node id.
+    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+        const base = pass[n];
         if (base != .list) return .empty;
-        self.extending = base.list.id;
         const items = base.list.items();
-        if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
-            if (spare.len == items.len) {
-                _ = self.listSpare.remove(@intFromPtr(items.ptr));
-                var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
-                out.items.len = items.len;
-                return out;
-            }
-        };
+        const spare = &self.spares[self.stackIndex(pass) + n];
+        if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
+            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            spare.* = .none;
+            out.items.len = items.len;
+            return out;
+        }
         var out: std.ArrayList(Sexp) = .empty;
         try out.appendSlice(self.allocator(), items);
         return out;
     }
 
-    /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
+    /// Finish a list from `extendList(pass, n)`, recording its spare
+    /// capacity where the reduction's value goes. It takes over the node
+    /// id of element `n` (still on the value stack), so that nested
+    /// extensions each keep their own.
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
-        if (out.items.len > 0 and out.capacity > out.items.len) {
-            self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
-                .len = out.items.len,
-                .capacity = out.capacity,
-            }) catch return self.oomNil();
-        }
+        return self.keepListNils(out, pass, n, use);
+    }
+
+    /// `keepList` keeping trailing nils: a list of one item per element
+    /// (`X*`, `L(X?)`, ...).
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
+        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
-            if (self.extending != 0) {
-                id = self.extending;
+            const base = pass[n];
+            id = if (base == .list) base.list.id else 0;
+            if (id != 0) {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        self.extending = 0;
         return .{ .list = List.withId(out.items, id) };
     }
 
@@ -1403,32 +1796,51 @@ pub const BaseParser = struct {
         return self.node(items, use);
     }
 
+    /// An item of a list an action builds from its elements alone.
+    const Item = union(enum) { elem: u16, tag: Tag, nil };
+
+    /// A list node over `items`, static data (so the action function needs
+    /// no temporaries for it); unless positions are fixed (`trim` false,
+    /// or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        var len = items.len;
+        if (trim and !keepTrailingNils) {
+            while (len > 0) : (len -= 1) switch (items[len - 1]) {
+                .elem => |i| if (pass[i] != .nil) break,
+                .tag => break,
+                .nil => {},
+            };
+        }
+        const out = self.allocItems(len) catch return self.oomNil();
+        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+            .elem => |i| pass[i],
+            .tag => |t| .{ .tag = t },
+            .nil => .nil,
+        };
+        return self.node(out, use);
+    }
+
     /// `(tag items...)`
-    inline fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
+        const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
         return self.node(out, .tree);
     }
 
     /// `(tag ...spread)`
-    inline fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
-        const items = spread.items();
-        const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
-        out[0] = .{ .tag = tag };
-        @memcpy(out[1..], items[0..len]);
-        return self.node(out, .tree);
+    fn sexpSpread(self: *BaseParser, tag: Tag, spread: Sexp) Sexp {
+        return self.sexp(tag, spread.items());
     }
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    inline fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, tag: Tag, pos: Sexp, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
-        const out = self.allocator().alloc(Sexp, if (bare) 1 else len + 2) catch return self.oomNil();
+        const out = self.allocItems(if (bare) 1 else len + 2) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         if (!bare) {
             out[1] = pos;
@@ -1476,10 +1888,11 @@ pub const BaseParser = struct {
         const f = self.failure orelse return;
         const at = self.lineCol(f.span.start);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
-        const want = expectedIn(f.state);
-        for (want, 0..) |sym, i| {
+        var buf: [maxExpected][]const u8 = undefined;
+        const want = expectedNames(f.state, &buf);
+        for (want, 0..) |name, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
-            try w.writeAll(symbolName(sym));
+            try w.writeAll(name);
         }
         if (want.len == 0) try w.writeAll("nothing");
         try w.writeAll(", got ");
@@ -1487,17 +1900,39 @@ pub const BaseParser = struct {
         try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
     }
 
+    /// `Parse error at ` and `writeError`'s text on standard error.
     pub fn printError(self: *const BaseParser) void {
-        var buf: [512]u8 = undefined;
-        var w: std.Io.Writer = .fixed(&buf);
-        self.writeError(&w) catch {};
-        std.debug.print("Parse error at {s}\n", .{w.buffered()});
+        var buffer: [256]u8 = undefined;
+        const stderr = std.debug.lockStderr(&buffer);
+        defer std.debug.unlockStderr();
+        const w = &stderr.file_writer.interface;
+        w.writeAll("Parse error at ") catch return;
+        self.writeError(w) catch return;
+        w.writeByte('\n') catch return;
     }
 
     /// What `state` accepts, reader-named: the `@errors` rules it waits
     /// for, then the tokens none of them begins with.
     pub fn expected(state: u16) []const u16 {
         return expectedIn(state);
+    }
+
+    /// The reader names of what `state` accepts, in `expected` order, each
+    /// once (tokens sharing an `@display` name are named once), in `buf`:
+    /// `[maxExpected][]const u8` always has room.
+    pub fn expectedNames(state: u16, buf: [][]const u8) []const []const u8 {
+        var n: usize = 0;
+        for (expectedIn(state)) |sym| {
+            const name = symbolName(sym);
+            if (name.len == 0) continue;
+            for (buf[0..n]) |seen| {
+                if (std.mem.eql(u8, seen, name)) break;
+            } else {
+                buf[n] = name;
+                n += 1;
+            }
+        }
+        return buf[0..n];
     }
 
     /// The reader-facing name of a grammar symbol, as `writeError` prints
@@ -1511,26 +1946,38 @@ pub const BaseParser = struct {
     // Tolerant repair
     // -------------------------------------------------------------------------
 
-    /// Whether `symbols` can be consumed from the current state, simulating
-    /// reductions on a scratch copy of the state stack.
-    fn accepts(self: *BaseParser, symbols: []const u16) !bool {
-        const stack = &self.scratch;
-        stack.clearRetainingCapacity();
-        try stack.appendSlice(self.allocator(), self.stateStack.items);
-        for (symbols) |sym| {
+    /// Whether the inserted `insert`, then the current token as `current`
+    /// (when given), can be consumed from the current state; `current` is
+    /// decided as `actionFor` decides it, with its `X "c"` override (it
+    /// keeps the symbol `@as` promoted it to here). The simulation leaves
+    /// the state stack as it is: reductions pop the states it pushed
+    /// (`scratch`), then hide states of the real stack (`depth` of them
+    /// stay in view).
+    fn accepts(self: *BaseParser, insert: u16, current: ?u16) !bool {
+        const pushed = &self.scratch;
+        pushed.clearRetainingCapacity();
+        var depth = self.stateStack.items.len;
+        for ([_]?u16{ insert, current }, 0..) |s, i| {
+            const sym = s orelse break;
             while (true) {
-                const action = getAction(stack.last().?, sym);
+                const top = pushed.last() orelse self.stateStack.items[depth - 1];
+                var action = getAction(top, sym);
+                if (i == 1 and xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
+                    if (getImmediateShift(top, sym)) |target| action = target;
+                }
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
-                    try stack.append(self.allocator(), @intCast(action));
+                    try pushed.append(self.allocator(), @intCast(action));
                     break;
                 }
                 const rule: u16 = @intCast(-action - 2);
-                stack.shrinkRetainingCapacity(stack.items.len - ruleLen[rule]);
-                const next = getAction(stack.last().?, ruleLhs[rule]);
+                const fromPushed = @min(ruleLen[rule], pushed.items.len);
+                pushed.shrinkRetainingCapacity(pushed.items.len - fromPushed);
+                depth -= ruleLen[rule] - fromPushed;
+                const next = getAction(pushed.last() orelse self.stateStack.items[depth - 1], ruleLhs[rule]);
                 if (next <= 0) return false;
-                try stack.append(self.allocator(), @intCast(next));
+                try pushed.append(self.allocator(), @intCast(next));
             }
         }
         return true;
@@ -1548,51 +1995,62 @@ pub const BaseParser = struct {
     /// ROLE is the schema role name, else the child's index in the list.
     /// KIND is the head tag, or `group` for an untagged list. A CHILD is a
     /// node id, `leaf POS LEN`, `tag NAME`, `str "TEXT"`, or `(CHILD...)`
-    /// for a list without a node id.
+    /// for a list without a node id. error.WriteFailed also reports the
+    /// walk running out of memory.
     pub fn writeFacts(self: *const BaseParser, w: *std.Io.Writer, root: Sexp) std.Io.Writer.Error!void {
         if (!nodeStore) @compileError("writeFacts needs the node store (@schema or --spans)");
-        try self.factsOf(w, root);
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var s = root;
+        while (true) {
+            if (s == .list) {
+                if (s.list.id != 0) try self.nodeFacts(w, s);
+                walk.push(s.list.items()) catch return error.WriteFailed;
+            }
+            s = walk.next() orelse return;
+        }
     }
 
-    fn factsOf(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
-        if (s != .list) return;
+    /// The facts of one node: its `node` line, its `role` and `side` lines.
+    fn nodeFacts(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
         const l = s.list;
         const items = l.items();
-        if (l.id != 0) {
-            const k = s.kind();
-            const sp = self.span(s);
-            try w.print("(node {d} ", .{l.id});
-            if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
-            try w.print(" {d} {d})\n", .{ sp.start, sp.end });
-            var i: usize = if (k != null) 1 else 0;
-            while (i < items.len) : (i += 1) {
-                if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
-                    try w.print("(role {d} ", .{l.id});
-                    try writeName(w, nameOf(rest.role));
-                    for (items[i..]) |child| {
-                        try w.writeByte(' ');
-                        try self.factChild(w, child);
-                    }
-                    try w.writeAll(")\n");
-                    break;
-                };
-                if (items[i] == .nil) continue;
+        const k = s.kind();
+        const sp = self.span(s);
+        try w.print("(node {d} ", .{l.id});
+        if (k) |t| try writeName(w, nameOf(t)) else try w.writeAll("group");
+        try w.print(" {d} {d})\n", .{ sp.start, sp.end });
+        var i: usize = if (k != null) 1 else 0;
+        while (i < items.len) : (i += 1) {
+            if (k) |t| if (restRoleOf(t)) |rest| if (i >= rest.slot) {
                 try w.print("(role {d} ", .{l.id});
-                if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
-                try w.writeByte(' ');
-                try self.factChild(w, items[i]);
+                try writeName(w, nameOf(rest.role));
+                for (items[i..]) |child| {
+                    try w.writeByte(' ');
+                    try factChild(w, child);
+                }
                 try w.writeAll(")\n");
-            }
-            for (self.sidesOf(l.id)) |e| {
-                try w.print("(side {d} ", .{l.id});
-                try writeName(w, nameOf(e.role));
-                try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
-            }
+                break;
+            };
+            if (items[i] == .nil) continue;
+            try w.print("(role {d} ", .{l.id});
+            if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
+            try w.writeByte(' ');
+            try factChild(w, items[i]);
+            try w.writeAll(")\n");
         }
-        for (items) |child| try self.factsOf(w, child);
+        for (self.sidesOf(l.id)) |e| {
+            try w.print("(side {d} ", .{l.id});
+            try writeName(w, nameOf(e.role));
+            try w.print(" {d} {d})\n", .{ e.span.start, e.span.len() });
+        }
     }
 
-    fn factChild(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+    fn factChild(w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+        try writeNested(s, w, {}, factAtom);
+    }
+
+    fn factAtom(_: void, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
         switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| {
@@ -1604,15 +2062,9 @@ pub const BaseParser = struct {
                 try w.writeAll("str ");
                 try writeQuoted(w, x);
             },
-            .list => |l| if (l.id != 0) try w.print("{d}", .{l.id}) else {
-                try w.writeByte('(');
-                for (l.items(), 0..) |child, i| {
-                    if (i > 0) try w.writeByte(' ');
-                    try self.factChild(w, child);
-                }
-                try w.writeByte(')');
-            },
+            .list => |l| if (l.id != 0) try w.print("{d}", .{l.id}) else return l.items(),
         }
+        return null;
     }
 
     /// A name as a bare symbol, or quoted when it has s-expression syntax.
@@ -1651,238 +2103,203 @@ const elemEnds = false;
 const keepTrailingNils = false;
 const hasTrivia = false;
 const hasRepair = false;
-const numSymbols = 96;
+/// `@as` groups the promotable token may become (see `promote`).
+const asGroups = 1;
+const numSymbols = 93;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
-fn tokenToSymbol(self: *BaseParser, token: Token) u16 {
+fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"ident" => promote(self, token),
+        .@"ident" => needsPromotion,
         .@"semi" => 38,
         .@"and_and" => 39,
         .@"or_or" => 40,
         .@"amp" => 41,
-        .@"pipe" => 44,
-        .@"lparen" => 45,
-        .@"rparen" => 46,
-        .@"lbrace" => 47,
-        .@"rbrace" => 48,
-        .@"name_eq" => 54,
-        .@"lbracket" => 55,
-        .@"rbracket" => 56,
-        .@"integer" => 59,
-        .@"string_sq" => 60,
-        .@"string_dq" => 61,
-        .@"variable" => 62,
-        .@"var_braced" => 63,
-        .@"dollar_paren" => 64,
-        .@"at_paren" => 65,
-        .@"proc_sub_in" => 66,
-        .@"proc_sub_out" => 67,
-        .@"assign" => 68,
-        .@"indent" => 71,
-        .@"outdent" => 72,
-        .@"str_open" => 79,
-        .@"str_body" => 80,
-        .@"lt" => 82,
-        .@"fd_lt" => 83,
-        .@"gt" => 84,
-        .@"fd_gt" => 85,
-        .@"gt_gt" => 86,
-        .@"amp_gt" => 87,
-        .@"amp_gt_gt" => 88,
-        .@"fd_dup_out" => 89,
-        .@"fd_dup_in" => 90,
-        .@"heredoc_open" => 91,
-        .@"heredoc_body" => 92,
-        .@"heredoc_open_lit" => 93,
+        .@"pipe" => 43,
+        .@"lparen" => 44,
+        .@"rparen" => 45,
+        .@"lbrace" => 46,
+        .@"rbrace" => 47,
+        .@"name_eq" => 51,
+        .@"lbracket" => 52,
+        .@"rbracket" => 53,
+        .@"integer" => 56,
+        .@"string_sq" => 57,
+        .@"string_dq" => 58,
+        .@"variable" => 59,
+        .@"var_braced" => 60,
+        .@"dollar_paren" => 61,
+        .@"at_paren" => 62,
+        .@"proc_sub_in" => 63,
+        .@"proc_sub_out" => 64,
+        .@"assign" => 65,
+        .@"indent" => 68,
+        .@"outdent" => 69,
+        .@"str_open" => 76,
+        .@"str_body" => 77,
+        .@"lt" => 79,
+        .@"fd_lt" => 80,
+        .@"gt" => 81,
+        .@"fd_gt" => 82,
+        .@"gt_gt" => 83,
+        .@"amp_gt" => 84,
+        .@"amp_gt_gt" => 85,
+        .@"fd_dup_out" => 86,
+        .@"fd_dup_in" => 87,
+        .@"heredoc_open" => 88,
+        .@"heredoc_body" => 89,
+        .@"heredoc_open_lit" => 90,
         else => 2, // error
     };
 }
 
 fn promote(self: *BaseParser, token: Token) u16 {
+    // The ordinal of a match made in an earlier state (before a
+    // reduction) is not this match's.
+    self.lastMatchedId = 0;
     const text = self.source[token.pos..][0..token.len];
     if (text.len == 0) return promotableSymbol;
-    if (tryPromoteKeyword(self, text)) |sym| return sym;
+    if (self.tryPromote(0, text, lang.keywordAs, &keywordToSymbol, keywordFallbackSymbol, true)) |sym| return sym;
     return promotableSymbol;
 }
 
-fn tryPromoteKeyword(self: *BaseParser, text: []const u8) ?u16 {
-    const state = self.stateStack.last().?;
-    const id = lang.keywordAs(text) orelse return null;
-    const idIdx = @backingInt(id);
-    const sym = keywordToSymbol[idIdx];
-    if (sym != 0 and getAction(state, sym) != 0) {
-        self.lastMatchedId = @intCast(idIdx);
-        return sym;
-    }
-    const fallback = keywordFallbackSymbol;
-    if (fallback != 0 and getAction(state, fallback) != 0) {
-        self.lastMatchedId = @intCast(idIdx);
-        return fallback;
-    }
-    return null;
-}
-
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
-        0 => pass[0],
-        1 => self.spreadList(pass[0], pass[1], .spread),
-        2 => self.emptyList(.spread),
+        1 => self.emptyList(.spread),
+        2 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         3 => self.sexpPosSpread(.@"sequence", pass[0], pass[1]),
-        4 => pass[0],
-        5 => pass[0],
-        6 => pass[0],
-        7 => pass[0],
-        8 => pass[0],
-        9 => pass[0],
-        10 => pass[0],
-        11 => pass[0],
-        12 => pass[0],
-        13 => self.sexp(.@"seq_always", &.{pass[1]}),
-        14 => self.sexp(.@"seq_always", &.{.nil}),
-        15 => self.sexp(.@"seq_and", &.{pass[1]}),
-        16 => self.sexp(.@"seq_or", &.{pass[1]}),
-        17 => self.sexp(.@"seq_bg", &.{pass[1]}),
-        18 => self.sexp(.@"seq_bg", &.{.nil}),
-        19 => pass[0],
-        20 => self.spreadList(pass[0], pass[1], .spread),
-        21 => self.emptyList(.spread),
-        22 => self.spreadList(pass[0], pass[1], .spread),
-        23 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
-        24 => pass[1],
-        25 => pass[0],
-        26 => pass[0],
-        27 => self.sexp(.@"subshell", &.{pass[1]}),
-        28 => self.sexp(.@"subshell", &.{pass[1], pass[3]}),
-        29 => self.sexp(.@"block", &.{pass[1]}),
-        30 => self.sexp(.@"block", &.{pass[1], pass[3]}),
-        31 => self.spreadList(pass[0], pass[1], .spread),
-        32 => self.emptyList(.spread),
-        33 => self.spreadList(pass[0], pass[1], .spread),
-        34 => self.sexpSpread(.@"redirects", pass[0]),
-        35 => self.spreadList(pass[0], pass[1], .spread),
-        36 => self.emptyList(.spread),
-        37 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        38 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        39 => self.spreadList(pass[0], pass[1], .spread),
-        40 => self.emptyList(.spread),
-        41 => self.spreadList(pass[0], pass[1], .spread),
-        42 => self.sexpSpread(.@"env_binds", pass[0]),
-        43 => self.sexpSpread(.@"assigns", pass[0]),
-        44 => self.sexp(.@"env_bind", &.{pass[0], pass[1]}),
-        45 => self.sexp(.@"scalar", &.{pass[0]}),
-        46 => self.sexpSpread(.@"list", pass[1]),
-        47 => self.spreadList(pass[0], pass[1], .spread),
-        48 => self.emptyList(.spread),
-        49 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .spread); },
-        50 => pass[0],
-        51 => pass[0],
-        52 => self.sexp(.@"word", &.{pass[0]}),
-        53 => self.sexp(.@"word", &.{pass[0]}),
-        54 => self.sexp(.@"word", &.{pass[0]}),
-        55 => self.sexp(.@"word", &.{pass[0]}),
-        56 => self.sexp(.@"var", &.{pass[0]}),
-        57 => self.sexp(.@"var_braced", &.{pass[0]}),
-        58 => self.sexp(.@"cmd_subst", &.{pass[1]}),
-        59 => self.sexp(.@"list_capture", &.{pass[1]}),
-        60 => self.sexp(.@"proc_sub_in", &.{pass[1]}),
-        61 => self.sexp(.@"proc_sub_out", &.{pass[1]}),
-        62 => pass[0],
-        63 => self.sexp(.@"word", &.{pass[0]}),
-        64 => self.sexp(.@"word", &.{pass[0]}),
-        65 => self.sexp(.@"if", &.{pass[1], pass[2], .nil}),
-        66 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
-        67 => pass[0],
-        68 => self.sexp(.@"cond_and", &.{pass[0], pass[2]}),
-        69 => self.sexp(.@"cond_or", &.{pass[0], pass[2]}),
-        70 => self.sexp(.@"else", &.{pass[1]}),
-        71 => self.sexp(.@"elif", &.{pass[1]}),
-        72 => self.sexp(.@"body", &.{pass[1]}),
-        73 => self.sexp(.@"body", &.{pass[1]}),
-        74 => self.sexp(.@"while", &.{pass[1], pass[2]}),
-        75 => self.sexp(.@"for", &.{pass[1], pass[3], pass[4]}),
-        76 => self.sexp(.@"match", &.{pass[1], pass[2]}),
-        77 => self.sexpSpread(.@"match_arms", pass[1]),
-        78 => self.sexpSpread(.@"match_arms", pass[1]),
-        79 => self.spreadList(pass[0], pass[1], .spread),
-        80 => self.emptyList(.spread),
-        81 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        82 => pass[1],
-        83 => .nil,
-        84 => self.sexp(.@"match_arm", &.{pass[0], pass[1]}),
-        85 => self.sexp(.@"cmd_def", &.{pass[1], pass[2]}),
-        86 => self.sexp(.@"str_def", &.{pass[1], pass[2]}),
-        87 => self.spreadList(pass[0], pass[1], .spread),
-        88 => self.sexpSpread(.@"words", pass[0]),
-        89 => self.sexp(.@"redir_read", &.{pass[1]}),
-        90 => self.sexp(.@"redir_read_fd", &.{pass[0], pass[1]}),
-        91 => self.sexp(.@"redir_write", &.{pass[1]}),
-        92 => self.sexp(.@"redir_write_fd", &.{pass[0], pass[1]}),
-        93 => self.sexp(.@"redir_append", &.{pass[1]}),
-        94 => self.sexp(.@"redir_both", &.{pass[1]}),
-        95 => self.sexp(.@"redir_both_append", &.{pass[1]}),
-        96 => self.sexp(.@"redir_dup_out", &.{pass[0]}),
-        97 => self.sexp(.@"redir_dup_in", &.{pass[0]}),
-        98 => self.sexp(.@"redir_heredoc", &.{pass[0], pass[1]}),
-        99 => self.sexp(.@"redir_heredoc_lit", &.{pass[0], pass[1]}),
+        13 => self.buildOf(&.{ .{ .tag = .@"seq_always" }, .{ .elem = 1 } }, pass, .tree, true),
+        14 => self.buildOf(&.{ .{ .tag = .@"seq_always" }, .nil }, pass, .tree, true),
+        15 => self.buildOf(&.{ .{ .tag = .@"seq_and" }, .{ .elem = 1 } }, pass, .tree, true),
+        16 => self.buildOf(&.{ .{ .tag = .@"seq_or" }, .{ .elem = 1 } }, pass, .tree, true),
+        17 => self.buildOf(&.{ .{ .tag = .@"seq_bg" }, .{ .elem = 1 } }, pass, .tree, true),
+        18 => self.buildOf(&.{ .{ .tag = .@"seq_bg" }, .nil }, pass, .tree, true),
+        20 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        21 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        22 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
+        26 => self.buildOf(&.{ .{ .tag = .@"subshell" }, .{ .elem = 1 } }, pass, .tree, true),
+        27 => self.buildOf(&.{ .{ .tag = .@"subshell" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        28 => self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 } }, pass, .tree, true),
+        29 => self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        30 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        31 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        32 => self.sexpSpread(.@"redirects", pass[0]),
+        33 => self.emptyList(.spread),
+        34 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        35 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        36 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        37 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        38 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        39 => self.sexpSpread(.@"env_binds", pass[0]),
+        40 => self.sexpSpread(.@"assigns", pass[0]),
+        41 => self.buildOf(&.{ .{ .tag = .@"env_bind" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        42 => self.buildOf(&.{ .{ .tag = .@"scalar" }, .{ .elem = 0 } }, pass, .tree, true),
+        43 => self.sexpSpread(.@"list", pass[1]),
+        44 => self.emptyList(.spread),
+        45 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        46 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
+        49 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        50 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        51 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        52 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        53 => self.buildOf(&.{ .{ .tag = .@"var" }, .{ .elem = 0 } }, pass, .tree, true),
+        54 => self.buildOf(&.{ .{ .tag = .@"var_braced" }, .{ .elem = 0 } }, pass, .tree, true),
+        55 => self.buildOf(&.{ .{ .tag = .@"cmd_subst" }, .{ .elem = 1 } }, pass, .tree, true),
+        56 => self.buildOf(&.{ .{ .tag = .@"list_capture" }, .{ .elem = 1 } }, pass, .tree, true),
+        57 => self.buildOf(&.{ .{ .tag = .@"proc_sub_in" }, .{ .elem = 1 } }, pass, .tree, true),
+        58 => self.buildOf(&.{ .{ .tag = .@"proc_sub_out" }, .{ .elem = 1 } }, pass, .tree, true),
+        60 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        61 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        62 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .nil }, pass, .tree, true),
+        63 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
+        65 => self.buildOf(&.{ .{ .tag = .@"cond_and" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        66 => self.buildOf(&.{ .{ .tag = .@"cond_or" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        67 => self.buildOf(&.{ .{ .tag = .@"else" }, .{ .elem = 1 } }, pass, .tree, true),
+        68 => self.buildOf(&.{ .{ .tag = .@"elif" }, .{ .elem = 1 } }, pass, .tree, true),
+        69 => self.buildOf(&.{ .{ .tag = .@"body" }, .{ .elem = 1 } }, pass, .tree, true),
+        70 => self.buildOf(&.{ .{ .tag = .@"body" }, .{ .elem = 1 } }, pass, .tree, true),
+        71 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        72 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
+        73 => self.buildOf(&.{ .{ .tag = .@"match" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        74 => self.sexpSpread(.@"match_arms", pass[1]),
+        75 => self.sexpSpread(.@"match_arms", pass[1]),
+        76 => self.emptyList(.spread),
+        77 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        78 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        81 => self.buildOf(&.{ .{ .tag = .@"match_arm" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        82 => self.buildOf(&.{ .{ .tag = .@"cmd_def" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        83 => self.buildOf(&.{ .{ .tag = .@"str_def" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        84 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
+        85 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        86 => self.sexpSpread(.@"words", pass[0]),
+        87 => self.buildOf(&.{ .{ .tag = .@"redir_read" }, .{ .elem = 1 } }, pass, .tree, true),
+        88 => self.buildOf(&.{ .{ .tag = .@"redir_read_fd" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        89 => self.buildOf(&.{ .{ .tag = .@"redir_write" }, .{ .elem = 1 } }, pass, .tree, true),
+        90 => self.buildOf(&.{ .{ .tag = .@"redir_write_fd" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        91 => self.buildOf(&.{ .{ .tag = .@"redir_append" }, .{ .elem = 1 } }, pass, .tree, true),
+        92 => self.buildOf(&.{ .{ .tag = .@"redir_both" }, .{ .elem = 1 } }, pass, .tree, true),
+        93 => self.buildOf(&.{ .{ .tag = .@"redir_both_append" }, .{ .elem = 1 } }, pass, .tree, true),
+        94 => self.buildOf(&.{ .{ .tag = .@"redir_dup_out" }, .{ .elem = 0 } }, pass, .tree, true),
+        95 => self.buildOf(&.{ .{ .tag = .@"redir_dup_in" }, .{ .elem = 0 } }, pass, .tree, true),
+        96 => self.buildOf(&.{ .{ .tag = .@"redir_heredoc" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        97 => self.buildOf(&.{ .{ .tag = .@"redir_heredoc_lit" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
         else => unreachable,
     };
 }
 
-const promotableSymbol: u16 = 58;
+const promotableSymbol: u16 = 55;
 
 /// lang.KeywordId ordinal -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {
-    var arr: [512]u16 = @splat(0);
+    var arr: [idCount(lang.KeywordId)]u16 = @splat(0);
     if (@hasField(lang.KeywordId, "SEMI")) arr[@backingInt(lang.KeywordId.SEMI)] = 38;
     if (@hasField(lang.KeywordId, "AND_AND")) arr[@backingInt(lang.KeywordId.AND_AND)] = 39;
     if (@hasField(lang.KeywordId, "OR_OR")) arr[@backingInt(lang.KeywordId.OR_OR)] = 40;
     if (@hasField(lang.KeywordId, "AMP")) arr[@backingInt(lang.KeywordId.AMP)] = 41;
-    if (@hasField(lang.KeywordId, "PIPE")) arr[@backingInt(lang.KeywordId.PIPE)] = 44;
-    if (@hasField(lang.KeywordId, "LPAREN")) arr[@backingInt(lang.KeywordId.LPAREN)] = 45;
-    if (@hasField(lang.KeywordId, "RPAREN")) arr[@backingInt(lang.KeywordId.RPAREN)] = 46;
-    if (@hasField(lang.KeywordId, "LBRACE")) arr[@backingInt(lang.KeywordId.LBRACE)] = 47;
-    if (@hasField(lang.KeywordId, "RBRACE")) arr[@backingInt(lang.KeywordId.RBRACE)] = 48;
-    if (@hasField(lang.KeywordId, "NAME_EQ")) arr[@backingInt(lang.KeywordId.NAME_EQ)] = 54;
-    if (@hasField(lang.KeywordId, "LBRACKET")) arr[@backingInt(lang.KeywordId.LBRACKET)] = 55;
-    if (@hasField(lang.KeywordId, "RBRACKET")) arr[@backingInt(lang.KeywordId.RBRACKET)] = 56;
-    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 58;
-    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 59;
-    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 60;
-    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 61;
-    if (@hasField(lang.KeywordId, "VARIABLE")) arr[@backingInt(lang.KeywordId.VARIABLE)] = 62;
-    if (@hasField(lang.KeywordId, "VAR_BRACED")) arr[@backingInt(lang.KeywordId.VAR_BRACED)] = 63;
-    if (@hasField(lang.KeywordId, "DOLLAR_PAREN")) arr[@backingInt(lang.KeywordId.DOLLAR_PAREN)] = 64;
-    if (@hasField(lang.KeywordId, "AT_PAREN")) arr[@backingInt(lang.KeywordId.AT_PAREN)] = 65;
-    if (@hasField(lang.KeywordId, "PROC_SUB_IN")) arr[@backingInt(lang.KeywordId.PROC_SUB_IN)] = 66;
-    if (@hasField(lang.KeywordId, "PROC_SUB_OUT")) arr[@backingInt(lang.KeywordId.PROC_SUB_OUT)] = 67;
-    if (@hasField(lang.KeywordId, "ASSIGN")) arr[@backingInt(lang.KeywordId.ASSIGN)] = 68;
-    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 69;
-    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 70;
-    if (@hasField(lang.KeywordId, "INDENT")) arr[@backingInt(lang.KeywordId.INDENT)] = 71;
-    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@backingInt(lang.KeywordId.OUTDENT)] = 72;
-    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 73;
-    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 74;
-    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 75;
-    if (@hasField(lang.KeywordId, "MATCH")) arr[@backingInt(lang.KeywordId.MATCH)] = 76;
-    if (@hasField(lang.KeywordId, "CMD")) arr[@backingInt(lang.KeywordId.CMD)] = 78;
-    if (@hasField(lang.KeywordId, "STR_OPEN")) arr[@backingInt(lang.KeywordId.STR_OPEN)] = 79;
-    if (@hasField(lang.KeywordId, "STR_BODY")) arr[@backingInt(lang.KeywordId.STR_BODY)] = 80;
-    if (@hasField(lang.KeywordId, "LT")) arr[@backingInt(lang.KeywordId.LT)] = 82;
-    if (@hasField(lang.KeywordId, "FD_LT")) arr[@backingInt(lang.KeywordId.FD_LT)] = 83;
-    if (@hasField(lang.KeywordId, "GT")) arr[@backingInt(lang.KeywordId.GT)] = 84;
-    if (@hasField(lang.KeywordId, "FD_GT")) arr[@backingInt(lang.KeywordId.FD_GT)] = 85;
-    if (@hasField(lang.KeywordId, "GT_GT")) arr[@backingInt(lang.KeywordId.GT_GT)] = 86;
-    if (@hasField(lang.KeywordId, "AMP_GT")) arr[@backingInt(lang.KeywordId.AMP_GT)] = 87;
-    if (@hasField(lang.KeywordId, "AMP_GT_GT")) arr[@backingInt(lang.KeywordId.AMP_GT_GT)] = 88;
-    if (@hasField(lang.KeywordId, "FD_DUP_OUT")) arr[@backingInt(lang.KeywordId.FD_DUP_OUT)] = 89;
-    if (@hasField(lang.KeywordId, "FD_DUP_IN")) arr[@backingInt(lang.KeywordId.FD_DUP_IN)] = 90;
-    if (@hasField(lang.KeywordId, "HEREDOC_OPEN")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN)] = 91;
-    if (@hasField(lang.KeywordId, "HEREDOC_BODY")) arr[@backingInt(lang.KeywordId.HEREDOC_BODY)] = 92;
-    if (@hasField(lang.KeywordId, "HEREDOC_OPEN_LIT")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN_LIT)] = 93;
+    if (@hasField(lang.KeywordId, "PIPE")) arr[@backingInt(lang.KeywordId.PIPE)] = 43;
+    if (@hasField(lang.KeywordId, "LPAREN")) arr[@backingInt(lang.KeywordId.LPAREN)] = 44;
+    if (@hasField(lang.KeywordId, "RPAREN")) arr[@backingInt(lang.KeywordId.RPAREN)] = 45;
+    if (@hasField(lang.KeywordId, "LBRACE")) arr[@backingInt(lang.KeywordId.LBRACE)] = 46;
+    if (@hasField(lang.KeywordId, "RBRACE")) arr[@backingInt(lang.KeywordId.RBRACE)] = 47;
+    if (@hasField(lang.KeywordId, "NAME_EQ")) arr[@backingInt(lang.KeywordId.NAME_EQ)] = 51;
+    if (@hasField(lang.KeywordId, "LBRACKET")) arr[@backingInt(lang.KeywordId.LBRACKET)] = 52;
+    if (@hasField(lang.KeywordId, "RBRACKET")) arr[@backingInt(lang.KeywordId.RBRACKET)] = 53;
+    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 55;
+    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 56;
+    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 57;
+    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 58;
+    if (@hasField(lang.KeywordId, "VARIABLE")) arr[@backingInt(lang.KeywordId.VARIABLE)] = 59;
+    if (@hasField(lang.KeywordId, "VAR_BRACED")) arr[@backingInt(lang.KeywordId.VAR_BRACED)] = 60;
+    if (@hasField(lang.KeywordId, "DOLLAR_PAREN")) arr[@backingInt(lang.KeywordId.DOLLAR_PAREN)] = 61;
+    if (@hasField(lang.KeywordId, "AT_PAREN")) arr[@backingInt(lang.KeywordId.AT_PAREN)] = 62;
+    if (@hasField(lang.KeywordId, "PROC_SUB_IN")) arr[@backingInt(lang.KeywordId.PROC_SUB_IN)] = 63;
+    if (@hasField(lang.KeywordId, "PROC_SUB_OUT")) arr[@backingInt(lang.KeywordId.PROC_SUB_OUT)] = 64;
+    if (@hasField(lang.KeywordId, "ASSIGN")) arr[@backingInt(lang.KeywordId.ASSIGN)] = 65;
+    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 66;
+    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 67;
+    if (@hasField(lang.KeywordId, "INDENT")) arr[@backingInt(lang.KeywordId.INDENT)] = 68;
+    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@backingInt(lang.KeywordId.OUTDENT)] = 69;
+    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 70;
+    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 71;
+    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 72;
+    if (@hasField(lang.KeywordId, "MATCH")) arr[@backingInt(lang.KeywordId.MATCH)] = 73;
+    if (@hasField(lang.KeywordId, "CMD")) arr[@backingInt(lang.KeywordId.CMD)] = 75;
+    if (@hasField(lang.KeywordId, "STR_OPEN")) arr[@backingInt(lang.KeywordId.STR_OPEN)] = 76;
+    if (@hasField(lang.KeywordId, "STR_BODY")) arr[@backingInt(lang.KeywordId.STR_BODY)] = 77;
+    if (@hasField(lang.KeywordId, "LT")) arr[@backingInt(lang.KeywordId.LT)] = 79;
+    if (@hasField(lang.KeywordId, "FD_LT")) arr[@backingInt(lang.KeywordId.FD_LT)] = 80;
+    if (@hasField(lang.KeywordId, "GT")) arr[@backingInt(lang.KeywordId.GT)] = 81;
+    if (@hasField(lang.KeywordId, "FD_GT")) arr[@backingInt(lang.KeywordId.FD_GT)] = 82;
+    if (@hasField(lang.KeywordId, "GT_GT")) arr[@backingInt(lang.KeywordId.GT_GT)] = 83;
+    if (@hasField(lang.KeywordId, "AMP_GT")) arr[@backingInt(lang.KeywordId.AMP_GT)] = 84;
+    if (@hasField(lang.KeywordId, "AMP_GT_GT")) arr[@backingInt(lang.KeywordId.AMP_GT_GT)] = 85;
+    if (@hasField(lang.KeywordId, "FD_DUP_OUT")) arr[@backingInt(lang.KeywordId.FD_DUP_OUT)] = 86;
+    if (@hasField(lang.KeywordId, "FD_DUP_IN")) arr[@backingInt(lang.KeywordId.FD_DUP_IN)] = 87;
+    if (@hasField(lang.KeywordId, "HEREDOC_OPEN")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN)] = 88;
+    if (@hasField(lang.KeywordId, "HEREDOC_BODY")) arr[@backingInt(lang.KeywordId.HEREDOC_BODY)] = 89;
+    if (@hasField(lang.KeywordId, "HEREDOC_OPEN_LIT")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN_LIT)] = 90;
     break :blk arr;
 };
 const keywordFallbackSymbol: u16 = 0;
@@ -1898,206 +2315,178 @@ comptime {
     if (!(@hasField(lang.KeywordId, "CMD"))) @compileError("CMD is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CMD: rules using it could never match");
 }
 
-const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 43, 7, 8, 9, 9, 10, 10, 11, 11, 49, 49, 50, 12, 51, 51, 13, 13, 52, 52, 53, 14, 15, 16, 17, 17, 57, 57, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 77, 77, 30, 31, 31, 32, 33, 34, 81, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 95 };
-const ruleLen = [_]u8{ 1, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 2, 0, 2, 2, 2, 1, 1, 3, 4, 3, 4, 2, 0, 2, 1, 2, 0, 2, 3, 2, 0, 2, 1, 1, 2, 1, 3, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 2, 0, 2, 2, 1, 2, 3, 3, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3 };
+const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 7, 8, 9, 9, 10, 10, 11, 11, 48, 48, 12, 49, 49, 13, 13, 50, 50, 14, 15, 16, 17, 17, 54, 54, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 74, 74, 30, 31, 31, 32, 33, 34, 78, 78, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 92 };
+const ruleLen = [_]u8{ 1, 0, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 1, 2, 2, 2, 1, 1, 3, 4, 3, 4, 1, 2, 1, 0, 2, 2, 3, 1, 2, 1, 1, 2, 1, 3, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 0, 2, 2, 2, 1, 2, 3, 3, 1, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3 };
+/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
+const ruleValue = [_]u8{ 2, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
-// Parse table: 166 states x 96 symbols. 0 = error, > 0 = shift or
+// Parse table: 156 states x 93 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
-const numStates = 166;
-
-const sparse = [numStates][]const i16{
-    &.{94,1},
-    &.{3,16,4,37,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{4,40,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-21,8,41,38,-21,39,-21,40,-21,41,-21,43,43,44,42,46,-21,47,-21,48,-21,71,-21,72,-21},
-    &.{1,-27,38,-27,39,-27,40,-27,41,-27,44,-27,46,-27,47,-27,48,-27,71,-27,72,-27},
-    &.{1,-28,38,-28,39,-28,40,-28,41,-28,44,-28,46,-28,47,-28,48,-28,71,-28,72,-28},
-    &.{1,-42,16,45,38,-42,39,-42,40,-42,41,-42,46,-42,48,-42,52,44,54,39,58,-42,59,-42,60,-42,61,-42,62,-42,63,-42,64,-42,65,-42,66,-42,67,-42,72,-42},
-    &.{1,-54,38,-54,39,-54,40,-54,41,-54,44,-54,46,-54,47,-54,48,-54,54,-54,56,-54,58,-54,59,-54,60,-54,61,-54,62,-54,63,-54,64,-54,65,-54,66,-54,67,-54,68,-54,71,-54,72,-54,82,-54,83,-54,84,-54,85,-54,86,-54,87,-54,88,-54,89,-54,90,-54,91,-54,93,-54},
-    &.{1,-59,38,-59,39,-59,40,-59,41,-59,44,-59,46,-59,47,-59,48,-59,54,-59,56,-59,58,-59,59,-59,60,-59,61,-59,62,-59,63,-59,64,-59,65,-59,66,-59,67,-59,68,-59,71,-59,72,-59,82,-59,83,-59,84,-59,85,-59,86,-59,87,-59,88,-59,89,-59,90,-59,91,-59,93,-59},
-    &.{4,46,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{4,47,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{20,49,21,48,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{1,-56,38,-56,39,-56,40,-56,41,-56,44,-56,46,-56,47,-56,48,-56,54,-56,56,-56,58,-56,59,-56,60,-56,61,-56,62,-56,63,-56,64,-56,65,-56,66,-56,67,-56,68,-56,71,-56,72,-56,82,-56,83,-56,84,-56,85,-56,86,-56,87,-56,88,-56,89,-56,90,-56,91,-56,93,-56},
-    &.{58,52},
-    &.{1,-6,38,-6,39,-6,40,-6,41,-6,46,-6,48,-6,72,-6},
-    &.{7,54,9,3,10,5,13,4,14,22,16,6,20,18,23,55,45,34,53,53,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2},
-    &.{1,-1},
-    &.{1,-12,38,-12,39,-12,40,-12,41,-12,46,-12,48,-12,72,-12},
-    &.{1,-38,19,69,20,49,21,60,36,58,38,-38,39,-38,40,-38,41,-38,44,-38,46,-38,47,-38,48,-38,51,62,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,71,-38,72,-38,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{58,72},
-    &.{1,-7,38,-7,39,-7,40,-7,41,-7,46,-7,48,-7,72,-7},
-    &.{7,54,9,3,10,5,13,4,14,22,16,6,20,18,23,73,45,34,53,53,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2},
-    &.{20,74,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2},
-    &.{1,-10,38,-10,39,-10,40,-10,41,-10,46,-10,48,-10,72,-10},
-    &.{1,-14,38,-14,39,-14,40,-14,41,-14,46,-14,48,-14,72,-14},
-    &.{1,-55,38,-55,39,-55,40,-55,41,-55,44,-55,46,-55,47,-55,48,-55,54,-55,56,-55,58,-55,59,-55,60,-55,61,-55,62,-55,63,-55,64,-55,65,-55,66,-55,67,-55,68,-55,71,-55,72,-55,82,-55,83,-55,84,-55,85,-55,86,-55,87,-55,88,-55,89,-55,90,-55,91,-55,93,-55},
-    &.{1,-11,38,-11,39,-11,40,-11,41,-11,46,-11,48,-11,72,-11},
-    &.{1,-8,38,-8,39,-8,40,-8,41,-8,46,-8,48,-8,72,-8},
-    &.{1,-4,6,77,37,80,38,78,39,76,40,75,41,79,46,-4,48,-4,72,-4},
-    &.{1,-9,38,-9,39,-9,40,-9,41,-9,46,-9,48,-9,72,-9},
-    &.{1,-45,38,-45,39,-45,40,-45,41,-45,46,-45,48,-45,58,-44,59,-44,60,-44,61,-44,62,-44,63,-44,64,-44,65,-44,66,-44,67,-44,72,-45},
-    &.{1,-57,38,-57,39,-57,40,-57,41,-57,44,-57,46,-57,47,-57,48,-57,54,-57,56,-57,58,-57,59,-57,60,-57,61,-57,62,-57,63,-57,64,-57,65,-57,66,-57,67,-57,68,-57,71,-57,72,-57,82,-57,83,-57,84,-57,85,-57,86,-57,87,-57,88,-57,89,-57,90,-57,91,-57,93,-57},
-    &.{4,81,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-58,38,-58,39,-58,40,-58,41,-58,44,-58,46,-58,47,-58,48,-58,54,-58,56,-58,58,-58,59,-58,60,-58,61,-58,62,-58,63,-58,64,-58,65,-58,66,-58,67,-58,68,-58,71,-58,72,-58,82,-58,83,-58,84,-58,85,-58,86,-58,87,-58,88,-58,89,-58,90,-58,91,-58,93,-58},
-    &.{4,82,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-13,38,-13,39,-13,40,-13,41,-13,46,-13,48,-13,72,-13},
-    &.{58,83},
-    &.{1,-2},
-    &.{4,84,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{17,86,20,49,21,87,54,51,55,85,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{46,88},
-    &.{1,-23,8,89,38,-23,39,-23,40,-23,41,-23,42,90,44,42,46,-23,47,-23,48,-23,71,-23,72,-23},
-    &.{9,91,10,5,13,4,14,22,16,6,20,18,45,34,53,53,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2},
-    &.{1,-25,38,-25,39,-25,40,-25,41,-25,46,-25,47,-25,48,-25,71,-25,72,-25},
-    &.{1,-43,38,-43,39,-43,40,-43,41,-43,46,-43,48,-43,58,-43,59,-43,60,-43,61,-43,62,-43,63,-43,64,-43,65,-43,66,-43,67,-43,72,-43},
-    &.{1,-42,16,45,38,-42,39,-42,40,-42,41,-42,46,-42,48,-42,52,92,54,39,58,-42,59,-42,60,-42,61,-42,62,-42,63,-42,64,-42,65,-42,66,-42,67,-42,72,-42},
-    &.{46,93},
-    &.{46,94},
-    &.{29,95,47,96,71,97},
-    &.{1,-64,38,-64,39,-64,40,-64,41,-64,44,-64,46,-64,47,-64,48,-64,54,-64,56,-64,58,-64,59,-64,60,-64,61,-64,62,-64,63,-64,64,-64,65,-64,66,-64,67,-64,68,-64,71,-64,72,-64,82,-64,83,-64,84,-64,85,-64,86,-64,87,-64,88,-64,89,-64,90,-64,91,-64,93,-64},
-    &.{1,-66,38,-66,39,-66,40,-66,41,-66,44,-66,46,-66,47,-66,48,-66,54,-66,56,-66,58,-66,59,-66,60,-66,61,-66,62,-66,63,-66,64,-66,65,-66,66,-66,67,-66,68,-66,71,-66,72,-66,82,-66,83,-66,84,-66,85,-66,86,-66,87,-66,88,-66,89,-66,90,-66,91,-66,93,-66},
-    &.{1,-65,38,-65,39,-65,40,-65,41,-65,44,-65,46,-65,47,-65,48,-65,54,-65,56,-65,58,-65,59,-65,60,-65,61,-65,62,-65,63,-65,64,-65,65,-65,66,-65,67,-65,68,-65,71,-65,72,-65,82,-65,83,-65,84,-65,85,-65,86,-65,87,-65,88,-65,89,-65,90,-65,91,-65,93,-65},
-    &.{25,99,47,98,71,100},
-    &.{58,-44,59,-44,60,-44,61,-44,62,-44,63,-44,64,-44,65,-44,66,-44,67,-44},
-    &.{39,-69,40,-69,47,-69,71,-69},
-    &.{25,103,39,102,40,101,47,98,71,100},
-    &.{1,-1},
-    &.{20,49,21,104,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{1,-53,38,-53,39,-53,40,-53,41,-53,44,-53,46,-53,47,-53,48,-53,54,-53,58,-53,59,-53,60,-53,61,-53,62,-53,63,-53,64,-53,65,-53,66,-53,67,-53,68,-53,71,-53,72,-53,82,-53,83,-53,84,-53,85,-53,86,-53,87,-53,88,-53,89,-53,90,-53,91,-53,93,-53},
-    &.{1,-98,38,-98,39,-98,40,-98,41,-98,44,-98,46,-98,47,-98,48,-98,54,-98,58,-98,59,-98,60,-98,61,-98,62,-98,63,-98,64,-98,65,-98,66,-98,67,-98,68,-98,71,-98,72,-98,82,-98,83,-98,84,-98,85,-98,86,-98,87,-98,88,-98,89,-98,90,-98,91,-98,93,-98},
-    &.{1,-52,38,-52,39,-52,40,-52,41,-52,44,-52,46,-52,47,-52,48,-52,54,-52,58,-52,59,-52,60,-52,61,-52,62,-52,63,-52,64,-52,65,-52,66,-52,67,-52,68,-52,71,-52,72,-52,82,-52,83,-52,84,-52,85,-52,86,-52,87,-52,88,-52,89,-52,90,-52,91,-52,93,-52},
-    &.{20,49,21,105,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{1,-39,38,-39,39,-39,40,-39,41,-39,44,-39,46,-39,47,-39,48,-39,71,-39,72,-39},
-    &.{1,-99,38,-99,39,-99,40,-99,41,-99,44,-99,46,-99,47,-99,48,-99,54,-99,58,-99,59,-99,60,-99,61,-99,62,-99,63,-99,64,-99,65,-99,66,-99,67,-99,68,-99,71,-99,72,-99,82,-99,83,-99,84,-99,85,-99,86,-99,87,-99,88,-99,89,-99,90,-99,91,-99,93,-99},
-    &.{92,106},
-    &.{20,49,21,107,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{20,49,21,108,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{20,49,21,109,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{20,49,21,110,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{1,-38,19,69,20,49,21,60,36,58,38,-38,39,-38,40,-38,41,-38,44,-38,46,-38,47,-38,48,-38,51,111,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,71,-38,72,-38,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{92,112},
-    &.{20,49,21,113,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{75,114},
-    &.{25,115,39,102,40,101,47,98,71,100},
-    &.{1,-38,19,69,20,49,21,60,36,58,38,-38,39,-38,40,-38,41,-38,44,-38,46,-38,47,-38,48,-38,51,116,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,71,-38,72,-38,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{5,117,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{5,118,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-4,6,77,37,119,38,78,39,76,40,75,41,79,46,-4,48,-4,72,-4},
-    &.{1,-16,5,120,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,38,-16,39,-16,40,-16,41,-16,45,34,46,-16,47,38,48,-16,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,72,-16,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-20,5,121,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,38,-20,39,-20,40,-20,41,-20,45,34,46,-20,47,38,48,-20,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,72,-20,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-5,46,-5,48,-5,72,-5},
-    &.{46,122},
-    &.{46,123},
-    &.{80,124},
-    &.{48,125},
-    &.{18,128,20,49,21,127,54,51,56,-50,57,126,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50},
-    &.{1,-46,38,-46,39,-46,40,-46,41,-46,46,-46,48,-46,54,-46,58,-46,59,-46,60,-46,61,-46,62,-46,63,-46,64,-46,65,-46,66,-46,67,-46,72,-46},
-    &.{1,-47,38,-47,39,-47,40,-47,41,-47,46,-47,48,-47,54,-47,58,-47,59,-47,60,-47,61,-47,62,-47,63,-47,64,-47,65,-47,66,-47,67,-47,72,-47},
-    &.{1,-63,38,-63,39,-63,40,-63,41,-63,44,-63,46,-63,47,-63,48,-63,54,-63,56,-63,58,-63,59,-63,60,-63,61,-63,62,-63,63,-63,64,-63,65,-63,66,-63,67,-63,68,-63,71,-63,72,-63,82,-63,83,-63,84,-63,85,-63,86,-63,87,-63,88,-63,89,-63,90,-63,91,-63,93,-63},
-    &.{1,-23,8,89,38,-23,39,-23,40,-23,41,-23,42,129,44,42,46,-23,47,-23,48,-23,71,-23,72,-23},
-    &.{1,-24,38,-24,39,-24,40,-24,41,-24,46,-24,47,-24,48,-24,71,-24,72,-24},
-    &.{1,-26,38,-26,39,-26,40,-26,41,-26,44,-26,46,-26,47,-26,48,-26,71,-26,72,-26},
-    &.{1,-41,38,-41,39,-41,40,-41,41,-41,46,-41,48,-41,58,-41,59,-41,60,-41,61,-41,62,-41,63,-41,64,-41,65,-41,66,-41,67,-41,72,-41},
-    &.{1,-60,38,-60,39,-60,40,-60,41,-60,44,-60,46,-60,47,-60,48,-60,54,-60,56,-60,58,-60,59,-60,60,-60,61,-60,62,-60,63,-60,64,-60,65,-60,66,-60,67,-60,68,-60,71,-60,72,-60,82,-60,83,-60,84,-60,85,-60,86,-60,87,-60,88,-60,89,-60,90,-60,91,-60,93,-60},
-    &.{1,-61,38,-61,39,-61,40,-61,41,-61,44,-61,46,-61,47,-61,48,-61,54,-61,56,-61,58,-61,59,-61,60,-61,61,-61,62,-61,63,-61,64,-61,65,-61,66,-61,67,-61,68,-61,71,-61,72,-61,82,-61,83,-61,84,-61,85,-61,86,-61,87,-61,88,-61,89,-61,90,-61,91,-61,93,-61},
-    &.{1,-78,38,-78,39,-78,40,-78,41,-78,46,-78,48,-78,72,-78},
-    &.{20,49,21,133,30,131,32,134,35,130,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,81,132},
-    &.{20,49,21,133,30,135,32,134,35,130,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,81,132},
-    &.{4,136,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{1,-87,38,-87,39,-87,40,-87,41,-87,46,-87,48,-87,72,-87},
-    &.{4,137,5,28,7,14,9,3,10,5,11,26,13,4,14,22,15,17,16,6,20,18,22,20,26,27,27,29,28,23,33,35,34,24,45,34,47,38,53,30,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,69,15,73,21,74,19,76,11,78,13,79,36},
-    &.{7,138,9,3,10,5,13,4,14,22,16,6,20,18,45,34,53,53,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2},
-    &.{7,139,9,3,10,5,13,4,14,22,16,6,20,18,45,34,53,53,54,39,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2},
-    &.{1,-67,24,140,38,-67,39,-67,40,-67,41,-67,46,-67,48,-67,70,141,72,-67},
-    &.{1,-92,38,-92,39,-92,40,-92,41,-92,44,-92,46,-92,47,-92,48,-92,54,-92,58,-92,59,-92,60,-92,61,-92,62,-92,63,-92,64,-92,65,-92,66,-92,67,-92,68,-92,71,-92,72,-92,82,-92,83,-92,84,-92,85,-92,86,-92,87,-92,88,-92,89,-92,90,-92,91,-92,93,-92},
-    &.{1,-97,38,-97,39,-97,40,-97,41,-97,44,-97,46,-97,47,-97,48,-97,54,-97,58,-97,59,-97,60,-97,61,-97,62,-97,63,-97,64,-97,65,-97,66,-97,67,-97,68,-97,71,-97,72,-97,82,-97,83,-97,84,-97,85,-97,86,-97,87,-97,88,-97,89,-97,90,-97,91,-97,93,-97},
-    &.{1,-100,38,-100,39,-100,40,-100,41,-100,44,-100,46,-100,47,-100,48,-100,54,-100,58,-100,59,-100,60,-100,61,-100,62,-100,63,-100,64,-100,65,-100,66,-100,67,-100,68,-100,71,-100,72,-100,82,-100,83,-100,84,-100,85,-100,86,-100,87,-100,88,-100,89,-100,90,-100,91,-100,93,-100},
-    &.{1,-95,38,-95,39,-95,40,-95,41,-95,44,-95,46,-95,47,-95,48,-95,54,-95,58,-95,59,-95,60,-95,61,-95,62,-95,63,-95,64,-95,65,-95,66,-95,67,-95,68,-95,71,-95,72,-95,82,-95,83,-95,84,-95,85,-95,86,-95,87,-95,88,-95,89,-95,90,-95,91,-95,93,-95},
-    &.{1,-93,38,-93,39,-93,40,-93,41,-93,44,-93,46,-93,47,-93,48,-93,54,-93,58,-93,59,-93,60,-93,61,-93,62,-93,63,-93,64,-93,65,-93,66,-93,67,-93,68,-93,71,-93,72,-93,82,-93,83,-93,84,-93,85,-93,86,-93,87,-93,88,-93,89,-93,90,-93,91,-93,93,-93},
-    &.{1,-96,38,-96,39,-96,40,-96,41,-96,44,-96,46,-96,47,-96,48,-96,54,-96,58,-96,59,-96,60,-96,61,-96,62,-96,63,-96,64,-96,65,-96,66,-96,67,-96,68,-96,71,-96,72,-96,82,-96,83,-96,84,-96,85,-96,86,-96,87,-96,88,-96,89,-96,90,-96,91,-96,93,-96},
-    &.{1,-94,38,-94,39,-94,40,-94,41,-94,44,-94,46,-94,47,-94,48,-94,54,-94,58,-94,59,-94,60,-94,61,-94,62,-94,63,-94,64,-94,65,-94,66,-94,67,-94,68,-94,71,-94,72,-94,82,-94,83,-94,84,-94,85,-94,86,-94,87,-94,88,-94,89,-94,90,-94,91,-94,93,-94},
-    &.{1,-37,38,-37,39,-37,40,-37,41,-37,44,-37,46,-37,47,-37,48,-37,71,-37,72,-37},
-    &.{1,-101,38,-101,39,-101,40,-101,41,-101,44,-101,46,-101,47,-101,48,-101,54,-101,58,-101,59,-101,60,-101,61,-101,62,-101,63,-101,64,-101,65,-101,66,-101,67,-101,68,-101,71,-101,72,-101,82,-101,83,-101,84,-101,85,-101,86,-101,87,-101,88,-101,89,-101,90,-101,91,-101,93,-101},
-    &.{1,-91,38,-91,39,-91,40,-91,41,-91,44,-91,46,-91,47,-91,48,-91,54,-91,58,-91,59,-91,60,-91,61,-91,62,-91,63,-91,64,-91,65,-91,66,-91,67,-91,68,-91,71,-91,72,-91,82,-91,83,-91,84,-91,85,-91,86,-91,87,-91,88,-91,89,-91,90,-91,91,-91,93,-91},
-    &.{20,49,21,133,35,142,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,81,132},
-    &.{1,-76,38,-76,39,-76,40,-76,41,-76,46,-76,48,-76,72,-76},
-    &.{1,-40,38,-40,39,-40,40,-40,41,-40,44,-40,46,-40,47,-40,48,-40,71,-40,72,-40},
-    &.{1,-18,38,-18,39,-18,40,-18,41,-18,46,-18,48,-18,72,-18},
-    &.{1,-17,38,-17,39,-17,40,-17,41,-17,46,-17,48,-17,72,-17},
-    &.{1,-3,46,-3,48,-3,72,-3},
-    &.{1,-15,38,-15,39,-15,40,-15,41,-15,46,-15,48,-15,72,-15},
-    &.{1,-19,38,-19,39,-19,40,-19,41,-19,46,-19,48,-19,72,-19},
-    &.{1,-62,38,-62,39,-62,40,-62,41,-62,44,-62,46,-62,47,-62,48,-62,54,-62,56,-62,58,-62,59,-62,60,-62,61,-62,62,-62,63,-62,64,-62,65,-62,66,-62,67,-62,68,-62,71,-62,72,-62,82,-62,83,-62,84,-62,85,-62,86,-62,87,-62,88,-62,89,-62,90,-62,91,-62,93,-62},
-    &.{1,-29,12,145,36,143,38,-29,39,-29,40,-29,41,-29,44,-29,46,-29,47,-29,48,-29,50,144,71,-29,72,-29,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{1,-88,38,-88,39,-88,40,-88,41,-88,46,-88,48,-88,72,-88},
-    &.{1,-31,12,146,36,143,38,-31,39,-31,40,-31,41,-31,46,-31,48,-31,50,144,72,-31,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{56,-51},
-    &.{20,49,21,127,47,-50,54,51,56,-50,57,147,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,71,-50},
-    &.{56,148},
-    &.{1,-22,38,-22,39,-22,40,-22,41,-22,46,-22,47,-22,48,-22,71,-22,72,-22},
-    &.{25,149,47,98,71,100},
-    &.{48,150},
-    &.{47,-90,71,-90},
-    &.{20,49,21,127,47,-50,54,51,57,151,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,71,-50},
-    &.{31,152,38,153,48,-82,72,-82,77,154},
-    &.{72,155},
-    &.{48,156},
-    &.{72,157},
-    &.{39,-71,40,-71,47,-71,71,-71},
-    &.{39,-70,40,-70,47,-70,71,-70},
-    &.{1,-68,38,-68,39,-68,40,-68,41,-68,46,-68,48,-68,72,-68},
-    &.{22,159,25,158,47,98,69,15,71,100},
-    &.{25,160,47,98,71,100},
-    &.{1,-34,36,161,38,-34,39,-34,40,-34,41,-34,44,-34,46,-34,47,-34,48,-34,49,162,71,-34,72,-34,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{1,-36,38,-36,39,-36,40,-36,41,-36,44,-36,46,-36,47,-36,48,-36,71,-36,72,-36},
-    &.{1,-30,38,-30,39,-30,40,-30,41,-30,44,-30,46,-30,47,-30,48,-30,71,-30,72,-30},
-    &.{1,-32,38,-32,39,-32,40,-32,41,-32,46,-32,48,-32,72,-32},
-    &.{47,-49,56,-49,71,-49},
-    &.{1,-48,38,-48,39,-48,40,-48,41,-48,46,-48,48,-48,54,-48,58,-48,59,-48,60,-48,61,-48,62,-48,63,-48,64,-48,65,-48,66,-48,67,-48,72,-48},
-    &.{38,-86,48,-86,72,-86},
-    &.{1,-79,38,-79,39,-79,40,-79,41,-79,46,-79,48,-79,72,-79},
-    &.{47,-89,71,-89},
-    &.{31,152,38,153,48,-82,72,-82,77,163},
-    &.{20,49,21,133,32,164,35,130,38,-85,48,-85,54,51,58,7,59,25,60,12,61,31,62,33,63,8,64,9,65,10,66,32,67,2,68,50,72,-85,81,132},
-    &.{48,-83,72,-83},
-    &.{1,-80,38,-80,39,-80,40,-80,41,-80,46,-80,48,-80,72,-80},
-    &.{1,-74,38,-74,39,-74,40,-74,41,-74,46,-74,48,-74,70,-74,72,-74},
-    &.{1,-75,38,-75,39,-75,40,-75,41,-75,46,-75,48,-75,70,-75,72,-75},
-    &.{1,-72,38,-72,39,-72,40,-72,41,-72,46,-72,48,-72,72,-72},
-    &.{1,-73,38,-73,39,-73,40,-73,41,-73,46,-73,48,-73,72,-73},
-    &.{1,-77,38,-77,39,-77,40,-77,41,-77,46,-77,48,-77,72,-77},
-    &.{1,-34,36,161,38,-34,39,-34,40,-34,41,-34,44,-34,46,-34,47,-34,48,-34,49,165,71,-34,72,-34,82,71,83,57,84,66,85,68,86,65,87,67,88,61,89,59,90,63,91,64,93,70},
-    &.{1,-35,38,-35,39,-35,40,-35,41,-35,44,-35,46,-35,47,-35,48,-35,71,-35,72,-35},
-    &.{48,-81,72,-81},
-    &.{38,-84,48,-84,72,-84},
-    &.{1,-33,38,-33,39,-33,40,-33,41,-33,44,-33,46,-33,47,-33,48,-33,71,-33,72,-33},
+const parseTable = [_][numSymbols]i16{
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0},
+    .{0,0,0,2,3,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-2,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,41,-3,-3,-3,-3,0,0,0,-3,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,-6,-6,-6,0,0,0,-6,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,-7,-7,-7,0,0,0,-7,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-7,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,-8,-8,-8,0,0,0,-8,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,-9,-9,-9,0,0,0,-9,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,-10,-10,-10,0,0,0,-10,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,-11,-11,-11,0,0,0,-11,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,-12,-12,-12,0,0,0,-12,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,-13,-13,-13,0,0,0,-13,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-13,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,-14,-14,-14,0,0,0,-14,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-21,0,0,0,0,0,0,43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,-21,-21,42,44,0,-21,-21,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-21,-21,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,46,0,14,24,0,0,23,27,0,25,0,0,0,26,0,0,45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,28,0,0,0,0,0,47,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,46,0,14,24,0,0,23,27,0,25,0,0,0,26,0,0,48,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,28,0,0,0,0,0,47,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,54,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-42,-42,-42,-42,0,0,0,-42,0,-42,0,0,0,29,0,0,0,-41,-41,-41,-41,-41,-41,-41,-41,-41,-41,0,0,0,0,-42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,57,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,-26,-26,0,-26,0,-26,-26,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-26,-26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,-27,-27,0,-27,0,-27,-27,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-27,-27,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-39,-39,-39,-39,0,0,0,-39,0,-39,0,0,0,-39,0,0,0,-39,-39,-39,-39,-39,-39,-39,-39,-39,-39,0,0,0,0,-39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,0,-35,0,-35,-35,-35,0,58,0,-35,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,0,-35,-35,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,-35,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,59,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,30,31,32,33,34,35,36,37,38,39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,60,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,61,0,0,51,62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,63,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-51,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-51,-51,-51,-51,0,-51,0,-51,-51,-51,0,0,0,-51,0,-51,0,-51,-51,-51,-51,-51,-51,-51,-51,-51,-51,-51,0,0,-51,-51,0,0,0,0,0,0,0,0,0,-51,-51,-51,-51,-51,-51,-51,-51,-51,-51,0,-51,0,0},
+    .{0,-52,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-52,-52,-52,-52,0,-52,0,-52,-52,-52,0,0,0,-52,0,-52,0,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,0,0,-52,-52,0,0,0,0,0,0,0,0,0,-52,-52,-52,-52,-52,-52,-52,-52,-52,-52,0,-52,0,0},
+    .{0,-53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-53,-53,-53,-53,0,-53,0,-53,-53,-53,0,0,0,-53,0,-53,0,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,0,0,-53,-53,0,0,0,0,0,0,0,0,0,-53,-53,-53,-53,-53,-53,-53,-53,-53,-53,0,-53,0,0},
+    .{0,-54,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-54,-54,-54,-54,0,-54,0,-54,-54,-54,0,0,0,-54,0,-54,0,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,0,0,-54,-54,0,0,0,0,0,0,0,0,0,-54,-54,-54,-54,-54,-54,-54,-54,-54,-54,0,-54,0,0},
+    .{0,-55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-55,-55,-55,-55,0,-55,0,-55,-55,-55,0,0,0,-55,0,-55,0,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,0,0,-55,-55,0,0,0,0,0,0,0,0,0,-55,-55,-55,-55,-55,-55,-55,-55,-55,-55,0,-55,0,0},
+    .{0,-56,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-56,-56,-56,-56,0,-56,0,-56,-56,-56,0,0,0,-56,0,-56,0,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,0,0,-56,-56,0,0,0,0,0,0,0,0,0,-56,-56,-56,-56,-56,-56,-56,-56,-56,-56,0,-56,0,0},
+    .{0,0,0,0,64,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,65,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,66,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,67,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-5,0,0,0,0,68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,69,70,71,72,0,0,0,-5,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-24,0,0,0,0,0,0,73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,-24,-24,0,44,0,-24,-24,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-24,-24,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,-22,-22,0,-22,0,-22,-22,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-22,-22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,74,24,0,0,23,27,0,25,0,0,0,26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,28,0,0,0,0,0,47,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,75,0,0,0,0,0,0,0,0,0,0,0,0,0,76,77,0,0,0,0,0,78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,-66,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-66,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,55,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,29,0,0,0,-41,-41,-41,-41,-41,-41,-41,-41,-41,-41,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,80,0,0,0,0,0,0,0,0,0,0,0,0,0,76,77,0,0,0,0,0,78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,82,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-61,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-61,-61,-61,-61,0,-61,0,-61,-61,-61,0,0,0,-61,0,-61,0,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,0,0,-61,-61,0,0,0,0,0,0,0,0,0,-61,-61,-61,-61,-61,-61,-61,-61,-61,-61,0,-61,0,0},
+    .{0,-62,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-62,-62,-62,-62,0,-62,0,-62,-62,-62,0,0,0,-62,0,-62,0,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,0,0,-62,-62,0,0,0,0,0,0,0,0,0,-62,-62,-62,-62,-62,-62,-62,-62,-62,-62,0,-62,0,0},
+    .{0,-63,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-63,-63,-63,-63,0,-63,0,-63,-63,-63,0,0,0,-63,0,-63,0,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,0,0,-63,-63,0,0,0,0,0,0,0,0,0,-63,-63,-63,-63,-63,-63,-63,-63,-63,-63,0,-63,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-40,-40,-40,-40,0,0,0,-40,0,-40,0,0,0,-40,0,0,0,-40,-40,-40,-40,-40,-40,-40,-40,-40,-40,0,0,0,0,-40,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,51,89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,90,0,-37,-37,-37,-37,0,-37,0,-37,-37,-37,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,-37,-37,0,0,0,0,0,0,0,0,0,91,92,93,94,95,96,97,98,99,100,0,101,0,0},
+    .{0,-35,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,0,-35,0,-35,-35,-35,0,102,0,-35,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,0,-35,-35,0,0,0,0,0,0,0,0,0,-35,-35,-35,-35,-35,-35,-35,-35,-35,-35,0,-35,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,103,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-43,-43,-43,-43,0,0,0,-43,0,-43,0,0,0,-43,0,0,0,-43,-43,-43,-43,-43,-43,-43,-43,-43,-43,0,0,0,0,-43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-44,-44,-44,-44,0,0,0,-44,0,-44,0,0,0,-44,0,0,0,-44,-44,-44,-44,-44,-44,-44,-44,-44,-44,0,0,0,0,-44,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,104,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-46,0,-46,105,-46,-46,-46,-46,-46,-46,-46,-46,-46,-46,-46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,106,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,108,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,109,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,-4,-4,-4,0,0,0,-4,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-16,0,0,0,110,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,-16,-16,-16,-16,0,0,28,-16,19,-16,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,-16,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,111,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,112,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-20,0,0,0,113,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,-20,-20,-20,-20,0,0,28,-20,19,-20,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,-20,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,-23,-23,0,-23,0,-23,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-23,-23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,-25,-25,0,-25,0,-25,-25,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-25,-25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,114,0,0,0,0,0,0,0,0,0,0,0,0,0,-64,-64,-64,-64,0,0,0,-64,0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,115,0,-64,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,116,0,14,24,0,0,23,27,0,25,0,0,0,26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,28,0,0,0,0,0,47,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,117,0,14,24,0,0,23,27,0,25,0,0,0,26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,28,0,0,0,0,0,47,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,118,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,119,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,-73,-73,-73,0,0,0,-73,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-73,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,122,0,0,0,0,0,0,0,0,0,0,0,0,0,120,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,-75,-75,-75,0,0,0,-75,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,122,0,0,0,0,0,0,0,0,123,0,124,0,0,125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,122,0,0,0,0,0,0,0,0,126,0,124,0,0,125,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-30,0,0,0,0,0,0,0,0,0,0,127,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,129,0,-30,-30,-30,-30,0,0,0,-30,0,-30,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-30,0,0,0,0,0,0,0,0,0,91,92,93,94,95,96,97,98,99,100,0,101,0,0},
+    .{0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,-84,-84,-84,0,0,0,-84,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-84,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-85,-85,-85,-85,0,0,0,-85,0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-85,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-36,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-36,-36,-36,-36,0,-36,0,-36,-36,-36,0,0,0,-36,0,0,0,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,0,0,-36,-36,0,0,0,0,0,0,0,0,0,-36,-36,-36,-36,-36,-36,-36,-36,-36,-36,0,-36,0,0},
+    .{0,-49,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-49,-49,-49,-49,0,-49,0,-49,-49,-49,0,0,0,-49,0,0,0,-49,-49,-49,-49,-49,-49,-49,-49,-49,-49,-49,0,0,-49,-49,0,0,0,0,0,0,0,0,0,-49,-49,-49,-49,-49,-49,-49,-49,-49,-49,0,-49,0,0},
+    .{0,-50,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-50,-50,-50,-50,0,-50,0,-50,-50,-50,0,0,0,-50,0,0,0,-50,-50,-50,-50,-50,-50,-50,-50,-50,-50,-50,0,0,-50,-50,0,0,0,0,0,0,0,0,0,-50,-50,-50,-50,-50,-50,-50,-50,-50,-50,0,-50,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,130,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,131,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,132,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,133,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,134,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,135,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,136,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-96,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-96,-96,-96,-96,0,-96,0,-96,-96,-96,0,0,0,-96,0,0,0,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,0,0,-96,-96,0,0,0,0,0,0,0,0,0,-96,-96,-96,-96,-96,-96,-96,-96,-96,-96,0,-96,0,0},
+    .{0,-97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-97,-97,-97,-97,0,-97,0,-97,-97,-97,0,0,0,-97,0,0,0,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,0,0,-97,-97,0,0,0,0,0,0,0,0,0,-97,-97,-97,-97,-97,-97,-97,-97,-97,-97,0,-97,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,137,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,138,0,0,0},
+    .{0,-38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,51,89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,90,0,-38,-38,-38,-38,0,-38,0,-38,-38,-38,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,-38,-38,0,0,0,0,0,0,0,0,0,91,92,93,94,95,96,97,98,99,100,0,101,0,0},
+    .{0,-28,0,0,0,0,0,0,0,0,0,0,139,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,129,0,-28,-28,-28,-28,0,-28,0,-28,-28,-28,128,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-28,-28,0,0,0,0,0,0,0,0,0,91,92,93,94,95,96,97,98,99,100,0,101,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,140,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,141,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,52,0,-48,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-57,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-57,-57,-57,-57,0,-57,0,-57,-57,-57,0,0,0,-57,0,-57,0,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,0,0,-57,-57,0,0,0,0,0,0,0,0,0,-57,-57,-57,-57,-57,-57,-57,-57,-57,-57,0,-57,0,0},
+    .{0,-58,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-58,-58,-58,-58,0,-58,0,-58,-58,-58,0,0,0,-58,0,-58,0,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,0,0,-58,-58,0,0,0,0,0,0,0,0,0,-58,-58,-58,-58,-58,-58,-58,-58,-58,-58,0,-58,0,0},
+    .{0,-59,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-59,-59,-59,-59,0,-59,0,-59,-59,-59,0,0,0,-59,0,-59,0,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,0,0,-59,-59,0,0,0,0,0,0,0,0,0,-59,-59,-59,-59,-59,-59,-59,-59,-59,-59,0,-59,0,0},
+    .{0,-60,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-60,-60,-60,-60,0,-60,0,-60,-60,-60,0,0,0,-60,0,-60,0,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,0,0,-60,-60,0,0,0,0,0,0,0,0,0,-60,-60,-60,-60,-60,-60,-60,-60,-60,-60,0,-60,0,0},
+    .{0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,-15,-15,-15,0,0,0,-15,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,-17,-17,-17,0,0,0,-17,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,-18,-18,-18,0,0,0,-18,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-18,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,-19,-19,-19,0,0,0,-19,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,-65,-65,-65,0,0,0,-65,0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-65,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,143,0,0,142,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,15,0,79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,-67,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-67,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,-68,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,144,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,145,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,146,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,147,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-88,0,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,-88,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-86,0,0,0,0,-86,0,0,0,-86,-86,-86,-86,-86,-86,-86,-86,-86,-86,-86,0,0,-86,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,148,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,-78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-78,0,0,0,0,149,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,150,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,78,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,151,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,-31,-31,-31,0,0,0,-31,0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-31,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,152,0,-34,-34,-34,-34,0,-34,0,-34,-34,-34,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-34,-34,0,0,0,0,0,0,0,0,0,91,92,93,94,95,96,97,98,99,100,0,101,0,0},
+    .{0,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,-32,-32,-32,0,-32,0,-32,-32,-32,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-32,-32,0,0,0,0,0,0,0,0,0,-32,-32,-32,-32,-32,-32,-32,-32,-32,-32,0,-32,0,0},
+    .{0,-89,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-89,-89,-89,-89,0,-89,0,-89,-89,-89,0,0,0,-89,0,0,0,-89,-89,-89,-89,-89,-89,-89,-89,-89,-89,-89,0,0,-89,-89,0,0,0,0,0,0,0,0,0,-89,-89,-89,-89,-89,-89,-89,-89,-89,-89,0,-89,0,0},
+    .{0,-90,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-90,-90,-90,-90,0,-90,0,-90,-90,-90,0,0,0,-90,0,0,0,-90,-90,-90,-90,-90,-90,-90,-90,-90,-90,-90,0,0,-90,-90,0,0,0,0,0,0,0,0,0,-90,-90,-90,-90,-90,-90,-90,-90,-90,-90,0,-90,0,0},
+    .{0,-91,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-91,-91,-91,-91,0,-91,0,-91,-91,-91,0,0,0,-91,0,0,0,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,0,0,-91,-91,0,0,0,0,0,0,0,0,0,-91,-91,-91,-91,-91,-91,-91,-91,-91,-91,0,-91,0,0},
+    .{0,-92,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-92,-92,-92,-92,0,-92,0,-92,-92,-92,0,0,0,-92,0,0,0,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,0,0,-92,-92,0,0,0,0,0,0,0,0,0,-92,-92,-92,-92,-92,-92,-92,-92,-92,-92,0,-92,0,0},
+    .{0,-93,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-93,-93,-93,-93,0,-93,0,-93,-93,-93,0,0,0,-93,0,0,0,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,0,0,-93,-93,0,0,0,0,0,0,0,0,0,-93,-93,-93,-93,-93,-93,-93,-93,-93,-93,0,-93,0,0},
+    .{0,-94,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-94,-94,-94,-94,0,-94,0,-94,-94,-94,0,0,0,-94,0,0,0,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,0,0,-94,-94,0,0,0,0,0,0,0,0,0,-94,-94,-94,-94,-94,-94,-94,-94,-94,-94,0,-94,0,0},
+    .{0,-95,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-95,-95,-95,-95,0,-95,0,-95,-95,-95,0,0,0,-95,0,0,0,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,0,0,-95,-95,0,0,0,0,0,0,0,0,0,-95,-95,-95,-95,-95,-95,-95,-95,-95,-95,0,-95,0,0},
+    .{0,-98,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-98,-98,-98,-98,0,-98,0,-98,-98,-98,0,0,0,-98,0,0,0,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,0,0,-98,-98,0,0,0,0,0,0,0,0,0,-98,-98,-98,-98,-98,-98,-98,-98,-98,-98,0,-98,0,0},
+    .{0,-99,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-99,-99,-99,-99,0,-99,0,-99,-99,-99,0,0,0,-99,0,0,0,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,0,0,-99,-99,0,0,0,0,0,0,0,0,0,-99,-99,-99,-99,-99,-99,-99,-99,-99,-99,0,-99,0,0},
+    .{0,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,-29,-29,-29,0,-29,0,-29,-29,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-29,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-45,-45,-45,-45,0,0,0,-45,0,-45,0,0,0,-45,0,0,0,-45,-45,-45,-45,-45,-45,-45,-45,-45,-45,0,0,0,0,-45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-47,0,-47,0,-47,-47,-47,-47,-47,-47,-47,-47,-47,-47,-47,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,-69,-69,-69,0,0,0,-69,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-69,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,-70,-70,-70,0,0,0,-70,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,-71,-71,-71,0,0,0,-71,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-71,0,-71,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,-72,-72,-72,0,0,0,-72,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-72,0,-72,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,-74,-74,-74,0,0,0,-74,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-74,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-87,0,0,0,0,-87,0,0,0,-87,-87,-87,-87,-87,-87,-87,-87,-87,-87,-87,0,0,-87,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,-76,-76,-76,0,0,0,-76,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-76,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,153,0,0,0,0,0,0,154,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-80,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-83,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,-77,-77,-77,0,0,0,-77,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-77,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,-33,-33,0,-33,0,-33,-33,-33,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-33,-33,0,0,0,0,0,0,0,0,0,-33,-33,-33,-33,-33,-33,-33,-33,-33,-33,0,-33,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-79,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,51,122,0,0,0,0,0,0,0,0,0,0,155,0,0,125,0,0,-82,0,0,0,0,0,0,0,0,-82,0,0,0,52,0,0,0,30,31,32,33,34,35,36,37,38,39,53,0,0,0,-82,0,0,0,0,0,0,0,0,121,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-81,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 };
-
-const parseTable = blk: {
-    @setEvalBranchQuota(100000);
-    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
-    for (sparse, 0..) |row, state| {
-        var i: usize = 0;
-        while (i < row.len) : (i += 2) {
-            t[state][@intCast(row[i])] = row[i + 1];
-        }
-    }
-    break :blk t;
-};
-
-fn getAction(state: u16, sym: u16) i16 {
-    return parseTable[state][sym];
-}
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)
 const xExcludes = [_]struct { sym: u16, shift: u16 }{
 };
-
-fn getImmediateShift(_: u16, _: u16) ?i16 {
-    return null;
-}
+/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
+const xExcludeStart = [_]u32{};
 
 fn startState(start: Start) u16 {
     return switch (start) {
@@ -2107,48 +2496,43 @@ fn startState(start: Start) u16 {
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"program" => 94,
+        .@"program" => 91,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    45, 47, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69, 73, 74, 76, 78, 79, 1, 38, 39, 40, 41,
-    44, 46, 47, 48, 71, 72, 1, 38, 39, 40, 41, 46, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    72, 1, 38, 39, 40, 41, 44, 46, 47, 48, 54, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71,
-    72, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68,
-    58, 1, 38, 39, 40, 41, 46, 48, 72, 45, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 1, 1, 38,
-    39, 40, 41, 44, 46, 47, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 72, 82, 83, 84,
-    85, 86, 87, 88, 89, 90, 91, 93, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 1, 38, 39, 40, 41, 46,
-    48, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 72, 54, 55, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    68, 46, 1, 38, 39, 40, 41, 46, 47, 48, 71, 72, 47, 71, 39, 40, 47, 71, 92, 75, 1, 38, 39, 40,
-    41, 45, 46, 47, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 69, 72, 73, 74, 76, 78, 79, 1,
-    46, 48, 72, 80, 48, 54, 56, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 1, 38, 39, 40, 41, 46,
-    48, 70, 72, 1, 38, 39, 40, 41, 44, 46, 47, 48, 71, 72, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91,
-    93, 1, 38, 39, 40, 41, 46, 48, 72, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 93, 56, 47, 54, 56,
-    58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 71, 47, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
-    68, 71, 38, 48, 72, 72, 47, 69, 71, 47, 56, 71, 38, 48, 54, 58, 59, 60, 61, 62, 63, 64, 65, 66,
-    67, 68, 72, 48, 72,
+    44, 46, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 70, 71, 73, 75, 76, 1, 1, 38, 39, 40,
+    41, 45, 47, 69, 1, 38, 39, 40, 41, 43, 45, 46, 47, 68, 69, 44, 51, 55, 56, 57, 58, 59, 60, 61,
+    62, 63, 64, 55, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 1, 38, 39, 40, 41, 45, 47, 51,
+    55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 69, 1, 38, 39, 40, 41, 43, 45, 46, 47, 51, 55, 56, 57,
+    58, 59, 60, 61, 62, 63, 64, 65, 68, 69, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 90, 55, 56, 57,
+    58, 59, 60, 61, 62, 63, 64, 51, 52, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 1, 38, 39, 40,
+    41, 43, 45, 46, 47, 51, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 68, 69, 79, 80, 81, 82,
+    83, 84, 85, 86, 87, 88, 90, 39, 40, 46, 68, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 72, 46,
+    68, 47, 77, 45, 51, 53, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 1, 38, 39, 40, 41, 44, 45,
+    46, 47, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 69, 70, 71, 73, 75, 76, 1, 38, 39, 40,
+    41, 45, 47, 67, 69, 1, 38, 39, 40, 41, 45, 47, 69, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 90,
+    89, 1, 38, 39, 40, 41, 43, 45, 46, 47, 68, 69, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 90, 53,
+    46, 66, 68, 69, 46, 51, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 68, 38, 47, 69, 38, 47, 51,
+    55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 69,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 19, 30, 49, 84, 96, 97, 105, 117, 118, 152, 162, 180, 193, 194, 204, 206, 210, 211, 212, 239, 243, 244,
-    245, 258, 267, 289, 308, 309, 324, 338, 341, 342, 345, 348, 363, 365,
+    0, 0, 19, 20, 28, 39, 51, 52, 64, 83, 117, 127, 140, 175, 179, 190, 191, 193, 194, 195, 196, 209, 236, 245,
+    264, 265, 287, 288, 291, 292, 306, 309, 324,
 };
 const expectedOf = [_]u16{
-    0, 1, 1, 2, 2, 2, 3, 4, 4, 1, 1, 5, 4, 6, 7, 8, 9, 7, 10, 6, 7, 8, 11, 7,
-    7, 4, 7, 7, 7, 7, 12, 4, 1, 4, 1, 7, 6, 9, 1, 13, 14, 2, 8, 15, 12, 3, 14, 14,
-    16, 4, 4, 4, 16, 11, 17, 17, 9, 5, 10, 10, 10, 5, 2, 10, 18, 5, 5, 5, 5, 10, 18, 5,
-    19, 17, 10, 1, 1, 7, 20, 20, 21, 14, 14, 22, 23, 24, 3, 3, 4, 2, 15, 2, 12, 4, 4, 7,
-    5, 5, 1, 7, 1, 8, 8, 25, 10, 10, 10, 10, 10, 10, 10, 2, 10, 10, 5, 7, 2, 7, 7, 21,
-    7, 7, 4, 26, 7, 27, 28, 29, 28, 15, 16, 23, 16, 30, 31, 32, 23, 32, 17, 17, 7, 33, 16, 26,
-    2, 2, 7, 34, 3, 31, 7, 16, 31, 35, 36, 7, 25, 25, 7, 7, 7, 26, 2, 36, 31, 2,
+    0, 1, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 5, 5, 6, 7, 1, 8, 6, 6, 4,
+    4, 8, 9, 10, 1, 11, 12, 12, 12, 12, 12, 12, 1, 1, 1, 1, 2, 3, 4, 4, 5, 13, 13, 14,
+    13, 15, 16, 12, 12, 12, 17, 8, 16, 18, 9, 9, 19, 8, 8, 20, 19, 19, 19, 19, 3, 21, 1, 1,
+    21, 4, 4, 22, 5, 5, 1, 1, 3, 7, 3, 7, 7, 23, 3, 3, 9, 9, 9, 7, 7, 7, 7, 7,
+    7, 7, 9, 9, 24, 24, 9, 25, 26, 20, 12, 12, 12, 12, 3, 3, 3, 3, 3, 27, 13, 13, 17, 28,
+    16, 29, 29, 17, 30, 16, 28, 3, 25, 25, 9, 9, 9, 9, 9, 9, 9, 9, 9, 4, 8, 20, 3, 3,
+    22, 22, 3, 29, 3, 30, 30, 3, 25, 30, 31, 30,
 };
-
-fn expectedIn(state: u16) []const u16 {
-    const i = expectedOf[state];
-    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
-}
+/// The most symbols a state expects: room for `BaseParser.expectedNames`.
+pub const maxExpected = 35;
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
@@ -2157,48 +2541,48 @@ fn symbolName(sym: u16) []const u8 {
         39 => "and_and",
         40 => "or_or",
         41 => "amp",
-        44 => "pipe",
-        45 => "lparen",
-        46 => "rparen",
-        47 => "lbrace",
-        48 => "rbrace",
-        54 => "name_eq",
-        55 => "lbracket",
-        56 => "rbracket",
-        58 => "ident",
-        59 => "integer",
-        60 => "string_sq",
-        61 => "string_dq",
-        62 => "variable",
-        63 => "var_braced",
-        64 => "dollar_paren",
-        65 => "at_paren",
-        66 => "proc_sub_in",
-        67 => "proc_sub_out",
-        68 => "assign",
-        69 => "if",
-        70 => "else",
-        71 => "indent",
-        72 => "outdent",
-        73 => "while",
-        74 => "for",
-        75 => "in",
-        76 => "match",
-        78 => "cmd",
-        79 => "str_open",
-        80 => "str_body",
-        82 => "lt",
-        83 => "fd_lt",
-        84 => "gt",
-        85 => "fd_gt",
-        86 => "gt_gt",
-        87 => "amp_gt",
-        88 => "amp_gt_gt",
-        89 => "fd_dup_out",
-        90 => "fd_dup_in",
-        91 => "heredoc_open",
-        92 => "heredoc_body",
-        93 => "heredoc_open_lit",
+        43 => "pipe",
+        44 => "lparen",
+        45 => "rparen",
+        46 => "lbrace",
+        47 => "rbrace",
+        51 => "name_eq",
+        52 => "lbracket",
+        53 => "rbracket",
+        55 => "ident",
+        56 => "integer",
+        57 => "string_sq",
+        58 => "string_dq",
+        59 => "variable",
+        60 => "var_braced",
+        61 => "dollar_paren",
+        62 => "at_paren",
+        63 => "proc_sub_in",
+        64 => "proc_sub_out",
+        65 => "assign",
+        66 => "if",
+        67 => "else",
+        68 => "indent",
+        69 => "outdent",
+        70 => "while",
+        71 => "for",
+        72 => "in",
+        73 => "match",
+        75 => "cmd",
+        76 => "str_open",
+        77 => "str_body",
+        79 => "lt",
+        80 => "fd_lt",
+        81 => "gt",
+        82 => "fd_gt",
+        83 => "gt_gt",
+        84 => "amp_gt",
+        85 => "amp_gt_gt",
+        86 => "fd_dup_out",
+        87 => "fd_dup_in",
+        88 => "heredoc_open",
+        89 => "heredoc_body",
+        90 => "heredoc_open_lit",
         else => "",
     };
 }
@@ -2207,9 +2591,8 @@ fn isTrivia(_: TokenCat) bool {
     return false;
 }
 
-fn repairCandidates(_: u16) []const u16 {
-    return &.{};
-}
+const repairTokens = [_]u16{};
+const repairOffsets = [_]u32{};
 
 fn repairClass(_: u16) RepairClass {
     return .none;

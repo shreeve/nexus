@@ -1,0 +1,26 @@
+# A bracketed group of fixed texts carries a value, as `","?` does:
+# whether it is there.
+# error: schema_coverage_bracket_text.grammar:26:8:
+# error: element 2 (["," "+"]) carries a value the action does not use
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf
+top! = IDENT ["," "+"]                      → (t 1)

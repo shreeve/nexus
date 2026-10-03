@@ -1,0 +1,13 @@
+# `\x` takes two hex digits.
+# error: literal_short_hex.grammar:13:12:
+# error: unknown escape sequence (the escapes are
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT "\x4" → 1

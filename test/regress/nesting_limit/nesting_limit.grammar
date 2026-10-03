@@ -1,0 +1,13 @@
+# Groups and action lists nest up to 64 levels deep; one more is
+# rejected (test/adverse/nesting_groups.grammar, nesting_action.grammar).
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+ → ident
+. → err
+
+@parser
+top! = ((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((IDENT)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) → (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a (a 1))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))

@@ -1,7 +1,7 @@
 //! The conflict manifest (`@conflicts`): classifies every unresolved
 //! conflict, compares the result with the grammar's declared manifest, and
 //! on any drift fails generation with a report (state, items, and a shortest
-//! input prefix reaching the state) and the actual manifest, ready to paste.
+//! symbol path reaching the state) and the actual manifest, ready to paste.
 //!
 //! A manifest entry is one (kind, rule[, over]) with the number of table
 //! cells (state, terminal) it covers:
@@ -61,8 +61,9 @@ pub fn entries(a: Allocator, tbl: *const Table) ![]Entry {
 // =============================================================================
 
 /// A symbol by name. Symbols the desugarer synthesizes are named in source
-/// syntax (see expand.zig): `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`,
-/// `L(X).tail` (a list's repetition), `(A !B)` for a group, `(A | B C)` for
+/// syntax (see expand.zig): `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`
+/// (repetitions and lists are left-recursive: `X* → ε | X* X`,
+/// `L(X, sep) → X | L(X, sep) sep X`), `(A !B)` for a group, `(A | B C)` for
 /// a repeated choice, and `infix("+" "-")` for an `@infix` level.
 pub fn writeSymbol(w: *std.Io.Writer, g: *const Grammar, sym: u16) std.Io.Writer.Error!void {
     try w.writeAll(g.symbols.items[sym].name);
@@ -98,6 +99,24 @@ pub fn ruleText(a: Allocator, g: *const Grammar, ruleId: u16) ![]const u8 {
     return out.toOwnedSlice();
 }
 
+pub const Loc = struct { line: u32, col: u32 };
+
+/// Where a rule is written: its alternative, or for a rule the expander
+/// synthesizes without one (line 0), the first written rule that uses it,
+/// through other synthesized rules (never its own, as a left-recursive
+/// list's); 1:1 when nothing uses it.
+pub fn ruleLoc(g: *const Grammar, ruleId: u16) Loc {
+    var rule = &g.rules.items[ruleId];
+    var hops: usize = 0;
+    while (rule.line == 0 and hops < g.rules.items.len) : (hops += 1) {
+        rule = for (g.rules.items) |*user| {
+            if (user.lhs != rule.lhs and std.mem.findScalar(u16, user.rhs, rule.lhs) != null) break user;
+        } else break;
+    }
+    if (rule.line == 0) return .{ .line = 1, .col = 1 };
+    return .{ .line = rule.line, .col = @max(rule.col, 1) };
+}
+
 /// An item `lhs → α • β`.
 fn writeItem(w: *std.Io.Writer, g: *const Grammar, item: Item) !void {
     const rule = &g.rules.items[item.ruleId];
@@ -113,7 +132,8 @@ fn writeItem(w: *std.Io.Writer, g: *const Grammar, item: Item) !void {
 }
 
 /// Rule text normalized for comparison: `->` is `→`, whitespace runs are one
-/// space, an empty right-hand side is `ε`.
+/// space, an empty right-hand side is `ε`. Quoted literals (`"..."`, with
+/// `\` escapes) are kept as written.
 pub fn normalize(a: Allocator, text: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
@@ -127,6 +147,16 @@ pub fn normalize(a: Allocator, text: []const u8) ![]const u8 {
         }
         if (pendingSpace) try out.append(a, ' ');
         pendingSpace = false;
+        if (c == '"') {
+            var j = i + 1;
+            while (j < text.len and text[j] != '"') : (j += 1) {
+                if (text[j] == '\\') j += 1;
+            }
+            j = @min(j + 1, text.len);
+            try out.appendSlice(a, text[i..j]);
+            i = j;
+            continue;
+        }
         if (c == '-' and i + 1 < text.len and text[i + 1] == '>') {
             try out.appendSlice(a, "→");
             i += 2;
@@ -275,7 +305,9 @@ fn matches(a: Allocator, g: *const Grammar, d: ConflictEntry, e: Entry) !bool {
 fn sameRule(a: Allocator, g: *const Grammar, text: []const u8, ruleId: u16) !bool {
     const want = try normalize(a, text);
     defer a.free(want);
-    const have = try ruleText(a, g, ruleId);
+    const written = try ruleText(a, g, ruleId);
+    defer a.free(written);
+    const have = try normalize(a, written);
     defer a.free(have);
     return std.mem.eql(u8, want, have);
 }
@@ -317,7 +349,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
                 taken[i] = true;
                 if (actual[i].count != d.count) {
                     drift = true;
-                    try located(w, opts.path, d.line);
+                    try located(w, opts.path, .{ .line = d.line, .col = d.col });
                     try w.print("conflict count changed: {d} declared, {d} now: ", .{ d.count, actual[i].count });
                     try writeEntryHead(w, g, actual[i]);
                     try w.writeByte('\n');
@@ -331,7 +363,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
                 if (taken[i] or e.kind != .reduce) continue;
                 if (try sameRule(a, g, d.rule, e.over) and try sameRule(a, g, d.over orelse "", e.rule)) break i;
             } else null else null;
-            try located(w, opts.path, d.line);
+            try located(w, opts.path, .{ .line = d.line, .col = d.col });
             if (flipped) |i| {
                 taken[i] = true;
                 try w.print("reduce/reduce winner flipped: declared {s} over {s}, now ", .{ d.rule, d.over.? });
@@ -347,7 +379,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
         for (actual, 0..) |e, i| {
             if (taken[i]) continue;
             drift = true;
-            try located(w, opts.path, g.rules.items[e.rule].line);
+            try located(w, opts.path, ruleLoc(g, e.rule));
             try w.writeAll("undeclared conflict: ");
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});
@@ -356,7 +388,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
     } else if (actual.len > 0) {
         drift = true;
         for (actual) |e| {
-            try located(w, opts.path, g.rules.items[e.rule].line);
+            try located(w, opts.path, ruleLoc(g, e.rule));
             try w.writeAll("undeclared conflict: ");
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});
@@ -371,41 +403,68 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
     return error.ConflictDrift;
 }
 
-/// `path:line:1: error: ` (or `path: error: ` without a line).
-fn located(w: *std.Io.Writer, path: []const u8, line: u32) !void {
-    if (line > 0) try w.print("{s}:{d}:1: error: ", .{ path, line }) else try w.print("{s}: error: ", .{path});
+/// `path:line:col: error: ` (1:1 for an entry without a location).
+fn located(w: *std.Io.Writer, path: []const u8, at: Loc) !void {
+    try w.print("{s}:{d}:{d}: error: ", .{ path, @max(at.line, 1), @max(at.col, 1) });
 }
 
-/// Fail on `X "c"` hints that decide nothing: in no state does the rule's
-/// reduction on the character's terminal meet a shift. (The LR(1)
-/// lookaheads already separate the cases, so the hint has no effect.)
-/// Hints are grouped by source alternative (lhs and line), so a hint that
-/// applies to any rule expanded from its alternative counts as used.
+/// Fail on `X "c"` hints that decide nothing. A hint decides a cell when
+/// its rule's reduction on the terminal it names beats the shift by it; it
+/// decides none when the LR(1) lookaheads already separate the cases, or a
+/// lower rule wins every cell it could. Hints are grouped by source
+/// alternative (lhs, line, column), so a hint that decides a cell for any
+/// rule expanded from its alternative counts as used.
 pub fn checkHints(a: Allocator, g: *const Grammar, tbl: *const Table, opts: Options) CheckError!void {
     var failed = false;
     for (tbl.hints, 0..) |h, i| {
         if (h.used) continue;
-        const rule = &g.rules.items[h.rule];
         // Report each (alternative, char) once, and only if no sibling used it.
         const dup = for (tbl.hints[0..i]) |o| {
-            const orule = &g.rules.items[o.rule];
-            if (o.char == h.char and orule.lhs == rule.lhs and orule.line == rule.line) break true;
+            if (sameHint(g, o, h)) break true;
         } else false;
         if (dup) continue;
         const siblingUsed = for (tbl.hints) |o| {
-            const orule = &g.rules.items[o.rule];
-            if (o.used and o.char == h.char and orule.lhs == rule.lhs and orule.line == rule.line) break true;
+            if (o.used and sameHint(g, o, h)) break true;
         } else false;
         if (siblingUsed) continue;
 
         failed = true;
         var out: std.Io.Writer.Allocating = .init(a);
         defer out.deinit();
-        try located(&out.writer, opts.path, rule.line);
-        try out.writer.print("X \"{c}\" on ", .{h.char});
-        try writeRule(&out.writer, g, h.rule);
-        try out.writer.print(" has no effect: no state has a shift/reduce conflict between this rule and \"{c}\"; remove the hint\n", .{h.char});
+        const w = &out.writer;
+        try located(w, opts.path, ruleLoc(g, h.rule));
+        try w.writeAll("X ");
+        try writeHintChar(w, h.char);
+        try w.writeAll(" on ");
+        try writeRule(w, g, h.rule);
+        try w.writeAll(" has no effect: it decides no shift/reduce conflict between this rule and ");
+        try writeHintChar(w, h.char);
+        // A terminal written by name: which one.
+        const name = g.symbols.items[h.terminal].name;
+        if (name[0] != '"') try w.print(" ({s})", .{name});
+        try w.writeAll("; remove the hint\n");
         try opts.emit(out.written());
     }
     if (failed) return error.ConflictDrift;
+}
+
+/// Whether two hints are one hint of one source alternative.
+fn sameHint(g: *const Grammar, x: table.HintUse, y: table.HintUse) bool {
+    const rx = &g.rules.items[x.rule];
+    const ry = &g.rules.items[y.rule];
+    return x.char == y.char and rx.lhs == ry.lhs and rx.line == ry.line and rx.col == ry.col;
+}
+
+/// A hint's character as the grammar writes it: `"c"`, with `\n`, `\t`,
+/// `\r`, `\\` and `\"` escaped.
+pub fn writeHintChar(w: *std.Io.Writer, c: u8) !void {
+    try w.writeByte('"');
+    switch (c) {
+        '\n' => try w.writeAll("\\n"),
+        '\t' => try w.writeAll("\\t"),
+        '\r' => try w.writeAll("\\r"),
+        '\\', '"' => try w.print("\\{c}", .{c}),
+        else => try w.writeByte(c),
+    }
+    try w.writeByte('"');
 }

@@ -19,13 +19,16 @@ dependency. Nexus parses its own grammar files with a parser it generates.
    grammar and Zig example in the docs is generated, compiled and run by
    `./test/run` (see `test/README.md`, "Doc tests").
 2. **Nothing silent.** A mistake in a grammar is an error, never a skipped
-   rule, a guessed default, or a dead alternative. Every known exception is
-   a failing test in `test/known/`, and fixing one moves it to
-   `test/regress/`.
+   rule, a guessed default, or a dead alternative. Every message the
+   generator can print is printed by some test (`tools/messages`;
+   `test/lib/messages.allow` lists the exceptions with a reason, and only
+   shrinks). Every known exception is a failing test in `test/known/`, and
+   fixing one moves it to `test/regress/`.
 3. **Located errors.** Every generation error is
    `file:line:col: error: message`, exits 1, and writes nothing.
 4. **Deterministic output.** The same grammar gives the same bytes, every
-   run, on every machine. Generated code is pinned by `test/golden/`.
+   run, on every machine. Every suite's generated code and every grammar
+   file's frontend tree are pinned by `test/golden/`.
 5. **The bootstrap converges.** `src/frontend/parser.zig` is generated from
    `nexus.grammar` and must be a fixed point; never edit it by hand.
 6. **The engine knows no language.** No language-specific code in `src/`
@@ -45,13 +48,21 @@ dependency. Nexus parses its own grammar files with a parser it generates.
 9. **Measure speed.** A change that could affect speed is benchmarked
    before and after with `test/bench/run`, on the same machine; a
    regression is explained, not hidden (`test/bench/BASELINE.md`).
+10. **One API for every consumer.** Every generated module has the API of
+    [SEMANTICS.md, "The generated API"](docs/SEMANTICS.md#the-generated-api),
+    and a lang module declares only what "The lang module" lists. A change
+    to the grammar language or that API lands in one commit with every
+    consumer copy in this repository (`src/frontend/lang.zig`, the lang
+    modules under `test/`, `test/lib/driver.zig`, the doc examples) and a
+    `CHANGELOG.md` entry with migration steps per downstream repository.
 
 ## Workflow
 
 ```bash
 zig build                                   # bin/nexus
 ./test/run                                  # the whole suite; green before every commit
-./test/run docs mumps                       # only ids containing docs or mumps
+./test/run -j 2 docs mumps                  # only ids containing docs or mumps, two workers
+zig build unit                              # the generator's unit tests alone
 ./test/run --update gen                     # rewrite goldens after an intended change; review the diff
 ./bin/nexus check some.grammar              # every check, nothing written
 ./bin/nexus --dump-sexp some.grammar        # the frontend's tree of a grammar file
@@ -63,11 +74,14 @@ zig fmt --check build.zig src/*.zig src/{codegen,lexgen,lr} src/frontend/{lang,l
 - Fixing a bug starts with a failing test that reproduces it (`test/known/`).
 - A new rejection gets an adverse test; a new feature gets a suite case
   and, if user-visible, a tested doc example.
-- An emitter change: edit `src/codegen/` or `src/lexgen/`, then `zig build`,
-  regenerate the frontend, `zig build` again, regenerate again (no diff),
-  `./test/run --update gen`, and review every changed line of the goldens.
-  Zig inside string templates is invisible to `zig fmt`; the runtime lives
-  in `src/codegen/runtime_template.zig`, a real Zig file, for that reason.
+- A change to `nexus.grammar` or to generated code (`src/codegen/`,
+  `src/lexgen/`) runs the bootstrap loop of
+  [INTERNALS.md](docs/INTERNALS.md#self-hosting-and-the-bootstrap) and
+  reviews every changed line of the goldens. Zig inside string templates
+  is invisible to `zig fmt`; the runtime lives in
+  `src/codegen/runtime_template.zig`, a real Zig file, for that reason.
+- A message the generator can print gets a test that prints it, or an
+  entry with a reason in `test/lib/messages.allow`.
 - Commit messages are short, imperative, and describe the change. No AI
   attribution lines.
 
@@ -80,24 +94,20 @@ final check. Slash and Zag check in parsers from Nexus 0.10.3; their 1.x
 grammars are `test/slash/slash.grammar` and `test/zag/zag.grammar` here.
 `test/rig`, `test/mumps`, `test/nexis` and the other suites hold copies of
 downstream grammars and lang modules: when a downstream grammar changes,
-re-sync the copy here in its own commit.
+re-sync the copy here in its own commit. The edits a release asks of each
+downstream repository are in `CHANGELOG.md`.
 
 ## Map
 
 | Path | Role |
 |---|---|
 | `nexus.grammar` | the grammar-file grammar (schema mode) |
-| `src/main.zig` | the command line and the pipeline |
-| `src/frontend/` | the generated frontend parser, its lang module, strict lowering |
-| `src/lexgen/` | patterns, automata, lexer emission |
-| `src/semantics.zig` | schema, role placement, coverage, static types |
-| `src/expand.zig` | desugaring to plain BNF |
-| `src/lr/` | LR(0), LALR lookaheads, tables, conflicts, expected sets, repair |
-| `src/codegen/` | module composition, actions, the runtime template |
-| `test/` | the suite, `test/diff`, `test/bench/` ([test/README.md](test/README.md)) |
+| `src/` | the generator; [INTERNALS.md](docs/INTERNALS.md#source-map) maps every file |
+| `test/` | the suite, `test/diff`, `test/bench/`, `test/lexfuzz/` ([test/README.md](test/README.md)) |
 | `docs/GRAMMAR.md` | the grammar-file reference |
-| `docs/SEMANTICS.md` | the semantic layer and the generated API |
-| `docs/INTERNALS.md` | architecture, invariants, performance, the bootstrap |
+| `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |
+| `docs/INTERNALS.md` | architecture, the bootstrap, invariants, releasing |
 | `docs/index.html` | the project page (with its images and `nexus.fig`, the logo source) |
+| `CHANGELOG.md` | every release, and the migration steps for downstream |
 | `HANDOFF.md` | current state, open work, tips |
 | [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md) | the Zig 0.17 reference (shreeve/zig-agent-docs) |

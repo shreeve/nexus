@@ -1,0 +1,26 @@
+# A label inside a repeated choice would address one value of every
+# repetition: it cannot fill a role, and is an error rather than ignored.
+# error: label_in_repeated_choice.grammar:26:22:
+# error: label 'x' is inside a repeated or nested group or choice
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t x:leaf?
+top! = IDENT (PLUS | x:INTEGER)*            → (t) ~ "the name is not a value"

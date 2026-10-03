@@ -1,6 +1,6 @@
 //! Zag Language Module
 //!
-//! Provides keyword lookup and tag definitions for the Zag language.
+//! Provides keyword lookup and the lexer wrapper for the Zag language.
 //! Imported by the generated parser via @lang = "zag".
 
 const std = @import("std");
@@ -8,142 +8,6 @@ const parser = @import("parser.zig");
 const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
-
-// =============================================================================
-// Tag Enum — semantic node types for S-expression output
-// =============================================================================
-
-pub const Tag = enum(u8) {
-    // Module structure
-    module,
-    use,
-    @"enum",
-    @"struct",
-    @"packed",
-    labeled,
-    type,
-    @"pub",
-    @"extern",
-    @"export",
-    @"callconv",
-    extern_var,
-    extern_const,
-    @"opaque",
-    volatile_ptr,
-    many_ptr,
-    sentinel_ptr,
-    array_type,
-    aligned,
-    errors,
-    @"test",
-    zig,
-    null,
-    @"unreachable",
-    undefined,
-    @"comptime",
-    as,
-    @"??",
-    @"catch",
-    ternary,
-    builtin,
-    error_union,
-
-    // Routines
-    fun,
-    sub,
-    @"return",
-
-    // Bindings
-    @"const",
-    typed_assign,
-    typed_const,
-    @"=",
-    @"+=",
-    @"-=",
-    @"*=",
-    @"/=",
-
-    // Control flow
-    @"if",
-    @"while",
-    @"for",
-    for_ptr,
-    match,
-    arm,
-    range_pattern,
-    enum_pattern,
-    @"break",
-    @"continue",
-    @"defer",
-    @"errdefer",
-    @"try",
-    @"inline",
-    lambda,
-
-    // Calls and access
-    addr_of,
-    call,
-    @".",
-    deref,
-    index,
-    array,
-    record,
-    pair,
-
-    // Operators — arithmetic
-    @"+",
-    @"-",
-    @"*",
-    @"/",
-    @"%",
-    @"**",
-    neg,
-    not,
-
-    // Operators — comparison
-    @"==",
-    @"!=",
-    @"<",
-    @">",
-    @"<=",
-    @">=",
-
-    // Operators — logical
-    @"||",
-    @"&&",
-
-    // Operators — bitwise
-    @"&",
-    @"|",
-    @"^",
-    @"<<",
-    @">>",
-    bit_not,
-
-    // Operators — pipe and range
-    @"|>",
-    @"..",
-
-    // Type annotations and type constructors
-    typed,
-    valued,
-    default,
-    @":",
-    @"?",
-    ptr,
-    const_ptr,
-    sentinel_slice,
-    fn_type,
-    error_merge,
-    comptime_param,
-    anon_init,
-    slice,
-
-    // Structure
-    block,
-
-    _,
-};
 
 // =============================================================================
 // Keyword Lookup — maps identifier text to parser symbol IDs
@@ -274,22 +138,6 @@ pub const Lexer = struct {
         return .{ .base = BaseLexer.init(source) };
     }
 
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-        self.indent_level = 0;
-        self.indent_depth = 0;
-        self.indent_pending = 0;
-        self.indent_queued = null;
-        self.indent_trailing_newline = false;
-        self.last_cat = .eof;
-        self.flow_if_active = false;
-        self.bracket_depth = 0;
-    }
-
     pub fn next(self: *Lexer) Token {
         if (self.indent_queued) |q| {
             self.indent_queued = null;
@@ -307,7 +155,7 @@ pub const Lexer = struct {
         }
 
         while (true) {
-            const tok = self.base.matchRules();
+            const tok = self.base.next();
 
             // Skip comment tokens
             if (tok.cat == .comment) continue;
@@ -527,7 +375,7 @@ pub const Lexer = struct {
 
     fn nextTokenIsElse(self: *const Lexer) bool {
         var probe = self.base;
-        const tok = probe.matchRules();
+        const tok = probe.next();
         return tok.cat == .ident and std.mem.eql(u8, self.base.source[tok.pos..][0..tok.len], "else");
     }
 
@@ -535,7 +383,7 @@ pub const Lexer = struct {
         var probe = self.base;
         var depth: i32 = 0;
         while (true) {
-            const tok = probe.matchRules();
+            const tok = probe.next();
             switch (tok.cat) {
                 .newline, .eof => return false,
                 .lparen => depth += 1,
@@ -563,9 +411,9 @@ pub const Lexer = struct {
 
     fn isCapturePipe(self: *const Lexer) bool {
         var probe = self.base;
-        const tok1 = probe.matchRules();
+        const tok1 = probe.next();
         if (tok1.cat != .ident) return false;
-        const tok2 = probe.matchRules();
+        const tok2 = probe.next();
         return tok2.cat == .bar;
     }
 };

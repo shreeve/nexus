@@ -1,5 +1,5 @@
 //! Lexer automaton: Thompson NFA over byte classes, subset construction into
-//! a DFA with one start state per guard configuration, and Moore-style
+//! a DFA with one start state per guard configuration, and Hopcroft
 //! minimization.
 //!
 //! Matching semantics: from a start state, the lexer follows transitions
@@ -21,7 +21,13 @@ pub const none: u32 = std.math.maxInt(u32);
 /// Upper bound on NFA size (bounded repeats are expanded).
 pub const maxNfaStates: usize = 200_000;
 
-pub const Error = error{ OutOfMemory, AutomatonTooLarge };
+/// Upper bound on the states of subset construction. A DFA can grow
+/// exponentially with its pattern, so construction stops here instead of
+/// exhausting memory; minimization merges states, so the bound leaves room
+/// above the 65535 states an emitted scanner can number.
+pub const maxRawDfaStates: usize = 4 * 65535;
+
+pub const Error = error{ OutOfMemory, NfaTooLarge, DfaTooLarge };
 
 // =============================================================================
 // Byte classes
@@ -115,7 +121,7 @@ pub const Nfa = struct {
     const Frag = struct { start: u32, end: u32 };
 
     fn add(self: *Nfa, gpa: Allocator, s: State) Error!u32 {
-        if (self.states.items.len >= maxNfaStates) return error.AutomatonTooLarge;
+        if (self.states.items.len >= maxNfaStates) return error.NfaTooLarge;
         try self.states.append(gpa, s);
         return @intCast(self.states.items.len - 1);
     }
@@ -294,6 +300,8 @@ pub const Dfa = struct {
 pub const Spec = struct {
     patterns: []const *const Node,
     starts: []const []const u32,
+    /// Bytes no scan starts at: the start states have no transition on them.
+    startSkip: ByteSet = .{},
 };
 
 /// Build the minimized DFA.
@@ -305,13 +313,14 @@ pub fn build(gpa: Allocator, spec: Spec) Error!Dfa {
     // Byte classes from every set in every pattern.
     var sets: std.ArrayList(ByteSet) = .empty;
     for (spec.patterns) |p| try collectSets(a, p, &sets);
+    if (!spec.startSkip.isEmpty()) try sets.append(a, spec.startSkip);
     const classes = ByteClasses.compute(sets.items);
 
     var nfa: Nfa = .{};
     const ruleStart = try a.alloc(u32, spec.patterns.len);
     for (spec.patterns, 0..) |p, i| ruleStart[i] = try nfa.addRule(a, p, @intCast(i));
 
-    const raw = try subsetConstruct(a, &nfa, classes, ruleStart, spec.starts);
+    const raw = try subsetConstruct(a, &nfa, classes, ruleStart, spec.starts, spec.startSkip);
     return minimize(gpa, raw, classes);
 }
 
@@ -358,7 +367,9 @@ fn closure(a: Allocator, nfa: *const Nfa, seed: []const u32, mark: []u32, stamp:
     std.mem.sort(u32, out.items, {}, std.sort.asc(u32));
 }
 
-fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStart: []const u32, starts: []const []const u32) Error!RawDfa {
+/// The raw DFA. Start states come first and only from the starts' own
+/// map, so no transition re-enters one: they alone skip `startSkip`.
+fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStart: []const u32, starts: []const []const u32, startSkip: ByteSet) Error!RawDfa {
     const nc = classes.count;
     const mark = try a.alloc(u32, nfa.states.items.len);
     @memset(mark, 0);
@@ -366,6 +377,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
 
     var keys: std.ArrayList([]const u32) = .empty;
     var map: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
+    var startMap: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
     var trans: std.ArrayList(u32) = .empty;
     var accept: std.ArrayList(u32) = .empty;
     var set: std.ArrayList(u32) = .empty;
@@ -387,8 +399,9 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
             }
         }
         set.shrinkRetainingCapacity(k);
-        startIds[si] = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc, true);
+        startIds[si] = try intern(a, &keys, &startMap, &trans, &accept, set.items, nfa, nc);
     }
+    const numStarts = keys.items.len;
 
     var work: u32 = 0;
     while (work < keys.items.len) : (work += 1) {
@@ -396,6 +409,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
         var c: u16 = 0;
         while (c < nc) : (c += 1) {
             const byte = classes.rep[c];
+            if (work < numStarts and startSkip.has(byte)) continue;
             seed.clearRetainingCapacity();
             for (key) |s| {
                 const st = nfa.states.items[s];
@@ -406,7 +420,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
             if (seed.items.len == 0) continue;
             stamp += 1;
             try closure(a, nfa, seed.items, mark, stamp, &set);
-            const id = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc, false);
+            const id = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc);
             trans.items[work * nc + c] = id;
         }
     }
@@ -437,12 +451,9 @@ fn intern(
     set: []const u32,
     nfa: *const Nfa,
     nc: u16,
-    isStart: bool,
 ) Error!u32 {
-    // Start states are kept distinct from equal non-start sets only through
-    // their (non-accepting) content; a start set never contains accept states.
-    _ = isStart;
     if (map.get(set)) |id| return id;
+    if (keys.items.len >= maxRawDfaStates) return error.DfaTooLarge;
     const key = try a.dupe(u32, set);
     const id: u32 = @intCast(keys.items.len);
     try keys.append(a, key);
@@ -457,8 +468,9 @@ fn intern(
     return id;
 }
 
-/// Moore partition refinement; states are then renumbered in breadth-first
-/// order from the start states so the result is canonical.
+/// Hopcroft partition refinement, then a breadth-first renumbering from the
+/// start states. The coarsest partition is unique and the renumbering
+/// depends on nothing else, so the result is canonical.
 fn minimize(gpa: Allocator, raw: RawDfa, classes: ByteClasses) Error!Dfa {
     const n = raw.numStates;
     const nc = classes.count;
@@ -466,49 +478,119 @@ fn minimize(gpa: Allocator, raw: RawDfa, classes: ByteClasses) Error!Dfa {
     defer arena.deinit();
     const a = arena.allocator();
 
-    // Initial partition: by accepting rule.
-    var block = try a.alloc(u32, n);
+    // The DFA completed with a dead state `n` (the target of every missing
+    // transition), in a block of its own so that no state merges with it.
+    const total = n + 1;
+    const dead = n;
+    const target = struct {
+        fn of(r: RawDfa, s: u32, c: usize, cn: u16) u32 {
+            if (s == r.numStates) return r.numStates;
+            const t = r.trans[s * cn + c];
+            return if (t == none) r.numStates else t;
+        }
+    }.of;
+
+    // Predecessors of each state per class: preds[predStart[c * total + t] ..].
+    const predStart = try a.alloc(u32, nc * total + 1);
+    @memset(predStart, 0);
+    for (0..total) |s| for (0..nc) |c| {
+        predStart[c * total + target(raw, @intCast(s), c, nc) + 1] += 1;
+    };
+    for (1..predStart.len) |i| predStart[i] += predStart[i - 1];
+    const preds = try a.alloc(u32, nc * total);
+    const fill = try a.dupe(u32, predStart[0 .. predStart.len - 1]);
+    for (0..total) |s| for (0..nc) |c| {
+        const k = c * total + target(raw, @intCast(s), c, nc);
+        preds[fill[k]] = @intCast(s);
+        fill[k] += 1;
+    };
+
+    // The partition: `elems` lists the states block by block; block b holds
+    // elems[first[b]..end[b]], of which the first marked[b] are marked.
+    const block = try a.alloc(u32, total);
+    var numBlocks: u32 = 0;
     {
         var byAccept: std.AutoHashMapUnmanaged(u32, u32) = .empty;
-        var next: u32 = 0;
         for (0..n) |s| {
             const gop = try byAccept.getOrPut(a, raw.accept[s]);
             if (!gop.found_existing) {
-                gop.value_ptr.* = next;
-                next += 1;
+                gop.value_ptr.* = numBlocks;
+                numBlocks += 1;
             }
             block[s] = gop.value_ptr.*;
         }
+        block[dead] = numBlocks;
+        numBlocks += 1;
     }
-    var numBlocks: u32 = blk: {
-        var m: u32 = 0;
-        for (block) |b| m = @max(m, b + 1);
-        break :blk m;
-    };
+    const first = try a.alloc(u32, total);
+    const end = try a.alloc(u32, total);
+    const marked = try a.alloc(u32, total);
+    const elems = try a.alloc(u32, total);
+    const loc = try a.alloc(u32, total);
+    @memset(end[0..numBlocks], 0);
+    @memset(marked, 0);
+    for (block) |b| end[b] += 1;
+    var at: u32 = 0;
+    for (0..numBlocks) |b| {
+        first[b] = at;
+        at += end[b];
+        end[b] = first[b];
+    }
+    for (block, 0..) |b, s| {
+        elems[end[b]] = @intCast(s);
+        loc[s] = end[b];
+        end[b] += 1;
+    }
 
-    const sig = try a.alloc(u32, nc + 1);
-    var newBlock = try a.alloc(u32, n);
-    while (true) {
-        var map: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
-        var next: u32 = 0;
-        for (0..n) |s| {
-            sig[0] = block[s];
-            for (0..nc) |c| {
-                const t = raw.trans[s * nc + c];
-                sig[c + 1] = if (t == none) none else block[t];
+    var work: std.ArrayList(u32) = .empty;
+    for (0..numBlocks) |b| try work.append(a, @intCast(b));
+    var splitter: std.ArrayList(u32) = .empty;
+    var touched: std.ArrayList(u32) = .empty;
+    while (work.pop()) |sp| {
+        splitter.clearRetainingCapacity();
+        try splitter.appendSlice(a, elems[first[sp]..end[sp]]);
+        for (0..nc) |c| {
+            // Mark every state with a class-c transition into the splitter.
+            touched.clearRetainingCapacity();
+            for (splitter.items) |t| {
+                for (preds[predStart[c * total + t]..predStart[c * total + t + 1]]) |s| {
+                    const b = block[s];
+                    const m = first[b] + marked[b];
+                    if (loc[s] < m) continue;
+                    if (marked[b] == 0) try touched.append(a, b);
+                    const other = elems[m];
+                    elems[m] = s;
+                    elems[loc[s]] = other;
+                    loc[other] = loc[s];
+                    loc[s] = m;
+                    marked[b] += 1;
+                }
             }
-            const gop = try map.getOrPut(a, sig);
-            if (!gop.found_existing) {
-                gop.key_ptr.* = try a.dupe(u32, sig);
-                gop.value_ptr.* = next;
-                next += 1;
+            // Split each touched block into its marked and unmarked parts;
+            // the smaller part gets the new block number.
+            for (touched.items) |b| {
+                const m = marked[b];
+                marked[b] = 0;
+                const size = end[b] - first[b];
+                if (m == size) continue;
+                const nb = numBlocks;
+                numBlocks += 1;
+                if (m <= size - m) {
+                    first[nb] = first[b];
+                    end[nb] = first[b] + m;
+                    first[b] += m;
+                } else {
+                    first[nb] = first[b] + m;
+                    end[nb] = end[b];
+                    end[b] = first[nb];
+                }
+                marked[nb] = 0;
+                for (elems[first[nb]..end[nb]]) |s| block[s] = nb;
+                // If b still waits to split others, both parts now do;
+                // otherwise splitting by the smaller part suffices.
+                try work.append(a, nb);
             }
-            newBlock[s] = gop.value_ptr.*;
         }
-        const stable = next == numBlocks;
-        std.mem.swap([]u32, &block, &newBlock);
-        numBlocks = next;
-        if (stable) break;
     }
 
     // Representative raw state per block, and BFS renumbering from the starts.
@@ -622,6 +704,18 @@ test "automaton: minimization merges equivalent states" {
     // [0-9]{2,4}: start, 1, 2(acc), 3(acc), 4(acc, no out) = 5 states.
     const rep = try buildFrom(a, &.{"[0-9]{2,4}"}, &.{&all});
     try testing.expectEqual(@as(u32, 5), rep.numStates);
+}
+
+test "automaton: start states skip bytes" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const all = [_]u32{0};
+    var d: regex.Diagnostic = .{};
+    const pat = try (try regex.parse(a, "[ a]+", &d)).full(a);
+    const dfa = try build(a, .{ .patterns = &.{pat}, .starts = &.{&all}, .startSkip = ByteSet.single(' ') });
+    try testing.expect(dfa.longestMatch(0, " a") == null);
+    try testing.expectEqual(@as(usize, 3), dfa.longestMatch(0, "a a").?.len);
 }
 
 test "automaton: deterministic output" {

@@ -1,0 +1,25 @@
+# Coverage errors show a group in source syntax.
+# error: schema_coverage_group_text.grammar:25:8:
+# error: element 2 ((IDENT PLUS)) carries a value the action does not use
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf
+top! = IDENT (IDENT PLUS)                   → (t 1)

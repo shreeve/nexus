@@ -1,0 +1,14 @@
+# An @lexer section may declare tokens and no rules when the lang module's
+# Lexer wrapper scans everything (as nexis does): the generator emits a
+# lexer that only reports eof and err, and the wrapper supplies the rest.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+
+@parser
+@lang = "lexer_without_rules"
+
+top! = IDENT+                               → (top ...1)

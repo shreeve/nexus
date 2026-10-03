@@ -1,0 +1,18 @@
+# A grammar has one @tags block.
+# error: tags_twice.grammar:16:1:
+# error: duplicate @tags
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k a
+@tags x
+@tags y
+
+s = IDENT → (k 1)

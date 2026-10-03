@@ -1,8 +1,6 @@
-//! @lang module of the as_via test: the Tag enum, the keyword Id enum, and
-//! the explicitly named lookup function.
+//! @lang module of the as_via test: the keyword Id enum and the explicitly
+//! named lookup function.
 const std = @import("std");
-
-pub const Tag = enum(u8) { program, go, stop, name };
 
 pub const KwId = enum(u16) { GO = 1, STOP = 2 };
 

@@ -1,0 +1,26 @@
+# A tag role labeled in two alternatives of a choice takes the matched
+# literal's text in both or in neither.
+# error: schema_label_tag_mixed.grammar:26:18:
+# error: role 'op' of 't' takes a literal's tag in one alternative and another value in this one
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t op:tag
+top! = (op:"+" | op:IDENT)                  → (t)

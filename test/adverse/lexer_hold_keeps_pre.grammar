@@ -1,0 +1,14 @@
+# A held zero-width rule leaves the blanks to be scanned again, so a guard
+# on pre stays true: the rule would fire forever after any blank
+# error: lexer_hold_keeps_pre.grammar:9:1:
+# error: would match forever
+# error: a held rule without a pattern sees the same whitespace again
+@lexer
+tokens
+    gap, word, eof, err
+@ pre > 0                   → gap, hold
+[a-z]+                      → word
+.                           → err
+
+@parser
+top! = (GAP | WORD)*        → (top ...1)

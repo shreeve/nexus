@@ -1,0 +1,13 @@
+# A rule may have a capitalized name; a reference to it reaches it.
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+prog! = PAIR                                → (prog 1)
+PAIR  = IDENT IDENT                         → (pair 1 2)

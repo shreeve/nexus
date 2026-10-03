@@ -1,0 +1,14 @@
+# A start symbol's name has no length limit: this one has 261 bytes, and the
+# parser has its parse method (the driver finds it as the only start).
+
+@lexer
+tokens
+    a
+    eof
+    err
+'a'                                         → a
+.                                           → err
+
+@parser
+
+starttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttarttart! = A                                     → (x 1)

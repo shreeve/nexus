@@ -3,25 +3,33 @@
 
 Random lexer specs are turned into grammars, generated with bin/nexus,
 compiled together into one driver, and run over random inputs. A spec has
-random patterns (some with trailing context, or the skip, hold or rewind(n)
-action), guards on a state variable (truth and comparisons) and on `pre`,
-actions that set or step the state variable, an optional `after` block,
-and sometimes a zero-width rule. Every token stream is compared with a
-reference computed here from the definition of the lexer: skip spaces/tabs
-into `pre`, try the zero-width rule, then the longest match over the rules
-whose guards hold at the token's start (ties to the earlier rule; trailing
-context counts toward the match), `err` for one unmatched byte, `eof` at
-the end. Match lengths come from a set-of-positions matcher over the random
-ASTs, independent of the generator's automaton.
+random patterns that never match the empty string (some with trailing
+context, or the skip, hold or rewind(n) action), guards on a state
+variable (truth and comparisons) and on `pre`, actions that set or step
+the state variable, an optional `after` block, and sometimes a zero-width
+rule. Every token stream is compared with a reference computed here from
+the definition of the lexer: skip spaces/tabs into `pre`, try the
+zero-width rule, then the longest match over the rules whose guards hold at
+the token's start (ties to the earlier rule; trailing context counts toward
+the match), `err` for one unmatched byte, `eof` at the end. Match lengths
+come from a set-of-positions matcher over the random ASTs, independent of
+the generator's automaton.
 
-    test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N] [--keep DIR]
+Every spec the generator rejects is checked against this model too: a
+rejection must be one the model confirms (a rule that never wins on any
+short text in any configuration, guards that never hold together, a
+pattern that starts only with a blank, trailing context with no fixed
+side, held rules that can re-enable each other forever), and an accepted
+spec must not loop. Anything else fails the run.
+
+    test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N] [--keep DIR] [-O MODE]
 """
-import argparse, os, random, shutil, subprocess, sys, tempfile
+import argparse, itertools, os, random, shutil, subprocess, sys, tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 NEXUS = os.path.join(ROOT, "bin", "nexus")
 ALPHA = "abc"
-INPUT_ALPHA = "abcd  \n"
+INPUT_ALPHA = "abcd  \t\n"
 
 class Node:
     def __init__(self, kind, *args): self.kind, self.args = kind, args
@@ -41,6 +49,13 @@ def gen(rng, depth=0):
         lo = rng.randrange(0, 3); hi = lo + rng.randrange(0, 3)
         return Node("bound", gen(rng, depth + 1), max(lo, 0), max(hi, 1))
     return Node("set", [rng.choice(ALPHA)])
+
+def gen_nonempty(rng):
+    """A pattern that never matches the empty string (the generator rightly
+    rejects those, so making them only wastes attempts)."""
+    while True:
+        n = gen(rng)
+        if lengths(n)[0] > 0: return n
 
 def esc_class(c): return {" ": " ", "]": "\\]", "\\": "\\\\", "^": "\\^", "-": "\\-"}.get(c, c)
 
@@ -74,18 +89,38 @@ def lengths(n):
         a, b = lengths(n.args[0])
         return (a * n.args[1], None if b is None else b * n.args[2])
 
+def first_chars(n):
+    """Bytes (as a set over "abcd " , d standing for any other) that can begin
+    a non-empty match."""
+    if n.kind == "set": return set(n.args[0])
+    if n.kind == "neg": return set("abcd ") - set(n.args[0])
+    if n.kind == "any": return set("abcd ")
+    if n.kind == "lit": return {n.args[0][0]}
+    if n.kind == "cat":
+        out = set()
+        for x in n.args[0]:
+            out |= first_chars(x)
+            if lengths(x)[0] > 0: break
+        return out
+    if n.kind == "alt": return set().union(*(first_chars(x) for x in n.args[0]))
+    return first_chars(n.args[0])
+
+def fixed(n):
+    a, b = lengths(n)
+    return a == b
+
 GUARDS = [None, None, None, "m", "!m", "pre", "!pre", "m & pre", "m == 1", "m != 0", "m > 0", "m < 1",
           "!m > 1", "m >= 2", "m <= -1 & pre"]
 
 def make_spec(rng):
     rules = []
     for i in range(rng.randrange(1, 6)):
-        main = gen(rng)
+        main = gen_nonempty(rng)
         rule = {"main": main, "trail": None, "skip": False, "guard": rng.choice(GUARDS),
                 "set": rng.choice([None, None, 0, 1, 2, "++", "--"]), "hold": False, "rewind": None}
         r = rng.random()
         if r < 0.15:
-            rule["trail"] = gen(rng)
+            rule["trail"] = gen_nonempty(rng)
         elif r < 0.22:
             rule["skip"] = True
         elif r < 0.30:
@@ -103,7 +138,8 @@ def make_spec(rng):
     return {"rules": rules, "zw": zw, "after": after}
 
 def step(m, act, after=None, consuming=False):
-    """m after a rule fires: the after assignment (unless the rule sets m), then its action."""
+    """m after a rule fires: the after assignment (for a token that consumes
+    input, unless the rule sets m), then its action."""
     if consuming and after is not None and not isinstance(act, int): m = after
     if isinstance(act, int): return act
     if act == "++": return min(m + 1, 127)
@@ -153,12 +189,26 @@ def ends(n, s, starts):
         for _ in range(lo): cur = ends(sub, s, cur)
         result = set(cur); i = lo
         while hi is None or i < hi:
-            cur = ends(sub, s, cur) - set() if cur else set()
+            cur = ends(sub, s, cur)
             new = result | cur
             if new == result and hi is None: break
             result = new; i += 1
             if not cur: break
         return result
+
+def best_match(rules, src, p, m, pre):
+    """(rule index, match length) of the longest match at p among the rules
+    whose guards hold, ties to the earlier rule; None without a match."""
+    best = None
+    for i, r in enumerate(rules):
+        if not holds(r["guard"], m, pre): continue
+        e = ends(r["main"], src, {p})
+        if r["trail"] is not None: e = ends(r["trail"], src, e)
+        e.discard(p)
+        if not e: continue
+        L = max(e) - p
+        if best is None or L > best[1]: best = (i, L)
+    return best
 
 def reference(spec, src):
     """Token stream per the lexer definition: list of (cat, pos, len, pre)."""
@@ -174,15 +224,7 @@ def reference(spec, src):
             out.append(("zw", ws_start, p - ws_start, pre)); ws_start = p; continue
         if p >= n:
             out.append(("eof", p, 0, pre)); return out
-        best = None
-        for i, r in enumerate(rules):
-            if not holds(r["guard"], m, pre): continue
-            e = ends(r["main"], src, {p})
-            if r["trail"] is not None: e = ends(r["trail"], src, e)
-            e.discard(p)
-            if not e: continue
-            L = max(e) - p
-            if best is None or L > best[1]: best = (i, L)
+        best = best_match(rules, src, p, m, pre)
         if best is None:
             # the `.  → err` rule: a consuming rule like the others
             if spec.get("after") is not None: m = spec["after"]
@@ -194,10 +236,77 @@ def reference(spec, src):
             tok = mlen[0] if mlen[0] == mlen[1] else L - tlen[0]
         if rules[i]["rewind"] is not None: tok = rules[i]["rewind"]
         if rules[i]["hold"]: tok = 0
-        m = step(m, rules[i]["set"], spec.get("after"), True)
+        m = step(m, rules[i]["set"], spec.get("after"), tok > 0)
         if rules[i]["skip"]:
             p += tok; continue          # skipped bytes count toward pre
         out.append(("t%d" % i, p, tok, pre)); p += tok; ws_start = p
+
+# -----------------------------------------------------------------------------
+# The model's view of a rejected spec
+# -----------------------------------------------------------------------------
+
+M_VALUES = range(-3, 4)     # every guard constant is in -1..2
+PRE_VALUES = range(0, 3)
+
+def wins_somewhere(rules, i, zw=None):
+    """A text (not starting with a blank) and a configuration in which rule
+    i wins, or None. Texts run up to one byte past the rule's shortest
+    match (at least 4 bytes); a configuration where the zero-width rule zw
+    fires (before any pattern is tried) is no candidate."""
+    r = rules[i]
+    shortest = lengths(r["main"])[0] + (lengths(r["trail"])[0] if r["trail"] else 0)
+    for L in range(1, max(4, shortest + 1) + 1):
+        for t in itertools.product("abcd ", repeat=L):
+            if t[0] == " ": continue
+            s = "".join(t)
+            for m in M_VALUES:
+                for pre in PRE_VALUES:
+                    if zw is not None and holds(zw["guard"], m, pre): continue
+                    b = best_match(rules, s, 0, m, pre)
+                    if b is not None and b[0] == i: return (s, m, pre)
+    return None
+
+def held_loop(spec):
+    """Can held tokens fire forever at one position? After a held token pre
+    is 0, so a loop is a cycle of m values among the held rules whose guards
+    hold at pre = 0 (the zero-width rule needs pre > 1)."""
+    held = [r for r in spec["rules"] if r["hold"]]
+    succ = {m: {step(m, r["set"]) for r in held if holds(r["guard"], m, 0)} for m in range(-128, 128)}
+    state = {}
+    def cyclic(m):
+        state[m] = 1
+        for y in succ[m]:
+            if state.get(y) == 1 or (y not in state and cyclic(y)): return True
+        state[m] = 2
+        return False
+    sys.setrecursionlimit(10000)
+    return any(m not in state and cyclic(m) for m in range(-128, 128))
+
+ERR_RULE = {"main": Node("any"), "trail": None, "guard": None}
+
+def justified(spec, msg, line_of):
+    """None when the model confirms the rejection, else why not. Rule
+    len(rules) is the final `. → err`."""
+    rules = spec["rules"] + [ERR_RULE]
+    if "can never match" in msg:
+        i = line_of(msg)
+        if i is None: return "names no rule"
+        if "never all true together" in msg:
+            ok = any(holds(rules[i]["guard"], m, pre) for m in range(-128, 128) for pre in range(256))
+            return "its guards hold at some value" if ok else None
+        w = wins_somewhere(rules, i, spec["zw"])
+        return None if w is None else "rule t%d wins on %r with m=%d pre=%d" % ((i,) + w)
+    if "space or tab" in msg:
+        i = line_of(msg)
+        full = rules[i]["main"] if i is not None else None
+        return None if full is not None and first_chars(full) <= {" "} else "the pattern starts with a non-blank"
+    if "fixed-length" in msg:
+        i = line_of(msg)
+        r = rules[i] if i is not None else None
+        return None if r is not None and r["trail"] is not None and not fixed(r["main"]) and not fixed(r["trail"]) else "a side is fixed"
+    if "match forever" in msg or "one after another" in msg:
+        return None if held_loop(spec) else "no held rules can loop"
+    return "unexpected"
 
 def grammar(spec):
     rules, zw = spec["rules"], spec["zw"]
@@ -211,6 +320,7 @@ def grammar(spec):
         return ", {m%s}" % v
     if zw is not None:
         lines.append("@ %s → zw%s" % (zw["guard"], act(zw["set"])))
+    first_rule_line = len(lines) + 1
     for i, r in enumerate(rules):
         pat = nexus(r["main"]) + (" / " + nexus(r["trail"]) if r["trail"] else "")
         guard = " @ " + r["guard"] if r["guard"] else ""
@@ -218,10 +328,7 @@ def grammar(spec):
             (", rewind(%d)" % r["rewind"] if r["rewind"] is not None else "")
         lines.append("%s%s → t%d%s" % (pat, guard, i, acts))
     lines += [".  → err", "@parser", "top! = ERR → 1", ""]
-    return "\n".join(lines)
-
-DRIVER_HEAD = '''const std = @import("std");
-'''
+    return "\n".join(lines), first_rule_line
 
 def main():
     ap = argparse.ArgumentParser()
@@ -229,32 +336,40 @@ def main():
     ap.add_argument("--specs", type=int, default=60)
     ap.add_argument("--inputs", type=int, default=200)
     ap.add_argument("--keep")
+    ap.add_argument("-O", dest="mode", metavar="MODE", default="Debug",
+                    choices=["Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"],
+                    help="optimize mode of the driver build (default Debug)")
     a = ap.parse_args()
     rng = random.Random(a.seed)
     work = a.keep or tempfile.mkdtemp(prefix="lexfuzz.")
     os.makedirs(work, exist_ok=True)
-    specs = []; rejected = 0; attempts = 0
+    specs = []; rejected = 0
     while len(specs) < a.specs:
-        attempts += 1
-        rules = make_spec(rng)  # a spec: rules plus an optional zero-width rule
+        spec = make_spec(rng)
         k = len(specs)
         d = os.path.join(work, "m%d" % k); os.makedirs(d, exist_ok=True)
         g = os.path.join(d, "g.grammar")
-        open(g, "w").write(grammar(rules))
+        text, first = grammar(spec)
+        open(g, "w").write(text)
         r = subprocess.run([NEXUS, g, os.path.join(d, "parser.zig")], capture_output=True, text=True)
         if r.returncode != 0:
-            msg = r.stderr.strip().splitlines()[-1]
-            # Specs the generator rightly rejects (dead rule, empty match,
-            # trailing context with no fixed side) are regenerated.
-            if not any(s in msg for s in ("can never match", "matches the empty string", "must not match the empty string", "can be empty", "fixed-length", "space or tab", "zero-width", "never all true", "match forever", "one after another", "exceeds the shortest match", "either trailing context")):
-                print("unexpected generation error:", msg, "\n" + grammar(rules)); sys.exit(1)
+            errs = [l for l in r.stderr.splitlines() if " error: " in l]
+            if r.returncode != 1 or not errs:
+                print("generator failed (exit %d):\n%s\n%s" % (r.returncode, r.stderr, text)); sys.exit(1)
+            msg = errs[0]
+            line = int(msg.split(":")[1])
+            why = justified(spec, msg, lambda _: line - first if 0 <= line - first <= len(spec["rules"]) else None)
+            if why is not None:
+                print("unconfirmed rejection (%s): %s\n%s" % (why, msg, text)); sys.exit(1)
             rejected += 1
             continue
-        specs.append(rules)
+        if held_loop(spec):
+            print("accepted a spec whose held tokens can loop forever:\n" + text); sys.exit(1)
+        specs.append(spec)
     inputs = ["".join(rng.choice(INPUT_ALPHA) for _ in range(rng.randrange(0, 24))) for _ in range(a.inputs)]
     open(os.path.join(work, "inputs.txt"), "w").write("\x00".join(inputs))
     # Driver: every module lexes every input.
-    drv = [DRIVER_HEAD]
+    drv = ['const std = @import("std");\n']
     for k in range(len(specs)): drv.append('const m%d = @import("m%d");\n' % (k, k))
     drv.append('''
 fn run(comptime M: type, src: []const u8, w: *std.Io.Writer) !void {
@@ -280,26 +395,30 @@ pub fn main(init: std.process.Init) !void {
         drv.append('    { var it = std.mem.splitScalar(u8, all, 0); while (it.next()) |s| try run(m%d, s, w); }\n' % k)
     drv.append('    try w.flush();\n}\n')
     open(os.path.join(work, "driver.zig"), "w").write("".join(drv))
-    cmd = ["zig", "build-exe", "-O", "ReleaseSafe"]
+    cmd = ["zig", "build-exe", "-O", a.mode]
     for k in range(len(specs)): cmd += ["--dep", "m%d" % k]
     cmd += ["-Mroot=driver.zig"] + ["-Mm%d=m%d/parser.zig" % (k, k) for k in range(len(specs))]
     cmd += ["-femit-bin=driver"]
     r = subprocess.run(cmd, cwd=work, capture_output=True, text=True)
     if r.returncode != 0: print(r.stderr[:4000]); sys.exit(1)
-    got = subprocess.run([os.path.join(work, "driver"), os.path.join(work, "inputs.txt")], capture_output=True, text=True).stdout.split("\n")
+    r = subprocess.run([os.path.join(work, "driver"), os.path.join(work, "inputs.txt")], capture_output=True, text=True)
+    if r.returncode != 0:
+        print("driver failed (exit %d):\n%s" % (r.returncode, r.stderr[:4000])); sys.exit(1)
+    got = r.stdout.split("\n")
     li = 0; mism = 0; tokens = 0
-    for k, rules in enumerate(specs):
+    for k, spec in enumerate(specs):
         for s in inputs:
-            exp = " ".join("%s:%d:%d:%d" % t for t in reference(rules, s)) + " "
+            exp = " ".join("%s:%d:%d:%d" % t for t in reference(spec, s)) + " "
             tokens += exp.count(":") // 3
             if got[li] != exp:
                 mism += 1
                 if mism <= 5:
-                    print("MISMATCH spec m%d input %r\n  want %s\n  got  %s\n%s" % (k, s, exp, got[li], grammar(rules)))
+                    print("MISMATCH spec m%d input %r\n  want %s\n  got  %s\n%s" % (k, s, exp, got[li], grammar(spec)[0]))
             li += 1
-    print("lexfuzz: %d specs (%d rejected by the generator), %d inputs, %d streams, %d tokens, %d mismatches"
+    print("lexfuzz: %d specs (%d rejected by the generator, each confirmed), %d inputs, %d streams, %d tokens, %d mismatches"
           % (len(specs), rejected, len(inputs), len(specs) * len(inputs), tokens, mism))
     if not a.keep: shutil.rmtree(work)
     sys.exit(1 if mism else 0)
 
-main()
+if __name__ == "__main__":
+    main()

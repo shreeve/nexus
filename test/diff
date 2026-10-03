@@ -17,7 +17,9 @@
 #                 they are reported but do not fail the run
 #   --spans       compare node spans too (both parsers must record them)
 #   --show N      print tree diffs for the first N differing files (default 5)
-#   --keep DIR    keep the builds, per-file results and reports in DIR
+#   --keep DIR    keep the builds, per-file results and reports in DIR;
+#                 a later run with the same DIR replaces the results and
+#                 reuses each build whose inputs did not change
 #   -j N          parallel jobs (default: CPU count)
 #   -O MODE       optimize mode for both parsers (default: ReleaseSafe)
 #
@@ -72,7 +74,7 @@ if [[ "${1:-}" == "--chunk" ]]; then
     exit 0
 fi
 
-usage() { sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 2; }
 
 EXT="" START_OLD="" START_NEW="" LANG_OLD="-" LANG_NEW="-" EXPECT="" SPANS="" SHOW=5 KEEP="" MODE=ReleaseSafe
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
@@ -122,7 +124,8 @@ CORPUS=("${POS[@]:4}")
 
 if [[ -n "$KEEP" ]]; then
     WORK=$KEEP
-    rm -rf "$WORK" && mkdir -p "$WORK"
+    mkdir -p "$WORK"
+    find "$WORK" -mindepth 1 -maxdepth 1 ! -name old ! -name new -exec rm -rf {} +
 else
     WORK=$(mktemp -d "${TMPDIR:-/tmp}/nexus-diff.XXXXXX")
     trap 'rm -rf "$WORK"' EXIT
@@ -173,7 +176,7 @@ done
 sort -u -o "$LIST" "$LIST"
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 [[ $TOTAL -gt 0 ]] || { echo "empty corpus" >&2; exit 2; }
-BYTES=$(tr '\n' '\0' <"$LIST" | xargs -0 cat 2>/dev/null | wc -c | tr -d ' ')
+BYTES=$(tr '\n' '\0' <"$LIST" | xargs -0 -r cat 2>/dev/null | wc -c | tr -d ' ')
 
 # --- Run ---------------------------------------------------------------------
 mkdir -p "$WORK/chunks"
@@ -190,7 +193,7 @@ RUN_T=$SECONDS
         printf '%s\0%s\0%s\0%s\0' "$WORK/old/driver" "$so" "$c" "$c.old"
         printf '%s\0%s\0%s\0%s\0' "$WORK/new/driver" "$sn" "$c" "$c.new"
     done
-} | xargs -0 -n 4 -P "$JOBS" "$0" --chunk
+} | xargs -0 -r -n 4 -P "$JOBS" "$0" --chunk
 RUN_S=$((SECONDS - RUN_T))
 export LC_ALL=C
 cat "$WORK"/chunks/*.old | sort -t$'\t' -k1,1 >"$WORK/old.tsv"

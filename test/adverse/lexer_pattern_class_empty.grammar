@@ -1,0 +1,14 @@
+# A class that excludes every byte matches nothing
+# error: lexer_pattern_class_empty.grammar:9:1:
+# error: character class matches no byte
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+[^\x00-\xff]    → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1
