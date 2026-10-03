@@ -3,9 +3,8 @@
 //! rule wins reduce/reduce), and the derived tables codegen emits: expected
 //! sets for diagnostics and tolerant-repair candidates.
 //!
-//! Generated parsers index ACTION/GOTO densely ([state][symbol]). A
-//! row-displacement (comb vector) form was measured and rejected: it made
-//! the MUMPS parser 256 KB smaller but parsed 5-10% slower (MUMPS and Rig).
+//! Generated parsers index ACTION/GOTO densely ([state][symbol]): a
+//! row-displacement form makes the MUMPS parser smaller and parsing slower.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

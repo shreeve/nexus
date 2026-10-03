@@ -4,6 +4,8 @@
 //!   - Grammar IR: the lowered grammar file (rules, alternatives, elements,
 //!     directives, and the lexer spec), produced by frontend/lower.zig.
 //!   - Symbols and rules: the desugared BNF grammar the LR stages consume.
+//!   - The escape decoder every grammar string goes through (`escapeAt`,
+//!     `decode`).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

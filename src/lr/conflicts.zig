@@ -1,7 +1,7 @@
 //! The conflict manifest (`@conflicts`): classifies every unresolved
 //! conflict, compares the result with the grammar's declared manifest, and
 //! on any drift fails generation with a report (state, items, and a shortest
-//! input prefix reaching the state) and the actual manifest, ready to paste.
+//! symbol path reaching the state) and the actual manifest, ready to paste.
 //!
 //! A manifest entry is one (kind, rule[, over]) with the number of table
 //! cells (state, terminal) it covers:

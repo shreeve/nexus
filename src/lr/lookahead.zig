@@ -1,4 +1,5 @@
-//! Lookahead sets for reductions: nullable and FIRST for every symbol, then
+//! Lookahead sets for reductions: nullable (insert cost 0) and FIRST (a
+//! union over the left-corner relation, by digraph) for every symbol, then
 //! the LALR(1) lookaheads computed by the DeRemer–Pennello relations over
 //! the LR(0) automaton.
 //!

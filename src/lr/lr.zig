@@ -1,6 +1,9 @@
-//! The LR stage: LR(0) automaton, lookaheads, parse table, and the checks
-//! on them (`@repair` names, `X "c"` hints, the conflict manifest). Every
-//! failure prints a located diagnostic and returns `error.GenerationFailed`.
+//! The LR stage. First the checks on the grammar alone (every rule derives
+//! some finite input, no rule derives itself, `@repair` names), from insert
+//! costs computed once; then the LR(0) automaton, lookaheads and parse
+//! table, and the checks on them (endless reduce chains, `X "c"` hints, the
+//! conflict manifest). Every failure prints a located diagnostic and
+//! returns `error.GenerationFailed`.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

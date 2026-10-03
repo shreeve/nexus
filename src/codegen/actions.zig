@@ -1,12 +1,14 @@
 //! Action codegen: compiles a rule's action tree (grammar.ActionTree) into
 //! the Zig expression `executeAction` returns for it, and collects the tags
-//! actions use (for the auto-extracted Tag enum).
+//! actions use (for the generated Tag enum). A rule whose value is nil or
+//! one of its elements gets no expression: `ruleValue` takes it.
 //!
-//! Two modes. Without a schema, lists drop trailing nils (at run time), and
-//! common shapes use dedicated builders: `(tag ...N)` is `sexpSpread`,
-//! `(tag M ...N)` is `sexpPosSpread`, `(tag a b)` is `sexp`. With a schema,
-//! every list has exactly the items its action places (fixed length, nils
-//! kept), in order.
+//! A list whose items are all elements, tags or nil is static data that
+//! `buildOf` reads; a spread uses a dedicated builder (`(tag ...N)` is
+//! `sexpSpread`, `(tag M ...N)` is `sexpPosSpread`), and `(...N x)` extends
+//! a left-recursive list in place. Without a schema, lists drop trailing
+//! nils (at run time); with a schema, every list has exactly the items its
+//! action places (fixed length, nils kept), in order.
 //!
 //! The emitted code touches the Sexp list representation only through the
 //! helpers in the "Runtime surface" section at the bottom.

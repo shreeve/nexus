@@ -3,12 +3,14 @@
 //!
 //!   header        version line, `std`, the `@lang` import
 //!   lexer         the lexer declarations from lexgen (TokenCat, Token,
-//!                 the lexer struct, the Lexer alias)
+//!                 BaseLexer, the Lexer alias)
 //!   enums         Tag, Role, Start
 //!   runtime       the template sections `sexp`, `parser` (with the
 //!                 `parse<Start>` methods in its `startMethods` slot) and,
 //!                 in schema mode, `ir` (with per-kind views)
-//!   grammar       configuration, token mapping, actions, tables,
+//!   grammar       configuration, token mapping and `@as` promotion,
+//!                 actions, `@as` symbol maps, rule tables and the parse
+//!                 table (array literals), `X "c"` excludes, start states,
 //!                 diagnostics names, trivia, repair, side labels, slots
 //!   api           the `Parser` alias and `parse<Start>(allocator, source)`
 //!
