@@ -6,9 +6,11 @@
 //!        nexus --help | --version
 //!
 //! Pipeline: frontend (the self-hosted grammar-file parser, lowered to the
-//! lexer spec and GrammarIR) -> lexgen (lexer source) -> expand (desugared
-//! Grammar) -> lr (automaton, lookaheads, table) -> codegen (the parser
-//! module).
+//! lexer spec and GrammarIR) -> lexgen (lexer source) -> semantics (with
+//! @schema: actions resolved against the schema) -> expand (desugared
+//! Grammar) -> semantics.checkTypes (with @schema) -> check (defined
+//! symbols, reachable rules) -> lr (automaton, lookaheads, table) ->
+//! codegen (the parser module).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -102,18 +104,23 @@ pub fn main(init: std.process.Init) !void {
     var opts: Options = .{ .grammarFile = undefined, .outputFile = undefined };
     var positional: [2][]const u8 = undefined;
     var count: usize = 0;
-    for (args[1..], 1..) |arg, i| {
+    var generationOption: ?[]const u8 = null;
+    for (args[1..]) |arg| {
         if (eql(arg, "-h") or eql(arg, "--help")) {
             return writeStdout(io, help);
         } else if (eql(arg, "-V") or eql(arg, "--version")) {
             return writeStdout(io, "nexus " ++ version ++ "\n");
         } else if (eql(arg, "--dump-sexp")) {
+            if (command == .check) usageError("--dump-sexp and check are separate commands", .{});
             command = .dump;
         } else if (eql(arg, "-c") or eql(arg, "--comments")) {
             opts.emitComments = true;
+            generationOption = arg;
         } else if (eql(arg, "--spans")) {
             opts.spans = true;
-        } else if (i == 1 and eql(arg, "check")) {
+            generationOption = arg;
+        } else if (count == 0 and eql(arg, "check")) {
+            if (command == .dump) usageError("--dump-sexp and check are separate commands", .{});
             command = .check;
         } else if (arg.len > 1 and arg[0] == '-') {
             usageError("unknown option '{s}'", .{arg});
@@ -129,7 +136,10 @@ pub fn main(init: std.process.Init) !void {
     if (output) |path| if (command != .check) refuseGrammarAsOutput(io, positional[0], path);
 
     switch (command) {
-        .dump => return dumpSexp(allocator, io, positional[0], output orelse "-"),
+        .dump => {
+            if (generationOption) |o| usageError("{s} has no effect on --dump-sexp", .{o});
+            return dumpSexp(allocator, io, positional[0], output orelse "-");
+        },
         .check => {
             if (output) |path| usageError("`nexus check` writes nothing; unexpected '{s}'", .{path});
             opts.checkMode = true;
@@ -165,8 +175,16 @@ fn usageError(comptime fmt: []const u8, args: anytype) noreturn {
     std.process.exit(2);
 }
 
-fn writeStdout(io: Io, bytes: []const u8) !void {
-    try std.Io.File.stdout().writeStreamingAll(io, bytes);
+/// Writes `bytes` to standard output; a reader that went away first (a
+/// broken pipe) is no error.
+fn writeStdout(io: Io, bytes: []const u8) void {
+    std.Io.File.stdout().writeStreamingAll(io, bytes) catch |err| switch (err) {
+        error.BrokenPipe => {},
+        else => {
+            diag.err("cannot write standard output: {s}", .{@errorName(err)});
+            fail();
+        },
+    };
 }
 
 /// `nexus --dump-sexp`: write the frontend's canonical tree of the grammar file.
@@ -219,12 +237,10 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
     var lexerGen = LexerGenerator.init(allocator, &lexerSpec);
 
-    const lexerDecls = lexerGen.generateDecls() catch |err| switch (err) {
-        error.LexerGenerationError => std.process.exit(1),
-        else => {
-            diag.err("lexer generation failed: {any}", .{err});
-            std.process.exit(1);
-        },
+    const lexerDecls = lexerGen.generateDecls() catch |err| {
+        // Its own errors are reported where they are found.
+        if (err != error.LexerGenerationError) diag.err("lexer generation failed: {s}", .{@errorName(err)});
+        fail();
     };
 
     diag.info("   Lexer: {d} tokens, {d} rules, {d} DFA states", .{
@@ -290,7 +306,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         }) catch |err| {
             // Generation errors are reported where they are found.
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
-            std.process.exit(1);
+            fail();
         };
     } else {
         finalCode = try codegen.lexerModule(allocator, lexerSpec.langName, lexerDecls);
@@ -330,7 +346,15 @@ fn writeOutput(io: Io, path: []const u8, bytes: []const u8) !void {
 }
 
 fn writeReplacing(io: Io, path: []const u8, bytes: []const u8) !void {
-    var af = try std.Io.Dir.cwd().createFileAtomic(io, path, .{ .replace = true });
+    const cwd = std.Io.Dir.cwd();
+    // A device or a pipe (/dev/null) cannot be replaced: write into it.
+    const stat: ?std.Io.File.Stat = cwd.statFile(io, path, .{}) catch null;
+    if (stat) |st| if (st.kind == .character_device or st.kind == .named_pipe) {
+        const file = try cwd.openFile(io, path, .{ .mode = .write_only });
+        defer file.close(io);
+        return file.writeStreamingAll(io, bytes);
+    };
+    var af = try cwd.createFileAtomic(io, path, .{ .replace = true });
     defer af.deinit(io);
     try af.file.writeStreamingAll(io, bytes);
     try af.replace(io);
