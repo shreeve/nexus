@@ -22,7 +22,7 @@ pattern that starts only with a blank, trailing context with no fixed
 side, held rules that can re-enable each other forever), and an accepted
 spec must not loop. Anything else fails the run.
 
-    test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N] [--keep DIR]
+    test/lexfuzz/fuzz.py [--seed N] [--specs N] [--inputs N] [--keep DIR] [-O MODE]
 """
 import argparse, itertools, os, random, shutil, subprocess, sys, tempfile
 
@@ -331,6 +331,9 @@ def main():
     ap.add_argument("--specs", type=int, default=60)
     ap.add_argument("--inputs", type=int, default=200)
     ap.add_argument("--keep")
+    ap.add_argument("-O", dest="mode", metavar="MODE", default="Debug",
+                    choices=["Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"],
+                    help="optimize mode of the driver build (default Debug)")
     a = ap.parse_args()
     rng = random.Random(a.seed)
     work = a.keep or tempfile.mkdtemp(prefix="lexfuzz.")
@@ -387,7 +390,7 @@ pub fn main(init: std.process.Init) !void {
         drv.append('    { var it = std.mem.splitScalar(u8, all, 0); while (it.next()) |s| try run(m%d, s, w); }\n' % k)
     drv.append('    try w.flush();\n}\n')
     open(os.path.join(work, "driver.zig"), "w").write("".join(drv))
-    cmd = ["zig", "build-exe", "-O", "Debug"]
+    cmd = ["zig", "build-exe", "-O", a.mode]
     for k in range(len(specs)): cmd += ["--dep", "m%d" % k]
     cmd += ["-Mroot=driver.zig"] + ["-Mm%d=m%d/parser.zig" % (k, k) for k in range(len(specs))]
     cmd += ["-femit-bin=driver"]
