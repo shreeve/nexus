@@ -531,7 +531,9 @@ counting, so the trees of earlier parses stay valid (until `reset`).
   through by `→ 2` keeps the span of the `+` node inside it.
 - A nested node (`value:(num 2)`) spans the elements it references.
 - A leaf spans its token. A list without an id (built by a wrapper with
-  `List.of`) spans the hull of its children.
+  `List.of`, or any list without the node store) spans the hull of its
+  children: from the least start to the greatest end, in whatever order
+  they are in the list.
 - Untagged lists that are only ever spliced into another list (an `L(X)`
   spread into its node, left-recursive accumulators) get no id: nothing can
   reach them.

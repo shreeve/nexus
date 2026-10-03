@@ -819,6 +819,7 @@ pub const Sexp = union(enum) {
 
     /// Print the tree on one line: `_`, tags by name, leaves as their text
     /// followed by `#id` when the id attribute is non-zero, strings quoted.
+    /// error.WriteFailed also reports the walk running out of memory.
     pub fn write(self: Sexp, source: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
         try writeNested(self, w, source, writeAtom);
     }
@@ -1653,14 +1654,22 @@ pub const BaseParser = struct {
     /// Source span of a value. Leaves span their token. A list with a node
     /// id spans its reduction: first to last consumed token, including
     /// tokens (keywords, punctuation) that are not in the tree. Any other
-    /// list spans the hull of its children.
+    /// list spans the hull of its children: from the least start to the
+    /// greatest end of the non-empty spans below it, whatever order an
+    /// action put them in. Panics if the walk runs out of memory (its stack
+    /// is far smaller than the tree it walks).
     pub fn span(self: *const BaseParser, s: Sexp) Span {
         if (self.ownSpan(s)) |own| return own;
-        // The hull of the children is the extent from the first to the
-        // last non-empty own span below the list.
-        const first = self.edgeSpan(s, .first) orelse return .empty;
-        const last = self.edgeSpan(s, .last).?;
-        return .{ .start = first.start, .end = last.end };
+        var hull: ?Span = null;
+        var walk: Walk = .{};
+        defer walk.deinit();
+        var x = s;
+        while (true) {
+            if (self.ownSpan(x)) |own| {
+                if (!own.isEmpty()) hull = if (hull) |h| .{ .start = @min(h.start, own.start), .end = @max(h.end, own.end) } else own;
+            } else walk.push(x.list.items()) catch @panic("out of memory");
+            x = walk.next() orelse return hull orelse .empty;
+        }
     }
 
     /// The span of a value that is not a hull: a leaf's, a node's, empty
@@ -1671,31 +1680,6 @@ pub const BaseParser = struct {
             .list => |l| if (nodeStore and l.id != 0 and l.id < self.nodes.len) self.nodes.at(l.id).span else null,
             else => .empty,
         };
-    }
-
-    /// The first (or last) non-empty own span below a list, in tree order.
-    fn edgeSpan(self: *const BaseParser, root: Sexp, comptime edge: enum { first, last }) ?Span {
-        var walk: Walk = .{};
-        defer walk.deinit();
-        var s = root;
-        while (true) {
-            if (self.ownSpan(s)) |own| {
-                if (!own.isEmpty()) return own;
-            } else walk.push(s.list.items()) catch @panic("out of memory");
-            s = while (walk.top()) |rest| {
-                if (rest.len == 0) {
-                    walk.pop();
-                    continue;
-                }
-                if (edge == .first) {
-                    defer rest.* = rest.*[1..];
-                    break rest.*[0];
-                } else {
-                    defer rest.len -= 1;
-                    break rest.*[rest.len - 1];
-                }
-            } else return null;
-        }
     }
 
     /// The rule that built a list node (null without a node id, or for a
@@ -2094,7 +2078,8 @@ pub const BaseParser = struct {
     /// ROLE is the schema role name, else the child's index in the list.
     /// KIND is the head tag, or `group` for an untagged list. A CHILD is a
     /// node id, `leaf POS LEN`, `tag NAME`, `str "TEXT"`, or `(CHILD...)`
-    /// for a list without a node id.
+    /// for a list without a node id. error.WriteFailed also reports the
+    /// walk running out of memory.
     pub fn writeFacts(self: *const BaseParser, w: *std.Io.Writer, root: Sexp) std.Io.Writer.Error!void {
         if (!nodeStore) @compileError("writeFacts needs the node store (@schema or --spans)");
         var walk: Walk = .{};

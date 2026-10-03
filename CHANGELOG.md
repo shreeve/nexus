@@ -209,6 +209,12 @@ Tests:
   the test driver recursed per tree level and overflowed the stack on deep
   trees (a long operator chain); every walk uses a heap
   stack.
+- The span of a list without a node id ran from its first child's start
+  to its last child's end, so it was inverted (start > end) when an action
+  put children out of source order (MUMPS `(setmulti value:5 ...2)`); it
+  is the least start to the greatest end. `span` panics if its walk runs
+  out of memory; `write` and `writeFacts` report that as
+  `error.WriteFailed`.
 - A grammar-file token longer than 65535 bytes panicked the frontend, and a
   few thousand nested groups overflowed the stack; both are located
   errors (64 levels of nesting).
