@@ -10,8 +10,6 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   [shreeve/nexus#5](https://github.com/shreeve/nexus/pull/5). What it
   changes, with migration steps for every downstream repository, is
   CHANGELOG.md's "Unreleased" section; it is unreleased until Open work 1.
-- **Zig 0.17.0 only.** Nexus and every parser it generates are Zig 0.17
-  code.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
   `./test/run` → 737 passed, 0 failed, 0 known; the generated code is byte
   for byte the same on both.
@@ -38,7 +36,7 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 2. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
    time, each regenerating its parser once and applying its steps from
    CHANGELOG "Migrating":
-   - **em:** the two `@conflicts` lines, delete `simd_to`, the API renames;
+   - **em:** the two `@conflicts` lines, the API renames;
      and in the same pass make `exprtails` (em's `mumps.grammar`,
      `exprtails = exprtail exprtails`) left-recursive or `exprtail*`: the
      right recursion is quadratic in memory (20,000 terms take 4.8 GB).
@@ -47,9 +45,9 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      commas (the coverage gate counts an unused optional token).
    - **nexis:** delete its `Tag` enum, the API renames.
    As each one lands, re-sync its copy here (`test/mumps`, `test/rig`,
-   `test/nexis`) and keep `./test/run` green. The copies are older than the
-   downstream originals, so the suite tests older grammars than the ones
-   those projects run: re-syncing is what makes it test theirs.
+   `test/nexis`; [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
+   `./test/run` green: until then the suite tests older grammars than the
+   ones those projects run.
 3. **Slash, Zag and nanoruby onto Nexus 1.x.** Their repositories check in
    parsers from Nexus 0.10.3; their 1.x grammars and lang modules are
    `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the
@@ -75,22 +73,15 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 
 ## Tips
 
-- **Your Zig knowledge is older than this code.** Check every std API in
-  `$(zig env | grep std_dir)` or in
-  [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md)
-  §25 and §23.5 (code generators) before writing it.
-- **Generated code comes from three places:** `src/codegen/runtime_template.zig`
-  (a real Zig file, cut into `// @section` blocks), string templates in
-  `src/codegen/codegen.zig` and `actions.zig`, and the lexer emitter in
-  `src/lexgen/lexgen.zig`. `zig fmt` and the compiler see only the first;
-  a mistake in a string template shows up when a generated parser compiles.
-- **After any emitter change** run the bootstrap loop and review the
-  goldens by kind ([INTERNALS.md](docs/INTERNALS.md#self-hosting-and-the-bootstrap)).
+- **Generated code comes from** the runtime template, the string templates
+  in `src/codegen/` and the lexer emitter; only the first is seen by
+  `zig fmt` and the compiler, so a mistake in the others shows up when a
+  generated parser compiles
+  ([INTERNALS.md, "Code generation"](docs/INTERNALS.md#code-generation)).
 - **Run a subset while iterating:** `./test/run mumps`, `./test/run gen`,
   `./test/run -v regress`; `-j N` limits the workers on a busy machine. A
-  failing case's parser stays built:
-  `.zig-cache/nexus-test/build/<suite>/driver FILE` reruns it by hand, with
-  `gen.log` and `compile.log` next to it.
+  failing case's parser stays built for rerunning by hand
+  ([test/README.md](test/README.md#files)).
 - **Mind the machine's load.** The full suite builds about 95 parsers;
   run it with `-j 2` or `-j 3` while other work is running, and do not run
   benchmarks, fuzzing or several suites at the same time.
@@ -99,6 +90,3 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 - **The VistA corpus** (`~/Data/Code/em/misc/vista`, 24,704 routines) and
   Rig's sources (`~/Data/Code/rig`) feed `test/bench/run` and `test/diff`;
   without them the benchmark falls back to the committed cases.
-- **The owner's conventions:** timeless comments and docs (AGENTS.md rule
-  7), no compatibility code, no AI attribution in commits, short imperative
-  commit messages, a failing test before every fix.
