@@ -116,6 +116,8 @@ const Codegen = struct {
     tokenMap: std.ArrayList(struct { cat: []const u8, sym: u16 }) = .empty,
     /// The executeAction function, generated before the configuration.
     actionsCode: []const u8 = "",
+    /// Per rule, how the parser takes its value (see `emitRuleTables`).
+    ruleValues: []u32 = &.{},
 
     fn schema(self: *const Codegen) ?Schema {
         return self.g.schema;
@@ -613,8 +615,10 @@ const Codegen = struct {
         return std.mem.eql(u8, directive.rule, "self") or std.mem.eql(u8, directive.rule, directive.token);
     }
 
-    /// executeAction: one switch arm per reducible rule. Accept rules are
-    /// never reduced (the table accepts on end of input before them).
+    /// executeAction: one switch arm per rule whose action builds a value.
+    /// A rule whose value is nil or one of its elements has no arm: the
+    /// parser takes the value itself (`ruleValue`). Accept rules are never
+    /// reduced (the table accepts on end of input before them).
     fn generateActions(self: *Codegen) ![]const u8 {
         var out: std.Io.Writer.Allocating = .init(self.allocator);
         const w = &out.writer;
@@ -622,8 +626,17 @@ const Codegen = struct {
         const a = &arms.writer;
         const reaches = try actions.treeSymbols(self.allocator, self.g);
         var uses: actions.Uses = .{};
-        for (self.g.rules.items, 0..) |rule, ruleIdx| {
+        self.ruleValues = try self.allocator.alloc(u32, self.g.rules.items.len);
+        for (self.g.rules.items, self.ruleValues, 0..) |rule, *value, ruleIdx| {
+            value.* = 0;
             if (self.g.isAcceptRule(@intCast(ruleIdx))) continue;
+            if (actions.copyOf(rule)) |copy| {
+                value.* = switch (copy) {
+                    .nil => 1,
+                    .element => |i| @as(u32, i) + 2,
+                };
+                continue;
+            }
             if (self.options.emitComments) {
                 try a.print("        // {s} =", .{self.g.symbols.items[rule.lhs].name});
                 for (rule.rhs) |symId| try a.print(" {s}", .{self.g.symbols.items[symId].name});
@@ -790,6 +803,11 @@ const Codegen = struct {
         for (self.g.rules.items, 0..) |rule, i| {
             if (i > 0) try w.writeAll(", ");
             try w.print("{d}", .{rule.rhs.len});
+        }
+        try w.print(" }};\n/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.\nconst ruleValue = [_]{s}{{ ", .{if (longest + 1 > 255) "u16" else "u8"});
+        for (self.ruleValues, 0..) |value, i| {
+            if (i > 0) try w.writeAll(", ");
+            try w.print("{d}", .{value});
         }
         try w.writeAll(" };\n");
     }

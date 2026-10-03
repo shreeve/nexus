@@ -960,8 +960,13 @@ pub const BaseParser = struct {
         }
 
         // The action reads its elements in place on the value stack; the
-        // result then replaces them (a reduction of nothing pushes it).
-        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
+        // result then replaces them (a reduction of nothing pushes it). A
+        // rule whose value is nil or one of its elements has no action.
+        const result: Sexp = switch (ruleValue[ruleId]) {
+            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            1 => .nil,
+            else => |n| self.valueStack.items[base + n - 2],
+        };
         if (self.outOfMemory) return error.OutOfMemory;
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
@@ -1628,32 +1633,24 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         0 => self.sexpSpread(.@"module", pass[0]),
         1 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         2 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .spread); },
-        3 => pass[0],
         4 => self.sexp(.@"assign", &.{pass[0], pass[2]}),
-        5 => pass[0],
         6 => self.sexpPosSpread(.@"call", pass[0], pass[2]),
-        7 => pass[0],
         8 => self.spreadList(pass[0], pass[1], .spread),
         9 => self.spreadList(pass[1], pass[2], .spread),
         10 => self.emptyList(.spread),
         11 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .spread); },
         12 => self.emptyList(.spread),
-        13 => pass[0],
-        14 => pass[0],
-        15 => pass[0],
-        16 => pass[1],
         19 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         20 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        21 => pass[0],
         22 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-        23 => pass[0],
-        24 => pass[0],
         else => unreachable,
     };
 }
 
 const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 4, 6, 6, 15, 16, 16, 7, 7, 8, 8, 8, 8, 21, 23, 24, 24, 24, 25, 25, 11 };
 const ruleLen = [_]u8{ 1, 1, 3, 2, 3, 1, 4, 1, 2, 3, 0, 1, 0, 1, 1, 1, 3, 3, 3, 3, 3, 1, 3, 1, 1 };
+/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
+const ruleValue = [_]u8{ 0, 0, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 2, 2, 2, 3, 0, 0, 0, 0, 2, 0, 2, 2 };
 
 // Parse table: 41 states x 29 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).

@@ -15,7 +15,7 @@
 //!   types      Tag, Role, Start, Token, TokenCat, Lexer
 //!   config     nodeStore, elemEnds, keepTrailingNils, hasTrivia, hasRepair,
 //!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes
-//!   tables     ruleLhs, ruleLen
+//!   tables     ruleLhs, ruleLen, ruleValue
 //!   functions  getAction, getImmediateShift, startState, startMarker,
 //!              tokenToSymbol, promote, executeAction, expectedIn, symbolName, isTrivia,
 //!              repairCandidates, repairClass, ruleSideLabels, slotOf,
@@ -699,8 +699,13 @@ pub const BaseParser = struct {
         }
 
         // The action reads its elements in place on the value stack; the
-        // result then replaces them (a reduction of nothing pushes it).
-        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
+        // result then replaces them (a reduction of nothing pushes it). A
+        // rule whose value is nil or one of its elements has no action.
+        const result: Sexp = switch (ruleValue[ruleId]) {
+            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            1 => .nil,
+            else => |n| self.valueStack.items[base + n - 2],
+        };
         if (self.outOfMemory) return error.OutOfMemory;
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
@@ -1507,6 +1512,7 @@ const xExcludes = [_]struct { sym: u16, shift: u16 }{};
 // 8 NEWLINE, 9 IDENT, 10 "=", 11 "+", 12 "(", 13 ")", 14 prog!, 15 $accept_prog
 const ruleLhs = [_]u16{ 3, 4, 4, 5, 5, 6, 6, 7, 7, 15 };
 const ruleLen = [_]u8{ 2, 1, 3, 3, 1, 1, 3, 1, 3, 2 };
+const ruleValue = [_]u8{ 0, 0, 0, 0, 2, 0, 0, 0, 3, 0 };
 
 const sparse = [_][]const i16{
     &.{ 3, 1, 14, 2 },
@@ -1683,11 +1689,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
             break :blk self.keepList(&out, pass[0], .spread);
         },
         3 => self.sexp(.set, &.{ pass[0], pass[2] }),
-        4 => pass[0],
         5 => self.list(pass, .tree),
         6 => self.sexp(.add, &.{ pass[0], pass[2] }),
         7 => self.list(pass, .tree),
-        8 => pass[1],
         else => unreachable,
     };
 }

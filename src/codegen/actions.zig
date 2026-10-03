@@ -117,6 +117,24 @@ fn markElem(tree: []bool, rule: Rule, e: ActionElem) void {
     }
 }
 
+/// The value of a rule whose action builds nothing: nil, or one of its
+/// elements as it is. The parser takes it without calling the action
+/// function.
+pub const Copy = union(enum) { nil, element: u16 };
+
+pub fn copyOf(rule: Rule) ?Copy {
+    const tree = rule.actionTree orelse return switch (rule.rhs.len) {
+        0 => .nil,
+        1 => .{ .element = 0 },
+        else => null,
+    };
+    return switch (tree) {
+        .nil => .nil,
+        .pass => |p| .{ .element = p - 1 },
+        .list => null,
+    };
+}
+
 /// What the emitted actions refer to, so that `executeAction` discards
 /// the parameters none reads and the module keeps element extents only
 /// when some action builds a nested node.

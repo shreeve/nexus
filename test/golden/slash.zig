@@ -1238,8 +1238,13 @@ pub const BaseParser = struct {
         }
 
         // The action reads its elements in place on the value stack; the
-        // result then replaces them (a reduction of nothing pushes it).
-        const result = executeAction(self, ruleId, self.valueStack.items[base..]);
+        // result then replaces them (a reduction of nothing pushes it). A
+        // rule whose value is nil or one of its elements has no action.
+        const result: Sexp = switch (ruleValue[ruleId]) {
+            0 => executeAction(self, ruleId, self.valueStack.items[base..]),
+            1 => .nil,
+            else => |n| self.valueStack.items[base + n - 2],
+        };
         if (self.outOfMemory) return error.OutOfMemory;
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
@@ -1937,33 +1942,19 @@ fn promote(self: *BaseParser, token: Token) u16 {
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
-        0 => pass[0],
         1 => self.spreadList(pass[0], pass[1], .spread),
         2 => self.emptyList(.spread),
         3 => self.sexpPosSpread(.@"sequence", pass[0], pass[1]),
-        4 => pass[0],
-        5 => pass[0],
-        6 => pass[0],
-        7 => pass[0],
-        8 => pass[0],
-        9 => pass[0],
-        10 => pass[0],
-        11 => pass[0],
-        12 => pass[0],
         13 => self.sexp(.@"seq_always", &.{pass[1]}),
         14 => self.sexp(.@"seq_always", &.{.nil}),
         15 => self.sexp(.@"seq_and", &.{pass[1]}),
         16 => self.sexp(.@"seq_or", &.{pass[1]}),
         17 => self.sexp(.@"seq_bg", &.{pass[1]}),
         18 => self.sexp(.@"seq_bg", &.{.nil}),
-        19 => pass[0],
         20 => self.spreadList(pass[0], pass[1], .spread),
         21 => self.emptyList(.spread),
         22 => self.spreadList(pass[0], pass[1], .spread),
         23 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
-        24 => pass[1],
-        25 => pass[0],
-        26 => pass[0],
         27 => self.sexp(.@"subshell", &.{pass[1]}),
         28 => self.sexp(.@"subshell", &.{pass[1], pass[3]}),
         29 => self.sexp(.@"block", &.{pass[1]}),
@@ -1987,8 +1978,6 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         47 => self.spreadList(pass[0], pass[1], .spread),
         48 => self.emptyList(.spread),
         49 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .spread); },
-        50 => pass[0],
-        51 => pass[0],
         52 => self.sexp(.@"word", &.{pass[0]}),
         53 => self.sexp(.@"word", &.{pass[0]}),
         54 => self.sexp(.@"word", &.{pass[0]}),
@@ -1999,12 +1988,10 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         59 => self.sexp(.@"list_capture", &.{pass[1]}),
         60 => self.sexp(.@"proc_sub_in", &.{pass[1]}),
         61 => self.sexp(.@"proc_sub_out", &.{pass[1]}),
-        62 => pass[0],
         63 => self.sexp(.@"word", &.{pass[0]}),
         64 => self.sexp(.@"word", &.{pass[0]}),
         65 => self.sexp(.@"if", &.{pass[1], pass[2], .nil}),
         66 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
-        67 => pass[0],
         68 => self.sexp(.@"cond_and", &.{pass[0], pass[2]}),
         69 => self.sexp(.@"cond_or", &.{pass[0], pass[2]}),
         70 => self.sexp(.@"else", &.{pass[1]}),
@@ -2019,8 +2006,6 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         79 => self.spreadList(pass[0], pass[1], .spread),
         80 => self.emptyList(.spread),
         81 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        82 => pass[1],
-        83 => .nil,
         84 => self.sexp(.@"match_arm", &.{pass[0], pass[1]}),
         85 => self.sexp(.@"cmd_def", &.{pass[1], pass[2]}),
         86 => self.sexp(.@"str_def", &.{pass[1], pass[2]}),
@@ -2109,6 +2094,8 @@ comptime {
 
 const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 43, 7, 8, 9, 9, 10, 10, 11, 11, 49, 49, 50, 12, 51, 51, 13, 13, 52, 52, 53, 14, 15, 16, 17, 17, 57, 57, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 77, 77, 30, 31, 31, 32, 33, 34, 81, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 95 };
 const ruleLen = [_]u8{ 1, 2, 0, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 1, 2, 0, 2, 2, 2, 1, 1, 3, 4, 3, 4, 2, 0, 2, 1, 2, 0, 2, 3, 2, 0, 2, 1, 1, 2, 1, 3, 2, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 1, 1, 1, 3, 4, 1, 3, 3, 2, 2, 3, 3, 3, 5, 3, 3, 3, 2, 0, 2, 2, 1, 2, 3, 3, 2, 1, 2, 2, 2, 2, 2, 2, 2, 1, 1, 2, 2, 3 };
+/// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
+const ruleValue = [_]u8{ 2, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 // Parse table: 166 states x 96 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
