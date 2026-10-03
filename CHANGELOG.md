@@ -272,10 +272,13 @@ Tests:
 
 ### Performance
 
-Apple M5, ReleaseFast ([test/bench/BASELINE.md](test/bench/BASELINE.md)):
+Apple M5, ReleaseFast, against 1.1.0 ([test/bench/BASELINE.md](test/bench/BASELINE.md)):
+generating the MUMPS parser takes 4.8 ms instead of about 16.5 ms, and the
+generated parsers parse VistA at 65 MB/s instead of 51 MB/s and Rig at
+67 MB/s instead of 58 MB/s.
 
 - Generation: lowering indexes line starts (it was quadratic in file size:
-  MUMPS 19.7 → 8.1 ms, a 249 KB grammar 2.7 → 0.1 s); the LR(0) builder
+  a 249 KB grammar 2.7 → 0.1 s); the LR(0) builder
   uses dense buckets and the grammar facts are computed once (11% fewer
   instructions on MUMPS).
 - Generated parsers: lists are linear (a 40,000-line MUMPS routine 2.5 to
@@ -284,7 +287,7 @@ Apple M5, ReleaseFast ([test/bench/BASELINE.md](test/bench/BASELINE.md)):
   comes from a bump allocator; an `@as` keyword is looked up once per
   token; only tokens that can grow long test their length (19% fewer
   instructions per token when lexing VistA). Parsing all of VistA (86.5 MB)
-  takes about 1.71 → 1.34 s, Rig 65 → 58 ms.
+  takes 1.32 s instead of 1.71 s, Rig 57 ms instead of 65 ms.
 - The parse table is an array literal: the MUMPS parser compiles in 0.25 s
   instead of 0.61 s (Debug, semantic analysis).
 
