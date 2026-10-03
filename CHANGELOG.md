@@ -63,9 +63,11 @@ Grammar files:
   list followed by its own separator (`L(X) "," "*"`) needs no declared
   conflict.
 - **Breaking: the coverage gate counts presence, repetition and choice.**
-  An unused `T?`, `T*` or choice between fixed texts (`("+=" | "-=")`) is an
-  error, since leaving it out lets different inputs build the same node.
-  Use it, label it, drop it with `!X`, or opt out with `~ "reason"`.
+  An unused `T?`, `[A B]`, `T*` or choice between fixed texts (`","?`,
+  `[","]`, `("+=" | "-=")`) is an error, since leaving it out lets
+  different inputs build the same node. Use it, label it, drop it with
+  `!X` (an insignificant trailing comma is `![","]`), or opt out with
+  `~ "reason"`.
   Coverage errors show groups, choices and lists in source syntax.
 - **Breaking: a label that cannot fill a role is an error**, where it was
   ignored: one inside a repeated group or choice (`(A | x:B)*`), or inside
@@ -289,7 +291,9 @@ Per repository:
   `makeToken`; `diagnostic` and the bracket probes read `lastError()`
   instead of `base.current`; `expectedHint` loops over `expectedNames`
   and drops its dedupe; `allocator()` returns `self.base.allocator()`.
-  `pub const Tag = parser.Tag;` stays (rig's code names it).
+  `pub const Tag = parser.Tag;` stays (rig's code names it). In
+  `rig.grammar`, the five trailing commas `[","]` (`params`, `tparams`,
+  `tatom`, `patatom`, `bars`) become `![","]`.
 - **em** (`mumps.grammar`, `src/mumps.zig`): delete `simd_to '\n'` from the
   comment rule; in `@conflicts`, `shift L(expr).tail → ε 2` becomes
   `shift viewarg → expr ":" L(expr) 1`, and `shift IDENT* → ε 2` becomes

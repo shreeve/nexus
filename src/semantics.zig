@@ -512,6 +512,8 @@ const Resolver = struct {
 
     // --- Coverage ---
 
+    const unusedElement = "element {d} ({f}) carries a value the action does not use; use it, label it, or drop it with !X or _:X (or opt out with ~ \"reason\")";
+
     fn checkCoverage(self: *Resolver, ctx: Ctx, alt: ParsedAlternative, layout: Layout, aliases: *const std.StringHashMapUnmanaged([]const u8)) Error!void {
         const used = try self.a.alloc(bool, layout.slots.len + 1);
         @memset(used, false);
@@ -535,7 +537,17 @@ const Resolver = struct {
                 self.err(ctx, "choice element '{f}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{expand.fmtElement(e)});
                 continue;
             }
-            self.err(ctx, "element {d} ({f}) carries a value the action does not use; use it, label it, or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ p, expand.fmtElement(e) });
+            self.err(ctx, unusedElement, .{ p, expand.fmtElement(e) });
+        }
+        // A `[A B]` group's elements are positions of their own; its
+        // presence is a value, as a `T?`'s is, when none of them is used,
+        // labeled, dropped or carries a value.
+        for (alt.elements, layout.pos) |e, first| {
+            if (e.kind != .optGroup or e.skip) continue;
+            const quiet = for (e.subElements, first..) |sub, p| {
+                if (used[p] or sub.label != null or sub.skip or self.valueBearing(sub, aliases)) break false;
+            } else true;
+            if (quiet) self.err(ctx, unusedElement, .{ first, expand.fmtElement(e) });
         }
     }
 

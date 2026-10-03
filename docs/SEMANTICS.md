@@ -402,8 +402,9 @@ its rule, when:
   with `→ (...)  ~ "reason"`. Value-bearing are rules, lists, groups, the
   `@as` token and its keywords, tokens whose text varies (a lexer rule
   produces them from a pattern that is not a single literal), any optional
-  or repeated element (`";"?`, `NEWLINE*`: whether it is there, how many),
-  and a choice between fixed texts (`("+=" | "-=")`: which one matched).
+  or repeated element (`";"?`, `[";"]`, `NEWLINE*`: whether it is there,
+  how many), and a choice between fixed texts (`("+=" | "-=")`: which one
+  matched).
   Literals, fixed-text tokens, and tokens only a lang wrapper produces
   carry no value.
 - **Types.** The generator computes, by fixpoint over the expanded grammar,
