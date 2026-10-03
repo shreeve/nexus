@@ -237,6 +237,9 @@ Tests:
 - A syntax error showed a control byte (a NUL) raw; every byte that is
   not printable ASCII is shown in hex. A repeated directive or section is
   located at its `@`, not at the first name inside it.
+- Tolerant repair could choose an insertion that the parse then rejected
+  (it simulated the next token without its `X "c"` override) and repeat
+  it at the same place until the budget ran out.
 - A lexer id (`aux`) set for a token that took an `@as` keyword ordinal,
   or for a token tolerant parsing deleted, became the next token's id.
 - A tag named `pass`, a tag literal written with an escape (`op:"\x41"`),
