@@ -6,11 +6,17 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 
 ## State
 
-- The current release and what changed since are in
-  [CHANGELOG.md](CHANGELOG.md); the "Unreleased" section is the revamp on
-  branch `revamp`, which lands on `main` when the owner merges it.
-- Benchmark numbers are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
-- `./test/run` is green; `test/known/` holds the open bugs.
+- **Branch `revamp`** holds the revamp of Nexus 1.1.0 (base `cf0c962`, tag
+  `v1.1.0`). It is local and unmerged; it lands on `main` through a pull
+  request when the owner approves. What it changes, with migration steps
+  for every downstream repository, is CHANGELOG.md's "Unreleased" section.
+- **Zig 0.17.0 only.** Nexus and every parser it generates are Zig 0.17
+  code.
+- **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
+  `./test/run` → 726 passed, 0 failed, 1 known; the generated code is byte
+  for byte the same on both.
+- **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
+- `src/version.zig` says `1.1.0` until the release (Open work 1).
 
 Verify before you change anything:
 
@@ -25,27 +31,51 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 
 ## Open work
 
-1. **Release.** Bump `src/version.zig`, regenerate, and date the
-   CHANGELOG section ([INTERNALS.md, "Releasing"](docs/INTERNALS.md#releasing)).
-2. **Downstream moves to Zig 0.17 and this API.** em, rig and nexis use
-   Nexus 1.x through `zig build parser` with `../nexus/bin/nexus`; each
-   regenerates and applies its CHANGELOG migration steps. As each one
-   lands, re-sync its copy here (`test/mumps`, `test/rig`, `test/nexis`)
-   and keep `./test/run` green. The `test/mumps` grammar differs from em's
-   by the `simd_to` line em still has to delete.
-3. **Slash and Zag onto Nexus 1.x.** Their repositories check in parsers
-   from Nexus 0.10.3; their 1.x grammars and lang modules are `test/slash`
-   and `test/zag` here. `test/diff` compares the trees of a 0.10.3 build
-   (from tag `v0.10.3`) with this checkout's over their corpora.
-4. **Known bug:** `test/known/x_hint_named_token` (an `X "c"` hint whose
+1. **Merge and release.** The owner reviews `revamp` (a pull request
+   against `main`) and picks the version: the generated API and the grammar
+   language change in breaking ways, which suggests 2.0.0. Then bump
+   `src/version.zig`, regenerate, date the CHANGELOG section and tag
+   ([INTERNALS.md, "Releasing"](docs/INTERNALS.md#releasing)).
+2. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
+   time, each regenerating its parser once and applying its steps from
+   CHANGELOG "Migrating":
+   - **em:** the two `@conflicts` lines, delete `simd_to`, the API renames;
+     and in the same pass make `exprtails` (em's `mumps.grammar`,
+     `exprtails = exprtail exprtails`) left-recursive or `exprtail*`: the
+     right recursion is quadratic in memory (20,000 terms take 4.8 GB).
+     Check with em's suite that every tree stays the same.
+   - **rig:** the API renames, and `![","]` for its five unused trailing
+     commas (the coverage gate counts an unused optional token).
+   - **nexis:** delete its `Tag` enum, the API renames.
+   As each one lands, re-sync its copy here (`test/mumps`, `test/rig`,
+   `test/nexis`) and keep `./test/run` green. The copies are older than the
+   downstream originals, so the suite tests older grammars than the ones
+   those projects run: re-syncing is what makes it test theirs.
+3. **Slash, Zag and nanoruby onto Nexus 1.x.** Their repositories check in
+   parsers from Nexus 0.10.3; their 1.x grammars and lang modules are
+   `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the
+   trees of a 0.10.3 build (from tag `v0.10.3`) with this checkout's.
+4. **Deferred by the owner until em's grammar work is done:** the
+   schemaless tree rules for a leading `role:N` head (named only in
+   unexpanded alternatives) and for `!X` in a rule's default action.
+5. **Known bug:** `test/known/x_hint_named_token` (an `X "c"` hint whose
    token the grammar names, `LPAREN` for `"("`, needs the lexer's literal
    map in the LR stage).
-5. **Untested messages:** `test/lib/messages.allow` lists the generator
-   messages no test prints yet; each needs an adverse test or stays with
-   its reason.
-6. **Deferred by the owner:** the schemaless tree rules for a leading
-   `role:N` head and for `!X` in default actions wait until em's grammar
-   work is done.
+6. **Untested messages:** `test/lib/messages.allow` lists the generator
+   messages no test prints, each with its reason; an adverse test that
+   prints one deletes its line.
+7. **Smaller items:**
+   - `./test/run --update` does not write `.tree` files for
+     `test/regress` suites; write them with the suite's built driver.
+   - A lang `Parser` wrapper that returns `error.ParseError` on its own
+     (rig does) leaves `lastError()` null, so the driver prints the error
+     without a position.
+   - A label on a non-token value in a rest role reports "is a spread of a
+     value that is not a list", which names a spread the user did not write.
+   - Doc tests list documents with `git ls-files '*.md'`: an untracked new
+     document is not tested until it is added.
+   - Generating a grammar of 4,000 chained levels peaks at about 1.4 GB;
+     the dense `[state][symbol]` arrays of the lookahead stage dominate.
 
 ## Tips
 
@@ -65,6 +95,9 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
   failing case's parser stays built:
   `.zig-cache/nexus-test/build/<suite>/driver FILE` reruns it by hand, with
   `gen.log` and `compile.log` next to it.
+- **Mind the machine's load.** The full suite builds about 95 parsers;
+  run it with `-j 2` or `-j 3` while other work is running, and do not run
+  benchmarks, fuzzing or several suites at the same time.
 - **Benchmark honestly** ([test/bench/BASELINE.md](test/bench/BASELINE.md),
   "Reading a difference").
 - **The VistA corpus** (`~/Data/Code/em/misc/vista`, 24,704 routines) and
