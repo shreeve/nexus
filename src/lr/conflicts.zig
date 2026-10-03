@@ -61,8 +61,9 @@ pub fn entries(a: Allocator, tbl: *const Table) ![]Entry {
 // =============================================================================
 
 /// A symbol by name. Symbols the desugarer synthesizes are named in source
-/// syntax (see expand.zig): `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`,
-/// `L(X).tail` (a list's repetition), `(A !B)` for a group, `(A | B C)` for
+/// syntax (see expand.zig): `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`
+/// (repetitions and lists are left-recursive: `X* → ε | X* X`,
+/// `L(X, sep) → X | L(X, sep) sep X`), `(A !B)` for a group, `(A | B C)` for
 /// a repeated choice, and `infix("+" "-")` for an `@infix` level.
 pub fn writeSymbol(w: *std.Io.Writer, g: *const Grammar, sym: u16) std.Io.Writer.Error!void {
     try w.writeAll(g.symbols.items[sym].name);

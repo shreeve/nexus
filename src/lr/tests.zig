@@ -625,7 +625,7 @@ test "manifest rule texts normalize arrows, blanks and empty right-hand sides" {
     const a = arena.allocator();
     try testing.expectEqualStrings("a → b", try conflicts.normalize(a, " a  ->   b "));
     try testing.expectEqualStrings("a → ε", try conflicts.normalize(a, "a ->"));
-    try testing.expectEqualStrings("L(x, \";\") → x L(x, \";\").tail", try conflicts.normalize(a, "L(x, \";\")  ->  x L(x, \";\").tail"));
+    try testing.expectEqualStrings("L(x, \";\") → L(x, \";\") \";\" x", try conflicts.normalize(a, "L(x, \";\")  ->  L(x, \";\")  \";\" x"));
     // Quoted text is kept as written: `->`, blank runs, escaped quotes.
     try testing.expectEqualStrings("s → IF \"->\" s", try conflicts.normalize(a, "s ->  IF \"->\"  s"));
     try testing.expectEqualStrings("s → \"a  b\" \"\\\"->\" X", try conflicts.normalize(a, "s -> \"a  b\" \"\\\"->\"   X"));
