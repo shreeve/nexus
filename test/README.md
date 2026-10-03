@@ -35,7 +35,8 @@ systems' own tools.
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
 | `tools/fmt` | the `zig fmt --check` command of `AGENTS.md` passes |
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
-| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
+| `tools/messages` | every error and warning the generator's source can print is printed by `nexus check` on some grammar under `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source no longer has, fails |
+| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
 | `docs/<DOC>/L<line>` | a grammar fragment parses (or: a malformed doc example) |
@@ -223,6 +224,7 @@ the current numbers; update it when a change moves them.
 | `test/lib/driver.zig` | tree driver compiled into every generated parser |
 | `test/lib/build-grammar` | generate + compile one grammar with a given nexus |
 | `test/lib/doctest` | extract the doc examples into suites |
+| `test/lib/messages`, `test/lib/messages.allow` | the `tools/messages` check, and the messages no test prints yet |
 | `test/golden/` | generated-code (`.zig`) and frontend-tree (`.sexp`) goldens |
 
 Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite
