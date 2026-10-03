@@ -376,9 +376,12 @@ its rule, when:
 - **Coverage.** Every value-bearing element of a pattern is used by the
   action, labeled, or dropped with `!X` or `_:X`; an alternative opts out
   with `→ (...)  ~ "reason"`. Value-bearing are rules, lists, groups, the
-  `@as` token and its keywords, and tokens whose text varies (a lexer rule
-  produces them from a pattern that is not a single literal). Literals,
-  fixed-text tokens, and tokens only a lang wrapper produces carry no value.
+  `@as` token and its keywords, tokens whose text varies (a lexer rule
+  produces them from a pattern that is not a single literal), any optional
+  or repeated element (`";"?`, `NEWLINE*`: whether it is there, how many),
+  and a choice between fixed texts (`("+=" | "-=")`: which one matched).
+  Literals, fixed-text tokens, and tokens only a lang wrapper produces
+  carry no value.
 - **Types.** The generator computes, by fixpoint over the expanded grammar,
   the set of values every rule can produce (nil, leaf, tag, untagged list,
   and each kind) and checks every role against its declared type. The

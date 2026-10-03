@@ -25,6 +25,11 @@
 - Labels inside a top-level `( ... )` or `( ... )?` group fill roles, and a
   choice inside a `[...]` group or another choice becomes a rule of its
   own; both were errors.
+- **The coverage gate counts presence, repetition and choice as values**:
+  an unused `T?`, `T*` or choice between fixed texts (`("+=" | "-=")`) is
+  an error, since leaving it out lets different inputs build the same
+  node. Use it, label it, drop it with `!X`, or opt out with `~ "reason"`.
+  Coverage errors show groups, choices and lists in source syntax.
 - **A label that cannot fill a role is an error**, where it was ignored:
   one inside a repeated group or choice (`(A | x:B)*`), or inside a group
   nested in a group or choice. Move that part into a named rule.

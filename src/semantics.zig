@@ -461,23 +461,23 @@ const Resolver = struct {
         for (1..layout.slots.len + 1) |p| {
             const e = layout.element(alt.elements, p);
             if (used[p] or e.label != null or e.skip) continue;
-            // A choice or labeled group not used as a whole: its elements
-            // are checked one by one (their internal positions).
-            if (layout.whole(p) != null) continue;
-            if (!self.valueBearing(e, aliases)) continue;
+            if (layout.whole(p)) |f| {
+                // A choice or labeled group not used as a whole: its
+                // elements are checked one by one (their internal
+                // positions). Which alternative matched is a value of its
+                // own when none of them carries one.
+                if (f.alts.len < 2 or self.anyBearing(f.alts, aliases)) continue;
+            } else if (!self.valueBearing(e, aliases)) continue;
             const s = layout.slots[p - 1];
             if (p > layout.length) {
                 // Covered when the whole is used and this is its
                 // alternative's only element, or when the whole is labeled.
                 if (used[layout.pos[s.elem]] and layout.forms[s.elem].?.alts[s.alt.?].len == 1) continue;
                 if (alt.elements[s.elem].label != null) continue;
+                self.err(ctx, "choice element '{f}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{expand.fmtElement(e)});
+                continue;
             }
-            const where = if (p <= layout.length) "element" else "choice element";
-            if (p <= layout.length) {
-                self.err(ctx, "{s} {d} ({s}) carries a value the action does not use; use it, label it, or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ where, p, e.value });
-            } else {
-                self.err(ctx, "{s} '{s}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ where, e.value });
-            }
+            self.err(ctx, "element {d} ({f}) carries a value the action does not use; use it, label it, or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ p, expand.fmtElement(e) });
         }
     }
 
@@ -506,25 +506,27 @@ const Resolver = struct {
     }
 
     /// Whether an element's value matters: rule references, lists and
-    /// groups, and tokens whose text varies (a lexer pattern that is not a
-    /// single literal, or an `@as` fallback terminal). Literals and keyword
-    /// or structure tokens carry no value.
+    /// groups, tokens whose text varies (a lexer pattern that is not a
+    /// single literal, or an `@as` fallback terminal), and any optional or
+    /// repeated element (its presence or count). Literals and keyword or
+    /// structure tokens carry no value.
     fn valueBearing(self: *Resolver, e: ParsedElement, aliases: *const std.StringHashMapUnmanaged([]const u8)) bool {
         if (e.skip) return false;
         if (e.label) |l| if (std.mem.eql(u8, l, "_")) return false;
+        if (e.quantifier != .one) return true;
         return switch (e.kind) {
             .string => false,
             .token => self.tokenBearing(e.value),
             .ident => if (aliases.get(e.value)) |target| (if (isUpper(target)) self.tokenBearing(target) else true) else true,
-            .reqList, .optList => true,
-            .group => for (e.subElements) |sub| {
-                if (self.valueBearing(sub, aliases)) break true;
-            } else false,
-            .choice => for (e.choices) |c| {
-                for (c) |sub| if (self.valueBearing(sub, aliases)) return true;
-            } else false,
-            .optGroup => true,
+            .reqList, .optList, .optGroup => true,
+            .group => self.anyBearing(&.{e.subElements}, aliases),
+            .choice => self.anyBearing(e.choices, aliases),
         };
+    }
+
+    fn anyBearing(self: *Resolver, alts: []const []const ParsedElement, aliases: *const std.StringHashMapUnmanaged([]const u8)) bool {
+        for (alts) |alt| for (alt) |e| if (self.valueBearing(e, aliases)) return true;
+        return false;
     }
 
     fn tokenBearing(self: *Resolver, name: []const u8) bool {

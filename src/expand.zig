@@ -118,6 +118,51 @@ fn hasLabel(elements: []const ParsedElement) bool {
     return false;
 }
 
+/// An element in source syntax, for diagnostics: `{f}`.
+pub fn fmtElement(e: ParsedElement) std.fmt.Alt(ParsedElement, writeElement) {
+    return .{ .data = e };
+}
+
+fn writeElement(e: ParsedElement, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    if (e.skip) try w.writeByte('!');
+    if (e.label) |l| try w.print("{s}:", .{l});
+    switch (e.kind) {
+        .ident, .token, .string => try w.writeAll(e.value),
+        .group, .optGroup => {
+            try w.writeByte(if (e.kind == .group) '(' else '[');
+            for (e.subElements, 0..) |sub, i| {
+                if (i > 0) try w.writeByte(' ');
+                try writeElement(sub, w);
+            }
+            try w.writeByte(if (e.kind == .group) ')' else ']');
+        },
+        .choice => {
+            try w.writeByte('(');
+            for (e.choices, 0..) |alt, i| {
+                if (i > 0) try w.writeAll(" | ");
+                for (alt, 0..) |sub, j| {
+                    if (j > 0) try w.writeByte(' ');
+                    try writeElement(sub, w);
+                }
+            }
+            try w.writeByte(')');
+        },
+        .reqList, .optList => {
+            if (e.kind == .optList) try w.writeByte('[');
+            try w.print("L({s}{s}", .{ e.value, if (e.optionalItems) "?" else "" });
+            if (e.listSeparator) |sep| try w.print(", {s}", .{sep});
+            try w.writeByte(')');
+            if (e.kind == .optList) try w.writeByte(']');
+        },
+    }
+    try w.writeAll(switch (e.quantifier) {
+        .one => "",
+        .optional => "?",
+        .zeroPlus => "*",
+        .onePlus => "+",
+    });
+}
+
 /// Where one action position points: top-level element `elem`, or (`alt`
 /// set) element `sub` of one of its inline alternatives.
 pub const Slot = struct { elem: u16, alt: ?u16 = null, sub: u16 = 0 };
