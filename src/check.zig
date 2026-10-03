@@ -161,7 +161,7 @@ pub fn validateSymbols(g: *const Grammar, ir: *const GrammarIR, lexerSpec: *cons
 
             // Check tokens block (case-insensitive since lexer uses lowercase)
             for (lexerSpec.tokens.items) |tok| {
-                if (std.ascii.eqlIgnoreCase(tok.name, sym.name)) {
+                if (std.ascii.eqlIgnoreCase(tok, sym.name)) {
                     found = true;
                     break;
                 }

@@ -340,13 +340,13 @@ pub const GrammarLowerer = struct {
         if (self.tokensAt == null) self.tokensAt = ir.Tokens.keyword(node).src.pos;
         for (ir.Tokens.names(node)) |n| {
             const name = self.text(n);
-            for (spec.tokens.items) |t| if (std.mem.eql(u8, t.name, name))
+            for (spec.tokens.items) |t| if (std.mem.eql(u8, t, name))
                 return self.fail(n, "token '{s}' is declared twice", .{name});
             // The 8-byte Token keeps its category in a byte (one value is
             // the built-in `skip`).
             if (spec.tokens.items.len == 255)
                 return self.fail(n, "too many tokens: at most 255 can be declared (a token's category is one byte)", .{});
-            try spec.tokens.append(self.allocator, .{ .name = name });
+            try spec.tokens.append(self.allocator, name);
         }
     }
 
@@ -466,7 +466,7 @@ pub const GrammarLowerer = struct {
 
     fn isToken(spec: *const LexerSpec, name: []const u8) bool {
         if (std.mem.eql(u8, name, "skip")) return true;
-        for (spec.tokens.items) |t| if (std.mem.eql(u8, t.name, name)) return true;
+        for (spec.tokens.items) |t| if (std.mem.eql(u8, t, name)) return true;
         return false;
     }
 

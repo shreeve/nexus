@@ -18,11 +18,6 @@ pub const StateVar = struct {
     initialValue: i32,
 };
 
-/// Token type name
-pub const TokenDef = struct {
-    name: []const u8,
-};
-
 /// Guard condition
 pub const Guard = struct {
     variable: []const u8,
@@ -81,7 +76,8 @@ pub const LexerRule = struct {
 /// in the run's arena and is never freed on its own.
 pub const LexerSpec = struct {
     states: std.ArrayList(StateVar) = .empty,
-    tokens: std.ArrayList(TokenDef) = .empty,
+    /// Token names, in declaration order.
+    tokens: std.ArrayList([]const u8) = .empty,
     rules: std.ArrayList(LexerRule) = .empty,
     codeFunctions: std.ArrayList([]const u8) = .empty,
     /// `@lang`: the module the generated lexer imports.

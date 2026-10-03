@@ -671,7 +671,7 @@ pub const LexerGenerator = struct {
     // =========================================================================
 
     fn declaresSkip(self: *const LexerGenerator) bool {
-        for (self.spec.tokens.items) |t| if (std.mem.eql(u8, t.name, "skip")) return true;
+        for (self.spec.tokens.items) |t| if (std.mem.eql(u8, t, "skip")) return true;
         return false;
     }
 
@@ -684,7 +684,7 @@ pub const LexerGenerator = struct {
             \\pub const TokenCat = enum(u8) {
             \\
         );
-        for (self.spec.tokens.items) |tok| try self.print("    @\"{s}\",\n", .{tok.name});
+        for (self.spec.tokens.items) |tok| try self.print("    @\"{s}\",\n", .{tok});
         if (!self.declaresSkip()) {
             try self.write(
                 \\

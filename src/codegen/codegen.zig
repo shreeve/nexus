@@ -250,7 +250,7 @@ const Codegen = struct {
     fn tokenCatOf(self: *const Codegen, name: []const u8) ?[]const u8 {
         const spec = self.lexerSpec orelse return null;
         for (spec.tokens.items) |tok| {
-            if (std.ascii.eqlIgnoreCase(tok.name, name)) return tok.name;
+            if (std.ascii.eqlIgnoreCase(tok, name)) return tok;
         }
         return null;
     }
@@ -553,7 +553,7 @@ const Codegen = struct {
             if (std.ascii.eqlIgnoreCase(name, directive.rule)) return true;
         }
         if (self.lexerSpec) |spec| {
-            for (spec.tokens.items) |tok| if (std.ascii.eqlIgnoreCase(tok.name, name)) return false;
+            for (spec.tokens.items) |tok| if (std.ascii.eqlIgnoreCase(tok, name)) return false;
             for (spec.rules.items) |rule| if (std.ascii.eqlIgnoreCase(rule.token, name)) return false;
         }
         for (self.g.symbols.items) |other| {
