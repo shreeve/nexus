@@ -99,21 +99,15 @@ pub const Table = struct {
     repair: ?repair.Repair = null,
 };
 
-/// The character of a one-character literal terminal (`"("`, or an escape
-/// the way `X "c"` reads it: `"\n"`, `"\t"`, `"\r"`, `"\\"`, `"\""`), else
-/// null.
+/// The byte of a one-byte literal terminal (`"("`, or one escape, decoded
+/// the way `X "c"` reads it: grammar.escapeAt), else null.
 fn literalChar(g: *const Grammar, sym: u16) ?u8 {
     const name = g.symbols.items[sym].name;
     if (g.symbols.items[sym].kind != .terminal or name.len < 3 or name[0] != '"' or name[name.len - 1] != '"') return null;
     const inner = name[1 .. name.len - 1];
-    if (inner.len == 1 and inner[0] != '\\') return inner[0];
-    if (inner.len == 2 and inner[0] == '\\') return switch (inner[1]) {
-        'n' => '\n',
-        't' => '\t',
-        'r' => '\r',
-        else => inner[1],
-    };
-    return null;
+    if (inner[0] != '\\') return if (inner.len == 1) inner[0] else null;
+    const e = grammar.escapeAt(inner, 0) orelse return null;
+    return if (e.len == inner.len) e.byte else null;
 }
 
 /// Whether `sym` is the marker terminal (`x!`) that selects a start symbol:
