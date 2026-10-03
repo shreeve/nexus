@@ -12,6 +12,11 @@
   link) is a usage error, and nothing is written.
 - Output replaces its file atomically: a failed write leaves the previous
   file intact.
+- Escapes in a tag literal (`op:("\x2b=" | "\n")`), a quoted kind name,
+  a `tag(...)` value and an `@tags` name decode as in every other string
+  literal (`\n` is a newline, `\x41` is `A`), where `\c` read as `c` in a
+  tag literal and quoted names kept their backslashes. A grammar that
+  spells a tag with an escape names the decoded text.
 - **`X*`, `X+` and `L(X)` are left-recursive.** A list of n items costs
   O(n) time and memory in the generated parser, where each item copied the
   rest of the list (a 40,000-line MUMPS routine took 7.8 s and 19 GB).

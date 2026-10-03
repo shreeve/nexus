@@ -287,7 +287,9 @@ time, so a misspelled role is a compile error.
 ```
 
 One line per kind (or per group of kinds with the same roles). Kinds that
-are not identifiers are quoted (`"+"`). Roles are listed in slot order:
+are not identifiers are quoted (`"+"`); a quoted kind, `tag(...)` value or
+`@tags` name reads its escapes as a string literal does (`"\x2b"` is `+`).
+Roles are listed in slot order:
 
 | Role | Meaning |
 |---|---|

@@ -641,14 +641,16 @@ fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
     }
 }
 
-/// A string literal's text: without its quotes, `\c` escapes read as `c`.
+/// A string literal's text: without its quotes, its escapes decoded
+/// (grammar.escapeAt; the lowerer has rejected any unknown escape).
 fn unquote(a: Allocator, lit: []const u8) ![]const u8 {
     const body = lit[1 .. lit.len - 1];
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
-    while (i < body.len) : (i += 1) {
-        if (body[i] == '\\' and i + 1 < body.len) i += 1;
-        try out.append(a, body[i]);
+    while (i < body.len) {
+        const e: grammar.Escape = if (body[i] == '\\') grammar.escapeAt(body, i).? else .{ .byte = body[i], .len = 1 };
+        try out.append(a, e.byte);
+        i += e.len;
     }
     return out.toOwnedSlice(a);
 }
@@ -1311,6 +1313,25 @@ test "more symbols than a u16 numbers is a located expansion error" {
     }
     try text.append(a, '\n');
     try testing.expectError(error.ExpandError, expandText(a, text.items));
+}
+
+test "tag literals and tag names read escapes like the lexer does" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const g = try expandText(a,
+        \\@parser
+        \\@schema
+        \\    "s\x65t"  op:tag("\x41" | "B") a:leaf
+        \\    swap      op:tag a:leaf
+        \\@tags "\n"
+        \\top! = op:("A" | "\x42") a:IDENT  → (set)
+        \\     | op:("\t" | "\x43") a:IDENT → (swap)
+        \\
+    );
+    const tags = try schemaTags(a, g.schema.?);
+    for ([_][]const u8{ "set", "A", "B", "\n", "\t", "C" }) |t| try testing.expect(containsName(tags, t));
+    for (tags) |t| try testing.expect(std.mem.findScalar(u8, t, '\\') == null);
 }
 
 test "a tag role labeling literals takes the matched literal's text as its tag" {

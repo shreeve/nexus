@@ -1,0 +1,23 @@
+# A tag literal and a tag(...) value mean the same text through their
+# escapes ("\x2d=" is "-="), the way the lexer reads a literal.
+# error: schema_literal_tag_escape.grammar:23:8:
+# error: role 'op' takes one of +=|-=, not '%='
+@lexer
+tokens
+    ident, plus_eq, minus_eq, percent_eq, eof, err
+"+="                                        → plus_eq
+"-="                                        → minus_eq
+"%="                                        → percent_eq
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "schema_literal_tag_escape"
+
+@schema
+    set    target:leaf op:tag("\x2b=" | "-=") value:leaf
+
+top! = target:IDENT op:("+=" | "\x2d=") value:IDENT
+                                            → (set)
+     | target:IDENT
+       op:("+=" | "\x25=") value:IDENT     → (set)

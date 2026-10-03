@@ -182,7 +182,8 @@ pub const GrammarLowerer = struct {
     }
 
     /// The body of a string literal with its escapes decoded
-    /// (grammar.escapeAt); an unknown escape is an error at its backslash.
+    /// (grammar.escapeAt), or a bare name as written; an unknown escape is
+    /// an error at its backslash.
     fn string(self: *const GrammarLowerer, node: Sexp) LowerError![]const u8 {
         const body = stripQuotes(self.text(node));
         if (std.mem.findScalar(u8, body, '\\') == null) return body;
@@ -675,7 +676,7 @@ pub const GrammarLowerer = struct {
         const roleSlice = try roles.toOwnedSlice(self.allocator);
         const sideSlice = try side.toOwnedSlice(self.allocator);
         for (ir.Kinds.names(ir.KindDecl.kinds(decl))) |nameNode| {
-            const tag = stripQuotes(self.text(nameNode));
+            const tag = try self.string(nameNode);
             if (tag.len == 0) return self.fail(nameNode, "empty kind name", .{});
             for (self.kinds.items) |k| if (std.mem.eql(u8, k.tag, tag))
                 return self.fail(nameNode, "kind '{s}' is declared twice", .{tag});
@@ -718,7 +719,7 @@ pub const GrammarLowerer = struct {
                 if (!std.mem.eql(u8, head, "tag"))
                     return self.fail(headNode, "only `tag(...)` takes a value list, not '{s}(...)'", .{head});
                 var values: std.ArrayList([]const u8) = .empty;
-                for (ir.Tagset.values(atom)) |v| try values.append(self.allocator, stripQuotes(self.text(v)));
+                for (ir.Tagset.values(atom)) |v| try values.append(self.allocator, try self.string(v));
                 if (builtin != null or atoms.len > 1) return self.fail(atom, "`tag(...)` cannot be combined with other types", .{});
                 builtin = .{ .tag = try values.toOwnedSlice(self.allocator) };
                 continue;
@@ -742,7 +743,7 @@ pub const GrammarLowerer = struct {
                 if (atoms.len > 1) return self.fail(atom, "`{s}` cannot be combined with other types in a union", .{raw});
                 builtin = t;
             } else {
-                try kinds.append(self.allocator, stripQuotes(raw));
+                try kinds.append(self.allocator, try self.string(atom));
             }
         }
         if (builtin) |b| return b;
@@ -751,7 +752,7 @@ pub const GrammarLowerer = struct {
 
     fn lowerNames(self: *GrammarLowerer, names: []const Sexp, what: []const u8, out: *std.ArrayList([]const u8)) LowerError!void {
         for (names) |n| {
-            const name = stripQuotes(self.text(n));
+            const name = try self.string(n);
             for (out.items) |o| if (std.mem.eql(u8, o, name))
                 return self.fail(n, "{s} names '{s}' twice", .{ what, name });
             try out.append(self.allocator, name);
