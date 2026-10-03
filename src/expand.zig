@@ -456,20 +456,8 @@ const Expander = struct {
     fn addStartRules(self: *Expander) Error!void {
         const g = self.g;
         const ir = self.ir;
-        if (ir.startSymbols.len == 0) {
-            if (g.rules.items.len == 0) return;
-            const startSymbol = g.rules.items[0].lhs;
-            const ruleId = try self.addRule(.{
-                .id = 0,
-                .lhs = g.acceptId,
-                .rhs = try g.allocator.dupe(u16, &.{ startSymbol, g.endId }),
-            });
-            try g.startSymbols.append(g.allocator, startSymbol);
-            try g.acceptRules.append(g.allocator, ruleId);
-            return;
-        }
         for (ir.startSymbols) |startName| {
-            const startId = g.getSymbol(startName) orelse continue;
+            const startId = g.getSymbol(startName).?;
             const at = for (ir.rules) |r| {
                 if (std.mem.eql(u8, r.name, startName)) break r;
             } else unreachable;
@@ -783,7 +771,6 @@ const Expander = struct {
     /// `!X` elements. Identical groups share one symbol.
     fn groupRule(self: *Expander, elements: []const ParsedElement) Error!u16 {
         const g = self.g;
-        if (elements.len == 0) return g.errorId;
         var text: std.ArrayList(u8) = .empty;
         try text.append(g.allocator, '(');
         const rhs = try self.sequence(elements, &text);

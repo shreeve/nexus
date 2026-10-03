@@ -281,7 +281,7 @@ const Resolver = struct {
         try self.built.put(a, tag, {});
         const kind = self.schema.kinds[ki];
         const roles = kind.roles;
-        const slotCount = if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
+        const slotCount = slotsOf(roles);
         const restRole: ?Schema.Role = if (slotCount < roles.len) roles[slotCount] else null;
 
         const slots = try a.alloc(?ActionElem, slotCount);
@@ -675,6 +675,11 @@ fn isLiteralPattern(pattern: []const u8) bool {
     return false;
 }
 
+/// The number of slot roles: all but a trailing rest role.
+fn slotsOf(roles: []const Schema.Role) usize {
+    return if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
+}
+
 fn roleIndex(roles: []const Schema.Role, name: []const u8) ?usize {
     for (roles, 0..) |r, i| if (std.mem.eql(u8, r.name, name)) return i;
     return null;
@@ -739,7 +744,7 @@ fn writeName(w: *std.Io.Writer, prefix: []const u8, name: []const u8) !void {
 }
 
 /// One declared kind as an `@schema` line.
-pub fn writeKind(w: *std.Io.Writer, k: Schema.Kind) !void {
+fn writeKind(w: *std.Io.Writer, k: Schema.Kind) !void {
     try writeName(w, "    ", k.tag);
     for (k.roles) |r| {
         try w.writeByte(' ');
@@ -848,13 +853,9 @@ const TypeChecker = struct {
     }
 
     fn unionInto(dst: *std.bit_set.Dynamic, src: std.bit_set.Dynamic) bool {
-        var changed = false;
-        var it = src.iterator(.{});
-        while (it.next()) |b| if (!dst.isSet(b)) {
-            dst.set(b);
-            changed = true;
-        };
-        return changed;
+        if (src.subsetOf(dst.*)) return false;
+        dst.setUnion(src);
+        return true;
     }
 
     fn sym(rule: grammar.Rule, pos: u16) u16 {
@@ -946,7 +947,7 @@ const TypeChecker = struct {
         const k = self.kindIndex.get(t) orelse return;
         const kind = self.schema.kinds[k];
         const roles = kind.roles;
-        const slotCount = if (roles.len > 0 and roles[roles.len - 1].rest) roles.len - 1 else roles.len;
+        const slotCount = slotsOf(roles);
         var actual = try std.bit_set.Dynamic.initEmpty(self.a, self.width);
         for (l.items, 0..) |item, i| {
             const forRest = i >= slotCount;
@@ -970,9 +971,10 @@ const TypeChecker = struct {
                 },
                 else => self.elemInto(rule, item.elem, &actual),
             }
-            var bad = try actual.clone(self.a);
-            var it = ok.iterator(.{});
-            while (it.next()) |b| bad.unset(b);
+            // The values the role does not allow.
+            var bad = ok;
+            bad.toggleAll();
+            bad.setIntersection(actual);
             if (bad.count() > 0) try self.report(ruleId, role, kind, item.elem, bad, null);
         }
     }
