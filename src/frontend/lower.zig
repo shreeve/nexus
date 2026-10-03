@@ -45,6 +45,9 @@ pub const GrammarLowerer = struct {
     allocator: Allocator,
     /// The grammar file; `.src` positions are offsets into its text.
     source: diag.Source,
+    /// The parser that built the tree: its node spans locate a node that
+    /// has no leaf (an empty `@conflicts`).
+    spans: ?*const parser.Parser = null,
 
     /// Where the entries are: before any section marker, in @lexer, or in
     /// @parser. A tree without markers is @parser-section text.
@@ -69,13 +72,27 @@ pub const GrammarLowerer = struct {
     conflicts: std.ArrayList(ConflictEntry) = .empty,
     kinds: std.ArrayList(Schema.Kind) = .empty,
     hasSchema: bool = false,
+    /// The directives seen so far.
+    directives: std.EnumSet(parser.Tag) = .empty,
     extraTags: std.ArrayList([]const u8) = .empty,
     tagsNode: ?Sexp = null,
     trivia: std.ArrayList([]const u8) = .empty,
     repair: ?grammar.RepairSpec = null,
 
+    /// Lowers a parsed grammar file.
+    pub fn lowerParsed(allocator: Allocator, parsed: *const @import("frontend.zig").Parsed) LowerError!GrammarIR {
+        return lowerTree(.{ .allocator = allocator, .source = parsed.source, .spans = &parsed.parser }, parsed.sexp);
+    }
+
+    /// Lowers `sexp`, the tree of `source`.
     pub fn lower(allocator: Allocator, sexp: Sexp, source: diag.Source) LowerError!GrammarIR {
-        var self = GrammarLowerer{ .allocator = allocator, .source = source };
+        return lowerTree(.{ .allocator = allocator, .source = source }, sexp);
+    }
+
+    fn lowerTree(lowerer: GrammarLowerer, sexp: Sexp) LowerError!GrammarIR {
+        var self = lowerer;
+        const allocator = self.allocator;
+        const source = self.source;
         try self.lowerRoot(sexp);
         if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
         if (self.tagsNode) |node| if (!self.hasSchema)
@@ -127,8 +144,13 @@ pub const GrammarLowerer = struct {
         };
     }
 
+    /// Where `node` is: its first leaf, else the start of its span.
+    fn posOf(self: *const GrammarLowerer, node: Sexp) u32 {
+        return firstPos(node) orelse if (self.spans) |p| p.span(node).start else 0;
+    }
+
     fn fail(self: *const GrammarLowerer, node: Sexp, comptime fmt: []const u8, args: anytype) LowerError {
-        return self.failAt(firstPos(node) orelse 0, fmt, args);
+        return self.failAt(self.posOf(node), fmt, args);
     }
 
     fn failAt(self: *const GrammarLowerer, pos: usize, comptime fmt: []const u8, args: anytype) LowerError {
@@ -142,7 +164,7 @@ pub const GrammarLowerer = struct {
     }
 
     fn loc(self: *const GrammarLowerer, node: Sexp) diag.Source.Loc {
-        return self.source.at(firstPos(node) orelse 0);
+        return self.source.at(self.posOf(node));
     }
 
     /// The text of a leaf.
@@ -195,7 +217,18 @@ pub const GrammarLowerer = struct {
     }
 
     fn lowerEntry(self: *GrammarLowerer, entry: Sexp) LowerError!void {
-        switch (entry.kind().?) {
+        const kind = entry.kind().?;
+        switch (kind) {
+            // Each directive but @as (one line per promoted token) appears
+            // once; repeated blocks are not merged.
+            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair => {
+                if (self.directives.contains(kind))
+                    return self.fail(entry, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
+                self.directives.insert(kind);
+            },
+            else => {},
+        }
+        switch (kind) {
             .lang => try self.lowerLang(entry),
             .manifest => try self.lowerManifest(entry),
             .as => try self.lowerAs(entry),
@@ -206,9 +239,9 @@ pub const GrammarLowerer = struct {
             .schema => try self.lowerSchema(entry),
             .tags => {
                 self.tagsNode = entry;
-                try self.lowerNames(ir.Tags.names(entry), &self.extraTags);
+                try self.lowerNames(ir.Tags.names(entry), "@tags", &self.extraTags);
             },
-            .trivia => try self.lowerNames(ir.Trivia.names(entry), &self.trivia),
+            .trivia => try self.lowerNames(ir.Trivia.names(entry), "@trivia", &self.trivia),
             .repair => try self.lowerRepair(entry),
             .rule => {
                 if (self.sectioned and self.section != .parser)
@@ -216,7 +249,7 @@ pub const GrammarLowerer = struct {
                 try self.lowerRule(entry);
             },
             .section => try self.lowerSection(entry),
-            .state, .after, .tokens, .code, .lex_rule => |kind| {
+            .state, .after, .tokens, .code, .lex_rule => {
                 // lang.zig scans these only after `@lexer` (and before `@parser`).
                 const spec = &self.lexer.?;
                 switch (kind) {
@@ -476,7 +509,6 @@ pub const GrammarLowerer = struct {
     // --- Directives ---
 
     fn lowerLang(self: *GrammarLowerer, node: Sexp) LowerError!void {
-        if (self.lang != null) return self.fail(node, "duplicate @lang", .{});
         self.lang = stripQuotes(self.text(ir.Lang.name(node)));
     }
 
@@ -602,7 +634,6 @@ pub const GrammarLowerer = struct {
     }
 
     fn lowerInfix(self: *GrammarLowerer, node: Sexp) LowerError!void {
-        if (self.infixBase != null) return self.fail(node, "duplicate @infix", .{});
         self.infixBase = self.text(ir.Infix.base(node));
         self.infixLoc = self.loc(node);
         var prec: u32 = 1;
@@ -725,12 +756,16 @@ pub const GrammarLowerer = struct {
         return .{ .kinds = try kinds.toOwnedSlice(self.allocator) };
     }
 
-    fn lowerNames(self: *GrammarLowerer, names: []const Sexp, out: *std.ArrayList([]const u8)) LowerError!void {
-        for (names) |n| try out.append(self.allocator, stripQuotes(self.text(n)));
+    fn lowerNames(self: *GrammarLowerer, names: []const Sexp, what: []const u8, out: *std.ArrayList([]const u8)) LowerError!void {
+        for (names) |n| {
+            const name = stripQuotes(self.text(n));
+            for (out.items) |o| if (std.mem.eql(u8, o, name))
+                return self.fail(n, "{s} names '{s}' twice", .{ what, name });
+            try out.append(self.allocator, name);
+        }
     }
 
     fn lowerRepair(self: *GrammarLowerer, node: Sexp) LowerError!void {
-        if (self.repair != null) return self.fail(node, "duplicate @repair", .{});
         var holes: std.ArrayList([]const u8) = .empty;
         var structure: std.ArrayList([]const u8) = .empty;
         var terminators: std.ArrayList([]const u8) = .empty;

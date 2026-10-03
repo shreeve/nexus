@@ -1,0 +1,17 @@
+# @trivia names each token once.
+# error: trivia_name_twice.grammar:15:17:
+# error: @trivia names 'COMMENT' twice
+@lexer
+tokens
+    ident
+    comment
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+'#' [a-z]* → comment
+. → err
+@parser
+@trivia COMMENT COMMENT
+
+s = IDENT

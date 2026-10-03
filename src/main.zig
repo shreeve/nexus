@@ -208,7 +208,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     };
     defer parsed.parser.deinit();
 
-    var ir = GrammarLowerer.lower(allocator, parsed.sexp, parsed.source) catch |err| {
+    var ir = GrammarLowerer.lowerParsed(allocator, &parsed) catch |err| {
         if (err == error.OutOfMemory) diag.err("out of memory", .{});
         fail();
     };
