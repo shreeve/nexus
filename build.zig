@@ -6,6 +6,8 @@
 //! Usage:
 //!   zig build                    — build nexus
 //!   zig build run -- <args>      — run with arguments
+//!   zig build unit               — the generator's unit tests
+//!   zig build test               — the whole suite (test/run)
 
 const std = @import("std");
 
@@ -41,29 +43,15 @@ pub fn build(b: *std.Build) void {
     // LR core, semantics, the runtime template), in a separate test binary;
     // the `nexus` executable never links this code. `test/run` runs them as
     // unit/nexus.
-    const lowerer_tests = b.addTest(.{ .root_module = nexus_mod });
-    const run_lowerer_tests = b.addRunArtifact(lowerer_tests);
+    const unit_tests = b.addRunArtifact(b.addTest(.{ .root_module = nexus_mod }));
+    const unit_step = b.step("unit", "Run the generator's unit tests");
+    unit_step.dependOn(&unit_tests.step);
 
-    const test_lowerer_step = b.step("test-lowerer", "Run the generator's unit tests");
-    test_lowerer_step.dependOn(&run_lowerer_tests.step);
-
-    // The runtime template on its own (runtime.zig and the template's
-    // fixture tests); also part of the unit tests above.
-    const runtime_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/codegen/runtime.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
-    const test_runtime_step = b.step("test-runtime", "Run the parser runtime template tests");
-    test_runtime_step.dependOn(&b.addRunArtifact(runtime_tests).step);
-
-    // Integration tests: shells out to test/run which drives ./bin/nexus
-    // on the in-repo grammars, diffs goldens, and runs the bootstrap
-    // fixed-point check.
-    const test_cmd = b.addSystemCommand(&.{ "bash", "test/run" });
+    // The whole suite (test/README.md), unit tests included.
+    const test_cmd = b.addSystemCommand(&.{"bash"});
+    test_cmd.addFileArg(b.path("test/run"));
     test_cmd.step.dependOn(b.getInstallStep());
 
-    const test_step = b.step("test", "Run all tests");
-    test_step.dependOn(&run_lowerer_tests.step);
+    const test_step = b.step("test", "Run the test suite (test/run)");
     test_step.dependOn(&test_cmd.step);
 }

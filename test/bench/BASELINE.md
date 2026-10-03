@@ -10,7 +10,8 @@ for parse throughput and 0.3 ms for generation.
 
 ## Generation time
 
-20 runs per grammar, wall clock including process start (about 4.5 ms).
+20 runs per grammar, wall clock of the nexus process (started from perl
+without a shell, so the time includes the process start of nexus itself).
 
 | grammar | mean ms | min ms | output lines | output KB |
 |---|---:|---:|---:|---:|

@@ -75,13 +75,15 @@ fn callStart(p: *P, name: []const u8) !Sexp {
     return error.UnknownStartRule;
 }
 
+/// The token the parser stopped at: `current` of the parser, or of the
+/// generated parser it wraps as `base`.
 fn currentToken(p: *P) parser.Token {
-    if (@hasField(P, "current")) return p.current;
-    if (@hasField(P, "base")) {
-        const B = @TypeOf(p.base);
-        if (@hasField(B, "current")) return p.base.current;
-    }
-    return .{ .pos = 0, .len = 0, .cat = @fromBackingInt(@intCast(0)), .pre = 0 };
+    const missing = "Parser has no `current` token, nor a `base` parser with one";
+    if (@hasField(P, "current")) {
+        return p.current;
+    } else if (@hasField(P, "base")) {
+        if (@hasField(@TypeOf(p.base), "current")) return p.base.current else @compileError(missing);
+    } else @compileError(missing);
 }
 
 // -----------------------------------------------------------------------------
