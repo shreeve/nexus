@@ -1,0 +1,14 @@
+# rewind(n) shortens a match; a rule without a pattern has none
+# error: lexer_rewind_zero_width.grammar:9:1:
+# error: rewind(n) needs a pattern
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+@ pre > 1       → t, rewind(1)
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

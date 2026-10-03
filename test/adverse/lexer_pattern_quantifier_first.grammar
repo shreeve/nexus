@@ -1,0 +1,14 @@
+# A quantifier needs something before it
+# error: lexer_pattern_quantifier_first.grammar:9:7:
+# error: quantifier with nothing to repeat
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' | *'b'      → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1
