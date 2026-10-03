@@ -366,6 +366,12 @@ pub const BaseParser = struct {
     /// A parse has begun (the next one re-reads the input).
     started: bool = false,
 
+    /// The free bytes of the allocator's current chunk, and the size of
+    /// its next one (see `allocator`).
+    bumpPos: usize = 0,
+    bumpEnd: usize = 0,
+    bumpNext: usize = bumpFirst,
+
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
     /// Per value-stack entry, the list `keepList` left there with its
@@ -420,8 +426,75 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
+    /// The parse's allocator: a bump allocator over chunks of the arena
+    /// (single-threaded, so allocation is a bounds check and an add; the
+    /// arena's own allocation is atomic). Everything is freed by `deinit`.
     fn allocator(self: *BaseParser) std.mem.Allocator {
-        return self.arena.allocator();
+        return .{ .ptr = self, .vtable = &bumpVTable };
+    }
+
+    /// `n` items for a list: the allocator's fast path, inline.
+    inline fn allocItems(self: *BaseParser, n: usize) error{OutOfMemory}![]Sexp {
+        const start = std.mem.alignForward(usize, self.bumpPos, @alignOf(Sexp));
+        const end = start + n * @sizeOf(Sexp);
+        if (end > self.bumpEnd) return self.allocator().alloc(Sexp, n);
+        self.bumpPos = end;
+        return @as([*]Sexp, @ptrFromInt(start))[0..n];
+    }
+
+    const bumpVTable: std.mem.Allocator.VTable = .{
+        .alloc = bumpAlloc,
+        .resize = bumpResize,
+        .remap = bumpRemap,
+        .free = bumpFree,
+    };
+
+    /// Chunks grow from `bumpFirst` to `bumpLast` bytes; a request larger
+    /// than `bumpLast / 4` goes to the arena by itself.
+    const bumpFirst = 4096;
+    const bumpLast = 1 << 20;
+
+    fn bumpAlloc(ctx: *anyopaque, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = alignment.forward(self.bumpPos);
+        if (start + len <= self.bumpEnd) {
+            self.bumpPos = start + len;
+            return @ptrFromInt(start);
+        }
+        return self.bumpRefill(len, alignment, ra);
+    }
+
+    fn bumpRefill(self: *BaseParser, len: usize, alignment: std.mem.Alignment, ra: usize) ?[*]u8 {
+        const arena = self.arena.allocator();
+        if (len > bumpLast / 4) return arena.rawAlloc(len, alignment, ra);
+        const size = @max(self.bumpNext, len + alignment.toByteUnits());
+        const chunk = arena.rawAlloc(size, .@"16", ra) orelse return null;
+        self.bumpNext = @min(size * 2, bumpLast);
+        const start = alignment.forward(@intFromPtr(chunk));
+        self.bumpPos = start + len;
+        self.bumpEnd = @intFromPtr(chunk) + size;
+        return @ptrFromInt(start);
+    }
+
+    /// The last allocation grows or shrinks in place; any other only
+    /// shrinks.
+    fn bumpResize(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, new_len: usize, _: usize) bool {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len != self.bumpPos) return new_len <= memory.len;
+        if (start + new_len > self.bumpEnd) return false;
+        self.bumpPos = start + new_len;
+        return true;
+    }
+
+    fn bumpRemap(ctx: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ra: usize) ?[*]u8 {
+        return if (bumpResize(ctx, memory, alignment, new_len, ra)) memory.ptr else null;
+    }
+
+    fn bumpFree(ctx: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *BaseParser = @ptrCast(@alignCast(ctx));
+        const start = @intFromPtr(memory.ptr);
+        if (start + memory.len == self.bumpPos) self.bumpPos = start;
     }
 
     // @slot startMethods
@@ -904,7 +977,7 @@ pub const BaseParser = struct {
     /// `span`, facts and `ir` accessors work as for parsed nodes; `ruleOf`
     /// is null). Without a node store the node has no id.
     pub fn newNode(self: *BaseParser, tag: Tag, children: []const Sexp, extent: Span) !Sexp {
-        const out = try self.allocator().alloc(Sexp, children.len + 1);
+        const out = try self.allocItems(children.len + 1);
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], children);
         return .{ .list = List.withId(out, try self.wrapperNodeId(extent)) };
@@ -971,7 +1044,8 @@ pub const BaseParser = struct {
 
     /// A list node over exactly `items` (fixed positions).
     fn build(self: *BaseParser, items: []const Sexp, comptime use: ListUse) Sexp {
-        const out = self.allocator().dupe(Sexp, items) catch return self.oomNil();
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        @memcpy(out, items);
         return self.node(out, use);
     }
 
@@ -1008,7 +1082,8 @@ pub const BaseParser = struct {
     fn list(self: *BaseParser, pass: []Sexp, comptime use: ListUse) Sexp {
         if (pass.len == 0) return .nil;
         if (pass.len == 1) return pass[0];
-        const out = self.allocator().dupe(Sexp, pass) catch return self.oomNil();
+        const out = self.allocItems(pass.len) catch return self.oomNil();
+        @memcpy(out, pass);
         return self.node(out, use);
     }
 
@@ -1034,7 +1109,7 @@ pub const BaseParser = struct {
     /// `[head, ...tail]`
     fn spreadList(self: *BaseParser, head: Sexp, tail: Sexp, comptime use: ListUse) Sexp {
         const rest = tail.items();
-        const out = self.allocator().alloc(Sexp, rest.len + 1) catch return self.oomNil();
+        const out = self.allocItems(rest.len + 1) catch return self.oomNil();
         out[0] = head;
         @memcpy(out[1..], rest);
         return self.node(out, use);
@@ -1106,7 +1181,7 @@ pub const BaseParser = struct {
                 .nil => {},
             };
         }
-        const out = self.allocator().alloc(Sexp, len) catch return self.oomNil();
+        const out = self.allocItems(len) catch return self.oomNil();
         for (out, items[0..len]) |*o, it| o.* = switch (it) {
             .elem => |i| pass[i],
             .tag => |t| .{ .tag = t },
@@ -1118,7 +1193,7 @@ pub const BaseParser = struct {
     /// `(tag items...)`
     fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
+        const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
         return self.node(out, .tree);
@@ -1128,7 +1203,7 @@ pub const BaseParser = struct {
     fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
-        const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
+        const out = self.allocItems(len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         @memcpy(out[1..], items[0..len]);
         return self.node(out, .tree);
@@ -1140,7 +1215,7 @@ pub const BaseParser = struct {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
-        const out = self.allocator().alloc(Sexp, if (bare) 1 else len + 2) catch return self.oomNil();
+        const out = self.allocItems(if (bare) 1 else len + 2) catch return self.oomNil();
         out[0] = .{ .tag = tag };
         if (!bare) {
             out[1] = pos;
@@ -2095,6 +2170,69 @@ test "facts quote names with s-expression syntax" {
     try BaseParser.writeName(&out.writer, "a(b");
     try BaseParser.writeName(&out.writer, "+=");
     try testing.expectEqualStrings("\"a(b\"+=", out.written());
+}
+
+test "the parse allocator bumps through arena chunks" {
+    var p = BaseParser.init(testing.allocator, "");
+    defer p.deinit();
+    const a = p.allocator();
+    // The last allocation grows and shrinks in place; it can be freed.
+    var buf = try a.alloc(u8, 10);
+    try testing.expect(a.resize(buf, 100));
+    buf = buf.ptr[0..100];
+    try testing.expect(a.resize(buf, 50));
+    buf = buf.ptr[0..50];
+    const next = try a.alloc(u64, 2);
+    try testing.expect(std.mem.isAligned(@intFromPtr(next.ptr), @alignOf(u64)));
+    // An earlier one only shrinks.
+    try testing.expect(!a.resize(buf, 60));
+    try testing.expect(a.resize(buf, 40));
+    a.free(next);
+    try testing.expectEqual(@intFromPtr(next.ptr), p.bumpPos);
+    // Allocations past a chunk take a new one; large ones go to the arena.
+    for (0..1000) |i| {
+        const items = try p.allocItems(i % 7);
+        @memset(items, .nil);
+    }
+    const big = try a.alloc(u8, BaseParser.bumpLast);
+    @memset(big, 1);
+    try testing.expect(!a.resize(big, BaseParser.bumpLast + 1));
+}
+
+test "an allocation failure fails the parse with error.OutOfMemory" {
+    var source: std.ArrayList(u8) = .empty;
+    defer source.deinit(testing.allocator);
+    for (0..300) |_| try source.appendSlice(testing.allocator, "a = b + (c + d)\n");
+    try source.appendSlice(testing.allocator, "e");
+    var failures: usize = 0;
+    var index: usize = 0;
+    while (true) : (index += 1) {
+        var failing: std.testing.FailingAllocator = .init(testing.allocator, .{ .fail_index = index });
+        var p = BaseParser.init(failing.allocator(), source.items);
+        defer p.deinit();
+        if (p.parse(.prog)) |tree| {
+            try testing.expectEqual(@as(usize, 302), tree.items().len);
+            break;
+        } else |err| {
+            try testing.expectEqual(error.OutOfMemory, err);
+            failures += 1;
+        }
+    }
+    try testing.expect(failures > 3);
+}
+
+test "a long left-recursive list grows in place" {
+    const n = 100_000;
+    const source = try testing.allocator.alloc(u8, 2 * n - 1);
+    defer testing.allocator.free(source);
+    for (source, 0..) |*c, i| c.* = if (i % 2 == 0) 'a' else '\n';
+    var p = BaseParser.init(testing.allocator, source);
+    defer p.deinit();
+    const tree = try p.parse(.prog);
+    try testing.expectEqual(@as(usize, n + 1), tree.items().len);
+    // Each statement is a token-sized leaf: amortized growth keeps the
+    // memory linear (well under the quadratic 24 * n * n / 2 bytes).
+    try testing.expect(p.arena.queryCapacity() < 64 * n * @sizeOf(Sexp));
 }
 
 test "tree walks keep their stack on the heap: a tree a million levels deep" {
