@@ -192,10 +192,7 @@ pub const LexerGenerator = struct {
             self.startOfMask[mask] = @intCast(idx);
         }
 
-        self.dfa = automaton.build(a, .{ .patterns = fulls.items, .starts = liveSets.items }) catch |e| switch (e) {
-            error.OutOfMemory => return error.OutOfMemory,
-            error.AutomatonTooLarge => return self.fail(&rules[self.consuming[0]], 0, "the lexer automaton is too large (bounded repeats expand; reduce {{n,m}} counts)", .{}),
-        };
+        self.dfa = try self.buildDfa(fulls.items, liveSets.items);
         if (self.dfa.numStates > std.math.maxInt(u16)) {
             return self.fail(&rules[self.consuming[0]], 0, "the lexer DFA has {d} states; at most 65535 are supported", .{self.dfa.numStates});
         }
@@ -207,6 +204,17 @@ pub const LexerGenerator = struct {
 
         self.saves = try a.alloc(bool, self.dfa.numStates);
         for (0..self.dfa.numStates) |s| self.saves[s] = self.needsSave(@intCast(s));
+    }
+
+    /// The minimized DFA of `patterns`, with a start state per live set;
+    /// a size limit is reported at the first consuming rule.
+    fn buildDfa(self: *LexerGenerator, patterns: []const *const regex.Node, starts: []const []const u32) !automaton.Dfa {
+        const first = &self.spec.rules.items[self.consuming[0]];
+        return automaton.build(self.arena.allocator(), .{ .patterns = patterns, .starts = starts }) catch |e| switch (e) {
+            error.OutOfMemory => return error.OutOfMemory,
+            error.NfaTooLarge => return self.fail(first, 0, "the lexer NFA has more than {d} states (bounded repeats expand, and nesting multiplies them; reduce {{n,m}} counts)", .{automaton.maxNfaStates}),
+            error.DfaTooLarge => return self.fail(first, 0, "the lexer DFA is too large: subset construction passed {d} states, and at most 65535 are supported", .{automaton.maxRawDfaStates}),
+        };
     }
 
     fn atomOf(g: Guard) Atom {
@@ -487,7 +495,7 @@ pub const LexerGenerator = struct {
             const mask = for (self.startOfMask, 0..) |_, m| {
                 if (self.guardsHold(r.guards, m)) break m;
             } else return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
-            var single = try automaton.build(a, .{ .patterns = fulls[k .. k + 1], .starts = &.{&[_]u32{0}} });
+            var single = try self.buildDfa(fulls[k .. k + 1], &.{&[_]u32{0}});
             const text = (try single.shortestAccepted(a, 0)).?;
             const m = self.dfa.longestMatchFrom(self.startOfMask[mask], text).?;
             const winner = &self.spec.rules.items[self.consuming[m.rule]];

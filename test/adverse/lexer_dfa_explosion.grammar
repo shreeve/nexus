@@ -1,0 +1,14 @@
+# A pattern whose DFA doubles with every repeat ("an 'a' 18 bytes before the
+# 'c'") is stopped during subset construction, long before it exhausts
+# memory, with the same located error as a DFA over the limit
+# error: lexer_dfa_explosion.grammar:10:1:
+# error: the lexer DFA is too large
+@lexer
+tokens
+    t, eof, err
+
+[ab]* 'a' [ab]{18} 'c'  → t
+.                       → err
+
+@parser
+top! = ERR → 1

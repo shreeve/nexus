@@ -21,7 +21,13 @@ pub const none: u32 = std.math.maxInt(u32);
 /// Upper bound on NFA size (bounded repeats are expanded).
 pub const maxNfaStates: usize = 200_000;
 
-pub const Error = error{ OutOfMemory, AutomatonTooLarge };
+/// Upper bound on the states of subset construction. A DFA can grow
+/// exponentially with its pattern, so construction stops here instead of
+/// exhausting memory; minimization merges states, so the bound leaves room
+/// above the 65535 states an emitted scanner can number.
+pub const maxRawDfaStates: usize = 4 * 65535;
+
+pub const Error = error{ OutOfMemory, NfaTooLarge, DfaTooLarge };
 
 // =============================================================================
 // Byte classes
@@ -115,7 +121,7 @@ pub const Nfa = struct {
     const Frag = struct { start: u32, end: u32 };
 
     fn add(self: *Nfa, gpa: Allocator, s: State) Error!u32 {
-        if (self.states.items.len >= maxNfaStates) return error.AutomatonTooLarge;
+        if (self.states.items.len >= maxNfaStates) return error.NfaTooLarge;
         try self.states.append(gpa, s);
         return @intCast(self.states.items.len - 1);
     }
@@ -439,6 +445,7 @@ fn intern(
     nc: u16,
 ) Error!u32 {
     if (map.get(set)) |id| return id;
+    if (keys.items.len >= maxRawDfaStates) return error.DfaTooLarge;
     const key = try a.dupe(u32, set);
     const id: u32 = @intCast(keys.items.len);
     try keys.append(a, key);
