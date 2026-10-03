@@ -456,9 +456,8 @@ check_fmt() {
 # check_lexfuzz: generated lexers agree with test/lexfuzz/fuzz.py's
 # reference matcher on a fixed seed (a small run; larger ones are manual).
 check_lexfuzz() {
-    local fuzz=test/lexfuzz/fuzz.py args=(--seed 1 --specs 12 --inputs 100 --keep "$WORK/out/lexfuzz")
+    local fuzz=test/lexfuzz/fuzz.py args=(--seed 1 --specs 12 --inputs 100 -O Debug --keep "$WORK/out/lexfuzz")
     if ! command -v python3 >/dev/null; then REASON="python3 not found"; return 1; fi
-    python3 "$fuzz" --help 2>/dev/null | grep -q -- '-O ' && args+=(-O Debug)
     if ! with_timeout 300 python3 "$fuzz" "${args[@]}" >>"$LOG" 2>&1 </dev/null; then
         REASON="$(grep -m1 -E 'MISMATCH|unexpected|error' "$LOG" || tail -1 "$LOG")"
         return 1
@@ -601,20 +600,21 @@ else
 fi
 
 # One run per checkout at a time: runs share bin/nexus and the build and
-# doc directories under .zig-cache/nexus-test.
+# doc directories under .zig-cache/nexus-test. The lock is a symlink to
+# the holder's pid: `ln -s` makes it, pid included, in one step, and fails
+# when it exists. A lock whose holder is gone is removed (only if it still
+# names that pid) and taken again.
 mkdir -p "$OUTROOT"
-LOCK="$OUTROOT/run.lock"
-if ! mkdir "$LOCK" 2>/dev/null; then
-    pid=$(cat "$LOCK/pid" 2>/dev/null)
-    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+LOCK="$OUTROOT/run.pid"
+until ln -s "$$" "$LOCK" 2>/dev/null; do
+    pid=$(readlink "$LOCK") || { [[ -e $LOCK ]] && { printf '%s%s is not a test/run lock%s\n' "$R" "$LOCK" "$X"; exit 2; }; continue; }
+    if kill -0 "$pid" 2>/dev/null; then
         printf '%sanother test/run (pid %s) is running in this checkout%s\n' "$R" "$pid" "$X"
         exit 2
     fi
-    rm -rf "$LOCK"
-    mkdir "$LOCK" || exit 2
-fi
-echo $$ >"$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT
+    [[ $(readlink "$LOCK") == "$pid" ]] && rm -f "$LOCK"
+done
+trap 'rm -f "$LOCK"' EXIT
 
 START_T=$SECONDS
 printf '%sbuilding nexus%s\n' "$D" "$X"
@@ -626,7 +626,7 @@ fi
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/nexus-test.XXXXXX")
 RESULTS="$WORK/results"
 mkdir -p "$RESULTS" "$WORK/build" "$WORK/lock" "$WORK/out" "$OUTROOT/build"
-trap 'rm -rf "$WORK" "$LOCK"' EXIT
+trap 'rm -rf "$WORK"; rm -f "$LOCK"' EXIT
 export ROOT NEXUS LIB OUTROOT DOCS_OUT PANIC_RE POS_RE TIMEOUT WORK RESULTS UPDATE
 
 selected() {
