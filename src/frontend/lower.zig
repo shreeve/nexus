@@ -835,10 +835,7 @@ pub const GrammarLowerer = struct {
         }
 
         const elems = try elements.toOwnedSlice(self.allocator);
-        var positions = logicalLength(elems);
-        for (elems) |e| if (e.kind == .choice) for (e.choices) |c| {
-            positions += c.len;
-        };
+        const positions = width(elems);
         if (positions > ParsedAlternative.maxPositions)
             return self.fail(elementsNode, "this alternative has {d} elements; the limit is {d}", .{ positions, ParsedAlternative.maxPositions });
         const actionNode = ir.Alt.action(altNode);
@@ -873,6 +870,23 @@ pub const GrammarLowerer = struct {
     fn logicalLength(elements: []const ParsedElement) usize {
         var n: usize = 0;
         for (elements) |e| n += if (e.kind == .optGroup) e.subElements.len else 1;
+        return n;
+    }
+
+    /// Number of elements a pattern has, counting those inside its groups
+    /// and choices at any depth: each body becomes a rule of its own, so
+    /// the total bounds every rule's positions.
+    fn width(elements: []const ParsedElement) usize {
+        var n: usize = 0;
+        for (elements) |e| switch (e.kind) {
+            .optGroup => n += width(e.subElements),
+            .group => n += 1 + width(e.subElements),
+            .choice => {
+                n += 1;
+                for (e.choices) |c| n += width(c);
+            },
+            else => n += 1,
+        };
         return n;
     }
 

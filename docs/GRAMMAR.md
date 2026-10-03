@@ -977,7 +977,7 @@ Exceeding a limit is an error, located where the grammar exceeds it
 | lexer DFA states after minimization | 65535 | the scanner numbers its states with a `u16` |
 | state variable values / `pre` values | -128..127 / 0..255 | `i8` / `u8` |
 | `rewind(n)` | 65535, and the rule's shortest match | a token's length is a `u16` |
-| positions in one alternative (its elements and those in its groups and choices) | 65534 | action positions are `u16` |
+| elements in one alternative, counting those in its groups and choices at any depth | 65534 | action positions are `u16` |
 | alternatives one alternative's `[...]` and choices expand into | 32766 | as below |
 | rules of the generated grammar | 32766 | a reduction is a 16-bit table cell |
 | symbols of the generated grammar | 65535 | symbol ids are `u16` |

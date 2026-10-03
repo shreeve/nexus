@@ -217,8 +217,8 @@ pub const ParsedRule = struct {
 };
 
 pub const ParsedAlternative = struct {
-    /// Most positions an alternative may have (its elements, those of its
-    /// `[A B]` groups, and those inside its choices): positions are u16,
+    /// Most elements an alternative may have, counting those inside its
+    /// groups and choices at any depth: positions are u16,
     /// and expand reserves maxInt(u16) as a marker.
     pub const maxPositions = std.math.maxInt(u16) - 1;
 

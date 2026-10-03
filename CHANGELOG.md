@@ -26,7 +26,7 @@ Changes marked **Breaking** need edits in a grammar or a lang module;
   (`items:IDENT "," items:IDENT`). All three were errors.
 - `@tags` works without `@schema`.
 - Rules have no length limit of their own: an alternative has at most
-  65534 positions (its elements and those in its groups and choices), and
+  65534 elements, counting those in its groups and choices at any depth, and
   a grammar at most 65535 symbols, both located errors.
 - GRAMMAR.md has a Limits section.
 
