@@ -376,6 +376,8 @@ const Codegen = struct {
             \\const keepTrailingNils = {};
             \\const hasTrivia = {};
             \\const hasRepair = {};
+            \\/// `@as` groups the promotable token may become (see `promote`).
+            \\const asGroups = {d};
             \\const numSymbols = {d};
             \\const endSymbol: u16 = {d};
             \\const errorSymbol: u16 = {d};
@@ -386,6 +388,7 @@ const Codegen = struct {
             self.schema() != null,
             self.g.trivia.len > 0,
             self.table.repair != null,
+            self.asGroups(),
             self.g.symbols.items.len,
             self.g.endId,
             self.g.errorId,
@@ -402,17 +405,12 @@ const Codegen = struct {
         return self.promotable != null;
     }
 
-    /// tokenToSymbol: TokenCat -> grammar symbol.
+    /// tokenToSymbol: TokenCat -> grammar symbol, computed once per token.
     fn emitTokenToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
-        const identAs = self.hasIdentAs();
-        try w.writeAll(if (identAs)
-            "\nfn tokenToSymbol(self: *BaseParser, token: Token) u16 {\n"
-        else
-            "\nfn tokenToSymbol(_: *BaseParser, token: Token) u16 {\n");
-        try w.writeAll("    return switch (token.cat) {\n");
+        try w.writeAll("\nfn tokenToSymbol(token: Token) u16 {\n    return switch (token.cat) {\n");
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
-
-        if (self.promotable) |tok| try w.print("        .@\"{s}\" => promote(self, token),\n", .{tok});
+        // The promotable token's symbol depends on the state (`promote`).
+        if (self.promotable) |tok| try w.print("        .@\"{s}\" => {s},\n", .{ tok, if (self.asGroups() > 0) "needsPromotion" else "promotableSymbol" });
         for (self.tokenMap.items) |m| try w.print("        .@\"{s}\" => {d},\n", .{ m.cat, m.sym });
         try w.print("        else => {d}, // error\n    }};\n}}\n", .{self.g.errorId});
     }
@@ -562,10 +560,23 @@ const Codegen = struct {
         return identAs;
     }
 
-    /// promote and the tryPromote* keyword promoters (`@as`): the promotable
-    /// token becomes the first group keyword the state accepts.
+    /// The `@as` groups a token may be promoted to (`self` excluded), in
+    /// declared order; the runtime caches one keyword lookup per group.
+    fn asGroups(self: *const Codegen) usize {
+        var n: usize = 0;
+        for (self.g.asDirectives) |directive| n += @intFromBool(!isSelf(directive));
+        return n;
+    }
+
+    /// promote (`@as`): the promotable token becomes the first group
+    /// keyword the state accepts, in declared order; `self` keeps the token
+    /// itself if the state takes it. A group named after `self`, or with
+    /// `!`, is permissive (any action), otherwise strict (shift only).
     fn emitIdentToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
-        if (!self.hasIdentAs()) return;
+        if (self.asGroups() == 0) {
+            try w.writeAll("\nfn promote(_: *BaseParser, _: Token) u16 {\n    unreachable; // no @as group\n}\n");
+            return;
+        }
         try w.writeAll(
             \\
             \\fn promote(self: *BaseParser, token: Token) u16 {
@@ -576,55 +587,26 @@ const Codegen = struct {
             \\    if (text.len == 0) return promotableSymbol;
             \\
         );
-        // Ordered resolution: `@as` candidates in declared order; `self`
-        // keeps the token itself if the state takes it.
-        for (self.g.asDirectives) |directive| {
-            if (isSelf(directive)) {
-                try w.writeAll("    if (getAction(self.stateStack.last().?, promotableSymbol) != 0) return promotableSymbol;\n");
-            } else {
-                try w.print("    if (tryPromote{s}(self, text)) |sym| return sym;\n", .{try capitalized(self.allocator, directive.rule)});
-            }
-        }
-        try w.writeAll("    return promotableSymbol;\n}\n");
-
-        // Matching mode per group: `group!` or any group after `self` is
-        // permissive (any action), otherwise strict (shift only).
         var seenSelf = false;
+        var group: usize = 0;
         for (self.g.asDirectives) |directive| {
             if (isSelf(directive)) {
                 seenSelf = true;
+                try w.writeAll("    if (getAction(self.stateStack.last().?, promotableSymbol) != 0) return promotableSymbol;\n");
                 continue;
             }
-            const check: []const u8 = if (directive.permissive or seenSelf) "!= 0" else "> 0";
-            const cap = try capitalized(self.allocator, directive.rule);
             // The lang lookup is `via` when given, else `<group>As`.
             const lookup = if (self.g.lang != null)
                 try self.allocator.print("lang.{s}", .{directive.via orelse try self.allocator.print("{s}As", .{directive.rule})})
             else
                 try self.allocator.print("{s}As", .{directive.rule});
-            try w.print(
-                \\
-                \\fn tryPromote{s}(self: *BaseParser, text: []const u8) ?u16 {{
-                \\    const state = self.stateStack.last().?;
-                \\    const id = {s}(text) orelse return null;
-                \\    const idIdx = @backingInt(id);
-                \\    const sym = {s}ToSymbol[idIdx];
-                \\    if (sym != 0 and getAction(state, sym) {s}) {{
-                \\        self.lastMatchedId = @intCast(idIdx);
-                \\        return sym;
-                \\    }}
-                \\
-            , .{ cap, lookup, directive.rule, check });
-            if (self.g.lang != null) try w.print(
-                \\    const fallback = {s}FallbackSymbol;
-                \\    if (fallback != 0 and getAction(state, fallback) {s}) {{
-                \\        self.lastMatchedId = @intCast(idIdx);
-                \\        return fallback;
-                \\    }}
-                \\
-            , .{ directive.rule, check });
-            try w.writeAll("    return null;\n}\n");
+            const fallback = if (self.g.lang != null) try self.allocator.print("{s}FallbackSymbol", .{directive.rule}) else "0";
+            try w.print("    if (self.tryPromote({d}, text, {s}, &{s}ToSymbol, {s}, {})) |sym| return sym;\n", .{
+                group, lookup, directive.rule, fallback, directive.permissive or seenSelf,
+            });
+            group += 1;
         }
+        try w.writeAll("    return promotableSymbol;\n}\n");
     }
 
     fn isSelf(directive: grammar.AsDirective) bool {

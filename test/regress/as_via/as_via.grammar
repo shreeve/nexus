@@ -1,4 +1,4 @@
-# generated-has: lang.lookupKeyword(text)
+# generated-has: lang.lookupKeyword,
 #
 # `@as TOKEN via fn` names the lang lookup function explicitly: identifiers
 # are promoted through `lookupKeyword` (not the `<group>As` convention), and

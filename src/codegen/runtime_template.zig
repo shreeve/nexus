@@ -14,10 +14,10 @@
 //! Generated interface (codegen declares these in every module):
 //!   types      Tag, Role, Start, Token, TokenCat, Lexer
 //!   config     nodeStore, elemEnds, keepTrailingNils, hasTrivia, hasRepair,
-//!              numSymbols, endSymbol, errorSymbol, xExcludes
+//!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes
 //!   tables     ruleLhs, ruleLen
 //!   functions  getAction, getImmediateShift, startState, startMarker,
-//!              tokenToSymbol, executeAction, expectedIn, symbolName, isTrivia,
+//!              tokenToSymbol, promote, executeAction, expectedIn, symbolName, isTrivia,
 //!              repairCandidates, repairClass, ruleSideLabels, slotOf,
 //!              restSlotOf, roleAt, restRoleOf
 
@@ -281,6 +281,10 @@ inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
 
+/// The symbol `tokenToSymbol` gives the promotable token when `@as`
+/// decides it per state; no grammar symbol has it.
+const needsPromotion: u16 = std.math.maxInt(u16);
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -353,6 +357,10 @@ pub const BaseParser = struct {
     pendingInsert: ?u16 = null,
     /// `@as` keyword ordinal of `current`, stored in its `src.id`.
     lastMatchedId: u16 = 0,
+    /// The `@as` lookups of `current`, one per group: the keyword ordinal
+    /// plus one, `noKeyword`, or 0 before the lookup. A lookup does not
+    /// depend on the state, so it runs once per token.
+    keywordIds: [asGroups]u32 = @splat(0),
     /// Set when a builder could not allocate; the parse then fails.
     outOfMemory: bool = false,
     /// A parse has begun (the next one re-reads the input).
@@ -402,7 +410,7 @@ pub const BaseParser = struct {
             .source = source,
             .current = undefined,
         };
-        p.current = p.lexer.next();
+        p.setCurrent(p.lexer.next());
         return p;
     }
 
@@ -539,7 +547,7 @@ pub const BaseParser = struct {
         // keep counting, so earlier trees stay valid.
         if (self.started) {
             self.lexer = Lexer.init(self.source);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
             self.lastMatchedId = 0;
             self.triviaTokens.clearRetainingCapacity();
         }
@@ -561,8 +569,55 @@ pub const BaseParser = struct {
     inline fn lookahead(self: *BaseParser) u16 {
         if (self.injectedToken) |marker| return marker;
         if (self.pendingInsert) |token| return token;
-        return tokenToSymbol(self, self.current);
+        const sym = tokenToSymbol(self.current);
+        if (asGroups > 0 and sym == needsPromotion) return promote(self, self.current);
+        return sym;
     }
+
+    /// Make `tok` the current token (forgetting the keyword lookups of the
+    /// one before).
+    inline fn setCurrent(self: *BaseParser, tok: Token) void {
+        self.current = tok;
+        if (asGroups > 0) self.keywordIds = @splat(0);
+    }
+
+    /// `@as` promotion of the current token, `text`, to one group: the
+    /// group's symbol for the keyword, else the group's fallback symbol,
+    /// when the state takes it (with any action when `permissive`, else by
+    /// a shift). The keyword's ordinal becomes the leaf's id.
+    inline fn tryPromote(
+        self: *BaseParser,
+        comptime group: usize,
+        text: []const u8,
+        comptime lookup: anytype,
+        comptime toSymbol: []const u16,
+        comptime fallback: u16,
+        comptime permissive: bool,
+    ) ?u16 {
+        const id = self.keywordId(group, text, lookup) orelse return null;
+        const state = self.stateStack.last().?;
+        for ([_]u16{ toSymbol[id], fallback }) |sym| {
+            if (sym == 0) continue;
+            const action = getAction(state, sym);
+            if (if (permissive) action != 0 else action > 0) {
+                self.lastMatchedId = id;
+                return sym;
+            }
+        }
+        return null;
+    }
+
+    /// The ordinal `lookup` gives the current token's `text` in `group`,
+    /// looked up once per token.
+    inline fn keywordId(self: *BaseParser, comptime group: usize, text: []const u8, comptime lookup: anytype) ?u16 {
+        const known = self.keywordIds[group];
+        if (known != 0) return if (known == noKeyword) null else @intCast(known - 1);
+        const id: ?u16 = if (lookup(text)) |k| @backingInt(k) else null;
+        self.keywordIds[group] = if (id) |i| @as(u32, i) + 1 else noKeyword;
+        return id;
+    }
+
+    const noKeyword = std.math.maxInt(u32);
 
     /// The table action, with the `X "c"` override: when the table reduces
     /// on the hinted token and it touches the previous token, shift
@@ -699,7 +754,7 @@ pub const BaseParser = struct {
 
     /// Fetch the next token, moving trivia to the trivia channel.
     fn advance(self: *BaseParser) !void {
-        self.current = self.lexer.next();
+        self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
     }
 
@@ -707,7 +762,7 @@ pub const BaseParser = struct {
         while (isTrivia(self.current.cat)) {
             try self.triviaTokens.append(self.allocator(), self.current);
             _ = takeLexerId(&self.lexer);
-            self.current = self.lexer.next();
+            self.setCurrent(self.lexer.next());
         }
     }
 
@@ -1441,6 +1496,7 @@ const nodeStore = true;
 const keepTrailingNils = true;
 const hasTrivia = true;
 const hasRepair = true;
+const asGroups = 0;
 const elemEnds = true;
 const numSymbols = 16;
 const endSymbol: u16 = 1;
@@ -1512,7 +1568,11 @@ fn isTrivia(cat: TokenCat) bool {
     return cat == .comment;
 }
 
-fn tokenToSymbol(_: *BaseParser, token: Token) u16 {
+fn promote(_: *BaseParser, _: Token) u16 {
+    unreachable; // no @as group
+}
+
+fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .eof => 1,
         .newline => 8,
