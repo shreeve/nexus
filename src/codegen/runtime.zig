@@ -46,14 +46,14 @@ pub fn writeSection(w: *std.Io.Writer, name: []const u8, slots: []const Slot) Er
 pub fn section(name: []const u8) ?[]const u8 {
     var pos: usize = 0;
     while (pos < template.len) {
-        const end = std.mem.indexOfScalarPos(u8, template, pos, '\n') orelse template.len;
+        const end = std.mem.findScalarPos(u8, template, pos, '\n') orelse template.len;
         const line = template[pos..end];
         pos = @min(end + 1, template.len);
         const found = marker(line, "// @section ") orelse continue;
         if (!std.mem.eql(u8, found, name)) continue;
         const start = pos;
         while (pos < template.len) {
-            const e = std.mem.indexOfScalarPos(u8, template, pos, '\n') orelse template.len;
+            const e = std.mem.findScalarPos(u8, template, pos, '\n') orelse template.len;
             if (marker(template[pos..e], "// @end") != null) return template[start..pos];
             pos = @min(e + 1, template.len);
         }
@@ -77,8 +77,8 @@ test "every section is present and ends" {
     for ([_][]const u8{ "sexp", "parser", "ir" }) |name| {
         const body = section(name) orelse return error.MissingSection;
         try std.testing.expect(body.len > 0);
-        try std.testing.expect(std.mem.indexOf(u8, body, "// @section") == null);
-        try std.testing.expect(std.mem.indexOf(u8, body, "// @end") == null);
+        try std.testing.expect(std.mem.find(u8, body, "// @section") == null);
+        try std.testing.expect(std.mem.find(u8, body, "// @end") == null);
     }
     try std.testing.expectEqual(@as(?[]const u8, null), section("nope"));
 }
@@ -86,8 +86,8 @@ test "every section is present and ends" {
 test "sections exclude the fixture and its tests" {
     for ([_][]const u8{ "sexp", "parser", "ir" }) |name| {
         const body = section(name).?;
-        try std.testing.expect(std.mem.indexOf(u8, body, "test \"") == null);
-        try std.testing.expect(std.mem.indexOf(u8, body, "@import(\"std\")") == null);
+        try std.testing.expect(std.mem.find(u8, body, "test \"") == null);
+        try std.testing.expect(std.mem.find(u8, body, "@import(\"std\")") == null);
     }
 }
 
@@ -96,8 +96,8 @@ test "slots are replaced and must all be filled" {
     defer out.deinit();
     try writeSection(&out.writer, "parser", &.{.{ .name = "startMethods", .text = "    // START\n" }});
     const text = out.written();
-    try std.testing.expect(std.mem.indexOf(u8, text, "    // START\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "@slot") == null);
+    try std.testing.expect(std.mem.find(u8, text, "    // START\n") != null);
+    try std.testing.expect(std.mem.find(u8, text, "@slot") == null);
 
     var sink: std.Io.Writer.Discarding = .init(&.{});
     try std.testing.expectError(error.UnfilledSlot, writeSection(&sink.writer, "parser", &.{}));

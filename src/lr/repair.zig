@@ -126,9 +126,9 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
     defer a.free(costs);
 
     const Candidate = struct { id: u16, class: u8, cost: u32 };
-    var candidates: std.ArrayListUnmanaged(Candidate) = .empty;
+    var candidates: std.ArrayList(Candidate) = .empty;
     defer candidates.deinit(a);
-    var tokens: std.ArrayListUnmanaged(u16) = .empty;
+    var tokens: std.ArrayList(u16) = .empty;
     const offsets = try a.alloc(u32, auto.states.items.len + 1);
     offsets[0] = 0;
 

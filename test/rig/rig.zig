@@ -947,13 +947,13 @@ pub const Parser = struct {
         self.base.writeError(&w) catch return null;
         // `line:col: expected A, B or C, got D`
         const text = w.buffered();
-        const from = (std.mem.indexOf(u8, text, ": expected ") orelse return null) + ": expected ".len;
-        const to = std.mem.lastIndexOf(u8, text, ", got ") orelse return null;
+        const from = (std.mem.find(u8, text, ": expected ") orelse return null) + ": expected ".len;
+        const to = std.mem.findLast(u8, text, ", got ") orelse return null;
         var names: [max_expected][]const u8 = undefined;
         var count: usize = 0;
         var rest = text[from..to];
         while (rest.len > 0) {
-            const cut = std.mem.indexOf(u8, rest, ", ") orelse std.mem.indexOf(u8, rest, " or ") orelse rest.len;
+            const cut = std.mem.find(u8, rest, ", ") orelse std.mem.find(u8, rest, " or ") orelse rest.len;
             const name = rest[0..cut];
             rest = if (cut == rest.len) "" else rest[cut + (if (rest[cut] == ',') @as(usize, 2) else 4) ..];
             for (names[0..count]) |n| {
@@ -977,7 +977,7 @@ pub const Parser = struct {
     const max_expected = 3;
 
     fn format(self: *Parser, comptime fmt: []const u8, args: anytype) []const u8 {
-        return std.fmt.allocPrint(self.allocator(), fmt, args) catch "unexpected token";
+        return self.allocator().print(fmt, args) catch "unexpected token";
     }
 
     fn allocator(self: *Parser) std.mem.Allocator {
@@ -1026,8 +1026,8 @@ pub const Parser = struct {
     /// rest parameters. Captures come first.
     fn splitBars(self: *Parser, node: Sexp, items: []Sexp) std.mem.Allocator.Error!void {
         const bars = ir.Lambda.params(node);
-        var caps: std.ArrayListUnmanaged(Sexp) = .empty;
-        var params: std.ArrayListUnmanaged(Sexp) = .empty;
+        var caps: std.ArrayList(Sexp) = .empty;
+        var params: std.ArrayList(Sexp) = .empty;
         for (bars.items()) |e| {
             const is_capture = if (e.kind()) |k| switch (k) {
                 .cap_clone, .cap_move, .cap_weak => true,

@@ -5,7 +5,7 @@
 ./test/run mumps            # only tests whose id contains "mumps"
 ./test/run -v known         # list each result, including known failures
 ./test/run --update rig     # rewrite goldens after an intended change, then review the diff
-test/diff legacy current OLD.grammar NEW.grammar CORPUS   # old-vs-new trees over a corpus
+test/diff OLD_NEXUS NEW_NEXUS OLD.grammar NEW.grammar CORPUS   # trees from two generators over a corpus
 test/bench/run              # generation time and parse throughput
 ```
 
@@ -68,7 +68,6 @@ optional:
 | `lang` | every `*.zig` in the directory | `@lang` module files (space-separated) |
 | `start` | the parser's first `parse*` method | start rule for `cases/*` |
 | `flags` | none | extra generator options, e.g. `--spans` |
-| `generator` | `current` | `legacy` generates with Nexus 0.10.3 instead of `bin/nexus` (for grammars still in the old format once 1.0 no longer reads it); `gen/`, `sexp/` and `determinism/` are then skipped |
 
 A case is any file in `cases/` except `*.tree`, `*.md` and `README*`; its
 golden is the same name with the extension replaced by `.tree`. A
@@ -84,9 +83,9 @@ The in-repo suites:
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
 | `spans` | the MUMPS grammar generated with `--spans` | MUMPS cases |
 | `nexus` | `nexus.grammar` with `src/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
-| `rig` | the live Rig grammar and its `rig.zig`, `ir.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
+| `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 that fail today), 22 MVTS-derived em compliance routines |
-| `zag`, `ruby`, `slash`, `nexis` | downstream grammars, ported to 1.0 without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
+| `zag`, `ruby`, `slash`, `nexis` | downstream grammars without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
 where and how an input fails.
@@ -106,11 +105,8 @@ _                    nil
 !error ParseError at 3:5 unexpected newline
 ```
 
-The driver adapts at compile time: `Parser` (or `BaseParser` when a
-grammar has no `@lang`), lists as slices (0.10.x) or as a struct with
-`items()` (1.0), and every `pub fn parseX(*Parser) !Sexp` as a start rule
-(so the same driver serves `test/diff` with Nexus 0.10.3). `--no-spans`
-omits the spans.
+The driver finds every `pub fn parseX(*Parser) !Sexp` at compile time and
+offers it as a start rule. `--no-spans` omits the spans.
 
 ## Known bugs
 
@@ -145,19 +141,15 @@ current behavior only.
 
 `test/diff` generates a parser from each of two (nexus, grammar) pairs,
 parses a corpus with both (parallel chunks, ReleaseSafe), and compares
-trees file by file. `legacy` names Nexus 0.10.3 (built from the `v0.10.3`
-tag on first use, or `$NEXUS_LEGACY`), `current` this checkout's
-`bin/nexus`. Pair each generator with a grammar it reads: `legacy` reads
-only the 0.10 format, `current` only 1.0.
+trees file by file. Each nexus is a path to a binary or `current`, this
+checkout's `bin/nexus` (rebuilt first).
 
 ```bash
-# MUMPS: em's 0.10 grammar under 0.10.3 vs the 1.0 port, over VistA
-# (24,704 routines: 22,709 same trees, 1,995 same parse errors)
-test/diff --lang-old ~/Data/Code/em/src/mumps.zig --lang-new test/mumps/mumps.zig \
-    legacy current ~/Data/Code/em/mumps.grammar test/mumps/mumps.grammar \
+# A generator change under review: the previous build against this checkout, over VistA
+test/diff /tmp/nexus-before/bin/nexus current test/mumps/mumps.grammar test/mumps/mumps.grammar \
     --ext .m ~/Data/Code/em/misc/vista
 
-# Two 1.0 grammars (a change under review), after a lang Parser wrapper
+# A grammar change under review, after a lang Parser wrapper
 test/diff --start parseProgram current current OLD/rig.grammar NEW/rig.grammar \
     --ext .rig ~/Data/Code/rig/test ~/Data/Code/rig/examples
 ```
@@ -208,11 +200,11 @@ against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
 ## Benchmarks
 
 `test/bench/run` builds nexus (ReleaseFast by default, `-O` to change,
-`--nexus BIN|legacy` to time another generator), times generation of every
+`--nexus BIN` to time another generator), times generation of every
 in-repo grammar, and measures lexing and lexing+parsing throughput on the
 full VistA corpus and a synthetic 4 MB Rig file (falling back to the
 committed cases when those repos are absent). `test/bench/BASELINE.md` holds
-the 0.10.3 and 1.0.0 numbers; update it when a change moves them.
+the current numbers; update it when a change moves them.
 
 ## Files
 
@@ -223,7 +215,6 @@ the 0.10.3 and 1.0.0 numbers; update it when a change moves them.
 | `test/bench/run`, `test/bench/BASELINE.md` | benchmarks |
 | `test/lib/driver.zig` | tree driver compiled into every generated parser |
 | `test/lib/build-grammar` | generate + compile one grammar with a given nexus |
-| `test/lib/legacy-nexus` | find or build Nexus 0.10.3 |
 | `test/lib/doctest` | extract the doc examples into suites |
 | `test/golden/` | generated-code (`.zig`) and frontend-tree (`.sexp`) goldens |
 

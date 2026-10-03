@@ -36,7 +36,7 @@ pub const Entry = struct {
 /// Aggregate the table's conflicts into manifest entries, ordered by kind
 /// (shift first), then rule, then `over`.
 pub fn entries(a: Allocator, tbl: *const Table) ![]Entry {
-    var list: std.ArrayListUnmanaged(Entry) = .empty;
+    var list: std.ArrayList(Entry) = .empty;
     for (tbl.conflictList, 0..) |c, ci| {
         const over: u16 = if (c.kind == .reduce) c.over else 0;
         for (list.items) |*e| {
@@ -48,7 +48,7 @@ pub fn entries(a: Allocator, tbl: *const Table) ![]Entry {
     }
     std.mem.sort(Entry, list.items, {}, struct {
         fn lessThan(_: void, x: Entry, y: Entry) bool {
-            if (x.kind != y.kind) return @intFromEnum(x.kind) < @intFromEnum(y.kind);
+            if (x.kind != y.kind) return @backingInt(x.kind) < @backingInt(y.kind);
             if (x.rule != y.rule) return x.rule < y.rule;
             return x.over < y.over;
         }
@@ -115,7 +115,7 @@ fn writeItem(w: *std.Io.Writer, g: *const Grammar, item: Item) !void {
 /// Rule text normalized for comparison: `->` is `→`, whitespace runs are one
 /// space, an empty right-hand side is `ε`.
 pub fn normalize(a: Allocator, text: []const u8) ![]const u8 {
-    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     var pendingSpace = false;
     while (i < text.len) {
@@ -157,7 +157,7 @@ pub fn shortestPrefix(a: Allocator, g: *const Grammar, auto: *const Automaton, t
     defer a.free(seen);
     @memset(seen, false);
 
-    var queue: std.ArrayListUnmanaged(u16) = .empty;
+    var queue: std.ArrayList(u16) = .empty;
     defer queue.deinit(a);
     for (auto.startStates.items) |s| {
         if (!seen[s]) {
@@ -177,7 +177,7 @@ pub fn shortestPrefix(a: Allocator, g: *const Grammar, auto: *const Automaton, t
         }
     }
 
-    var path: std.ArrayListUnmanaged(u16) = .empty;
+    var path: std.ArrayList(u16) = .empty;
     var s = target;
     while (parent[s] != none) : (s = parent[s]) {
         if (!table.isStartMarker(g, via[s])) try path.append(a, via[s]);
@@ -230,7 +230,7 @@ fn writeEntryHead(w: *std.Io.Writer, g: *const Grammar, e: Entry) !void {
 /// The actual manifest, ready to paste; reasons are carried over from the
 /// declared entries that still match.
 pub fn writeManifest(w: *std.Io.Writer, a: Allocator, g: *const Grammar, actual: []const Entry, declared: []const ConflictEntry) !void {
-    var heads: std.ArrayListUnmanaged([]const u8) = .empty;
+    var heads: std.ArrayList([]const u8) = .empty;
     defer heads.deinit(a);
     var width: usize = 0;
     for (actual) |e| {
@@ -263,7 +263,7 @@ fn columns(text: []const u8) usize {
 /// Whether a declared entry names the same conflict as an actual one
 /// (count aside).
 fn matches(a: Allocator, g: *const Grammar, d: ConflictEntry, e: Entry) !bool {
-    if (@intFromEnum(d.kind) != @intFromEnum(e.kind)) return false;
+    if (@backingInt(d.kind) != @backingInt(e.kind)) return false;
     if (!try sameRule(a, g, d.rule, e.rule)) return false;
     if (e.kind == .reduce) {
         const over = d.over orelse return false;

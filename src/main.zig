@@ -213,12 +213,6 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     }
     lexerSpec.langName = ir.lang;
 
-    diag.info("   Lexer: {d} states, {d} tokens, {d} rules", .{
-        lexerSpec.states.items.len,
-        lexerSpec.tokens.items.len,
-        lexerSpec.rules.items.len,
-    });
-
     var lexerGen = LexerGenerator.init(allocator, &lexerSpec);
     defer lexerGen.deinit();
 
@@ -229,6 +223,12 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             std.process.exit(1);
         },
     };
+
+    diag.info("   Lexer: {d} tokens, {d} rules, {d} DFA states", .{
+        lexerSpec.tokens.items.len,
+        lexerSpec.rules.items.len,
+        lexerGen.dfa.numStates,
+    });
 
     diag.info("   Parser: {d} rules, {d} start symbols", .{
         ir.rules.len,

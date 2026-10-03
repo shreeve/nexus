@@ -55,8 +55,8 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
         }
     }
 
-    var symbols: std.ArrayListUnmanaged(u16) = .empty;
-    var offsets: std.ArrayListUnmanaged(u32) = .empty;
+    var symbols: std.ArrayList(u16) = .empty;
+    var offsets: std.ArrayList(u32) = .empty;
     try offsets.append(a, 0);
     const ofState = try a.alloc(u16, auto.states.items.len);
 
@@ -69,9 +69,9 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
     const covered = scratch.get(0);
     const visited = try a.alloc(bool, numSymbols);
     defer a.free(visited);
-    var list: std.ArrayListUnmanaged(u16) = .empty;
+    var list: std.ArrayList(u16) = .empty;
     defer list.deinit(a);
-    var work: std.ArrayListUnmanaged(u16) = .empty;
+    var work: std.ArrayList(u16) = .empty;
     defer work.deinit(a);
 
     for (auto.states.items, 0..) |state, si| {
@@ -123,7 +123,7 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
 
 /// Push the symbols a sequence can begin with: its first symbol, and the
 /// next one for as long as the symbols before it are nullable.
-fn pushHeads(a: Allocator, work: *std.ArrayListUnmanaged(u16), la: Lookaheads, seq: []const u16) !void {
+fn pushHeads(a: Allocator, work: *std.ArrayList(u16), la: Lookaheads, seq: []const u16) !void {
     for (seq) |s| {
         try work.append(a, s);
         if (!la.nullable[s]) break;

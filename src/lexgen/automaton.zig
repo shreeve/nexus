@@ -99,7 +99,7 @@ pub const ByteClasses = struct {
 // =============================================================================
 
 pub const Nfa = struct {
-    states: std.ArrayListUnmanaged(State) = .empty,
+    states: std.ArrayList(State) = .empty,
 
     pub const State = struct {
         /// Byte-consuming edge (when `set` is non-null) to `out`.
@@ -239,7 +239,7 @@ pub const Dfa = struct {
         defer gpa.free(via);
         @memset(prev, none);
         const s0 = self.starts[start];
-        var queue: std.ArrayListUnmanaged(u32) = .empty;
+        var queue: std.ArrayList(u32) = .empty;
         defer queue.deinit(gpa);
         try queue.append(gpa, s0);
         prev[s0] = s0;
@@ -247,7 +247,7 @@ pub const Dfa = struct {
         while (qi < queue.items.len) : (qi += 1) {
             const s = queue.items[qi];
             if (self.accept[s] != none and s != s0) {
-                var bytes: std.ArrayListUnmanaged(u8) = .empty;
+                var bytes: std.ArrayList(u8) = .empty;
                 var t = s;
                 while (t != s0) : (t = prev[t]) try bytes.append(gpa, via[t]);
                 std.mem.reverse(u8, bytes.items);
@@ -303,7 +303,7 @@ pub fn build(gpa: Allocator, spec: Spec) Error!Dfa {
     const a = arena.allocator();
 
     // Byte classes from every set in every pattern.
-    var sets: std.ArrayListUnmanaged(ByteSet) = .empty;
+    var sets: std.ArrayList(ByteSet) = .empty;
     for (spec.patterns) |p| try collectSets(a, p, &sets);
     const classes = ByteClasses.compute(sets.items);
 
@@ -315,7 +315,7 @@ pub fn build(gpa: Allocator, spec: Spec) Error!Dfa {
     return minimize(gpa, raw, classes);
 }
 
-fn collectSets(a: Allocator, n: *const Node, out: *std.ArrayListUnmanaged(ByteSet)) Error!void {
+fn collectSets(a: Allocator, n: *const Node, out: *std.ArrayList(ByteSet)) Error!void {
     switch (n.*) {
         .empty => {},
         .set => |b| {
@@ -336,9 +336,9 @@ const RawDfa = struct {
 
 /// Epsilon closure of `seed` into a sorted list of "important" NFA states
 /// (byte-consuming or accepting).
-fn closure(a: Allocator, nfa: *const Nfa, seed: []const u32, mark: []u32, stamp: u32, out: *std.ArrayListUnmanaged(u32)) Error!void {
+fn closure(a: Allocator, nfa: *const Nfa, seed: []const u32, mark: []u32, stamp: u32, out: *std.ArrayList(u32)) Error!void {
     out.clearRetainingCapacity();
-    var stack: std.ArrayListUnmanaged(u32) = .empty;
+    var stack: std.ArrayList(u32) = .empty;
     for (seed) |s| {
         if (mark[s] != stamp) {
             mark[s] = stamp;
@@ -364,12 +364,12 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
     @memset(mark, 0);
     var stamp: u32 = 0;
 
-    var keys: std.ArrayListUnmanaged([]const u32) = .empty;
+    var keys: std.ArrayList([]const u32) = .empty;
     var map: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
-    var trans: std.ArrayListUnmanaged(u32) = .empty;
-    var accept: std.ArrayListUnmanaged(u32) = .empty;
-    var set: std.ArrayListUnmanaged(u32) = .empty;
-    var seed: std.ArrayListUnmanaged(u32) = .empty;
+    var trans: std.ArrayList(u32) = .empty;
+    var accept: std.ArrayList(u32) = .empty;
+    var set: std.ArrayList(u32) = .empty;
+    var seed: std.ArrayList(u32) = .empty;
 
     const startIds = try a.alloc(u32, starts.len);
     for (starts, 0..) |live, si| {
@@ -430,10 +430,10 @@ const SliceContext = struct {
 
 fn intern(
     a: Allocator,
-    keys: *std.ArrayListUnmanaged([]const u32),
+    keys: *std.ArrayList([]const u32),
     map: *std.HashMapUnmanaged([]const u32, u32, SliceContext, 80),
-    trans: *std.ArrayListUnmanaged(u32),
-    accept: *std.ArrayListUnmanaged(u32),
+    trans: *std.ArrayList(u32),
+    accept: *std.ArrayList(u32),
     set: []const u32,
     nfa: *const Nfa,
     nc: u16,
@@ -519,7 +519,7 @@ fn minimize(gpa: Allocator, raw: RawDfa, classes: ByteClasses) Error!Dfa {
     }
     const order = try a.alloc(u32, numBlocks);
     @memset(order, none);
-    var queue: std.ArrayListUnmanaged(u32) = .empty;
+    var queue: std.ArrayList(u32) = .empty;
     for (raw.starts) |s| {
         const b = block[s];
         if (order[b] == none) {
@@ -720,7 +720,7 @@ test "automaton: differential property test vs backtracking matcher" {
         const all = try a.alloc(u32, nr);
         for (all, 0..) |*x, i| x.* = @intCast(i);
         // Second configuration: every other rule.
-        var some: std.ArrayListUnmanaged(u32) = .empty;
+        var some: std.ArrayList(u32) = .empty;
         for (all) |r| if (r % 2 == 0) try some.append(a, r);
         const starts = [_][]const u32{ all, some.items };
         var dfa = try build(testing.allocator, .{ .patterns = pats, .starts = &starts });

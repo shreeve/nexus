@@ -36,9 +36,9 @@ pub const Transition = struct {
 };
 
 pub const Automaton = struct {
-    states: std.ArrayListUnmanaged(State) = .empty,
+    states: std.ArrayList(State) = .empty,
     /// Initial state of each start symbol (parallel to Grammar.startSymbols).
-    startStates: std.ArrayListUnmanaged(u16) = .empty,
+    startStates: std.ArrayList(u16) = .empty,
 
     pub fn deinit(self: *Automaton, allocator: Allocator) void {
         for (self.states.items) |*state| {
@@ -90,7 +90,7 @@ pub fn build(g: *const Grammar) !Automaton {
 
     // Create initial state for EACH accept rule
     for (g.acceptRules.items) |acceptRuleId| {
-        var initialItems: std.ArrayListUnmanaged(Item) = .empty;
+        var initialItems: std.ArrayList(Item) = .empty;
         try initialItems.append(g.allocator, .{ .ruleId = acceptRuleId, .dot = 0 });
 
         const kernel = try initialItems.toOwnedSlice(g.allocator);
@@ -129,8 +129,8 @@ pub fn build(g: *const Grammar) !Automaton {
 ///   If F → id, closure adds: { F → • id }
 ///   Result: { E → • T, T → • F, T → • T * F, F → • id }
 fn closure(g: *const Grammar, auto: *const Automaton, kernel: []const Item) !State {
-    var allItems: std.ArrayListUnmanaged(Item) = .empty;
-    var reductions: std.ArrayListUnmanaged(Item) = .empty;
+    var allItems: std.ArrayList(Item) = .empty;
+    var reductions: std.ArrayList(Item) = .empty;
     var seen = std.AutoHashMap(u32, void).init(g.allocator);
     defer seen.deinit();
 
@@ -189,10 +189,10 @@ fn closure(g: *const Grammar, auto: *const Automaton, kernel: []const Item) !Sta
 /// If the target state already exists (same kernel), reuse it.
 fn processTransitions(g: *const Grammar, auto: *Automaton, stateIdx: usize, stateMap: *std.StringHashMapUnmanaged(u16)) !void {
     const state = &auto.states.items[stateIdx];
-    var transitions: std.ArrayListUnmanaged(Transition) = .empty;
+    var transitions: std.ArrayList(Transition) = .empty;
 
     // Group items by the symbol after the dot
-    var symbolItems = std.AutoHashMap(u16, std.ArrayListUnmanaged(Item)).init(g.allocator);
+    var symbolItems = std.AutoHashMap(u16, std.ArrayList(Item)).init(g.allocator);
     defer {
         var iter = symbolItems.valueIterator();
         while (iter.next()) |list| list.deinit(g.allocator);
@@ -238,7 +238,7 @@ fn processTransitions(g: *const Grammar, auto: *Automaton, stateIdx: usize, stat
 /// Generate a unique signature for a kernel (set of items).
 /// States with identical kernels are merged to avoid duplication.
 fn kernelSignature(allocator: Allocator, kernel: []const Item) ![]const u8 {
-    var sig: std.ArrayListUnmanaged(u8) = .empty;
+    var sig: std.ArrayList(u8) = .empty;
 
     const sorted = try allocator.dupe(Item, kernel);
     defer allocator.free(sorted);
@@ -253,7 +253,7 @@ fn kernelSignature(allocator: Allocator, kernel: []const Item) ![]const u8 {
     for (sorted, 0..) |item, i| {
         if (i > 0) try sig.append(allocator, '|');
         var buf: [32]u8 = undefined;
-        const slice = std.fmt.bufPrint(&buf, "{d}.{d}", .{ item.ruleId, item.dot }) catch "";
+        const slice = std.mem.print(&buf, "{d}.{d}", .{ item.ruleId, item.dot }) catch "";
         try sig.appendSlice(allocator, slice);
     }
 

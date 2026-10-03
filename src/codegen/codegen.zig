@@ -83,7 +83,7 @@ fn writeHeader(w: *std.Io.Writer, lang: ?[]const u8) !void {
 
 /// The `simd` helpers, when the lexer calls them (`simd_to` rules).
 fn writeSimdSupport(w: *std.Io.Writer, lexerDecls: []const u8) !void {
-    if (std.mem.indexOf(u8, lexerDecls, "simd.") != null) try w.writeAll(simdSupport);
+    if (std.mem.find(u8, lexerDecls, "simd.") != null) try w.writeAll(simdSupport);
 }
 
 /// Fallback for the `simd.findByte` calls a generated lexer may make.
@@ -126,14 +126,14 @@ const Codegen = struct {
     options: Options,
     tags: actions.TagSet = .{},
     /// Schema mode: the Tag and Role enums, in declaration order.
-    schemaTags: std.ArrayListUnmanaged([]const u8) = .empty,
-    roles: std.ArrayListUnmanaged([]const u8) = .empty,
+    schemaTags: std.ArrayList([]const u8) = .empty,
+    roles: std.ArrayList([]const u8) = .empty,
     /// Some action builds a nested node (`self.nested`).
     usesNested: bool = false,
     /// The token `@as` promotes (TokenCat name, e.g. `ident`).
     promotable: ?[]const u8 = null,
     /// tokenToSymbol's cases, in order (see mapTokens).
-    tokenMap: std.ArrayListUnmanaged(struct { cat: []const u8, sym: u16 }) = .empty,
+    tokenMap: std.ArrayList(struct { cat: []const u8, sym: u16 }) = .empty,
     /// The executeAction function, generated before the configuration.
     actionsCode: []const u8 = "",
 
@@ -154,7 +154,7 @@ const Codegen = struct {
         try self.validate();
 
         self.actionsCode = try self.generateActions();
-        self.usesNested = std.mem.indexOf(u8, self.actionsCode, "self.nested(") != null;
+        self.usesNested = std.mem.find(u8, self.actionsCode, "self.nested(") != null;
 
         try writeHeader(w, self.g.lang);
         try w.writeAll(lexerDecls);
@@ -192,7 +192,7 @@ const Codegen = struct {
         }
     }
 
-    fn addUnique(self: *Codegen, list: *std.ArrayListUnmanaged([]const u8), name: []const u8) !void {
+    fn addUnique(self: *Codegen, list: *std.ArrayList([]const u8), name: []const u8) !void {
         for (list.items) |existing| if (std.mem.eql(u8, existing, name)) return;
         try list.append(self.allocator, name);
     }
@@ -282,13 +282,13 @@ const Codegen = struct {
         const text = src.text;
         var pos: usize = 0;
         while (pos < text.len) {
-            const end = std.mem.indexOfScalarPos(u8, text, pos, '\n') orelse text.len;
+            const end = std.mem.findScalarPos(u8, text, pos, '\n') orelse text.len;
             const line = text[pos..end];
             if (std.mem.startsWith(u8, line, directive) and
                 (line.len == directive.len or !std.ascii.isAlphanumeric(line[directive.len])))
             {
                 var at = pos;
-                if (word.len > 0) if (std.mem.indexOf(u8, line[directive.len..], word)) |i| {
+                if (word.len > 0) if (std.mem.find(u8, line[directive.len..], word)) |i| {
                     at = pos + directive.len + i;
                 };
                 const loc = (diag.Source{ .path = src.path, .text = text }).at(at);
@@ -331,17 +331,19 @@ const Codegen = struct {
             for (self.schemaTags.items) |t| try w.print("    @\"{f}\",\n", .{std.zig.fmtString(t)});
             try w.writeAll("};\n\npub const Role = enum(u16) {\n");
             for (self.roles.items) |r| try w.print("    @\"{f}\",\n", .{std.zig.fmtString(r)});
+            // An empty exhaustive enum must be backed by `noreturn`; keep Role a u16.
+            if (self.roles.items.len == 0) try w.writeAll("    _,\n");
             try w.writeAll("};\n");
         } else if (self.g.lang != null) {
             try banner(w, "Tag enum (re-exported from the language module)");
-            try w.writeAll("pub const Tag = lang.Tag;\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) {};\n");
+            try w.writeAll("pub const Tag = lang.Tag;\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) { _ };\n");
         } else {
             try banner(w, "Tag enum (collected from grammar actions)");
             // Non-exhaustive: at least one value of the backing integer stays unnamed.
             const width: u8 = if (self.tags.list.items.len < 256) 8 else 16;
             try w.print("pub const Tag = enum(u{d}) {{\n", .{width});
             for (self.tags.list.items) |t| try w.print("    @\"{f}\",\n", .{std.zig.fmtString(t)});
-            try w.writeAll("    _,\n};\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) {};\n");
+            try w.writeAll("    _,\n};\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) { _ };\n");
         }
 
         try w.writeAll("\n/// Start symbols; `BaseParser.parse(start)` parses one.\npub const Start = enum(u16) {\n");
@@ -354,7 +356,7 @@ const Codegen = struct {
 
     fn markerOf(self: *const Codegen, startSym: u16) ?u16 {
         var buf: [256]u8 = undefined;
-        const name = std.fmt.bufPrint(&buf, "{s}!", .{self.g.symbols.items[startSym].name}) catch return null;
+        const name = std.mem.print(&buf, "{s}!", .{self.g.symbols.items[startSym].name}) catch return null;
         return self.g.getSymbol(name);
     }
 
@@ -404,7 +406,7 @@ const Codegen = struct {
             try w.print("    pub const {s} = struct {{\n", .{view});
             for (k.roles, 0..) |r, i| {
                 const role = std.zig.fmtString(r.name);
-                const what = std.zig.fmtString(try std.fmt.allocPrint(self.allocator, "ir.{s}.{s}", .{ view, r.name }));
+                const what = std.zig.fmtString(try self.allocator.print("ir.{s}.{s}", .{ view, r.name }));
                 if (r.rest) {
                     try w.print("        pub fn @\"{f}\"(@\"ir.node\": @\"ir.Sexp\") []const @\"ir.Sexp\" {{\n            return @\"ir.restAt\"(@\"ir.node\", .@\"{f}\", {d}, \"{f}\");\n        }}\n", .{ role, tag, i + 1, what });
                 } else {
@@ -590,7 +592,7 @@ const Codegen = struct {
     /// A generation error at the first rule that uses symbol `sym`.
     fn errAtUse(self: *const Codegen, sym: u16, comptime fmt: []const u8, args: anytype) void {
         for (self.g.rules.items) |rule| {
-            if (rule.line > 0 and std.mem.indexOfScalar(u16, rule.rhs, sym) != null) return self.errLine(rule.line, rule.col, fmt, args);
+            if (rule.line > 0 and std.mem.findScalar(u16, rule.rhs, sym) != null) return self.errLine(rule.line, rule.col, fmt, args);
         }
         self.errLine(1, 1, fmt, args);
     }
@@ -631,7 +633,7 @@ const Codegen = struct {
         // keeps the token itself if the state takes it.
         for (self.g.asDirectives) |directive| {
             if (isSelf(directive)) {
-                try w.writeAll("    if (getAction(self.stateStack.getLast(), promotableSymbol) != 0) return promotableSymbol;\n");
+                try w.writeAll("    if (getAction(self.stateStack.last().?, promotableSymbol) != 0) return promotableSymbol;\n");
             } else {
                 try w.print("    if (tryPromote{s}(self, text)) |sym| return sym;\n", .{try capitalized(self.allocator, directive.rule)});
             }
@@ -650,15 +652,15 @@ const Codegen = struct {
             const cap = try capitalized(self.allocator, directive.rule);
             // The lang lookup is `via` when given, else `<group>As`.
             const lookup = if (self.g.lang != null)
-                try std.fmt.allocPrint(self.allocator, "lang.{s}", .{directive.via orelse try std.fmt.allocPrint(self.allocator, "{s}As", .{directive.rule})})
+                try self.allocator.print("lang.{s}", .{directive.via orelse try self.allocator.print("{s}As", .{directive.rule})})
             else
-                try std.fmt.allocPrint(self.allocator, "{s}As", .{directive.rule});
+                try self.allocator.print("{s}As", .{directive.rule});
             try w.print(
                 \\
                 \\fn tryPromote{s}(self: *BaseParser, text: []const u8) ?u16 {{
-                \\    const state = self.stateStack.getLast();
+                \\    const state = self.stateStack.last().?;
                 \\    const id = {s}(text) orelse return null;
-                \\    const idIdx = @intFromEnum(id);
+                \\    const idIdx = @backingInt(id);
                 \\    const sym = {s}ToSymbol[idIdx];
                 \\    if (sym != 0 and getAction(state, sym) {s}) {{
                 \\        self.lastMatchedId = @intCast(idIdx);
@@ -705,8 +707,8 @@ const Codegen = struct {
         const body = arms.written();
         try w.writeAll("\nfn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {\n");
         try w.writeAll("    @setEvalBranchQuota(1_000_000);\n");
-        if (std.mem.indexOf(u8, body, "self.") == null) try w.writeAll("    _ = self;\n");
-        if (std.mem.indexOf(u8, body, "pass") == null) try w.writeAll("    _ = pass;\n");
+        if (std.mem.find(u8, body, "self.") == null) try w.writeAll("    _ = self;\n");
+        if (std.mem.find(u8, body, "pass") == null) try w.writeAll("    _ = pass;\n");
         try w.writeAll("    return switch (ruleId) {\n");
         try w.writeAll(body);
         try w.writeAll("        else => unreachable,\n    };\n}\n");
@@ -735,9 +737,9 @@ const Codegen = struct {
             const cap = try capitalized(self.allocator, directive.rule);
             const upper = try std.ascii.allocUpperString(self.allocator, directive.rule);
             const idType = if (self.g.lang != null)
-                try std.fmt.allocPrint(self.allocator, "lang.{s}Id", .{cap})
+                try self.allocator.print("lang.{s}Id", .{cap})
             else
-                try std.fmt.allocPrint(self.allocator, "{s}Id", .{cap});
+                try self.allocator.print("{s}Id", .{cap});
 
             if (self.g.lang == null) {
                 // Inline: one keyword per group, matched exactly
@@ -748,7 +750,7 @@ const Codegen = struct {
             // Every UPPERCASE terminal is a potential target; `@hasField` at
             // comptime keeps those the Id enum names. Without @lang only
             // terminals that name a nonterminal are candidates.
-            var targets: std.ArrayListUnmanaged(grammar.Symbol) = .empty;
+            var targets: std.ArrayList(grammar.Symbol) = .empty;
             for (self.g.symbols.items) |sym| {
                 if (sym.kind != .terminal or sym.name.len == 0) continue;
                 if (sym.name[0] < 'A' or sym.name[0] > 'Z') continue;
@@ -772,16 +774,16 @@ const Codegen = struct {
 
             try w.print("\n/// {s} ordinal -> grammar symbol (0 = none)\nconst {s}ToSymbol = blk: {{\n", .{ idType, directive.rule });
             try w.writeAll(if (targets.items.len > 0 or fallbackId != null)
-                "    var arr: [512]u16 = .{0} ** 512;\n"
+                "    var arr: [512]u16 = @splat(0);\n"
             else
-                "    const arr: [512]u16 = .{0} ** 512;\n");
+                "    const arr: [512]u16 = @splat(0);\n");
             for (targets.items) |term| {
-                try w.print("    if (@hasField({s}, \"{s}\")) arr[@intFromEnum({s}.{s})] = {d};\n", .{ idType, term.name, idType, term.name, term.id });
+                try w.print("    if (@hasField({s}, \"{s}\")) arr[@backingInt({s}.{s})] = {d};\n", .{ idType, term.name, idType, term.name, term.id });
             }
             if (fallbackId) |fid| {
                 try w.print(
-                    \\    for (@typeInfo({s}).@"enum".fields) |field| {{
-                    \\        if (arr[field.value] == 0) arr[field.value] = {d};
+                    \\    for (@typeInfo({s}).@"enum".field_values) |value| {{
+                    \\        if (arr[value] == 0) arr[value] = {d};
                     \\    }}
                     \\
                 , .{ idType, fid });
@@ -801,7 +803,7 @@ const Codegen = struct {
     /// in the lang module, so the parser fails to build naming it.
     fn emitKeywordCheck(self: *Codegen, w: *std.Io.Writer) !void {
         const identAs = self.hasIdentAs();
-        var groups: std.ArrayListUnmanaged([]const u8) = .empty;
+        var groups: std.ArrayList([]const u8) = .empty;
         for (self.g.asDirectives) |directive| {
             if (isSelf(directive)) continue;
             try groups.append(self.allocator, directive.rule);
@@ -813,7 +815,7 @@ const Codegen = struct {
             if (!self.isPromotedKeyword(sym.name, identAs)) continue;
             if (std.ascii.eqlIgnoreCase(sym.name, self.promotable.?)) continue;
             const used = for (self.g.rules.items) |rule| {
-                if (std.mem.indexOfScalar(u16, rule.rhs, sym.id) != null) break true;
+                if (std.mem.findScalar(u16, rule.rhs, sym.id) != null) break true;
             } else false;
             if (!used) continue;
             // A terminal named like a group (CMD for `cmd`) is the group's
@@ -897,7 +899,7 @@ const Codegen = struct {
             \\
             \\const parseTable = blk: {
             \\    @setEvalBranchQuota(100000);
-            \\    var t: [numStates][numSymbols]i16 = .{.{0} ** numSymbols} ** numStates;
+            \\    var t: [numStates][numSymbols]i16 = @splat(@splat(0));
             \\    for (sparse, 0..) |row, state| {
             \\        var i: usize = 0;
             \\        while (i < row.len) : (i += 2) {
@@ -1227,8 +1229,8 @@ fn viewName(allocator: Allocator, kind: []const u8) ![]const u8 {
     const ident = kind.len > 0 and (std.ascii.isAlphabetic(kind[0]) or kind[0] == '_') and for (kind) |c| {
         if (!std.ascii.isAlphanumeric(c) and c != '_') break false;
     } else true;
-    if (!ident) return std.fmt.allocPrint(allocator, "@\"{f}\"", .{std.zig.fmtString(kind)});
-    var out: std.ArrayListUnmanaged(u8) = .empty;
+    if (!ident) return allocator.print("@\"{f}\"", .{std.zig.fmtString(kind)});
+    var out: std.ArrayList(u8) = .empty;
     var upper = true;
     for (kind) |c| {
         if (c == '_') {
@@ -1238,7 +1240,7 @@ fn viewName(allocator: Allocator, kind: []const u8) ![]const u8 {
         try out.append(allocator, if (upper) std.ascii.toUpper(c) else c);
         upper = false;
     }
-    if (out.items.len == 0) return std.fmt.allocPrint(allocator, "@\"{f}\"", .{std.zig.fmtString(kind)});
+    if (out.items.len == 0) return allocator.print("@\"{f}\"", .{std.zig.fmtString(kind)});
     return out.items;
 }
 
@@ -1257,7 +1259,7 @@ fn restRole(k: anytype) ?usize {
 
 /// Undo backslash escapes of a grammar literal.
 fn unescapeLiteral(allocator: Allocator, raw: []const u8) ![]const u8 {
-    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
     while (i < raw.len) : (i += 1) {
         if (raw[i] == '\\' and i + 1 < raw.len) i += 1;

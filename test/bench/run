@@ -8,8 +8,7 @@
 #
 #   -O mode     optimize mode for nexus and the parsers (default ReleaseFast)
 #   -n rounds   generation runs per grammar / throughput rounds (default 20 / 5)
-#   --nexus BIN benchmark this generator instead of building the checkout;
-#               `legacy` = Nexus 0.10.3 (test/lib/legacy-nexus)
+#   --nexus BIN benchmark this generator instead of building the checkout
 #   gen|parse   run only that part (default both)
 #
 # Inputs (MUMPS_CORPUS and RIG_CORPUS override the defaults):
@@ -32,7 +31,7 @@ while [[ $# -gt 0 ]]; do
         -n) GEN_N=$2; PARSE_N=$2; shift ;;
         --nexus) NEXUS_ARG=$2; shift ;;
         gen|parse) PARTS+=("$1") ;;
-        -h|--help) sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument $1" >&2; exit 2 ;;
     esac
     shift
@@ -47,8 +46,6 @@ if [[ -z "$NEXUS_ARG" ]]; then
     rm -rf "$OUT/nexus"
     zig build -Doptimize="$MODE" --prefix "$OUT/nexus/zig-out" >&2 || exit 1
     NEXUS="$OUT/nexus/bin/nexus"
-elif [[ $NEXUS_ARG == legacy ]]; then
-    NEXUS=$("$LIB/legacy-nexus") || exit 1
 else
     NEXUS=$(cd "$(dirname "$NEXUS_ARG")" && echo "$(pwd)/$(basename "$NEXUS_ARG")")
 fi
@@ -140,7 +137,7 @@ if want parse; then
     fi
 
     build_parser mumps test/mumps/mumps.grammar test/mumps/mumps.zig || exit 1
-    build_parser rig test/rig/rig.grammar test/rig/rig.zig test/rig/ir.zig test/rig/diag.zig || exit 1
+    build_parser rig test/rig/rig.grammar test/rig/rig.zig test/rig/diag.zig || exit 1
 
     # Keep only the Rig sources that parse on their own, then repeat them.
     "$OUT/rig/driver" --start parseTree --hash --list "$OUT/rig.src" 2>/dev/null |

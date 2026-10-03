@@ -110,13 +110,13 @@ pub const Tag = enum(u8) {
     redo,
 
     // Literals
-    @"true",
-    @"false",
+    true,
+    false,
     nil,
     self,
-    @"__FILE__",
-    @"__LINE__",
-    @"__ENCODING__",
+    __FILE__,
+    __LINE__,
+    __ENCODING__,
 
     // Binary operators (from @infix, auto-generated tags)
     @"||",
@@ -509,7 +509,7 @@ pub const Lexer = struct {
                         var sym_end: u32 = self.base.pos;
                         while (sym_end < self.base.source.len and
                             (std.ascii.isAlphanumeric(self.base.source[sym_end]) or
-                            self.base.source[sym_end] == '_'))
+                                self.base.source[sym_end] == '_'))
                         {
                             sym_end += 1;
                         }
@@ -825,8 +825,7 @@ pub const Lexer = struct {
     // THEN_SEP or DO_SEP.
     fn tryHeadSep(self: *Lexer, tok: *Token) ?Token {
         switch (self.head_kind) {
-            .if_head, .elsif_head, .unless_head,
-            .when_head, .case_head, .rescue_head => {
+            .if_head, .elsif_head, .unless_head, .when_head, .case_head, .rescue_head => {
                 self.head_kind = .none;
                 tok.cat = .then_sep;
                 self.last_cat = .then_sep;
@@ -909,11 +908,22 @@ pub const Lexer = struct {
     // ─── Helper: tokens that can end an expression ──────────────────
     fn canEndExpr(cat: TokenCat) bool {
         return switch (cat) {
-            .ident, .constant, .ivar, .cvar, .gvar,
-            .integer, .float, .string_sq, .string_dq,
-            .symbol, .label,
-            .pct_w, .pct_i,
-            .rparen, .rbracket, .rbrace,
+            .ident,
+            .constant,
+            .ivar,
+            .cvar,
+            .gvar,
+            .integer,
+            .float,
+            .string_sq,
+            .string_dq,
+            .symbol,
+            .label,
+            .pct_w,
+            .pct_i,
+            .rparen,
+            .rbracket,
+            .rbrace,
             => true,
             else => false,
         };
@@ -922,8 +932,8 @@ pub const Lexer = struct {
     // ─── Helper: keywords that start statement contexts ────────────
     fn isStmtKeyword(kw: []const u8) bool {
         return std.StaticStringMap(void).initComptime(.{
-            .{ "begin", {} }, .{ "else", {} }, .{ "elsif", {} },
-            .{ "end", {} }, .{ "ensure", {} }, .{ "rescue", {} },
+            .{ "begin", {} }, .{ "else", {} },   .{ "elsif", {} },
+            .{ "end", {} },   .{ "ensure", {} }, .{ "rescue", {} },
             .{ "when", {} },
         }).has(kw);
     }
@@ -932,24 +942,69 @@ pub const Lexer = struct {
     fn isContinuation(cat: TokenCat) bool {
         return switch (cat) {
             // Binary operators
-            .plus, .minus, .star, .slash, .percent, .power,
-            .eq, .ne, .eqq, .cmp, .match_op, .nmatch,
-            .lt, .gt, .le, .ge,
-            .oror, .andand,
-            .ampersand, .pipe, .caret, .lshift, .rshift,
+            .plus,
+            .minus,
+            .star,
+            .slash,
+            .percent,
+            .power,
+            .eq,
+            .ne,
+            .eqq,
+            .cmp,
+            .match_op,
+            .nmatch,
+            .lt,
+            .gt,
+            .le,
+            .ge,
+            .oror,
+            .andand,
+            .ampersand,
+            .pipe,
+            .caret,
+            .lshift,
+            .rshift,
             .bang,
             // Assignment
-            .assign, .plus_eq, .minus_eq, .star_eq, .slash_eq,
-            .percent_eq, .power_eq, .pipe_eq, .amp_eq, .caret_eq,
-            .lshift_eq, .rshift_eq, .oror_eq, .andand_eq,
+            .assign,
+            .plus_eq,
+            .minus_eq,
+            .star_eq,
+            .slash_eq,
+            .percent_eq,
+            .power_eq,
+            .pipe_eq,
+            .amp_eq,
+            .caret_eq,
+            .lshift_eq,
+            .rshift_eq,
+            .oror_eq,
+            .andand_eq,
             // Punctuation that continues
-            .comma, .dot, .safe_nav, .scope,
-            .lparen, .lbracket, .lbrace, .lbrace_block,
-            .fat_arrow, .question, .colon,
+            .comma,
+            .dot,
+            .safe_nav,
+            .scope,
+            .lparen,
+            .lbracket,
+            .lbrace,
+            .lbrace_block,
+            .fat_arrow,
+            .question,
+            .colon,
             // Unary / splat
-            .plus_u, .minus_u, .star_splat, .amp_block, .tilde,
+            .plus_u,
+            .minus_u,
+            .star_splat,
+            .amp_block,
+            .tilde,
             // Modifier keywords (RHS follows)
-            .if_mod, .unless_mod, .while_mod, .until_mod, .rescue_mod,
+            .if_mod,
+            .unless_mod,
+            .while_mod,
+            .until_mod,
+            .rescue_mod,
             => true,
             else => false,
         };
@@ -958,12 +1013,32 @@ pub const Lexer = struct {
     // ─── Helper: splat/block-pass context ────────────────────────────
     fn isSplatContext(cat: TokenCat) bool {
         return switch (cat) {
-            .lparen, .comma, .lbracket, .lbrace, .lbrace_block,
-            .pipe, .semicolon, .newline, .eof,
-            .assign, .plus_eq, .minus_eq, .star_eq, .slash_eq,
-            .percent_eq, .power_eq, .pipe_eq, .amp_eq, .caret_eq,
-            .lshift_eq, .rshift_eq, .oror_eq, .andand_eq,
-            .fat_arrow, .colon, .question,
+            .lparen,
+            .comma,
+            .lbracket,
+            .lbrace,
+            .lbrace_block,
+            .pipe,
+            .semicolon,
+            .newline,
+            .eof,
+            .assign,
+            .plus_eq,
+            .minus_eq,
+            .star_eq,
+            .slash_eq,
+            .percent_eq,
+            .power_eq,
+            .pipe_eq,
+            .amp_eq,
+            .caret_eq,
+            .lshift_eq,
+            .rshift_eq,
+            .oror_eq,
+            .andand_eq,
+            .fat_arrow,
+            .colon,
+            .question,
             => true,
             else => false,
         };
@@ -972,8 +1047,14 @@ pub const Lexer = struct {
     // ─── Helper: label context (after { , ( [ or start of hash) ──────
     fn isLabelContext(cat: TokenCat) bool {
         return switch (cat) {
-            .lbrace, .lbrace_block, .comma, .lparen, .lbracket,
-            .newline, .semicolon, .eof,
+            .lbrace,
+            .lbrace_block,
+            .comma,
+            .lparen,
+            .lbracket,
+            .newline,
+            .semicolon,
+            .eof,
             => true,
             else => false,
         };
@@ -982,10 +1063,14 @@ pub const Lexer = struct {
     // ─── Helper: tokens that start a command-call position ───────────
     fn isCommandStart(cat: TokenCat) bool {
         return switch (cat) {
-            .newline, .semicolon, .eof,
-            .do_block, .do_cond,
+            .newline,
+            .semicolon,
+            .eof,
+            .do_block,
+            .do_cond,
             .lbrace_block,
-            .then_sep, .do_sep,
+            .then_sep,
+            .do_sep,
             => true,
             else => false,
         };
@@ -996,8 +1081,17 @@ pub const Lexer = struct {
         if (std.ascii.isAlphabetic(ch) or ch == '_') return true;
         if (std.ascii.isDigit(ch)) return true;
         return switch (ch) {
-            '\'', '"', ':', '@', '[', '(', '{',
-            '-', '+', '!', '~',
+            '\'',
+            '"',
+            ':',
+            '@',
+            '[',
+            '(',
+            '{',
+            '-',
+            '+',
+            '!',
+            '~',
             => true,
             else => false,
         };

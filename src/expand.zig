@@ -98,7 +98,7 @@ pub const Layout = struct {
     length: usize,
 
     pub fn of(allocator: Allocator, elements: []const ParsedElement) !Layout {
-        var slots: std.ArrayListUnmanaged(Slot) = .empty;
+        var slots: std.ArrayList(Slot) = .empty;
         for (elements, 0..) |e, i| {
             const idx: u16 = @intCast(i);
             if (e.kind == .optGroup) {
@@ -284,8 +284,8 @@ const Expander = struct {
         }
         for (ir.startSymbols) |startName| {
             const startId = g.getSymbol(startName) orelse continue;
-            const markerId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "{s}!", .{startName}), .terminal);
-            const acceptId = try g.addSymbol(try std.fmt.allocPrint(g.allocator, "$accept_{s}", .{startName}), .nonterminal);
+            const markerId = try g.addSymbol(try g.allocator.print("{s}!", .{startName}), .terminal);
+            const acceptId = try g.addSymbol(try g.allocator.print("$accept_{s}", .{startName}), .nonterminal);
             const ruleId = try self.addRule(.{
                 .id = 0,
                 .lhs = acceptId,
@@ -320,7 +320,7 @@ const Expander = struct {
             .list => |l| try self.checkSpreads(alt, layout, l),
             else => {},
         };
-        var vars: std.ArrayListUnmanaged(usize) = .empty;
+        var vars: std.ArrayList(usize) = .empty;
         for (alt.elements, 0..) |e, i| if (isVariable(e)) try vars.append(a, i);
 
         var total: usize = 1;
@@ -351,7 +351,7 @@ const Expander = struct {
                 rest /= r;
             }
 
-            var rhs: std.ArrayListUnmanaged(ParsedElement) = .empty;
+            var rhs: std.ArrayList(ParsedElement) = .empty;
             @memset(posMap, absent);
             var p: usize = 1;
             var d: usize = 0;
@@ -399,7 +399,7 @@ const Expander = struct {
                 }
             }
 
-            var symbols: std.ArrayListUnmanaged(u16) = .empty;
+            var symbols: std.ArrayList(u16) = .empty;
             for (rhs.items) |e| try symbols.append(a, try self.processElement(e));
 
             const mapped: ?ActionTree = if (tree) |t|
@@ -409,7 +409,7 @@ const Expander = struct {
             else
                 null;
 
-            var sideLabels: std.ArrayListUnmanaged(Rule.SideLabel) = .empty;
+            var sideLabels: std.ArrayList(Rule.SideLabel) = .empty;
             if (resolved) |r| for (r.sideLabels) |sl| {
                 const at = posMap[sl.pos];
                 if (at != absent and at != multi) try sideLabels.append(a, .{ .role = sl.role, .pos = at });
@@ -438,7 +438,7 @@ const Expander = struct {
     /// alternative contributes its elements. One value is passed through.
     fn expandedDefault(self: *Expander, alt: ParsedAlternative, digits: []const usize, rhsLen: usize) Error!ActionTree {
         const a = self.alloc();
-        var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+        var items: std.ArrayList(ActionItem) = .empty;
         var at: u16 = 0; // rhs elements placed so far
         var d: usize = 0;
         for (alt.elements) |e| {
@@ -589,7 +589,7 @@ const Expander = struct {
         }
 
         fn list(self: Mapper, l: ActionList) Error!ActionList {
-            var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+            var items: std.ArrayList(ActionItem) = .empty;
             for (l.items) |item| {
                 if (try self.elem(item.elem)) |e| try items.append(self.x.alloc(), .{ .role = item.role, .elem = e });
             }
@@ -666,9 +666,9 @@ const Expander = struct {
     /// The symbols of a group or choice alternative, and its source-syntax
     /// text: the elements' names separated by spaces, `!` marking a
     /// skipped element.
-    fn sequence(self: *Expander, elements: []const ParsedElement, text: *std.ArrayListUnmanaged(u8)) Error![]const u16 {
+    fn sequence(self: *Expander, elements: []const ParsedElement, text: *std.ArrayList(u8)) Error![]const u16 {
         const a = self.alloc();
-        var rhs: std.ArrayListUnmanaged(u16) = .empty;
+        var rhs: std.ArrayList(u16) = .empty;
         for (elements, 0..) |sub, i| {
             const id = try self.processElement(sub);
             try rhs.append(a, id);
@@ -684,7 +684,7 @@ const Expander = struct {
     fn groupRule(self: *Expander, elements: []const ParsedElement) Error!u16 {
         const g = self.g;
         if (elements.len == 0) return g.errorId;
-        var text: std.ArrayListUnmanaged(u8) = .empty;
+        var text: std.ArrayList(u8) = .empty;
         try text.append(g.allocator, '(');
         const rhs = try self.sequence(elements, &text);
         try text.append(g.allocator, ')');
@@ -698,7 +698,7 @@ const Expander = struct {
     /// with one rule per alternative. Identical choices share one symbol.
     fn choiceRule(self: *Expander, choices: []const []const ParsedElement) Error!u16 {
         const g = self.g;
-        var text: std.ArrayListUnmanaged(u8) = .empty;
+        var text: std.ArrayList(u8) = .empty;
         try text.append(g.allocator, '(');
         const rhss = try g.allocator.alloc([]const u16, choices.len);
         for (choices, 0..) |choice, i| {
@@ -730,11 +730,11 @@ const Expander = struct {
         // separator.
         const sepName = g.symbols.items[sepId].name;
         const listName = if (std.mem.eql(u8, sepName, "\",\""))
-            try std.fmt.allocPrint(g.allocator, "L({s})", .{g.symbols.items[effectiveItemId].name})
+            try g.allocator.print("L({s})", .{g.symbols.items[effectiveItemId].name})
         else
-            try std.fmt.allocPrint(g.allocator, "L({s}, {s})", .{ g.symbols.items[effectiveItemId].name, sepName });
+            try g.allocator.print("L({s}, {s})", .{ g.symbols.items[effectiveItemId].name, sepName });
         if (g.getSymbol(listName)) |existing| return existing;
-        const tailName = try std.fmt.allocPrint(g.allocator, "{s}.tail", .{listName});
+        const tailName = try g.allocator.print("{s}.tail", .{listName});
 
         const listId = try g.addSymbol(listName, .nonterminal);
         const tailId = try g.addSymbol(tailName, .nonterminal);
@@ -765,7 +765,7 @@ const Expander = struct {
 
     fn createOptionalRule(self: *Expander, symId: u16) Error!u16 {
         const g = self.g;
-        const name = try std.fmt.allocPrint(g.allocator, "{s}?", .{g.symbols.items[symId].name});
+        const name = try g.allocator.print("{s}?", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const optId = try g.addSymbol(name, .nonterminal);
         _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = try g.allocator.dupe(u16, &.{symId}) });
@@ -775,7 +775,7 @@ const Expander = struct {
 
     fn createZeroPlusRule(self: *Expander, symId: u16) Error!u16 {
         const g = self.g;
-        const name = try std.fmt.allocPrint(g.allocator, "{s}*", .{g.symbols.items[symId].name});
+        const name = try g.allocator.print("{s}*", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const starId = try g.addSymbol(name, .nonterminal);
         // X* → X X* → (!1 ...2)
@@ -792,7 +792,7 @@ const Expander = struct {
 
     fn createOnePlusRule(self: *Expander, symId: u16) Error!u16 {
         const g = self.g;
-        const name = try std.fmt.allocPrint(g.allocator, "{s}+", .{g.symbols.items[symId].name});
+        const name = try g.allocator.print("{s}+", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const starId = try self.createZeroPlusRule(symId);
         const plusId = try g.addSymbol(name, .nonterminal);
@@ -811,16 +811,16 @@ const Expander = struct {
         const baseId = g.getSymbol(infix.baseRule) orelse try g.addSymbol(infix.baseRule, .nonterminal);
 
         // Precedence levels, ascending (level 1 binds loosest).
-        var levels: std.ArrayListUnmanaged(u32) = .empty;
+        var levels: std.ArrayList(u32) = .empty;
         for (infix.ops) |op| {
-            if (std.mem.indexOfScalar(u32, levels.items, op.prec) == null) try levels.append(g.allocator, op.prec);
+            if (std.mem.findScalar(u32, levels.items, op.prec) == null) try levels.append(g.allocator, op.prec);
         }
         std.mem.sort(u32, levels.items, {}, std.sort.asc(u32));
 
         // Each level is named by its operators: `infix("+" "-")`.
-        var levelIds: std.ArrayListUnmanaged(u16) = .empty;
+        var levelIds: std.ArrayList(u16) = .empty;
         for (levels.items) |level| {
-            var name: std.ArrayListUnmanaged(u8) = .empty;
+            var name: std.ArrayList(u8) = .empty;
             try name.appendSlice(g.allocator, "infix(");
             var first = true;
             for (infix.ops) |op| {
@@ -838,7 +838,7 @@ const Expander = struct {
             const nextId = if (i + 1 < levels.items.len) levelIds.items[i + 1] else baseId;
             for (infix.ops, 0..) |op, opIndex| {
                 if (op.prec != level) continue;
-                const opStr = try std.fmt.allocPrint(g.allocator, "\"{s}\"", .{op.op});
+                const opStr = try g.allocator.print("\"{s}\"", .{op.op});
                 const opId = try g.addSymbol(opStr, .terminal);
                 const rhs: [3]u16 = switch (op.assoc) {
                     .left => .{ thisId, opId, nextId },
@@ -904,12 +904,12 @@ fn consTree(allocator: Allocator, n: u16) !ActionTree {
 /// a list when some are skipped (nils kept, like the default), and the
 /// default (null) otherwise.
 fn groupAction(allocator: Allocator, elements: []const ParsedElement) !?ActionTree {
-    var kept: std.ArrayListUnmanaged(u16) = .empty;
+    var kept: std.ArrayList(u16) = .empty;
     for (elements, 0..) |sub, i| if (!sub.skip) try kept.append(allocator, @intCast(i + 1));
     if (kept.items.len == 0) return .nil;
     if (kept.items.len == 1) return .{ .pass = kept.items[0] };
     if (kept.items.len == elements.len) return null;
-    var items: std.ArrayListUnmanaged(ActionItem) = .empty;
+    var items: std.ArrayList(ActionItem) = .empty;
     for (kept.items) |p| try items.append(allocator, .{ .elem = .{ .ref = p } });
     // Like the default action, a kept nil stays (no trailing-nil cut).
     return .{ .list = .{ .head = .none, .items = try items.toOwnedSlice(allocator), .keepNils = true } };

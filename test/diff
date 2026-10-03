@@ -21,14 +21,14 @@
 #   -j N          parallel jobs (default: CPU count)
 #   -O MODE       optimize mode for both parsers (default: ReleaseSafe)
 #
-# OLD_NEXUS / NEW_NEXUS may be `legacy` for Nexus 0.10.3 (test/lib/legacy-nexus)
-# or `current` for this checkout's bin/nexus.
+# OLD_NEXUS / NEW_NEXUS are paths to nexus binaries, or `current` for this
+# checkout's bin/nexus (rebuilt first).
 #
 # Examples:
-#   test/diff legacy current test/mumps/mumps.grammar test/mumps/mumps.grammar \
+#   test/diff OLD/bin/nexus current test/mumps/mumps.grammar test/mumps/mumps.grammar \
 #       --ext .m ~/Data/Code/em/misc/vista
-#   test/diff --start parseProgram legacy current ../rig/rig.grammar test/rig/rig.grammar \
-#       --ext .rig ../rig/test ../rig/examples
+#   test/diff --start parseProgram current current OLD/rig.grammar test/rig/rig.grammar \
+#       --ext .rig ~/Data/Code/rig/test ~/Data/Code/rig/examples
 #
 # Exit status: 0 when every file gives the same tree (or the same parse
 # error) with both parsers, apart from --expect'ed files; 1 otherwise; 2 on
@@ -109,7 +109,6 @@ fi
 abspath() { (cd "$(dirname "$1")" && echo "$(pwd)/$(basename "$1")"); }
 resolve_nexus() {
     case $1 in
-        legacy) "$LIB/legacy-nexus" ;;
         current) (cd "$ROOT" && zig build >&2) && echo "$ROOT/bin/nexus" ;;
         *) abspath "$1" ;;
     esac

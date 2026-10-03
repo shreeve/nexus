@@ -1,22 +1,13 @@
-# lit_tags.grammar — exercises literal Tag values at action child positions.
+# lit_tags.grammar — literal Tag values at action child positions.
 #
-# Two scenarios proven here:
+#   1. A letter-start child Tag literal (`fixed`, `move`) is emitted as
+#      `.{ .tag = .@"fixed" }` in its child slot.
 #
-#   1. Letter-start child Tag literal (`fixed`, `move`) — flows through the
-#      generator's "simple case" emit path. Before the v0.10.2 fix this
-#      silently dropped the child Tag and produced malformed Zig (a leading
-#      empty slot in `&.{...}`). After the fix it emits
-#      `.{ .tag = .@"fixed" }` correctly.
+#   2. An operator-name child Tag literal (`+=`) is validated as a tag name
+#      and emitted without any `key:val` annotation leaking into the name.
 #
-#   2. Operator-name child Tag literal (`+=`) — flows through the generator's
-#      "complex case" emit path. The fix tightens that path to validate via
-#      `isLikelyTagName` (rejecting garbage with a clean error rather than
-#      blindly emitting `.@"garbage"`) and uses the stripped form so
-#      `key:val` annotations don't leak into the emitted Tag name.
-#
-# Grammar has no @lang, so the Tag enum is auto-extracted from action
-# templates — exercising the third fix (collectTagsFromAction walks all
-# elements at every position, registering child-position Tag literals too).
+# The grammar has no @lang, so the Tag enum is collected from the actions,
+# child-position Tag literals included.
 
 @lexer
 

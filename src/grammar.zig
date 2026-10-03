@@ -83,13 +83,13 @@ pub const LexerRule = struct {
 /// Complete lexer specification
 pub const LexerSpec = struct {
     allocator: Allocator,
-    states: std.ArrayListUnmanaged(StateVar),
-    tokens: std.ArrayListUnmanaged(TokenDef),
-    rules: std.ArrayListUnmanaged(LexerRule),
-    codeFunctions: std.ArrayListUnmanaged([]const u8),
+    states: std.ArrayList(StateVar),
+    tokens: std.ArrayList(TokenDef),
+    rules: std.ArrayList(LexerRule),
+    codeFunctions: std.ArrayList([]const u8),
     langName: ?[]const u8 = null,
     /// `after` block: assignments applied whenever a token consumes input.
-    afterActions: std.ArrayListUnmanaged(Action) = .empty,
+    afterActions: std.ArrayList(Action) = .empty,
     /// Grammar file name, for diagnostics.
     fileName: []const u8 = "",
 
@@ -347,7 +347,7 @@ pub const ActionElem = union(enum) {
 /// items `N`, `...N`, `~N`, `_`, tags, nested lists, each optionally
 /// prefixed by `role:`. Used in generated-code comments and diagnostics.
 pub fn renderAction(allocator: Allocator, tree: ActionTree) ![]const u8 {
-    var out: std.ArrayListUnmanaged(u8) = .empty;
+    var out: std.ArrayList(u8) = .empty;
     switch (tree) {
         .pass => |n| try out.print(allocator, "{d}", .{n}),
         .nil => try out.append(allocator, '_'),
@@ -356,7 +356,7 @@ pub fn renderAction(allocator: Allocator, tree: ActionTree) ![]const u8 {
     return out.toOwnedSlice(allocator);
 }
 
-fn renderList(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), list: ActionList) Allocator.Error!void {
+fn renderList(allocator: Allocator, out: *std.ArrayList(u8), list: ActionList) Allocator.Error!void {
     try out.append(allocator, '(');
     var sep = false;
     switch (list.head) {
@@ -383,7 +383,7 @@ fn renderList(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), list: Acti
     try out.append(allocator, ')');
 }
 
-fn renderElem(allocator: Allocator, out: *std.ArrayListUnmanaged(u8), elem: ActionElem) Allocator.Error!void {
+fn renderElem(allocator: Allocator, out: *std.ArrayList(u8), elem: ActionElem) Allocator.Error!void {
     switch (elem) {
         .ref => |n| try out.print(allocator, "{d}", .{n}),
         .spread => |n| try out.print(allocator, "...{d}", .{n}),
@@ -490,7 +490,7 @@ pub const Symbol = struct {
     name: []const u8,
     kind: Kind,
     /// Nonterminals: the ids of the rules that define it.
-    rules: std.ArrayListUnmanaged(u16) = .empty,
+    rules: std.ArrayList(u16) = .empty,
 
     pub const Kind = enum { terminal, nonterminal };
 
@@ -536,13 +536,13 @@ pub const Grammar = struct {
     allocator: Allocator,
 
     // Symbols
-    symbols: std.ArrayListUnmanaged(Symbol) = .empty,
+    symbols: std.ArrayList(Symbol) = .empty,
     symbolMap: std.StringHashMapUnmanaged(u16) = .empty,
     aliases: std.StringHashMapUnmanaged([]const u8) = .empty,
     nextSymbolId: u16 = 0,
 
     // Rules
-    rules: std.ArrayListUnmanaged(Rule) = .empty,
+    rules: std.ArrayList(Rule) = .empty,
 
     // Special symbol IDs
     acceptId: u16 = 0,
@@ -550,8 +550,8 @@ pub const Grammar = struct {
     errorId: u16 = 0,
 
     // One entry per start symbol (parallel arrays)
-    startSymbols: std.ArrayListUnmanaged(u16) = .empty,
-    acceptRules: std.ArrayListUnmanaged(u16) = .empty,
+    startSymbols: std.ArrayList(u16) = .empty,
+    acceptRules: std.ArrayList(u16) = .empty,
 
     // Directives carried over from the IR
     asDirectives: []const AsDirective = &.{},

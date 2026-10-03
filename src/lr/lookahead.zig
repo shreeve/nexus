@@ -194,11 +194,11 @@ fn digraph(a: Allocator, rel: Relation, sets: SetArray) !void {
     const depth = try a.alloc(u32, n); // 0 = unvisited, none = done
     defer a.free(depth);
     @memset(depth, 0);
-    var stack: std.ArrayListUnmanaged(u32) = .empty;
+    var stack: std.ArrayList(u32) = .empty;
     defer stack.deinit(a);
     // A traversal frame: node, next edge to visit, and x's stack depth.
     const Frame = struct { x: u32, edge: u32, d: u32 };
-    var frames: std.ArrayListUnmanaged(Frame) = .empty;
+    var frames: std.ArrayList(Frame) = .empty;
     defer frames.deinit(a);
 
     for (0..n) |start| {
@@ -258,9 +258,9 @@ fn lalrSets(a: Allocator, g: *const Grammar, auto: *const Automaton, nullable: [
     defer a.free(ntIndex);
     @memset(ntIndex, none);
 
-    var ntFrom: std.ArrayListUnmanaged(u32) = .empty; // source state per transition
+    var ntFrom: std.ArrayList(u32) = .empty; // source state per transition
     defer ntFrom.deinit(a);
-    var ntSym: std.ArrayListUnmanaged(u16) = .empty;
+    var ntSym: std.ArrayList(u16) = .empty;
     defer ntSym.deinit(a);
     for (states, 0..) |state, p| {
         for (state.transitions) |t| {
@@ -276,7 +276,7 @@ fn lalrSets(a: Allocator, g: *const Grammar, auto: *const Automaton, nullable: [
 
     // DR and reads.
     const follow = try SetArray.init(a, numNt, numSymbols);
-    var edges: std.ArrayListUnmanaged([2]u32) = .empty;
+    var edges: std.ArrayList([2]u32) = .empty;
     defer edges.deinit(a);
     for (0..numNt) |x| {
         const r = gotoOf[ntFrom.items[x] * numSymbols + ntSym.items[x]];
@@ -295,7 +295,7 @@ fn lalrSets(a: Allocator, g: *const Grammar, auto: *const Automaton, nullable: [
     // nonterminal from the transition's source state.
     edges.clearRetainingCapacity();
     const Lookback = struct { state: u32, rule: u16, nt: u32 };
-    var lookbacks: std.ArrayListUnmanaged(Lookback) = .empty;
+    var lookbacks: std.ArrayList(Lookback) = .empty;
     defer lookbacks.deinit(a);
     for (0..numNt) |x| {
         const p0 = ntFrom.items[x];

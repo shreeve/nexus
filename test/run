@@ -33,12 +33,12 @@ TIMEOUT=${NEXUS_TEST_TIMEOUT:-60}
 # its @lang module files, optional test.conf, and cases/ + known/ inputs.
 # -----------------------------------------------------------------------------
 
-# suite_conf <dir>: sets GRAMMAR LANG START GENERATOR FLAGS (absolute paths)
+# suite_conf <dir>: sets GRAMMAR LANG START FLAGS (absolute paths)
 suite_conf() {
-    local dir=$1 grammar="" lang="" start="" generator=current flags=""
+    local dir=$1 grammar="" lang="" start="" flags=""
     if [[ -f "$dir/test.conf" ]]; then
         # shellcheck disable=SC1091
-        eval "$(cd "$dir" && { source ./test.conf; declare -p grammar lang start generator flags 2>/dev/null; })"
+        eval "$(cd "$dir" && { source ./test.conf; declare -p grammar lang start flags 2>/dev/null; })"
     fi
     if [[ -z "$grammar" ]]; then
         grammar=$(cd "$dir" && ls ./*.grammar 2>/dev/null | head -1)
@@ -50,12 +50,7 @@ suite_conf() {
     local f
     for f in $lang; do LANG_FILES+=("$(cd "$dir" && cd "$(dirname "$f")" && echo "$(pwd)/$(basename "$f")")"); done
     START=$start
-    GENERATOR=$generator
     FLAGS=$flags
-}
-
-generator_bin() { # generator_bin <current|legacy>
-    if [[ $1 == legacy ]]; then "$LIB/legacy-nexus"; else echo "$NEXUS"; fi
 }
 
 key_of() { local k=${1#test/}; echo "${k//\//__}"; }
@@ -78,9 +73,7 @@ build_suite() {
     key=$(key_of "$dir")
     out="$OUTROOT/build/$key"
     suite_conf "$dir"
-    local gen
-    gen=$(generator_bin "$GENERATOR") || { printf '12\tlegacy nexus unavailable: %s\n' "$gen" >"$WORK/build/$key"; return; }
-    NEXUS_FLAGS=$FLAGS timeout "$TIMEOUT" "$LIB/build-grammar" "$gen" "$GRAMMAR" "$out" ${LANG_FILES[@]+"${LANG_FILES[@]}"}
+    NEXUS_FLAGS=$FLAGS timeout "$TIMEOUT" "$LIB/build-grammar" "$NEXUS" "$GRAMMAR" "$out" ${LANG_FILES[@]+"${LANG_FILES[@]}"}
     rc=$?
     case $rc in
         0) ;;
@@ -369,6 +362,7 @@ check_cli() {
     expect 1 "undeclared conflict" check list_tail_conflict.grammar || return 1
     expect 0 "Generated: out.zig" --spans no_lang.grammar out.zig || return 1
     grep -q "pub const nodeStore = true" "$WORK/cli/out.zig" || { REASON="--spans did not turn on the node store"; return 1; }
+    expect 0 "Lexer: 6 tokens, 5 rules, 6 DFA states" no_lang.grammar out.zig || return 1
     expect 0 "(section \`lexer\`)" --dump-sexp no_lang.grammar || return 1
     return 0
 }
@@ -516,11 +510,9 @@ for dir in test/*/; do
             add "$id" case "$dir" "$file" "$start" "$tree" && need_build "$dir"
         done < <(list_cases "$dir/$sub")
     done
-    if [[ $GENERATOR == current ]]; then
-        [[ -f "test/golden/$name.zig" ]] && add "gen/$name" gen "$dir" "$name"
-        [[ -f "test/golden/$name.sexp" ]] && add "sexp/$name" sexp "$dir" "$name"
-        add "determinism/$name" determinism "$dir" "$name"
-    fi
+    [[ -f "test/golden/$name.zig" ]] && add "gen/$name" gen "$dir" "$name"
+    [[ -f "test/golden/$name.sexp" ]] && add "sexp/$name" sexp "$dir" "$name"
+    add "determinism/$name" determinism "$dir" "$name"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"
     fi

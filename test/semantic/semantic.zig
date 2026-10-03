@@ -110,7 +110,7 @@ test "a wrapper-built @wrapper node has an id, a span and facts" {
     defer out.deinit();
     try r.p.writeFacts(&out.writer, note);
     try testing.expect(std.mem.startsWith(u8, out.written(), "(node "));
-    try testing.expect(std.mem.indexOf(u8, out.written(), " note 0 5)\n(role ") != null);
+    try testing.expect(std.mem.find(u8, out.written(), " note 0 5)\n(role ") != null);
 }
 
 test "spans: reductions cover their tokens; nested nodes their elements" {
