@@ -260,65 +260,78 @@ pub const Lexer = struct {
         while (lineEnd < s.len and s[lineEnd] != '\n') lineEnd += 1;
         while (end > start and isBlank(s[end - 1])) end -= 1;
 
-        // Words, outside strings.
-        var words: [64]struct { a: usize, b: usize } = undefined;
-        var n: usize = 0;
-        var i = start;
-        while (i < end and n < words.len) {
-            while (i < end and isBlank(s[i])) i += 1;
-            if (i >= end) break;
-            const a = i;
-            var quoted = false;
-            while (i < end and (quoted or !isBlank(s[i]))) : (i += 1) {
-                if (quoted and s[i] == '\\' and i + 1 < end) {
-                    i += 1;
-                    continue;
-                }
-                if (s[i] == '"') quoted = !quoted;
-            }
-            words[n] = .{ .a = a, .b = i };
-            n += 1;
-        }
+        self.base.pos = @intCast(lineEnd);
 
+        // The kind word, the rule texts (split at a standalone `over`), the
+        // count (the last word, when it is a number) and the rationale.
         var toks: [6]Token = undefined;
         var t: usize = 0;
-        if (n > 0) {
-            toks[t] = self.make(.ident, words[0].a, words[0].b - words[0].a);
+        if (nextWord(s, start, end)) |kind| {
+            toks[t] = self.make(.ident, kind.a, kind.b - kind.a);
             t += 1;
-            var last = n;
-            const count: ?Token = if (n > 1 and allDigits(s[words[n - 1].a..words[n - 1].b])) blk: {
-                last = n - 1;
-                break :blk self.make(.integer, words[n - 1].a, words[n - 1].b - words[n - 1].a);
-            } else null;
-            // Rule texts, split at a standalone `over`.
-            var from: usize = 1;
-            for (1..last + 1) |w| {
-                const isOver = w < last and eql(s[words[w].a..words[w].b], "over");
-                if (w == last or isOver) {
-                    if (w > from and t < toks.len) {
-                        toks[t] = self.make(.rule_text, words[from].a, words[w - 1].b - words[from].a);
-                        t += 1;
-                    }
-                    if (isOver and t < toks.len) {
-                        toks[t] = self.make(.kw_over, words[w].a, 4);
-                        t += 1;
-                    }
-                    from = w + 1;
+            var ruleEnd = end;
+            var count: ?Token = null;
+            var last: ?Word = null;
+            var i = kind.b;
+            while (nextWord(s, i, end)) |w| : (i = w.b) last = w;
+            if (last) |w| if (allDigits(s[w.a..w.b])) {
+                count = self.make(.integer, w.a, w.b - w.a);
+                ruleEnd = w.a;
+            };
+            var rule: ?Word = null;
+            var over = false;
+            i = kind.b;
+            while (nextWord(s, i, ruleEnd)) |w| : (i = w.b) {
+                if (!eql(s[w.a..w.b], "over")) {
+                    rule = if (rule) |r| .{ .a = r.a, .b = w.b } else w;
+                    continue;
                 }
+                if (over) return self.fail(w.a, 4, "a conflict entry has one `over`", .{});
+                over = true;
+                if (rule) |r| {
+                    toks[t] = self.make(.rule_text, r.a, r.b - r.a);
+                    t += 1;
+                    rule = null;
+                }
+                toks[t] = self.make(.kw_over, w.a, 4);
+                t += 1;
             }
-            if (count) |c| if (t < toks.len) {
+            if (rule) |r| {
+                toks[t] = self.make(.rule_text, r.a, r.b - r.a);
+                t += 1;
+            }
+            if (count) |c| {
                 toks[t] = c;
                 t += 1;
-            };
+            }
         }
-        if (commentStart < lineEnd and t < toks.len) {
+        if (commentStart < lineEnd) {
             toks[t] = self.make(.comment, commentStart, lineEnd - commentStart);
             t += 1;
         }
-        self.base.pos = @intCast(lineEnd);
-        if (t == 0) return self.make(.err, start, 1);
+        // The line has a word or a comment: the caller saw a non-blank byte.
         for (toks[1..t]) |tok| self.push(tok);
         return toks[0];
+    }
+
+    const Word = struct { a: usize, b: usize };
+
+    /// The next blank-separated word in `s[from..end]`; a `"..."` string,
+    /// escapes and blanks included, is part of a word.
+    fn nextWord(s: []const u8, from: usize, end: usize) ?Word {
+        var i = from;
+        while (i < end and isBlank(s[i])) i += 1;
+        if (i >= end) return null;
+        const a = i;
+        var quoted = false;
+        while (i < end and (quoted or !isBlank(s[i]))) : (i += 1) {
+            if (quoted and s[i] == '\\' and i + 1 < end) {
+                i += 1;
+                continue;
+            }
+            if (s[i] == '"') quoted = !quoted;
+        }
+        return .{ .a = a, .b = i };
     }
 
     fn arrow(self: *Lexer, tok: Token) Token {

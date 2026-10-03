@@ -1,6 +1,6 @@
 # A conflict count that does not fit is rejected.
 # error: conflict_count_too_large.grammar:14:25:
-# error: conflict count '99999999999'
+# error: conflict count 99999999999 is too large
 @lexer
 tokens
     ident

@@ -201,11 +201,6 @@ pub const GrammarLowerer = struct {
         return self.text(node);
     }
 
-    fn parseCount(self: *const GrammarLowerer, node: Sexp, what: []const u8) LowerError!u32 {
-        const t = self.text(node);
-        return std.fmt.parseInt(u32, t, 10) catch self.fail(node, "{s} '{s}' is not a number", .{ what, t });
-    }
-
     // --- Root ---
 
     fn lowerRoot(self: *GrammarLowerer, root: Sexp) LowerError!void {
@@ -531,7 +526,10 @@ pub const GrammarLowerer = struct {
                 return self.fail(overNode, "a `shift` entry names one rule; `over` belongs to `reduce` entries", .{});
             if (kind == .reduce and over == null)
                 return self.fail(entry, "a `reduce` entry names the winning rule `over` the losing one", .{});
-            const count = try self.parseCount(ir.Conflict.count(entry), "conflict count");
+            // An INTEGER: only its size can be wrong.
+            const countNode = ir.Conflict.count(entry);
+            const count = std.fmt.parseInt(u32, self.text(countNode), 10) catch
+                return self.fail(countNode, "conflict count {s} is too large", .{self.text(countNode)});
             const reasonNode = ir.Conflict.reason(entry);
             const reasonRaw = self.optText(reasonNode) orelse
                 return self.fail(entry, "conflict entry needs a `# rationale` comment", .{});
