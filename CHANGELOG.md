@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.0.0 — 2026-10-03
 
 Changes marked **Breaking** need edits in a grammar or a lang module;
 [Migrating](#migrating) lists them per downstream repository.
@@ -335,7 +335,7 @@ Per repository:
   `current`. Its scanner keeps its own long-token encoding through
   `aux` (`srcLen`).
 - **slash, zag, nanoruby** check in Nexus 0.10.3 parsers. Porting one of
-  them from 0.10.3 starts from this repository's 1.x port of its grammar
+  them from 0.10.3 starts from this repository's port of its grammar
   and lang module (`test/slash`, `test/zag`, `test/ruby`), the reference
   that carries every change below; each item says what changed in that
   port since 1.1.0.

@@ -301,7 +301,8 @@ check them:
    generated file's first line.
 2. Regenerate the frontend (the bootstrap loop above) and the goldens
    (`./test/run --update gen`).
-3. Give `CHANGELOG.md`'s Unreleased section the version and the date.
+3. Head `CHANGELOG.md`'s section of unreleased changes with the version
+   and the date.
 4. Commit, and tag the commit `vX.Y.Z`.
 
 ## Performance

@@ -6,15 +6,13 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 
 ## State
 
-- **`main` holds the revamp of Nexus 1.1.0** (tag `v1.1.0`), merged from
-  [shreeve/nexus#5](https://github.com/shreeve/nexus/pull/5). What it
-  changes, with migration steps for every downstream repository, is
-  CHANGELOG.md's "Unreleased" section; it is unreleased until Open work 1.
+- **Nexus 2.0.0** (tag `v2.0.0`) is the current release. What it changes
+  from 1.1.0, with migration steps for every downstream repository, is
+  CHANGELOG.md's 2.0.0 section.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
-  `./test/run` → 737 passed, 0 failed, 0 known; the generated code is byte
+  `./test/run` → 730 passed, 0 failed, 0 known; the generated code is byte
   for byte the same on both.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
-- `src/version.zig` says `1.1.0` until the release (Open work 1).
 
 Verify before you change anything:
 
@@ -29,11 +27,7 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 
 ## Open work
 
-1. **Release.** The owner picks the version: the generated API and the
-   grammar language change in breaking ways, which suggests 2.0.0. Then bump
-   `src/version.zig`, regenerate, date the CHANGELOG section and tag
-   ([INTERNALS.md, "Releasing"](docs/INTERNALS.md#releasing)).
-2. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
+1. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
    time, each regenerating its parser once and applying its steps from
    CHANGELOG "Migrating":
    - **em:** the two `@conflicts` lines, the API renames;
@@ -41,24 +35,26 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      `exprtails = exprtail exprtails`) left-recursive or `exprtail*`: the
      right recursion is quadratic in memory (20,000 terms take 4.8 GB).
      Check with em's suite that every tree stays the same.
-   - **rig:** the API renames, and `![","]` for its five unused trailing
-     commas (the coverage gate counts an unused optional token).
+   - **rig:** its Zig 0.17 port applies its steps (the API renames, and
+     `![","]` for five unused trailing commas) and regenerates its parser
+     with `v2.0.0`; `test/rig` holds that port's grammar, lang module and
+     test programs.
    - **nexis:** delete its `Tag` enum, the API renames.
-   As each one lands, re-sync its copy here (`test/mumps`, `test/rig`,
+   As em and nexis land, re-sync their copies here (`test/mumps`,
    `test/nexis`; [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
    `./test/run` green: until then the suite tests older grammars than the
    ones those projects run.
-3. **Slash, Zag and nanoruby onto Nexus 1.x.** Their repositories check in
-   parsers from Nexus 0.10.3; their 1.x grammars and lang modules are
+2. **Slash, Zag and nanoruby onto this Nexus.** Their repositories check in
+   parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
    `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the
    trees of a 0.10.3 build (from tag `v0.10.3`) with this checkout's.
-4. **Deferred by the owner until em's grammar work is done:** the
+3. **Deferred by the owner until em's grammar work is done:** the
    schemaless tree rules for a leading `role:N` head (named only in
    unexpanded alternatives) and for `!X` in a rule's default action.
-5. **Untested messages:** `test/lib/messages.allow` lists the generator
+4. **Untested messages:** `test/lib/messages.allow` lists the generator
    messages no test prints, each with its reason; an adverse test that
    prints one deletes its line.
-6. **Smaller items:**
+5. **Smaller items:**
    - `./test/run --update` does not write `.tree` files for
      `test/regress` suites; write them with the suite's built driver.
    - A lang `Parser` wrapper that returns `error.ParseError` on its own
