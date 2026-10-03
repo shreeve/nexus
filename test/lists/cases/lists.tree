@@ -14,4 +14,6 @@
   (opt (`a` _ `b`))
   (nils ())
   (nils (_))
-  (nils (`a` _ `b` _)))
+  (nils (`a` _ `b` _))
+  (grow (`a`))
+  (grow (`a` `b` `c`)))

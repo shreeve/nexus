@@ -16,6 +16,8 @@ pub const TokenCat = enum(u8) {
     @"query",
     @"equals",
     @"minus",
+    @"amp",
+    @"caret",
     @"semi",
     @"eof",
     @"err",
@@ -94,11 +96,12 @@ pub const BaseLexer = struct {
                 0 => {
                     if (p < n and src[p] -% 'a' <= 25) {
                         p += 1;
-                        continue :dfa 11;
+                        continue :dfa 13;
                     }
                     if (p < n) switch (src[p]) {
-                        0x00...0x08, 0x0B...0x1F, '!'...')', '.', '0'...':', '<', '>', '@'...'`', '{'...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                        0x00...0x08, 0x0B...0x1F, '!'...'%', '\''...')', '.', '0'...':', '<', '>', '@'...']', '_'...'`', '{'...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         '\n' => { p += 1; continue :scan; },
+                        '&' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"amp", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         '*' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"star", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         '+' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"plus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         ',' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"comma", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
@@ -107,11 +110,12 @@ pub const BaseLexer = struct {
                         ';' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"semi", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"equals", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         '?' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"query", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                        '^' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"caret", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                         else => {},
                     };
                     break :dfa;
                 },
-                11 => {
+                13 => {
                     while (p < n and src[p] -% 'a' <= 25) p += 1;
                     self.pos = @intCast(p);
                     return makeToken(.@"ident", pre, start, p);
@@ -140,6 +144,7 @@ pub const Tag = enum(u8) {
     @"sep",
     @"opt",
     @"nils",
+    @"grow",
 };
 
 /// Roles exist only in schema mode.
@@ -529,8 +534,11 @@ pub const BaseParser = struct {
     valueStack: std.ArrayList(Sexp) = .empty,
     /// Per value-stack entry, the list `keepList` left there with its
     /// capacity, for `extendList` to grow in place. Indexed like
-    /// `valueStack`, sized to its capacity.
+    /// `valueStack`, sized to its capacity; every reduction sets its
+    /// entry's (see `reduce`).
     spares: []Spare = &.{},
+    /// The action in progress recorded its result's spare (`keepList`).
+    keptSpare: bool = false,
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -552,7 +560,13 @@ pub const BaseParser = struct {
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
 
-    const Spare = struct { items: [*]const Sexp, len: u32, capacity: u32 };
+    const Spare = struct {
+        items: [*]const Sexp,
+        len: u32,
+        capacity: u32,
+
+        const none: Spare = .{ .items = &.{}, .len = 0, .capacity = 0 };
+    };
 
     /// The reduction in progress: its rule and where it starts (it ends at
     /// `lastEnd`); with `elemEnds`, also the stack index of its first
@@ -919,7 +933,7 @@ pub const BaseParser = struct {
         if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
         const old = self.spares.len;
         self.spares = try a.realloc(self.spares, capacity);
-        @memset(self.spares[old..], .{ .items = &.{}, .len = 0, .capacity = 0 });
+        @memset(self.spares[old..], .none);
     }
 
     /// The value-stack index of `pass[0]`, the first element of the
@@ -956,12 +970,22 @@ pub const BaseParser = struct {
         // The action reads its elements in place on the value stack; the
         // result then replaces them (a reduction of nothing pushes it). A
         // rule whose value is nil or one of its elements has no action.
+        // The result's spare is the one its action's `keepList` recorded,
+        // or the passed-through element's, so a list grows in place
+        // through rules that pass it on; any other result has none, so no
+        // entry left by an earlier list can match it.
+        self.keptSpare = false;
         const result: Sexp = switch (ruleValue[ruleId]) {
             0 => executeAction(self, ruleId, self.valueStack.items[base..]),
             1 => .nil,
             else => |n| self.valueStack.items[base + n - 2],
         };
         if (self.outOfMemory) return error.OutOfMemory;
+        const spare: Spare = switch (ruleValue[ruleId]) {
+            0 => if (self.keptSpare) self.spares[base] else .none,
+            1 => .none,
+            else => |n| self.spares[base + n - 2],
+        };
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
 
@@ -977,6 +1001,7 @@ pub const BaseParser = struct {
         } else {
             try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
+        self.spares[base] = spare;
     }
 
     /// Move the nodes of an empty value (a subtree that consumed nothing)
@@ -1301,6 +1326,7 @@ pub const BaseParser = struct {
     /// (`X*`, `L(X?)`, ...).
     fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
+        self.keptSpare = true;
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];
@@ -1628,22 +1654,24 @@ const hasTrivia = false;
 const hasRepair = false;
 /// `@as` groups the promotable token may become (see `promote`).
 const asGroups = 0;
-const numSymbols = 25;
+const numSymbols = 29;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
 fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
-        .@"ident" => 7,
-        .@"star" => 6,
-        .@"semi" => 9,
-        .@"plus" => 10,
-        .@"comma" => 12,
-        .@"slash" => 14,
-        .@"query" => 16,
-        .@"equals" => 19,
-        .@"minus" => 20,
+        .@"ident" => 9,
+        .@"star" => 8,
+        .@"semi" => 11,
+        .@"plus" => 12,
+        .@"comma" => 14,
+        .@"slash" => 16,
+        .@"query" => 18,
+        .@"equals" => 21,
+        .@"minus" => 22,
+        .@"amp" => 25,
+        .@"caret" => 26,
         else => 2, // error
     };
 }
@@ -1675,58 +1703,69 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         22 => self.emptyList(.tree),
         23 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
         24 => self.buildOf(&.{ .{ .tag = .@"nils" }, .{ .elem = 1 } }, pass, .tree, true),
+        25 => self.buildOf(&.{ .{ .tag = .@"grow" }, .{ .elem = 1 } }, pass, .tree, true),
+        26 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .tree); },
+        27 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         else => unreachable,
     };
 }
 
-const ruleLhs = [_]u16{ 5, 5, 3, 8, 8, 4, 11, 11, 4, 13, 13, 4, 15, 15, 4, 17, 17, 18, 18, 4, 21, 21, 22, 22, 4, 24 };
-const ruleLen = [_]u8{ 0, 2, 1, 0, 2, 3, 1, 2, 3, 1, 3, 3, 1, 3, 3, 1, 0, 1, 3, 3, 1, 1, 0, 2, 3, 3 };
+const ruleLhs = [_]u16{ 7, 7, 3, 10, 10, 4, 13, 13, 4, 15, 15, 4, 17, 17, 4, 19, 19, 20, 20, 4, 23, 23, 24, 24, 4, 4, 5, 5, 6, 28 };
+const ruleLen = [_]u8{ 0, 2, 1, 0, 2, 3, 1, 2, 3, 1, 3, 3, 1, 3, 3, 1, 0, 1, 3, 3, 1, 1, 0, 2, 3, 3, 2, 1, 2, 3 };
 /// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
-const ruleValue = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 2, 1, 0, 0, 0, 0 };
+const ruleValue = [_]u8{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 3, 0 };
 
-// Parse table: 40 states x 25 symbols. 0 = error, > 0 = shift or
+// Parse table: 48 states x 29 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
 const parseTable = [_][numSymbols]i16{
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0},
-    .{0,-2,0,2,0,3,-2,0,0,0,-2,0,-2,0,-2,0,-2,0,0,-2,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-4,0,0,5,0,6,0,0,0,7,0,8,0,9,0,10,0,0,11,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-3,0,0,0,0,-3,0,0,0,-3,0,-3,0,-3,0,-3,0,0,-3,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,-5,12,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,14,0,0,0,13,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,16,0,0,0,0,0,15,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,18,0,0,0,0,0,0,0,17,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,21,0,-18,0,0,-18,0,0,0,0,20,19,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,-24,0,-24,0,0,0,0,0,0,0,0,0,0,-24,0,22,0,0},
-    .{0,0,0,0,0,0,0,24,0,23,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,26,0,25,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,-8,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,27,0,0,28,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-11,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,29,0,0,0,0,30,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-14,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,31,0,0,32,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-19,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-17,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,35,0,33,0,0,0,0,0,0,0,0,0,0,36,34,0,0,0},
-    .{0,-7,0,0,0,0,-7,0,0,0,-7,0,-7,0,-7,0,-7,0,0,-7,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,-6,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-10,0,0,0,0,-10,0,0,0,-10,0,-10,0,-10,0,-10,0,0,-10,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,-9,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-13,0,0,0,0,-13,0,0,0,-13,0,-13,0,-13,0,-13,0,0,-13,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,37,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-16,0,0,0,0,-16,0,0,0,-16,0,-16,0,-16,0,-16,0,0,-16,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,38,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-21,0,0,0,0,-21,0,0,0,-21,0,-21,0,-21,0,-21,0,0,-21,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,21,0,-18,0,0,-18,0,0,0,0,39,0,0,0,0,0,0,0},
-    .{0,-26,0,0,0,0,-26,0,0,0,-26,0,-26,0,-26,0,-26,0,0,-26,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,-25,0,-25,0,0,0,0,0,0,0,0,0,0,-25,0,0,0,0},
-    .{0,0,0,0,0,0,0,-22,0,-22,0,0,0,0,0,0,0,0,0,0,-22,0,0,0,0},
-    .{0,0,0,0,0,0,0,-23,0,-23,0,0,0,0,0,0,0,0,0,0,-23,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-12,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-15,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,-20,0,0,-20,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0},
+    .{0,-2,0,2,0,0,0,3,-2,0,0,0,-2,0,-2,0,-2,0,-2,0,0,-2,0,0,0,-2,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-4,0,0,5,0,0,0,6,0,0,0,7,0,8,0,9,0,10,0,0,11,0,0,0,12,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-3,0,0,0,0,0,0,-3,0,0,0,-3,0,-3,0,-3,0,-3,0,0,-3,0,0,0,-3,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-5,13,-5,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,15,0,0,0,14,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,17,0,0,0,0,0,16,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,19,0,0,0,0,0,0,0,18,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,22,0,-18,0,0,-18,0,0,0,0,21,20,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-24,0,-24,0,0,0,0,0,0,0,0,0,0,-24,0,23,0,0,0,0},
+    .{0,0,0,0,0,24,25,0,0,26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,27,0,0},
+    .{0,0,0,0,0,0,0,0,0,29,0,28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,31,0,30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-8,0,-8,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,32,0,0,33,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-11,0,0,-11,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,35,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-14,0,0,0,0,-14,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,36,0,0,37,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-19,0,0,-19,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-17,0,0,-17,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,40,0,38,0,0,0,0,0,0,0,0,0,0,41,39,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,42,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,43,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-29,0,-29,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,44,25,0,0,26,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,27,0,0},
+    .{0,-7,0,0,0,0,0,0,-7,0,0,0,-7,0,-7,0,-7,0,-7,0,0,-7,0,0,0,-7,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-6,0,-6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-10,0,0,0,0,0,0,-10,0,0,0,-10,0,-10,0,-10,0,-10,0,0,-10,0,0,0,-10,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-9,0,-9,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-13,0,0,0,0,0,0,-13,0,0,0,-13,0,-13,0,-13,0,-13,0,0,-13,0,0,0,-13,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,45,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-16,0,0,0,0,0,0,-16,0,0,0,-16,0,-16,0,-16,0,-16,0,0,-16,0,0,0,-16,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,46,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-21,0,0,0,0,0,0,-21,0,0,0,-21,0,-21,0,-21,0,-21,0,0,-21,0,0,0,-21,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,22,0,-18,0,0,-18,0,0,0,0,47,0,0,0,0,0,0,0,0,0},
+    .{0,-26,0,0,0,0,0,0,-26,0,0,0,-26,0,-26,0,-26,0,-26,0,0,-26,0,0,0,-26,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-25,0,-25,0,0,0,0,0,0,0,0,0,0,-25,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-22,0,-22,0,0,0,0,0,0,0,0,0,0,-22,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-23,0,-23,0,0,0,0,0,0,0,0,0,0,-23,0,0,0,0,0,0},
+    .{0,-27,0,0,0,0,0,0,-27,0,0,0,-27,0,-27,0,-27,0,-27,0,0,-27,0,0,0,-27,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-28,0,-28,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,-30,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-12,0,0,-12,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-15,0,0,0,0,-15,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,-20,0,0,-20,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
 };
 
 // X "c" excludes: shift the hinted token instead of reducing when it
@@ -1744,37 +1783,40 @@ fn startState(start: Start) u16 {
 
 fn startMarker(start: Start) u16 {
     return switch (start) {
-        .@"top" => 23,
+        .@"top" => 27,
     };
 }
 
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    1, 6, 10, 12, 14, 16, 19, 1, 7, 9, 7, 7, 9, 12, 7, 9, 20, 9, 12, 9, 14,
+    1, 8, 12, 14, 16, 18, 21, 25, 1, 9, 11, 9, 9, 11, 14, 9, 11, 22, 9, 26, 11, 14, 11, 16,
+    11,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 7, 8, 10, 11, 14, 17, 19, 21,
+    0, 0, 8, 9, 11, 12, 15, 18, 20, 22, 24, 25,
 };
 const expectedOf = [_]u16{
-    0, 1, 2, 1, 2, 1, 3, 4, 4, 4, 5, 6, 3, 3, 3, 7, 7, 8, 8, 7, 7, 7, 6, 1,
-    3, 1, 3, 1, 4, 1, 4, 1, 5, 1, 6, 6, 6, 7, 8, 7,
+    0, 1, 2, 1, 2, 1, 3, 4, 4, 4, 5, 6, 7, 3, 3, 3, 8, 8, 9, 9, 8, 8, 8, 6,
+    10, 4, 3, 7, 1, 3, 1, 3, 1, 4, 1, 4, 1, 5, 1, 6, 6, 6, 1, 3, 4, 8, 9, 8,
 };
 /// The most symbols a state expects: room for `BaseParser.expectedNames`.
-pub const maxExpected = 7;
+pub const maxExpected = 8;
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
         1 => "end of input",
-        6 => "\"*\"",
-        7 => "ident",
-        9 => "\";\"",
-        10 => "\"+\"",
-        12 => "\",\"",
-        14 => "\"/\"",
-        16 => "\"?\"",
-        19 => "\"=\"",
-        20 => "\"-\"",
+        8 => "\"*\"",
+        9 => "ident",
+        11 => "\";\"",
+        12 => "\"+\"",
+        14 => "\",\"",
+        16 => "\"/\"",
+        18 => "\"?\"",
+        21 => "\"=\"",
+        22 => "\"-\"",
+        25 => "\"&\"",
+        26 => "\"^\"",
         else => "",
     };
 }

@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `star` `plus` `comma` `slash` `query` `equals` `minus` `semi` `eof` `err`)
+  (tokens `tokens` `ident` `star` `plus` `comma` `slash` `query` `equals` `minus` `amp` `caret` `semi` `eof` `err`)
   (lex_rule `'*'` _ `star`)
   (lex_rule `'+'` _ `plus`)
   (lex_rule `','` _ `comma`)
@@ -8,6 +8,8 @@
   (lex_rule `'?'` _ `query`)
   (lex_rule `'='` _ `equals`)
   (lex_rule `'-'` _ `minus`)
+  (lex_rule `'&'` _ `amp`)
+  (lex_rule `'^'` _ `caret`)
   (lex_rule `';'` _ `semi`)
   (lex_rule
     `'\\n'`
@@ -100,4 +102,37 @@
       (node
         `nils`
         (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"&"`)
+        (ref `grow`)
+        (lit `";"`))
+      (node
+        `grow`
+        (pos `2`))
+      _))
+  (rule
+    (name `grow`)
+    (alt
+      _
+      ((ref `hat`)
+        (tok `IDENT`))
+      (list
+        (spread `1`)
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((tok `IDENT`))
+      (list
+        (pos `1`))
+      _))
+  (rule
+    (name `hat`)
+    (alt
+      _
+      ((lit `"^"`)
+        (ref `grow`))
+      (pos `2`)
       _)))

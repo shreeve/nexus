@@ -556,8 +556,11 @@ pub const BaseParser = struct {
     valueStack: std.ArrayList(Sexp) = .empty,
     /// Per value-stack entry, the list `keepList` left there with its
     /// capacity, for `extendList` to grow in place. Indexed like
-    /// `valueStack`, sized to its capacity.
+    /// `valueStack`, sized to its capacity; every reduction sets its
+    /// entry's (see `reduce`).
     spares: []Spare = &.{},
+    /// The action in progress recorded its result's spare (`keepList`).
+    keptSpare: bool = false,
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -579,7 +582,13 @@ pub const BaseParser = struct {
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
 
-    const Spare = struct { items: [*]const Sexp, len: u32, capacity: u32 };
+    const Spare = struct {
+        items: [*]const Sexp,
+        len: u32,
+        capacity: u32,
+
+        const none: Spare = .{ .items = &.{}, .len = 0, .capacity = 0 };
+    };
 
     /// The reduction in progress: its rule and where it starts (it ends at
     /// `lastEnd`); with `elemEnds`, also the stack index of its first
@@ -950,7 +959,7 @@ pub const BaseParser = struct {
         if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
         const old = self.spares.len;
         self.spares = try a.realloc(self.spares, capacity);
-        @memset(self.spares[old..], .{ .items = &.{}, .len = 0, .capacity = 0 });
+        @memset(self.spares[old..], .none);
     }
 
     /// The value-stack index of `pass[0]`, the first element of the
@@ -987,12 +996,22 @@ pub const BaseParser = struct {
         // The action reads its elements in place on the value stack; the
         // result then replaces them (a reduction of nothing pushes it). A
         // rule whose value is nil or one of its elements has no action.
+        // The result's spare is the one its action's `keepList` recorded,
+        // or the passed-through element's, so a list grows in place
+        // through rules that pass it on; any other result has none, so no
+        // entry left by an earlier list can match it.
+        self.keptSpare = false;
         const result: Sexp = switch (ruleValue[ruleId]) {
             0 => executeAction(self, ruleId, self.valueStack.items[base..]),
             1 => .nil,
             else => |n| self.valueStack.items[base + n - 2],
         };
         if (self.outOfMemory) return error.OutOfMemory;
+        const spare: Spare = switch (ruleValue[ruleId]) {
+            0 => if (self.keptSpare) self.spares[base] else .none,
+            1 => .none,
+            else => |n| self.spares[base + n - 2],
+        };
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
 
@@ -1008,6 +1027,7 @@ pub const BaseParser = struct {
         } else {
             try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
+        self.spares[base] = spare;
     }
 
     /// Move the nodes of an empty value (a subtree that consumed nothing)
@@ -1332,6 +1352,7 @@ pub const BaseParser = struct {
     /// (`X*`, `L(X?)`, ...).
     fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
+        self.keptSpare = true;
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];

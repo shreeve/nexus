@@ -50,3 +50,27 @@ test "a list of 100,000 items parses within 32 MB" {
         try testing.expectEqual(@as(usize, n), list.list.items().len);
     }
 }
+
+// `hat` passes each `grow` list on to the next `grow`, which extends it:
+// the list keeps its spare capacity through the pass, and grows in place
+// (about 10 MB here, with a 20,000-deep parse stack). Copied at every
+// pass, it would allocate n²/2 item copies (2·10⁸ here).
+test "a list passed on by a rule and extended grows in place" {
+    const n = 20_000;
+    const budget = try testing.allocator.alloc(u8, 32 << 20);
+    defer testing.allocator.free(budget);
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(testing.allocator);
+    try text.appendSlice(testing.allocator, "&");
+    for (0..n) |_| try text.appendSlice(testing.allocator, "^");
+    try text.appendSlice(testing.allocator, " a");
+    for (0..n) |_| try text.appendSlice(testing.allocator, " b");
+    try text.append(testing.allocator, ';');
+    var fba: std.heap.FixedBufferAllocator = .init(budget);
+    var p = parser.Parser.init(fba.allocator(), text.items);
+    defer p.deinit();
+    const tree = try p.parseTop();
+    // (top (grow (a b b ...)))
+    const list = tree.list.items()[1].list.items()[1];
+    try testing.expectEqual(@as(usize, n + 1), list.list.items().len);
+}
