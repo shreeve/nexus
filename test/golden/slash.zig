@@ -1630,8 +1630,32 @@ pub const BaseParser = struct {
         return self.node(items, use);
     }
 
+    /// An item of a list an action builds from its elements alone.
+    const Item = union(enum) { elem: u16, tag: Tag, nil };
+
+    /// A list node over `items`, static data (so the action function needs
+    /// no temporaries for it); unless positions are fixed (`trim` false,
+    /// or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        var len = items.len;
+        if (trim and !keepTrailingNils) {
+            while (len > 0) : (len -= 1) switch (items[len - 1]) {
+                .elem => |i| if (pass[i] != .nil) break,
+                .tag => break,
+                .nil => {},
+            };
+        }
+        const out = self.allocator().alloc(Sexp, len) catch return self.oomNil();
+        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+            .elem => |i| pass[i],
+            .tag => |t| .{ .tag = t },
+            .nil => .nil,
+        };
+        return self.node(out, use);
+    }
+
     /// `(tag items...)`
-    inline fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
@@ -1640,7 +1664,7 @@ pub const BaseParser = struct {
     }
 
     /// `(tag ...spread)`
-    inline fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
+    fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
@@ -1651,7 +1675,7 @@ pub const BaseParser = struct {
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    inline fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
@@ -1954,86 +1978,85 @@ fn promote(self: *BaseParser, token: Token) u16 {
 }
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         1 => self.emptyList(.spread),
         2 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         3 => self.sexpPosSpread(.@"sequence", pass[0], pass[1]),
-        13 => self.sexp(.@"seq_always", &.{pass[1]}),
-        14 => self.sexp(.@"seq_always", &.{.nil}),
-        15 => self.sexp(.@"seq_and", &.{pass[1]}),
-        16 => self.sexp(.@"seq_or", &.{pass[1]}),
-        17 => self.sexp(.@"seq_bg", &.{pass[1]}),
-        18 => self.sexp(.@"seq_bg", &.{.nil}),
-        20 => self.build(&.{ pass[0] }, .spread),
+        13 => self.buildOf(&.{ .{ .tag = .@"seq_always" }, .{ .elem = 1 } }, pass, .tree, true),
+        14 => self.buildOf(&.{ .{ .tag = .@"seq_always" }, .nil }, pass, .tree, true),
+        15 => self.buildOf(&.{ .{ .tag = .@"seq_and" }, .{ .elem = 1 } }, pass, .tree, true),
+        16 => self.buildOf(&.{ .{ .tag = .@"seq_or" }, .{ .elem = 1 } }, pass, .tree, true),
+        17 => self.buildOf(&.{ .{ .tag = .@"seq_bg" }, .{ .elem = 1 } }, pass, .tree, true),
+        18 => self.buildOf(&.{ .{ .tag = .@"seq_bg" }, .nil }, pass, .tree, true),
+        20 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         21 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         22 => self.sexpPosSpread(.@"pipeline", pass[0], pass[1]),
-        26 => self.sexp(.@"subshell", &.{pass[1]}),
-        27 => self.sexp(.@"subshell", &.{pass[1], pass[3]}),
-        28 => self.sexp(.@"block", &.{pass[1]}),
-        29 => self.sexp(.@"block", &.{pass[1], pass[3]}),
-        30 => self.build(&.{ pass[0] }, .spread),
+        26 => self.buildOf(&.{ .{ .tag = .@"subshell" }, .{ .elem = 1 } }, pass, .tree, true),
+        27 => self.buildOf(&.{ .{ .tag = .@"subshell" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        28 => self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 } }, pass, .tree, true),
+        29 => self.buildOf(&.{ .{ .tag = .@"block" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, true),
+        30 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         31 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         32 => self.sexpSpread(.@"redirects", pass[0]),
         33 => self.emptyList(.spread),
         34 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         35 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         36 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"command" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        37 => self.build(&.{ pass[0] }, .spread),
+        37 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         38 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         39 => self.sexpSpread(.@"env_binds", pass[0]),
         40 => self.sexpSpread(.@"assigns", pass[0]),
-        41 => self.sexp(.@"env_bind", &.{pass[0], pass[1]}),
-        42 => self.sexp(.@"scalar", &.{pass[0]}),
+        41 => self.buildOf(&.{ .{ .tag = .@"env_bind" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        42 => self.buildOf(&.{ .{ .tag = .@"scalar" }, .{ .elem = 0 } }, pass, .tree, true),
         43 => self.sexpSpread(.@"list", pass[1]),
         44 => self.emptyList(.spread),
         45 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         46 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
-        49 => self.sexp(.@"word", &.{pass[0]}),
-        50 => self.sexp(.@"word", &.{pass[0]}),
-        51 => self.sexp(.@"word", &.{pass[0]}),
-        52 => self.sexp(.@"word", &.{pass[0]}),
-        53 => self.sexp(.@"var", &.{pass[0]}),
-        54 => self.sexp(.@"var_braced", &.{pass[0]}),
-        55 => self.sexp(.@"cmd_subst", &.{pass[1]}),
-        56 => self.sexp(.@"list_capture", &.{pass[1]}),
-        57 => self.sexp(.@"proc_sub_in", &.{pass[1]}),
-        58 => self.sexp(.@"proc_sub_out", &.{pass[1]}),
-        60 => self.sexp(.@"word", &.{pass[0]}),
-        61 => self.sexp(.@"word", &.{pass[0]}),
-        62 => self.sexp(.@"if", &.{pass[1], pass[2], .nil}),
-        63 => self.sexp(.@"if", &.{pass[1], pass[2], pass[3]}),
-        65 => self.sexp(.@"cond_and", &.{pass[0], pass[2]}),
-        66 => self.sexp(.@"cond_or", &.{pass[0], pass[2]}),
-        67 => self.sexp(.@"else", &.{pass[1]}),
-        68 => self.sexp(.@"elif", &.{pass[1]}),
-        69 => self.sexp(.@"body", &.{pass[1]}),
-        70 => self.sexp(.@"body", &.{pass[1]}),
-        71 => self.sexp(.@"while", &.{pass[1], pass[2]}),
-        72 => self.sexp(.@"for", &.{pass[1], pass[3], pass[4]}),
-        73 => self.sexp(.@"match", &.{pass[1], pass[2]}),
+        49 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        50 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        51 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        52 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        53 => self.buildOf(&.{ .{ .tag = .@"var" }, .{ .elem = 0 } }, pass, .tree, true),
+        54 => self.buildOf(&.{ .{ .tag = .@"var_braced" }, .{ .elem = 0 } }, pass, .tree, true),
+        55 => self.buildOf(&.{ .{ .tag = .@"cmd_subst" }, .{ .elem = 1 } }, pass, .tree, true),
+        56 => self.buildOf(&.{ .{ .tag = .@"list_capture" }, .{ .elem = 1 } }, pass, .tree, true),
+        57 => self.buildOf(&.{ .{ .tag = .@"proc_sub_in" }, .{ .elem = 1 } }, pass, .tree, true),
+        58 => self.buildOf(&.{ .{ .tag = .@"proc_sub_out" }, .{ .elem = 1 } }, pass, .tree, true),
+        60 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        61 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
+        62 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .nil }, pass, .tree, true),
+        63 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 1 }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, true),
+        65 => self.buildOf(&.{ .{ .tag = .@"cond_and" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        66 => self.buildOf(&.{ .{ .tag = .@"cond_or" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        67 => self.buildOf(&.{ .{ .tag = .@"else" }, .{ .elem = 1 } }, pass, .tree, true),
+        68 => self.buildOf(&.{ .{ .tag = .@"elif" }, .{ .elem = 1 } }, pass, .tree, true),
+        69 => self.buildOf(&.{ .{ .tag = .@"body" }, .{ .elem = 1 } }, pass, .tree, true),
+        70 => self.buildOf(&.{ .{ .tag = .@"body" }, .{ .elem = 1 } }, pass, .tree, true),
+        71 => self.buildOf(&.{ .{ .tag = .@"while" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        72 => self.buildOf(&.{ .{ .tag = .@"for" }, .{ .elem = 1 }, .{ .elem = 3 }, .{ .elem = 4 } }, pass, .tree, true),
+        73 => self.buildOf(&.{ .{ .tag = .@"match" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
         74 => self.sexpSpread(.@"match_arms", pass[1]),
         75 => self.sexpSpread(.@"match_arms", pass[1]),
         76 => self.emptyList(.spread),
         77 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         78 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
-        81 => self.sexp(.@"match_arm", &.{pass[0], pass[1]}),
-        82 => self.sexp(.@"cmd_def", &.{pass[1], pass[2]}),
-        83 => self.sexp(.@"str_def", &.{pass[1], pass[2]}),
-        84 => self.build(&.{ pass[0] }, .spread),
+        81 => self.buildOf(&.{ .{ .tag = .@"match_arm" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        82 => self.buildOf(&.{ .{ .tag = .@"cmd_def" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        83 => self.buildOf(&.{ .{ .tag = .@"str_def" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, true),
+        84 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         85 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
         86 => self.sexpSpread(.@"words", pass[0]),
-        87 => self.sexp(.@"redir_read", &.{pass[1]}),
-        88 => self.sexp(.@"redir_read_fd", &.{pass[0], pass[1]}),
-        89 => self.sexp(.@"redir_write", &.{pass[1]}),
-        90 => self.sexp(.@"redir_write_fd", &.{pass[0], pass[1]}),
-        91 => self.sexp(.@"redir_append", &.{pass[1]}),
-        92 => self.sexp(.@"redir_both", &.{pass[1]}),
-        93 => self.sexp(.@"redir_both_append", &.{pass[1]}),
-        94 => self.sexp(.@"redir_dup_out", &.{pass[0]}),
-        95 => self.sexp(.@"redir_dup_in", &.{pass[0]}),
-        96 => self.sexp(.@"redir_heredoc", &.{pass[0], pass[1]}),
-        97 => self.sexp(.@"redir_heredoc_lit", &.{pass[0], pass[1]}),
+        87 => self.buildOf(&.{ .{ .tag = .@"redir_read" }, .{ .elem = 1 } }, pass, .tree, true),
+        88 => self.buildOf(&.{ .{ .tag = .@"redir_read_fd" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        89 => self.buildOf(&.{ .{ .tag = .@"redir_write" }, .{ .elem = 1 } }, pass, .tree, true),
+        90 => self.buildOf(&.{ .{ .tag = .@"redir_write_fd" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        91 => self.buildOf(&.{ .{ .tag = .@"redir_append" }, .{ .elem = 1 } }, pass, .tree, true),
+        92 => self.buildOf(&.{ .{ .tag = .@"redir_both" }, .{ .elem = 1 } }, pass, .tree, true),
+        93 => self.buildOf(&.{ .{ .tag = .@"redir_both_append" }, .{ .elem = 1 } }, pass, .tree, true),
+        94 => self.buildOf(&.{ .{ .tag = .@"redir_dup_out" }, .{ .elem = 0 } }, pass, .tree, true),
+        95 => self.buildOf(&.{ .{ .tag = .@"redir_dup_in" }, .{ .elem = 0 } }, pass, .tree, true),
+        96 => self.buildOf(&.{ .{ .tag = .@"redir_heredoc" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
+        97 => self.buildOf(&.{ .{ .tag = .@"redir_heredoc_lit" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, true),
         else => unreachable,
     };
 }

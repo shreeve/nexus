@@ -1248,8 +1248,32 @@ pub const BaseParser = struct {
         return self.node(items, use);
     }
 
+    /// An item of a list an action builds from its elements alone.
+    const Item = union(enum) { elem: u16, tag: Tag, nil };
+
+    /// A list node over `items`, static data (so the action function needs
+    /// no temporaries for it); unless positions are fixed (`trim` false,
+    /// or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        var len = items.len;
+        if (trim and !keepTrailingNils) {
+            while (len > 0) : (len -= 1) switch (items[len - 1]) {
+                .elem => |i| if (pass[i] != .nil) break,
+                .tag => break,
+                .nil => {},
+            };
+        }
+        const out = self.allocator().alloc(Sexp, len) catch return self.oomNil();
+        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+            .elem => |i| pass[i],
+            .tag => |t| .{ .tag = t },
+            .nil => .nil,
+        };
+        return self.node(out, use);
+    }
+
     /// `(tag items...)`
-    inline fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
@@ -1258,7 +1282,7 @@ pub const BaseParser = struct {
     }
 
     /// `(tag ...spread)`
-    inline fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
+    fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
@@ -1269,7 +1293,7 @@ pub const BaseParser = struct {
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    inline fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
@@ -1537,17 +1561,16 @@ fn promote(_: *BaseParser, _: Token) u16 {
 }
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"module", pass[0]),
         1 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         2 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
-        5 => self.sexp(.@"neg", &.{pass[1]}),
+        5 => self.buildOf(&.{ .{ .tag = .@"neg" }, .{ .elem = 1 } }, pass, .tree, true),
         12 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         13 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        15 => self.sexp(.@"*", &.{pass[0], pass[2]}),
-        16 => self.sexp(.@"/", &.{pass[0], pass[2]}),
-        18 => self.sexp(.@"**", &.{pass[0], pass[2]}),
+        15 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        16 => self.buildOf(&.{ .{ .tag = .@"/" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        18 => self.buildOf(&.{ .{ .tag = .@"**" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         else => unreachable,
     };
 }

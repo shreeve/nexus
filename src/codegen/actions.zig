@@ -215,6 +215,10 @@ const Emitter = struct {
         };
         if (!spreads) {
             // Every item is one Sexp: allocate the list in one step.
+            if (staticItems(l)) {
+                try self.staticList(w, l);
+                return w.print(", pass, {s}, false)", .{self.listUse(l)});
+            }
             try w.writeAll(listFromSlicePrefix);
             var first = true;
             if (headValue(l.head)) |_| {
@@ -285,6 +289,10 @@ const Emitter = struct {
             return w.print("self.sexpPosSpread(.@\"{f}\", pass[{d}], pass[{d}])", .{ fmtTag(tag.?), index(firstPos), index(spreadPos) });
         }
         if (plain and spreadCount == 0) {
+            if (staticItems(l)) {
+                try self.staticList(w, l);
+                return w.writeAll(", pass, .tree, true)");
+            }
             try w.print("self.sexp(.@\"{f}\", &.{{", .{fmtTag(tag.?)});
             for (l.items, 0..) |item, i| {
                 if (i > 0) try w.writeAll(", ");
@@ -293,6 +301,59 @@ const Emitter = struct {
             return w.writeAll("})");
         }
         try self.buildList(w, l, label);
+    }
+
+    /// Whether every item of a list without spreads is an element, a tag
+    /// or nil: the list is then static data (`buildOf`).
+    fn staticItems(l: ActionList) bool {
+        switch (l.head) {
+            .ref => |h| if (!staticItem(h)) return false,
+            else => {},
+        }
+        for (l.items) |item| if (!staticItem(item.elem)) return false;
+        return true;
+    }
+
+    fn staticItem(e: ActionElem) bool {
+        return switch (e) {
+            .ref, .nil, .tagLit, .litTag => true,
+            .spread, .symId, .node => false,
+        };
+    }
+
+    /// `self.buildOf(&.{ items... }` for a list of static items.
+    fn staticList(self: *Emitter, w: anytype, l: ActionList) anyerror!void {
+        self.uses.pass = true;
+        try w.writeAll("self.buildOf(&.{");
+        var first = true;
+        switch (l.head) {
+            .tag => |t| {
+                try w.print(" .{{ .tag = .@\"{f}\" }}", .{fmtTag(t)});
+                first = false;
+            },
+            .ref => |h| {
+                try self.staticValue(w, h);
+                first = false;
+            },
+            .none => {},
+        }
+        for (l.items) |it| {
+            if (!first) try w.writeAll(",");
+            first = false;
+            try self.staticValue(w, it.elem);
+        }
+        try w.writeAll(" }");
+    }
+
+    /// One static item as an `Item` literal.
+    fn staticValue(self: *Emitter, w: anytype, e: ActionElem) anyerror!void {
+        switch (e) {
+            .ref => |p| try w.print(" .{{ .elem = {d} }}", .{index(p)}),
+            .nil => try w.writeAll(" .nil"),
+            .tagLit => |t| try w.print(" .{{ .tag = .@\"{f}\" }}", .{fmtTag(t)}),
+            .litTag => |p| try w.print(" .{{ .tag = .@\"{f}\" }}", .{fmtTag(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
+            .spread, .symId, .node => unreachable,
+        }
     }
 
     fn hasNested(l: ActionList) bool {

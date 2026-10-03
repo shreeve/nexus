@@ -1856,8 +1856,32 @@ pub const BaseParser = struct {
         return self.node(items, use);
     }
 
+    /// An item of a list an action builds from its elements alone.
+    const Item = union(enum) { elem: u16, tag: Tag, nil };
+
+    /// A list node over `items`, static data (so the action function needs
+    /// no temporaries for it); unless positions are fixed (`trim` false,
+    /// or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        var len = items.len;
+        if (trim and !keepTrailingNils) {
+            while (len > 0) : (len -= 1) switch (items[len - 1]) {
+                .elem => |i| if (pass[i] != .nil) break,
+                .tag => break,
+                .nil => {},
+            };
+        }
+        const out = self.allocator().alloc(Sexp, len) catch return self.oomNil();
+        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+            .elem => |i| pass[i],
+            .tag => |t| .{ .tag = t },
+            .nil => .nil,
+        };
+        return self.node(out, use);
+    }
+
     /// `(tag items...)`
-    inline fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
+    fn sexp(self: *BaseParser, comptime tag: Tag, items: []const Sexp) Sexp {
         const len = trimmedLen(items);
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
         out[0] = .{ .tag = tag };
@@ -1866,7 +1890,7 @@ pub const BaseParser = struct {
     }
 
     /// `(tag ...spread)`
-    inline fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
+    fn sexpSpread(self: *BaseParser, comptime tag: Tag, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const out = self.allocator().alloc(Sexp, len + 1) catch return self.oomNil();
@@ -1877,7 +1901,7 @@ pub const BaseParser = struct {
 
     /// `(tag pos ...spread)`; just `(tag)` when both are empty (and
     /// positions are not fixed by a schema).
-    inline fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
+    fn sexpPosSpread(self: *BaseParser, comptime tag: Tag, pos: Sexp, spread: Sexp) Sexp {
         const items = spread.items();
         const len = trimmedLen(items);
         const bare = !keepTrailingNils and pos == .nil and len == 0;
@@ -2156,30 +2180,29 @@ fn promote(_: *BaseParser, _: Token) u16 {
 }
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
-    @setEvalBranchQuota(1_000_000);
     return switch (ruleId) {
         0 => self.sexpSpread(.@"program", pass[0]),
         1 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
         2 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         3 => self.emptyList(.spread),
-        17 => self.sexp(.@"int", &.{pass[0]}),
-        18 => self.sexp(.@"real", &.{pass[0]}),
-        19 => self.sexp(.@"string", &.{pass[0]}),
-        20 => self.sexp(.@"char", &.{pass[0]}),
-        21 => self.sexp(.@"keyword", &.{pass[0]}),
-        22 => self.sexp(.@"symbol", &.{pass[0]}),
+        17 => self.buildOf(&.{ .{ .tag = .@"int" }, .{ .elem = 0 } }, pass, .tree, true),
+        18 => self.buildOf(&.{ .{ .tag = .@"real" }, .{ .elem = 0 } }, pass, .tree, true),
+        19 => self.buildOf(&.{ .{ .tag = .@"string" }, .{ .elem = 0 } }, pass, .tree, true),
+        20 => self.buildOf(&.{ .{ .tag = .@"char" }, .{ .elem = 0 } }, pass, .tree, true),
+        21 => self.buildOf(&.{ .{ .tag = .@"keyword" }, .{ .elem = 0 } }, pass, .tree, true),
+        22 => self.buildOf(&.{ .{ .tag = .@"symbol" }, .{ .elem = 0 } }, pass, .tree, true),
         23 => self.sexpSpread(.@"list", pass[1]),
         24 => self.sexpSpread(.@"vector", pass[1]),
         25 => self.sexpSpread(.@"map", pass[1]),
         26 => self.sexpSpread(.@"set", pass[1]),
-        27 => self.sexp(.@"quote", &.{pass[1]}),
-        28 => self.sexp(.@"syntax-quote", &.{pass[1]}),
-        29 => self.sexp(.@"unquote", &.{pass[1]}),
-        30 => self.sexp(.@"unquote-splicing", &.{pass[1]}),
-        31 => self.sexp(.@"deref", &.{pass[1]}),
+        27 => self.buildOf(&.{ .{ .tag = .@"quote" }, .{ .elem = 1 } }, pass, .tree, true),
+        28 => self.buildOf(&.{ .{ .tag = .@"syntax-quote" }, .{ .elem = 1 } }, pass, .tree, true),
+        29 => self.buildOf(&.{ .{ .tag = .@"unquote" }, .{ .elem = 1 } }, pass, .tree, true),
+        30 => self.buildOf(&.{ .{ .tag = .@"unquote-splicing" }, .{ .elem = 1 } }, pass, .tree, true),
+        31 => self.buildOf(&.{ .{ .tag = .@"deref" }, .{ .elem = 1 } }, pass, .tree, true),
         32 => self.sexpSpread(.@"anon-fn", pass[1]),
-        33 => self.sexp(.@"discard", &.{pass[1]}),
-        34 => self.sexp(.@"with-meta-raw", &.{pass[2], pass[1]}),
+        33 => self.buildOf(&.{ .{ .tag = .@"discard" }, .{ .elem = 1 } }, pass, .tree, true),
+        34 => self.buildOf(&.{ .{ .tag = .@"with-meta-raw" }, .{ .elem = 2 }, .{ .elem = 1 } }, pass, .tree, true),
         else => unreachable,
     };
 }

@@ -649,7 +649,6 @@ const Codegen = struct {
         }
         self.usesNested = uses.nested;
         try w.writeAll("\nfn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {\n");
-        try w.writeAll("    @setEvalBranchQuota(1_000_000);\n");
         if (!uses.self) try w.writeAll("    _ = self;\n");
         if (!uses.pass) try w.writeAll("    _ = pass;\n");
         try w.writeAll("    return switch (ruleId) {\n");
