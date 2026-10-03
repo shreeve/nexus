@@ -344,11 +344,15 @@ kind with that role, the labeled value fills it, so most actions need no
 positions at all (`→ (let)` above).
 
 - A label on an optional element (`[":" type:name]`) gives nil when the
-  element is absent; on a list (`args:[L(expr)]`) the items fill a rest role.
+  element is absent; on a list (`args:[L(expr)]`) the items fill a rest role,
+  and labeled tokens (`items:IDENT "," items:IDENT`) are one item each.
 - A label on a choice, `(A | B):role` or `role:(A | B)`, labels whichever
-  alternative matched. When the role is a `tag` role and every alternative
+  alternative matched (an alternative of several elements has no one value:
+  label its elements). When the role is a `tag` role and every alternative
   is a literal, the tag is the matched literal's text: `op:("+=" | "-=")`
-  gives the tag `+=` or `-=`.
+  gives the tag `+=` or `-=` (and `op:("+=" | "-=")?` nil when absent).
+- One role may be labeled in different alternatives of a choice,
+  `(":" name:IDENT | name:INTEGER ":")`: whichever matched fills it.
 - A label naming a side-band role (`eq:"="` for `let ... | eq`) records the
   element's span in the role store: `parser.sideRole(node, .eq)`.
 - `_:X` drops a value on purpose (as does `!X`).

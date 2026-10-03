@@ -1,0 +1,25 @@
+# Two labels for one slot role, both present at once, fill it twice.
+# error: schema_label_twice.grammar:25:22:
+# error: role 'x' of 't' is labeled twice
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t x:leaf
+top! = x:IDENT COMMA x:IDENT                → (t)

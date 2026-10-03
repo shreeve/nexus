@@ -53,6 +53,9 @@ pub const Resolved = struct {
     tree: ?ActionTree,
     sideLabels: []const SideLabel = &.{},
     kind: ?u16 = null,
+    /// Positions `{p, q}` of one role labeled in different alternatives of
+    /// a choice: the action uses p, which takes q's value when absent.
+    merged: []const [2]u16 = &.{},
 
     pub const SideLabel = struct { role: []const u8, pos: u16 };
 };
@@ -549,6 +552,9 @@ const Expander = struct {
                 }
                 if (!f.spliced) posMap[layout.pos[i]] = if (f.alts[ai].len == 1) @intCast(rhs.items.len) else multi;
             }
+            if (resolved) |r| for (r.merged) |m| {
+                if (posMap[m[0]] == absent) posMap[m[0]] = posMap[m[1]];
+            };
 
             var symbols: std.ArrayList(u16) = .empty;
             for (rhs.items) |e| try symbols.append(a, try self.processElement(e));
@@ -563,7 +569,8 @@ const Expander = struct {
             var sideLabels: std.ArrayList(Rule.SideLabel) = .empty;
             if (resolved) |r| for (r.sideLabels) |sl| {
                 const at = posMap[sl.pos];
-                if (at != absent and at != multi) try sideLabels.append(a, .{ .role = sl.role, .pos = at });
+                std.debug.assert(at != multi); // semantics rejects such labels
+                if (at != absent) try sideLabels.append(a, .{ .role = sl.role, .pos = at });
             };
 
             _ = try self.addRule(.{
@@ -652,18 +659,6 @@ const Expander = struct {
             .node => |n| try self.checkSpreads(alt, layout, n.*),
             else => {},
         }
-    }
-
-    /// A single token (or an optional one, or a choice of single tokens).
-    fn isToken(e: ParsedElement) bool {
-        if (e.quantifier != .one and e.quantifier != .optional) return false;
-        return switch (e.kind) {
-            .token, .string => true,
-            .choice => for (e.choices) |c| {
-                if (c.len != 1 or !isToken(c[0])) break false;
-            } else true,
-            else => false,
-        };
     }
 
     // --- Action mapping ---
@@ -960,6 +955,18 @@ const Expander = struct {
         _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{levelIds.items[0]}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
     }
 };
+
+/// A single token (or an optional one, or a choice of single tokens).
+pub fn isToken(e: ParsedElement) bool {
+    if (!once(e)) return false;
+    return switch (e.kind) {
+        .token, .string => true,
+        .choice => for (e.choices) |c| {
+            if (c.len != 1 or !isToken(c[0])) break false;
+        } else true,
+        else => false,
+    };
+}
 
 /// `x! = x`: the start block alternative that is the start symbol itself.
 fn isEntryIdiom(name: []const u8, alt: ParsedAlternative) bool {

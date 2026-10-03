@@ -30,6 +30,13 @@
   an error, since leaving it out lets different inputs build the same
   node. Use it, label it, drop it with `!X`, or opt out with `~ "reason"`.
   Coverage errors show groups, choices and lists in source syntax.
+- One role may be labeled in different alternatives of a choice (whichever
+  matched fills it); an optional choice of literals can fill a tag role
+  (`op:("+=" | "-=")?`); labeled tokens in a rest role are one item each
+  (`items:IDENT "," items:IDENT`). All three were errors.
+- A label on a choice with an alternative of several elements is an error
+  (`eq:("=" | ":" "=")`); for a side-band role it was dropped for that
+  alternative. Label the elements instead.
 - **A label that cannot fill a role is an error**, where it was ignored:
   one inside a repeated group or choice (`(A | x:B)*`), or inside a group
   nested in a group or choice. Move that part into a named rule.
@@ -61,6 +68,10 @@
   `@infix` declared it is an error (rename the rule).
 - The coverage gate judged a name defined in two blocks as an alias of its
   last block's token; it is a rule, as for expansion.
+- A declared kind built only inside an undeclared kind was reported as
+  unbuilt and left out of the paste-ready `@schema` block.
+- Two labels on one slot role report "labeled twice", not "filled by the
+  label and by the action".
 
 ## 1.1.0 — 2026-10-02
 

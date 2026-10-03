@@ -151,7 +151,7 @@ const Resolver = struct {
             const items = try a.dupe(ActionItem, &.{ .{ .elem = .{ .ref = 1 } }, .{ .elem = .{ .ref = 3 } } });
             const list: ActionList = .{ .head = .{ .tag = op.op }, .items = items };
             const ctx: Ctx = .{ .rule = "@infix", .line = decl.line, .col = decl.col };
-            try infix.append(a, .{ .tree = .{ .list = try self.place(ctx, list, &.{}, null) }, .kind = self.kindIndex.get(op.op) });
+            try infix.append(a, .{ .tree = .{ .list = try self.place(ctx, list, null) }, .kind = self.kindIndex.get(op.op) });
         };
 
         try self.checkInventory();
@@ -184,11 +184,27 @@ const Resolver = struct {
             const e = layout.element(alt.elements, p);
             const name = e.label orelse continue;
             if (std.mem.eql(u8, name, "_")) continue;
-            try labels.append(self.a, .{ .name = name, .pos = @intCast(p), .line = e.line, .col = e.col, .lits = try literalTexts(self.a, e) });
+            const lctx: Ctx = .{ .rule = rule.name, .line = e.line, .col = e.col };
+            if (layout.whole(p)) |f| if (several(f)) {
+                const what = if (e.kind == .choice) "a choice with an alternative of several elements" else "a group of several elements";
+                self.err(lctx, "label '{s}' names {s}; label those elements instead", .{ name, what });
+                continue;
+            };
+            const s = layout.slots[p - 1];
+            try labels.append(self.a, .{
+                .name = name,
+                .pos = @intCast(p),
+                .line = e.line,
+                .col = e.col,
+                .lits = try literalTexts(self.a, e),
+                .slot = s,
+                .single = layout.forms[s.elem] == null and e.quantifier == .one and expand.isToken(e),
+            });
         }
 
         var out: Resolved = .{ .tree = alt.actionTree };
         var sides: std.ArrayList(Resolved.SideLabel) = .empty;
+        var merged: std.ArrayList([2]u16) = .empty;
         if (alt.actionTree) |tree| switch (tree) {
             .list => |l| {
                 const kind: ?u16 = switch (l.head) {
@@ -196,11 +212,12 @@ const Resolver = struct {
                     else => null,
                 };
                 out.kind = kind;
-                const placed = try self.place(ctx, l, labels.items, &sides);
+                const placed = try self.place(ctx, l, .{ .labels = labels.items, .sides = &sides, .merged = &merged });
                 out.tree = .{ .list = placed };
             },
             else => {},
         };
+        out.merged = try merged.toOwnedSlice(self.a);
         const constructsKind = out.kind != null;
         if (!constructsKind) for (labels.items) |lab| {
             self.err(.{ .rule = rule.name, .line = lab.line, .col = lab.col }, "label '{s}' fills a role, but the action builds no schema node", .{lab.name});
@@ -213,12 +230,30 @@ const Resolver = struct {
 
     /// A pattern label. `lits`: the texts a labeled string literal or
     /// choice of string literals can match (null for other elements).
-    const Label = struct { name: []const u8, pos: u16, line: u32, col: u32, lits: ?[]const []const u8 = null };
+    /// `single`: the element is always present and one value (a token), so
+    /// in a rest role it is one item rather than a spread.
+    const Label = struct {
+        name: []const u8,
+        pos: u16,
+        line: u32,
+        col: u32,
+        lits: ?[]const []const u8 = null,
+        slot: expand.Slot,
+        single: bool,
+    };
+
+    /// What the labels of an alternative fill in its top-level list: the
+    /// labels, and where to record side-band labels and merged positions.
+    const Top = struct {
+        labels: []const Label,
+        sides: *std.ArrayList(Resolved.SideLabel),
+        merged: *std.ArrayList([2]u16),
+    };
 
     /// Place a list's items: a kind-headed list gets its slots in schema
     /// order; any other list is plumbing and keeps its items. Nested lists
-    /// are placed too. `labels` fill roles of this (top-level) list only.
-    fn place(self: *Resolver, ctx: Ctx, l: ActionList, labels: []const Label, sides: ?*std.ArrayList(Resolved.SideLabel)) Error!ActionList {
+    /// are placed too. Labels (`top`) fill roles of the top-level list only.
+    fn place(self: *Resolver, ctx: Ctx, l: ActionList, top: ?Top) Error!ActionList {
         const a = self.a;
         const tag = switch (l.head) {
             .tag => |t| t,
@@ -235,7 +270,12 @@ const Resolver = struct {
         };
         const ki = self.kindIndex.get(tag) orelse {
             try self.undeclaredKinds.append(self.a, .{ .tag = tag, .list = l, .ctx = ctx });
-            for (l.items) |item| try self.noteTag(ctx, item.elem, null);
+            for (l.items) |item| {
+                try self.noteTag(ctx, item.elem, null);
+                // Nested lists still count: a declared kind built inside
+                // is built.
+                _ = try self.placeElem(ctx, item.elem);
+            }
             return l;
         };
         try self.built.put(a, tag, {});
@@ -299,12 +339,30 @@ const Resolver = struct {
             }
         }
 
-        for (labels) |lab| {
+        const labels: []const Label = if (top) |t| t.labels else &.{};
+        for (labels, 0..) |lab, li| {
             const lctx: Ctx = .{ .rule = ctx.rule, .line = lab.line, .col = lab.col };
             if (roleIndex(roles, lab.name)) |ri| {
                 if (ri < slotCount) {
                     if (slots[ri] != null) {
-                        self.err(lctx, "role '{s}' of '{s}' is filled by the label and by the action", .{ lab.name, tag });
+                        const prior = for (labels[0..li]) |p| {
+                            if (std.mem.eql(u8, p.name, lab.name)) break p;
+                        } else {
+                            self.err(lctx, "role '{s}' of '{s}' is filled by the label and by the action", .{ lab.name, tag });
+                            continue;
+                        };
+                        if (!exclusive(labels[0..li], lab)) {
+                            self.err(lctx, "role '{s}' of '{s}' is labeled twice", .{ lab.name, tag });
+                            continue;
+                        }
+                        if (roles[ri].type == .tag and (prior.lits == null) != (lab.lits == null)) {
+                            self.err(lctx, "role '{s}' of '{s}' takes a literal's tag in one alternative and another value in this one", .{ lab.name, tag });
+                            continue;
+                        }
+                        // The same role in another alternative of the same
+                        // choice: whichever is present fills the slot.
+                        if (lab.lits) |lits| for (lits) |t| try self.noteTag(lctx, .{ .tagLit = t }, roles[ri]);
+                        try top.?.merged.append(a, .{ prior.pos, lab.pos });
                         continue;
                     }
                     // A tag role labeling literals takes the tag the
@@ -316,10 +374,10 @@ const Resolver = struct {
                     };
                     slots[ri] = .{ .ref = lab.pos };
                 } else {
-                    try rest.append(a, .{ .spread = lab.pos });
+                    try rest.append(a, if (lab.single) .{ .ref = lab.pos } else .{ .spread = lab.pos });
                 }
             } else if (containsName(kind.side, lab.name)) {
-                if (sides) |s| try s.append(a, .{ .role = lab.name, .pos = lab.pos });
+                try top.?.sides.append(a, .{ .role = lab.name, .pos = lab.pos });
             } else {
                 self.err(lctx, "label '{s}' is neither a role nor a side-band role of '{s}' (roles: {f})", .{ lab.name, tag, fmtRoles(kind) });
             }
@@ -340,7 +398,7 @@ const Resolver = struct {
         return switch (e) {
             .node => |n| blk: {
                 const p = try self.a.create(ActionList);
-                p.* = try self.place(ctx, n.*, &.{}, null);
+                p.* = try self.place(ctx, n.*, null);
                 break :blk .{ .node = p };
             },
             else => e,
@@ -542,8 +600,28 @@ const Resolver = struct {
     }
 };
 
+/// Whether some alternative of an inline element has several elements, so
+/// the element as a whole is not one value.
+fn several(f: expand.Inline) bool {
+    for (f.alts) |alt| if (alt.len != 1) return true;
+    return false;
+}
+
+/// Whether `lab` and every earlier label of the same name sit in different
+/// alternatives of one choice (at most one of them is ever present).
+fn exclusive(earlier: []const Resolver.Label, lab: Resolver.Label) bool {
+    const alt = lab.slot.alt orelse return false;
+    for (earlier) |p| {
+        if (!std.mem.eql(u8, p.name, lab.name)) continue;
+        const palt = p.slot.alt orelse return false;
+        if (p.slot.elem != lab.slot.elem or palt == alt) return false;
+    }
+    return true;
+}
+
 /// The texts a string literal element, or a choice whose every alternative
-/// is one string literal, can match; null for any other element.
+/// is one string literal, can match; null for any other element. An
+/// optional choice qualifies too (absent, it gives nil).
 fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
     switch (e.kind) {
         .string => {
@@ -551,7 +629,7 @@ fn literalTexts(a: Allocator, e: ParsedElement) !?[]const []const u8 {
             return try a.dupe([]const u8, &.{try unquote(a, e.value)});
         },
         .choice => {
-            if (e.quantifier != .one) return null;
+            if (e.quantifier != .one and e.quantifier != .optional) return null;
             const out = try a.alloc([]const u8, e.choices.len);
             for (e.choices, 0..) |c, i| {
                 if (c.len != 1 or c[0].kind != .string or c[0].quantifier != .one) return null;
