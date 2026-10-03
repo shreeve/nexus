@@ -2,7 +2,7 @@
 # tools/messages). One line per message: FILE<TAB>FORMAT<TAB>REASON, with
 # FORMAT as written between the quotes in FILE. Adding the test that
 # prints a message means deleting its line here; tools/messages fails on
-# an entry whose message a test prints or that FILE no longer has.
+# an entry whose message a test prints or that FILE does not have.
 src/check.zig	unreachable rule '{s}'	untested: the check-mode lint warning; needs a test
 src/codegen/codegen.zig	tag '{s}' is produced by an action but not declared in @schema or @tags	untested: needs an adverse test
 src/codegen/codegen.zig	side-band roles need @schema	untested: needs an adverse test

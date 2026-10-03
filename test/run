@@ -517,7 +517,7 @@ worker() {
                 adverse/known/*) how="git mv test/$id.grammar test/adverse/" ;;
                 *) how="move test/${id%%/*}/known/${id#*/known/}.* (input and .tree) to test/${id%%/*}/cases/" ;;
             esac
-            printf 'fixed\t%s\tnow passes: %s\n' "$id" "$how" >"$res"
+            printf 'fixed\t%s\tpasses: %s\n' "$id" "$how" >"$res"
         else
             printf 'known\t%s\t%s\n' "$id" "$REASON" >"$res"
         fi
@@ -631,7 +631,7 @@ for dir in test/*/; do
     fi
 done
 
-# Bug tests: test/known/<name>/ (failing today) and test/regress/<name>/
+# Bug tests: test/known/<name>/ (failing) and test/regress/<name>/
 # (fixed; they stay as regression tests).
 for dir in test/known/*/ test/regress/*/; do
     dir=${dir%/}

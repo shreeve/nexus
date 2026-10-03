@@ -21,11 +21,11 @@ systems' own tools.
 | Test id | Contract |
 |---|---|
 | `<grammar>/<case>` | the grammar generates, **compiles** with its `@lang` module and the tree driver, and parsing `test/<grammar>/cases/<case>.*` prints exactly `<case>.tree` |
-| `<grammar>/known/<case>` | same, for a case whose correct tree is not produced today |
+| `<grammar>/known/<case>` | same, for a case whose `.tree` is the correct output, which the parser does not produce |
 | `known/<bug>` | a self-contained test of the correct behavior for one known bug (see below) |
 | `regress/<bug>` | a fixed `known/<bug>`, kept as a regression test |
 | `adverse/<name>` | `test/adverse/<name>.grammar` is rejected: non-zero exit, a `file:line:col: error` diagnostic, and every `# error:` text in its header (case-insensitive) |
-| `adverse/known/<name>` | same, for rejections that are wrong today |
+| `adverse/known/<name>` | same, for a rejection the generator gets wrong |
 | `gen/<grammar>` | the generated parser (with the suite's `flags`) equals `test/golden/<grammar>.zig` byte for byte; every suite has one but `nexus`, whose generated parser is `src/frontend/parser.zig` (`bootstrap`) |
 | `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp`; every grammar file has one, under the first suite that uses it |
 | `determinism/<grammar>` | two generations (with the suite's `flags`), and two `--dump-sexp` runs, are identical |
@@ -35,7 +35,7 @@ systems' own tools.
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
 | `tools/fmt` | the `zig fmt --check` command of `AGENTS.md` passes |
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
-| `tools/messages` | every error and warning the generator's source can print is printed by `nexus check` on some grammar under `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source no longer has, fails |
+| `tools/messages` | every error and warning the generator's source can print is printed by `nexus check` on some grammar under `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
 | `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
@@ -62,7 +62,7 @@ test/mumps/
     expr/               cases parsed with parseExpr instead of the default start
       pattern.m
       pattern.tree
-  known/                cases whose .tree is the correct output, not today's
+  known/                cases whose .tree is the correct output, not the parser's
 ```
 
 `test.conf` is a bash snippet run in the suite directory; every key is
@@ -90,7 +90,7 @@ The in-repo suites:
 | `spans` | the MUMPS grammar generated with `--spans` | MUMPS cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
-| `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 that fail today), 22 MVTS-derived em compliance routines |
+| `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 pinned at their parse error), 22 MVTS-derived em compliance routines |
 | `zag`, `ruby`, `slash`, `nexis` | downstream grammars without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
@@ -117,7 +117,7 @@ offers it as a start rule. `--no-spans` omits the spans.
 ## Known bugs
 
 `test/known/` is the work queue. Each bug is a directory with a grammar
-whose header says what is correct and what goes wrong today, and either:
+whose header says what is correct and what goes wrong, and either:
 
 - `cases/` with inputs and `.tree` files: the grammar must generate, compile
   and produce every tree; or
