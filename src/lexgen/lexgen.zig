@@ -165,7 +165,7 @@ pub const LexerGenerator = struct {
         }
         self.consuming = consuming.items;
         self.ends = ends.items;
-        try self.checkZeroWidthCycles();
+        try self.checkZeroWidthLoops();
 
         // Guard atoms of consuming rules, and the live rules per configuration.
         var atoms: std.ArrayList(Atom) = .empty;
@@ -328,133 +328,189 @@ pub const LexerGenerator = struct {
         return false;
     }
 
-    /// Does the rule, which consumes nothing, stop matching after it
-    /// fires? True when its actions (after the `after` assignments, for a
-    /// consuming rule) leave some guard on a state variable false: a set
-    /// value that fails it, or steps that saturate (at 127 or -128) where
-    /// it fails. Anything else could return the same zero-width token
-    /// forever.
-    fn falsifiesGuard(self: *const LexerGenerator, r: *const LexerRule, withAfter: bool) bool {
-        for (r.guards) |g| {
-            if (std.mem.eql(u8, g.variable, "pre")) continue;
-            var known: ?i32 = null;
-            var delta: i32 = 0;
-            if (withAfter) for (self.spec.afterActions.items) |act| {
-                if (std.mem.eql(u8, act.variable.?, g.variable) and afterApplies(act, r.actions)) known = act.value.?;
-            };
-            var assigned = false;
-            for (r.actions) |act| {
-                const v = act.variable orelse continue;
-                if (!std.mem.eql(u8, v, g.variable)) continue;
-                switch (act.kind) {
-                    .set => {
-                        known = act.value.?;
-                        delta = 0;
-                        assigned = true;
-                    },
-                    .inc, .dec => {
-                        const step: i32 = if (act.kind == .inc) 1 else -1;
-                        if (known) |k| known = std.math.clamp(k + step, -128, 127) else delta += step;
-                        assigned = true;
-                    },
-                    .counted => return true, // a count of bytes: not decidable here
-                }
-            }
-            if (!assigned and known == null) continue;
-            const at: i32 = if (known) |k| k else if (delta > 0) 127 else if (delta < 0) -128 else continue;
-            if (!guardHoldsAt(g, at)) return true;
-        }
-        return false;
-    }
-
     /// Rules that return a token without advancing: zero-width rules (no
     /// pattern) and consuming rules that end at their start (`hold`,
-    /// `rewind(0)`, an empty head before `/`). If some of them can fire one
-    /// after another in a cycle (each leaving the state variables where the
-    /// next one's guards can hold), the lexer can return zero-width tokens
-    /// forever at one position. The check follows each variable's possible
-    /// values (-128..127; `pre` 0..255) through the guards and actions,
-    /// with every variable independent, so it only errs on the safe side.
-    fn checkZeroWidthCycles(self: *LexerGenerator) !void {
+    /// `rewind(0)`, an empty head before `/`). The lexer would return such
+    /// tokens forever at one position if they could fire one after another
+    /// without end. A rule that does so fires at (rule, value) steps that
+    /// repeat, for every variable its guards test, so `pruneLoops` keeps
+    /// only the rules on such cycles; whatever survives is an error. Each
+    /// variable is followed on its own, so the check errs only on the safe
+    /// side.
+    fn checkZeroWidthLoops(self: *LexerGenerator) !void {
         const a = self.arena.allocator();
-        const rules = self.spec.rules.items;
-        var nodes: std.ArrayList(u32) = .empty;
-        for (rules, 0..) |*r, i| {
+        var nodes: std.ArrayList(*const LexerRule) = .empty;
+        for (self.spec.rules.items, 0..) |*r, i| {
             if (r.pattern.len == 0) {
-                try nodes.append(a, @intCast(i));
+                try nodes.append(a, r);
                 continue;
             }
             const k = std.mem.findScalar(u32, self.consuming, @intCast(i)) orelse continue;
             const e = self.ends[k];
-            if (e == .start or (e == .fromStart and e.fromStart == 0)) try nodes.append(a, @intCast(i));
+            if (e == .start or (e == .fromStart and e.fromStart == 0)) try nodes.append(a, r);
         }
-        if (nodes.items.len == 0) return;
         const n = nodes.items.len;
-        const edge = try a.alloc(bool, n * n);
-        for (nodes.items, 0..) |ai, x| for (nodes.items, 0..) |bi, y| {
-            edge[x * n + y] = self.canFollow(&rules[ai], &rules[bi]);
+        const alive = try a.alloc(bool, n);
+        @memset(alive, true);
+        try self.pruneLoops(nodes.items, alive);
+        const first = std.mem.findScalar(bool, alive, true) orelse return;
+
+        // A rule that loops on its own gets the more precise message.
+        const one = try a.alloc(bool, n);
+        for (nodes.items, 0..) |r, i| {
+            if (!alive[i]) continue;
+            @memset(one, false);
+            one[i] = true;
+            try self.pruneLoops(nodes.items, one);
+            if (!one[i]) continue;
+            if (!changesGuardedState(r)) {
+                const again = if (r.pattern.len == 0 and r.hold) " (a held rule without a pattern sees the same whitespace again)" else "";
+                return self.fail(r, 0, "this zero-width rule would match forever: it must assign a state variable its guards test, or need whitespace (a guard false at pre = 0){s}", .{again});
+            }
+            return self.fail(r, 0, "this zero-width rule would match forever: after its actions its guards still hold; an action must make one of them false", .{});
+        }
+        var lines: std.Io.Writer.Allocating = .init(a);
+        for (nodes.items, alive) |r, live| {
+            if (!live) continue;
+            if (lines.written().len > 0) try lines.writer.writeAll(", ");
+            try lines.writer.print("{d}", .{r.line});
+        }
+        return self.fail(nodes.items[first], 0, "zero-width rules could fire one after another forever at one position (the rules on lines {s}): make an action set a variable so that the next one's guards fail", .{lines.written()});
+    }
+
+    /// Narrow `alive` to the rules that lie on a cycle of steps among alive
+    /// rules, for every variable some rule's guards test.
+    fn pruneLoops(self: *LexerGenerator, nodes: []const *const LexerRule, alive: []bool) !void {
+        const a = self.arena.allocator();
+        var vars: std.ArrayList([]const u8) = .empty;
+        for (nodes) |r| for (r.guards) |g| {
+            for (vars.items) |v| {
+                if (std.mem.eql(u8, v, g.variable)) break;
+            } else try vars.append(a, g.variable);
         };
-        // Depth-first search for a cycle.
-        const color = try a.alloc(u8, n);
-        @memset(color, 0);
-        const stack = try a.alloc(usize, n);
-        for (0..n) |start| {
-            if (color[start] != 0) continue;
-            if (try self.cycleFrom(start, n, edge, color, stack, 0)) |cyc| {
-                const first = &rules[nodes.items[cyc[0]]];
-                var lines: std.Io.Writer.Allocating = .init(a);
-                for (cyc, 0..) |c, i| {
-                    if (i > 0) try lines.writer.writeAll(", ");
-                    try lines.writer.print("{d}", .{rules[nodes.items[c]].line});
+        var changed = true;
+        while (changed) {
+            changed = false;
+            for (vars.items) |v| {
+                const keep = try self.cyclicRules(nodes, alive, v);
+                for (alive, keep) |*live, k| {
+                    if (live.* and !k) {
+                        live.* = false;
+                        changed = true;
+                    }
                 }
-                return self.fail(first, 0, "zero-width rules could fire one after another forever at one position (the rules on lines {s}): make an action set a variable so that the next one's guards fail", .{lines.written()});
             }
         }
     }
 
-    fn cycleFrom(self: *LexerGenerator, v: usize, n: usize, edge: []const bool, color: []u8, stack: []usize, depth: usize) !?[]const usize {
-        color[v] = 1;
-        stack[depth] = v;
-        for (0..n) |w| {
-            if (!edge[v * n + w]) continue;
-            if (color[w] == 1) {
-                const at = std.mem.findScalar(usize, stack[0 .. depth + 1], w).?;
-                return stack[at .. depth + 1];
+    /// The alive rules on a cycle of steps (r, x) -> (s, y): r's guards on
+    /// `variable` hold at x, firing r leaves it at y, and s's guards hold
+    /// at y. A step is on a cycle when its strongly connected component has
+    /// another step or it steps to itself.
+    fn cyclicRules(self: *LexerGenerator, nodes: []const *const LexerRule, alive: []const bool, variable: []const u8) ![]bool {
+        const a = self.arena.allocator();
+        const lo, const hi = range(variable);
+        const w: usize = @intCast(hi - lo + 1);
+        const n = nodes.len;
+        // Step (i, x) is node i * w + (x - lo); node `any` stands for every
+        // value (after a count), with an edge to each step.
+        const any: u32 = @intCast(n * w);
+        const total = any + 1;
+        const live = try a.alloc(bool, total);
+        for (0..n) |i| for (0..w) |k| {
+            live[i * w + k] = alive[i] and holdsAll(nodes[i].guards, variable, lo + @as(i32, @intCast(k)));
+        };
+        live[any] = true;
+
+        // Successors of node u: succ[start[u]..start[u + 1]].
+        const start = try a.alloc(u32, total + 1);
+        var succ: std.ArrayList(u32) = .empty;
+        for (0..total) |u| {
+            start[u] = @intCast(succ.items.len);
+            if (!live[u]) continue;
+            if (u == any) {
+                for (0..any) |t| if (live[t]) try succ.append(a, @intCast(t));
+                continue;
             }
-            if (color[w] == 0) if (try self.cycleFrom(w, n, edge, color, stack, depth + 1)) |c| return c;
+            const y = self.step(nodes[u / w], variable, lo + @as(i32, @intCast(u % w))) orelse {
+                try succ.append(a, any);
+                continue;
+            };
+            for (0..n) |j| {
+                const t = j * w + @as(usize, @intCast(y - lo));
+                if (live[t]) try succ.append(a, @intCast(t));
+            }
         }
-        color[v] = 2;
-        return null;
+        start[total] = @intCast(succ.items.len);
+
+        // Tarjan's strongly connected components, without recursion.
+        const unvisited = std.math.maxInt(u32);
+        const index = try a.alloc(u32, total);
+        const low = try a.alloc(u32, total);
+        const onStack = try a.alloc(bool, total);
+        const onCycle = try a.alloc(bool, total);
+        @memset(index, unvisited);
+        @memset(onStack, false);
+        @memset(onCycle, false);
+        var stack: std.ArrayList(u32) = .empty;
+        const Frame = struct { u: u32, next: u32 };
+        var calls: std.ArrayList(Frame) = .empty;
+        var counter: u32 = 0;
+        for (0..total) |root| {
+            if (!live[root] or index[root] != unvisited) continue;
+            var visit: ?u32 = @intCast(root);
+            while (true) {
+                if (visit) |v| {
+                    index[v] = counter;
+                    low[v] = counter;
+                    counter += 1;
+                    try stack.append(a, v);
+                    onStack[v] = true;
+                    try calls.append(a, .{ .u = v, .next = start[v] });
+                    visit = null;
+                }
+                const f = &calls.items[calls.items.len - 1];
+                const u = f.u;
+                if (f.next < start[u + 1]) {
+                    const v = succ.items[f.next];
+                    f.next += 1;
+                    if (index[v] == unvisited) {
+                        visit = v;
+                    } else if (onStack[v]) {
+                        low[u] = @min(low[u], index[v]);
+                    }
+                    continue;
+                }
+                _ = calls.pop();
+                if (low[u] == index[u]) {
+                    const top = stack.items.len;
+                    const at = std.mem.findScalarLast(u32, stack.items, u).?;
+                    const selfLoop = std.mem.findScalar(u32, succ.items[start[u]..start[u + 1]], u) != null;
+                    for (stack.items[at..top]) |s| {
+                        onStack[s] = false;
+                        onCycle[s] = top - at > 1 or selfLoop;
+                    }
+                    stack.shrinkRetainingCapacity(at);
+                }
+                if (calls.items.len == 0) break;
+                const p = calls.items[calls.items.len - 1].u;
+                low[p] = @min(low[p], low[u]);
+            }
+        }
+
+        const keep = try a.alloc(bool, n);
+        for (keep, 0..) |*k, i| k.* = std.mem.findScalar(bool, onCycle[i * w ..][0..w], true) != null;
+        return keep;
     }
 
-    /// Can rule `b` fire right after rule `a` fired, at the same position?
-    fn canFollow(self: *const LexerGenerator, a: *const LexerRule, b: *const LexerRule) bool {
-        for (b.guards) |g| {
-            if (!self.canHoldAfter(a, g.variable, b.guards)) return false;
-        }
-        return true;
-    }
-
-    /// Is there a value `variable` can have after rule `a` fires at which
-    /// every guard of `guards` on it holds?
-    fn canHoldAfter(self: *const LexerGenerator, a: *const LexerRule, variable: []const u8, guards: []const Guard) bool {
-        const isPre = std.mem.eql(u8, variable, "pre");
-        if (isPre) {
-            // Only a held zero-width rule leaves the blanks unconsumed.
-            if (!(a.pattern.len == 0 and a.hold)) return holdsAll(guards, variable, 0);
-            var x: i32 = 0;
-            while (x <= 255) : (x += 1) {
-                if (holdsAll(a.guards, variable, x) and holdsAll(guards, variable, x)) return true;
-            }
-            return false;
-        }
-        var x: i32 = -128;
-        while (x <= 127) : (x += 1) {
-            if (!holdsAll(a.guards, variable, x)) continue;
-            const after = self.effect(a, variable, x) orelse return true; // counted: any value
-            if (holdsAll(guards, variable, after)) return true;
-        }
-        return false;
+    /// The value `variable` has for the next token after rule `r` fired
+    /// with it at `x`; null when any value is possible (a count). `pre` is
+    /// counted again from the next token's blanks, so it stays only after a
+    /// held rule without a pattern (the blanks are scanned again) and is 0
+    /// after anything else.
+    fn step(self: *const LexerGenerator, r: *const LexerRule, variable: []const u8, x: i32) ?i32 {
+        if (std.mem.eql(u8, variable, "pre")) return if (r.pattern.len == 0 and r.hold) x else 0;
+        return self.effect(r, variable, x);
     }
 
     /// The value of `variable` after rule `r` fires with it at `x` (null:
@@ -507,13 +563,6 @@ pub const LexerGenerator = struct {
         if (r.isSkip) return self.fail(r, 0, "a zero-width rule cannot skip", .{});
         if (r.hold and hasCounted(r)) return self.fail(r, 0, "a held rule consumes nothing, so counted() has nothing to count", .{});
         if (!satisfiable(r.guards)) return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
-        const consumesWs = !r.hold and !holdsAll(r.guards, "pre", 0);
-        if (!consumesWs and !changesGuardedState(r)) {
-            return self.fail(r, 0, "this zero-width rule would match forever: it must require whitespace (a guard false at pre = 0) or assign a state variable its guards test", .{});
-        }
-        if (!consumesWs and !self.falsifiesGuard(r, false)) {
-            return self.fail(r, 0, "this zero-width rule would match forever: after its actions its guards still hold; an action must make one of them false", .{});
-        }
     }
 
     fn checkConsuming(self: *LexerGenerator, r: *const LexerRule, p: regex.Pattern, full: *const regex.Node) !TokenEnd {
@@ -544,14 +593,8 @@ pub const LexerGenerator = struct {
         }
         if (r.hold) end = .start;
         if (hasCounted(r)) return self.fail(r, 0, "counted() belongs on a zero-width rule (no pattern), where it counts the bytes after the leading whitespace", .{});
-        if (end == .start or (end == .fromStart and end.fromStart == 0)) {
-            if (r.isSkip) return self.fail(r, 0, "a zero-width token cannot be skipped", .{});
-            if (r.guards.len == 0 or !changesGuardedState(r)) {
-                return self.fail(r, 0, "this zero-width rule would match forever: it must assign a state variable its guards test", .{});
-            }
-            if (!self.falsifiesGuard(r, true)) {
-                return self.fail(r, 0, "this zero-width rule would match forever: after its actions its guards still hold; an action must make one of them false", .{});
-            }
+        if (r.isSkip and (end == .start or (end == .fromStart and end.fromStart == 0))) {
+            return self.fail(r, 0, "a zero-width token cannot be skipped", .{});
         }
         return end;
     }
