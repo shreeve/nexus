@@ -1098,11 +1098,11 @@ pub const BaseParser = struct {
     valueStack: std.ArrayList(Sexp) = .empty,
     /// Per value-stack entry, the list `keepList` left there with its
     /// capacity, for `extendList` to grow in place. Indexed like
-    /// `valueStack`, sized to its capacity; every reduction sets its
-    /// entry's (see `reduce`).
+    /// `valueStack`, sized to its capacity. An entry only ever describes a
+    /// live buffer: `extendList` clears the one it takes (its buffer may
+    /// move and be freed), a rule passing a list on moves the entry with
+    /// it, and each parse starts with none (its memory is reused).
     spares: []Spare = &.{},
-    /// The action in progress recorded its result's spare (`keepList`).
-    keptSpare: bool = false,
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -1330,7 +1330,7 @@ pub const BaseParser = struct {
                 } else if (sym == endSymbol) {
                     break;
                 } else {
-                    try self.advance();
+                    try self.deleteToken();
                     tried.clearRetainingCapacity();
                     result.deletions += 1;
                 }
@@ -1380,6 +1380,7 @@ pub const BaseParser = struct {
             self.triviaTokens.clearRetainingCapacity();
         }
         self.started = true;
+        @memset(self.spares, .none);
         self.stateStack.clearRetainingCapacity();
         self.valueStack.clearRetainingCapacity();
         self.failure = null;
@@ -1469,7 +1470,10 @@ pub const BaseParser = struct {
             self.pendingInsert = null;
         } else {
             const tok = self.current;
-            const id = if (self.lastMatchedId != 0) self.lastMatchedId else takeLexerId(&self.lexer);
+            // The lexer's id is taken even when an `@as` ordinal replaces
+            // it, so it never reaches the next token.
+            const lexerId = takeLexerId(&self.lexer);
+            const id = if (self.lastMatchedId != 0) self.lastMatchedId else lexerId;
             self.lastMatchedId = 0;
             const end = tok.pos + tok.len;
             try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
@@ -1538,22 +1542,20 @@ pub const BaseParser = struct {
         // The action reads its elements in place on the value stack; the
         // result then replaces them (a reduction of nothing pushes it). A
         // rule whose value is nil or one of its elements has no action.
-        // The result's spare is the one its action's `keepList` recorded,
-        // or the passed-through element's, so a list grows in place
-        // through rules that pass it on; any other result has none, so no
-        // entry left by an earlier list can match it.
-        self.keptSpare = false;
+        // A list passed on keeps its spare, to grow in place in the rule
+        // that extends it.
         const result: Sexp = switch (ruleValue[ruleId]) {
             0 => executeAction(self, ruleId, self.valueStack.items[base..]),
             1 => .nil,
-            else => |n| self.valueStack.items[base + n - 2],
+            else => |n| blk: {
+                if (n > 2) {
+                    self.spares[base] = self.spares[base + n - 2];
+                    self.spares[base + n - 2] = .none;
+                }
+                break :blk self.valueStack.items[base + n - 2];
+            },
         };
         if (self.outOfMemory) return error.OutOfMemory;
-        const spare: Spare = switch (ruleValue[ruleId]) {
-            0 => if (self.keptSpare) self.spares[base] else .none,
-            1 => .none,
-            else => |n| self.spares[base + n - 2],
-        };
         const next = getAction(self.stateStack.items[top - 1], ruleLhs[ruleId]);
         std.debug.assert(next > 0); // every reduction has a goto
 
@@ -1569,7 +1571,6 @@ pub const BaseParser = struct {
         } else {
             try self.pushEntry(@intCast(next), result, self.reduction.start, self.lastEnd);
         }
-        self.spares[base] = spare;
     }
 
     /// Move the nodes of an empty value (a subtree that consumed nothing)
@@ -1605,13 +1606,16 @@ pub const BaseParser = struct {
         return true;
     }
 
-    /// Fetch the next token, moving trivia to the trivia channel. The
-    /// lexer id of the token left behind is dropped: a shift has taken it,
-    /// or an `@as` keyword ordinal replaced it, or the token was deleted.
+    /// Fetch the next token, moving trivia to the trivia channel.
     fn advance(self: *BaseParser) !void {
-        _ = takeLexerId(&self.lexer);
         self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
+    }
+
+    /// Drop the current token, and its lexer id with it.
+    fn deleteToken(self: *BaseParser) !void {
+        _ = takeLexerId(&self.lexer);
+        try self.advance();
     }
 
     fn skipTrivia(self: *BaseParser) !void {
@@ -1870,9 +1874,10 @@ pub const BaseParser = struct {
         const base = pass[n];
         if (base != .list) return .empty;
         const items = base.list.items();
-        const spare = self.spares[self.stackIndex(pass) + n];
+        const spare = &self.spares[self.stackIndex(pass) + n];
         if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
             var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            spare.* = .none;
             out.items.len = items.len;
             return out;
         }
@@ -1894,7 +1899,6 @@ pub const BaseParser = struct {
     /// (`X*`, `L(X?)`, ...).
     fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
-        self.keptSpare = true;
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];
