@@ -368,8 +368,10 @@ pub const BaseParser = struct {
 
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Spare capacity of the lists `keepList` returned, by address.
-    listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
+    /// Per value-stack entry, the list `keepList` left there with its
+    /// capacity, for `extendList` to grow in place. Indexed like
+    /// `valueStack`, sized to its capacity.
+    spares: []Spare = &.{},
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -391,7 +393,7 @@ pub const BaseParser = struct {
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
 
-    const ListSpare = struct { len: usize, capacity: usize };
+    const Spare = struct { items: [*]const Sexp, len: u32, capacity: u32 };
 
     /// The reduction in progress: its rule and where it starts (it ends at
     /// `lastEnd`); with `elemEnds`, also the stack index of its first
@@ -671,6 +673,15 @@ pub const BaseParser = struct {
         try self.stateStack.ensureTotalCapacity(a, capacity + 1);
         if (nodeStore) self.starts = try a.realloc(self.starts, capacity);
         if (elemEnds) self.ends = try a.realloc(self.ends, capacity);
+        const old = self.spares.len;
+        self.spares = try a.realloc(self.spares, capacity);
+        @memset(self.spares[old..], .{ .items = &.{}, .len = 0, .capacity = 0 });
+    }
+
+    /// The value-stack index of `pass[0]`, the first element of the
+    /// reduction in progress.
+    fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
+        return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -1007,7 +1018,7 @@ pub const BaseParser = struct {
     /// at the next token.
     fn emptyLeaf(self: *BaseParser, pass: []const Sexp, i: usize) Sexp {
         const pos = if (nodeStore)
-            self.starts[(@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp) + i]
+            self.starts[self.stackIndex(pass) + i]
         else for (pass[i..]) |e| {
             const s = self.span(e);
             if (!s.isEmpty()) break s.start;
@@ -1029,45 +1040,42 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of `base` (a list, else nothing)
-    /// for an action that appends to it. A list from `keepList` is reused
-    /// with its spare capacity, so a left-recursive list grows in amortized
-    /// O(1) per element; it keeps its node id.
-    fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
+    /// Start a list holding the items of element `n` (a list, else
+    /// nothing) for an action that appends to it. A list `keepList` left
+    /// on the value stack is reused with its spare capacity, so a
+    /// left-recursive list grows in amortized O(1) per element; it keeps
+    /// its node id.
+    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+        const base = pass[n];
         if (base != .list) return .empty;
         const items = base.list.items();
-        if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
-            if (spare.len == items.len) {
-                _ = self.listSpare.remove(@intFromPtr(items.ptr));
-                var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
-                out.items.len = items.len;
-                return out;
-            }
-        };
+        const spare = self.spares[self.stackIndex(pass) + n];
+        if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
+            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            out.items.len = items.len;
+            return out;
+        }
         var out: std.ArrayList(Sexp) = .empty;
         try out.appendSlice(self.allocator(), items);
         return out;
     }
 
-    /// Finish a list from `extendList(base)`, recording its spare
-    /// capacity. It takes over the node id of `base` (still on the value
-    /// stack), so that nested extensions each keep their own.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), base: Sexp, comptime use: ListUse) Sexp {
+    /// Finish a list from `extendList(pass, n)`, recording its spare
+    /// capacity where the reduction's value goes. It takes over the node
+    /// id of element `n` (still on the value stack), so that nested
+    /// extensions each keep their own.
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, base, use);
+        return self.keepListNils(out, pass, n, use);
     }
 
     /// `keepList` keeping trailing nils: a list of one item per element
     /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), base: Sexp, comptime use: ListUse) Sexp {
-        if (out.items.len > 0 and out.capacity > out.items.len) {
-            self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
-                .len = out.items.len,
-                .capacity = out.capacity,
-            }) catch return self.oomNil();
-        }
+    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
+        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
+            const base = pass[n];
             id = if (base == .list) base.list.id else 0;
             if (id != 0) {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
@@ -1690,9 +1698,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
             break :blk self.finishList(&out, .spread);
         },
         2 => blk: {
-            var out = self.extendList(pass[0]) catch break :blk self.oomNil();
+            var out = self.extendList(pass, 0) catch break :blk self.oomNil();
             out.append(self.allocator(), pass[2]) catch break :blk self.oomNil();
-            break :blk self.keepList(&out, pass[0], .spread);
+            break :blk self.keepList(&out, pass, 0, .spread);
         },
         3 => self.sexp(.set, &.{ pass[0], pass[2] }),
         5 => self.list(pass, .tree),
@@ -1785,16 +1793,25 @@ test "a list that reaches the tree keeps its node id as it grows" {
     p.lastEnd = 1;
     var out: std.ArrayList(Sexp) = .empty;
     try out.append(p.allocator(), items[0]);
-    var l = p.finishList(&out, .tree);
+    try p.pushEntry(4, p.finishList(&out, .tree), 0, 1);
     for (items[1..], 1..) |item, i| {
+        // The reduction `stmts = stmts IDENT → (...1 2)` with the stack
+        // holding the list and the new item.
         p.reduction = .{ .rule = 2, .start = 0 };
         p.lastEnd = @intCast(2 * i + 1);
-        var grown = try p.extendList(l);
-        try grown.append(p.allocator(), item);
-        const next = p.keepList(&grown, l, .tree);
-        try testing.expectEqual(l.list.id, next.list.id);
-        l = next;
+        try p.pushEntry(9, item, item.src.pos, item.src.pos + 1);
+        const pass = p.valueStack.items[0..2];
+        var grown = try p.extendList(pass, 0);
+        // From the second extension on, the list grows in place.
+        if (i > 1) try testing.expectEqual(pass[0].list.ptr, grown.items.ptr);
+        try grown.append(p.allocator(), pass[1]);
+        const next = p.keepList(&grown, pass, 0, .tree);
+        try testing.expectEqual(pass[0].list.id, next.list.id);
+        p.valueStack.items.len = 1;
+        p.stateStack.items.len = 2;
+        p.valueStack.items[0] = next;
     }
+    const l = p.valueStack.items[0];
     try testing.expectEqual(@as(u32, 1), p.nodeCount());
     try testing.expectEqual(Span{ .start = 0, .end = 5 }, p.span(l));
     try testing.expectEqual(@as(?u16, 2), p.ruleOf(l));
@@ -1803,14 +1820,16 @@ test "a list that reaches the tree keeps its node id as it grows" {
     // its own id.
     var out2: std.ArrayList(Sexp) = .empty;
     try out2.append(p.allocator(), items[1]);
-    const m = p.finishList(&out2, .tree);
+    try p.pushEntry(4, p.finishList(&out2, .tree), 2, 3);
+    const pass = p.valueStack.items[0..2];
+    const m = pass[1];
     try testing.expectEqual(@as(u32, 2), p.nodeCount());
-    var outer = try p.extendList(l);
-    var inner = try p.extendList(m);
+    var outer = try p.extendList(pass, 0);
+    var inner = try p.extendList(pass, 1);
     try inner.append(p.allocator(), items[2]);
-    const innerList = p.keepList(&inner, m, .tree);
+    const innerList = p.keepList(&inner, pass, 1, .tree);
     try outer.append(p.allocator(), innerList);
-    const outerList = p.keepList(&outer, l, .tree);
+    const outerList = p.keepList(&outer, pass, 0, .tree);
     try testing.expectEqual(m.list.id, innerList.list.id);
     try testing.expectEqual(l.list.id, outerList.list.id);
     try testing.expectEqual(@as(u32, 2), p.nodeCount());

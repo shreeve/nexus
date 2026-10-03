@@ -318,7 +318,7 @@ const Emitter = struct {
             };
         }
         if (extend) |n| {
-            try w.print("{s}: {{ var out = self.extendList(pass[{d}]) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
+            try w.print("{s}: {{ var out = self.extendList(pass, {d}) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
         } else {
             try w.print("{s}: {{ var out: std.ArrayList(Sexp) = .empty; ", .{label});
         }
@@ -343,7 +343,7 @@ const Emitter = struct {
         }
         if (extend != null) {
             const keep = if (l.keepNils) "keepListNils" else "keepList";
-            try w.print("break :{s} self.{s}(&out, pass[{d}], {s}); }}", .{ label, keep, index(extend.?), self.listUse(l) });
+            try w.print("break :{s} self.{s}(&out, pass, {d}, {s}); }}", .{ label, keep, index(extend.?), self.listUse(l) });
         } else {
             try w.print("break :{s} " ++ listFromOwned ++ "; }}", .{ label, self.listUse(l) });
         }
