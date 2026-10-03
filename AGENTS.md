@@ -109,7 +109,7 @@ Nexus. The edits a release asks of each downstream repository are in
 | `docs/GRAMMAR.md` | the grammar-file reference |
 | `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |
 | `docs/INTERNALS.md` | architecture, the bootstrap, invariants, releasing |
-| `docs/index.html` | the project page (with its images and `nexus.fig`, the logo source) |
+| `docs/index.html` | the project page; `docs/assets/` holds its images and `nexus.fig`, the logo source |
 | `CHANGELOG.md` | every release, and the migration steps for downstream |
 | `HANDOFF.md` | current state, open work, tips |
 | [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md) | the Zig 0.17 reference (shreeve/zig-agent-docs) |

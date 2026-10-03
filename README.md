@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/nexus-logo-720w.png" alt="Nexus Logo" width="400">
+  <img src="docs/assets/nexus-logo-720w.png" alt="Nexus Logo" width="400">
 </p>
 
 <div align="center">
