@@ -16,9 +16,10 @@
 //!   3. At end of input the `eof` token is returned.
 //!   4. The longest match among the rules whose guards hold wins; ties go
 //!      to the earlier rule. No match: one byte becomes an `err` token.
-//!   5. The `after` assignments run, then the rule's actions; `hold`,
-//!      `rewind(n)` and trailing context `r1 / r2` shorten the token; a
-//!      `skip` action discards it (its bytes count toward `pre`).
+//!   5. The `after` assignments run (unless the token is zero-width), then
+//!      the rule's actions; `hold`, `rewind(n)` and trailing context
+//!      `r1 / r2` shorten the token; a `skip` action discards it (its bytes
+//!      count toward `pre`).
 
 const std = @import("std");
 const diag = @import("../diag.zig");

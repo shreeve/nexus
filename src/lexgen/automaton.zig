@@ -1,5 +1,5 @@
 //! Lexer automaton: Thompson NFA over byte classes, subset construction into
-//! a DFA with one start state per guard configuration, and Moore-style
+//! a DFA with one start state per guard configuration, and Hopcroft
 //! minimization.
 //!
 //! Matching semantics: from a start state, the lexer follows transitions
@@ -704,6 +704,18 @@ test "automaton: minimization merges equivalent states" {
     // [0-9]{2,4}: start, 1, 2(acc), 3(acc), 4(acc, no out) = 5 states.
     const rep = try buildFrom(a, &.{"[0-9]{2,4}"}, &.{&all});
     try testing.expectEqual(@as(u32, 5), rep.numStates);
+}
+
+test "automaton: start states skip bytes" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const all = [_]u32{0};
+    var d: regex.Diagnostic = .{};
+    const pat = try (try regex.parse(a, "[ a]+", &d)).full(a);
+    const dfa = try build(a, .{ .patterns = &.{pat}, .starts = &.{&all}, .startSkip = ByteSet.single(' ') });
+    try testing.expect(dfa.longestMatch(0, " a") == null);
+    try testing.expectEqual(@as(usize, 3), dfa.longestMatch(0, "a a").?.len);
 }
 
 test "automaton: deterministic output" {
