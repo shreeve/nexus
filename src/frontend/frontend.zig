@@ -159,3 +159,25 @@ fn dumpSrcText(writer: anytype, text: []const u8) !void {
     }
     try writer.writeByte('`');
 }
+
+// A token longer than a Token holds is an `err` token that explains itself,
+// whichever scanner finds it.
+test "a token longer than 65535 bytes is a located problem" {
+    const testing = std.testing;
+    const Lexer = @import("lang.zig").Lexer;
+    const long: [Lexer.maxTokenLen + 1]u8 = @splat('a');
+    const sources = [_][]const u8{
+        "@parser\ns = \"" ++ long ++ "\"\n", // the generated lexer
+        "@lexer\n'" ++ long ++ "' -> a\n", // a pattern
+        "@conflicts\n    shift s -> " ++ long ++ " 1 # why\n", // a conflict rule
+    };
+    for (sources) |source| {
+        var lexer = Lexer.init(source);
+        const tok = while (true) {
+            const t = lexer.next();
+            if (t.cat == .err or t.cat == .eof) break t;
+        };
+        try testing.expectEqual(parser.TokenCat.err, tok.cat);
+        try testing.expectEqualStrings("token longer than 65535 bytes", lexer.problem.?.message());
+    }
+}

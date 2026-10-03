@@ -55,6 +55,9 @@
 //!     `word` (a tag). An open parenthesis continues the action onto
 //!     indented lines. A `#` outside parentheses starts a comment; `~`
 //!     outside parentheses before a string is the coverage opt-out.
+//!   - Limits. A token is at most 65535 bytes long, and rules and actions
+//!     nest `(` and `[` at most 64 deep; past either, the token is `err`
+//!     with a `problem` message.
 
 const std = @import("std");
 const parser = @import("parser.zig");
@@ -77,8 +80,9 @@ pub const Lexer = struct {
     atStart: bool = true,
     /// The last emitted token was a layout token (or nothing yet).
     afterLayout: bool = true,
-    bracketDepth: u16 = 0,
-    parenDepth: u16 = 0,
+    /// Open `[` and `(`; together at most `maxNesting`.
+    bracketDepth: u8 = 0,
+    parenDepth: u8 = 0,
     /// Tokens scanned ahead of the one being returned (a `@conflicts`
     /// entry line is split at once), in order from `queueHead`.
     queue: [8]Token = undefined,
@@ -98,6 +102,11 @@ pub const Lexer = struct {
     /// The last @lexer-section pattern: a syntax error later on its line is
     /// reported as the pattern's own error when the pattern is invalid.
     lastPattern: ?Token = null,
+
+    /// Most `(` and `[` open at once in rules and actions: the tree is that
+    /// deep, and the stages after the parser recurse through it.
+    const maxNesting = 64;
+    pub const maxTokenLen = std.math.maxInt(@FieldType(Token, "len"));
 
     const Mode = enum { normal, action };
     const Block = enum { none, as, conflicts, infix, schema, other };
@@ -158,7 +167,10 @@ pub const Lexer = struct {
         self.queueLen += 1;
     }
 
-    fn make(cat: TokenCat, pos: usize, len: usize) Token {
+    /// The token of `cat` at `pos`; one longer than a Token holds is an
+    /// `err` token with a problem.
+    fn make(self: *Lexer, cat: TokenCat, pos: usize, len: usize) Token {
+        if (len > maxTokenLen) return self.fail(pos, maxTokenLen, "token longer than {d} bytes", .{maxTokenLen});
         return .{ .cat = cat, .pre = 0, .pos = @intCast(pos), .len = @intCast(len) };
     }
 
@@ -188,34 +200,37 @@ pub const Lexer = struct {
         // The Unicode arrow is not in the generated lexer.
         if (p + 2 < s.len and s[p] == 0xE2 and s[p + 1] == 0x86 and s[p + 2] == 0x92) {
             self.base.pos = @intCast(p + 3);
-            return self.arrow(make(.arrow, p, 3));
+            return self.arrow(self.make(.arrow, p, 3));
         }
 
         var tok = self.base.matchRules();
         switch (tok.cat) {
+            // The generated lexer's only longer-than-one-byte `err`: a match
+            // too long for a Token.
+            .err => if (tok.len == maxTokenLen) return self.fail(tok.pos, tok.len, "token longer than {d} bytes", .{maxTokenLen}),
             .newline => return self.lineBreak(tok.pos),
             .eof => {
                 if (!self.atStart and !self.afterLayout) {
                     self.push(tok);
-                    return make(.newline, self.lastBreak orelse tok.pos, if (self.lastBreak != null) 1 else 0);
+                    return self.make(.newline, self.lastBreak orelse tok.pos, if (self.lastBreak != null) 1 else 0);
                 }
                 return tok;
             },
             .comment => return null,
             .ident => tok.cat = self.classifyWord(tok),
-            .lbracket => self.bracketDepth += 1,
+            .lbracket, .lparen => {
+                if (self.bracketDepth + self.parenDepth == maxNesting) return self.tooDeep(tok.pos);
+                if (tok.cat == .lbracket) self.bracketDepth += 1 else self.parenDepth += 1;
+            },
             .rbracket => {
                 if (self.bracketDepth > 0) self.bracketDepth -= 1;
+            },
+            .rparen => {
+                if (self.parenDepth > 0) self.parenDepth -= 1;
             },
             .arrow => return self.arrow(tok),
             .pipe => if (self.block == .schema and (self.parenDepth > 0 or (tok.pos > 0 and !isBlank(s[tok.pos - 1])))) {
                 tok.cat = .@"union";
-            },
-            .lparen => if (self.block == .schema) {
-                self.parenDepth += 1;
-            },
-            .rparen => if (self.block == .schema and self.parenDepth > 0) {
-                self.parenDepth -= 1;
             },
             .at => if (self.lineStart) {
                 // A directive: its keyword decides the block context.
@@ -268,12 +283,12 @@ pub const Lexer = struct {
         var toks: [6]Token = undefined;
         var t: usize = 0;
         if (n > 0) {
-            toks[t] = make(.ident, words[0].a, words[0].b - words[0].a);
+            toks[t] = self.make(.ident, words[0].a, words[0].b - words[0].a);
             t += 1;
             var last = n;
             const count: ?Token = if (n > 1 and allDigits(s[words[n - 1].a..words[n - 1].b])) blk: {
                 last = n - 1;
-                break :blk make(.integer, words[n - 1].a, words[n - 1].b - words[n - 1].a);
+                break :blk self.make(.integer, words[n - 1].a, words[n - 1].b - words[n - 1].a);
             } else null;
             // Rule texts, split at a standalone `over`.
             var from: usize = 1;
@@ -281,11 +296,11 @@ pub const Lexer = struct {
                 const isOver = w < last and eql(s[words[w].a..words[w].b], "over");
                 if (w == last or isOver) {
                     if (w > from and t < toks.len) {
-                        toks[t] = make(.rule_text, words[from].a, words[w - 1].b - words[from].a);
+                        toks[t] = self.make(.rule_text, words[from].a, words[w - 1].b - words[from].a);
                         t += 1;
                     }
                     if (isOver and t < toks.len) {
-                        toks[t] = make(.kw_over, words[w].a, 4);
+                        toks[t] = self.make(.kw_over, words[w].a, 4);
                         t += 1;
                     }
                     from = w + 1;
@@ -297,11 +312,11 @@ pub const Lexer = struct {
             };
         }
         if (commentStart < lineEnd and t < toks.len) {
-            toks[t] = make(.comment, commentStart, lineEnd - commentStart);
+            toks[t] = self.make(.comment, commentStart, lineEnd - commentStart);
             t += 1;
         }
         self.base.pos = @intCast(lineEnd);
-        if (t == 0) return make(.err, start, 1);
+        if (t == 0) return self.make(.err, start, 1);
         for (toks[1..t]) |tok| self.push(tok);
         return toks[0];
     }
@@ -345,11 +360,11 @@ pub const Lexer = struct {
             self.parenDepth = 0;
             if (s[i] == '|') {
                 self.base.pos = @intCast(i + 1);
-                return make(.next_alt, i, 1);
+                return self.make(.next_alt, i, 1);
             }
-            if (i > lineBegin) return make(.cont, pos, 1);
+            if (i > lineBegin) return self.make(.cont, pos, 1);
             self.block = .none;
-            return make(.newline, pos, 1);
+            return self.make(.newline, pos, 1);
         }
     }
 
@@ -460,10 +475,10 @@ pub const Lexer = struct {
             self.base.pos = @intCast(p + 1);
             if (kw) |k| {
                 self.base.pos = @intCast(p + 1 + word.len);
-                self.push(make(k, p + 1, word.len));
+                self.push(self.make(k, p + 1, word.len));
                 if (k == .kw_parser) self.section = .parser;
             }
-            return make(.at, p, 1);
+            return self.make(.at, p, 1);
         }
         const word = s[p .. p + wordLen(s, p)];
         if (word.len > 0) {
@@ -478,7 +493,7 @@ pub const Lexer = struct {
             if (kw) |k| {
                 self.base.pos = @intCast(p + word.len);
                 self.lexBlock = true;
-                return make(k, p, word.len);
+                return self.make(k, p, word.len);
             }
         }
         switch (c) {
@@ -532,7 +547,7 @@ pub const Lexer = struct {
         self.base.pos = @intCast(p);
         var end = p;
         while (end > start and isBlank(s[end - 1])) end -= 1;
-        const tok = make(.pattern, start, end - start);
+        const tok = self.make(.pattern, start, end - start);
         self.lastPattern = tok;
         return tok;
     }
@@ -581,7 +596,7 @@ pub const Lexer = struct {
 
     fn take(self: *Lexer, cat: TokenCat, pos: usize, len: usize) Token {
         self.base.pos = @intCast(pos + len);
-        return make(cat, pos, len);
+        return self.make(cat, pos, len);
     }
 
     /// A line break in the @lexer section: skips blank and comment lines;
@@ -610,20 +625,20 @@ pub const Lexer = struct {
             self.lineStart = true;
             if (i > lineBegin and self.lexBlock) {
                 self.blockLine = true;
-                return make(.cont, pos, 1);
+                return self.make(.cont, pos, 1);
             }
             self.lexBlock = false;
             self.blockLine = false;
-            return make(.newline, pos, 1);
+            return self.make(.newline, pos, 1);
         }
     }
 
     /// End of input: one `newline` after content, then `eof`.
     fn endOfInput(self: *Lexer, p: usize) Token {
-        const tok = make(.eof, p, 0);
+        const tok = self.make(.eof, p, 0);
         if (!self.atStart and !self.afterLayout) {
             self.push(tok);
-            return make(.newline, self.lastBreak orelse p, if (self.lastBreak != null) 1 else 0);
+            return self.make(.newline, self.lastBreak orelse p, if (self.lastBreak != null) 1 else 0);
         }
         return tok;
     }
@@ -642,7 +657,12 @@ pub const Lexer = struct {
         const written = std.mem.print(&problem.buf, fmt, args) catch problem.buf[0..];
         problem.len = @intCast(written.len);
         self.problem = problem;
-        return make(.err, pos, len);
+        return .{ .cat = .err, .pre = 0, .pos = @intCast(pos), .len = @intCast(@min(len, maxTokenLen)) };
+    }
+
+    fn tooDeep(self: *Lexer, pos: usize) Token {
+        self.base.pos = @intCast(pos + 1);
+        return self.fail(pos, 1, "nested too deeply: at most {d} levels of ( ) and [ ]", .{maxNesting});
     }
 
     /// Arrow at `p`: `→`, `->` or `=>`; its length in bytes, or 0.
@@ -687,14 +707,15 @@ pub const Lexer = struct {
             return null;
         }
         if (c == '(') {
+            if (self.parenDepth == maxNesting) return self.tooDeep(p);
             self.parenDepth += 1;
             self.base.pos += 1;
-            return make(.lparen, p, 1);
+            return self.make(.lparen, p, 1);
         }
         if (c == ')') {
             if (self.parenDepth > 0) self.parenDepth -= 1;
             self.base.pos += 1;
-            return make(.rparen, p, 1);
+            return self.make(.rparen, p, 1);
         }
         if (c == '~' and self.parenDepth == 0) {
             var q = p + 1;
@@ -702,7 +723,7 @@ pub const Lexer = struct {
             if (q < s.len and s[q] == '"') {
                 self.base.pos += 1;
                 self.mode = .normal;
-                return make(.tilde, p, 1);
+                return self.make(.tilde, p, 1);
             }
         }
 
@@ -713,22 +734,22 @@ pub const Lexer = struct {
         // `role:` prefix
         if (identPrefix(w)) |n| if (n < w.len and w[n] == ':') {
             self.base.pos = @intCast(p + n + 1);
-            return make(.label, p, n);
+            return self.make(.label, p, n);
         };
         if (allDigits(w)) {
             self.base.pos = @intCast(end);
-            return make(.integer, p, w.len);
+            return self.make(.integer, p, w.len);
         }
         const marks = [_]struct { []const u8, TokenCat }{ .{ "...", .dots }, .{ "~", .tilde }, .{ "!", .bang } };
         for (marks) |m| {
             if (w.len > m[0].len and std.mem.startsWith(u8, w, m[0]) and allDigits(w[m[0].len..])) {
                 self.base.pos = @intCast(p + m[0].len);
-                return make(m[1], p, m[0].len);
+                return self.make(m[1], p, m[0].len);
             }
         }
         self.base.pos = @intCast(end);
-        if (eql(w, "_") or eql(w, "nil")) return make(.kw_nil, p, w.len);
-        return make(.word, p, w.len);
+        if (eql(w, "_") or eql(w, "nil")) return self.make(.kw_nil, p, w.len);
+        return self.make(.word, p, w.len);
     }
 
     /// Inside an open action parenthesis at the end of a line: whether the
