@@ -1,5 +1,19 @@
 //! The canonical LR(0) automaton: item sets (states) and their transitions,
 //! one initial state per start symbol.
+//!
+//! An item `A → α • β` is a rule with a dot: α has been seen, β is expected,
+//! and a dot at the end means the rule can reduce. A state is the closure
+//! of its kernel (the items its incoming transition advanced): for every
+//! `A → α • B β` it holds `B → • γ` for each rule of B. GOTO(I, X) is the
+//! closure of the items of I with the dot advanced over X; states with the
+//! same kernel are one state. All memory comes from the grammar's allocator
+//! (the generator's arena).
+//!
+//! Construction is breadth-first from the initial states. A state's
+//! transitions follow the order in which its items first name a symbol
+//! after the dot, and a new state takes the next number when a transition
+//! first reaches its kernel. State numbering therefore depends only on the
+//! grammar, never on hashing or the host.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -22,8 +36,7 @@ pub const Item = struct {
 
 /// LR State: set of items with transitions
 pub const State = struct {
-    id: u16,
-    kernel: []const Item, // Kernel items (from shifts/gotos)
+    kernel: []const Item, // Kernel items (from shifts/gotos), in discovery order
     items: []const Item, // All items (kernel + closure)
     transitions: []const Transition,
     reductions: []const Item, // Items with dot at end
@@ -41,221 +54,144 @@ pub const Automaton = struct {
     startStates: std.ArrayList(u16) = .empty,
 
     pub fn deinit(self: *Automaton, allocator: Allocator) void {
-        for (self.states.items) |*state| {
-            allocator.free(state.kernel);
-            allocator.free(state.items);
-            allocator.free(state.transitions);
-            allocator.free(state.reductions);
-        }
         self.states.deinit(allocator);
         self.startStates.deinit(allocator);
     }
 };
 
-// =============================================================================
-// LR Automaton Construction
-// =============================================================================
-//
-// LR parsing uses a deterministic finite automaton (DFA) where:
-//   - States are sets of "items" (rules with a dot showing parse progress)
-//   - Transitions occur on terminals (shift) or nonterminals (goto)
-//   - The automaton recognizes viable prefixes of the grammar
-//
-// An LR item looks like: A → α • β
-//   - The dot (•) shows how much of the rule we've seen
-//   - α is what we've matched, β is what we expect
-//   - When dot is at end (A → α •), we can reduce
-//
-// Construction algorithm:
-//   1. Start with item S' → • S $ (augmented start rule)
-//   2. Compute closure of initial items
-//   3. For each symbol X, compute GOTO(state, X) = closure of shifted items
-//   4. Repeat until no new states are created
-//
-// =============================================================================
-
-/// Build the LR(0) automaton from the processed grammar.
-/// Creates states and transitions for the shift-reduce parser.
 /// Most parser states: the parse table encodes a shift to state s as the
 /// i16 s.
 pub const maxStates = 32767;
 
-pub fn build(g: *const Grammar) !Automaton {
-    var automaton: Automaton = .{};
-    const auto = &automaton;
-    if (g.acceptRules.items.len == 0) return error.NoAcceptRule;
-
-    var stateMap = std.StringHashMapUnmanaged(u16){};
-    defer stateMap.deinit(g.allocator);
-
-    // Create initial state for EACH accept rule
-    for (g.acceptRules.items) |acceptRuleId| {
-        var initialItems: std.ArrayList(Item) = .empty;
-        try initialItems.append(g.allocator, .{ .ruleId = acceptRuleId, .dot = 0 });
-
-        const kernel = try initialItems.toOwnedSlice(g.allocator);
-        const sig = try kernelSignature(g.allocator, kernel);
-
-        if (stateMap.get(sig)) |existingId| {
-            try auto.startStates.append(g.allocator, existingId);
-        } else {
-            const initialState = try closure(g, auto, kernel);
-            const stateId: u16 = @intCast(auto.states.items.len);
-            try auto.states.append(g.allocator, initialState);
-            try stateMap.put(g.allocator, sig, stateId);
-            try auto.startStates.append(g.allocator, stateId);
-        }
+/// Build the LR(0) automaton of the desugared grammar (which has at least
+/// one accept rule).
+pub fn build(g: *const Grammar) error{ OutOfMemory, TooManyStates }!Automaton {
+    std.debug.assert(g.acceptRules.items.len > 0);
+    const a = g.allocator;
+    var auto: Automaton = .{};
+    var b: Builder = .{
+        .g = g,
+        .auto = &auto,
+        .ruleStamp = try a.alloc(u32, g.rules.items.len),
+        .buckets = try a.alloc(std.ArrayList(Item), g.symbols.items.len),
+    };
+    @memset(b.ruleStamp, 0);
+    @memset(b.buckets, .empty);
+    for (g.acceptRules.items) |r| {
+        const kernel = [_]Item{.{ .ruleId = r, .dot = 0 }};
+        try auto.startStates.append(a, try b.intern(&kernel));
     }
-
-    // Process states until no new ones
     var i: usize = 0;
-    while (i < auto.states.items.len) : (i += 1) {
-        try processTransitions(g, auto, i, &stateMap);
-    }
-    return automaton;
+    while (i < auto.states.items.len) : (i += 1) try b.transitions(i);
+    return auto;
 }
 
-/// Compute the closure of a set of LR items.
-///
-/// Closure adds items for nonterminals that appear after the dot.
-/// If we have A → α • B β, we add B → • γ for all productions of B.
-///
-/// Intuition: If we're waiting to see B, we need to recognize what B
-/// looks like, so we add all ways B can start.
-///
-/// Example:
-///   Kernel: { E → • T }
-///   If T → F | T * F, closure adds: { T → • F, T → • T * F }
-///   If F → id, closure adds: { F → • id }
-///   Result: { E → • T, T → • F, T → • T * F, F → • id }
-fn closure(g: *const Grammar, auto: *const Automaton, kernel: []const Item) !State {
-    var allItems: std.ArrayList(Item) = .empty;
-    var reductions: std.ArrayList(Item) = .empty;
-    var seen = std.AutoHashMap(u32, void).init(g.allocator);
-    defer seen.deinit();
+/// Kernels are interned by their items in ascending order, hashed as
+/// little-endian item ids.
+const KernelContext = struct {
+    pub fn hash(_: KernelContext, k: []const Item) u64 {
+        var h = std.hash.Wyhash.init(0);
+        for (k) |it| h.update(&std.mem.toBytes(std.mem.nativeToLittle(u32, it.id())));
+        return h.final();
+    }
+    pub fn eql(_: KernelContext, x: []const Item, y: []const Item) bool {
+        if (x.len != y.len) return false;
+        for (x, y) |p, q| if (!p.eql(q)) return false;
+        return true;
+    }
+};
 
-    // Start with kernel items
-    for (kernel) |item| {
-        try allItems.append(g.allocator, item);
-        try seen.put(item.id(), {});
+const Builder = struct {
+    g: *const Grammar,
+    auto: *Automaton,
+    /// Sorted kernel → state.
+    map: std.HashMapUnmanaged([]const Item, u16, KernelContext, 80) = .empty,
+    sorted: std.ArrayList(Item) = .empty,
+    /// Closure: ruleStamp[r] == stamp when `r → • ...` is in the current closure.
+    ruleStamp: []u32,
+    stamp: u32 = 0,
+    /// Transitions: the advanced items per symbol of the current state, and
+    /// the symbols in first-seen order.
+    buckets: []std.ArrayList(Item),
+    order: std.ArrayList(u16) = .empty,
+
+    fn lessItem(_: void, x: Item, y: Item) bool {
+        return x.id() < y.id();
     }
 
-    // Process items, adding closure items as we go
-    var workIdx: usize = 0;
-    while (workIdx < allItems.items.len) : (workIdx += 1) {
-        const item = allItems.items[workIdx];
-        const rule = g.rules.items[item.ruleId];
-
-        // Item with dot at end → reduction item
-        if (item.dot >= rule.rhs.len) {
-            try reductions.append(g.allocator, item);
-            continue;
+    /// The state with this kernel, created (and closed) if new.
+    fn intern(b: *Builder, kernel: []const Item) !u16 {
+        const a = b.g.allocator;
+        b.sorted.clearRetainingCapacity();
+        try b.sorted.appendSlice(a, kernel);
+        std.mem.sort(Item, b.sorted.items, {}, lessItem);
+        const gop = try b.map.getOrPut(a, b.sorted.items);
+        if (gop.found_existing) return gop.value_ptr.*;
+        if (b.auto.states.items.len >= maxStates) {
+            _ = b.map.remove(b.sorted.items);
+            return error.TooManyStates;
         }
+        gop.key_ptr.* = try a.dupe(Item, b.sorted.items);
+        const id: u16 = @intCast(b.auto.states.items.len);
+        gop.value_ptr.* = id;
+        try b.auto.states.append(a, try b.closure(try a.dupe(Item, kernel)));
+        return id;
+    }
 
-        // If next symbol after dot is nonterminal, add its productions
-        const nextSym = rule.rhs[item.dot];
-        const symbol = g.symbols.items[nextSym];
-
-        if (symbol.kind == .nonterminal) {
-            for (symbol.rules.items) |ruleId| {
-                const newItem = Item{ .ruleId = ruleId, .dot = 0 };
-                if (!seen.contains(newItem.id())) {
-                    try seen.put(newItem.id(), {});
-                    try allItems.append(g.allocator, newItem);
-                }
+    /// The kernel's state: the kernel, then for each item with a
+    /// nonterminal B after the dot every `B → • γ` not yet present.
+    fn closure(b: *Builder, kernel: []const Item) !State {
+        const g = b.g;
+        const a = g.allocator;
+        b.stamp += 1;
+        var all: std.ArrayList(Item) = .empty;
+        var reductions: std.ArrayList(Item) = .empty;
+        try all.appendSlice(a, kernel);
+        for (kernel) |it| {
+            if (it.dot == 0) b.ruleStamp[it.ruleId] = b.stamp;
+        }
+        var w: usize = 0;
+        while (w < all.items.len) : (w += 1) {
+            const item = all.items[w];
+            const rhs = g.rules.items[item.ruleId].rhs;
+            if (item.dot >= rhs.len) {
+                try reductions.append(a, item);
+                continue;
+            }
+            const sym = &g.symbols.items[rhs[item.dot]];
+            if (sym.kind != .nonterminal) continue;
+            for (sym.rules.items) |r| {
+                if (b.ruleStamp[r] == b.stamp) continue;
+                b.ruleStamp[r] = b.stamp;
+                try all.append(a, .{ .ruleId = r, .dot = 0 });
             }
         }
-    }
-
-    return State{
-        .id = @intCast(auto.states.items.len),
-        .kernel = kernel,
-        .items = try allItems.toOwnedSlice(g.allocator),
-        .transitions = &[_]Transition{},
-        .reductions = try reductions.toOwnedSlice(g.allocator),
-    };
-}
-
-/// Compute GOTO transitions for a state.
-///
-/// GOTO(I, X) = closure({ A → α X • β | A → α • X β ∈ I })
-///
-/// For each symbol X that appears after a dot in state I:
-///   1. Collect all items with X after the dot
-///   2. Advance the dot past X in each item (shift the dot)
-///   3. Compute closure of the resulting items
-///   4. This closure is the target state for transition on X
-///
-/// If the target state already exists (same kernel), reuse it.
-fn processTransitions(g: *const Grammar, auto: *Automaton, stateIdx: usize, stateMap: *std.StringHashMapUnmanaged(u16)) !void {
-    const state = &auto.states.items[stateIdx];
-    var transitions: std.ArrayList(Transition) = .empty;
-
-    // Group items by the symbol after the dot
-    var symbolItems = std.AutoHashMap(u16, std.ArrayList(Item)).init(g.allocator);
-    defer {
-        var iter = symbolItems.valueIterator();
-        while (iter.next()) |list| list.deinit(g.allocator);
-        symbolItems.deinit();
-    }
-
-    for (state.items) |item| {
-        const rule = g.rules.items[item.ruleId];
-        if (item.dot >= rule.rhs.len) continue; // No symbol after dot
-
-        const nextSym = rule.rhs[item.dot];
-        const entry = try symbolItems.getOrPut(nextSym);
-        if (!entry.found_existing) entry.value_ptr.* = .empty;
-        // Advance dot: A → α • X β becomes A → α X • β
-        try entry.value_ptr.append(g.allocator, .{ .ruleId = item.ruleId, .dot = item.dot + 1 });
-    }
-
-    // Create transitions and target states
-    var iter = symbolItems.iterator();
-    while (iter.next()) |entry| {
-        const sym = entry.key_ptr.*;
-        const itemsList = entry.value_ptr;
-
-        const kernel = try g.allocator.dupe(Item, itemsList.items);
-        const sig = try kernelSignature(g.allocator, kernel);
-
-        // Reuse existing state with same kernel, or create new one
-        const target = if (stateMap.get(sig)) |existing| existing else blk: {
-            if (auto.states.items.len >= maxStates) return error.TooManyStates;
-            const newState = try closure(g, auto, kernel);
-            const newId: u16 = @intCast(auto.states.items.len);
-            try auto.states.append(g.allocator, newState);
-            try stateMap.put(g.allocator, sig, newId);
-            break :blk newId;
+        return .{
+            .kernel = kernel,
+            .items = try all.toOwnedSlice(a),
+            .transitions = &.{},
+            .reductions = try reductions.toOwnedSlice(a),
         };
-
-        try transitions.append(g.allocator, .{ .symbol = sym, .target = target });
     }
 
-    auto.states.items[stateIdx].transitions = try transitions.toOwnedSlice(g.allocator);
-}
-
-/// Generate a unique signature for a kernel (set of items).
-/// States with identical kernels are merged to avoid duplication.
-fn kernelSignature(allocator: Allocator, kernel: []const Item) ![]const u8 {
-    var sig: std.ArrayList(u8) = .empty;
-
-    const sorted = try allocator.dupe(Item, kernel);
-    defer allocator.free(sorted);
-
-    std.mem.sort(Item, sorted, {}, struct {
-        fn lessThan(_: void, a: Item, b: Item) bool {
-            if (a.ruleId != b.ruleId) return a.ruleId < b.ruleId;
-            return a.dot < b.dot;
+    /// State si's transitions: GOTO on each symbol after a dot, in the order
+    /// the state's items first name them.
+    fn transitions(b: *Builder, si: usize) !void {
+        const g = b.g;
+        const a = g.allocator;
+        b.order.clearRetainingCapacity();
+        for (b.auto.states.items[si].items) |item| {
+            const rhs = g.rules.items[item.ruleId].rhs;
+            if (item.dot >= rhs.len) continue;
+            const x = rhs[item.dot];
+            if (b.buckets[x].items.len == 0) try b.order.append(a, x);
+            try b.buckets[x].append(a, .{ .ruleId = item.ruleId, .dot = item.dot + 1 });
         }
-    }.lessThan);
-
-    for (sorted, 0..) |item, i| {
-        if (i > 0) try sig.append(allocator, '|');
-        var buf: [32]u8 = undefined;
-        const slice = std.mem.print(&buf, "{d}.{d}", .{ item.ruleId, item.dot }) catch "";
-        try sig.appendSlice(allocator, slice);
+        const trans = try a.alloc(Transition, b.order.items.len);
+        for (b.order.items, trans) |x, *t| {
+            t.* = .{ .symbol = x, .target = try b.intern(b.buckets[x].items) };
+            b.buckets[x].clearRetainingCapacity();
+        }
+        b.auto.states.items[si].transitions = trans;
     }
-
-    return try sig.toOwnedSlice(allocator);
-}
+};

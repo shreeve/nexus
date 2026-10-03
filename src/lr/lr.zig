@@ -31,17 +31,12 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     const a = g.allocator;
     var auto = automaton.build(g) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
-        error.NoAcceptRule => {
-            std.debug.print("{s}:1:1: error: the grammar has no start symbol\n", .{opts.path});
-            return error.GenerationFailed;
-        },
         error.TooManyStates => {
             const at = conflicts.ruleLoc(g, 0);
             diag.errLine(opts.path, at.line, at.col, "the grammar needs more than {d} parser states, the parse table's limit", .{automaton.maxStates});
             return error.GenerationFailed;
         },
     };
-    errdefer auto.deinit(a);
 
     // LALR lookaheads (and any parse) assume every rule can complete.
     const costs = try repair.insertCosts(a, g);
