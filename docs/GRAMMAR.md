@@ -1,6 +1,6 @@
 # The grammar file
 
-This is the complete reference for Nexus 1.0 grammar files. Every example
+This is the complete reference for the grammar file. Every example
 marked with a file name below is a whole grammar that `./test/run` generates,
 compiles, and runs; each `input` is parsed and must print exactly the `tree`
 shown after it. Fragments are checked to parse. Trees are printed by the
@@ -9,8 +9,9 @@ escaped), followed by `#n` when its id is not 0; `_` is nil.
 
 Contents: [Layout](#layout) · [The @lexer section](#the-lexer-section) ·
 [The @parser section](#the-parser-section) · [Actions](#actions) ·
+[Operators and keywords](#operators-and-keywords) ·
 [Conflicts and hints](#conflicts-and-hints) · [Directives](#directives) ·
-[Errors](#errors)
+[Limits](#limits) · [Errors](#errors)
 
 The semantic layer (`@schema`, roles, labels, coverage, spans, the generated
 `ir` API) has its own document: [SEMANTICS.md](SEMANTICS.md).
@@ -20,7 +21,8 @@ The semantic layer (`@schema`, roles, labels, coverage, spans, the generated
 A grammar file has an `@lexer` section followed by an `@parser` section.
 Directives (`@lang`, `@schema`, ...) may also come before `@lexer`, in a
 preamble. Both sections are required; an empty `@parser` section generates
-a lexer-only module.
+a lexer-only module. A UTF-8 byte order mark at the start of the file is
+an error.
 
 ```grammar words.grammar
 # A comment runs from # to the end of the line.
@@ -68,9 +70,10 @@ Conventions used throughout:
 ### Tokens
 
 The `tokens` block names every token category, in lowercase, on indented
-lines (commas optional). It must declare `eof` (returned at the end of
-input) and `err` (returned for a byte no rule matches). The generated
-`TokenCat` enum has these names in this order, plus a built-in `skip`.
+lines (commas optional), each once. It must declare `eof` (returned at the
+end of input) and `err` (returned for a byte no rule matches). The
+generated `TokenCat` enum has these names in this order, plus a built-in
+`skip`.
 
 ```grammar fragment lexer
 tokens
@@ -80,7 +83,9 @@ tokens
 ```
 
 Tokens that no lexer rule produces are fine: a lang `Lexer` wrapper can
-emit them (layout tokens such as `indent`, keywords it classifies).
+emit them (layout tokens such as `indent`, keywords it classifies). A
+section with no rules at all generates a lexer that returns only `eof`
+and `err`, for a wrapper that scans everything itself.
 
 ### Rules
 
@@ -99,7 +104,8 @@ Each call of the lexer's `next()`:
    becomes an `err` token, and so does a match longer than a token can
    hold (65535 bytes: the token covers its first 65535, the scan resumes
    after the match);
-5. runs the `after` block and the rule's actions.
+5. runs the `after` block (only for a token the DFA matched that consumes
+   input, or an `err` byte), then the rule's actions.
 
 Only spaces and tabs are implicit; a newline is an ordinary byte, so a
 grammar that does not care about lines skips them with a rule
@@ -116,7 +122,7 @@ A pattern is a regular expression over bytes:
 
 | Pattern | Meaning |
 |---|---|
-| `'abc'` `"abc"` | literal bytes; escapes `\n \r \t \0 \\ \' \" \xHH` |
+| `'abc'` `"abc"` | literal bytes; escapes `\n \r \t \0 \\ \' \" \xHH` (two hex digits) |
 | `[a-z_]` `[^"\n]` | a byte class: ranges, negation, escapes, `\d \w \s` |
 | `.` | any byte, including newline |
 | `\n` `\d` ... | a bare escape is a one-byte atom (or class) |
@@ -124,18 +130,23 @@ A pattern is a regular expression over bytes:
 | `r1 r2` | concatenation (atoms may be juxtaposed or spaced) |
 | `r1 \| r2` | alternation |
 | `r*` `r+` `r?` | repetition |
-| `r{n}` `r{n,}` `r{n,m}` | bounded repetition (bounds up to 255) |
+| `r{n}` `r{n,}` `r{n,m}` | bounded repetition (bounds up to 255; `r` is copied that many times) |
 | `r1 / r2` | trailing context: match `r1` only when `r2` follows; `r2` is not part of the token |
 
 Bare words are errors (`quote literal text as 'x' or "x"`), and so is
 anything else outside this language: a pattern is never silently
 simplified. A pattern may not match the empty string, nor start only with a
 space or tab (the lexer has already consumed those as `pre`; use a
-zero-width rule guarded by `pre`).
+zero-width rule guarded by `pre`). A quantifier follows what it repeats
+with no space between, and never another quantifier. The automata have
+size limits (see [Limits](#limits)): a pattern whose DFA explodes is an
+error, not a slow generation.
 
-Trailing context needs a fixed-length token (`r1`) or a fixed-length context
-(`r2`). Longest match counts the context: below, `f(` makes `f` a `call`,
-while `g (` (with a space) leaves `g` an `ident`.
+Trailing context appears at most once in a pattern, at its top level.
+`r2` may not match the empty string; `r1` matches it always (`( ) / r2`, a
+zero-width token) or never; and one side has a fixed length. Longest match
+counts the context: below, `f(` makes `f` a `call`, while `g (` (with a
+space) leaves `g` an `ident`.
 
 ```grammar lexing.grammar
 @lexer
@@ -208,47 +219,60 @@ explicitly. A literal that no lexer rule produces is an error, and so is
 naming one token both ways (`"-"` in one rule, `MINUS` in another): write
 each token one way.
 
+Every string in the @parser section and in directives (literals, list
+separators, `X "c"` hints, `@infix`, `@op`, `@display`, `@errors` and
+`@repair` names, tag literals) takes the escapes of a pattern literal:
+`\n \r \t \0 \\ \' \" \xHH`. Any other escape is an error at its
+backslash. A literal matches the lexer rule whose pattern decodes to the
+same bytes, so `"\x2b"` is the token of `'+'`.
+
 ### State variables and guards
 
-`state` declares small integer variables (`i8`; `true` is 1, `false` 0)
-with their initial values. A guard after `@` makes a rule apply only when
-it holds; `&` joins guards:
+`state` declares small integer variables (`i8`, -128 to 127; `true` is 1,
+`false` 0) with their initial values, each once (`pre` is built in). A
+guard after `@` makes a rule apply only when it holds; `&` joins guards:
 
 | Guard | Holds when |
 |---|---|
 | `v` / `!v` | `v` is non-zero / zero |
 | `v == n`, `!=`, `<`, `<=`, `>`, `>=` | the comparison holds (`n` may be negative) |
-| `pre > 0` ... | `pre`, the whitespace count, compared like a variable |
+| `pre > 0` ... | `pre`, the whitespace count (0 to 255), compared like a variable |
 
-The generator compiles one DFA with a start state per combination of guard
-values, so guards cost nothing at run time beyond selecting the start state.
+Every value written in a guard or an assignment must fit its variable. The
+generator compiles one DFA with a start state per combination of guard
+values that can occur, so guards cost nothing at run time beyond selecting
+the start state. A rule whose guards can never all hold is an error.
 
-`after` lists assignments that run after every token that consumes input,
-unless the rule's own action sets the same variable.
+`after` lists assignments that run after every token the DFA matches and
+that consumes input (and after an `err` byte), unless the rule's own
+action sets or counts into the same variable. Tokens that consume nothing
+never run it, and neither do zero-width rules, even when their token
+covers blanks or `counted()` bytes.
 
 ### Actions
 
 | Action | Effect |
 |---|---|
 | `{v = n}` | set a state variable (`n`, `true`, `false`) |
-| `{v++}` `{v--}` | step a state variable (saturating) |
+| `{v++}` `{v--}` | step a state variable (saturating at 127 and -128) |
 | `{pre = n}` | set the token's `pre` |
-| `{v = counted('c')}` | on a zero-width rule: count the `c` bytes that follow (spaces and tabs between them allowed), consume them, and store the count in `v` (or `pre`) |
+| `{v = counted('c')}` | on a zero-width rule: count the `c` bytes that follow (spaces and tabs between them allowed), consume them, and store the count in `v` (saturating at 127) or `pre` (at 255) |
 | `skip` | discard the token and scan on; its bytes count toward the next token's `pre` |
 | `hold` | emit the token with zero width at the match start; nothing is consumed |
-| `rewind(n)` | end the token after its first `n` bytes; the rest is scanned again |
+| `rewind(n)` | end the token after its first `n` bytes (a number, at most the rule's shortest match); the rest is scanned again |
 
 `→ skip, skip` and `→ comment, skip` both discard what they match. A rule
 whose token is `skip` without the `skip` action returns a token of the
 built-in category `skip`, which a lang `Lexer` wrapper may act on (the
 parser treats it as an error).
 
-A rule that holds or rewinds to zero width consumes nothing, so its
-actions must make one of its guards false, and no chain of such rules may
-re-enable itself; otherwise the lexer would return zero-width tokens
-forever, which is an error. `hold` with `rewind`, `hold` with `skip`, and `counted()` on a
-consuming rule are errors. `counting()`/`matching()` (balanced nesting) are
-rejected: no finite automaton recognizes them.
+A token that consumes nothing (from a zero-width rule, `hold`, `rewind(0)`,
+or `( ) / r2`) leaves the lexer where it was. Generation rejects any such
+rule, and any chain of them, that could fire again and again at one
+position: its actions must make one of its guards false, or it must need
+whitespace it consumes (a guard false at `pre = 0`). `hold` with
+`rewind`, `skip` on a token that consumes nothing, trailing context with
+`rewind`, and `counted()` on a consuming rule are errors.
 
 ### Zero-width rules
 
@@ -260,8 +284,9 @@ A rule with guards and no pattern is tried before the DFA:
 
 Its token covers the leading whitespace just skipped (and whatever
 `counted()` consumes); with `hold` it is empty and the whitespace is
-scanned again. It must require whitespace (a guard false at
-`pre = 0`) or change a variable its guards test.
+scanned again, so a guard on `pre` alone cannot stop it. It must require
+whitespace (a guard false at `pre = 0`) or change a variable its guards
+test.
 
 Below, a line that starts with blanks gets an `indent` token whose `pre` is
 the number of dots after the blanks (MUMPS block structure), a `?` starts a
@@ -373,11 +398,14 @@ name = element element ...  [< | >]  [→ action]  [~ "reason"]
 ```
 
 A rule has one or more alternatives. A rule name may repeat: later blocks
-add alternatives. An alternative may be empty (it matches nothing).
+add alternatives. An alternative may be empty (it matches nothing). Every
+rule must be reachable from a start symbol; an unreachable rule is an
+error.
 
 A rule of one alternative that is a single token or rule name, with no
 action, is an **alias**: `name = IDENT` makes `name` another spelling of
-`IDENT`, with no rule and no reduction of its own.
+`IDENT`, with no rule and no reduction of its own. Aliases that form a
+cycle (`x = y`, `y = x`) are an error.
 
 ### Start symbols
 
@@ -456,7 +484,14 @@ alternatives (one per combination), so an action's positions stay the same
 whichever combination matched. A choice inside a group or another choice
 becomes a rule of its own, as a repeated choice does. A multi-element
 `[A B]` group is allowed only at the top level (elsewhere, use a helper
-rule).
+rule). Groups and choices nest at most 64 deep.
+
+`[...]` is already optional: it takes no quantifier, and its body must
+match something. `[X?]`, `[X*]` and `[A | B?]` are errors (an absent
+body and an empty one would look alike); write `[X]` or `X?`. `L(X?)` counts as matching
+something, a list of one empty item, so `[L(X?)]` tells an absent list
+from that one. An element takes one quantifier, and an `X "c"` hint
+belongs to the whole alternative, outside `( )` and `[ ]`.
 
 `X?` and `[X]` are the same. On a rule name the alternative is expanded
 (one variant with the rule, one without); on a token a rule `TOKEN?` is
@@ -559,7 +594,9 @@ f 1 2
   (f `` (`1` `2`)))
 ```
 
-### Infix
+## Operators and keywords
+
+### @infix
 
 `@infix base` followed by one indented line per precedence level, loosest
 first, generates an operator-precedence chain over `base`. Operators on
@@ -610,7 +647,8 @@ atom  = NUMBER
 
 The levels are rules named by their operators (`infix("+" "-")`), and
 operator conflicts are resolved by construction, so they never appear in
-`@conflicts`.
+`@conflicts`. An `@infix` table that no rule names (`@infix` as an
+element) is an error, and so is a rule named `infix` beside it.
 
 ### @op
 
@@ -643,8 +681,11 @@ terminal the current state accepts; otherwise it stays `TOKEN`.
 
 A capitalized terminal the `tokens` block declares (or a lexer rule
 produces) reaches the parser as its own token; any other capitalized
-terminal is a keyword that reaches it only through `@as`. One grammar
-promotes one token.
+terminal is a keyword that reaches it only through `@as`. A keyword no
+group can produce is an error: at generation without `@lang`, and with
+`@lang` a compile error of the generated parser naming it and the `GId`
+enums. One grammar promotes one token; several `@as` lines for it add
+their groups in order.
 
 ```grammar kw.grammar
 @lexer
@@ -701,11 +742,14 @@ expression, so `goto` stays an identifier.
 ## Conflicts and hints
 
 Nexus builds LALR(1) tables. A shift/reduce conflict resolves to the
-shift, a reduce/reduce conflict to the rule written first, and every
-conflict a grammar leaves must be declared in `@conflicts`, with a reason.
-Generation fails on any difference and prints each undeclared conflict
-with its state, items, and an example input, then the whole manifest ready
-to paste:
+shift, a reduce/reduce conflict to the lowest-numbered rule of the
+generated grammar (rules in the order written, each helper rule numbered
+where it is first used), and the accept action always wins over
+reductions on end of input. Every conflict a grammar leaves must be
+declared in `@conflicts`, with a reason. Generation fails on any
+difference and prints each undeclared conflict with its state, items, and
+a shortest symbol path to that state (grammar symbols, not input), then
+the whole manifest ready to paste:
 
 ```grammar dangling.grammar rejects
 @lexer
@@ -772,10 +816,12 @@ if a then if b then x else y
 
 A manifest entry is `shift <rule> N # reason` (a reduction that lost to the
 default shift) or `reduce <winner> over <loser> N # reason` (a reduction
-dropped for the rule written first), where `N` counts the table cells
+dropped for a lower-numbered rule), where `N` counts the table cells
 (state, lookahead) the entry covers. Rules are written `lhs → rhs` over the
-generated grammar. No `@conflicts` block, or an empty one, means the grammar
-must be conflict-free.
+generated grammar (`->` matches `→`, runs of blanks match one space, `ε`
+is an empty right-hand side, quoted literals compare as written). No
+`@conflicts` block, or an empty one, means the grammar must be
+conflict-free.
 
 Hints resolve a conflict on purpose; a hinted conflict is not a conflict:
 
@@ -783,7 +829,7 @@ Hints resolve a conflict on purpose; a hinted conflict is not a conflict:
 |---|---|---|
 | `>` | after an alternative's elements | its reductions lose to shifts, silently |
 | `<` | after an alternative's elements | its reductions win over shifts |
-| `X "c"` | among an alternative's elements | its reduction wins over shifting the one-character literal `"c"`, except when `c` directly follows the previous token (no whitespace): then the parser shifts |
+| `X "c"` | among an alternative's elements | its reduction wins over shifting the literal terminal `"c"` (one byte, escapes as in literals), except when it directly follows the previous token (no whitespace): then the parser shifts. The parser grammar must use the literal `"c"` |
 
 `<` makes a reduction win. Below, statements follow each other with no
 separator, and `!` is both a postfix operator (factorial) and a prefix
@@ -857,7 +903,9 @@ f(x) g (y)
 (exprs (call `f` (var `x`)) (var `g`) (var `y`))
 ```
 
-An `X "c"` hint that decides nothing is an error.
+An `X "c"` hint that decides nothing is an error, and so is one whose
+literal `"c"` the parser grammar does not use. A hint counts as used when
+it decides a cell for any rule its alternative expands into.
 
 ## Directives
 
@@ -876,7 +924,11 @@ An `X "c"` hint that decides nothing is an error.
 | `@trivia T ...` | any | tokens kept on a side channel, never parsed |
 | `@repair` | any | the tokens tolerant parsing may insert |
 
-"Any" means the preamble or the @parser section.
+"Any" means the preamble or the @parser section. Each directive appears at
+most once (`duplicate @x`), except `@as`, and each name appears once in
+its directive. The fragment below shows the syntax;
+[SEMANTICS.md](SEMANTICS.md#an-example) has a complete, tested grammar
+that uses `@display`, `@errors`, `@trivia` and `@repair`.
 
 ```grammar fragment
 @display
@@ -907,6 +959,34 @@ An `X "c"` hint that decides nothing is an error.
   text), `structure` (layout tokens), `terminator` (structure that ends a
   statement). See [tolerant parsing](SEMANTICS.md#tolerant-parsing).
 
+## Limits
+
+Exceeding a limit is an error, located where the grammar exceeds it
+(except the file size).
+
+| Limit | Value | Why |
+|---|---:|---|
+| grammar file | 1 MiB | read whole into memory |
+| a token of the grammar file (a pattern or a literal, say) | 65535 bytes | the frontend's own 8-byte tokens |
+| nesting of `( )` and `[ ]` in rules and actions, and of groups in a pattern | 64 | every stage walks the nesting |
+| declared tokens | 255 | a token's category is one byte (`skip` is the 256th) |
+| `r{n,m}` bounds | 255 | keeps the automaton small |
+| distinct guard conditions on rules with a pattern | 10 | one start state per combination (at most 1024) |
+| lexer NFA states | 200,000 | bounded repeats expand into copies |
+| lexer DFA states during subset construction | 262,140 | stops an exploding DFA before it exhausts memory |
+| lexer DFA states after minimization | 65535 | the scanner numbers its states with a `u16` |
+| state variable values / `pre` values | -128..127 / 0..255 | `i8` / `u8` |
+| `rewind(n)` | 65535, and the rule's shortest match | a token's length is a `u16` |
+| positions in one alternative (its elements and those in its groups and choices) | 65534 | action positions are `u16` |
+| alternatives one alternative's `[...]` and choices expand into | 32766 | as below |
+| rules of the generated grammar | 32766 | a reduction is a 16-bit table cell |
+| symbols of the generated grammar | 65535 | symbol ids are `u16` |
+| LR states | 32767 | a shift is a 16-bit table cell |
+
+A generated parser takes input up to 4 GiB (positions are `u32`;
+`error.InputTooLarge` beyond) and tokens up to 65535 bytes (a longer match
+is an `err` token). An `@as` keyword's `GId` value may be any `u16`.
+
 ## Errors
 
 Every generation error is `file:line:col: error: message`, generation stops
@@ -920,6 +1000,9 @@ early:
 | `this rule can never match: ... goes to the rule on line N` | an earlier rule shadows it |
 | `this pattern matches the empty string` | use `+` rather than `*`, or a zero-width rule |
 | `undefined rule 'x'` / `undefined token 'X'` | a name nothing defines |
+| `rule 'x' is unreachable: no start symbol reaches it` | a rule no start symbol uses, directly or through other rules |
+| ``@infix is unused: no rule names `@infix` `` | an `@infix` table without the `@infix` element |
+| `duplicate @schema` | a directive written twice |
 | `the literal "x" is no token` | no lexer rule's pattern is exactly `x` (and no `@op` maps it) |
 | `"+" and PLUS are the same token` | one token written both ways |
 | `` `...2` spreads a list, but element 2 (IDENT) is a token `` | write `2` |
@@ -928,6 +1011,8 @@ early:
 | `undeclared conflict: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
 | `position 5 is past the end of the pattern (2 elements)` | an action refers to a missing element |
 | `X ":" on name ... has no effect` | a hint that decides nothing |
+| `X "(" on expr → ... names no terminal` | a hint whose literal the grammar does not use |
 
-`nexus check grammar` runs all of them without writing anything.
+`nexus check grammar` runs every check generation runs, and writes
+nothing.
 
