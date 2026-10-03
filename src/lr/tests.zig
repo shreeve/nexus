@@ -111,7 +111,68 @@ fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u16) !u16 {
 
 const Lr1 = struct { rule: u16, dot: u16, la: u16 };
 
-fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: []const Lr1) ![]Lr1 {
+/// Nullable, FIRST and minimal insert costs by naive fixed point, written
+/// apart from the code under test: the reference's own sets.
+const Naive = struct {
+    nullable: []bool,
+    /// first[sym][t]: terminal t begins a string sym derives.
+    first: [][]bool,
+    cost: []u32,
+
+    fn of(a: Allocator, g: *const Grammar) !Naive {
+        const n = g.symbols.items.len;
+        const self: Naive = .{
+            .nullable = try a.alloc(bool, n),
+            .first = try a.alloc([]bool, n),
+            .cost = try a.alloc(u32, n),
+        };
+        for (g.symbols.items, 0..) |x, i| {
+            self.nullable[i] = false;
+            self.first[i] = try a.alloc(bool, n);
+            @memset(self.first[i], false);
+            self.first[i][i] = x.kind == .terminal;
+            self.cost[i] = if (x.kind == .terminal) 1 else repair.infinite;
+        }
+        var changed = true;
+        while (changed) {
+            changed = false;
+            for (g.rules.items) |rule| {
+                var sum: u32 = 0;
+                for (rule.rhs) |x| sum = if (self.cost[x] == repair.infinite) repair.infinite else sum +| self.cost[x];
+                if (sum < self.cost[rule.lhs]) {
+                    self.cost[rule.lhs] = sum;
+                    changed = true;
+                }
+                const empty = for (rule.rhs) |x| {
+                    if (!self.nullable[x]) break false;
+                } else true;
+                if (empty and !self.nullable[rule.lhs]) {
+                    self.nullable[rule.lhs] = true;
+                    changed = true;
+                }
+                for (rule.rhs) |x| {
+                    for (self.first[x], self.first[rule.lhs]) |in, *out| if (in and !out.*) {
+                        out.* = true;
+                        changed = true;
+                    };
+                    if (!self.nullable[x]) break;
+                }
+            }
+        }
+        return self;
+    }
+
+    /// The code's nullable, FIRST and costs equal these.
+    fn expectSame(self: Naive, la: lookahead.Lookaheads, cost: []const u32) !void {
+        try testing.expectEqualSlices(u32, self.cost, cost);
+        try testing.expectEqualSlices(bool, self.nullable, la.nullable);
+        for (self.first, 0..) |set, x| for (set, 0..) |in, t| {
+            try testing.expectEqual(in, la.first.get(x).isSet(t));
+        };
+    }
+};
+
+fn lr1Closure(a: Allocator, g: *const Grammar, ref: Naive, seed: []const Lr1) ![]Lr1 {
     var items: std.ArrayList(Lr1) = .empty;
     try items.appendSlice(a, seed);
     var i: usize = 0;
@@ -123,9 +184,8 @@ fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: [
         var firsts: std.ArrayList(u16) = .empty;
         var allNullable = true;
         for (rhs[it.dot + 1 ..]) |s| {
-            var fit = la.first.get(s).iterator();
-            while (fit.next()) |t| try firsts.append(a, t);
-            if (!la.nullable[s]) {
+            for (ref.first[s], 0..) |in, t| if (in) try firsts.append(a, @intCast(t));
+            if (!ref.nullable[s]) {
                 allNullable = false;
                 break;
             }
@@ -152,13 +212,13 @@ fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: [
 }
 
 /// ref[state][reduction] = sorted terminal ids.
-fn canonicalLalr(a: Allocator, b: *const Built) ![][][]u16 {
+fn canonicalLalr(a: Allocator, b: *const Built, sets: Naive) ![][][]u16 {
     const g = &b.g;
     const auto = &b.auto;
     var states: std.ArrayList([]Lr1) = .empty;
     var lr0: std.ArrayList(u16) = .empty; // LR(0) state of each LR(1) state
     for (g.acceptRules.items, auto.startStates.items) |r, s0| {
-        try states.append(a, try lr1Closure(a, g, b.la, &.{.{ .rule = r, .dot = 0, .la = g.endId }}));
+        try states.append(a, try lr1Closure(a, g, sets, &.{.{ .rule = r, .dot = 0, .la = g.endId }}));
         try lr0.append(a, s0);
     }
     var i: usize = 0;
@@ -170,7 +230,7 @@ fn canonicalLalr(a: Allocator, b: *const Built) ![][][]u16 {
                 if (it.dot < rhs.len and rhs[it.dot] == t.symbol)
                     try kernel.append(a, .{ .rule = it.rule, .dot = it.dot + 1, .la = it.la });
             }
-            const closed = try lr1Closure(a, g, b.la, kernel.items);
+            const closed = try lr1Closure(a, g, sets, kernel.items);
             const known = for (states.items, 0..) |s, k| {
                 if (s.len == closed.len and for (s, closed) |x, y| {
                     if (!std.meta.eql(x, y)) break false;
@@ -204,7 +264,9 @@ fn canonicalLalr(a: Allocator, b: *const Built) ![][][]u16 {
 }
 
 fn expectLalrMatchesCanonical(a: Allocator, b: *const Built) !void {
-    const ref = try canonicalLalr(a, b);
+    const sets = try Naive.of(a, &b.g);
+    try sets.expectSame(b.la, try repair.insertCosts(a, &b.g));
+    const ref = try canonicalLalr(a, b, sets);
     for (b.auto.states.items, 0..) |s, si| {
         for (s.reductions, 0..) |red, ri| {
             if (b.g.isAcceptRule(red.ruleId)) continue;
@@ -270,7 +332,7 @@ test "LALR lookaheads equal merged canonical LR(1) on random grammars" {
     const a = arena.allocator();
     var prng = std.Random.DefaultPrng.init(0x5eed);
     const rand = prng.random();
-    const nts = [_][]const u8{ "s", "a", "b", "c", "d" };
+    const nts = [_][]const u8{ "s", "a", "b", "c", "d", "e", "f" };
     const ts = [_][]const u8{ "P", "Q", "R", "\"+\"" };
     var tested: usize = 0;
     var round: usize = 0;
@@ -281,7 +343,7 @@ test "LALR lookaheads equal merged canonical LR(1) on random grammars" {
             for (0..n) |_| {
                 var text: std.ArrayList(u8) = .empty;
                 try text.print(a, "{s} →", .{lhs});
-                const len = rand.uintLessThan(usize, 4);
+                const len = rand.uintLessThan(usize, 6);
                 if (len == 0) try text.appendSlice(a, " ε");
                 for (0..len) |_| {
                     const s = if (rand.boolean()) nts[rand.uintLessThan(usize, nts.len)] else ts[rand.uintLessThan(usize, ts.len)];
@@ -292,8 +354,8 @@ test "LALR lookaheads equal merged canonical LR(1) on random grammars" {
         }
         // DeRemer–Pennello assumes a reduced grammar; the generator rejects
         // nonterminals that derive no finite input.
-        var g = try build(a, rules.items, &.{ "s", "a" });
-        const costs = try repair.insertCosts(a, &g);
+        const g = try build(a, rules.items, &.{ "s", "a" });
+        const costs = (try Naive.of(a, &g)).cost;
         const reduced = for (g.symbols.items, 0..) |x, i| {
             if (x.kind == .nonterminal and x.rules.items.len > 0 and costs[i] == repair.infinite) break false;
         } else true;
