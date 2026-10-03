@@ -427,22 +427,17 @@ pub const GrammarLowerer = struct {
                 try actions.append(self.allocator, .{ .kind = .counted, .variable = self.text(ir.Counted.name(node)), .char = try self.quotedByte(ir.Counted.char(node)) });
             },
             .lex_action => {
+                // `word` or `word(n)`.
                 const wordNode = ir.LexAction.word(node);
                 const word = self.text(wordNode);
-                // `word(arg)`: the parentheses are not in the tree.
                 const arg = ir.LexAction.arg(node);
-                const argText = self.optText(arg);
-                const quoted = argText != null and argText.?[0] == '\'';
                 if (std.mem.eql(u8, word, "skip") or std.mem.eql(u8, word, "hold")) {
                     if (arg != .nil) return self.fail(arg, "`{s}` takes no argument", .{word});
                     if (word[0] == 's') rule.isSkip = true else rule.hold = true;
                 } else if (std.mem.eql(u8, word, "rewind")) {
-                    if (argText == null or quoted) return self.fail(if (arg == .nil) wordNode else arg, "rewind takes a byte count, as in rewind(1)", .{});
-                    const n = std.fmt.parseInt(i32, argText.?, 10) catch -1;
-                    if (n < 0 or n > 65535) return self.fail(wordNode, "rewind({s}) is out of range", .{argText.?});
-                    rule.rewind = @intCast(n);
-                } else if (std.mem.eql(u8, word, "counting") or std.mem.eql(u8, word, "matching")) {
-                    return self.fail(wordNode, "{s}() describes balanced nesting, which no finite automaton can recognize; use trailing context '/' for bounded lookahead or handle nesting in the lang Lexer wrapper", .{word});
+                    const n = self.optText(arg) orelse return self.fail(wordNode, "rewind takes a byte count, as in rewind(1)", .{});
+                    rule.rewind = std.fmt.parseInt(u16, n, 10) catch
+                        return self.fail(arg, "rewind({s}) is out of range (0..65535)", .{n});
                 } else {
                     return self.fail(wordNode, "unknown lexer action '{s}' (expected {{...}}, skip, hold, or rewind(n))", .{word});
                 }

@@ -1,6 +1,6 @@
 # A rewind count is a byte count up to 65535.
-# error: lexer_rewind_range.grammar:10:19:
-# error: rewind(70000) is out of range
+# error: lexer_rewind_range.grammar:10:26:
+# error: rewind(70000) is out of range (0..65535)
 @lexer
 tokens
     ident

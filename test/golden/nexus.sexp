@@ -1216,10 +1216,7 @@
         (lit `"("`)
         (label
           `arg`
-          (group
-            _
-            ((tok `INTEGER`))
-            ((tok `QUOTED`))))
+          (tok `INTEGER`))
         (lit `")"`))
       (node `lex_action`)
       _)
