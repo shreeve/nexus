@@ -173,8 +173,9 @@ printed as diffs; `--keep DIR` keeps everything (`old.tsv`, `new.tsv`,
 a crash and the run continues. `@lang` files default to every `.zig` in the
 directory of the grammar's `@lang` module (next to the grammar or in its
 `src/`); override with `--lang-old` / `--lang-new`, and the start rule with
-`--start`, `--start-old`, `--start-new`. The exit status is 0 only when
-nothing differs.
+`--start`, `--start-old`, `--start-new`. The exit status is 0 when every
+file gives the same tree or the same parse error with both parsers (apart
+from `--expect`ed files), 1 otherwise, and 2 on a usage or build error.
 
 ## Doc tests
 
@@ -234,7 +235,7 @@ the current numbers; update it when a change moves them.
 | `test/lib/driver.zig` | tree driver compiled into every generated parser |
 | `test/lib/build-grammar` | generate + compile one grammar with a given nexus |
 | `test/lib/doctest` | extract the doc examples into suites |
-| `test/lib/messages`, `test/lib/messages.allow` | the `tools/messages` check, and the messages no test prints yet |
+| `test/lib/messages`, `test/lib/messages.allow` | the `tools/messages` check, and the messages no test prints |
 | `test/lib/readme` | the `tools/readme` check |
 | `test/lexfuzz/fuzz.py` | the lexer fuzzer |
 | `test/golden/` | generated-code (`.zig`) and frontend-tree (`.sexp`) goldens |
