@@ -273,7 +273,8 @@ Tests:
 Apple M5, ReleaseFast, against 1.1.0 ([test/bench/BASELINE.md](test/bench/BASELINE.md)):
 generating the MUMPS parser takes 4.8 ms instead of about 16.5 ms, and the
 generated parsers parse VistA at 65 MB/s instead of 51 MB/s and Rig at
-67 MB/s instead of 58 MB/s.
+67 MB/s instead of 58 MB/s (one 4 MB file of the test programs of 1.1.0's
+Rig grammar).
 
 - Generation: lowering indexes line starts (it was quadratic in file size:
   a 249 KB grammar 2.7 → 0.1 s); the LR(0) builder
