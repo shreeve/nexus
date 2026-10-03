@@ -35,15 +35,22 @@ TIMEOUT=${NEXUS_TEST_TIMEOUT:-60}
 # its @lang module files, optional test.conf, and cases/ + known/ inputs.
 # -----------------------------------------------------------------------------
 
-# suite_conf <dir>: sets GRAMMAR LANG START FLAGS (absolute paths)
+# suite_conf <dir>: sets GRAMMAR LANG_FILES START FLAGS (absolute paths),
+# and CONF_ERROR when the directory holds several grammars and test.conf
+# names none.
 suite_conf() {
     local dir=$1 grammar="" lang="" start="" flags=""
     if [[ -f "$dir/test.conf" ]]; then
         # shellcheck disable=SC1091
         eval "$(cd "$dir" && { source ./test.conf; declare -p grammar lang start flags 2>/dev/null; })"
     fi
+    CONF_ERROR=""
     if [[ -z "$grammar" ]]; then
-        grammar=$(cd "$dir" && ls ./*.grammar 2>/dev/null | head -1)
+        grammar=$(cd "$dir" && ls ./*.grammar 2>/dev/null)
+        if [[ $grammar == *$'\n'* ]]; then
+            CONF_ERROR="$dir holds several grammars; name one with grammar= in test.conf"
+            grammar=""
+        fi
     fi
     [[ -z "$lang" ]] && lang=$(cd "$dir" && ls ./*.zig 2>/dev/null | tr '\n' ' ')
     GRAMMAR=""
@@ -172,7 +179,7 @@ check_case() {
     return 0
 }
 
-# check_rejects <grammar>: generation (and `nexus check`) fails with a non-zero exit, a
+# check_rejects <grammar>: generation (and `nexus check`) fails with exit 1, writing nothing, a
 # file:line:col diagnostic, every `# error:` text of the grammar, and none
 # of its `# absent:` texts.
 check_rejects() {
@@ -186,7 +193,8 @@ check_rejects() {
     if [[ -z "$(directive error "$g")" ]]; then REASON="no # error: directive"; return 1; fi
     local got
     got=$(grep -m1 -E '❌|⚠|error:|error\.[A-Z]' <<<"$out" | sed 's/^[[:space:]]*//')
-    if [[ $rc -eq 0 ]]; then REASON="exit status 0 (expected non-zero); said: ${got:-nothing}"; return 1; fi
+    if [[ $rc -ne 1 ]]; then REASON="exit status $rc (expected 1); said: ${got:-nothing}"; return 1; fi
+    if [[ -e "$tmp" ]]; then REASON="the rejected grammar's output file was written"; return 1; fi
     local want
     while IFS= read -r want; do
         [[ -z "$want" ]] && continue
@@ -204,7 +212,7 @@ check_rejects() {
     out=$(cd "$(dirname "$g")" && with_timeout "$TIMEOUT" "$NEXUS" check "$(basename "$g")" 2>&1 </dev/null)
     rc=$?
     echo "--- nexus check" >>"$LOG"; echo "$out" >>"$LOG"
-    if [[ $rc -eq 0 ]] || ! grep -qE "$POS_RE" <<<"$out"; then REASON="nexus check accepts it (exit $rc)"; return 1; fi
+    if [[ $rc -ne 1 ]] || ! grep -qE "$POS_RE" <<<"$out"; then REASON="nexus check exits $rc (expected 1 and a file:line:col: error:)"; return 1; fi
     return 0
 }
 
@@ -506,7 +514,7 @@ worker() {
         fmt)         check_fmt; ok=$? ;;
         lexfuzz)     check_lexfuzz; ok=$? ;;
         messages)    check_messages; ok=$? ;;
-        doc-bad)     REASON=$a; ok=1 ;;
+        bad)         REASON=$a; ok=1 ;;
         *)           REASON="unknown task kind $kind"; ok=1 ;;
     esac
     if [[ "$id" == known/* || "$id" == */known/* ]]; then
@@ -611,6 +619,7 @@ for dir in test/*/; do
     name=$(basename "$dir")
     case $name in golden|adverse|known|regress|lib|bench) continue ;; esac
     suite_conf "$dir"
+    if [[ -n "$CONF_ERROR" ]]; then add "$name" bad "$CONF_ERROR"; continue; fi
     [[ -n "$GRAMMAR" ]] || continue
     for sub in cases known; do
         while IFS=$'\x1f' read -r file start tree; do
@@ -636,8 +645,11 @@ done
 for dir in test/known/*/ test/regress/*/; do
     dir=${dir%/}
     [[ -d "$dir" ]] || continue
-    add "$(basename "$(dirname "$dir")")/$(basename "$dir")" bug "$dir" || continue
+    id="$(basename "$(dirname "$dir")")/$(basename "$dir")"
+    selected "$id" || continue
     suite_conf "$dir"
+    if [[ -n "$CONF_ERROR" || -z "$GRAMMAR" ]]; then add "$id" bad "${CONF_ERROR:-$dir holds no grammar}"; continue; fi
+    add "$id" bug "$dir"
     grep -qE '^# error:' "$GRAMMAR" || need_build "$dir"
 done
 
@@ -676,7 +688,7 @@ while IFS=$'\t' read -r kind id arg; do
             grep -qE '^# error:' "$GRAMMAR" || need_build "$arg" ;;
         ztest) add "$id" unit-lang "$arg" && need_build "$arg" ;;
         frag) add "$id" doc-frag "$arg" ;;
-        bad) add "$id" doc-bad "$arg" ;;
+        bad) add "$id" bad "$arg" ;;
     esac
 done <"$WORK/docs.tasks"
 

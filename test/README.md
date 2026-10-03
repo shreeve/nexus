@@ -24,7 +24,7 @@ systems' own tools.
 | `<grammar>/known/<case>` | same, for a case whose `.tree` is the correct output, which the parser does not produce |
 | `known/<bug>` | a self-contained test of the correct behavior for one known bug (see below) |
 | `regress/<bug>` | a fixed `known/<bug>`, kept as a regression test |
-| `adverse/<name>` | `test/adverse/<name>.grammar` is rejected: non-zero exit, a `file:line:col: error` diagnostic, and every `# error:` text in its header (case-insensitive) |
+| `adverse/<name>` | `test/adverse/<name>.grammar` is rejected, by generation and by `nexus check`: exit status 1, no output file, a `file:line:col: error` diagnostic, and every `# error:` text in its header (case-insensitive) |
 | `adverse/known/<name>` | same, for a rejection the generator gets wrong |
 | `gen/<grammar>` | the generated parser (with the suite's `flags`) equals `test/golden/<grammar>.zig` byte for byte; every suite has one but `nexus`, whose generated parser is `src/frontend/parser.zig` (`bootstrap`) |
 | `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp`; every grammar file has one, under the first suite that uses it |
@@ -70,7 +70,7 @@ optional:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `grammar` | the only `*.grammar` in the directory | grammar path |
+| `grammar` | the only `*.grammar` in the directory (several, and no `grammar`, fail) | grammar path |
 | `lang` | every `*.zig` in the directory | `@lang` module files (space-separated) |
 | `start` | the parser's first `parse*` method | start rule for `cases/*` |
 | `flags` | none | extra generator options, e.g. `--spans` |
@@ -127,7 +127,7 @@ Other header directives:
 
 | Directive | Meaning |
 |---|---|
-| `# error: <text>` | generation must fail (non-zero exit, `file:line:col: error`) and print `<text>` |
+| `# error: <text>` | generation must fail (exit 1, nothing written, `file:line:col: error`) and print `<text>` |
 | `# absent: <text>` | the generator's output must not contain `<text>` |
 | `# generated-has: <text>` | the generated parser must contain `<text>` |
 | `# compile-error: <text>` | the grammar generates, but its parser must fail to compile with `<text>` |
