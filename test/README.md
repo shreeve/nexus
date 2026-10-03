@@ -33,7 +33,7 @@ and runs on macOS and Linux with the systems' own tools.
 | `unit/nexus` | the generator's own Zig unit tests (`zig build unit`) |
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
 | `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
-| `docs/<DOC>/L<line>-<name>` | a complete grammar in `README.md`, `CHANGELOG.md`, `AGENTS.md`, `docs/*.md` or this file generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
+| `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
 | `docs/<DOC>/L<line>` | a grammar fragment parses (or: a malformed doc example) |
 
@@ -170,9 +170,9 @@ nothing differs.
 
 ## Doc tests
 
-Every Markdown document the suite scans (`README.md`, `CHANGELOG.md`,
-`AGENTS.md`, `docs/*.md`, this file) is split into examples by
-`test/lib/doctest`, which marks them by their fence's info string:
+Every Markdown document in the repository (every `*.md` file git tracks)
+is split into examples by `test/lib/doctest`, which marks them by their
+fence's info string:
 
 | Fence | Checked |
 |---|---|

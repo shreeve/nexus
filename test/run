@@ -602,8 +602,13 @@ add tools/cli cli
 # Doc tests: the examples of the Markdown docs, extracted into suites
 # (test/lib/doctest; see test/README.md).
 DOCS_OUT=.zig-cache/nexus-test/docs
+# Every Markdown file git tracks (every one in the tree, outside a git
+# checkout).
 DOC_FILES=()
-for f in README.md CHANGELOG.md AGENTS.md docs/*.md test/README.md; do [[ -f $f ]] && DOC_FILES+=("$f"); done
+while IFS= read -r f; do DOC_FILES+=("$f"); done < <(
+    git ls-files '*.md' 2>/dev/null ||
+        find . -name '*.md' ! -path './.zig-cache/*' ! -path './.git/*' | sed 's|^\./||' | LC_ALL=C sort
+)
 if ! "$LIB/doctest" "$DOCS_OUT" "${DOC_FILES[@]}" >"$WORK/docs.tasks"; then
     printf '%sdoc extraction failed%s\n' "$R" "$X"
     exit 1

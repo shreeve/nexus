@@ -5,6 +5,9 @@
 # Usage:
 #   test/lib/doctest OUTDIR DOC.md...
 #
+# A document's id is its path without `.md` and without a leading `docs/`
+# (docs/GRAMMAR.md is GRAMMAR, test/README.md is test/README).
+#
 # Prints one task per line, tab-separated:
 #   suite  ID  DIR          a complete grammar (DIR holds it, its lang files,
 #                           cases/ and doc-test .zig files)
@@ -35,8 +38,14 @@ shift
 rm -rf "$OUT"
 mkdir -p "$OUT"
 
+seen=" "
 for doc in "$@"; do
-    docid=$(basename "$doc" .md)
+    docid=${doc%.md}
+    docid=${docid#docs/}
+    case $seen in
+        *" $docid "*) printf 'bad\tdocs/%s\t%s: another document has the id %s\n' "$docid" "$doc" "$docid"; continue ;;
+    esac
+    seen="$seen$docid "
     mkdir -p "$OUT/$docid"
     awk -v OUT="$OUT" -v DOCID="$docid" -v DOC="$doc" '
 function task(kind, id, arg) { printf "%s\t%s\t%s\n", kind, id, arg }
