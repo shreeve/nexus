@@ -88,9 +88,8 @@ directive() { sed -n "s/^# $1:[[:space:]]*//p" "$2"; }
 
 first_error() { # first_error <log>: the most useful line of a gen/compile log
     local line
-    line=$(grep -m1 -E 'error:|❌|panic' "$1" 2>/dev/null) || line=$(tail -1 "$1" 2>/dev/null)
+    line=$(grep -m1 -E 'error:|panic' "$1" 2>/dev/null) || line=$(tail -1 "$1" 2>/dev/null)
     line=${line#*error: }
-    line=${line#❌ }
     echo "${line:0:160}"
 }
 
@@ -193,7 +192,7 @@ check_rejects() {
     if [[ $rc -gt 128 ]] || grep -qE "$PANIC_RE" <<<"$out"; then REASON="generator crashed"; return 1; fi
     if [[ -z "$(directive error "$g")" ]]; then REASON="no # error: directive"; return 1; fi
     local got
-    got=$(grep -m1 -E '❌|⚠|error:|error\.[A-Z]' <<<"$out" | sed 's/^[[:space:]]*//')
+    got=$(grep -m1 'error:' <<<"$out" | sed 's/^[[:space:]]*//')
     if [[ $rc -ne 1 ]]; then REASON="exit status $rc (expected 1); said: ${got:-nothing}"; return 1; fi
     if [[ -e "$tmp" ]]; then REASON="the rejected grammar's output file was written"; return 1; fi
     local want
@@ -239,9 +238,8 @@ check_bug_suite() {
         [[ -z "$want" ]] && continue
         if ! grep -qF -- "$want" "$out/parser.zig"; then REASON="generated parser lacks \"$want\""; return 1; fi
     done < <(directive generated-has "$g")
-    local n=0 file start tree
+    local file start tree
     while IFS=$'\x1f' read -r file start tree; do
-        n=$((n + 1))
         check_case "$dir" "$file" "$start" "$tree" 0 || { REASON="$(basename "$file"): $REASON"; return 1; }
     done < <(list_cases "$dir/cases")
     return 0
@@ -331,10 +329,11 @@ check_determinism() { # check_determinism <suite dir> <name>: generated with the
     local gd gn
     gd=$(dirname "$GRAMMAR") gn=$(basename "$GRAMMAR")
     # shellcheck disable=SC2086 # FLAGS: generator options, split on spaces
-    (cd "$gd" && "$NEXUS" $FLAGS "$gn" "$a" && "$NEXUS" $FLAGS "$gn" "$b") >/dev/null 2>&1
-    "$NEXUS" --dump-sexp "$GRAMMAR" "$sa" >/dev/null 2>&1
-    "$NEXUS" --dump-sexp "$GRAMMAR" "$sb" >/dev/null 2>&1
-    if [[ ! -s "$a" ]]; then REASON="generation failed"; return 1; fi
+    (cd "$gd" && with_timeout "$TIMEOUT" "$NEXUS" $FLAGS "$gn" "$a" && with_timeout "$TIMEOUT" "$NEXUS" $FLAGS "$gn" "$b") >>"$LOG" 2>&1
+    with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$GRAMMAR" "$sa" >>"$LOG" 2>&1
+    with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$GRAMMAR" "$sb" >>"$LOG" 2>&1
+    if [[ ! -s "$a" || ! -s "$b" ]]; then REASON="generation failed"; return 1; fi
+    if [[ ! -s "$sa" || ! -s "$sb" ]]; then REASON="--dump-sexp failed"; return 1; fi
     if ! cmp -s "$a" "$b"; then REASON="two generations differ"; return 1; fi
     if ! cmp -s "$sa" "$sb"; then REASON="two --dump-sexp runs differ"; return 1; fi
     return 0
@@ -639,10 +638,9 @@ SEXP_SEEN=""
 for dir in test/*/; do
     dir=${dir%/}
     name=$(basename "$dir")
-    case $name in golden|adverse|known|regress|lib|bench) continue ;; esac
+    case $name in golden|adverse|known|regress|lib|bench|lexfuzz) continue ;; esac
     suite_conf "$dir"
-    if [[ -n "$CONF_ERROR" ]]; then add "$name" bad "$CONF_ERROR"; continue; fi
-    [[ -n "$GRAMMAR" ]] || continue
+    if [[ -n "$CONF_ERROR" || -z "$GRAMMAR" ]]; then add "$name" bad "${CONF_ERROR:-$dir holds no grammar}"; continue; fi
     for sub in cases known; do
         while IFS=$'\x1f' read -r file start tree; do
             rel=${file#"$dir/$sub/"}

@@ -47,9 +47,9 @@ A missing golden fails too; `--update` writes it.
 
 ## Grammar suites
 
-Each directory `test/<grammar>/` holding a `*.grammar` is a suite (except
-`golden`, `adverse`, `known`, `regress`, `lib`, `bench`). Nothing needs
-registering: add a directory, a grammar, and cases.
+Each directory `test/<grammar>/` is a suite (except `golden`, `adverse`,
+`known`, `regress`, `lib`, `bench`, `lexfuzz`), and one without a grammar
+fails. Nothing needs registering: add a directory, a grammar, and cases.
 
 ```
 test/mumps/
