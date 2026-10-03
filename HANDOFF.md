@@ -6,10 +6,10 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 
 ## State
 
-- **Branch `revamp`** holds the revamp of Nexus 1.1.0 (base `cf0c962`, tag
-  `v1.1.0`). It is local and unmerged; it lands on `main` through a pull
-  request when the owner approves. What it changes, with migration steps
-  for every downstream repository, is CHANGELOG.md's "Unreleased" section.
+- **`main` holds the revamp of Nexus 1.1.0** (tag `v1.1.0`), merged from
+  [shreeve/nexus#5](https://github.com/shreeve/nexus/pull/5). What it
+  changes, with migration steps for every downstream repository, is
+  CHANGELOG.md's "Unreleased" section; it is unreleased until Open work 1.
 - **Zig 0.17.0 only.** Nexus and every parser it generates are Zig 0.17
   code.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
@@ -31,9 +31,8 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 
 ## Open work
 
-1. **Merge and release.** The owner reviews `revamp` (a pull request
-   against `main`) and picks the version: the generated API and the grammar
-   language change in breaking ways, which suggests 2.0.0. Then bump
+1. **Release.** The owner picks the version: the generated API and the
+   grammar language change in breaking ways, which suggests 2.0.0. Then bump
    `src/version.zig`, regenerate, date the CHANGELOG section and tag
    ([INTERNALS.md, "Releasing"](docs/INTERNALS.md#releasing)).
 2. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
