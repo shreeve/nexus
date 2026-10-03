@@ -13,7 +13,4 @@ pub const Lexer = struct {
         self.base.aux = tok.pre;
         return tok;
     }
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-    }
 };

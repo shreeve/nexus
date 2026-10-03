@@ -10,7 +10,4 @@ pub const Lexer = struct {
     pub fn next(self: *Lexer) parser.Token {
         return self.base.next();
     }
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-    }
 };

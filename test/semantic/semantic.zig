@@ -25,9 +25,6 @@ pub const Lexer = struct {
         }
         return tok;
     }
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-    }
 };
 
 // =============================================================================
