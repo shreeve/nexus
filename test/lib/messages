@@ -4,11 +4,11 @@
 # Usage:
 #   test/lib/messages ALLOW CORPUS SRC.zig...
 #
-# Extracts the format string of every error and warning in the SRC files:
+# Extracts the format string of every error in the SRC files:
 # the last string argument (or a `const NAME = "..."` it names) of a call
-# to a report function (err, warn, errAt, errLine, fail, failAt, failLine,
-# errDirective, errAtUse, usageError, report), the text after `error: ` or
-# `warning: ` of a std.debug.print, and each piece of a message written to
+# to a report function (err, errAt, errLine, fail, failAt, failLine,
+# errDirective, errAtUse, usageError, report), the text after `error: `
+# of a std.debug.print, and each piece of a message written to
 # a writer: the string of every `.writeAll(` and `.print(` from a call to
 # `located` (or the start of `fn describe`) up to the next `emit(` call or
 # `fn`. Test blocks, comments and multiline strings are skipped, and so
@@ -31,7 +31,7 @@ use warnings;
 my ($allowFile, $corpusFile, @srcs) = @ARGV;
 die "usage: test/lib/messages ALLOW CORPUS SRC.zig...\n" unless @srcs;
 
-my %report = map { $_ => 1 } qw(err warn errAt errLine fail failAt failLine errDirective errAtUse usageError report);
+my %report = map { $_ => 1 } qw(err errAt errLine fail failAt failLine errDirective errAtUse usageError report);
 
 # Zig tokens: [kind, text, line]; kind is s (string literal), w (word) or p.
 sub tokens {
@@ -108,7 +108,7 @@ for my $file (@srcs) {
         # `"prefix: " ++ fmt` is a wrapper's, not a message.
         next if $end + 3 <= $#t && $t[$end + 1][1] eq '+' && $t[$end + 2][1] eq '+' && $t[$end + 3][0] ne 's';
         if ($isPrint) {
-            next unless $fmt =~ s/^.*?\b(?:error|warning): //;
+            next unless $fmt =~ s/^.*?\berror: //;
         }
         $fmt =~ s/\\n$//;
         (my $fixed = $fmt) =~ s/\{[^{}]*\}//g;
