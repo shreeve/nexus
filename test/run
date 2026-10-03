@@ -16,7 +16,8 @@
 #
 # Exit status is 1 if any test fails or a known-failing test starts
 # passing (move it out of its known/ directory when that happens), and 2
-# on a usage error or when no test id matches the filters.
+# on a usage error, when no test id matches the filters, or when another
+# test/run is running in this checkout.
 
 set -uo pipefail
 
@@ -536,10 +537,15 @@ worker() {
     fi
 }
 
+# --worker <tasks>: tasks separated by \x1e, each with its fields
+# separated by \x1f.
 if [[ "${1:-}" == "--worker" ]]; then
-    shift
-    IFS=$'\x1f' read -r -a F <<<"$1"
-    if [[ ${F[1]} == build ]]; then ensure_built "${F[2]}"; else worker "${F[@]}"; fi
+    IFS=$'\x1e' read -r -a TASKS <<<"$2"
+    for task in "${TASKS[@]}"; do
+        [[ -n "$task" ]] || continue
+        IFS=$'\x1f' read -r -a F <<<"$task"
+        if [[ ${F[1]} == build ]]; then ensure_built "${F[2]}"; else (worker "${F[@]}"); fi
+    done
     exit 0
 fi
 
@@ -567,6 +573,22 @@ else
     G='' R='' Y='' D='' B='' X=''
 fi
 
+# One run per checkout at a time: runs share bin/nexus and the build and
+# doc directories under .zig-cache/nexus-test.
+mkdir -p "$OUTROOT"
+LOCK="$OUTROOT/run.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+    pid=$(cat "$LOCK/pid" 2>/dev/null)
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+        printf '%sanother test/run (pid %s) is running in this checkout%s\n' "$R" "$pid" "$X"
+        exit 2
+    fi
+    rm -rf "$LOCK"
+    mkdir "$LOCK" || exit 2
+fi
+echo $$ >"$LOCK/pid"
+trap 'rm -rf "$LOCK"' EXIT
+
 START_T=$SECONDS
 printf '%sbuilding nexus%s\n' "$D" "$X"
 if ! zig build 2>&1; then
@@ -577,7 +599,7 @@ fi
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/nexus-test.XXXXXX")
 RESULTS="$WORK/results"
 mkdir -p "$RESULTS" "$WORK/build" "$WORK/lock" "$WORK/out" "$OUTROOT/build"
-trap 'rm -rf "$WORK"' EXIT
+trap 'rm -rf "$WORK" "$LOCK"' EXIT
 export ROOT NEXUS LIB OUTROOT DOCS_OUT PANIC_RE POS_RE TIMEOUT WORK RESULTS UPDATE
 
 selected() {
@@ -590,8 +612,8 @@ selected() {
 # One pool runs everything, in this order: the long tests, so that none of
 # them is left running alone at the end; the suite builds (pseudo-tasks
 # with no result); the tests that need no build, while the builds finish;
-# and the tests that need one. A test whose suite is not built yet builds
-# it, or waits for the worker that is building it.
+# and the tests that need one, four to a worker process. A test whose suite
+# is not built yet builds it, or waits for the worker that is building it.
 LONG="$WORK/long" BUILDS="$WORK/builds" EARLY="$WORK/early" LATE="$WORK/late"
 : >"$LONG"
 : >"$BUILDS"
@@ -702,7 +724,10 @@ fi
 NB=$(wc -l <"$BUILDS" | tr -d ' ')
 printf '%sbuilding %s grammars, running %s tests (-j %s)%s\n' "$D" "$NB" "$TOTAL" "$JOBS" "$X"
 
-cat "$LONG" "$BUILDS" "$EARLY" "$LATE" | tr '\n' '\0' | xargs -0 -r -n 1 -P "$JOBS" "$0" --worker
+{
+    cat "$LONG" "$BUILDS"
+    cat "$EARLY" "$LATE" | paste -d $'\x1e' - - - -
+} | tr '\n' '\0' | xargs -0 -r -n 1 -P "$JOBS" "$0" --worker
 
 # -----------------------------------------------------------------------------
 # Report

@@ -231,3 +231,7 @@ Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite
 builds in `build/<suite>/`, with `gen.log` and `compile.log`), so a failing
 case's parser can be run by hand:
 `.zig-cache/nexus-test/build/mumps/driver test/mumps/cases/hand_dots.m`.
+A suite's compile is skipped when its inputs (the generated parser, its
+lang files, the driver, the mode and the compiler) are byte for byte those
+of its last build. One `test/run` runs per checkout at a time; a second
+exits with status 2.
