@@ -600,6 +600,9 @@ const Codegen = struct {
         try w.writeAll(
             \\
             \\fn promote(self: *BaseParser, token: Token) u16 {
+            \\    // The ordinal of a match made in an earlier state (before a
+            \\    // reduction) is not this match's.
+            \\    self.lastMatchedId = 0;
             \\    const text = self.source[token.pos..][0..token.len];
             \\    if (text.len == 0) return promotableSymbol;
             \\

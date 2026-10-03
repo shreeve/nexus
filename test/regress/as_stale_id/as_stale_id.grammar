@@ -1,0 +1,28 @@
+# A keyword ordinal belongs to the token it was matched for. `@as IDENT =
+# [kw!, self]` tries the keyword group first: in `y 5 kw`, while `n` is
+# still to be reduced, `kw` matches the group permissively (the merged LALR
+# state reduces on KW), and after the reduction the state takes it as
+# IDENT. The shifted IDENT leaf carries no id: the ordinal of the earlier
+# match does not leak into it.
+
+@lexer
+tokens
+    ident
+    number
+    eof
+    err
+[0-9]+                                      → number
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "as_stale_id"
+@as IDENT = [kw!, self]
+
+prog! = stmt+                               → (prog ...1)
+
+stmt  = X n KW                              → (k 2 3)
+      | Y n IDENT                           → (i 2 3)
+
+n     = NUMBER
+      | NUMBER NUMBER                       → (2)
