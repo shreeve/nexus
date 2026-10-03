@@ -174,19 +174,28 @@ pub const LexerGenerator = struct {
                 const at = atomOf(g);
                 for (atoms.items) |x| {
                     if (x.eql(at)) break;
-                } else try atoms.append(a, at);
+                } else {
+                    if (atoms.items.len == maxGuardAtoms) {
+                        return self.fail(&rules[ri], 0, "the rules test more than {d} distinct guard conditions (this rule adds one more); at most {d} are supported", .{ maxGuardAtoms, maxGuardAtoms });
+                    }
+                    try atoms.append(a, at);
+                }
             }
-        }
-        if (atoms.items.len > maxGuardAtoms) {
-            return self.fail(&rules[self.consuming[0]], 0, "rules use {d} distinct guard conditions; at most {d} are supported", .{ atoms.items.len, maxGuardAtoms });
         }
         self.atoms = atoms.items;
 
-        const masks = @as(usize, 1) << @intCast(self.atoms.len);
+        // The live rules of each realizable configuration; the others (m == 1
+        // and m == 2 both true, m == 300) get no start state.
+        const realizable = try self.realizableMasks();
+        const masks = realizable.len;
         var liveSets: std.ArrayList([]const u32) = .empty;
         self.startOfMask = try a.alloc(u32, masks);
         var live: std.ArrayList(u32) = .empty;
         for (0..masks) |mask| {
+            if (!realizable[mask]) {
+                self.startOfMask[mask] = automaton.none;
+                continue;
+            }
             live.clearRetainingCapacity();
             for (self.consuming, 0..) |ri, k| {
                 if (self.guardsHold(rules[ri].guards, mask)) try live.append(a, @intCast(k));
@@ -204,7 +213,9 @@ pub const LexerGenerator = struct {
         if (self.dfa.numStates > std.math.maxInt(u16)) {
             return self.fail(&rules[self.consuming[0]], 0, "the lexer DFA has {d} states; at most 65535 are supported", .{self.dfa.numStates});
         }
-        for (self.startOfMask) |*s| s.* = self.dfa.starts[s.*];
+        for (self.startOfMask) |*s| {
+            if (s.* != automaton.none) s.* = self.dfa.starts[s.*];
+        }
 
         // A rule whose pattern cannot win anywhere is reported: every rule
         // must be able to produce its token in some configuration.
@@ -237,6 +248,65 @@ pub const LexerGenerator = struct {
 
     fn atomIndex(self: *const LexerGenerator, at: Atom) usize {
         for (self.atoms, 0..) |x, i| if (x.eql(at)) return i;
+        unreachable;
+    }
+
+    /// The configurations the variables can be in: entry `mask` is true when
+    /// some values make exactly the atoms in `mask` true. Each variable is
+    /// tried over its whole range (`pre` 0..255, a state variable -128..127).
+    fn realizableMasks(self: *LexerGenerator) ![]bool {
+        const a = self.arena.allocator();
+        const masks = @as(usize, 1) << @intCast(self.atoms.len);
+        const out = try a.alloc(bool, masks);
+        @memset(out, true);
+        const seen = try a.alloc(bool, masks);
+        for (self.atoms, 0..) |v, i| {
+            const counted = for (self.atoms[0..i]) |x| {
+                if (std.mem.eql(u8, x.variable, v.variable)) break true;
+            } else false;
+            if (counted) continue;
+            // The atoms on this variable, and the outcomes its values give them.
+            var own: usize = 0;
+            for (self.atoms, 0..) |at, j| {
+                if (std.mem.eql(u8, at.variable, v.variable)) own |= @as(usize, 1) << @intCast(j);
+            }
+            @memset(seen, false);
+            const lo, const hi = range(v.variable);
+            var x = lo;
+            while (x <= hi) : (x += 1) {
+                var bits: usize = 0;
+                for (self.atoms, 0..) |at, j| {
+                    if ((own >> @intCast(j)) & 1 != 0 and guardHoldsAt(.{ .variable = at.variable, .op = at.op, .value = at.value }, x)) bits |= @as(usize, 1) << @intCast(j);
+                }
+                seen[bits] = true;
+            }
+            for (out, 0..) |*ok, mask| {
+                if (!seen[mask & own]) ok.* = false;
+            }
+        }
+        return out;
+    }
+
+    /// The values a guarded variable takes: `pre` is a u8, a state variable an i8.
+    fn range(variable: []const u8) struct { i32, i32 } {
+        return if (std.mem.eql(u8, variable, "pre")) .{ 0, 255 } else .{ -128, 127 };
+    }
+
+    /// Can all of `guards` hold at once?
+    fn satisfiable(guards: []const Guard) bool {
+        for (guards) |g| {
+            const lo, const hi = range(g.variable);
+            var x = lo;
+            while (x <= hi) : (x += 1) {
+                if (holdsAll(guards, g.variable, x)) break;
+            } else return false;
+        }
+        return true;
+    }
+
+    /// The start state of the first realizable configuration.
+    fn firstStart(self: *const LexerGenerator) u32 {
+        for (self.startOfMask) |s| if (s != automaton.none) return s;
         unreachable;
     }
 
@@ -436,6 +506,7 @@ pub const LexerGenerator = struct {
         if (r.rewind != null) return self.fail(r, 0, "rewind(n) needs a pattern; a rule without one is already zero-width", .{});
         if (r.isSkip) return self.fail(r, 0, "a zero-width rule cannot skip", .{});
         if (r.hold and hasCounted(r)) return self.fail(r, 0, "a held rule consumes nothing, so counted() has nothing to count", .{});
+        if (!satisfiable(r.guards)) return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
         const consumesWs = !r.hold and !holdsAll(r.guards, "pre", 0);
         if (!consumesWs and !changesGuardedState(r)) {
             return self.fail(r, 0, "this zero-width rule would match forever: it must require whitespace (a guard false at pre = 0) or assign a state variable its guards test", .{});
@@ -499,8 +570,8 @@ pub const LexerGenerator = struct {
             const r = &self.spec.rules.items[self.consuming[k]];
             // Name the rule that wins a shortest text this one matches, in a
             // configuration where this one is live.
-            const mask = for (self.startOfMask, 0..) |_, m| {
-                if (self.guardsHold(r.guards, m)) break m;
+            const mask = for (self.startOfMask, 0..) |s, m| {
+                if (s != automaton.none and self.guardsHold(r.guards, m)) break m;
             } else return self.fail(r, 0, "this rule can never match: its guards are never all true together", .{});
             var single = try self.buildDfa(fulls[k .. k + 1], &.{&[_]u32{0}});
             const text = (try single.shortestAccepted(a, 0)).?;
@@ -981,10 +1052,10 @@ pub const LexerGenerator = struct {
         const nc = dfa.classes.count;
 
         // Configuration mask from the guard atoms.
-        const multi = self.atoms.len > 0 and blk: {
-            for (self.startOfMask) |s| if (s != self.startOfMask[0]) break :blk true;
-            break :blk false;
-        };
+        const start0 = self.firstStart();
+        const multi = for (self.startOfMask) |s| {
+            if (s != automaton.none and s != start0) break true;
+        } else false;
         var anySave = false;
         for (self.saves) |sv| anySave = anySave or sv;
         if (anySave) {
@@ -994,7 +1065,7 @@ pub const LexerGenerator = struct {
         // initial dispatch is a direct jump) branches on the guard conditions
         // and continues into the start state of the configuration that holds.
         const select: u32 = dfa.numStates;
-        try self.print("{s}dfa: switch (@as(u16, {d})) {{\n", .{ ind, if (multi) select else self.startOfMask[0] });
+        try self.print("{s}dfa: switch (@as(u16, {d})) {{\n", .{ ind, if (multi) select else start0 });
         if (multi) {
             const selInd = try a.print("{s}    ", .{ind});
             try self.print("{s}{d} => {{\n", .{ selInd, select });
@@ -1115,27 +1186,41 @@ pub const LexerGenerator = struct {
     /// A decision tree over the guard atoms that continues into the start
     /// state of the configuration that holds. `fixed` marks atoms already
     /// tested on this path, with their outcomes in `bits`; only atoms that
-    /// still change the start state are tested.
+    /// still change the start state are tested, and configurations no
+    /// values produce do not count.
     fn emitSelect(self: *LexerGenerator, fixed: usize, bits: usize, ind: []const u8) !void {
         const starts = self.startOfMask;
+        const none = automaton.none;
         var first: ?u32 = null;
         var uniform = true;
         for (starts, 0..) |st, mask| {
-            if (mask & fixed != bits) continue;
+            if (mask & fixed != bits or st == none) continue;
             if (first == null) first = st else if (first.? != st) uniform = false;
         }
         if (uniform) {
             try self.print("{s}continue :dfa {d};\n", .{ ind, first.? });
             return;
         }
-        // The first untested atom the start state depends on.
+        // The first untested atom the start state depends on. When no single
+        // atom flips it (the configurations in between are impossible), the
+        // first atom that tells two possible configurations apart.
         const atom = for (0..self.atoms.len) |i| {
             const bit = @as(usize, 1) << @intCast(i);
             if (fixed & bit != 0) continue;
             for (starts, 0..) |st, mask| {
-                if (mask & fixed == bits and starts[mask ^ bit] != st) break;
+                if (mask & fixed == bits and st != none and starts[mask ^ bit] != none and starts[mask ^ bit] != st) break;
             } else continue;
             break i;
+        } else for (0..self.atoms.len) |i| {
+            const bit = @as(usize, 1) << @intCast(i);
+            if (fixed & bit != 0) continue;
+            var on = false;
+            var off = false;
+            for (starts, 0..) |st, mask| {
+                if (mask & fixed != bits or st == none) continue;
+                if (mask & bit != 0) on = true else off = true;
+            }
+            if (on and off) break i;
         } else unreachable;
         const bit = @as(usize, 1) << @intCast(atom);
         const at = self.atoms[atom];
