@@ -21,7 +21,6 @@ pub const Options = struct {
 
 pub const Result = struct {
     automaton: automaton.Automaton,
-    lookaheads: lookahead.Lookaheads,
     table: table.Table,
 };
 
@@ -29,19 +28,11 @@ pub const Error = error{ GenerationFailed, OutOfMemory };
 
 pub fn run(g: *Grammar, opts: Options) Error!Result {
     const a = g.allocator;
-    var auto = automaton.build(g) catch |err| switch (err) {
-        error.OutOfMemory => return error.OutOfMemory,
-        error.TooManyStates => {
-            const at = conflicts.ruleLoc(g, 0);
-            diag.errLine(opts.path, at.line, at.col, "the grammar needs more than {d} parser states, the parse table's limit", .{automaton.maxStates});
-            return error.GenerationFailed;
-        },
-    };
 
-    // LALR lookaheads (and any parse) assume every rule can complete.
+    // Checks on the grammar alone. LALR lookaheads (and any parse) assume
+    // every rule can complete.
     const costs = try repair.insertCosts(a, g);
     const roots = try unproductiveRoots(a, g, costs);
-    a.free(costs);
     if (roots.len > 0) {
         for (roots) |s| {
             const at = conflicts.ruleLoc(g, g.symbols.items[s].rules.items[0]);
@@ -49,10 +40,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         }
         return error.GenerationFailed;
     }
-    try checkCycles(a, g, opts.path);
-
-    const la = try lookahead.compute(g, &auto);
-
+    try checkCycles(a, g, costs, opts.path);
     if (g.repair) |spec| {
         if (repair.validate(g, spec)) |bad| {
             const at = spec.locOf(bad.index) orelse grammar.RepairSpec.Loc{ .line = 1, .col = 1 };
@@ -61,17 +49,23 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         }
     }
 
-    const tbl = table.build(g, &auto, la) catch |err| switch (err) {
+    var auto = automaton.build(g) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
-        error.InvalidRepairToken => unreachable, // validated above
+        error.TooManyStates => {
+            const at = conflicts.ruleLoc(g, 0);
+            diag.errLine(opts.path, at.line, at.col, "the grammar needs more than {d} parser states, the parse table's limit", .{automaton.maxStates});
+            return error.GenerationFailed;
+        },
     };
+    const la = try lookahead.compute(g, &auto, costs);
+    const tbl = try table.build(g, &auto, la);
 
+    // Checks on the table.
     if (try emptyLoop(a, g, &tbl)) |loop| {
         const at = conflicts.ruleLoc(g, loop.rule);
         diag.errLine(opts.path, at.line, at.col, "reducing the empty rule {s} on {s} leads back to the same state, so the parser would push forever on that token (a `<` hint or a conflict resolved toward an empty rule)", .{ g.symbols.items[g.rules.items[loop.rule].lhs].name, g.symbols.items[loop.terminal].name });
         return error.GenerationFailed;
     }
-
     const copts: conflicts.Options = .{ .path = opts.path };
     conflicts.checkHints(a, g, &tbl, copts) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
@@ -82,7 +76,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         else => return error.GenerationFailed,
     };
 
-    return .{ .automaton = auto, .lookaheads = la, .table = tbl };
+    return .{ .automaton = auto, .table = tbl };
 }
 
 /// The unproductive nonterminals to report (those that derive no finite
@@ -218,73 +212,69 @@ pub fn emptyLoop(a: Allocator, g: *const Grammar, tbl: *const table.Table) Alloc
 /// rules whose other elements can be empty). Such a grammar is infinitely
 /// ambiguous, and when a declared conflict resolves the cycle's way the
 /// parser reduces around it forever.
-fn checkCycles(a: Allocator, g: *const Grammar, path: []const u8) Error!void {
-    const nsym = g.symbols.items.len;
-    const nullable = try a.alloc(bool, nsym);
-    defer a.free(nullable);
-    @memset(nullable, false);
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (g.rules.items) |rule| {
-            if (nullable[rule.lhs]) continue;
-            const all = for (rule.rhs) |s| {
-                if (!nullable[s]) break false;
-            } else true;
-            if (all) {
-                nullable[rule.lhs] = true;
-                changed = true;
-            }
-        }
+fn checkCycles(a: Allocator, g: *const Grammar, costs: []const u32, path: []const u8) Error!void {
+    const rules = try findCycle(a, g, costs) orelse return;
+    var text: std.Io.Writer.Allocating = .init(a);
+    defer text.deinit();
+    for (rules) |r| {
+        text.writer.print("{s} ⇒ ", .{g.symbols.items[g.rules.items[r].lhs].name}) catch return error.OutOfMemory;
     }
-    // unit[r] = the nonterminal rule r derives alone (the rest nullable).
-    const state = try a.alloc(u8, nsym); // 0 new, 1 on the path, 2 done
-    defer a.free(state);
-    @memset(state, 0);
-    var path_: std.ArrayList(u16) = .empty; // rules on the path
-    defer path_.deinit(a);
-    for (g.symbols.items, 0..) |sym, i| {
-        if (sym.kind != .nonterminal or state[i] != 0) continue;
-        if (try cycleFrom(a, g, nullable, state, &path_, @intCast(i))) |at| {
-            const rules = path_.items[at..];
-            const first = g.rules.items[rules[0]];
-            var text: std.Io.Writer.Allocating = .init(a);
-            defer text.deinit();
-            for (rules, 0..) |r, k| {
-                if (k > 0) text.writer.writeAll(" ⇒ ") catch return error.OutOfMemory;
-                conflicts.writeSymbol(&text.writer, g, g.rules.items[r].lhs) catch return error.OutOfMemory;
-            }
-            text.writer.writeAll(" ⇒ ") catch return error.OutOfMemory;
-            conflicts.writeSymbol(&text.writer, g, first.lhs) catch return error.OutOfMemory;
-            const loc = conflicts.ruleLoc(g, rules[0]);
-            diag.errLine(path, loc.line, loc.col, "the grammar is cyclic ({s}): a rule that derives itself gives some input infinitely many parses", .{text.written()});
-            return error.GenerationFailed;
-        }
-    }
+    text.writer.writeAll(g.symbols.items[g.rules.items[rules[0]].lhs].name) catch return error.OutOfMemory;
+    const at = conflicts.ruleLoc(g, rules[0]);
+    diag.errLine(path, at.line, at.col, "the grammar is cyclic ({s}): a rule that derives itself gives some input infinitely many parses", .{text.written()});
+    return error.GenerationFailed;
 }
 
-/// Depth-first search along unit derivations from `sym`; returns the index
-/// in `path` where a cycle starts.
-fn cycleFrom(a: Allocator, g: *const Grammar, nullable: []const bool, state: []u8, path: *std.ArrayList(u16), sym: u16) Error!?usize {
-    state[sym] = 1;
-    for (g.symbols.items[sym].rules.items) |ri| {
-        const rule = g.rules.items[ri];
-        for (rule.rhs, 0..) |b, k| {
-            if (g.symbols.items[b].kind != .nonterminal) continue;
-            const rest = for (rule.rhs, 0..) |s, j| {
-                if (j != k and !nullable[s]) break false;
-            } else true;
-            if (!rest) continue;
-            try path.append(a, ri);
-            if (state[b] == 1) {
-                // The cycle starts at the first path rule whose lhs is b.
-                for (path.items, 0..) |r, at| if (g.rules.items[r].lhs == b) return at;
+/// The rules of a cycle of unit derivations (each rule's lhs derives the
+/// next rule's lhs alone, the rest of the rule being nullable, and the last
+/// derives the first), found by an iterative depth-first search; null if
+/// the grammar has none. `costs` from `repair.insertCosts` (0 = nullable).
+pub fn findCycle(a: Allocator, g: *const Grammar, costs: []const u32) Allocator.Error!?[]const u16 {
+    const state = try a.alloc(enum(u8) { new, onPath, done }, g.symbols.items.len);
+    defer a.free(state);
+    @memset(state, .new);
+    // A frame walks its symbol's rules and their positions; the `rule` of
+    // every frame below the top is the rule the path takes.
+    const Frame = struct { sym: u16, rule: u32 = 0, pos: u32 = 0 };
+    var frames: std.ArrayList(Frame) = .empty;
+    defer frames.deinit(a);
+    for (g.symbols.items, 0..) |sym, s0| {
+        if (sym.kind != .nonterminal or state[s0] != .new) continue;
+        state[s0] = .onPath;
+        try frames.append(a, .{ .sym = @intCast(s0) });
+        while (frames.lastPtr()) |f| {
+            const rules = g.symbols.items[f.sym].rules.items;
+            if (f.rule == rules.len) {
+                state[f.sym] = .done;
+                _ = frames.pop();
+                continue;
             }
-            if (state[b] == 0) if (try cycleFrom(a, g, nullable, state, path, b)) |at| return at;
-            _ = path.pop();
+            const rhs = g.rules.items[rules[f.rule]].rhs;
+            if (f.pos == rhs.len) {
+                f.rule += 1;
+                f.pos = 0;
+                continue;
+            }
+            const k = f.pos;
+            f.pos += 1;
+            const b = rhs[k];
+            if (g.symbols.items[b].kind != .nonterminal or state[b] == .done) continue;
+            const alone = for (rhs, 0..) |x, j| {
+                if (j != k and costs[x] != 0) break false;
+            } else true;
+            if (!alone) continue;
+            if (state[b] == .onPath) {
+                const from = for (frames.items, 0..) |fr, i| {
+                    if (fr.sym == b) break i;
+                } else unreachable;
+                const cycle = try a.alloc(u16, frames.items.len - from);
+                for (cycle, frames.items[from..]) |*r, fr| r.* = g.symbols.items[fr.sym].rules.items[fr.rule];
+                return cycle;
+            }
+            state[b] = .onPath;
+            try frames.append(a, .{ .sym = b });
         }
     }
-    state[sym] = 2;
     return null;
 }
 

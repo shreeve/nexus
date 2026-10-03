@@ -81,7 +81,7 @@ fn generate(a: Allocator, rules: []const []const u8, starts: []const []const u8)
     const b = try a.create(Built);
     b.g = try build(a, rules, starts);
     b.auto = try automaton.build(&b.g);
-    b.la = try lookahead.compute(&b.g, &b.auto);
+    b.la = try lookahead.compute(&b.g, &b.auto, try repair.insertCosts(a, &b.g));
     b.tbl = try table.build(&b.g, &b.auto, b.la);
     return b;
 }
@@ -642,6 +642,28 @@ test "only the causes of unproductive rules are reported" {
     try testing.expectEqual(@as(usize, 0), (try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g))).len);
 }
 
+test "a cycle of unit derivations is found through nullable neighbors" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // a ⇒ b (opt is nullable) ⇒ a.
+    var g = try build(a, &.{ "top → a", "a → b opt", "a → Y", "b → opt a", "opt → Z", "opt → ε" }, &.{"top"});
+    const cycle = (try lr.findCycle(a, &g, try repair.insertCosts(a, &g))).?;
+    try testing.expectEqual(@as(usize, 2), cycle.len);
+    try testing.expectEqual(sym(&g, "a"), g.rules.items[cycle[0]].lhs);
+    try testing.expectEqual(sym(&g, "b"), g.rules.items[cycle[1]].lhs);
+    // A neighbor that must consume input breaks the cycle.
+    g = try build(a, &.{ "top → a", "a → b W", "a → Y", "b → opt a", "opt → Z", "opt → ε" }, &.{"top"});
+    try testing.expectEqual(@as(?[]const u16, null), try lr.findCycle(a, &g, try repair.insertCosts(a, &g)));
+    // A deep chain of unit rules is searched without recursion.
+    var rules: std.ArrayList([]const u8) = .empty;
+    try rules.append(a, "top → n0");
+    for (0..20000) |i| try rules.append(a, try a.print("n{d} → n{d}", .{ i, i + 1 }));
+    try rules.append(a, "n20000 → Y");
+    g = try build(a, rules.items, &.{"top"});
+    try testing.expectEqual(@as(?[]const u16, null), try lr.findCycle(a, &g, try repair.insertCosts(a, &g)));
+}
+
 test "a synthesized rule is located where a written rule uses it" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -740,9 +762,9 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
         "args → args \",\" ID",
     }, &.{"prog"});
     const auto = try automaton.build(&g);
-    const la = try lookahead.compute(&g, &auto);
+    const la = try lookahead.compute(&g, &auto, try repair.insertCosts(a, &g));
 
-    const costs = try repair.insertCosts(a, &g);
+    const costs = la.costs;
     try testing.expectEqual(@as(u32, 1), costs[sym(&g, "args")]);
     try testing.expectEqual(@as(u32, 4), costs[sym(&g, "call")]);
     try testing.expectEqual(@as(u32, 5), costs[sym(&g, "stmt")]);
@@ -759,9 +781,9 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     // Further fabrications an inserted ID commits to: in `ID "=" •` the rest
     // `ID NEWLINE` (2); in `ID "=" ID •`, NEWLINE (1).
     const eq1 = stateWith(&auto, 4, 2);
-    try testing.expectEqual(@as(u32, 2), repair.costAt(&g, la, costs, auto.states.items[eq1], sym(&g, "ID")));
+    try testing.expectEqual(@as(u32, 2), repair.costAt(&g, la, auto.states.items[eq1], sym(&g, "ID")));
     const eq2 = stateWith(&auto, 4, 3);
-    try testing.expectEqual(@as(u32, 1), repair.costAt(&g, la, costs, auto.states.items[eq2], sym(&g, "ID")));
+    try testing.expectEqual(@as(u32, 1), repair.costAt(&g, la, auto.states.items[eq2], sym(&g, "ID")));
 
     // Names must be tokens of the parser grammar.
     try testing.expect(repair.validate(&g, .{ .holes = &.{"NOPE"}, .structure = &.{} }) != null);
@@ -785,7 +807,7 @@ test "ranking puts holes above cheaper structure" {
         "args → args \",\" ID",
     }, &.{"prog"});
     const auto = try automaton.build(&g);
-    const la = try lookahead.compute(&g, &auto);
+    const la = try lookahead.compute(&g, &auto, try repair.insertCosts(a, &g));
     g.repair = .{ .holes = &.{"ID"}, .structure = &.{"\")\""} };
     const tbl = try table.build(&g, &auto, la);
     const q = stateWith(&auto, 2, 4);
