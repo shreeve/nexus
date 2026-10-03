@@ -356,8 +356,6 @@ pub const BaseParser = struct {
     valueStack: std.ArrayList(Sexp) = .empty,
     /// Spare capacity of the lists `keepList` returned, by address.
     listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
-    /// Node id of the list `extendList` is growing (0 = none).
-    extending: NodeId = 0,
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -954,9 +952,7 @@ pub const BaseParser = struct {
     /// with its spare capacity, so a left-recursive list grows in amortized
     /// O(1) per element; it keeps its node id.
     fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
-        self.extending = 0;
         if (base != .list) return .empty;
-        self.extending = base.list.id;
         const items = base.list.items();
         if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
             if (spare.len == items.len) {
@@ -971,8 +967,10 @@ pub const BaseParser = struct {
         return out;
     }
 
-    /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
+    /// Finish a list from `extendList(base)`, recording its spare
+    /// capacity. It takes over the node id of `base` (still on the value
+    /// stack), so that nested extensions each keep their own.
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), base: Sexp, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -982,12 +980,11 @@ pub const BaseParser = struct {
         }
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
-            if (self.extending != 0) {
-                id = self.extending;
+            id = if (base == .list) base.list.id else 0;
+            if (id != 0) {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        self.extending = 0;
         return .{ .list = List.withId(out.items, id) };
     }
 
@@ -1600,7 +1597,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         2 => blk: {
             var out = self.extendList(pass[0]) catch break :blk self.oomNil();
             out.append(self.allocator(), pass[2]) catch break :blk self.oomNil();
-            break :blk self.keepList(&out, .spread);
+            break :blk self.keepList(&out, pass[0], .spread);
         },
         3 => self.sexp(.set, &.{ pass[0], pass[2] }),
         4 => pass[0],
@@ -1701,13 +1698,29 @@ test "a list that reaches the tree keeps its node id as it grows" {
         p.lastEnd = @intCast(2 * i + 1);
         var grown = try p.extendList(l);
         try grown.append(p.allocator(), item);
-        const next = p.keepList(&grown, .tree);
+        const next = p.keepList(&grown, l, .tree);
         try testing.expectEqual(l.list.id, next.list.id);
         l = next;
     }
     try testing.expectEqual(@as(u32, 1), p.nodeCount());
     try testing.expectEqual(Span{ .start = 0, .end = 5 }, p.span(l));
     try testing.expectEqual(@as(?u16, 2), p.ruleOf(l));
+
+    // `(...1 (...2 3))`: an extension nested in another; each list keeps
+    // its own id.
+    var out2: std.ArrayList(Sexp) = .empty;
+    try out2.append(p.allocator(), items[1]);
+    const m = p.finishList(&out2, .tree);
+    try testing.expectEqual(@as(u32, 2), p.nodeCount());
+    var outer = try p.extendList(l);
+    var inner = try p.extendList(m);
+    try inner.append(p.allocator(), items[2]);
+    const innerList = p.keepList(&inner, m, .tree);
+    try outer.append(p.allocator(), innerList);
+    const outerList = p.keepList(&outer, l, .tree);
+    try testing.expectEqual(m.list.id, innerList.list.id);
+    try testing.expectEqual(l.list.id, outerList.list.id);
+    try testing.expectEqual(@as(u32, 2), p.nodeCount());
 }
 
 test "side-band roles record a span without a tree slot" {

@@ -1218,8 +1218,6 @@ pub const BaseParser = struct {
     valueStack: std.ArrayList(Sexp) = .empty,
     /// Spare capacity of the lists `keepList` returned, by address.
     listSpare: std.AutoHashMapUnmanaged(usize, ListSpare) = .empty,
-    /// Node id of the list `extendList` is growing (0 = none).
-    extending: NodeId = 0,
 
     // Node store (when `nodeStore`): per value-stack entry where it
     // starts, and per node its span and rule, indexed by NodeId (entry 0
@@ -1823,9 +1821,7 @@ pub const BaseParser = struct {
     /// with its spare capacity, so a left-recursive list grows in amortized
     /// O(1) per element; it keeps its node id.
     fn extendList(self: *BaseParser, base: Sexp) !std.ArrayList(Sexp) {
-        self.extending = 0;
         if (base != .list) return .empty;
-        self.extending = base.list.id;
         const items = base.list.items();
         if (items.len > 0) if (self.listSpare.get(@intFromPtr(items.ptr))) |spare| {
             if (spare.len == items.len) {
@@ -1840,8 +1836,10 @@ pub const BaseParser = struct {
         return out;
     }
 
-    /// Finish a list from `extendList`, recording its spare capacity.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
+    /// Finish a list from `extendList(base)`, recording its spare
+    /// capacity. It takes over the node id of `base` (still on the value
+    /// stack), so that nested extensions each keep their own.
+    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), base: Sexp, comptime use: ListUse) Sexp {
         out.shrinkRetainingCapacity(trimmedLen(out.items));
         if (out.items.len > 0 and out.capacity > out.items.len) {
             self.listSpare.put(self.allocator(), @intFromPtr(out.items.ptr), .{
@@ -1851,12 +1849,11 @@ pub const BaseParser = struct {
         }
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
-            if (self.extending != 0) {
-                id = self.extending;
+            id = if (base == .list) base.list.id else 0;
+            if (id != 0) {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        self.extending = 0;
         return .{ .list = List.withId(out.items, id) };
     }
 
@@ -2295,7 +2292,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         0 => self.sexpSpread(.@"program", pass[0]),
         1 => pass[0],
         2 => self.sexp(.@"stmts", &.{}),
-        3 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
+        3 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .tree); },
         4 => pass[0],
         5 => pass[1],
         6 => self.sexp(.@"stmts", &.{pass[0]}),
@@ -2349,12 +2346,12 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         54 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"&&=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         55 => pass[0],
         56 => self.sexp(.@"mlhs", &.{pass[0], pass[2]}),
-        57 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
-        58 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
+        57 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .tree); },
+        58 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .tree); },
         59 => self.sexp(.@"splat", &.{pass[1]}),
         60 => self.sexp(.@"mrhs", &.{pass[0], pass[2]}),
-        61 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
-        62 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
+        61 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .tree); },
+        62 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .tree); },
         63 => self.sexp(.@"splat", &.{pass[1]}),
         64 => pass[0],
         65 => pass[0],
@@ -2500,7 +2497,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         205 => self.sexpPosSpread(.@"when", pass[3], pass[1]),
         206 => self.sexp(.@"begin", &.{pass[2], pass[3], pass[4]}),
         207 => pass[0],
-        208 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, .tree); },
+        208 => blk: { var out = self.extendList(pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass[0], .tree); },
         209 => self.emptyList(.tree),
         210 => self.sexp(.@"rescue", &.{.nil, .nil, pass[2]}),
         211 => self.sexp(.@"rescue", &.{.nil, pass[2], pass[4]}),

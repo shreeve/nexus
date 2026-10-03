@@ -323,7 +323,7 @@ const Emitter = struct {
             }
         }
         if (extend != null) {
-            try w.print("break :{s} self.keepList(&out, {s}); }}", .{ label, self.listUse(l) });
+            try w.print("break :{s} self.keepList(&out, pass[{d}], {s}); }}", .{ label, index(extend.?), self.listUse(l) });
         } else {
             try w.print("break :{s} " ++ listFromOwned ++ "; }}", .{ label, self.listUse(l) });
         }
