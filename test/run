@@ -14,8 +14,9 @@
 #   --update    rewrite goldens (test/golden/*, cases/*.tree) from the
 #               current generator; never touches known/ trees
 #
-# Exit status is non-zero if any test fails or a known-failing test
-# starts passing (move it out of its known/ directory when that happens).
+# Exit status is 1 if any test fails or a known-failing test starts
+# passing (move it out of its known/ directory when that happens), and 2
+# on a usage error or when no test id matches the filters.
 
 set -uo pipefail
 
@@ -53,6 +54,24 @@ suite_conf() {
     FLAGS=$flags
 }
 
+# with_timeout <seconds> <command...>: run the command in its own process
+# group and kill the group after <seconds>, exiting 124 (GNU timeout's
+# contract, in perl, which every supported system ships); otherwise exit
+# with the command's status, or 128+N when signal N killed it.
+with_timeout() {
+    perl -e '
+        my $secs = shift;
+        my $pid = fork // die "fork: $!\n";
+        if (!$pid) { setpgrp(0, 0); exec { $ARGV[0] } @ARGV; print STDERR "$ARGV[0]: $!\n"; exit 127 }
+        my $stop = sub { kill "KILL", -$pid, $pid; waitpid $pid, 0; exit $_[0] };
+        $SIG{ALRM} = sub { $stop->(124) };
+        $SIG{$_} = sub { $stop->(130) } for qw(INT TERM HUP);
+        alarm $secs;
+        waitpid $pid, 0;
+        exit($? & 127 ? 128 + ($? & 127) : $? >> 8);
+    ' "$@"
+}
+
 key_of() { local k=${1#test/}; echo "${k//\//__}"; }
 
 # directive <name> <file> → all values of `# name: value`
@@ -73,7 +92,7 @@ build_suite() {
     key=$(key_of "$dir")
     out="$OUTROOT/build/$key"
     suite_conf "$dir"
-    NEXUS_FLAGS=$FLAGS timeout "$TIMEOUT" "$LIB/build-grammar" "$NEXUS" "$GRAMMAR" "$out" ${LANG_FILES[@]+"${LANG_FILES[@]}"}
+    NEXUS_FLAGS=$FLAGS with_timeout "$TIMEOUT" "$LIB/build-grammar" "$NEXUS" "$GRAMMAR" "$out" ${LANG_FILES[@]+"${LANG_FILES[@]}"}
     rc=$?
     case $rc in
         0) ;;
@@ -112,7 +131,7 @@ check_case() {
     # Extra driver options for this case (doc examples: `--no-spans`).
     # shellcheck disable=SC2207
     [[ -f "${file%.*}.args" ]] && args+=($(<"${file%.*}.args"))
-    { timeout "$TIMEOUT" "$out/driver" ${args[@]+"${args[@]}"} "$file" >"$got" 2>"$err" </dev/null; } 2>/dev/null
+    with_timeout "$TIMEOUT" "$out/driver" ${args[@]+"${args[@]}"} "$file" >"$got" 2>"$err" </dev/null
     local rc=$?
     if [[ $rc -eq 124 ]]; then REASON="timed out after ${TIMEOUT}s"; return 1; fi
     if [[ $rc -gt 1 ]]; then
@@ -139,7 +158,7 @@ check_case() {
 check_rejects() {
     local g=$1 out rc
     local tmp="$WORK/out/$(key_of "$g").zig"
-    out=$(cd "$(dirname "$g")" && timeout "$TIMEOUT" "$NEXUS" "$(basename "$g")" "$tmp" 2>&1 </dev/null)
+    out=$(cd "$(dirname "$g")" && with_timeout "$TIMEOUT" "$NEXUS" "$(basename "$g")" "$tmp" 2>&1 </dev/null)
     rc=$?
     echo "$out" >>"$LOG"
     if [[ $rc -eq 124 ]]; then REASON="timed out"; return 1; fi
@@ -162,7 +181,7 @@ check_rejects() {
     done < <(directive absent "$g")
     if ! grep -qE "$POS_RE" <<<"$out"; then REASON="no file:line:col: error: diagnostic"; return 1; fi
     # `nexus check` reports what generation reports.
-    out=$(cd "$(dirname "$g")" && timeout "$TIMEOUT" "$NEXUS" check "$(basename "$g")" 2>&1 </dev/null)
+    out=$(cd "$(dirname "$g")" && with_timeout "$TIMEOUT" "$NEXUS" check "$(basename "$g")" 2>&1 </dev/null)
     rc=$?
     echo "--- nexus check" >>"$LOG"; echo "$out" >>"$LOG"
     if [[ $rc -eq 0 ]] || ! grep -qE "$POS_RE" <<<"$out"; then REASON="nexus check accepts it (exit $rc)"; return 1; fi
@@ -246,7 +265,7 @@ list_cases() {
 check_golden_gen() { # check_golden_gen <suite dir> <name>
     local dir=$1 name=$2 tmp="$WORK/out/gen_$2.zig"
     suite_conf "$dir"
-    (cd "$(dirname "$GRAMMAR")" && timeout "$TIMEOUT" "$NEXUS" "$(basename "$GRAMMAR")" "$tmp") >>"$LOG" 2>&1
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" "$(basename "$GRAMMAR")" "$tmp") >>"$LOG" 2>&1
     local rc=$?
     if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="generation failed (exit $rc)"; return 1; fi
     if [[ -n "$UPDATE" ]]; then cp "$tmp" "test/golden/$name.zig"; return 0; fi
@@ -261,7 +280,7 @@ check_golden_gen() { # check_golden_gen <suite dir> <name>
 check_sexp() { # check_sexp <suite dir> <name>
     local dir=$1 name=$2 tmp="$WORK/out/sexp_$2.sexp"
     suite_conf "$dir"
-    timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$GRAMMAR" "$tmp" >>"$LOG" 2>&1
+    with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$GRAMMAR" "$tmp" >>"$LOG" 2>&1
     local rc=$?
     if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="dump failed (exit $rc)"; return 1; fi
     if [[ -n "$UPDATE" ]]; then cp "$tmp" "test/golden/$name.sexp"; return 0; fi
@@ -290,7 +309,7 @@ check_determinism() { # check_determinism <suite dir> <name>
 
 check_bootstrap() {
     local fp=src/frontend/parser.zig tmp="$WORK/out/bootstrap.zig"
-    timeout "$TIMEOUT" "$NEXUS" nexus.grammar "$tmp" >>"$LOG" 2>&1
+    with_timeout "$TIMEOUT" "$NEXUS" nexus.grammar "$tmp" >>"$LOG" 2>&1
     if [[ ! -s "$tmp" ]]; then REASON="regeneration failed"; return 1; fi
     if ! diff "$fp" "$tmp" >"$tmp.diff" 2>&1; then
         REASON="$fp is not a fixed point ($(grep -c '^[<>]' "$tmp.diff") lines drift; regenerate it with bin/nexus nexus.grammar $fp)"
@@ -307,7 +326,7 @@ check_unit_lang() { # check_unit_lang <suite dir>: zig test each lang file with 
     suite_conf "$dir"
     for f in ${LANG_FILES[@]+"${LANG_FILES[@]}"}; do
         grep -qE '^test "' "$f" || continue
-        if ! (cd "$out" && timeout 300 zig test "$(basename "$f")" --cache-dir "$OUTROOT/zig") >>"$LOG" 2>&1; then
+        if ! (cd "$out" && with_timeout 300 zig test "$(basename "$f")" --cache-dir "$OUTROOT/zig") >>"$LOG" 2>&1; then
             REASON="zig test $(basename "$f") failed"
             return 1
         fi
@@ -317,7 +336,7 @@ check_unit_lang() { # check_unit_lang <suite dir>: zig test each lang file with 
 
 check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
     local out
-    out=$(NO_COLOR=1 timeout 300 test/diff -O Debug -j 4 current current test/mumps/mumps.grammar \
+    out=$(NO_COLOR=1 with_timeout 300 test/diff -O Debug -j 4 current current test/mumps/mumps.grammar \
         test/mumps/mumps.grammar --ext .m test/mumps/cases 2>&1)
     local rc=$?
     echo "$out" >>"$LOG"
@@ -335,7 +354,7 @@ check_cli() {
     expect() { # expect <status> <text> <args...>: exit status and output text
         local status=$1 text=$2
         shift 2
-        out=$(cd "$WORK/cli" && timeout "$TIMEOUT" "$NEXUS" "$@" 2>&1 </dev/null)
+        out=$(cd "$WORK/cli" && with_timeout "$TIMEOUT" "$NEXUS" "$@" 2>&1 </dev/null)
         rc=$?
         echo "\$ nexus $* → $rc" >>"$LOG"
         echo "$out" >>"$LOG"
@@ -374,7 +393,7 @@ check_cli() {
 
 check_doc_fragment() { # check_doc_fragment <file>: a doc's grammar fragment parses
     local out rc
-    out=$(timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$1" "$WORK/out/$(key_of "$1").sexp" 2>&1 </dev/null)
+    out=$(with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$1" "$WORK/out/$(key_of "$1").sexp" 2>&1 </dev/null)
     rc=$?
     echo "$out" >>"$LOG"
     if [[ $rc -ne 0 ]]; then REASON="does not parse: $(grep -m1 'error:' <<<"$out" | sed 's/^.*error: //')"; return 1; fi
@@ -382,7 +401,7 @@ check_doc_fragment() { # check_doc_fragment <file>: a doc's grammar fragment par
 }
 
 check_unit_nexus() {
-    if ! timeout 600 zig build unit >>"$LOG" 2>&1; then REASON="zig build unit failed"; return 1; fi
+    if ! with_timeout 600 zig build unit >>"$LOG" 2>&1; then REASON="zig build unit failed"; return 1; fi
     return 0
 }
 
@@ -455,7 +474,7 @@ while [[ $# -gt 0 ]]; do
         --update) UPDATE=1 ;;
         -v) VERBOSE=1 ;;
         -j) JOBS=$2; shift ;;
-        -h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
         -*) echo "unknown option $1" >&2; exit 2 ;;
         *) FILTERS+=("$1") ;;
     esac
@@ -563,13 +582,17 @@ while IFS=$'\t' read -r kind id arg; do
 done <"$WORK/docs.tasks"
 
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
+if [[ $TOTAL -eq 0 ]]; then
+    printf '%sno test id contains %s%s\n' "$R" "${FILTERS[*]}" "$X"
+    exit 2
+fi
 NB=$(wc -l <"$BUILDS" | tr -d ' ')
 printf '%sbuilding %s grammars, running %s tests (-j %s)%s\n' "$D" "$NB" "$TOTAL" "$JOBS" "$X"
 
 # Pass 1: generate + compile every suite that has selected tests.
-tr '\n' '\0' <"$BUILDS" | xargs -0 -n 1 -P "$JOBS" "$0" --build
+tr '\n' '\0' <"$BUILDS" | xargs -0 -r -n 1 -P "$JOBS" "$0" --build
 # Pass 2: every test.
-tr '\n' '\0' <"$LIST" | xargs -0 -n 1 -P "$JOBS" "$0" --worker
+tr '\n' '\0' <"$LIST" | xargs -0 -r -n 1 -P "$JOBS" "$0" --worker
 
 # -----------------------------------------------------------------------------
 # Report

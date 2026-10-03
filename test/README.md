@@ -12,7 +12,8 @@ test/bench/run              # generation time and parse throughput
 The summary line reads `N passed, M failed, K known`. The suite is green
 when nothing fails and no known-failing test has started passing. It
 always rebuilds `bin/nexus` first (`zig build`), so a stale binary is never
-tested. `zig build test` runs it too.
+tested. `zig build test` runs it too. It needs bash, perl and Zig 0.17,
+and runs on macOS and Linux with the systems' own tools.
 
 ## What is checked
 
