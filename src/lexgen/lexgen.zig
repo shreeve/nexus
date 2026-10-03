@@ -77,6 +77,9 @@ pub const LexerGenerator = struct {
     tables: std.ArrayList(ByteSet) = .empty,
     /// States whose accepting rule must be saved before leaving them.
     saves: []bool = &.{},
+    /// States no cycle reaches: a token ending there is short enough for a
+    /// Token without a length check.
+    short: []bool = &.{},
 
     const Atom = struct {
         variable: []const u8,
@@ -228,6 +231,35 @@ pub const LexerGenerator = struct {
 
         self.saves = try a.alloc(bool, self.dfa.numStates);
         for (0..self.dfa.numStates) |s| self.saves[s] = self.needsSave(@intCast(s));
+        self.short = try self.acyclicStates();
+    }
+
+    /// The states no cycle reaches. Every path to one visits each state at
+    /// most once, so it is shorter than the state count (at most 65535)
+    /// and so is a token that ends there. Kahn's algorithm: the states
+    /// never dequeued are on a cycle or behind one.
+    fn acyclicStates(self: *LexerGenerator) ![]bool {
+        const a = self.arena.allocator();
+        const n = self.dfa.numStates;
+        const nc = self.dfa.classes.count;
+        const preds = try a.alloc(u32, n);
+        @memset(preds, 0);
+        for (self.dfa.trans) |t| {
+            if (t != automaton.none) preds[t] += 1;
+        }
+        var queue: std.ArrayList(u32) = .empty;
+        for (preds, 0..) |p, s| if (p == 0) try queue.append(a, @intCast(s));
+        const short = try a.alloc(bool, n);
+        @memset(short, false);
+        while (queue.pop()) |s| {
+            short[s] = true;
+            for (self.dfa.trans[s * nc ..][0..nc]) |t| {
+                if (t == automaton.none) continue;
+                preds[t] -= 1;
+                if (preds[t] == 0) try queue.append(a, t);
+            }
+        }
+        return short;
     }
 
     /// The minimized DFA of `patterns`, with a start state per live set.
@@ -1053,8 +1085,9 @@ pub const LexerGenerator = struct {
 
     /// Code that finishes consuming rule `k` whose match ends at `endExpr`
     /// (a usize expression): after-block (unless the token is zero-width),
-    /// token end, actions, return.
-    fn emitFinish(self: *LexerGenerator, k: usize, endExpr: []const u8, ind: []const u8) !void {
+    /// token end, actions, return. `short`: no path to the match end is
+    /// long enough to overflow a Token's length, so it needs no check.
+    fn emitFinish(self: *LexerGenerator, k: usize, endExpr: []const u8, short: bool, ind: []const u8) !void {
         const r = &self.spec.rules.items[self.consuming[k]];
         if (!self.ends[k].zeroWidth()) try self.emitAfter(ind, r.actions);
         switch (self.ends[k]) {
@@ -1068,11 +1101,13 @@ pub const LexerGenerator = struct {
             try self.print("{s}continue :scan;\n", .{ind});
             return;
         }
-        try self.print(
-            \\{s}self.pos = @intCast(p);
-            \\{s}return token(.@"{s}", pre, start, p);
-            \\
-        , .{ ind, ind, r.token });
+        try self.print("{s}self.pos = @intCast(p);\n", .{ind});
+        // `hold` and `rewind(n)` (n <= 65535) are short whatever the match.
+        if (short or self.ends[k] == .start or self.ends[k] == .fromStart) {
+            try self.print("{s}return .{{ .cat = .@\"{s}\", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }};\n", .{ ind, r.token });
+        } else {
+            try self.print("{s}return token(.@\"{s}\", pre, start, p);\n", .{ ind, r.token });
+        }
     }
 
     fn hasSelfLoop(self: *const LexerGenerator, s: u32) bool {
@@ -1178,7 +1213,7 @@ pub const LexerGenerator = struct {
                         var body: std.Io.Writer.Allocating = .init(a);
                         const outer = self.w;
                         self.w = &body.writer;
-                        try self.emitFinish(dfa.accept[x.t], "p", "");
+                        try self.emitFinish(dfa.accept[x.t], "p", self.short[x.t], "");
                         self.w = outer;
                         const text = std.mem.trimEnd(u8, body.written(), "\n");
                         if (std.mem.count(u8, text, "\n") <= 2 and std.mem.count(u8, text, "{") == std.mem.count(u8, text, ".{")) {
@@ -1188,7 +1223,7 @@ pub const LexerGenerator = struct {
                             try self.write(" => {\n");
                             const deep = try a.print("{s}    ", .{inner3});
                             try self.print("{s}p += 1;\n", .{deep});
-                            try self.emitFinish(dfa.accept[x.t], "p", deep);
+                            try self.emitFinish(dfa.accept[x.t], "p", self.short[x.t], deep);
                             try self.print("{s}}},\n", .{inner3});
                         }
                     } else {
@@ -1199,7 +1234,7 @@ pub const LexerGenerator = struct {
                 try self.print("{s}}};\n", .{inner2});
             }
             if (acc != automaton.none) {
-                try self.emitFinish(acc, "p", inner2);
+                try self.emitFinish(acc, "p", self.short[s], inner2);
             } else {
                 try self.print("{s}break :dfa;\n", .{inner2});
             }
@@ -1216,7 +1251,7 @@ pub const LexerGenerator = struct {
             try self.print("{s}switch (acc) {{\n", .{ind});
             for (saved.keys()) |k| {
                 try self.print("{s}{d} => {{\n", .{ inner, k });
-                try self.emitFinish(k, "accEnd", inner2);
+                try self.emitFinish(k, "accEnd", false, inner2);
                 try self.print("{s}}},\n", .{inner});
             }
             try self.print("{s}else => {{}},\n{s}}}\n", .{ inner, ind });
