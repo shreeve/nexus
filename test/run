@@ -282,19 +282,27 @@ list_cases() {
     done
 }
 
-check_golden_gen() { # check_golden_gen <suite dir> <name>
-    local dir=$1 name=$2 tmp="$WORK/out/gen_$2.zig"
-    suite_conf "$dir"
-    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" "$(basename "$GRAMMAR")" "$tmp") >>"$LOG" 2>&1
-    local rc=$?
-    if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="generation failed (exit $rc)"; return 1; fi
-    if [[ -n "$UPDATE" ]]; then cp "$tmp" "test/golden/$name.zig"; return 0; fi
-    if ! diff "test/golden/$name.zig" "$tmp" >"$tmp.diff" 2>&1; then
-        REASON="$(grep -c '^[<>]' "$tmp.diff") lines differ from test/golden/$name.zig"
-        head -60 "$tmp.diff" >>"$LOG"
+# golden <output> <golden file>: the output equals the golden file (with
+# --update, replaces it). A missing golden fails.
+golden() {
+    if [[ -n "$UPDATE" ]]; then cp "$1" "$2"; return 0; fi
+    if [[ ! -f "$2" ]]; then REASON="missing $2 (run with --update)"; return 1; fi
+    if ! diff "$2" "$1" >"$1.diff" 2>&1; then
+        REASON="$(grep -c '^[<>]' "$1.diff") lines differ from $2"
+        head -60 "$1.diff" >>"$LOG"
         return 1
     fi
     return 0
+}
+
+check_golden_gen() { # check_golden_gen <suite dir> <name>: generated with the suite's flags
+    local dir=$1 name=$2 tmp="$WORK/out/gen_$2.zig"
+    suite_conf "$dir"
+    # shellcheck disable=SC2086 # FLAGS: generator options, split on spaces
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" $FLAGS "$(basename "$GRAMMAR")" "$tmp") >>"$LOG" 2>&1
+    local rc=$?
+    if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="generation failed (exit $rc)"; return 1; fi
+    golden "$tmp" "test/golden/$name.zig"
 }
 
 check_sexp() { # check_sexp <suite dir> <name>
@@ -303,22 +311,17 @@ check_sexp() { # check_sexp <suite dir> <name>
     with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$GRAMMAR" "$tmp" >>"$LOG" 2>&1
     local rc=$?
     if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="dump failed (exit $rc)"; return 1; fi
-    if [[ -n "$UPDATE" ]]; then cp "$tmp" "test/golden/$name.sexp"; return 0; fi
-    if ! diff "test/golden/$name.sexp" "$tmp" >"$tmp.diff" 2>&1; then
-        REASON="$(grep -c '^[<>]' "$tmp.diff") lines differ from test/golden/$name.sexp"
-        head -60 "$tmp.diff" >>"$LOG"
-        return 1
-    fi
-    return 0
+    golden "$tmp" "test/golden/$name.sexp"
 }
 
-check_determinism() { # check_determinism <suite dir> <name>
+check_determinism() { # check_determinism <suite dir> <name>: generated with the suite's flags
     local dir=$1 a="$WORK/out/det_$2_a.zig" b="$WORK/out/det_$2_b.zig"
     local sa="$WORK/out/det_$2_a.sexp" sb="$WORK/out/det_$2_b.sexp"
     suite_conf "$dir"
     local gd gn
     gd=$(dirname "$GRAMMAR") gn=$(basename "$GRAMMAR")
-    (cd "$gd" && "$NEXUS" "$gn" "$a" && "$NEXUS" "$gn" "$b") >/dev/null 2>&1
+    # shellcheck disable=SC2086 # FLAGS: generator options, split on spaces
+    (cd "$gd" && "$NEXUS" $FLAGS "$gn" "$a" && "$NEXUS" $FLAGS "$gn" "$b") >/dev/null 2>&1
     "$NEXUS" --dump-sexp "$GRAMMAR" "$sa" >/dev/null 2>&1
     "$NEXUS" --dump-sexp "$GRAMMAR" "$sb" >/dev/null 2>&1
     if [[ ! -s "$a" ]]; then REASON="generation failed"; return 1; fi
@@ -549,6 +552,7 @@ need_build() {
 }
 
 # Grammar suites: test/<name>/ with a grammar (test/known/ is separate).
+SEXP_SEEN=""
 for dir in test/*/; do
     dir=${dir%/}
     name=$(basename "$dir")
@@ -562,8 +566,12 @@ for dir in test/*/; do
             add "$id" case "$dir" "$file" "$start" "$tree" && need_build "$dir"
         done < <(list_cases "$dir/$sub")
     done
-    [[ -f "test/golden/$name.zig" ]] && add "gen/$name" gen "$dir" "$name"
-    [[ -f "test/golden/$name.sexp" ]] && add "sexp/$name" sexp "$dir" "$name"
+    # Goldens: the generated parser of every suite (the nexus suite's is
+    # src/frontend/parser.zig, which bootstrap checks), and the frontend
+    # tree of every grammar file, once, under the first suite that uses it.
+    [[ $name != nexus ]] && add "gen/$name" gen "$dir" "$name"
+    case $SEXP_SEEN in *"|$GRAMMAR|"*) ;; *) add "sexp/$name" sexp "$dir" "$name" ;; esac
+    SEXP_SEEN="$SEXP_SEEN|$GRAMMAR|"
     add "determinism/$name" determinism "$dir" "$name"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"

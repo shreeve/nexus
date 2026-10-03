@@ -25,9 +25,9 @@ and runs on macOS and Linux with the systems' own tools.
 | `regress/<bug>` | a fixed `known/<bug>`, kept as a regression test |
 | `adverse/<name>` | `test/adverse/<name>.grammar` is rejected: non-zero exit, a `file:line:col: error` diagnostic, and every `# error:` text in its header (case-insensitive) |
 | `adverse/known/<name>` | same, for rejections that are wrong today |
-| `gen/<grammar>` | the generated parser equals `test/golden/<grammar>.zig` byte for byte |
-| `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp` |
-| `determinism/<grammar>` | two generations, and two `--dump-sexp` runs, are identical |
+| `gen/<grammar>` | the generated parser (with the suite's `flags`) equals `test/golden/<grammar>.zig` byte for byte; every suite has one but `nexus`, whose generated parser is `src/frontend/parser.zig` (`bootstrap`) |
+| `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp`; every grammar file has one, under the first suite that uses it |
+| `determinism/<grammar>` | two generations (with the suite's `flags`), and two `--dump-sexp` runs, are identical |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
 | `unit/nexus` | the generator's own Zig unit tests (`zig build unit`) |
@@ -39,6 +39,7 @@ and runs on macOS and Linux with the systems' own tools.
 
 A compile failure fails every case of that grammar with the first compiler
 error as the reason, so "generated but does not compile" can never pass.
+A missing golden fails too; `--update` writes it.
 
 ## Grammar suites
 
