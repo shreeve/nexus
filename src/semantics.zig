@@ -1297,6 +1297,22 @@ test "synthesized symbols are named in source syntax; identical ones are shared"
     try testing.expectEqualStrings("infix(\"+\" \"-\") → infix(\"+\" \"-\") \"+\" infix(\"*\")", try lr.ruleText(a, &g, level[0]));
 }
 
+test "more symbols than a u16 numbers is a located expansion error" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // Two alternatives of 33,000 distinct literals each: 66,000 terminals
+    // in two rules.
+    var text: std.ArrayList(u8) = .empty;
+    try text.appendSlice(a, "@parser\ntop! =");
+    for (0..66_000) |i| {
+        if (i == 33_000) try text.appendSlice(a, "\n     |");
+        try text.print(a, " \"t{d}\"", .{i});
+    }
+    try text.append(a, '\n');
+    try testing.expectError(error.ExpandError, expandText(a, text.items));
+}
+
 test "a tag role labeling literals takes the matched literal's text as its tag" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

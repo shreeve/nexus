@@ -236,6 +236,12 @@ pub const Layout = struct {
     }
 };
 
+fn report(path: []const u8, line: u32, col: u32, comptime fmt: []const u8, args: anytype) void {
+    // Unit tests fire these paths by design; keep their output clean.
+    if (@import("builtin").is_test) return;
+    diag.errLine(path, line, col, fmt, args);
+}
+
 /// A position's value in one expanded variant.
 const absent: u16 = 0;
 /// A choice position whose chosen alternative has several elements.
@@ -259,7 +265,7 @@ const PatternChecker = struct {
     schema: bool,
 
     fn fail(self: PatternChecker, line: u32, col: u32, comptime fmt: []const u8, args: anytype) Error {
-        diag.errLine(self.path, line, col, fmt, args);
+        report(self.path, line, col, fmt, args);
         return error.ExpandError;
     }
 
@@ -332,7 +338,7 @@ const Expander = struct {
     }
 
     fn fail(self: *Expander, line: u32, col: u32, comptime fmt: []const u8, args: anytype) Error {
-        diag.errLine(self.opts.path, line, col, fmt, args);
+        report(self.opts.path, line, col, fmt, args);
         return error.ExpandError;
     }
 

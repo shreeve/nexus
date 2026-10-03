@@ -1,0 +1,26 @@
+# A tag literal can fill only a tag role (or one that takes any value).
+# error: schema_tag_in_leaf_role.grammar:26:8:
+# error: tag literal 'foo' in role 'name', which takes a leaf
+@lexer
+tokens
+    ident
+    integer
+    plus
+    colon
+    comma
+    eq
+    eof
+    err
+'+'                                         → plus
+':'                                         → colon
+','                                         → comma
+'='                                         → eq
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    t name:leaf
+@tags foo
+top! = IDENT                                → (t foo)
