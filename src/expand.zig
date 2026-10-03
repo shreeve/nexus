@@ -93,22 +93,34 @@ pub const Inline = struct {
     spliced: bool,
 };
 
-/// The inline form of a top-level element, or null when expansion gives it
-/// one symbol (a token, a rule, or a synthesized rule).
+/// Whether expansion writes a top-level element inline: `[A B]`, `[X]` on
+/// a rule name or list, a non-repeated choice, and a non-repeated group
+/// with labels inside. Anything else is one symbol (a token, a rule, or a
+/// synthesized rule).
+fn inlines(e: ParsedElement) bool {
+    return switch (e.kind) {
+        .optGroup => true,
+        .ident, .optList => e.quantifier == .optional,
+        .choice => once(e),
+        .group => once(e) and hasLabel(e.subElements),
+        else => false,
+    };
+}
+
+/// The inline form of a top-level element, or null (see `inlines`).
 pub fn inlineForm(a: Allocator, e: ParsedElement) !?Inline {
+    if (!inlines(e)) return null;
     const optional = e.quantifier == .optional;
-    switch (e.kind) {
-        .optGroup => return .{ .alts = try a.dupe([]const ParsedElement, &.{e.subElements}), .optional = true, .spliced = true },
-        .ident, .optList => if (optional) {
+    return switch (e.kind) {
+        .choice => .{ .alts = e.choices, .optional = optional, .spliced = false },
+        .group => .{ .alts = try a.dupe([]const ParsedElement, &.{e.subElements}), .optional = optional, .spliced = false },
+        .optGroup => .{ .alts = try a.dupe([]const ParsedElement, &.{e.subElements}), .optional = true, .spliced = true },
+        else => blk: {
             const one = try a.dupe(ParsedElement, &.{e});
             one[0].quantifier = .one;
-            return .{ .alts = try a.dupe([]const ParsedElement, &.{one}), .optional = true, .spliced = true };
+            break :blk .{ .alts = try a.dupe([]const ParsedElement, &.{one}), .optional = true, .spliced = true };
         },
-        .choice => if (once(e)) return .{ .alts = e.choices, .optional = optional, .spliced = false },
-        .group => if (once(e) and hasLabel(e.subElements)) return .{ .alts = try a.dupe([]const ParsedElement, &.{e.subElements}), .optional = optional, .spliced = false },
-        else => {},
-    }
-    return null;
+    };
 }
 
 /// Not repeated: quantifier one or optional.
@@ -274,13 +286,7 @@ const PatternChecker = struct {
             try self.label(e, true);
             // The elements of an inline element are positions, so they
             // may be labeled; below them nothing is a position.
-            const inlined = switch (e.kind) {
-                .optGroup => true,
-                .choice => once(e),
-                .group => once(e) and hasLabel(e.subElements),
-                else => false,
-            };
-            try self.children(e, inlined, 2);
+            try self.children(e, inlines(e), 2);
         }
         if (alt.actionTree) |t| switch (t) {
             .list => |l| try self.action(alt, l, 1),
