@@ -1,8 +1,6 @@
-//! Minimal @lang module: the Tag enum and a pass-through Lexer wrapper,
-//! plus a reference that makes the compiler analyze writeFacts.
+//! Minimal @lang module: a pass-through Lexer wrapper, plus a reference
+//! that makes the compiler analyze writeFacts.
 const parser = @import("parser.zig");
-
-pub const Tag = parser.Tag;
 
 comptime {
     _ = &parser.BaseParser.writeFacts;

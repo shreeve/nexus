@@ -3,8 +3,6 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 
-pub const Tag = enum(u8) { top, star, plus, list, sep, opt, nils, _ };
-
 pub const Lexer = struct {
     base: parser.BaseLexer,
 

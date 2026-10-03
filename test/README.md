@@ -84,7 +84,7 @@ The in-repo suites:
 
 | Suite | Grammar | Corpus |
 |---|---|---|
-| `basic`, `features`, `lit_tags` | small feature grammars (no lang `Lexer` wrapper) | hand-written |
+| `basic`, `features`, `lit_tags` | small feature grammars (no `@lang` module) | hand-written |
 | `lists` | `X*`, `X+`, `L(X)`, `L(X, sep)`, `L(X?)` without a schema; its `lists.zig` parses 100,000-item lists in a fixed memory budget | hand-written |
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |

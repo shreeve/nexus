@@ -405,6 +405,7 @@ const Expander = struct {
         g.errorNames = ir.errorNames;
         g.displayNames = ir.displayNames;
         g.lang = ir.lang;
+        g.extraTags = ir.extraTags;
         g.schema = ir.schema;
         g.conflicts = ir.conflicts;
         g.trivia = ir.trivia;

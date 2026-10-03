@@ -136,10 +136,18 @@ pub const BaseLexer = struct {
 pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 
 // =============================================================================
-// Tag enum (re-exported from the language module)
+// Tag enum (the tags the actions produce, then @tags)
 // =============================================================================
 
-pub const Tag = lang.Tag;
+pub const Tag = enum(u8) {
+    @"top",
+    @"star",
+    @"plus",
+    @"list",
+    @"sep",
+    @"opt",
+    @"nils",
+};
 
 /// Roles exist only in schema mode.
 pub const Role = enum(u16) { _ };
@@ -269,7 +277,8 @@ pub const Sexp = union(enum) {
 };
 
 /// The name of a Tag or Role value, "?" for one the enum does not name
-/// (without a schema, Role is empty and a collected Tag is non-exhaustive).
+/// (without a schema Role is empty, and so is Tag when no action builds a
+/// tag: both are then non-exhaustive).
 fn nameOf(value: anytype) []const u8 {
     return std.enums.tagName(@TypeOf(value), value) orelse "?";
 }

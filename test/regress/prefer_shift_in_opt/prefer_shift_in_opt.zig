@@ -1,7 +1,5 @@
-//! Minimal @lang module: the Tag enum and a pass-through Lexer wrapper.
+//! Minimal @lang module: a pass-through Lexer wrapper.
 const parser = @import("parser.zig");
-
-pub const Tag = enum(u8) { @"if" };
 
 pub const Lexer = struct {
     base: parser.BaseLexer,

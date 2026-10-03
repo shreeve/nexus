@@ -48,7 +48,7 @@ pub const TagSet = struct {
         };
     }
 
-    fn register(self: *TagSet, allocator: Allocator, tag: []const u8) !void {
+    pub fn register(self: *TagSet, allocator: Allocator, tag: []const u8) !void {
         if (!self.map.contains(tag)) {
             const owned = try allocator.dupe(u8, tag);
             try self.map.put(allocator, owned, @intCast(self.list.items.len));

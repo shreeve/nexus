@@ -2,8 +2,6 @@
 //! `nexis.grammar`.
 //!
 //! Responsibilities:
-//!   - `Tag` enum whose variants match every tagged S-expression emitted by
-//!     the grammar's parser actions.
 //!   - `Lexer` wrapper that fully replaces nexus's generated `BaseLexer`
 //!     tokenization. The generated scanner is tailored to imperative-language
 //!     conventions (hardcoded integer/keyword/ident shapes, no support for
@@ -17,40 +15,6 @@
 
 const std = @import("std");
 const parser = @import("parser.zig");
-
-/// Tag enum mirroring the canonical S-expression schema emitted by
-/// `nexis.grammar`. Every variant corresponds to a tagged sexp the generated
-/// parser produces; `src/reader.zig` consumes exactly this set.
-pub const Tag = enum(u8) {
-    // Top-level wrappers
-    program,
-
-    // Atom leaves (Appendix C §28.2 — atom datum variants)
-    int,
-    real,
-    string,
-    char,
-    keyword,
-    symbol,
-
-    // Compound collection literals
-    list,
-    vector,
-    map,
-    set,
-
-    // Reader macros (user-visible conventional tags from PLAN §28.2)
-    quote,
-    @"syntax-quote",
-    unquote,
-    @"unquote-splicing",
-    deref,
-
-    // Internal reader-stage tags consumed and rewritten by src/reader.zig
-    @"anon-fn",
-    discard,
-    @"with-meta-raw",
-};
 
 /// Keyword-promotion hook required by the generated parser. nexis does not
 /// use the `@as` promotion machinery in v1.

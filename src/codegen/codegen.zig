@@ -104,6 +104,7 @@ const Codegen = struct {
     table: *const Table,
     lexerSpec: ?*const LexerSpec,
     options: Options,
+    /// Without a schema, the Tag enum: the actions' tags, then `@tags`.
     tags: actions.TagSet = .{},
     /// Schema mode: the Tag and Role enums, in declaration order.
     schemaTags: std.ArrayList([]const u8) = .empty,
@@ -132,6 +133,7 @@ const Codegen = struct {
         const w = &output.writer;
 
         try self.tags.collect(self.allocator, self.g.rules.items);
+        for (self.g.extraTags) |t| try self.tags.register(self.allocator, t);
         if (self.schema()) |s| try self.collectSchema(s);
         try self.validate();
 
@@ -281,16 +283,14 @@ const Codegen = struct {
             // An empty exhaustive enum must be backed by `noreturn`; keep Role a u16.
             if (self.roles.items.len == 0) try w.writeAll("    _,\n");
             try w.writeAll("};\n");
-        } else if (self.g.lang != null) {
-            try banner(w, "Tag enum (re-exported from the language module)");
-            try w.writeAll("pub const Tag = lang.Tag;\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) { _ };\n");
         } else {
-            try banner(w, "Tag enum (collected from grammar actions)");
-            // Non-exhaustive: at least one value of the backing integer stays unnamed.
-            const width: u8 = if (self.tags.list.items.len < 256) 8 else 16;
+            try banner(w, "Tag enum (the tags the actions produce, then @tags)");
+            const width: u8 = if (self.tags.list.items.len <= 256) 8 else 16;
             try w.print("pub const Tag = enum(u{d}) {{\n", .{width});
             for (self.tags.list.items) |t| try w.print("    @\"{f}\",\n", .{std.zig.fmtString(t)});
-            try w.writeAll("    _,\n};\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) { _ };\n");
+            // An empty exhaustive enum must be backed by `noreturn`.
+            if (self.tags.list.items.len == 0) try w.writeAll("    _,\n");
+            try w.writeAll("};\n\n/// Roles exist only in schema mode.\npub const Role = enum(u16) { _ };\n");
         }
 
         try w.writeAll("\n/// Start symbols; `BaseParser.parse(start)` parses one.\npub const Start = enum(u16) {\n");

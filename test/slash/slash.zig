@@ -1,4 +1,4 @@
-//! Slash language module — Tag enum, keyword promotion, lexer wrapper.
+//! Slash language module — keyword promotion, lexer wrapper.
 //!
 //! The lexer wrapper around the generated `BaseLexer` adds three responsibilities
 //! that would clutter the grammar if done declaratively:
@@ -26,69 +26,6 @@ const parser = @import("parser.zig");
 pub const Token = parser.Token;
 pub const TokenCat = parser.TokenCat;
 const BaseLexer = parser.BaseLexer;
-
-// =============================================================================
-// Tag enum — every s-expression head emitted by the parser
-// =============================================================================
-
-pub const Tag = enum(u8) {
-    // ---- Compound ----
-    sequence,
-    seq_always,
-    seq_and,
-    seq_or,
-    seq_bg,
-    pipeline,
-    command,
-    subshell,
-    block,
-    redirects,
-
-    // ---- Words ----
-    word,
-    @"var",
-    var_braced,
-    cmd_subst,
-    list_capture,
-    proc_sub_in,
-    proc_sub_out,
-    scalar,
-    list,
-    words,
-
-    // ---- Assignment / env-prefix ----
-    env_binds,
-    env_bind,
-    assigns,
-
-    // ---- Control flow ----
-    @"if",
-    @"else",
-    elif,
-    body,
-    cond_and,
-    cond_or,
-    @"while",
-    @"for",
-    cmd_def,
-    str_def,
-    match,
-    match_arms,
-    match_arm,
-
-    // ---- Redirects ----
-    redir_read,
-    redir_read_fd,
-    redir_write,
-    redir_write_fd,
-    redir_append,
-    redir_both,
-    redir_both_append,
-    redir_dup_out,
-    redir_dup_in,
-    redir_heredoc,
-    redir_heredoc_lit,
-};
 
 // =============================================================================
 // Keyword promotion

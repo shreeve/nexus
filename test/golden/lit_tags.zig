@@ -162,7 +162,7 @@ pub const Lexer = struct {
 };
 
 // =============================================================================
-// Tag enum (collected from grammar actions)
+// Tag enum (the tags the actions produce, then @tags)
 // =============================================================================
 
 pub const Tag = enum(u8) {
@@ -171,7 +171,7 @@ pub const Tag = enum(u8) {
     @"fixed",
     @"move",
     @"+=",
-    _,
+    @"extra",
 };
 
 /// Roles exist only in schema mode.
@@ -302,7 +302,8 @@ pub const Sexp = union(enum) {
 };
 
 /// The name of a Tag or Role value, "?" for one the enum does not name
-/// (without a schema, Role is empty and a collected Tag is non-exhaustive).
+/// (without a schema Role is empty, and so is Tag when no action builds a
+/// tag: both are then non-exhaustive).
 fn nameOf(value: anytype) []const u8 {
     return std.enums.tagName(@TypeOf(value), value) orelse "?";
 }

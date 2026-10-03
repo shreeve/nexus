@@ -1,12 +1,8 @@
-//! @lang module of the schema-mode test grammar: re-exports the Tag enum and
-//! provides a Lexer wrapper that turns keyword identifiers into keyword
-//! tokens. Its tests exercise the schema-mode runtime: accessors, spans,
+//! @lang module of the schema-mode test grammar: a Lexer wrapper that turns
+//! keyword identifiers into keyword tokens. Its tests exercise the schema-mode runtime: accessors, spans,
 //! the role store, facts, trivia, diagnostics and tolerant repair.
 const std = @import("std");
 const parser = @import("parser.zig");
-
-/// The tags, generated from the grammar's @schema.
-pub const Tag = parser.Tag;
 
 const keywords = std.StaticStringMap(parser.TokenCat).initComptime(.{
     .{ "let", .let },    .{ "if", .@"if" },     .{ "unless", .unless },

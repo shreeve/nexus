@@ -4,8 +4,6 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 
-pub const Tag = enum(u8) { top, blk };
-
 pub const Parser = struct {
     base: parser.BaseParser,
     gpa: std.mem.Allocator,

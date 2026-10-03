@@ -73,7 +73,6 @@ pub const GrammarLowerer = struct {
     /// The directives seen so far.
     directives: std.EnumSet(parser.Tag) = .empty,
     extraTags: std.ArrayList([]const u8) = .empty,
-    tagsNode: ?Sexp = null,
     /// The first `@code = f` line.
     codeNode: ?Sexp = null,
     trivia: std.ArrayList([]const u8) = .empty,
@@ -100,8 +99,7 @@ pub const GrammarLowerer = struct {
         if (self.lexer) |*spec| spec.langName = self.lang;
         if (self.codeNode) |node| if (self.lang == null)
             return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
-        if (self.tagsNode) |node| if (!self.directives.contains(.schema))
-            return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
+        const extraTags = try self.extraTags.toOwnedSlice(allocator);
         // Without a `name!` rule, the first rule is the start symbol.
         if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
             try self.startSymbols.append(allocator, self.rules.items[0].name);
@@ -118,9 +116,10 @@ pub const GrammarLowerer = struct {
                 .col = self.infixLoc.col,
             } else null,
             .lang = self.lang,
+            .extraTags = extraTags,
             .schema = if (self.directives.contains(.schema)) Schema{
                 .kinds = try self.kinds.toOwnedSlice(allocator),
-                .extraTags = try self.extraTags.toOwnedSlice(allocator),
+                .extraTags = extraTags,
             } else null,
             .conflicts = try self.conflicts.toOwnedSlice(allocator),
             .displayNames = try self.displayNames.toOwnedSlice(allocator),
@@ -237,10 +236,7 @@ pub const GrammarLowerer = struct {
             .display => try self.lowerDisplay(entry),
             .infix => try self.lowerInfix(entry),
             .schema => try self.lowerSchema(entry),
-            .tags => {
-                self.tagsNode = entry;
-                try self.lowerNames(ir.Tags.names(entry), "@tags", &self.extraTags);
-            },
+            .tags => try self.lowerNames(ir.Tags.names(entry), "@tags", &self.extraTags),
             .trivia => try self.lowerNames(ir.Trivia.names(entry), "@trivia", &self.trivia),
             .repair => try self.lowerRepair(entry),
             .rule => {

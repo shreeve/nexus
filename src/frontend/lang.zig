@@ -1,7 +1,6 @@
 //! lang.zig: the @lang module of the self-hosted frontend (parser.zig).
 //!
-//! Re-exports the Tag enum of the frontend's S-expression tree and provides the Lexer
-//! wrapper that turns the generated BaseLexer's tokens into the token
+//! Its Lexer wrapper turns the generated BaseLexer's tokens into the token
 //! stream nexus.grammar parses. The wrapper owns everything that depends
 //! on layout or context:
 //!
@@ -64,9 +63,6 @@ const parser = @import("parser.zig");
 const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
 const TokenCat = parser.TokenCat;
-
-/// The tags of the frontend tree, generated from nexus.grammar's @schema.
-pub const Tag = parser.Tag;
 
 pub const Lexer = struct {
     base: BaseLexer,

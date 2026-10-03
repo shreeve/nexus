@@ -189,6 +189,9 @@ pub const GrammarIR = struct {
     errorNames: []const ErrorName,
     infix: ?InfixDecl = null,
     lang: ?[]const u8 = null,
+    /// `@tags`: tags the Tag enum has though no action produces them (with
+    /// a schema, also its `extraTags`).
+    extraTags: []const []const u8 = &.{},
     /// `@schema`: present means the grammar is in schema mode.
     schema: ?Schema = null,
     /// `@conflicts` manifest; empty means the grammar must be conflict-free.
@@ -569,6 +572,7 @@ pub const Grammar = struct {
     errorNames: []const ErrorName = &.{},
     displayNames: []const DisplayName = &.{},
     lang: ?[]const u8 = null,
+    extraTags: []const []const u8 = &.{},
     schema: ?Schema = null,
     conflicts: []const ConflictEntry = &.{},
     trivia: []const []const u8 = &.{},

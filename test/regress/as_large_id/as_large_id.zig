@@ -3,8 +3,6 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 
-pub const Tag = enum(u8) { prog, print, set };
-
 pub const KwId = enum(u16) { PRINT = 1, LATER = 600 };
 
 pub fn kwAs(text: []const u8) ?KwId {

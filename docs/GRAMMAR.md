@@ -313,8 +313,6 @@ item   = WORD
 ```zig lines.zig
 const parser = @import("parser.zig");
 
-pub const Tag = enum(u8) { lines, line, match };
-
 /// Passes the dot count of an indent token to the parser as its id.
 pub const Lexer = struct {
     base: parser.BaseLexer,
@@ -493,9 +491,9 @@ lists. Positions count the pattern's elements from 1; a multi-element
 | `(tag ... (kind ...) ...)` | nested lists, as deep as needed |
 | `role:v` | an item for a schema role (see [SEMANTICS.md](SEMANTICS.md#role-named-actions)) |
 
-A tag is any word (`set`, `+=`, `@name`); in the tree it is a `Tag`
-enum value. Without `@schema`, the `Tag` enum is the lang module's `Tag`
-(with `@lang`) or is collected from the actions (without it), and a
+A tag is any word (`set`, `+=`, `@name`); in the tree it is a value of
+the generated `Tag` enum. Without `@schema`, `Tag` has the tags the
+actions produce, in first-seen order, then the `@tags` names, and a
 `role:v` item is just `v` (except that a leading `role:v` in an untagged
 list names its tag: `(ref:1 2)` is `(ref 1 2)`).
 
@@ -678,8 +676,6 @@ expr  = IDENT
 
 ```zig kw.zig
 const std = @import("std");
-
-pub const Tag = enum(u8) { prog, print, goto, set };
 
 /// The keywords, by grammar terminal name; the value becomes `src.id`.
 pub const KwId = enum(u16) { PRINT = 1, GOTO = 2 };
@@ -871,7 +867,7 @@ An `X "c"` hint that decides nothing is an error.
 | `@lang = "name"` | any | the lang module (`name.zig`, imported by the parser) |
 | `@code = fn` | @lexer | a lexer method calling `lang.fn(source, pos)` |
 | `@schema` | any | node kinds and their roles ([SEMANTICS.md](SEMANTICS.md)) |
-| `@tags a b ...` | any | extra `Tag` values for a lang wrapper (needs `@schema`) |
+| `@tags a b ...` | any | extra `Tag` values for a lang wrapper |
 | `@conflicts` | any | the declared conflicts |
 | `@infix base` | any | an operator-precedence chain |
 | `@op = [ "lit" → "token", ... ]` | any | literal-to-token mappings |

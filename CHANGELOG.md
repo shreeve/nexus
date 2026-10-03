@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+### Generated API
+
+One API for every consumer. The edits each lang module needs are listed
+under "Migrating a lang module" below.
+
+- **`Tag` is always generated.** Without `@schema` it holds the tags the
+  actions produce, in first-seen order, then the `@tags` names (`@tags`
+  works without `@schema`); it is exhaustive (`_` only when empty). A lang
+  module's `Tag` is not read.
+
+### Migrating a lang module
+
+- **Every lang module**: delete the hand-written `Tag` enum (slash, zag,
+  nexis, nanoruby), and `pub const Tag = parser.Tag;` where nothing uses
+  it (em). A tag the generated enum lacks is one no action builds: list it
+  in `@tags` if the lang code needs it.
+
 ### Changed
 
 - **The output file is required**: `nexus g.grammar` without one is a

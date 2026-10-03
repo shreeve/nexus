@@ -1,8 +1,6 @@
-//! @lang module of the as_stale_id test: the Tag enum and the keyword
-//! group's Id enum and lookup.
+//! @lang module of the as_stale_id test: the keyword group's Id enum and
+//! lookup.
 const std = @import("std");
-
-pub const Tag = enum(u8) { prog, k, i };
 
 pub const KwId = enum(u16) { KW = 1, X = 2, Y = 3 };
 

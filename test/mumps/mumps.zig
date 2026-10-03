@@ -1,7 +1,6 @@
 //! em MUMPS Language Helper
 //!
 //! Language-specific support for the MUMPS parser, providing:
-//! - Tag enum for AST node types
 //! - Command IDs and abbreviation matching (CmdId, cmdAs)
 //! - Function IDs and abbreviation matching (FnId, fnAs)
 //! - System variable (ISV) IDs and matching (IsvId, isvAs)
@@ -285,120 +284,6 @@ pub fn checkPatternMode(source: []const u8, pos: u32) bool {
 
     return false;
 }
-
-// =============================================================================
-// TAG ENUM (AST Node Types)
-// =============================================================================
-
-pub const Tag = enum(u8) {
-    // Commands
-    set,
-    write,
-    @"if",
-    @"else",
-    @"for",
-    do,
-    quit,
-    new,
-    kill,
-    halt,
-    hang,
-    job,
-    lock,
-    use,
-    open,
-    close,
-    read,
-    tstart,
-    tcommit,
-    trollback,
-    trestart,
-    goto,
-    xecute,
-    merge,
-    view,
-    @"break",
-
-    // Z-commands
-    zwrite,
-    zbreak,
-    zhalt,
-    zkill,
-
-    // Structure
-    routine,
-    commands,
-    expr,
-    label,
-    dots,
-    call,
-    ref,
-    range,
-
-    // Variables and references
-    lvar,
-    gvar,
-    naked,
-    ssvn,
-
-    // Literals
-    num,
-    str,
-
-    // Functions
-    intrinsic,
-    extrinsic,
-    select,
-    text,
-    setfn,
-    setisv,
-
-    // Indirection
-    @"@name",
-    @"@gname", // Global name indirection: ^@X (resolves to ^<value of X>)
-    @"@args",
-    @"@ref",
-    @"@subs",
-    @"@ssvn", // SSVN name indirection: ^$@X@(subs)
-
-    // Operators / Actions
-    @"=",
-    @"!",
-    @"#",
-    posformat,
-    @"?",
-    @"?@",
-    @"'?",
-    @"'?@",
-    @"+",
-    @"-",
-    @"*",
-    @"/",
-    @"\\",
-
-    // Multi-part tags
-    postcond,
-    setmulti,
-    exclusive,
-    byref,
-    pat,
-    alt,
-    @"lock+",
-    @"lock-",
-    @"lock=",
-    multi,
-    attr,
-    params,
-    keyword,
-    char,
-    charindir,
-    prompt,
-    env,
-    uci,
-
-    // Catch-all for unrecognized tags (including key:value patterns)
-    _,
-};
 
 // =============================================================================
 // COMMAND IDS

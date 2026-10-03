@@ -13,7 +13,6 @@
   (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
   (lex_rule `.` _ `err`)
   (section `parser`)
-  (lang `"basic"`)
   (rule
     (name `name`)
     (alt
