@@ -352,10 +352,6 @@ pub const Lexer = struct {
         return .{ .base = BaseLexer.init(source) };
     }
 
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
     pub fn next(self: *Lexer) Token {
         const tok = self.produce();
         self.last_cat = tok.cat;
@@ -389,8 +385,8 @@ pub const Lexer = struct {
     /// Nothing but a comment follows on the current line.
     fn lineEndsAfter(self: *const Lexer) bool {
         var probe = self.base;
-        var t = probe.matchRules();
-        if (t.cat == .comment) t = probe.matchRules();
+        var t = probe.next();
+        if (t.cat == .comment) t = probe.next();
         return t.cat == .newline or t.cat == .eof;
     }
 
@@ -435,7 +431,7 @@ pub const Lexer = struct {
         }
 
         while (true) {
-            const tok = self.base.matchRules();
+            const tok = self.base.next();
             switch (tok.cat) {
                 .comment => continue,
                 .skip => { // `\` line continuation
@@ -557,7 +553,7 @@ pub const Lexer = struct {
     fn startsWithContinuation(self: *const Lexer, pos: u32) bool {
         var probe = self.base;
         probe.pos = pos;
-        const tok = probe.matchRules();
+        const tok = probe.next();
         if (tok.cat != .ident) return false;
         const word = self.base.text(tok);
         return std.mem.eql(u8, word, "else") or std.mem.eql(u8, word, "catch");
@@ -658,9 +654,9 @@ pub const Lexer = struct {
     /// a postfix guard.
     fn isWholeDropStatement(self: *const Lexer) bool {
         var probe = self.base;
-        const name = probe.matchRules();
+        const name = probe.next();
         if (name.cat != .ident or name.pre != 0 or keyword(self.base.text(name)) != null) return false;
-        const after = probe.matchRules();
+        const after = probe.next();
         return switch (after.cat) {
             .newline, .eof, .comment => true,
             .ident => std.mem.eql(u8, self.base.text(after), "if"),
@@ -730,14 +726,14 @@ pub const Lexer = struct {
         if (!self.isPrefix(tok)) return false;
         var probe = self.base;
         while (true) {
-            var t = probe.matchRules();
+            var t = probe.next();
             if (t.cat == .plus or t.cat == .lt or t.cat == .tilde) {
-                const name = probe.matchRules();
+                const name = probe.next();
                 if (name.pre != 0) return false;
                 t = name;
             }
             if (t.cat != .ident or keyword(self.base.text(t)) != null) return false;
-            var sep = probe.matchRules();
+            var sep = probe.next();
             if (sep.cat == .colon) sep = skipType(&probe) orelse return false;
             switch (sep.cat) {
                 .bar => {
@@ -757,7 +753,7 @@ pub const Lexer = struct {
     fn skipType(probe: *BaseLexer) ?Token {
         var depth: u32 = 0;
         while (true) {
-            const t = probe.matchRules();
+            const t = probe.next();
             switch (t.cat) {
                 .lparen, .lbracket => depth += 1,
                 .rparen, .rbracket => {
@@ -777,7 +773,7 @@ pub const Lexer = struct {
         var probe = self.base;
         var depth: u32 = 0;
         while (true) {
-            const t = probe.matchRules();
+            const t = probe.next();
             switch (t.cat) {
                 .eof => return false,
                 .newline => if (depth == 0 and (self.nesting == 0 or self.inIsland())) return false,
@@ -806,12 +802,12 @@ pub const Lexer = struct {
 
     fn nextCat(self: *const Lexer) TokenCat {
         var probe = self.base;
-        return probe.matchRules().cat;
+        return probe.next().cat;
     }
 
     fn nextIsName(self: *const Lexer) bool {
         var probe = self.base;
-        const t = probe.matchRules();
+        const t = probe.next();
         return t.cat == .ident and keyword(self.base.text(t)) == null;
     }
 
@@ -1097,7 +1093,7 @@ fn expectCats(source: []const u8, expected: []const TokenCat) !void {
     for (expected) |want| {
         const got = lx.next();
         testing.expectEqual(want, got.cat) catch |e| {
-            std.debug.print("source: {s}\n  at `{s}`\n", .{ source, lx.text(got) });
+            std.debug.print("source: {s}\n  at `{s}`\n", .{ source, lx.base.text(got) });
             return e;
         };
     }

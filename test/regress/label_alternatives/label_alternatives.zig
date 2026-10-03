@@ -15,9 +15,6 @@ pub const Lexer = struct {
     pub fn next(self: *Lexer) parser.Token {
         return self.base.next();
     }
-    pub fn text(self: *const Lexer, tok: parser.Token) []const u8 {
-        return self.base.text(tok);
-    }
     pub fn reset(self: *Lexer) void {
         self.base.reset();
     }

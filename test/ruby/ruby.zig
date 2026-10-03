@@ -11,6 +11,7 @@ const parser = @import("parser.zig");
 pub const Token = parser.Token;
 pub const TokenCat = parser.TokenCat;
 const BaseLexer = parser.BaseLexer;
+const makeToken = BaseLexer.makeToken;
 
 // =============================================================================
 // Keyword Lookup — maps identifier text to parser symbol IDs
@@ -200,22 +201,6 @@ pub const Lexer = struct {
         return .{ .base = BaseLexer.init(source) };
     }
 
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-        self.last_cat = .eof;
-        self.cmd_context = true;
-        self.cond_depth = 0;
-        self.head_kind = .none;
-        self.interp_count = 0;
-        self.interp_pos = 0;
-        self.interp_active = false;
-        self.interp_brace_depth = 0;
-    }
-
     pub fn next(self: *Lexer) Token {
         // ── Drain interpolation queue if active ─────────────────
         if (self.interp_pos < self.interp_count) {
@@ -235,7 +220,7 @@ pub const Lexer = struct {
         }
 
         while (true) {
-            var tok = self.base.matchRules();
+            var tok = self.base.next();
 
             // ── 0a. Float extension ─────────────────────────────────
             // BaseLexer.scanNumber is hand-rolled and only emits
@@ -255,7 +240,7 @@ pub const Lexer = struct {
             // ── 0b. %w[…] / %i[…] array literals ────────────────────
             // The grammar defines the `pct_w` / `pct_i` token cats and
             // uses them in `primary`, but the base lexer's hand-rolled
-            // matchRules doesn't scan their bodies. Detect the `%w` /
+            // base.next() doesn't scan their bodies. Detect the `%w` /
             // `%i` prefix in a `.percent` token's position and
             // synthesize the full literal.
             if (tok.cat == .percent) {
@@ -376,18 +361,16 @@ pub const Lexer = struct {
                         {
                             sym_end += 1;
                         }
-                        tok.cat = .symbol;
-                        tok.len = @intCast(sym_end - tok.pos);
+                        tok = makeToken(.symbol, tok.pre, tok.pos, sym_end);
                         self.base.pos = sym_end;
                         self.last_cat = .symbol;
                         self.cmd_context = false;
                         return tok;
                     }
                     if (ch == '\'' or ch == '"') {
-                        const str_tok = self.base.matchRules();
+                        const str_tok = self.base.next();
                         if (str_tok.cat == .string_sq or str_tok.cat == .string_dq) {
-                            tok.cat = .symbol;
-                            tok.len = @intCast(str_tok.pos + str_tok.len - tok.pos);
+                            tok = makeToken(.symbol, tok.pre, tok.pos, str_tok.pos + str_tok.len);
                             self.last_cat = .symbol;
                             self.cmd_context = false;
                             return tok;
@@ -603,8 +586,7 @@ pub const Lexer = struct {
 
         if (!is_float and !extended_integer) return false;
         self.base.pos = end;
-        if (is_float) tok.cat = .float;
-        tok.len = @intCast(end - tok.pos);
+        tok.* = makeToken(if (is_float) .float else tok.cat, tok.pre, tok.pos, end);
         return is_float; // only report "re-emit now" when widened to float
     }
 
@@ -659,17 +641,13 @@ pub const Lexer = struct {
             // right location rather than a misleading modulo error
             // much later in the file.
             self.base.pos = p;
-            tok.cat = .err;
-            tok.pos = start;
-            tok.len = @intCast(p - start);
+            tok.* = makeToken(.err, tok.pre, start, p);
             return tok.*;
         }
         p += 1; // consume close
 
         self.base.pos = p;
-        tok.cat = if (sel == 'w') .pct_w else .pct_i;
-        tok.pos = start;
-        tok.len = @intCast(p - start);
+        tok.* = makeToken(if (sel == 'w') .pct_w else .pct_i, tok.pre, start, p);
         return tok.*;
     }
 
@@ -1007,7 +985,7 @@ pub const Lexer = struct {
             }
             if (src[i] == '#' and i + 1 < end and src[i + 1] == '{') {
                 if (i > seg_start) {
-                    self.enqueue(Token{ .cat = .str_content, .pos = seg_start, .len = @intCast(i - seg_start), .pre = 0 });
+                    self.enqueue(makeToken(.str_content, 0, seg_start, i));
                 }
                 self.enqueue(Token{ .cat = .embexpr_beg, .pos = i, .len = 2, .pre = 0 });
 
@@ -1020,7 +998,7 @@ pub const Lexer = struct {
         }
 
         if (i > seg_start) {
-            self.enqueue(Token{ .cat = .str_content, .pos = seg_start, .len = @intCast(i - seg_start), .pre = 0 });
+            self.enqueue(makeToken(.str_content, 0, seg_start, i));
         }
         self.enqueue(Token{ .cat = .dstr_end, .pos = end, .len = 1, .pre = 0 });
         self.interp_active = false;
@@ -1029,7 +1007,7 @@ pub const Lexer = struct {
 
     fn scanStringBody(self: *Lexer) Token {
         if (self.interp_brace_depth > 0) {
-            var tok = self.base.matchRules();
+            var tok = self.base.next();
             if (tok.cat == .comment) return self.scanStringBody();
             if (tok.cat == .lbrace) {
                 self.interp_brace_depth += 1;
@@ -1095,4 +1073,17 @@ test "keywordAs - not a keyword" {
     try std.testing.expect(keywordAs("foo") == null);
     try std.testing.expect(keywordAs("Dog") == null);
     try std.testing.expect(keywordAs("") == null);
+}
+
+test "a symbol longer than a token can hold is an err token" {
+    const source = try std.testing.allocator.alloc(u8, 65538);
+    defer std.testing.allocator.free(source);
+    source[0] = ':';
+    @memset(source[1 .. source.len - 1], 'a');
+    source[source.len - 1] = '\n';
+    var lx = Lexer.init(source);
+    const tok = lx.next();
+    try std.testing.expectEqual(TokenCat.err, tok.cat);
+    try std.testing.expectEqual(std.math.maxInt(u16), tok.len);
+    try std.testing.expectEqual(source.len - 1, lx.base.pos);
 }

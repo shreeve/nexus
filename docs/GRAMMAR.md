@@ -325,12 +325,6 @@ pub const Lexer = struct {
         if (tok.cat == .indent) self.base.aux = tok.pre;
         return tok;
     }
-    pub fn text(self: *const Lexer, tok: parser.Token) []const u8 {
-        return self.base.text(tok);
-    }
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-    }
 };
 ```
 
@@ -357,12 +351,16 @@ for a lang `Lexer` wrapper that needs a hand-written lookahead. It requires
 
 ### The generated lexer
 
-The module exports `TokenCat`, `Token`, and `BaseLexer` (`init`, `next`,
-`text`, `reset`, `matchRules`, the state variables as fields, and
-`aux: u16`). With `@lang`, `Lexer` is the lang module's `Lexer` when it
-declares one (a wrapper that owns a `BaseLexer` and rewrites its token
-stream: indentation, keyword classification, synthetic tokens), else
-`BaseLexer`. Without `@lang` the lexer struct is `Lexer` itself.
+The module exports `TokenCat`, `Token`, `BaseLexer` and `Lexer`.
+`BaseLexer` is the generated scanner: `init(source)`, `next()`,
+`text(token)`, `makeToken(cat, pre, start, end)`, and the fields `source`,
+`pos`, `aux: u16` and the state variables. A token is at most 65535 bytes:
+a longer match is an `err` token of that length, and `makeToken` builds
+tokens the same way. `Lexer` is the lexer the parser drives: the lang
+module's `Lexer` when it declares one (a wrapper that holds a
+`base: BaseLexer` and rewrites its token stream: indentation, keyword
+classification, synthetic tokens; it has `init(source)` and `next()`),
+else `BaseLexer`.
 
 ## The @parser section
 

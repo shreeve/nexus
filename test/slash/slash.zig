@@ -26,6 +26,7 @@ const parser = @import("parser.zig");
 pub const Token = parser.Token;
 pub const TokenCat = parser.TokenCat;
 const BaseLexer = parser.BaseLexer;
+const makeToken = BaseLexer.makeToken;
 
 // =============================================================================
 // Keyword promotion
@@ -101,23 +102,6 @@ pub const Lexer = struct {
 
     pub fn init(source: []const u8) Lexer {
         return .{ .base = BaseLexer.init(source) };
-    }
-
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-        self.indent_level = 0;
-        self.indent_depth = 0;
-        self.pending_outdents = 0;
-        self.queued = null;
-        self.last_cat = .eof;
-        self.queued_body = null;
-        self.heredoc_resume_pos = 0;
-        self.queued_str_name = null;
-        self.queued_str_body = null;
     }
 
     pub fn next(self: *Lexer) Token {
@@ -245,7 +229,7 @@ pub const Lexer = struct {
                     var j = after_ident;
                     while (j < self.base.source.len and isBareWordContinueOrUtf8(self.base.source[j])) : (j += 1) {}
                     self.base.pos = j;
-                    working.len = @intCast(j - working.pos);
+                    working = makeToken(working.cat, working.pre, working.pos, j);
                 }
             }
 
@@ -343,11 +327,8 @@ pub const Lexer = struct {
                 var j = tok.pos + 1;
                 while (j < self.base.source.len and isBareWordContinueOrUtf8(self.base.source[j])) : (j += 1) {}
                 self.base.pos = j;
-                var t = tok;
-                t.cat = .ident;
-                t.len = @intCast(j - tok.pos);
                 self.last_cat = .ident;
-                return t;
+                return makeToken(.ident, tok.pre, tok.pos, j);
             }
 
             // (UTF-8 ident extension runs above, before NAME_EQ fusion.)
@@ -364,10 +345,8 @@ pub const Lexer = struct {
                     var j = after;
                     while (j < self.base.source.len and isVarNameUtf8Cont(self.base.source[j])) : (j += 1) {}
                     self.base.pos = j;
-                    var t = tok;
-                    t.len = @intCast(j - tok.pos);
                     self.last_cat = .variable;
-                    return t;
+                    return makeToken(.variable, tok.pre, tok.pos, j);
                 }
             }
 
@@ -446,20 +425,10 @@ pub const Lexer = struct {
 
         // Consume the open sigil's bytes and queue the body.
         self.base.pos = p;
-        self.queued_body = Token{
-            .cat = .heredoc_body,
-            .pre = 0,
-            .pos = body_start,
-            .len = @intCast(body_end - body_start),
-        };
+        self.queued_body = makeToken(.heredoc_body, 0, body_start, body_end);
 
         const kind: TokenCat = if (literal) .heredoc_open_lit else .heredoc_open;
-        return Token{
-            .cat = kind,
-            .pre = lt_tok.pre,
-            .pos = lt_tok.pos,
-            .len = @intCast(p - lt_tok.pos),
-        };
+        return makeToken(kind, lt_tok.pre, lt_tok.pos, p);
     }
 
     /// True for tokens that introduce a block body and should swallow an
@@ -546,18 +515,8 @@ pub const Lexer = struct {
 
         // Queue the name IDENT and the raw body for the parser's next
         // two requests.
-        self.queued_str_name = Token{
-            .cat = .ident,
-            .pre = 0,
-            .pos = name_pos,
-            .len = @intCast(name_end - name_pos),
-        };
-        self.queued_str_body = Token{
-            .cat = .str_body,
-            .pre = 0,
-            .pos = body_start,
-            .len = @intCast(body_end - body_start),
-        };
+        self.queued_str_name = makeToken(.ident, 0, name_pos, name_end);
+        self.queued_str_body = makeToken(.str_body, 0, body_start, body_end);
 
         return Token{
             .cat = .str_open,

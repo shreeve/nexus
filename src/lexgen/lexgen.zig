@@ -1,5 +1,5 @@
 //! Lexer code generation: turns a grammar.LexerSpec into the Zig source of
-//! `TokenCat`, `Token`, and the `Lexer`/`BaseLexer` struct.
+//! `TokenCat`, `Token`, the `BaseLexer` struct and the `Lexer` alias.
 //!
 //! Every rule pattern is compiled (regex.zig) into one minimized DFA
 //! (automaton.zig) with a start state per guard configuration, and emitted
@@ -9,7 +9,7 @@
 //! (a range test, a comptime byte table, or a SIMD scan for `[^x]*`-style
 //! runs), and transitions into final states return the token in place.
 //!
-//! Token semantics (per `matchRules` call):
+//! Token semantics (per `next` call):
 //!   1. Spaces and tabs are skipped; their count (saturating at 255) is the
 //!      token's `pre`.
 //!   2. Zero-width rules (empty pattern, guards only) are tried in order.
@@ -718,16 +718,12 @@ pub const LexerGenerator = struct {
     }
 
     fn emitLexerStruct(self: *LexerGenerator) !void {
-        const sname = if (self.spec.langName != null) "BaseLexer" else "Lexer";
         try self.write(
             \\// =============================================================================
             \\// LEXER
             \\// =============================================================================
             \\
-            \\
-        );
-        try self.print("pub const {s} = struct {{\n", .{sname});
-        try self.write(
+            \\pub const BaseLexer = struct {
             \\    const Self = @This();
             \\
             \\    source: []const u8,
@@ -753,7 +749,7 @@ pub const LexerGenerator = struct {
             \\        };
             \\    }
             \\
-            \\    /// Get the text slice for a token (zero-copy into source)
+            \\    /// The text of a token (a slice of the source).
             \\    pub fn text(self: *const Self, tok: Token) []const u8 {
             \\        const start: usize = tok.pos;
             \\        const end: usize = @min(start + tok.len, self.source.len);
@@ -761,24 +757,11 @@ pub const LexerGenerator = struct {
             \\        return self.source[start..end];
             \\    }
             \\
-            \\    /// Reset lexer to beginning
-            \\    pub fn reset(self: *Self) void {
-            \\        self.pos = 0;
-            \\
-        );
-        for (self.spec.states.items) |s| try self.print("        self.{s} = {d};\n", .{ s.name, s.initialValue });
-        try self.write(
-            \\    }
-            \\
-            \\    /// Get next token
-            \\    pub fn next(self: *Self) Token {
-            \\        return self.matchRules();
-            \\    }
-            \\
-            \\    /// The token of `cat` from `start` to `end`. A match longer than a
-            \\    /// Token can hold (65535 bytes) is an `err` token of that length;
-            \\    /// the scan goes on after the whole match.
-            \\    inline fn token(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+            \\    /// The token of `cat` from `start` to `end`, as the scanner builds
+            \\    /// it: a match longer than a Token can hold (65535 bytes) is an
+            \\    /// `err` token of that length, and the scan goes on after the whole
+            \\    /// match. A lang Lexer wrapper builds its tokens with it too.
+            \\    pub inline fn makeToken(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
             \\        if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
             \\        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
             \\    }
@@ -797,16 +780,21 @@ pub const LexerGenerator = struct {
             , .{ name, lang, name, name, name });
         }
 
-        try self.emitMatchRules();
+        try self.emitNext();
         try self.write("};\n");
 
-        if (self.spec.langName != null) {
-            try self.write(
-                \\
-                \\pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
-                \\
-            );
-        }
+        try self.write(if (self.spec.langName != null)
+            \\
+            \\/// The lexer the parser drives: the lang module's `Lexer` wrapper, if it
+            \\/// declares one.
+            \\pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
+            \\
+        else
+            \\
+            \\/// The lexer the parser drives.
+            \\pub const Lexer = BaseLexer;
+            \\
+        );
     }
 
     // =========================================================================
@@ -908,7 +896,7 @@ pub const LexerGenerator = struct {
     }
 
     // =========================================================================
-    // Emission: matchRules
+    // Emission: next
     // =========================================================================
 
     fn hasSkipRule(self: *const LexerGenerator) bool {
@@ -925,26 +913,26 @@ pub const LexerGenerator = struct {
         return false;
     }
 
-    fn emitMatchRules(self: *LexerGenerator) !void {
-        // matchRules goes to its own buffer first: the byte tables and the
+    fn emitNext(self: *LexerGenerator) !void {
+        // next goes to its own buffer first: the byte tables and the
         // SIMD helper it turns out to need are declared ahead of it.
         var body: std.Io.Writer.Allocating = .init(self.allocator);
         defer body.deinit();
         const main = self.w;
         self.w = &body.writer;
-        try self.emitMatchRulesBody();
+        try self.emitNextBody();
         self.w = main;
         try self.emitTableDecls(self.w);
         if (self.simdUsed) try self.write(simdHelper);
         try self.write(body.written());
     }
 
-    fn emitMatchRulesBody(self: *LexerGenerator) !void {
+    fn emitNextBody(self: *LexerGenerator) !void {
         const skipLoop = self.hasSkipRule();
         try self.write(
             \\
-            \\    /// Match the next token.
-            \\    pub fn matchRules(self: *Self) Token {
+            \\    /// Scan the next token.
+            \\    pub fn next(self: *Self) Token {
             \\        const src = self.source;
             \\        const n = src.len;
             \\        var p: usize = self.pos;
@@ -1073,7 +1061,7 @@ pub const LexerGenerator = struct {
             } else {
                 try self.print(
                     \\{s}self.pos = @intCast(p);
-                    \\{s}return token(.@"{s}", pre, wsStart, p);
+                    \\{s}return makeToken(.@"{s}", pre, wsStart, p);
                     \\
                 , .{ inner, inner, r.token });
             }
@@ -1104,7 +1092,7 @@ pub const LexerGenerator = struct {
         if (short or self.ends[k] == .start or self.ends[k] == .fromStart) {
             try self.print("{s}return .{{ .cat = .@\"{s}\", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }};\n", .{ ind, r.token });
         } else {
-            try self.print("{s}return token(.@\"{s}\", pre, start, p);\n", .{ ind, r.token });
+            try self.print("{s}return makeToken(.@\"{s}\", pre, start, p);\n", .{ ind, r.token });
         }
     }
 

@@ -1,0 +1,15 @@
+# A lang Lexer wrapper holds the generated lexer as `base: BaseLexer`,
+# where the parser reads its `aux` id: a wrapper that names the field
+# otherwise is a compile error, not a silently lost id.
+# compile-error: the lang module's Lexer wrapper must hold the generated lexer in a field `base: BaseLexer`
+
+@lexer
+tokens
+    word, eof, err
+[a-z]+                                      → word
+.                                           → err
+
+@parser
+@lang = "lexer_wrapper_without_base"
+
+top! = WORD+                                → (top ...1)

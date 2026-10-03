@@ -37,14 +37,6 @@ pub const Lexer = struct {
         return .{ .base = BaseLexer.init(source) };
     }
 
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-    }
-
     inline fn isWs(c: u8) bool {
         return c == ' ' or c == '\t';
     }
@@ -77,7 +69,7 @@ pub const Lexer = struct {
                 }
             }
             self.base.aux = dotCount;
-            return Token{ .cat = .indent, .pre = dotCount, .pos = wsStart, .len = @intCast(self.base.pos - wsStart) };
+            return BaseLexer.makeToken(.indent, dotCount, wsStart, self.base.pos);
         }
 
         // Spaces with adjacency exclusion: 2+ spaces mid-line signals an
@@ -109,11 +101,11 @@ pub const Lexer = struct {
         // Normal lexing: delegate to generated BaseLexer.
         // Rewind only when whitespace is 0-1 chars (normal pre field).
         // When wsCount >= 2, we already decided not to emit SPACES (adjacency
-        // exclusion above), so don't rewind or matchRules would re-emit SPACES.
+        // exclusion above), so don't rewind or base.next() would re-emit SPACES.
         if (wsCount < 2) {
             self.base.pos = wsStart;
         }
-        var tok = self.base.matchRules();
+        var tok = self.base.next();
         if (wsCount >= 2) {
             tok.pre = wsCount;
         }
@@ -187,7 +179,7 @@ pub const Lexer = struct {
                     self.base.pos += 1;
                 }
                 self.base.beg = 0;
-                return Token{ .cat = .integer, .pre = wsCount, .pos = pos, .len = @intCast(self.base.pos - pos) };
+                return BaseLexer.makeToken(.integer, wsCount, pos, self.base.pos);
             },
             // Dot is a range separator in patterns (1.3 = "1 to 3 of"),
             // not a decimal point. Emit as dot to prevent number scanning.
@@ -210,11 +202,11 @@ pub const Lexer = struct {
                 self.base.beg = 0;
                 return Token{ .cat = .rparen, .pre = wsCount, .pos = pos, .len = 1 };
             },
-            // Fall through to matchRules for mode-invariant tokens:
+            // Fall through to base.next() for mode-invariant tokens:
             // string literal, question mark, apostrophe
             else => {
                 self.base.beg = 0;
-                var tok = self.base.matchRules();
+                var tok = self.base.next();
                 tok.pre = wsCount;
                 return tok;
             },
@@ -895,4 +887,20 @@ test "ssvnAs - basic SSVNs" {
     try std.testing.expectEqual(SsvnId.SYSTEM, ssvnAs("SYS").?);
     try std.testing.expectEqual(SsvnId.SYSTEM, ssvnAs("SYSTEM").?);
     try std.testing.expect(ssvnAs("S") == null); // too short for SYSTEM
+}
+
+test "an indent longer than a token can hold is an err token" {
+    // " . . . ... S X=1" with 32,768 dots: a 65,537-byte indent.
+    const n = 32768;
+    const source = try std.testing.allocator.alloc(u8, 1 + 2 * n + 6);
+    defer std.testing.allocator.free(source);
+    source[0] = ' ';
+    for (0..n) |i| source[1 + 2 * i ..][0..2].* = ". ".*;
+    source[1 + 2 * n ..][0..6].* = "S X=1\n".*;
+    var lx = Lexer.init(source);
+    const tok = lx.next();
+    try std.testing.expectEqual(TokenCat.err, tok.cat);
+    try std.testing.expectEqual(std.math.maxInt(u16), tok.len);
+    // The scan goes on after the whole indent.
+    try std.testing.expectEqual(source.len - 6, lx.base.pos);
 }

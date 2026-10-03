@@ -124,15 +124,6 @@ pub const Lexer = struct {
         return .{ .base = BaseLexer.init(source) };
     }
 
-    pub fn text(self: *const Lexer, tok: Token) []const u8 {
-        return self.base.text(tok);
-    }
-
-    pub fn reset(self: *Lexer) void {
-        self.base.reset();
-        self.* = .{ .base = self.base };
-    }
-
     pub fn next(self: *Lexer) Token {
         if (self.queueHead < self.queueLen) {
             const tok = self.queue[self.queueHead];
@@ -199,7 +190,7 @@ pub const Lexer = struct {
             return self.arrow(self.make(.arrow, p, 3));
         }
 
-        var tok = self.base.matchRules();
+        var tok = self.base.next();
         switch (tok.cat) {
             // The generated lexer's only longer-than-one-byte `err`: a match
             // too long for a Token.

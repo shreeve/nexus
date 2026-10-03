@@ -188,7 +188,7 @@ pub const BaseLexer = struct {
         };
     }
 
-    /// Get the text slice for a token (zero-copy into source)
+    /// The text of a token (a slice of the source).
     pub fn text(self: *const Self, tok: Token) []const u8 {
         const start: usize = tok.pos;
         const end: usize = @min(start + tok.len, self.source.len);
@@ -196,23 +196,11 @@ pub const BaseLexer = struct {
         return self.source[start..end];
     }
 
-    /// Reset lexer to beginning
-    pub fn reset(self: *Self) void {
-        self.pos = 0;
-        self.paren = 0;
-        self.brack = 0;
-        self.brace = 0;
-    }
-
-    /// Get next token
-    pub fn next(self: *Self) Token {
-        return self.matchRules();
-    }
-
-    /// The token of `cat` from `start` to `end`. A match longer than a
-    /// Token can hold (65535 bytes) is an `err` token of that length;
-    /// the scan goes on after the whole match.
-    inline fn token(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+    /// The token of `cat` from `start` to `end`, as the scanner builds
+    /// it: a match longer than a Token can hold (65535 bytes) is an
+    /// `err` token of that length, and the scan goes on after the whole
+    /// match. A lang Lexer wrapper builds its tokens with it too.
+    pub inline fn makeToken(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
         if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
         return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
     }
@@ -311,8 +299,8 @@ pub const BaseLexer = struct {
         return p;
     }
 
-    /// Match the next token.
-    pub fn matchRules(self: *Self) Token {
+    /// Scan the next token.
+    pub fn next(self: *Self) Token {
         const src = self.source;
         const n = src.len;
         var p: usize = self.pos;
@@ -395,7 +383,7 @@ pub const BaseLexer = struct {
                         continue :dfa 40;
                     }
                     if (p < n) switch (src[p]) {
-                        '"' => { p += 1; self.pos = @intCast(p); return token(.@"string_dq", pre, start, p); },
+                        '"' => { p += 1; self.pos = @intCast(p); return makeToken(.@"string_dq", pre, start, p); },
                         '\\' => { p += 1; continue :dfa 42; },
                         else => {},
                     };
@@ -405,7 +393,7 @@ pub const BaseLexer = struct {
                 6 => {
                     p = scanUntil(src, p, &.{'\n'});
                     self.pos = @intCast(p);
-                    return token(.@"comment", pre, start, p);
+                    return makeToken(.@"comment", pre, start, p);
                 },
                 7 => {
                     if (p < n and cls3[src[p]]) {
@@ -445,7 +433,7 @@ pub const BaseLexer = struct {
                         continue :dfa 49;
                     }
                     if (p < n) switch (src[p]) {
-                        '\'' => { p += 1; self.pos = @intCast(p); return token(.@"string_sq", pre, start, p); },
+                        '\'' => { p += 1; self.pos = @intCast(p); return makeToken(.@"string_sq", pre, start, p); },
                         '\\' => { p += 1; continue :dfa 51; },
                         else => {},
                     };
@@ -504,7 +492,7 @@ pub const BaseLexer = struct {
                         'E', 'e' => { p += 1; continue :dfa 61; },
                         'O', 'o' => { p += 1; continue :dfa 62; },
                         'X', 'x' => { p += 1; continue :dfa 63; },
-                        'i' => { p += 1; self.pos = @intCast(p); return token(.@"imaginary", pre, start, p); },
+                        'i' => { p += 1; self.pos = @intCast(p); return makeToken(.@"imaginary", pre, start, p); },
                         'r' => { p += 1; continue :dfa 65; },
                         else => {},
                     };
@@ -518,12 +506,12 @@ pub const BaseLexer = struct {
                     if (p < n) switch (src[p]) {
                         '.' => { p += 1; continue :dfa 59; },
                         'E', 'e' => { p += 1; continue :dfa 61; },
-                        'i' => { p += 1; self.pos = @intCast(p); return token(.@"imaginary", pre, start, p); },
+                        'i' => { p += 1; self.pos = @intCast(p); return makeToken(.@"imaginary", pre, start, p); },
                         'r' => { p += 1; continue :dfa 65; },
                         else => {},
                     };
                     self.pos = @intCast(p);
-                    return token(.@"integer", pre, start, p);
+                    return makeToken(.@"integer", pre, start, p);
                 },
                 21 => {
                     if (p < n) switch (src[p]) {
@@ -578,7 +566,7 @@ pub const BaseLexer = struct {
                 28 => {
                     while (p < n and cls6[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"constant", pre, start, p);
+                    return makeToken(.@"constant", pre, start, p);
                 },
                 30 => {
                     if (p < n) switch (src[p]) {
@@ -599,11 +587,11 @@ pub const BaseLexer = struct {
                 33 => {
                     while (p < n and cls6[src[p]]) p += 1;
                     if (p < n) switch (src[p]) {
-                        '!', '?' => { p += 1; self.pos = @intCast(p); return token(.@"ident", pre, start, p); },
+                        '!', '?' => { p += 1; self.pos = @intCast(p); return makeToken(.@"ident", pre, start, p); },
                         else => {},
                     };
                     self.pos = @intCast(p);
-                    return token(.@"ident", pre, start, p);
+                    return makeToken(.@"ident", pre, start, p);
                 },
                 35 => {
                     if (p < n) switch (src[p]) {
@@ -617,7 +605,7 @@ pub const BaseLexer = struct {
                 40 => {
                     p = scanUntil(src, p, &.{'"', '\\'});
                     if (p < n) switch (src[p]) {
-                        '"' => { p += 1; self.pos = @intCast(p); return token(.@"string_dq", pre, start, p); },
+                        '"' => { p += 1; self.pos = @intCast(p); return makeToken(.@"string_dq", pre, start, p); },
                         '\\' => { p += 1; continue :dfa 42; },
                         else => {},
                     };
@@ -632,12 +620,12 @@ pub const BaseLexer = struct {
                 43 => {
                     while (p < n and src[p] -% '0' <= 9) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"gvar", pre, start, p);
+                    return makeToken(.@"gvar", pre, start, p);
                 },
                 44 => {
                     while (p < n and cls6[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"gvar", pre, start, p);
+                    return makeToken(.@"gvar", pre, start, p);
                 },
                 46 => {
                     if (p < n) switch (src[p]) {
@@ -650,7 +638,7 @@ pub const BaseLexer = struct {
                 49 => {
                     p = scanUntil(src, p, &.{'\'', '\\'});
                     if (p < n) switch (src[p]) {
-                        '\'' => { p += 1; self.pos = @intCast(p); return token(.@"string_sq", pre, start, p); },
+                        '\'' => { p += 1; self.pos = @intCast(p); return makeToken(.@"string_sq", pre, start, p); },
                         '\\' => { p += 1; continue :dfa 51; },
                         else => {},
                     };
@@ -716,11 +704,11 @@ pub const BaseLexer = struct {
                 },
                 65 => {
                     if (p < n) switch (src[p]) {
-                        'i' => { p += 1; self.pos = @intCast(p); return token(.@"imaginary", pre, start, p); },
+                        'i' => { p += 1; self.pos = @intCast(p); return makeToken(.@"imaginary", pre, start, p); },
                         else => {},
                     };
                     self.pos = @intCast(p);
-                    return token(.@"rational", pre, start, p);
+                    return makeToken(.@"rational", pre, start, p);
                 },
                 67 => {
                     if (p < n) switch (src[p]) {
@@ -764,7 +752,7 @@ pub const BaseLexer = struct {
                 75 => {
                     while (p < n and cls6[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"ivar", pre, start, p);
+                    return makeToken(.@"ivar", pre, start, p);
                 },
                 80 => {
                     if (p < n) switch (src[p]) {
@@ -780,17 +768,17 @@ pub const BaseLexer = struct {
                     accEnd = p;
                     if (p < n) switch (src[p]) {
                         'E', 'e' => { p += 1; continue :dfa 97; },
-                        'i' => { p += 1; self.pos = @intCast(p); return token(.@"imaginary", pre, start, p); },
+                        'i' => { p += 1; self.pos = @intCast(p); return makeToken(.@"imaginary", pre, start, p); },
                         'r' => { p += 1; continue :dfa 99; },
                         else => {},
                     };
                     self.pos = @intCast(p);
-                    return token(.@"float", pre, start, p);
+                    return makeToken(.@"float", pre, start, p);
                 },
                 85 => {
                     while (p < n and cls7[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"integer", pre, start, p);
+                    return makeToken(.@"integer", pre, start, p);
                 },
                 86 => {
                     if (p < n) switch (src[p]) {
@@ -802,22 +790,22 @@ pub const BaseLexer = struct {
                 87 => {
                     while (p < n and cls5[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"float", pre, start, p);
+                    return makeToken(.@"float", pre, start, p);
                 },
                 88 => {
                     while (p < n and cls8[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"integer", pre, start, p);
+                    return makeToken(.@"integer", pre, start, p);
                 },
                 89 => {
                     while (p < n and cls9[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"integer", pre, start, p);
+                    return makeToken(.@"integer", pre, start, p);
                 },
                 95 => {
                     while (p < n and cls6[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"cvar", pre, start, p);
+                    return makeToken(.@"cvar", pre, start, p);
                 },
                 97 => {
                     if (p < n) switch (src[p]) {
@@ -829,11 +817,11 @@ pub const BaseLexer = struct {
                 },
                 99 => {
                     if (p < n) switch (src[p]) {
-                        'i' => { p += 1; self.pos = @intCast(p); return token(.@"imaginary", pre, start, p); },
+                        'i' => { p += 1; self.pos = @intCast(p); return makeToken(.@"imaginary", pre, start, p); },
                         else => {},
                     };
                     self.pos = @intCast(p);
-                    return token(.@"rational", pre, start, p);
+                    return makeToken(.@"rational", pre, start, p);
                 },
                 100 => {
                     if (p < n) switch (src[p]) {
@@ -845,7 +833,7 @@ pub const BaseLexer = struct {
                 101 => {
                     while (p < n and cls5[src[p]]) p += 1;
                     self.pos = @intCast(p);
-                    return token(.@"float", pre, start, p);
+                    return makeToken(.@"float", pre, start, p);
                 },
                 else => unreachable,
             }
@@ -853,17 +841,17 @@ pub const BaseLexer = struct {
                 80 => {
                     p = accEnd;
                     self.pos = @intCast(p);
-                    return token(.@"err", pre, start, p);
+                    return makeToken(.@"err", pre, start, p);
                 },
                 17 => {
                     p = accEnd;
                     self.pos = @intCast(p);
-                    return token(.@"integer", pre, start, p);
+                    return makeToken(.@"integer", pre, start, p);
                 },
                 12 => {
                     p = accEnd;
                     self.pos = @intCast(p);
-                    return token(.@"float", pre, start, p);
+                    return makeToken(.@"float", pre, start, p);
                 },
                 else => {},
             }
@@ -873,6 +861,8 @@ pub const BaseLexer = struct {
     }
 };
 
+/// The lexer the parser drives: the lang module's `Lexer` wrapper, if it
+/// declares one.
 pub const Lexer = if (@hasDecl(lang, "Lexer")) lang.Lexer else BaseLexer;
 
 // =============================================================================
@@ -1335,15 +1325,14 @@ pub const RepairClass = enum {
 /// e.g. MUMPS stores the dot level of a line there). The parser stores it in
 /// the token's `src.id` unless an `@as` keyword match supplies the id.
 fn takeLexerId(lexer: *Lexer) u16 {
-    if (comptime @hasField(Lexer, "aux")) {
-        const id = lexer.aux;
-        lexer.aux = 0;
-        return id;
-    } else if (comptime @hasField(Lexer, "base") and @hasField(@FieldType(Lexer, "base"), "aux")) {
-        const id = lexer.base.aux;
-        lexer.base.aux = 0;
-        return id;
-    } else return 0;
+    const base: *BaseLexer = if (Lexer == BaseLexer) lexer else &lexer.base;
+    defer base.aux = 0;
+    return base.aux;
+}
+
+comptime {
+    if (Lexer != BaseLexer and !(@hasField(Lexer, "base") and @FieldType(Lexer, "base") == BaseLexer))
+        @compileError("the lang module's Lexer wrapper must hold the generated lexer in a field `base: BaseLexer`");
 }
 
 pub const BaseParser = struct {

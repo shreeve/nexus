@@ -1,7 +1,7 @@
 //! Runtime template for generated parser modules.
 //!
 //! This is a real Zig file: it compiles on its own and its tests run with
-//! `zig build test-runtime`. codegen.zig embeds it and composes the output
+//! `zig build unit`. codegen.zig embeds it and composes the output
 //! module from its sections (see runtime.zig):
 //!
 //!   // @section NAME     starts a section; it runs to the next `// @end`.
@@ -12,7 +12,7 @@
 //! declarations the runtime refers to. None of it is emitted.
 //!
 //! Generated interface (codegen declares these in every module):
-//!   types      Tag, Role, Start, Token, TokenCat, Lexer
+//!   types      Tag, Role, Start, Token, TokenCat, BaseLexer, Lexer
 //!   config     nodeStore, elemEnds, keepTrailingNils, hasTrivia, hasRepair,
 //!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes
 //!   tables     ruleLhs, ruleLen, ruleValue, parseTable, xExcludeStart,
@@ -367,15 +367,14 @@ pub const RepairClass = enum {
 /// e.g. MUMPS stores the dot level of a line there). The parser stores it in
 /// the token's `src.id` unless an `@as` keyword match supplies the id.
 fn takeLexerId(lexer: *Lexer) u16 {
-    if (comptime @hasField(Lexer, "aux")) {
-        const id = lexer.aux;
-        lexer.aux = 0;
-        return id;
-    } else if (comptime @hasField(Lexer, "base") and @hasField(@FieldType(Lexer, "base"), "aux")) {
-        const id = lexer.base.aux;
-        lexer.base.aux = 0;
-        return id;
-    } else return 0;
+    const base: *BaseLexer = if (Lexer == BaseLexer) lexer else &lexer.base;
+    defer base.aux = 0;
+    return base.aux;
+}
+
+comptime {
+    if (Lexer != BaseLexer and !(@hasField(Lexer, "base") and @FieldType(Lexer, "base") == BaseLexer))
+        @compileError("the lang module's Lexer wrapper must hold the generated lexer in a field `base: BaseLexer`");
 }
 
 pub const BaseParser = struct {
@@ -1594,16 +1593,16 @@ const Start = enum(u16) { prog = 3 };
 const TokenCat = enum(u8) { ident, eq, plus, lparen, rparen, newline, comment, eof, err };
 const Token = struct { pos: u32, len: u16, cat: TokenCat, pre: u8 };
 
-const Lexer = struct {
+const BaseLexer = struct {
     source: []const u8,
     pos: u32 = 0,
     aux: u16 = 0,
 
-    fn init(source: []const u8) Lexer {
+    fn init(source: []const u8) BaseLexer {
         return .{ .source = source };
     }
 
-    fn next(self: *Lexer) Token {
+    fn next(self: *BaseLexer) Token {
         const start0 = self.pos;
         while (self.pos < self.source.len and self.source[self.pos] == ' ') self.pos += 1;
         const pre: u8 = @intCast(self.pos - start0);
@@ -1632,6 +1631,7 @@ const Lexer = struct {
         return .{ .pos = start, .len = @intCast(self.pos - start), .cat = cat, .pre = pre };
     }
 };
+const Lexer = BaseLexer;
 
 const nodeStore = true;
 const keepTrailingNils = true;

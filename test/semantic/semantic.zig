@@ -25,9 +25,6 @@ pub const Lexer = struct {
         }
         return tok;
     }
-    pub fn text(self: *const Lexer, tok: parser.Token) []const u8 {
-        return self.base.text(tok);
-    }
     pub fn reset(self: *Lexer) void {
         self.base.reset();
     }

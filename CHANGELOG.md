@@ -11,13 +11,34 @@ under "Migrating a lang module" below.
   actions produce, in first-seen order, then the `@tags` names (`@tags`
   works without `@schema`); it is exhaustive (`_` only when empty). A lang
   module's `Tag` is not read.
+- **One lexer contract.** Every module has `BaseLexer`, the generated
+  scanner, and `Lexer`, the lexer the parser drives (`BaseLexer` unless
+  the lang module declares a `Lexer` wrapper). The scanner is
+  `BaseLexer.next()`; `matchRules` and `BaseLexer.reset` are gone. A lang
+  `Lexer` wrapper holds the generated lexer as `base: BaseLexer` (any
+  other field is a compile error, where the parser silently lost `aux`)
+  and needs only `init(source)` and `next()`: the parser calls nothing
+  else.
+- `BaseLexer.makeToken(cat, pre, start, end)` builds a token the way the
+  scanner does: a match longer than 65535 bytes is an `err` token of that
+  length. Lang lexers that built tokens with `@intCast` panicked on such
+  input (MUMPS indents, Ruby symbols, nexis identifiers and strings).
 
 ### Migrating a lang module
 
-- **Every lang module**: delete the hand-written `Tag` enum (slash, zag,
-  nexis, nanoruby), and `pub const Tag = parser.Tag;` where nothing uses
-  it (em). A tag the generated enum lacks is one no action builds: list it
-  in `@tags` if the lang code needs it.
+- **Tag**: delete the hand-written `Tag` enum (slash, zag, nexis,
+  nanoruby; where other code names it, `pub const Tag = parser.Tag;`). A
+  tag the generated enum lacks is one no action builds: list it in
+  `@tags` if the lang code needs it.
+- **Lexer wrappers**: delete the wrapper's `text` and `reset` (all of rig,
+  em, nexis, slash, zag, nanoruby have them; nothing calls them), and
+  rename `base.matchRules()` to `base.next()` (rig, zag, nanoruby). Code
+  that read a token's text through the wrapper reads `base.text(tok)`.
+- **Hand-built tokens**: build every token whose length is computed with
+  `parser.BaseLexer.makeToken(cat, pre, start, end)` instead of
+  `.len = @intCast(end - start)` (rig's identifier probe, nanoruby's
+  symbols, `%w` arrays and string segments, slash's heredocs and UTF-8
+  extensions; nexis keeps its own long-token encoding through `aux`).
 
 ### Changed
 
