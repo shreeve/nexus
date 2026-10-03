@@ -109,7 +109,7 @@ fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u8) u16 {
 // core. This builds the canonical LR(1) collection directly (tiny grammars
 // only) and returns those unions.
 
-const Lr1 = struct { rule: u16, dot: u8, la: u16 };
+const Lr1 = struct { rule: u16, dot: u16, la: u16 };
 
 fn lr1Closure(a: Allocator, g: *const Grammar, la: lookahead.Lookaheads, seed: []const Lr1) ![]Lr1 {
     var items: std.ArrayList(Lr1) = .empty;

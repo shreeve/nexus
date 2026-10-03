@@ -203,6 +203,11 @@ pub const ParsedRule = struct {
 };
 
 pub const ParsedAlternative = struct {
+    /// Most positions an alternative may have (its elements, those of its
+    /// `[A B]` groups, and those inside its choices): positions are u16,
+    /// and expand reserves maxInt(u16) as a marker.
+    pub const maxPositions = std.math.maxInt(u16) - 1;
+
     elements: []const ParsedElement,
     actionTree: ?ActionTree = null,
     /// `~ "reason"`: exempt from the schema coverage gate.
@@ -539,7 +544,6 @@ pub const Grammar = struct {
     symbols: std.ArrayList(Symbol) = .empty,
     symbolMap: std.StringHashMapUnmanaged(u16) = .empty,
     aliases: std.StringHashMapUnmanaged([]const u8) = .empty,
-    nextSymbolId: u16 = 0,
 
     // Rules
     rules: std.ArrayList(Rule) = .empty,
@@ -583,12 +587,15 @@ pub const Grammar = struct {
         self.acceptRules.deinit(self.allocator);
     }
 
-    pub fn addSymbol(self: *Grammar, name: []const u8, kind: Symbol.Kind) !u16 {
+    /// Most symbols a grammar may have: ids are u16, and so is the count.
+    pub const maxSymbols = std.math.maxInt(u16);
+
+    /// The id of the symbol `name`, added with `kind` if it is new.
+    pub fn addSymbol(self: *Grammar, name: []const u8, kind: Symbol.Kind) error{ TooManySymbols, OutOfMemory }!u16 {
         if (self.symbolMap.get(name)) |id| return id;
+        if (self.symbols.items.len == maxSymbols) return error.TooManySymbols;
 
-        const id = self.nextSymbolId;
-        self.nextSymbolId += 1;
-
+        const id: u16 = @intCast(self.symbols.items.len);
         try self.symbols.append(self.allocator, Symbol.init(id, name, kind));
         try self.symbolMap.put(self.allocator, name, id);
 
@@ -613,3 +620,16 @@ pub const Grammar = struct {
         return false;
     }
 };
+
+test "a grammar has at most maxSymbols symbols" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var g = Grammar.init(a);
+    for (0..Grammar.maxSymbols) |i| {
+        const id = try g.addSymbol(try a.print("s{d}", .{i}), .terminal);
+        try std.testing.expectEqual(i, id);
+    }
+    try std.testing.expectEqual(0, try g.addSymbol("s0", .terminal));
+    try std.testing.expectError(error.TooManySymbols, g.addSymbol("one more", .terminal));
+}

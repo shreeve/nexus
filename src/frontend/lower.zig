@@ -934,6 +934,12 @@ pub const GrammarLowerer = struct {
         }
 
         const elems = try elements.toOwnedSlice(self.allocator);
+        var positions = logicalLength(elems);
+        for (elems) |e| if (e.kind == .choice) for (e.choices) |c| {
+            positions += c.len;
+        };
+        if (positions > ParsedAlternative.maxPositions)
+            return self.fail(items[2], "this alternative has {d} elements; the limit is {d}", .{ positions, ParsedAlternative.maxPositions });
         const actionTree: ?ActionTree = if (items[3] == .nil) null else try self.lowerAction(items[3], logicalLength(elems));
         const optOut = try self.optSrc(items[4], "opt-out reason");
         if (optOut) |o| if (stripQuotes(o).len == 0) return self.fail(items[4], "an opt-out needs a reason", .{});

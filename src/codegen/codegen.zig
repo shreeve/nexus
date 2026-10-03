@@ -219,10 +219,6 @@ const Codegen = struct {
         }
 
         for (self.g.rules.items) |rule| {
-            if (rule.rhs.len > 255) {
-                self.errLine(rule.line, null, "rule {s} has {d} elements; the limit is 255", .{ self.g.symbols.items[rule.lhs].name, rule.rhs.len });
-                return error.RuleTooLong;
-            }
             if (rule.sideLabels.len == 0) continue;
             if (self.schema() == null) {
                 self.errLine(rule.line, null, "side-band roles need @schema", .{});
@@ -849,14 +845,17 @@ const Codegen = struct {
         if (any) try w.writeAll("}\n");
     }
 
-    /// Per-rule lhs symbol and rhs length.
+    /// Per-rule lhs symbol and rhs length (u8 lengths unless some rule
+    /// is longer).
     fn emitRuleTables(self: *Codegen, w: *std.Io.Writer) !void {
         try w.writeAll("\nconst ruleLhs = [_]u16{ ");
+        var longest: usize = 0;
         for (self.g.rules.items, 0..) |rule, i| {
             if (i > 0) try w.writeAll(", ");
             try w.print("{d}", .{rule.lhs});
+            longest = @max(longest, rule.rhs.len);
         }
-        try w.writeAll(" };\nconst ruleLen = [_]u8{ ");
+        try w.print(" }};\nconst ruleLen = [_]{s}{{ ", .{if (longest > 255) "u16" else "u8"});
         for (self.g.rules.items, 0..) |rule, i| {
             if (i > 0) try w.writeAll(", ");
             try w.print("{d}", .{rule.rhs.len});

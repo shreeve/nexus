@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- A rule with more than 255 elements crashed the generator. Rules have no
+  length limit of their own; an alternative has at most 65534 elements
+  (counting those in its groups and choices), and a grammar at most 65535
+  symbols, both located errors.
+
 ## 1.1.0 — 2026-10-02
 
 ### Changed

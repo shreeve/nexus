@@ -2,9 +2,6 @@
 #
 # A rule may have more than 255 elements: `top` has 300, and its action
 # reaches past position 255. The rule-length table widens to u16 for it.
-#
-# Today: the LR(0) builder panics with an integer overflow (Item.dot is
-# a u8), before codegen's located 255-element check is reached.
 
 @lexer
 tokens

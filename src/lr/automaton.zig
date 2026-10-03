@@ -9,10 +9,10 @@ const Grammar = grammar.Grammar;
 /// LR Item: rule with dot position (A → α • β)
 pub const Item = struct {
     ruleId: u16,
-    dot: u8,
+    dot: u16,
 
     pub fn id(self: Item) u32 {
-        return (@as(u32, self.ruleId) << 8) | self.dot;
+        return (@as(u32, self.ruleId) << 16) | self.dot;
     }
 
     pub fn eql(a: Item, b: Item) bool {

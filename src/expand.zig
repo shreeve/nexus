@@ -42,10 +42,6 @@ pub const Error = error{ ExpandError, OutOfMemory };
 /// reduction by rule r as the i16 -(r + 2).
 pub const maxRules = 32766;
 
-/// Most grammar symbols before an alternative is expanded (symbol ids are
-/// u16, and one alternative adds at most a few thousand).
-const maxSymbols = 60000;
-
 /// What the semantic layer resolved for one source alternative (schema
 /// mode): the action with every role placed in its slot (positions may be
 /// internal positions of labeled choice elements), the side-band labels,
@@ -184,9 +180,9 @@ const Expander = struct {
     fn run(self: *Expander) Error!void {
         const g = self.g;
         const ir = self.ir;
-        g.acceptId = try g.addSymbol("$accept", .nonterminal);
-        g.endId = try g.addSymbol("$end", .terminal);
-        g.errorId = try g.addSymbol("error", .terminal);
+        g.acceptId = try self.addSymbol("$accept", .nonterminal);
+        g.endId = try self.addSymbol("$end", .terminal);
+        g.errorId = try self.addSymbol("error", .terminal);
 
         for (ir.rules) |rule| {
             if (self.isStart(rule.name) or self.blocks(rule.name) != 1) continue;
@@ -194,7 +190,9 @@ const Expander = struct {
         }
         for (ir.rules) |rule| {
             if (g.aliases.contains(rule.name)) continue;
-            _ = try g.addSymbol(rule.name, .nonterminal);
+            self.originLine = rule.line;
+            self.originCol = rule.col;
+            _ = try self.addSymbol(rule.name, .nonterminal);
         }
 
         for (ir.rules, 0..) |rule, ri| {
@@ -229,6 +227,19 @@ const Expander = struct {
         if (ir.infix) |infix| {
             if (infix.ops.len > 0) try self.generateInfixChain(infix);
         }
+    }
+
+    /// `Grammar.addSymbol`, with the symbol limit reported at the
+    /// alternative being expanded.
+    fn addSymbol(self: *Expander, name: []const u8, kind: Symbol.Kind) Error!u16 {
+        return self.addSymbolAt(name, kind, self.originLine, self.originCol);
+    }
+
+    fn addSymbolAt(self: *Expander, name: []const u8, kind: Symbol.Kind, line: u32, col: u32) Error!u16 {
+        return self.g.addSymbol(name, kind) catch |err| switch (err) {
+            error.TooManySymbols => self.fail(@max(1, line), @max(1, col), "the grammar has more than {d} symbols", .{Grammar.maxSymbols}),
+            error.OutOfMemory => error.OutOfMemory,
+        };
     }
 
     fn addRule(self: *Expander, rule: Rule) !u16 {
@@ -284,8 +295,11 @@ const Expander = struct {
         }
         for (ir.startSymbols) |startName| {
             const startId = g.getSymbol(startName) orelse continue;
-            const markerId = try g.addSymbol(try g.allocator.print("{s}!", .{startName}), .terminal);
-            const acceptId = try g.addSymbol(try g.allocator.print("$accept_{s}", .{startName}), .nonterminal);
+            const at = for (ir.rules) |r| {
+                if (std.mem.eql(u8, r.name, startName)) break r;
+            } else unreachable;
+            const markerId = try self.addSymbolAt(try g.allocator.print("{s}!", .{startName}), .terminal, at.line, at.col);
+            const acceptId = try self.addSymbolAt(try g.allocator.print("$accept_{s}", .{startName}), .nonterminal, at.line, at.col);
             const ruleId = try self.addRule(.{
                 .id = 0,
                 .lhs = acceptId,
@@ -307,10 +321,6 @@ const Expander = struct {
 
     fn expandAlternative(self: *Expander, lhsId: u16, alt: ParsedAlternative, resolved: ?Resolved) Error!void {
         const a = self.alloc();
-        // Symbol ids are u16; one alternative adds at most a few symbols per
-        // element (and at most 255 elements), so this keeps them in range.
-        if (self.g.symbols.items.len > maxSymbols)
-            return self.fail(alt.line, alt.col, "the grammar has more than {d} symbols", .{maxSymbols});
         try self.checkElements(alt);
         self.originLine = alt.line;
         self.originCol = alt.col;
@@ -644,15 +654,14 @@ const Expander = struct {
             .terminal
         else
             .nonterminal;
-        return g.addSymbol(resolved, kind);
+        return self.addSymbol(resolved, kind);
     }
 
     fn processBaseElement(self: *Expander, elem: ParsedElement) Error!u16 {
-        const g = self.g;
         return switch (elem.kind) {
             .ident => try self.nameSymbol(elem.value, false),
             .token => try self.nameSymbol(elem.value, true),
-            .string => try g.addSymbol(elem.value, .terminal),
+            .string => try self.addSymbol(elem.value, .terminal),
             .group => try self.groupRule(elem.subElements),
             .choice => try self.choiceRule(elem.choices),
             // Multi-element [A B] groups are expanded into alternatives, and
@@ -689,7 +698,7 @@ const Expander = struct {
         const rhs = try self.sequence(elements, &text);
         try text.append(g.allocator, ')');
         if (g.getSymbol(text.items)) |existing| return existing;
-        const id = try g.addSymbol(try text.toOwnedSlice(g.allocator), .nonterminal);
+        const id = try self.addSymbol(try text.toOwnedSlice(g.allocator), .nonterminal);
         _ = try self.addRule(.{ .id = 0, .lhs = id, .rhs = rhs, .actionTree = try groupAction(g.allocator, elements) });
         return id;
     }
@@ -707,7 +716,7 @@ const Expander = struct {
         }
         try text.append(g.allocator, ')');
         if (g.getSymbol(text.items)) |existing| return existing;
-        const id = try g.addSymbol(try text.toOwnedSlice(g.allocator), .nonterminal);
+        const id = try self.addSymbol(try text.toOwnedSlice(g.allocator), .nonterminal);
         for (choices, rhss) |choice, rhs| {
             _ = try self.addRule(.{ .id = 0, .lhs = id, .rhs = rhs, .actionTree = try groupAction(g.allocator, choice) });
         }
@@ -720,9 +729,9 @@ const Expander = struct {
         const effectiveItemId = if (optionalItems) try self.createOptionalRule(itemId) else itemId;
 
         const sepId = if (customSep) |sep|
-            (if (sep[0] == '"') try g.addSymbol(sep, .terminal) else try self.nameSymbol(sep, true))
+            (if (sep[0] == '"') try self.addSymbol(sep, .terminal) else try self.nameSymbol(sep, true))
         else
-            try g.addSymbol("\",\"", .terminal);
+            try self.addSymbol("\",\"", .terminal);
 
         // One rule set per (item, item optionality, separator), named in
         // source syntax: `L(X)`, `L(X?)`, `L(X, sep)`, and `L(X).tail` for
@@ -736,8 +745,8 @@ const Expander = struct {
         if (g.getSymbol(listName)) |existing| return existing;
         const tailName = try g.allocator.print("{s}.tail", .{listName});
 
-        const listId = try g.addSymbol(listName, .nonterminal);
-        const tailId = try g.addSymbol(tailName, .nonterminal);
+        const listId = try self.addSymbol(listName, .nonterminal);
+        const tailId = try self.addSymbol(tailName, .nonterminal);
 
         // L(X) → X L(X).tail → (!1 ...2)
         _ = try self.addRule(.{
@@ -767,7 +776,7 @@ const Expander = struct {
         const g = self.g;
         const name = try g.allocator.print("{s}?", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
-        const optId = try g.addSymbol(name, .nonterminal);
+        const optId = try self.addSymbol(name, .nonterminal);
         _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = try g.allocator.dupe(u16, &.{symId}) });
         _ = try self.addRule(.{ .id = 0, .lhs = optId, .rhs = &[_]u16{} });
         return optId;
@@ -777,7 +786,7 @@ const Expander = struct {
         const g = self.g;
         const name = try g.allocator.print("{s}*", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
-        const starId = try g.addSymbol(name, .nonterminal);
+        const starId = try self.addSymbol(name, .nonterminal);
         // X* → X X* → (!1 ...2)
         _ = try self.addRule(.{
             .id = 0,
@@ -795,7 +804,7 @@ const Expander = struct {
         const name = try g.allocator.print("{s}+", .{g.symbols.items[symId].name});
         if (g.getSymbol(name)) |existing| return existing;
         const starId = try self.createZeroPlusRule(symId);
-        const plusId = try g.addSymbol(name, .nonterminal);
+        const plusId = try self.addSymbol(name, .nonterminal);
         // X+ → X X* → (!1 ...2)
         _ = try self.addRule(.{
             .id = 0,
@@ -808,7 +817,7 @@ const Expander = struct {
 
     fn generateInfixChain(self: *Expander, infix: InfixDecl) Error!void {
         const g = self.g;
-        const baseId = g.getSymbol(infix.baseRule) orelse try g.addSymbol(infix.baseRule, .nonterminal);
+        const baseId = g.getSymbol(infix.baseRule) orelse try self.addSymbolAt(infix.baseRule, .nonterminal, infix.line, infix.col);
 
         // Precedence levels, ascending (level 1 binds loosest).
         var levels: std.ArrayList(u32) = .empty;
@@ -830,7 +839,7 @@ const Expander = struct {
                 try name.print(g.allocator, "\"{s}\"", .{op.op});
             }
             try name.append(g.allocator, ')');
-            try levelIds.append(g.allocator, try g.addSymbol(try name.toOwnedSlice(g.allocator), .nonterminal));
+            try levelIds.append(g.allocator, try self.addSymbolAt(try name.toOwnedSlice(g.allocator), .nonterminal, infix.line, infix.col));
         }
 
         for (levels.items, 0..) |level, i| {
@@ -839,7 +848,7 @@ const Expander = struct {
             for (infix.ops, 0..) |op, opIndex| {
                 if (op.prec != level) continue;
                 const opStr = try g.allocator.print("\"{s}\"", .{op.op});
-                const opId = try g.addSymbol(opStr, .terminal);
+                const opId = try self.addSymbolAt(opStr, .terminal, infix.line, infix.col);
                 const rhs: [3]u16 = switch (op.assoc) {
                     .left => .{ thisId, opId, nextId },
                     .right => .{ nextId, opId, thisId },
@@ -868,7 +877,7 @@ const Expander = struct {
         }
 
         // `infix` → the loosest level
-        const infixId = try g.addSymbol("infix", .nonterminal);
+        const infixId = try self.addSymbolAt("infix", .nonterminal, infix.line, infix.col);
         _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{levelIds.items[0]}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
     }
 };

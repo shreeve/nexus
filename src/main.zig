@@ -29,6 +29,7 @@ const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
     _ = @import("diag.zig");
+    _ = @import("grammar.zig");
     _ = @import("frontend/lower.zig");
     _ = @import("semantics.zig");
     _ = @import("lexgen/lexgen.zig");
