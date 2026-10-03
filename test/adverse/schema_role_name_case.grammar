@@ -1,0 +1,16 @@
+# Role names start with a lowercase letter.
+# error: schema_role_name_case.grammar:14:7:
+# error: role names start with a lowercase letter: '_a'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k _a
+
+s = IDENT → (k 1)

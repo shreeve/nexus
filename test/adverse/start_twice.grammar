@@ -1,0 +1,14 @@
+# A start symbol is declared once.
+# error: start_twice.grammar:14:1:
+# error: start symbol 's' is declared twice
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s! = IDENT
+s! = IDENT IDENT

@@ -1,0 +1,16 @@
+# A conflict count that does not fit is rejected.
+# error: conflict_count_too_large.grammar:14:25:
+# error: conflict count '99999999999'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@conflicts
+    shift  s → IDENT  99999999999  # why
+
+s = IDENT

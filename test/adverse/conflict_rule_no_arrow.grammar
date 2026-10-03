@@ -1,0 +1,16 @@
+# A conflict entry names its rule as `lhs → rhs`.
+# error: conflict_rule_no_arrow.grammar:14:12:
+# error: a conflict entry names a rule as `lhs → rhs`, not 's'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@conflicts
+    shift  s  1  # why
+
+s = IDENT

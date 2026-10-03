@@ -11,10 +11,10 @@
 # section; see its header for the token stream this grammar reads.
 #
 # The tree the frontend builds is declared by the @schema block below: one
-# kind per line with its roles in slot order. It is the contract with
-# lower.zig, which accepts exactly those shapes (every list has all of its
-# slots; `_` where an optional role is absent) and reports anything else as
-# a hard error with a source position.
+# kind per line with its roles in slot order (`_` where an optional role is
+# absent). Generating parser.zig proves every node has that shape, and
+# lower.zig reads the tree through the generated `ir` accessors, so a
+# change here that lower.zig does not follow is a compile error.
 
 @lexer
 
@@ -153,7 +153,7 @@ tokens
 # ===========================================================================
 
 @schema
-    grammar          ...entries
+    grammar          ...entries:section|state|after|tokens|code|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|rule
 
     # Section markers: `@lexer`, `@parser`
     section          name:leaf
@@ -206,20 +206,20 @@ tokens
     plain, opt_items_nosep     item:leaf
     sep_items, opt_items       item:leaf sep:leaf
     group                      kind:tag(many|opt)? ...bodies:group
-    quantified, skip_q         element quant:opt|zero_plus|one_plus
-    skip                       element
+    quantified, skip_q         element:ref|tok|lit|list_req|at_ref|"group" quant:opt|zero_plus|one_plus
+    skip                       element:ref|tok|lit|list_req|at_ref|"group"
     exclude                    char:leaf
-    label                      name:leaf element
+    label                      name:leaf element:ref|tok|lit|list_req|at_ref|"group"|quantified
     opt, zero_plus, one_plus
 
     # Actions
     pos, spread, symid         n:leaf
     null
     tag                        word:leaf
-    named                      role:leaf value
-    node                       head:leaf ...items
-    list                       ...items
-    keep                       n:leaf ...items
+    named                      role:leaf value:pos|spread|symid|null|"tag"|"node"|list|keep
+    node                       head:leaf ...items:named|pos|spread|symid|null|"tag"|"node"|list|keep
+    list                       ...items:named|pos|spread|symid|null|"tag"|"node"|list|keep
+    keep                       n:leaf ...items:named|pos|spread|symid|null|"tag"|"node"|list|keep
 
 # ===========================================================================
 # Top level: entries separated by line breaks

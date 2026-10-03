@@ -1,0 +1,13 @@
+# A tag has no quote or control character (it is written into Zig source).
+# error: tag_quote.grammar:13:16:
+# error: tag 'a"b' contains a quote or control character
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT → (a"b 1)

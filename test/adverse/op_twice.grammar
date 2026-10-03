@@ -1,0 +1,15 @@
+# @op maps each literal once.
+# error: op_twice.grammar:13:25:
+# error: @op maps "+" twice
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@op = ["+" → "ident", "+" → "ident"]
+
+s = IDENT

@@ -1,0 +1,13 @@
+# Positions are numbers of elements.
+# error: position_too_large.grammar:13:15:
+# error: position 70000 is too large
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT → 70000

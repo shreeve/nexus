@@ -1,0 +1,13 @@
+# A quantified element in [...] is ambiguous.
+# error: opt_quantified_label.grammar:13:12:
+# error: [X?] and similar are ambiguous; write [X] or X?
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT [x:IDENT?]

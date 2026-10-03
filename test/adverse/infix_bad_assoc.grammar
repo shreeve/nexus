@@ -1,0 +1,17 @@
+# An @infix operator is left, right or none.
+# error: infix_bad_assoc.grammar:14:9:
+# error: associativity must be left, right or none, not 'leftward'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@infix atom
+    "+" leftward
+
+s = atom
+atom = IDENT

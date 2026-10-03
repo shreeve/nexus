@@ -1,0 +1,13 @@
+# `skip` and `hold` take no argument.
+# error: lexer_skip_argument.grammar:10:24:
+# error: `skip` takes no argument
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident, skip(1)
+. → err
+@parser
+s = IDENT

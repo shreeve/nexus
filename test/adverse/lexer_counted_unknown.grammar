@@ -1,0 +1,15 @@
+# The only function in a state assignment is counted('c').
+# error: lexer_counted_unknown.grammar:12:24:
+# error: unknown function 'count' in the action (expected counted('c'))
+@lexer
+state
+    d = 0
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident, {d = count('x')}
+. → err
+@parser
+s = IDENT
