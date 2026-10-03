@@ -1,0 +1,16 @@
+# A capitalized terminal that no token declares is undefined, even when a
+# rule has its name in lower case (only @as promotes words to terminals).
+# error: undefined_token_like_rule.grammar:15:5:
+# error: undefined token 'EXPR'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = expr
+  | EXPR IDENT → 2
+expr = IDENT IDENT → 1

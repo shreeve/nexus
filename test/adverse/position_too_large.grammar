@@ -1,0 +1,13 @@
+# A position names an element of the pattern, however large the number.
+# error: position_too_large.grammar:13:15:
+# error: position 70000 is past the end of the pattern (1 element)
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT → 70000

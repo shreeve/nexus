@@ -1,0 +1,13 @@
+# rewind takes its byte count in parentheses.
+# error: lexer_rewind_no_count.grammar:10:19:
+# error: rewind takes a byte count, as in rewind(1)
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident, rewind
+. → err
+@parser
+s = IDENT

@@ -1,0 +1,13 @@
+# Roles in an action start with a lowercase letter.
+# error: action_role_case.grammar:13:18:
+# error: role names start with a lowercase letter: 'Name'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT → (k Name:1)

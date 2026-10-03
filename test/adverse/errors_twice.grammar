@@ -1,0 +1,17 @@
+# @errors names each rule once.
+# error: errors_twice.grammar:15:5:
+# error: @errors names 's' twice
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@errors
+    s: "a statement"
+    s: "a sentence"
+
+s = IDENT

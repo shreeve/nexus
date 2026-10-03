@@ -1,6 +1,6 @@
 # One token named twice in @display.
 # error: display_twice.grammar:16:22:
-# error: @display names IDENT twice
+# error: @display names 'IDENT' twice
 @lexer
 tokens
     ident

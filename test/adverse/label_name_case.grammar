@@ -1,0 +1,13 @@
+# A label is a role name (lowercase) or `_`.
+# error: label_name_case.grammar:13:5:
+# error: labels are role names (lowercase) or `_`: 'Name'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = Name:IDENT

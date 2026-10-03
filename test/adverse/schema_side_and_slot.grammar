@@ -1,0 +1,16 @@
+# A role is a slot role or a side-band role, not both.
+# error: schema_side_and_slot.grammar:14:11:
+# error: 'a' is both a slot role and a side-band role
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k a | a
+
+s = IDENT → (k 1)

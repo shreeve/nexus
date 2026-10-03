@@ -1,0 +1,15 @@
+# `self` has no lookup function.
+# error: as_self_via.grammar:13:27:
+# error: `self` has no lookup function
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@as IDENT = [kw, self via look]
+
+s = IDENT

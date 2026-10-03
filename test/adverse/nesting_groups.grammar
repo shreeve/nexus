@@ -1,0 +1,14 @@
+# Groups nest at most 64 levels deep (the tree, and every stage after
+# the parser, follows the nesting).
+# error: nesting_groups.grammar:14:69:
+# error: nested too deeply: at most 64 levels of ( ) and [ ]
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = (((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((IDENT)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))

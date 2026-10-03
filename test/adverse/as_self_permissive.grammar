@@ -1,0 +1,15 @@
+# `self` is a checkpoint in an @as list, not a group: it takes no `!`.
+# error: as_self_permissive.grammar:13:18:
+# error: `self!` is not allowed: `self` is a checkpoint, not a group
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@as IDENT = [kw, self!]
+
+s = IDENT

@@ -1,0 +1,14 @@
+# A [A | B] choice with an alternative that can match nothing is
+# ambiguous.
+# error: opt_choice_empty.grammar:14:12:
+# error: [X?] and similar are ambiguous: the body of [...] can match nothing; write [X] or X?
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT [IDENT | (IDENT IDENT)?]

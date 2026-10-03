@@ -1,0 +1,16 @@
+# A `reduce` entry names the rule it keeps `over` the one it drops.
+# error: conflict_reduce_no_over.grammar:14:5:
+# error: a `reduce` entry names the winning rule `over` the losing one
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@conflicts
+    reduce  s → IDENT  1  # why
+
+s = IDENT

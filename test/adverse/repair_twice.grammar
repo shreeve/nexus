@@ -1,0 +1,18 @@
+# A grammar has one @repair block.
+# error: repair_twice.grammar:16:5:
+# error: duplicate @repair
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@repair
+    holes IDENT
+@repair
+    holes IDENT
+
+s = IDENT

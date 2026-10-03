@@ -1,0 +1,13 @@
+# An `X "c"` hint names one byte; `""` names none.
+# error: hint_empty.grammar:13:13:
+# error: X "c": the hint takes one byte, not ""
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT X """ x"

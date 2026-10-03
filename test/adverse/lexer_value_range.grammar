@@ -1,6 +1,6 @@
 # State values fit an i8.
 # error: lexer_value_range.grammar:10:23:
-# error: does not fit a state variable
+# error: value 300 for 'mode' is out of range (-128..127)
 @lexer
 state
     mode = 0

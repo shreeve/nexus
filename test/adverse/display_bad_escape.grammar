@@ -1,0 +1,16 @@
+# An @display name takes the escapes a pattern takes.
+# error: display_bad_escape.grammar:14:15:
+# error: unknown escape sequence (the escapes are
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@display
+    IDENT: "a \qname"
+
+s = IDENT

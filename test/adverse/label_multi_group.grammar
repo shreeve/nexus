@@ -1,0 +1,13 @@
+# A label names one element; a multi-element [...] group labels its elements.
+# error: label_multi_group.grammar:13:11:
+# error: label 'x' on a multi-element [...] group; label its elements
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT x:[IDENT IDENT]

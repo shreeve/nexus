@@ -1,7 +1,7 @@
-# Action nodes nested deeper than the limit are an error at the
-# alternative, not a stack overflow.
-# error: action_too_deep.grammar:24:8:
-# error: action nodes nested too deeply (the limit is 64)
+# Action nodes nested deeper than the limit are a located error, not a
+# stack overflow (the frontend counts the parentheses).
+# error: action_too_deep.grammar:24:241:
+# error: nested too deeply: at most 64 levels of ( ) and [ ]
 @lexer
 tokens
     ident

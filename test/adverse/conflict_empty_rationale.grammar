@@ -1,0 +1,16 @@
+# A conflict rationale says something.
+# error: conflict_empty_rationale.grammar:14:28:
+# error: conflict rationale is empty
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@conflicts
+    shift  s → IDENT  1  #
+
+s = IDENT

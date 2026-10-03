@@ -1,0 +1,14 @@
+# A grammar file has one @parser section.
+# error: section_parser_twice.grammar:14:2:
+# error: duplicate @parser section
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT
+@parser

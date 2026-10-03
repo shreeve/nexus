@@ -1,0 +1,13 @@
+# `[X ...]` lists one rule or token.
+# error: many_two_elements.grammar:13:6:
+# error: `[X ...]` takes a single rule or token name
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = [IDENT IDENT ...]

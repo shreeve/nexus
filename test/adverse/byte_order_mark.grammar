@@ -1,0 +1,13 @@
+﻿# A UTF-8 byte order mark at the start of the file is named as such.
+# error: byte_order_mark.grammar:1:1:
+# error: the file starts with a UTF-8 byte order mark; save it without one
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT

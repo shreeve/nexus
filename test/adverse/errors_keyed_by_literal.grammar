@@ -1,0 +1,16 @@
+# @errors names rules; tokens and literals are named in @display.
+# error: errors_keyed_by_literal.grammar:14:5:
+# error: @errors names rules (`rule: "name"`); name tokens in @display
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@errors
+    "x": "an x"
+
+s = IDENT

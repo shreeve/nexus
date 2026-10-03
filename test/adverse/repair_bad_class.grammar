@@ -1,0 +1,16 @@
+# @repair lines are holes, structure or terminator lines.
+# error: repair_bad_class.grammar:14:5:
+# error: @repair lines are `holes ...`, `structure ...` or `terminator ...`, not 'hole'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@repair
+    hole IDENT
+
+s = IDENT

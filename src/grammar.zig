@@ -77,40 +77,19 @@ pub const LexerRule = struct {
     col: u32 = 0,
 };
 
-/// Complete lexer specification
+/// Complete lexer specification. Like every generator structure, it lives
+/// in the run's arena and is never freed on its own.
 pub const LexerSpec = struct {
-    allocator: Allocator,
-    states: std.ArrayList(StateVar),
-    tokens: std.ArrayList(TokenDef),
-    rules: std.ArrayList(LexerRule),
-    codeFunctions: std.ArrayList([]const u8),
+    states: std.ArrayList(StateVar) = .empty,
+    tokens: std.ArrayList(TokenDef) = .empty,
+    rules: std.ArrayList(LexerRule) = .empty,
+    codeFunctions: std.ArrayList([]const u8) = .empty,
+    /// `@lang`: the module the generated lexer imports.
     langName: ?[]const u8 = null,
     /// `after` block: assignments applied whenever a token consumes input.
     afterActions: std.ArrayList(Action) = .empty,
     /// Grammar file name, for diagnostics.
     fileName: []const u8 = "",
-
-    pub fn init(allocator: Allocator) LexerSpec {
-        return .{
-            .allocator = allocator,
-            .states = .empty,
-            .tokens = .empty,
-            .rules = .empty,
-            .codeFunctions = .empty,
-        };
-    }
-
-    pub fn deinit(self: *LexerSpec) void {
-        for (self.rules.items) |rule| {
-            self.allocator.free(rule.guards);
-            self.allocator.free(rule.actions);
-        }
-        self.states.deinit(self.allocator);
-        self.tokens.deinit(self.allocator);
-        self.rules.deinit(self.allocator);
-        self.codeFunctions.deinit(self.allocator);
-        self.afterActions.deinit(self.allocator);
-    }
 };
 
 // =============================================================================
@@ -124,39 +103,63 @@ pub fn findTokenForChar(spec: *const LexerSpec, ch: u8) ?[]const u8 {
 }
 
 /// The token of the rule whose pattern is exactly the literal `text`: the
-/// first unguarded such rule, else the first guarded one. `text` may carry
-/// the parser section's backslash escapes. Rules whose token is not the
-/// matched text (hold, rewind, trailing context, skip) never qualify.
+/// first unguarded such rule, else the first guarded one. `text` is the
+/// body of a string literal, escapes undecoded. Rules whose token is not
+/// the matched text (hold, rewind, trailing context, skip) never qualify.
 pub fn findTokenForLiteral(spec: *const LexerSpec, text: []const u8) ?[]const u8 {
-    var buf: [256]u8 = undefined;
-    var n: usize = 0;
-    var i: usize = 0;
-    while (i < text.len) : (i += 1) {
-        if (n == buf.len) return null;
-        var c = text[i];
-        if (c == '\\' and i + 1 < text.len) {
-            i += 1;
-            c = switch (text[i]) {
-                'n' => '\n',
-                'r' => '\r',
-                't' => '\t',
-                '0' => 0,
-                else => text[i],
-            };
-        }
-        buf[n] = c;
-        n += 1;
-    }
-    const lit = buf[0..n];
     var guarded: ?[]const u8 = null;
     for (spec.rules.items) |rule| {
         const rl = rule.literal orelse continue;
         if (rule.isSkip or rule.hold or rule.rewind != null) continue;
-        if (!std.mem.eql(u8, rl, lit)) continue;
+        if (!decodesTo(text, rl)) continue;
         if (rule.guards.len == 0) return rule.token;
         if (guarded == null) guarded = rule.token;
     }
     return guarded;
+}
+
+/// One backslash escape of a grammar-file string, the same in patterns
+/// and in parser literals: `\n \r \t \0 \\ \' \"` and `\xHH`.
+pub const Escape = struct { byte: u8, len: usize };
+
+/// The escape that starts with the backslash at `s[i]`, or null when it is
+/// none of the above (or a `\x` without two hex digits).
+pub fn escapeAt(s: []const u8, i: usize) ?Escape {
+    if (i + 1 >= s.len) return null;
+    const byte: u8 = switch (s[i + 1]) {
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        '0' => 0,
+        '\\', '\'', '"' => s[i + 1],
+        'x' => {
+            if (i + 4 > s.len) return null;
+            const v = std.fmt.parseInt(u8, s[i + 2 ..][0..2], 16) catch return null;
+            return .{ .byte = v, .len = 4 };
+        },
+        else => return null,
+    };
+    return .{ .byte = byte, .len = 2 };
+}
+
+/// Whether the string body `text`, its escapes decoded, is `bytes`.
+fn decodesTo(text: []const u8, bytes: []const u8) bool {
+    var i: usize = 0;
+    var n: usize = 0;
+    while (i < text.len) : (n += 1) {
+        const e = (if (text[i] == '\\') escapeAt(text, i) else null) orelse Escape{ .byte = text[i], .len = 1 };
+        if (n == bytes.len or bytes[n] != e.byte) return false;
+        i += e.len;
+    }
+    return n == bytes.len;
+}
+
+test "a literal names a lexer literal through its escapes" {
+    try std.testing.expect(decodesTo("a\\n\\x41\\\"", "a\nA\""));
+    try std.testing.expect(!decodesTo("ab", "abc"));
+    try std.testing.expect(!decodesTo("abc", "ab"));
+    try std.testing.expect(escapeAt("\\q", 0) == null);
+    try std.testing.expect(escapeAt("\\x4", 0) == null);
 }
 
 // =============================================================================
@@ -186,9 +189,6 @@ pub const GrammarIR = struct {
     repair: ?RepairSpec = null,
     /// The @lexer section; null when the file has none.
     lexer: ?LexerSpec = null,
-    /// Whether the file has a @parser section (text without section
-    /// markers is @parser-section text).
-    hasParser: bool = true,
 };
 
 pub const ParsedRule = struct {
@@ -499,10 +499,6 @@ pub const Symbol = struct {
     pub fn init(id: u16, name: []const u8, kind: Kind) Symbol {
         return .{ .id = id, .name = name, .kind = kind };
     }
-
-    pub fn deinit(self: *Symbol, allocator: Allocator) void {
-        self.rules.deinit(allocator);
-    }
 };
 
 /// Production rule: lhs → rhs with optional action
@@ -533,7 +529,8 @@ pub const Rule = struct {
 };
 
 /// The desugared grammar: symbols, BNF rules, start/accept bookkeeping, and
-/// the directives later stages need. Built from a GrammarIR by expand.zig.
+/// the directives later stages need. Built from a GrammarIR by expand.zig,
+/// in the run's arena (`allocator`).
 pub const Grammar = struct {
     allocator: Allocator,
 
@@ -567,21 +564,6 @@ pub const Grammar = struct {
 
     pub fn init(allocator: Allocator) Grammar {
         return .{ .allocator = allocator };
-    }
-
-    pub fn deinit(self: *Grammar) void {
-        for (self.symbols.items) |*sym| sym.deinit(self.allocator);
-        self.symbols.deinit(self.allocator);
-        self.symbolMap.deinit(self.allocator);
-        self.aliases.deinit(self.allocator);
-
-        for (self.rules.items) |*rule| {
-            self.allocator.free(rule.rhs);
-        }
-        self.rules.deinit(self.allocator);
-
-        self.startSymbols.deinit(self.allocator);
-        self.acceptRules.deinit(self.allocator);
     }
 
     /// Most symbols a grammar may have: ids are u16, and so is the count.

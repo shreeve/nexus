@@ -1,0 +1,16 @@
+# A kind declares each role once.
+# error: schema_role_twice.grammar:14:11:
+# error: role 'a' is declared twice
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k a b a
+
+s = IDENT → (k 1)

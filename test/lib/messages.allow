@@ -3,7 +3,6 @@
 # FORMAT as written between the quotes in FILE. Adding the test that
 # prints a message means deleting its line here; tools/messages fails on
 # an entry whose message a test prints or that FILE does not have.
-src/check.zig	unreachable rule '{s}'	untested: the check-mode lint warning; needs a test
 src/codegen/codegen.zig	tag '{s}' is produced by an action but not declared in @schema or @tags	untested: needs an adverse test
 src/codegen/codegen.zig	side-band roles need @schema	untested: needs an adverse test
 src/codegen/codegen.zig	side-band role '{s}' is not declared in @schema	untested: needs an adverse test
@@ -12,49 +11,9 @@ src/codegen/codegen.zig	@as promotes '{s}' and '{s}'; one grammar promotes one t
 src/codegen/codegen.zig	the grammar has @repair but no repair table was computed	internal invariant: lr.run computes the repair table whenever the grammar has @repair
 src/codegen/codegen.zig	{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)	untested: needs an adverse test
 src/expand.zig	the grammar has more than {d} symbols	untested: a size limit; needs a generated adverse grammar
-src/frontend/lower.zig	{s} '{s}' is not a number	untested: needs an adverse test
-src/frontend/lower.zig	lexer rules and blocks belong in the @lexer section	untested: needs an adverse test
-src/frontend/lower.zig	duplicate @parser section	untested: needs an adverse test
-src/frontend/lower.zig	a rule needs a pattern or a guard	untested: needs an adverse test
-src/frontend/lower.zig	guard value {s} is out of range	untested: needs an adverse test
-src/frontend/lower.zig	unknown function '{s}' in the action (expected counted('c'))	untested: needs an adverse test
-src/frontend/lower.zig	`{s}` takes no argument	untested: needs an adverse test
-src/frontend/lower.zig	rewind takes a byte count, as in rewind(1)	untested: needs an adverse test
-src/frontend/lower.zig	rewind({s}) is out of range	untested: needs an adverse test
-src/frontend/lower.zig	conflict kind must be `shift` or `reduce`, not '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	a `reduce` entry names the winning rule `over` the losing one	untested: needs an adverse test
-src/frontend/lower.zig	conflict rationale is empty	untested: needs an adverse test
-src/frontend/lower.zig	a conflict entry names a rule as `lhs → rhs`, not '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	`self!` is not allowed: `self` is a checkpoint, not a group	untested: needs an adverse test
-src/frontend/lower.zig	`self` has no lookup function	untested: needs an adverse test
-src/frontend/lower.zig	@op maps \"{s}\" twice	untested: needs an adverse test
-src/frontend/lower.zig	@errors names rules (`rule: \"name\"`); name tokens in @display	untested: needs an adverse test
-src/frontend/lower.zig	@errors names '{s}' twice	untested: needs an adverse test
-src/frontend/lower.zig	@display names tokens (`TOKEN: \"name\"` or `\"lit\": \"name\"`); name rules in @errors	untested: needs an adverse test
-src/frontend/lower.zig	duplicate @infix	untested: needs an adverse test
-src/frontend/lower.zig	associativity must be left, right or none, not '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	duplicate role '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	'{s}' is both a slot role and a side-band role	untested: needs an adverse test
-src/frontend/lower.zig	duplicate side-band role '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	empty kind name	untested: needs an adverse test
-src/frontend/lower.zig	kind '{s}' is declared twice	untested: needs an adverse test
-src/frontend/lower.zig	role names start with a lowercase letter: '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	only `tag(...)` takes a value list, not '{s}(...)'	untested: needs an adverse test
-src/frontend/lower.zig	`tag(...)` cannot be combined with other types	untested: needs an adverse test
-src/frontend/lower.zig	`{s}` cannot be combined with other types in a union	untested: needs an adverse test
-src/frontend/lower.zig	duplicate @repair	untested: needs an adverse test
-src/frontend/lower.zig	@repair lines are `holes ...`, `structure ...` or `terminator ...`, not '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	start symbol '{s}' is declared twice	untested: needs an adverse test
-src/frontend/lower.zig	X \"c\": the hint takes one character, not \"{s}\"	untested: needs an adverse test
-src/frontend/lower.zig	labels are role names (lowercase) or `_`: '{s}'	untested: needs an adverse test
-src/frontend/lower.zig	label '{s}' needs a plain element	untested: needs an adverse test
-src/frontend/lower.zig	label '{s}' on a multi-element [...] group; label its elements	untested: needs an adverse test
-src/frontend/lower.zig	`[X ...]` takes a single rule or token name	untested: needs an adverse test
-src/frontend/lower.zig	[X?] and similar are ambiguous; write [X] or X?	untested: needs an adverse test
-src/frontend/lower.zig	an element takes one quantifier	untested: needs an adverse test
-src/frontend/lower.zig	position {s} is too large	untested: needs an adverse test
-src/frontend/lower.zig	tag '{s}' contains a quote or control character	untested: needs an adverse test
 src/main.zig	failed to parse {s}: {any}	internal: a frontend failure other than a syntax error (out of memory)
 src/main.zig	out of memory	internal: out of memory
-src/main.zig	lexer generation failed: {any}	internal: a lexer generator failure other than a reported error (out of memory)
 src/main.zig	cannot read {s}: larger than {d} bytes	untested: a size limit; needs a generated adverse grammar
+src/expand.zig	groups and choices nested too deeply (the limit is {d})	internal: the frontend scanner rejects deeper ( ) and [ ] first (lang.zig maxNesting); kept as a backstop
+src/expand.zig	action nodes nested too deeply (the limit is {d})	internal: the frontend scanner rejects deeper ( ) first (lang.zig maxNesting); kept as a backstop
+src/main.zig	lexer generation failed: {s}	internal: an error other than a reported one (out of memory)

@@ -1,0 +1,17 @@
+# A kind is declared once.
+# error: schema_kind_twice.grammar:15:5:
+# error: kind 'k' is declared twice
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k a
+    k b
+
+s = IDENT → (k 1)

@@ -1,0 +1,13 @@
+# Positions start at 1.
+# error: position_zero.grammar:13:15:
+# error: positions start at 1; 0 is not an element
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT → 0

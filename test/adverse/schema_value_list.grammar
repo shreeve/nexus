@@ -1,0 +1,16 @@
+# Only `tag(...)` takes a value list.
+# error: schema_value_list.grammar:14:9:
+# error: only `tag(...)` takes a value list, not 'kind(...)'
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k a:kind(x | y)
+
+s = IDENT → (k 1)

@@ -1,0 +1,16 @@
+# `tag(...)` is a type of its own.
+# error: schema_tagset_union.grammar:14:11:
+# error: `tag(...)` cannot be combined with other types
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@schema
+    k a:j|tag(x)
+
+s = IDENT → (k 1)

@@ -303,7 +303,13 @@ const PatternChecker = struct {
     }
 
     fn nested(self: PatternChecker, e: ParsedElement, addressable: bool, depth: usize) Error!void {
-        if (depth > maxDepth) return self.fail(e.line, e.col, "groups and choices nested too deeply (the limit is {d})", .{maxDepth});
+        // A level is a group or choice; the leaf inside the deepest one
+        // adds none (the frontend counts brackets the same way).
+        const level = switch (e.kind) {
+            .group, .optGroup, .choice => true,
+            else => false,
+        };
+        if (level and depth > maxDepth) return self.fail(e.line, e.col, "groups and choices nested too deeply (the limit is {d})", .{maxDepth});
         if (e.kind == .optGroup) return self.fail(e.line, e.col, "a multi-element [...] group inside a group or choice is not supported; move it into a named rule", .{});
         try self.label(e, addressable);
         try self.children(e, false, depth + 1);

@@ -421,6 +421,17 @@ check_cli() {
     grep -q "pub const nodeStore = true" "$dir/out.zig" || { REASON="--spans did not turn on the node store"; return 1; }
     expect 0 "Lexer: 6 tokens, 5 rules, 6 DFA states" no_lang.grammar out.zig || return 1
     expect 0 "(section \`lexer\`)" --dump-sexp no_lang.grammar || return 1
+    expect 2 "--dump-sexp and check are separate commands" check --dump-sexp no_lang.grammar || return 1
+    expect 2 "--spans has no effect on --dump-sexp" --dump-sexp --spans no_lang.grammar || return 1
+    expect 0 "Generated: /dev/null" no_lang.grammar /dev/null || return 1
+    out=$(cd "$dir" && "$NEXUS" --help 2>&1 >&-)
+    rc=$?
+    echo "\$ nexus --help >&- → $rc" >>"$LOG"
+    echo "$out" >>"$LOG"
+    if [[ $rc -ne 1 ]] || ! grep -qF "cannot write standard output" <<<"$out" || grep -qE "$PANIC_RE|\.zig:[0-9]+:[0-9]+: 0x" <<<"$out"; then
+        REASON="nexus --help with stdout closed: exit $rc, expected 1 with \"cannot write standard output\" and no trace"
+        return 1
+    fi
     return 0
 }
 

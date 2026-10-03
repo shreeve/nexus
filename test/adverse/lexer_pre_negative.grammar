@@ -1,0 +1,13 @@
+# `pre` counts blanks: it is never negative.
+# error: lexer_pre_negative.grammar:10:26:
+# error: value -1 for 'pre' is out of range (0..255)
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident, {pre = -1}
+. → err
+@parser
+s = IDENT
