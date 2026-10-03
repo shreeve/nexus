@@ -7,13 +7,17 @@
 #   test/lib/build-grammar NEXUS GRAMMAR OUTDIR [-O mode] [LANGFILE...]
 #
 # OUTDIR receives parser.zig, the lang files, driver.zig, the `driver`
-# binary, gen.log (generator output) and compile.log. Exit status:
+# binary, gen.log (generator output) and compile.log; everything else in it
+# is removed first, so a lang file deleted from a suite is never compiled
+# from an earlier run's copy. Exit status:
 #   0 built   10 generation failed   11 compile failed   2 usage
 #
 # The generator runs in the grammar's directory (as `nexus g.grammar out`),
 # like the golden checks do, with $NEXUS_FLAGS (if set) as extra options.
-# Generation fails if the generator exits
-# non-zero, crashes, or writes no parser.
+# Generation fails if the generator exits non-zero, crashes, or writes no
+# parser. The compile is skipped when its inputs (every .zig file in
+# OUTDIR, the mode and the compiler) are byte for byte those of the
+# previous successful compile, recorded in OUTDIR/.inputs.
 
 set -uo pipefail
 
@@ -30,7 +34,7 @@ CACHE=${NEXUS_TEST_ZIG_CACHE:-$ROOT/.zig-cache/nexus-test/zig}
 case $NEXUS in /*) ;; *) NEXUS="$(pwd)/$NEXUS" ;; esac
 mkdir -p "$OUT" "$CACHE"
 OUT=$(cd "$OUT" && pwd)
-rm -f "$OUT/parser.zig" "$OUT/driver"
+find "$OUT" -mindepth 1 -maxdepth 1 ! -name driver ! -name .inputs -exec rm -rf {} +
 
 gdir=$(dirname "$GRAMMAR")
 gname=$(basename "$GRAMMAR")
@@ -39,6 +43,7 @@ gname=$(basename "$GRAMMAR")
 rc=$?
 if [[ $rc -ne 0 || ! -s "$OUT/parser.zig" ]]; then
     echo "exit $rc" >>"$OUT/gen.log"
+    rm -f "$OUT/driver" "$OUT/.inputs"
     exit 10
 fi
 
@@ -48,6 +53,18 @@ for f in "$@"; do
 done
 cp "$LIB/driver.zig" "$OUT/driver.zig"
 
-# A shared cache dir: an unchanged grammar compiles from cache.
+(
+    cd "$OUT" || exit 1
+    echo "$MODE $(command -v zig) $(zig version)"
+    for f in *.zig; do printf '\n%s %s\n' "$f" "$(wc -c <"$f")"; cat "$f"; done
+) >"$OUT/.inputs.new"
+if [[ -x "$OUT/driver" ]] && cmp -s "$OUT/.inputs" "$OUT/.inputs.new"; then
+    rm "$OUT/.inputs.new"
+    : >"$OUT/compile.log"
+    exit 0
+fi
+rm -f "$OUT/driver" "$OUT/.inputs"
+# A shared cache dir: Zig reuses what it compiled for other suites.
 (cd "$OUT" && zig build-exe -O "$MODE" driver.zig -femit-bin=driver --cache-dir "$CACHE") >"$OUT/compile.log" 2>&1 || exit 11
+mv "$OUT/.inputs.new" "$OUT/.inputs"
 exit 0
