@@ -1,0 +1,33 @@
+# A reduce action names its rule in a 16-bit table cell, so a grammar may
+# expand into at most 32766 rules. Each alternative of `top` expands into
+# 2^14 = 16384 rules (one per combination of its optional rule references),
+# within the per-alternative limit; together they pass the grammar's.
+# error: too_many_rules.grammar:19:8:
+# error: the grammar expands into more than 32766 rules
+@lexer
+tokens
+    a
+    b
+    eof
+    err
+'a' → a
+'b' → b
+. → err
+
+@parser
+top! = A [r1] [r2] [r3] [r4] [r5] [r6] [r7] [r8] [r9] [r10] [r11] [r12] [r13] [r14]
+     | B [r1] [r2] [r3] [r4] [r5] [r6] [r7] [r8] [r9] [r10] [r11] [r12] [r13] [r14]
+r1 = A A
+r2 = A A
+r3 = A A
+r4 = A A
+r5 = A A
+r6 = A A
+r7 = A A
+r8 = A A
+r9 = A A
+r10 = A A
+r11 = A A
+r12 = A A
+r13 = A A
+r14 = A A
