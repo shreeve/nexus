@@ -553,9 +553,11 @@ is unaffected. The rules:
    statement boundary never invents meaning); at end of input or before a
    `structure` token any candidate may.
 4. An insertion must let the offending token be consumed. At end of input
-   or before structure, a shiftable candidate may be inserted anyway, never
-   twice in the same configuration, so several insertions can complete an
-   unfinished construct.
+   or before structure, a shiftable candidate may be inserted anyway, so
+   several insertions can complete an unfinished construct; until a token
+   is consumed, the same token is inserted in the same state again only on
+   a shallower stack (a repeat would be a cycle, or nest the construct
+   deeper without finishing it).
 5. With no admissible insertion the offending token is deleted; end of
    input is never deleted.
 6. At most `budget` repairs; then the parse stops, incomplete.

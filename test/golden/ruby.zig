@@ -1317,9 +1317,11 @@ pub const BaseParser = struct {
     ///   4. An insertion must let the offending token be consumed (shifted,
     ///      or accepted at end of input). At end of input or a structure
     ///      token, when none does, a candidate the state can shift is
-    ///      inserted anyway, never twice in the same configuration (stack
-    ///      depth, state, token) since the last token was consumed, so
-    ///      several insertions can complete an unfinished construct.
+    ///      inserted anyway, so several insertions can complete an
+    ///      unfinished construct. Since the last token was consumed, the
+    ///      same token is inserted in the same state again only on a
+    ///      shallower stack: a repeat at the same depth is a cycle, and one
+    ///      on a deeper stack only nests the construct further.
     ///   5. With no admissible insertion the offending token is deleted,
     ///      except end of input, which is never deleted: the parse ends
     ///      there, incomplete.
@@ -1385,7 +1387,7 @@ pub const BaseParser = struct {
         const depth: u32 = @intCast(self.stateStack.items.len);
         for (repairCandidates(state)) |candidate| {
             const seen = for (tried) |k| {
-                if (k.depth == depth and k.state == state and k.token == candidate) break true;
+                if (k.depth <= depth and k.state == state and k.token == candidate) break true;
             } else false;
             if (!seen and try self.accepts(&.{candidate})) return candidate;
         }
@@ -1990,26 +1992,31 @@ pub const BaseParser = struct {
     // Tolerant repair
     // -------------------------------------------------------------------------
 
-    /// Whether `symbols` can be consumed from the current state, simulating
-    /// reductions on a scratch copy of the state stack.
+    /// Whether `symbols` can be consumed from the current state. The
+    /// simulation leaves the state stack as it is: reductions pop the
+    /// states it pushed (`scratch`), then hide states of the real stack
+    /// (`depth` of them stay in view).
     fn accepts(self: *BaseParser, symbols: []const u16) !bool {
-        const stack = &self.scratch;
-        stack.clearRetainingCapacity();
-        try stack.appendSlice(self.allocator(), self.stateStack.items);
+        const pushed = &self.scratch;
+        pushed.clearRetainingCapacity();
+        var depth = self.stateStack.items.len;
         for (symbols) |sym| {
             while (true) {
-                const action = getAction(stack.last().?, sym);
+                const top = pushed.last() orelse self.stateStack.items[depth - 1];
+                const action = getAction(top, sym);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
-                    try stack.append(self.allocator(), @intCast(action));
+                    try pushed.append(self.allocator(), @intCast(action));
                     break;
                 }
                 const rule: u16 = @intCast(-action - 2);
-                stack.shrinkRetainingCapacity(stack.items.len - ruleLen[rule]);
-                const next = getAction(stack.last().?, ruleLhs[rule]);
+                const fromPushed = @min(ruleLen[rule], pushed.items.len);
+                pushed.shrinkRetainingCapacity(pushed.items.len - fromPushed);
+                depth -= ruleLen[rule] - fromPushed;
+                const next = getAction(pushed.last() orelse self.stateStack.items[depth - 1], ruleLhs[rule]);
                 if (next <= 0) return false;
-                try stack.append(self.allocator(), @intCast(next));
+                try pushed.append(self.allocator(), @intCast(next));
             }
         }
         return true;
