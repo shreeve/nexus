@@ -173,7 +173,6 @@ tokens
 
     # Directives
     lang             name:leaf
-    conflicts        count:leaf
     manifest         ...entries:conflict
     conflict         kind:leaf rule:leaf over:leaf? count:leaf reason:leaf?
     as               token:leaf via:leaf? ...groups:as_entry
@@ -310,7 +309,6 @@ lex_action  = word:IDENT                                → (lex_action)
 # ===========================================================================
 
 directive = "@" KW_LANG "=" name:STRING                 → (lang)
-          | "@" KW_CONFLICTS "=" count:INTEGER          → (conflicts)
           | "@" KW_CONFLICTS entries:conflict_lines     → (manifest)
           | "@" KW_CONFLICTS                            → (manifest)
           | "@" KW_AS as_body                           → 3

@@ -294,16 +294,6 @@
       _
       _)
     (kind_decl
-      (kinds `conflicts`)
-      (roles
-        (role
-          _
-          `count`
-          (type `leaf`)
-          _))
-      _
-      _)
-    (kind_decl
       (kinds `manifest`)
       (roles
         (role
@@ -1258,16 +1248,6 @@
           `name`
           (tok `STRING`)))
       (node `lang`)
-      _)
-    (alt
-      _
-      ((lit `"@"`)
-        (tok `KW_CONFLICTS`)
-        (lit `"="`)
-        (label
-          `count`
-          (tok `INTEGER`)))
-      (node `conflicts`)
       _)
     (alt
       _

@@ -8,6 +8,8 @@
 - The `simd_to 'c'` lexer action, which changed nothing (the lexer scans
   `[^c]*` runs with SIMD on its own). Writing it is a syntax error: delete
   it (em's `mumps.grammar` has one, on its comment rule).
+- The `@conflicts = N` form, which was parsed only to reject it. It is a
+  syntax error; declare each conflict in an `@conflicts` block.
 
 ### Fixed
 

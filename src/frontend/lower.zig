@@ -233,7 +233,6 @@ pub const GrammarLowerer = struct {
         const t = taggedItems(entry) orelse return self.shapeError(entry, "directive or rule");
         switch (t.tag) {
             .lang => try self.lowerLang(entry, t.items),
-            .conflicts => try self.lowerConflictCount(entry, t.items),
             .manifest => try self.lowerManifest(entry, t.items),
             .as => try self.lowerAs(entry, t.items),
             .op => try self.lowerOp(entry, t.items),
@@ -545,13 +544,6 @@ pub const GrammarLowerer = struct {
         try self.requireArity(node, items, 2, 2, "(lang STRING)");
         if (self.lang != null) return self.fail(node, "duplicate @lang", .{});
         self.lang = stripQuotes(try self.requireSrc(items[1], "language-name string"));
-    }
-
-    /// `@conflicts = N` is not a declaration: conflicts are declared one by
-    /// one in an `@conflicts` block. The form is recognized only to say so.
-    fn lowerConflictCount(self: *GrammarLowerer, node: Sexp, items: []const Sexp) LowerError!void {
-        try self.requireArity(node, items, 2, 2, "(conflicts INTEGER)");
-        return self.fail(node, "`@conflicts = N` is not supported: delete it and declare each conflict in an `@conflicts` block (without one the grammar must be conflict-free; generation prints the block to paste)", .{});
     }
 
     /// `@conflicts`, one entry per line; an empty block (like none) means
@@ -1347,9 +1339,6 @@ test "lowerer rejects entry with unknown tag" {
 }
 test "lowerer rejects (lang) with no STRING" {
     try expectShapeError(root(&.{L(&.{T(.lang)})}));
-}
-test "lowerer rejects @conflicts = N" {
-    try expectLowerError(root(&.{L(&.{ T(.conflicts), sThree })}));
 }
 test "lowerer rejects (as) with no entries" {
     try expectShapeError(root(&.{L(&.{ T(.as), sX, .nil })}));

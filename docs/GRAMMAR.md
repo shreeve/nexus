@@ -929,7 +929,6 @@ early:
 | `undeclared conflict: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
 | `position 5 is past the end of the pattern (2 elements)` | an action refers to a missing element |
 | `X ":" on name ... has no effect` | a hint that decides nothing |
-| `` `@conflicts = N` is not supported `` | a bare count; declare each conflict in an `@conflicts` block |
 
 `nexus check grammar` runs all of them without writing anything.
 

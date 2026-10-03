@@ -1,5 +1,4 @@
 @lang = "demo"
-@conflicts = 3
 
 @as ident = [keyword, command!, self, intrinsic!]
 
