@@ -18,8 +18,8 @@ Contents: [An example](#an-example) · [The generated API](#the-generated-api) �
 [Labels](#labels) · [What generation checks](#what-generation-checks) ·
 [Spans and node ids](#spans-and-node-ids) ·
 [Facts](#facts) · [Trivia](#trivia) · [Syntax errors](#syntax-errors) ·
-[Tolerant parsing](#tolerant-parsing) · [Lang wrappers](#lang-wrappers) ·
-[Without a schema](#without-a-schema) · [Lineage: Solar](#lineage-solar)
+[Tolerant parsing](#tolerant-parsing) · [The lang module](#the-lang-module) ·
+[Without a schema](#without-a-schema) · [Lineage](#lineage)
 
 ## An example
 
@@ -265,14 +265,16 @@ The module exports:
 | `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
 | `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()` |
+| `NodeId` | a node's id (`u32`; 0 is none) |
 | `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, and the `state` that rejected it (`lastError()`) |
+| `Tolerant` | the result of `parseTolerant` (see [Tolerant parsing](#tolerant-parsing)) |
 | `ir.get(node, role)` | a slot by role name (nil when empty) |
 | `ir.rest(node, role)` | a rest role's children |
 | `ir.has(kind, role)` | whether a kind has a role |
 | `ir.slot(kind, role)`, `ir.restSlot(kind, role)`, `ir.width(kind)` | compile-time slot numbers (the head is slot 0) and the fixed width |
 | `ir.Let.name(node)` ... | per-kind views, one function per role (`ir.@"+".left` for quoted kinds) |
 | `Parser` | the lang module's `Parser` wrapper, or `BaseParser` |
-| `parseProgram(allocator, source)` | per start symbol: a new parser and its tree; `deinit()` the parser when done |
+| `parseProgram(allocator, source)` | per start symbol: a new parser and its tree, as `.parser` and `.sexp`; `deinit()` the parser when done |
 | `nodeStore` | whether the parser records spans and node ids (`@schema` or `--spans`) |
 | `maxExpected` | the most symbols any state expects: room for `expectedNames` |
 
@@ -521,7 +523,7 @@ the actions' inventory, ready to paste:
 Every list the parser builds for the tree gets a node id and an entry in
 the node store: its span and the rule that built it. Ids are dense, from 1,
 in the order the nodes are built; a parser that parses again keeps
-counting, so the trees of earlier parses stay valid.
+counting, so the trees of earlier parses stay valid (until `reset`).
 
 - A node spans its reduction: from its first token to its last, including
   tokens that are not in the tree (keywords, punctuation). `(1 + 2)` passed
@@ -627,38 +629,9 @@ then the `@tags` names; there is no `ir`; spans and facts
 need `--spans`. The MUMPS, Ruby, Zag, Slash and Nexis grammars in `test/`
 use this mode.
 
-## Lineage: Solar
+## Lineage
 
-The semantic layer follows ideas from Solar, the LALR(1) generator of
-Rip (`src/grammar/solar.rip` in the Rip repository), which
-annotates each rule with a kind and one part per action element, keeps node
-and role stores beside the tree, labels pattern symbols the action drops,
-gates annotation coverage with `~ reason` opt-outs, and repairs editor
-buffers from a generated table with the same rules as
-[Tolerant parsing](#tolerant-parsing) above.
-
-What Nexus adopted: node kinds and named roles, side-band roles and pattern
-labels, spans in a node store, the coverage gate and its opt-out, the
-repair table and the tolerant driver's rules (first error kept, only
-terminators before real input, deletion as the fallback, a budget), and a
-trivia channel.
-
-What is different in Nexus:
-
-- **The schema shapes the tree.** Solar's annotations describe positions
-  and never change the parser's output; Nexus declares each kind once, and
-  the generator places every role in a fixed slot, so the tree and the
-  schema cannot disagree.
-- **Types.** Roles have types, and a fixpoint over the grammar proves every
-  role's value has its type at generation time.
-- **Coverage per value.** Solar requires every constructor rule to be
-  annotated; Nexus requires every value-bearing element to be used,
-  labeled or dropped, so no value is discarded by accident.
-- **Declared repair alphabet.** Solar's fabricable tokens are
-  conventional names (`IDENTIFIER`, `TERMINATOR`, `INDENT`, ...); Nexus
-  grammars declare theirs in `@repair`.
-- **Zig, without side maps.** Node ids live in the list itself (the
-  24-byte `Sexp` has room), the node store is chunked arrays, spans are byte
-  offsets, and the accessors are generated Zig resolved at compile time
-  where possible. Trivia is filtered by the parser from declared tokens.
-- **Facts.** `writeFacts` exports the tree as relations.
+The node and role stores, side-band roles, pattern labels, the coverage
+gate and the tolerant-repair rules follow Solar, the LALR(1) generator of
+Rip. Nexus adds typed roles proven by fixpoint, fixed-slot nodes, a
+declared repair alphabet and the facts export.
