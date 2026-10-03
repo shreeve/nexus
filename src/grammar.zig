@@ -581,14 +581,11 @@ pub const Grammar = struct {
         return id;
     }
 
+    /// The symbol a name refers to, through aliases (expansion rejects an
+    /// alias cycle, so every chain ends).
     pub fn getSymbol(self: *const Grammar, name: []const u8) ?u16 {
         var resolved = name;
-        var count: usize = 0;
-        while (self.aliases.get(resolved)) |target| {
-            count += 1;
-            if (count > 100 or std.mem.eql(u8, resolved, target)) return null;
-            resolved = target;
-        }
+        while (self.aliases.get(resolved)) |target| resolved = target;
         return self.symbolMap.get(resolved);
     }
 
