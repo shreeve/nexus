@@ -70,7 +70,6 @@ pub const GrammarLowerer = struct {
     lang: ?[]const u8 = null,
     conflicts: std.ArrayList(ConflictEntry) = .empty,
     kinds: std.ArrayList(Schema.Kind) = .empty,
-    hasSchema: bool = false,
     /// The directives seen so far.
     directives: std.EnumSet(parser.Tag) = .empty,
     extraTags: std.ArrayList([]const u8) = .empty,
@@ -101,7 +100,7 @@ pub const GrammarLowerer = struct {
         if (self.lexer) |*spec| spec.langName = self.lang;
         if (self.codeNode) |node| if (self.lang == null)
             return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
-        if (self.tagsNode) |node| if (!self.hasSchema)
+        if (self.tagsNode) |node| if (!self.directives.contains(.schema))
             return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
         // Without a `name!` rule, the first rule is the start symbol.
         if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
@@ -119,7 +118,7 @@ pub const GrammarLowerer = struct {
                 .col = self.infixLoc.col,
             } else null,
             .lang = self.lang,
-            .schema = if (self.hasSchema) Schema{
+            .schema = if (self.directives.contains(.schema)) Schema{
                 .kinds = try self.kinds.toOwnedSlice(allocator),
                 .extraTags = try self.extraTags.toOwnedSlice(allocator),
             } else null,
@@ -646,7 +645,6 @@ pub const GrammarLowerer = struct {
     }
 
     fn lowerSchema(self: *GrammarLowerer, node: Sexp) LowerError!void {
-        self.hasSchema = true;
         for (ir.Schema.decls(node)) |decl| try self.lowerKindDecl(decl);
     }
 
