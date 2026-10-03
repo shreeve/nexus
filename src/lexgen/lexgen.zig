@@ -267,13 +267,13 @@ pub const LexerGenerator = struct {
     /// The lexer skips blanks before it runs the DFA, so the start states
     /// have no transition on them: a match that needs a leading blank is
     /// not in the automaton, and the dead-rule check sees exactly what
-    /// can win. A size limit is reported at the first consuming rule.
+    /// can win. A size limit is reported at the first consuming rule (a
+    /// lexer without rules, whose lang Lexer scans everything, is tiny).
     fn buildDfa(self: *LexerGenerator, patterns: []const *const regex.Node, starts: []const []const u32) !automaton.Dfa {
-        const first = &self.spec.rules.items[self.consuming[0]];
         return automaton.build(self.arena.allocator(), .{ .patterns = patterns, .starts = starts, .startSkip = blanks }) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
-            error.NfaTooLarge => return self.fail(first, 0, "the lexer NFA has more than {d} states (bounded repeats expand, and nesting multiplies them; reduce {{n,m}} counts)", .{automaton.maxNfaStates}),
-            error.DfaTooLarge => return self.fail(first, 0, "the lexer DFA is too large: subset construction passed {d} states, and at most 65535 are supported", .{automaton.maxRawDfaStates}),
+            error.NfaTooLarge => return self.fail(&self.spec.rules.items[self.consuming[0]], 0, "the lexer NFA has more than {d} states (bounded repeats expand, and nesting multiplies them; reduce {{n,m}} counts)", .{automaton.maxNfaStates}),
+            error.DfaTooLarge => return self.fail(&self.spec.rules.items[self.consuming[0]], 0, "the lexer DFA is too large: subset construction passed {d} states, and at most 65535 are supported", .{automaton.maxRawDfaStates}),
         };
     }
 
