@@ -865,12 +865,12 @@ pub const LexerGenerator = struct {
             const lang = self.spec.langName.?; // the lowerer requires @lang with @code
             try self.print(
                 \\
-                \\    /// `@code = {s}`: `{s}.{s}(source, pos)` at the current position.
+                \\    /// `@code = {s}`: `{f}.{s}(source, pos)` at the current position.
                 \\    pub fn {s}(self: *const Self) bool {{
                 \\        return lang.{s}(self.source, self.pos);
                 \\    }}
                 \\
-            , .{ name, lang, name, name, name });
+            , .{ name, std.zig.fmtString(lang), name, name, name });
         }
 
         try self.emitNext();

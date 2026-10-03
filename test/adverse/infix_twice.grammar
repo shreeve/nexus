@@ -1,5 +1,5 @@
 # A grammar has one @infix table.
-# error: infix_twice.grammar:15:8:
+# error: infix_twice.grammar:15:1:
 # error: duplicate @infix
 @lexer
 tokens

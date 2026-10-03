@@ -1,5 +1,5 @@
 # A grammar file has one @lexer section.
-# error: section_lexer_twice.grammar:9:2:
+# error: section_lexer_twice.grammar:9:1:
 # error: duplicate @lexer section
 @lexer
 tokens

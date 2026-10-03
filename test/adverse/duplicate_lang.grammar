@@ -1,5 +1,5 @@
 # Two @lang directives: the second would silently replace the first.
-# error: duplicate_lang.grammar:16:9:
+# error: duplicate_lang.grammar:16:1:
 # error: duplicate @lang
 @lexer
 tokens

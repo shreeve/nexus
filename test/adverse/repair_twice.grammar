@@ -1,5 +1,5 @@
 # A grammar has one @repair block.
-# error: repair_twice.grammar:16:5:
+# error: repair_twice.grammar:15:1:
 # error: duplicate @repair
 @lexer
 tokens

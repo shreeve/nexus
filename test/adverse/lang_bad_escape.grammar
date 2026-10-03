@@ -1,0 +1,15 @@
+# @lang is a string like any other: an unknown escape is an error (it
+# would name an import Zig cannot read).
+# error: lang_bad_escape.grammar:14:11:
+# error: unknown escape sequence
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "l\q"
+top! = IDENT                                → (t 1)

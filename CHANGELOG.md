@@ -226,6 +226,13 @@ Tests:
   enum, so any `u16` value works.
 - An `@as` keyword ordinal matched before a reduction stayed on the token
   when the next state took it as itself.
+- `@lang` and the token names of `@op` skipped escape checking
+  (`@lang = "l\q"` generated an import Zig cannot read), and an `@op`
+  literal written with an escape (`"\x27="`) never matched its literal;
+  both are decoded like every string, with located errors.
+- A syntax error showed a control byte (a NUL) raw; every byte that is
+  not printable ASCII is shown in hex. A repeated directive or section is
+  located at its `@`, not at the first name inside it.
 - A lexer id (`aux`) set for a token that took an `@as` keyword ordinal,
   or for a token tolerant parsing deleted, became the next token's id.
 - A tag named `pass`, a tag literal written with an escape (`op:"\x41"`),

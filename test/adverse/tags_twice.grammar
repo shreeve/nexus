@@ -1,5 +1,5 @@
 # A grammar has one @tags block.
-# error: tags_twice.grammar:16:7:
+# error: tags_twice.grammar:16:1:
 # error: duplicate @tags
 @lexer
 tokens

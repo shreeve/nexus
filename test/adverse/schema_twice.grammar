@@ -1,5 +1,5 @@
 # A grammar has one @schema block (blocks are not merged).
-# error: schema_twice.grammar:16:5:
+# error: schema_twice.grammar:15:1:
 # error: duplicate @schema
 @lexer
 tokens

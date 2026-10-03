@@ -72,10 +72,10 @@ fn reportSyntaxError(allocator: Allocator, p: *const parser.Parser, source: diag
 
 /// `unexpected <token>`: the token by the grammar's @display name (without
 /// its article), and its text when the name does not show it; a byte that
-/// is not ASCII in hex.
+/// is not printable ASCII in hex.
 fn unexpected(w: *std.Io.Writer, f: parser.Failure, text: []const u8) std.Io.Writer.Error!void {
     if (f.cat == .err) {
-        if (text[0] >= 0x80) return w.print("unexpected byte 0x{X:0>2}", .{text[0]});
+        if (text[0] < 0x20 or text[0] >= 0x7f) return w.print("unexpected byte 0x{X:0>2}", .{text[0]});
         return w.print("unexpected character '{s}'", .{text});
     }
     const display = parser.BaseParser.symbolText(f.symbol);

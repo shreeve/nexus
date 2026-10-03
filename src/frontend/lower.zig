@@ -222,7 +222,7 @@ pub const GrammarLowerer = struct {
             // once; repeated blocks are not merged.
             .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair => {
                 if (self.directives.contains(kind))
-                    return self.fail(entry, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
+                    return self.failAt(self.spans.?.span(entry).start, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
                 self.directives.insert(kind);
             },
             else => {},
@@ -268,15 +268,16 @@ pub const GrammarLowerer = struct {
 
     fn lowerSection(self: *GrammarLowerer, node: Sexp) LowerError!void {
         const nameNode = ir.Section.name(node);
+        // The marker's `@` directly precedes its name.
+        const at = nameNode.src.pos - 1;
         if (std.mem.eql(u8, self.text(nameNode), "lexer")) {
-            if (self.lexer != null) return self.fail(node, "duplicate @lexer section", .{});
+            if (self.lexer != null) return self.failAt(at, "duplicate @lexer section", .{});
             if (self.section == .parser) return self.fail(node, "the @lexer section comes before @parser", .{});
             self.lexer = .{ .fileName = self.source.path };
             self.section = .lexer;
         } else {
-            if (self.hasParser) return self.fail(node, "duplicate @parser section", .{});
-            // The marker's `@` directly precedes its name.
-            if (self.section == .lexer) try self.validateLexer(nameNode.src.pos - 1);
+            if (self.hasParser) return self.failAt(at, "duplicate @parser section", .{});
+            if (self.section == .lexer) try self.validateLexer(at);
             self.hasParser = true;
             self.section = .parser;
         }
@@ -497,7 +498,7 @@ pub const GrammarLowerer = struct {
     // --- Directives ---
 
     fn lowerLang(self: *GrammarLowerer, node: Sexp) LowerError!void {
-        self.lang = stripQuotes(self.text(ir.Lang.name(node)));
+        self.lang = try self.string(ir.Lang.name(node));
     }
 
     /// `@conflicts`, one entry per line; an empty block (like none) means
@@ -581,8 +582,8 @@ pub const GrammarLowerer = struct {
         for (ir.Op.maps(node)) |entry| {
             const litNode = ir.OpMap.lit(entry);
             const tokNode = ir.OpMap.token(entry);
-            const lit = stripQuotes(try self.literalText(litNode));
-            const tok = stripQuotes(self.text(tokNode));
+            const lit = try self.string(litNode);
+            const tok = try self.string(tokNode);
             for (self.opMappings.items) |m| if (std.mem.eql(u8, m.lit, lit))
                 return self.fail(litNode, "@op maps \"{s}\" twice", .{lit});
             const at = self.loc(tokNode);
