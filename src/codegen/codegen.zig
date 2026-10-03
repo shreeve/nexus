@@ -907,7 +907,9 @@ const Codegen = struct {
         try writeList(w, u32, e.offsets);
         try w.writeAll("};\nconst expectedOf = [_]u16{");
         try writeList(w, u16, e.ofState);
-        try w.writeAll("};\n");
+        var longest: usize = 0;
+        for (0..e.numLists()) |i| longest = @max(longest, e.offsets[i + 1] - e.offsets[i]);
+        try w.print("}};\n/// The most symbols a state expects: room for `BaseParser.expectedNames`.\npub const maxExpected = {d};\n", .{longest});
 
         try w.writeAll("\nfn symbolName(sym: u16) []const u8 {\n    return switch (sym) {\n");
         for (self.g.symbols.items) |sym| {

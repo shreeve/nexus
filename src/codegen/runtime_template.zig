@@ -14,7 +14,8 @@
 //! Generated interface (codegen declares these in every module):
 //!   types      Tag, Role, Start, Token, TokenCat, BaseLexer, Lexer
 //!   config     nodeStore, elemEnds, keepTrailingNils, hasTrivia, hasRepair,
-//!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes
+//!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes,
+//!              maxExpected
 //!   tables     ruleLhs, ruleLen, ruleValue, parseTable, xExcludeStart,
 //!              expectedSymbols, expectedOffsets, expectedOf, repairTokens,
 //!              repairOffsets
@@ -1285,10 +1286,11 @@ pub const BaseParser = struct {
         const f = self.failure orelse return;
         const at = self.lineCol(f.span.start);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
-        const want = expectedIn(f.state);
-        for (want, 0..) |sym, i| {
+        var buf: [maxExpected][]const u8 = undefined;
+        const want = expectedNames(f.state, &buf);
+        for (want, 0..) |name, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
-            try w.writeAll(symbolName(sym));
+            try w.writeAll(name);
         }
         if (want.len == 0) try w.writeAll("nothing");
         try w.writeAll(", got ");
@@ -1311,6 +1313,24 @@ pub const BaseParser = struct {
     /// for, then the tokens none of them begins with.
     pub fn expected(state: u16) []const u16 {
         return expectedIn(state);
+    }
+
+    /// The reader names of what `state` accepts, in `expected` order, each
+    /// once (tokens sharing an `@display` name are named once), in `buf`:
+    /// `[maxExpected][]const u8` always has room.
+    pub fn expectedNames(state: u16, buf: [][]const u8) []const []const u8 {
+        var n: usize = 0;
+        for (expectedIn(state)) |sym| {
+            const name = symbolName(sym);
+            if (name.len == 0) continue;
+            for (buf[0..n]) |seen| {
+                if (std.mem.eql(u8, seen, name)) break;
+            } else {
+                buf[n] = name;
+                n += 1;
+            }
+        }
+        return buf[0..n];
     }
 
     /// The reader-facing name of a grammar symbol, as `writeError` prints
@@ -1642,6 +1662,7 @@ const elemEnds = true;
 const numSymbols = 16;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
+const maxExpected = 4;
 const xExcludes = [_]struct { sym: u16, shift: u16 }{};
 const xExcludeStart = [_]u32{};
 
@@ -1986,6 +2007,10 @@ test "parse errors carry the token span and the expected set" {
     try testing.expectEqual(Span{ .start = 3, .end = 4 }, f.span);
     try testing.expectEqual(TokenCat.newline, f.cat);
     try testing.expectEqualStrings("1:4: expected an expression, got newline", try errorText(&p));
+    var names: [maxExpected][]const u8 = undefined;
+    const want = BaseParser.expectedNames(f.state, &names);
+    try testing.expectEqual(@as(usize, 1), want.len);
+    try testing.expectEqualStrings("an expression", want[0]);
 
     var q = BaseParser.init(testing.allocator, "a b");
     defer q.deinit();

@@ -75,15 +75,10 @@ fn callStart(p: *P, name: []const u8) !Sexp {
     return error.UnknownStartRule;
 }
 
-/// The token the parser stopped at: `current` of the parser, or of the
-/// generated parser it wraps as `base`.
-fn currentToken(p: *P) parser.Token {
-    const missing = "Parser has no `current` token, nor a `base` parser with one";
-    if (@hasField(P, "current")) {
-        return p.current;
-    } else if (@hasField(P, "base")) {
-        if (@hasField(@TypeOf(p.base), "current")) return p.base.current else @compileError(missing);
-    } else @compileError(missing);
+/// The generated parser inside `p`: `p` itself, or the `base` of a lang
+/// Parser wrapper.
+fn baseOf(p: *P) *parser.BaseParser {
+    return if (P == parser.BaseParser) p else &p.base;
 }
 
 // -----------------------------------------------------------------------------
@@ -94,11 +89,19 @@ fn currentToken(p: *P) parser.Token {
 // or `--spans`); without a node store `span()` only hulls the leaves.
 const has_spans = parser.nodeStore;
 
+/// Trees are printed without recursion, so a tree of any depth prints (a
+/// long operator chain is a tree as deep as it is long).
 const Printer = struct {
     src: []const u8,
-    parser: *P,
+    parser: *parser.BaseParser,
     spans: bool,
     out: *std.Io.Writer,
+    gpa: std.mem.Allocator,
+
+    /// An open list: its items not yet printed, and how: on one line
+    /// (`flat`), or each item after the first on a line of its own,
+    /// indented under the list's `indent`.
+    const Frame = struct { list: Sexp, rest: []const Sexp, indent: usize, flat: bool, first: bool = true };
 
     fn spanOf(self: *Printer, s: Sexp) ?struct { usize, usize } {
         if (!has_spans) return null;
@@ -145,67 +148,100 @@ const Printer = struct {
         }
     }
 
-    fn compact(self: *Printer, s: Sexp) !void {
-        switch (s) {
-            .list => |l| {
-                try self.out.writeByte('(');
-                for (l.items(), 0..) |it, i| {
-                    if (i > 0) try self.out.writeByte(' ');
-                    try self.compact(it);
-                }
-                try self.out.writeByte(')');
-                try self.spanSuffix(s);
-            },
-            else => try self.atom(s),
-        }
-    }
-
     fn spanSuffix(self: *Printer, s: Sexp) !void {
         if (self.spanOf(s)) |sp| try self.out.print("@{d}..{d}", .{ sp[0], sp[1] });
     }
 
-    /// Length of the compact rendering, or anything > limit once it is known
-    /// to exceed it (keeps pretty-printing linear in practice).
-    fn flatLen(self: *Printer, s: Sexp, limit: usize) usize {
-        var d: std.Io.Writer.Discarding = .init(&.{});
-        var sub = Printer{ .src = self.src, .parser = self.parser, .spans = self.spans, .out = &d.writer };
-        switch (s) {
-            .list => |l| {
-                var n: usize = 2;
-                if (self.spanOf(s)) |_| {
-                    sub.spanSuffix(s) catch {};
-                    n += @intCast(d.fullCount());
+    /// Print `root` on one line.
+    fn compact(self: *Printer, root: Sexp) !void {
+        try self.print(root, 0, false);
+    }
+
+    /// Print `root` indented: a list that does not fit in the line's
+    /// remaining width puts each item after the first on its own line.
+    fn pretty(self: *Printer, root: Sexp) !void {
+        try self.print(root, 0, true);
+    }
+
+    fn print(self: *Printer, root: Sexp, indent0: usize, break_lines: bool) !void {
+        var stack: std.ArrayList(Frame) = .empty;
+        defer stack.deinit(self.gpa);
+        var s = root;
+        var indent = indent0;
+        var flat = !break_lines;
+        while (true) {
+            if (s == .list) {
+                const room = width -| indent;
+                try self.out.writeByte('(');
+                try stack.append(self.gpa, .{
+                    .list = s,
+                    .rest = s.list.items(),
+                    .indent = indent,
+                    .flat = flat or self.flatLen(s, room) <= room,
+                });
+            } else try self.atom(s);
+            // The next item to print, closing the lists it ends.
+            while (true) {
+                const f = stack.lastPtr() orelse return;
+                if (f.rest.len == 0) {
+                    try self.out.writeByte(')');
+                    try self.spanSuffix(f.list);
+                    _ = stack.pop();
+                    continue;
                 }
-                for (l.items(), 0..) |it, i| {
-                    if (i > 0) n += 1;
-                    n += self.flatLen(it, limit -| n);
-                    if (n > limit) return n;
+                s = f.rest[0];
+                f.rest = f.rest[1..];
+                flat = f.flat;
+                if (f.first) {
+                    indent = f.indent + 1;
+                } else if (f.flat) {
+                    try self.out.writeByte(' ');
+                } else {
+                    try self.out.writeByte('\n');
+                    try self.out.splatByteAll(' ', f.indent + 2);
+                    indent = f.indent + 2;
                 }
-                return n;
-            },
-            else => {
-                sub.atom(s) catch {};
-                return @intCast(d.fullCount());
-            },
+                f.first = false;
+                break;
+            }
         }
     }
 
-    fn pretty(self: *Printer, s: Sexp, indent: usize) !void {
-        const room = width -| indent;
-        if (s != .list or self.flatLen(s, room) <= room) return self.compact(s);
-        const items = s.list.items();
-        try self.out.writeByte('(');
-        for (items, 0..) |it, i| {
-            if (i > 0) {
-                try self.out.writeByte('\n');
-                try self.out.splatByteAll(' ', indent + 2);
-                try self.pretty(it, indent + 2);
-            } else {
-                try self.pretty(it, indent + 1);
+    /// Length of the compact rendering, or anything > limit once it is known
+    /// to exceed it (keeps pretty-printing linear in practice). Every list
+    /// adds at least 2, so the walk is at most limit / 2 + 1 lists deep.
+    fn flatLen(self: *Printer, root: Sexp, limit: usize) usize {
+        var open: [width / 2 + 2][]const Sexp = undefined;
+        var depth: usize = 0;
+        var n: usize = 0;
+        var s = root;
+        while (true) {
+            n += self.ownLen(s);
+            if (n > limit) return n;
+            if (s == .list and s.list.len > 0) {
+                open[depth] = s.list.items()[1..];
+                depth += 1;
+                s = s.list.items()[0];
+                continue;
             }
+            while (depth > 0 and open[depth - 1].len == 0) depth -= 1;
+            if (depth == 0) return n;
+            n += 1;
+            s = open[depth - 1][0];
+            open[depth - 1] = open[depth - 1][1..];
         }
-        try self.out.writeByte(')');
-        try self.spanSuffix(s);
+    }
+
+    /// The length of an atom, or of a list's parentheses and span.
+    fn ownLen(self: *Printer, s: Sexp) usize {
+        var d: std.Io.Writer.Discarding = .init(&.{});
+        var sub = Printer{ .src = self.src, .parser = self.parser, .spans = self.spans, .out = &d.writer, .gpa = self.gpa };
+        if (s == .list) {
+            sub.spanSuffix(s) catch {};
+            return 2 + @as(usize, @intCast(d.fullCount()));
+        }
+        sub.atom(s) catch {};
+        return @intCast(d.fullCount());
     }
 };
 
@@ -215,22 +251,11 @@ const Printer = struct {
 
 const Mode = enum { pretty, compact, hash, bench };
 
-fn lineCol(src: []const u8, pos: usize) struct { usize, usize } {
-    var line: usize = 1;
-    var col: usize = 1;
-    for (src[0..@min(pos, src.len)]) |c| {
-        if (c == '\n') {
-            line += 1;
-            col = 1;
-        } else col += 1;
-    }
-    return .{ line, col };
-}
-
-fn writeError(out: *std.Io.Writer, src: []const u8, p: *P, err: anyerror) !void {
-    const tok = currentToken(p);
-    const lc = lineCol(src, tok.pos);
-    try out.print("!error {s} at {d}:{d} unexpected {s}", .{ @errorName(err), lc[0], lc[1], @tagName(tok.cat) });
+fn writeError(out: *std.Io.Writer, p: *P, err: anyerror) !void {
+    const b = baseOf(p);
+    const f = b.lastError() orelse return out.print("!error {s}", .{@errorName(err)});
+    const at = b.lineCol(f.span.start);
+    try out.print("!error {s} at {d}:{d} unexpected {s}", .{ @errorName(err), at.line, at.col, @tagName(f.cat) });
 }
 
 fn usage() noreturn {
@@ -319,22 +344,22 @@ pub fn main(init: std.process.Init) !void {
         defer gpa.free(src);
 
         var p = P.init(gpa, src);
-        defer if (@hasDecl(P, "deinit")) p.deinit();
+        defer p.deinit();
         const result = callStart(&p, start);
 
         render.clearRetainingCapacity();
         const w = &render.writer;
-        var pr = Printer{ .src = src, .parser = &p, .spans = spans, .out = w };
+        var pr = Printer{ .src = src, .parser = baseOf(&p), .spans = spans, .out = w, .gpa = gpa };
         var ok = true;
         if (result) |sexp| {
             switch (mode) {
-                .pretty => try pr.pretty(sexp, 0),
+                .pretty => try pr.pretty(sexp),
                 else => try pr.compact(sexp),
             }
         } else |err| {
             ok = false;
             status = 1;
-            try writeError(w, src, &p, err);
+            try writeError(w, &p, err);
         }
         const text = render.written();
         switch (mode) {
@@ -403,7 +428,7 @@ fn bench(
         var nok: usize = 0;
         for (srcs.items) |src| {
             var p = P.init(gpa, src);
-            defer if (@hasDecl(P, "deinit")) p.deinit();
+            defer p.deinit();
             if (callStart(&p, start)) |_| nok += 1 else |_| {}
         }
         const parse_ns = t0.untilNow(io, .awake).nanoseconds;

@@ -1,0 +1,17 @@
+# A syntax error names each thing the parser expected once, though two
+# tokens share the name `"|"`.
+# error: syntax_error_expected_once.grammar:15:16:
+# error: unexpected ","; expected end of file, end of line, "@", a name, an indented line, "(", a label, "|", "?" or "..."
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@schema
+    k   a:leaf
+    k2  a:leaf ,
+
+r! = IDENT                                  → (k 1)

@@ -18,10 +18,6 @@ pub const Parser = struct {
         self.gpa.free(self.summary);
     }
 
-    pub fn span(self: *const Parser, s: parser.Sexp) parser.Span {
-        return self.base.span(s);
-    }
-
     pub fn parseTop(self: *Parser) !parser.Sexp {
         const r = try self.base.parseTolerant(.top, 1_000_000);
         if (r.complete) return r.sexp;

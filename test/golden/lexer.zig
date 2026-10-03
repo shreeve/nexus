@@ -2048,10 +2048,11 @@ pub const BaseParser = struct {
         const f = self.failure orelse return;
         const at = self.lineCol(f.span.start);
         try w.print("{d}:{d}: expected ", .{ at.line, at.col });
-        const want = expectedIn(f.state);
-        for (want, 0..) |sym, i| {
+        var buf: [maxExpected][]const u8 = undefined;
+        const want = expectedNames(f.state, &buf);
+        for (want, 0..) |name, i| {
             if (i > 0) try w.writeAll(if (i + 1 == want.len) " or " else ", ");
-            try w.writeAll(symbolName(sym));
+            try w.writeAll(name);
         }
         if (want.len == 0) try w.writeAll("nothing");
         try w.writeAll(", got ");
@@ -2074,6 +2075,24 @@ pub const BaseParser = struct {
     /// for, then the tokens none of them begins with.
     pub fn expected(state: u16) []const u16 {
         return expectedIn(state);
+    }
+
+    /// The reader names of what `state` accepts, in `expected` order, each
+    /// once (tokens sharing an `@display` name are named once), in `buf`:
+    /// `[maxExpected][]const u8` always has room.
+    pub fn expectedNames(state: u16, buf: [][]const u8) []const []const u8 {
+        var n: usize = 0;
+        for (expectedIn(state)) |sym| {
+            const name = symbolName(sym);
+            if (name.len == 0) continue;
+            for (buf[0..n]) |seen| {
+                if (std.mem.eql(u8, seen, name)) break;
+            } else {
+                buf[n] = name;
+                n += 1;
+            }
+        }
+        return buf[0..n];
     }
 
     /// The reader-facing name of a grammar symbol, as `writeError` prints
@@ -2384,6 +2403,8 @@ const expectedOf = [_]u16{
     0, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
     3, 3, 3, 3, 3, 2, 3,
 };
+/// The most symbols a state expects: room for `BaseParser.expectedNames`.
+pub const maxExpected = 25;
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {

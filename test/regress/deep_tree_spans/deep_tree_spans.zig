@@ -24,10 +24,6 @@ pub const Parser = struct {
         self.gpa.free(self.summary);
     }
 
-    pub fn span(self: *const Parser, s: parser.Sexp) parser.Span {
-        return self.base.span(s);
-    }
-
     pub fn parseProg(self: *Parser) !parser.Sexp {
         const tree = try self.base.parseProg();
         var out: std.Io.Writer.Discarding = .init(&.{});

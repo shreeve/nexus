@@ -23,6 +23,12 @@ under "Migrating a lang module" below.
   scanner does: a match longer than 65535 bytes is an `err` token of that
   length. Lang lexers that built tokens with `@intCast` panicked on such
   input (MUMPS indents, Ruby symbols, nexis identifiers and strings).
+- **Errors through `lastError()`.** `BaseParser.expectedNames(state, &buf)`
+  gives the reader names of what a state expects, each once, in a
+  `[parser.maxExpected][]const u8` buffer; `writeError` uses it, so tokens
+  sharing an `@display` name are no longer listed twice (Nexus's own
+  syntax errors listed `"|"` twice). Locate an error with
+  `lastError().span` and `.cat`, not the parser's `current` token.
 
 ### Migrating a lang module
 
@@ -39,6 +45,10 @@ under "Migrating a lang module" below.
   `.len = @intCast(end - start)` (rig's identifier probe, nanoruby's
   symbols, `%w` arrays and string segments, slash's heredocs and UTF-8
   extensions; nexis keeps its own long-token encoding through `aux`).
+- **Error reporting**: read the failing token from `p.lastError()` (rig's
+  `diagnostic`, nexis's `loader.zig`), and replace hand-made expected
+  lists with `BaseParser.expectedNames` (rig's `expectedHint` and em's
+  `writeExpected` drop their own dedupe).
 
 ### Changed
 

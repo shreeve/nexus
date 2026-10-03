@@ -1,0 +1,17 @@
+# The tree driver prints a tree of any depth: `(((...x...)))` nested
+# 100,000 deep (a printer that recursed per level overflowed its stack
+# at 50,000).
+
+@lexer
+tokens
+    x, lp, rp, eof, err
+'x'                                         → x
+'('                                         → lp
+')'                                         → rp
+.                                           → err
+
+@parser
+
+top! = e
+e    = "(" e ")"                            → (2)
+     | X

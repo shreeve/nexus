@@ -40,49 +40,47 @@ pub fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8, path: []co
 /// `syntax error: unexpected <token>; expected <what the state accepts>`,
 /// or the scanner's own message for an `err` token it explained.
 fn reportSyntaxError(allocator: Allocator, p: *const parser.Parser, source: diag.Source) Allocator.Error!void {
-    const tok = p.current;
-    if (tok.cat == .err) if (p.lexer.problem) |problem| if (problem.pos == tok.pos) {
-        diag.errAt(source, tok.pos, "{s}", .{problem.message()});
+    const f = p.lastError().?;
+    const pos = f.span.start;
+    if (f.cat == .err) if (p.lexer.problem) |problem| if (problem.pos == pos) {
+        diag.errAt(source, pos, "{s}", .{problem.message()});
         return;
     };
     // An invalid pattern earlier on the line is the first error there.
-    if (p.lexer.lastPattern) |pat| if (std.mem.findScalar(u8, source.text[pat.pos..tok.pos], '\n') == null) {
+    if (p.lexer.lastPattern) |pat| if (std.mem.findScalar(u8, source.text[pat.pos..pos], '\n') == null) {
         var d: regex.Diagnostic = .{};
         if (regex.parse(allocator, source.text[pat.pos..][0..pat.len], &d)) |_| {} else |err| switch (err) {
             error.InvalidPattern => return diag.errAt(source, pat.pos + d.offset, "{s}", .{d.message}),
             error.OutOfMemory => return error.OutOfMemory,
         }
     };
-    if (tok.pos == 0 and std.mem.startsWith(u8, source.text, "\xEF\xBB\xBF"))
+    if (pos == 0 and std.mem.startsWith(u8, source.text, "\xEF\xBB\xBF"))
         return diag.errAt(source, 0, "the file starts with a UTF-8 byte order mark; save it without one", .{});
 
     var out: std.Io.Writer.Allocating = .init(allocator);
     const w = &out.writer;
-    unexpected(w, p, source.text[tok.pos..][0..tok.len]) catch return error.OutOfMemory;
-    if (p.lastError()) |failure| {
-        const want = parser.BaseParser.expected(failure.state);
-        if (want.len > 0) w.writeAll("; expected ") catch return error.OutOfMemory;
-        for (want, 0..) |sym, i| {
-            if (i > 0) w.writeAll(if (i + 1 == want.len) " or " else ", ") catch return error.OutOfMemory;
-            w.writeAll(parser.BaseParser.symbolText(sym)) catch return error.OutOfMemory;
-        }
+    unexpected(w, f, source.text[pos..f.span.end]) catch return error.OutOfMemory;
+    var buf: [parser.maxExpected][]const u8 = undefined;
+    const want = parser.BaseParser.expectedNames(f.state, &buf);
+    if (want.len > 0) w.writeAll("; expected ") catch return error.OutOfMemory;
+    for (want, 0..) |name, i| {
+        if (i > 0) w.writeAll(if (i + 1 == want.len) " or " else ", ") catch return error.OutOfMemory;
+        w.writeAll(name) catch return error.OutOfMemory;
     }
-    diag.errAt(source, tok.pos, "syntax error: {s}", .{out.written()});
+    diag.errAt(source, pos, "syntax error: {s}", .{out.written()});
 }
 
 /// `unexpected <token>`: the token by the grammar's @display name (without
 /// its article), and its text when the name does not show it; a byte that
 /// is not ASCII in hex.
-fn unexpected(w: *std.Io.Writer, p: *const parser.Parser, text: []const u8) std.Io.Writer.Error!void {
-    const tok = p.current;
-    if (tok.cat == .err) {
+fn unexpected(w: *std.Io.Writer, f: parser.Failure, text: []const u8) std.Io.Writer.Error!void {
+    if (f.cat == .err) {
         if (text[0] >= 0x80) return w.print("unexpected byte 0x{X:0>2}", .{text[0]});
         return w.print("unexpected character '{s}'", .{text});
     }
-    const failure = p.lastError() orelse return w.writeAll("unexpected token");
-    const display = parser.BaseParser.symbolText(failure.symbol);
+    const display = parser.BaseParser.symbolText(f.symbol);
     const name = if (std.mem.startsWith(u8, display, "a ")) display[2..] else if (std.mem.startsWith(u8, display, "an ")) display[3..] else display;
-    const shown = text.len == 0 or name[0] == '"' or std.mem.eql(u8, name, text) or switch (tok.cat) {
+    const shown = text.len == 0 or name[0] == '"' or std.mem.eql(u8, name, text) or switch (f.cat) {
         .newline, .cont, .next_alt => true,
         else => false,
     };
