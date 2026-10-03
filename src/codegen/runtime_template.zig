@@ -886,8 +886,11 @@ pub const BaseParser = struct {
         return true;
     }
 
-    /// Fetch the next token, moving trivia to the trivia channel.
+    /// Fetch the next token, moving trivia to the trivia channel. The
+    /// lexer id of the token left behind is dropped: a shift has taken it,
+    /// or an `@as` keyword ordinal replaced it, or the token was deleted.
     fn advance(self: *BaseParser) !void {
+        _ = takeLexerId(&self.lexer);
         self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
     }
@@ -1904,6 +1907,15 @@ test "a list without a node id spans its children's hull in any order" {
     const kids = [_]Sexp{ .{ .tag = .add }, .{ .src = .{ .pos = 3, .len = 2, .id = 0 } }, .nil, .{ .src = .{ .pos = 0, .len = 2, .id = 0 } } };
     try testing.expectEqual(Span{ .start = 0, .end = 5 }, p.span(Sexp.listOf(&kids)));
     try testing.expectEqual(Span.empty, p.span(Sexp.listOf(kids[0..1])));
+}
+
+test "a token's lexer id never reaches the next token" {
+    var p = BaseParser.init(testing.allocator, "qa b");
+    defer p.deinit();
+    try p.begin(.prog);
+    // Leave `qa` (id 7) without shifting it, as a tolerant deletion does.
+    try p.advance();
+    try testing.expectEqual(@as(u16, 0), takeLexerId(&p.lexer));
 }
 
 test "a plumbing list spread into its parent gets no node" {

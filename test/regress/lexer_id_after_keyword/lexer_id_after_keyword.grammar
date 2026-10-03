@@ -1,0 +1,25 @@
+# A lexer id (`aux`) belongs to its own token: when an `@as` keyword
+# supplies a token's id instead, the id the lexer gave it is dropped, not
+# left for the next token. The lang Lexer gives every word the id 9.
+
+@lexer
+tokens
+    ident, number, eq, eof, err
+'\n'                                        → skip, skip
+'='                                         → eq
+[0-9]+                                      → number
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+@lang = "lexer_id_after_keyword"
+@as IDENT = [kw]
+
+prog! = stmt+                               → (prog ...1)
+
+stmt  = PRINT expr                          → (print 1 2)
+      | IDENT "=" expr                      → (set 1 3)
+
+expr  = IDENT
+      | NUMBER

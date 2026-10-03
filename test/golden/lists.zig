@@ -1009,8 +1009,11 @@ pub const BaseParser = struct {
         return true;
     }
 
-    /// Fetch the next token, moving trivia to the trivia channel.
+    /// Fetch the next token, moving trivia to the trivia channel. The
+    /// lexer id of the token left behind is dropped: a shift has taken it,
+    /// or an `@as` keyword ordinal replaced it, or the token was deleted.
     fn advance(self: *BaseParser) !void {
+        _ = takeLexerId(&self.lexer);
         self.setCurrent(self.lexer.next());
         if (hasTrivia) try self.skipTrivia();
     }

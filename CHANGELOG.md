@@ -226,6 +226,8 @@ Tests:
   enum, so any `u16` value works.
 - An `@as` keyword ordinal matched before a reduction stayed on the token
   when the next state took it as itself.
+- A lexer id (`aux`) set for a token that took an `@as` keyword ordinal,
+  or for a token tolerant parsing deleted, became the next token's id.
 - A tag named `pass`, a tag literal written with an escape (`op:"\x41"`),
   and a grammar past about 100,000 table entries (a comptime quota)
   generated parsers that did not compile.
