@@ -110,7 +110,7 @@ fn unexpected(w: *std.Io.Writer, p: *const parser.Parser, text: []const u8) std.
 //   .list       → (child child ...)
 // =============================================================================
 
-pub fn dumpSexp(writer: anytype, sexp: Sexp, source: []const u8, indent: usize) !void {
+pub fn dumpSexp(writer: *std.Io.Writer, sexp: Sexp, source: []const u8, indent: usize) std.Io.Writer.Error!void {
     switch (sexp) {
         .nil => try writer.writeAll("_"),
         .tag => |t| try writer.writeAll(@tagName(t)),
@@ -151,7 +151,7 @@ pub fn dumpSexp(writer: anytype, sexp: Sexp, source: []const u8, indent: usize) 
     }
 }
 
-fn dumpSrcText(writer: anytype, text: []const u8) !void {
+fn dumpSrcText(writer: *std.Io.Writer, text: []const u8) std.Io.Writer.Error!void {
     try writer.writeByte('`');
     for (text) |c| {
         if (c == '`' or c == '\\') try writer.writeByte('\\');

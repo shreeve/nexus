@@ -622,7 +622,7 @@ pub const GrammarLowerer = struct {
             if (!p.quoted and !(p.key[0] >= 'A' and p.key[0] <= 'Z'))
                 return self.fail(entry, "@display names tokens (`TOKEN: \"name\"` or `\"lit\": \"name\"`); name rules in @errors", .{});
             for (self.displayNames.items) |d| if (std.mem.eql(u8, d.token, p.key))
-                return self.fail(entry, "@display names {s} twice", .{p.key});
+                return self.fail(entry, "@display names '{s}' twice", .{p.key});
             const at = self.loc(entry);
             try self.displayNames.append(self.allocator, .{ .token = p.key, .name = p.name, .line = at.line, .col = at.col });
         }
@@ -658,7 +658,7 @@ pub const GrammarLowerer = struct {
             if (role.rest and i + 1 != roleNodes.len)
                 return self.fail(roleNode, "rest role `...{s}` must be the last role", .{role.name});
             for (roles.items) |other| if (std.mem.eql(u8, other.name, role.name))
-                return self.fail(roleNode, "duplicate role '{s}'", .{role.name});
+                return self.fail(roleNode, "role '{s}' is declared twice", .{role.name});
             try roles.append(self.allocator, role);
         }
 
@@ -669,7 +669,7 @@ pub const GrammarLowerer = struct {
             for (roles.items) |r| if (std.mem.eql(u8, r.name, name))
                 return self.fail(s, "'{s}' is both a slot role and a side-band role", .{name});
             for (side.items) |o| if (std.mem.eql(u8, o, name))
-                return self.fail(s, "duplicate side-band role '{s}'", .{name});
+                return self.fail(s, "side-band role '{s}' is declared twice", .{name});
             try side.append(self.allocator, name);
         };
         const wrapper = ir.KindDecl.wrapper(decl) != .nil;
@@ -1087,12 +1087,12 @@ pub const GrammarLowerer = struct {
     }
 
     fn lowerPosition(self: *GrammarLowerer, nNode: Sexp, length: usize) LowerError!u16 {
+        // An INTEGER; a pattern has fewer than 65535 positions.
         const t = self.text(nNode);
-        const n = std.fmt.parseInt(u16, t, 10) catch
-            return self.fail(nNode, "position {s} is too large", .{t});
+        const n = std.fmt.parseInt(u16, t, 10) catch length + 1;
         if (n == 0) return self.fail(nNode, "positions start at 1; 0 is not an element", .{});
-        if (n > length) return self.fail(nNode, "position {d} is past the end of the pattern ({d} element{s})", .{ n, length, if (length == 1) "" else "s" });
-        return n;
+        if (n > length) return self.fail(nNode, "position {s} is past the end of the pattern ({d} element{s})", .{ t, length, if (length == 1) "" else "s" });
+        return @intCast(n);
     }
 
     /// `(node ...)`, `(keep ...)` or `(list ...)`.

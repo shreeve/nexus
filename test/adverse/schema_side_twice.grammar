@@ -1,6 +1,6 @@
 # A side-band role is listed once.
 # error: schema_side_twice.grammar:14:13:
-# error: duplicate side-band role 'b'
+# error: side-band role 'b' is declared twice
 @lexer
 tokens
     ident
