@@ -97,6 +97,11 @@ pub const LexerGenerator = struct {
         fromStart: u32,
         /// `matchEnd - n` (trailing context of fixed length n).
         fromEnd: u32,
+
+        /// Does the token end where it starts?
+        fn zeroWidth(e: TokenEnd) bool {
+            return e == .start or (e == .fromStart and e.fromStart == 0);
+        }
     };
 
     pub fn init(allocator: Allocator, spec: *const LexerSpec) LexerGenerator {
@@ -346,8 +351,7 @@ pub const LexerGenerator = struct {
                 continue;
             }
             const k = std.mem.findScalar(u32, self.consuming, @intCast(i)) orelse continue;
-            const e = self.ends[k];
-            if (e == .start or (e == .fromStart and e.fromStart == 0)) try nodes.append(a, r);
+            if (self.ends[k].zeroWidth()) try nodes.append(a, r);
         }
         const n = nodes.items.len;
         const alive = try a.alloc(bool, n);
@@ -432,7 +436,7 @@ pub const LexerGenerator = struct {
                 for (0..any) |t| if (live[t]) try succ.append(a, @intCast(t));
                 continue;
             }
-            const y = self.step(nodes[u / w], variable, lo + @as(i32, @intCast(u % w))) orelse {
+            const y = step(nodes[u / w], variable, lo + @as(i32, @intCast(u % w))) orelse {
                 try succ.append(a, any);
                 continue;
             };
@@ -503,23 +507,16 @@ pub const LexerGenerator = struct {
         return keep;
     }
 
-    /// The value `variable` has for the next token after rule `r` fired
-    /// with it at `x`; null when any value is possible (a count). `pre` is
-    /// counted again from the next token's blanks, so it stays only after a
-    /// held rule without a pattern (the blanks are scanned again) and is 0
-    /// after anything else.
-    fn step(self: *const LexerGenerator, r: *const LexerRule, variable: []const u8, x: i32) ?i32 {
+    /// The value `variable` has for the next token after the zero-width
+    /// rule `r` fired with it at `x`; null when any value is possible (a
+    /// count). Only the rule's actions change a state variable (`after`
+    /// runs only for tokens that consume input). `pre` is counted again
+    /// from the next token's blanks, so it stays only after a held rule
+    /// without a pattern (the blanks are scanned again) and is 0 after
+    /// anything else.
+    fn step(r: *const LexerRule, variable: []const u8, x: i32) ?i32 {
         if (std.mem.eql(u8, variable, "pre")) return if (r.pattern.len == 0 and r.hold) x else 0;
-        return self.effect(r, variable, x);
-    }
-
-    /// The value of `variable` after rule `r` fires with it at `x` (null:
-    /// unknown, a count).
-    fn effect(self: *const LexerGenerator, r: *const LexerRule, variable: []const u8, x: i32) ?i32 {
         var v = x;
-        if (r.pattern.len != 0) for (self.spec.afterActions.items) |act| {
-            if (std.mem.eql(u8, act.variable.?, variable) and afterApplies(act, r.actions)) v = act.value.?;
-        };
         for (r.actions) |act| {
             const name = act.variable orelse continue;
             if (!std.mem.eql(u8, name, variable)) continue;
@@ -593,7 +590,7 @@ pub const LexerGenerator = struct {
         }
         if (r.hold) end = .start;
         if (hasCounted(r)) return self.fail(r, 0, "counted() belongs on a zero-width rule (no pattern), where it counts the bytes after the leading whitespace", .{});
-        if (r.isSkip and (end == .start or (end == .fromStart and end.fromStart == 0))) {
+        if (r.isSkip and end.zeroWidth()) {
             return self.fail(r, 0, "a zero-width token cannot be skipped", .{});
         }
         return end;
@@ -1055,10 +1052,11 @@ pub const LexerGenerator = struct {
     }
 
     /// Code that finishes consuming rule `k` whose match ends at `endExpr`
-    /// (a usize expression): after-block, token end, actions, return.
+    /// (a usize expression): after-block (unless the token is zero-width),
+    /// token end, actions, return.
     fn emitFinish(self: *LexerGenerator, k: usize, endExpr: []const u8, ind: []const u8) !void {
         const r = &self.spec.rules.items[self.consuming[k]];
-        try self.emitAfter(ind, r.actions);
+        if (!self.ends[k].zeroWidth()) try self.emitAfter(ind, r.actions);
         switch (self.ends[k]) {
             .whole => if (!std.mem.eql(u8, endExpr, "p")) try self.print("{s}p = {s};\n", .{ ind, endExpr }),
             .start => try self.print("{s}p = start;\n", .{ind}),

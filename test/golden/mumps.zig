@@ -302,7 +302,6 @@ pub const BaseLexer = struct {
                     0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.dep = 0;
@@ -326,7 +325,6 @@ pub const BaseLexer = struct {
                     },
                     ')' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -336,7 +334,6 @@ pub const BaseLexer = struct {
                     '+' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"plus", pre, start, p); },
                     ',' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -348,7 +345,6 @@ pub const BaseLexer = struct {
                     '0'...'9' => { p += 1; continue :dfa 46; },
                     ':' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -367,7 +363,6 @@ pub const BaseLexer = struct {
                     '^' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"caret", pre, start, p); },
                     '_' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -383,7 +378,6 @@ pub const BaseLexer = struct {
                     0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.dep = 0;
@@ -433,7 +427,6 @@ pub const BaseLexer = struct {
                     '^' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"caret", pre, start, p); },
                     '_' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -491,7 +484,6 @@ pub const BaseLexer = struct {
                     0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.dep = 0;
@@ -515,7 +507,6 @@ pub const BaseLexer = struct {
                     },
                     ')' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -525,7 +516,6 @@ pub const BaseLexer = struct {
                     '+' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"plus", pre, start, p); },
                     ',' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -537,7 +527,6 @@ pub const BaseLexer = struct {
                     '0'...'9' => { p += 1; continue :dfa 46; },
                     ':' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -556,7 +545,6 @@ pub const BaseLexer = struct {
                     '^' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"caret", pre, start, p); },
                     '_' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -572,7 +560,6 @@ pub const BaseLexer = struct {
                     0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.dep = 0;
@@ -622,7 +609,6 @@ pub const BaseLexer = struct {
                     '^' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"caret", pre, start, p); },
                     '_' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.pos = @intCast(p);
@@ -785,7 +771,6 @@ pub const BaseLexer = struct {
                 if (p < n) switch (src[p]) {
                     '\n' => {
                         p += 1;
-                        self.beg = 0;
                         p = start;
                         self.pat = 0;
                         self.dep = 0;
@@ -794,7 +779,6 @@ pub const BaseLexer = struct {
                     },
                     else => {},
                 };
-                self.beg = 0;
                 p = start;
                 self.pat = 0;
                 self.dep = 0;
