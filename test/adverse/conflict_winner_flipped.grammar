@@ -1,0 +1,29 @@
+# A reduce/reduce entry whose winner and loser swapped is drift.
+# error: conflict_winner_flipped.grammar:21:5:
+# error: reduce/reduce winner flipped: declared ref → ID over val → ID, now reduce val → ID over ref → ID
+@lexer
+tokens
+    id
+    q
+    colon
+    semi
+    eof
+    err
+'?'                                         → q
+':'                                         → colon
+';'                                         → semi
+[a-z]+                                      → id
+.                                           → err
+
+@parser
+@conflicts
+    shift  stmt → "?" ID stmt      1  # dangling else
+    reduce ref → ID over val → ID  1  # a reference first
+
+prog! = stmt
+stmt  = "?" ID stmt
+      | "?" ID stmt ":" stmt
+      | val ";"
+      | ref ";"
+val   = ID                                  → (val 1)
+ref   = ID                                  → (ref 1)

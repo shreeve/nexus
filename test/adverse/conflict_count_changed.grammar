@@ -1,0 +1,29 @@
+# A declared count that differs from the conflicts found is drift.
+# error: conflict_count_changed.grammar:20:5:
+# error: conflict count changed: 2 declared, 1 now: shift  stmt → "?" ID stmt
+@lexer
+tokens
+    id
+    q
+    colon
+    semi
+    eof
+    err
+'?'                                         → q
+':'                                         → colon
+';'                                         → semi
+[a-z]+                                      → id
+.                                           → err
+
+@parser
+@conflicts
+    shift  stmt → "?" ID stmt      2  # dangling else
+    reduce val → ID over ref → ID  1  # a value first
+
+prog! = stmt
+stmt  = "?" ID stmt
+      | "?" ID stmt ":" stmt
+      | val ";"
+      | ref ";"
+val   = ID                                  → (val 1)
+ref   = ID                                  → (ref 1)

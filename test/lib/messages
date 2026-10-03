@@ -5,11 +5,14 @@
 #   test/lib/messages ALLOW CORPUS SRC.zig...
 #
 # Extracts the format string of every error and warning in the SRC files:
-# the last string argument of a call to a report function (err, warn,
-# errAt, errLine, fail, failAt, failLine, errDirective, errAtUse,
-# usageError) and the text after `error: ` or `warning: ` of a
-# std.debug.print. Test blocks, comments and multiline strings are
-# skipped, and so are formats with almost no fixed text ("{s}"). Each
+# the last string argument (or a `const NAME = "..."` it names) of a call
+# to a report function (err, warn, errAt, errLine, fail, failAt, failLine,
+# errDirective, errAtUse, usageError, report), the text after `error: ` or
+# `warning: ` of a std.debug.print, and each piece of a message written to
+# a writer: the string of every `.writeAll(` and `.print(` from a call to
+# `located` (or the start of `fn describe`) up to the next `emit(` call or
+# `fn`. Test blocks, comments and multiline strings are skipped, and so
+# are formats with almost no fixed text ("{s}"). Each
 # format, with its {...} placeholders as wildcards, must match a line of
 # CORPUS (the output of the generator over every test grammar, and the
 # texts tools/cli expects), unless ALLOW lists it.
@@ -28,7 +31,7 @@ use warnings;
 my ($allowFile, $corpusFile, @srcs) = @ARGV;
 die "usage: test/lib/messages ALLOW CORPUS SRC.zig...\n" unless @srcs;
 
-my %report = map { $_ => 1 } qw(err warn errAt errLine fail failAt failLine errDirective errAtUse usageError);
+my %report = map { $_ => 1 } qw(err warn errAt errLine fail failAt failLine errDirective errAtUse usageError report);
 
 # Zig tokens: [kind, text, line]; kind is s (string literal), w (word) or p.
 sub tokens {
@@ -66,10 +69,26 @@ for my $file (@srcs) {
     # Blank out top-level test blocks, keeping the line count.
     $text =~ s{^test "[^\n]*\{\n.*?^\}\n}{my $b = $&; $b =~ tr/\n//cd; $b}gmse;
     my @t = tokens($text);
+    # String constants a report call may name.
+    my %const;
+    for my $i (0 .. $#t - 4) {
+        $const{$t[$i + 1][1]} = $t[$i + 3][1]
+            if $t[$i][1] eq 'const' && $t[$i + 2][1] eq '=' && $t[$i + 3][0] eq 's' && $t[$i + 4][1] eq ';';
+    }
+    my $writing = 0;
     for my $i (0 .. $#t - 1) {
+        if ($t[$i][1] eq 'fn') { $writing = $t[$i + 1][1] eq 'describe' }
         next unless $t[$i][0] eq 'w' && $t[$i + 1][1] eq '(';
         my $name = $t[$i][1];
         next if $i > 0 && $t[$i - 1][1] eq 'fn';
+        if ($name eq 'located') { $writing = 1; next }
+        if ($name eq 'emit') { $writing = 0; next }
+        if ($writing && ($name eq 'writeAll' || $name eq 'print') && $t[$i - 1][1] eq '.' && $t[$i + 2][0] eq 's') {
+            (my $piece = $t[$i + 2][1]) =~ s/(\\n)+$//;
+            (my $fixed = $piece) =~ s/\{[^{}]*\}//g;
+            found($file, $piece, $t[$i + 2][2]) if ($fixed =~ tr/A-Za-z//) >= 4;
+            next;
+        }
         my $isPrint = $name eq 'print' && $i >= 2 && $t[$i - 1][1] eq '.' && $t[$i - 2][1] eq 'debug';
         next unless $report{$name} || $isPrint;
         # The call's top-level string arguments, `"a" ++ "b"` joined.
@@ -82,6 +101,7 @@ for my $file (@srcs) {
                 if (@strs && $t[$j - 1][1] eq '+' && $t[$j - 2][1] eq '+' && $t[$j - 3][0] eq 's') { $strs[-1][0] .= $x; $strs[-1][2] = $j }
                 else { push @strs, [$x, $t[$j][2], $j] }
             }
+            elsif ($k eq 'w' && $depth == 1 && exists $const{$x} && $t[$j + 1][1] =~ /^[,)]$/) { push @strs, [$const{$x}, $t[$j][2], $j] }
         }
         next unless @strs;
         my ($fmt, $line, $end) = @{$isPrint ? $strs[0] : $strs[-1]};
