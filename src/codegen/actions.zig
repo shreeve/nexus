@@ -117,19 +117,37 @@ fn markElem(tree: []bool, rule: Rule, e: ActionElem) void {
     }
 }
 
-/// Emit the Zig expression for `rule`'s action. `reachesTree` is whether
-/// the rule's value can reach the tree (see `treeSymbols`).
-pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool) !void {
-    var e = Emitter{ .allocator = allocator, .g = g, .rule = rule, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread" };
+/// What the emitted actions refer to, so that `executeAction` discards
+/// the parameters none reads and the module keeps element extents only
+/// when some action builds a nested node.
+pub const Uses = struct {
+    /// Some action reads its elements (`pass`).
+    pass: bool = false,
+    /// Some action calls a builder (`self`).
+    self: bool = false,
+    /// Some action builds a nested node over elements (`self.nested`).
+    nested: bool = false,
+};
+
+/// Emit the Zig expression for `rule`'s action, recording in `uses` what
+/// it refers to. `reachesTree` is whether the rule's value can reach the
+/// tree (see `treeSymbols`).
+pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Grammar, rule: Rule, reachesTree: bool, uses: *Uses) !void {
+    var e = Emitter{ .allocator = allocator, .g = g, .rule = rule, .fixed = g.schema != null, .use = if (reachesTree) ".tree" else ".spread", .uses = uses };
     const tree = rule.actionTree orelse {
         // Default: nothing, the one element, or an untagged list.
         if (rule.rhs.len == 0) return writer.writeAll(".nil");
+        uses.pass = true;
         if (rule.rhs.len == 1) return writer.writeAll("pass[0]");
+        uses.self = true;
         return writer.print("self.list(pass, {s})", .{e.use});
     };
     switch (tree) {
         .nil => try writer.writeAll(".nil"),
-        .pass => |p| try writer.print("pass[{d}]", .{Emitter.index(p)}),
+        .pass => |p| {
+            uses.pass = true;
+            try writer.print("pass[{d}]", .{Emitter.index(p)});
+        },
         .list => |l| try e.list(writer, l, "blk"),
     }
 }
@@ -145,6 +163,7 @@ const Emitter = struct {
     /// The `ListUse` of the rule's own untagged list (`.tree` or
     /// `.spread`); nested lists always reach the tree.
     use: []const u8,
+    uses: *Uses,
 
     /// The value-stack index of action position `pos` (1-based).
     fn index(pos: u16) usize {
@@ -152,6 +171,9 @@ const Emitter = struct {
     }
 
     fn list(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
+        // Every list is built by a builder.
+        self.uses.self = true;
+        if (readsElements(l)) self.uses.pass = true;
         if (l.head == .none and l.items.len == 0) return w.print(emptyList, .{self.use});
 
         // (!A ...B): element A consed onto the list at B (A nil when it is
@@ -345,6 +367,7 @@ const Emitter = struct {
                 var range: Range = .{};
                 range.addList(n.*);
                 if (range.lo) |lo| {
+                    self.uses.nested = true;
                     try w.writeAll("self.nested(");
                     try self.list(w, n.*, label);
                     try w.print(", {d}, {d})", .{ index(lo), index(range.hi) });
@@ -385,6 +408,24 @@ const Range = struct {
         for (l.items) |item| self.addElem(item.elem);
     }
 };
+
+/// Whether a list reads any element (`pass`).
+fn readsElements(l: ActionList) bool {
+    switch (l.head) {
+        .ref => |h| if (readsElement(h)) return true,
+        else => {},
+    }
+    for (l.items) |item| if (readsElement(item.elem)) return true;
+    return false;
+}
+
+fn readsElement(e: ActionElem) bool {
+    return switch (e) {
+        .ref, .spread, .symId => true,
+        .node => |n| readsElements(n.*),
+        .nil, .tagLit, .litTag => false,
+    };
+}
 
 fn refersTo(e: ActionElem, pos: u16) bool {
     return switch (e) {

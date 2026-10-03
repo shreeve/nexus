@@ -134,7 +134,6 @@ const Codegen = struct {
         try self.validate();
 
         self.actionsCode = try self.generateActions();
-        self.usesNested = std.mem.find(u8, self.actionsCode, "self.nested(") != null;
 
         try writeHeader(w, self.g.lang);
         try w.writeAll(lexerDecls);
@@ -670,6 +669,7 @@ const Codegen = struct {
         var arms: std.Io.Writer.Allocating = .init(self.allocator);
         const a = &arms.writer;
         const reaches = try actions.treeSymbols(self.allocator, self.g);
+        var uses: actions.Uses = .{};
         for (self.g.rules.items, 0..) |rule, ruleIdx| {
             if (self.g.isAcceptRule(@intCast(ruleIdx))) continue;
             if (self.options.emitComments) {
@@ -679,16 +679,16 @@ const Codegen = struct {
                 try a.writeAll("\n");
             }
             try a.print("        {d} => ", .{ruleIdx});
-            try actions.generateRuleAction(self.allocator, a, self.g, rule, reaches[rule.lhs]);
+            try actions.generateRuleAction(self.allocator, a, self.g, rule, reaches[rule.lhs], &uses);
             try a.writeAll(",\n");
         }
-        const body = arms.written();
+        self.usesNested = uses.nested;
         try w.writeAll("\nfn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {\n");
         try w.writeAll("    @setEvalBranchQuota(1_000_000);\n");
-        if (std.mem.find(u8, body, "self.") == null) try w.writeAll("    _ = self;\n");
-        if (std.mem.find(u8, body, "pass") == null) try w.writeAll("    _ = pass;\n");
+        if (!uses.self) try w.writeAll("    _ = self;\n");
+        if (!uses.pass) try w.writeAll("    _ = pass;\n");
         try w.writeAll("    return switch (ruleId) {\n");
-        try w.writeAll(body);
+        try w.writeAll(arms.written());
         try w.writeAll("        else => unreachable,\n    };\n}\n");
         return out.written();
     }
