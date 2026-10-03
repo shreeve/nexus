@@ -98,6 +98,23 @@ pub fn ruleText(a: Allocator, g: *const Grammar, ruleId: u16) ![]const u8 {
     return out.toOwnedSlice();
 }
 
+pub const Loc = struct { line: u32, col: u32 };
+
+/// Where a rule is written: its alternative, or for a rule the expander
+/// synthesizes without one (line 0), the first written rule that uses it,
+/// through other synthesized rules; 1:1 when nothing uses it.
+pub fn ruleLoc(g: *const Grammar, ruleId: u16) Loc {
+    var rule = &g.rules.items[ruleId];
+    var hops: usize = 0;
+    while (rule.line == 0 and hops < g.rules.items.len) : (hops += 1) {
+        rule = for (g.rules.items) |*user| {
+            if (std.mem.findScalar(u16, user.rhs, rule.lhs) != null) break user;
+        } else break;
+    }
+    if (rule.line == 0) return .{ .line = 1, .col = 1 };
+    return .{ .line = rule.line, .col = @max(rule.col, 1) };
+}
+
 /// An item `lhs → α • β`.
 fn writeItem(w: *std.Io.Writer, g: *const Grammar, item: Item) !void {
     const rule = &g.rules.items[item.ruleId];
@@ -330,7 +347,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
                 taken[i] = true;
                 if (actual[i].count != d.count) {
                     drift = true;
-                    try located(w, opts.path, d.line);
+                    try located(w, opts.path, .{ .line = d.line, .col = d.col });
                     try w.print("conflict count changed: {d} declared, {d} now: ", .{ d.count, actual[i].count });
                     try writeEntryHead(w, g, actual[i]);
                     try w.writeByte('\n');
@@ -344,7 +361,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
                 if (taken[i] or e.kind != .reduce) continue;
                 if (try sameRule(a, g, d.rule, e.over) and try sameRule(a, g, d.over orelse "", e.rule)) break i;
             } else null else null;
-            try located(w, opts.path, d.line);
+            try located(w, opts.path, .{ .line = d.line, .col = d.col });
             if (flipped) |i| {
                 taken[i] = true;
                 try w.print("reduce/reduce winner flipped: declared {s} over {s}, now ", .{ d.rule, d.over.? });
@@ -360,7 +377,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
         for (actual, 0..) |e, i| {
             if (taken[i]) continue;
             drift = true;
-            try located(w, opts.path, g.rules.items[e.rule].line);
+            try located(w, opts.path, ruleLoc(g, e.rule));
             try w.writeAll("undeclared conflict: ");
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});
@@ -369,7 +386,7 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
     } else if (actual.len > 0) {
         drift = true;
         for (actual) |e| {
-            try located(w, opts.path, g.rules.items[e.rule].line);
+            try located(w, opts.path, ruleLoc(g, e.rule));
             try w.writeAll("undeclared conflict: ");
             try writeEntryHead(w, g, e);
             try w.print("  ({d})\n", .{e.count});
@@ -384,9 +401,9 @@ pub fn check(a: Allocator, g: *const Grammar, auto: *const Automaton, tbl: *cons
     return error.ConflictDrift;
 }
 
-/// `path:line:1: error: ` (or `path: error: ` without a line).
-fn located(w: *std.Io.Writer, path: []const u8, line: u32) !void {
-    if (line > 0) try w.print("{s}:{d}:1: error: ", .{ path, line }) else try w.print("{s}: error: ", .{path});
+/// `path:line:col: error: ` (1:1 for an entry without a location).
+fn located(w: *std.Io.Writer, path: []const u8, at: Loc) !void {
+    try w.print("{s}:{d}:{d}: error: ", .{ path, @max(at.line, 1), @max(at.col, 1) });
 }
 
 /// Fail on `X "c"` hints that decide nothing, and on hints whose literal
@@ -414,7 +431,7 @@ pub fn checkHints(a: Allocator, g: *const Grammar, tbl: *const Table, opts: Opti
         var out: std.Io.Writer.Allocating = .init(a);
         defer out.deinit();
         const w = &out.writer;
-        try located(w, opts.path, g.rules.items[h.rule].line);
+        try located(w, opts.path, ruleLoc(g, h.rule));
         try w.writeAll("X ");
         try writeHintChar(w, h.char);
         try w.writeAll(" on ");

@@ -381,7 +381,7 @@ test "manifest check: match, count change, winner flip, missing, undeclared" {
     changed.count = 2;
     b.g.conflicts = &.{ changed, reduce };
     try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
-    try expectContains(sink.written(), "t.grammar: error: conflict count changed: 2 declared, 1 now: shift  stmt → IF ID stmt\n");
+    try expectContains(sink.written(), "t.grammar:1:1: error: conflict count changed: 2 declared, 1 now: shift  stmt → IF ID stmt\n");
     // The pasteable manifest keeps the declared reasons.
     try expectContains(sink.written(), "    shift  stmt → IF ID stmt       1  # dangling else\n");
     sink.clearRetainingCapacity();
@@ -472,7 +472,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
     try testing.expectEqual(@as(usize, 0), dead.tbl.xExcludes.items.len);
     try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &dead.g, &dead.tbl, opts));
     try testing.expectEqualStrings(
-        "t.grammar: error: X \":\" on e → name has no effect: it decides no shift/reduce conflict between this rule and \":\"; remove the hint\n",
+        "t.grammar:1:1: error: X \":\" on e → name has no effect: it decides no shift/reduce conflict between this rule and \":\"; remove the hint\n",
         sink.written(),
     );
 }
@@ -536,7 +536,7 @@ test "a hint counts as used only where its rule wins the cell" {
     }, &.{"prog"});
     try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &b.g, &b.tbl, opts));
     try testing.expectEqualStrings(
-        "t.grammar: error: X \"(\" on q → ID has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
+        "t.grammar:1:1: error: X \"(\" on q → ID has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
         sink.written(),
     );
 }
@@ -563,7 +563,7 @@ test "hints group by source alternative: line and column" {
     }
     try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &b.g, &b.tbl, opts));
     try testing.expectEqualStrings(
-        "t.grammar:7:1: error: X \"(\" on e → NUM has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
+        "t.grammar:7:20: error: X \"(\" on e → NUM has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
         sink.written(),
     );
     // Rules expanded from one alternative (one line and column) share it.
@@ -626,6 +626,35 @@ test "a manifest entry naming a literal with `->` or blanks matches its rule" {
 // =============================================================================
 // Grammar and table checks
 // =============================================================================
+
+test "only the causes of unproductive rules are reported" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // b needs itself; bs, top and the accept rule fail only through b.
+    var g = try build(a, &.{ "top → Y bs", "bs → b", "bs → bs b", "b → Y b" }, &.{"top"});
+    try testing.expectEqualSlices(u16, &.{sym(&g, "b")}, try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g)));
+    // a and c need each other: both are the cause.
+    g = try build(a, &.{ "top → a", "a → W c", "c → Y a", "c → Y a Z" }, &.{"top"});
+    try testing.expectEqualSlices(u16, &.{ sym(&g, "a"), sym(&g, "c") }, try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g)));
+    // One alternative that completes is enough.
+    g = try build(a, &.{ "top → a", "a → W a", "a → Y" }, &.{"top"});
+    try testing.expectEqual(@as(usize, 0), (try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g))).len);
+}
+
+test "a synthesized rule is located where a written rule uses it" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var g = try build(a, &.{ "top → Y bs", "bs → b", "bs → bs b", "b → Y" }, &.{"top"});
+    g.rules.items[0].line = 3;
+    g.rules.items[0].col = 7;
+    g.rules.items[3].line = 4;
+    g.rules.items[3].col = 5;
+    try testing.expectEqual(conflicts.Loc{ .line = 3, .col = 7 }, conflicts.ruleLoc(&g, 2)); // bs, via top
+    try testing.expectEqual(conflicts.Loc{ .line = 4, .col = 5 }, conflicts.ruleLoc(&g, 3));
+    try testing.expectEqual(conflicts.Loc{ .line = 1, .col = 1 }, conflicts.ruleLoc(&g, g.acceptRules.items[0]));
+}
 
 test "an endless reduce chain is found through empty and unit reductions" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);

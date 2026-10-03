@@ -6,6 +6,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const Grammar = grammar.Grammar;
+const diag = @import("../diag.zig");
 pub const automaton = @import("automaton.zig");
 pub const lookahead = @import("lookahead.zig");
 pub const table = @import("table.zig");
@@ -35,8 +36,8 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
             return error.GenerationFailed;
         },
         error.TooManyStates => {
-            const first = if (g.rules.items.len > 0) g.rules.items[0] else null;
-            std.debug.print("{s}:{d}:{d}: error: the grammar needs more than {d} parser states, the parse table's limit\n", .{ opts.path, if (first) |r| @max(r.line, 1) else 1, if (first) |r| @max(r.col, 1) else 1, automaton.maxStates });
+            const at = conflicts.ruleLoc(g, 0);
+            diag.errLine(opts.path, at.line, at.col, "the grammar needs more than {d} parser states, the parse table's limit", .{automaton.maxStates});
             return error.GenerationFailed;
         },
     };
@@ -44,19 +45,15 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
 
     // LALR lookaheads (and any parse) assume every rule can complete.
     const costs = try repair.insertCosts(a, g);
-    var unproductive = false;
-    for (g.symbols.items, 0..) |sym, i| {
-        if (sym.kind != .nonterminal or sym.rules.items.len == 0 or costs[i] != repair.infinite) continue;
-        unproductive = true;
-        const line = g.rules.items[sym.rules.items[0]].line;
-        if (line > 0) std.debug.print("{s}:{d}:1: ", .{ opts.path, line }) else std.debug.print("{s}: ", .{opts.path});
-        var name: std.Io.Writer.Allocating = .init(a);
-        defer name.deinit();
-        conflicts.writeSymbol(&name.writer, g, @intCast(i)) catch return error.OutOfMemory;
-        std.debug.print("error: rule {s} derives no finite input (each of its alternatives needs a rule that never completes)\n", .{name.written()});
-    }
+    const roots = try unproductiveRoots(a, g, costs);
     a.free(costs);
-    if (unproductive) return error.GenerationFailed;
+    if (roots.len > 0) {
+        for (roots) |s| {
+            const at = conflicts.ruleLoc(g, g.symbols.items[s].rules.items[0]);
+            diag.errLine(opts.path, at.line, at.col, "rule {s} derives no finite input (each of its alternatives needs a rule that never completes)", .{g.symbols.items[s].name});
+        }
+        return error.GenerationFailed;
+    }
     try checkCycles(a, g, opts.path);
 
     const la = try lookahead.compute(g, &auto);
@@ -64,7 +61,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     if (g.repair) |spec| {
         if (repair.validate(g, spec)) |bad| {
             const at = spec.locOf(bad.index) orelse grammar.RepairSpec.Loc{ .line = 1, .col = 1 };
-            std.debug.print("{s}:{d}:{d}: error: @repair: {s} {s}\n", .{ opts.path, at.line, at.col, bad.name, bad.reason });
+            diag.errLine(opts.path, at.line, at.col, "@repair: {s} {s}", .{ bad.name, bad.reason });
             return error.GenerationFailed;
         }
     }
@@ -75,13 +72,8 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     };
 
     if (try emptyLoop(a, g, &tbl)) |loop| {
-        const rule = g.rules.items[loop.rule];
-        var name: std.Io.Writer.Allocating = .init(a);
-        defer name.deinit();
-        conflicts.writeSymbol(&name.writer, g, rule.lhs) catch return error.OutOfMemory;
-        name.writer.writeAll(" on ") catch return error.OutOfMemory;
-        conflicts.writeSymbol(&name.writer, g, loop.terminal) catch return error.OutOfMemory;
-        std.debug.print("{s}:{d}:{d}: error: reducing the empty rule {s} leads back to the same state, so the parser would push forever on that token (a `<` hint or a conflict resolved toward an empty rule)\n", .{ opts.path, @max(rule.line, 1), @max(rule.col, 1), name.written() });
+        const at = conflicts.ruleLoc(g, loop.rule);
+        diag.errLine(opts.path, at.line, at.col, "reducing the empty rule {s} on {s} leads back to the same state, so the parser would push forever on that token (a `<` hint or a conflict resolved toward an empty rule)", .{ g.symbols.items[g.rules.items[loop.rule].lhs].name, g.symbols.items[loop.terminal].name });
         return error.GenerationFailed;
     }
 
@@ -96,6 +88,86 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     };
 
     return .{ .automaton = auto, .lookaheads = la, .table = tbl };
+}
+
+/// The unproductive nonterminals to report (those that derive no finite
+/// input: `costs` infinite), ascending: the members of each bottom strongly
+/// connected component of "a rule of A uses B" among unproductive
+/// nonterminals. Every other unproductive nonterminal (helpers such as
+/// `b+`, the rules using them, the accept rules) fails only through one of
+/// these, so reporting it too would only repeat the cause.
+pub fn unproductiveRoots(a: Allocator, g: *const Grammar, costs: []const u32) Allocator.Error![]const u16 {
+    const n = g.symbols.items.len;
+    const none = std.math.maxInt(u32);
+    const index = try a.alloc(u32, n);
+    defer a.free(index);
+    @memset(index, none);
+    const low = try a.alloc(u32, n);
+    defer a.free(low);
+    const flags = try a.alloc(packed struct { onStack: bool, exits: bool }, n);
+    defer a.free(flags);
+    @memset(flags, .{ .onStack = false, .exits = false });
+    var stack: std.ArrayList(u16) = .empty;
+    defer stack.deinit(a);
+    // Tarjan's algorithm, iterative: a frame walks its symbol's rules.
+    const Frame = struct { sym: u16, rule: u32 = 0, pos: u32 = 0 };
+    var frames: std.ArrayList(Frame) = .empty;
+    defer frames.deinit(a);
+    var roots: std.ArrayList(u16) = .empty;
+    var next: u32 = 0;
+
+    for (0..n) |s0| {
+        if (costs[s0] != repair.infinite or g.symbols.items[s0].rules.items.len == 0 or index[s0] != none) continue;
+        var push: ?u16 = @intCast(s0);
+        while (true) {
+            if (push) |v| {
+                index[v] = next;
+                low[v] = next;
+                next += 1;
+                flags[v].onStack = true;
+                try stack.append(a, v);
+                try frames.append(a, .{ .sym = v });
+                push = null;
+            }
+            const f = frames.lastPtr() orelse break;
+            const rules = g.symbols.items[f.sym].rules.items;
+            if (f.rule < rules.len) {
+                const rhs = g.rules.items[rules[f.rule]].rhs;
+                if (f.pos == rhs.len) {
+                    f.rule += 1;
+                    f.pos = 0;
+                    continue;
+                }
+                const w = rhs[f.pos];
+                f.pos += 1;
+                if (costs[w] != repair.infinite or g.symbols.items[w].rules.items.len == 0) continue;
+                if (index[w] == none) {
+                    push = w;
+                } else if (flags[w].onStack) {
+                    low[f.sym] = @min(low[f.sym], index[w]);
+                } else flags[f.sym].exits = true;
+                continue;
+            }
+            const v = frames.pop().?.sym;
+            if (low[v] == index[v]) {
+                const from = std.mem.findScalarLast(u16, stack.items, v).?;
+                const members = stack.items[from..];
+                const bottom = for (members) |m| {
+                    if (flags[m].exits) break false;
+                } else true;
+                if (bottom) try roots.appendSlice(a, members);
+                for (members) |m| flags[m].onStack = false;
+                stack.shrinkRetainingCapacity(from);
+            }
+            if (frames.last()) |parent| {
+                if (flags[v].onStack) {
+                    low[parent.sym] = @min(low[parent.sym], low[v]);
+                } else flags[parent.sym].exits = true;
+            }
+        }
+    }
+    std.mem.sort(u16, roots.items, {}, std.sort.asc(u16));
+    return roots.toOwnedSlice(a);
 }
 
 /// A reduce chain that never ends; reducing the empty rule `rule` on
@@ -189,8 +261,8 @@ fn checkCycles(a: Allocator, g: *const Grammar, path: []const u8) Error!void {
             }
             text.writer.writeAll(" ⇒ ") catch return error.OutOfMemory;
             conflicts.writeSymbol(&text.writer, g, first.lhs) catch return error.OutOfMemory;
-            if (first.line > 0) std.debug.print("{s}:{d}:{d}: ", .{ path, first.line, @max(first.col, 1) }) else std.debug.print("{s}:1:1: ", .{path});
-            std.debug.print("error: the grammar is cyclic ({s}): a rule that derives itself gives some input infinitely many parses\n", .{text.written()});
+            const loc = conflicts.ruleLoc(g, rules[0]);
+            diag.errLine(path, loc.line, loc.col, "the grammar is cyclic ({s}): a rule that derives itself gives some input infinitely many parses", .{text.written()});
             return error.GenerationFailed;
         }
     }
