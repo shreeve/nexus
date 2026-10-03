@@ -16,8 +16,8 @@ dependency. Nexus parses its own grammar files with a parser it generates.
 1. **We test and verify everything we say.** A feature exists when a test
    in `./test/run` shows it working; a rejection exists when an adverse
    test proves it. Docs make no claims the suite does not check, and every
-   grammar and Zig example in the docs is generated, compiled and run by
-   `./test/run` (see `test/README.md`, "Doc tests").
+   grammar and Zig example in the docs is checked by `./test/run` (see
+   `test/README.md`, "Doc tests").
 2. **Nothing silent.** A mistake in a grammar is an error, never a skipped
    rule, a guessed default, or a dead alternative. Every message the
    generator can print is printed by some test (`tools/messages`;
@@ -90,12 +90,14 @@ zig fmt --check build.zig src/*.zig src/{codegen,lexgen,lr} src/frontend/{lang,l
 Rig, em (MUMPS) and nexis check in parsers that Nexus 1.x generates
 (`zig build parser` in each, using `../nexus/bin/nexus`). A change to
 generated code reaches them when they regenerate; their suites are the
-final check. Slash and Zag check in parsers from Nexus 0.10.3; their 1.x
-grammars are `test/slash/slash.grammar` and `test/zag/zag.grammar` here.
-`test/rig`, `test/mumps`, `test/nexis` and the other suites hold copies of
-downstream grammars and lang modules: when a downstream grammar changes,
-re-sync the copy here in its own commit. The edits a release asks of each
-downstream repository are in `CHANGELOG.md`.
+final check. Slash, Zag and nanoruby check in parsers from Nexus 0.10.3;
+their 1.x grammars are `test/slash/slash.grammar`, `test/zag/zag.grammar`
+and `test/ruby/ruby.grammar` here. `test/rig`, `test/mumps` and
+`test/nexis` hold snapshots of downstream grammars, older than the
+originals, with their lang modules kept on this Nexus's API; each is
+re-synced, in its own commit, as its project moves to Zig 0.17 and this
+Nexus. The edits a release asks of each downstream repository are in
+`CHANGELOG.md`.
 
 ## Map
 
@@ -107,7 +109,7 @@ downstream repository are in `CHANGELOG.md`.
 | `docs/GRAMMAR.md` | the grammar-file reference |
 | `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |
 | `docs/INTERNALS.md` | architecture, the bootstrap, invariants, releasing |
-| `docs/index.html` | the project page (with its images and `nexus.fig`, the logo source) |
+| `docs/index.html` | the project page; `docs/assets/` holds its images and `nexus.fig`, the logo source |
 | `CHANGELOG.md` | every release, and the migration steps for downstream |
 | `HANDOFF.md` | current state, open work, tips |
 | [ZIG-0.17.md](https://raw.githubusercontent.com/shreeve/zig-agent-docs/main/ZIG-0.17.md) | the Zig 0.17 reference (shreeve/zig-agent-docs) |

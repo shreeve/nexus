@@ -9,8 +9,8 @@
 //! lexer spec and GrammarIR) -> lexgen (lexer source) -> semantics (with
 //! @schema: actions resolved against the schema) -> expand (desugared
 //! Grammar) -> semantics.checkTypes (with @schema) -> check (defined
-//! symbols, reachable rules) -> lr (automaton, lookaheads, table) ->
-//! codegen (the parser module).
+//! symbols, reachable rules, token binding, `X "c"` hint resolution) -> lr
+//! (automaton, lookaheads, table) -> codegen (the parser module).
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;

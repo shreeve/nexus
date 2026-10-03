@@ -249,7 +249,7 @@ action sets or counts into the same variable. Tokens that consume nothing
 never run it, and neither do zero-width rules, even when their token
 covers blanks or `counted()` bytes.
 
-### Actions
+### Lexer actions
 
 | Action | Effect |
 |---|---|
@@ -908,9 +908,10 @@ f(x) g (y)
 An `X "c"` hint that decides nothing is an error. So is one whose `"c"`
 names no terminal: no lexer rule's pattern is exactly `"c"` and no `@op`
 maps it; the parser grammar uses none of its tokens; lexer rules in
-different states make `"c"` two tokens the grammar uses; it is the token
-`@as` promotes; or the grammar writes that token as another literal. Two
-hints of one alternative name different terminals. A hint applies to its
+different states, or under different guards, make `"c"` two tokens the
+grammar uses; it is the token `@as` promotes; or the grammar writes that
+token as another literal. Two hints of one alternative must name
+different terminals. A hint applies to its
 terminal, so to every lexeme of that token: with `'(' → open` and
 `'[' → open`, `X "("` also shifts a touching `[`. A hint counts as used
 when it decides a cell for any rule its alternative expands into.
@@ -1017,12 +1018,12 @@ early:
 | `` `...2` spreads a list, but element 2 (IDENT) is a token `` | write `2` |
 | `rule x derives no finite input` | every alternative needs a rule that never completes |
 | `the grammar is cyclic (a ⇒ b ⇒ a)` | a rule derives itself; the grammar has infinitely many parses of some input |
-| `undeclared conflict: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
+| `undeclared conflict: ...` / `declared conflict no longer occurs: ...` / `conflict count changed` | see [Conflicts](#conflicts-and-hints) |
 | `position 5 is past the end of the pattern (2 elements)` | an action refers to a missing element |
 | `X ":" on name ... has no effect` | a hint that decides nothing |
 | `X "(" on expr → ... names no token` | no lexer rule's pattern is exactly that text, and no `@op` maps it |
 | `X "(" on expr → ... names no terminal` | the parser grammar uses no token the lexer gives that text |
-| `X "(" on expr → ... is ambiguous` | lexer rules in different states make that text two terminals of the grammar |
+| `X "(" on expr → ... is ambiguous` | lexer rules in different states, or under different guards, make that text two terminals of the grammar |
 | `X "(" on expr → ... names the terminal "["` | the grammar writes that token as another literal |
 | `X "[" on expr → ... names OPEN, as X "(" does` | two hints of one alternative name one terminal |
 | `X "%" on expr → ... the token @as promotes` | a hint names the promotable token |

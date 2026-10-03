@@ -31,7 +31,6 @@ Changes marked **Breaking** need edits in a grammar or a lang module;
 - Rules have no length limit of their own: an alternative has at most
   65534 elements, counting those in its groups and choices at any depth, and
   a grammar at most 65535 symbols, both located errors.
-- GRAMMAR.md has a Limits section.
 
 ### Changed
 
@@ -48,10 +47,9 @@ Generated API:
   `base: BaseLexer` (any other field is a compile error, where the parser
   silently lost `aux`) and needs only `init(source)` and `next()`: the
   parser calls nothing else.
-- **Breaking: errors through `lastError()`.** Locate an error with
-  `lastError().span` and `.cat`, not the parser's `current` token.
-  `writeError` names each expected symbol once, so tokens sharing an
-  `@display` name are listed once.
+- `writeError` names each expected symbol once, so tokens sharing an
+  `@display` name are listed once. Locate an error with `lastError()`
+  (`span`, `cat`, `state`) rather than the parser's `current` token.
 - `NodeInfo`, `SideEntry`, `SideLabel` and `RepairClass` are private.
 - A syntax error names the unexpected token by its `@display` name too
   (`unexpected name 'x'`, `unexpected end of line`).
@@ -115,12 +113,19 @@ Grammar files:
   `b → ε`), whose generated parser pushed forever.
 - **Breaking: the lexer automata have size limits**: an NFA over 200,000
   states, or subset construction past 4 × 65535 states, is a located
-  error.
-- **Breaking: an `X "c"` hint names a literal terminal**, decoding its
-  escapes; a hint whose literal the grammar does not use is an error (it
-  was reported as having no effect), and hints group by alternative, so a
-  dead hint beside a used one on the same line is reported. An `X "c"`
-  inside a group is an error.
+  error, where a pattern whose DFA doubles with each repeat ran out of
+  memory (11 GB) without a diagnostic.
+- **Breaking: an `X "c"` hint names the terminal its one-byte text stands
+  for**, whether the grammar writes that token as the literal `"c"` or by
+  name (`LPAREN`, the token the lexer gives exactly `"c"` or `@op` maps it
+  to), where only a literal matched; its escapes are decoded. A `"c"` that
+  names no token, a token the grammar does not use, text that lexer states
+  or guards make two terminals, the `@as` token, another literal's
+  terminal, or one terminal named twice on an alternative is a located
+  error. Hints group by alternative, so a dead hint beside a used one on
+  the same line is reported, and an `X "c"` inside a group is an error.
+  Tokens are bound to terminals before the LR stage, so `"(" and LPAREN
+  are the same token` is reported before conflicts.
 - **Breaking: a capitalized name is a token only if the lexer declares it
   or an `@as` group produces it**: `EXPR` for a rule `expr` is an undefined
   token.
@@ -197,19 +202,6 @@ Tests:
 
 ### Fixed
 
-- An `X "c"` hint names the terminal of the token `"c"` stands for,
-  whether the grammar writes that token as `"c"` or by name (`LPAREN`).
-  A `"c"` that names no token, a token the grammar does not use, text that
-  lexer states make two terminals, the `@as` token, another literal's
-  terminal, or one terminal named twice on an alternative is a located
-  error. Tokens are bound to terminals before the LR stage, so `"(" and
-  LPAREN are the same token` is reported before conflicts.
-- A generated parser hung on an empty reduction alternating with a unit
-  reduction (`d → b`, `b → ε`); every endless reduce chain is a generation
-  error.
-- A pattern whose DFA doubles with each repeat ran out of memory (11 GB)
-  without a diagnostic; subset construction stops at 4 × 65535 states with
-  a located error. Minimizing a long chain-shaped DFA took 9.4 s and 1.3 GB.
 - Start states had transitions on blanks the scanner never feeds them,
   which hid dead rules (`(' ' 'x') | 'x'` after `'x'`).
 - An `@lexer` section with tokens and no rules (a lang `Lexer` that scans
@@ -260,7 +252,6 @@ Tests:
   starts.
 - Tolerant parsing at end of input took O(budget²) time; insertions that
   only nest a construct deeper are bounded.
-- A rule with more than 255 elements crashed the generator.
 - A multi-element `[A B]` group inside a group or a choice crashed the
   generator; it is a located error.
 - Aliases that form a cycle (`x = y`, `y = x`) are reported as an alias
@@ -287,7 +278,9 @@ generated parsers parse VistA at 65 MB/s instead of 51 MB/s and Rig at
 - Generation: lowering indexes line starts (it was quadratic in file size:
   a 249 KB grammar 2.7 → 0.1 s); the LR(0) builder
   uses dense buckets and the grammar facts are computed once (11% fewer
-  instructions on MUMPS).
+  instructions on MUMPS); the lexer DFA is minimized with Hopcroft's
+  algorithm (a chain-shaped DFA of 5102 states 9.4 s and 1.3 GB → 0.14 s
+  and 13 MB).
 - Generated parsers: lists are linear (a 40,000-line MUMPS routine 2.5 to
   3.2 s and 5 to 13 GB → 0.01 s and 26 MB); pass-through rules skip
   `executeAction`; static action lists are read-only data; parse memory
@@ -330,31 +323,32 @@ Per repository:
   `pub const Tag = parser.Tag;` stays (rig's code names it). In
   `rig.grammar`, the five trailing commas `[","]` (`params`, `tparams`,
   `tatom`, `patatom`, `bars`) become `![","]`.
-- **em** (`mumps.grammar`, `src/mumps.zig`): delete `simd_to '\n'` from the
-  comment rule; in `@conflicts`, `shift L(expr).tail → ε 2` becomes
-  `shift viewarg → expr ":" L(expr) 1`, and `shift IDENT* → ε 2` becomes
-  `shift patatom → repcount IDENT+ 1`. Delete `Lexer.text` and
-  `Lexer.reset`; `frontend.zig`'s `writeExpected` can take its names from
-  `expectedNames`.
+- **em** (`mumps.grammar`, `src/mumps.zig`): in `@conflicts`,
+  `shift L(expr).tail → ε 2` becomes `shift viewarg → expr ":" L(expr) 1`,
+  and `shift IDENT* → ε 2` becomes `shift patatom → repcount IDENT+ 1`.
+  Delete `Lexer.text` and `Lexer.reset`; `frontend.zig`'s `writeExpected`
+  can take its names from `expectedNames`.
 - **nexis** (`src/nexis.zig`): replace the `Tag` enum with
   `pub const Tag = parser.Tag;` (`reader.zig` names `nexis.Tag`); delete
-  `Lexer.text`, `Lexer.reset` and the unused `keyword_as`; `loader.zig`
-  locates a parse error with `parser.lastError().?.span`, not
-  `parser.current`. Its scanner keeps its own long-token encoding through
+  `Lexer.text` and `Lexer.reset`; `loader.zig` (and two parse-error tests
+  in `reader.zig`) locate a parse error with `lastError().?.span`, not
+  `current`. Its scanner keeps its own long-token encoding through
   `aux` (`srcLen`).
-- **slash** (Nexus 0.10.3; the port in this repository's `test/slash` is
-  the 1.x form): delete `Tag`, `Lexer.text` and `Lexer.reset`; the
-  heredoc, string-definition and UTF-8 identifier and variable tokens use
-  `makeToken`.
-- **zag** (Nexus 0.10.3; see `test/zag`): in `@conflicts`,
-  `shift L(arg).tail → ε 2` becomes `shift call → call L(arg) 1`, and
-  `shift L(expr).tail → ε 2` becomes `shift L(expr) → expr 2`. Delete
-  `Tag`, `Lexer.text` and `Lexer.reset`; `matchRules()` → `next()` (5
-  sites).
-- **nanoruby** (Nexus 0.10.3; see `test/ruby`): delete `Tag`,
-  `Lexer.text` and `Lexer.reset`; `matchRules()` → `next()` (4 sites);
-  symbols, `%w`/`%i` arrays, number extension and string segments use
-  `makeToken`.
+- **slash, zag, nanoruby** check in Nexus 0.10.3 parsers. Porting one of
+  them from 0.10.3 starts from this repository's 1.x port of its grammar
+  and lang module (`test/slash`, `test/zag`, `test/ruby`), the reference
+  that carries every change below; each item says what changed in that
+  port since 1.1.0.
+- **slash** (`test/slash`): delete `Tag`, `Lexer.text` and `Lexer.reset`;
+  the heredoc, string-definition and UTF-8 identifier and variable tokens
+  use `makeToken`.
+- **zag** (`test/zag`): in `@conflicts`, `shift L(arg).tail → ε 2` becomes
+  `shift call → call L(arg) 1`, and `shift L(expr).tail → ε 2` becomes
+  `shift L(expr) → expr 2`. Delete `Tag`, `Lexer.text` and `Lexer.reset`;
+  `matchRules()` → `next()` (5 sites).
+- **nanoruby** (`test/ruby`): delete `Tag`, `Lexer.text` and
+  `Lexer.reset`; `matchRules()` → `next()` (4 sites); symbols, `%w`/`%i`
+  arrays, number extension and string segments use `makeToken`.
 
 ## 1.1.0 — 2026-10-02
 

@@ -39,7 +39,8 @@ Best of 5 rounds, one thread, all input in memory, a fresh parser per file.
 `parseRoutine` for MUMPS, `parseTree` for Rig).
 
 - **mumps**: every routine in `em/misc/vista` (24,704 files, 86.5 MB);
-  22,709 parse to the end, the rest stop at gaps in em's MUMPS grammar.
+  22,709 parse to the end, the rest stop at gaps in the suite's MUMPS
+  grammar (`test/mumps`).
 - **rig**: one synthetic file of about 4 MB, Rig's behavior tests and
   examples that parse on their own, concatenated and repeated.
 
