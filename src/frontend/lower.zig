@@ -76,6 +76,8 @@ pub const GrammarLowerer = struct {
     directives: std.EnumSet(parser.Tag) = .empty,
     extraTags: std.ArrayList([]const u8) = .empty,
     tagsNode: ?Sexp = null,
+    /// The first `@code = f` line.
+    codeNode: ?Sexp = null,
     trivia: std.ArrayList([]const u8) = .empty,
     repair: ?grammar.RepairSpec = null,
 
@@ -95,6 +97,8 @@ pub const GrammarLowerer = struct {
         const source = self.source;
         try self.lowerRoot(sexp);
         if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
+        if (self.codeNode) |node| if (self.lang == null)
+            return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
         if (self.tagsNode) |node| if (!self.hasSchema)
             return self.fail(node, "@tags lists extra schema tags; it needs an @schema", .{});
         // Without a `name!` rule, the first rule is the start symbol.
@@ -251,7 +255,10 @@ pub const GrammarLowerer = struct {
                     .state => try self.lowerStateBlock(ir.State.vars(entry), spec),
                     .after => try self.lowerAfterBlock(ir.After.vars(entry), spec),
                     .tokens => try self.lowerTokensBlock(entry, spec),
-                    .code => try spec.codeFunctions.append(self.allocator, self.text(ir.Code.name(entry))),
+                    .code => {
+                        if (self.codeNode == null) self.codeNode = entry;
+                        try spec.codeFunctions.append(self.allocator, self.text(ir.Code.name(entry)));
+                    },
                     .lex_rule => try self.lowerLexRule(entry, spec),
                     else => unreachable,
                 }
