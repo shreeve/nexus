@@ -39,6 +39,7 @@ const width = 100;
 // analyze it.
 comptime {
     if (parser.nodeStore) _ = &parser.BaseParser.writeFacts;
+    _ = &parser.BaseParser.reset;
     _ = &Sexp.write;
 }
 

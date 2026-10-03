@@ -29,6 +29,12 @@ under "Migrating a lang module" below.
   sharing an `@display` name are no longer listed twice (Nexus's own
   syntax errors listed `"|"` twice). Locate an error with
   `lastError().span` and `.cat`, not the parser's `current` token.
+- `BaseParser.allocator()` is public: the allocator that holds the trees,
+  for what a lang Parser wrapper builds (rig reached into `base.arena`).
+- `BaseParser.reset(source)` parses new input in the memory the parser
+  holds (the arena keeps its capacity), for loops that parse many inputs.
+- `NodeInfo`, `SideEntry`, `SideLabel` and `RepairClass` are private: no
+  consumer names them.
 
 ### Migrating a lang module
 
@@ -49,6 +55,8 @@ under "Migrating a lang module" below.
   `diagnostic`, nexis's `loader.zig`), and replace hand-made expected
   lists with `BaseParser.expectedNames` (rig's `expectedHint` and em's
   `writeExpected` drop their own dedupe).
+- **Allocation in a Parser wrapper**: `self.base.allocator()` for
+  `self.base.arena.allocator()` (rig).
 
 ### Changed
 

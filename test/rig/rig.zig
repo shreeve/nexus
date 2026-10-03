@@ -956,7 +956,7 @@ pub const Parser = struct {
     }
 
     fn allocator(self: *Parser) std.mem.Allocator {
-        return self.base.arena.allocator();
+        return self.base.allocator();
     }
 
     // -------------------------------------------------------------------------

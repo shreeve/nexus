@@ -251,7 +251,7 @@ fn writeNested(
 // =============================================================================
 
 /// Per node: its source span and the rule that built it.
-pub const NodeInfo = struct { span: Span, rule: u16 };
+const NodeInfo = struct { span: Span, rule: u16 };
 
 /// NodeInfo per NodeId, in fixed-size chunks that never move (appending
 /// never copies the store).
@@ -319,10 +319,10 @@ fn idCount(comptime Id: type) usize {
 }
 
 /// A side-band role recorded at reduce time (not placed in the tree).
-pub const SideEntry = struct { node: NodeId, role: Role, span: Span };
+const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
 /// A side-band label of a rule: `role` is recorded from element `pass`.
-pub const SideLabel = struct { role: Role, pass: u16 };
+const SideLabel = struct { role: Role, pass: u16 };
 
 /// A parse error: the offending token and the state that rejected it.
 pub const Failure = struct {
@@ -350,7 +350,7 @@ pub const Tolerant = struct {
 };
 
 /// A token's role in tolerant repair, from `@repair`.
-pub const RepairClass = enum {
+const RepairClass = enum {
     /// Not fabricable: real input.
     none,
     /// `holes`: a value-carrying token that may be minted with empty text.
@@ -458,10 +458,22 @@ pub const BaseParser = struct {
         self.arena.deinit();
     }
 
-    /// The parse's allocator: a bump allocator over chunks of the arena
-    /// (single-threaded, so allocation is a bounds check and an add; the
-    /// arena's own allocation is atomic). Everything is freed by `deinit`.
-    fn allocator(self: *BaseParser) std.mem.Allocator {
+    /// Start over on `source`, keeping the memory the parser holds for the
+    /// next parses: the trees, node ids and errors of earlier parses, and
+    /// everything from `allocator`, are gone.
+    pub fn reset(self: *BaseParser, source: []const u8) void {
+        var arena = self.arena;
+        _ = arena.reset(.retain_capacity);
+        self.* = .{ .arena = arena, .lexer = Lexer.init(source), .source = source, .current = undefined };
+        self.setCurrent(self.lexer.next());
+    }
+
+    /// The parser's allocator, which holds the trees: a bump allocator over
+    /// chunks of the arena (single-threaded, so allocation is a bounds check
+    /// and an add; the arena's own allocation is atomic). A lang Parser
+    /// wrapper allocates what it builds here too. Everything is freed by
+    /// `deinit` (or `reset`).
+    pub fn allocator(self: *BaseParser) std.mem.Allocator {
         return .{ .ptr = self, .vtable = &bumpVTable };
     }
 
@@ -2230,6 +2242,23 @@ test "the parse allocator bumps through arena chunks" {
     const big = try a.alloc(u8, BaseParser.bumpLast);
     @memset(big, 1);
     try testing.expect(!a.resize(big, BaseParser.bumpLast + 1));
+}
+
+test "reset parses new input in the memory the parser holds" {
+    var p = BaseParser.init(testing.allocator, "a = b + (c + d)\ne");
+    defer p.deinit();
+    _ = try p.parse(.prog);
+    const capacity = p.arena.queryCapacity();
+    p.reset("x = y\nz");
+    try testing.expectEqual(@as(?Failure, null), p.lastError());
+    try testing.expectEqual(@as(u32, 0), p.nodeCount());
+    const tree = try p.parse(.prog);
+    try testing.expectEqualStrings("(prog (set x y) z)", try render(&p, tree));
+    try testing.expectEqual(Span{ .start = 0, .end = 5 }, p.span(tree.items()[1]));
+    try testing.expectEqual(capacity, p.arena.queryCapacity());
+    p.reset("a b");
+    try testing.expectError(error.ParseError, p.parse(.prog));
+    try testing.expectEqualStrings("1:3: expected end of input, newline, \"=\" or \"+\", got identifier", try errorText(&p));
 }
 
 test "an allocation failure fails the parse with error.OutOfMemory" {
