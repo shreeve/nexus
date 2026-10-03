@@ -49,7 +49,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         }
     }
 
-    var auto = automaton.build(g) catch |err| switch (err) {
+    const auto = automaton.build(g) catch |err| switch (err) {
         error.OutOfMemory => return error.OutOfMemory,
         error.TooManyStates => {
             const at = conflicts.ruleLoc(g, 0);

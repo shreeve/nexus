@@ -515,6 +515,32 @@ test "a hint names its literal terminal, escapes included; a missing literal is 
     try expectContains(sink.written(), "X \"(\" on e → ID names no terminal: the parser grammar has no literal \"(\"");
 }
 
+test "several `<` rules in one cell: the lowest reduces, the rest are reduce/reduce conflicts" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const b = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → p",
+        "e → q",
+        "p → ID <",
+        "q → ID <",
+        "e → ID \"(\" \")\"",
+        "e → \"(\" e \")\"",
+    }, &.{"prog"});
+    const entries = try conflicts.entries(a, &b.tbl);
+    try testing.expectEqual(@as(usize, 1), entries.len);
+    try testing.expectEqual(table.Conflict.Kind.reduce, entries[0].kind);
+    try testing.expectEqual(@as(u16, 5), entries[0].rule); // p → ID
+    try testing.expectEqual(@as(u16, 6), entries[0].over); // q → ID
+    // On $end, ID and ")" nothing shifts; on "(" both beat the shift, p first.
+    try testing.expectEqual(@as(u32, 4), entries[0].count);
+    const s = b.tbl.conflictList[entries[0].first].state;
+    try testing.expectEqual(table.ParseAction{ .reduce = 5 }, b.tbl.rows[s][sym(&b.g, "\"(\"")]);
+}
+
 test "a hint counts as used only where its rule wins the cell" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

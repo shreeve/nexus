@@ -38,7 +38,7 @@ const repair = @import("repair.zig");
 //   - No shift: the lowest-numbered rule of R reduces; every other rule of R
 //     is a reduce/reduce conflict ("winner over loser").
 //   - Shift: the rules of R that beat a shift are those with `<` and those
-//     with an `X "c"` hint for this terminal's character. If there are none,
+//     with an `X "c"` hint naming this terminal (the literal `"c"`). If none,
 //     the shift stays and every rule of R without `>` is a shift/reduce
 //     conflict. Otherwise the lowest such rule reduces (an `X "c"` win also
 //     records the runtime shift override) and the rest of R are
