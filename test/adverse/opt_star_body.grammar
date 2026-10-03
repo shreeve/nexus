@@ -1,5 +1,6 @@
-# A quantified element in [...] is ambiguous.
-# error: opt_quantified_label.grammar:13:12:
+# Brackets around an element that can match nothing are ambiguous
+# (absent, or present and empty).
+# error: opt_star_body.grammar:14:12:
 # error: [X?] and similar are ambiguous: the body of [...] can match nothing; write [X] or X?
 @lexer
 tokens
@@ -10,4 +11,4 @@ tokens
 [a-z]+ → ident
 . → err
 @parser
-s = IDENT [x:IDENT?]
+s = IDENT [IDENT*]

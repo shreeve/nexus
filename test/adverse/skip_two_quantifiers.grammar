@@ -1,0 +1,13 @@
+# A skipped element takes one quantifier too.
+# error: skip_two_quantifiers.grammar:13:13:
+# error: an element takes one quantifier
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT ![IDENT]*

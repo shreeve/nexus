@@ -895,8 +895,8 @@ pub const GrammarLowerer = struct {
             .list_req => try self.lowerListElement(node),
             .group => try self.lowerGroupKinded(node),
             .quantified => try self.lowerQuantifiedElement(node),
-            .skip => try self.lowerSkipElement(ir.Skip.element(node), .nil),
-            .skip_q => try self.lowerSkipElement(ir.SkipQ.element(node), ir.SkipQ.quant(node)),
+            .skip => try self.lowerSkipElement(node, ir.Skip.element(node), .nil),
+            .skip_q => try self.lowerSkipElement(node, ir.SkipQ.element(node), ir.SkipQ.quant(node)),
             .label => try self.lowerLabeled(node),
             // Hints belong to the whole alternative (lowerAlt takes those).
             .exclude => return self.fail(node, "an `X \"c\"` hint applies to the whole alternative; write it outside ( ) and [ ]", .{}),
@@ -971,6 +971,10 @@ pub const GrammarLowerer = struct {
             return .{ .kind = .optList, .value = lowered.items[0][0].value };
         }
 
+        // [X?], [X*], [A | B?] ...: brackets around what can match nothing.
+        if (kind == .opt) for (lowered.items) |b| if (allCanBeEmpty(b))
+            return self.fail(node, "[X?] and similar are ambiguous: the body of [...] can match nothing; write [X] or X?", .{});
+
         if (lowered.items.len > 1) {
             // (A | B | C): exactly one alternative; [A | B]: at most one.
             return .{
@@ -1002,7 +1006,6 @@ pub const GrammarLowerer = struct {
         }
         if (body.len == 1 and body[0].label != null) {
             var e = body[0];
-            if (e.quantifier != .one) return self.fail(node, "[X?] and similar are ambiguous; write [X] or X?", .{});
             e.quantifier = .optional;
             return e;
         }
@@ -1026,18 +1029,44 @@ pub const GrammarLowerer = struct {
     }
 
     fn lowerQuantifiedElement(self: *GrammarLowerer, node: Sexp) LowerError!ParsedElement {
-        var inner = try self.lowerElement(ir.Quantified.element(node));
-        if (inner.quantifier != .one) return self.fail(node, "an element takes one quantifier", .{});
-        inner.quantifier = quantifier(ir.Quantified.quant(node));
-        return inner;
+        return self.quantified(node, try self.lowerElement(ir.Quantified.element(node)), ir.Quantified.quant(node));
     }
 
     /// `!element` (`quant` nil) or `!element quant`.
-    fn lowerSkipElement(self: *GrammarLowerer, element: Sexp, quant: Sexp) LowerError!ParsedElement {
+    fn lowerSkipElement(self: *GrammarLowerer, node: Sexp, element: Sexp, quant: Sexp) LowerError!ParsedElement {
         var inner = try self.lowerElement(element);
         inner.skip = true;
-        if (quant != .nil) inner.quantifier = quantifier(quant);
-        return inner;
+        return if (quant == .nil) inner else self.quantified(node, inner, quant);
+    }
+
+    /// `inner` with quantifier `quant`; [...] already is one (`?`).
+    fn quantified(self: *GrammarLowerer, node: Sexp, inner: ParsedElement, quant: Sexp) LowerError!ParsedElement {
+        if (inner.quantifier != .one or inner.kind == .optList or inner.kind == .optGroup)
+            return self.fail(node, "an element takes one quantifier", .{});
+        var e = inner;
+        e.quantifier = quantifier(quant);
+        return e;
+    }
+
+    /// Whether `e` can match no input as written (a rule it names may still
+    /// derive the empty string). `L(X?)` cannot: it matches nothing as a
+    /// list of one empty item, a tree of its own (`[L(X?)]` tells an absent
+    /// list from that one, in a declared conflict).
+    fn canBeEmpty(e: ParsedElement) bool {
+        if (e.quantifier == .optional or e.quantifier == .zeroPlus) return true;
+        return switch (e.kind) {
+            .ident, .token, .string, .reqList => false,
+            .optList, .optGroup => true,
+            .group => allCanBeEmpty(e.subElements),
+            .choice => for (e.choices) |c| {
+                if (allCanBeEmpty(c)) break true;
+            } else false,
+        };
+    }
+
+    fn allCanBeEmpty(elements: []const ParsedElement) bool {
+        for (elements) |e| if (!canBeEmpty(e)) return false;
+        return true;
     }
 
     fn quantifier(node: Sexp) ParsedElement.Quantifier {
