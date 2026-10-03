@@ -512,6 +512,35 @@ test "manifest rule texts normalize arrows, blanks and empty right-hand sides" {
     try testing.expectEqualStrings("L(x, \";\") → x L(x, \";\").tail", try conflicts.normalize(a, "L(x, \";\")  ->  x L(x, \";\").tail"));
 }
 
+// =============================================================================
+// Grammar and table checks
+// =============================================================================
+
+test "an endless reduce chain is found through empty and unit reductions" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // `<` makes b → ε win over shifting Y. Reducing it leads (through the
+    // unit rules d → e → b, when present) back to a state on the stack.
+    const chains = [_][]const []const u8{
+        &.{ "top → a", "a → b a C", "a → Y", "b → ε <" },
+        &.{ "top → a", "a → d a C", "a → Y", "d → b", "b → ε <" },
+        &.{ "top → a", "a → d a C", "a → Y", "d → e", "e → b", "b → ε <" },
+    };
+    for (chains) |rules| {
+        const b = try generate(a, rules, &.{"top"});
+        const loop = (try lr.emptyLoop(a, &b.g, &b.tbl)).?;
+        try testing.expectEqual(sym(&b.g, "b"), b.g.rules.items[loop.rule].lhs);
+        try testing.expectEqual(sym(&b.g, "Y"), loop.terminal);
+    }
+    // Without the hint Y shifts, and every chain ends.
+    const fine = try generate(a, &.{ "top → a", "a → d a C", "a → Y", "d → b", "b → ε" }, &.{"top"});
+    try testing.expectEqual(@as(?lr.EmptyLoop, null), try lr.emptyLoop(a, &fine.g, &fine.tbl));
+    // An empty reduction that a non-empty one completes ends too.
+    const list = try generate(a, &.{ "top → items", "items → items item", "items → ε", "item → Y" }, &.{"top"});
+    try testing.expectEqual(@as(?lr.EmptyLoop, null), try lr.emptyLoop(a, &list.g, &list.tbl));
+}
+
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
     if (std.mem.find(u8, haystack, needle) == null) {
         std.debug.print("missing:\n{s}\nin:\n{s}\n", .{ needle, haystack });

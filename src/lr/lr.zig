@@ -74,7 +74,16 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
         error.InvalidRepairToken => unreachable, // validated above
     };
 
-    try checkEmptyLoops(a, g, &tbl, opts.path);
+    if (try emptyLoop(a, g, &tbl)) |loop| {
+        const rule = g.rules.items[loop.rule];
+        var name: std.Io.Writer.Allocating = .init(a);
+        defer name.deinit();
+        conflicts.writeSymbol(&name.writer, g, rule.lhs) catch return error.OutOfMemory;
+        name.writer.writeAll(" on ") catch return error.OutOfMemory;
+        conflicts.writeSymbol(&name.writer, g, loop.terminal) catch return error.OutOfMemory;
+        std.debug.print("{s}:{d}:{d}: error: reducing the empty rule {s} leads back to the same state, so the parser would push forever on that token (a `<` hint or a conflict resolved toward an empty rule)\n", .{ opts.path, @max(rule.line, 1), @max(rule.col, 1), name.written() });
+        return error.GenerationFailed;
+    }
 
     const copts: conflicts.Options = .{ .path = opts.path };
     conflicts.checkHints(a, g, &tbl, copts) catch |err| switch (err) {
@@ -89,43 +98,53 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     return .{ .automaton = auto, .lookaheads = la, .table = tbl };
 }
 
-/// Reductions of empty rules on one lookahead only push states. If a chain
-/// of them returns to a state it has passed, the parser pushes forever on
-/// that lookahead (a `<` hint, or a conflict resolved toward the empty
-/// rule, can build such a table).
-fn checkEmptyLoops(a: Allocator, g: *const Grammar, tbl: *const table.Table, path: []const u8) Error!void {
-    const seen = try a.alloc(u32, tbl.rows.len);
-    defer a.free(seen);
-    @memset(seen, 0);
-    var stamp: u32 = 0;
-    for (tbl.rows, 0..) |row, s0| {
+/// A reduce chain that never ends; reducing the empty rule `rule` on
+/// `terminal` starts it.
+pub const EmptyLoop = struct { rule: u16, terminal: u16 };
+
+/// Find a table cell from which the parser reduces forever on one
+/// lookahead. A run of reductions on terminal t loops exactly when it
+/// pushes a state that is still on the stack: from that state's first
+/// visit the run reached it again without looking below it, so it repeats.
+/// An endless run has a lowest stack entry it never pops. That entry was
+/// pushed during the run (a run that keeps popping back to one older entry
+/// derives a nonterminal from itself, a cyclic grammar `checkCycles`
+/// rejects first), and its first action was an empty reduction (any other
+/// pops it). So simulating the chain on an explicit stack from every
+/// (state, t) whose action is an empty reduction, until a shift, accept,
+/// error, or a pop below the start, finds every loop, and every simulation
+/// ends. (A `<` hint, or a conflict resolved toward an empty rule, can
+/// build such a table.)
+pub fn emptyLoop(a: Allocator, g: *const Grammar, tbl: *const table.Table) Allocator.Error!?EmptyLoop {
+    const onStack = try a.alloc(bool, tbl.rows.len);
+    defer a.free(onStack);
+    @memset(onStack, false);
+    var stack: std.ArrayList(u16) = .empty;
+    defer stack.deinit(a);
+    for (tbl.rows, 0..) |row, q| {
         for (row, 0..) |cell, t| {
             if (g.symbols.items[t].kind != .terminal) continue;
             if (cell != .reduce or g.rules.items[cell.reduce].rhs.len != 0) continue;
-            stamp += 1;
-            var s = s0;
+            for (stack.items) |s| onStack[s] = false;
+            stack.clearRetainingCapacity();
+            try stack.append(a, @intCast(q));
+            onStack[q] = true;
             while (true) {
-                if (seen[s] == stamp) {
-                    const rule = g.rules.items[cell.reduce];
-                    var name: std.Io.Writer.Allocating = .init(a);
-                    defer name.deinit();
-                    conflicts.writeSymbol(&name.writer, g, rule.lhs) catch return error.OutOfMemory;
-                    name.writer.writeAll(" on ") catch return error.OutOfMemory;
-                    conflicts.writeSymbol(&name.writer, g, @intCast(t)) catch return error.OutOfMemory;
-                    std.debug.print("{s}:{d}:{d}: error: reducing the empty rule {s} leads back to the same state, so the parser would push forever on that token (a `<` hint or a conflict resolved toward an empty rule)\n", .{ path, @max(rule.line, 1), @max(rule.col, 1), name.written() });
-                    return error.GenerationFailed;
-                }
-                seen[s] = stamp;
-                const act = tbl.rows[s][t];
+                const act = tbl.rows[stack.last().?][t];
                 if (act != .reduce) break;
-                const rule = g.rules.items[act.reduce];
-                if (rule.rhs.len != 0) break;
-                const next = tbl.rows[s][rule.lhs];
+                const rule = &g.rules.items[act.reduce];
+                if (rule.rhs.len >= stack.items.len) break;
+                for (stack.items[stack.items.len - rule.rhs.len ..]) |s| onStack[s] = false;
+                stack.shrinkRetainingCapacity(stack.items.len - rule.rhs.len);
+                const next = tbl.rows[stack.last().?][rule.lhs];
                 if (next != .gotoState) break;
-                s = next.gotoState;
+                if (onStack[next.gotoState]) return .{ .rule = cell.reduce, .terminal = @intCast(t) };
+                try stack.append(a, next.gotoState);
+                onStack[next.gotoState] = true;
             }
         }
     }
+    return null;
 }
 
 /// Reject a cyclic grammar: a rule that derives itself (a ⇒+ a, through
