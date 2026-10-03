@@ -2,6 +2,7 @@
   (errors `ParseError` `empty`)@113..139
   (fun
     `parse_len`
+    _
     ((: `s` `String`)@153..162)@152..163
     (error_union `Int`)@167..171
     (block
@@ -12,7 +13,9 @@
       (member `s` `len`)@215..220)@174..222)@139..222
   (sub
     `main`
+    _
     ()@230..232
+    _
     (block
       (call
         `print`

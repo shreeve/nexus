@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@69..71
+    _
     (block
       (set _ `r` _ `0`)@74..79
       (raw_block (block (set _ `r` _ `5`)@90..95)@90..98)@82..98

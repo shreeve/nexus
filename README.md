@@ -175,14 +175,15 @@ naming the rule.
 ## Validated languages
 
 The grammars in `test/` generate with this checkout, compile, and parse
-their cases in `./test/run`, trees compared with goldens. The Rig, MUMPS
-and Nexis grammars are snapshots taken from those projects, older than
-the grammars they build with (AGENTS.md, "Downstream"). The suite's
+their cases in `./test/run`, trees compared with goldens. The Rig grammar
+and its cases are those of Rig's Zig 0.17 port; the MUMPS and Nexis
+grammars are snapshots taken from those projects, older than the grammars
+they build with (AGENTS.md, "Downstream"). The suite's
 `tools/readme` test checks every number in this table.
 
 | Language | Grammar | Lines | LR states | Declared conflicts (cells) | Suite cases | Mode |
 |---|---|---:|---:|---:|---:|---|
-| Rig | `test/rig/rig.grammar` | 711 | 514 | 0 | 144 | schema |
+| Rig | `test/rig/rig.grammar` | 883 | 675 | 0 | 137 | schema |
 | MUMPS | `test/mumps/mumps.grammar` | 908 | 767 | 10 (44) | 62 (+ 6 with `--spans`) | plain |
 | Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 | plain |
 | Zag | `test/zag/zag.grammar` | 511 | 465 | 19 (22) | 5 | plain |

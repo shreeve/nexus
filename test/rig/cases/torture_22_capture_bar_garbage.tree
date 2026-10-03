@@ -1,1 +1,1 @@
-!error ParseError at 3:7 unexpected bar
+!error ParseError at 3:9 unexpected bar_capture

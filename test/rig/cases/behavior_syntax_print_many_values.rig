@@ -5,7 +5,7 @@ sub main()
   x = 3
   name = "rig"
   print("x is", x, "and name is", name)
-  print x, x + 1
+  print(x, x + 1)
   print()
   print(true, 1.5)
 

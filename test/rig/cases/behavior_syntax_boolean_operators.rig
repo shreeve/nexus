@@ -3,18 +3,18 @@
 # than `or`, and both short-circuit.
 
 fun loud(v: Bool) -> Bool
-  print "evaluated"
+  print("evaluated")
   v
 
 sub main()
   a = 1
   b = 2
-  print not a == b
-  print true or false and false
-  print (true or false) and false
-  print false and loud(true)
-  print true or loud(false)
-  print not false and loud(true)
+  print(not a == b)
+  print(true or false and false)
+  print((true or false) and false)
+  print(false and loud(true))
+  print(true or loud(false))
+  print(not false and loud(true))
 
 # expect:
 # true

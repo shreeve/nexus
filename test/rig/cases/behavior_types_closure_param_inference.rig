@@ -6,22 +6,22 @@ struct Button
   label: String
   on_click: *sub(Int)
 
-fun apply(f: *fun(Int) Int, x: Int) -> Int
+fun apply(f: *fun(Int) -> Int, x: Int) -> Int
   f(x)
 
-fun adder(n: Int) -> *fun(Int) Int
+fun adder(n: Int) -> *fun(Int) -> Int
   *|+n, a| a + n
 
 sub main()
-  add: fun(Int, Int) Int = |a, b| a + b
+  add: fun(Int, Int) -> Int = |a, b| a + b
   print(add(2, 3))
 
   print(apply(*|a| a * 10, 4))
 
-  total: *Cell(Int) = *Cell(value: 0)
-  handlers: Vec(*sub(Int)) = Vec()
-  (!handlers).push(*|+total, n| total.set(total.get() + n))
-  (!handlers).push(*|+total, n| total.set(total.get() + n * 100))
+  total: *Cell[Int] = *Cell(0)
+  handlers: Vec[*sub(Int)] = Vec()
+  !handlers.push(*|+total, n| total.set(total.get() + n))
+  !handlers.push(*|+total, n| total.set(total.get() + n * 100))
   for h in ?handlers
     h(2)
   print(total.get())

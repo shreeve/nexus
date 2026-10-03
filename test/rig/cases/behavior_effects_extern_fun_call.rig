@@ -1,9 +1,9 @@
 # A body-less `extern fun` declares a C symbol; a safe wrapper calls it
 # inside a `raw` block, and callers of the wrapper need no `raw`.
 
-extern fun abs(n: Int) -> Int
+extern fun abs(n: I32) -> I32
 
-sub print_abs(n: Int)
+sub print_abs(n: I32)
   raw
     print(abs(n))
 

@@ -2,7 +2,7 @@
 # gives it: a `*sub(Int)` closure cannot declare `a: String`.
 
 sub main()
-  v: *Cell(Int) = *Cell(value: 0)
+  v: *Cell[Int] = *Cell(0)
   cb: *sub(Int) = *|+v, a: String| print(a)
   cb(1)
 

@@ -1,10 +1,17 @@
-# A type alias is transparent (`N` is `Int`), so it is not a constructor;
-# `N(5)` is rejected.
+# A call through an alias constructs the struct it names or converts to
+# the number type it names; an alias of any other type has no
+# constructor, and an alias is not a value.
 
+type S = String
+type O = Int?
 type N = Int
 
 sub main()
-  x = N(5)
-  print(x)
+  s = S("x")
+  o = O(5)
+  n = N
+  print(s, o, n)
 
-# error: `N`
+# error: 10:7: `S` is a type alias for `String`, which has no constructor
+# error: 11:7: `O` is a type alias for `Int?`, which has no constructor
+# error: 12:7: `N` is a type, not a value

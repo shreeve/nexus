@@ -1,10 +1,12 @@
-# A statement `match` whose arms do not cover the value runs no arm.
+# A statement `match` runs its `_` arm for a value no other arm covers.
 
 sub main()
   n = 5
   match n
     1 => print("one")
+    _ => print("other")
   print("end")
 
 # expect:
+# other
 # end

@@ -1,18 +1,18 @@
 # A write borrow held in an enum payload, an optional, a generic field,
 # or an array element still writes through to the borrowed value.
 
-struct Box
+struct Wrap
   n: Int
 
 enum Slot
-  held(b: !Box)
+  held(b: !Wrap)
   empty
 
-type W(T)
+struct W[T]
   v: T
 
 sub main()
-  b = Box(n: 1)
+  b = Wrap(n: 1)
   if true
     s: Slot = .held(b: !b)
     match s
@@ -20,12 +20,12 @@ sub main()
       .empty => print(0)
   print(b.n)
   if true
-    o: (!Box)? = !b
+    o: (!Wrap)? = !b
     if <o as r
       r.n = 3
   print(b.n)
   if true
-    w: W(!Box) = W(v: !b)
+    w: W[!Wrap] = W(v: !b)
     w.v.n = 4
   print(b.n)
   if true

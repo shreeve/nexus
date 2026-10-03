@@ -3,7 +3,7 @@
 struct B
   n: Int
 
-  drop self: !B
+  drop(!self)
     print("drop", self.n)
 
 sub main()

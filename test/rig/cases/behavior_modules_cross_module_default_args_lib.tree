@@ -2,6 +2,7 @@
   (pub
     (fun
       `scale`
+      _
       ((: `n` `Int`)@14..20
         (default `by` `Int` `10`)@22..34
         (default `off` `Int` (neg `1`)@47..49)@36..49)@13..50

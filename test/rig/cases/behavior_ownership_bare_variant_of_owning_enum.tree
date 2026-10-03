@@ -3,35 +3,38 @@
     `B`
     (: `n` `Int`)@130..136
     (drop_decl
-      ((: `self` (borrow_write `B`)@151..153)@145..153)@145..153
-      (block (call `print` `"drop"` (member `self` `n`)@172..178)@158..179)@158..181)@140..181)@119..181
+      ((write `self`)@145..150)@144..151
+      (block (call `print` `"drop"` (member `self` `n`)@170..176)@156..177)@156..179)@140..179)@119..179
   (enum
     `Slot`
-    (variant `full` ((: `b` (shared `B`)@201..203)@198..203)@197..204)@193..204
-    `empty`)@181..214
+    (variant `full` ((: `b` (shared `B`)@199..201)@196..201)@195..202)@191..202
+    `empty`)@179..212
   (fun
     `fill`
-    ((: `s` `Slot`)@223..230)@222..231
+    _
+    ((: `s` `Slot`)@221..228)@220..229
     `Int`
     (block
       (match
         `s`
-        (arm (variant_pattern `full` `b`)@253..261 (member `b` `n`)@265..268)@253..268
-        (arm (enum_lit `empty`)@273..279 `0`)@273..284)@241..286)@241..286)@214..286
+        (arm (variant_pattern `full` `b`)@251..259 _ (member `b` `n`)@263..266)@251..266
+        (arm (enum_lit `empty`)@271..277 _ `0`)@271..282)@239..284)@239..284)@212..284
   (sub
     `main`
-    ()@294..296
+    _
+    ()@292..294
+    _
     (block
-      (set _ `a` `Slot` (member `Slot` `empty`)@309..319)@299..319
+      (set _ `a` `Slot` (member `Slot` `empty`)@307..317)@297..317
       (set
         _
         `c`
         _
         (call
-          (member `Slot` `full`)@326..335
-          (kwarg `b` (share (call `B` (kwarg `n` `1`)@342..346)@340..347)@339..347)@336..347)@326..348)@322..348
+          (member `Slot` `full`)@324..333
+          (kwarg `b` (share (call `B` (kwarg `n` `1`)@340..344)@338..345)@337..345)@334..345)@324..346)@320..346
       (call
         `print`
-        (call `fill` (member `Slot` `empty`)@362..372)@357..373
-        (call `fill` (move `c`)@380..382)@375..383
-        (call `fill` (move `a`)@390..392)@385..393)@351..394)@299..423)@286..423)@119..423
+        (call `fill` (member `Slot` `empty`)@360..370)@355..371
+        (call `fill` (move `c`)@378..380)@373..381
+        (call `fill` (move `a`)@388..390)@383..391)@349..392)@297..421)@284..421)@119..421

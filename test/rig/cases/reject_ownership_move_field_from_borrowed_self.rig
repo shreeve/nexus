@@ -1,19 +1,19 @@
 # A field cannot be moved out of a `?self` receiver: the caller still
 # owns and drops it.
 
-struct Box
+struct Wrap
   payload: Int
 
 struct Pair
-  a: *Box
+  a: *Wrap
 
   sub take(?self)
     x = <self.a
     print(x.payload)
 
 sub main()
-  p = Pair(a: *Box(payload: 1))
+  p = Pair(a: *Wrap(payload: 1))
   p.take()
   print("back")
 
-# error: cannot move out of
+# error: 11:10: cannot move out of `self.a`: `self` is borrowed; exchange it instead: `replace(!self.a, v)`

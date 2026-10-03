@@ -10,7 +10,7 @@ sub rename(u: !User)
 sub main()
   user = User(name: "Steve")
   r = ?user
-  rename !user
+  rename(!user)
   print(r.name)
 
 # error: cannot write-borrow `user` while a read borrow is live

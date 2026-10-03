@@ -1,21 +1,23 @@
 (module
   (sub
     `main`
+    _
     ()@173..175
+    _
     (block
       (set
         _
         `rc`
         (shared (generic_inst `Cell` `Int`)@183..192)@182..192
-        (share (call `Cell` (kwarg `value` `1`)@201..209)@196..210)@195..210)@178..210
+        (share (call `Cell` `1`)@196..203)@195..203)@178..203
       (set
         _
         `watch`
         _
         (lambda
           _
-          ((cap_weak `rc`)@222..225)@221..226
-          (block (call `print` `'observing weak'`)@231..254)@231..257)@221..257)@213..257
-      (call `watch`)@257..264
-      (call `watch`)@267..274
-      (call `print` (call (member `rc` `get`)@283..289)@283..291)@277..292)@178..342)@165..342)@165..342
+          ((cap_weak `rc`)@215..218)@214..219
+          (block (call `print` `'observing weak'`)@224..247)@224..250)@214..250)@206..250
+      (call `watch`)@250..257
+      (call `watch`)@260..267
+      (call `print` (call (member `rc` `get`)@276..282)@276..284)@270..285)@178..335)@165..335)@165..335

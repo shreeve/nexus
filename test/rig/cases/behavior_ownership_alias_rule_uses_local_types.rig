@@ -2,10 +2,10 @@
 # `rc` is a handle in `holder` but a plain Int in `consumer`, where the
 # bare `print(rc)` is fine.
 
-struct Box
+struct Wrap
   value: Int
 
-sub holder(rc: *Box)
+sub holder(rc: *Wrap)
   print(rc.value)
   -rc
 
@@ -13,7 +13,7 @@ sub consumer(rc: Int)
   print(rc)
 
 sub main()
-  b = *Box(value: 1)
+  b = *Wrap(value: 1)
   holder(<b)
   consumer(42)
 

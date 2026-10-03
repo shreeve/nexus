@@ -8,4 +8,4 @@ sub main()
   rc.age = 99
   -rc
 
-# error: cannot assign through shared handle
+# error: cannot assign through a shared handle

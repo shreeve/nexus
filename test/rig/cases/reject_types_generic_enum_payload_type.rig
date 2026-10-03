@@ -1,12 +1,12 @@
 # A generic enum payload is checked against the substituted type
 # (`Int`), not the symbolic `T`.
 
-enum Option(T)
+enum Option[T]
   some(value: T)
   none
 
 sub main()
-  o: Option(Int) = .some(value: "hello")
+  o: Option[Int] = .some(value: "hello")
   print("done")
 
 # error: type mismatch: expected `Int`, got `String`

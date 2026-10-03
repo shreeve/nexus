@@ -1,33 +1,35 @@
 (module
   (sub
     `main`
+    _
     ()@51..53
+    _
     (block
       (set
         _
         `count`
         (shared (generic_inst `Cell` `Int`)@64..73)@63..73
-        (share (call `Cell` (kwarg `value` `0`)@82..90)@77..91)@76..91)@56..91
+        (share (call `Cell` `0`)@77..84)@76..84)@56..84
       (set
         _
         `inc`
-        (shared (fun_type _ _)@100..105)@99..105
+        (shared (fun_type _ _ _)@93..98)@92..98
         (share
           (lambda
             _
-            ((cap_clone `count`)@110..116)@109..117
+            ((cap_clone `count`)@103..109)@102..110
             (block
               (call
-                (member `count` `set`)@118..127
-                (+ (call (member `count` `get`)@128..137)@128..139 `1`)@128..143)@118..144)@118..144)@109..144)@108..144)@94..144
+                (member `count` `set`)@111..120
+                (+ (call (member `count` `get`)@121..130)@121..132 `1`)@121..136)@111..137)@111..137)@102..137)@101..137)@87..137
       (set
         _
         `twice`
         _
         (lambda
           _
-          ((cap_clone `inc`)@156..160)@155..161
-          (block (call `inc`)@166..171)@166..174)@155..174)@147..174
-      (call `twice`)@174..181
-      (call `twice`)@184..191
-      (call `print` (call (member `count` `get`)@200..209)@200..211)@194..212)@56..228)@43..228)@43..228
+          ((cap_clone `inc`)@149..153)@148..154
+          (block (call `inc`)@159..164)@159..167)@148..167)@140..167
+      (call `twice`)@167..174
+      (call `twice`)@177..184
+      (call `print` (call (member `count` `get`)@193..202)@193..204)@187..205)@56..221)@43..221)@43..221

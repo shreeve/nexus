@@ -1,6 +1,7 @@
 # Top-level declaration forms.
 
 use math
+use std.os as o
 
 pub struct User
   name: String
@@ -33,20 +34,20 @@ error NetworkError
   timeout
   refused
 
-type Box(T)
+struct Wrap[T]
   value: T
 
   fun get(?self) -> T
     self.value
 
-type Maybe(T)
+enum Maybe[T]
   some(value: T)
   none
 
 struct Guard
   id: Int
 
-  drop self: !Guard
+  drop(!self)
     print(self.id)
 
 extern fun abs(x: Int) -> Int

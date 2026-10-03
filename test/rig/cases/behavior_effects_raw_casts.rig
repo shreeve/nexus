@@ -6,7 +6,7 @@ sub main()
   n: I64 = 7
   raw
     a: U8 = @truncate(x)
-    b: I32 = @intFromFloat(f)
+    b: I32 = @trunc(f)
     c: U64 = @bitCast(f)
     d: F32 = @floatCast(f)
     e: F64 = @floatFromInt(n)
@@ -14,4 +14,4 @@ sub main()
     print(a, b, c, d, e, g)
 
 # expect:
-# 44 1 4609434218613702656 1.5 7 7
+# 44 1 4609434218613702656 1.5 7.0 7

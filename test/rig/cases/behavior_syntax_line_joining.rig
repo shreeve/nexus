@@ -15,18 +15,18 @@ sub main()
   total = (1 +
            2 +
       3)
-  print total
-  print add3(
+  print(total)
+  print(add3(
     1,
     2,
     3
-  )
+  ))
   c = Counter(n: 7)
-  print (c
-    .get())
+  print((c
+    .get()))
   x = 1 + \
     2
-  print x
+  print(x)
 
 # expect:
 # 6

@@ -5,16 +5,19 @@
     `point`
     (fun
       `is_point`
+      _
       ((read `self`)@115..120)@114..121
       `Bool`
       (block
         (match
           `self`
-          (arm (variant_pattern `circle` `r`)@151..161 `false`)@151..170
-          (arm (enum_lit `point`)@177..183 `true`)@177..191)@134..193)@134..193)@102..193)@58..193
+          (arm (variant_pattern `circle` `_`)@151..161 _ `false`)@151..170
+          (arm (enum_lit `point`)@177..183 _ `true`)@177..191)@134..193)@134..193)@102..193)@58..193
   (sub
     `main`
+    _
     ()@201..203
+    _
     (block
       (set
         _

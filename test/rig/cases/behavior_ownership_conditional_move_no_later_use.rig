@@ -1,17 +1,17 @@
 # A value moved on one path and not used afterwards is fine; the
 # auto-drop guard releases it only on the path where it was not moved.
 
-struct Box
+struct Wrap
   payload: Int
 
-  drop self: !Box
+  drop(!self)
     print("drop")
 
-sub eat(rc: *Box)
+sub eat(rc: *Wrap)
   print(rc.payload)
 
 sub go(c: Bool)
-  rc = *Box(payload: 1)
+  rc = *Wrap(payload: 1)
   if c
     eat(<rc)
   print("after")

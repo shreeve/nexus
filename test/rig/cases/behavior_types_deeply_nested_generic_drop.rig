@@ -4,15 +4,15 @@
 struct P
   n: Int
 
-  drop self: !P
+  drop(!self)
     print("drop", self.n)
 
-type Box(T)
+struct Wrap[T]
   value: T
 
 sub main()
   h: *P = *P(n: 5)
-  b: Box(Box(Box(Box(Box(Box(Box(Box(Box(Box(*P)))))))))) = Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: Box(value: <h))))))))))
+  b: Wrap[Wrap[Wrap[Wrap[Wrap[Wrap[Wrap[Wrap[Wrap[Wrap[*P]]]]]]]]]] = Wrap(value: Wrap(value: Wrap(value: Wrap(value: Wrap(value: Wrap(value: Wrap(value: Wrap(value: Wrap(value: Wrap(value: <h))))))))))
   c = <b
   print(c.value.value.value.value.value.value.value.value.value.value.n)
 

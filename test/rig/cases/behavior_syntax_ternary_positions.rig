@@ -1,6 +1,6 @@
 # `a if c else b` is an expression anywhere a value goes: a call
-# argument, a typed binding, a match arm, a paren-free argument, and
-# nested in its own `else` branch.
+# argument, a typed binding, a match arm, and nested in its own `else`
+# branch.
 
 enum Size
   small
@@ -18,13 +18,13 @@ sub main()
   x = 5
   print(1 if x > 3 else 2)
   y: Int = 10 if x < 3 else 20
-  print y
-  print sign(7)
-  print sign(-7)
-  print sign(0)
-  print weight(.small, true)
-  print weight(.large, false)
-  print x if x > 9 else 0
+  print(y)
+  print(sign(7))
+  print(sign(-7))
+  print(sign(0))
+  print(weight(.small, true))
+  print(weight(.large, false))
+  print(x if x > 9 else 0)
 
 # expect:
 # 1

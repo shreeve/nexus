@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@68..70
+    _
     (block
       (set
         _

@@ -93,7 +93,7 @@ The in-repo suites:
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
 | `spans` | the MUMPS grammar generated with `--spans` | MUMPS cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
-| `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
+| `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (copied from Rig's Zig 0.17 port) | 137 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 pinned at their parse error), 22 MVTS-derived em compliance routines |
 | `zag`, `ruby`, `slash`, `nexis` | downstream grammars without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
 

@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@84..86
+    _
     (block
       (set _ `x` `I64` `7`)@89..99
       (set _ `n` _ (builtin `sizeOf` (builtin `TypeOf` `x`)@114..124)@106..125)@102..125

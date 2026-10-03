@@ -4,25 +4,23 @@
 # source that follows this one through a function; its listener holds
 # the derived source weakly, so the chain does not keep itself alive.
 
-type Listeners = Vec(*sub(Int))
+type Listeners = Vec[*sub(Int)]
 
 struct IntSource
-  value: *Cell(Int)
-  listeners: *Cell(Listeners)
+  value: *Cell[Int]
+  listeners: *Cell[Listeners]
 
   fun new(initial: Int) -> *IntSource
-    *IntSource(value: *Cell(value: initial), listeners: *Cell(value: Vec()))
+    *IntSource(value: *Cell(initial), listeners: *Cell(Vec()))
 
   fun get(self: ?IntSource) -> Int
     self.value.get()
 
-  # A Cell gives no borrowed access to the Vec inside it, so the list is
-  # swapped out, changed, and swapped back.
   sub subscribe(self: ?IntSource, listener: *sub(Int))
-    listeners = self.listeners.replace(Vec())
-    (!listeners).push(<listener)
-    _ = self.listeners.replace(<listeners)
+    self.listeners.push(<listener)
 
+  # A Cell lends no borrow of the Vec inside it, so the list is swapped
+  # out to be walked, and swapped back.
   sub set(self: ?IntSource, v: Int)
     self.value.set(v)
     listeners = self.listeners.replace(Vec())
@@ -30,14 +28,14 @@ struct IntSource
       listener(v)
     _ = self.listeners.replace(<listeners)
 
-  fun map(self: ?IntSource, f: *fun(Int) Int) -> *IntSource
+  fun map(self: ?IntSource, f: *fun(Int) -> Int) -> *IntSource
     derived = IntSource.new(f(self.get()))
     self.subscribe(*|~derived, +f, v|
       if derived.upgrade() as d
         d.set(f(v)))
     derived
 
-sub main()
+sub main
   count = IntSource.new(1)
   doubled = count.map(*|n| n * 2)
   squared = doubled.map(*|n| n * n)

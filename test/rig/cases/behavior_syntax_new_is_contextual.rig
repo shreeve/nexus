@@ -10,10 +10,10 @@ struct Point
 
 sub main()
   p = Point.new(3)
-  print p.x
+  print(p.x)
   x = 1
-  new x = 20
-  print x
+  new x = x * 20
+  print(x)
 
 # expect:
 # 3

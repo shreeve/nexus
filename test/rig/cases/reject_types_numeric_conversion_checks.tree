@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@117..119
+    _
     (block
       (set fixed `big` _ `300`)@122..132
       (set _ `a` _ (call `U8` `big`)@139..146)@135..146

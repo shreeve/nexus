@@ -3,13 +3,13 @@
 # glue releases the `cell` field.
 
 struct Owner
-  cell: *Cell(Int)
+  cell: *Cell[Int]
 
-  drop self: !Owner
+  drop(!self)
     print(self.cell.get())
 
-sub main()
-  c: *Cell(Int) = *Cell(value: 42)
+sub main
+  c: *Cell[Int] = *Cell(42)
   o: Owner = Owner(cell: <c)
   print(0)
   # scope exit: the drop body prints 42, then the `cell` handle is released

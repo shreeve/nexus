@@ -1,16 +1,16 @@
 # A borrow of a field of a borrowed parameter may be returned.
 
-struct Box
+struct Wrap
   payload: Int
 
 struct Holder
-  inner: Box
+  inner: Wrap
 
-fun inner_of(h: ?Holder) -> ?Box
+fun inner_of(h: ?Holder) -> ?Wrap
   ?h.inner
 
 sub main()
-  h = Holder(inner: Box(payload: 9))
+  h = Holder(inner: Wrap(payload: 9))
   b = inner_of(?h)
   print(b.payload)
 

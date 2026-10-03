@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@96..98
+    _
     (block
       (set _ `x` `I32` (neg `1`)@110..112)@101..112
       (raw_block

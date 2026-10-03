@@ -2,7 +2,9 @@
   (struct `User` (: `age` `Int`)@121..129)@107..131
   (sub
     `main`
+    _
     ()@139..141
+    _
     (block
       (set
         _
@@ -13,6 +15,6 @@
         _
         `c1`
         (generic_inst `Cell` (shared `User`)@181..186)@176..187
-        (call `Cell` (kwarg `value` (move `u`)@202..204)@195..204)@190..205)@172..205
-      (set _ `c2` (generic_inst `Cell` (shared `User`)@217..222)@212..223 `c1`)@208..228
-      (call `print` `0`)@231..239)@144..319)@131..319)@107..319
+        (call `Cell` (move `u`)@195..197)@190..198)@172..198
+      (set _ `c2` (generic_inst `Cell` (shared `User`)@210..215)@205..216 `c1`)@201..221
+      (call `print` `0`)@224..232)@144..312)@131..312)@107..312

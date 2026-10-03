@@ -1,21 +1,28 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `not` `or` `pre` `pub` `raw` `return` `struct` `sub` `test` `try` `type` `use` `while` `zig` `plus` `minus` `minus_prefix` `star` `slash` `percent` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `move_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `lparen` `rparen` `lbrace` `rbrace` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `lparen_call` `lbracket_index` `post_if` `ternary_if` `bar_capture` `bar_empty` `dot_lit` `kwarg_name` `move_pfx` `clone_pfx` `pin_pfx` `read_pfx` `write_pfx` `share_pfx` `drop_stmt` `suffix_q` `suffix_bang` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `not` `or` `pass` `pub` `raw` `return` `struct` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `drop_stmt` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
+  (lex_rule `"\\\\\\r\\n"` _ `skip`)
   (lex_rule `"\\r\\n"` _ `newline`)
   (lex_rule `'\\n'` _ `newline`)
-  (lex_rule `'\\r'` _ `newline`)
-  (lex_rule `'"' ([^"\\\\$\\n] | '\\\\' . | '$')* '"'` _ `string_dq`)
-  (lex_rule `"'" ([^'\\n] | "''")* "'"` _ `string_sq`)
-  (lex_rule `'0' [xX] [0-9a-fA-F]+` _ `integer`)
-  (lex_rule `'0' [bB] [01]+` _ `integer`)
-  (lex_rule `'0' [oO] [0-7]+` _ `integer`)
-  (lex_rule `[0-9]* '.' [0-9]+ ([Ee] [+-]? [0-9]+)?` _ `real`)
-  (lex_rule `[0-9]+ [Ee] [+-]? [0-9]+` _ `real`)
-  (lex_rule `[0-9]+` _ `integer`)
+  (lex_rule `'"' ([^"\\\\\\x00-\\x1f\\x7f] | '\\\\' [^\\x00-\\x1f\\x7f])* '"'` _ `string_dq`)
+  (lex_rule `"'" ([^'\\x00-\\x1f\\x7f] | "''")* "'"` _ `string_sq`)
+  (lex_rule `"0x" [0-9a-fA-F] ('_'? [0-9a-fA-F])*` _ `integer`)
+  (lex_rule `"0b" [01] ('_'? [01])*` _ `integer`)
+  (lex_rule `"0o" [0-7] ('_'? [0-7])*` _ `integer`)
+  (lex_rule `('0' | [1-9] ('_'? [0-9])*)? '.' [0-9] ('_'? [0-9])* ([eE] [+-]? [0-9] ('_'? [0-9])*)?` _ `real`)
+  (lex_rule `('0' | [1-9] ('_'? [0-9])*) [eE] [+-]? [0-9] ('_'? [0-9])*` _ `real`)
+  (lex_rule `'0' | [1-9] ('_'? [0-9])*` _ `integer`)
+  (lex_rule `[0-9] [0-9a-zA-Z_]*` _ `err`)
   (lex_rule `"<<="` _ `lshift_assign`)
+  (lex_rule `"+%="` _ `plus_wrap_assign`)
+  (lex_rule `"-%="` _ `minus_wrap_assign`)
+  (lex_rule `"*%="` _ `star_wrap_assign`)
+  (lex_rule `"+%"` _ `plus_wrap`)
+  (lex_rule `"-%"` _ `minus_wrap`)
+  (lex_rule `"*%"` _ `star_wrap`)
   (lex_rule `">>="` _ `rshift_assign`)
   (lex_rule `"**"` _ `power`)
   (lex_rule `"=="` _ `eq`)
@@ -25,7 +32,6 @@
   (lex_rule `"&&"` _ `and_sym`)
   (lex_rule `"||"` _ `or_sym`)
   (lex_rule `"=!"` _ `fixed_assign`)
-  (lex_rule `"<-"` _ `move_assign`)
   (lex_rule `"+="` _ `plus_assign`)
   (lex_rule `"-="` _ `minus_assign`)
   (lex_rule `"*="` _ `star_assign`)
@@ -57,8 +63,6 @@
   (lex_rule `'='` _ `assign`)
   (lex_rule `'('` _ `lparen`)
   (lex_rule `')'` _ `rparen`)
-  (lex_rule `'{'` _ `lbrace`)
-  (lex_rule `'}'` _ `rbrace`)
   (lex_rule `'['` _ `lbracket`)
   (lex_rule `']'` _ `rbracket`)
   (lex_rule `','` _ `comma`)
@@ -77,21 +81,12 @@
     (kind_decl
       (kinds `use`)
       (roles
+        (role _ `name` _ _)
         (role
           _
-          `name`
+          `alias`
           (type `leaf`)
-          _))
-      _
-      _)
-    (kind_decl
-      (kinds `zig`)
-      (roles
-        (role
-          _
-          `code`
-          (type `leaf`)
-          _))
+          opt))
       _
       _)
     (kind_decl
@@ -104,6 +99,11 @@
           _)
         (role
           _
+          `tparams`
+          (type `group`)
+          opt)
+        (role
+          _
           `params`
           (type `group`)
           opt)
@@ -112,7 +112,7 @@
           _
           `body`
           (type `block`)
-          _))
+          opt))
       _
       _)
     (kind_decl
@@ -125,14 +125,25 @@
           _)
         (role
           _
+          `tparams`
+          (type `group`)
+          opt)
+        (role
+          _
           `params`
           (type `group`)
           opt)
         (role
           _
+          `fails`
+          (type
+            (tagset `tag` `fails`))
+          opt)
+        (role
+          _
           `body`
           (type `block`)
-          _))
+          opt))
       _
       _)
     (kind_decl
@@ -167,7 +178,7 @@
       _
       _)
     (kind_decl
-      (kinds `generic_type` `generic_enum`)
+      (kinds `generic_struct` `generic_enum`)
       (roles
         (role
           _
@@ -176,9 +187,9 @@
           _)
         (role
           _
-          `params`
+          `tparams`
           (type `group`)
-          opt)
+          _)
         (role rest `members` _ _))
       _
       _)
@@ -211,11 +222,7 @@
     (kind_decl
       (kinds `pub`)
       (roles
-        (role
-          _
-          `decl`
-          (type `fun` `sub` `struct` `enum` `errors` `type` `generic_type` `generic_enum` `test`)
-          _))
+        (role _ `decl` _ _))
       _
       _)
     (kind_decl
@@ -261,6 +268,17 @@
       _
       _)
     (kind_decl
+      (kinds `zig_extern`)
+      (roles
+        (role
+          _
+          `file`
+          (type `leaf`)
+          _)
+        (role rest `decls` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `drop_decl`)
       (roles
         (role
@@ -287,7 +305,7 @@
       _
       _)
     (kind_decl
-      (kinds `":"` `pre_param`)
+      (kinds `":"`)
       (roles
         (role
           _
@@ -342,7 +360,7 @@
           _
           `op`
           (type
-            (tagset `tag` `fixed` `shadow` `move` `"+="` `"-="` `"*="` `"/="` `"%="` `"&="` `"|="` `"^="` `"<<="` `">>="`))
+            (tagset `tag` `fixed` `shadow` `"+="` `"-="` `"*="` `"/="` `"%="` `"+%="` `"-%="` `"*%="` `"&="` `"|="` `"^="` `"<<="` `">>="`))
           opt)
         (role _ `target` _ _)
         (role _ `type` _ opt)
@@ -357,6 +375,11 @@
           `name`
           (type `leaf`)
           _))
+      _
+      _)
+    (kind_decl
+      (kinds `pass`)
+      (roles)
       _
       _)
     (kind_decl
@@ -402,7 +425,7 @@
           _
           `mode`
           (type
-            (tagset `tag` `iter` `ptr` `read` `write` `move`))
+            (tagset `tag` `iter` `read` `write` `move`))
           _)
         (role
           _
@@ -442,7 +465,14 @@
       (kinds `arm`)
       (roles
         (role _ `pattern` _ _)
+        (role _ `guard` _ opt)
         (role _ `body` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `alt_pattern`)
+      (roles
+        (role rest `alts` _ _))
       _
       _)
     (kind_decl
@@ -460,11 +490,7 @@
           `name`
           (type `leaf`)
           _)
-        (role
-          rest
-          `bindings`
-          (type `leaf`)
-          _))
+        (role rest `bindings` _ _))
       _
       _)
     (kind_decl
@@ -511,7 +537,7 @@
       _
       _)
     (kind_decl
-      (kinds `raw_block` `pre_block`)
+      (kinds `raw_block`)
       (roles
         (role
           _
@@ -521,39 +547,9 @@
       _
       _)
     (kind_decl
-      (kinds `pre` `propagate`)
+      (kinds `propagate` `propagate_none`)
       (roles
         (role _ `value` _ _))
-      _
-      _)
-    (kind_decl
-      (kinds `try_block`)
-      (roles
-        (role
-          _
-          `body`
-          (type `block`)
-          _)
-        (role
-          _
-          `catch`
-          (type `catch_block`)
-          opt))
-      _
-      _)
-    (kind_decl
-      (kinds `catch_block`)
-      (roles
-        (role
-          _
-          `name`
-          (type `leaf`)
-          _)
-        (role
-          _
-          `body`
-          (type `block`)
-          _))
       _
       _)
     (kind_decl
@@ -580,12 +576,12 @@
         (role
           rest
           `caps`
-          (type `cap_clone` `cap_move` `cap_weak`)
+          (type `cap_clone` `cap_move` `cap_weak` `cap_read` `cap_write`)
           _))
       _
       wrapper)
     (kind_decl
-      (kinds `cap_clone` `cap_move` `cap_weak`)
+      (kinds `cap_clone` `cap_move` `cap_weak` `cap_read` `cap_write`)
       (roles
         (role
           _
@@ -631,9 +627,23 @@
       _
       _)
     (kind_decl
+      (kinds `inst`)
+      (roles
+        (role _ `object` _ _)
+        (role rest `args` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `array`)
       (roles
         (role rest `elems` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `array_fill`)
+      (roles
+        (role _ `size` _ _)
+        (role _ `value` _ _))
       _
       _)
     (kind_decl
@@ -655,6 +665,13 @@
       _
       _)
     (kind_decl
+      (kinds `"+%"` `"-%"` `"*%"`)
+      (roles
+        (role _ `left` _ _)
+        (role _ `right` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `"=="` `"!="` `"<"` `">"` `"<="` `">="`)
       (roles
         (role _ `left` _ _)
@@ -669,10 +686,17 @@
       _
       _)
     (kind_decl
-      (kinds `"??"` `".."` `and` `or`)
+      (kinds `"??"` `and` `or`)
       (roles
         (role _ `left` _ _)
         (role _ `right` _ _))
+      _
+      _)
+    (kind_decl
+      (kinds `".."`)
+      (roles
+        (role _ `left` _ opt)
+        (role _ `right` _ opt))
       _
       _)
     (kind_decl
@@ -682,7 +706,7 @@
       _
       _)
     (kind_decl
-      (kinds `move` `read` `write` `clone` `share` `weak` `pin`)
+      (kinds `move` `read` `write` `clone` `share` `weak`)
       (roles
         (role _ `operand` _ _))
       _
@@ -696,22 +720,14 @@
     (kind_decl
       (kinds `generic_inst`)
       (roles
-        (role
-          _
-          `name`
-          (type `leaf`)
-          _)
+        (role _ `name` _ _)
         (role rest `args` _ _))
       _
       _)
     (kind_decl
       (kinds `array_type`)
       (roles
-        (role
-          _
-          `size`
-          (type `leaf`)
-          _)
+        (role _ `size` _ _)
         (role _ `type` _ _))
       _
       _)
@@ -723,7 +739,13 @@
           `params`
           (type `group`)
           opt)
-        (role _ `returns` _ opt))
+        (role _ `returns` _ opt)
+        (role
+          _
+          `fails`
+          (type
+            (tagset `tag` `fails`))
+          opt))
       _
       _))
   (display
@@ -735,24 +757,16 @@
     (name_pair `NEWLINE` `"the end of the line"`)
     (name_pair `INDENT` `"an indented block"`)
     (name_pair `OUTDENT` `"the end of the block"`)
-    (name_pair `LPAREN_CALL` `"\`(\`"`)
-    (name_pair `LBRACKET_INDEX` `"\`[\`"`)
     (name_pair `POST_IF` `"\`if\`"`)
     (name_pair `TERNARY_IF` `"\`if\`"`)
     (name_pair `BAR_CAPTURE` `"\`|\`"`)
     (name_pair `BAR_EMPTY` `"\`||\`"`)
-    (name_pair `DOT_LIT` `"\`.\`"`)
     (name_pair `KWARG_NAME` `"a keyword argument"`)
-    (name_pair `MOVE_PFX` `"\`<\`"`)
-    (name_pair `CLONE_PFX` `"\`+\`"`)
-    (name_pair `PIN_PFX` `"\`@\`"`)
-    (name_pair `READ_PFX` `"\`?\`"`)
-    (name_pair `WRITE_PFX` `"\`!\`"`)
-    (name_pair `SHARE_PFX` `"\`*\`"`)
     (name_pair `DROP_STMT` `"\`-\`"`)
-    (name_pair `MINUS_PREFIX` `"\`-\`"`)
-    (name_pair `SUFFIX_Q` `"\`?\`"`)
-    (name_pair `SUFFIX_BANG` `"\`!\`"`)
+    (name_pair `OF` `"\`of\`"`)
+    (name_pair `DOTDOT_OPEN` `"\`..\`"`)
+    (name_pair `NULLISH_JUMP` `"\`??\`"`)
+    (name_pair `STEP_COLON` `"\`:\`"`)
     (name_pair `TRUE` `"\`true\`"`)
     (name_pair `FALSE` `"\`false\`"`)
     (name_pair `AND` `"\`and\`"`)
@@ -775,7 +789,7 @@
     (name_pair `NEW` `"\`new\`"`)
     (name_pair `NOT` `"\`not\`"`)
     (name_pair `OR` `"\`or\`"`)
-    (name_pair `PRE` `"\`pre\`"`)
+    (name_pair `PASS` `"\`pass\`"`)
     (name_pair `PUB` `"\`pub\`"`)
     (name_pair `RAW` `"\`raw\`"`)
     (name_pair `RETURN` `"\`return\`"`)
@@ -787,6 +801,14 @@
     (name_pair `USE` `"\`use\`"`)
     (name_pair `WHILE` `"\`while\`"`)
     (name_pair `ZIG` `"\`zig\`"`)
+    (name_pair `ASYNC` `"\`async\`"`)
+    (name_pair `AWAIT` `"\`await\`"`)
+    (name_pair `CONST` `"\`const\`"`)
+    (name_pair `IMPL` `"\`impl\`"`)
+    (name_pair `TRAIT` `"\`trait\`"`)
+    (name_pair `WHEN` `"\`when\`"`)
+    (name_pair `WHERE` `"\`where\`"`)
+    (name_pair `YIELD` `"\`yield\`"`)
     (name_pair `"="` `"\`=\`"`)
     (name_pair `"+="` `"\`+=\`"`)
     (name_pair `"-="` `"\`-=\`"`)
@@ -799,7 +821,12 @@
     (name_pair `"<<="` `"\`<<=\`"`)
     (name_pair `">>="` `"\`>>=\`"`)
     (name_pair `"=!"` `"\`=!\`"`)
-    (name_pair `"<-"` `"\`<-\`"`)
+    (name_pair `"+%="` `"\`+%=\`"`)
+    (name_pair `"-%="` `"\`-%=\`"`)
+    (name_pair `"*%="` `"\`*%=\`"`)
+    (name_pair `"+%"` `"\`+%\`"`)
+    (name_pair `"-%"` `"\`-%\`"`)
+    (name_pair `"*%"` `"\`*%\`"`)
     (name_pair `":"` `"\`:\`"`)
     (name_pair `"->"` `"\`->\`"`)
     (name_pair `"("` `"\`(\`"`)
@@ -828,7 +855,9 @@
     (name_pair `"-"` `"\`-\`"`)
     (name_pair `"*"` `"\`*\`"`)
     (name_pair `"/"` `"\`/\`"`)
-    (name_pair `"%"` `"\`%\`"`))
+    (name_pair `"%"` `"\`%\`"`)
+    (name_pair `"!"` `"\`!\`"`)
+    (name_pair `"?"` `"\`?\`"`))
   (errors
     (name_pair `stmt` `"a statement"`)
     (name_pair `block` `"an indented block"`)
@@ -841,7 +870,8 @@
     (name_pair `pattern` `"a pattern"`)
     (name_pair `arm` `"a match arm"`)
     (name_pair `params` `"a parameter list"`)
-    (name_pair `unary` `"an operand"`))
+    (name_pair `unary` `"an operand"`)
+    (name_pair `step` `"an assignment or a call"`))
   (rule
     (name `name`)
     (alt
@@ -925,7 +955,7 @@
       _)
     (alt
       _
-      ((ref `zig`))
+      ((ref `zig_ext`))
       _
       _)
     (alt
@@ -968,38 +998,8 @@
       _)
     (alt
       _
-      ((label
-          `target`
-          (ref `postfix`))
-        (lit `"="`)
-        (label
-          `value`
-          (ref `tail`)))
-      (node `set`)
-      _)
-    (alt
+      ((ref `assign`))
       _
-      ((label
-          `target`
-          (ref `postfix`))
-        (label
-          `op`
-          (group
-            _
-            ((lit `"+="`))
-            ((lit `"-="`))
-            ((lit `"*="`))
-            ((lit `"/="`))
-            ((lit `"%="`))
-            ((lit `"&="`))
-            ((lit `"|="`))
-            ((lit `"^="`))
-            ((lit `"<<="`))
-            ((lit `">>="`))))
-        (label
-          `value`
-          (ref `tail`)))
-      (node `set`)
       _)
     (alt
       _
@@ -1015,21 +1015,6 @@
         (named
           `op`
           (tag `fixed`)))
-      _)
-    (alt
-      _
-      ((label
-          `target`
-          (ref `postfix`))
-        (lit `"<-"`)
-        (label
-          `value`
-          (ref `tail`)))
-      (node
-        `set`
-        (named
-          `op`
-          (tag `move`)))
       _)
     (alt
       _
@@ -1088,6 +1073,11 @@
           `name`
           (ref `name`)))
       (node `drop`)
+      _)
+    (alt
+      _
+      ((tok `PASS`))
+      (node `pass`)
       _)
     (alt
       _
@@ -1150,19 +1140,51 @@
       _)
     (alt
       _
-      ((tok `PRE`)
-        (label
-          `body`
-          (ref `block`)))
-      (node `pre_block`)
-      _)
-    (alt
-      _
       ((tok `RAW`)
         (label
           `body`
           (ref `block`)))
       (node `raw_block`)
+      _))
+  (rule
+    (name `assign`)
+    (alt
+      _
+      ((label
+          `target`
+          (ref `postfix`))
+        (lit `"="`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node `set`)
+      _)
+    (alt
+      _
+      ((label
+          `target`
+          (ref `postfix`))
+        (label
+          `op`
+          (group
+            _
+            ((lit `"+="`))
+            ((lit `"-="`))
+            ((lit `"*="`))
+            ((lit `"/="`))
+            ((lit `"%="`))
+            ((lit `"+%="`))
+            ((lit `"-%="`))
+            ((lit `"*%="`))
+            ((lit `"&="`))
+            ((lit `"|="`))
+            ((lit `"^="`))
+            ((lit `"<<="`))
+            ((lit `">>="`))))
+        (label
+          `value`
+          (ref `tail`)))
+      (node `set`)
       _))
   (rule
     (name `decl`)
@@ -1178,6 +1200,76 @@
           `decl`
           (ref `defn`)))
       (node `pub`)
+      _)
+    (alt
+      _
+      ((tok `PUB`)
+        (label
+          `decl`
+          (ref `const`)))
+      (node `pub`)
+      _))
+  (rule
+    (name `const`)
+    (alt
+      _
+      ((label
+          `target`
+          (ref `name`))
+        (lit `"="`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node `set`)
+      _)
+    (alt
+      _
+      ((label
+          `target`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `type`
+          (ref `type`))
+        (lit `"="`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node `set`)
+      _)
+    (alt
+      _
+      ((label
+          `target`
+          (ref `name`))
+        (lit `"=!"`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node
+        `set`
+        (named
+          `op`
+          (tag `fixed`)))
+      _)
+    (alt
+      _
+      ((label
+          `target`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `type`
+          (ref `type`))
+        (lit `"=!"`)
+        (label
+          `value`
+          (ref `tail`)))
+      (node
+        `set`
+        (named
+          `op`
+          (tag `fixed`)))
       _))
   (rule
     (name `defn`)
@@ -1223,8 +1315,38 @@
       ((tok `USE`)
         (label
           `name`
+          (ref `mpath`)))
+      (node `use`)
+      _)
+    (alt
+      _
+      ((tok `USE`)
+        (label
+          `name`
+          (ref `mpath`))
+        (tok `AS`)
+        (label
+          `alias`
           (ref `name`)))
       (node `use`)
+      _))
+  (rule
+    (name `mpath`)
+    (alt
+      _
+      ((ref `name`))
+      _
+      _)
+    (alt
+      _
+      ((label
+          `object`
+          (ref `name`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `member`)
       _))
   (rule
     (name `fun`)
@@ -1234,6 +1356,11 @@
         (label
           `name`
           (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
         (group
           opt
           ((label
@@ -1260,12 +1387,43 @@
         (group
           opt
           ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
               `params`
               (ref `params`))))
         (label
           `body`
           (ref `block`)))
       (node `sub`)
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `body`
+          (ref `block`)))
+      (node
+        `sub`
+        (named
+          `fails`
+          (tag `fails`)))
       _))
   (rule
     (name `returns`)
@@ -1279,33 +1437,87 @@
     (name `params`)
     (alt
       _
-      ((skip
-          (ref `lparen`))
-        (list_req
-          `L`
-          (plain `field`))
+      ((lit `"("`)
+        (ref `fields`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
         (lit `")"`))
       (list
         (spread `2`))
       _)
     (alt
       _
-      ((skip
-          (ref `lparen`))
+      ((lit `"("`)
         (lit `")"`))
       (list)
       _))
   (rule
-    (name `lparen`)
+    (name `tparams`)
     (alt
       _
-      ((tok `LPAREN_CALL`))
+      ((lit `"["`)
+        (ref `tfields`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `"]"`))
+      (list
+        (spread `2`))
+      _))
+  (rule
+    (name `tfields`)
+    (alt
+      _
+      ((ref `tfield`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `tfields`)
+        (lit `","`)
+        (ref `tfield`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `tfield`)
+    (alt
+      _
+      ((ref `name`))
       _
       _)
     (alt
       _
-      ((lit `"("`))
+      ((label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `type`
+          (ref `type`)))
+      (node `:`)
+      _))
+  (rule
+    (name `fields`)
+    (alt
       _
+      ((ref `field`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `fields`)
+        (lit `","`)
+        (ref `field`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `field`)
@@ -1342,19 +1554,7 @@
       _)
     (alt
       _
-      ((tok `PRE`)
-        (label
-          `name`
-          (ref `fname`))
-        (lit `":"`)
-        (label
-          `type`
-          (ref `type`)))
-      (node `pre_param`)
-      _)
-    (alt
-      _
-      ((tok `READ_PFX`)
+      ((lit `"?"`)
         (label
           `operand`
           (ref `fname`)))
@@ -1362,11 +1562,19 @@
       _)
     (alt
       _
-      ((tok `WRITE_PFX`)
+      ((lit `"!"`)
         (label
           `operand`
           (ref `fname`)))
       (node `write`)
+      _)
+    (alt
+      _
+      ((lit `"<"`)
+        (label
+          `operand`
+          (ref `fname`)))
+      (node `move`)
       _))
   (rule
     (name `fname`)
@@ -1402,8 +1610,8 @@
           `name`
           (ref `name`))
         (label
-          `params`
-          (ref `params`))
+          `tparams`
+          (ref `tparams`))
         (tok `INDENT`)
         (label
           `members`
@@ -1440,6 +1648,22 @@
           (ref `members`))
         (tok `OUTDENT`))
       (node `struct`)
+      _)
+    (alt
+      _
+      ((tok `STRUCT`)
+        (label
+          `name`
+          (ref `name`))
+        (label
+          `tparams`
+          (ref `tparams`))
+        (tok `INDENT`)
+        (label
+          `members`
+          (ref `members`))
+        (tok `OUTDENT`))
+      (node `generic_struct`)
       _))
   (rule
     (name `typedef`)
@@ -1454,24 +1678,6 @@
           `type`
           (ref `type`)))
       (node `type`)
-      _)
-    (alt
-      _
-      ((tok `TYPE`)
-        (label
-          `name`
-          (ref `name`))
-        (group
-          opt
-          ((label
-              `params`
-              (ref `params`))))
-        (tok `INDENT`)
-        (label
-          `members`
-          (ref `members`))
-        (tok `OUTDENT`))
-      (node `generic_type`)
       _))
   (rule
     (name `members`)
@@ -1539,21 +1745,19 @@
       ((tok `DROP`)
         (label
           `params`
-          (ref `dparams`))
+          (ref `params`))
         (label
           `body`
           (ref `block`)))
       (node `drop_decl`)
-      _))
-  (rule
-    (name `dparams`)
+      _)
     (alt
       _
-      ((list_req
-          `L`
-          (plain `field`)))
-      (list
-        (spread `1`))
+      ((tok `PUB`)
+        (label
+          `decl`
+          (ref `member`)))
+      (node `pub`)
       _))
   (rule
     (name `test`)
@@ -1562,7 +1766,10 @@
       ((tok `TEST`)
         (label
           `name`
-          (tok `STRING_DQ`))
+          (group
+            _
+            ((tok `STRING_DQ`))
+            ((tok `STRING_SQ`))))
         (label
           `body`
           (ref `block`)))
@@ -1620,23 +1827,130 @@
       (node `extern_sub`)
       _))
   (rule
-    (name `zig`)
+    (name `zig_ext`)
     (alt
       _
-      ((tok `ZIG`)
+      ((tok `EXTERN`)
+        (tok `ZIG`)
         (label
-          `code`
-          (group
-            _
-            ((tok `STRING_DQ`))
-            ((tok `STRING_SQ`)))))
-      (node `zig`)
+          `file`
+          (tok `STRING_DQ`))
+        (tok `INDENT`)
+        (label
+          `decls`
+          (ref `zdecls`))
+        (tok `OUTDENT`))
+      (node `zig_extern`)
+      _))
+  (rule
+    (name `zdecls`)
+    (alt
+      _
+      ((ref `zdecl`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `zdecls`)
+        (tok `NEWLINE`)
+        (ref `zdecl`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `zdecls`)
+        (tok `NEWLINE`))
+      (pos `1`)
+      _))
+  (rule
+    (name `zdecl`)
+    (alt
+      _
+      ((ref `zfun`))
+      _
+      _)
+    (alt
+      _
+      ((tok `PUB`)
+        (label
+          `decl`
+          (ref `zfun`)))
+      (node `pub`)
+      _))
+  (rule
+    (name `zfun`)
+    (alt
+      _
+      ((tok `FUN`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (group
+          opt
+          ((label
+              `returns`
+              (ref `returns`)))))
+      (node `fun`)
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`)))))
+      (node `sub`)
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`))
+      (node
+        `sub`
+        (named
+          `fails`
+          (tag `fails`)))
       _))
   (rule
     (name `type`)
     (alt
       _
-      ((tok `READ_PFX`)
+      ((lit `"?"`)
         (label
           `type`
           (ref `type`)))
@@ -1644,7 +1958,7 @@
       _)
     (alt
       _
-      ((tok `WRITE_PFX`)
+      ((lit `"!"`)
         (label
           `type`
           (ref `type`)))
@@ -1652,20 +1966,16 @@
       _)
     (alt
       _
-      ((tok `SHARE_PFX`)
-        (label
-          `type`
-          (ref `type`)))
-      (node `shared`)
+      ((ref `ptype`))
+      _
       _)
     (alt
       _
-      ((lit `"~"`)
-        (label
-          `operand`
-          (ref `type`)))
-      (node `weak`)
-      _)
+      ((ref `tsuffix`))
+      _
+      _))
+  (rule
+    (name `ptype`)
     (alt
       _
       ((lit `"["`)
@@ -1680,7 +1990,7 @@
       ((lit `"["`)
         (label
           `size`
-          (tok `INTEGER`))
+          (ref `dim`))
         (lit `"]"`)
         (label
           `type`
@@ -1699,6 +2009,7 @@
                 `L`
                 (plain `type`)))))
         (lit `")"`)
+        (lit `"->"`)
         (label
           `returns`
           (ref `type`)))
@@ -1720,8 +2031,38 @@
       _)
     (alt
       _
-      ((ref `tsuffix`))
+      ((tok `SUB`)
+        (lit `"("`)
+        (group
+          opt
+          ((label
+              `params`
+              (list_req
+                `L`
+                (plain `type`)))))
+        (lit `")"`)
+        (lit `"!"`))
+      (node
+        `fun_type`
+        (named
+          `fails`
+          (tag `fails`)))
+      _)
+    (alt
       _
+      ((lit `"*"`)
+        (label
+          `type`
+          (ref `ptype`)))
+      (node `shared`)
+      _)
+    (alt
+      _
+      ((lit `"~"`)
+        (label
+          `operand`
+          (ref `ptype`)))
+      (node `weak`)
       _))
   (rule
     (name `tsuffix`)
@@ -1730,7 +2071,7 @@
       ((label
           `type`
           (ref `tsuffix`))
-        (tok `SUFFIX_Q`))
+        (lit `"?"`))
       (node `optional`)
       _)
     (alt
@@ -1738,8 +2079,31 @@
       ((label
           `type`
           (ref `tsuffix`))
-        (tok `SUFFIX_BANG`))
+        (lit `"!"`))
       (node `error_union`)
+      _)
+    (alt
+      _
+      ((ref `thandle`))
+      _
+      _))
+  (rule
+    (name `thandle`)
+    (alt
+      _
+      ((lit `"*"`)
+        (label
+          `type`
+          (ref `thandle`)))
+      (node `shared`)
+      _)
+    (alt
+      _
+      ((lit `"~"`)
+        (label
+          `operand`
+          (ref `thandle`)))
+      (node `weak`)
       _)
     (alt
       _
@@ -1748,6 +2112,260 @@
       _))
   (rule
     (name `tatom`)
+    (alt
+      _
+      ((ref `tname`))
+      _
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `tname`))
+        (lit `"["`)
+        (label
+          `args`
+          (ref `types`))
+        (skip
+          (group
+            opt
+            ((lit `","`))))
+        (lit `"]"`))
+      (node `generic_inst`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `type`)
+        (lit `")"`))
+      (pos `2`)
+      _))
+  (rule
+    (name `tname`)
+    (alt
+      _
+      ((ref `name`))
+      _
+      _)
+    (alt
+      _
+      ((label
+          `object`
+          (ref `name`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `member`)
+      _))
+  (rule
+    (name `types`)
+    (alt
+      _
+      ((ref `targ`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `types`)
+        (lit `","`)
+        (ref `targ`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `targ`)
+    (alt
+      _
+      ((ref `type`))
+      _
+      _)
+    (alt
+      _
+      ((tok `INTEGER`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-"`)
+        (label
+          `operand`
+          (tok `INTEGER`)))
+      (node `neg`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (tok `INTEGER`)
+        (lit `")"`))
+      (pos `2`)
+      _)
+    (alt
+      _
+      ((ref `cexp`))
+      _
+      _))
+  (rule
+    (name `dim`)
+    (alt
+      _
+      ((tok `INTEGER`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-"`)
+        (label
+          `operand`
+          (tok `INTEGER`)))
+      (node `neg`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (tok `INTEGER`)
+        (lit `")"`))
+      (pos `2`)
+      _)
+    (alt
+      _
+      ((ref `name`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `name`)
+        (lit `")"`))
+      (pos `2`)
+      _)
+    (alt
+      _
+      ((label
+          `object`
+          (ref `name`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `member`)
+      _)
+    (alt
+      _
+      ((ref `cexp`))
+      _
+      _))
+  (rule
+    (name `cexp`)
+    (alt
+      _
+      ((ref `cmulop`))
+      _
+      _)
+    (alt
+      _
+      ((ref `caddop`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `cexp`)
+        (lit `")"`))
+      (pos `2`)
+      _))
+  (rule
+    (name `caddop`)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `cadd`))
+        (lit `"+"`)
+        (label
+          `right`
+          (ref `cmul`)))
+      (node `+`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `cadd`))
+        (lit `"-"`)
+        (label
+          `right`
+          (ref `cmul`)))
+      (node `-`)
+      _))
+  (rule
+    (name `cadd`)
+    (alt
+      _
+      ((ref `caddop`))
+      _
+      _)
+    (alt
+      _
+      ((ref `cmul`))
+      _
+      _))
+  (rule
+    (name `cmulop`)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `cmul`))
+        (lit `"*"`)
+        (label
+          `right`
+          (ref `cunit`)))
+      (node `*`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `cmul`))
+        (lit `"/"`)
+        (label
+          `right`
+          (ref `cunit`)))
+      (node `/`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `cmul`))
+        (lit `"%"`)
+        (label
+          `right`
+          (ref `cunit`)))
+      (node `%`)
+      _))
+  (rule
+    (name `cmul`)
+    (alt
+      _
+      ((ref `cmulop`))
+      _
+      _)
+    (alt
+      _
+      ((ref `cunit`))
+      _
+      _))
+  (rule
+    (name `cunit`)
+    (alt
+      _
+      ((tok `INTEGER`))
+      _
+      _)
     (alt
       _
       ((ref `name`))
@@ -1766,29 +2384,8 @@
       _)
     (alt
       _
-      ((tok `TYPE`))
-      _
-      _)
-    (alt
-      _
-      ((label
-          `name`
-          (ref `name`))
-        (tok `LPAREN_CALL`)
-        (group
-          opt
-          ((label
-              `args`
-              (list_req
-                `L`
-                (plain `type`)))))
-        (lit `")"`))
-      (node `generic_inst`)
-      _)
-    (alt
-      _
       ((lit `"("`)
-        (ref `type`)
+        (ref `cexp`)
         (lit `")"`))
       (pos `2`)
       _))
@@ -1797,11 +2394,6 @@
     (alt
       _
       ((ref `expr`))
-      _
-      _)
-    (alt
-      _
-      ((ref `cmd`))
       _
       _)
     (alt
@@ -1838,11 +2430,6 @@
       _)
     (alt
       _
-      ((ref `try_block`))
-      _
-      _)
-    (alt
-      _
       ((label
           `value`
           (ref `logic`))
@@ -1861,14 +2448,6 @@
       _
       ((ref `closure`))
       _
-      _)
-    (alt
-      _
-      ((tok `PRE`)
-        (label
-          `value`
-          (ref `value`)))
-      (node `pre`)
       _))
   (rule
     (name `value`)
@@ -1907,8 +2486,76 @@
       _)
     (alt
       _
+      ((label
+          `value`
+          (ref `logic`))
+        (tok `CATCH`)
+        (group
+          opt
+          ((tok `BAR_CAPTURE`)
+            (label
+              `name`
+              (ref `name`))
+            (tok `BAR_CAPTURE`)))
+        (label
+          `handler`
+          (ref `jump`)))
+      (node `catch`)
+      _)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `logic`))
+        (tok `NULLISH_JUMP`)
+        (label
+          `right`
+          (ref `jump`)))
+      (node `??`)
+      _)
+    (alt
+      _
       ((ref `logic`))
       _
+      _))
+  (rule
+    (name `jump`)
+    (alt
+      _
+      ((tok `RETURN`)
+        (group
+          opt
+          ((label
+              `value`
+              (ref `value`)))))
+      (node `return`)
+      _)
+    (alt
+      _
+      ((tok `BREAK`)
+        (group
+          opt
+          ((lit `":"`)
+            (label
+              `label`
+              (ref `name`))))
+        (group
+          opt
+          ((label
+              `value`
+              (ref `value`)))))
+      (node `break`)
+      _)
+    (alt
+      _
+      ((tok `CONTINUE`)
+        (group
+          opt
+          ((lit `":"`)
+            (label
+              `label`
+              (ref `name`)))))
+      (node `continue`)
       _))
   (rule
     (name `logic`)
@@ -1958,54 +2605,19 @@
       _)
     (alt
       _
+      ((label
+          `value`
+          (at_ref `infix`))
+        (tok `AS`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `as`)
+      _)
+    (alt
+      _
       ((at_ref `infix`))
       _
-      _))
-  (rule
-    (name `cond`)
-    (alt
-      _
-      ((ref `value`))
-      _
-      _)
-    (alt
-      _
-      ((ref `cmd`))
-      _
-      _))
-  (rule
-    (name `cmd`)
-    (alt
-      _
-      ((label
-          `callee`
-          (ref `postfix`))
-        (label
-          `args`
-          (ref `cmdargs`)))
-      (node `call`)
-      _))
-  (rule
-    (name `cmdargs`)
-    (alt
-      _
-      ((ref `exprs`))
-      (pos `1`)
-      _)
-    (alt
-      _
-      ((ref `exprs`)
-        (lit `","`)
-        (ref `cmdtail`))
-      (list
-        (spread `1`)
-        (pos `3`))
-      _)
-    (alt
-      _
-      ((ref `cmdtail`))
-      (list
-        (pos `1`))
       _))
   (rule
     (name `exprs`)
@@ -2025,43 +2637,13 @@
         (pos `3`))
       _))
   (rule
-    (name `cmdtail`)
-    (alt
-      _
-      ((ref `cmd`))
-      _
-      _)
-    (alt
-      _
-      ((ref `cclosure`))
-      _
-      _))
-  (rule
-    (name `ifcond`)
-    (alt
-      _
-      ((ref `cond`))
-      _
-      _)
-    (alt
-      _
-      ((label
-          `value`
-          (ref `value`))
-        (tok `AS`)
-        (label
-          `name`
-          (ref `name`)))
-      (node `as`)
-      _))
-  (rule
     (name `if`)
     (alt
       _
       ((tok `IF`)
         (label
           `cond`
-          (ref `ifcond`))
+          (ref `value`))
         (label
           `then`
           (ref `block`))
@@ -2078,7 +2660,7 @@
       ((tok `IF`)
         (label
           `cond`
-          (ref `ifcond`))
+          (ref `value`))
         (label
           `then`
           (ref `block`))
@@ -2095,13 +2677,13 @@
       ((tok `WHILE`)
         (label
           `cond`
-          (ref `ifcond`))
+          (ref `value`))
         (group
           opt
-          ((lit `":"`)
+          ((tok `STEP_COLON`)
             (label
               `step`
-              (ref `simple`))))
+              (ref `step`))))
         (label
           `body`
           (ref `block`))
@@ -2114,11 +2696,46 @@
       (node `while`)
       _))
   (rule
+    (name `step`)
+    (alt
+      _
+      ((ref `assign`))
+      _
+      _)
+    (alt
+      _
+      ((ref `postfix`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"?"`)
+        (label
+          `operand`
+          (ref `postfix`)))
+      (node `read`)
+      _)
+    (alt
+      _
+      ((lit `"!"`)
+        (label
+          `operand`
+          (ref `postfix`)))
+      (node `write`)
+      _)
+    (alt
+      _
+      ((lit `"<"`)
+        (label
+          `operand`
+          (ref `postfix`)))
+      (node `move`)
+      _))
+  (rule
     (name `for`)
     (alt
       _
       ((tok `FOR`)
-        (tok `SHARE_PFX`)
         (label
           `var`
           (ref `name`))
@@ -2131,38 +2748,7 @@
         (tok `IN`)
         (label
           `source`
-          (ref `cond`))
-        (label
-          `body`
-          (ref `block`))
-        (group
-          opt
-          ((tok `ELSE`)
-            (label
-              `else`
-              (ref `block`)))))
-      (node
-        `for`
-        (named
-          `mode`
-          (tag `ptr`)))
-      _)
-    (alt
-      _
-      ((tok `FOR`)
-        (label
-          `var`
-          (ref `name`))
-        (group
-          opt
-          ((lit `","`)
-            (label
-              `index`
-              (ref `name`))))
-        (tok `IN`)
-        (label
-          `source`
-          (ref `cond`))
+          (ref `value`))
         (label
           `body`
           (ref `block`))
@@ -2185,7 +2771,7 @@
       ((tok `MATCH`)
         (label
           `subject`
-          (ref `cond`))
+          (ref `value`))
         (tok `INDENT`)
         (label
           `arms`
@@ -2222,7 +2808,7 @@
       _
       ((label
           `pattern`
-          (ref `pattern`))
+          (ref `pats`))
         (lit `"=>"`)
         (label
           `body`
@@ -2233,11 +2819,74 @@
       _
       ((label
           `pattern`
-          (ref `pattern`))
+          (ref `pats`))
+        (tok `POST_IF`)
+        (label
+          `guard`
+          (ref `value`))
+        (lit `"=>"`)
+        (label
+          `body`
+          (ref `simple`)))
+      (node `arm`)
+      _)
+    (alt
+      _
+      ((label
+          `pattern`
+          (ref `pats`))
         (label
           `body`
           (ref `block`)))
       (node `arm`)
+      _)
+    (alt
+      _
+      ((label
+          `pattern`
+          (ref `pats`))
+        (tok `POST_IF`)
+        (label
+          `guard`
+          (ref `value`))
+        (label
+          `body`
+          (ref `block`)))
+      (node `arm`)
+      _))
+  (rule
+    (name `pats`)
+    (alt
+      _
+      ((ref `pattern`))
+      _
+      _)
+    (alt
+      _
+      ((label
+          `alts`
+          (ref `palts`)))
+      (node `alt_pattern`)
+      _))
+  (rule
+    (name `palts`)
+    (alt
+      _
+      ((ref `pattern`)
+        (lit `","`)
+        (ref `pattern`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `palts`)
+        (lit `","`)
+        (ref `pattern`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `pattern`)
@@ -2266,8 +2915,25 @@
       _)
     (alt
       _
-      ((tok `ELSE`))
+      ((label
+          `object`
+          (ref `name`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `member`)
+      _)
+    (alt
       _
+      ((label
+          `object`
+          (ref `pqual`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `member`)
       _)
     (alt
       _
@@ -2276,26 +2942,11 @@
       _)
     (alt
       _
-      ((tok `MINUS_PREFIX`)
+      ((lit `"-"`)
         (label
           `operand`
           (tok `INTEGER`)))
       (node `neg`)
-      _)
-    (alt
-      _
-      ((tok `REAL`))
-      _
-      _)
-    (alt
-      _
-      ((tok `STRING_SQ`))
-      _
-      _)
-    (alt
-      _
-      ((tok `STRING_DQ`))
-      _
       _)
     (alt
       _
@@ -2309,7 +2960,7 @@
       _)
     (alt
       _
-      ((tok `DOT_LIT`)
+      ((lit `"."`)
         (label
           `name`
           (ref `name`)))
@@ -2317,50 +2968,78 @@
       _)
     (alt
       _
-      ((tok `DOT_LIT`)
+      ((lit `"."`)
         (label
           `name`
           (ref `name`))
-        (tok `LPAREN_CALL`)
-        (group
-          opt
-          ((label
-              `bindings`
-              (list_req
-                `L`
-                (plain `name`)))))
+        (lit `"("`)
+        (lit `")"`))
+      (node `variant_pattern`)
+      _)
+    (alt
+      _
+      ((lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (lit `"("`)
+        (label
+          `bindings`
+          (ref `pbinds`))
+        (skip
+          (group
+            opt
+            ((lit `","`))))
         (lit `")"`))
       (node `variant_pattern`)
       _))
   (rule
-    (name `try_block`)
+    (name `pqual`)
     (alt
       _
-      ((tok `TRY`)
-        (label
-          `body`
-          (ref `block`))
-        (group
-          opt
-          ((label
-              `catch`
-              (ref `catch_part`)))))
-      (node `try_block`)
-      _))
-  (rule
-    (name `catch_part`)
-    (alt
-      _
-      ((tok `CATCH`)
-        (tok `BAR_CAPTURE`)
+      ((label
+          `object`
+          (ref `name`))
+        (lit `"."`)
         (label
           `name`
-          (ref `name`))
-        (tok `BAR_CAPTURE`)
+          (ref `name`)))
+      (node `member`)
+      _))
+  (rule
+    (name `pbinds`)
+    (alt
+      _
+      ((ref `pbind`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `pbinds`)
+        (lit `","`)
+        (ref `pbind`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `pbind`)
+    (alt
+      _
+      ((ref `name`))
+      _
+      _)
+    (alt
+      _
+      ((label
+          `name`
+          (tok `KWARG_NAME`))
+        (lit `":"`)
         (label
-          `body`
-          (ref `block`)))
-      (node `catch_block`)
+          `value`
+          (ref `name`)))
+      (node `kwarg`)
       _))
   (rule
     (name `closure`)
@@ -2371,7 +3050,7 @@
       _)
     (alt
       _
-      ((tok `SHARE_PFX`)
+      ((lit `"*"`)
         (label
           `operand`
           (ref `lambda`)))
@@ -2412,7 +3091,7 @@
       _)
     (alt
       _
-      ((tok `SHARE_PFX`)
+      ((lit `"*"`)
         (label
           `operand`
           (ref `clambda`)))
@@ -2425,7 +3104,7 @@
       ((label
           `params`
           (ref `bars`))
-        (ref `cmd`))
+        (ref `assign`))
       (node
         `lambda`
         (named
@@ -2439,9 +3118,11 @@
     (alt
       _
       ((tok `BAR_CAPTURE`)
-        (list_req
-          `L`
-          (plain `barent`))
+        (ref `barents`)
+        (skip
+          (group
+            opt
+            ((lit `","`))))
         (tok `BAR_CAPTURE`))
       (list
         (spread `2`))
@@ -2450,6 +3131,23 @@
       _
       ((tok `BAR_EMPTY`))
       (list)
+      _))
+  (rule
+    (name `barents`)
+    (alt
+      _
+      ((ref `barent`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `barents`)
+        (lit `","`)
+        (ref `barent`))
+      (list
+        (spread `1`)
+        (pos `3`))
       _))
   (rule
     (name `barent`)
@@ -2471,7 +3169,7 @@
       _)
     (alt
       _
-      ((tok `CLONE_PFX`)
+      ((lit `"+"`)
         (label
           `name`
           (ref `name`)))
@@ -2479,7 +3177,7 @@
       _)
     (alt
       _
-      ((tok `MOVE_PFX`)
+      ((lit `"<"`)
         (label
           `name`
           (ref `name`)))
@@ -2492,12 +3190,28 @@
           `name`
           (ref `name`)))
       (node `cap_weak`)
+      _)
+    (alt
+      _
+      ((lit `"?"`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `cap_read`)
+      _)
+    (alt
+      _
+      ((lit `"!"`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `cap_write`)
       _))
   (rule
     (name `unary`)
     (alt
       _
-      ((tok `MINUS_PREFIX`)
+      ((lit `"-"`)
         (label
           `operand`
           (ref `unary`)))
@@ -2505,7 +3219,7 @@
       _)
     (alt
       _
-      ((tok `MOVE_PFX`)
+      ((lit `"<"`)
         (label
           `operand`
           (ref `unary`)))
@@ -2513,7 +3227,7 @@
       _)
     (alt
       _
-      ((tok `CLONE_PFX`)
+      ((lit `"+"`)
         (label
           `operand`
           (ref `unary`)))
@@ -2521,7 +3235,7 @@
       _)
     (alt
       _
-      ((tok `READ_PFX`)
+      ((lit `"?"`)
         (label
           `operand`
           (ref `unary`)))
@@ -2529,7 +3243,7 @@
       _)
     (alt
       _
-      ((tok `WRITE_PFX`)
+      ((lit `"!"`)
         (label
           `operand`
           (ref `unary`)))
@@ -2537,7 +3251,7 @@
       _)
     (alt
       _
-      ((tok `SHARE_PFX`)
+      ((lit `"*"`)
         (label
           `operand`
           (ref `unary`)))
@@ -2550,14 +3264,6 @@
           `operand`
           (ref `unary`)))
       (node `weak`)
-      _)
-    (alt
-      _
-      ((tok `PIN_PFX`)
-        (label
-          `operand`
-          (ref `unary`)))
-      (node `pin`)
       _)
     (alt
       _
@@ -2582,7 +3288,7 @@
       ((label
           `object`
           (ref `postfix`))
-        (tok `LBRACKET_INDEX`)
+        (lit `"["`)
         (label
           `index`
           (ref `expr`))
@@ -2592,9 +3298,33 @@
     (alt
       _
       ((label
+          `object`
+          (ref `postfix`))
+        (lit `"["`)
+        (label
+          `index`
+          (ref `open`))
+        (lit `"]"`))
+      (node `index`)
+      _)
+    (alt
+      _
+      ((label
+          `object`
+          (ref `postfix`))
+        (lit `"["`)
+        (label
+          `args`
+          (ref `targs`))
+        (lit `"]"`))
+      (node `inst`)
+      _)
+    (alt
+      _
+      ((label
           `callee`
           (ref `postfix`))
-        (tok `LPAREN_CALL`)
+        (lit `"("`)
         (label
           `args`
           (ref `args`))
@@ -2606,13 +3336,44 @@
       ((label
           `value`
           (ref `postfix`))
-        (tok `SUFFIX_BANG`))
+        (lit `"!"`))
       (node `propagate`)
+      _)
+    (alt
+      _
+      ((label
+          `value`
+          (ref `postfix`))
+        (lit `"?"`))
+      (node `propagate_none`)
       _)
     (alt
       _
       ((ref `atom`))
       _
+      _))
+  (rule
+    (name `open`)
+    (alt
+      _
+      ((label
+          `left`
+          (ref `expr`))
+        (tok `DOTDOT_OPEN`))
+      (node `..`)
+      _)
+    (alt
+      _
+      ((lit `".."`)
+        (label
+          `right`
+          (ref `expr`)))
+      (node `..`)
+      _)
+    (alt
+      _
+      ((tok `DOTDOT_OPEN`))
+      (node `..`)
       _))
   (rule
     (name `args`)
@@ -2624,15 +3385,21 @@
     (alt
       _
       ((ref `callargs`)
+        (lit `","`))
+      (pos `1`)
+      _)
+    (alt
+      _
+      ((ref `callargs`)
         (lit `","`)
-        (ref `cmdtail`))
+        (ref `cclosure`))
       (list
         (spread `1`)
         (pos `3`))
       _)
     (alt
       _
-      ((ref `cmdtail`))
+      ((ref `cclosure`))
       (list
         (pos `1`))
       _)
@@ -2640,6 +3407,33 @@
       _
       ()
       (list)
+      _))
+  (rule
+    (name `targs`)
+    (alt
+      _
+      ((ref `expr`)
+        (lit `","`))
+      (list
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `expr`)
+        (lit `","`)
+        (ref `expr`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `expr`)
+        (lit `","`)
+        (ref `targs`))
+      (list
+        (pos `1`)
+        (spread `3`))
       _))
   (rule
     (name `callargs`)
@@ -2715,7 +3509,7 @@
       _)
     (alt
       _
-      ((tok `DOT_LIT`)
+      ((lit `"."`)
         (label
           `name`
           (ref `name`)))
@@ -2727,7 +3521,7 @@
         (label
           `name`
           (ref `name`))
-        (tok `LPAREN_CALL`)
+        (lit `"("`)
         (label
           `args`
           (ref `args`))
@@ -2741,16 +3535,44 @@
           opt
           ((label
               `elems`
-              (list_req
-                `L`
-                (plain `expr`)))))
+              (ref `exprs`))))
         (lit `"]"`))
       (node `array`)
       _)
     (alt
       _
+      ((lit `"["`)
+        (label
+          `elems`
+          (ref `exprs`))
+        (lit `","`)
+        (lit `"]"`))
+      (node `array`)
+      _)
+    (alt
+      _
+      ((lit `"["`)
+        (label
+          `size`
+          (ref `expr`))
+        (tok `OF`)
+        (label
+          `value`
+          (ref `expr`))
+        (lit `"]"`))
+      (node `array_fill`)
+      _)
+    (alt
+      _
       ((lit `"("`)
-        (ref `tail`)
+        (ref `expr`)
+        (lit `")"`))
+      (pos `2`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `cclosure`)
         (lit `")"`))
       (pos `2`)
       _))
@@ -2778,8 +3600,11 @@
       (infix_op `">>"` `left`))
     (level
       (infix_op `"+"` `left`)
-      (infix_op `"-"` `left`))
+      (infix_op `"-"` `left`)
+      (infix_op `"+%"` `left`)
+      (infix_op `"-%"` `left`))
     (level
       (infix_op `"*"` `left`)
       (infix_op `"/"` `left`)
-      (infix_op `"%"` `left`))))
+      (infix_op `"%"` `left`)
+      (infix_op `"*%"` `left`))))
