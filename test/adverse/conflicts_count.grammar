@@ -1,7 +1,7 @@
 # A conflict total is not a declaration: each conflict is declared on its
 # own line of an @conflicts block, so `@conflicts = N` is a syntax error.
 # error: conflicts_count.grammar:13:12:
-# error: syntax error: unexpected symbol '='
+# error: syntax error: unexpected "="
 @lexer
 tokens
     ident

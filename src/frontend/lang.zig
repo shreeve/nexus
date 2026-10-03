@@ -517,7 +517,8 @@ pub const Lexer = struct {
         }
         const end = p + nonBlankLen(s, p);
         self.base.pos = @intCast(end);
-        return self.fail(p, end - p, "unrecognized line in the @lexer section: '{s}' (expected state, after, tokens, @code, or a rule)", .{s[p..end]});
+        const line = clip(s[p..end]);
+        return self.fail(p, end - p, "unrecognized line in the @lexer section: '{s}{s}' (expected state, after, tokens, @code, or a rule)", .{ line.text, line.more });
     }
 
     /// A rule's pattern: up to an unquoted `@`, arrow, or `#`, or the end
@@ -673,6 +674,15 @@ pub const Lexer = struct {
         problem.len = @intCast(written.len);
         self.problem = problem;
         return .{ .cat = .err, .pre = 0, .pos = @intCast(pos), .len = @intCast(@min(len, maxTokenLen)) };
+    }
+
+    /// Source text quoted in a message: at most 60 bytes (cut at a UTF-8
+    /// boundary), and `more` is "…" when it was cut.
+    pub fn clip(s: []const u8) struct { text: []const u8, more: []const u8 } {
+        if (s.len <= 60) return .{ .text = s, .more = "" };
+        var n: usize = 60;
+        while (n > 0 and s[n] & 0xC0 == 0x80) n -= 1;
+        return .{ .text = s[0..n], .more = "\u{2026}" };
     }
 
     fn tooDeep(self: *Lexer, pos: usize) Token {

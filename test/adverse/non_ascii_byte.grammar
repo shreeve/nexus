@@ -1,0 +1,13 @@
+# A byte that is not ASCII is shown in hex, not as a broken character.
+# error: non_ascii_byte.grammar:13:11:
+# error: syntax error: unexpected byte 0xC3
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT é

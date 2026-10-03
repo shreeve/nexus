@@ -13,6 +13,7 @@ pub const parser = @import("parser.zig");
 pub const Sexp = parser.Sexp;
 
 pub const GrammarLowerer = @import("lower.zig").GrammarLowerer;
+const lang = @import("lang.zig");
 
 /// A grammar file parsed by the generated frontend. The tree's `.src`
 /// positions are offsets into `source.text`. Deinit `parser` when finished
@@ -30,7 +31,7 @@ pub fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8, path: []co
     var p = parser.Parser.init(allocator, sourceText);
     errdefer p.deinit();
     const sexp = p.parseGrammar() catch |err| {
-        if (err == error.ParseError) reportSyntaxError(&p, source);
+        if (err == error.ParseError) try reportSyntaxError(allocator, &p, source);
         return err;
     };
     return .{ .parser = p, .sexp = sexp, .source = source };
@@ -38,7 +39,7 @@ pub fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8, path: []co
 
 /// `syntax error: unexpected <token>; expected <what the state accepts>`,
 /// or the scanner's own message for an `err` token it explained.
-fn reportSyntaxError(p: *const parser.Parser, source: diag.Source) void {
+fn reportSyntaxError(allocator: Allocator, p: *const parser.Parser, source: diag.Source) Allocator.Error!void {
     const tok = p.current;
     if (tok.cat == .err) if (p.lexer.problem) |problem| if (problem.pos == tok.pos) {
         diag.errAt(source, tok.pos, "{s}", .{problem.message()});
@@ -46,51 +47,50 @@ fn reportSyntaxError(p: *const parser.Parser, source: diag.Source) void {
     };
     // An invalid pattern earlier on the line is the first error there.
     if (p.lexer.lastPattern) |pat| if (std.mem.findScalar(u8, source.text[pat.pos..tok.pos], '\n') == null) {
-        var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-        defer arena.deinit();
         var d: regex.Diagnostic = .{};
-        if (regex.parse(arena.allocator(), source.text[pat.pos..][0..pat.len], &d)) |_| {} else |err| if (err == error.InvalidPattern) {
-            diag.errAt(source, pat.pos + d.offset, "{s}", .{d.message});
-            return;
+        if (regex.parse(allocator, source.text[pat.pos..][0..pat.len], &d)) |_| {} else |err| switch (err) {
+            error.InvalidPattern => return diag.errAt(source, pat.pos + d.offset, "{s}", .{d.message}),
+            error.OutOfMemory => return error.OutOfMemory,
         }
     };
-    var buf: [1024]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&buf);
-    const tokText = source.text[tok.pos..][0..tok.len];
-    switch (tok.cat) {
-        .eof, .newline, .cont, .next_alt => w.print("unexpected {s}", .{describe(tok.cat)}) catch {},
-        .quoted, .string => w.print("unexpected {s} {s}", .{ describe(tok.cat), tokText }) catch {},
-        else => w.print("unexpected {s} '{s}'", .{ describe(tok.cat), tokText }) catch {},
-    }
+    if (tok.pos == 0 and std.mem.startsWith(u8, source.text, "\xEF\xBB\xBF"))
+        return diag.errAt(source, 0, "the file starts with a UTF-8 byte order mark; save it without one", .{});
+
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    const w = &out.writer;
+    unexpected(w, p, source.text[tok.pos..][0..tok.len]) catch return error.OutOfMemory;
     if (p.lastError()) |failure| {
         const want = parser.BaseParser.expected(failure.state);
-        if (want.len > 0) w.writeAll("; expected ") catch {};
+        if (want.len > 0) w.writeAll("; expected ") catch return error.OutOfMemory;
         for (want, 0..) |sym, i| {
-            if (i > 0) w.writeAll(if (i + 1 == want.len) " or " else ", ") catch {};
-            w.writeAll(parser.BaseParser.symbolText(sym)) catch {};
+            if (i > 0) w.writeAll(if (i + 1 == want.len) " or " else ", ") catch return error.OutOfMemory;
+            w.writeAll(parser.BaseParser.symbolText(sym)) catch return error.OutOfMemory;
         }
     }
-    diag.errAt(source, tok.pos, "syntax error: {s}", .{w.buffered()});
+    diag.errAt(source, tok.pos, "syntax error: {s}", .{out.written()});
 }
 
-fn describe(cat: parser.TokenCat) []const u8 {
-    return switch (cat) {
-        .eof => "end of file",
-        .newline => "end of line",
-        .cont => "continuation line",
-        .next_alt => "`|` line",
-        .ident => "name",
-        .token => "token name",
-        .label => "label",
-        .word => "action word",
-        .string => "string",
-        .integer => "number",
-        .comment => "comment",
-        .pattern => "pattern",
-        .quoted => "quoted byte",
-        .err => "character",
-        else => "symbol",
+/// `unexpected <token>`: the token by the grammar's @display name (without
+/// its article), and its text when the name does not show it; a byte that
+/// is not ASCII in hex.
+fn unexpected(w: *std.Io.Writer, p: *const parser.Parser, text: []const u8) std.Io.Writer.Error!void {
+    const tok = p.current;
+    if (tok.cat == .err) {
+        if (text[0] >= 0x80) return w.print("unexpected byte 0x{X:0>2}", .{text[0]});
+        return w.print("unexpected character '{s}'", .{text});
+    }
+    const failure = p.lastError() orelse return w.writeAll("unexpected token");
+    const display = parser.BaseParser.symbolText(failure.symbol);
+    const name = if (std.mem.startsWith(u8, display, "a ")) display[2..] else if (std.mem.startsWith(u8, display, "an ")) display[3..] else display;
+    const shown = text.len == 0 or name[0] == '"' or std.mem.eql(u8, name, text) or switch (tok.cat) {
+        .newline, .cont, .next_alt => true,
+        else => false,
     };
+    if (shown) return w.print("unexpected {s}", .{name});
+    const t = lang.Lexer.clip(text);
+    // A string or a quoted byte carries its own quotes.
+    if (text[0] == '"' or text[0] == '\'') return w.print("unexpected {s} {s}{s}", .{ name, t.text, t.more });
+    return w.print("unexpected {s} '{s}{s}'", .{ name, t.text, t.more });
 }
 
 // =============================================================================

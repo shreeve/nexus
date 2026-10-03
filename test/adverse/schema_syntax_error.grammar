@@ -1,6 +1,6 @@
 # A syntax error in an @schema line is reported at its token.
 # error: schema_syntax_error.grammar:31:11:
-# error: syntax error: unexpected symbol '='
+# error: syntax error: unexpected "="
 @lexer
 tokens
     ident
