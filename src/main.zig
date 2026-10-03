@@ -193,7 +193,7 @@ fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: [
 }
 
 /// `nexus [check] <grammar>`: run the pipeline and write the parser module
-/// (in check mode, also lint the grammar IR, and write nothing).
+/// (in check mode, write nothing).
 fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     const grammarFile = opts.grammarFile;
     const sourceText = try readGrammar(allocator, io, grammarFile);
@@ -245,10 +245,6 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         ir.startSymbols.len,
     });
 
-    // Check mode: the lint (unreachable rules, as warnings), then every
-    // check generation makes; nothing is written.
-    const warnings = if (opts.checkMode) check.checkGrammar(allocator, &ir, grammarFile) else 0;
-
     // Without parser rules the output is the lexer alone
     var finalCode: []const u8 = undefined;
 
@@ -277,8 +273,9 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             };
         }
 
-        // Validate all referenced symbols are defined
+        // Every symbol is defined, and a start symbol reaches every rule.
         if (check.validateSymbols(&g, &lexerSpec, grammarFile) > 0) fail();
+        if (try check.checkReachable(allocator, &g, &ir, grammarFile) > 0) fail();
 
         var result = lr.run(&g, .{ .path = grammarFile }) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
@@ -309,7 +306,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     }
 
     if (opts.checkMode) {
-        if (warnings > 0) diag.info("{s}: no errors ({d} warnings)", .{ grammarFile, warnings }) else diag.info("{s}: no errors", .{grammarFile});
+        diag.info("{s}: no errors", .{grammarFile});
         return;
     }
     try writeOutput(io, opts.outputFile, finalCode);

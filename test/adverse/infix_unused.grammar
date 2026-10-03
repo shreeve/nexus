@@ -1,0 +1,17 @@
+# An @infix table no rule names (`@infix`) is dead.
+# error: infix_unused.grammar:13:8:
+# error: @infix is unused: no rule names `@infix`
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+@infix atom
+    "+" left
+
+prog! = atom                                → (p 1)
+atom  = IDENT

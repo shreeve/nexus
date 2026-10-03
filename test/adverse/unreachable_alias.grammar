@@ -1,0 +1,14 @@
+# An alias no reached rule names is unreachable.
+# error: unreachable_alias.grammar:14:1:
+# error: rule 'name' is unreachable: no start symbol reaches it
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+prog! = IDENT                               → (p 1)
+name  = IDENT

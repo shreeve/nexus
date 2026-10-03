@@ -1,0 +1,15 @@
+# A rule no start symbol reaches is an error (it would be dead in the
+# tables).
+# error: unreachable_rule.grammar:15:1:
+# error: rule 'dead' is unreachable: no start symbol reaches it
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+prog! = IDENT                               → (p 1)
+dead  = IDENT IDENT                         → (d 1)
