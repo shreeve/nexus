@@ -460,8 +460,9 @@ fn intern(
     return id;
 }
 
-/// Moore partition refinement; states are then renumbered in breadth-first
-/// order from the start states so the result is canonical.
+/// Hopcroft partition refinement, then a breadth-first renumbering from the
+/// start states. The coarsest partition is unique and the renumbering
+/// depends on nothing else, so the result is canonical.
 fn minimize(gpa: Allocator, raw: RawDfa, classes: ByteClasses) Error!Dfa {
     const n = raw.numStates;
     const nc = classes.count;
@@ -469,49 +470,119 @@ fn minimize(gpa: Allocator, raw: RawDfa, classes: ByteClasses) Error!Dfa {
     defer arena.deinit();
     const a = arena.allocator();
 
-    // Initial partition: by accepting rule.
-    var block = try a.alloc(u32, n);
+    // The DFA completed with a dead state `n` (the target of every missing
+    // transition), in a block of its own so that no state merges with it.
+    const total = n + 1;
+    const dead = n;
+    const target = struct {
+        fn of(r: RawDfa, s: u32, c: usize, cn: u16) u32 {
+            if (s == r.numStates) return r.numStates;
+            const t = r.trans[s * cn + c];
+            return if (t == none) r.numStates else t;
+        }
+    }.of;
+
+    // Predecessors of each state per class: preds[predStart[c * total + t] ..].
+    const predStart = try a.alloc(u32, nc * total + 1);
+    @memset(predStart, 0);
+    for (0..total) |s| for (0..nc) |c| {
+        predStart[c * total + target(raw, @intCast(s), c, nc) + 1] += 1;
+    };
+    for (1..predStart.len) |i| predStart[i] += predStart[i - 1];
+    const preds = try a.alloc(u32, nc * total);
+    const fill = try a.dupe(u32, predStart[0 .. predStart.len - 1]);
+    for (0..total) |s| for (0..nc) |c| {
+        const k = c * total + target(raw, @intCast(s), c, nc);
+        preds[fill[k]] = @intCast(s);
+        fill[k] += 1;
+    };
+
+    // The partition: `elems` lists the states block by block; block b holds
+    // elems[first[b]..end[b]], of which the first marked[b] are marked.
+    const block = try a.alloc(u32, total);
+    var numBlocks: u32 = 0;
     {
         var byAccept: std.AutoHashMapUnmanaged(u32, u32) = .empty;
-        var next: u32 = 0;
         for (0..n) |s| {
             const gop = try byAccept.getOrPut(a, raw.accept[s]);
             if (!gop.found_existing) {
-                gop.value_ptr.* = next;
-                next += 1;
+                gop.value_ptr.* = numBlocks;
+                numBlocks += 1;
             }
             block[s] = gop.value_ptr.*;
         }
+        block[dead] = numBlocks;
+        numBlocks += 1;
     }
-    var numBlocks: u32 = blk: {
-        var m: u32 = 0;
-        for (block) |b| m = @max(m, b + 1);
-        break :blk m;
-    };
+    const first = try a.alloc(u32, total);
+    const end = try a.alloc(u32, total);
+    const marked = try a.alloc(u32, total);
+    const elems = try a.alloc(u32, total);
+    const loc = try a.alloc(u32, total);
+    @memset(end[0..numBlocks], 0);
+    @memset(marked, 0);
+    for (block) |b| end[b] += 1;
+    var at: u32 = 0;
+    for (0..numBlocks) |b| {
+        first[b] = at;
+        at += end[b];
+        end[b] = first[b];
+    }
+    for (block, 0..) |b, s| {
+        elems[end[b]] = @intCast(s);
+        loc[s] = end[b];
+        end[b] += 1;
+    }
 
-    const sig = try a.alloc(u32, nc + 1);
-    var newBlock = try a.alloc(u32, n);
-    while (true) {
-        var map: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
-        var next: u32 = 0;
-        for (0..n) |s| {
-            sig[0] = block[s];
-            for (0..nc) |c| {
-                const t = raw.trans[s * nc + c];
-                sig[c + 1] = if (t == none) none else block[t];
+    var work: std.ArrayList(u32) = .empty;
+    for (0..numBlocks) |b| try work.append(a, @intCast(b));
+    var splitter: std.ArrayList(u32) = .empty;
+    var touched: std.ArrayList(u32) = .empty;
+    while (work.pop()) |sp| {
+        splitter.clearRetainingCapacity();
+        try splitter.appendSlice(a, elems[first[sp]..end[sp]]);
+        for (0..nc) |c| {
+            // Mark every state with a class-c transition into the splitter.
+            touched.clearRetainingCapacity();
+            for (splitter.items) |t| {
+                for (preds[predStart[c * total + t]..predStart[c * total + t + 1]]) |s| {
+                    const b = block[s];
+                    const m = first[b] + marked[b];
+                    if (loc[s] < m) continue;
+                    if (marked[b] == 0) try touched.append(a, b);
+                    const other = elems[m];
+                    elems[m] = s;
+                    elems[loc[s]] = other;
+                    loc[other] = loc[s];
+                    loc[s] = m;
+                    marked[b] += 1;
+                }
             }
-            const gop = try map.getOrPut(a, sig);
-            if (!gop.found_existing) {
-                gop.key_ptr.* = try a.dupe(u32, sig);
-                gop.value_ptr.* = next;
-                next += 1;
+            // Split each touched block into its marked and unmarked parts;
+            // the smaller part gets the new block number.
+            for (touched.items) |b| {
+                const m = marked[b];
+                marked[b] = 0;
+                const size = end[b] - first[b];
+                if (m == size) continue;
+                const nb = numBlocks;
+                numBlocks += 1;
+                if (m <= size - m) {
+                    first[nb] = first[b];
+                    end[nb] = first[b] + m;
+                    first[b] += m;
+                } else {
+                    first[nb] = first[b] + m;
+                    end[nb] = end[b];
+                    end[b] = first[nb];
+                }
+                marked[nb] = 0;
+                for (elems[first[nb]..end[nb]]) |s| block[s] = nb;
+                // If b still waits to split others, both parts now do;
+                // otherwise splitting by the smaller part suffices.
+                try work.append(a, nb);
             }
-            newBlock[s] = gop.value_ptr.*;
         }
-        const stable = next == numBlocks;
-        std.mem.swap([]u32, &block, &newBlock);
-        numBlocks = next;
-        if (stable) break;
     }
 
     // Representative raw state per block, and BFS renumbering from the starts.
