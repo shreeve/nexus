@@ -427,7 +427,6 @@ const Codegen = struct {
     /// one category (`"+"` and PLUS), are errors (either would leave
     /// alternatives no input can reach).
     fn mapTokens(self: *Codegen) !void {
-        const identAs = self.hasIdentAs();
         var owner: std.StringHashMapUnmanaged(u16) = .empty;
         if (self.promotable) |tok| try owner.put(self.allocator, tok, self.g.errorId);
         var failed = false;
@@ -442,7 +441,7 @@ const Codegen = struct {
 
             const lowerName = try std.ascii.allocLowerString(self.allocator, sym.name);
             if (self.promotable) |tok| if (std.mem.eql(u8, lowerName, tok)) continue;
-            if (self.isPromotedKeyword(sym.name, identAs)) continue;
+            if (self.isPromotedKeyword(sym.name)) continue;
 
             // Only names that can be TokenCat fields
             var valid = lowerName[0] >= 'a' and lowerName[0] <= 'z';
@@ -547,9 +546,9 @@ const Codegen = struct {
     /// identifier rather than as its own token category:
     ///   1. it names an `@as` group (CMD for `@as ident = [cmd]`);
     ///   2. a declared lexer token of that name makes it direct;
-    ///   3. else it is promoted if a nonterminal has the same name, or if
-    ///      the grammar uses `@as` at all.
-    fn isPromotedKeyword(self: *const Codegen, name: []const u8, identAs: bool) bool {
+    ///   3. else it is a keyword of the lang module, which only a grammar
+    ///      with `@as` and `@lang` may name (check.validateSymbols).
+    fn isPromotedKeyword(self: *const Codegen, name: []const u8) bool {
         if (name[0] < 'A' or name[0] > 'Z') return false;
         for (self.g.asDirectives) |directive| {
             if (std.ascii.eqlIgnoreCase(name, directive.rule)) return true;
@@ -558,10 +557,7 @@ const Codegen = struct {
             for (spec.tokens.items) |tok| if (std.ascii.eqlIgnoreCase(tok, name)) return false;
             for (spec.rules.items) |rule| if (std.ascii.eqlIgnoreCase(rule.token, name)) return false;
         }
-        for (self.g.symbols.items) |other| {
-            if (other.kind == .nonterminal and std.ascii.eqlIgnoreCase(name, other.name)) return true;
-        }
-        return identAs;
+        return self.hasIdentAs();
     }
 
     /// The `@as` groups a token may be promoted to (`self` excluded), in
@@ -743,7 +739,6 @@ const Codegen = struct {
     /// name), so that is a generation error; with @lang the Id enums live
     /// in the lang module, so the parser fails to build naming it.
     fn emitKeywordCheck(self: *Codegen, w: *std.Io.Writer) !void {
-        const identAs = self.hasIdentAs();
         var groups: std.ArrayList([]const u8) = .empty;
         for (self.g.asDirectives) |directive| {
             if (isSelf(directive)) continue;
@@ -753,7 +748,7 @@ const Codegen = struct {
         for (self.g.symbols.items) |sym| {
             if (sym.kind != .terminal or sym.name.len == 0 or sym.name[0] < 'A' or sym.name[0] > 'Z') continue;
             if (std.mem.endsWith(u8, sym.name, "!")) continue;
-            if (!self.isPromotedKeyword(sym.name, identAs)) continue;
+            if (!self.isPromotedKeyword(sym.name)) continue;
             if (std.ascii.eqlIgnoreCase(sym.name, self.promotable.?)) continue;
             const used = for (self.g.rules.items) |rule| {
                 if (std.mem.findScalar(u16, rule.rhs, sym.id) != null) break true;

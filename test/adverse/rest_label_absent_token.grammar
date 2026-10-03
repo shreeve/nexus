@@ -1,0 +1,24 @@
+# A labeled token adds one item to a rest role only where it is always
+# there: in a choice alternative it can be absent.
+# error: rest_label_absent_token.grammar:24:14:
+# error: label 'items' adds one token to rest role 'items' of 'pair', but the token can be absent here
+@lexer
+tokens
+    ident
+    integer
+    colon
+    comma
+    eof
+    err
+'\n'                                        → skip, skip
+':'                                         → colon
+','                                         → comma
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    pair  ...items:leaf
+
+top!  = (":" items:IDENT | items:INTEGER ":")   → (pair)

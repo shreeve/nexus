@@ -1,0 +1,23 @@
+# Coverage names an unused element inside a labeled group a group element.
+# error: coverage_group_element.grammar:23:10:
+# error: group element 'IDENT' carries a value the action does not use
+@lexer
+tokens
+    ident
+    integer
+    colon
+    comma
+    eof
+    err
+'\n'                                        → skip, skip
+':'                                         → colon
+','                                         → comma
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    decl  name:leaf
+
+top!  = (name:IDENT ":" IDENT)              → (decl)

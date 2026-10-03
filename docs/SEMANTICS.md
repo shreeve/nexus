@@ -365,7 +365,10 @@ positions at all (`→ (let)` above).
 
 - A label on an optional element (`[":" type:name]`) gives nil when the
   element is absent; on a list (`args:[L(expr)]`) the items fill a rest role,
-  and labeled tokens (`items:IDENT "," items:IDENT`) are one item each.
+  and labeled tokens (`items:IDENT "," items:IDENT`, or a name that
+  aliases a token) are one item each. A labeled token that can be absent
+  (optional, or in a choice alternative) cannot add an item to a rest
+  role: an error.
 - A label on a choice, `(A | B):role` or `role:(A | B)`, labels whichever
   alternative matched (an alternative of several elements has no one value:
   label its elements). When the role is a `tag` role and every alternative

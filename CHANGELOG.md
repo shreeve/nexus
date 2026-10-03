@@ -23,7 +23,9 @@ Changes marked **Breaking** need edits in a grammar or a lang module;
 - One role may be labeled in different alternatives of a choice (whichever
   matched fills it); an optional choice of literals can fill a tag role
   (`op:("+=" | "-=")?`); labeled tokens in a rest role are one item each
-  (`items:IDENT "," items:IDENT`). All three were errors.
+  (`items:IDENT "," items:IDENT`, also through a name that aliases the
+  token). All three were errors. A labeled token that can be absent
+  there (optional, or in a choice alternative) is an error that says so.
 - `@tags` works without `@schema`.
 - Rules have no length limit of their own: an alternative has at most
   65534 elements, counting those in its groups and choices at any depth, and

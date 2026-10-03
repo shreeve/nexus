@@ -191,6 +191,9 @@ const Resolver = struct {
                 continue;
             };
             const s = layout.slots[p - 1];
+            // Inside a group that is always there, or no inline form at all.
+            const present = if (layout.forms[s.elem]) |f| f.alts.len == 1 and !f.optional else true;
+            const token = oneToken(e, aliases);
             try labels.append(self.a, .{
                 .name = name,
                 .pos = @intCast(p),
@@ -198,7 +201,8 @@ const Resolver = struct {
                 .col = e.col,
                 .lits = try literalTexts(self.a, e),
                 .slot = s,
-                .single = layout.forms[s.elem] == null and e.quantifier == .one and expand.isToken(e),
+                .token = token,
+                .single = token and present and e.quantifier == .one,
             });
         }
 
@@ -230,8 +234,9 @@ const Resolver = struct {
 
     /// A pattern label. `lits`: the texts a labeled string literal or
     /// choice of string literals can match (null for other elements).
-    /// `single`: the element is always present and one value (a token), so
-    /// in a rest role it is one item rather than a spread.
+    /// `token`: the element is one token (or an alias of one), whatever its
+    /// quantifier. `single`: it is also always present, so in a rest role
+    /// it is one item rather than a spread.
     const Label = struct {
         name: []const u8,
         pos: u16,
@@ -239,8 +244,19 @@ const Resolver = struct {
         col: u32,
         lits: ?[]const []const u8 = null,
         slot: expand.Slot,
+        token: bool,
         single: bool,
     };
+
+    /// Whether `e` is one token, or a name that aliases one, whatever its
+    /// quantifier.
+    fn oneToken(e: ParsedElement, aliases: *const std.StringHashMapUnmanaged([]const u8)) bool {
+        var one = e;
+        one.quantifier = .one;
+        if (expand.isToken(one)) return true;
+        const target = if (e.kind == .ident) aliases.get(e.value) orelse return false else return false;
+        return isUpper(target);
+    }
 
     /// What the labels of an alternative fill in its top-level list: the
     /// labels, and where to record side-band labels and merged positions.
@@ -373,8 +389,12 @@ const Resolver = struct {
                         continue;
                     };
                     slots[ri] = .{ .ref = lab.pos };
+                } else if (lab.single) {
+                    try rest.append(a, .{ .ref = lab.pos });
+                } else if (lab.token) {
+                    self.err(lctx, "label '{s}' adds one token to rest role '{s}' of '{s}', but the token can be absent here (it is optional, or in a choice or optional group); label it where it is always there", .{ lab.name, lab.name, tag });
                 } else {
-                    try rest.append(a, if (lab.single) .{ .ref = lab.pos } else .{ .spread = lab.pos });
+                    try rest.append(a, .{ .spread = lab.pos });
                 }
             } else if (containsName(kind.side, lab.name)) {
                 try top.?.sides.append(a, .{ .role = lab.name, .pos = lab.pos });
@@ -534,7 +554,7 @@ const Resolver = struct {
                 // alternative's only element, or when the whole is labeled.
                 if (used[layout.pos[s.elem]] and layout.forms[s.elem].?.alts[s.alt.?].len == 1) continue;
                 if (alt.elements[s.elem].label != null) continue;
-                self.err(ctx, "choice element '{f}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{expand.fmtElement(e)});
+                self.err(ctx, "{s} element '{f}' carries a value the action does not use; label it or drop it with !X or _:X (or opt out with ~ \"reason\")", .{ if (alt.elements[s.elem].kind == .group) "group" else "choice", expand.fmtElement(e) });
                 continue;
             }
             self.err(ctx, unusedElement, .{ p, expand.fmtElement(e) });
