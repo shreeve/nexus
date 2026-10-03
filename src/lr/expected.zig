@@ -61,7 +61,7 @@ pub fn compute(g: *const Grammar, auto: *const Automaton, la: Lookaheads, rows: 
     const ofState = try a.alloc(u16, auto.states.items.len);
 
     // Dedup: list contents → list index.
-    var index = std.StringHashMapUnmanaged(u16){};
+    var index: std.StringHashMapUnmanaged(u16) = .empty;
     defer index.deinit(a);
 
     var scratch = try SetArray.init(a, 1, numSymbols);

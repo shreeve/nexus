@@ -1,0 +1,22 @@
+# An `X "c"` hint may escape its character (`X "\\"`): it names the
+# literal terminal `"\\"`, so a backslash touching the name continues it
+# and a spaced one starts a new expression.
+
+@lexer
+tokens
+    ident
+    bs
+    eof
+    err
+'\n'                                        → skip, skip
+'\\'                                        → bs
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+exprs! = expr+                              → (exprs ...1)
+
+expr   = IDENT X "\\"                       → (var 1)
+       | IDENT "\\" IDENT                   → (pair 1 3)
+       | "\\" IDENT                         → (esc 2)

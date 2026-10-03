@@ -1,0 +1,29 @@
+# An `X "c"` hint names the terminal the lexer produces for "c", even when
+# the grammar spells that terminal as a token (LPAREN for '('): a "("
+# touching a name opens a call, a spaced one starts a new expression.
+#
+# Today: the LR stage matches a hint only against literal terminals of the
+# parser grammar (it has no lexer), so this grammar fails with
+# `X "(" on expr → IDENT names no terminal`. Resolving the hint to the
+# lexer's token needs the literal-to-token map in expand.
+
+@lexer
+tokens
+    ident
+    lparen
+    rparen
+    eof
+    err
+'\n'                                        → skip, skip
+'('                                         → lparen
+')'                                         → rparen
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+exprs! = expr+                              → (exprs ...1)
+
+expr   = IDENT X "("                        → (var 1)
+       | IDENT LPAREN expr RPAREN           → (call 1 3)
+       | LPAREN expr RPAREN                 → 2

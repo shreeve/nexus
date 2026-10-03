@@ -81,7 +81,7 @@ fn generate(a: Allocator, rules: []const []const u8, starts: []const []const u8)
     const b = try a.create(Built);
     b.g = try build(a, rules, starts);
     b.auto = try automaton.build(&b.g);
-    b.la = try lookahead.compute(&b.g, &b.auto);
+    b.la = try lookahead.compute(&b.g, &b.auto, try repair.insertCosts(a, &b.g));
     b.tbl = try table.build(&b.g, &b.auto, b.la);
     return b;
 }
@@ -91,13 +91,13 @@ fn sym(g: *const Grammar, name: []const u8) u16 {
 }
 
 /// The state whose kernel contains `lhs → rhs[0..dot] • ...` for rule `ruleId`.
-fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u8) u16 {
+fn stateWith(auto: *const automaton.Automaton, ruleId: u16, dot: u16) !u16 {
     for (auto.states.items, 0..) |s, i| {
         for (s.kernel) |item| {
             if (item.ruleId == ruleId and item.dot == dot) return @intCast(i);
         }
     }
-    unreachable;
+    return error.TestNoSuchState;
 }
 
 // =============================================================================
@@ -234,7 +234,7 @@ test "LALR resolves the classic L = R grammar (SLR(1) cannot)" {
     const lalr = try generate(a, &rules, &.{"s"});
     try testing.expectEqual(@as(u32, 0), lalr.tbl.conflicts);
     // In the state after `l`, `r → l •` reduces only on $end.
-    const q = stateWith(&lalr.auto, 0, 1);
+    const q = try stateWith(&lalr.auto, 0, 1);
     const red = lalr.auto.states.items[q].reductions;
     try testing.expectEqual(@as(usize, 1), red.len);
     try testing.expectEqual(@as(usize, 1), lalr.la.sets[q][0].count());
@@ -257,7 +257,7 @@ test "lookaheads through nullable symbols (reads) and right recursion (includes)
     }, &.{"s"});
     try expectLalrMatchesCanonical(a, b);
     // After `x`, `opt → ε` reduces on what can follow: B (tail) or C.
-    const q = stateWith(&b.auto, 0, 1);
+    const q = try stateWith(&b.auto, 0, 1);
     const reds = b.auto.states.items[q].reductions;
     try testing.expectEqual(@as(usize, 1), reds.len);
     try testing.expectEqual(@as(usize, 2), b.la.sets[q][0].count());
@@ -381,7 +381,7 @@ test "manifest check: match, count change, winner flip, missing, undeclared" {
     changed.count = 2;
     b.g.conflicts = &.{ changed, reduce };
     try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
-    try expectContains(sink.written(), "t.grammar: error: conflict count changed: 2 declared, 1 now: shift  stmt → IF ID stmt\n");
+    try expectContains(sink.written(), "t.grammar:1:1: error: conflict count changed: 2 declared, 1 now: shift  stmt → IF ID stmt\n");
     // The pasteable manifest keeps the declared reasons.
     try expectContains(sink.written(), "    shift  stmt → IF ID stmt       1  # dangling else\n");
     sink.clearRetainingCapacity();
@@ -423,7 +423,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → ID",
     }, &.{"prog"});
     try testing.expectEqual(@as(u32, 0), shiftHint.tbl.conflicts);
-    const q = stateWith(&shiftHint.auto, 1, 3);
+    const q = try stateWith(&shiftHint.auto, 1, 3);
     try testing.expect(shiftHint.tbl.rows[q][sym(&shiftHint.g, "ELSE")] == .shift);
 
     const reduceHint = try generate(a, &.{
@@ -433,7 +433,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → ID",
     }, &.{"prog"});
     try testing.expectEqual(@as(u32, 0), reduceHint.tbl.conflicts);
-    try testing.expect(reduceHint.tbl.rows[stateWith(&reduceHint.auto, 1, 3)][sym(&reduceHint.g, "ELSE")] == .reduce);
+    try testing.expect(reduceHint.tbl.rows[try stateWith(&reduceHint.auto, 1, 3)][sym(&reduceHint.g, "ELSE")] == .reduce);
 
     // `name X "(" X "["`: both characters reduce in the table and record a
     // runtime shift override.
@@ -448,20 +448,16 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "name → ID",
     }, &.{"prog"});
     const xs = x.tbl.xExcludes.items;
-    var chars: [2]u8 = undefined;
-    var n: usize = 0;
-    for (xs) |e| {
-        if (n < 2) chars[n] = e.char;
-        n += 1;
-    }
-    try testing.expectEqual(@as(usize, 2), n);
+    try testing.expectEqual(@as(usize, 2), xs.len);
     try testing.expectEqual(xs[0].state, xs[1].state);
     const st = xs[0].state;
     try testing.expectEqual(@as(u32, 0), x.tbl.xExcludeStart[st]);
     try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[st + 1]);
     try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[x.auto.states.items.len]);
-    try testing.expect(std.mem.findScalar(u8, &chars, '(') != null and std.mem.findScalar(u8, &chars, '[') != null);
-    for (xs) |e| try testing.expect(x.tbl.rows[e.state][sym(&x.g, if (e.char == '(') "\"(\"" else "\"[\"")] == .reduce);
+    const syms = [2]u16{ xs[0].sym, xs[1].sym };
+    try testing.expect(std.mem.findScalar(u16, &syms, sym(&x.g, "\"(\"")) != null);
+    try testing.expect(std.mem.findScalar(u16, &syms, sym(&x.g, "\"[\"")) != null);
+    for (xs) |e| try testing.expect(x.tbl.rows[e.state][e.sym] == .reduce);
     var sink: std.Io.Writer.Allocating = .init(a);
     const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
     try conflicts.checkHints(a, &x.g, &x.tbl, opts);
@@ -476,9 +472,129 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
     try testing.expectEqual(@as(usize, 0), dead.tbl.xExcludes.items.len);
     try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &dead.g, &dead.tbl, opts));
     try testing.expectEqualStrings(
-        "t.grammar: error: X \":\" on e → name has no effect: no state has a shift/reduce conflict between this rule and \":\"; remove the hint\n",
+        "t.grammar:1:1: error: X \":\" on e → name has no effect: it decides no shift/reduce conflict between this rule and \":\"; remove the hint\n",
         sink.written(),
     );
+}
+
+test "a hint names its literal terminal, escapes included; a missing literal is an error" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+
+    // `X "\\"` names the terminal `"\\"`: after ID the table reduces on it,
+    // and the runtime shifts a touching backslash instead.
+    const esc = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        \\e → ID X "\\"
+        ,
+        \\e → ID "\\" ID
+        ,
+        \\e → "\\" ID
+        ,
+    }, &.{"prog"});
+    try testing.expectEqual(@as(u32, 0), esc.tbl.conflicts);
+    try testing.expectEqual(@as(usize, 1), esc.tbl.xExcludes.items.len);
+    try testing.expectEqual(sym(&esc.g, "\"\\\\\""), esc.tbl.xExcludes.items[0].sym);
+    try conflicts.checkHints(a, &esc.g, &esc.tbl, opts);
+
+    // No literal "(" in the grammar: the hint names nothing.
+    const missing = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → ID X \"(\"",
+        "e → ID LPAREN ID",
+        "e → LPAREN ID",
+    }, &.{"prog"});
+    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &missing.g, &missing.tbl, opts));
+    try expectContains(sink.written(), "X \"(\" on e → ID names no terminal: the parser grammar has no literal \"(\"");
+}
+
+test "several `<` rules in one cell: the lowest reduces, the rest are reduce/reduce conflicts" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const b = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → p",
+        "e → q",
+        "p → ID <",
+        "q → ID <",
+        "e → ID \"(\" \")\"",
+        "e → \"(\" e \")\"",
+    }, &.{"prog"});
+    const entries = try conflicts.entries(a, &b.tbl);
+    try testing.expectEqual(@as(usize, 1), entries.len);
+    try testing.expectEqual(table.Conflict.Kind.reduce, entries[0].kind);
+    try testing.expectEqual(@as(u16, 5), entries[0].rule); // p → ID
+    try testing.expectEqual(@as(u16, 6), entries[0].over); // q → ID
+    // On $end, ID and ")" nothing shifts; on "(" both beat the shift, p first.
+    try testing.expectEqual(@as(u32, 4), entries[0].count);
+    const s = b.tbl.conflictList[entries[0].first].state;
+    try testing.expectEqual(table.ParseAction{ .reduce = 5 }, b.tbl.rows[s][sym(&b.g, "\"(\"")]);
+}
+
+test "a hint counts as used only where its rule wins the cell" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+    // After ID, p and q both reduce on "(" against its shift; p, the lower
+    // rule, wins by its hint, so q's hint decides nothing.
+    const b = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → p",
+        "e → q",
+        "p → ID X \"(\"",
+        "q → ID X \"(\"",
+        "e → ID \"(\" \")\"",
+        "e → \"(\" e \")\"",
+    }, &.{"prog"});
+    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &b.g, &b.tbl, opts));
+    try testing.expectEqualStrings(
+        "t.grammar:1:1: error: X \"(\" on q → ID has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
+        sink.written(),
+    );
+}
+
+test "hints group by source alternative: line and column" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+    // `e = ID X "(" | NUM X "("` on one line: only ID's hint decides a cell.
+    const b = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → ID X \"(\"",
+        "e → NUM X \"(\"",
+        "e → ID \"(\" e \")\"",
+        "e → \"(\" e \")\"",
+    }, &.{"prog"});
+    for (b.g.rules.items[3..5], [_]u32{ 8, 20 }) |*r, col| {
+        r.line = 7;
+        r.col = col;
+    }
+    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &b.g, &b.tbl, opts));
+    try testing.expectEqualStrings(
+        "t.grammar:7:20: error: X \"(\" on e → NUM has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
+        sink.written(),
+    );
+    // Rules expanded from one alternative (one line and column) share it.
+    b.g.rules.items[4].col = 8;
+    try conflicts.checkHints(a, &b.g, &b.tbl, opts);
 }
 
 test "a start marker adds no conflicts and every start alternative is reachable" {
@@ -498,7 +614,7 @@ test "a start marker adds no conflicts and every start alternative is reachable"
     try testing.expectEqual(one.tbl.conflicts, two.tbl.conflicts);
     // From form's entry state (after the injected marker), both of form's
     // rules can start.
-    const entry = stateWith(&two.auto, two.g.acceptRules.items[1], 1);
+    const entry = try stateWith(&two.auto, two.g.acceptRules.items[1], 1);
     try testing.expect(two.tbl.rows[entry][sym(&two.g, "ID")] == .shift);
     try testing.expect(two.tbl.rows[entry][sym(&two.g, "\"(\"")] == .shift);
 }
@@ -509,7 +625,108 @@ test "manifest rule texts normalize arrows, blanks and empty right-hand sides" {
     const a = arena.allocator();
     try testing.expectEqualStrings("a → b", try conflicts.normalize(a, " a  ->   b "));
     try testing.expectEqualStrings("a → ε", try conflicts.normalize(a, "a ->"));
-    try testing.expectEqualStrings("L(x, \";\") → x L(x, \";\").tail", try conflicts.normalize(a, "L(x, \";\")  ->  x L(x, \";\").tail"));
+    try testing.expectEqualStrings("L(x, \";\") → L(x, \";\") \";\" x", try conflicts.normalize(a, "L(x, \";\")  ->  L(x, \";\")  \";\" x"));
+    // Quoted text is kept as written: `->`, blank runs, escaped quotes.
+    try testing.expectEqualStrings("s → IF \"->\" s", try conflicts.normalize(a, "s ->  IF \"->\"  s"));
+    try testing.expectEqualStrings("s → \"a  b\" \"\\\"->\" X", try conflicts.normalize(a, "s -> \"a  b\" \"\\\"->\"   X"));
+}
+
+test "a manifest entry naming a literal with `->` or blanks matches its rule" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const b = try generate(a, &.{
+        "prog → stmt",
+        "stmt → IF ID \"->\" stmt",
+        "stmt → IF ID \"->\" stmt ELSE stmt",
+        "stmt → ID",
+    }, &.{"prog"});
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+    b.g.conflicts = &.{.{ .kind = .shift, .rule = "stmt -> IF ID \"->\" stmt", .count = 1, .reason = "dangling else" }};
+    try conflicts.check(a, &b.g, &b.auto, &b.tbl, opts);
+    b.g.conflicts = &.{.{ .kind = .shift, .rule = "stmt → IF ID \"→\" stmt", .count = 1, .reason = "dangling else" }};
+    try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
+}
+
+// =============================================================================
+// Grammar and table checks
+// =============================================================================
+
+test "only the causes of unproductive rules are reported" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // b needs itself; bs, top and the accept rule fail only through b.
+    var g = try build(a, &.{ "top → Y bs", "bs → b", "bs → bs b", "b → Y b" }, &.{"top"});
+    try testing.expectEqualSlices(u16, &.{sym(&g, "b")}, try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g)));
+    // a and c need each other: both are the cause.
+    g = try build(a, &.{ "top → a", "a → W c", "c → Y a", "c → Y a Z" }, &.{"top"});
+    try testing.expectEqualSlices(u16, &.{ sym(&g, "a"), sym(&g, "c") }, try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g)));
+    // One alternative that completes is enough.
+    g = try build(a, &.{ "top → a", "a → W a", "a → Y" }, &.{"top"});
+    try testing.expectEqual(@as(usize, 0), (try lr.unproductiveRoots(a, &g, try repair.insertCosts(a, &g))).len);
+}
+
+test "a cycle of unit derivations is found through nullable neighbors" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // a ⇒ b (opt is nullable) ⇒ a.
+    var g = try build(a, &.{ "top → a", "a → b opt", "a → Y", "b → opt a", "opt → Z", "opt → ε" }, &.{"top"});
+    const cycle = (try lr.findCycle(a, &g, try repair.insertCosts(a, &g))).?;
+    try testing.expectEqual(@as(usize, 2), cycle.len);
+    try testing.expectEqual(sym(&g, "a"), g.rules.items[cycle[0]].lhs);
+    try testing.expectEqual(sym(&g, "b"), g.rules.items[cycle[1]].lhs);
+    // A neighbor that must consume input breaks the cycle.
+    g = try build(a, &.{ "top → a", "a → b W", "a → Y", "b → opt a", "opt → Z", "opt → ε" }, &.{"top"});
+    try testing.expectEqual(@as(?[]const u16, null), try lr.findCycle(a, &g, try repair.insertCosts(a, &g)));
+    // A deep chain of unit rules is searched without recursion.
+    var rules: std.ArrayList([]const u8) = .empty;
+    try rules.append(a, "top → n0");
+    for (0..20000) |i| try rules.append(a, try a.print("n{d} → n{d}", .{ i, i + 1 }));
+    try rules.append(a, "n20000 → Y");
+    g = try build(a, rules.items, &.{"top"});
+    try testing.expectEqual(@as(?[]const u16, null), try lr.findCycle(a, &g, try repair.insertCosts(a, &g)));
+}
+
+test "a synthesized rule is located where a written rule uses it" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var g = try build(a, &.{ "top → Y bs", "bs → b", "bs → bs b", "b → Y" }, &.{"top"});
+    g.rules.items[0].line = 3;
+    g.rules.items[0].col = 7;
+    g.rules.items[3].line = 4;
+    g.rules.items[3].col = 5;
+    try testing.expectEqual(conflicts.Loc{ .line = 3, .col = 7 }, conflicts.ruleLoc(&g, 2)); // bs, via top
+    try testing.expectEqual(conflicts.Loc{ .line = 4, .col = 5 }, conflicts.ruleLoc(&g, 3));
+    try testing.expectEqual(conflicts.Loc{ .line = 1, .col = 1 }, conflicts.ruleLoc(&g, g.acceptRules.items[0]));
+}
+
+test "an endless reduce chain is found through empty and unit reductions" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    // `<` makes b → ε win over shifting Y. Reducing it leads (through the
+    // unit rules d → e → b, when present) back to a state on the stack.
+    const chains = [_][]const []const u8{
+        &.{ "top → a", "a → b a C", "a → Y", "b → ε <" },
+        &.{ "top → a", "a → d a C", "a → Y", "d → b", "b → ε <" },
+        &.{ "top → a", "a → d a C", "a → Y", "d → e", "e → b", "b → ε <" },
+    };
+    for (chains) |rules| {
+        const b = try generate(a, rules, &.{"top"});
+        const loop = (try lr.emptyLoop(a, &b.g, &b.tbl)).?;
+        try testing.expectEqual(sym(&b.g, "b"), b.g.rules.items[loop.rule].lhs);
+        try testing.expectEqual(sym(&b.g, "Y"), loop.terminal);
+    }
+    // Without the hint Y shifts, and every chain ends.
+    const fine = try generate(a, &.{ "top → a", "a → d a C", "a → Y", "d → b", "b → ε" }, &.{"top"});
+    try testing.expectEqual(@as(?lr.EmptyLoop, null), try lr.emptyLoop(a, &fine.g, &fine.tbl));
+    // An empty reduction that a non-empty one completes ends too.
+    const list = try generate(a, &.{ "top → items", "items → items item", "items → ε", "item → Y" }, &.{"top"});
+    try testing.expectEqual(@as(?lr.EmptyLoop, null), try lr.emptyLoop(a, &list.g, &list.tbl));
 }
 
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
@@ -536,7 +753,7 @@ test "expected sets name @errors nonterminals, then remaining terminals" {
         "expr → NUM",
     };
     var b = try generate(a, &rules, &.{"prog"});
-    const q = stateWith(&b.auto, 0, 1); // prog → "(" • args ")"
+    const q = try stateWith(&b.auto, 0, 1); // prog → "(" • args ")"
     // Without names: every terminal with an action.
     const plain = b.tbl.expected.forState(q);
     try testing.expectEqualSlices(u16, &.{ sym(&b.g, "\")\""), sym(&b.g, "\",\""), sym(&b.g, "ID"), sym(&b.g, "NUM") }, sortedCopy(a, plain));
@@ -571,9 +788,9 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
         "args → args \",\" ID",
     }, &.{"prog"});
     const auto = try automaton.build(&g);
-    const la = try lookahead.compute(&g, &auto);
+    const la = try lookahead.compute(&g, &auto, try repair.insertCosts(a, &g));
 
-    const costs = try repair.insertCosts(a, &g);
+    const costs = la.costs;
     try testing.expectEqual(@as(u32, 1), costs[sym(&g, "args")]);
     try testing.expectEqual(@as(u32, 4), costs[sym(&g, "call")]);
     try testing.expectEqual(@as(u32, 5), costs[sym(&g, "stmt")]);
@@ -582,17 +799,17 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
     const tbl = try table.build(&g, &auto, la);
     const rep = tbl.repair.?;
     // After `ID "(" args`: `)` closes the call (structure).
-    const afterArgs = stateWith(&auto, 5, 3);
+    const afterArgs = try stateWith(&auto, 5, 3);
     try testing.expectEqualSlices(u16, &.{sym(&g, "\")\"")}, rep.forState(afterArgs));
     // After `ID "(" args ","`: the hole ID comes first.
-    const afterComma = stateWith(&auto, 7, 2);
+    const afterComma = try stateWith(&auto, 7, 2);
     try testing.expectEqualSlices(u16, &.{sym(&g, "ID")}, rep.forState(afterComma));
     // Further fabrications an inserted ID commits to: in `ID "=" •` the rest
     // `ID NEWLINE` (2); in `ID "=" ID •`, NEWLINE (1).
-    const eq1 = stateWith(&auto, 4, 2);
-    try testing.expectEqual(@as(u32, 2), repair.costAt(&g, la, costs, auto.states.items[eq1], sym(&g, "ID")));
-    const eq2 = stateWith(&auto, 4, 3);
-    try testing.expectEqual(@as(u32, 1), repair.costAt(&g, la, costs, auto.states.items[eq2], sym(&g, "ID")));
+    const eq1 = try stateWith(&auto, 4, 2);
+    try testing.expectEqual(@as(u32, 2), repair.costAt(&g, la, auto.states.items[eq1], sym(&g, "ID")));
+    const eq2 = try stateWith(&auto, 4, 3);
+    try testing.expectEqual(@as(u32, 1), repair.costAt(&g, la, auto.states.items[eq2], sym(&g, "ID")));
 
     // Names must be tokens of the parser grammar.
     try testing.expect(repair.validate(&g, .{ .holes = &.{"NOPE"}, .structure = &.{} }) != null);
@@ -616,9 +833,9 @@ test "ranking puts holes above cheaper structure" {
         "args → args \",\" ID",
     }, &.{"prog"});
     const auto = try automaton.build(&g);
-    const la = try lookahead.compute(&g, &auto);
+    const la = try lookahead.compute(&g, &auto, try repair.insertCosts(a, &g));
     g.repair = .{ .holes = &.{"ID"}, .structure = &.{"\")\""} };
     const tbl = try table.build(&g, &auto, la);
-    const q = stateWith(&auto, 2, 4);
+    const q = try stateWith(&auto, 2, 4);
     try testing.expectEqualSlices(u16, &.{ sym(&g, "ID"), sym(&g, "\")\"") }, tbl.repair.?.forState(q));
 }

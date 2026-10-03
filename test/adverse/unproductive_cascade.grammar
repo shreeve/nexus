@@ -1,0 +1,17 @@
+# b needs itself, so it derives no finite input, and so do b+ and top,
+# which use it. Only the cause is reported, at b's alternative: not the
+# helper b+, not top, and never the internal accept rule.
+# error: unproductive_cascade.grammar:17:5: error: rule b derives no finite input
+# absent: rule top
+# absent: rule b+
+# absent: $accept
+@lexer
+tokens
+    x
+    eof
+    err
+'x' → x
+.   → err
+@parser
+top! = X b+
+b = X b

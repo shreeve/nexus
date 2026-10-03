@@ -733,7 +733,7 @@ stmt! = KW_IF IDENT KW_THEN stmt                  → (if 2 4)
 ```
 
 ```error
-dangling.grammar:15:1: error: undeclared conflict: shift  stmt → KW_IF IDENT KW_THEN stmt  (1)
+dangling.grammar:15:9: error: undeclared conflict: shift  stmt → KW_IF IDENT KW_THEN stmt  (1)
     state 8, on KW_ELSE
       stmt → KW_IF IDENT KW_THEN stmt •   (reduce)
       stmt → KW_IF IDENT KW_THEN stmt • KW_ELSE stmt   (shift)

@@ -11,7 +11,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const grammar = @import("../grammar.zig");
 const Grammar = grammar.Grammar;
-const Rule = grammar.Rule;
 const Automaton = @import("automaton.zig").Automaton;
 const Lookaheads = @import("lookahead.zig").Lookaheads;
 const bitset = @import("bitset.zig");
@@ -39,7 +38,7 @@ const repair = @import("repair.zig");
 //   - No shift: the lowest-numbered rule of R reduces; every other rule of R
 //     is a reduce/reduce conflict ("winner over loser").
 //   - Shift: the rules of R that beat a shift are those with `<` and those
-//     with an `X "c"` hint for this terminal's character. If there are none,
+//     with an `X "c"` hint naming this terminal (the literal `"c"`). If none,
 //     the shift stays and every rule of R without `>` is a shift/reduce
 //     conflict. Otherwise the lowest such rule reduces (an `X "c"` win also
 //     records the runtime shift override) and the rest of R are
@@ -56,9 +55,9 @@ pub const ParseAction = union(enum) {
     err: void,
 };
 
-/// `X "c"` exclusion: in `state`, the table reduces, but the runtime shifts to
-/// `shift` instead when no whitespace precedes and the next byte is `char`.
-pub const XExclude = struct { state: u16, char: u8, sym: u16, shift: u16 };
+/// `X "c"` exclusion: in `state`, the table reduces on terminal `sym`, but the
+/// runtime shifts to `shift` instead when no whitespace precedes the token.
+pub const XExclude = struct { state: u16, sym: u16, shift: u16 };
 
 /// One unresolved conflict in one cell (state, terminal).
 pub const Conflict = struct {
@@ -74,11 +73,13 @@ pub const Conflict = struct {
     pub const Kind = enum { shift, reduce };
 };
 
-/// An `X "c"` hint: whether it decided any cell.
+/// An `X "c"` hint: the literal terminal `"c"` it names (null when the
+/// grammar has none), and whether it decided any cell.
 pub const HintUse = struct {
     rule: u16,
     char: u8,
-    used: bool,
+    terminal: ?u16,
+    used: bool = false,
 };
 
 pub const Table = struct {
@@ -100,25 +101,30 @@ pub const Table = struct {
     repair: ?repair.Repair = null,
 };
 
-/// The characters of a rule's `X "c"` hints.
-pub fn hintChars(rule: *const Rule) []const u8 {
-    return rule.excludeChars;
-}
-
-/// The character of a one-character literal terminal (`"("`), else null.
-pub fn literalChar(g: *const Grammar, sym: u16) ?u8 {
+/// The character of a one-character literal terminal (`"("`, or an escape
+/// the way `X "c"` reads it: `"\n"`, `"\t"`, `"\r"`, `"\\"`, `"\""`), else
+/// null.
+fn literalChar(g: *const Grammar, sym: u16) ?u8 {
     const name = g.symbols.items[sym].name;
-    if (name.len == 3 and name[0] == '"' and name[2] == '"') return name[1];
+    if (g.symbols.items[sym].kind != .terminal or name.len < 3 or name[0] != '"' or name[name.len - 1] != '"') return null;
+    const inner = name[1 .. name.len - 1];
+    if (inner.len == 1 and inner[0] != '\\') return inner[0];
+    if (inner.len == 2 and inner[0] == '\\') return switch (inner[1]) {
+        'n' => '\n',
+        't' => '\t',
+        'r' => '\r',
+        else => inner[1],
+    };
     return null;
 }
 
-/// Whether `sym` is the synthetic marker terminal (`name!`) that selects a
-/// start symbol; markers never appear in reports or expected sets.
+/// Whether `sym` is the marker terminal (`x!`) that selects a start symbol:
+/// the first symbol of an accept rule `$accept_x → x! x $end`. Markers never
+/// appear in reports or expected sets.
 pub fn isStartMarker(g: *const Grammar, sym: u16) bool {
-    const name = g.symbols.items[sym].name;
-    if (name.len < 2 or name[name.len - 1] != '!') return false;
-    for (g.startSymbols.items) |s| {
-        if (std.mem.eql(u8, g.symbols.items[s].name, name[0 .. name.len - 1])) return true;
+    for (g.acceptRules.items) |r| {
+        const rhs = g.rules.items[r].rhs;
+        if (rhs.len == 3 and rhs[0] == sym) return true;
     }
     return false;
 }
@@ -132,14 +138,20 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
     var xExcludes: std.ArrayList(XExclude) = .empty;
     var conflictList: std.ArrayList(Conflict) = .empty;
 
-    // Hint bookkeeping: hints[hintStart[r]..][0..hintChars(r).len] are rule r's.
-    const hintStart = try a.alloc(u32, g.rules.items.len);
+    // Every hint, resolved to its literal terminal: rule r's hints are
+    // hints[hintStart[r]..hintStart[r + 1]].
+    var literalOf: [256]?u16 = @splat(null);
+    for (0..numSymbols) |s| {
+        if (literalChar(g, @intCast(s))) |c| literalOf[c] = @intCast(s);
+    }
+    const hintStart = try a.alloc(u32, g.rules.items.len + 1);
     defer a.free(hintStart);
     var hints: std.ArrayList(HintUse) = .empty;
-    for (g.rules.items, 0..) |*rule, r| {
+    for (g.rules.items, 0..) |rule, r| {
         hintStart[r] = @intCast(hints.items.len);
-        for (hintChars(rule)) |c| try hints.append(a, .{ .rule = @intCast(r), .char = c, .used = false });
+        for (rule.excludeChars) |c| try hints.append(a, .{ .rule = @intCast(r), .char = c, .terminal = literalOf[c] });
     }
+    hintStart[g.rules.items.len] = @intCast(hints.items.len);
 
     var reduceUnion = try SetArray.init(a, 1, numSymbols);
     defer reduceUnion.deinit(a);
@@ -182,7 +194,6 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
             }
             std.mem.sort(u16, cellRules.items, {}, std.sort.asc(u16));
             const cell = &row[t];
-            const ch = literalChar(g, t);
 
             switch (cell.*) {
                 .err => {
@@ -197,28 +208,21 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
                     });
                 },
                 .shift => |target| {
-                    // The lowest rule that beats the shift, and whether by X "c".
-                    var winner: ?u16 = null;
-                    var byHint = false;
-                    for (cellRules.items) |r| {
-                        const rule = &g.rules.items[r];
-                        var hinted = false;
-                        if (ch) |c| {
-                            for (hintChars(rule), 0..) |hc, k| {
-                                if (hc == c) {
-                                    hints.items[hintStart[r] + k].used = true;
-                                    hinted = true;
-                                }
-                            }
+                    // The lowest rule that beats the shift: by `<`, or by an
+                    // X "c" hint naming this terminal (that hint is used).
+                    const winner: ?u16 = for (cellRules.items) |r| {
+                        const hint = for (hints.items[hintStart[r]..hintStart[r + 1]]) |*h| {
+                            if (h.terminal == t) break h;
+                        } else null;
+                        if (hint) |h| {
+                            h.used = true;
+                            try xExcludes.append(a, .{ .state = @intCast(si), .sym = @intCast(t), .shift = target });
+                            break r;
                         }
-                        if (winner == null and (hinted or rule.preferReduce)) {
-                            winner = r;
-                            byHint = hinted;
-                        }
-                    }
+                        if (g.rules.items[r].preferReduce) break r;
+                    } else null;
                     if (winner) |w| {
                         cell.* = .{ .reduce = w };
-                        if (byHint) try xExcludes.append(a, .{ .state = @intCast(si), .char = ch.?, .sym = @intCast(t), .shift = target });
                         for (cellRules.items) |r| {
                             if (r != w) try conflictList.append(a, .{
                                 .state = @intCast(si),
