@@ -155,6 +155,30 @@ pub const GrammarLowerer = struct {
         return if (leaf == .nil) null else self.text(leaf);
     }
 
+    /// The body of a string literal with its escapes decoded
+    /// (grammar.escapeAt); an unknown escape is an error at its backslash.
+    fn string(self: *const GrammarLowerer, node: Sexp) LowerError![]const u8 {
+        const body = stripQuotes(self.text(node));
+        if (std.mem.findScalar(u8, body, '\\') == null) return body;
+        var out: std.ArrayList(u8) = .empty;
+        var i: usize = 0;
+        while (i < body.len) {
+            var e: grammar.Escape = .{ .byte = body[i], .len = 1 };
+            if (body[i] == '\\') e = grammar.escapeAt(body, i) orelse
+                return self.failAt(node.src.pos + 1 + i, "unknown escape sequence (the escapes are \\n \\r \\t \\0 \\\\ \\' \\\" and \\xHH)", .{});
+            try out.append(self.allocator, e.byte);
+            i += e.len;
+        }
+        return out.toOwnedSlice(self.allocator);
+    }
+
+    /// A parser literal (a terminal) as written, quotes and escapes kept:
+    /// later stages name the terminal by its text. Its escapes are checked.
+    fn literalText(self: *const GrammarLowerer, node: Sexp) LowerError![]const u8 {
+        _ = try self.string(node);
+        return self.text(node);
+    }
+
     fn parseCount(self: *const GrammarLowerer, node: Sexp, what: []const u8) LowerError!u32 {
         const t = self.text(node);
         return std.fmt.parseInt(u32, t, 10) catch self.fail(node, "{s} '{s}' is not a number", .{ what, t });
@@ -534,7 +558,7 @@ pub const GrammarLowerer = struct {
         for (ir.Op.maps(node)) |entry| {
             const litNode = ir.OpMap.lit(entry);
             const tokNode = ir.OpMap.token(entry);
-            const lit = stripQuotes(self.text(litNode));
+            const lit = stripQuotes(try self.literalText(litNode));
             const tok = stripQuotes(self.text(tokNode));
             for (self.opMappings.items) |m| if (std.mem.eql(u8, m.lit, lit))
                 return self.fail(litNode, "@op maps \"{s}\" twice", .{lit});
@@ -547,21 +571,11 @@ pub const GrammarLowerer = struct {
 
     /// `key: "name"`; the key is a LABEL or a STRING, the name a STRING.
     fn lowerPair(self: *GrammarLowerer, entry: Sexp) LowerError!Pair {
-        const key = self.text(ir.NamePair.key(entry));
-        const name = self.text(ir.NamePair.name(entry));
-        return .{ .key = key, .name = try unescape(self.allocator, stripQuotes(name)), .quoted = key[0] == '"' };
-    }
-
-    /// The text of a string literal's body: `\"` is `"`, `\\` is `\`.
-    fn unescape(allocator: Allocator, body: []const u8) LowerError![]const u8 {
-        if (std.mem.findScalar(u8, body, '\\') == null) return body;
-        var out: std.ArrayList(u8) = .empty;
-        var i: usize = 0;
-        while (i < body.len) : (i += 1) {
-            if (body[i] == '\\' and i + 1 < body.len and (body[i + 1] == '"' or body[i + 1] == '\\')) i += 1;
-            try out.append(allocator, body[i]);
-        }
-        return out.toOwnedSlice(allocator);
+        const keyNode = ir.NamePair.key(entry);
+        const key = self.text(keyNode);
+        const quoted = key[0] == '"';
+        if (quoted) _ = try self.literalText(keyNode);
+        return .{ .key = key, .name = try self.string(ir.NamePair.name(entry)), .quoted = quoted };
     }
 
     fn lowerErrors(self: *GrammarLowerer, node: Sexp) LowerError!void {
@@ -594,7 +608,7 @@ pub const GrammarLowerer = struct {
         var prec: u32 = 1;
         for (ir.Infix.levels(node)) |level| {
             for (ir.Level.ops(level)) |opNode| {
-                const op = stripQuotes(self.text(ir.InfixOp.op(opNode)));
+                const op = stripQuotes(try self.literalText(ir.InfixOp.op(opNode)));
                 const assocNode = ir.InfixOp.assoc(opNode);
                 const assocName = self.text(assocNode);
                 const assoc = std.meta.stringToEnum(InfixOp.Assoc, assocName) orelse
@@ -737,7 +751,7 @@ pub const GrammarLowerer = struct {
             const locs = if (out == &holes) &holeLocs else if (out == &structure) &structureLocs else &terminatorLocs;
             for (ir.RepairLine.names(line)) |n| {
                 // A literal keeps its quotes: it names the literal's symbol.
-                try out.append(self.allocator, self.text(n));
+                try out.append(self.allocator, try self.symbolText(n));
                 const at = self.loc(n);
                 try locs.append(self.allocator, .{ .line = at.line, .col = at.col });
             }
@@ -822,17 +836,11 @@ pub const GrammarLowerer = struct {
         };
     }
 
-    /// The character of an `X "c"` hint literal (`"c"` or an escape `"\c"`).
+    /// The byte of an `X "c"` hint.
     fn hintChar(self: *GrammarLowerer, node: Sexp) LowerError!u8 {
-        const inner = stripQuotes(self.text(node));
-        if (inner.len == 1) return inner[0];
-        if (inner.len == 2 and inner[0] == '\\') return switch (inner[1]) {
-            'n' => '\n',
-            't' => '\t',
-            'r' => '\r',
-            else => inner[1],
-        };
-        return self.fail(node, "X \"c\": the hint takes one character, not \"{s}\"", .{inner});
+        const c = try self.string(node);
+        if (c.len != 1) return self.fail(node, "X \"c\": the hint takes one byte, not \"{s}\"", .{stripQuotes(self.text(node))});
+        return c[0];
     }
 
     /// Number of action positions a pattern has: one per element, and one
@@ -849,9 +857,9 @@ pub const GrammarLowerer = struct {
         var elem: ParsedElement = switch (node.kind().?) {
             .ref => .{ .kind = .ident, .value = self.text(ir.Ref.name(node)) },
             .tok => .{ .kind = .token, .value = self.text(ir.Tok.name(node)) },
-            .lit => .{ .kind = .string, .value = self.text(ir.Lit.name(node)) },
+            .lit => .{ .kind = .string, .value = try self.literalText(ir.Lit.name(node)) },
             .at_ref => .{ .kind = .ident, .value = self.text(ir.AtRef.name(node)) },
-            .list_req => self.lowerListElement(node),
+            .list_req => try self.lowerListElement(node),
             .group => try self.lowerGroupKinded(node),
             .quantified => try self.lowerQuantifiedElement(node),
             .skip => try self.lowerSkipElement(ir.Skip.element(node), .nil),
@@ -896,15 +904,22 @@ pub const GrammarLowerer = struct {
         return elem;
     }
 
-    fn lowerListElement(self: *GrammarLowerer, node: Sexp) ParsedElement {
+    fn lowerListElement(self: *GrammarLowerer, node: Sexp) LowerError!ParsedElement {
         const inner = ir.ListReq.inner(node);
         return switch (inner.kind().?) {
             .plain => .{ .kind = .reqList, .value = self.text(ir.Plain.item(inner)) },
             .opt_items_nosep => .{ .kind = .reqList, .value = self.text(ir.OptItemsNosep.item(inner)), .optionalItems = true },
-            .sep_items => .{ .kind = .reqList, .value = self.text(ir.SepItems.item(inner)), .listSeparator = self.text(ir.SepItems.sep(inner)) },
-            .opt_items => .{ .kind = .reqList, .value = self.text(ir.OptItems.item(inner)), .listSeparator = self.text(ir.OptItems.sep(inner)), .optionalItems = true },
+            .sep_items => .{ .kind = .reqList, .value = self.text(ir.SepItems.item(inner)), .listSeparator = try self.symbolText(ir.SepItems.sep(inner)) },
+            .opt_items => .{ .kind = .reqList, .value = self.text(ir.OptItems.item(inner)), .listSeparator = try self.symbolText(ir.OptItems.sep(inner)), .optionalItems = true },
             else => unreachable, // the role is typed plain|opt_items_nosep|sep_items|opt_items
         };
+    }
+
+    /// A literal (checked as above) or a token name: a list separator or a
+    /// @repair name.
+    fn symbolText(self: *GrammarLowerer, node: Sexp) LowerError![]const u8 {
+        const t = self.text(node);
+        return if (t[0] == '"') self.literalText(node) else t;
     }
 
     // `(group KIND BODY ...)`, KIND ∈ _ (parens), opt ([...]), many ([X ...]).

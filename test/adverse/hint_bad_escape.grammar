@@ -1,0 +1,13 @@
+# An `X "c"` hint takes the escapes a pattern takes.
+# error: hint_bad_escape.grammar:13:14:
+# error: unknown escape sequence (the escapes are
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT X "\(" → 1

@@ -1,0 +1,14 @@
+# A parser literal takes the escapes a pattern takes (\n \r \t \0 \\ \'
+# \" \xHH); any other is an error, not the escaped character.
+# error: literal_bad_escape.grammar:14:12:
+# error: unknown escape sequence (the escapes are
+@lexer
+tokens
+    ident
+    eof
+    err
+[ \t\n]+ → skip
+[a-z]+ → ident
+. → err
+@parser
+s = IDENT "\q" → 1

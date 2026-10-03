@@ -428,13 +428,15 @@ pub const Lexer = struct {
         return null;
     }
 
-    /// Whether a one-character string literal (`"c"` or `"\c"`) follows
-    /// position `end`, after blanks: the `X "c"` next-char hint.
+    /// Whether a one-byte string literal (`"c"`, `"\c"` or `"\xHH"`)
+    /// follows position `end`, after blanks: the `X "c"` next-char hint.
     fn isHintLiteral(s: []const u8, end: usize) bool {
         var i = end;
         while (i < s.len and (s[i] == ' ' or s[i] == '\t')) i += 1;
-        if (i + 2 < s.len and s[i] == '"' and s[i + 1] != '\\' and s[i + 2] == '"') return true;
-        return i + 3 < s.len and s[i] == '"' and s[i + 1] == '\\' and s[i + 3] == '"';
+        if (i + 2 >= s.len or s[i] != '"') return false;
+        if (s[i + 1] != '\\') return s[i + 2] == '"';
+        const len: usize = if (s[i + 2] == 'x') 4 else 2;
+        return i + len + 1 < s.len and s[i + len + 1] == '"';
     }
 
     // --- The @lexer section ------------------------------------------------
