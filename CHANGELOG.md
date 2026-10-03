@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Changed
+
+- **The output file is required**: `nexus g.grammar` without one is a
+  usage error (exit 2) where it wrote `src/parser.zig`. Write
+  `nexus g.grammar src/parser.zig`; `-` writes the module to standard
+  output.
+- An output path that names the grammar file (through any spelling or
+  link) is a usage error, and nothing is written.
+- Output replaces its file atomically: a failed write leaves the previous
+  file intact.
+
 ### Removed
 
 - `--slr`. Nexus builds LALR(1) tables only.

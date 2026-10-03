@@ -1,6 +1,6 @@
 //! nexus — generate a standalone Zig lexer + LR parser from a .grammar file.
 //!
-//! Usage: nexus [options] <grammar-file> [output-file]
+//! Usage: nexus [options] <grammar-file> <output-file>
 //!        nexus check <grammar-file>
 //!        nexus --dump-sexp <grammar-file> [output-file]
 //!        nexus --help | --version
@@ -39,7 +39,7 @@ test {
 }
 
 const usage =
-    \\Usage: nexus [options] <grammar-file> [output-file]
+    \\Usage: nexus [options] <grammar-file> <output-file>
     \\       nexus check <grammar-file>
     \\       nexus --dump-sexp <grammar-file> [output-file]
     \\       nexus --help | --version
@@ -55,12 +55,14 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
 ++ usage ++
     \\
     \\Commands:
-    \\  <grammar-file> [output-file]
-    \\                  Generate the parser module (default output:
-    \\                  src/parser.zig)
+    \\  <grammar-file> <output-file>
+    \\                  Generate the parser module into output-file
     \\  check           Check the grammar without writing anything
     \\  --dump-sexp     Write the frontend's S-expression tree of the grammar
     \\                  file to output-file (default: standard output)
+    \\
+    \\An output-file of - is standard output. Output replaces the file
+    \\atomically, and never the grammar file itself.
     \\
     \\Options:
     \\  --spans         Record node spans and rule ids (always on with @schema)
@@ -99,7 +101,7 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(allocator);
 
     var command: enum { generate, check, dump } = .generate;
-    var opts: Options = .{ .grammarFile = undefined, .outputFile = "src/parser.zig" };
+    var opts: Options = .{ .grammarFile = undefined, .outputFile = undefined };
     var positional: [2][]const u8 = undefined;
     var count: usize = 0;
     for (args[1..], 1..) |arg, i| {
@@ -125,19 +127,33 @@ pub fn main(init: std.process.Init) !void {
         }
     }
     if (count == 0) usageError("no grammar file given", .{});
+    const output: ?[]const u8 = if (count == 2) positional[1] else null;
+    if (output) |path| if (command != .check) refuseGrammarAsOutput(io, positional[0], path);
 
     switch (command) {
-        .dump => return dumpSexp(allocator, io, positional[0], if (count == 2) positional[1] else null),
+        .dump => return dumpSexp(allocator, io, positional[0], output orelse "-"),
         .check => {
-            if (count == 2) usageError("`nexus check` writes nothing; unexpected '{s}'", .{positional[1]});
+            if (output) |path| usageError("`nexus check` writes nothing; unexpected '{s}'", .{path});
             opts.checkMode = true;
         },
-        .generate => if (count == 2) {
-            opts.outputFile = positional[1];
-        },
+        .generate => opts.outputFile = output orelse usageError("no output file given (nexus <grammar-file> <output-file>)", .{}),
     }
     opts.grammarFile = positional[0];
     return generate(allocator, io, opts);
+}
+
+/// A usage error when `output` names the grammar file itself (by any
+/// spelling or link): writing it would destroy the grammar. Two paths name
+/// one file when their inode, size and times agree (`Stat` carries no
+/// device number).
+fn refuseGrammarAsOutput(io: Io, grammarFile: []const u8, output: []const u8) void {
+    if (eql(output, "-")) return;
+    const cwd = std.Io.Dir.cwd();
+    const g = cwd.statFile(io, grammarFile, .{}) catch return;
+    const o = cwd.statFile(io, output, .{}) catch return;
+    if (g.inode == o.inode and g.size == o.size and
+        g.mtime.nanoseconds == o.mtime.nanoseconds and g.ctime.nanoseconds == o.ctime.nanoseconds)
+        usageError("the output file '{s}' is the grammar file", .{output});
 }
 
 fn eql(a: []const u8, b: []const u8) bool {
@@ -155,8 +171,8 @@ fn writeStdout(io: Io, bytes: []const u8) !void {
     try std.Io.File.stdout().writeStreamingAll(io, bytes);
 }
 
-/// `nexus --dump-sexp`: print the frontend's canonical tree of the grammar file.
-fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?[]const u8) !void {
+/// `nexus --dump-sexp`: write the frontend's canonical tree of the grammar file.
+fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: []const u8) !void {
     const sourceText = try readGrammar(allocator, io, grammarFile);
 
     var parsed = frontend.parseGrammarSexp(allocator, sourceText, grammarFile) catch |err| {
@@ -172,12 +188,8 @@ fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: ?
     try writer.writeByte('\n');
     const bytes = writer.buffered();
 
-    if (outputPath) |path| {
-        try writeOutput(io, path, bytes);
-        diag.info("Wrote S-expression dump to {s} ({d} bytes)", .{ path, bytes.len });
-    } else {
-        try writeStdout(io, bytes);
-    }
+    try writeOutput(io, outputPath, bytes);
+    if (!eql(outputPath, "-")) diag.info("Wrote S-expression dump to {s} ({d} bytes)", .{ outputPath, bytes.len });
 }
 
 /// `nexus [check] <grammar>`: run the pipeline and write the parser module
@@ -301,7 +313,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         return;
     }
     try writeOutput(io, opts.outputFile, finalCode);
-    diag.info("Generated: {s}", .{opts.outputFile});
+    diag.info("Generated: {s}", .{if (eql(opts.outputFile, "-")) "standard output" else opts.outputFile});
 }
 
 /// Exit with status 1 after the error has been reported.
@@ -318,14 +330,20 @@ fn readGrammar(allocator: Allocator, io: Io, path: []const u8) ![]const u8 {
     };
 }
 
+/// Write `bytes` to `path` (`-`: standard output) through a temporary file
+/// that replaces `path` only once complete, so a failed write leaves any
+/// previous file intact.
 fn writeOutput(io: Io, path: []const u8, bytes: []const u8) !void {
-    const file = std.Io.Dir.cwd().createFile(io, path, .{}) catch |err| {
-        diag.err("cannot create {s}: {s}", .{ path, @errorName(err) });
-        fail();
-    };
-    defer file.close(io);
-    file.writeStreamingAll(io, bytes) catch |err| {
+    if (eql(path, "-")) return writeStdout(io, bytes);
+    writeReplacing(io, path, bytes) catch |err| {
         diag.err("cannot write {s}: {s}", .{ path, @errorName(err) });
         fail();
     };
+}
+
+fn writeReplacing(io: Io, path: []const u8, bytes: []const u8) !void {
+    var af = try std.Io.Dir.cwd().createFileAtomic(io, path, .{ .replace = true });
+    defer af.deinit(io);
+    try af.file.writeStreamingAll(io, bytes);
+    try af.replace(io);
 }

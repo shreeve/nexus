@@ -200,14 +200,15 @@ zig build -Doptimize=ReleaseSafe      # bin/nexus
 ```
 
 ```bash
-nexus calc.grammar src/parser.zig     # generate (default output: src/parser.zig)
+nexus calc.grammar src/parser.zig     # generate (`-` writes to standard output)
 nexus check calc.grammar              # every check, nothing written
 nexus --dump-sexp calc.grammar        # the frontend's tree of the grammar file
 nexus --help
 ```
 
 Options: `--spans` (node spans without a schema), `-c` (rules as comments
-in the output). Exit status: 0 success, 1 error, 2 usage.
+in the output). The output file is replaced atomically, and never when it
+is the grammar file. Exit status: 0 success, 1 error, 2 usage.
 
 ## Documentation
 
