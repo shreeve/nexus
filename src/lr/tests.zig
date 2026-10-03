@@ -764,6 +764,11 @@ test "a synthesized rule is located where a written rule uses it" {
     try testing.expectEqual(conflicts.Loc{ .line = 3, .col = 7 }, conflicts.ruleLoc(&g, 2)); // bs, via top
     try testing.expectEqual(conflicts.Loc{ .line = 4, .col = 5 }, conflicts.ruleLoc(&g, 3));
     try testing.expectEqual(conflicts.Loc{ .line = 1, .col = 1 }, conflicts.ruleLoc(&g, g.acceptRules.items[0]));
+    // A left-recursive list uses itself before its written user.
+    var h = try build(a, &.{ "bs → b", "bs → bs b", "top → Y bs", "b → Y" }, &.{"top"});
+    h.rules.items[2].line = 6;
+    h.rules.items[2].col = 2;
+    try testing.expectEqual(conflicts.Loc{ .line = 6, .col = 2 }, conflicts.ruleLoc(&h, 0));
 }
 
 test "an endless reduce chain is found through empty and unit reductions" {

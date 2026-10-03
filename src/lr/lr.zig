@@ -176,9 +176,12 @@ pub const EmptyLoop = struct { rule: u16, terminal: u16 };
 /// rejects first), and its first action was an empty reduction (any other
 /// pops it). So simulating the chain on an explicit stack from every
 /// (state, t) whose action is an empty reduction, until a shift, accept,
-/// error, or a pop below the start, finds every loop, and every simulation
-/// ends. (A `<` hint, or a conflict resolved toward an empty rule, can
-/// build such a table.)
+/// error, or a pop below the start, finds every loop. Every simulation
+/// ends: one that never repeats a state would repeat a whole stack, so
+/// some α ⇒+ α would derive nothing, which a grammar without cycles whose
+/// rules all derive finite input cannot do; both are checked before this.
+/// (A `<` hint, or a conflict resolved toward an empty rule, can build
+/// such a table.)
 pub fn emptyLoop(a: Allocator, g: *const Grammar, tbl: *const table.Table) Allocator.Error!?EmptyLoop {
     const onStack = try a.alloc(bool, tbl.rows.len);
     defer a.free(onStack);

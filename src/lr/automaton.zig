@@ -128,12 +128,13 @@ const Builder = struct {
         gop.key_ptr.* = try a.dupe(Item, b.sorted.items);
         const id: u16 = @intCast(b.auto.states.items.len);
         gop.value_ptr.* = id;
-        try b.auto.states.append(a, try b.closure(try a.dupe(Item, kernel)));
+        try b.auto.states.append(a, try b.closure(kernel));
         return id;
     }
 
     /// The kernel's state: the kernel, then for each item with a
-    /// nonterminal B after the dot every `B → • γ` not yet present.
+    /// nonterminal B after the dot every `B → • γ` not yet present. The
+    /// state's kernel is the start of its items.
     fn closure(b: *Builder, kernel: []const Item) !State {
         const g = b.g;
         const a = g.allocator;
@@ -160,9 +161,10 @@ const Builder = struct {
                 try all.append(a, .{ .ruleId = r, .dot = 0 });
             }
         }
+        const items = try all.toOwnedSlice(a);
         return .{
-            .kernel = kernel,
-            .items = try all.toOwnedSlice(a),
+            .kernel = items[0..kernel.len],
+            .items = items,
             .transitions = &.{},
             .reductions = try reductions.toOwnedSlice(a),
         };

@@ -103,13 +103,14 @@ pub const Loc = struct { line: u32, col: u32 };
 
 /// Where a rule is written: its alternative, or for a rule the expander
 /// synthesizes without one (line 0), the first written rule that uses it,
-/// through other synthesized rules; 1:1 when nothing uses it.
+/// through other synthesized rules (never its own, as a left-recursive
+/// list's); 1:1 when nothing uses it.
 pub fn ruleLoc(g: *const Grammar, ruleId: u16) Loc {
     var rule = &g.rules.items[ruleId];
     var hops: usize = 0;
     while (rule.line == 0 and hops < g.rules.items.len) : (hops += 1) {
         rule = for (g.rules.items) |*user| {
-            if (std.mem.findScalar(u16, user.rhs, rule.lhs) != null) break user;
+            if (user.lhs != rule.lhs and std.mem.findScalar(u16, user.rhs, rule.lhs) != null) break user;
         } else break;
     }
     if (rule.line == 0) return .{ .line = 1, .col = 1 };
