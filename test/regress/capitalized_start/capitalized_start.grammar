@@ -1,0 +1,13 @@
+# A start symbol may have a capitalized name (its start marker `S!` is
+# no token).
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+S! = IDENT                                  → (s 1)

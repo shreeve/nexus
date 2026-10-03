@@ -91,6 +91,8 @@ pub fn validateSymbols(g: *const Grammar, lexerSpec: *const LexerSpec, path: []c
         }
         // Check uppercase identifiers exist in lexer tokens (case-insensitive)
         else if (sym.kind == .terminal and sym.name[0] >= 'A' and sym.name[0] <= 'Z') {
+            // The marker of a start symbol (`X!`, added by expand).
+            if (sym.name[sym.name.len - 1] == '!') continue;
             // An @as group `g` promotes its words to the terminal `G`.
             var isAsKeyword = false;
             for (g.asDirectives) |directive| {
