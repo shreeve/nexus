@@ -1470,6 +1470,28 @@ inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
 
+/// What `state` expects, reader-named: list `expectedOf[state]` of
+/// `expectedSymbols`.
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
+
+/// The `X "c"` override of `state` for `sym`: the state to shift to.
+fn getImmediateShift(state: u16, sym: u16) ?i16 {
+    if (xExcludes.len == 0) return null;
+    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
+        if (x.sym == sym) return @intCast(x.shift);
+    }
+    return null;
+}
+
+/// The tokens tolerant repair may insert in `state`, best first.
+fn repairCandidates(state: u16) []const u16 {
+    if (!hasRepair) return &.{};
+    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
+}
+
 /// The symbol `tokenToSymbol` gives the promotable token when `@as`
 /// decides it per state; no grammar symbol has it.
 const needsPromotion: u16 = std.math.maxInt(u16);
@@ -4189,13 +4211,6 @@ const xExcludeStart = [_]u32{
     14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14, 14,
 };
 
-fn getImmediateShift(state: u16, sym: u16) ?i16 {
-    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-        if (x.sym == sym) return @intCast(x.shift);
-    }
-    return null;
-}
-
 fn startState(start: Start) u16 {
     return switch (start) {
         .@"routine" => 0,
@@ -4359,11 +4374,6 @@ const expectedOf = [_]u16{
     26, 66, 108, 66, 26, 26, 26, 76, 96, 96, 53, 39, 39, 39, 66, 31, 26, 26, 26, 3, 26, 66, 39,
 };
 
-fn expectedIn(state: u16) []const u16 {
-    const i = expectedOf[state];
-    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
-}
-
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
         1 => "end of input",
@@ -4466,9 +4476,8 @@ fn isTrivia(_: TokenCat) bool {
     return false;
 }
 
-fn repairCandidates(_: u16) []const u16 {
-    return &.{};
-}
+const repairTokens = [_]u16{};
+const repairOffsets = [_]u32{};
 
 fn repairClass(_: u16) RepairClass {
     return .none;

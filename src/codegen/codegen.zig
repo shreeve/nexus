@@ -847,30 +847,9 @@ const Codegen = struct {
         for (self.table.xExcludes.items) |x| {
             try w.print("    .{{ .sym = {d}, .shift = {d} }},\n", .{ x.sym, x.shift });
         }
+        try w.writeAll("};\n/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].\nconst xExcludeStart = [_]u32{");
+        if (self.table.xExcludes.items.len > 0) try writeList(w, u32, self.table.xExcludeStart);
         try w.writeAll("};\n");
-        if (self.table.xExcludes.items.len == 0) {
-            try w.writeAll(
-                \\
-                \\fn getImmediateShift(_: u16, _: u16) ?i16 {
-                \\    return null;
-                \\}
-                \\
-            );
-            return;
-        }
-        try w.writeAll("/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].\nconst xExcludeStart = [_]u32{");
-        try writeList(w, u32, self.table.xExcludeStart);
-        try w.writeAll(
-            \\};
-            \\
-            \\fn getImmediateShift(state: u16, sym: u16) ?i16 {
-            \\    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-            \\        if (x.sym == sym) return @intCast(x.shift);
-            \\    }
-            \\    return null;
-            \\}
-            \\
-        );
     }
 
     /// Initial state and marker token per start symbol.
@@ -931,15 +910,7 @@ const Codegen = struct {
         try writeList(w, u32, e.offsets);
         try w.writeAll("};\nconst expectedOf = [_]u16{");
         try writeList(w, u16, e.ofState);
-        try w.writeAll(
-            \\};
-            \\
-            \\fn expectedIn(state: u16) []const u16 {
-            \\    const i = expectedOf[state];
-            \\    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
-            \\}
-            \\
-        );
+        try w.writeAll("};\n");
 
         try w.writeAll("\nfn symbolName(sym: u16) []const u8 {\n    return switch (sym) {\n");
         for (self.g.symbols.items) |sym| {
@@ -965,7 +936,7 @@ const Codegen = struct {
 
     fn emitRepair(self: *Codegen, w: *std.Io.Writer) !void {
         const r = self.table.repair orelse {
-            try w.writeAll("\nfn repairCandidates(_: u16) []const u16 {\n    return &.{};\n}\n");
+            try w.writeAll("\nconst repairTokens = [_]u16{};\nconst repairOffsets = [_]u32{};\n");
             try w.writeAll("\nfn repairClass(_: u16) RepairClass {\n    return .none;\n}\n");
             return;
         };
@@ -975,10 +946,6 @@ const Codegen = struct {
         try writeList(w, u32, r.offsets);
         try w.writeAll(
             \\};
-            \\
-            \\fn repairCandidates(state: u16) []const u16 {
-            \\    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
-            \\}
             \\
             \\/// The `@repair` class of a grammar symbol.
             \\fn repairClass(sym: u16) RepairClass {

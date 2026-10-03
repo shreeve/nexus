@@ -15,11 +15,12 @@
 //!   types      Tag, Role, Start, Token, TokenCat, Lexer
 //!   config     nodeStore, elemEnds, keepTrailingNils, hasTrivia, hasRepair,
 //!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes
-//!   tables     ruleLhs, ruleLen, ruleValue
-//!   functions  getAction, getImmediateShift, startState, startMarker,
-//!              tokenToSymbol, promote, executeAction, expectedIn, symbolName, isTrivia,
-//!              repairCandidates, repairClass, ruleSideLabels, slotOf,
-//!              restSlotOf, roleAt, restRoleOf
+//!   tables     ruleLhs, ruleLen, ruleValue, parseTable, xExcludeStart,
+//!              expectedSymbols, expectedOffsets, expectedOf, repairTokens,
+//!              repairOffsets
+//!   functions  startState, startMarker, tokenToSymbol, promote,
+//!              executeAction, symbolName, isTrivia, repairClass,
+//!              ruleSideLabels, slotOf, restSlotOf, roleAt, restRoleOf
 
 const std = @import("std");
 
@@ -279,6 +280,28 @@ const NodeStore = struct {
 /// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
 inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
+}
+
+/// What `state` expects, reader-named: list `expectedOf[state]` of
+/// `expectedSymbols`.
+fn expectedIn(state: u16) []const u16 {
+    const i = expectedOf[state];
+    return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
+}
+
+/// The `X "c"` override of `state` for `sym`: the state to shift to.
+fn getImmediateShift(state: u16, sym: u16) ?i16 {
+    if (xExcludes.len == 0) return null;
+    for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
+        if (x.sym == sym) return @intCast(x.shift);
+    }
+    return null;
+}
+
+/// The tokens tolerant repair may insert in `state`, best first.
+fn repairCandidates(state: u16) []const u16 {
+    if (!hasRepair) return &.{};
+    return repairTokens[repairOffsets[state]..repairOffsets[state + 1]];
 }
 
 /// The symbol `tokenToSymbol` gives the promotable token when `@as`
@@ -1609,6 +1632,7 @@ const numSymbols = 16;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 const xExcludes = [_]struct { sym: u16, shift: u16 }{};
+const xExcludeStart = [_]u32{};
 
 // 0 $accept, 1 $end, 2 error, 3 prog, 4 stmts, 5 stmt, 6 expr, 7 term,
 // 8 NEWLINE, 9 IDENT, 10 "=", 11 "+", 12 "(", 13 ")", 14 prog!, 15 $accept_prog
@@ -1647,22 +1671,12 @@ const parseTable = blk: {
     break :blk t;
 };
 
-/// Hand-built from the table, with `expr` named "an expression".
-fn expectedIn(state: u16) []const u16 {
-    return switch (state) {
-        2, 9, 10, 12 => &.{6},
-        11 => &.{ 9, 12 },
-        4 => &.{ 1, 8 },
-        6 => &.{ 1, 8, 10, 11 },
-        5, 8, 15, 17 => &.{ 1, 8, 11 },
-        13 => &.{ 11, 13 },
-        else => &.{},
-    };
-}
-
-fn getImmediateShift(_: u16, _: u16) ?i16 {
-    return null;
-}
+// Expected lists, hand-built from the table with `expr` named "an
+// expression": {}, {expr}, {IDENT "("}, {$end NEWLINE},
+// {$end NEWLINE "=" "+"}, {$end NEWLINE "+"}, {"+" ")"}.
+const expectedSymbols = [_]u16{ 6, 9, 12, 1, 8, 1, 8, 10, 11, 1, 8, 11, 11, 13 };
+const expectedOffsets = [_]u32{ 0, 0, 1, 3, 5, 9, 12, 14 };
+const expectedOf = [_]u16{ 0, 0, 1, 0, 3, 5, 4, 0, 5, 1, 1, 2, 1, 6, 0, 5, 0, 5, 0 };
 
 fn startState(_: Start) u16 {
     return 0;
@@ -1707,14 +1721,10 @@ fn symbolName(sym: u16) []const u8 {
     };
 }
 
-fn repairCandidates(state: u16) []const u16 {
-    // Hand-built: the hole (IDENT) where the state accepts it, else NEWLINE.
-    return switch (state) {
-        2, 9, 10, 11, 12 => &.{9},
-        4, 5, 6, 7, 8, 14, 15, 16, 17, 18 => &.{8},
-        else => &.{},
-    };
-}
+// Repair candidates, hand-built: the hole (IDENT) where the state accepts
+// it (states 2, 9-12), else NEWLINE (states 4-8, 14-18).
+const repairTokens = [_]u16{ 9, 8, 8, 8, 8, 8, 9, 9, 9, 9, 8, 8, 8, 8, 8 };
+const repairOffsets = [_]u32{ 0, 0, 0, 1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 12, 13, 14, 15 };
 
 fn repairClass(sym: u16) RepairClass {
     return switch (sym) {
