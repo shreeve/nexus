@@ -1415,24 +1415,27 @@ pub const BaseParser = struct {
     const RepairKey = struct { depth: u32, state: u16, token: u16 };
 
     /// The insertion rules 3 and 4 allow before `next`, best first; null
-    /// when there is none.
+    /// when there is none. An insertion already tried in this state, at
+    /// this depth or above, since the last consumed token is not repeated.
     fn chooseInsertion(self: *BaseParser, next: u16, tried: []const RepairKey) !?u16 {
         const state = self.stateStack.last().?;
         const nextClass = if (next == endSymbol) RepairClass.structure else repairClass(next);
         const real = nextClass == .none or nextClass == .hole;
-        for (repairCandidates(state)) |candidate| {
-            if (real and repairClass(candidate) != .terminator) continue;
-            if (try self.accepts(&.{ candidate, next })) return candidate;
-        }
-        if (real) return null;
         const depth: u32 = @intCast(self.stateStack.items.len);
         for (repairCandidates(state)) |candidate| {
-            const seen = for (tried) |k| {
-                if (k.depth <= depth and k.state == state and k.token == candidate) break true;
-            } else false;
-            if (!seen and try self.accepts(&.{candidate})) return candidate;
+            if (real and repairClass(candidate) != .terminator) continue;
+            if (!wasTried(tried, depth, state, candidate) and try self.accepts(candidate, next)) return candidate;
+        }
+        if (real) return null;
+        for (repairCandidates(state)) |candidate| {
+            if (!wasTried(tried, depth, state, candidate) and try self.accepts(candidate, null)) return candidate;
         }
         return null;
+    }
+
+    fn wasTried(tried: []const RepairKey, depth: u32, state: u16, token: u16) bool {
+        for (tried) |k| if (k.depth <= depth and k.state == state and k.token == token) return true;
+        return false;
     }
 
     fn begin(self: *BaseParser, start: Start) !void {
@@ -2119,18 +2122,25 @@ pub const BaseParser = struct {
     // Tolerant repair
     // -------------------------------------------------------------------------
 
-    /// Whether `symbols` can be consumed from the current state. The
-    /// simulation leaves the state stack as it is: reductions pop the
-    /// states it pushed (`scratch`), then hide states of the real stack
-    /// (`depth` of them stay in view).
-    fn accepts(self: *BaseParser, symbols: []const u16) !bool {
+    /// Whether the inserted `insert`, then the current token as `current`
+    /// (when given), can be consumed from the current state; `current` is
+    /// decided as `actionFor` decides it, with its `X "c"` override (it
+    /// keeps the symbol `@as` promoted it to here). The simulation leaves
+    /// the state stack as it is: reductions pop the states it pushed
+    /// (`scratch`), then hide states of the real stack (`depth` of them
+    /// stay in view).
+    fn accepts(self: *BaseParser, insert: u16, current: ?u16) !bool {
         const pushed = &self.scratch;
         pushed.clearRetainingCapacity();
         var depth = self.stateStack.items.len;
-        for (symbols) |sym| {
+        for ([_]?u16{ insert, current }, 0..) |s, i| {
+            const sym = s orelse break;
             while (true) {
                 const top = pushed.last() orelse self.stateStack.items[depth - 1];
-                const action = getAction(top, sym);
+                var action = getAction(top, sym);
+                if (i == 1 and xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
+                    if (getImmediateShift(top, sym)) |target| action = target;
+                }
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
