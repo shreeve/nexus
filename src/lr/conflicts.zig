@@ -389,36 +389,67 @@ fn located(w: *std.Io.Writer, path: []const u8, line: u32) !void {
     if (line > 0) try w.print("{s}:{d}:1: error: ", .{ path, line }) else try w.print("{s}: error: ", .{path});
 }
 
-/// Fail on `X "c"` hints that decide nothing: in no state does the rule's
-/// reduction on the character's terminal meet a shift. (The LR(1)
-/// lookaheads already separate the cases, so the hint has no effect.)
-/// Hints are grouped by source alternative (lhs and line), so a hint that
-/// applies to any rule expanded from its alternative counts as used.
+/// Fail on `X "c"` hints that decide nothing, and on hints whose literal
+/// the grammar does not have. A hint decides a cell when its rule's
+/// reduction on the literal terminal `"c"` beats the shift by it; it
+/// decides none when the LR(1) lookaheads already separate the cases, or a
+/// lower rule wins every cell it could. Hints are grouped by source
+/// alternative (lhs, line, column), so a hint that decides a cell for any
+/// rule expanded from its alternative counts as used.
 pub fn checkHints(a: Allocator, g: *const Grammar, tbl: *const Table, opts: Options) CheckError!void {
     var failed = false;
     for (tbl.hints, 0..) |h, i| {
         if (h.used) continue;
-        const rule = &g.rules.items[h.rule];
         // Report each (alternative, char) once, and only if no sibling used it.
         const dup = for (tbl.hints[0..i]) |o| {
-            const orule = &g.rules.items[o.rule];
-            if (o.char == h.char and orule.lhs == rule.lhs and orule.line == rule.line) break true;
+            if (sameHint(g, o, h)) break true;
         } else false;
         if (dup) continue;
         const siblingUsed = for (tbl.hints) |o| {
-            const orule = &g.rules.items[o.rule];
-            if (o.used and o.char == h.char and orule.lhs == rule.lhs and orule.line == rule.line) break true;
+            if (o.used and sameHint(g, o, h)) break true;
         } else false;
         if (siblingUsed) continue;
 
         failed = true;
         var out: std.Io.Writer.Allocating = .init(a);
         defer out.deinit();
-        try located(&out.writer, opts.path, rule.line);
-        try out.writer.print("X \"{c}\" on ", .{h.char});
-        try writeRule(&out.writer, g, h.rule);
-        try out.writer.print(" has no effect: no state has a shift/reduce conflict between this rule and \"{c}\"; remove the hint\n", .{h.char});
+        const w = &out.writer;
+        try located(w, opts.path, g.rules.items[h.rule].line);
+        try w.writeAll("X ");
+        try writeHintChar(w, h.char);
+        try w.writeAll(" on ");
+        try writeRule(w, g, h.rule);
+        if (h.terminal == null) {
+            try w.writeAll(" names no terminal: the parser grammar has no literal ");
+            try writeHintChar(w, h.char);
+            try w.writeAll(" (a hint names the literal whose shift it beats)\n");
+        } else {
+            try w.writeAll(" has no effect: it decides no shift/reduce conflict between this rule and ");
+            try writeHintChar(w, h.char);
+            try w.writeAll("; remove the hint\n");
+        }
         try opts.emit(out.written());
     }
     if (failed) return error.ConflictDrift;
+}
+
+/// Whether two hints are one hint of one source alternative.
+fn sameHint(g: *const Grammar, x: table.HintUse, y: table.HintUse) bool {
+    const rx = &g.rules.items[x.rule];
+    const ry = &g.rules.items[y.rule];
+    return x.char == y.char and rx.lhs == ry.lhs and rx.line == ry.line and rx.col == ry.col;
+}
+
+/// A hint's character as the grammar writes it: `"c"`, with `\n`, `\t`,
+/// `\r`, `\\` and `\"` escaped.
+fn writeHintChar(w: *std.Io.Writer, c: u8) !void {
+    try w.writeByte('"');
+    switch (c) {
+        '\n' => try w.writeAll("\\n"),
+        '\t' => try w.writeAll("\\t"),
+        '\r' => try w.writeAll("\\r"),
+        '\\', '"' => try w.print("\\{c}", .{c}),
+        else => try w.writeByte(c),
+    }
+    try w.writeByte('"');
 }

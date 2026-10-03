@@ -448,20 +448,16 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "name → ID",
     }, &.{"prog"});
     const xs = x.tbl.xExcludes.items;
-    var chars: [2]u8 = undefined;
-    var n: usize = 0;
-    for (xs) |e| {
-        if (n < 2) chars[n] = e.char;
-        n += 1;
-    }
-    try testing.expectEqual(@as(usize, 2), n);
+    try testing.expectEqual(@as(usize, 2), xs.len);
     try testing.expectEqual(xs[0].state, xs[1].state);
     const st = xs[0].state;
     try testing.expectEqual(@as(u32, 0), x.tbl.xExcludeStart[st]);
     try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[st + 1]);
     try testing.expectEqual(@as(u32, 2), x.tbl.xExcludeStart[x.auto.states.items.len]);
-    try testing.expect(std.mem.findScalar(u8, &chars, '(') != null and std.mem.findScalar(u8, &chars, '[') != null);
-    for (xs) |e| try testing.expect(x.tbl.rows[e.state][sym(&x.g, if (e.char == '(') "\"(\"" else "\"[\"")] == .reduce);
+    const syms = [2]u16{ xs[0].sym, xs[1].sym };
+    try testing.expect(std.mem.findScalar(u16, &syms, sym(&x.g, "\"(\"")) != null);
+    try testing.expect(std.mem.findScalar(u16, &syms, sym(&x.g, "\"[\"")) != null);
+    for (xs) |e| try testing.expect(x.tbl.rows[e.state][e.sym] == .reduce);
     var sink: std.Io.Writer.Allocating = .init(a);
     const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
     try conflicts.checkHints(a, &x.g, &x.tbl, opts);
@@ -476,9 +472,103 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
     try testing.expectEqual(@as(usize, 0), dead.tbl.xExcludes.items.len);
     try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &dead.g, &dead.tbl, opts));
     try testing.expectEqualStrings(
-        "t.grammar: error: X \":\" on e → name has no effect: no state has a shift/reduce conflict between this rule and \":\"; remove the hint\n",
+        "t.grammar: error: X \":\" on e → name has no effect: it decides no shift/reduce conflict between this rule and \":\"; remove the hint\n",
         sink.written(),
     );
+}
+
+test "a hint names its literal terminal, escapes included; a missing literal is an error" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+
+    // `X "\\"` names the terminal `"\\"`: after ID the table reduces on it,
+    // and the runtime shifts a touching backslash instead.
+    const esc = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        \\e → ID X "\\"
+        ,
+        \\e → ID "\\" ID
+        ,
+        \\e → "\\" ID
+        ,
+    }, &.{"prog"});
+    try testing.expectEqual(@as(u32, 0), esc.tbl.conflicts);
+    try testing.expectEqual(@as(usize, 1), esc.tbl.xExcludes.items.len);
+    try testing.expectEqual(sym(&esc.g, "\"\\\\\""), esc.tbl.xExcludes.items[0].sym);
+    try conflicts.checkHints(a, &esc.g, &esc.tbl, opts);
+
+    // No literal "(" in the grammar: the hint names nothing.
+    const missing = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → ID X \"(\"",
+        "e → ID LPAREN ID",
+        "e → LPAREN ID",
+    }, &.{"prog"});
+    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &missing.g, &missing.tbl, opts));
+    try expectContains(sink.written(), "X \"(\" on e → ID names no terminal: the parser grammar has no literal \"(\"");
+}
+
+test "a hint counts as used only where its rule wins the cell" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+    // After ID, p and q both reduce on "(" against its shift; p, the lower
+    // rule, wins by its hint, so q's hint decides nothing.
+    const b = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → p",
+        "e → q",
+        "p → ID X \"(\"",
+        "q → ID X \"(\"",
+        "e → ID \"(\" \")\"",
+        "e → \"(\" e \")\"",
+    }, &.{"prog"});
+    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &b.g, &b.tbl, opts));
+    try testing.expectEqualStrings(
+        "t.grammar: error: X \"(\" on q → ID has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
+        sink.written(),
+    );
+}
+
+test "hints group by source alternative: line and column" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+    // `e = ID X "(" | NUM X "("` on one line: only ID's hint decides a cell.
+    const b = try generate(a, &.{
+        "prog → es",
+        "es → es e",
+        "es → e",
+        "e → ID X \"(\"",
+        "e → NUM X \"(\"",
+        "e → ID \"(\" e \")\"",
+        "e → \"(\" e \")\"",
+    }, &.{"prog"});
+    for (b.g.rules.items[3..5], [_]u32{ 8, 20 }) |*r, col| {
+        r.line = 7;
+        r.col = col;
+    }
+    try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &b.g, &b.tbl, opts));
+    try testing.expectEqualStrings(
+        "t.grammar:7:1: error: X \"(\" on e → NUM has no effect: it decides no shift/reduce conflict between this rule and \"(\"; remove the hint\n",
+        sink.written(),
+    );
+    // Rules expanded from one alternative (one line and column) share it.
+    b.g.rules.items[4].col = 8;
+    try conflicts.checkHints(a, &b.g, &b.tbl, opts);
 }
 
 test "a start marker adds no conflicts and every start alternative is reachable" {
