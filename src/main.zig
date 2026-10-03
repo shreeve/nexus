@@ -229,11 +229,6 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         diag.errLine(grammarFile, 1, 1, "no @lexer section (a grammar file has an @lexer section, then an @parser section)", .{});
         fail();
     };
-    if (!ir.hasParser) {
-        const end = parsed.source.at(sourceText.len);
-        diag.errLine(grammarFile, end.line, end.col, "no @parser section (a grammar file ends with an @parser section, which may be empty)", .{});
-        fail();
-    }
 
     var lexerGen = LexerGenerator.init(allocator, &lexerSpec);
 

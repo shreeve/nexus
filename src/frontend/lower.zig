@@ -50,9 +50,8 @@ pub const GrammarLowerer = struct {
     spans: ?*const parser.Parser = null,
 
     /// Where the entries are: before any section marker, in @lexer, or in
-    /// @parser. A tree without markers is @parser-section text.
+    /// @parser.
     section: enum { preamble, lexer, parser } = .preamble,
-    sectioned: bool = false,
     lexer: ?LexerSpec = null,
     /// Position of the first `tokens` keyword.
     tokensAt: ?u32 = null,
@@ -97,6 +96,8 @@ pub const GrammarLowerer = struct {
         const source = self.source;
         try self.lowerRoot(sexp);
         if (self.section == .lexer) try self.validateLexer(@intCast(source.text.len));
+        if (!self.hasParser)
+            return self.failAt(source.text.len, "no @parser section (a grammar file ends with an @parser section, which may be empty)", .{});
         if (self.lexer) |*spec| spec.langName = self.lang;
         if (self.codeNode) |node| if (self.lang == null)
             return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
@@ -127,7 +128,6 @@ pub const GrammarLowerer = struct {
             .trivia = try self.trivia.toOwnedSlice(allocator),
             .repair = self.repair,
             .lexer = self.lexer,
-            .hasParser = self.hasParser or !self.sectioned,
         };
     }
 
@@ -210,9 +210,9 @@ pub const GrammarLowerer = struct {
 
     fn lowerRoot(self: *GrammarLowerer, root: Sexp) LowerError!void {
         const entries = ir.Grammar.entries(root);
-        for (entries) |entry| if (entry.isKind(.section)) {
-            self.sectioned = true;
-        };
+        for (entries) |entry| {
+            if (entry.isKind(.section)) break;
+        } else return self.failAt(0, "no @lexer section (a grammar file has an @lexer section, then an @parser section)", .{});
         for (entries) |entry| try self.lowerEntry(entry);
     }
 
@@ -244,7 +244,7 @@ pub const GrammarLowerer = struct {
             .trivia => try self.lowerNames(ir.Trivia.names(entry), "@trivia", &self.trivia),
             .repair => try self.lowerRepair(entry),
             .rule => {
-                if (self.sectioned and self.section != .parser)
+                if (self.section != .parser)
                     return self.fail(entry, "rules belong in the @parser section", .{});
                 try self.lowerRule(entry);
             },

@@ -189,9 +189,6 @@ pub const GrammarIR = struct {
     repair: ?RepairSpec = null,
     /// The @lexer section; null when the file has none.
     lexer: ?LexerSpec = null,
-    /// Whether the file has a @parser section (text without section
-    /// markers is @parser-section text).
-    hasParser: bool = true,
 };
 
 pub const ParsedRule = struct {
