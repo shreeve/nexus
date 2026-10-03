@@ -169,9 +169,9 @@ pub const BaseLexer = struct {
     }
 
     /// The token of `cat` from `start` to `end`, as the scanner builds
-    /// it: a match longer than a Token can hold (65535 bytes) is an
-    /// `err` token of that length, and the scan goes on after the whole
-    /// match. A lang Lexer wrapper builds its tokens with it too.
+    /// it: a match longer than a Token can hold is an `err` token 65535
+    /// bytes long, and the scan goes on after the whole match. A lang
+    /// Lexer wrapper builds its tokens with it too.
     pub inline fn makeToken(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
         if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
         return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };

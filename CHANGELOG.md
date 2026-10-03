@@ -8,12 +8,13 @@ Changes marked **Breaking** need edits in a grammar or a lang module;
 ### Added
 
 - `BaseLexer.makeToken(cat, pre, start, end)` builds a token the way the
-  scanner does: a match longer than 65535 bytes is an `err` token of that
-  length.
+  scanner does: a match longer than 65535 bytes is an `err` token 65535
+  bytes long, and scanning resumes after the whole match.
 - `BaseParser.expectedNames(state, &buf)` gives the reader names of what a
   state expects, each once, in a `[parser.maxExpected][]const u8` buffer.
 - `BaseParser.allocator()`, the allocator that holds the trees, for what a
-  lang `Parser` wrapper builds.
+  lang `Parser` wrapper builds. It is a single-threaded bump allocator:
+  unlike the arena's own allocator, it is not thread-safe.
 - `BaseParser.reset(source)` parses new input in the memory the parser
   holds (the arena keeps its capacity), for loops that parse many inputs.
 - `-` as the output file writes the module to standard output.
@@ -225,7 +226,8 @@ Tests:
   Slash heredocs); they use `makeToken`.
 - An `@as` keyword whose Id value is 512 or more read past the group's
   symbol map (a panic in safe builds); the maps are sized from the Id
-  enum, so any `u16` value works.
+  enum, so any `u16` value works (an Id enum is `enum(u8)` or
+  `enum(u16)`).
 - An `@as` keyword ordinal matched before a reduction stayed on the token
   when the next state took it as itself.
 - `@lang` and the token names of `@op` skipped escape checking
@@ -302,7 +304,7 @@ Regenerate every parser. Then, in each lang module:
   `BaseParser.expectedNames(state, &buf)` with
   `var buf: [parser.maxExpected][]const u8`.
 - **Parser wrapper**: allocate with `self.base.allocator()`, not
-  `self.base.arena.allocator()`.
+  `self.base.arena.allocator()` (from one thread: it is not thread-safe).
 - **Build**: pass the output file (`nexus g.grammar src/parser.zig`).
 
 Per repository:
