@@ -510,6 +510,27 @@ test "manifest rule texts normalize arrows, blanks and empty right-hand sides" {
     try testing.expectEqualStrings("a → b", try conflicts.normalize(a, " a  ->   b "));
     try testing.expectEqualStrings("a → ε", try conflicts.normalize(a, "a ->"));
     try testing.expectEqualStrings("L(x, \";\") → x L(x, \";\").tail", try conflicts.normalize(a, "L(x, \";\")  ->  x L(x, \";\").tail"));
+    // Quoted text is kept as written: `->`, blank runs, escaped quotes.
+    try testing.expectEqualStrings("s → IF \"->\" s", try conflicts.normalize(a, "s ->  IF \"->\"  s"));
+    try testing.expectEqualStrings("s → \"a  b\" \"\\\"->\" X", try conflicts.normalize(a, "s -> \"a  b\" \"\\\"->\"   X"));
+}
+
+test "a manifest entry naming a literal with `->` or blanks matches its rule" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const a = arena.allocator();
+    const b = try generate(a, &.{
+        "prog → stmt",
+        "stmt → IF ID \"->\" stmt",
+        "stmt → IF ID \"->\" stmt ELSE stmt",
+        "stmt → ID",
+    }, &.{"prog"});
+    var sink: std.Io.Writer.Allocating = .init(a);
+    const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
+    b.g.conflicts = &.{.{ .kind = .shift, .rule = "stmt -> IF ID \"->\" stmt", .count = 1, .reason = "dangling else" }};
+    try conflicts.check(a, &b.g, &b.auto, &b.tbl, opts);
+    b.g.conflicts = &.{.{ .kind = .shift, .rule = "stmt → IF ID \"→\" stmt", .count = 1, .reason = "dangling else" }};
+    try testing.expectError(error.ConflictDrift, conflicts.check(a, &b.g, &b.auto, &b.tbl, opts));
 }
 
 // =============================================================================

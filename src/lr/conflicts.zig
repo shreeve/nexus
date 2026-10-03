@@ -113,7 +113,8 @@ fn writeItem(w: *std.Io.Writer, g: *const Grammar, item: Item) !void {
 }
 
 /// Rule text normalized for comparison: `->` is `→`, whitespace runs are one
-/// space, an empty right-hand side is `ε`.
+/// space, an empty right-hand side is `ε`. Quoted literals (`"..."`, with
+/// `\` escapes) are kept as written.
 pub fn normalize(a: Allocator, text: []const u8) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     var i: usize = 0;
@@ -127,6 +128,16 @@ pub fn normalize(a: Allocator, text: []const u8) ![]const u8 {
         }
         if (pendingSpace) try out.append(a, ' ');
         pendingSpace = false;
+        if (c == '"') {
+            var j = i + 1;
+            while (j < text.len and text[j] != '"') : (j += 1) {
+                if (text[j] == '\\') j += 1;
+            }
+            j = @min(j + 1, text.len);
+            try out.appendSlice(a, text[i..j]);
+            i = j;
+            continue;
+        }
         if (c == '-' and i + 1 < text.len and text[i + 1] == '>') {
             try out.appendSlice(a, "→");
             i += 2;
@@ -275,7 +286,9 @@ fn matches(a: Allocator, g: *const Grammar, d: ConflictEntry, e: Entry) !bool {
 fn sameRule(a: Allocator, g: *const Grammar, text: []const u8, ruleId: u16) !bool {
     const want = try normalize(a, text);
     defer a.free(want);
-    const have = try ruleText(a, g, ruleId);
+    const written = try ruleText(a, g, ruleId);
+    defer a.free(written);
+    const have = try normalize(a, written);
     defer a.free(have);
     return std.mem.eql(u8, want, have);
 }
