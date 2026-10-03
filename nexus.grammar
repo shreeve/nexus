@@ -297,7 +297,7 @@ lex_actions =                                           → ()
             | lex_actions "," lex_action                → (...1 3)
 
 lex_action  = word:IDENT                                → (lex_action)
-            | word:IDENT "(" arg:INTEGER ")"           → (lex_action)
+            | word:IDENT "(" arg:INTEGER ")"            → (lex_action)
             | LBRACE name:IDENT "=" value:(INTEGER | IDENT) RBRACE
                                                         → (set_action)
             | LBRACE name:IDENT "=" fn:IDENT "(" char:QUOTED ")" RBRACE
@@ -533,7 +533,7 @@ sexp       = "(" head:WORD items:items ")"          → (node)
            | "(" items_nohead ")"                   → (list ...2)
 
 items_nohead =                                      → ()
-             | first_item items                     → (1 ...2)
+           | first_item items                       → (1 ...2)
 
 items      =                                        → ()
            | items item                             → (...1 2)
