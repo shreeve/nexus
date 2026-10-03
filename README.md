@@ -132,9 +132,10 @@ test "tour" {
 }
 ```
 
-Had an action built a node the schema does not allow (a `num` where a role
-takes a `var`, a kind nobody declared, a value dropped by accident),
-generation would have failed with `file:line:col: error:` naming the rule.
+Had an action built a node the schema does not allow (a `num` node where
+`let`'s `name` takes a leaf, a kind nobody declared, a value dropped by
+accident), generation would have failed with `file:line:col: error:`
+naming the rule.
 
 ## Features
 
@@ -174,9 +175,10 @@ generation would have failed with `file:line:col: error:` naming the rule.
 ## Validated languages
 
 The grammars in `test/` generate with this checkout, compile, and parse
-their cases in `./test/run`, trees compared with goldens. The Rig and MUMPS
-grammars are copies of the ones Rig and em build with. `tools/readme`
-checks every number in this table.
+their cases in `./test/run`, trees compared with goldens. The Rig, MUMPS
+and Nexis grammars are snapshots taken from those projects, older than
+the grammars they build with (AGENTS.md, "Downstream"). The suite's
+`tools/readme` test checks every number in this table.
 
 | Language | Grammar | Lines | LR states | Declared conflicts (cells) | Suite cases | Mode |
 |---|---|---:|---:|---:|---:|---|
@@ -211,9 +213,9 @@ nexus --help
 ```
 
 Options: `--spans` (node spans without a schema), `-c` (rules as comments
-in the output). The output file is replaced atomically (through a
-symlink, the file it names), keeping its mode, and never when it is the
-grammar file; other hard links to it keep the old contents. Exit status: 0 success, 1 error, 2 usage.
+in the output). The output file is replaced atomically, keeping its mode,
+and never when it is the grammar file (`nexus --help` has the details).
+Exit status: 0 success, 1 error, 2 usage.
 
 ## Documentation
 
@@ -222,8 +224,9 @@ grammar file; other hard links to it keep the old contents. Exit status: 0 succe
 - [docs/INTERNALS.md](docs/INTERNALS.md): how Nexus works, for contributors
 - [CHANGELOG.md](CHANGELOG.md), [AGENTS.md](AGENTS.md), [test/README.md](test/README.md)
 
-Every grammar and Zig example in these documents is generated, compiled and
-run by `./test/run`.
+Every grammar and Zig example in these documents is checked by
+`./test/run`: complete grammars are generated, compiled and run,
+fragments are parsed ([test/README.md](test/README.md#doc-tests)).
 
 ## License
 
