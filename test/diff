@@ -17,7 +17,9 @@
 #                 they are reported but do not fail the run
 #   --spans       compare node spans too (both parsers must record them)
 #   --show N      print tree diffs for the first N differing files (default 5)
-#   --keep DIR    keep the builds, per-file results and reports in DIR
+#   --keep DIR    keep the builds, per-file results and reports in DIR;
+#                 a later run with the same DIR replaces the results and
+#                 reuses each build whose inputs did not change
 #   -j N          parallel jobs (default: CPU count)
 #   -O MODE       optimize mode for both parsers (default: ReleaseSafe)
 #
@@ -122,7 +124,8 @@ CORPUS=("${POS[@]:4}")
 
 if [[ -n "$KEEP" ]]; then
     WORK=$KEEP
-    rm -rf "$WORK" && mkdir -p "$WORK"
+    mkdir -p "$WORK"
+    find "$WORK" -mindepth 1 -maxdepth 1 ! -name old ! -name new -exec rm -rf {} +
 else
     WORK=$(mktemp -d "${TMPDIR:-/tmp}/nexus-diff.XXXXXX")
     trap 'rm -rf "$WORK"' EXIT

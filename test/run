@@ -86,7 +86,7 @@ first_error() { # first_error <log>: the most useful line of a gen/compile log
 }
 
 # build_suite <dir>: generate + compile into $OUTROOT/build/<key>; writes
-# $WORK/build/<key> = "<rc>\t<reason>"
+# $WORK/build/<key> = "<rc>\t<reason>" (atomically: waiters poll for it)
 build_suite() {
     local dir=$1 key out rc reason=""
     key=$(key_of "$dir")
@@ -100,7 +100,25 @@ build_suite() {
         11) reason="compile failed: $(first_error "$out/compile.log")" ;;
         *) reason="build exited $rc" ;;
     esac
-    printf '%s\t%s\n' "$rc" "$reason" >"$WORK/build/$key"
+    printf '%s\t%s\n' "$rc" "$reason" >"$WORK/build/$key.tmp"
+    mv "$WORK/build/$key.tmp" "$WORK/build/$key"
+}
+
+# ensure_built <dir>: build the suite once per run. The first worker to ask
+# builds it; the others wait for its result (at most the build's timeout).
+ensure_built() {
+    local key ticks=0
+    key=$(key_of "$1")
+    [[ -f "$WORK/build/$key" ]] && return 0
+    if mkdir "$WORK/lock/$key" 2>/dev/null; then
+        (build_suite "$1")
+        return 0
+    fi
+    while [[ ! -f "$WORK/build/$key" ]]; do
+        [[ $ticks -gt $(((TIMEOUT + 30) * 10)) ]] && return 1
+        sleep 0.1
+        ticks=$((ticks + 1))
+    done
 }
 
 # -----------------------------------------------------------------------------
@@ -110,6 +128,7 @@ build_suite() {
 check_built() { # check_built <suite dir>
     local key st why
     key=$(key_of "$1")
+    ensure_built "$1"
     IFS=$'\t' read -r st why <"$WORK/build/$key" || { REASON="suite was not built"; return 1; }
     if [[ $st -ne 0 ]]; then
         REASON=$why
@@ -223,6 +242,7 @@ check_bug_suite() {
 check_compile_error() {
     local dir=$1 key st why want
     key=$(key_of "$dir")
+    ensure_built "$dir"
     IFS=$'\t' read -r st why <"$WORK/build/$key" || { REASON="suite was not built"; return 1; }
     local out="$OUTROOT/build/$key"
     cat "$out/gen.log" "$out/compile.log" >>"$LOG" 2>/dev/null
@@ -336,8 +356,8 @@ check_unit_lang() { # check_unit_lang <suite dir>: zig test each lang file with 
 
 check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
     local out
-    out=$(NO_COLOR=1 with_timeout 300 test/diff -O Debug -j 4 current current test/mumps/mumps.grammar \
-        test/mumps/mumps.grammar --ext .m test/mumps/cases 2>&1)
+    out=$(NO_COLOR=1 with_timeout 300 test/diff -O Debug -j 4 --keep "$OUTROOT/diff" "$NEXUS" "$NEXUS" \
+        test/mumps/mumps.grammar test/mumps/mumps.grammar --ext .m test/mumps/cases 2>&1)
     local rc=$?
     echo "$out" >>"$LOG"
     if [[ $rc -ne 0 ]]; then REASON="test/diff exited $rc: $(tail -1 <<<"$out")"; return 1; fi
@@ -455,11 +475,7 @@ worker() {
 if [[ "${1:-}" == "--worker" ]]; then
     shift
     IFS=$'\x1f' read -r -a F <<<"$1"
-    worker "${F[@]}"
-    exit 0
-fi
-if [[ "${1:-}" == "--build" ]]; then
-    build_suite "$2"
+    if [[ ${F[1]} == build ]]; then ensure_built "${F[2]}"; else worker "${F[@]}"; fi
     exit 0
 fi
 
@@ -496,7 +512,7 @@ fi
 
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/nexus-test.XXXXXX")
 RESULTS="$WORK/results"
-mkdir -p "$RESULTS" "$WORK/build" "$WORK/out" "$OUTROOT/build"
+mkdir -p "$RESULTS" "$WORK/build" "$WORK/lock" "$WORK/out" "$OUTROOT/build"
 trap 'rm -rf "$WORK"' EXIT
 export ROOT NEXUS LIB OUTROOT PANIC_RE POS_RE TIMEOUT WORK RESULTS UPDATE
 
@@ -507,15 +523,30 @@ selected() {
     return 1
 }
 
-LIST="$WORK/list" BUILDS="$WORK/builds"
-: >"$LIST"
+# One pool runs everything, in this order: the long tests, so that none of
+# them is left running alone at the end; the suite builds (pseudo-tasks
+# with no result); the tests that need no build, while the builds finish;
+# and the tests that need one. A test whose suite is not built yet builds
+# it, or waits for the worker that is building it.
+LONG="$WORK/long" BUILDS="$WORK/builds" EARLY="$WORK/early" LATE="$WORK/late"
+: >"$LONG"
 : >"$BUILDS"
+: >"$EARLY"
+: >"$LATE"
 add() { # add <id> <kind> [args...]
     selected "$1" || return 1
-    local IFS=$'\x1f'
-    printf '%s\n' "$*" >>"$LIST"
+    local IFS=$'\x1f' to=$EARLY
+    case $2 in
+        unit-nexus|unit-lang|diff-tool) to=$LONG ;;
+        case|bug) to=$LATE ;;
+    esac
+    printf '%s\n' "$*" >>"$to"
 }
-need_build() { grep -qxF "$1" "$BUILDS" || echo "$1" >>"$BUILDS"; }
+need_build() {
+    local line
+    line="build/$1"$'\x1f'build$'\x1f'"$1"
+    grep -qxF "$line" "$BUILDS" || echo "$line" >>"$BUILDS"
+}
 
 # Grammar suites: test/<name>/ with a grammar (test/known/ is separate).
 for dir in test/*/; do
@@ -581,6 +612,8 @@ while IFS=$'\t' read -r kind id arg; do
     esac
 done <"$WORK/docs.tasks"
 
+LIST="$WORK/list"
+cat "$LONG" "$EARLY" "$LATE" >"$LIST"
 TOTAL=$(wc -l <"$LIST" | tr -d ' ')
 if [[ $TOTAL -eq 0 ]]; then
     printf '%sno test id contains %s%s\n' "$R" "${FILTERS[*]}" "$X"
@@ -589,10 +622,7 @@ fi
 NB=$(wc -l <"$BUILDS" | tr -d ' ')
 printf '%sbuilding %s grammars, running %s tests (-j %s)%s\n' "$D" "$NB" "$TOTAL" "$JOBS" "$X"
 
-# Pass 1: generate + compile every suite that has selected tests.
-tr '\n' '\0' <"$BUILDS" | xargs -0 -r -n 1 -P "$JOBS" "$0" --build
-# Pass 2: every test.
-tr '\n' '\0' <"$LIST" | xargs -0 -r -n 1 -P "$JOBS" "$0" --worker
+cat "$LONG" "$BUILDS" "$EARLY" "$LATE" | tr '\n' '\0' | xargs -0 -r -n 1 -P "$JOBS" "$0" --worker
 
 # -----------------------------------------------------------------------------
 # Report
