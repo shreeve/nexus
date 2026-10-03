@@ -1,0 +1,14 @@
+# A repeat of zero matches only the empty string
+# error: lexer_pattern_repeat_zero.grammar:9:8:
+# error: repeat bound {0} matches nothing useful
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'b' 'a'{0}      → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

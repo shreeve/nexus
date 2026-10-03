@@ -1,0 +1,14 @@
+# \x takes hex digits only, not a sign
+# error: lexer_pattern_hex_sign.grammar:9:2:
+# error: \x needs two hex digits
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'\x+A'          → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

@@ -1,0 +1,14 @@
+# Groups nest at most 64 deep
+# error: lexer_pattern_nested_too_deep.grammar:9:66:
+# error: groups nested too deeply
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+(((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((((('a')))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))) → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

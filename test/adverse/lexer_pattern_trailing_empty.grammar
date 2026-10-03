@@ -1,0 +1,14 @@
+# Trailing context must require something to follow
+# error: lexer_pattern_trailing_empty.grammar:9:5:
+# error: trailing context after '/' must not match the empty string
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a' / 'b'*      → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

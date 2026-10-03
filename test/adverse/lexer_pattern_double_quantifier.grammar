@@ -1,0 +1,14 @@
+# Quantifiers do not stack; group the operand
+# error: lexer_pattern_double_quantifier.grammar:9:5:
+# error: a quantifier cannot follow another quantifier
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+'a'*+           → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

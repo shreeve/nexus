@@ -1,0 +1,13 @@
+# The emitted scanner numbers its states with a u16: a minimized DFA over
+# 65535 states is an error ("an 'a' 15 bytes before the 'c'" needs 65541)
+# error: lexer_dfa_too_large.grammar:9:1:
+# error: the lexer DFA has 65541 states; at most 65535 are supported
+@lexer
+tokens
+    t, eof, err
+
+[ab]* 'a' [ab]{15} 'c'  → t
+.                       → err
+
+@parser
+top! = ERR → 1

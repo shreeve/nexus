@@ -1,0 +1,14 @@
+# A group needs its closing ')'
+# error: lexer_pattern_unclosed_group.grammar:9:1:
+# error: unclosed '('
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+('a' 'b'        → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1

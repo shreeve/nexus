@@ -1,0 +1,14 @@
+# A class range runs from low to high
+# error: lexer_pattern_range_order.grammar:9:2:
+# error: range is out of order
+@lexer
+state
+    m = 0
+tokens
+    t, u, eof, err
+[z-a]           → t
+'z'             → u
+.               → err
+
+@parser
+top! = ERR → 1
