@@ -278,7 +278,11 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
 
         // Every symbol is defined, and a start symbol reaches every rule.
         if (check.validateSymbols(&g, &ir, &lexerSpec, grammarFile) > 0) fail();
-        if (try check.checkReachable(allocator, &g, &ir, grammarFile) > 0) fail();
+        const unreached = check.checkReachable(allocator, &g, &ir, grammarFile) catch {
+            diag.err("out of memory", .{});
+            fail();
+        };
+        if (unreached > 0) fail();
 
         var result = lr.run(&g, .{ .path = grammarFile }) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
