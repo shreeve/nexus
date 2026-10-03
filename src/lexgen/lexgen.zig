@@ -786,10 +786,7 @@ pub const LexerGenerator = struct {
         );
 
         for (self.spec.codeFunctions.items) |name| {
-            const lang = self.spec.langName orelse {
-                diag.errLine(self.spec.fileName, 1, 1, "@code = {s} needs @lang (the function is imported from the lang module)", .{name});
-                return error.LexerGenerationError;
-            };
+            const lang = self.spec.langName.?; // the lowerer requires @lang with @code
             try self.print(
                 \\
                 \\    /// `@code = {s}`: `{s}.{s}(source, pos)` at the current position.
