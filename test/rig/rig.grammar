@@ -14,19 +14,27 @@
 #     inside ( ) and [ ] (a newline there is plain whitespace), except in
 #     a closure body that starts below its bar list, which is laid out in
 #     blocks as anywhere else;
-#   * classifies keywords (every keyword is reserved);
-#   * classifies the characters whose meaning depends on spacing. The rule
-#     is the same for all of them: a character that touches its operand and
-#     not the preceding value is a prefix; otherwise it is an infix
-#     operator or a suffix.
+#   * classifies keywords (every keyword is reserved, but reads as a name
+#     where it names a member: after `.`, before `:` inside ( ), and in a
+#     member list before `:` or after `fun` / `sub`); `of` is a keyword
+#     only after a value directly inside [ ] (`[n of x]`), and a name
+#     everywhere else;
+#   * marks a `..` whose next token is `]` as DOTDOT_OPEN, the end of an
+#     open range (`xs[a..]`, `xs[..]`);
+#   * classifies the tokens the parser cannot tell apart by its own
+#     state, by position, never by spacing:
 #
-#       <x +x ?x !x *x ~x @x -x      ownership sigils / negation
 #       |+a, b|  ||  *|a|            closure bar list (vs bitwise `|`)
-#       f(x) a[i]                    call / index (vs `f (x)`, `f [1, 2]`,
-#                                    which pass a new operand to `f`)
-#       .red                         enum literal (vs member access a.b)
-#       T? T! x!                     type / propagation suffixes
+#       -x                           a drop, as a whole statement (vs
+#                                    negation)
+#       ?? return                    `??` before a jump (vs the operator)
+#       while c : i += 1             a `while` step (vs a label's `:`)
 #       a if c else b                ternary vs postfix guard `stmt if c`
+#
+#     A character that both starts and continues an operand (`-x` and
+#     `a - b`, `f(x)` and `(x)`, `T?` and `?T`) is one token: the parser
+#     tells the forms apart by where it stands. The rewriter only
+#     checks that a prefix sigil touches its operand.
 #
 # The grammar has no LALR conflicts; see docs/INTERNALS.md (Conflicts policy).
 # ==============================================================================
@@ -38,7 +46,7 @@
 tokens
     # Literals
     ident           # identifier
-    integer         # 0, 42, 0xff, 0b1010, 0o17
+    integer         # 0, 42, 1_000, 0xff, 0b1010, 0o17
     real            # 3.14, .5, 1.0e10, 2e-3
     string_sq       # 'single'
     string_dq       # "double"
@@ -66,26 +74,36 @@ tokens
     new             # a keyword only at statement start (`new x = ...`)
     not
     or
-    pre
+    pass
     pub
     raw
     return
     struct
     sub
     test
-    try
+    try             # reserved; no form uses it
     type
     use
     while
-    zig
+    zig             # `extern zig "file.zig"`
+    async           # reserved; no form uses it
+    await           # reserved; no form uses it
+    const           # reserved; no form uses it
+    impl            # reserved; no form uses it
+    trait           # reserved; no form uses it
+    when            # reserved; no form uses it
+    where           # reserved; no form uses it
+    yield           # reserved; no form uses it
 
     # Operators
     plus            # +
-    minus           # -  infix
-    minus_prefix    # -x negation
+    minus           # -
     star            # *
     slash           # /
     percent         # %
+    plus_wrap       # +%  wrapping add
+    minus_wrap      # -%  wrapping subtract
+    star_wrap       # *%  wrapping multiply
     power           # ** (not a Rig operator; lexed so it can be rejected)
     eq              # ==
     ne              # !=
@@ -107,7 +125,6 @@ tokens
     at              # @
     assign          # =
     fixed_assign    # =!
-    move_assign     # <-
     plus_assign     # +=
     minus_assign    # -=
     star_assign     # *=
@@ -118,19 +135,20 @@ tokens
     caret_assign    # ^=
     lshift_assign   # <<=
     rshift_assign   # >>=
+    plus_wrap_assign   # +%=
+    minus_wrap_assign  # -%=
+    star_wrap_assign   # *%=
 
     # Punctuation
-    lparen          # (  grouping, parameter list, or a new operand
+    lparen          # (
     rparen          # )
-    lbrace          # {  (not used by Rig)
-    rbrace          # }  (not used by Rig)
-    lbracket        # [  array literal or slice/array type
+    lbracket        # [
     rbracket        # ]
     comma           # ,
     colon           # :
     arrow           # ->
     fat_arrow       # =>
-    dot             # .  member access
+    dot             # .
     dotdot          # ..
 
     # Layout (produced by the rewriter)
@@ -139,23 +157,16 @@ tokens
     newline
 
     # Rewriter-classified tokens
-    lparen_call     # (  touching the preceding value: call / generic args
-    lbracket_index  # [  touching the preceding value: index
     post_if         # if  postfix guard: `stmt if cond`
     ternary_if      # if  inline ternary: `a if cond else b`
     bar_capture     # |   closure bar list delimiter: `|+a, b|`
     bar_empty       # ||  an empty closure bar list: `|| print(1)`
-    dot_lit         # .   enum literal: `.red`
     kwarg_name      # name directly followed by `:` inside ( )
-    move_pfx        # <x  move
-    clone_pfx       # +x  clone
-    pin_pfx         # @x  pin (reserved)
-    read_pfx        # ?x  read borrow, ?T read-borrowed type
-    write_pfx       # !x  write borrow, !T write-borrowed type
-    share_pfx       # *x  share, *T shared type
     drop_stmt       # -x  drop, as a whole statement
-    suffix_q        # T?  optional type
-    suffix_bang     # T!  fallible type, x! propagate failure
+    of              # of  after a value inside [ ]: a fill literal `[n of x]`
+    dotdot_open     # ..  directly before `]`: an open range `xs[a..]`, `xs[..]`
+    nullish_jump    # ??  directly before `return`, `break`, or `continue`
+    step_colon      # :   the first `:` of a `while` header: its step
 
     # Misc
     comment
@@ -169,21 +180,33 @@ tokens
 '#' [^\n]*                                  → comment
 
 "\\\n"                                      → skip         # line continuation
+"\\\r\n"                                    → skip
 "\r\n"                                      → newline
 '\n'                                        → newline
-'\r'                                        → newline
 
-'"' ([^"\\$\n] | '\\' . | '$')* '"'         → string_dq
-"'" ([^'\n] | "''")* "'"                    → string_sq
+# Strings hold no control characters: a tab or newline is written as an
+# escape (`\t`, `\n`), which only double-quoted strings take.
+'"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* '"'  → string_dq
+"'" ([^'\x00-\x1f\x7f] | "''")* "'"             → string_sq
 
-'0' [xX] [0-9a-fA-F]+                       → integer
-'0' [bB] [01]+                              → integer
-'0' [oO] [0-7]+                             → integer
-[0-9]* '.' [0-9]+ ([Ee] [+-]? [0-9]+)?      → real
-[0-9]+ [Ee] [+-]? [0-9]+                    → real
-[0-9]+                                      → integer
+# Numbers: `_` may separate digits; radix prefixes are lowercase, and a
+# decimal number has no leading zero. Anything else that starts with a
+# digit is one malformed-number error.
+"0x" [0-9a-fA-F] ('_'? [0-9a-fA-F])*        → integer
+"0b" [01] ('_'? [01])*                      → integer
+"0o" [0-7] ('_'? [0-7])*                    → integer
+('0' | [1-9] ('_'? [0-9])*)? '.' [0-9] ('_'? [0-9])* ([eE] [+-]? [0-9] ('_'? [0-9])*)? → real
+('0' | [1-9] ('_'? [0-9])*) [eE] [+-]? [0-9] ('_'? [0-9])* → real
+'0' | [1-9] ('_'? [0-9])*                   → integer
+[0-9] [0-9a-zA-Z_]*                         → err
 
 "<<="                                       → lshift_assign
+"+%="                                       → plus_wrap_assign
+"-%="                                       → minus_wrap_assign
+"*%="                                       → star_wrap_assign
+"+%"                                        → plus_wrap
+"-%"                                        → minus_wrap
+"*%"                                        → star_wrap
 ">>="                                       → rshift_assign
 "**"                                        → power
 "=="                                        → eq
@@ -193,7 +216,6 @@ tokens
 "&&"                                        → and_sym
 "||"                                        → or_sym
 "=!"                                        → fixed_assign
-"<-"                                        → move_assign
 "+="                                        → plus_assign
 "-="                                        → minus_assign
 "*="                                        → star_assign
@@ -226,8 +248,6 @@ tokens
 '='                                         → assign
 '('                                         → lparen
 ')'                                         → rparen
-'{'                                         → lbrace
-'}'                                         → rbrace
 '['                                         → lbracket
 ']'                                         → rbracket
 ','                                         → comma
@@ -263,82 +283,86 @@ tokens
 @schema
     # Declarations
     module                      ...decls
-    use                         name:leaf
-    zig                         code:leaf
-    fun                         name:leaf params:group? returns? body:block
-    sub                         name:leaf params:group? body:block
+    use                         name alias:leaf?
+    fun                         name:leaf tparams:group? params:group? returns? body:block?
+    sub                         name:leaf tparams:group? params:group? fails:tag(fails)? body:block?
     lambda                      captures:captures? params:group? body:block
     struct, enum, errors        name:leaf ...members
-    generic_type, generic_enum  name:leaf params:group? ...members
+    generic_struct, generic_enum name:leaf tparams:group ...members
     type                        name:leaf type
     test                        name:leaf body:block
-    pub                         decl:fun|sub|struct|enum|errors|type|generic_type|generic_enum|test
+    pub                         decl
     extern                      name:leaf type
     extern_fun                  name:leaf params:group? returns?
     extern_sub                  name:leaf params:group?
+    zig_extern                  file:leaf ...decls
     drop_decl                   params:group body:block
     labeled                     label:leaf stmt
 
     # Parameters, fields, and enum members
-    ":", pre_param              name:leaf type
+    ":"                         name:leaf type
     default                     name:leaf type value
     valued                      name:leaf value
     variant                     name:leaf params:group
 
     # Bindings: `op` is the binding kind (see BindingKind in src/rig.zig)
-    set                         op:tag(fixed|shadow|move|"+="|"-="|"*="|"/="|"%="|"&="|"|="|"^="|"<<="|">>=")? target type? value
+    set                         op:tag(fixed|shadow|"+="|"-="|"*="|"/="|"%="|"+%="|"-%="|"*%="|"&="|"|="|"^="|"<<="|">>=")? target type? value
     drop                        name:leaf
+    pass
 
     # Control flow
     if                          cond then else?
     as                          value name:leaf
     while                       cond step? body:block else:block?
-    for                         mode:tag(iter|ptr|read|write|move) var:leaf index:leaf? source body:block else:block?
+    for                         mode:tag(iter|read|write|move) var:leaf index:leaf? source body:block else:block?
     match                       subject ...arms:arm
-    arm                         pattern body
+    arm                         pattern guard? body
+    alt_pattern                 ...alts
     range_pattern               lo hi
-    variant_pattern             name:leaf ...bindings:leaf
+    variant_pattern             name:leaf ...bindings
     enum_lit                    name:leaf
     return                      value?
     break                       value? label:leaf?
     continue                    label:leaf?
     defer, errdefer             body
-    raw_block, pre_block        body:block
-    pre, propagate              value
-    try_block                   body:block catch:catch_block?
-    catch_block                 name:leaf body:block
+    raw_block                   body:block
+    propagate, propagate_none   value
     catch                       value name:leaf? handler
     block                       ...stmts
 
     # Closures: the Parser wrapper splits a bar list into captures and
     # parameters
-    captures                    ...caps:cap_clone|cap_move|cap_weak @wrapper
-    cap_clone, cap_move, cap_weak  name:leaf
+    captures                    ...caps:cap_clone|cap_move|cap_weak|cap_read|cap_write @wrapper
+    cap_clone, cap_move, cap_weak, cap_read, cap_write  name:leaf
 
     # Calls and access
     call                        callee ...args
     builtin                     name:leaf ...args
     member                      object name:leaf
     index                       object index
+    inst                        object ...args
     array                       ...elems
+    array_fill                  size value
     kwarg                       name:leaf value
 
     # Operators
     "+", "-", "*", "/", "%"     left right
+    "+%", "-%", "*%"            left right
     "==", "!=", "<", ">", "<=", ">="  left right
     "&", "|", "^", "<<", ">>"   left right
-    "??", "..", and, or         left right
+    "??", and, or               left right
+    ".."                        left? right?
     neg, not                    operand
 
     # Ownership sigils (`~T`, `?T`, `!T`, `*T` in type position are the
     # type kinds below, except `weak`, which is both)
-    move, read, write, clone, share, weak, pin  operand
+    move, read, write, clone, share, weak  operand
 
     # Types
     optional, error_union, borrow_read, borrow_write, shared, slice  type
-    generic_inst                name:leaf ...args
-    array_type                  size:leaf type
-    fun_type                    params:group? returns?
+    generic_inst                name ...args
+    array_type                  size type
+    fun_type                    params:group? returns? fails:tag(fails)?
 
 @display
     # Tokens by what they read as in a message; every keyword and
@@ -347,33 +371,34 @@ tokens
     STRING_SQ: "a string", STRING_DQ: "a string"
     NEWLINE: "the end of the line", INDENT: "an indented block"
     OUTDENT: "the end of the block"
-    LPAREN_CALL: "`(`", LBRACKET_INDEX: "`[`"
-    POST_IF: "`if`", TERNARY_IF: "`if`"
-    BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`", DOT_LIT: "`.`"
-    KWARG_NAME: "a keyword argument"
-    MOVE_PFX: "`<`", CLONE_PFX: "`+`", PIN_PFX: "`@`", READ_PFX: "`?`"
-    WRITE_PFX: "`!`", SHARE_PFX: "`*`", DROP_STMT: "`-`", MINUS_PREFIX: "`-`"
-    SUFFIX_Q: "`?`", SUFFIX_BANG: "`!`"
+    POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
+    KWARG_NAME: "a keyword argument", DROP_STMT: "`-`"
+    OF: "`of`", DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
     ERROR: "`error`", EXTERN: "`extern`", FOR: "`for`", FUN: "`fun`", IF: "`if`", IN: "`in`"
-    MATCH: "`match`", NEW: "`new`", NOT: "`not`", OR: "`or`", PRE: "`pre`", PUB: "`pub`"
+    MATCH: "`match`", NEW: "`new`", NOT: "`not`", OR: "`or`", PASS: "`pass`", PUB: "`pub`"
     RAW: "`raw`", RETURN: "`return`", STRUCT: "`struct`", SUB: "`sub`", TEST: "`test`", TRY: "`try`"
     TYPE: "`type`", USE: "`use`", WHILE: "`while`", ZIG: "`zig`"
+    ASYNC: "`async`", AWAIT: "`await`", CONST: "`const`", IMPL: "`impl`"
+    TRAIT: "`trait`", WHEN: "`when`", WHERE: "`where`", YIELD: "`yield`"
     "=": "`=`", "+=": "`+=`", "-=": "`-=`", "*=": "`*=`", "/=": "`/=`", "%=": "`%=`"
     "&=": "`&=`", "|=": "`|=`", "^=": "`^=`", "<<=": "`<<=`", ">>=": "`>>=`", "=!": "`=!`"
-    "<-": "`<-`", ":": "`:`", "->": "`->`", "(": "`(`", ")": "`)`", "[": "`[`"
+    "+%=": "`+%=`", "-%=": "`-%=`", "*%=": "`*%=`", "+%": "`+%`", "-%": "`-%`", "*%": "`*%`"
+    ":": "`:`", "->": "`->`", "(": "`(`", ")": "`)`", "[": "`[`"
     "]": "`]`", ",": "`,`", ".": "`.`", "..": "`..`", "=>": "`=>`", "~": "`~`"
     "@": "`@`", "==": "`==`", "!=": "`!=`", "<": "`<`", ">": "`>`", "<=": "`<=`"
     ">=": "`>=`", "??": "`??`", "|": "`|`", "^": "`^`", "&": "`&`", "<<": "`<<`"
     ">>": "`>>`", "+": "`+`", "-": "`-`", "*": "`*`", "/": "`/`", "%": "`%`"
+    "!": "`!`", "?": "`?`"
 
 @errors
     stmt: "a statement", block: "an indented block", type: "a type"
-    expr: "an expression", tail: "an expression", value: "a value"
+    expr: "an expression", tail: "an expression"
+    value: "a value"
     field: "a parameter", member: "a member"
     pattern: "a pattern", arm: "a match arm", params: "a parameter list"
-    unary: "an operand"
+    unary: "an operand", step: "an assignment or a call"
 
 # ==============================================================================
 # PROGRAM STRUCTURE
@@ -394,32 +419,32 @@ stmt     = use
          | extvar
          | ext_fun
          | ext_sub
-         | zig
+         | zig_ext
          | ":" label:name stmt:stmt                 → (labeled)
          | simple
          | simple POST_IF cond:value                → (if then:(block 1))
 
-# A simple statement: an expression, a paren-free call, a binding, or a
-# flow statement. Only these take a postfix guard (`return x if done`).
+# A simple statement: an expression, a binding, `pass`, or a flow statement. Only these take a postfix guard (`return x if done`).
 # A compound assignment's `op` is the tag its operator names (`+=`).
 simple   = tail
-         | target:postfix "="   value:tail          → (set)
-         | target:postfix
-           op:("+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=")
-           value:tail                               → (set)
+         | assign
          | target:postfix "=!"  value:tail          → (set op:fixed)
-         | target:postfix "<-"  value:tail          → (set op:move)
          | target:name ":" type:type "="  value:tail → (set)
          | target:name ":" type:type "=!" value:tail → (set op:fixed)
          | NEW target:name "=" value:tail           → (set op:shadow)
          | DROP_STMT name:name                      → (drop)
+         | PASS                                     → (pass)
          | RETURN [value:tail]                      → (return)
          | BREAK [":" label:name] [value:tail]      → (break)
          | CONTINUE [":" label:name]                → (continue)
          | DEFER body:(block | simple)              → (defer)
          | ERRDEFER body:(block | simple)           → (errdefer)
-         | PRE body:block                           → (pre_block)
          | RAW body:block                           → (raw_block)
+
+assign   = target:postfix "="   value:tail          → (set)
+         | target:postfix
+           op:("+=" | "-=" | "*=" | "/=" | "%=" | "+%=" | "-%=" | "*%=" | "&=" | "|=" | "^=" | "<<=" | ">>=")
+           value:tail                               → (set)
 
 # ==============================================================================
 # DECLARATIONS
@@ -427,41 +452,69 @@ simple   = tail
 
 decl     = defn
          | PUB decl:defn                            → (pub)
+         | PUB decl:const                           → (pub)
+
+# A public module-level constant, `pub LIMIT = 4`. A `=!` parses too, so
+# that the Parser wrapper can say a module-level binding needs none.
+const    = target:name "="  value:tail              → (set)
+         | target:name ":" type:type "="  value:tail → (set)
+         | target:name "=!" value:tail              → (set op:fixed)
+         | target:name ":" type:type "=!" value:tail → (set op:fixed)
 
 defn     = fun | sub | enum | struct | errors | typedef | test
 
-use      = USE name:name                            → (use)
+# `use geo`, `use geo as g`, `use std.os`, `use std.os as o`: a module
+# beside the root file, or one of the standard library.
+use      = USE name:mpath                           → (use)
+         | USE name:mpath AS alias:name             → (use)
 
-fun      = FUN name:name [params:params] [returns:returns] body:block → (fun)
-sub      = SUB name:name [params:params] body:block → (sub)
+mpath    = name
+         | object:name "." name:name                → (member)
+
+fun      = FUN name:name [tparams:tparams] [params:params] [returns:returns] body:block → (fun)
+sub      = SUB name:name [tparams:tparams] [params:params] body:block → (sub)
+         | SUB name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)  # `sub save(p: Page)!`
 
 returns  = "->" type                                → 2
 
-params   = !lparen L(field) ")"                     → (...2)
-         | !lparen          ")"                     → ()
+params   = "(" fields ![","] ")"                     → (...2)
+         | "(" ")"                                  → ()
 
-lparen   = LPAREN_CALL | "("
+# Compile-time parameters, in brackets after the declared name: a bare
+# name is a type parameter, `name: Type` a compile-time value.
+tparams  = "[" tfields ![","] "]"                    → (...2)
+
+tfields  = tfield                                   → (1)
+         | tfields "," tfield                       → (...1 3)
+
+tfield   = name
+         | name:name ":" type:type                  → (:)
+
+# Written out rather than `L(field)`, which conflicts with a trailing
+# comma.
+fields   = field                                    → (1)
+         | fields "," field                         → (...1 3)
 
 # Parameters, struct fields, and enum variants share one shape.
 field    = fname
          | name:fname ":" type:type                 → (:)
          | name:fname ":" type:type "=" value:expr  → (default)
-         | PRE name:fname ":" type:type             → (pre_param)
-         | READ_PFX  operand:fname                  → (read)       # `?self`
-         | WRITE_PFX operand:fname                  → (write)      # `!self`
+         | "?" operand:fname                        → (read)       # `?self`
+         | "!" operand:fname                        → (write)      # `!self`
+         | "<" operand:fname                        → (move)       # `<self`
 
 # Inside ( ) the rewriter turns a name followed by `:` into KWARG_NAME.
 fname    = name | KWARG_NAME
 
 enum     = ENUM name:name INDENT members:members OUTDENT     → (enum)
-         | ENUM name:name params:params INDENT members:members OUTDENT
+         | ENUM name:name tparams:tparams INDENT members:members OUTDENT
                                                     → (generic_enum)
 errors   = ERROR name:name INDENT members:members OUTDENT    → (errors)
 struct   = STRUCT name:name INDENT members:members OUTDENT   → (struct)
+         | STRUCT name:name tparams:tparams INDENT members:members OUTDENT
+                                                    → (generic_struct)
 
 typedef  = TYPE name:name "=" type:type             → (type)
-         | TYPE name:name [params:params] INDENT members:members OUTDENT
-                                                    → (generic_type)
 
 members  = member                                   → (1)
          | members NEWLINE member                   → (...1 3)
@@ -472,61 +525,132 @@ member   = field
          | name:name params:params                  → (variant)    # `circle(r: Int)`
          | fun
          | sub
-         | DROP params:dparams body:block           → (drop_decl)  # `drop self: !Self`
+         | DROP params:params body:block            → (drop_decl)  # `drop(!self)`
+         | PUB decl:member                          → (pub)        # `pub len: Int`
 
-# Sema requires exactly one: `self: !Self`.
-dparams  = L(field)                                 → (...1)
-
-test     = TEST name:STRING_DQ body:block           → (test)
+test     = TEST name:(STRING_DQ | STRING_SQ) body:block → (test)
 
 extvar   = EXTERN name:name ":" type:type           → (extern)
 
 ext_fun  = EXTERN FUN name:name [params:params] [returns:returns] → (extern_fun)
 ext_sub  = EXTERN SUB name:name [params:params]     → (extern_sub)
 
-zig      = ZIG code:(STRING_DQ | STRING_SQ)         → (zig)
+# Declarations the Zig file `file` implements (the standard library's
+# only): a `fun` or `sub` without a body, whose file declares a Zig
+# function of the type its signature lowers to.
+zig_ext  = EXTERN ZIG file:STRING_DQ INDENT decls:zdecls OUTDENT → (zig_extern)
+
+zdecls   = zdecl                                    → (1)
+         | zdecls NEWLINE zdecl                     → (...1 3)
+         | zdecls NEWLINE                           → 1
+
+zdecl    = zfun
+         | PUB decl:zfun                            → (pub)
+
+zfun     = FUN name:name [tparams:tparams] [params:params] [returns:returns] → (fun)
+         | SUB name:name [tparams:tparams] [params:params] → (sub)
+         | SUB name:name [tparams:tparams] [params:params] "!" → (sub fails:fails)
 
 # ==============================================================================
 # TYPES
 # ==============================================================================
 #
-# Suffixes bind tighter than prefixes: `*User?` is a shared optional User;
-# an optional shared handle is written `(*User)?`.
+# The handle sigils `*` and `~` bind to the type after them, tighter than
+# the suffixes: `*User?` is an optional shared handle, and a handle to an
+# optional is `*(User?)`. A borrow applies to the whole type after it,
+# suffixes included: `?User?` borrows an optional User. The element of a
+# slice or array takes the suffixes too (`[]Int?`), and a function type
+# takes none, so an optional of one is written in parentheses.
 
-type     = READ_PFX  type:type                      → (borrow_read)
-         | WRITE_PFX type:type                      → (borrow_write)
-         | SHARE_PFX type:type                      → (shared)
-         | "~"       operand:type                   → (weak)
-         | "[" "]" type:type                        → (slice)
-         | "[" size:INTEGER "]" type:type           → (array_type)
-         | FUN "(" [params:L(type)] ")" returns:type → (fun_type)   # `fun(Int) Int`
-         | SUB "(" [params:L(type)] ")"             → (fun_type)   # `sub(Int)`
+type     = "?" type:type                            → (borrow_read)
+         | "!" type:type                            → (borrow_write)
+         | ptype
          | tsuffix
 
-tsuffix  = type:tsuffix SUFFIX_Q                    → (optional)
-         | type:tsuffix SUFFIX_BANG                 → (error_union)
+# A prefix type that takes no suffix, alone or behind handles.
+ptype    = "[" "]" type:type                        → (slice)
+         | "[" size:dim "]" type:type               → (array_type)
+         | FUN "(" [params:L(type)] ")" "->" returns:type → (fun_type)  # `fun(Int) -> Int`
+         | SUB "(" [params:L(type)] ")"             → (fun_type)   # `sub(Int)`
+         | SUB "(" [params:L(type)] ")" "!"         → (fun_type fails:fails)  # `sub(Int)!`
+         | "*" type:ptype                           → (shared)     # `*fun(Int) -> Int`
+         | "~" operand:ptype                        → (weak)
+
+tsuffix  = type:tsuffix "?"                         → (optional)
+         | type:tsuffix "!"                         → (error_union)
+         | thandle
+
+thandle  = "*" type:thandle                         → (shared)
+         | "~" operand:thandle                      → (weak)
          | tatom
 
-tatom    = name
-         | object:name "." name:name                → (member)     # `geo.Point`
-         | TYPE                                     # `pre T: type`
-         | name:name LPAREN_CALL [args:L(type)] ")" → (generic_inst)
+tatom    = tname
+         | name:tname "[" args:types ![","] "]"      → (generic_inst)
          | "(" type ")"                             → 2
+
+# A named type, of this module or another: `Point`, `geo.Point`. Its
+# instance names it the same way: `Wrap[Int]`, `lib.Wrap[Int]`.
+tname    = name
+         | object:name "." name:name                → (member)
+
+# Compile-time arguments; written out rather than `L(targ)`, which
+# conflicts with a trailing comma.
+types    = targ                                     → (1)
+         | types "," targ                           → (...1 3)
+
+# A compile-time argument in a type: a type, or a compile-time integer.
+# A bare name is read as a type; the checker reads it as a value where
+# the parameter is one. An integer or arithmetic is always a value.
+targ     = type
+         | INTEGER
+         | "-" operand:INTEGER                      → (neg)
+         | "(" INTEGER ")"                          → 2
+         | cexp
+
+# An array size: an integer, a name (a constant or a compile-time
+# parameter), a module's constant, or arithmetic on them, any of them
+# in parentheses. A negative integer parses, to be reported as out of
+# range.
+dim      = INTEGER
+         | "-" operand:INTEGER                      → (neg)
+         | "(" INTEGER ")"                          → 2
+         | name
+         | "(" name ")"                             → 2
+         | object:name "." name:name                → (member)
+         | cexp
+
+# Arithmetic on compile-time integers, with at least one operator, so
+# that a bare name stays a type. Operands are integers, names, module
+# constants, and parenthesized arithmetic.
+cexp     = cmulop
+         | caddop
+         | "(" cexp ")"                             → 2
+caddop   = left:cadd "+" right:cmul                 → (+)
+         | left:cadd "-" right:cmul                 → (-)
+cadd     = caddop
+         | cmul
+cmulop   = left:cmul "*" right:cunit                → (*)
+         | left:cmul "/" right:cunit                → (/)
+         | left:cmul "%" right:cunit                → (%)
+cmul     = cmulop
+         | cunit
+cunit    = INTEGER
+         | name
+         | object:name "." name:name                → (member)
+         | "(" cexp ")"                             → 2
 
 # ==============================================================================
 # EXPRESSIONS
 # ==============================================================================
 #
-#   tail    an expression, a paren-free call, or a closure whose body is one.
-#           Allowed where nothing can follow on the line: a statement, the
-#           right side of a binding, `return`, a match arm, the last
-#           argument of a call.
+#   tail    an expression, or a closure whose body is an assignment: a
+#           statement, a match arm, and the right side of a binding,
+#           `return`, and `break`.
 #   expr    anything that yields a value, including block forms.
-#   value   an expression without a block or closure: conditions, operands,
-#           ternary branches.
+#   value   an expression without a block or closure: conditions, sources,
+#           subjects, operands, ternary branches.
 
 tail     = expr
-         | cmd
          | cclosure
 
 expr     = value
@@ -534,148 +658,193 @@ expr     = value
          | while
          | for
          | match
-         | try_block
          | value:logic CATCH BAR_CAPTURE name:name BAR_CAPTURE handler:block → (catch)
          | closure
-         | PRE value:value                          → (pre)
 
 value    = then:logic TERNARY_IF cond:logic ELSE else:value → (if)
          | value:logic CATCH [BAR_CAPTURE name:name BAR_CAPTURE] handler:value → (catch)
+         | value:logic CATCH [BAR_CAPTURE name:name BAR_CAPTURE] handler:jump → (catch)
+         | left:logic NULLISH_JUMP right:jump        → (??)
          | logic
+
+# A jump as the fallback of `??` or a `catch` handler: `get(k) ?? return
+# none`, `parse(s) catch break :outer`. It takes the rest of the
+# expression, so its left side is a whole `logic`, as `catch`'s is; the
+# rewriter marks a `??` before a jump as NULLISH_JUMP. In a `while`
+# header, the rewriter marks the `:` that starts the step as STEP_COLON,
+# so a jump there takes no label.
+jump     = RETURN [value:value]                     → (return)
+         | BREAK [":" label:name] [value:value]     → (break)
+         | CONTINUE [":" label:name]                → (continue)
 
 logic    = left:logic OR right:conj                 → (or)
          | conj
 conj     = left:conj AND right:neg                  → (and)
          | neg
 neg      = NOT operand:neg                          → (not)
+         | value:@infix AS name:name                → (as)
          | @infix
 
-cond     = value
-         | cmd
-
-# --- Paren-free calls ---------------------------------------------------------
-#
-# `print p.x` is print(p.x); `send encode <packet` is send(encode(<packet)).
-# A nested paren-free call can only be the last argument.
-
-cmd      = callee:postfix args:cmdargs              → (call)
-
-# These argument lists are written out rather than `L(expr)`:
-# `L(expr) "," cmdtail` conflicts on the comma.
-cmdargs  = exprs                                    → 1
-         | exprs "," cmdtail                        → (...1 3)
-         | cmdtail                                  → (1)
-
+# Written out rather than `L(expr)`, which conflicts with a trailing
+# comma.
 exprs    = expr                                     → (1)
          | exprs "," expr                           → (...1 3)
-
-cmdtail  = cmd
-         | cclosure
 
 # --- Control flow -------------------------------------------------------------
 
 # `if e as name` / `while e as name`: `e` is an optional; the body runs
-# with `name` bound to the value inside it.
-ifcond   = cond
-         | value:value AS name:name                 → (as)
+# with `name` bound to the value inside it. `as` binds tighter than
+# `and`, so bindings and Bool conditions join into one condition:
+# `if a as x and x > 0 and b as y`. The checker takes `as` only there.
+if       = IF cond:value then:block [ELSE else:block] → (if)
+         | IF cond:value then:block ELSE else:if    → (if)
 
-if       = IF cond:ifcond then:block [ELSE else:block] → (if)
-         | IF cond:ifcond then:block ELSE else:if   → (if)
+while    = WHILE cond:value [STEP_COLON step:step] body:block [ELSE else:block] → (while)
 
-while    = WHILE cond:ifcond [":" step:simple] body:block [ELSE else:block] → (while)
+# A `while` step runs after each iteration: an assignment, or a call,
+# which may propagate its failure (the checker rejects other forms). A
+# call's receiver may take `?`, `!`, or `<` (see the Parser wrapper).
+step     = assign
+         | postfix
+         | "?" operand:postfix                      → (read)
+         | "!" operand:postfix                      → (write)
+         | "<" operand:postfix                      → (move)
 
 # The Parser wrapper moves a `?xs` / `!xs` / `<xs` source sigil into the
 # mode slot.
-for      = FOR SHARE_PFX var:name ["," index:name] IN source:cond body:block [ELSE else:block]
-                                                    → (for mode:ptr)
-         | FOR var:name ["," index:name] IN source:cond body:block [ELSE else:block]
+for      = FOR var:name ["," index:name] IN source:value body:block [ELSE else:block]
                                                     → (for mode:iter)
 
-match    = MATCH subject:cond INDENT arms:arms OUTDENT → (match)
+match    = MATCH subject:value INDENT arms:arms OUTDENT → (match)
 
 arms     = arm                                      → (1)
          | arms NEWLINE arm                         → (...1 3)
          | arms NEWLINE                             → 1
 
-arm      = pattern:pattern "=>" body:simple         → (arm)
-         | pattern:pattern body:block               → (arm)
+# An arm's pattern may list alternatives (`1, 2 =>`) and take a guard
+# (`.circle(r) if r > 0 =>`); the rewriter classifies an `if` after a
+# pattern as POST_IF, as after a statement.
+arm      = pattern:pats "=>" body:simple            → (arm)
+         | pattern:pats POST_IF guard:value "=>" body:simple → (arm)
+         | pattern:pats body:block                  → (arm)
+         | pattern:pats POST_IF guard:value body:block → (arm)
+
+pats     = pattern
+         | alts:palts                               → (alt_pattern)
+
+# Written out rather than `L(pattern)`, which conflicts with a trailing
+# comma.
+palts    = pattern "," pattern                      → (1 3)
+         | palts "," pattern                        → (...1 3)
 
 pattern  = patatom
          | lo:patatom ".." hi:patatom               → (range_pattern)
 
+# A member of an error set is named with its set, `E.name`, or through
+# its module, `m.E.name`. The module's set is its own rule rather than
+# `tname`, whose lone name would need a second token of lookahead.
 patatom  = name
-         | ELSE                                     # default arm
+         | object:name "." name:name                → (member)
+         | object:pqual "." name:name               → (member)
          | INTEGER
-         | MINUS_PREFIX operand:INTEGER             → (neg)
-         | REAL
-         | STRING_SQ
-         | STRING_DQ
+         | "-" operand:INTEGER                      → (neg)
          | TRUE
          | FALSE
-         | DOT_LIT name:name                        → (enum_lit)
-         | DOT_LIT name:name LPAREN_CALL [bindings:L(name)] ")" → (variant_pattern)
+         | "." name:name                            → (enum_lit)
+         | "." name:name "(" ")"                    → (variant_pattern)
+         | "." name:name "(" bindings:pbinds ![","] ")" → (variant_pattern)
 
-# The value-yielding try block is reserved; sema rejects it.
-try_block  = TRY body:block [catch:catch_part]      → (try_block)
+pqual    = object:name "." name:name                → (member)
 
-catch_part = CATCH BAR_CAPTURE name:name BAR_CAPTURE body:block → (catch_block)
+# A payload field is bound by position (`.rect(w, h)`) or, reserved for
+# the checker to reject, by name (`.rect(w: a)`). Written out rather
+# than `L(pbind)`, which conflicts with a trailing comma.
+pbinds   = pbind                                    → (1)
+         | pbinds "," pbind                         → (...1 3)
+
+pbind    = name
+         | name:KWARG_NAME ":" value:name           → (kwarg)
 
 # --- Closures -----------------------------------------------------------------
 #
 # A closure starts with its bar list. An entry with a sigil is a capture;
 # a bare name is a parameter, optionally typed:
 #   |+x| clone (a copy, for a Copy value)   |<x| move   |~x| weak
+#   |?x| read borrow   |!x| write borrow
 #   |a, b| a + b      |+v, a: Int| v.set(a)      || print("tick")
 # `*` before the bars makes an owned closure: `*|+v, a| v.set(a)`. The
 # grammar puts every entry in `params`; the Parser wrapper moves the
 # captures into `(captures ...)`.
 
 closure  = lambda
-         | SHARE_PFX operand:lambda                 → (share)
+         | "*" operand:lambda                       → (share)
 
 lambda   = params:bars body:block                   → (lambda)
          | params:bars expr                         → (lambda body:(block 2))
 
-# A closure whose inline body is a paren-free call.
+# A closure whose inline body is an assignment (`|!t, n| t += n`).
 cclosure = clambda
-         | SHARE_PFX operand:clambda                → (share)
+         | "*" operand:clambda                      → (share)
 
-clambda  = params:bars cmd                          → (lambda body:(block 2))
+clambda  = params:bars assign                       → (lambda body:(block 2))
 
-bars     = BAR_CAPTURE L(barent) BAR_CAPTURE        → (...2)
+bars     = BAR_CAPTURE barents ![","] BAR_CAPTURE    → (...2)
          | BAR_EMPTY                                → ()
+
+barents  = barent                                   → (1)
+         | barents "," barent                       → (...1 3)
 
 barent   = fname
          | name:fname ":" type:type                 → (:)
-         | CLONE_PFX name:name                      → (cap_clone)
-         | MOVE_PFX  name:name                      → (cap_move)
-         | "~"       name:name                      → (cap_weak)
+         | "+" name:name                            → (cap_clone)
+         | "<" name:name                            → (cap_move)
+         | "~" name:name                            → (cap_weak)
+         | "?" name:name                            → (cap_read)
+         | "!" name:name                            → (cap_write)
 
 
 # ==============================================================================
 # OPERANDS
 # ==============================================================================
 
-unary    = MINUS_PREFIX operand:unary               → (neg)
-         | MOVE_PFX  operand:unary                  → (move)
-         | CLONE_PFX operand:unary                  → (clone)
-         | READ_PFX  operand:unary                  → (read)
-         | WRITE_PFX operand:unary                  → (write)
-         | SHARE_PFX operand:unary                  → (share)
-         | "~"       operand:unary                  → (weak)
-         | PIN_PFX   operand:unary                  → (pin)
+unary    = "-" operand:unary                        → (neg)
+         | "<" operand:unary                        → (move)
+         | "+" operand:unary                        → (clone)
+         | "?" operand:unary                        → (read)
+         | "!" operand:unary                        → (write)
+         | "*" operand:unary                        → (share)
+         | "~" operand:unary                        → (weak)
          | postfix
 
 postfix  = object:postfix "." name:name             → (member)
-         | object:postfix LBRACKET_INDEX index:expr "]" → (index)
-         | callee:postfix LPAREN_CALL args:args ")" → (call)
-         | value:postfix SUFFIX_BANG                → (propagate)
+         | object:postfix "[" index:expr "]"        → (index)
+         | object:postfix "[" index:open "]"        → (index)
+         | object:postfix "[" args:targs "]"        → (inst)
+         | callee:postfix "(" args:args ")"         → (call)
+         | value:postfix "!"                        → (propagate)
+         | value:postfix "?"                        → (propagate_none)
          | atom
 
+# A slice's open range: `xs[a..]`, `xs[..b]`, `xs[..]`. The rewriter
+# marks a `..` whose next token is `]` as DOTDOT_OPEN, so `xs[a == b..]`
+# ends the expression before it; a `..` that starts an operand needs no
+# mark, since no expression starts with one.
+open     = left:expr DOTDOT_OPEN                    → (..)
+         | ".." right:expr                          → (..)
+         | DOTDOT_OPEN                              → (..)
+
 args     = callargs                                 → 1
-         | callargs "," cmdtail                     → (...1 3)
-         | cmdtail                                  → (1)
+         | callargs ","                             → 1
+         | callargs "," cclosure                    → (...1 3)
+         | cclosure                                 → (1)
          |                                          → ()
+
+# Two or more compile-time arguments (`Pair[Int, String]`); sema reads
+# one (`Vec[Int]`, an `index`) as compile-time arguments or an index by
+# what the object names.
+targs    = expr ","                                 → (1)
+         | expr "," expr                            → (1 3)
+         | expr "," targs                           → (1 ...3)
 
 callargs = callarg                                  → (1)
          | callargs "," callarg                     → (...1 3)
@@ -690,10 +859,13 @@ atom     = name
          | STRING_DQ
          | TRUE
          | FALSE
-         | DOT_LIT name:name                        → (enum_lit)
-         | "@" name:name LPAREN_CALL args:args ")"  → (builtin)
-         | "[" [elems:L(expr)] "]"                  → (array)
-         | "(" tail ")"                             → 2
+         | "." name:name                            → (enum_lit)
+         | "@" name:name "(" args:args ")"          → (builtin)
+         | "[" [elems:exprs] "]"                    → (array)
+         | "[" elems:exprs "," "]"                  → (array)
+         | "[" size:expr OF value:expr "]"          → (array_fill)  # `[n of 0]`
+         | "(" expr ")"                             → 2
+         | "(" cclosure ")"                         → 2
 
 # ==============================================================================
 # INFIX OPERATORS (lowest precedence first; operands are `unary`)
@@ -707,5 +879,5 @@ atom     = name
     "^"  left
     "&"  left
     "<<" left, ">>" left
-    "+"  left, "-"  left
-    "*"  left, "/"  left, "%"  left
+    "+"  left, "-"  left, "+%" left, "-%" left
+    "*"  left, "/"  left, "%"  left, "*%" left

@@ -1,13 +1,13 @@
 # The same character is an infix operator when spaced (`a < x`, `a * b`,
 # `a + b`, `a % b`, `a - b`) and an ownership sigil when tight against its
-# operand at expression start (`<s`, `*Box`, `+s`, `?box`). `-x` is
+# operand at expression start (`<s`, `*Wrap`, `+s`, `?box`). `-x` is
 # negation in an expression and a drop at statement start; `@name(...)`
 # is a builtin call.
 
-struct Box
+struct Wrap
   v: Int
 
-fun show(b: ?Box) -> Int
+fun show(b: ?Wrap) -> Int
   b.v
 
 sub main()
@@ -21,14 +21,14 @@ sub main()
   print(a - b)
   y = -x              # negation
   print(y)
-  print(@sizeOf(Box)) # builtin call
-  s = *Box(v: 10)     # share
+  print(@sizeOf(Wrap)) # builtin call
+  s = *Wrap(v: 10)     # share
   t = +s              # clone
   u = <s              # move
   print(u.v)
   -u                  # drop statement
   print(t.v)
-  box = Box(v: 1)
+  box = Wrap(v: 1)
   print(show(?box))   # read borrow
 
 # expect:

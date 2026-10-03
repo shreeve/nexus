@@ -12,12 +12,12 @@ sub call(w: ?~sub())
     print("gone")
 
 sub main()
-  f: *fun(Int) Int = *|a| a + 1
-  g: *fun(Int) Int = *|~f, a|
+  f: *fun(Int) -> Int = *|a| a + 1
+  g: *fun(Int) -> Int = *|~f, a|
     if f.upgrade() as h
       return h(a) * 10
     0
-  w: ~fun(Int) Int = ~f
+  w: ~fun(Int) -> Int = ~f
   if w.upgrade() as h
     print(h(1), g(1))
   -f
@@ -26,8 +26,8 @@ sub main()
   s: *sub() = *|| print("hi")
   holder = H(cb: ~s)
   call(?holder.cb)
-  v: Vec(~sub()) = Vec()
-  (!v).push(~s)
+  v: Vec[~sub()] = Vec()
+  !v.push(~s)
   for x in ?v
     call(?x)
   -s

@@ -1,8 +1,8 @@
 pub struct Noisy
-  n: Int
+  pub n: Int
 
-  drop self: !Noisy
+  drop(!self)
     print("drop", self.n)
 
 pub struct Holder
-  b: *Noisy
+  pub b: *Noisy

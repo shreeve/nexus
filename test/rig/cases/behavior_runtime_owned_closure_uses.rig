@@ -9,15 +9,15 @@ struct Button
     self.on_click(n)
 
 sub main()
-  total: *Cell(Int) = *Cell(value: 0)
+  total: *Cell[Int] = *Cell(0)
   button = Button(on_click: *|+total, n| total.set(total.get() + n))
   button.click(4)
   button.click(5)
   print(total.get())
 
-  fs: Vec(*fun(Int) Int) = Vec()
-  (!fs).push(*|x| x + 1)
-  (!fs).push(*|x| x * 10)
+  fs: Vec[*fun(Int) -> Int] = Vec()
+  !fs.push(*|x| x + 1)
+  !fs.push(*|x| x * 10)
   for f in ?fs
     print(f(3))
 

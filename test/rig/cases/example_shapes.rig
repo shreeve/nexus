@@ -18,12 +18,12 @@ struct Canvas
   fun fits(?self, s: ?Shape) -> Bool
     area(s) <= self.width * self.height
 
-type Pair(T)
+struct Pair[T]
   left: T
   right: T
 
-sub main()
-  shapes: Pair(Shape) = Pair(left: .circle(radius: 2), right: .rect(w: 3, h: 5))
+sub main
+  shapes: Pair[Shape] = Pair(left: .circle(2), right: .rect(w: 3, h: 5))
   print(area(?shapes.left))
   print(area(?shapes.right))
 

@@ -10,4 +10,4 @@ sub main()
   print(big / 1e9, small * 1000.0, mid, typed, hex)
 
 # expect:
-# 10 2 150 300 225
+# 10.0 2.0 150.0 300.0 225

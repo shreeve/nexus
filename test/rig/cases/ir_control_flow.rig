@@ -25,18 +25,22 @@ sub main()
     i = i + 1
     if i == 2
       continue
-    print i
+    print(i)
 
   for n in ?items
     if n > 10
       break
-    print n
+    print(n)
 
   size = 5
   match size
-    1..3 => print "small"
-    4..6 => print "medium"
-    else => print "large"
+    1..3 => print("small")
+    4..6 => print("medium")
+    _ => print("large")
+  match size
+    1, 2 => print("tiny")
+    n if n > 4 => print(n)
+    _ => print("other")
 
   label = if size > 3
     "big"
@@ -44,13 +48,13 @@ sub main()
     "small"
   word = match size
     5 => "five"
-    else => "other"
+    _ => "other"
 
   if size > 0
     return
 
-sub optionals(m: Int?, v: !Vec(Int))
+sub optionals(m: Int?, v: !Vec[Int])
   if m as x
-    print x
+    print(x)
   while v.pop() as y
-    print y
+    print(y)

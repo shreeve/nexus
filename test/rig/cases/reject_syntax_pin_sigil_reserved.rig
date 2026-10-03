@@ -1,9 +1,9 @@
 # The `@x` pin sigil is reserved: pinning has no semantics yet, so a
-# tight `@` before a name (not a `@builtin(...)` call) is rejected.
+# tight `@` before a name (not a `@builtin(...)` call) is a lexical error.
 
 sub main()
   x = 42
   p = @x
   print(p)
 
-# error: pinning sigil `@x` is reserved
+# error: the pin sigil `@x` is reserved

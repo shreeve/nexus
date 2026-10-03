@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@81..83
+    _
     (block
       (call `print` `"a\\tb"`)@86..99
       (call `print` `"q\\"x\\\\y"`)@102..118

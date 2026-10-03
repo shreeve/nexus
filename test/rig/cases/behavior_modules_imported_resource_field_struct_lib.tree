@@ -2,8 +2,8 @@
   (pub
     (struct
       `Noisy`
-      (: `n` `Int`)@19..25
+      (pub (: `n` `Int`)@23..29)@19..29
       (drop_decl
-        ((: `self` (borrow_write `Noisy`)@40..46)@34..46)@34..46
-        (block (call `print` `"drop"` (member `self` `n`)@65..71)@51..72)@51..74)@29..74)@4..74)@0..74
-  (pub (struct `Holder` (: `b` (shared `Noisy`)@97..103)@94..103)@78..104)@74..104)@0..104
+        ((write `self`)@38..43)@37..44
+        (block (call `print` `"drop"` (member `self` `n`)@63..69)@49..70)@49..72)@33..72)@4..72)@0..72
+  (pub (struct `Holder` (pub (: `b` (shared `Noisy`)@99..105)@96..105)@92..105)@76..106)@72..106)@0..106

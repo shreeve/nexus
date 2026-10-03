@@ -10,7 +10,7 @@ fun balance_of(a: ?Account) -> Int
 sub close(a: Account)
   print(a.balance)
 
-sub main()
+sub main
   acct = Account(owner: "ada", balance: 100)
   print(balance_of(?acct))    # read borrow: acct stays usable
   moved = <acct               # move: `acct` is gone from here on

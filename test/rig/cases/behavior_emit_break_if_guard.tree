@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@61..63
+    _
     (block
       (set _ `i` _ `0`)@66..71
       (while

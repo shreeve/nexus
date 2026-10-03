@@ -1,18 +1,21 @@
 (module
   (fun
     `loud`
+    _
     ((: `v` `Bool`)@191..198)@190..199
     `Bool`
-    (block (call `print` `"evaluated"`)@210..227 `v`)@210..233)@182..233
+    (block (call `print` `"evaluated"`)@210..228 `v`)@210..234)@182..234
   (sub
     `main`
-    ()@241..243
+    _
+    ()@242..244
+    _
     (block
-      (set _ `a` _ `1`)@246..251
-      (set _ `b` _ `2`)@254..259
-      (call `print` (not (== `a` `b`)@272..278)@268..278)@262..278
-      (call `print` (or `true` (and `false` `false`)@295..310)@287..310)@281..310
-      (call `print` (and (or `true` `false`)@320..333 `false`)@319..344)@313..344
-      (call `print` (and `false` (call `loud` `true`)@363..373)@353..373)@347..373
-      (call `print` (or `true` (call `loud` `false`)@390..401)@382..401)@376..401
-      (call `print` (and (not `false`)@410..419 (call `loud` `true`)@424..434)@410..434)@404..434)@246..502)@233..502)@182..502
+      (set _ `a` _ `1`)@247..252
+      (set _ `b` _ `2`)@255..260
+      (call `print` (not (== `a` `b`)@273..279)@269..279)@263..280
+      (call `print` (or `true` (and `false` `false`)@297..312)@289..312)@283..313
+      (call `print` (and (or `true` `false`)@323..336 `false`)@322..347)@316..348
+      (call `print` (and `false` (call `loud` `true`)@367..377)@357..377)@351..378
+      (call `print` (or `true` (call `loud` `false`)@395..406)@387..406)@381..407
+      (call `print` (and (not `false`)@416..425 (call `loud` `true`)@430..440)@416..440)@410..441)@247..509)@234..509)@182..509

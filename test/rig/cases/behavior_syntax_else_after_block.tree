@@ -1,30 +1,35 @@
 (module
-  (enum `Kind` `one` `two` `three`)@149..180
+  (enum `Kind` `one` `two` `three`)@171..202
   (sub
     `show`
-    ((: `k` `Kind`)@189..196 (: `flag` `Bool`)@198..208)@188..209
+    _
+    ((: `k` `Kind`)@211..218 (: `flag` `Bool`)@220..230)@210..231
+    _
     (block
       (match
         `k`
         (arm
-          (enum_lit `one`)@224..228
+          (enum_lit `one`)@246..250
+          _
           (block
             (if
               `flag`
-              (block (call `print` `"one, flagged"`)@251..271)@251..278
-              (block (call `print` `"one"`)@291..302)@291..307)@235..307)@235..307)@224..307
-        (arm `else` (block (call `print` `"not one"`)@318..333)@318..335)@307..335)@212..335)@212..335)@180..335
+              (block (call `print` `"one, flagged"`)@273..294)@273..301
+              (block (call `print` `"one"`)@314..326)@314..331)@257..331)@257..331)@246..331
+        (arm `_` _ (block (call `print` `"not one"`)@339..355)@339..357)@331..357)@234..357)@234..357)@202..357
   (sub
     `main`
-    ()@343..345
+    _
+    ()@365..367
+    _
     (block
-      (call `show` (enum_lit `one`)@353..357 `true`)@348..364
-      (call `show` (enum_lit `one`)@372..376 `false`)@367..384
-      (call `show` (enum_lit `three`)@392..398 `true`)@387..405
+      (call `show` (enum_lit `one`)@375..379 `true`)@370..386
+      (call `show` (enum_lit `one`)@394..398 `false`)@389..406
+      (call `show` (enum_lit `three`)@414..420 `true`)@409..427
       (if
         `false`
-        (block (call `print` `"no"`)@421..431)@421..434
+        (block (call `print` `"no"`)@443..454)@443..457
         (if
           `true`
-          (block (call `print` `"else if"`)@451..466)@451..469
-          (block (call `print` `"else"`)@478..490)@478..543)@439..543)@408..543)@348..543)@335..543)@149..543
+          (block (call `print` `"else if"`)@474..490)@474..493
+          (block (call `print` `"else"`)@502..515)@502..568)@462..568)@430..568)@370..568)@357..568)@171..568

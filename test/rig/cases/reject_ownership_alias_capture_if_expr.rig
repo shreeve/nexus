@@ -3,7 +3,7 @@
 # `y = count`.
 
 sub main()
-  count: *Cell(Int) = *Cell(value: 0)
+  count: *Cell[Int] = *Cell(0)
   f = |+count|
     y = if true
       count
@@ -13,4 +13,5 @@ sub main()
   f()
   f()
 
-# error: bare use of captured resource `count`
+# error: 9:7: bare use of captured resource `count` in binding would smuggle the handle out of the closure environment; use `+count` to clone a fresh handle, or `~count` for a weak reference
+# error: 11:7: bare use of captured resource `count` in binding would smuggle the handle out of the closure environment; use `+count` to clone a fresh handle, or `~count` for a weak reference

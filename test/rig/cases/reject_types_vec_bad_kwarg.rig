@@ -1,6 +1,6 @@
 # The `Vec` constructor accepts only the `capacity` kwarg.
 
 sub main()
-  v: Vec(Int) = Vec(size: 10)
+  v: Vec[Int] = Vec(size: 10)
 
 # error: `Vec` constructor accepts only `capacity` as a kwarg; got `size`

@@ -1,7 +1,8 @@
 (module
-  (use `parsing`)@160..171
+  (use `parsing` _)@160..171
   (fun
     `checked`
+    _
     ((: `s` `String`)@185..194)@184..195
     (error_union `Int`)@199..203
     (block
@@ -13,12 +14,13 @@
       (propagate (call (member `parsing` `parse`)@252..265 `s`)@252..268)@252..269)@206..271)@173..271
   (fun
     `name`
+    _
     ((: `s` `String`)@280..289)@279..290
     `String`
     (block
       (set
         _
-        `n`
+        `_`
         _
         (catch
           (call `checked` `s`)@307..317
@@ -26,25 +28,27 @@
           (block
             (match
               `err`
-              (arm (enum_lit `empty`)@350..356 (return `"empty"`)@360..374)@350..374
-              (arm (enum_lit `bad_digit`)@381..391 (return `"bad digit"`)@395..413)@381..413
-              (arm `else` (return `"other"`)@428..442)@420..442)@334..445)@334..445)@307..445)@303..445
-      `"ok"`)@303..451)@271..451
+              (arm (enum_lit `empty`)@350..356 _ (return `"empty"`)@360..374)@350..374
+              (arm (enum_lit `bad_digit`)@381..391 _ (return `"bad digit"`)@395..413)@381..413
+              (arm `_` _ (return `"other"`)@425..439)@420..439)@334..442)@334..442)@307..442)@303..442
+      `"ok"`)@303..448)@271..448
   (sub
     `main`
-    ()@459..461
+    _
+    ()@456..458
+    _
     (block
       (call
         `print`
-        (call `name` `""`)@470..478
-        (call `name` `"x"`)@480..489
-        (call `name` `"?"`)@491..500
-        (call `name` `"abc"`)@502..513)@464..514
-      (set _ `e` (member `parsing` `ParseError`)@520..538 (enum_lit `bad_digit`)@541..551)@517..551
+        (call `name` `""`)@467..475
+        (call `name` `"x"`)@477..486
+        (call `name` `"?"`)@488..497
+        (call `name` `"abc"`)@499..510)@461..511
+      (set _ `e` (member `parsing` `ParseError`)@517..535 (enum_lit `bad_digit`)@538..548)@514..548
       (call
         `print`
         `e`
         (catch
-          (call (member `parsing` `parse`)@563..576 `"x"`)@563..581
+          (call (member `parsing` `parse`)@560..573 `"x"`)@560..578
           `err`
-          (if (== `err` `e`)@599..607 `1` `2`)@594..614)@563..614)@554..615)@464..669)@451..669)@160..669
+          (if (== `err` `e`)@596..604 `1` `2`)@591..611)@560..611)@551..612)@461..676)@448..676)@160..676

@@ -6,7 +6,9 @@
     `none`)@140..180
   (sub
     `main`
+    _
     ()@188..190
+    _
     (block
       (set
         _
@@ -15,5 +17,5 @@
         (call (enum_lit `some`)@210..215 (kwarg `value` `5`)@216..224)@210..225)@193..225
       (match
         `o`
-        (arm (variant_pattern `some` `v`)@240..248 (call `print` `v`)@252..260)@240..260
-        (arm (enum_lit `none`)@265..270 (call `print` `"nothing"`)@274..290)@265..290)@228..306)@193..306)@180..306)@140..306
+        (arm (variant_pattern `some` `v`)@240..248 _ (call `print` `v`)@252..260)@240..260
+        (arm (enum_lit `none`)@265..270 _ (call `print` `"nothing"`)@274..290)@265..290)@228..306)@193..306)@180..306)@140..306

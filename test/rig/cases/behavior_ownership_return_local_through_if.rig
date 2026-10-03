@@ -1,15 +1,15 @@
 # A local returned through an if-expression moves out of the function;
 # the local in the branch not taken is dropped at scope exit.
 
-struct Box
+struct Wrap
   payload: Int
 
-  drop self: !Box
+  drop(!self)
     print(self.payload * 10)
 
-fun pick(c: Bool) -> *Box
-  a = *Box(payload: 1)
-  b = *Box(payload: 2)
+fun pick(c: Bool) -> *Wrap
+  a = *Wrap(payload: 1)
+  b = *Wrap(payload: 2)
   if c
     a
   else

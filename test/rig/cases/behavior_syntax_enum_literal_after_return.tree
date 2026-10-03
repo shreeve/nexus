@@ -2,6 +2,7 @@
   (enum `Color` `red` `green`)@137..163
   (fun
     `pick`
+    _
     ((: `b` `Bool`)@172..179)@171..180
     `Color`
     (block
@@ -9,13 +10,15 @@
       (return (enum_lit `green`)@222..228)@215..228)@192..230)@163..230
   (sub
     `main`
+    _
     ()@238..240
+    _
     (block
       (match
         (call `pick` `true`)@249..259
-        (arm (enum_lit `red`)@264..268 (call `print` `1`)@272..280)@264..280
-        (arm (enum_lit `green`)@285..291 (call `print` `2`)@295..303)@285..303)@243..306
+        (arm (enum_lit `red`)@264..268 _ (call `print` `1`)@272..280)@264..280
+        (arm (enum_lit `green`)@285..291 _ (call `print` `2`)@295..303)@285..303)@243..306
       (match
         (call `pick` `false`)@312..323
-        (arm (enum_lit `red`)@328..332 (call `print` `1`)@336..344)@328..344
-        (arm (enum_lit `green`)@349..355 (call `print` `2`)@359..367)@349..367)@306..387)@243..387)@230..387)@137..387
+        (arm (enum_lit `red`)@328..332 _ (call `print` `1`)@336..344)@328..344
+        (arm (enum_lit `green`)@349..355 _ (call `print` `2`)@359..367)@349..367)@306..387)@243..387)@230..387)@137..387

@@ -3,34 +3,36 @@
     `Node`
     (: `value` `Int`)@220..230
     (: `seen` (shared (generic_inst `Cell` `Int`)@240..249)@239..249)@233..249
-    (: `next` (optional (shared `Node`)@259..264)@258..266)@252..266
+    (: `next` (optional (shared `Node`)@258..263)@258..264)@252..264
     (drop_decl
-      ((: `self` (borrow_write `Node`)@281..286)@275..286)@275..286
+      ((write `self`)@273..278)@272..279
       (block
         (if
           (!=
-            (call (member (member `self` `seen`)@294..303 `get`)@294..307)@294..309
-            (+ (member `self` `value`)@313..323 `1`)@313..327)@294..327
+            (call (member (member `self` `seen`)@287..296 `get`)@287..300)@287..302
+            (+ (member `self` `value`)@306..316 `1`)@306..320)@287..320
           (block
-            (call `print` `"out of order at"` (member `self` `value`)@359..369)@334..370)@334..375
-          _)@291..375
+            (call `print` `"out of order at"` (member `self` `value`)@352..362)@327..363)@327..368
+          _)@284..368
         (call
-          (member (member `self` `seen`)@375..384 `set`)@375..388
-          (member `self` `value`)@389..399)@375..400)@291..402)@270..402)@206..402
+          (member (member `self` `seen`)@368..377 `set`)@368..381
+          (member `self` `value`)@382..392)@368..393)@284..395)@268..395)@206..395
   (sub
     `main`
-    ()@410..412
+    _
+    ()@403..405
+    _
     (block
-      (set _ `n` _ `200000`)@415..425
+      (set _ `n` _ `200000`)@408..418
       (set
         _
         `seen`
-        (shared (generic_inst `Cell` `Int`)@435..444)@434..444
-        (share (call `Cell` (kwarg `value` `n`)@453..461)@448..462)@447..462)@428..462
-      (set _ `head` (optional (shared `Node`)@472..477)@471..479 `none`)@465..486
-      (set _ `i` _ `0`)@489..494
+        (shared (generic_inst `Cell` `Int`)@428..437)@427..437
+        (share (call `Cell` `n`)@441..448)@440..448)@421..448
+      (set _ `head` (optional (shared `Node`)@457..462)@457..463 `none`)@451..470
+      (set _ `i` _ `0`)@473..478
       (while
-        (< `i` `n`)@503..508
+        (< `i` `n`)@487..492
         _
         (block
           (set
@@ -40,10 +42,10 @@
             (share
               (call
                 `Node`
-                (kwarg `value` `i`)@526..534
-                (kwarg `seen` (clone `seen`)@542..547)@536..547
-                (kwarg `next` (move `head`)@555..560)@549..560)@521..561)@520..561)@513..561
-          (set += `i` _ `1`)@566..572)@513..575
-        _)@497..575
-      (drop `head`)@575..580
-      (call `print` `"dropped down to"` (call (member `seen` `get`)@608..616)@608..618)@583..619)@415..651)@402..651)@206..651
+                (kwarg `value` `i`)@510..518
+                (kwarg `seen` (clone `seen`)@526..531)@520..531
+                (kwarg `next` (move `head`)@539..544)@533..544)@505..545)@504..545)@497..545
+          (set += `i` _ `1`)@550..556)@497..559
+        _)@481..559
+      (drop `head`)@559..564
+      (call `print` `"dropped down to"` (call (member `seen` `get`)@592..600)@592..602)@567..603)@408..635)@395..635)@206..635

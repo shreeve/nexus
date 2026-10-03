@@ -1,2 +1,0 @@
-sub main()
-  print(nope_undefined)

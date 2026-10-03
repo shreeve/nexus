@@ -17,7 +17,7 @@ without a shell, so the time includes the process start of nexus itself).
 |---|---:|---:|---:|---:|
 | mumps | 5.2 | 4.8 | 4693 | 691 |
 | ruby | 4.3 | 4.1 | 3844 | 421 |
-| rig | 4.0 | 3.7 | 5185 | 399 |
+| rig | 4.9 | 4.8 | 5778 | 509 |
 | zag | 3.8 | 3.5 | 3331 | 324 |
 | slash | 2.6 | 2.5 | 2635 | 139 |
 | nexis | 2.5 | 2.3 | 2566 | 104 |
@@ -41,13 +41,17 @@ Best of 5 rounds, one thread, all input in memory, a fresh parser per file.
 - **mumps**: every routine in `em/misc/vista` (24,704 files, 86.5 MB);
   22,709 parse to the end, the rest stop at gaps in the suite's MUMPS
   grammar (`test/mumps`).
-- **rig**: one synthetic file of about 4 MB, Rig's behavior tests and
-  examples that parse on their own, concatenated and repeated.
+- **rig**: Rig's behavior tests and examples that parse on their own,
+  listed again and again until the list holds about 4 MB (8,410 small
+  files), from Rig's Zig 0.17 port (`RIG_CORPUS`). The per-file cost of a
+  fresh parser weighs more on these short programs than on VistA's
+  routines. The Rig rows were recorded with Rig's grammar of this release
+  under a light load (about 3); the other rows on an idle machine.
 
 | input | files | MB | tokens | lex ms | lex MB/s | parse ms | parse MB/s | parsed ok |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | mumps | 24704 | 86.5 | 32,130,205 | 249.2 | 347.2 | 1323.3 | 65.4 | 22709 |
-| rig | 1 | 3.9 | 958,815 | 10.9 | 354.0 | 57.2 | 67.5 | 1 |
+| rig | 8410 | 4.1 | 1,186,180 | 19.9 | 203.5 | 83.4 | 48.6 | 8410 |
 
 Parsing costs about 5x lexing on MUMPS (24 M tokens/s end to end), so
 parser-side work (tables, reductions, tree building) dominates.

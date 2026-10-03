@@ -3,7 +3,7 @@
 # cell is released only when the last handle drops.
 
 sub main()
-  count: *Cell(Int) = *Cell(value: 0)
+  count: *Cell[Int] = *Cell(0)
   cb: *sub() = *|+count| count.set(count.get() + 1)
   cb2 = +cb
   -cb

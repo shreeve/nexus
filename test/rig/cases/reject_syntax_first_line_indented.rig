@@ -2,4 +2,4 @@
   sub main()
     print(1)
 
-# error: unexpected indentation
+# error: 2:3: unexpected indentation

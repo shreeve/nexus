@@ -4,7 +4,7 @@
 struct Noisy
   id: Int
 
-  drop self: !Noisy
+  drop(!self)
     print("drop", self.id)
 
 sub eat(n: *Noisy)

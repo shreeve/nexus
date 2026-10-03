@@ -3,7 +3,7 @@
 # the outer strong handle.
 
 sub main()
-  rc: *Cell(Int) = *Cell(value: 1)
+  rc: *Cell[Int] = *Cell(1)
   watch = |~rc|
     print('observing weak')
   watch()

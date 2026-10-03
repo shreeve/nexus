@@ -87,16 +87,17 @@ zig fmt --check build.zig src/*.zig src/{codegen,lexgen,lr} src/frontend/{lang,l
 
 ## Downstream
 
-Rig, em (MUMPS) and nexis check in parsers that Nexus 1.x generates
+Rig, em (MUMPS) and nexis check in parsers that Nexus generates
 (`zig build parser` in each, using `../nexus/bin/nexus`). A change to
 generated code reaches them when they regenerate; their suites are the
 final check. Slash, Zag and nanoruby check in parsers from Nexus 0.10.3;
-their 1.x grammars are `test/slash/slash.grammar`, `test/zag/zag.grammar`
-and `test/ruby/ruby.grammar` here. `test/rig`, `test/mumps` and
-`test/nexis` hold snapshots of downstream grammars, older than the
-originals, with their lang modules kept on this Nexus's API; each is
-re-synced, in its own commit, as its project moves to Zig 0.17 and this
-Nexus. The edits a release asks of each downstream repository are in
+their grammars for this Nexus are `test/slash/slash.grammar`,
+`test/zag/zag.grammar` and `test/ruby/ruby.grammar` here. `test/rig` holds
+the grammar, lang module and test programs of Rig's Zig 0.17 port,
+copied verbatim. `test/mumps` and `test/nexis` hold snapshots of
+downstream grammars, older than the originals, with their lang modules
+kept on this Nexus's API; each is re-synced, in its own commit, as its
+project moves to Zig 0.17 and this Nexus. The edits a release asks of each downstream repository are in
 `CHANGELOG.md`.
 
 ## Map

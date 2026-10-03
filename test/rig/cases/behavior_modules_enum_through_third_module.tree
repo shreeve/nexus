@@ -1,9 +1,11 @@
 (module
-  (use `util`)@65..73
-  (use `geo`)@74..81
+  (use `util` _)@65..73
+  (use `geo` _)@74..81
   (sub
     `main`
+    _
     ()@91..93
+    _
     (block
       (set
         _

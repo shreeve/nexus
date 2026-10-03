@@ -6,8 +6,8 @@ struct User
 
 sub main()
   u: *User = *User(age: 30)
-  c1: Cell(*User) = Cell(value: <u)
-  c2: Cell(*User) = c1
+  c1: Cell[*User] = Cell(<u)
+  c2: Cell[*User] = c1
   print(0)
 
 # error: bare use of `Cell` value `c1` in binding would alias an owning value

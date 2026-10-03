@@ -1,7 +1,9 @@
 (module
   (sub
     `main`
+    _
     ()@107..109
+    _
     (block
       (set _ `k` _ `4`)@112..117
       (set

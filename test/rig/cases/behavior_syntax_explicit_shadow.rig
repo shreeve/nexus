@@ -2,8 +2,8 @@
 
 sub main()
   x = 1
-  new x = 2
-  print x
+  new x = x + 1
+  print(x)
 
 # expect:
 # 2

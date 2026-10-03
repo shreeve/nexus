@@ -3,7 +3,7 @@
 # sequence.
 
 extern sub srand(seed: U32)
-extern fun rand() -> Int
+extern fun rand() -> I32
 
 sub main()
   raw

@@ -6,7 +6,7 @@ enum Shape
 
   fun is_point(?self) -> Bool
     match self
-      .circle(r) => false
+      .circle(_) => false
       .point => true
 
 sub main()

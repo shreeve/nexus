@@ -1,10 +1,10 @@
-# A struct's `drop self: !Self` body runs at scope exit and can read
+# A struct's `drop(!self)` body runs at scope exit and can read
 # `self`'s fields.
 
 struct File
   fd: Int
 
-  drop self: !File
+  drop(!self)
     print(self.fd)
 
 sub main()
