@@ -335,8 +335,8 @@ pub const BaseLexer = struct {
                     }
                     if (p < n) switch (src[p]) {
                         0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', 0x7F...0xFF => { p += 1; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
-                        '\t', '\r', ' ' => { p += 1; continue :dfa 2; },
                         '\n' => { p += 1; self.pos = @intCast(p); return token(.@"newline", pre, start, p); },
+                        '\r' => { p += 1; continue :dfa 3; },
                         '!' => { p += 1; continue :dfa 4; },
                         '"' => { p += 1; continue :dfa 5; },
                         '#' => { p += 1; continue :dfa 6; },
@@ -374,7 +374,7 @@ pub const BaseLexer = struct {
                     };
                     break :dfa;
                 },
-                2 => {
+                3 => {
                     while (p < n and cls1[src[p]]) p += 1;
                     continue :scan;
                 },

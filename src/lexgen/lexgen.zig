@@ -43,6 +43,14 @@ const maxGuardAtoms = 10;
 /// A self-loop that excludes at most this many bytes is scanned with SIMD.
 const maxSimdStops = 3;
 
+/// The implicit whitespace, skipped before every token into `pre`.
+const blanks: ByteSet = blk: {
+    var s: ByteSet = .{};
+    s.add(' ');
+    s.add('\t');
+    break :blk s;
+};
+
 /// A transition class this wide into a looping state is tested before the
 /// state's switch.
 const hotClassMin = 16;
@@ -206,11 +214,14 @@ pub const LexerGenerator = struct {
         for (0..self.dfa.numStates) |s| self.saves[s] = self.needsSave(@intCast(s));
     }
 
-    /// The minimized DFA of `patterns`, with a start state per live set;
-    /// a size limit is reported at the first consuming rule.
+    /// The minimized DFA of `patterns`, with a start state per live set.
+    /// The lexer skips blanks before it runs the DFA, so the start states
+    /// have no transition on them: a match that needs a leading blank is
+    /// not in the automaton, and the dead-rule check sees exactly what
+    /// can win. A size limit is reported at the first consuming rule.
     fn buildDfa(self: *LexerGenerator, patterns: []const *const regex.Node, starts: []const []const u32) !automaton.Dfa {
         const first = &self.spec.rules.items[self.consuming[0]];
-        return automaton.build(self.arena.allocator(), .{ .patterns = patterns, .starts = starts }) catch |e| switch (e) {
+        return automaton.build(self.arena.allocator(), .{ .patterns = patterns, .starts = starts, .startSkip = blanks }) catch |e| switch (e) {
             error.OutOfMemory => return error.OutOfMemory,
             error.NfaTooLarge => return self.fail(first, 0, "the lexer NFA has more than {d} states (bounded repeats expand, and nesting multiplies them; reduce {{n,m}} counts)", .{automaton.maxNfaStates}),
             error.DfaTooLarge => return self.fail(first, 0, "the lexer DFA is too large: subset construction passed {d} states, and at most 65535 are supported", .{automaton.maxRawDfaStates}),
@@ -435,11 +446,7 @@ pub const LexerGenerator = struct {
     }
 
     fn checkConsuming(self: *LexerGenerator, r: *const LexerRule, p: regex.Pattern, full: *const regex.Node) !TokenEnd {
-        const first = regex.firstSet(full);
-        var ws: ByteSet = .{};
-        ws.add(' ');
-        ws.add('\t');
-        if (first.subsetOf(ws)) {
+        if (regex.firstSet(full).subsetOf(blanks)) {
             return self.fail(r, 0, "this pattern can only start with a space or tab, which the lexer always consumes first as leading whitespace (pre); use a zero-width rule guarded by pre instead", .{});
         }
         if (p.trail == null and regex.nullable(p.main)) {

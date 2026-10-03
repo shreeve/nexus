@@ -1,0 +1,15 @@
+# The lexer skips blanks before it scans a token, so a match that needs a
+# leading blank never happens: the rule on line 11 wins only on " x", and
+# on "x" the earlier rule wins, so it is dead
+# error: lexer_dead_after_blank.grammar:11:1:
+# error: this rule can never match
+# error: e.g. "x" goes to the rule on line 10
+@lexer
+tokens
+    a, b, eof, err
+'x'                 → a
+(' ' 'x') | 'x'     → b
+.                   → err
+
+@parser
+top! = ERR → 1

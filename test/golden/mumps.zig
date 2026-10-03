@@ -261,7 +261,7 @@ pub const BaseLexer = struct {
                     continue :dfa 13;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => { p += 1; self.beg = 1; self.pos = @intCast(p); return token(.@"newline", pre, start, p); },
                     '\r' => { p += 1; continue :dfa 8; },
                     '!' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"exclaim", pre, start, p); },
@@ -299,7 +299,7 @@ pub const BaseLexer = struct {
             },
             1 => {
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
                         self.beg = 0;
@@ -374,12 +374,13 @@ pub const BaseLexer = struct {
                         return token(.@"patend", pre, start, p);
                     },
                     '|' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"pipe", pre, start, p); },
+                    else => {},
                 };
                 break :dfa;
             },
             2 => {
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
                         self.beg = 0;
@@ -439,6 +440,7 @@ pub const BaseLexer = struct {
                         return token(.@"patend", pre, start, p);
                     },
                     '|' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"pipe", pre, start, p); },
+                    else => {},
                 };
                 break :dfa;
             },
@@ -448,7 +450,7 @@ pub const BaseLexer = struct {
                     continue :dfa 13;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => { p += 1; self.beg = 1; self.pos = @intCast(p); return token(.@"newline", pre, start, p); },
                     '\r' => { p += 1; continue :dfa 8; },
                     '!' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"exclaim_ws", pre, start, p); },
@@ -486,7 +488,7 @@ pub const BaseLexer = struct {
             },
             4 => {
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
                         self.beg = 0;
@@ -561,12 +563,13 @@ pub const BaseLexer = struct {
                         return token(.@"patend", pre, start, p);
                     },
                     '|' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"pipe", pre, start, p); },
+                    else => {},
                 };
                 break :dfa;
             },
             5 => {
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...0x0C, 0x0E...' ', '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x0C, 0x0E...0x1F, '`', '{', '}'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => {
                         p += 1;
                         self.beg = 0;
@@ -626,6 +629,7 @@ pub const BaseLexer = struct {
                         return token(.@"patend", pre, start, p);
                     },
                     '|' => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"pipe", pre, start, p); },
+                    else => {},
                 };
                 break :dfa;
             },

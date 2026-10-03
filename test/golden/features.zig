@@ -161,7 +161,7 @@ pub const BaseLexer = struct {
                     continue :dfa 14;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...'\t', 0x0B...'!', '$'...'\'', '.'...'/', ';'...'<', '>'...'@', '['...'^', '`', '{'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
+                    0x00...0x08, 0x0B...0x1F, '!', '$'...'\'', '.'...'/', ';'...'<', '>'...'@', '['...'^', '`', '{'...0xFF => { p += 1; self.beg = 0; self.pos = @intCast(p); return token(.@"err", pre, start, p); },
                     '\n' => { p += 1; self.beg = 1; self.pos = @intCast(p); return token(.@"newline", pre, start, p); },
                     '"' => { p += 1; continue :dfa 3; },
                     '#' => { p += 1; continue :dfa 4; },

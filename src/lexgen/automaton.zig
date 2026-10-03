@@ -300,6 +300,8 @@ pub const Dfa = struct {
 pub const Spec = struct {
     patterns: []const *const Node,
     starts: []const []const u32,
+    /// Bytes no scan starts at: the start states have no transition on them.
+    startSkip: ByteSet = .{},
 };
 
 /// Build the minimized DFA.
@@ -311,13 +313,14 @@ pub fn build(gpa: Allocator, spec: Spec) Error!Dfa {
     // Byte classes from every set in every pattern.
     var sets: std.ArrayList(ByteSet) = .empty;
     for (spec.patterns) |p| try collectSets(a, p, &sets);
+    if (!spec.startSkip.isEmpty()) try sets.append(a, spec.startSkip);
     const classes = ByteClasses.compute(sets.items);
 
     var nfa: Nfa = .{};
     const ruleStart = try a.alloc(u32, spec.patterns.len);
     for (spec.patterns, 0..) |p, i| ruleStart[i] = try nfa.addRule(a, p, @intCast(i));
 
-    const raw = try subsetConstruct(a, &nfa, classes, ruleStart, spec.starts);
+    const raw = try subsetConstruct(a, &nfa, classes, ruleStart, spec.starts, spec.startSkip);
     return minimize(gpa, raw, classes);
 }
 
@@ -364,7 +367,9 @@ fn closure(a: Allocator, nfa: *const Nfa, seed: []const u32, mark: []u32, stamp:
     std.mem.sort(u32, out.items, {}, std.sort.asc(u32));
 }
 
-fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStart: []const u32, starts: []const []const u32) Error!RawDfa {
+/// The raw DFA. Start states come first and only from the starts' own
+/// map, so no transition re-enters one: they alone skip `startSkip`.
+fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStart: []const u32, starts: []const []const u32, startSkip: ByteSet) Error!RawDfa {
     const nc = classes.count;
     const mark = try a.alloc(u32, nfa.states.items.len);
     @memset(mark, 0);
@@ -372,6 +377,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
 
     var keys: std.ArrayList([]const u32) = .empty;
     var map: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
+    var startMap: std.HashMapUnmanaged([]const u32, u32, SliceContext, 80) = .empty;
     var trans: std.ArrayList(u32) = .empty;
     var accept: std.ArrayList(u32) = .empty;
     var set: std.ArrayList(u32) = .empty;
@@ -393,8 +399,9 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
             }
         }
         set.shrinkRetainingCapacity(k);
-        startIds[si] = try intern(a, &keys, &map, &trans, &accept, set.items, nfa, nc);
+        startIds[si] = try intern(a, &keys, &startMap, &trans, &accept, set.items, nfa, nc);
     }
+    const numStarts = keys.items.len;
 
     var work: u32 = 0;
     while (work < keys.items.len) : (work += 1) {
@@ -402,6 +409,7 @@ fn subsetConstruct(a: Allocator, nfa: *const Nfa, classes: ByteClasses, ruleStar
         var c: u16 = 0;
         while (c < nc) : (c += 1) {
             const byte = classes.rep[c];
+            if (work < numStarts and startSkip.has(byte)) continue;
             seed.clearRetainingCapacity();
             for (key) |s| {
                 const st = nfa.states.items[s];
