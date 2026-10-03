@@ -1,7 +1,7 @@
 # Nexus test suite
 
 ```bash
-./test/run                  # everything, in parallel
+./test/run                  # everything, in parallel (-j N workers; the default is the core count)
 ./test/run mumps            # only tests whose id contains "mumps"
 ./test/run -v known         # list each result, including known failures
 ./test/run --update rig     # rewrite goldens after an intended change, then review the diff
@@ -36,6 +36,7 @@ systems' own tools.
 | `tools/fmt` | the `zig fmt --check` command of `AGENTS.md` passes |
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
 | `tools/messages` | every error and warning the generator's source can print is printed by `nexus check` on some grammar under `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
+| `tools/readme` | `docs/index.html` shows README.md's tested `calc.grammar`, and every number in README.md's validated-languages table (lines, LR states, declared conflicts and cells, suite cases, mode) is this checkout's (`test/lib/readme`) |
 | `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
@@ -201,7 +202,11 @@ lexer specs (random patterns, trailing context, the `skip`, `hold` and
 `rewind(n)` actions, `{m++}`/`{m--}`, comparison guards, an `after` block), builds
 them all with `bin/nexus` into one driver, lexes random inputs, and compares
 every token (cat, pos, len, pre) with a reference computed from the lexer's
-definition with its own set-of-positions matcher. The DFA itself is also checked
+definition with its own set-of-positions matcher. A spec the generator
+rejects passes only when the model confirms the rejection (a dead rule wins
+on no short text in any configuration, guards never hold together, held
+rules can re-enable each other, ...), and an accepted spec whose held rules
+can loop fails. The DFA itself is also checked
 against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
 `-O` picks the driver's optimize mode (default `Debug`, which also checks
 the generated lexers' safety). The suite runs a small fixed-seed round in
@@ -212,7 +217,7 @@ the generated lexers' safety). The suite runs a small fixed-seed round in
 `test/bench/run` builds nexus (ReleaseFast by default, `-O` to change,
 `--nexus BIN` to time another generator), times generation of every
 in-repo grammar, and measures lexing and lexing+parsing throughput on the
-full VistA corpus and a synthetic 4 MB Rig file (falling back to the
+full VistA corpus and a synthetic Rig file of about 4 MB (falling back to the
 committed cases when those repos are absent). `test/bench/BASELINE.md` holds
 the current numbers; update it when a change moves them.
 
@@ -227,6 +232,8 @@ the current numbers; update it when a change moves them.
 | `test/lib/build-grammar` | generate + compile one grammar with a given nexus |
 | `test/lib/doctest` | extract the doc examples into suites |
 | `test/lib/messages`, `test/lib/messages.allow` | the `tools/messages` check, and the messages no test prints yet |
+| `test/lib/readme` | the `tools/readme` check |
+| `test/lexfuzz/fuzz.py` | the lexer fuzzer |
 | `test/golden/` | generated-code (`.zig`) and frontend-tree (`.sexp`) goldens |
 
 Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite

@@ -483,6 +483,17 @@ check_messages() {
     return 0
 }
 
+# check_readme: docs/index.html shows README.md's tested example, and the
+# README's validated-languages table matches the grammars (test/lib/readme).
+check_readme() {
+    local out rc
+    out=$(with_timeout 300 "$LIB/readme" "$NEXUS" 2>&1)
+    rc=$?
+    echo "$out" >>"$LOG"
+    if [[ $rc -ne 0 ]]; then REASON="$(head -1 <<<"$out")"; return 1; fi
+    return 0
+}
+
 check_doc_fragment() { # check_doc_fragment <file>: a doc's grammar fragment parses
     local out rc
     out=$(with_timeout "$TIMEOUT" "$NEXUS" --dump-sexp "$1" "$WORK/out/$(key_of "$1").sexp" 2>&1 </dev/null)
@@ -525,6 +536,7 @@ worker() {
         fmt)         check_fmt; ok=$? ;;
         lexfuzz)     check_lexfuzz; ok=$? ;;
         messages)    check_messages; ok=$? ;;
+        readme)      check_readme; ok=$? ;;
         bad)         REASON=$a; ok=1 ;;
         *)           REASON="unknown task kind $kind"; ok=1 ;;
     esac
@@ -697,6 +709,7 @@ add tools/cli cli
 add tools/fmt fmt
 add tools/lexfuzz lexfuzz
 add tools/messages messages
+add tools/readme readme
 
 # Doc tests: the examples of the Markdown docs, extracted into suites
 # (test/lib/doctest; see test/README.md).

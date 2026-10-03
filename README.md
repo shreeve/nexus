@@ -147,11 +147,12 @@ generation would have failed with `file:line:col: error:` naming the rule.
   zero-copy.
 - **LALR(1)** with DeRemer–Pennello lookaheads, and every remaining
   conflict declared in an `@conflicts` manifest, with a reason; any change
-  fails generation and prints the conflict, its state, an example input,
-  and the new manifest.
+  fails generation and prints the conflict, its state and items, a path to
+  the state, and the new manifest ready to paste.
 - **Actions next to rules.** `→ (set 1 3)` is the tree. Optional groups
-  keep positions stable; lists (`L(X)`, `X*`, `[X ...]`), choices,
-  operator-precedence chains (`@infix`), contextual keywords (`@as`).
+  keep positions stable; lists (`L(X)`, `X*`, `[X ...]`) build in linear
+  time; choices, operator-precedence chains (`@infix`), contextual
+  keywords (`@as`).
 - **A verified semantic layer** (`@schema`): fixed-length nodes, named
   roles, labels in patterns, a coverage gate that no value is dropped by
   accident, static result types checked by fixpoint, generated `Tag`/`Role`
@@ -162,32 +163,35 @@ generation would have failed with `file:line:col: error:` naming the rule.
   `parseTolerant` repairs a broken buffer from a table the generator
   computes.
 - **Extensible in Zig.** A language module can wrap the generated lexer
-  (layout, keyword classification) and parser (tree rewrites).
+  (layout, keyword classification) and parser (tree rewrites), through one
+  small contract ([the lang module](docs/SEMANTICS.md#the-lang-module)).
 - **Self-hosted.** Nexus parses grammar files with a parser Nexus generates
   from [`nexus.grammar`](nexus.grammar), itself written in schema mode.
-- **Located errors.** A mistake in a grammar is reported as
-  `file:line:col: error:` and generation fails.
+- **Nothing silent.** A mistake in a grammar (a dead lexer rule, an
+  unreachable rule, a hint that decides nothing, a value an action drops)
+  is reported as `file:line:col: error:`, and nothing is written.
 
 ## Validated languages
 
 The grammars in `test/` generate with this checkout, compile, and parse
 their cases in `./test/run`, trees compared with goldens. The Rig and MUMPS
-grammars are the ones Rig and em build with, synced from their repositories.
+grammars are copies of the ones Rig and em build with. `tools/readme`
+checks every number in this table.
 
-| Language | Grammar | Lines | LR states | Declared conflicts | Suite cases | Mode |
+| Language | Grammar | Lines | LR states | Declared conflicts (cells) | Suite cases | Mode |
 |---|---|---:|---:|---:|---:|---|
-| Rig | `test/rig/rig.grammar` | 711 | 524 | 0 | 144 | schema |
-| MUMPS | `test/mumps/mumps.grammar` | 909 | 830 | 46 | 62 (+ 6 with `--spans`) | plain |
-| Ruby subset | `test/ruby/ruby.grammar` | 773 | 536 | 69 | 7 | plain |
-| Zag | `test/zag/zag.grammar` | 511 | 477 | 23 | 5 | plain |
-| Slash | `test/slash/slash.grammar` | 385 | 166 | 0 | 7 | plain |
-| Nexis (a Clojure reader) | `test/nexis/nexis.grammar` | 196 | 60 | 108 | 27 | plain |
-| Nexus grammar files | `nexus.grammar` | 557 | 364 | 0 | 11 + every grammar in the suite | schema |
+| Rig | `test/rig/rig.grammar` | 711 | 514 | 0 | 144 | schema |
+| MUMPS | `test/mumps/mumps.grammar` | 908 | 767 | 10 (44) | 62 (+ 6 with `--spans`) | plain |
+| Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 | plain |
+| Zag | `test/zag/zag.grammar` | 511 | 465 | 19 (22) | 5 | plain |
+| Slash | `test/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |
+| Nexis (a Clojure reader) | `test/nexis/nexis.grammar` | 196 | 60 | 1 (108) | 27 | plain |
+| Nexus grammar files | `nexus.grammar` | 554 | 359 | 0 | 11 + every grammar in the suite | schema |
 
-Generating the MUMPS parser takes about 19 ms, process start included. The
-generated parser lexes all 24,704 VistA routines (86.5 MB) at about 340 MB/s
-and parses them at about 50 MB/s on one core
-([test/bench/BASELINE.md](test/bench/BASELINE.md)).
+A declared conflict is one manifest entry; it covers one or more table
+cells. [test/bench/BASELINE.md](test/bench/BASELINE.md) records generation
+time and lexing and parsing throughput (the MUMPS parser over all 24,704
+VistA routines, the Rig parser over a 4 MB file).
 
 ## Install
 

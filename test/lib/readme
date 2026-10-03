@@ -1,0 +1,100 @@
+#!/usr/bin/env perl
+# The tools/readme check: the facts README.md and docs/index.html repeat
+# are the facts of this checkout.
+#
+# Usage:
+#   test/lib/readme NEXUS
+#
+#   - docs/index.html's `<pre data-grammar>` example, its markup removed,
+#     is README.md's tested `grammar calc.grammar` example;
+#   - every row of README.md's "Validated languages" table has the
+#     grammar's line count, its LR states and declared conflicts (manifest
+#     entries, and the cells `nexus check` counts), its suite's case count
+#     (and the spans suite's, where the row names it), and its mode.
+# Prints one line per difference; exits 1 when there is any.
+
+use strict;
+use warnings;
+
+if (@ARGV != 1) {
+    open my $self, '<', $0 or die;
+    <$self>;
+    while (<$self>) { last unless s/^# ?//; print }
+    exit 2;
+}
+my $nexus = $ARGV[0];
+my @problems;
+
+sub slurp { my ($p) = @_; open my $f, '<:raw', $p or die "$p: $!\n"; local $/; my $t = <$f>; close $f; $t }
+
+my $readme = slurp('README.md');
+
+# The page's example is the README's.
+my ($tour) = $readme =~ /^```grammar calc\.grammar\n(.*?)^```$/ms;
+push @problems, "README.md has no ```grammar calc.grammar example" unless defined $tour;
+my $page = slurp('docs/index.html');
+my ($pre) = $page =~ /<pre data-grammar>(.*?)<\/pre>/s;
+if (!defined $pre) {
+    push @problems, "docs/index.html has no <pre data-grammar> example";
+} elsif (defined $tour) {
+    $pre =~ s/<[^>]*>//g;
+    my %ent = (lt => '<', gt => '>', quot => '"', amp => '&');
+    $pre =~ s/&(lt|gt|quot|amp);/$ent{$1}/g;
+    $pre .= "\n" unless $pre =~ /\n\z/;
+    push @problems, "docs/index.html's example differs from README.md's calc.grammar" if $pre ne $tour;
+}
+
+# The validated-languages table.
+sub cases {
+    my ($suite) = @_;
+    my $n = 0;
+    my @dirs = ("test/$suite/cases");
+    while (my $d = shift @dirs) {
+        opendir my $h, $d or return -1;
+        for my $e (sort readdir $h) {
+            next if $e =~ /^\./;
+            if (-d "$d/$e") { push @dirs, "$d/$e"; next }
+            $n++ unless $e =~ /\.(tree|md)$/ || $e =~ /^README/;
+        }
+    }
+    $n;
+}
+
+my ($table) = $readme =~ /^## Validated languages\n.*?^(\| Language .*?)^$/ms;
+push @problems, "README.md has no Validated languages table" unless defined $table;
+my $rows = 0;
+for my $line (split /\n/, $table // '') {
+    next unless $line =~ /^\| [^|-]/ && $line !~ /^\| Language /;
+    my @c = map { s/^\s+|\s+$//gr } split /\|/, $line;
+    shift @c;
+    my ($lang, $g, $lines, $states, $conf, $cases, $mode) = @c;
+    $g =~ s/`//g;
+    $rows++;
+    my $text = eval { slurp($g) };
+    if (!defined $text) { push @problems, "$lang: no grammar $g"; next }
+    my $n = () = $text =~ /\n/g;
+    push @problems, "$lang: $n lines, the table says $lines" if $n != $lines;
+    my $out = `"$nexus" check "$g" 2>&1`;
+    my ($st) = $out =~ /\d+ rules, (\d+) states/;
+    my ($cells) = $out =~ /(\d+) conflicts/;
+    $cells //= 0;
+    push @problems, "$lang: $st LR states, the table says $states" if !defined $st || $st != $states;
+    my $entries = 0;
+    if ($text =~ /^\@conflicts\n((?:[ \t].*\n|\n)*)/m) { $entries = () = $1 =~ /^[ \t]+(?:shift|reduce)\b/mg }
+    my $want = $entries ? "$entries ($cells)" : "$cells";
+    push @problems, "$lang: declared conflicts $want, the table says $conf" if $conf ne $want;
+    my $suite = $g =~ m{^test/([^/]+)/} ? $1 : 'nexus';
+    my ($k) = $cases =~ /^(\d+)/;
+    my $have = cases($suite);
+    push @problems, "$lang: $have cases in test/$suite, the table says " . ($k // $cases) if !defined $k || $k != $have;
+    if ($cases =~ /\+ (\d+) with `--spans`/) {
+        my $sp = cases('spans');
+        push @problems, "$lang: $sp cases in test/spans, the table says $1" if $sp != $1;
+    }
+    my $m = $text =~ /^\@schema\b/m ? 'schema' : 'plain';
+    push @problems, "$lang: mode $m, the table says $mode" if $m ne $mode;
+}
+push @problems, "the Validated languages table has no rows" if defined $table && !$rows;
+
+print "$_\n" for @problems;
+exit(@problems ? 1 : 0);
