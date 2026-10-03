@@ -27,9 +27,9 @@ tested. `zig build test` runs it too.
 | `gen/<grammar>` | the generated parser equals `test/golden/<grammar>.zig` byte for byte |
 | `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp` |
 | `determinism/<grammar>` | two generations, and two `--dump-sexp` runs, are identical |
-| `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/parser.zig` (or `src/frontend/parser.zig`) |
+| `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
-| `unit/nexus` | the generator's own Zig unit tests (`zig build test-unit`, `unit`, or `test-lowerer`, whichever exists) |
+| `unit/nexus` | the generator's own Zig unit tests (`zig build unit`) |
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
 | `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in `README.md`, `CHANGELOG.md`, `AGENTS.md`, `docs/*.md` or this file generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
@@ -82,7 +82,7 @@ The in-repo suites:
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
 | `spans` | the MUMPS grammar generated with `--spans` | MUMPS cases |
-| `nexus` | `nexus.grammar` with `src/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
+| `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (synced from the rig repo) | 132 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 that fail today), 22 MVTS-derived em compliance routines |
 | `zag`, `ruby`, `slash`, `nexis` | downstream grammars without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |

@@ -289,9 +289,7 @@ check_determinism() { # check_determinism <suite dir> <name>
 }
 
 check_bootstrap() {
-    local fp tmp="$WORK/out/bootstrap.zig"
-    fp=$(ls src/frontend/parser.zig src/parser.zig 2>/dev/null | head -1)
-    if [[ -z "$fp" ]]; then REASON="no src/parser.zig or src/frontend/parser.zig"; return 1; fi
+    local fp=src/frontend/parser.zig tmp="$WORK/out/bootstrap.zig"
     timeout "$TIMEOUT" "$NEXUS" nexus.grammar "$tmp" >>"$LOG" 2>&1
     if [[ ! -s "$tmp" ]]; then REASON="regeneration failed"; return 1; fi
     if ! diff "$fp" "$tmp" >"$tmp.diff" 2>&1; then
@@ -384,10 +382,7 @@ check_doc_fragment() { # check_doc_fragment <file>: a doc's grammar fragment par
 }
 
 check_unit_nexus() {
-    local step
-    step=$(zig build -l 2>/dev/null | awk '{print $1}' | grep -m1 -xE 'test-unit|unit|test-lowerer')
-    if [[ -z "$step" ]]; then REASON="no unit-test build step (test-unit, unit, test-lowerer)"; return 1; fi
-    if ! timeout 600 zig build "$step" >>"$LOG" 2>&1; then REASON="zig build $step failed"; return 1; fi
+    if ! timeout 600 zig build unit >>"$LOG" 2>&1; then REASON="zig build unit failed"; return 1; fi
     return 0
 }
 
