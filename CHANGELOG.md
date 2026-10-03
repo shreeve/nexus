@@ -2,43 +2,265 @@
 
 ## Unreleased
 
-### Generated API
+Changes marked **Breaking** need edits in a grammar or a lang module;
+[Migrating](#migrating) lists them per downstream repository.
 
-One API for every consumer. The edits each lang module needs are listed
-under "Migrating a lang module" below.
+### Added
 
-- **`Tag` is always generated.** Without `@schema` it holds the tags the
-  actions produce, in first-seen order, then the `@tags` names (`@tags`
-  works without `@schema`); it is exhaustive (`_` only when empty). A lang
-  module's `Tag` is not read.
-- **One lexer contract.** Every module has `BaseLexer`, the generated
-  scanner, and `Lexer`, the lexer the parser drives (`BaseLexer` unless
-  the lang module declares a `Lexer` wrapper). The scanner is
-  `BaseLexer.next()`; `matchRules` and `BaseLexer.reset` are gone. A lang
-  `Lexer` wrapper holds the generated lexer as `base: BaseLexer` (any
-  other field is a compile error, where the parser silently lost `aux`)
-  and needs only `init(source)` and `next()`: the parser calls nothing
-  else.
 - `BaseLexer.makeToken(cat, pre, start, end)` builds a token the way the
   scanner does: a match longer than 65535 bytes is an `err` token of that
-  length. Lang lexers that built tokens with `@intCast` panicked on such
-  input (MUMPS indents, Ruby symbols, nexis identifiers and strings).
-- **Errors through `lastError()`.** `BaseParser.expectedNames(state, &buf)`
-  gives the reader names of what a state expects, each once, in a
-  `[parser.maxExpected][]const u8` buffer; `writeError` uses it, so tokens
-  sharing an `@display` name are no longer listed twice (Nexus's own
-  syntax errors listed `"|"` twice). Locate an error with
-  `lastError().span` and `.cat`, not the parser's `current` token.
-- `BaseParser.allocator()` is public: the allocator that holds the trees,
-  for what a lang Parser wrapper builds (rig reached into `base.arena`).
+  length.
+- `BaseParser.expectedNames(state, &buf)` gives the reader names of what a
+  state expects, each once, in a `[parser.maxExpected][]const u8` buffer.
+- `BaseParser.allocator()`, the allocator that holds the trees, for what a
+  lang `Parser` wrapper builds.
 - `BaseParser.reset(source)` parses new input in the memory the parser
   holds (the arena keeps its capacity), for loops that parse many inputs.
-- `NodeInfo`, `SideEntry`, `SideLabel` and `RepairClass` are private: no
-  consumer names them.
+- `-` as the output file writes the module to standard output.
+- Labels inside a top-level `( ... )` or `( ... )?` group fill roles; a
+  choice inside a `[...]` group or another choice becomes a rule of its
+  own. Both were errors.
+- One role may be labeled in different alternatives of a choice (whichever
+  matched fills it); an optional choice of literals can fill a tag role
+  (`op:("+=" | "-=")?`); labeled tokens in a rest role are one item each
+  (`items:IDENT "," items:IDENT`). All three were errors.
+- `@tags` works without `@schema`.
+- Rules have no length limit of their own: an alternative has at most
+  65534 positions (its elements and those in its groups and choices), and
+  a grammar at most 65535 symbols, both located errors.
+- GRAMMAR.md has a Limits section.
 
-### Migrating a lang module
+### Changed
 
-Regenerate the parser, then, in the lang module:
+Generated API:
+
+- **Breaking: `Tag` is always generated.** Without `@schema` it holds the
+  tags the actions produce, in first-seen order, then the `@tags` names;
+  it is exhaustive (`_` only when empty). A lang module's `Tag` is not
+  read.
+- **Breaking: one lexer contract.** Every module has `BaseLexer`, the
+  generated scanner, and `Lexer`, the lexer the parser drives (`BaseLexer`
+  unless the lang module declares a `Lexer` wrapper). The scanner is
+  `BaseLexer.next()`. A lang `Lexer` wrapper holds the generated lexer as
+  `base: BaseLexer` (any other field is a compile error, where the parser
+  silently lost `aux`) and needs only `init(source)` and `next()`: the
+  parser calls nothing else.
+- **Breaking: errors through `lastError()`.** Locate an error with
+  `lastError().span` and `.cat`, not the parser's `current` token.
+  `writeError` names each expected symbol once, so tokens sharing an
+  `@display` name are listed once.
+- `NodeInfo`, `SideEntry`, `SideLabel` and `RepairClass` are private.
+- A syntax error names the unexpected token by its `@display` name too
+  (`unexpected name 'x'`, `unexpected end of line`).
+
+Grammar files:
+
+- **Breaking: `X*`, `X+` and `L(X)` are left-recursive.** A list of n
+  items costs O(n) time and memory in the generated parser, where each item
+  copied the rest of the list. Trees are unchanged. The `L(X).tail` rules
+  are gone, and conflicts that involve a list move to the rule that ends
+  it: regenerate and replace the manifest entries `nexus check` reports. A
+  list followed by its own separator (`L(X) "," "*"`) needs no declared
+  conflict.
+- **Breaking: the coverage gate counts presence, repetition and choice.**
+  An unused `T?`, `T*` or choice between fixed texts (`("+=" | "-=")`) is an
+  error, since leaving it out lets different inputs build the same node.
+  Use it, label it, drop it with `!X`, or opt out with `~ "reason"`.
+  Coverage errors show groups, choices and lists in source syntax.
+- **Breaking: a label that cannot fill a role is an error**, where it was
+  ignored: one inside a repeated group or choice (`(A | x:B)*`), or inside
+  a group nested in a group or choice. So is a label on a choice with an
+  alternative of several elements (`eq:("=" | ":" "=")`), which a
+  side-band role dropped for that alternative. Move that part into a named
+  rule, or label the elements.
+- **Breaking: an unreachable rule is an error** in every run, where `nexus
+  check` printed a warning (none with `@as`) and generation emitted the
+  dead rule. An `@infix` table no rule uses is an error, and so is a rule
+  named `infix` beside one.
+- **Breaking: each directive appears once** (`duplicate @x`), except
+  `@as`; `@schema`, `@tags`, `@trivia`, `@conflicts`, `@errors`,
+  `@display` and `@op` merged repeated blocks. A name given twice in
+  `@tags` or `@trivia` is an error.
+- **Breaking: every string decodes escapes one way.** Parser literals, list
+  separators, `X "c"` hints, `@infix`, `@op`, `@display`, `@errors` and
+  `@repair` strings, tag literals, quoted kind names, `tag(...)` values and
+  `@tags` names take the escapes of a pattern literal
+  (`\n \r \t \0 \\ \' \" \xHH`); any other escape is an error at its
+  backslash, where `\c` read as `c` and quoted names kept their
+  backslashes. `\xHH` needs two hex digits (`'\x+A'` read as 0x0A).
+- **Breaking: a `[...]` whose body can match nothing is an error**
+  (`[X?]`, `[X*]`, `[A | B?]`, `[[X]]`), where it surfaced as an undeclared
+  conflict, and `[...]` takes no quantifier (`![X]*` silently replaced its
+  `?`). `[L(X?)]` remains: it tells an absent list from a list of one empty
+  item.
+- **Breaking: guard values must fit their variable** (-128..127, `pre`
+  0..255), like assigned values, and a rule (or zero-width rule) whose
+  guards never hold together is an error: start states are built only for
+  the guard configurations values can produce. `{pre = 200}` is allowed
+  and `{pre = -1}` rejected.
+- **Breaking: a rule that can win only after a leading blank is dead**
+  (the scanner skips blanks first), and so reported. A space before a
+  quantifier (`'a' +`) says to remove the space.
+- **Breaking: an endless reduce chain is a generation error**, including
+  an empty reduction alternating with a unit reduction (`d → b`,
+  `b → ε`), whose generated parser pushed forever.
+- **Breaking: the lexer automata have size limits**: an NFA over 200,000
+  states, or subset construction past 4 × 65535 states, is a located
+  error.
+- **Breaking: an `X "c"` hint names a literal terminal**, decoding its
+  escapes; a hint whose literal the grammar does not use is an error (it
+  was reported as having no effect), and hints group by alternative, so a
+  dead hint beside a used one on the same line is reported. An `X "c"`
+  inside a group is an error.
+- **Breaking: a capitalized name is a token only if the lexer declares it
+  or an `@as` group produces it**: `EXPR` for a rule `expr` is an undefined
+  token.
+- A lexer action's argument is a number (`rewind(n)`); `word 'c'` is a
+  syntax error.
+- **Breaking: `after` runs only for tokens the DFA matches that consume
+  input** (and `err` bytes), as documented: not after `hold`, `rewind(0)`
+  or `( ) / r2` tokens, which reset the variables for the token at their
+  own position, nor after zero-width rules. em's `mumps.grammar` has
+  `after beg = 0` with held rules; every MUMPS case parses as before.
+- A count stored by `counted()` in a state variable saturates at 127 (200
+  dots stored -56).
+- The zero-width check follows (rule, value) steps: a rule that steps a
+  variable toward a false guard is accepted, and a held rule with a pattern
+  guarded only by `pre > 0` is accepted.
+- A conflict report shows a shortest symbol path to the state, and reports
+  of rules that derive no finite input name only the causes. Every LR
+  error is located at its alternative's column.
+- LR(0) states are numbered breadth-first by first use, independent of
+  hashing and the host, so every generated parser's states are
+  renumbered: a downstream regeneration shows a large diff in its tables
+  (trees are unchanged).
+- Manifest entries match rules with `->` in quoted literals and with blank
+  runs, and a manifest line may be of any length; a second `over` and a
+  count too large for 32 bits are errors.
+- Escapes in a tag literal (`op:("\x2b=" | "\n")`) name the decoded text.
+- `@code` without `@lang` is reported at the `@code` line.
+- An undefined rule or token is reported where it is written.
+- Quoted source text in messages is clipped to 60 bytes, a non-ASCII byte
+  is shown in hex, and a UTF-8 byte order mark at the start of a grammar
+  file is an error naming it.
+
+Command line and build:
+
+- **Breaking: the output file is required**: `nexus g.grammar` without one
+  is a usage error (exit 2) where it wrote `src/parser.zig`.
+- An output path that names the grammar file (through any spelling or
+  link) is a usage error, and nothing is written.
+- Output replaces its file atomically: a failed write leaves the previous
+  file intact. A device or pipe (`/dev/null`) is written in place.
+- `check` is the command wherever it is the first non-option argument;
+  `--dump-sexp` with `check`, `--spans` or `-c` is a usage error; a failed
+  write to standard output is an error, not a stack trace (a broken pipe is
+  no error).
+- `zig build unit` runs the generator's unit tests (the step was
+  `test-lowerer`); `zig build test` runs `./test/run`, from any directory.
+
+Tests:
+
+- `./test/run` pins every suite's generated code and every grammar file's
+  frontend tree, checks formatting (`tools/fmt`), fuzzes the lexer
+  generator (`tools/lexfuzz`, whose rejections its model confirms), checks
+  that every generator message is printed by a test (`tools/messages`), and
+  checks the README's numbers and the project page's example
+  (`tools/readme`). Doc tests cover every tracked Markdown file.
+- An adverse test requires exit status 1 and no output file; one suite run
+  per checkout (a lock); compiles are skipped when their inputs are
+  unchanged; the suite runs with the system's own tools (no GNU
+  `timeout`).
+
+### Removed
+
+- **Breaking:** `--slr`. Nexus builds LALR(1) tables only.
+- **Breaking:** the `simd_to 'c'` lexer action, which changed nothing (the
+  lexer scans `[^c]*` runs with SIMD on its own). Writing it is a syntax
+  error.
+- **Breaking:** the `@conflicts = N` form, which was parsed only to reject
+  it. It is a syntax error.
+- **Breaking:** `matchRules` (use `next`), `BaseLexer.reset`, and the
+  `text` and `reset` methods of lang `Lexer` wrappers, which nothing called.
+- The default output path.
+
+### Fixed
+
+- A generated parser hung on an empty reduction alternating with a unit
+  reduction (`d → b`, `b → ε`); every endless reduce chain is a generation
+  error.
+- A pattern whose DFA doubles with each repeat ran out of memory (11 GB)
+  without a diagnostic; subset construction stops at 4 × 65535 states with
+  a located error. Minimizing a long chain-shaped DFA took 9.4 s and 1.3 GB.
+- Start states had transitions on blanks the scanner never feeds them,
+  which hid dead rules (`(' ' 'x') | 'x'` after `'x'`).
+- An `@lexer` section with tokens and no rules (a lang `Lexer` that scans
+  everything) panicked the generator; it generates a lexer that returns
+  only `eof` and `err`.
+- Printing a tree, a span of a list without a node id, `writeFacts` and
+  the test driver recursed per tree level and overflowed the stack on deep
+  trees (a long operator chain); every walk uses a heap
+  stack.
+- A grammar-file token longer than 65535 bytes panicked the frontend, and a
+  few thousand nested groups overflowed the stack; both are located
+  errors (64 levels of nesting).
+- Lang lexers that built tokens with `@intCast` panicked on a match over
+  65535 bytes (MUMPS indents, Ruby symbols, nexis identifiers and strings,
+  Slash heredocs); they use `makeToken`.
+- An `@as` keyword whose Id value is 512 or more read past the group's
+  symbol map (a panic in safe builds); the maps are sized from the Id
+  enum, so any `u16` value works.
+- An `@as` keyword ordinal matched before a reduction stayed on the token
+  when the next state took it as itself.
+- A tag named `pass`, a tag literal written with an escape (`op:"\x41"`),
+  and a grammar past about 100,000 table entries (a comptime quota)
+  generated parsers that did not compile.
+- A start symbol named with 255 or more bytes was dropped from `Start`.
+- `printError` cut a long expected list at 512 bytes.
+- A list extension nested in another (`(...1 (...2 3))`) gave the outer
+  list a fresh node id.
+- The empty leaf of `~N` was placed at 1:1; it is placed where its element
+  starts.
+- Tolerant parsing at end of input took O(budget²) time; insertions that
+  only nest a construct deeper are bounded.
+- A rule with more than 255 elements crashed the generator.
+- A multi-element `[A B]` group inside a group or a choice crashed the
+  generator; it is a located error.
+- Aliases that form a cycle (`x = y`, `y = x`) are reported as an alias
+  cycle, not as an undefined rule.
+- An `@infix` base that aliases a token used nowhere else gave a false
+  "undefined rule".
+- The coverage gate judged a name defined in two blocks as an alias of its
+  last block's token; it is a rule, as for expansion.
+- A declared kind built only inside an undeclared kind was reported as
+  unbuilt and left out of the paste-ready `@schema` block.
+- Two labels on one slot role report "labeled twice", not "filled by the
+  label and by the action".
+- Without a schema, a nested node after an absent optional element was cut
+  with the trailing nils: `"a" [b] → (p 1 2 (q 1))` gave `(p a)` for `a`;
+  it gives `(p a _ (q a))`.
+
+### Performance
+
+Apple M5, ReleaseFast ([test/bench/BASELINE.md](test/bench/BASELINE.md)):
+
+- Generation: lowering indexes line starts (it was quadratic in file size:
+  MUMPS 19.7 → 8.1 ms, a 249 KB grammar 2.7 → 0.1 s); the LR(0) builder
+  uses dense buckets and the grammar facts are computed once (11% fewer
+  instructions on MUMPS).
+- Generated parsers: lists are linear (a 40,000-line MUMPS routine 2.5 to
+  3.2 s and 5 to 13 GB → 0.01 s and 26 MB); pass-through rules skip
+  `executeAction`; static action lists are read-only data; parse memory
+  comes from a bump allocator; an `@as` keyword is looked up once per
+  token; only tokens that can grow long test their length (19% fewer
+  instructions per token when lexing VistA). Parsing all of VistA (86.5 MB)
+  takes about 1.71 → 1.34 s, Rig 65 → 58 ms.
+- The parse table is an array literal: the MUMPS parser compiles in 0.25 s
+  instead of 0.61 s (Debug, semantic analysis).
+
+### Migrating
+
+Regenerate every parser. Then, in each lang module:
 
 - **Tag**: delete a hand-written `Tag` enum. A tag the generated enum
   lacks is one no action builds: list it in `@tags` if the lang code
@@ -56,6 +278,7 @@ Regenerate the parser, then, in the lang module:
   `var buf: [parser.maxExpected][]const u8`.
 - **Parser wrapper**: allocate with `self.base.allocator()`, not
   `self.base.arena.allocator()`.
+- **Build**: pass the output file (`nexus g.grammar src/parser.zig`).
 
 Per repository:
 
@@ -65,8 +288,11 @@ Per repository:
   instead of `base.current`; `expectedHint` loops over `expectedNames`
   and drops its dedupe; `allocator()` returns `self.base.allocator()`.
   `pub const Tag = parser.Tag;` stays (rig's code names it).
-- **em** (`src/mumps.zig`): delete `Lexer.text` and `Lexer.reset`.
-  `frontend.zig`'s `writeExpected` can take its names from
+- **em** (`mumps.grammar`, `src/mumps.zig`): delete `simd_to '\n'` from the
+  comment rule; in `@conflicts`, `shift L(expr).tail → ε 2` becomes
+  `shift viewarg → expr ":" L(expr) 1`, and `shift IDENT* → ε 2` becomes
+  `shift patatom → repcount IDENT+ 1`. Delete `Lexer.text` and
+  `Lexer.reset`; `frontend.zig`'s `writeExpected` can take its names from
   `expectedNames`.
 - **nexis** (`src/nexis.zig`): replace the `Tag` enum with
   `pub const Tag = parser.Tag;` (`reader.zig` names `nexis.Tag`); delete
@@ -78,96 +304,15 @@ Per repository:
   the 1.x form): delete `Tag`, `Lexer.text` and `Lexer.reset`; the
   heredoc, string-definition and UTF-8 identifier and variable tokens use
   `makeToken`.
-- **zag** (Nexus 0.10.3; see `test/zag`): delete `Tag`, `Lexer.text` and
-  `Lexer.reset`; `matchRules()` → `next()` (5 sites).
+- **zag** (Nexus 0.10.3; see `test/zag`): in `@conflicts`,
+  `shift L(arg).tail → ε 2` becomes `shift call → call L(arg) 1`, and
+  `shift L(expr).tail → ε 2` becomes `shift L(expr) → expr 2`. Delete
+  `Tag`, `Lexer.text` and `Lexer.reset`; `matchRules()` → `next()` (5
+  sites).
 - **nanoruby** (Nexus 0.10.3; see `test/ruby`): delete `Tag`,
   `Lexer.text` and `Lexer.reset`; `matchRules()` → `next()` (4 sites);
   symbols, `%w`/`%i` arrays, number extension and string segments use
   `makeToken`.
-
-### Changed
-
-- **The output file is required**: `nexus g.grammar` without one is a
-  usage error (exit 2) where it wrote `src/parser.zig`. Write
-  `nexus g.grammar src/parser.zig`; `-` writes the module to standard
-  output.
-- An output path that names the grammar file (through any spelling or
-  link) is a usage error, and nothing is written.
-- Output replaces its file atomically: a failed write leaves the previous
-  file intact.
-- Escapes in a tag literal (`op:("\x2b=" | "\n")`), a quoted kind name,
-  a `tag(...)` value and an `@tags` name decode as in every other string
-  literal (`\n` is a newline, `\x41` is `A`), where `\c` read as `c` in a
-  tag literal and quoted names kept their backslashes. A grammar that
-  spells a tag with an escape names the decoded text.
-- **`X*`, `X+` and `L(X)` are left-recursive.** A list of n items costs
-  O(n) time and memory in the generated parser, where each item copied the
-  rest of the list (a 40,000-line MUMPS routine took 7.8 s and 19 GB).
-  Trees are unchanged. The `L(X).tail` rules are gone, and conflicts that
-  involve a list move to the rule that ends it: regenerate, and replace
-  the manifest entries `nexus check` reports (em's `mumps.grammar`:
-  `shift L(expr).tail → ε 2` becomes `shift viewarg → expr ":" L(expr) 1`,
-  and `shift IDENT* → ε 2` becomes `shift patatom → repcount IDENT+ 1`).
-  A list followed by its own separator (`L(X) "," "*"`) needs no declared
-  conflict.
-- Labels inside a top-level `( ... )` or `( ... )?` group fill roles, and a
-  choice inside a `[...]` group or another choice becomes a rule of its
-  own; both were errors.
-- **The coverage gate counts presence, repetition and choice as values**:
-  an unused `T?`, `T*` or choice between fixed texts (`("+=" | "-=")`) is
-  an error, since leaving it out lets different inputs build the same
-  node. Use it, label it, drop it with `!X`, or opt out with `~ "reason"`.
-  Coverage errors show groups, choices and lists in source syntax.
-- One role may be labeled in different alternatives of a choice (whichever
-  matched fills it); an optional choice of literals can fill a tag role
-  (`op:("+=" | "-=")?`); labeled tokens in a rest role are one item each
-  (`items:IDENT "," items:IDENT`). All three were errors.
-- A label on a choice with an alternative of several elements is an error
-  (`eq:("=" | ":" "=")`); for a side-band role it was dropped for that
-  alternative. Label the elements instead.
-- **A label that cannot fill a role is an error**, where it was ignored:
-  one inside a repeated group or choice (`(A | x:B)*`), or inside a group
-  nested in a group or choice. Move that part into a named rule.
-
-### Removed
-
-- `--slr`. Nexus builds LALR(1) tables only.
-- The `simd_to 'c'` lexer action, which changed nothing (the lexer scans
-  `[^c]*` runs with SIMD on its own). Writing it is a syntax error: delete
-  it (em's `mumps.grammar` has one, on its comment rule).
-- The `@conflicts = N` form, which was parsed only to reject it. It is a
-  syntax error; declare each conflict in an `@conflicts` block.
-
-### Fixed
-
-- An `@as` keyword whose Id value is 512 or more read past the group's
-  symbol map (a panic in safe builds); the maps are sized from the Id
-  enum, so any `u16` value works.
-- A tag literal written with an escape (`op:"\x41"` for the tag `A`)
-  generated a parser that did not compile.
-- A rule with more than 255 elements crashed the generator. Rules have no
-  length limit of their own; an alternative has at most 65534 elements
-  (counting those in its groups and choices), and a grammar at most 65535
-  symbols, both located errors.
-- A multi-element `[A B]` group inside a group or a choice crashed the
-  generator; it is a located error.
-- Groups and choices nested more than 64 deep in a pattern, and action
-  nodes nested more than 64 deep, are located errors.
-- Aliases that form a cycle (`x = y`, `y = x`) are reported as an alias
-  cycle, not as an undefined rule.
-- An `@infix` base that aliases a token used nowhere else gave a false
-  "undefined rule".
-- A rule named `infix` merged silently with the `@infix` chain; with
-  `@infix` declared it is an error (rename the rule).
-- The coverage gate judged a name defined in two blocks as an alias of its
-  last block's token; it is a rule, as for expansion.
-- A declared kind built only inside an undeclared kind was reported as
-  unbuilt and left out of the paste-ready `@schema` block.
-- Two labels on one slot role report "labeled twice", not "filled by the
-  label and by the action".
-- Without a schema, a nested node after an absent optional element was cut
-  with the trailing nils: `"a" [b] → (p 1 2 (q 1))` gave `(p a)` for `a`;
-  it gives `(p a _ (q a))`.
 
 ## 1.1.0 — 2026-10-02
 
