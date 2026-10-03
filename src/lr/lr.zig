@@ -13,10 +13,7 @@ pub const conflicts = @import("conflicts.zig");
 pub const expected = @import("expected.zig");
 pub const repair = @import("repair.zig");
 
-pub const ParseMode = lookahead.ParseMode;
-
 pub const Options = struct {
-    mode: ParseMode = .lalr,
     /// The grammar file, for located messages.
     path: []const u8,
 };
@@ -62,7 +59,7 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     if (unproductive) return error.GenerationFailed;
     try checkCycles(a, g, opts.path);
 
-    const la = try lookahead.compute(g, &auto, opts.mode);
+    const la = try lookahead.compute(g, &auto);
 
     if (g.repair) |spec| {
         if (repair.validate(g, spec)) |bad| {

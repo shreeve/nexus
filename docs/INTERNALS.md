@@ -132,8 +132,7 @@ rejects rules that derive no finite input, and computes lookaheads:
 
 - nullable and FIRST sets as bit sets (`bitset.zig`: one allocation per
   family of equal-width sets);
-- SLR(1): FOLLOW sets (`--slr`);
-- LALR(1) (the default): DeRemer and Pennello's relations over the
+- LALR(1): DeRemer and Pennello's relations over the
   nonterminal transitions (direct reads, *reads*, *includes*, *lookback*),
   with both unions computed by the digraph algorithm, collapsing strongly
   connected components. A unit test checks the result against merged

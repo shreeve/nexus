@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- `--slr`. Nexus builds LALR(1) tables only.
+
 ### Fixed
 
 - A rule with more than 255 elements crashed the generator. Rules have no

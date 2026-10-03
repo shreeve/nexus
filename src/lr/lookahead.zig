@@ -1,6 +1,6 @@
 //! Lookahead sets for reductions: nullable and FIRST for every symbol, then
-//! either FOLLOW(lhs) (SLR(1)) or the LALR(1) lookaheads computed by the
-//! DeRemer–Pennello relations over the LR(0) automaton.
+//! the LALR(1) lookaheads computed by the DeRemer–Pennello relations over
+//! the LR(0) automaton.
 //!
 //! Every set is a bit set over symbol ids (only terminal bits are ever set).
 
@@ -14,30 +14,23 @@ const bitset = @import("bitset.zig");
 const BitSet = bitset.BitSet;
 const SetArray = bitset.SetArray;
 
-pub const ParseMode = enum { lalr, slr };
-
 /// The lookahead set of every reduction: `sets[state][i]` belongs to the i-th
-/// reduction item of `state` (`State.reductions[i]`). In SLR mode the sets
-/// of reductions with the same lhs are the same FOLLOW set. `first[sym]` is
+/// reduction item of `state` (`State.reductions[i]`). `first[sym]` is
 /// FIRST(sym) (for a terminal, the terminal itself); `nullable[sym]` says
 /// whether sym derives the empty string.
 pub const Lookaheads = struct {
-    mode: ParseMode,
     sets: []const []const BitSet,
     first: SetArray,
     nullable: []const bool,
 };
 
-pub fn compute(g: *const Grammar, auto: *const Automaton, mode: ParseMode) !Lookaheads {
-    const a = g.allocator;
+pub fn compute(g: *const Grammar, auto: *const Automaton) !Lookaheads {
     const nullable = try computeNullable(g);
-    const first = try computeFirst(g, nullable);
-
-    const sets = switch (mode) {
-        .slr => try slrSets(g, auto, nullable, first),
-        .lalr => try lalrSets(a, g, auto, nullable),
+    return .{
+        .sets = try lalrSets(g.allocator, g, auto, nullable),
+        .first = try computeFirst(g, nullable),
+        .nullable = nullable,
     };
-    return .{ .mode = mode, .sets = sets, .first = first, .nullable = nullable };
 }
 
 // =============================================================================
@@ -92,55 +85,6 @@ fn computeFirst(g: *const Grammar, nullable: []const bool) !SetArray {
         }
     }
     return first;
-}
-
-// =============================================================================
-// SLR(1): FOLLOW sets
-// =============================================================================
-//
-// FOLLOW(A) = the terminals that can appear right after A:
-//   for every rule B → α A β: FIRST(β) ⊆ FOLLOW(A), and
-//   FOLLOW(B) ⊆ FOLLOW(A) when β is nullable.
-//
-// =============================================================================
-
-fn slrSets(g: *const Grammar, auto: *const Automaton, nullable: []const bool, first: SetArray) ![]const []const BitSet {
-    const a = g.allocator;
-    const n = g.symbols.items.len;
-    const follow = try SetArray.init(a, n, n);
-
-    var changed = true;
-    while (changed) {
-        changed = false;
-        for (g.rules.items) |rule| {
-            // Walk right to left, carrying "FIRST of the rest, plus FOLLOW(lhs)
-            // while the rest is nullable".
-            var restNullable = true;
-            var i = rule.rhs.len;
-            while (i > 0) {
-                i -= 1;
-                const s = rule.rhs[i];
-                if (g.symbols.items[s].kind == .nonterminal) {
-                    const f = follow.get(s);
-                    if (restNullable and f.unionWith(follow.get(rule.lhs))) changed = true;
-                    var j = i + 1;
-                    while (j < rule.rhs.len) : (j += 1) {
-                        if (f.unionWith(first.get(rule.rhs[j]))) changed = true;
-                        if (!nullable[rule.rhs[j]]) break;
-                    }
-                }
-                if (!nullable[s]) restNullable = false;
-            }
-        }
-    }
-
-    const sets = try a.alloc([]const BitSet, auto.states.items.len);
-    for (auto.states.items, 0..) |state, si| {
-        const row = try a.alloc(BitSet, state.reductions.len);
-        for (state.reductions, 0..) |item, ri| row[ri] = follow.get(g.rules.items[item.ruleId].lhs);
-        sets[si] = row;
-    }
-    return sets;
 }
 
 // =============================================================================

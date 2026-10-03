@@ -1,5 +1,5 @@
 //! Unit tests of the LR core on small grammars: LALR(1) lookaheads against
-//! a canonical LR(1) reference, SLR vs LALR, conflict classification and
+//! a canonical LR(1) reference, conflict classification and
 //! the manifest, hints, examples, expected sets, and repair ranking.
 
 const std = @import("std");
@@ -77,11 +77,11 @@ const Built = struct {
     tbl: table.Table,
 };
 
-fn generate(a: Allocator, rules: []const []const u8, starts: []const []const u8, mode: lookahead.ParseMode) !*Built {
+fn generate(a: Allocator, rules: []const []const u8, starts: []const []const u8) !*Built {
     const b = try a.create(Built);
     b.g = try build(a, rules, starts);
     b.auto = try automaton.build(&b.g);
-    b.la = try lookahead.compute(&b.g, &b.auto, mode);
+    b.la = try lookahead.compute(&b.g, &b.auto);
     b.tbl = try table.build(&b.g, &b.auto, b.la);
     return b;
 }
@@ -220,7 +220,7 @@ fn expectLalrMatchesCanonical(a: Allocator, b: *const Built) !void {
 // Lookaheads
 // =============================================================================
 
-test "LALR resolves what SLR cannot (the classic L = R grammar)" {
+test "LALR resolves the classic L = R grammar (SLR(1) cannot)" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const a = arena.allocator();
@@ -231,12 +231,7 @@ test "LALR resolves what SLR cannot (the classic L = R grammar)" {
         "l → ID",
         "r → l",
     };
-    const slr = try generate(a, &rules, &.{"s"}, .slr);
-    try testing.expectEqual(@as(u32, 1), slr.tbl.conflicts);
-    try testing.expectEqual(table.Conflict.Kind.shift, slr.tbl.conflictList[0].kind);
-    try testing.expectEqual(sym(&slr.g, "\"=\""), slr.tbl.conflictList[0].terminal);
-
-    const lalr = try generate(a, &rules, &.{"s"}, .lalr);
+    const lalr = try generate(a, &rules, &.{"s"});
     try testing.expectEqual(@as(u32, 0), lalr.tbl.conflicts);
     // In the state after `l`, `r → l •` reduces only on $end.
     const q = stateWith(&lalr.auto, 0, 1);
@@ -259,7 +254,7 @@ test "lookaheads through nullable symbols (reads) and right recursion (includes)
         "tail → ε",
         "x → D x",
         "x → E",
-    }, &.{"s"}, .lalr);
+    }, &.{"s"});
     try expectLalrMatchesCanonical(a, b);
     // After `x`, `opt → ε` reduces on what can follow: B (tail) or C.
     const q = stateWith(&b.auto, 0, 1);
@@ -303,7 +298,7 @@ test "LALR lookaheads equal merged canonical LR(1) on random grammars" {
             if (x.kind == .nonterminal and x.rules.items.len > 0 and costs[i] == repair.infinite) break false;
         } else true;
         if (!reduced) continue;
-        const b = try generate(a, rules.items, &.{ "s", "a" }, .lalr);
+        const b = try generate(a, rules.items, &.{ "s", "a" });
         tested += 1;
         expectLalrMatchesCanonical(a, b) catch |err| {
             for (rules.items) |r| std.debug.print("  {s}\n", .{r});
@@ -329,7 +324,7 @@ test "classifies shift and reduce conflicts; manifest text; shortest example" {
         "stmt → ref \";\"",
         "val → ID",
         "ref → ID",
-    }, &.{"prog"}, .lalr);
+    }, &.{"prog"});
     const entries = try conflicts.entries(a, &b.tbl);
     try testing.expectEqual(@as(usize, 2), entries.len);
     try testing.expectEqual(table.Conflict.Kind.shift, entries[0].kind);
@@ -373,7 +368,7 @@ test "manifest check: match, count change, winner flip, missing, undeclared" {
         "stmt → ref \";\"",
         "val → ID",
         "ref → ID",
-    }, &.{"prog"}, .lalr);
+    }, &.{"prog"});
     var sink: std.Io.Writer.Allocating = .init(a);
     const opts: conflicts.Options = .{ .path = "t.grammar", .out = &sink.writer };
     const shift: grammar.ConflictEntry = .{ .kind = .shift, .rule = "stmt  ->  IF ID stmt", .count = 1, .reason = "dangling else" };
@@ -426,7 +421,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → IF ID stmt >",
         "stmt → IF ID stmt ELSE stmt",
         "stmt → ID",
-    }, &.{"prog"}, .lalr);
+    }, &.{"prog"});
     try testing.expectEqual(@as(u32, 0), shiftHint.tbl.conflicts);
     const q = stateWith(&shiftHint.auto, 1, 3);
     try testing.expect(shiftHint.tbl.rows[q][sym(&shiftHint.g, "ELSE")] == .shift);
@@ -436,7 +431,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "stmt → IF ID stmt <",
         "stmt → IF ID stmt ELSE stmt",
         "stmt → ID",
-    }, &.{"prog"}, .lalr);
+    }, &.{"prog"});
     try testing.expectEqual(@as(u32, 0), reduceHint.tbl.conflicts);
     try testing.expect(reduceHint.tbl.rows[stateWith(&reduceHint.auto, 1, 3)][sym(&reduceHint.g, "ELSE")] == .reduce);
 
@@ -451,7 +446,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "e → \"[\" e \"]\"",
         "e → e e",
         "name → ID",
-    }, &.{"prog"}, .lalr);
+    }, &.{"prog"});
     const xs = x.tbl.xExcludes.items;
     var chars: [2]u8 = undefined;
     var n: usize = 0;
@@ -477,7 +472,7 @@ test "hints resolve conflicts silently; X \"c\" records every character" {
         "e → name X \":\"",
         "e → name \"(\" \")\"",
         "name → ID",
-    }, &.{"prog"}, .lalr);
+    }, &.{"prog"});
     try testing.expectEqual(@as(usize, 0), dead.tbl.xExcludes.items.len);
     try testing.expectError(error.ConflictDrift, conflicts.checkHints(a, &dead.g, &dead.tbl, opts));
     try testing.expectEqualStrings(
@@ -498,8 +493,8 @@ test "a start marker adds no conflicts and every start alternative is reachable"
         "form → ID",
         "form → \"(\" forms \")\"",
     };
-    const one = try generate(a, &rules, &.{"program"}, .lalr);
-    const two = try generate(a, &rules, &.{ "program", "form" }, .lalr);
+    const one = try generate(a, &rules, &.{"program"});
+    const two = try generate(a, &rules, &.{ "program", "form" });
     try testing.expectEqual(one.tbl.conflicts, two.tbl.conflicts);
     // From form's entry state (after the injected marker), both of form's
     // rules can start.
@@ -540,7 +535,7 @@ test "expected sets name @errors nonterminals, then remaining terminals" {
         "expr → ID",
         "expr → NUM",
     };
-    var b = try generate(a, &rules, &.{"prog"}, .lalr);
+    var b = try generate(a, &rules, &.{"prog"});
     const q = stateWith(&b.auto, 0, 1); // prog → "(" • args ")"
     // Without names: every terminal with an action.
     const plain = b.tbl.expected.forState(q);
@@ -576,7 +571,7 @@ test "repair candidates: holes before structure, then fewest fabrications, then 
         "args → args \",\" ID",
     }, &.{"prog"});
     const auto = try automaton.build(&g);
-    const la = try lookahead.compute(&g, &auto, .lalr);
+    const la = try lookahead.compute(&g, &auto);
 
     const costs = try repair.insertCosts(a, &g);
     try testing.expectEqual(@as(u32, 1), costs[sym(&g, "args")]);
@@ -621,7 +616,7 @@ test "ranking puts holes above cheaper structure" {
         "args → args \",\" ID",
     }, &.{"prog"});
     const auto = try automaton.build(&g);
-    const la = try lookahead.compute(&g, &auto, .lalr);
+    const la = try lookahead.compute(&g, &auto);
     g.repair = .{ .holes = &.{"ID"}, .structure = &.{"\")\""} };
     const tbl = try table.build(&g, &auto, la);
     const q = stateWith(&auto, 2, 4);

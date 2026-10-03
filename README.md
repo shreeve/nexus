@@ -145,10 +145,10 @@ generation would have failed with `file:line:col: error:` naming the rule.
   longest match, lexer states and guards, trailing context (`r1 / r2`),
   zero-width tokens, and SIMD scanning of long runs. Tokens are 8 bytes and
   zero-copy.
-- **LALR(1)** with DeRemer–Pennello lookaheads (SLR(1) with `--slr`), and
-  every remaining conflict declared in an `@conflicts` manifest, with a
-  reason; any change fails generation and prints the conflict, its state,
-  an example input, and the new manifest.
+- **LALR(1)** with DeRemer–Pennello lookaheads, and every remaining
+  conflict declared in an `@conflicts` manifest, with a reason; any change
+  fails generation and prints the conflict, its state, an example input,
+  and the new manifest.
 - **Actions next to rules.** `→ (set 1 3)` is the tree. Optional groups
   keep positions stable; lists (`L(X)`, `X*`, `[X ...]`), choices,
   operator-precedence chains (`@infix`), contextual keywords (`@as`).
@@ -206,8 +206,8 @@ nexus --dump-sexp calc.grammar        # the frontend's tree of the grammar file
 nexus --help
 ```
 
-Options: `--spans` (node spans without a schema), `--slr`, `-c` (rules as
-comments in the output). Exit status: 0 success, 1 error, 2 usage.
+Options: `--spans` (node spans without a schema), `-c` (rules as comments
+in the output). Exit status: 0 success, 1 error, 2 usage.
 
 ## Documentation
 

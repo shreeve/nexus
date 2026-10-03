@@ -702,12 +702,12 @@ expression, so `goto` stays an identifier.
 
 ## Conflicts and hints
 
-Nexus builds LALR(1) tables (`--slr` for SLR(1)). A shift/reduce conflict
-resolves to the shift, a reduce/reduce conflict to the rule written first,
-and every conflict a grammar leaves must be declared in `@conflicts`,
-with a reason. Generation fails on any difference and prints each
-undeclared conflict with its state, items, and an example input, then the
-whole manifest ready to paste:
+Nexus builds LALR(1) tables. A shift/reduce conflict resolves to the
+shift, a reduce/reduce conflict to the rule written first, and every
+conflict a grammar leaves must be declared in `@conflicts`, with a reason.
+Generation fails on any difference and prints each undeclared conflict
+with its state, items, and an example input, then the whole manifest ready
+to paste:
 
 ```grammar dangling.grammar rejects
 @lexer

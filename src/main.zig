@@ -64,7 +64,6 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\
     \\Options:
     \\  --spans         Record node spans and rule ids (always on with @schema)
-    \\  --slr           Build SLR(1) tables instead of LALR(1)
     \\  -c, --comments  Write each grammar rule as a comment above its action
     \\  -h, --help      Show this help
     \\  -V, --version   Show the version
@@ -85,7 +84,6 @@ const Options = struct {
     checkMode: bool = false,
     emitComments: bool = false,
     spans: bool = false,
-    parseMode: lr.ParseMode = .lalr,
     grammarFile: []const u8,
     outputFile: []const u8,
 };
@@ -113,8 +111,6 @@ pub fn main(init: std.process.Init) !void {
             command = .dump;
         } else if (eql(arg, "-c") or eql(arg, "--comments")) {
             opts.emitComments = true;
-        } else if (eql(arg, "--slr")) {
-            opts.parseMode = .slr;
         } else if (eql(arg, "--spans")) {
             opts.spans = true;
         } else if (i == 1 and eql(arg, "check")) {
@@ -272,10 +268,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         // Validate all referenced symbols are defined
         if (check.validateSymbols(&g, &lexerSpec, grammarFile) > 0) fail();
 
-        var result = lr.run(&g, .{
-            .mode = opts.parseMode,
-            .path = grammarFile,
-        }) catch |err| {
+        var result = lr.run(&g, .{ .path = grammarFile }) catch |err| {
             if (err == error.OutOfMemory) diag.err("out of memory", .{});
             std.process.exit(1);
         };
