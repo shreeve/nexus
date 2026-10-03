@@ -14,16 +14,16 @@ for parse throughput and 0.3 ms for generation.
 
 | grammar | mean ms | min ms | output lines | output KB |
 |---|---:|---:|---:|---:|
-| mumps | 19.1 | 18.7 | 4562 | 420 |
-| ruby | 14.1 | 13.7 | 3479 | 271 |
-| rig | 14.5 | 14.0 | 4903 | 233 |
-| zag | 10.9 | 10.6 | 2948 | 195 |
-| slash | 6.6 | 6.2 | 2252 | 101 |
-| nexis | 5.7 | 5.4 | 2169 | 87 |
-| nexus | 9.8 | 9.6 | 3609 | 156 |
+| mumps | 8.7 | 8.1 | 4562 | 420 |
+| ruby | 8.5 | 8.0 | 3479 | 271 |
+| rig | 8.4 | 7.6 | 4903 | 233 |
+| zag | 7.6 | 7.0 | 2948 | 195 |
+| slash | 5.8 | 5.6 | 2252 | 101 |
+| nexis | 5.6 | 5.4 | 2169 | 87 |
+| nexus | 6.2 | 6.0 | 3609 | 156 |
 | features | 5.2 | 4.9 | 1611 | 61 |
-| basic | 5.1 | 4.8 | 1494 | 57 |
-| lit_tags | 5.0 | 4.8 | 1441 | 54 |
+| basic | 5.0 | 4.7 | 1494 | 57 |
+| lit_tags | 4.9 | 4.6 | 1441 | 54 |
 
 ## Lexing and parsing throughput
 

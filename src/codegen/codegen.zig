@@ -291,7 +291,7 @@ const Codegen = struct {
                 if (word.len > 0) if (std.mem.find(u8, line[directive.len..], word)) |i| {
                     at = pos + directive.len + i;
                 };
-                const loc = (diag.Source{ .path = src.path, .text = text }).at(at);
+                const loc = src.at(at);
                 return diag.errLine(src.path, loc.line, loc.col, fmt, args);
             }
             pos = end + 1;

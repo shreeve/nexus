@@ -28,6 +28,7 @@ const codegen = @import("codegen/codegen.zig");
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
 test {
+    _ = @import("diag.zig");
     _ = @import("frontend/lower.zig");
     _ = @import("semantics.zig");
     _ = @import("lexgen/lexgen.zig");
@@ -291,7 +292,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerSpec, lexerDecls, .{
             .emitComments = opts.emitComments,
             .spans = opts.spans,
-            .source = .{ .path = grammarFile, .text = sourceText },
+            .source = parsed.source,
         }) catch |err| {
             // Generation errors are reported where they are found.
             if (err == error.OutOfMemory) diag.err("out of memory", .{});

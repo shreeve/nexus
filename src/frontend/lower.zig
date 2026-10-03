@@ -178,7 +178,7 @@ pub const GrammarLowerer = struct {
     }
 
     fn text(self: *const GrammarLowerer, s: anytype) []const u8 {
-        return self.source.text[self.source.base + s.pos ..][0..s.len];
+        return self.source.text[s.pos..][0..s.len];
     }
 
     fn requireSrc(self: *const GrammarLowerer, node: Sexp, what: []const u8) LowerError![]const u8 {
@@ -1257,7 +1257,7 @@ const testing = std.testing;
 //   37..43 "a -> b"   43..48 "lexer"   48..54 "parser"   54..57 "eof"
 //   57..60 "err"
 const negText = "x\"ab\"03Yshiftreduce!selffn#rtagzzz\"\"1a -> blexerparsereoferr";
-const negSourceMap: diag.Source = .{ .path = "test.grammar", .text = negText };
+const negSourceMap: diag.Source = .{ .path = "test.grammar", .text = negText, .lines = &.{0} };
 
 fn src(pos: u32, len: u16) Sexp {
     return .{ .src = .{ .pos = pos, .len = len, .id = 0 } };

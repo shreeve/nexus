@@ -26,7 +26,7 @@ pub const Parsed = struct {
 /// Parse a whole grammar file. A syntax error is reported as
 /// `path:line:col: error: ...` and returned as error.ParseError.
 pub fn parseGrammarSexp(allocator: Allocator, sourceText: []const u8, path: []const u8) !Parsed {
-    const source: diag.Source = .{ .path = path, .text = sourceText };
+    const source = try diag.Source.init(allocator, path, sourceText);
     var p = parser.Parser.init(allocator, sourceText);
     errdefer p.deinit();
     const sexp = p.parseGrammar() catch |err| {
