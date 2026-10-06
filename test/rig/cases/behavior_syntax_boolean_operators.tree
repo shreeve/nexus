@@ -4,6 +4,7 @@
     _
     ((: `v` `Bool`)@191..198)@190..199
     `Bool`
+    _
     (block (call `print` `"evaluated"`)@210..228 `v`)@210..234)@182..234
   (sub
     `main`

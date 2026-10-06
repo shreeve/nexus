@@ -1,5 +1,5 @@
 (module
-  (struct `Wrap` (: `value` `Int`)@185..195)@171..197
+  (struct `Wrap` _ (: `value` `Int`)@185..195)@171..197
   (sub
     `holder`
     _

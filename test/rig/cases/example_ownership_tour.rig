@@ -12,7 +12,7 @@ sub close(a: Account)
 
 sub main
   acct = Account(owner: "ada", balance: 100)
-  print(balance_of(?acct))    # read borrow: acct stays usable
+  print(balance_of(?acct))    # read view: acct stays usable
   moved = <acct               # move: `acct` is gone from here on
   print(balance_of(?moved))
 

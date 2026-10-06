@@ -1,7 +1,7 @@
 # A Cell is interior-mutable: `set` and `replace` change it through a
-# read borrow, and through a `?self` method of a struct holding one. A
-# by-value parameter holding a Cell is the callee's own copy, which it
-# may lend out.
+# read view, and through a `?self` method of a struct holding one. A
+# value holding a Cell is unique: a by-value parameter owns the value
+# moved into it, which it may lend out.
 
 struct Counter
   hits: Cell[Int]
@@ -34,7 +34,8 @@ sub main()
   k.hit()
   k.hit()
   print(k.name, k.hits.get())
-  print(lent(k), k.hits.get())
+  before = k.hits.get()
+  print(lent(<k), before)
 
   box = *Counter(hits: Cell(40), name: "shared")
   box.hit()

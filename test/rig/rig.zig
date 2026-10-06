@@ -91,10 +91,13 @@ pub fn children(node: Sexp) []const Sexp {
 // =============================================================================
 
 /// Exhaustive view of the op slot, so dispatch sites must handle every
-/// kind: `_` → default, `fixed` (`=!`), `shadow` (`new x =`), and the
-/// compound assignments (`x op= e`, one per binary arithmetic, wrapping,
-/// bitwise, and shift operator). Every kind but `default` is
-/// named after its tag in the schema's `op:tag(...)` for `set`.
+/// kind: `_` → default, `fixed` (`const x =`, and `new const x =`),
+/// `shadow` (`new x =`), and the compound assignments (`x op= e`, one per
+/// binary arithmetic, wrapping, bitwise, and shift operator). Every kind
+/// but `default` is named after its tag in the schema's `op:tag(...)` for
+/// `set`. `new const x = e` is the tag `shadow_fixed`, decoded as `fixed`:
+/// it binds as `const x = e` does, and only declaring the name tells the
+/// two apart (`shadows`).
 pub const BindingKind = enum {
     default,
     fixed,
@@ -135,10 +138,17 @@ pub fn bindingKindOf(op: Sexp) BindingKind {
     return switch (op) {
         .nil => .default,
         .tag => |t| switch (t) {
+            .shadow_fixed => .fixed,
             inline else => |c| if (@hasField(BindingKind, @tagName(c))) @field(BindingKind, @tagName(c)) else unreachable,
         },
         else => unreachable,
     };
+}
+
+/// Whether the op slot of `(set <op> ...)` binds a new name even where
+/// one is already visible: `new x = e` and `new const x = e`.
+pub fn shadows(op: Sexp) bool {
+    return op == .tag and (op.tag == .shadow or op.tag == .shadow_fixed);
 }
 
 // =============================================================================
@@ -146,7 +156,8 @@ pub fn bindingKindOf(op: Sexp) BindingKind {
 // =============================================================================
 
 /// Every Rig keyword is reserved, except `new`, which is a keyword only
-/// at the start of a statement followed by a name (`new x = ...`), so
+/// at the start of a statement followed by a name or `const` (`new x =
+/// ...`, `new const x = ...`), so
 /// `fun new(...)` and `Point.new(...)` stay ordinary names.
 const keywords = std.StaticStringMap(TokenCat).initComptime(.{
     .{ "and", .@"and" },
@@ -303,8 +314,8 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 //     parser decides (`[2]?T`), and the Parser wrapper checks the touch.
 //
 //   Token boundaries still matter, as in `!=` and `==`: `=!` is one
-//   token, so `x =!y` could be a fixed binding of `y` or `x = !y`; a
-//   `=!` touching the operand after it is an error.
+//   token, and an error wherever it stands, so `x =!y` is never quietly
+//   `x = !y`.
 //
 // `if`
 //   After `return`/`break`/`continue` or a value, `if` is a postfix guard
@@ -314,6 +325,16 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 // `of`
 //   After a value directly inside [ ], `of` separates a fill literal's
 //   count from its element (`[n of x]`). Elsewhere it is a name.
+//
+// `unique`
+//   After a struct header's name or type parameters, `unique` marks the
+//   struct unique (`struct Random unique`). Elsewhere it is a name.
+//
+// `from`, `static`
+//   After a function's result type, on its header's line, `from` says
+//   what the result views (`-> ?Item from a, b`), and `static` right
+//   after it says the result views only what lives for the whole
+//   program (`-> String from static`). Elsewhere each is a name.
 //
 // `..`
 //   Before `]` (past any line break, which is whitespace inside
@@ -360,6 +381,9 @@ pub const Lexer = struct {
     /// The bracket nesting of the `while` header being lexed, whose first
     /// `:` there starts the step; null outside one.
     while_header: ?u32 = null,
+    /// The line is a function's header, past the `->` of its result
+    /// type, where `from` may follow the type (`isResultFrom`).
+    fun_arrow: bool = false,
     /// Start and end of the last real (non-layout) token; an unexpected
     /// end of block or file is reported at its end.
     prev_pos: u32 = 0,
@@ -416,7 +440,7 @@ pub const Lexer = struct {
         radix_case,
         bad_number,
         too_long,
-        ambiguous_fixed,
+        fixed_assign,
         detached_prefix,
         semicolon,
         brace,
@@ -432,7 +456,7 @@ pub const Lexer = struct {
                 .radix_case => "radix prefixes are lowercase: `0x`, `0b`, `0o`",
                 .bad_number => "malformed number; `_` may separate digits, and a space or an operator ends a number",
                 .too_long => "token is longer than 65535 bytes",
-                .ambiguous_fixed => "`=!` touches the operand after it: write `x =! y` for a fixed binding, or `x = !y` for a write borrow",
+                .fixed_assign => "Rig has no `=!`: a binding that never changes is `const x = e`, and `x = !y` lends `y` to write",
                 .detached_prefix => "a prefix sigil touches its operand",
                 .semicolon => "unexpected `;`",
                 .brace => "Rig has no braces: a block is the lines indented under its header",
@@ -469,6 +493,13 @@ pub const Lexer = struct {
         switch (tok.cat) {
             .@"while" => self.while_header = self.nesting,
             .newline, .indent, .outdent, .eof, .step_colon => self.while_header = null,
+            else => {},
+        }
+        switch (tok.cat) {
+            .arrow => if (self.nesting == 0 and (self.line_head == .fun or self.line_head == .@"extern")) {
+                self.fun_arrow = true;
+            },
+            .newline, .indent, .outdent, .eof => self.fun_arrow = false,
             else => {},
         }
         if (tok.len > 0 and tok.cat != .err) { // a real token, not layout
@@ -720,8 +751,9 @@ pub const Lexer = struct {
             } else return self.fail(if (self.literalFollows()) .or_fallback else .or_operator, tok.pos),
             .slash => if (self.charAfter(tok) == '/' or self.charAfter(tok) == '*') return self.fail(.slash_comment, tok.pos) else .slash,
             .power => return self.fail(.power_operator, tok.pos),
-            // `x =!y`: a fixed binding of `y`, or a write borrow?
-            .fixed_assign => if (self.touchesNext(tok)) return self.fail(.ambiguous_fixed, tok.pos) else tok.cat,
+            // `=!` is no operator: a binding that never changes is
+            // `const x = e`, and `x =!y` would pass for `x = !y`.
+            .fixed_assign => return self.fail(.fixed_assign, tok.pos),
             // `xs[a..]`: an open range ends at the `]`.
             .dotdot => if (self.nextJoined().cat == .rbracket) .dotdot_open else .dotdot,
             // `while i < n : i += 1`: the step; any other `:` in the
@@ -762,12 +794,30 @@ pub const Lexer = struct {
                 if (!self.after_value) return .@"if";
                 return if (self.elseFollows()) .ternary_if else .post_if;
             },
-            .new => return if (self.stmtStart() and self.nextIsName()) .new else .ident,
+            .new => return if (self.stmtStart() and (self.nextIsName() or self.nextIsConst())) .new else .ident,
             else => return self.memberName() orelse kw,
         };
         if (self.inParens() and self.nextCat() == .colon) return .kwarg_name;
         if (std.mem.eql(u8, word, "of") and self.isFillOf()) return .of;
+        if (std.mem.eql(u8, word, "unique") and self.isStructUnique()) return .unique;
+        if (std.mem.eql(u8, word, "from") and self.isResultFrom()) return .from;
+        if (std.mem.eql(u8, word, "static") and self.last_cat == .from) return .static;
         return .ident;
+    }
+
+    /// `from` after a function's result type says what the result views
+    /// (`fun first(a: ?T, b: ?T) -> ?T from a`); anywhere else it is a
+    /// name.
+    fn isResultFrom(self: *const Lexer) bool {
+        return self.fun_arrow and self.after_value and self.nesting == 0;
+    }
+
+    /// `unique` after a struct header's name or its type parameters marks
+    /// the struct unique (`struct Random unique`, `struct Ring[T] unique`);
+    /// anywhere else it is a name.
+    fn isStructUnique(self: *const Lexer) bool {
+        return self.line_head == .@"struct" and self.nesting == 0 and
+            (self.last_cat == .ident or self.last_cat == .rbracket);
     }
 
     /// `of` after a value directly inside [ ] separates a fill literal's
@@ -814,11 +864,6 @@ pub const Lexer = struct {
         const name = probe.next();
         if (name.cat != .ident) return false;
         return probe.next().cat == .lparen;
-    }
-
-    /// The token touches the one after it.
-    fn touchesNext(self: *const Lexer, tok: Token) bool {
-        return isOperandStart(self.charAfter(tok));
     }
 
     /// The character right after `tok`, or 0 at the end of the source.
@@ -966,6 +1011,12 @@ pub const Lexer = struct {
         return t.cat == .ident and keyword(self.base.text(t)) == null;
     }
 
+    fn nextIsConst(self: *const Lexer) bool {
+        var probe = self.base;
+        const t = probe.next();
+        return t.cat == .ident and std.mem.eql(u8, self.base.text(t), "const");
+    }
+
     /// Why the grammar produced an `err` token.
     fn lexError(self: *Lexer, tok: Token) Token {
         if (tok.len == std.math.maxInt(u16)) return self.fail(.too_long, tok.pos);
@@ -1029,13 +1080,6 @@ fn isValue(cat: TokenCat) bool {
 fn isSigil(cat: TokenCat) bool {
     return switch (cat) {
         .minus, .lt, .plus, .star, .question, .not_sym, .tilde => true,
-        else => false,
-    };
-}
-
-fn isOperandStart(c: u8) bool {
-    return isIdentStart(c) or (c >= '0' and c <= '9') or switch (c) {
-        '(', '[', '"', '\'', '.', '<', '?', '!', '+', '-', '*', '~', '@' => true,
         else => false,
     };
 }
@@ -1230,9 +1274,8 @@ pub const Parser = struct {
         .{ "fn", Foreign{ .fix = "declare a function with `fun` (it returns a value) or `sub`" } },
         .{ "func", Foreign{ .fix = "declare a function with `fun` (it returns a value) or `sub`" } },
         .{ "function", Foreign{ .fix = "declare a function with `fun` (it returns a value) or `sub`" } },
-        .{ "let", Foreign{ .fix = "bind a name with `x = 5`, or `x =! 5` for a fixed binding" } },
-        .{ "var", Foreign{ .fix = "bind a name with `x = 5`, or `x =! 5` for a fixed binding" } },
-        .{ "const", Foreign{ .fix = "a fixed local is `x =! 5`, and a module-level `X = 5` is a constant", .alone = true } },
+        .{ "let", Foreign{ .fix = "bind a name with `x = 5`, or `const x = 5` for one that never changes" } },
+        .{ "var", Foreign{ .fix = "bind a name with `x = 5`, or `const x = 5` for one that never changes" } },
         .{ "class", Foreign{ .fix = "declare a type with `struct`" } },
         .{ "impl", Foreign{ .fix = "methods go in the `struct` body", .alone = true } },
         .{ "switch", Foreign{ .fix = "write `match`" } },
@@ -1481,7 +1524,7 @@ pub const Parser = struct {
             .of => "a fill literal `[n of x]` holds one count and one element; it cannot share brackets with a list",
             .nullish => "`??` is the fallback operator; an optional of an optional is written `(T?)?`",
             // Where no operator could come: C and Rust's address-of.
-            .ampersand => "Rig borrows with `?x` (read) or `!x` (write)",
+            .ampersand => "Rig lends with `?x` (to read) or `!x` (to write)",
             else => null,
         };
     }
@@ -1569,7 +1612,7 @@ pub const Parser = struct {
                 self.touchesOperand(out);
                 try self.noteParenSuffix(out);
             },
-            .borrow_read, .borrow_write, .shared => self.touchesOperand(out),
+            .read_view, .write_view, .shared => self.touchesOperand(out),
             // The body's value is returned.
             .fun => if (ir.Fun.returns(out) != .nil) try self.valueTail(ir.Fun.body(out), true),
             // The expression's value is bound or returned.
@@ -1584,7 +1627,8 @@ pub const Parser = struct {
 
     /// A module-level binding is a constant, written with `=`: its
     /// `(set _ ...)` becomes `(set fixed ...)`, the fixed binding every
-    /// pass reads. A `=!` there is rejected, as it would say nothing more.
+    /// pass reads. A `const` there is rejected, as it would say nothing
+    /// more.
     fn moduleConsts(self: *Parser, module: Sexp) void {
         for (ir.Module.decls(module)) |decl| {
             const set = if (decl.isKind(.@"pub")) ir.Pub.decl(decl) else decl;
@@ -1725,7 +1769,7 @@ pub const Parser = struct {
 
     /// `?`, `!`, and `<` before a place (a name and the fields and elements
     /// after it) followed by a method call apply to the place; the call
-    /// and every postfix after it apply to the borrowed or moved place:
+    /// and every postfix after it apply to the lent or moved place:
     ///   (write (propagate_none (call (member v pop))))
     ///   → (propagate_none (call (member (write v) pop)))
     /// Anything else keeps its sigil outside: a chain that is all place
@@ -1889,6 +1933,32 @@ test "keywords are reserved; `new` only at statement start" {
     try expectCats("p = Point.new(1)", &.{ .ident, .assign, .ident, .dot, .ident, .lparen, .integer, .rparen });
 }
 
+test "`unique` is a keyword only after a struct header's name or type parameters" {
+    try testing.expect(keyword("unique") == null);
+    try expectCats("struct R unique", &.{ .@"struct", .ident, .unique });
+    try expectCats("pub struct R unique # note", &.{ .@"pub", .@"struct", .ident, .unique });
+    try expectCats("struct R[T] unique", &.{ .@"struct", .ident, .lbracket, .ident, .rbracket, .unique });
+    try expectCats("struct R[unique]", &.{ .@"struct", .ident, .lbracket, .ident, .rbracket });
+    try expectCats("struct unique", &.{ .@"struct", .ident });
+    try expectCats("enum E unique", &.{ .@"enum", .ident, .ident });
+    try expectCats("unique = x.unique", &.{ .ident, .assign, .ident, .dot, .ident });
+    try expectCats("struct R\n  unique: Bool", &.{ .@"struct", .ident, .indent, .ident, .colon, .ident });
+    try expectCats("f(unique: 1)", &.{ .ident, .lparen, .kwarg_name, .colon, .integer, .rparen });
+}
+
+test "`from` and `static` are keywords only after a function's result type" {
+    try testing.expect(keyword("from") == null and keyword("static") == null);
+    try expectCats("fun f(a: ?T) -> ?T from a", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .question, .ident, .rparen, .arrow, .question, .ident, .from, .ident });
+    try expectCats("pub fun f -> String from static", &.{ .@"pub", .fun, .ident, .arrow, .ident, .from, .static });
+    try expectCats("fun f -> T? from a, b", &.{ .fun, .ident, .arrow, .ident, .question, .from, .ident, .comma, .ident });
+    try expectCats("extern fun f(s: String) -> String from s", &.{ .@"extern", .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident, .from, .ident });
+    try expectCats("fun span(from: Int) -> Int", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident });
+    try expectCats("from = static", &.{ .ident, .assign, .ident });
+    try expectCats("f = |x: Int| x\nfrom = 1", &.{ .ident, .assign, .bar_capture, .ident, .colon, .ident, .bar_capture, .ident, .newline, .ident });
+    try expectCats("fun f -> Int\n  from", &.{ .fun, .ident, .arrow, .ident, .indent, .ident });
+    try expectCats("fun f(g: fun(Int) -> Int, from: Int)", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .fun, .lparen, .ident, .rparen, .arrow, .ident, .comma, .kwarg_name });
+}
+
 test "a prefix sigil touches its operand; after a value it is infix or a suffix" {
     for ([_][]const u8{ "a < b", "a<b", "a <b", "a< b" }) |src| try expectCats(src, &.{ .ident, .lt, .ident });
     for ([_][]const u8{ "a - 1", "a-1", "a -1" }) |src| try expectCats(src, &.{ .ident, .minus, .integer });
@@ -2019,7 +2089,7 @@ test "parser: a receiver sigil moves onto the place before the method" {
     try testing.expect(stmts[2].isKind(.write));
     // A called head is not a place.
     try testing.expect(stmts[3].isKind(.write));
-    // `?` reaches the receiver too, and borrows a parenthesized call.
+    // `?` reaches the receiver too, and lends a parenthesized call.
     const read = ir.Member.object(ir.Call.callee(stmts[4]));
     try testing.expect(read.isKind(.read) and p.isReceiverSigil(read));
     try testing.expect(stmts[5].isKind(.read));
@@ -2080,6 +2150,12 @@ test "parser: every form parses" {
         \\  drop(!self)
         \\    print(self.n)
         \\
+        \\struct Random unique
+        \\  seed: Int
+        \\
+        \\pub struct Ring[T] unique
+        \\  item: T
+        \\
         \\extern fun abs(n: Int) -> Int
         \\extern fun tick(n: Int)
         \\extern sub halt
@@ -2093,8 +2169,12 @@ test "parser: every form parses" {
         \\
         \\sub main()
         \\  x = 1
-        \\  y: [2]Int =! [1, 2]
+        \\  const y: [2]Int = [1, 2]
+        \\  const y2 = y
         \\  new x = x + 1
+        \\  new x: Int = x + 1
+        \\  new const x = x + 1
+        \\  new const y2: [2]Int = y
         \\  x += 1
         \\  x <<= 2
         \\  z = <w

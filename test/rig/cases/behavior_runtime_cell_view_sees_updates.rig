@@ -1,7 +1,7 @@
-# A read borrow of a `Cell` (or of a value holding one) is held by
+# A read view of a `Cell` (or of a value holding one) is held by
 # pointer, so it sees later `set`s however it was kept: returned from a
 # function, stored in a view, an optional, an array, a generic field, or
-# an enum payload, or taken from a field of a borrowed struct.
+# an enum payload, or taken from a field of a viewed struct.
 
 struct W[T]
   v: T

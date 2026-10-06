@@ -40,9 +40,12 @@ sub main()
   (!log).add(3)
   print(<log.close())
 
-  fixed =! 10
+  const fixed = 10
+  const typed: Int = fixed
   x = 1
   new x = x + 1
+  new x: Int = x + typed
+  new const x = x + 1
   y = <x
 
   raw

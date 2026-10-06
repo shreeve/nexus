@@ -1,4 +1,4 @@
-# A view holding a borrow keeps it until the view's last use.
+# A view holding a view keeps it until the view's last use.
 
 struct Wrap
   n: Int
@@ -18,4 +18,4 @@ sub main()
   !x.bump()
   print(v.box.n)
 
-# error: cannot write-borrow `x` while a read borrow is live
+# error: cannot lend `x` to write while a read loan is live

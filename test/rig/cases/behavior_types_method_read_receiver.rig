@@ -1,4 +1,4 @@
-# `?self` is sugar for `self: ?Self`; `u.greet()` auto-borrows `u`.
+# `?self` is sugar for `self: ?Self`; `u.greet()` lends `u` implicitly.
 
 struct User
   name: String

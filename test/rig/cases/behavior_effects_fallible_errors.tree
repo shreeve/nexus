@@ -6,6 +6,7 @@
     _
     ((: `s` `String`)@333..342)@332..343
     (error_union `Int`)@347..351
+    _
     (block
       (if
         (== `s` `""`)@357..364
@@ -21,6 +22,7 @@
     _
     ((: `n` `Int`)@458..464)@457..465
     (error_union `Int`)@469..473
+    _
     (block
       (set _ `e` `NetError` (enum_lit `timeout`)@490..498)@476..498
       (if (< `n` `0`)@513..518 (block (return `e`)@501..509)@501..509 _)@501..518
@@ -30,6 +32,7 @@
     _
     ((: `s` `String`)@556..565)@555..566
     `String`
+    _
     (block
       (set
         _
@@ -50,6 +53,7 @@
     _
     ((: `n` `Int`)@775..781)@774..782
     (error_union `Int`)@786..790
+    _
     (block
       (catch
         (call `fetch` `n`)@793..801

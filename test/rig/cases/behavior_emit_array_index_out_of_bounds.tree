@@ -1,5 +1,5 @@
 (module
-  (fun `three` _ ()@100..102 `Int` (block `3`)@112..115)@91..115
+  (fun `three` _ ()@100..102 `Int` _ (block `3`)@112..115)@91..115
   (sub
     `main`
     _

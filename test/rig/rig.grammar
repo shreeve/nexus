@@ -17,8 +17,11 @@
 #   * classifies keywords (every keyword is reserved, but reads as a name
 #     where it names a member: after `.`, before `:` inside ( ), and in a
 #     member list before `:` or after `fun` / `sub`); `of` is a keyword
-#     only after a value directly inside [ ] (`[n of x]`), and a name
-#     everywhere else;
+#     only after a value directly inside [ ] (`[n of x]`), `unique` only
+#     after a struct header's name or type parameters (`struct Random
+#     unique`), `from` only after a function's result type (`-> ?Item
+#     from a`), and `static` only right after that `from`; each is a
+#     name everywhere else;
 #   * marks a `..` whose next token is `]` as DOTDOT_OPEN, the end of an
 #     open range (`xs[a..]`, `xs[..]`);
 #   * classifies the tokens the parser cannot tell apart by its own
@@ -88,7 +91,7 @@ tokens
     zig             # `extern zig "file.zig"`
     async           # reserved; no form uses it
     await           # reserved; no form uses it
-    const           # reserved; no form uses it
+    const           # `const x = e`: a binding that never changes
     impl            # reserved; no form uses it
     trait           # reserved; no form uses it
     when            # reserved; no form uses it
@@ -124,7 +127,7 @@ tokens
     rshift          # >>
     at              # @
     assign          # =
-    fixed_assign    # =!
+    fixed_assign    # =! (not Rig; the rewriter rejects it)
     plus_assign     # +=
     minus_assign    # -=
     star_assign     # *=
@@ -164,6 +167,9 @@ tokens
     kwarg_name      # name directly followed by `:` inside ( )
     drop_stmt       # -x  drop, as a whole statement
     of              # of  after a value inside [ ]: a fill literal `[n of x]`
+    unique          # unique  after a struct header's name or `]`: the struct is unique
+    from            # from  after a function's result type: what the result views
+    static          # static  right after that `from`: the result views only what lives for the whole program
     dotdot_open     # ..  directly before `]`: an open range `xs[a..]`, `xs[..]`
     nullish_jump    # ??  directly before `return`, `break`, or `continue`
     step_colon      # :   the first `:` of a `while` header: its step
@@ -284,16 +290,18 @@ tokens
     # Declarations
     module                      ...decls
     use                         name alias:leaf?
-    fun                         name:leaf tparams:group? params:group? returns? body:block?
+    fun                         name:leaf tparams:group? params:group? returns? origins:group? body:block?
     sub                         name:leaf tparams:group? params:group? fails:tag(fails)? body:block?
     lambda                      captures:captures? params:group? body:block
-    struct, enum, errors        name:leaf ...members
-    generic_struct, generic_enum name:leaf tparams:group ...members
+    struct                      name:leaf unique:tag(unique)? ...members
+    enum, errors                name:leaf ...members
+    generic_struct              name:leaf tparams:group unique:tag(unique)? ...members
+    generic_enum                name:leaf tparams:group ...members
     type                        name:leaf type
     test                        name:leaf body:block
     pub                         decl
     extern                      name:leaf type
-    extern_fun                  name:leaf params:group? returns?
+    extern_fun                  name:leaf params:group? returns? origins:group?
     extern_sub                  name:leaf params:group?
     zig_extern                  file:leaf ...decls
     drop_decl                   params:group body:block
@@ -306,7 +314,7 @@ tokens
     variant                     name:leaf params:group
 
     # Bindings: `op` is the binding kind (see BindingKind in src/rig.zig)
-    set                         op:tag(fixed|shadow|"+="|"-="|"*="|"/="|"%="|"+%="|"-%="|"*%="|"&="|"|="|"^="|"<<="|">>=")? target type? value
+    set                         op:tag(fixed|shadow|shadow_fixed|"+="|"-="|"*="|"/="|"%="|"+%="|"-%="|"*%="|"&="|"|="|"^="|"<<="|">>=")? target type? value
     drop                        name:leaf
     pass
 
@@ -359,7 +367,7 @@ tokens
     move, read, write, clone, share, weak  operand
 
     # Types
-    optional, error_union, borrow_read, borrow_write, shared, slice  type
+    optional, error_union, read_view, write_view, shared, slice  type
     generic_inst                name ...args
     array_type                  size type
     fun_type                    params:group? returns? fails:tag(fails)?
@@ -373,7 +381,8 @@ tokens
     OUTDENT: "the end of the block"
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
     KWARG_NAME: "a keyword argument", DROP_STMT: "`-`"
-    OF: "`of`", DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
+    OF: "`of`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
+    DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
     ERROR: "`error`", EXTERN: "`extern`", FOR: "`for`", FUN: "`fun`", IF: "`if`", IN: "`in`"
@@ -383,7 +392,7 @@ tokens
     ASYNC: "`async`", AWAIT: "`await`", CONST: "`const`", IMPL: "`impl`"
     TRAIT: "`trait`", WHEN: "`when`", WHERE: "`where`", YIELD: "`yield`"
     "=": "`=`", "+=": "`+=`", "-=": "`-=`", "*=": "`*=`", "/=": "`/=`", "%=": "`%=`"
-    "&=": "`&=`", "|=": "`|=`", "^=": "`^=`", "<<=": "`<<=`", ">>=": "`>>=`", "=!": "`=!`"
+    "&=": "`&=`", "|=": "`|=`", "^=": "`^=`", "<<=": "`<<=`", ">>=": "`>>=`"
     "+%=": "`+%=`", "-%=": "`-%=`", "*%=": "`*%=`", "+%": "`+%`", "-%": "`-%`", "*%": "`*%`"
     ":": "`:`", "->": "`->`", "(": "`(`", ")": "`)`", "[": "`[`"
     "]": "`]`", ",": "`,`", ".": "`.`", "..": "`..`", "=>": "`=>`", "~": "`~`"
@@ -428,10 +437,13 @@ stmt     = use
 # A compound assignment's `op` is the tag its operator names (`+=`).
 simple   = tail
          | assign
-         | target:postfix "=!"  value:tail          → (set op:fixed)
-         | target:name ":" type:type "="  value:tail → (set)
-         | target:name ":" type:type "=!" value:tail → (set op:fixed)
+         | target:name ":" type:type "=" value:tail → (set)
+         | CONST target:name "=" value:tail         → (set op:fixed)
+         | CONST target:name ":" type:type "=" value:tail → (set op:fixed)
          | NEW target:name "=" value:tail           → (set op:shadow)
+         | NEW target:name ":" type:type "=" value:tail → (set op:shadow)
+         | NEW CONST target:name "=" value:tail     → (set op:shadow_fixed)
+         | NEW CONST target:name ":" type:type "=" value:tail → (set op:shadow_fixed)
          | DROP_STMT name:name                      → (drop)
          | PASS                                     → (pass)
          | RETURN [value:tail]                      → (return)
@@ -452,14 +464,14 @@ assign   = target:postfix "="   value:tail          → (set)
 
 decl     = defn
          | PUB decl:defn                            → (pub)
-         | PUB decl:const                           → (pub)
+         | PUB decl:constant                        → (pub)
 
-# A public module-level constant, `pub LIMIT = 4`. A `=!` parses too, so
-# that the Parser wrapper can say a module-level binding needs none.
-const    = target:name "="  value:tail              → (set)
-         | target:name ":" type:type "="  value:tail → (set)
-         | target:name "=!" value:tail              → (set op:fixed)
-         | target:name ":" type:type "=!" value:tail → (set op:fixed)
+# A public module-level constant, `pub LIMIT = 4`. A `const` parses too,
+# so that the Parser wrapper can say a module-level binding needs none.
+constant = target:name "=" value:tail               → (set)
+         | target:name ":" type:type "=" value:tail → (set)
+         | CONST target:name "=" value:tail         → (set op:fixed)
+         | CONST target:name ":" type:type "=" value:tail → (set op:fixed)
 
 defn     = fun | sub | enum | struct | errors | typedef | test
 
@@ -471,11 +483,20 @@ use      = USE name:mpath                           → (use)
 mpath    = name
          | object:name "." name:name                → (member)
 
-fun      = FUN name:name [tparams:tparams] [params:params] [returns:returns] body:block → (fun)
+fun      = FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
 sub      = SUB name:name [tparams:tparams] [params:params] body:block → (sub)
          | SUB name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)  # `sub save(p: Page)!`
 
 returns  = "->" type                                → 2
+
+# What a function's result views, after its type: some of its
+# parameters (`-> ?Item from a, b`, `-> String from self`), or only what
+# lives for the whole program (`-> String from static`).
+origins  = FROM onames                              → (...2)
+         | FROM STATIC                              → ()
+
+onames   = name                                     → (1)
+         | onames "," name                          → (...1 3)
 
 params   = "(" fields ![","] ")"                     → (...2)
          | "(" ")"                                  → ()
@@ -511,8 +532,12 @@ enum     = ENUM name:name INDENT members:members OUTDENT     → (enum)
                                                     → (generic_enum)
 errors   = ERROR name:name INDENT members:members OUTDENT    → (errors)
 struct   = STRUCT name:name INDENT members:members OUTDENT   → (struct)
+         | STRUCT name:name UNIQUE INDENT members:members OUTDENT
+                                                    → (struct unique:unique)
          | STRUCT name:name tparams:tparams INDENT members:members OUTDENT
                                                     → (generic_struct)
+         | STRUCT name:name tparams:tparams UNIQUE INDENT members:members OUTDENT
+                                                    → (generic_struct unique:unique)
 
 typedef  = TYPE name:name "=" type:type             → (type)
 
@@ -532,7 +557,7 @@ test     = TEST name:(STRING_DQ | STRING_SQ) body:block → (test)
 
 extvar   = EXTERN name:name ":" type:type           → (extern)
 
-ext_fun  = EXTERN FUN name:name [params:params] [returns:returns] → (extern_fun)
+ext_fun  = EXTERN FUN name:name [params:params] [returns:returns] [origins:origins] → (extern_fun)
 ext_sub  = EXTERN SUB name:name [params:params]     → (extern_sub)
 
 # Declarations the Zig file `file` implements (the standard library's
@@ -547,7 +572,7 @@ zdecls   = zdecl                                    → (1)
 zdecl    = zfun
          | PUB decl:zfun                            → (pub)
 
-zfun     = FUN name:name [tparams:tparams] [params:params] [returns:returns] → (fun)
+zfun     = FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] → (fun)
          | SUB name:name [tparams:tparams] [params:params] → (sub)
          | SUB name:name [tparams:tparams] [params:params] "!" → (sub fails:fails)
 
@@ -557,13 +582,14 @@ zfun     = FUN name:name [tparams:tparams] [params:params] [returns:returns] →
 #
 # The handle sigils `*` and `~` bind to the type after them, tighter than
 # the suffixes: `*User?` is an optional shared handle, and a handle to an
-# optional is `*(User?)`. A borrow applies to the whole type after it,
-# suffixes included: `?User?` borrows an optional User. The element of a
-# slice or array takes the suffixes too (`[]Int?`), and a function type
-# takes none, so an optional of one is written in parentheses.
+# optional is `*(User?)`. A view sigil applies to the whole type after
+# it, suffixes included: `?User?` is a read view of an optional User. The
+# element of a slice or array takes the suffixes too (`[]Int?`), and a
+# function type takes none, so an optional of one is written in
+# parentheses.
 
-type     = "?" type:type                            → (borrow_read)
-         | "!" type:type                            → (borrow_write)
+type     = "?" type:type                            → (read_view)
+         | "!" type:type                            → (write_view)
          | ptype
          | tsuffix
 
@@ -770,7 +796,7 @@ pbind    = name
 # A closure starts with its bar list. An entry with a sigil is a capture;
 # a bare name is a parameter, optionally typed:
 #   |+x| clone (a copy, for a Copy value)   |<x| move   |~x| weak
-#   |?x| read borrow   |!x| write borrow
+#   |?x| lend to read   |!x| lend to write
 #   |a, b| a + b      |+v, a: Int| v.set(a)      || print("tick")
 # `*` before the bars makes an owned closure: `*|+v, a| v.set(a)`. The
 # grammar puts every entry in `params`; the Parser wrapper moves the

@@ -1,5 +1,5 @@
 (module
-  (struct `Noisy` (: `id` `Int`)@136..143)@121..145
+  (struct `Noisy` _ (: `id` `Int`)@136..143)@121..145
   (sub
     `main`
     _

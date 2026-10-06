@@ -9,6 +9,7 @@
     _
     ((: `x` `Int`)@116..122)@115..123
     `Int`
+    _
     (block
       (if
         (> `x` `0`)@136..141
@@ -17,8 +18,9 @@
   (fun
     `area`
     _
-    ((: `s` (borrow_read `Shape`)@197..203)@194..203)@193..204
+    ((: `s` (read_view `Shape`)@197..203)@194..203)@193..204
     `Int`
+    _
     (block
       (match
         `s`
@@ -81,7 +83,7 @@
     `optionals`
     _
     ((: `m` (optional `Int`)@803..807)@800..807
-      (: `v` (borrow_write (generic_inst `Vec` `Int`)@813..821)@812..821)@809..821)@799..822
+      (: `v` (write_view (generic_inst `Vec` `Int`)@813..821)@812..821)@809..821)@799..822
     _
     (block
       (if (as `m` `x`)@828..834 (block (call `print` `x`)@839..847)@839..850 _)@825..850

@@ -1,5 +1,5 @@
 (module
-  (struct `Node` (: `value` `Int`)@148..158)@134..160
+  (struct `Node` _ (: `value` `Int`)@148..158)@134..160
   (sub
     `consume`
     _
@@ -9,17 +9,18 @@
   (sub
     `inspect`
     _
-    ((: `n` (borrow_read `Node`)@214..219)@211..219)@210..220
+    ((: `n` (read_view `Node`)@214..219)@211..219)@210..220
     _
     (block (call `print` (member `n` `value`)@229..236)@223..237)@223..239)@199..239
   (sub
     `touch`
     _
-    ((: `n` (borrow_write `Node`)@252..257)@249..257)@248..258
+    ((: `n` (write_view `Node`)@252..257)@249..257)@248..258
     _
     (block (call `print` (member `n` `value`)@267..274)@261..275)@261..277)@239..277
   (struct
     `Log`
+    _
     (: `lines` (generic_inst `Vec` `Int`)@297..305)@290..305
     (sub
       `add`
@@ -35,6 +36,7 @@
       _
       ((move `self`)@369..374)@368..375
       `Int`
+      _
       (block (member (member `self` `lines`)@387..397 `len`)@387..401)@387..403)@359..403)@277..403
   (sub
     `main`
@@ -56,11 +58,14 @@
       (call (member (write `log`)@573..577 `add`)@574..581 `2`)@574..584
       (call (member (write `log`)@588..592 `add`)@587..597 `3`)@587..600
       (call `print` (call (member (move `log`)@609..613 `close`)@610..619)@610..621)@603..622
-      (set fixed `fixed` _ `10`)@626..637
-      (set _ `x` _ `1`)@640..645
-      (set shadow `x` _ (+ `x` `1`)@656..661)@648..661
-      (set _ `y` _ (move `x`)@668..670)@664..670
+      (set fixed `fixed` _ `10`)@626..642
+      (set fixed `typed` `Int` `fixed`)@645..669
+      (set _ `x` _ `1`)@672..677
+      (set shadow `x` _ (+ `x` `1`)@688..693)@680..693
+      (set shadow `x` `Int` (+ `x` `typed`)@709..718)@696..718
+      (set shadow_fixed `x` _ (+ `x` `1`)@735..740)@721..740
+      (set _ `y` _ (move `x`)@747..749)@743..749
       (raw_block
         (block
-          (set _ `p` `I32` (builtin `intCast` `y`)@691..702)@682..702
-          (call `print` `p`)@707..715)@682..716)@674..716)@416..716)@403..716)@134..716
+          (set _ `p` `I32` (builtin `intCast` `y`)@770..781)@761..781
+          (call `print` `p`)@786..794)@761..795)@753..795)@416..795)@403..795)@134..795

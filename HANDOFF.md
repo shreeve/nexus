@@ -10,7 +10,7 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   from 1.1.0, with migration steps for every downstream repository, is
   CHANGELOG.md's 2.0.0 section.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
-  `./test/run` → 730 passed, 0 failed, 0 known; the generated code is byte
+  `./test/run` → 731 passed, 0 failed, 0 known; the generated code is byte
   for byte the same on both.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
 
@@ -35,15 +35,13 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
      `exprtails = exprtail exprtails`) left-recursive or `exprtail*`: the
      right recursion is quadratic in memory (20,000 terms take 4.8 GB).
      Check with em's suite that every tree stays the same.
-   - **rig:** its Zig 0.17 port applies its steps (the API renames, and
-     `![","]` for five unused trailing commas) and regenerates its parser
-     with `v2.0.0`; `test/rig` holds that port's grammar, lang module and
-     test programs.
    - **nexis:** delete its `Tag` enum, the API renames.
-   As em and nexis land, re-sync their copies here (`test/mumps`,
-   `test/nexis`; [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
-   `./test/run` green: until then the suite tests older grammars than the
-   ones those projects run.
+   Rig has moved: `test/rig` holds the grammar, lang module and test
+   programs of Rig v0.2.0. As em and nexis land, re-sync their copies
+   here (`test/mumps`, `test/nexis`;
+   [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep `./test/run`
+   green: until then the suite tests older grammars than the ones those
+   projects run.
 2. **Slash, Zag and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
    `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the

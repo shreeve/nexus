@@ -2,7 +2,7 @@
 # time, so it must fit the target type.
 
 sub main()
-  big =! 300
+  const big = 300
   a = U8(big)
   b = U8(-1)
   c = I8(200.5)

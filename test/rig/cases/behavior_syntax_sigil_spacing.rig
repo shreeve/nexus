@@ -29,7 +29,7 @@ sub main()
   -u                  # drop statement
   print(t.v)
   box = Wrap(v: 1)
-  print(show(?box))   # read borrow
+  print(show(?box))   # read view
 
 # expect:
 # false

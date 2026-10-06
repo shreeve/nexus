@@ -1,6 +1,7 @@
 (module
   (struct
     `Wrap`
+    _
     (: `payload` `Int`)@151..163
     (drop_decl
       ((write `self`)@172..177)@171..178

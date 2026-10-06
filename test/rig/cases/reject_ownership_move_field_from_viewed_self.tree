@@ -1,7 +1,8 @@
 (module
-  (struct `Wrap` (: `payload` `Int`)@106..118)@92..120
+  (struct `Wrap` _ (: `payload` `Int`)@106..118)@92..120
   (struct
     `Pair`
+    _
     (: `a` (shared `Wrap`)@137..142)@134..142
     (sub
       `take`
@@ -27,4 +28,4 @@
             `a`
             (share (call `Wrap` (kwarg `payload` `1`)@231..241)@226..242)@225..242)@222..242)@217..243)@213..243
       (call (member `p` `take`)@246..252)@246..254
-      (call `print` `"back"`)@257..270)@213..380)@200..380)@92..380
+      (call `print` `"back"`)@257..270)@213..378)@200..378)@92..378

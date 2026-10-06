@@ -1,0 +1,91 @@
+(module
+  (struct
+    `Counter`
+    _
+    (: `hits` (generic_inst `Cell` `Int`)@273..282)@267..282
+    (: `name` `String`)@285..297
+    (sub
+      `hit`
+      _
+      ((read `self`)@309..314)@308..315
+      _
+      (block
+        (call
+          (member (member `self` `hits`)@320..329 `set`)@320..333
+          (+ (call (member (member `self` `hits`)@334..343 `get`)@334..347)@334..349 `1`)@334..353)@320..354)@320..356)@301..356)@250..356
+  (sub
+    `bump`
+    _
+    ((: `c` (read_view (generic_inst `Cell` `Int`)@369..378)@368..378)@365..378
+      (: `by` `Int`)@380..387)@364..388
+    _
+    (block
+      (call
+        (member `c` `set`)@391..396
+        (+ (call (member `c` `get`)@397..402)@397..404 `by`)@397..409)@391..410)@391..412)@356..412
+  (fun
+    `swap`
+    _
+    ((: `c` (read_view (generic_inst `Cell` `Int`)@425..434)@424..434)@421..434
+      (: `v` `Int`)@436..442)@420..443
+    `Int`
+    _
+    (block (call (member `c` `replace`)@453..462 `v`)@453..465)@453..467)@412..467
+  (fun
+    `lent`
+    _
+    ((: `c` `Counter`)@476..486)@475..487
+    `Int`
+    _
+    (block
+      (call `bump` (read (member `c` `hits`)@503..509)@502..509 `100`)@497..515
+      (call (member (member `c` `hits`)@518..524 `get`)@518..528)@518..530)@497..532)@467..532
+  (sub
+    `main`
+    _
+    ()@540..542
+    _
+    (block
+      (set _ `c` (generic_inst `Cell` `Int`)@548..557 (call `Cell` `1`)@560..567)@545..567
+      (call `bump` (read `c`)@575..577 `10`)@570..582
+      (call `print` (call (member `c` `get`)@591..596)@591..598)@585..599
+      (set _ `old` _ (call `swap` (read `c`)@613..615 `5`)@608..619)@602..619
+      (call `print` `old` (call (member `c` `get`)@633..638)@633..640)@622..641
+      (set _ `r` _ (read `c`)@648..650)@644..650
+      (call (member `r` `set`)@653..658 `7`)@653..661
+      (call `print` (call (member `c` `get`)@670..675)@670..677)@664..678
+      (set
+        _
+        `k`
+        _
+        (call
+          `Counter`
+          (kwarg `hits` (call `Cell` `0`)@700..707)@694..707
+          (kwarg `name` `"k"`)@709..718)@686..719)@682..719
+      (call (member `k` `hit`)@722..727)@722..729
+      (call (member `k` `hit`)@732..737)@732..739
+      (call
+        `print`
+        (member `k` `name`)@748..754
+        (call (member (member `k` `hits`)@756..762 `get`)@756..766)@756..768)@742..769
+      (set
+        _
+        `before`
+        _
+        (call (member (member `k` `hits`)@781..787 `get`)@781..791)@781..793)@772..793
+      (call `print` (call `lent` (move `k`)@807..809)@802..810 `before`)@796..819
+      (set
+        _
+        `box`
+        _
+        (share
+          (call
+            `Counter`
+            (kwarg `hits` (call `Cell` `40`)@844..852)@838..852
+            (kwarg `name` `"shared"`)@854..868)@830..869)@829..869)@823..869
+      (call (member `box` `hit`)@872..879)@872..881
+      (call `bump` (read (member `box` `hits`)@890..898)@889..898 `1`)@884..902
+      (call
+        `print`
+        (member `box` `name`)@911..919
+        (call (member (member `box` `hits`)@921..929 `get`)@921..933)@921..935)@905..936)@545..990)@532..990)@250..990

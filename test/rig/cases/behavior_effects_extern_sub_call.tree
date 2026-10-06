@@ -1,6 +1,6 @@
 (module
   (extern_sub `srand` ((: `seed` `U32`)@173..182)@172..183)@156..183
-  (extern_fun `rand` ()@199..201 `I32`)@184..208
+  (extern_fun `rand` ()@199..201 `I32` _)@184..208
   (sub
     `main`
     _

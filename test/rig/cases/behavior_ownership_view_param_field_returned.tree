@@ -1,0 +1,25 @@
+(module
+  (struct `Wrap` _ (: `payload` `Int`)@72..84)@58..86
+  (struct `Holder` _ (: `inner` `Wrap`)@102..113)@86..115
+  (fun
+    `inner_of`
+    _
+    ((: `h` (read_view `Holder`)@131..138)@128..138)@127..139
+    (read_view `Wrap`)@143..148
+    _
+    (block (read (member `h` `inner`)@152..159)@151..159)@151..161)@115..161
+  (sub
+    `main`
+    _
+    ()@169..171
+    _
+    (block
+      (set
+        _
+        `h`
+        _
+        (call
+          `Holder`
+          (kwarg `inner` (call `Wrap` (kwarg `payload` `9`)@197..207)@192..208)@185..208)@178..209)@174..209
+      (set _ `b` _ (call `inner_of` (read `h`)@225..227)@216..228)@212..228
+      (call `print` (member `b` `payload`)@237..246)@231..247)@174..263)@161..263)@58..263

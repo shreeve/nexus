@@ -1,6 +1,7 @@
 (module
   (struct
     `B`
+    _
     (: `n` `Int`)@85..91
     (drop_decl
       ((write `self`)@100..105)@99..106

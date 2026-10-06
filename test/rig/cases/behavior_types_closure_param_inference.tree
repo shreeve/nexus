@@ -1,6 +1,7 @@
 (module
   (struct
     `Button`
+    _
     (: `label` `String`)@228..241
     (: `on_click` (shared (fun_type (`Int`)@259..262 _ _)@255..263)@254..263)@244..263)@212..265
   (fun
@@ -9,12 +10,14 @@
     ((: `f` (shared (fun_type (`Int`)@283..286 `Int` _)@279..294)@278..294)@275..294
       (: `x` `Int`)@296..302)@274..303
     `Int`
+    _
     (block (call `f` `x`)@313..317)@313..319)@265..319
   (fun
     `adder`
     _
     ((: `n` `Int`)@329..335)@328..336
     (shared (fun_type (`Int`)@345..348 `Int` _)@341..356)@340..356
+    _
     (block
       (share
         (lambda
