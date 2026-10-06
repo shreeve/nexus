@@ -1,6 +1,7 @@
 (module
   (struct
     `U`
+    _
     (: `v` `Int`)@117..123
     (drop_decl
       ((write `self`)@132..137)@131..138

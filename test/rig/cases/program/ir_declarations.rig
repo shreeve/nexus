@@ -50,6 +50,12 @@ struct Guard
   drop(!self)
     print(self.id)
 
+struct Random unique
+  seed: Int
+
+struct Ring[T] unique
+  item: T
+
 extern fun abs(x: Int) -> Int
 extern sub log_msg(msg: String)
 

@@ -1,0 +1,67 @@
+(module
+  (struct `Wrap` _ (: `n` `Int`)@149..155)@135..157
+  (enum
+    `Slot`
+    (variant `held` ((: `b` (write_view `Wrap`)@177..182)@174..182)@173..183)@169..183
+    `empty`)@157..193
+  (generic_struct `W` (`T`)@201..204 _ (: `v` `T`)@207..211)@193..213
+  (sub
+    `main`
+    _
+    ()@221..223
+    _
+    (block
+      (set _ `b` _ (call `Wrap` (kwarg `n` `1`)@235..239)@230..240)@226..240
+      (if
+        `true`
+        (block
+          (set
+            _
+            `s`
+            `Slot`
+            (call (enum_lit `held`)@265..270 (kwarg `b` (write `b`)@274..276)@271..276)@265..277)@255..277
+          (match
+            `s`
+            (arm
+              (variant_pattern `held` `r`)@296..304
+              _
+              (set _ (member `r` `n`)@308..311 _ `2`)@308..315)@296..315
+            (arm (enum_lit `empty`)@322..328 _ (call `print` `0`)@332..340)@322..340)@282..343)@255..343
+        _)@243..343
+      (call `print` (member `b` `n`)@349..352)@343..353
+      (if
+        `true`
+        (block
+          (set _ `o` (optional (write_view `Wrap`)@372..377)@371..379 (write `b`)@382..384)@368..384
+          (if
+            (as (move `o`)@392..394 `r`)@392..399
+            (block (set _ (member `r` `n`)@406..409 _ `3`)@406..413)@406..416
+            _)@389..416)@368..416
+        _)@356..416
+      (call `print` (member `b` `n`)@422..425)@416..426
+      (if
+        `true`
+        (block
+          (set
+            _
+            `w`
+            (generic_inst `W` (write_view `Wrap`)@446..451)@444..452
+            (call `W` (kwarg `v` (write `b`)@460..462)@457..462)@455..463)@441..463
+          (set _ (member (member `w` `v`)@468..471 `n`)@468..473 _ `4`)@468..477)@441..480
+        _)@429..480
+      (call `print` (member `b` `n`)@486..489)@480..490
+      (if
+        `true`
+        (block
+          (set _ `xs` _ (array (write `b`)@511..513)@510..514)@505..514
+          (set _ (member (index `xs` `0`)@519..524 `n`)@519..526 _ `5`)@519..530)@505..533
+        _)@493..533
+      (call `print` (member `b` `n`)@539..542)@533..543
+      (set _ `x` _ `1`)@546..551
+      (if
+        `true`
+        (block
+          (set _ `ints` _ (array (write `x`)@574..576)@573..577)@566..577
+          (call `print` (+ (index `ints` `0`)@588..595 `1`)@588..599)@582..600)@566..603
+        _)@554..603
+      (call `print` `x`)@603..611)@226..647)@213..647)@135..647

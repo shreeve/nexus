@@ -1,0 +1,82 @@
+# `-> T from a` says which arguments a result views (Core sentence 7):
+# the others are free again after the call, even of the same type. The
+# compiler checks each body against its clause.
+
+struct Entry
+  key: String
+  value: String
+
+struct Env
+  entries: Vec[Entry]
+
+  fun get(?self, key: String) -> String? from self
+    for e in ?self.entries
+      if e.key == key
+        return e.value
+    none
+
+fun first(a: ?Vec[Int], b: ?Vec[Int]) -> ?Vec[Int] from a
+  a
+
+fun pick[T](a: ?T, b: ?T) -> ?T from a
+  a
+
+fun deep(a: ?Vec[Int], b: ?Vec[Int], n: Int) -> ?Vec[Int] from a
+  if n == 0
+    return a
+  deep(a, b, n - 1)
+
+fun label(t: String) -> String from static
+  if t.len > 3
+    "long"
+  else
+    "short"
+
+fun mk -> Vec[Int]
+  v: Vec[Int] = Vec()
+  !v.push(9)
+  v
+
+fun span(from: Int, to: Int) -> Int
+  to - from
+
+sub main
+  x: Vec[Int] = Vec()
+  y: Vec[Int] = Vec()
+  !x.push(1)
+  r = first(?x, ?y)
+  !y.push(2)
+  print(r.len, y.len)
+  s = first(b: ?y, a: ?x)
+  !y.push(3)
+  print(s.len)
+  p = pick(?x, ?y)
+  !y.push(4)
+  print(p.len)
+  d = deep(?x, ?y, 3)
+  !y.push(5)
+  print(d.len)
+  t = first(?x, ?mk())
+  print(t.len)
+  env = Env(entries: Vec())
+  !env.entries.push(Entry(key: "HOME", value: "/home"))
+  q = Text("HO", "ME")
+  if env.get(?q) as home
+    !q.add("X")
+    print(home, q)
+  w = Text("abcd")
+  l = label(?w)
+  -w
+  print(l)
+  from = 2
+  print(span(from, 5))
+
+# expect:
+# 1 1
+# 1
+# 1
+# 1
+# 1
+# /home HOMEX
+# long
+# 3

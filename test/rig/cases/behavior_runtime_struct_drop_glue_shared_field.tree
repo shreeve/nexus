@@ -1,11 +1,12 @@
 (module
   (struct
     `Noisy`
+    _
     (: `id` `Int`)@155..162
     (drop_decl
       ((write `self`)@171..176)@170..177
       (block (call `print` (member `self` `id`)@188..195)@182..196)@182..198)@166..198)@140..198
-  (struct `Reactor` (: `count` (shared `Noisy`)@222..228)@215..228)@198..230
+  (struct `Reactor` _ (: `count` (shared `Noisy`)@222..228)@215..228)@198..230
   (sub
     `main`
     _

@@ -1,6 +1,7 @@
 (module
   (struct
     `B`
+    _
     (: `n` `Int`)@116..122
     (drop_decl
       ((write `self`)@131..136)@130..137
@@ -16,10 +17,11 @@
     _
     ((: `s` `S`)@209..213)@208..214
     `Int`
+    _
     (block
       (match
         `s`
-        (arm (variant_pattern `one` `a` `k`)@236..246 _ `k`)@236..251
+        (arm (variant_pattern `one` `_` `k`)@236..246 _ `k`)@236..251
         (arm (enum_lit `empty`)@256..262 _ `0`)@256..267)@224..269)@224..269)@202..269
   (sub
     `main`

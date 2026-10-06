@@ -1,6 +1,7 @@
 (module
   (struct
     `Noisy`
+    _
     (: `id` `Int`)@107..114
     (drop_decl
       ((write `self`)@123..128)@122..129

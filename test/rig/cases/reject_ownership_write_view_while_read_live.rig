@@ -1,4 +1,4 @@
-# A write borrow cannot be taken while a read borrow of the same value
+# A write view cannot be taken while a read view of the same value
 # is live: used later.
 
 struct User
@@ -13,4 +13,4 @@ sub main()
   rename(!user)
   print(r.name)
 
-# error: cannot write-borrow `user` while a read borrow is live
+# error: cannot lend `user` to write while a read loan is live

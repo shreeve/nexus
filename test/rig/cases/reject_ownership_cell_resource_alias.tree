@@ -1,5 +1,5 @@
 (module
-  (struct `User` (: `age` `Int`)@121..129)@107..131
+  (struct `User` _ (: `age` `Int`)@121..129)@107..131
   (sub
     `main`
     _

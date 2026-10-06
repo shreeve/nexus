@@ -4,6 +4,7 @@
   (pub
     (struct
       `User`
+      _
       (: `name` `String`)@76..88
       (default `age` `Int` `0`)@91..103
       (fun
@@ -11,6 +12,7 @@
         _
         ((read `self`)@117..122)@116..123
         `String`
+        _
         (block (member `self` `name`)@138..147)@138..151)@107..151
       (sub
         `birthday`
@@ -23,6 +25,7 @@
         _
         ((: `name` `String`)@202..214)@201..215
         `User`
+        _
         (block (call `User` (kwarg `name` `name`)@233..243)@228..244)@228..246)@194..246)@62..246)@58..246
   (enum `Color` `red` `green` `blue`)@246..279
   (enum `Status` (valued `ok` `200`)@293..301 (valued `missing` `404`)@304..317)@279..319
@@ -35,12 +38,14 @@
   (generic_struct
     `Wrap`
     (`T`)@435..438
+    _
     (: `value` `T`)@441..449
     (fun
       `get`
       _
       ((read `self`)@461..466)@460..467
       `T`
+      _
       (block (member `self` `value`)@477..487)@477..489)@453..489)@424..489
   (generic_enum
     `Maybe`
@@ -49,21 +54,25 @@
     `none`)@489..528
   (struct
     `Guard`
+    _
     (: `id` `Int`)@543..550
     (drop_decl
       ((write `self`)@559..564)@558..565
       (block (call `print` (member `self` `id`)@576..583)@570..584)@570..586)@554..586)@528..586
-  (extern_fun `abs` ((: `x` `Int`)@601..607)@600..608 `Int`)@586..615
-  (extern_sub `log_msg` ((: `msg` `String`)@635..646)@634..647)@616..647
+  (struct `Random` unique (: `seed` `Int`)@609..618)@586..620
+  (generic_struct `Ring` (`T`)@631..634 unique (: `item` `T`)@644..651)@620..653
+  (extern_fun `abs` ((: `x` `Int`)@668..674)@667..675 `Int` _)@653..682
+  (extern_sub `log_msg` ((: `msg` `String`)@702..713)@701..714)@683..714
   (fun
     `add`
     _
-    ((: `a` `Int`)@657..663 (: `b` `Int`)@665..671)@656..672
+    ((: `a` `Int`)@724..730 (: `b` `Int`)@732..738)@723..739
     `Int`
-    (block (+ `a` `b`)@682..687)@682..689)@649..689
+    _
+    (block (+ `a` `b`)@749..754)@749..756)@716..756
   (sub
     `main`
     _
-    ()@697..699
+    ()@764..766
     _
-    (block (call `print` (call `add` `1` `2`)@708..717)@702..718)@702..719)@689..719)@32..719
+    (block (call `print` (call `add` `1` `2`)@775..784)@769..785)@769..786)@756..786)@32..786

@@ -1,6 +1,7 @@
 (module
   (struct
     `B`
+    _
     (: `n` `Int`)@173..179
     (drop_decl
       ((write `self`)@188..193)@187..194

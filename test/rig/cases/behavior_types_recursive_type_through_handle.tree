@@ -1,17 +1,20 @@
 (module
   (struct
     `Node`
+    _
     (: `n` `Int`)@78..84
     (: `next` (optional (shared `Node`)@93..98)@93..99)@87..99)@64..101
   (struct
     `Tree`
+    _
     (: `n` `Int`)@115..121
     (: `kids` (generic_inst `Vec` (shared `Tree`)@134..139)@130..140)@124..140)@101..142
   (fun
     `sum`
     _
-    ((: `t` (borrow_read (shared `Tree`)@154..159)@153..159)@150..159)@149..160
+    ((: `t` (read_view (shared `Tree`)@154..159)@153..159)@150..159)@149..160
     `Int`
+    _
     (block
       (set _ `total` _ (member `t` `n`)@178..181)@170..181
       (for

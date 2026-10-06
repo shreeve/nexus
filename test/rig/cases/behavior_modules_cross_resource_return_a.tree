@@ -1,9 +1,10 @@
 (module
-  (pub (struct `Wrap` (pub (: `value` `Int`)@22..32)@18..32)@4..34)@0..34
+  (pub (struct `Wrap` _ (pub (: `value` `Int`)@22..32)@18..32)@4..34)@0..34
   (pub
     (fun
       `make_box`
       _
       ((: `v` `Int`)@51..57)@50..58
       (shared `Wrap`)@62..67
+      _
       (block (share (call `Wrap` (kwarg `value` `v`)@76..84)@71..85)@70..85)@70..86)@38..86)@34..86)@0..86

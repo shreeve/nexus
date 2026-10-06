@@ -1,6 +1,7 @@
 (module
   (struct
     `Node`
+    _
     (: `value` `Int`)@220..230
     (: `seen` (shared (generic_inst `Cell` `Int`)@240..249)@239..249)@233..249
     (: `next` (optional (shared `Node`)@258..263)@258..264)@252..264

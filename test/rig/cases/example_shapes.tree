@@ -7,8 +7,9 @@
   (fun
     `area`
     _
-    ((: `s` (borrow_read `Shape`)@159..165)@156..165)@155..166
+    ((: `s` (read_view `Shape`)@159..165)@156..165)@155..166
     `Int`
+    _
     (block
       (match
         `s`
@@ -23,18 +24,20 @@
         (arm (enum_lit `point`)@255..261 _ (return `0`)@265..273)@255..273)@176..275)@176..275)@147..275
   (struct
     `Canvas`
+    _
     (: `width` `Int`)@291..301
     (: `height` `Int`)@304..315
     (fun
       `fits`
       _
-      ((read `self`)@328..333 (: `s` (borrow_read `Shape`)@338..344)@335..344)@327..345
+      ((read `self`)@328..333 (: `s` (read_view `Shape`)@338..344)@335..344)@327..345
       `Bool`
+      _
       (block
         (<=
           (call `area` `s`)@358..365
           (* (member `self` `width`)@369..379 (member `self` `height`)@382..393)@369..393)@358..393)@358..395)@319..395)@275..395
-  (generic_struct `Pair` (`T`)@406..409 (: `left` `T`)@412..419 (: `right` `T`)@422..430)@395..432
+  (generic_struct `Pair` (`T`)@406..409 _ (: `left` `T`)@412..419 (: `right` `T`)@422..430)@395..432
   (sub
     `main`
     _

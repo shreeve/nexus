@@ -1,5 +1,5 @@
-# A write borrow held in an enum payload, an optional, a generic field,
-# or an array element still writes through to the borrowed value.
+# A write view held in an enum payload, an optional, a generic field,
+# or an array element still writes through to the viewed value.
 
 struct Wrap
   n: Int

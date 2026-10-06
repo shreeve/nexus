@@ -1,6 +1,7 @@
 (module
   (struct
     `B`
+    _
     (: `n` `Int`)@130..136
     (drop_decl
       ((write `self`)@145..150)@144..151
@@ -14,6 +15,7 @@
     _
     ((: `s` `Slot`)@221..228)@220..229
     `Int`
+    _
     (block
       (match
         `s`

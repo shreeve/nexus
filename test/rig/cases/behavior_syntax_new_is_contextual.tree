@@ -1,12 +1,14 @@
 (module
   (struct
     `Point`
+    _
     (: `x` `Int`)@184..190
     (fun
       `new`
       _
       ((: `x` `Int`)@202..208)@201..209
       `Point`
+      _
       (block (call `Point` (kwarg `x` `x`)@229..233)@223..234)@223..236)@194..236)@169..236
   (sub
     `main`

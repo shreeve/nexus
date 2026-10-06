@@ -1,6 +1,7 @@
 (module
   (struct
     `Wrap`
+    _
     (: `payload` `Int`)@148..160
     (drop_decl
       ((write `self`)@169..174)@168..175
@@ -10,6 +11,7 @@
     _
     ((: `c` `Bool`)@215..222)@214..223
     (shared `Wrap`)@227..232
+    _
     (block
       (set _ `a` _ (share (call `Wrap` (kwarg `payload` `1`)@245..255)@240..256)@239..256)@235..256
       (set _ `b` _ (share (call `Wrap` (kwarg `payload` `2`)@269..279)@264..280)@263..280)@259..280

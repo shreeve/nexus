@@ -13,7 +13,7 @@ enum S
 
 fun go(s: S) -> Int
   match s
-    .one(a, k) => k
+    .one(_, k) => k
     .empty => 0
 
 sub main()

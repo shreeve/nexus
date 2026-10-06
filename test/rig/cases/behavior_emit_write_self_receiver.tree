@@ -1,6 +1,7 @@
 (module
   (struct
     `Bag`
+    _
     (: `items` (generic_inst `Vec` `Int`)@71..79)@64..79
     (sub
       `add`

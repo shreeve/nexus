@@ -19,7 +19,7 @@ struct IntSource
   sub subscribe(self: ?IntSource, listener: *sub(Int))
     self.listeners.push(<listener)
 
-  # A Cell lends no borrow of the Vec inside it, so the list is swapped
+  # A Cell lends no view of the Vec inside it, so the list is swapped
   # out to be walked, and swapped back.
   sub set(self: ?IntSource, v: Int)
     self.value.set(v)

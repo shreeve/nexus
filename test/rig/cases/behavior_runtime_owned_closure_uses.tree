@@ -1,11 +1,12 @@
 (module
   (struct
     `Button`
+    _
     (: `on_click` (shared (fun_type (`Int`)@243..246 _ _)@239..247)@238..247)@228..247
     (sub
       `click`
       _
-      ((: `self` (borrow_read `Button`)@267..274)@261..274 (: `n` `Int`)@276..282)@260..283
+      ((: `self` (read_view `Button`)@267..274)@261..274 (: `n` `Int`)@276..282)@260..283
       _
       (block (call (member `self` `on_click`)@288..301 `n`)@288..304)@288..306)@251..306)@212..306
   (sub

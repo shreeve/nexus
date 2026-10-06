@@ -1,6 +1,7 @@
 (module
   (struct
     `File`
+    _
     (: `fd` `Int`)@98..105
     (drop_decl
       ((write `self`)@114..119)@113..120

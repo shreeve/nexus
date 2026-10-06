@@ -1,11 +1,12 @@
 (module
   (struct
     `P`
+    _
     (: `n` `Int`)@108..114
     (drop_decl
       ((write `self`)@123..128)@122..129
       (block (call `print` `"drop"` (member `self` `n`)@148..154)@134..155)@134..157)@118..157)@97..157
-  (generic_struct `Wrap` (`T`)@168..171 (: `value` `T`)@174..182)@157..184
+  (generic_struct `Wrap` (`T`)@168..171 _ (: `value` `T`)@174..182)@157..184
   (sub
     `main`
     _

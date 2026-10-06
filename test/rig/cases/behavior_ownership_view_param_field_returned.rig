@@ -1,4 +1,4 @@
-# A borrow of a field of a borrowed parameter may be returned.
+# A view of a field of a view parameter may be returned.
 
 struct Wrap
   payload: Int

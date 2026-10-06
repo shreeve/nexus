@@ -1,6 +1,7 @@
 (module
   (struct
     `Owner`
+    _
     (: `cell` (shared (generic_inst `Cell` `Int`)@199..208)@198..208)@192..208
     (drop_decl
       ((write `self`)@217..222)@216..223
