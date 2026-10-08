@@ -1,152 +1,172 @@
 (routine
-  (label `ENXGNTEG`)
-  (` `)
-  (` `)
-  (` `
-    _
-    (set _ (= (lvar `XT4`) (expr (str `"I 1"`))) (= (lvar `X`) (expr (text _ (expr (num `3`))))))
+  (label `ENXGNTEG` _ _)@0..9
+  (line ` `)@80..81
+  (line ` `)@119..120
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `XT4` _)@151..154 `"I 1"`)@151..160
+      (= (lvar `X` _)@161..162 (text _ `3` _)@163..169)@161..169)@149..169
     (write
       _
-      (posformat `!` `!`)
-      (expr (str `"Checksum routine created on "`))
-      (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `4`)))))
-      (expr (str `" by KERNEL V"`))
-      (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `3`)))))
-      (posformat `!`)))
+      (posformat _ `!` `!`)@172..174
+      `"Checksum routine created on "`
+      (intrinsic `P`#212 ((lvar `X` _)@209..210 `";"` `4`)@209..216)@206..217
+      `" by KERNEL V"`
+      (intrinsic `P`#212 ((lvar `X` _)@236..237 `";"` `3`)@236..243)@233..244
+      (posformat _ `!`)@245..246)@170..246)@148..246
   (label
     `CONT`
     _
-    ((for (lvar `XT1`) (range (expr (num `1`)) (expr (num `1`))))
-      (set _ (= (lvar `XT2`) (expr (text `ROU` (expr (lvar `XT1`))))))
-      (quit (postcond (expr (lvar `XT2`) (`=` (str `""`)))))
-      (set
-        _
-        (=
-          (lvar `X`)
-          (expr (intrinsic `P`#212 ((expr (lvar `XT2`)) (expr (str `" "`)) (expr (num `1`))))))
-        (=
-          (lvar `XT3`)
-          (expr (intrinsic `P`#212 ((expr (lvar `XT2`)) (expr (str `";"`)) (expr (num `3`)))))))
-      (xecute _ ((expr (lvar `XT4`))))
-      (if (expr (intrinsic `T`#221)))
-      (write _ (posformat `!`) (expr (lvar `X`)))
-      (xecute _ ((expr (gvar `%ZOSF` ((expr (str `"TEST"`)))))))
-      (set (postcond (expr (`'` (intrinsic `T`#221)))) (= (lvar `XT3`) (expr (num `0`))))
-      (xecute (postcond (expr (lvar `XT3`))) ((expr (gvar `%ZOSF` ((expr (str `"RSUM"`)))))))
-      (write
-        _
-        (? (expr (num `10`)))
-        (expr
-          (select
-            ((expr (`'` (lvar `XT3`))) (expr (str `"Routine not in UCI"`)))
-            ((expr (lvar `XT3`) (`'=` (lvar `Y`)))
-              (expr
-                (str `"Calculated "`)
-                (`_` (intrinsic `C`#201 ((expr (num `7`)))))
-                (`_` (lvar `Y`))
-                (`_` (str `", off by "`))
-                (`_` (expr (lvar `Y`) (`-` (lvar `XT3`))))))
-            ((expr (num `1`)) (expr (str `"ok"`))))))))
-  (` `)
-  (` `
     _
+    (for (lvar `XT1` _)@254..257 (range `1` `1` _)@258..261)@254..261
+    (set
+      _
+      (= (lvar `XT2` _)@264..267 (text `ROU` (lvar `XT1` _)@275..278 _)@268..279)@264..279)@262..279
+    (quit
+      (postcond (expr (lvar `XT2` _)@282..285 (binop `=` `""`)@285..288)@282..288)@281..288
+      _)@280..288
+    (set
+      _
+      (=
+        (lvar `X` _)@292..293
+        (intrinsic `P`#212 ((lvar `XT2` _)@297..300 `" "` `1`)@297..306)@294..307)@292..307
+      (=
+        (lvar `XT3` _)@308..311
+        (intrinsic `P`#212 ((lvar `XT2` _)@315..318 `";"` `3`)@315..324)@312..325)@308..325)@290..325
+    (xecute _ (arg (lvar `XT4` _)@328..331 _)@328..331)@326..331
+    (if (intrinsic `T`#221 _)@334..336)@332..336
+    (write _ (posformat _ `!`)@339..340 (lvar `X` _)@341..342)@337..342
+    (xecute _ (arg (gvar `%ZOSF` (`"TEST"`)@352..358 _ _)@345..359 _)@345..359)@343..359
+    (set
+      (postcond (unary `'` (intrinsic `T`#221 _)@363..365)@362..365)@361..365
+      (= (lvar `XT3` _)@366..369 `0`)@366..371)@360..371
+    (xecute
+      (postcond (lvar `XT3` _)@374..377)@373..377
+      (arg (gvar `%ZOSF` (`"RSUM"`)@385..391 _ _)@378..392 _)@378..392)@372..392
+    (write
+      _
+      (tab `10`)@395..398
+      (select
+        (case (unary `'` (lvar `XT3` _)@403..406)@402..406 `"Routine not in UCI"`)@402..427
+        (case
+          (expr (lvar `XT3` _)@428..431 (binop `'=` (lvar `Y` _)@433..434)@431..434)@428..434
+          (expr
+            `"Calculated "`
+            (binop `_` (intrinsic `C`#201 (`7`)@452..453)@449..454)@448..454
+            (binop `_` (lvar `Y` _)@455..456)@454..456
+            (binop `_` `", off by "`)@456..468
+            (binop
+              `_`
+              (expr
+                (expr (lvar `Y` _)@470..471 (binop `-` (lvar `XT3` _)@472..475)@471..475)@470..475)@469..476)@468..476)@435..476)@428..476
+        (case `1` `"ok"`)@477..483)@399..484)@393..484)@247..484
+  (line ` `)@485..486
+  (line
+    ` `
     (kill
       _
-      (lvar `%1`)
-      (lvar `%2`)
-      (lvar `%3`)
-      (lvar `X`)
-      (lvar `Y`)
-      (lvar `XT1`)
-      (lvar `XT2`)
-      (lvar `XT3`)
-      (lvar `XT4`))
-    (quit))
+      (lvar `%1` _)@491..493
+      (lvar `%2` _)@494..496
+      (lvar `%3` _)@497..499
+      (lvar `X` _)@500..501
+      (lvar `Y` _)@502..503
+      (lvar `XT1` _)@504..507
+      (lvar `XT2` _)@508..511
+      (lvar `XT3` _)@512..515
+      (lvar `XT4` _)@516..519)@489..519
+    (quit _ _)@520..521)@488..521
   (label
     `ONE`
     _
-    ((set
-       _
-       (= (lvar `XT4`) (expr (str `"I $D(^UTILITY($J,X))"`)))
-       (= (lvar `X`) (expr (text _ (expr (num `3`))))))
-      (write
-        _
-        (posformat `!` `!`)
-        (expr (str `"Checksum routine created on "`))
-        (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `4`)))))
-        (expr (str `" by KERNEL V"`))
-        (expr (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `";"`)) (expr (num `3`)))))
-        (posformat `!`))))
-  (` `
     _
-    (write _ (posformat `!`) (expr (str `"Check a subset of routines:"`)))
-    (kill _ (gvar `UTILITY` ((expr (intrinsic `J`#208)))))
-    (xecute _ ((expr (gvar `%ZOSF` ((expr (str `"RSEL"`))))))))
-  (` ` _ (write _ (posformat `!`)) (goto _ ((ref `CONT`))))
-  (label `ROU`)
-  (label `ENEQ1`)
-  (label `ENEQ2`)
-  (label `ENEQ3`)
-  (label `ENFAR1`)
-  (label `ENFAR2`)
-  (label `ENFAR3`)
-  (label `ENFAR4`)
-  (label `ENFAUTL`)
-  (label `ENFAVAL`)
-  (label `ENFAXMTM`)
-  (label `ENLIB3`)
-  (label `ENWONEW2`)
-  (label `ENXGI001`)
-  (label `ENXGI002`)
-  (label `ENXGI003`)
-  (label `ENXGI004`)
-  (label `ENXGI005`)
-  (label `ENXGI006`)
-  (label `ENXGI007`)
-  (label `ENXGI008`)
-  (label `ENXGI009`)
-  (label `ENXGI00A`)
-  (label `ENXGI00B`)
-  (label `ENXGI00C`)
-  (label `ENXGI00D`)
-  (label `ENXGI00E`)
-  (label `ENXGI00F`)
-  (label `ENXGI00G`)
-  (label `ENXGI00H`)
-  (label `ENXGI00I`)
-  (label `ENXGI00J`)
-  (label `ENXGI00K`)
-  (label `ENXGI00L`)
-  (label `ENXGI00M`)
-  (label `ENXGI00N`)
-  (label `ENXGI00O`)
-  (label `ENXGI00P`)
-  (label `ENXGI00Q`)
-  (label `ENXGI00R`)
-  (label `ENXGI00S`)
-  (label `ENXGI00T`)
-  (label `ENXGI00U`)
-  (label `ENXGI00V`)
-  (label `ENXGI00W`)
-  (label `ENXGI00X`)
-  (label `ENXGI00Y`)
-  (label `ENXGI00Z`)
-  (label `ENXGI010`)
-  (label `ENXGI011`)
-  (label `ENXGI012`)
-  (label `ENXGI013`)
-  (label `ENXGI014`)
-  (label `ENXGI015`)
-  (label `ENXGI016`)
-  (label `ENXGI017`)
-  (label `ENXGI018`)
-  (label `ENXGIEN`)
-  (label `ENXGINI1`)
-  (label `ENXGINI2`)
-  (label `ENXGINI3`)
-  (label `ENXGINI4`)
-  (label `ENXGINI5`)
-  (label `ENXGINIT`)
-  (label `ENXGIPR`)
-  (label `ENXGIPS`)
-  (label `ENXGIPS1`))
+    (set
+      _
+      (= (lvar `XT4` _)@528..531 `"I $D(^UTILITY($J,X))"`)@528..554
+      (= (lvar `X` _)@555..556 (text _ `3` _)@557..563)@555..563)@526..563
+    (write
+      _
+      (posformat _ `!` `!`)@566..568
+      `"Checksum routine created on "`
+      (intrinsic `P`#212 ((lvar `X` _)@603..604 `";"` `4`)@603..610)@600..611
+      `" by KERNEL V"`
+      (intrinsic `P`#212 ((lvar `X` _)@630..631 `";"` `3`)@630..637)@627..638
+      (posformat _ `!`)@639..640)@564..640)@522..640
+  (line
+    ` `
+    (write _ (posformat _ `!`)@644..645 `"Check a subset of routines:"`)@642..675
+    (kill _ (gvar `UTILITY` ((intrinsic `J`#208 _)@687..689)@687..689 _ _)@678..690)@676..690
+    (xecute _ (arg (gvar `%ZOSF` (`"RSEL"`)@700..706 _ _)@693..707 _)@693..707)@691..707)@641..707
+  (line
+    ` `
+    (write _ (posformat _ `!`)@711..712)@709..712
+    (goto _ (call (ref `CONT` _ _)@715..719 _ _)@715..719)@713..719)@708..719
+  (label `ROU` _ _)@720..724
+  (label `ENEQ1` _ _)@727..733
+  (label `ENEQ2` _ _)@744..750
+  (label `ENEQ3` _ _)@760..766
+  (label `ENFAR1` _ _)@776..783
+  (label `ENFAR2` _ _)@793..800
+  (label `ENFAR3` _ _)@810..817
+  (label `ENFAR4` _ _)@827..834
+  (label `ENFAUTL` _ _)@844..852
+  (label `ENFAVAL` _ _)@862..870
+  (label `ENFAXMTM` _ _)@880..889
+  (label `ENLIB3` _ _)@899..906
+  (label `ENWONEW2` _ _)@916..925
+  (label `ENXGI001` _ _)@935..944
+  (label `ENXGI002` _ _)@955..964
+  (label `ENXGI003` _ _)@974..983
+  (label `ENXGI004` _ _)@993..1002
+  (label `ENXGI005` _ _)@1012..1021
+  (label `ENXGI006` _ _)@1032..1041
+  (label `ENXGI007` _ _)@1051..1060
+  (label `ENXGI008` _ _)@1070..1079
+  (label `ENXGI009` _ _)@1090..1099
+  (label `ENXGI00A` _ _)@1110..1119
+  (label `ENXGI00B` _ _)@1129..1138
+  (label `ENXGI00C` _ _)@1148..1157
+  (label `ENXGI00D` _ _)@1168..1177
+  (label `ENXGI00E` _ _)@1188..1197
+  (label `ENXGI00F` _ _)@1208..1217
+  (label `ENXGI00G` _ _)@1227..1236
+  (label `ENXGI00H` _ _)@1246..1255
+  (label `ENXGI00I` _ _)@1265..1274
+  (label `ENXGI00J` _ _)@1284..1293
+  (label `ENXGI00K` _ _)@1304..1313
+  (label `ENXGI00L` _ _)@1323..1332
+  (label `ENXGI00M` _ _)@1342..1351
+  (label `ENXGI00N` _ _)@1361..1370
+  (label `ENXGI00O` _ _)@1380..1389
+  (label `ENXGI00P` _ _)@1400..1409
+  (label `ENXGI00Q` _ _)@1419..1428
+  (label `ENXGI00R` _ _)@1438..1447
+  (label `ENXGI00S` _ _)@1457..1466
+  (label `ENXGI00T` _ _)@1476..1485
+  (label `ENXGI00U` _ _)@1495..1504
+  (label `ENXGI00V` _ _)@1514..1523
+  (label `ENXGI00W` _ _)@1533..1542
+  (label `ENXGI00X` _ _)@1552..1561
+  (label `ENXGI00Y` _ _)@1571..1580
+  (label `ENXGI00Z` _ _)@1590..1599
+  (label `ENXGI010` _ _)@1609..1618
+  (label `ENXGI011` _ _)@1628..1637
+  (label `ENXGI012` _ _)@1647..1656
+  (label `ENXGI013` _ _)@1666..1675
+  (label `ENXGI014` _ _)@1685..1694
+  (label `ENXGI015` _ _)@1704..1713
+  (label `ENXGI016` _ _)@1723..1732
+  (label `ENXGI017` _ _)@1742..1751
+  (label `ENXGI018` _ _)@1761..1770
+  (label `ENXGIEN` _ _)@1780..1788
+  (label `ENXGINI1` _ _)@1798..1807
+  (label `ENXGINI2` _ _)@1817..1826
+  (label `ENXGINI3` _ _)@1836..1845
+  (label `ENXGINI4` _ _)@1856..1865
+  (label `ENXGINI5` _ _)@1875..1884
+  (label `ENXGINIT` _ _)@1894..1903
+  (label `ENXGIPR` _ _)@1914..1922
+  (label `ENXGIPS` _ _)@1932..1940
+  (label `ENXGIPS1` _ _)@1950..1959
+  _)@0..1969

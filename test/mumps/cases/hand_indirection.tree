@@ -1,19 +1,23 @@
 (routine
-  (label `INDIR`)
-  (` `
-    _
+  (label `INDIR` _ _)@0..6
+  (line
+    ` `
     (set
       _
-      (@name (lvar `X`) (expr (num `1`)))
-      (= (@subs (lvar `X`) ((expr (num `1`)))) (expr (num `2`)))
-      (= (lvar `Y`) (expr (@name (lvar `Z`))))))
-  (` ` _ (do _ (@args (lvar `LBL`))) (write _ (expr (@name (lvar `FMT`)))))
-  (` `
-    _
+      (= (@name (lvar `X` _)@12..13)@12..13 `1`)@11..15
+      (= (@subs (lvar `X` _)@17..18 (`1`)@20..21)@16..22 `2`)@16..24
+      (= (lvar `Y` _)@25..26 (@name (lvar `Z` _)@28..29)@27..29)@25..29)@9..29)@8..29
+  (line
+    ` `
+    (do _ (@args (lvar `LBL` _)@34..37)@33..37)@31..37
+    (write _ (@name (lvar `FMT` _)@41..44)@40..44)@38..44)@30..44
+  (line
+    ` `
     (set
       _
-      (= (lvar `A`) (expr (naked (expr (num `1`)))))
-      (= (lvar `B`) (expr (gvar `G` ((expr (num `1`)) (expr (num `2`))))))
-      (= (lvar `C`) (expr (gvar `G` ((expr (num `3`))) (expr (str `"NS"`)))))))
-  (` ` _ (kill _ (@args (lvar `X`))))
-  (` ` _ (quit)))
+      (= (lvar `A` _)@48..49 (naked `1`)@50..54)@48..54
+      (= (lvar `B` _)@55..56 (gvar `G` (`1` `2`)@60..63 _ _)@57..64)@55..64
+      (= (lvar `C` _)@65..66 (gvar `G` (`3`)@76..77 `"NS"` _)@67..78)@65..78)@46..78)@45..78
+  (line ` ` (kill _ (@args (lvar `X` _)@83..84)@82..84)@80..84)@79..84
+  (line ` ` (quit _ _)@86..87)@85..87
+  _)@0..88

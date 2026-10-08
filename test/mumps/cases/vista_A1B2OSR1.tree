@@ -1,738 +1,962 @@
 (routine
-  (label `A1B2OSR1`)
-  (` `)
-  (` `)
-  (` ` _ (kill _ (gvar `UTILITY` ((expr (intrinsic `J`#208))))))
-  (` ` _ (do _ (call (ref `DATA`))) (quit))
-  (` `)
-  (label `DATA`)
-  (` ` _ (set _ (= (lvar `A`) (expr (lvar `A1B2BDT`) (`-` (num `.00001`))))))
-  (` `
-    _
-    (for (lvar `I`) (range (expr (lvar `A`)) (expr (num `0`))))
+  (label `A1B2OSR1` _ _)@0..9
+  (line ` `)@66..67
+  (line ` `)@109..110
+  (line
+    ` `
+    (kill _ (gvar `UTILITY` ((intrinsic `J`#208 _)@124..126)@124..126 _ _)@115..127)@113..127)@112..127
+  (line
+    ` `
+    (do _ (call (ref `DATA` _ _)@131..135 _ _)@131..135)@129..135
+    (quit _ _)@136..137)@128..137
+  (line ` `)@138..139
+  (label `DATA` _ _)@141..146
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `A`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `A`))))))))))
+        (lvar `A` _)@178..179
+        (expr (lvar `A1B2BDT` _)@180..187 (binop `-` `.00001`)@187..194)@180..194)@178..194)@176..194)@175..194
+  (line
+    ` `
+    (for (lvar `I` _)@198..199 (range (lvar `A` _)@200..201 `0` _)@200..203)@198..203
+    (set
+      _
+      (=
+        (lvar `A` _)@206..207
+        (intrinsic
+          `O`#211
+          ((gvar `A1B2` (`11500.2` `"B"` (lvar `A` _)@229..230)@217..230 _ _)@211..231)@211..231)@208..232)@206..232)@204..232
     (quit
       (postcond
         (expr
-          (`'` (lvar `A`))
-          (`!` (expr (lvar `A`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
-    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+          (unary `'` (lvar `A` _)@236..237)@235..237
+          (binop
+            `!`
+            (expr
+              (expr
+                (lvar `A` _)@239..240
+                (binop
+                  `>`
+                  (expr
+                    (expr (lvar `A1B2EDT` _)@242..249 (binop `+` `.9`)@249..252)@242..252)@241..253)@240..253)@239..253)@238..254)@237..254)@235..254)@234..254
+      _)@233..254
+    (for (lvar `M` _)@258..259 (range `0` `0` _)@260..263)@258..263
     (set
       _
       (=
-        (lvar `M`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr
-               (gvar
-                 `A1B2`
-                 ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `A`)) (expr (lvar `M`))))))))))
-    (quit (postcond (expr (`'` (lvar `M`)))))
-    (if
-      (expr (lvar `M`))
-      (expr
+        (lvar `M` _)@266..267
         (intrinsic
-          `D`#202
-          ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (lvar `M`)) (expr (num `0`)))))))))
-    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
-    (do _ (call (ref `FAC`)) (call (ref `ADM`))))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `D`) (expr (lvar `A1B2BDT`) (`-` (num `.00001`))))))
-  (` `
-    _
-    (for (lvar `I`) (range (expr (lvar `D`)) (expr (num `0`))))
+          `O`#211
+          ((gvar
+             `A1B2`
+             (`11500.2` `"B"` (lvar `A` _)@289..290 (lvar `M` _)@291..292)@277..292
+             _
+             _)@271..293)@271..293)@268..294)@266..294)@264..294
+    (quit (postcond (unary `'` (lvar `M` _)@298..299)@297..299)@296..299 _)@295..299
+    (if
+      (lvar `M` _)@303..304
+      (intrinsic
+        `D`#202
+        ((gvar `A1B2` (`11500.2` (lvar `M` _)@322..323 `0`)@314..325 _ _)@308..326)@308..326)@305..327)@301..327
+    (set _ (= (lvar `N` _)@330..331 (naked `0`)@332..336)@330..336)@328..336
+    (do
+      _
+      (call (ref `FAC` _ _)@339..342 _ _)@339..342
+      (call (ref `ADM` _ _)@343..346 _ _)@343..346)@337..346)@195..346
+  (line ` `)@347..348
+  (line ` `)@350..351
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `D`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (str `"ADS"`)) (expr (lvar `D`))))))))))
+        (lvar `D` _)@382..383
+        (expr (lvar `A1B2BDT` _)@384..391 (binop `-` `.00001`)@391..398)@384..398)@382..398)@380..398)@379..398
+  (line
+    ` `
+    (for (lvar `I` _)@402..403 (range (lvar `D` _)@404..405 `0` _)@404..407)@402..407
+    (set
+      _
+      (=
+        (lvar `D` _)@410..411
+        (intrinsic
+          `O`#211
+          ((gvar `A1B2` (`11500.2` `"ADS"` (lvar `D` _)@435..436)@421..436 _ _)@415..437)@415..437)@412..438)@410..438)@408..438
     (quit
       (postcond
         (expr
-          (`'` (lvar `D`))
-          (`!` (expr (lvar `D`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
-    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+          (unary `'` (lvar `D` _)@442..443)@441..443
+          (binop
+            `!`
+            (expr
+              (expr
+                (lvar `D` _)@445..446
+                (binop
+                  `>`
+                  (expr
+                    (expr (lvar `A1B2EDT` _)@448..455 (binop `+` `.9`)@455..458)@448..458)@447..459)@446..459)@445..459)@444..460)@443..460)@441..460)@440..460
+      _)@439..460
+    (for (lvar `M` _)@464..465 (range `0` `0` _)@466..469)@464..469
     (set
       _
       (=
-        (lvar `M`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr
-               (gvar
-                 `A1B2`
-                 ((expr (num `11500.2`)) (expr (str `"ADS"`)) (expr (lvar `D`)) (expr (lvar `M`))))))))))
-    (quit (postcond (expr (`'` (lvar `M`)))))
-    (if
-      (expr (lvar `M`))
-      (expr
+        (lvar `M` _)@472..473
         (intrinsic
-          `D`#202
-          ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (lvar `M`)) (expr (num `0`)))))))))
-    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
-    (do _ (call (ref `FAC`)) (call (ref `DIS`))))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `P`) (expr (str `""`)))))
-  (` `
-    _
-    (for (lvar `I`) (range (expr (num `0`)) (expr (num `0`))))
+          `O`#211
+          ((gvar
+             `A1B2`
+             (`11500.2` `"ADS"` (lvar `D` _)@497..498 (lvar `M` _)@499..500)@483..500
+             _
+             _)@477..501)@477..501)@474..502)@472..502)@470..502
+    (quit (postcond (unary `'` (lvar `M` _)@506..507)@505..507)@504..507 _)@503..507
+    (if
+      (lvar `M` _)@511..512
+      (intrinsic
+        `D`#202
+        ((gvar `A1B2` (`11500.2` (lvar `M` _)@530..531 `0`)@522..533 _ _)@516..534)@516..534)@513..535)@509..535
+    (set _ (= (lvar `N` _)@538..539 (naked `0`)@540..544)@538..544)@536..544
+    (do
+      _
+      (call (ref `FAC` _ _)@547..550 _ _)@547..550
+      (call (ref `DIS` _ _)@551..554 _ _)@551..554)@545..554)@399..554
+  (line ` `)@555..556
+  (line ` `)@558..559
+  (line ` ` (set _ (= (lvar `P` _)@595..596 `""`)@595..599)@593..599)@592..599
+  (line
+    ` `
+    (for (lvar `I` _)@603..604 (range `0` `0` _)@605..608)@603..608
     (set
       _
       (=
-        (lvar `P`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `P`))))))))))
+        (lvar `P` _)@611..612
+        (intrinsic
+          `O`#211
+          ((gvar `A1B2` (`11500.2` `"B"` (lvar `P` _)@634..635)@622..635 _ _)@616..636)@616..636)@613..637)@611..637)@609..637
     (quit
       (postcond
         (expr
-          (`'` (lvar `P`))
-          (`!` (expr (lvar `P`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
-    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+          (unary `'` (lvar `P` _)@641..642)@640..642
+          (binop
+            `!`
+            (expr
+              (expr
+                (lvar `P` _)@644..645
+                (binop
+                  `>`
+                  (expr
+                    (expr (lvar `A1B2EDT` _)@647..654 (binop `+` `.9`)@654..657)@647..657)@646..658)@645..658)@644..658)@643..659)@642..659)@640..659)@639..659
+      _)@638..659
+    (for (lvar `M` _)@663..664 (range `0` `0` _)@665..668)@663..668
     (set
       _
       (=
-        (lvar `M`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr
-               (gvar
-                 `A1B2`
-                 ((expr (num `11500.2`)) (expr (str `"B"`)) (expr (lvar `P`)) (expr (lvar `M`))))))))))
-    (quit (postcond (expr (`'` (lvar `M`)))))
-    (if
-      (expr (lvar `M`))
-      (expr
+        (lvar `M` _)@671..672
         (intrinsic
-          `D`#202
-          ((expr (gvar `A1B2` ((expr (num `11500.2`)) (expr (lvar `M`)) (expr (num `0`)))))))))
-    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
-    (do _ (call (ref `FAC`)))
+          `O`#211
+          ((gvar
+             `A1B2`
+             (`11500.2` `"B"` (lvar `P` _)@694..695 (lvar `M` _)@696..697)@682..697
+             _
+             _)@676..698)@676..698)@673..699)@671..699)@669..699
+    (quit (postcond (unary `'` (lvar `M` _)@703..704)@702..704)@701..704 _)@700..704
     (if
-      (expr
+      (lvar `M` _)@708..709
+      (intrinsic
+        `D`#202
+        ((gvar `A1B2` (`11500.2` (lvar `M` _)@727..728 `0`)@719..730 _ _)@713..731)@713..731)@710..732)@706..732
+    (set _ (= (lvar `N` _)@735..736 (naked `0`)@737..741)@735..741)@733..741
+    (do _ (call (ref `FAC` _ _)@744..747 _ _)@744..747)@742..747
+    (if
+      (select
+        (case
+          (expr
+            (intrinsic `P`#212 ((lvar `N` _)@756..757 `"^"` `6`)@756..763)@753..764
+            (binop `=` `""`)@764..767)@753..767
+          `1`)@753..769
+        (case
+          (expr
+            (expr
+              (intrinsic `P`#212 ((lvar `N` _)@774..775 `"^"` `6`)@774..781)@771..782
+              (binop
+                `>`
+                (expr
+                  (expr (lvar `A1B2EDT` _)@784..791 (binop `+` `.9`)@791..794)@784..794)@783..795)@782..795)@771..795)@770..796
+          `1`)@770..798
+        (case `1` `0`)@799..802)@750..803)@748..803
+    (do _ (call (ref `PTRM` _ _)@806..810 _ _)@806..810)@804..810)@600..810
+  (line ` `)@811..812
+  (line ` `)@814..815
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `T` _)@883..884
+        (expr (lvar `A1B2BDT` _)@885..892 (binop `-` `.0001`)@892..898)@885..898)@883..898)@881..898)@880..898
+  (line
+    ` `
+    (for (lvar `I` _)@902..903 (range (lvar `T` _)@904..905 `0` _)@904..907)@902..907
+    (set
+      _
+      (=
+        (lvar `T` _)@910..911
+        (intrinsic
+          `O`#211
+          ((gvar `A1B2` (`11500.3` `"B"` (lvar `T` _)@933..934)@921..934 _ _)@915..935)@915..935)@912..936)@910..936)@908..936
+    (quit
+      (postcond
+        (expr
+          (unary `'` (lvar `T` _)@940..941)@939..941
+          (binop
+            `!`
+            (expr
+              (expr
+                (lvar `T` _)@943..944
+                (binop
+                  `>`
+                  (expr
+                    (expr (lvar `A1B2EDT` _)@946..953 (binop `+` `.9`)@953..956)@946..956)@945..957)@944..957)@943..957)@942..958)@941..958)@939..958)@938..958
+      _)@937..958
+    (for (lvar `M` _)@962..963 (range `0` `0` _)@964..967)@962..967
+    (set
+      _
+      (=
+        (lvar `M` _)@970..971
+        (intrinsic
+          `O`#211
+          ((gvar
+             `A1B2`
+             (`11500.3` `"B"` (lvar `T` _)@993..994 (lvar `M` _)@995..996)@981..996
+             _
+             _)@975..997)@975..997)@972..998)@970..998)@968..998
+    (quit (postcond (unary `'` (lvar `M` _)@1002..1003)@1001..1003)@1000..1003 _)@999..1003
+    (if
+      (lvar `M` _)@1007..1008
+      (intrinsic
+        `D`#202
+        ((gvar `A1B2` (`11500.3` (lvar `M` _)@1026..1027 `0`)@1018..1029 _ _)@1012..1030)@1012..1030)@1009..1031)@1005..1031
+    (set _ (= (lvar `N` _)@1034..1035 (naked `0`)@1036..1040)@1034..1040)@1032..1040
+    (do
+      _
+      (call (ref `FAC` _ _)@1043..1046 _ _)@1043..1046
+      (call (ref `TRF` _ _)@1047..1050 _ _)@1047..1050)@1041..1050)@899..1050
+  (line ` ` (quit _ _)@1052..1053)@1051..1053
+  (line ` `)@1054..1055
+  (label `ADM` _ _)@1057..1061
+  (line
+    ` `
+    (quit
+      (postcond
+        (expr
+          (lvar `FAC` _)@1093..1096
+          (binop `=` `""`)@1096..1099
+          (binop
+            `!`
+            (expr (unary `'` (lvar `A1B2CHK` _)@1102..1109)@1101..1109)@1100..1110)@1099..1110)@1093..1110)@1092..1110
+      _)@1091..1110)@1090..1110
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `DFN` _)@1114..1117
+        (intrinsic `P`#212 ((lvar `N` _)@1121..1122 `"^"` `2`)@1121..1128)@1118..1129)@1114..1129)@1112..1129
+    (quit
+      (postcond
+        (expr
+          (unary `'` (lvar `DFN` _)@1133..1136)@1132..1136
+          (binop
+            `!`
+            (expr
+              (unary
+                `'`
+                (intrinsic `P`#212 ((lvar `N` _)@1142..1143 `"^"` `15`)@1142..1150)@1139..1151)@1138..1151)@1137..1152)@1136..1152)@1132..1152)@1131..1152
+      _)@1130..1152)@1111..1152
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `BOS` _)@1156..1159
         (select
-          ((expr
-             (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `6`))))
-             (`=` (str `""`)))
-            (expr (num `1`)))
-          ((expr
-             (expr
-               (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `6`))))
-               (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`))))))
-            (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`))))))
-    (do _ (call (ref `PTRM`))))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `T`) (expr (lvar `A1B2BDT`) (`-` (num `.0001`))))))
-  (` `
-    _
-    (for (lvar `I`) (range (expr (lvar `T`)) (expr (num `0`))))
+          (case (unary `'` (lvar `DFN` _)@1164..1167)@1163..1167 `""`)@1163..1170
+          (case
+            (unary
+              `'`
+              (intrinsic
+                `D`#202
+                ((gvar `A1B2` (`11500.1` (lvar `DFN` _)@1189..1192 `0`)@1181..1194 _ _)@1175..1195)@1175..1195)@1172..1196)@1171..1196
+            `""`)@1171..1199
+          (case
+            `1`
+            (intrinsic `P`#212 ((naked `0`)@1205..1209 `"^"` `4`)@1205..1215)@1202..1216)@1200..1216)@1160..1217)@1156..1217)@1154..1217)@1153..1217
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `T`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr (gvar `A1B2` ((expr (num `11500.3`)) (expr (str `"B"`)) (expr (lvar `T`))))))))))
-    (quit
+        (lvar `SPC` _)@1221..1224
+        (select
+          (case
+            (unary
+              `'`
+              (intrinsic `P`#212 ((lvar `N` _)@1232..1233 `"^"` `3`)@1232..1239)@1229..1240)@1228..1240
+            `""`)@1228..1243
+          (case
+            (unary
+              `'`
+              (intrinsic
+                `D`#202
+                ((gvar
+                   `DIC`
+                   (`42.4`
+                     (intrinsic `P`#212 ((lvar `N` _)@1261..1262 `"^"` `3`)@1261..1268)@1258..1269
+                     `0`)@1253..1271
+                   _
+                   _)@1248..1272)@1248..1272)@1245..1273)@1244..1273
+            `""`)@1244..1276
+          (case
+            `1`
+            (intrinsic `P`#212 ((naked `0`)@1282..1286 `"^"` `3`)@1282..1292)@1279..1293)@1277..1293)@1225..1294)@1221..1294)@1219..1294)@1218..1294
+  (line
+    ` `
+    (set
       (postcond
-        (expr
-          (`'` (lvar `T`))
-          (`!` (expr (lvar `T`) (`>` (expr (lvar `A1B2EDT`) (`+` (num `.9`)))))))))
-    (for (lvar `M`) (range (expr (num `0`)) (expr (num `0`))))
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@1311..1313 `"ODS-ADM"` (lvar `FAC` _)@1324..1327)@1311..1327
+               _
+               _)@1302..1328)@1302..1328)@1299..1329)@1298..1329)@1297..1329
+      (= (naked (lvar `FAC` _)@1332..1335)@1330..1336 `0`)@1330..1338)@1296..1338
     (set
       _
       (=
-        (lvar `M`)
-        (expr
+        (naked (lvar `FAC` _)@1343..1346)@1341..1347
+        (expr (naked (lvar `FAC` _)@1350..1353)@1348..1354 (binop `+` `1`)@1354..1356)@1348..1356)@1341..1356)@1339..1356)@1295..1356
+  (line
+    ` `
+    (set
+      (postcond
+        (unary
+          `'`
           (intrinsic
-            `O`#211
-            ((expr
-               (gvar
-                 `A1B2`
-                 ((expr (num `11500.3`)) (expr (str `"B"`)) (expr (lvar `T`)) (expr (lvar `M`))))))))))
-    (quit (postcond (expr (`'` (lvar `M`)))))
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@1373..1375 `"ODS-ADM-NAT"`)@1373..1389
+               _
+               _)@1364..1390)@1364..1390)@1361..1391)@1360..1391)@1359..1391
+      (= (naked `"ODS-ADM-NAT"`)@1392..1408 `0`)@1392..1410)@1358..1410
+    (set
+      _
+      (=
+        (naked `"ODS-ADM-NAT"`)@1413..1429
+        (expr (naked `"ODS-ADM-NAT"`)@1430..1446 (binop `+` `1`)@1446..1448)@1430..1448)@1413..1448)@1411..1448)@1357..1448
+  (line ` `)@1449..1450
+  (line ` `)@1452..1453
+  (line
+    ` `
     (if
-      (expr (lvar `M`))
-      (expr
+      (unary
+        `'`
         (intrinsic
           `D`#202
-          ((expr (gvar `A1B2` ((expr (num `11500.3`)) (expr (lvar `M`)) (expr (num `0`)))))))))
-    (set _ (= (lvar `N`) (expr (naked (expr (num `0`))))))
-    (do _ (call (ref `FAC`)) (call (ref `TRF`))))
-  (` ` _ (quit))
-  (` `)
-  (label `ADM`)
-  (` ` _ (quit (postcond (expr (lvar `FAC`) (`=` (str `""`)) (`!` (expr (`'` (lvar `A1B2CHK`))))))))
-  (` `
-    _
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@1499..1501
+               `"ODS-PT-ADM"`
+               (lvar `DFN` _)@1515..1518
+               (lvar `FAC` _)@1519..1522)@1499..1522
+             _
+             _)@1490..1523)@1490..1523)@1487..1524)@1486..1524)@1484..1524
+    (set
+      (postcond
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@1540..1542
+                 `"ODS-UNQ-ADM"`
+                 (lvar `FAC` _)@1557..1560)@1540..1560
+               _
+               _)@1531..1561)@1531..1561)@1528..1562)@1527..1562)@1526..1562
+      (= (naked (lvar `FAC` _)@1565..1568)@1563..1569 `0`)@1563..1571)@1525..1571
     (set
       _
       (=
-        (lvar `DFN`)
-        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `2`)))))))
-    (quit
+        (naked (lvar `FAC` _)@1576..1579)@1574..1580
+        (expr (naked (lvar `FAC` _)@1583..1586)@1581..1587 (binop `+` `1`)@1587..1589)@1581..1589)@1574..1589)@1572..1589)@1483..1589
+  (line
+    ` `
+    (if
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@1606..1608 `"ODS-PT-ADM"` (lvar `DFN` _)@1622..1625)@1606..1625
+             _
+             _)@1597..1626)@1597..1626)@1594..1627)@1593..1627)@1591..1627
+    (set
       (postcond
-        (expr
-          (`'` (lvar `DFN`))
-          (`!`
-            (expr
-              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))))))
-  (` `
-    _
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@1643..1645 `"ODS-UNQ-ADM-NAT"`)@1643..1663
+               _
+               _)@1634..1664)@1634..1664)@1631..1665)@1630..1665)@1629..1665
+      (= (naked `"ODS-UNQ-ADM-NAT"`)@1666..1686 `0`)@1666..1688)@1628..1688
     (set
       _
       (=
-        (lvar `BOS`)
-        (expr
-          (select
-            ((expr (`'` (lvar `DFN`))) (expr (str `""`)))
-            ((expr
-               (`'`
-                 (intrinsic
-                   `D`#202
-                   ((expr
-                      (gvar `A1B2` ((expr (num `11500.1`)) (expr (lvar `DFN`)) (expr (num `0`)))))))))
-              (expr (str `""`)))
-            ((expr (num `1`))
-              (expr
-                (intrinsic
-                  `P`#212
-                  ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `4`)))))))))))
-  (` `
-    _
+        (naked `"ODS-UNQ-ADM-NAT"`)@1691..1711
+        (expr (naked `"ODS-UNQ-ADM-NAT"`)@1712..1732 (binop `+` `1`)@1732..1734)@1712..1734)@1691..1734)@1689..1734)@1590..1734
+  (line ` `)@1735..1736
+  (line ` `)@1738..1739
+  (line
+    ` `
+    (if
+      (expr (lvar `BOS` _)@1792..1795 (binop `]` `""`)@1795..1798)@1792..1798
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@1812..1814
+               `"ODS-PT-ADM-BOS"`
+               (lvar `BOS` _)@1832..1835
+               (lvar `DFN` _)@1836..1839
+               (lvar `FAC` _)@1840..1843)@1812..1843
+             _
+             _)@1803..1844)@1803..1844)@1800..1845)@1799..1845)@1790..1845
+    (set
+      (postcond
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@1861..1863
+                 `"ODS-UNQA-BOS"`
+                 (lvar `FAC` _)@1879..1882
+                 (lvar `BOS` _)@1883..1886)@1861..1886
+               _
+               _)@1852..1887)@1852..1887)@1849..1888)@1848..1888)@1847..1888
+      (= (naked (lvar `BOS` _)@1891..1894)@1889..1895 `0`)@1889..1897)@1846..1897
     (set
       _
       (=
-        (lvar `SPC`)
-        (expr
-          (select
-            ((expr
-               (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `3`))))))
-              (expr (str `""`)))
-            ((expr
-               (`'`
-                 (intrinsic
-                   `D`#202
-                   ((expr
-                      (gvar
-                        `DIC`
-                        ((expr (num `42.4`))
-                          (expr
-                            (intrinsic
-                              `P`#212
-                              ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `3`)))))
-                          (expr (num `0`)))))))))
-              (expr (str `""`)))
-            ((expr (num `1`))
-              (expr
-                (intrinsic
-                  `P`#212
-                  ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `3`)))))))))))
-  (` `
-    _
+        (naked (lvar `BOS` _)@1902..1905)@1900..1906
+        (expr (naked (lvar `BOS` _)@1909..1912)@1907..1913 (binop `+` `1`)@1913..1915)@1907..1915)@1900..1915)@1898..1915)@1789..1915
+  (line
+    ` `
+    (if
+      (expr (lvar `BOS` _)@1919..1922 (binop `]` `""`)@1922..1925)@1919..1925
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@1939..1941
+               `"ODS-PT-ADM-BOS"`
+               (lvar `BOS` _)@1959..1962
+               (lvar `DFN` _)@1963..1966)@1939..1966
+             _
+             _)@1930..1967)@1930..1967)@1927..1968)@1926..1968)@1917..1968
     (set
       (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-ADM"`)) (expr (lvar `FAC`))))))))))
-      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
-  (` `
-    _
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-ADM-NAT"`))))))))))
-      (= (naked (expr (str `"ODS-ADM-NAT"`))) (expr (num `0`))))
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@1984..1986
+                 `"ODS-UNQA-BOS-NAT"`
+                 (lvar `BOS` _)@2006..2009)@1984..2009
+               _
+               _)@1975..2010)@1975..2010)@1972..2011)@1971..2011)@1970..2011
+      (= (naked (lvar `BOS` _)@2014..2017)@2012..2018 `0`)@2012..2020)@1969..2020
     (set
       _
       (=
-        (naked (expr (str `"ODS-ADM-NAT"`)))
-        (expr (naked (expr (str `"ODS-ADM-NAT"`))) (`+` (num `1`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (naked (lvar `BOS` _)@2025..2028)@2023..2029
+        (expr (naked (lvar `BOS` _)@2032..2035)@2030..2036 (binop `+` `1`)@2036..2038)@2030..2038)@2023..2038)@2021..2038)@1916..2038
+  (line ` `)@2039..2040
+  (line ` `)@2042..2043
+  (line
+    ` `
     (if
-      (expr
-        (`'`
-          (intrinsic
-            `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208))
-                   (expr (str `"ODS-PT-ADM"`))
-                   (expr (lvar `DFN`))
-                   (expr (lvar `FAC`))))))))))
+      (expr (lvar `SPC` _)@2089..2092 (binop `]` `""`)@2092..2095)@2089..2095
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@2109..2111
+               `"ODS-PT-ADM-SPC"`
+               (lvar `SPC` _)@2129..2132
+               (lvar `DFN` _)@2133..2136
+               (lvar `FAC` _)@2137..2140)@2109..2140
+             _
+             _)@2100..2141)@2100..2141)@2097..2142)@2096..2142)@2087..2142
     (set
       (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-UNQ-ADM"`)) (expr (lvar `FAC`))))))))))
-      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
-  (` `
-    _
-    (if
-      (expr
-        (`'`
+        (unary
+          `'`
           (intrinsic
             `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208)) (expr (str `"ODS-PT-ADM"`)) (expr (lvar `DFN`))))))))))
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-UNQ-ADM-NAT"`))))))))))
-      (= (naked (expr (str `"ODS-UNQ-ADM-NAT"`))) (expr (num `0`))))
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@2158..2160
+                 `"ODS-UNQA-SPC"`
+                 (lvar `FAC` _)@2176..2179
+                 (lvar `SPC` _)@2180..2183)@2158..2183
+               _
+               _)@2149..2184)@2149..2184)@2146..2185)@2145..2185)@2144..2185
+      (= (naked (lvar `SPC` _)@2188..2191)@2186..2192 `0`)@2186..2194)@2143..2194
     (set
       _
       (=
-        (naked (expr (str `"ODS-UNQ-ADM-NAT"`)))
-        (expr (naked (expr (str `"ODS-UNQ-ADM-NAT"`))) (`+` (num `1`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (naked (lvar `SPC` _)@2199..2202)@2197..2203
+        (expr (naked (lvar `SPC` _)@2206..2209)@2204..2210 (binop `+` `1`)@2210..2212)@2204..2212)@2197..2212)@2195..2212)@2086..2212
+  (line
+    ` `
     (if
-      (expr (lvar `BOS`) (`]` (str `""`)))
-      (expr
-        (`'`
-          (intrinsic
-            `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208))
-                   (expr (str `"ODS-PT-ADM-BOS"`))
-                   (expr (lvar `BOS`))
-                   (expr (lvar `DFN`))
-                   (expr (lvar `FAC`))))))))))
+      (expr (lvar `SPC` _)@2216..2219 (binop `]` `""`)@2219..2222)@2216..2222
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@2236..2238
+               `"ODS-PT-ADM-SPC"`
+               (lvar `SPC` _)@2256..2259
+               (lvar `DFN` _)@2260..2263)@2236..2263
+             _
+             _)@2227..2264)@2227..2264)@2224..2265)@2223..2265)@2214..2265
     (set
       (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208))
-                     (expr (str `"ODS-UNQA-BOS"`))
-                     (expr (lvar `FAC`))
-                     (expr (lvar `BOS`))))))))))
-      (= (naked (expr (lvar `BOS`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `BOS`))) (expr (naked (expr (lvar `BOS`))) (`+` (num `1`))))))
-  (` `
-    _
-    (if
-      (expr (lvar `BOS`) (`]` (str `""`)))
-      (expr
-        (`'`
+        (unary
+          `'`
           (intrinsic
             `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208))
-                   (expr (str `"ODS-PT-ADM-BOS"`))
-                   (expr (lvar `BOS`))
-                   (expr (lvar `DFN`))))))))))
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@2281..2283
+                 `"ODS-UNQA-SPC-NAT"`
+                 (lvar `SPC` _)@2303..2306)@2281..2306
+               _
+               _)@2272..2307)@2272..2307)@2269..2308)@2268..2308)@2267..2308
+      (= (naked (lvar `SPC` _)@2311..2314)@2309..2315 `0`)@2309..2317)@2266..2317
     (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208))
-                     (expr (str `"ODS-UNQA-BOS-NAT"`))
-                     (expr (lvar `BOS`))))))))))
-      (= (naked (expr (lvar `BOS`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `BOS`))) (expr (naked (expr (lvar `BOS`))) (`+` (num `1`))))))
-  (` `)
-  (` `)
-  (` `
-    _
-    (if
-      (expr (lvar `SPC`) (`]` (str `""`)))
-      (expr
-        (`'`
-          (intrinsic
-            `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208))
-                   (expr (str `"ODS-PT-ADM-SPC"`))
-                   (expr (lvar `SPC`))
-                   (expr (lvar `DFN`))
-                   (expr (lvar `FAC`))))))))))
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208))
-                     (expr (str `"ODS-UNQA-SPC"`))
-                     (expr (lvar `FAC`))
-                     (expr (lvar `SPC`))))))))))
-      (= (naked (expr (lvar `SPC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `SPC`))) (expr (naked (expr (lvar `SPC`))) (`+` (num `1`))))))
-  (` `
-    _
-    (if
-      (expr (lvar `SPC`) (`]` (str `""`)))
-      (expr
-        (`'`
-          (intrinsic
-            `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208))
-                   (expr (str `"ODS-PT-ADM-SPC"`))
-                   (expr (lvar `SPC`))
-                   (expr (lvar `DFN`))))))))))
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208))
-                     (expr (str `"ODS-UNQA-SPC-NAT"`))
-                     (expr (lvar `SPC`))))))))))
-      (= (naked (expr (lvar `SPC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `SPC`))) (expr (naked (expr (lvar `SPC`))) (`+` (num `1`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+      _
+      (=
+        (naked (lvar `SPC` _)@2322..2325)@2320..2326
+        (expr (naked (lvar `SPC` _)@2329..2332)@2327..2333 (binop `+` `1`)@2333..2335)@2327..2335)@2320..2335)@2318..2335)@2213..2335
+  (line ` `)@2336..2337
+  (line ` `)@2339..2340
+  (line
+    ` `
     (set
       _
       (=
         (gvar
           `UTILITY`
-          ((expr (intrinsic `J`#208))
-            (expr (str `"ODS-PT-ADM"`))
-            (expr (lvar `DFN`))
-            (expr (lvar `FAC`))))
-        (expr (str `""`)))))
-  (` `
-    _
-    (if (expr (lvar `BOS`) (`]` (str `""`))))
+          ((intrinsic `J`#208 _)@2381..2383
+            `"ODS-PT-ADM"`
+            (lvar `DFN` _)@2397..2400
+            (lvar `FAC` _)@2401..2404)@2381..2404
+          _
+          _)@2372..2405
+        `""`)@2372..2408)@2370..2408)@2369..2408
+  (line
+    ` `
+    (if (expr (lvar `BOS` _)@2412..2415 (binop `]` `""`)@2415..2418)@2412..2418)@2410..2418
     (set
       _
       (=
         (gvar
           `UTILITY`
-          ((expr (intrinsic `J`#208))
-            (expr (str `"ODS-PT-ADM-BOS"`))
-            (expr (lvar `BOS`))
-            (expr (lvar `DFN`))
-            (expr (lvar `FAC`))))
-        (expr (str `""`)))))
-  (` `
-    _
-    (if (expr (lvar `SPC`) (`]` (str `""`))))
+          ((intrinsic `J`#208 _)@2430..2432
+            `"ODS-PT-ADM-BOS"`
+            (lvar `BOS` _)@2450..2453
+            (lvar `DFN` _)@2454..2457
+            (lvar `FAC` _)@2458..2461)@2430..2461
+          _
+          _)@2421..2462
+        `""`)@2421..2465)@2419..2465)@2409..2465
+  (line
+    ` `
+    (if (expr (lvar `SPC` _)@2469..2472 (binop `]` `""`)@2472..2475)@2469..2475)@2467..2475
     (set
       _
       (=
         (gvar
           `UTILITY`
-          ((expr (intrinsic `J`#208))
-            (expr (str `"ODS-PT-ADM-SPC"`))
-            (expr (lvar `SPC`))
-            (expr (lvar `DFN`))
-            (expr (lvar `FAC`))))
-        (expr (str `""`)))))
-  (` ` _ (quit))
-  (` `)
-  (label `DIS`)
-  (` `
-    _
+          ((intrinsic `J`#208 _)@2487..2489
+            `"ODS-PT-ADM-SPC"`
+            (lvar `SPC` _)@2507..2510
+            (lvar `DFN` _)@2511..2514
+            (lvar `FAC` _)@2515..2518)@2487..2518
+          _
+          _)@2478..2519
+        `""`)@2478..2522)@2476..2522)@2466..2522
+  (line ` ` (quit _ _)@2524..2525)@2523..2525
+  (line ` `)@2526..2527
+  (label `DIS` _ _)@2529..2533
+  (line
+    ` `
     (quit
       (postcond
         (expr
-          (lvar `FAC`)
-          (`=` (str `""`))
-          (`!`
+          (lvar `FAC` _)@2565..2568
+          (binop `=` `""`)@2568..2571
+          (binop
+            `!`
             (expr
-              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))
-          (`!` (expr (`'` (lvar `A1B2CHK`))))))))
-  (` `
-    _
+              (unary
+                `'`
+                (intrinsic `P`#212 ((lvar `N` _)@2577..2578 `"^"` `15`)@2577..2585)@2574..2586)@2573..2586)@2572..2587)@2571..2587
+          (binop
+            `!`
+            (expr (unary `'` (lvar `A1B2CHK` _)@2590..2597)@2589..2597)@2588..2598)@2587..2598)@2565..2598)@2564..2598
+      _)@2563..2598)@2562..2598
+  (line
+    ` `
     (set
       (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-DIS"`)) (expr (lvar `FAC`))))))))))
-      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
-  (` `
-    _
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-DIS-NAT"`))))))))))
-      (= (naked (expr (str `"ODS-DIS-NAT"`))) (expr (num `0`))))
-    (set
-      _
-      (= (naked (expr (str `"ODS-DIS-NAT"`))) (expr (expr (str `"ODS-DIS-NAT"`)) (`+` (num `1`))))))
-  (` `
-    _
-    (quit
-      (postcond
-        (expr (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `11`)))))))))
-  (` `)
-  (` `
-    _
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-TRF-NVA"`)) (expr (lvar `FAC`))))))))))
-      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
-  (` `
-    _
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-TRF-NVA-NAT"`))))))))))
-      (= (naked (expr (str `"ODS-TRF-NVA-NAT"`))) (expr (num `0`))))
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@2615..2617 `"ODS-DIS"` (lvar `FAC` _)@2628..2631)@2615..2631
+               _
+               _)@2606..2632)@2606..2632)@2603..2633)@2602..2633)@2601..2633
+      (= (naked (lvar `FAC` _)@2636..2639)@2634..2640 `0`)@2634..2642)@2600..2642
     (set
       _
       (=
-        (naked (expr (str `"ODS-TRF-NVA-NAT"`)))
-        (expr (naked (expr (str `"ODS-TRF-NVA-NAT"`))) (`+` (num `1`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `PTRM`)
-  (` `
-    _
-    (quit
-      (postcond
-        (expr
-          (lvar `FAC`)
-          (`=` (str `""`))
-          (`!`
-            (expr
-              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))
-          (`!` (expr (`'` (lvar `A1B2CHK`))))))))
-  (` `
-    _
+        (naked (lvar `FAC` _)@2647..2650)@2645..2651
+        (expr (naked (lvar `FAC` _)@2654..2657)@2652..2658 (binop `+` `1`)@2658..2660)@2652..2660)@2645..2660)@2643..2660)@2599..2660
+  (line
+    ` `
     (set
       (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208)) (expr (str `"ODS-PTRM"`)) (expr (lvar `FAC`))))))))))
-      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
-  (` `
-    _
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-PTRM-NAT"`))))))))))
-      (= (naked (expr (str `"ODS-PTRM-NAT"`))) (expr (num `0`))))
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@2677..2679 `"ODS-DIS-NAT"`)@2677..2693
+               _
+               _)@2668..2694)@2668..2694)@2665..2695)@2664..2695)@2663..2695
+      (= (naked `"ODS-DIS-NAT"`)@2696..2712 `0`)@2696..2714)@2662..2714
     (set
       _
       (=
-        (naked (expr (str `"ODS-PTRM-NAT"`)))
-        (expr (naked (expr (str `"ODS-PTRM-NAT"`))) (`+` (num `1`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `TRF`)
-  (` `
-    _
+        (naked `"ODS-DIS-NAT"`)@2717..2733
+        (expr (expr `"ODS-DIS-NAT"`)@2734..2749 (binop `+` `1`)@2749..2751)@2734..2751)@2717..2751)@2715..2751)@2661..2751
+  (line
+    ` `
+    (quit
+      (postcond
+        (unary
+          `'`
+          (intrinsic `P`#212 ((lvar `N` _)@2759..2760 `"^"` `11`)@2759..2767)@2756..2768)@2755..2768)@2754..2768
+      _)@2753..2768)@2752..2768
+  (line ` `)@2769..2770
+  (line
+    ` `
+    (set
+      (postcond
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@2829..2831
+                 `"ODS-TRF-NVA"`
+                 (lvar `FAC` _)@2846..2849)@2829..2849
+               _
+               _)@2820..2850)@2820..2850)@2817..2851)@2816..2851)@2815..2851
+      (= (naked (lvar `FAC` _)@2854..2857)@2852..2858 `0`)@2852..2860)@2814..2860
+    (set
+      _
+      (=
+        (naked (lvar `FAC` _)@2865..2868)@2863..2869
+        (expr (naked (lvar `FAC` _)@2872..2875)@2870..2876 (binop `+` `1`)@2876..2878)@2870..2878)@2863..2878)@2861..2878)@2813..2878
+  (line
+    ` `
+    (set
+      (postcond
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@2895..2897 `"ODS-TRF-NVA-NAT"`)@2895..2915
+               _
+               _)@2886..2916)@2886..2916)@2883..2917)@2882..2917)@2881..2917
+      (= (naked `"ODS-TRF-NVA-NAT"`)@2918..2938 `0`)@2918..2940)@2880..2940
+    (set
+      _
+      (=
+        (naked `"ODS-TRF-NVA-NAT"`)@2943..2963
+        (expr (naked `"ODS-TRF-NVA-NAT"`)@2964..2984 (binop `+` `1`)@2984..2986)@2964..2986)@2943..2986)@2941..2986)@2879..2986
+  (line ` ` (quit _ _)@2988..2989)@2987..2989
+  (line ` `)@2990..2991
+  (label `PTRM` _ _)@2993..2998
+  (line
+    ` `
     (quit
       (postcond
         (expr
-          (lvar `FAC`)
-          (`=` (str `""`))
-          (`!`
+          (lvar `FAC` _)@3032..3035
+          (binop `=` `""`)@3035..3038
+          (binop
+            `!`
             (expr
-              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))
-          (`!`
-            (expr
-              (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `11`))))
-              (`=` (str `""`))))
-          (`!` (expr (`'` (lvar `A1B2CHK`))))))))
-  (` `
-    _
+              (unary
+                `'`
+                (intrinsic `P`#212 ((lvar `N` _)@3044..3045 `"^"` `15`)@3044..3052)@3041..3053)@3040..3053)@3039..3054)@3038..3054
+          (binop
+            `!`
+            (expr (unary `'` (lvar `A1B2CHK` _)@3057..3064)@3056..3064)@3055..3065)@3054..3065)@3032..3065)@3031..3065
+      _)@3030..3065)@3029..3065
+  (line
+    ` `
+    (set
+      (postcond
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@3082..3084 `"ODS-PTRM"` (lvar `FAC` _)@3096..3099)@3082..3099
+               _
+               _)@3073..3100)@3073..3100)@3070..3101)@3069..3101)@3068..3101
+      (= (naked (lvar `FAC` _)@3104..3107)@3102..3108 `0`)@3102..3110)@3067..3110
     (set
       _
       (=
-        (lvar `TYP`)
-        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `11`))))))
-      (=
-        (lvar `SUBS`)
-        (expr
-          (select
-            ((expr (lvar `TYP`)) (expr (str `"ODS-DISP-NVA"`)))
-            ((expr (num `1`)) (expr (str `"ODS-DISP-VA"`))))))))
-  (` `
-    _
+        (naked (lvar `FAC` _)@3115..3118)@3113..3119
+        (expr (naked (lvar `FAC` _)@3122..3125)@3120..3126 (binop `+` `1`)@3126..3128)@3120..3128)@3113..3128)@3111..3128)@3066..3128
+  (line
+    ` `
     (set
       (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr
-                 (gvar
-                   `UTILITY`
-                   ((expr (intrinsic `J`#208)) (expr (lvar `SUBS`)) (expr (lvar `FAC`))))))))))
-      (= (naked (expr (lvar `FAC`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `FAC`))) (expr (naked (expr (lvar `FAC`))) (`+` (num `1`))))))
-  (` ` _ (set _ (= (lvar `SUBS`) (expr (lvar `SUBS`) (`_` (str `"-NAT"`))))))
-  (` `
-    _
-    (set
-      (postcond
-        (expr
-          (`'`
-            (intrinsic
-              `D`#202
-              ((expr (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (lvar `SUBS`))))))))))
-      (= (naked (expr (lvar `SUBS`))) (expr (num `0`))))
-    (set _ (= (naked (expr (lvar `SUBS`))) (expr (naked (expr (lvar `SUBS`))) (`+` (num `1`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `FAC`)
-  (` `
-    _
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@3145..3147 `"ODS-PTRM-NAT"`)@3145..3162
+               _
+               _)@3136..3163)@3136..3163)@3133..3164)@3132..3164)@3131..3164
+      (= (naked `"ODS-PTRM-NAT"`)@3165..3182 `0`)@3165..3184)@3130..3184
     (set
       _
       (=
-        (lvar `FAC`)
-        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `7`)))))))
+        (naked `"ODS-PTRM-NAT"`)@3187..3204
+        (expr (naked `"ODS-PTRM-NAT"`)@3205..3222 (binop `+` `1`)@3222..3224)@3205..3224)@3187..3224)@3185..3224)@3129..3224
+  (line ` ` (quit _ _)@3226..3227)@3225..3227
+  (line ` `)@3228..3229
+  (label `TRF` _ _)@3231..3235
+  (line
+    ` `
     (quit
       (postcond
         (expr
-          (lvar `FAC`)
-          (`=` (str `""`))
-          (`!`
+          (lvar `FAC` _)@3268..3271
+          (binop `=` `""`)@3271..3274
+          (binop
+            `!`
             (expr
-              (`'` (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `15`)))))))))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `A1B2CHK`) (expr (num `0`)))
-      (=
-        (lvar `X`)
-        (expr
-          (select
-            ((expr (intrinsic `D`#202 ((expr (lvar `A1B2NTY`)))))
+              (unary
+                `'`
+                (intrinsic `P`#212 ((lvar `N` _)@3280..3281 `"^"` `15`)@3280..3288)@3277..3289)@3276..3289)@3275..3290)@3274..3290
+          (binop
+            `!`
+            (expr
               (expr
-                (intrinsic `P`#212 ((expr (lvar `A1B2NTY`)) (expr (lvar `U`)) (expr (num `2`))))))
-            ((expr (num `1`)) (expr (str `""`))))))))
-  (` `
-    _
-    (if
-      (expr
+                (intrinsic `P`#212 ((lvar `N` _)@3295..3296 `"^"` `11`)@3295..3303)@3292..3304
+                (binop `=` `""`)@3304..3307)@3292..3307)@3291..3308)@3290..3308
+          (binop
+            `!`
+            (expr (unary `'` (lvar `A1B2CHK` _)@3311..3318)@3310..3318)@3309..3319)@3308..3319)@3268..3319)@3267..3319
+      _)@3266..3319)@3265..3319
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `TYP` _)@3323..3326
+        (intrinsic `P`#212 ((lvar `N` _)@3330..3331 `"^"` `11`)@3330..3338)@3327..3339)@3323..3339
+      (=
+        (lvar `SUBS` _)@3340..3344
         (select
-          ((expr (lvar `X`) (`=` (str `""`)) (`!` (expr (lvar `X`) (`=` (str `"A"`)))))
-            (expr (num `1`)))
-          ((expr (lvar `X`) (`=` (str `"R"`)))
-            (expr
-              (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `9`))))
-              (`=` (lvar `A1B2VRG`))))
-          ((expr (lvar `X`) (`=` (str `"V"`)))
-            (expr
-              (intrinsic `P`#212 ((expr (lvar `N`)) (expr (lvar `U`)) (expr (num `7`))))
-              (`=` (lvar `A1B2FN`))))
-          ((expr (num `1`)) (expr (num `0`))))))
-    (set _ (= (lvar `A1B2CHK`) (expr (num `1`)))))
-  (` ` _ (quit (postcond (expr (`'` (lvar `A1B2CHK`))))))
-  (` `
-    _
-    (if
-      (expr
-        (`'`
+          (case (lvar `TYP` _)@3348..3351 `"ODS-DISP-NVA"`)@3348..3366
+          (case `1` `"ODS-DISP-VA"`)@3367..3382)@3345..3383)@3340..3383)@3321..3383)@3320..3383
+  (line
+    ` `
+    (set
+      (postcond
+        (unary
+          `'`
           (intrinsic
             `D`#202
-            ((expr
-               (gvar
-                 `UTILITY`
-                 ((expr (intrinsic `J`#208)) (expr (str `"ODS-FAC"`)) (expr (lvar `FAC`))))))))))
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@3400..3402
+                 (lvar `SUBS` _)@3403..3407
+                 (lvar `FAC` _)@3408..3411)@3400..3411
+               _
+               _)@3391..3412)@3391..3412)@3388..3413)@3387..3413)@3386..3413
+      (= (naked (lvar `FAC` _)@3416..3419)@3414..3420 `0`)@3414..3422)@3385..3422
     (set
       _
       (=
-        (gvar `UTILITY` ((expr (intrinsic `J`#208)) (expr (str `"ODS-FAC"`)) (expr (lvar `FAC`))))
-        (expr (intrinsic `P`#212 ((expr (lvar `N`)) (expr (str `"^"`)) (expr (num `8`))))))))
-  (` ` _ (quit)))
+        (naked (lvar `FAC` _)@3427..3430)@3425..3431
+        (expr (naked (lvar `FAC` _)@3434..3437)@3432..3438 (binop `+` `1`)@3438..3440)@3432..3440)@3425..3440)@3423..3440)@3384..3440
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `SUBS` _)@3444..3448
+        (expr (lvar `SUBS` _)@3449..3453 (binop `_` `"-NAT"`)@3453..3460)@3449..3460)@3444..3460)@3442..3460)@3441..3460
+  (line
+    ` `
+    (set
+      (postcond
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar
+               `UTILITY`
+               ((intrinsic `J`#208 _)@3477..3479 (lvar `SUBS` _)@3480..3484)@3477..3484
+               _
+               _)@3468..3485)@3468..3485)@3465..3486)@3464..3486)@3463..3486
+      (= (naked (lvar `SUBS` _)@3489..3493)@3487..3494 `0`)@3487..3496)@3462..3496
+    (set
+      _
+      (=
+        (naked (lvar `SUBS` _)@3501..3505)@3499..3506
+        (expr (naked (lvar `SUBS` _)@3509..3513)@3507..3514 (binop `+` `1`)@3514..3516)@3507..3516)@3499..3516)@3497..3516)@3461..3516
+  (line ` ` (quit _ _)@3518..3519)@3517..3519
+  (line ` `)@3520..3521
+  (label `FAC` _ _)@3523..3527
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `FAC` _)@3563..3566
+        (intrinsic `P`#212 ((lvar `N` _)@3570..3571 `"^"` `7`)@3570..3577)@3567..3578)@3563..3578)@3561..3578
+    (quit
+      (postcond
+        (expr
+          (lvar `FAC` _)@3581..3584
+          (binop `=` `""`)@3584..3587
+          (binop
+            `!`
+            (expr
+              (unary
+                `'`
+                (intrinsic `P`#212 ((lvar `N` _)@3593..3594 `"^"` `15`)@3593..3601)@3590..3602)@3589..3602)@3588..3603)@3587..3603)@3581..3603)@3580..3603
+      _)@3579..3603)@3560..3603
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `A1B2CHK` _)@3607..3614 `0`)@3607..3616
+      (=
+        (lvar `X` _)@3617..3618
+        (select
+          (case
+            (intrinsic `D`#202 ((lvar `A1B2NTY` _)@3625..3632)@3625..3632)@3622..3633
+            (intrinsic
+              `P`#212
+              ((lvar `A1B2NTY` _)@3637..3644 (lvar `U` _)@3645..3646 `2`)@3637..3648)@3634..3649)@3622..3649
+          (case `1` `""`)@3650..3654)@3619..3655)@3617..3655)@3605..3655)@3604..3655
+  (line
+    ` `
+    (if
+      (select
+        (case
+          (expr
+            (lvar `X` _)@3662..3663
+            (binop `=` `""`)@3663..3666
+            (binop
+              `!`
+              (expr
+                (expr (lvar `X` _)@3668..3669 (binop `=` `"A"`)@3669..3673)@3668..3673)@3667..3674)@3666..3674)@3662..3674
+          `1`)@3662..3676
+        (case
+          (expr (lvar `X` _)@3677..3678 (binop `=` `"R"`)@3678..3682)@3677..3682
+          (expr
+            (intrinsic
+              `P`#212
+              ((lvar `N` _)@3686..3687 (lvar `U` _)@3688..3689 `9`)@3686..3691)@3683..3692
+            (binop `=` (lvar `A1B2VRG` _)@3693..3700)@3692..3700)@3683..3700)@3677..3700
+        (case
+          (expr (lvar `X` _)@3701..3702 (binop `=` `"V"`)@3702..3706)@3701..3706
+          (expr
+            (intrinsic
+              `P`#212
+              ((lvar `N` _)@3710..3711 (lvar `U` _)@3712..3713 `7`)@3710..3715)@3707..3716
+            (binop `=` (lvar `A1B2FN` _)@3717..3723)@3716..3723)@3707..3723)@3701..3723
+        (case `1` `0`)@3724..3727)@3659..3728)@3657..3728
+    (set _ (= (lvar `A1B2CHK` _)@3731..3738 `1`)@3731..3740)@3729..3740)@3656..3740
+  (line
+    ` `
+    (quit (postcond (unary `'` (lvar `A1B2CHK` _)@3745..3752)@3744..3752)@3743..3752 _)@3742..3752)@3741..3752
+  (line
+    ` `
+    (if
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar
+             `UTILITY`
+             ((intrinsic `J`#208 _)@3769..3771 `"ODS-FAC"` (lvar `FAC` _)@3782..3785)@3769..3785
+             _
+             _)@3760..3786)@3760..3786)@3757..3787)@3756..3787)@3754..3787
+    (set
+      _
+      (=
+        (gvar
+          `UTILITY`
+          ((intrinsic `J`#208 _)@3799..3801 `"ODS-FAC"` (lvar `FAC` _)@3812..3815)@3799..3815
+          _
+          _)@3790..3816
+        (intrinsic `P`#212 ((lvar `N` _)@3820..3821 `"^"` `8`)@3820..3827)@3817..3828)@3790..3828)@3788..3828)@3753..3828
+  (line ` ` (quit _ _)@3830..3831)@3829..3831
+  _)@0..3832

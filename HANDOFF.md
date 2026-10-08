@@ -30,25 +30,21 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 1. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
    time, each regenerating its parser once and applying its steps from
    CHANGELOG "Migrating":
-   - **em:** the two `@conflicts` lines, the API renames;
-     and in the same pass make `exprtails` (em's `mumps.grammar`,
-     `exprtails = exprtail exprtails`) left-recursive or `exprtail*`: the
-     right recursion is quadratic in memory (20,000 terms take 4.8 GB).
-     Check with em's suite that every tree stays the same.
    - **nexis:** delete its `Tag` enum, the API renames.
-   Rig has moved: `test/rig` holds the grammar, lang module and test
-   programs of Rig v0.2.0. As em and nexis land, re-sync their copies
-   here (`test/mumps`, `test/nexis`;
+   Rig and em have moved: `test/rig` holds the grammar, lang module and
+   test programs of Rig v0.2.0, and `test/mumps` em's grammar and lang
+   module. When nexis lands, re-sync its copy here (`test/nexis`;
    [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep `./test/run`
-   green: until then the suite tests older grammars than the ones those
-   projects run.
+   green: until then the suite tests an older nexis grammar than the one
+   nexis runs.
 2. **Slash, Zag and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
    `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the
    trees of a 0.10.3 build (from tag `v0.10.3`) with this checkout's.
 3. **Deferred by the owner until em's grammar work is done:** the
    schemaless tree rules for a leading `role:N` head (named only in
-   unexpanded alternatives) and for `!X` in a rule's default action.
+   unexpanded alternatives) and for `!X` in a rule's default action. em's
+   grammar uses `@schema`, so these rules no longer shape em's trees.
 4. **Untested messages:** `test/lib/messages.allow` lists the generator
    messages no test prints, each with its reason; an adverse test that
    prints one deletes its line.

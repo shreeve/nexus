@@ -14,9 +14,9 @@
 #   pat - In pattern mode after ? (single-letters become patcodes)
 #   dep - Parenthesis nesting depth within pattern mode
 #
-# Note: There is no `ws` state variable. Whitespace is counted fresh at the
-# start of each matchRules() call and stored in the local `ws_count` variable.
-# This count becomes the `pre` field of each token.
+# The lexer itself counts the spaces and tabs before each token into the
+# token's `pre` field; the zero-width rules below turn that count into
+# INDENT, SPACES and PATEND.
 
 state
     beg = 1
@@ -34,12 +34,13 @@ tokens
     ident           # Variable name, label, command, function name
     integer         # Canonical integer: 0, 1, 123
     zdigits         # Leading-zero integer: 01, 007 (preserved for labels)
-    real            # Decimal or exponent: 3.14, .5, 2E7, 1.5E-3
+    real            # Decimal or exponent: 3.14, .5, 1., 2E7, 1.5E-3
     string          # String literal: "hello", "say ""hi"""
 
     # MUMPS significant whitespace
     indent          # 1+ spaces at LINE START (command line marker)
-    spaces          # 2+ spaces MID-LINE (argumentless command)
+    sp              # 1 space MID-LINE (separates a command from its argument, or two commands)
+    spaces          # 2+ spaces MID-LINE (after an argumentless command)
     patend          # End of pattern mode (synthetic token)
     comment         # Comment: ; through end of line
 
@@ -70,9 +71,6 @@ tokens
     rbracket        # ]
     exclaim         # !
     hash            # #
-    exclaim_ws      #  ! (space + exclaim, for posformat after expr)
-    hash_ws         #  # (space + hash, for posformat after expr)
-    colon_ws        #  : (space + colon, for TSTART params without restart arg)
     ampersand       # &
 
     # Multi-char operators
@@ -91,7 +89,7 @@ tokens
     sortsafter      # ]]
     followseq       # ]=
     sortsaftereq    # ]]=
-    # nor           # !! (disabled for now - verify if valid MUMPS)
+    notsortsafter   # ']]
 
     # Context-sensitive tokens
     quesat          # ?@ (pattern/column indirection)
@@ -110,64 +108,48 @@ tokens
 after
     beg = 0         # Most tokens clear line-start flag
 
-# Note: Whitespace handling does NOT use defaults. The lexer computes the
-# generic `pre` field fresh before each token match (see GRAMMAR.md Section 3.5).
-
 # ==============================================================================
 # WHITESPACE RULES
 # ==============================================================================
 #
-# MUMPS has significant whitespace. The generic lexer counts leading spaces/tabs
-# before each token and exposes that count as the token `pre` field. This
-# grammar turns that generic contract into explicit zero-width lexer rules:
-#   - INDENT: 1+ whitespace at line start (marks command line vs label line)
-#   - SPACES: 2+ whitespace mid-line (marks argumentless command)
-#   - Single space mid-line: absorbed into the next token's `pre` field
-#
-# Dot-level handling: For command lines, INDENT consumes dots and preserves
-# their count via `{pre=counted('.')}`. The parser stores this in `Sexp.src.id`,
-# making dot depth available to the compiler. For label lines, INDENT does not
-# fire (no leading whitespace), so dots remain in the stream and `dotlevel`
-# parses them structurally.
+# MUMPS has significant whitespace: no expression contains a space, so a space
+# always ends one. The lexer counts the spaces and tabs before each token into
+# its `pre` field, and these zero-width rules turn every run of them into a
+# token the parser sees:
+#   - INDENT: whitespace at the start of a line (a command line, not a label
+#     line); it also consumes the level dots and their spaces, and keeps the
+#     dot count in `pre` (which `em -t` shows)
+#   - SP: one space or tab mid-line, which separates a command from its
+#     argument or two commands (`W:X ?5` is WRITE with the argument ?5)
+#   - SPACES: 2+ mid-line, after an argumentless command (`Q:X  W 1`)
+# A label line has no INDENT, so its dots stay in the stream for `dotlevel`.
 
 # Whitespace in pattern mode ends the pattern: PATEND is zero-width (hold), so
-# the whitespace is lexed again, as INDENT/SPACES/pre, once pattern mode is off.
+# the whitespace is lexed again, as SP/SPACES, once pattern mode is off.
 @ pat & pre > 0                             → patend, hold, {pat = 0}, {pre = 0}
 
-# Emit INDENT when we have leading whitespace at the start of a command line.
-# Empty-pattern rules are zero-width: they use the generic `pre` count that was
-# already consumed before token matching and then leave the current input
-# position unchanged for the next real token.
 @ beg & pre > 0                             → indent, {pre = counted('.')}
-
-# Emit SPACES for 2+ mid-line spaces. Reset `pre` so this marker token doesn't
-# leak the spacing count to parser-side consumers.
+@ !beg & pre == 1                           → sp
 @ !beg & pre > 1                            → spaces, {pre = 0}
 
 # ==============================================================================
 # NEWLINE
 # ==============================================================================
 #
-# Newline resets to line start and exits pattern mode if active.
-# CRLF (Windows) is handled as a single newline.
+# A newline is LF, with any CRs before it (CRLF, or CR CR LF from a file
+# converted twice) in the same token; a CR anywhere else is an error, so
+# every line count is a count of LFs. It resets to line start; in pattern
+# mode it first ends the pattern with a zero-width PATEND.
 
-# Windows CRLF - must come before individual \n and \r rules
-"\r\n"              @ !pat                  → newline, {beg = 1}
-"\r\n"              @  pat                  → patend, hold, {pat = 0}, {dep = 0}
-
-# Unix LF
-'\n'                @ !pat                  → newline, {beg = 1}
-'\n'                @  pat                  → patend, hold, {pat = 0}, {dep = 0}
-
-# Old Mac CR (standalone, not followed by LF)
-'\r'                @ !pat                  → newline, {beg = 1}
-'\r'                @  pat                  → patend, hold, {pat = 0}, {dep = 0}
+[\r]* [\n]          @ !pat                  → newline, {beg = 1}
+[\r\n]              @  pat                  → patend, hold, {pat = 0}, {dep = 0}
 
 # ==============================================================================
 # COMMENTS
 # ==============================================================================
 #
-# MUMPS comments start with ; and run to end of line.
+# MUMPS comments start with ; and run to end of line. (The generated lexer
+# scans the [^\n]* run with SIMD.)
 
 ';' [^\n]*                                  → comment
 
@@ -187,20 +169,23 @@ after
 # MUMPS number rules:
 #   - Leading zeros preserved as zdigits (for labels: 01, 007)
 #   - Canonical integers: 0, 1, 123
-#   - Reals: 3.14, .5, 2E7, 1.5E-3
+#   - Reals: 3.14, .5, 1., 2E7, 1.5E-3, 1.E3
 #
-# Order matters: longer patterns first.
+# The longest match wins; on a tie (01 is both zdigits and integer) the rule
+# written first does.
 
 # Numbers in pattern mode: positive integers only (repcounts)
 # No decimals - the '.' is a range separator (1.5 = "1 to 5 of")
 [0-9]+    @ pat                             → integer
 
-# Real with exponent: 1E5, 1.5E-3, .5E+2
+# Real with exponent: 1E5, 1.5E-3, .5E+2, 1.E3
 [0-9]* '.' [0-9]+ [Ee] [+-]? [0-9]+ @ !pat  → real
-[0-9]+ [Ee] [+-]? [0-9]+            @ !pat  → real
+[0-9]+ '.'? [Ee] [+-]? [0-9]+       @ !pat  → real
 
-# Real without exponent: 3.14, .5
+# Real without exponent: 3.14, .5, and 1. (a mant ending in its point is
+# an extension: the standard's mant is intlit [ . intlit ] | . intlit)
 [0-9]* '.' [0-9]+                   @ !pat  → real
+[0-9]+ '.'                          @ !pat  → real
 
 # Leading-zero integer (preserved for labels): 01, 007
 '0' [0-9]+                          @ !pat  → zdigits
@@ -221,8 +206,8 @@ after
 #   ?1N  ?.N  ?3"x"  ?1(…)  ?1'"x"   pattern        ?1E+2  ?1E2   E-notation
 #   ?1E  ?1E2A  ?1E2.                pattern        ?1'?   ?X  ?  not a pattern
 #
-# These mirror checkPatternMode in mumps.zig (which the Lexer wrapper also
-# applies after `?`, `'?` and `'`). `?(` never starts a pattern.
+# The same lookahead applies after `'?` and after a lone `'` (`X'1N`).
+# `?(` never starts a pattern.
 
 # ?@ (pattern/column indirection) - always indirection, never pattern start
 '?@'                                             @ !pat → quesat
@@ -257,7 +242,7 @@ after
 # NOT: '
 # ==============================================================================
 #
-# The same lookahead applies after a lone ' (as checkPatternMode does).
+# The same lookahead applies after a lone '.
 
 "'" / [0-9.]+ [Ee] [+-]                          @ !pat → not
 "'" / [0-9.]+ [Ee] [0-9]+                        @ !pat → not
@@ -270,8 +255,16 @@ after
 # PATTERN MODE TOKENS
 # ==============================================================================
 #
-# In pattern mode, single letters are pattern codes, not identifiers.
-# Parentheses track nesting depth for alternation groups.
+# In pattern mode, single letters are pattern codes, not identifiers, and
+# digits are repcounts (the number rules above are `!pat`). Parentheses track
+# nesting depth for alternation groups. A pattern ends, with a zero-width
+# PATEND before the character that ends it, at whitespace or a newline
+# (above), at `_`, and at depth 0 at any character that cannot continue it: a
+# pattern continues only with a repcount digit or `.`, a code letter, a
+# string, `(`, or `'` before a string. So `X?1N&Y`, `X?1N*2` and `X?1N'=Y`
+# end the pattern before the operator. The end of input ends it too (the
+# Lexer wrapper in mumps.zig). Multi-character operators are `!pat`, so the
+# one-character PATEND rules below are the longest match in pattern mode.
 
 # Opening paren in pattern mode: track depth
 '('       @ pat                             → lparen, {dep++}
@@ -279,18 +272,18 @@ after
 # Closing paren with depth > 0: still in alternation group
 ')'       @ pat &  dep                      → rparen, {dep--}
 
-# Closing paren at depth 0: exit pattern mode, emit PATEND, re-lex the )
-')'       @ pat & !dep                      → patend, hold, {pat = 0}
+# At depth 0 anything else ends the pattern: emit PATEND, then lex the
+# character again
+[^0-9.A-Za-z%"('_\r\n] @ pat & !dep        → patend, hold, {pat = 0}
+"'" / [^"]                @ pat & !dep        → patend, hold, {pat = 0}
+
+# Concatenation ends the pattern at any depth
+'_'       @ pat                             → patend, hold, {pat = 0}
 
 # Single letter in pattern mode: pattern code (A, C, E, L, N, P, U)
 # Each letter becomes its own token - no multi-char identifiers in pattern mode
-[A-Za-z]  @ pat                             → ident
-
-# Comma at depth 0 in pattern mode: exit pattern mode
-','       @ pat & !dep                      → patend, hold, {pat = 0}
-
-# Colon at depth 0 in pattern mode: exit pattern mode
-':'       @ pat & !dep                      → patend, hold, {pat = 0}
+# (a `%` name is lexed whole, as outside pattern mode)
+('%' [A-Za-z0-9]* | [A-Za-z]) @ pat         → ident
 
 # ==============================================================================
 # IDENTIFIERS (Normal Mode)
@@ -299,48 +292,37 @@ after
 # MUMPS identifiers: [%A-Za-z][A-Za-z0-9]*
 # % is valid as first character only.
 
-[%A-Za-z][A-Za-z0-9]*                       → ident
+[%A-Za-z][A-Za-z0-9]*               @ !pat  → ident
 
 # ==============================================================================
 # MULTI-CHARACTER OPERATORS
 # ==============================================================================
 #
-# Order matters: longer patterns first.
+# The longest match wins. None applies in pattern mode, where the PATEND
+# rules end the pattern before the operator's first character.
 
-# Three-character operators
-"]]="                                       → sortsaftereq
-
-# Two-character operators (negations)
-"'="                                        → noteq
-"'<"                                        → notlt
-"'>"                                        → notgt
-"'["                                        → notlbracket
-"']"                                        → notrbracket
-"'&"                                        → notampersand
-"'!"                                        → notexclaim
-
-# Two-character operators (other)
-"**"                                        → starstar
-"<="                                        → lteq
-">="                                        → gteq
-"=="                                        → eqeq
-"]]"                                        → sortsafter
-"]="                                        → followseq
-
-# Note: exclaim_ws and hash_ws use generic @ pre guards below. This disambiguates
-# posformat from binary operators after postconditions
-# (e.g., W:$Y>55 # is posformat, not 55 MOD something).
+"]]="                               @ !pat  → sortsaftereq
+"']]"                               @ !pat  → notsortsafter
+"'="                                @ !pat  → noteq
+"'<"                                @ !pat  → notlt
+"'>"                                @ !pat  → notgt
+"'["                                @ !pat  → notlbracket
+"']"                                @ !pat  → notrbracket
+"'&"                                @ !pat  → notampersand
+"'!"                                @ !pat  → notexclaim
+"**"                                @ !pat  → starstar
+"<="                                @ !pat  → lteq
+">="                                @ !pat  → gteq
+"=="                                @ !pat  → eqeq
+"]]"                                @ !pat  → sortsafter
+"]="                                @ !pat  → followseq
 
 # ==============================================================================
 # SINGLE-CHARACTER OPERATORS AND PUNCTUATION
 # ==============================================================================
 #
-# Context-sensitive tokens: ! and # have different meanings based on context.
-# In WRITE command: ! = newline, # = form feed (when preceded by whitespace)
-# Otherwise: ! = logical OR, # = modulo
-#
-# The `pre` pseudo-variable refers to the whitespace count computed at the start
-# of matchRules(). Using `@ pre > 0` guards, we can make this declarative.
+# `!` and `#` are both operators (OR, modulo) and WRITE/READ format controls;
+# the parser tells them apart (a format starts an argument, after SP or `,`).
 
 # Standard single-character tokens
 '.'                                         → dot
@@ -350,7 +332,6 @@ after
 '('                                         → lparen
 ')'                                         → rparen
 ','                                         → comma
-':' @ pre                                   → colon_ws
 ':'                                         → colon
 '|'                                         → pipe
 '='                                         → eq
@@ -359,26 +340,15 @@ after
 '*'                                         → star
 '/'                                         → slash
 '\\'                                        → backslash
-'_' @ !pat                                  → underscore
+'_'                                         → underscore
 "'"                                         → not
 '<'                                         → lt
 '>'                                         → gt
-'?' @ pat                                   → question   # ? in pattern mode (rare)
 '['                                         → lbracket
 ']'                                         → rbracket
-'!' @ pre                                   → exclaim_ws
 '!'                                         → exclaim
-'#' @ pre                                   → hash_ws
 '#'                                         → hash
 '&'                                         → ampersand
-
-# ==============================================================================
-# UNDERSCORE IN PATTERN MODE
-# ==============================================================================
-#
-# Underscore exits pattern mode (it's a concatenation operator).
-
-'_' @ pat                                   → patend, hold, {pat = 0}
 
 # ==============================================================================
 # ERROR / FALLBACK
@@ -387,15 +357,6 @@ after
 # Any unmatched character is an error.
 
 .                                           → err
-
-# ==============================================================================
-# LEXER CODE IMPORTS
-# ==============================================================================
-#
-# Functions imported from the @lang module for use in the generated lexer.
-# These handle language-specific logic too complex for declarative rules.
-
-@code = checkPatternMode
 
 # ==============================================================================
 # END OF LEXER SECTION
@@ -410,25 +371,143 @@ after
 @lang = "mumps"
 
 @conflicts
-    shift  viewarg → expr ":" L(expr)                   1  # a comma after a list item continues the list
     shift  deviceparam → expr                           1  # USE dev:(x): the parentheses group an expression, the same value as a one-parameter list
     shift  patatom → repcount IDENT+                    1  # pattern code letters after a repeat count run as far as they go
-    shift  rlvn → IDENT                                 1  # name= after USE dev: is a keyword device parameter
+    shift  lvn → IDENT                                  1  # name= after USE dev: is a keyword device parameter
     shift  rgvn → "^" "|" expr "|" IDENT                1  # ( after an extended global name starts its subscripts
     shift  rgvn → "^" "|" expr "," expr "|" IDENT       1  # ( after an extended global name starts its subscripts
-    shift  rgvn → "^" "[" expr "]" IDENT                1  # ( after an extended global name starts its subscripts
-    shift  rgvn → "^" "[" expr "," expr "]" IDENT       1  # ( after an extended global name starts its subscripts
-    reduce lname → "@" atom over tstartargs → "@" atom  34  # TSTART @x: the indirect argument is a local-name list
-    reduce actual? → ε over L(actual?)? → ε             2  # an empty () argument list holds one absent actual
+    shift  extrinsicref → "@" xatom                     2  # ( after $$@X starts its actual list
+    shift  extrinsicref → "@" xatom "^" routineref      1  # ( after $$@X^RTN starts its actual list
+    reduce actual? → ε over L(actual?)? → ε             4  # an empty () argument list holds one absent actual
 
-@as ident = [fn, isv, ssvn, self, cmd]
+@as ident = [fn, sv, isv, ssvn, self, cmd]
+
+# Reader names for syntax errors: "expected an operator, "," or the end of
+# the line, got ".""
+@errors
+    cmd: "a command", expr: "an expression", atom: "an operand",
+    binop: "an operator", glvn: "a variable", routineref: "a routine name",
+    patatom: "a pattern"
+
+@display
+    IDENT: "a name", INTEGER: "a number", ZDIGITS: "a number", REAL: "a number",
+    STRING: "a string", SP: "a space", SPACES: "a space",
+    PATEND: "the end of the pattern", COMMENT: "a comment",
+    NEWLINE: "the end of the line", EOF: "the end of the line",
+    INDENT: "a leading space", QUESAT: "\"?@\"",
+    FN: "a function name", TEXT: "a function name", SELECT: "a function name",
+    JUSTIFY: "a function name", INCREMENT: "a function name",
+    ISV: "a special variable name", SV: "a special variable name",
+    SSVN: "a structured system variable name",
+    SET: "a command", NEW: "a command", MERGE: "a command", KILL: "a command",
+    IF: "a command", ELSE: "a command", FOR: "a command", DO: "a command",
+    GOTO: "a command", QUIT: "a command", BREAK: "a command", HANG: "a command",
+    HALT: "a command", JOB: "a command", XECUTE: "a command", VIEW: "a command",
+    OPEN: "a command", USE: "a command", READ: "a command", WRITE: "a command",
+    CLOSE: "a command", LOCK: "a command", TSTART: "a command",
+    TCOMMIT: "a command", TROLLBACK: "a command", TRESTART: "a command",
+    ZWRITE: "a command", ZBREAK: "a command", ZHALT: "a command",
+    ZKILL: "a command", ZSYSTEM: "a command"
 
 @op = [
   "'="                                      → "noteq"       , "'<" → "notlt"       , "'>"  → "notgt",
   "'?"                                      → "notques"     , "'[" → "notlbracket" , "']"  → "notrbracket",
   "'&"                                      → "notampersand", "'!" → "notexclaim"  , "=="  → "eqeq",
   "]]"                                      → "sortsafter"  , "]=" → "followseq"   , "]]=" → "sortsaftereq",
+  "']]"                                     → "notsortsafter",
 ]
+
+# ==============================================================================
+# THE TREE
+# ==============================================================================
+#
+# Every node kind the actions below build, with its roles in slot order.
+# Nexus checks each action against this, gives every node all of its slots
+# (nil where an optional part is absent), records its source span, and
+# generates the `parser.ir` accessors the compiler reads the tree with
+# (`ir.Set.pc(node)`, `ir.rest(node, .args)`). A role `name:type` holds that
+# type (`leaf` a token, `group` an untagged list, `k1|k2` those kinds); `?`
+# may be nil; `...name` is the rest of the children.
+
+@schema
+    # A routine's lines, each a label line, a command line, or nil (a blank
+    # or comment-only line). A command line's dot level is the dots its
+    # INDENT starts with; a label line's dots are its `.` leaves.
+    routine          ...lines:label|line
+    label            name:leaf formals:group? dots:group? ...cmds
+    line             indent:leaf ...cmds
+    commands         ...cmds
+
+    # Commands; pc is the command's postcondition
+    set, new, kill, merge, do, goto, break, hang, job, xecute, view, open, use, read, write, close, lock, zwrite, zbreak, zkill, zsystem  pc:postcond? ...args
+    quit, zhalt      pc:postcond? value?
+    halt, tcommit, trollback, trestart  pc:postcond?
+    tstart           pc:postcond? vars? params:group?
+    if               ...conds
+    else
+    for              var:lvar|"@subs"|"@name"? ...params
+    postcond         cond
+
+    # Command arguments. An `@args` argument is argument indirection: its
+    # value is parsed again as the command's arguments.
+    "="              target value
+    setmulti         value ...targets
+    setfn            name:leaf target ...args
+    setisv           name:leaf
+    exclusive        ...names
+    range            start inc end?
+    call             ref:ref|"@ref" args:group? pc:postcond?
+    ref              label:leaf? offset? routine?
+    "@ref"           label offset? routine?
+    arg              value pc:postcond?
+    jobarg           ref:ref|"@ref" args:group? params:jobparams? env?
+    jobparams        params:group? timeout?
+    viewarg          value params:group?
+    openarg          device params:group? timeout? mnemonic?
+    devicearg        device params:group? mnemonic?
+    attr             name:leaf value
+    keyword          name:leaf
+    input            target count? timeout?
+    char             target timeout?
+    charindir        expr timeout?
+    prompt           text:leaf
+    control          name:leaf ...args
+    "*"              value
+    tab              column
+    posformat        tab:tab? ...marks:leaf
+    "lock=", "lock+", "lock-"  timeout? ...refs
+    vars             ...names
+    all
+    prefix, gprefix  name:leaf
+    span             start? end?
+    zwarg            ref ...suffixes
+    depth, limit     value
+    test             op:leaf value
+    param            name:leaf value?
+    byref            name
+
+    # Expressions: an atom (a number or string literal is its token), or
+    # an expr: an atom and the operations that follow it, left to right
+    # (MUMPS has no operator precedence), or one in parentheses, with no
+    # operations
+    expr             first ...tails
+    binop            op:leaf right
+    "?", "'?"        pattern:group
+    "?@", "'?@"      expr
+    unary            op:leaf value
+    lvar             name:leaf subs:group?
+    gvar             name:leaf subs:group? env? uci?
+    naked            ...subs
+    ssvn             name:leaf subs:group? env?
+    "@name", "@args", "@gname"  expr
+    "@subs", "@gsubs", "@ssvn"  expr subs:group
+    intrinsic        name:leaf args:group?
+    extrinsic        label? routine? args:group?
+    select           ...cases:case
+    case             cond value
+    text             label? offset? routine?
+    pat              count:count? codes:group? text:group? capture? ...alts:group
+    count            min:leaf? max:leaf?
 
 # ------------------------------------------------------------------------------
 # ALIASES (zero-cost, expanded at compile time)
@@ -443,24 +522,37 @@ COLIND = QUESAT
 # START SYMBOLS
 # ------------------------------------------------------------------------------
 
-routine!  = line*                           → (routine ...1)
-commands! = cmds [COMMENT]                  → (commands ...1)
+routine!  = lines                           → (routine ...1)
+# The lines are separated by newlines, so the last may lack its own; the
+# list is left-recursive, so it grows in place.
+lines     = line?                           → (1)
+          | lines !NEWLINE line?            → (...1 3)
+commands! = cmds [!COMMENT]                 → (commands ...1)
 expr!     = expr                            → 1
-doarg!    = doarg                           → 1
 gotoarg!  = gotoarg                         → 1
+# `command` is one command and nothing after it: the code argument
+# indirection builds (`D @X` runs "D "_X), where X's value is an argument
+# list, so a second command or a comment after it is a syntax error.
+command!  = cmd                             → (commands 1)
 
 # ------------------------------------------------------------------------------
 # LINE STRUCTURE
 # ------------------------------------------------------------------------------
 
-line       = labelline [COMMENT] NEWLINE    → 1
-           | cmdline   [COMMENT] NEWLINE    → 1
-           |           [COMMENT] NEWLINE    → _
-labelline  = label [formallist] [SPACES] [cmds] → (label 1 formallist:2 cmds:4)
-           | label dotlevel [cmds]          → (label 1 _ dots:2 ...3)
+# A line is `[label [formals]] ls [dots] [commands] [comment]`. On a
+# command line INDENT is the ls and has consumed the dots; on a label line
+# the ls is SP or SPACES, and the dots (each optionally followed by spaces)
+# follow it. An empty or comment-only line is nil.
+line       = labelline [!COMMENT]           → 1
+           | cmdline   [!COMMENT]           → 1
+           | !COMMENT                       → _
+labelline  = label [formallist]             → (label 1 2)
+           | label [formallist] !sep [cmds] → (label 1 2 _ ...4)
+           | label !sep dotlevel [cmds]     → (label 1 _ 3 ...4)
 formallist = "(" [ L(name) ] ")"            → 2
-cmdline    = INDENT [dotlevel] [cmds]       → (1 dots:2 ...3)
-dotlevel   = "."+                           → 1
+cmdline    = INDENT [cmds]                  → (line 1 ...2)
+dotlevel   = dot+                           → 1
+dot        = "." [!sep]                     → 1
 
 # ------------------------------------------------------------------------------
 # COMMANDS
@@ -471,42 +563,57 @@ cmd = set    | new    | merge   | kill
     | break  | hang   | halt    | job       | xecute   | view
     | open   | use    | read    | write     | close
     | lock   | tstart | tcommit | trollback | trestart
-    | zwrite | zbreak | zhalt   | zkill
+    | zwrite | zbreak | zhalt   | zkill     | zsystem
 
-cmds     = (cmd !SPACES?)+                  → 1
+# Commands are separated by one space (SP), or by two or more (SPACES) after
+# an argumentless command; the line may end with either. SP after a command
+# name introduces its argument: `Q:X -1` returns -1 and `Q:X  W 1` is an
+# argumentless QUIT. The `>` on each argumentless alternative makes SP start
+# the argument (the MUMPS rule); SP followed by a comment or the end of the
+# line is an argumentless command with a trailing space.
+cmds     = cmdseq [!sep]                    → 1
+cmdseq   = cmd                              → (1)
+         | cmdseq !sep cmd                  → (...1 3)
+sep      = SP | SPACES
 postcond = ":" expr                         → (postcond 2)
 
 # ==============================================================================
 # VARIABLE COMMANDS: set, new, merge, kill
 # ==============================================================================
 
-set     = SET [postcond] L(setarg)          → (set 2 ...3)
-setarg  = "@" atom "=" expr                 → (@name 2 value:4)
+# A SET target is a variable, a name indirection, $PIECE/$EXTRACT of one
+# (setfn), or a settable special variable (SV: $X, $Y, $ECODE, $ETRAP,
+# $ZERROR); a parenthesized list sets each target to the one value.
+set     = SET [postcond] !SP L(setarg)      → (set 2 ...4)
+setarg  = "@" atom "=" expr                 → (= (@name 2) 4)
         | "@" atom                          → (@args 2)
         | glvn "=" expr                     → (= 1 3)
-        | "(" L(setglvn) ")" "=" expr       → (setmulti value:5 ...2)
-        | "$" name "(" setglvn "," L(expr) ")" "=" expr → (setfn 2 4 ...6 value:9)
-        | "$" name "(" setglvn ")" "=" expr → (setfn 2 4 value:7)
-        | "$" name                          → (setisv 2)
+        | "(" L(setglvn) ")" "=" expr       → (setmulti 5 ...2)
+        | setfn "=" expr                    → (= 1 3)
+        | "$" SV "=" expr                   → (= (setisv 2) 4)
 setglvn = glvn
         | "@" atom                          → (@name 2)
+        | setfn
+        | "$" SV                            → (setisv 2)
+setfn   = "$" name "(" setglvn "," L(expr) ")" → (setfn 2 4 ...6)
+        | "$" name "(" setglvn ")"          → (setfn 2 4)
 
-new     = NEW [postcond] [L(newarg)]        → (new 2 ...3)
+new     = NEW [postcond] >                  → (new 2)
+        | NEW [postcond] !SP [L(newarg)]    → (new 2 ...4)
 newarg  = name
         | "$" name                          → (intrinsic 2)
         | "(" L(lname) ")"                  → (exclusive ...2)
         | "@" atom                          → (@args 2)
 
-merge    = MERGE [postcond] L(mergearg)     → (merge 2 ...3)
-mergearg = glvn "=" glvn                    → (= 1 3)
+# `M @X` alone is argument indirection; beside `=` it is name indirection.
+merge    = MERGE [postcond] !SP L(mergearg) → (merge 2 ...4)
+mergearg = mglvn "=" mglvn                  → (= 1 3)
          | "@" atom                         → (@args 2)
-# Note: the grammar's action language doesn't easily support producing
-# nested s-expressions like `(= (@name X) Y)` from a single rule, so the
-# specialized forms `M @x=@y`, `M @x=Y`, `M X=@y` aren't directly
-# expressible here. Workaround: use `M @args` where `args` holds
-# the comma-separated list, e.g. `S a="x=y" M @a`.
+mglvn    = glvn
+         | "@" atom                         → (@name 2)
 
-kill    = KILL [postcond] [L(killarg)]      → (kill 2 ...3)
+kill    = KILL [postcond] >                 → (kill 2)
+        | KILL [postcond] !SP [L(killarg)]  → (kill 2 ...4)
 killarg = glvn
         | "(" L(lname) ")"                  → (exclusive ...2)
         | "@" atom                          → (@args 2)
@@ -518,57 +625,69 @@ lname = name
 # FLOW CONTROL COMMANDS: if, else, for, do, goto, quit
 # ==============================================================================
 
-if    = IF [L(expr)]                        → (if ...2)
+if    = IF >                                → (if)
+      | IF !SP [L(expr)]                    → (if ...3)
 
 else = ELSE                                 → (else)
 
-for      = FOR [forargs]                    → (for ...2)
-forargs  = lvn "=" L(forparam)              → (1 ...3)
-         | "@" atom "=" L(forparam)         → (@name 2 ...4)
+for      = FOR >                            → (for)
+         | FOR !SP                          → (for)
+         | FOR !SP forargs                  → 3
+forargs  = lvn "=" L(forparam)              → (for 1 ...3)
+         | "@" atom "=" L(forparam)         → (for (@name 2) ...4)
 forparam = expr ":" expr ":" expr           → (range 1 3 5)
          | expr ":" expr                    → (range 1 3)
          | expr
 
-do    = DO [postcond] [L(doarg)]            → (do 2 ...3)
-doarg = indirrefcmd [actuallist] [postcond] → (call ref:1 args:2 postcond:3)
-      | entryref [actuallist] [postcond]    → (call ref:1 args:2 postcond:3)
+# `D @X` alone is argument indirection; with a postcondition, `D @X:c` is
+# label indirection (X holds the entry reference).
+do    = DO [postcond] >                     → (do 2)
+      | DO [postcond] !SP [L(doarg)]        → (do 2 ...4)
+doarg = indirrefcmd [actuallist] [postcond] → (call 1 2 3)
+      | entryref [actuallist] [postcond]    → (call 1 2 3)
       | "@" atom                            → (@args 2)
+      | "@" atom postcond                   → (call (@ref 2) _ 3)
 
-goto    = GOTO [postcond] L(gotoarg)        → (goto 2 ...3)
-gotoarg = indirrefcmd [postcond]            → (ref:1 postcond:2)
-        | entryref [postcond]               → (ref:1 postcond:2)
+goto    = GOTO [postcond] !SP L(gotoarg)    → (goto 2 ...4)
+gotoarg = indirrefcmd [postcond]            → (call 1 _ 2)
+        | entryref [postcond]               → (call 1 _ 2)
         | "@" atom                          → (@args 2)
+        | "@" atom postcond                 → (call (@ref 2) _ 3)
 
-indirref    = "@" atom ["+" entryoffset] ["^" routineref] → (@ref label:2 offset:4 rtn:6)
-indirrefcmd = "@" atom  "+" entryoffset  ["^" routineref] → (@ref label:2 offset:4 rtn:6)
-            | "@" atom                    "^" routineref → (@ref label:2 rtn:4)
+indirref    = "@" atom ["+" entryoffset] ["^" routineref] → (@ref 2 4 6)
+indirrefcmd = "@" atom  "+" entryoffset  ["^" routineref] → (@ref 2 4 6)
+            | "@" atom                    "^" routineref → (@ref 2 _ 4)
 
-quit    = QUIT [postcond] [expr]            → (quit 2 3)
+quit    = QUIT [postcond] >                 → (quit 2)
+        | QUIT [postcond] !SP [expr]        → (quit 2 4)
 
 # ==============================================================================
 # PROCESS CONTROL COMMANDS: break, hang, halt, job, xecute, view
 # ==============================================================================
 
-break    = BREAK [postcond] [L(breakarg)]   → (break 2 ...3)
-breakarg = expr [postcond]                  → (1 2)
+break    = BREAK [postcond] >               → (break 2)
+         | BREAK [postcond] !SP [L(breakarg)] → (break 2 ...4)
+breakarg = expr [postcond]                  → (arg 1 2)
 
-hang    = HANG [postcond] [L(expr)]         → (hang 2 ...3)
+hang    = HANG [postcond] >                 → (hang 2)
+        | HANG [postcond] !SP [L(expr)]     → (hang 2 ...4)
 
 halt = HALT [postcond]                      → (halt 2)
 
-job       = JOB [postcond] L(jobarg)        → (job 2 ...3)
-jobarg    = "|" expr "|" indirrefcmd [actuallist] [jobparams] → (ref:4 args:5 params:6 env:2)
-          | "|" expr "|" entryref    [actuallist] [jobparams] → (ref:4 args:5 params:6 env:2)
-          |              indirrefcmd [actuallist] [jobparams] → (ref:1 args:2 params:3)
-          |              entryref    [actuallist] [jobparams] → (ref:1 args:2 params:3)
+job       = JOB [postcond] !SP L(jobarg)    → (job 2 ...4)
+jobarg    = "|" expr "|" indirrefcmd [actuallist] [jobparams] → (jobarg 4 5 6 2)
+          | "|" expr "|" entryref    [actuallist] [jobparams] → (jobarg 4 5 6 2)
+          |              indirrefcmd [actuallist] [jobparams] → (jobarg 1 2 3)
+          |              entryref    [actuallist] [jobparams] → (jobarg 1 2 3)
           | "@" atom                        → (@args 2)
-jobparams = ":" [deviceparams] [timeout]    → (params:2 3)
+jobparams = ":" [deviceparams] [timeout]    → (jobparams 2 3)
 
-xecute    = XECUTE [postcond] L(xecutearg)  → (xecute 2 ...3)
-xecutearg = expr [postcond]                 → (1 2)
+xecute    = XECUTE [postcond] !SP L(xecutearg) → (xecute 2 ...4)
+xecutearg = expr [postcond]                 → (arg 1 2)
 
-view       = VIEW [postcond] L(viewarg)     → (view 2 ...3)
-viewarg    = expr [":" L(expr)]             → (1 params:3)
+# VIEW keyword[:param...],...: a comma starts the next argument (ISO 8.2.24)
+view       = VIEW [postcond] !SP L(viewarg) → (view 2 ...4)
+viewarg    = expr [":" L(expr, ":")]        → (viewarg 1 3)
 
 # ==============================================================================
 # DEVICE I/O COMMANDS: open, use, read, write, close
@@ -578,56 +697,63 @@ viewarg    = expr [":" L(expr)]             → (1 params:3)
 # mode/params/timeout), USE selects it, READ/WRITE transfer data, CLOSE releases.
 # Device parameters are key=value pairs or keywords prefixed with "/".
 
-open    = OPEN [postcond] L(openarg)        → (open 2 ...3)
-openarg = expr ":" "(" deviceparamlist ")" ":" expr → (1 params:...4 timeout:7)
-        | expr ":" "(" deviceparamlist ")"  → (1 params:...4)
-        | expr ":" expr ":" expr            → (1 mode:3 timeout:5)
-        | expr ":" expr                     → (1 mode:3)
-        | expr                              → (1)
+open    = OPEN [postcond] !SP L(openarg)    → (open 2 ...4)
+# OPEN dev[:[params][:[timeout][:mnemonicspace]]]; the parameters are a
+# parenthesized list, or one expression
+openarg = expr                              → (openarg 1)
+        | expr ":" openparams               → (openarg 1 3)
+        | expr ":" openparams ":" expr      → (openarg 1 3 5)
+        | expr ":"            ":" expr      → (openarg 1 _ 4)
+        | expr ":" [openparams] ":" [expr] ":" expr → (openarg 1 3 5 7)
+openparams = "(" deviceparamlist ")"        → 2
+           | expr                           → (1)
 
-use    = USE [postcond] L(devicearg)        → (use 2 ...3)
+use    = USE [postcond] !SP L(devicearg)    → (use 2 ...4)
 
-read    = READ [postcond] L(readarg)        → (read 2 ...3)
+read    = READ [postcond] !SP L(readarg)    → (read 2 ...4)
 readarg = posformat
-        | "/" name "(" L(expr) ")"          → (/ 2 ...4)
-        | "/" name                          → (/ 2)
-        | "*" "@" atom timeout              → (charindir 3 4)
-        | "*" "@" atom                      → (charindir 3)
-        | "*" glvn timeout                  → (char 2 3)
-        | "*" glvn                          → (char 2)
-        | glvn "#" expr timeout             → (# 1 3 4)
-        | glvn "#" expr                     → (# 1 3)
-        | glvn timeout                      → (1 2)
+        | "/" name "(" L(expr) ")"          → (control 2 ...4)
+        | "/" name                          → (control 2)
+        | "*" "@" atom [timeout]            → (charindir 3 4)
+        | "*" glvn [timeout]                → (char 2 3)
+        | glvn "#" expr [timeout]           → (input 1 3 4)
+        | glvn timeout                      → (input 1 _ 2)
         | glvn                              → 1
         | STRING                            → (prompt 1)
+        | "@" atom "#" expr [timeout]       → (input (@name 2) 4 5)
+        | "@" atom timeout                  → (input (@name 2) _ 3)
         | "@" atom                          → (@args 2)
 
-write    = WRITE [postcond] [L(writearg)]   → (write 2 ...3)
+write    = WRITE [postcond] >               → (write 2)
+         | WRITE [postcond] !SP [L(writearg)] → (write 2 ...4)
 writearg = posformat
-         | "/" name "(" L(expr) ")"         → (/ 2 ...4)
-         | "/" name                         → (/ 2)
+         | "/" name "(" L(expr) ")"         → (control 2 ...4)
+         | "/" name                         → (control 2)
          | "*" expr                         → (* 2)
          | expr
 
-banghash  = "!" | "#" | EXCLAIM_WS | HASH_WS
-tabcol    = "?" expr PATEND?                → (? 2)
-posformat = banghash+                       → (posformat ...1)
-          | banghash+ tabcol                → (posformat 2 ...1)
+# Format controls: `!` and `#` (the marks), then a tab to a column
+banghash  = "!" | "#"
+tabcol    = "?" expr [!PATEND]              → (tab 2)
+posformat = banghash+                       → (posformat marks:...1)
+          | banghash+ tabcol                → (posformat tab:2 marks:...1)
           | tabcol                          → 1
-          | COLIND atom                     → (?@ 2)
+          | COLIND atom                     → (tab (@name 2))
 
-close    = CLOSE [postcond] L(devicearg)    → (close 2 ...3)
+close    = CLOSE [postcond] !SP L(devicearg) → (close 2 ...4)
 
-devicearg = expr ":" deviceparams           → (1 params:3)
-          | expr                            → (1)
+# USE and CLOSE: dev[:[params][:mnemonicspace]]
+devicearg = expr ":" deviceparams           → (devicearg 1 3)
+          | expr ":" [deviceparams] ":" expr → (devicearg 1 3 5)
+          | expr                            → (devicearg 1)
 
+# A parenthesized list may omit parameters: (::X) is (_ _ X).
 deviceparams    = "(" deviceparamlist ")"   → 2
-                |     deviceparam
-deviceparamlist = deviceparam ":" deviceparamlist → (1 ...3)
-                | deviceparam               → (1)
-deviceparam     = "/" name "=" expr         → (attr 2 value:4)
+                |     deviceparam           → (1)
+deviceparamlist = L(deviceparam?, ":")
+deviceparam     = "/" name "=" expr         → (attr 2 4)
                 | "/" name                  → (keyword 2)
-                |     name "=" expr         → (attr 1 value:3)
+                |     name "=" expr         → (attr 1 3)
                 |              expr
 
 timeout = ":" expr                          → 2
@@ -637,37 +763,43 @@ timeout = ":" expr                          → 2
 # ==============================================================================
 
 # LOCK command - resource locking with optional timeout
-lock = LOCK [postcond] [L(lockarg)]         → (lock 2 ...3)
+lock = LOCK [postcond] >                    → (lock 2)
+     | LOCK [postcond] !SP [L(lockarg)]     → (lock 2 ...4)
 
-lockarg = lockref [timeout]                 → (lock= 1 2)
-        | "+"       lockref      [timeout]  → (lock+ 2 timeout:3)
-        | "-"       lockref      [timeout]  → (lock- 2 timeout:3)
-        | "+" "(" L(lockref) ")" [timeout]  → (lock+ multi ...3 timeout:5)
-        | "-" "(" L(lockref) ")" [timeout]  → (lock- multi ...3 timeout:5)
-        |     "(" L(lockref) ")" [timeout]  → (lock= multi ...2 timeout:4)
+# `L @X` alone is argument indirection; after + or -, in a group, or with a
+# timeout, `@X` is name indirection. A group of one name is that name.
+lockarg = lockref [timeout]                 → (lock= 2 1)
+        | "@" atom timeout                  → (lock= 3 (@name 2))
+        | "+"       lockname     [timeout]  → (lock+ 3 2)
+        | "-"       lockname     [timeout]  → (lock- 3 2)
+        | "+" "(" L(lockname) ")" [timeout] → (lock+ 5 ...3)
+        | "-" "(" L(lockname) ")" [timeout] → (lock- 5 ...3)
+        |     "(" L(lockname) ")" [timeout] → (lock= 4 ...2)
         | "@" atom                          → (@args 2)
+lockname = lockref
+         | "@" atom                         → (@name 2)
 
 # Lock name reference with optional indirection and environment
 lockref = lvn
         | gvn
 
-# TSTART command - begin transaction
-# The compiler currently ignores TSTART argument structure, so keep the parse
-# shape simple and skip payload details in the AST.
-tstart = TSTART [postcond] [tstartargs]     → (tstart 2 ...3)
+# TSTART command - begin transaction: TS, TS X, TS (X,Y):SERIAL, TS *:(S:T="x").
+# The variables TRESTART restores are `*` (all), a name, or a list of names;
+# `TS @X` with no parameters is argument indirection.
+tstart = TSTART [postcond] >                → (tstart 2)
+       | TSTART [postcond] !SP              → (tstart 2)
+       | TSTART [postcond] !SP tstartarg [":" tstartparams] → (tstart 2 4 6)
+       | TSTART [postcond] !SP ":" tstartparams → (tstart 2 _ 5)
 
-tstartargs = tstartarg [":" tstartparams]   → (1 params:3)
-           | COLON_WS       tstartparams    → (params:2)
-           | "@" atom                       → (@name 2)
+tstartparams = "(" L(tstartparam, ":") ")"  → 2
+             | tstartparam                  → (1)
 
-tstartparams = "(" L(tstartparam) ")"       → (...2)
-             | L(tstartparam)
+tstartarg = "*"                             → (all)
+          | "(" [L(lname)] ")"              → (vars ...2)
+          | name
+          | "@" atom                        → (@name 2)
 
-tstartarg = "*"                             → (*)
-          | "(" [L(lname)] ")"              → (...2)
-          | lname
-
-tstartparam = name ["=" expr]               → (1 3)
+tstartparam = name ["=" expr]               → (param 1 3)
 
 # TCOMMIT command - commit transaction
 tcommit = TCOMMIT [postcond]                → (tcommit 2)
@@ -682,25 +814,77 @@ trestart = TRESTART [postcond]              → (trestart 2)
 # Z-COMMANDS (implementation-specific extensions)
 # ==============================================================================
 
-# ZWRITE - dump variables with subscripts
-zwrite = ZWRITE [postcond] [L(glvn)]        → (zwrite 2 ...3)
+# ZWRITE - write variables in ZWR form. An argument is a variable (glvn's
+# forms), whose subscripts of a local or global name, or after @X@, are
+# slots (zwsub); every local or global whose name starts with a prefix
+# (A*, ^A*); * for every local; or argument indirection. Suffixes may
+# follow it: /depth, a value test, #limit (the compiler holds them to
+# that order, each once).
+zwrite = ZWRITE [postcond] >                → (zwrite 2)
+       | ZWRITE [postcond] !SP [L(zwarg)]   → (zwrite 2 ...4)
+zwarg  = zwref
+       | zwref zwsuffix+                    → (zwarg 1 ...2)
+zwref  = name                               → (lvar 1)
+       | name zwsubs                        → (lvar 1 2)
+       | name "*"                           → (prefix 1)
+       | "*"                                → (all)
+       | "@" atom "@" zwsubs                → (@subs 2 4)
+       | "@" atom                           → (@args 2)
+       | ssvn
+       | "^" name                           → (gvar 2)
+       | "^" name zwsubs                    → (gvar 2 3)
+       | "^" name "*"                       → (gprefix 2)
+       | "^" "(" L(expr) ")"                → (naked ...3)
+       | "^" "@" atom "@" subs              → (@gsubs 3 5)
+       | "^" "@" atom                       → (@gname 3)
+       | "^" "|" expr "|"          name [zwsubs] → (gvar 5 6 3)
+       | "^" "|" expr "," expr "|" name [zwsubs] → (gvar 7 8 3 5)
+# A slot of ZWRITE's: a value; * (as the last, nothing more: every node
+# below is written anyway); a range of subscripts at its level, either
+# end optional; a test of the subscript; or, empty, any subscript at its
+# level
+zwsubs = "(" L(zwsub?) ")"                  → 2
+zwsub  = expr
+       | "*"                                → (all)
+       | [expr] ":" [expr]                  → (span 1 3)
+       | zwtest
+# A test, of a slot's subscript or a node's value: an M relational
+# operator and one operand, or a pattern
+zwtest = zwrel atom                         → (test 1 2)
+       | "?" pattern                        → (? 2)
+       | "'?" pattern                       → ('? 2)
+       | PATIND atom                        → (?@ 2)
+       | "'?" "@" atom                      → ('?@ 3)
+zwrel  = "="  | "'=" | "<"  | ">"  | "'<" | "'>" | "<=" | ">="
+       | "["  | "'[" | "]"  | "']" | "]=" | "]]" | "]]=" | "']]"
+# A suffix: the levels kept below each selected node, a value test, or
+# the limit on the lines written; each operand one atom, so a "#" after
+# a test's operand is the limit
+zwsuffix = "/" atom                         → (depth 2)
+         | "#" atom                         → (limit 2)
+         | zwtest
 
 # ZBREAK - debugger breakpoint (like BREAK)
-zbreak = ZBREAK [postcond] [L(gotoarg)]     → (zbreak 2 ...3)
+zbreak = ZBREAK [postcond] >                → (zbreak 2)
+       | ZBREAK [postcond] !SP [L(gotoarg)] → (zbreak 2 ...4)
 
 # ZHALT - forceful terminate (like HALT but with exit code)
-zhalt = ZHALT [postcond] expr               → (zhalt 2 code:3)
-      | ZHALT [postcond]                    → (zhalt 2)
+zhalt = ZHALT [postcond] >                  → (zhalt 2)
+      | ZHALT [postcond] !SP [expr]         → (zhalt 2 4)
 
 # ZKILL - kill with subscript removal
-zkill = ZKILL [postcond] L(glvn)            → (zkill 2 ...3)
+zkill = ZKILL [postcond] !SP L(glvn)        → (zkill 2 ...4)
+
+# ZSYSTEM - run each argument through the shell; with none, an
+# interactive shell
+zsystem = ZSYSTEM [postcond] >              → (zsystem 2)
+        | ZSYSTEM [postcond] !SP [L(expr)]  → (zsystem 2 ...4)
 
 # ==============================================================================
 # ENTRY REFERENCES (for DO, GOTO, JOB, etc.)
 # ==============================================================================
 
 # Entry reference: TAG, TAG^RTN, TAG+offset^RTN, ^RTN
-# Positionally stable: (ref label offset routine) - trailing nils stripped
 entryref = label ["+" entryoffset] ["^" routineref] → (ref 1 3 5)
          |        "+" entryoffset   "^" routineref  → (ref _ 2 4)
          |                          "^" routineref  → (ref _ _ 2)
@@ -709,6 +893,13 @@ entryoffset = expr
 
 routineref = name
            | "@" atom                       → (@name 2)
+
+# The label indirection of an extrinsic: an atom that is not a subscripted
+# name, so `(` after `$$@X` starts the actual list.
+xatom = name                                → (lvar 1)
+      | "(" expr ")"                        → 2
+      | literal
+      | fn
 
 # Actual parameter list: (arg1, arg2, ...) for DO with parameters
 # Empty parameters allowed: func(a,,b) has 3 params (middle one empty)
@@ -724,34 +915,36 @@ actual = "." lname                          → (byref 2)
 # 2+3*4 = 20 (not 14)
 # ==============================================================================
 
-# Build expression as a flat left-to-right chain and fold it in the compiler.
-# This avoids SLR conflicts from the flat left-recursive `expr -> expr op atom`
-# form while preserving MUMPS's no-precedence evaluation rule.
-expr = atom exprtails                       → (expr 1 ...2)
+# An expression is its first atom alone, or a flat left-to-right chain the
+# compiler folds. This avoids SLR conflicts from the flat left-recursive
+# `expr -> expr op atom` form while preserving MUMPS's no-precedence
+# evaluation rule. `exprtail+` is left-recursive, so the parser extends the
+# chain in place: time and memory linear in its terms.
+expr = atom >                               → 1
+     | atom exprtail+                       → (expr 1 ...2)
 
-exprtails = exprtail exprtails              → (!1 ...2)
-          | >                               → ()
-
-exprtail = binop atom                       → (~1 2)
+exprtail = binop atom                       → (binop 1 2)
          | "?" pattern                      → (? 2)
          | "'?" pattern                     → ('? 2)
          | PATIND atom                      → (?@ 2)
          | "'?" "@" atom                    → ('?@ 3)
 
-atom = "(" expr ")"                         → 2
-     | unaryop atom                         → (1 2)
+# A parenthesized expression is (expr X): `(@X)` is not the bare `@X` of
+# argument indirection
+atom = "(" expr ")"                         → (expr 2)
+     | unaryop atom                         → (unary 1 2)
      | "@" atom X "@"                       → (@name 2)
      | glvn
      | literal
      | fn
 
-# Unary operators (implicit                 → 1, returns the operator token)
+# Unary operators: the rule's value is the operator token
 unaryop = "'" | "+" | "-"
 
-# Binary operators (implicit                → 1, returns the operator token)
+# Binary operators: the rule's value is the operator token
 binop = "_" | "+"  | "-"  | "*"  | "/"  | "\\" | "#"  | "**"
       | "=" | "==" | "'=" | "<"  | ">"  | "'<" | "'>" | "<=" | ">="
-      | "[" | "]"  | "'[" | "']" | "]=" | "]]" | "]]="
+      | "[" | "]"  | "'[" | "']" | "]=" | "]]" | "]]=" | "']]"
       | "&" | "!"  | "'&" | "'!"
 
 # ==============================================================================
@@ -765,31 +958,31 @@ binop = "_" | "+"  | "-"  | "*"  | "/"  | "\\" | "#"  | "**"
 
 # Full pattern: one or more pattern atoms, terminated by PATEND
 # The lexer enters "pattern mode" after ? which tokenizes single letters
-pattern = patatom+ PATEND                   → 1
+pattern = patatom+ !PATEND                  → 1
 
-# Pattern atom: repcount + (code | string | alternation) + optional capture
-patatom = repcount patcode+ "(" glvn ")"    → (pat 1 codes:2 capture:4)
-        | repcount patcode+                 → (pat 1 codes:2)
-        |          patcode  "(" glvn ")"    → (pat 1 capture:3)
-        |          patcode                  → (pat 1)
-        | repcount patstr   "(" glvn ")"    → (pat 1 2 capture:4)
-        | repcount patstr                   → (pat 1 2)
-        | repcount "(" L(patgrp) ")"        → (pat 1 alt ...3)
+# Pattern atom: a repcount, then codes, a string or alternatives, and an
+# optional capture. A code without a repcount parses only after another
+# atom (`X?1"a"N`; the lexer starts a pattern only at a repcount, so `X?N`
+# does not parse), and does not compile.
+patatom = repcount patcode+ "(" glvn ")"    → (pat count:1 codes:2 capture:4)
+        | repcount patcode+                 → (pat count:1 codes:2)
+        |          patcode  "(" glvn ")"    → (pat codes:(1) capture:3)
+        |          patcode                  → (pat codes:(1))
+        | repcount patstr   "(" glvn ")"    → (pat count:1 text:2 capture:4)
+        | repcount patstr                   → (pat count:1 text:2)
+        | repcount "(" L(patgrp) ")"        → (pat count:1 alts:...3)
 
 # Pattern group (inside alternation)
 patgrp = patatom+
 
-# Repcount: (min max) format - exact, range, or open-ended
-# 3 = exactly 3                             → (3 3)
-# 1.5 = 1-5                                 → (1 5)
-# 1. = 1+                                   → (1 _)
-# .5 = 0-5                                  → (_ 5)
-# . = 0+                                    → ()
-repcount = number "." number                → (1 3)
-         | number "."                       → (1 _)
-         | number                           → (1 1)
-         |        "." number                → (_ 2)
-         |        "."                       → ()
+# Repcount: its least and most, either absent:
+#   3 exactly 3 (count 3 3), 1.5 one to five (count 1 5), 1. one or more
+#   (count 1 _), .5 up to five (count _ 5), . any number (count _ _)
+repcount = number "." number                → (count 1 3)
+         | number "."                       → (count 1 _)
+         | number                           → (count 1 1)
+         |        "." number                → (count _ 2)
+         |        "."                       → (count)
 
 # Pattern code (single letter in pattern mode: A, C, E, L, N, P, U)
 # Note: ISO charclass syntax like ?1("A":"Z") is NOT SUPPORTED
@@ -802,45 +995,41 @@ patstr = ["'"] STRING                       → (1 2)
 # VARIABLES
 # ==============================================================================
 
-# Order matters: ssvn before gvn so ^$... is tried before ^... (both start with ^)
+# A local, structured system (^$...) or global variable
 glvn = lvn
      | ssvn
      | gvn
 
-# Local variable: X, X(1,2), @expr
-# Note: "@" atom indirection is handled at the command level (setarg, killarg, etc.)
-# not here, to avoid LALR conflicts
-lvn = rlvn
-
-# Real (non-indirected) local variable
-# Includes name indirection: @X@(subs) where X holds the var name
-rlvn = name X "("                           → (lvar 1)
-     | name subs                            → (lvar 1 subs:2)
-     | "@" atom "@" subs                    → (@subs 2 4)
+# Local variable: X, X(1,2), @X@(1,2). A bare @X is not an lvn: it is an
+# atom (value indirection), or a command's own alternative where the command
+# takes a name (setarg, mglvn, lockname, readarg, ...).
+lvn = name X "("                            → (lvar 1)
+    | name subs                             → (lvar 1 2)
+    | "@" atom "@" subs                     → (@subs 2 4)
 
 # Global variable: ^X, ^X(1,2), ^@expr
 gvn = rgvn
     | "^" "@" atom X "@"                    → (@gname 3)
 
 # Real (non-indirected) global variable
-# Includes naked reference: ^(subs), name indirection: ^@X@(subs), and extended refs
+# Includes naked reference: ^(subs), subscript indirection: ^@X@(subs) (X's
+# value names a global), and extended references ^|env|X (the bracket form
+# ^[env]X is not supported)
 # Subscripted global first so string subscripts reduce correctly via subs rule.
-rgvn = "^" name subs                        → (gvar 2 subs:3)
+rgvn = "^" name subs                        → (gvar 2 3)
      | "^" name X "("                       → (gvar 2)
      | "^" "(" L(expr) ")"                  → (naked ...3)
-     | "^" "@" atom "@" subs                → (@subs 3 5)
-     | "^" "|" expr "|"          name [subs] → (gvar 5 subs:6 env:3)
-     | "^" "|" expr "," expr "|" name [subs] → (gvar 7 subs:8 env:3 uci:5)
-     | "^" "[" expr "]"          name [subs] → (gvar 5 subs:6 env:3)
-     | "^" "[" expr "," expr "]" name [subs] → (gvar 7 subs:8 env:3 uci:5)
+     | "^" "@" atom "@" subs                → (@gsubs 3 5)
+     | "^" "|" expr "|"          name [subs] → (gvar 5 6 3)
+     | "^" "|" expr "," expr "|" name [subs] → (gvar 7 8 3 5)
 
 # System Structured Variables: ^$ROUTINE, ^$GLOBAL, ^$JOB, etc.
 # Name indirection: ^$@X@(subs) where X holds SSVN name (like ROUTINE)
 ssvn = "^" "$" "@" atom "@" subs            → (@ssvn 4 6)
-     | "^" "|" expr "|" "$" SSVN X "("      → (ssvn ~6 env:3)
-     | "^" "|" expr "|" "$" SSVN   subs     → (ssvn ~6 subs:7 env:3)
+     | "^" "|" expr "|" "$" SSVN X "("      → (ssvn ~6 _ 3)
+     | "^" "|" expr "|" "$" SSVN   subs     → (ssvn ~6 7 3)
      | "^"              "$" SSVN X "("      → (ssvn ~3)
-     | "^"              "$" SSVN   subs     → (ssvn ~3 subs:4)
+     | "^"              "$" SSVN   subs     → (ssvn ~3 4)
 
 # Subscripts: (expr, expr, ...)
 subs = "(" L(expr) ")"                      → 2
@@ -852,57 +1041,49 @@ subs = "(" L(expr) ")"                      → 2
 # Number tokens from lexer: integer (0, 123), zdigits (01, 007), real (3.14, 2E7)
 number = INTEGER | ZDIGITS | REAL
 
-literal = number                            → (num 1)
-        | STRING                            → (str 1)
+literal = number
+        | STRING
 
 # ==============================================================================
 # FUNCTIONS
 # ==============================================================================
 
 # Intrinsic functions: $LENGTH(), $PIECE(), $GET(), etc.
-# FN matches validated function names via fn_as() (PIECE, LENGTH, ASCII, etc.)
+# FN matches validated function names via mumps.fnAs (PIECE, LENGTH, ASCII, etc.)
 # SELECT and TEXT have special rules due to unique syntax
 fn = select
    | text
-   | justify
-   | increment
-   | "$" "$" extrinsicref                   → (extrinsic 3)     # extrinsic: $$FOO or $$FOO()
+   | "$" JUSTIFY   "(" L(expr) ")"          → (intrinsic ~2 4)  # $J alone = $JOB ISV
+   | "$" INCREMENT "(" L(expr) ")"          → (intrinsic ~2 4)  # $I alone = $IO ISV
+   | "$" "$" extrinsicref                   → 3                 # extrinsic: $$FOO or $$FOO()
    | "$" TEXT      X "("                    → (intrinsic ~2)    # $T alone = $TEST ISV
    | "$" SELECT    X "("                    → (intrinsic ~2)    # $S alone = $STORAGE ISV
    | "$" JUSTIFY   X "("                    → (intrinsic ~2)    # $J alone = $JOB ISV
    | "$" INCREMENT X "("                    → (intrinsic ~2)    # $I alone = $IO ISV
    | "$" FN        X "("                    → (intrinsic ~2)    # $Q=$QUIT, $TR=$TRESTART, etc.
    | "$" ISV                                → (intrinsic ~2)    # ISVs: $H, $X, $Y, etc.
-   | "$" FN   "(" [ L(expr) ] ")"           → (intrinsic ~2 4)  # function with args
-   | "$" name "(" [ L(expr) ] ")"           → (intrinsic 2 4)   # unknown function
+   | "$" FN   "(" L(expr) ")"               → (intrinsic ~2 4)  # function with args
+   | "$" name "(" L(expr) ")"               → (intrinsic 2 4)   # unknown function
    | "$" name X "("                         → (intrinsic 2)     # unknown ISV (not if ( follows)
 
-# Extrinsic reference: label with optional routine and args
-extrinsicref = labelref   "(" [L(actual?)] ")" → (1 args:3)        # $$FOO() or $$FOO(a,b)
-             | labelref X "("               → 1                 # $$FOO
-             | "@" atom                     → (@name 2)          # $$@var (args via @-string only;
-                                                                   # use the workaround of building the
-                                                                   # full call string in the var: e.g.
-                                                                   # S t="HELP(5)" $$@t)
+# Extrinsic reference: label, routine and actuals. `$$@X(1)` calls the label
+# X holds with the actual 1: X(1) is not a subscripted name here (a
+# deliberate reading; `$$@(X(1))` indirects through one).
+extrinsicref = label   "^" routineref "(" [L(actual?)] ")" → (extrinsic 1 3 5)   # $$FOO^R(a,b)
+             | label   "^" routineref X "("              → (extrinsic 1 3)     # $$FOO^R
+             | label                  "(" [L(actual?)] ")" → (extrinsic 1 _ 3)   # $$FOO(a,b)
+             | label X "^"            X "("              → (extrinsic 1)       # $$FOO
+             |         "^" routineref "(" [L(actual?)] ")" → (extrinsic _ 2 4)   # $$^R(a,b)
+             |         "^" routineref X "("              → (extrinsic _ 2)     # $$^R
+             | "@" xatom ["^" routineref] [actuallist]   → (extrinsic (@name 2) 4 5) # $$@X, $$@X^RTN(a)
 
 # $SELECT is special - takes condition:value pairs (must have parens)
 select = "$" SELECT "(" L(selectarg) ")"    → (select ...4)
 
-selectarg = expr ":" expr                   → (1 3)
+selectarg = expr ":" expr                   → (case 1 3)
 
 # $TEXT - reference (not expression): $T(TAG+5^RTN) or $T(@X)
 text = "$" TEXT "(" indirref                          ")" → (text 4)
      | "$" TEXT "(" label ["+" expr] ["^" routineref] ")" → (text 4 6 8)
      | "$" TEXT "("        "+" expr  ["^" routineref] ")" → (text _ 5 7)
      | "$" TEXT "("                   "^" routineref  ")" → (text _ _ 5)
-
-# $JUSTIFY uses normal expression args but $J alone = $JOB ISV
-justify = "$" JUSTIFY "(" [ L(expr) ] ")"   → (intrinsic ~2 4)
-
-# $INCREMENT uses normal expression args but $I alone = $IO ISV
-increment = "$" INCREMENT "(" [ L(expr) ] ")" → (intrinsic ~2 4)
-
-# Label reference for extrinsics: TAG, TAG^RTN, ^RTN
-labelref = label   "^" routineref           → (1 routine:3)
-         | label X "^"                      → 1
-         |         "^" routineref           → (routine:2)

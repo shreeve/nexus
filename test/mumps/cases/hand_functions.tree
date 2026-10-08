@@ -1,87 +1,106 @@
 (routine
-  (label `FUNCS`)
-  (` `
-    _
+  (label `FUNCS` _ _)@0..6
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `X` _)@11..12 (intrinsic `P`#212 (`"a^b^c"` `"^"` `2`)@16..29)@13..30)@11..30
+      (= (lvar `Y` _)@31..32 (intrinsic `E`#203 ((lvar `X` _)@36..37 `1` `3`)@36..41)@33..42)@31..42
+      (= (lvar `Z` _)@43..44 (intrinsic `L`#209 ((lvar `X` _)@48..49)@48..49)@45..50)@43..50)@9..50)@8..50
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `X`)
-        (expr (intrinsic `P`#212 ((expr (str `"a^b^c"`)) (expr (str `"^"`)) (expr (num `2`))))))
-      (=
-        (lvar `Y`)
-        (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `3`))))))
-      (= (lvar `Z`) (expr (intrinsic `L`#209 ((expr (lvar `X`))))))))
-  (` `
-    _
+        (lvar `X` _)@54..55
+        (select
+          (case (expr (lvar `A` _)@59..60 (binop `=` `1`)@60..62)@59..62 `"one"`)@59..68
+          (case (expr (lvar `A` _)@69..70 (binop `=` `2`)@70..72)@69..72 `"two"`)@69..78
+          (case `1` `"other"`)@79..88)@56..89)@54..89)@52..89)@51..89
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `X`)
-        (expr
-          (select
-            ((expr (lvar `A`) (`=` (num `1`))) (expr (str `"one"`)))
-            ((expr (lvar `A`) (`=` (num `2`))) (expr (str `"two"`)))
-            ((expr (num `1`)) (expr (str `"other"`))))))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `X`) (expr (intrinsic `O`#211 ((expr (gvar `G` ((expr (lvar `X`)))))))))
+        (lvar `X` _)@93..94
+        (intrinsic
+          `O`#211
+          ((gvar `G` ((lvar `X` _)@101..102)@101..102 _ _)@98..103)@98..103)@95..104)@93..104
       (=
-        (lvar `Y`)
-        (expr (intrinsic `O`#211 ((expr (gvar `G` ((expr (lvar `X`))))) (expr (`-` (num `1`)))))))
-      (= (lvar `Z`) (expr (intrinsic `D`#202 ((expr (gvar `G`))))))
+        (lvar `Y` _)@105..106
+        (intrinsic
+          `O`#211
+          ((gvar `G` ((lvar `X` _)@113..114)@113..114 _ _)@110..115
+            (unary `-` `1`)@116..118)@110..118)@107..119)@105..119
       (=
-        (lvar `W`)
-        (expr (intrinsic `G`#206 ((expr (gvar `G` ((expr (num `1`))))) (expr (str `"dflt"`))))))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `X`) (expr (extrinsic ((`EXT` `RTN`) ((expr (num `1`)) (byref `Y`))))))
-      (= (lvar `Y`) (expr (extrinsic (`LOCAL` (_)))))
-      (= (lvar `Z`) (expr (extrinsic (routine `RTN`))))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `X`) (expr (text `LABEL` (expr (num `1`)) `RTN`)))
+        (lvar `Z` _)@120..121
+        (intrinsic `D`#202 ((gvar `G` _ _ _)@125..127)@125..127)@122..128)@120..128
       (=
-        (lvar `Y`)
-        (expr (intrinsic `TR`#222 ((expr (lvar `X`)) (expr (str `"ab"`)) (expr (str `"AB"`))))))
-      (=
-        (lvar `Z`)
-        (expr (intrinsic `J`#208 ((expr (lvar `X`)) (expr (num `10`)) (expr (num `2`))))))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `X`) (expr (intrinsic `H`#304)))
-      (= (lvar `Y`) (expr (intrinsic `J`#208)))
-      (= (lvar `Z`) (expr (intrinsic `T`#221)))
-      (= (lvar `A`) (expr (intrinsic `IO`#305)))
-      (= (lvar `B`) (expr (intrinsic `ZV`#336)))))
-  (` `
-    _
+        (lvar `W` _)@129..130
+        (intrinsic `G`#206 ((gvar `G` (`1`)@137..138 _ _)@134..139 `"dflt"`)@134..146)@131..147)@129..147)@91..147)@90..147
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `X`)
-        (expr (intrinsic `NA`#210 ((expr (gvar `G` ((expr (num `1`)) (expr (num `2`)))))))))
-      (= (lvar `Y`) (expr (intrinsic `QS`#214 ((expr (lvar `X`)) (expr (num `1`))))))
-      (= (lvar `Z`) (expr (intrinsic `QL`#213 ((expr (lvar `X`))))))
-      (= (lvar `W`) (expr (intrinsic `Q`#215 ((expr (gvar `G`))))))))
-  (` `
-    _
+        (lvar `X` _)@151..152
+        (extrinsic `EXT` `RTN` (`1` (byref `Y`)@165..167)@163..167)@155..168)@151..168
+      (= (lvar `Y` _)@169..170 (extrinsic `LOCAL` _ (_)@179..179)@173..180)@169..180
+      (= (lvar `Z` _)@181..182 (extrinsic _ `RTN` _)@185..189)@181..189)@149..189)@148..189
+  (line
+    ` `
     (set
       _
-      (= (lvar `X`) (expr (intrinsic `C`#201 ((expr (num `65`)) (expr (num `66`))))))
-      (= (lvar `Y`) (expr (intrinsic `A`#200 ((expr (str `"A"`))))))
-      (= (lvar `Z`) (expr (intrinsic `F`#204 ((expr (lvar `X`)) (expr (str `"B"`))))))
+      (= (lvar `X` _)@193..194 (text `LABEL` `1` `RTN`)@195..210)@193..210
       (=
-        (lvar `W`)
-        (expr (intrinsic `FN`#205 ((expr (lvar `X`)) (expr (str `","`)) (expr (num `2`))))))))
-  (` `
-    _
-    (set _ (= (lvar `X`) (expr (ssvn `JOB`#401 ((expr (intrinsic `J`#208)) (expr (str `"x"`))))))))
-  (` ` _ (quit)))
+        (lvar `Y` _)@211..212
+        (intrinsic `TR`#222 ((lvar `X` _)@217..218 `"ab"` `"AB"`)@217..228)@213..229)@211..229
+      (=
+        (lvar `Z` _)@230..231
+        (intrinsic `J`#208 ((lvar `X` _)@235..236 `10` `2`)@235..241)@232..242)@230..242)@191..242)@190..242
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `X` _)@246..247 (intrinsic `H`#304 _)@248..250)@246..250
+      (= (lvar `Y` _)@251..252 (intrinsic `J`#208 _)@253..255)@251..255
+      (= (lvar `Z` _)@256..257 (intrinsic `T`#221 _)@258..260)@256..260
+      (= (lvar `A` _)@261..262 (intrinsic `IO`#305 _)@263..266)@261..266
+      (= (lvar `B` _)@267..268 (intrinsic `ZV`#336 _)@269..272)@267..272)@244..272)@243..272
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `X` _)@276..277
+        (intrinsic `NA`#210 ((gvar `G` (`1` `2`)@285..288 _ _)@282..289)@282..289)@278..290)@276..290
+      (=
+        (lvar `Y` _)@291..292
+        (intrinsic `QS`#214 ((lvar `X` _)@297..298 `1`)@297..300)@293..301)@291..301
+      (=
+        (lvar `Z` _)@302..303
+        (intrinsic `QL`#213 ((lvar `X` _)@308..309)@308..309)@304..310)@302..310
+      (=
+        (lvar `W` _)@311..312
+        (intrinsic `Q`#215 ((gvar `G` _ _ _)@316..318)@316..318)@313..319)@311..319)@274..319)@273..319
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `X` _)@323..324 (intrinsic `C`#201 (`65` `66`)@328..333)@325..334)@323..334
+      (= (lvar `Y` _)@335..336 (intrinsic `A`#200 (`"A"`)@340..343)@337..344)@335..344
+      (=
+        (lvar `Z` _)@345..346
+        (intrinsic `F`#204 ((lvar `X` _)@350..351 `"B"`)@350..355)@347..356)@345..356
+      (=
+        (lvar `W` _)@357..358
+        (intrinsic `FN`#205 ((lvar `X` _)@363..364 `","` `2`)@363..370)@359..371)@357..371)@321..371)@320..371
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `X` _)@375..376
+        (ssvn `JOB`#401 ((intrinsic `J`#208 _)@383..385 `"x"`)@383..389 _)@377..390)@375..390)@373..390)@372..390
+  (line ` ` (quit _ _)@392..393)@391..393
+  _)@0..394

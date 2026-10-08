@@ -1,10 +1,13 @@
 (routine
-  (label `LABEL`)
-  (` ` _ (quit))
-  (label `ADD` (`A` `B`))
-  (` ` _ (quit _ (expr (lvar `A`) (`+` (lvar `B`)))))
-  (label `NOARGS` _ ((quit _ (expr (num `1`)))))
-  (label `%ZUTIL`)
-  (` ` _ (quit))
-  (label `123`)
-  (` ` _ (quit)))
+  (label `LABEL` _ _)@0..6
+  (line ` ` (quit _ _)@32..33)@31..33
+  (label `ADD` (`A` `B`)@38..41 _)@34..43
+  (line
+    ` `
+    (quit _ (expr (lvar `A` _)@60..61 (binop `+` (lvar `B` _)@62..63)@61..63)@60..63)@58..63)@57..63
+  (label `NOARGS` _ _ (quit _ `1`)@73..76)@64..76
+  (label `%ZUTIL` _ _)@77..84
+  (line ` ` (quit _ _)@101..102)@100..102
+  (label `123` _ _)@103..107
+  (line ` ` (quit _ _)@124..125)@123..125
+  _)@0..126

@@ -1,11 +1,11 @@
 (routine
-  (label `IVM2069P`)
-  (` `)
-  (` `)
-  (label `EN`)
-  (` `)
-  (` `
-    _
+  (label `IVM2069P` _ _)@0..9
+  (line ` `)@85..86
+  (line ` `)@129..130
+  (label `EN` _ _)@132..135
+  (line ` `)@148..149
+  (line
+    ` `
     (new
       _
       `ADDR`
@@ -20,436 +20,599 @@
       `DA`
       `FILE`
       `RET`
-      `ERROR`))
-  (` `)
-  (` `)
-  (` `
-    _
+      `ERROR`)@152..219)@151..219
+  (line ` `)@220..221
+  (line ` `)@223..224
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `STATION`)
+        (lvar `STATION` _)@250..257
+        (intrinsic `P`#212 ((extrinsic `SITE` `VASITE` _)@263..274 `"^"` `3`)@261..280)@258..281)@250..281)@248..281)@247..281
+  (line ` `)@282..283
+  (line ` ` (set _ (= (lvar `STOP` _)@288..292 `0`)@288..294)@286..294)@285..294
+  (line
+    ` `
+    (quit
+      (postcond
+        (extrinsic
+          `SETLL16`
+          _
+          ((lvar `STATION` _)@308..315 (byref `RLLN`)@316..321 (byref `SLLN`)@322..327)@308..327)@300..328)@297..328
+      _)@296..328)@295..328
+  (line
+    ` `
+    (quit
+      (postcond
+        (extrinsic `SETAPP` _ ((lvar `STATION` _)@341..348 (byref `AN`)@349..352)@341..352)@334..353)@331..353
+      _)@330..353)@329..353
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `PROTOCOL` _ _)@357..365
+        ((lvar `STATION` _)@366..373
+          (lvar `RLLN` _)@374..378
+          (lvar `SLLN` _)@379..383
+          (byref `AN`)@384..387)@366..387
+        _)@357..388)@355..388)@354..388
+  (line ` `)@389..390
+  (line ` `)@392..393
+  (line ` `)@434..435
+  (label `CLOSREA` _ _ (set _ (= (lvar `FILE` _)@447..451 `301.93`)@447..458)@445..458)@437..458
+  (line ` ` (set _ (= (lvar `ERROR` _)@462..467 `""`)@462..470)@460..470)@459..470
+  (line ` ` (kill _ (lvar `DATA` _)@474..478)@472..478)@471..478
+  (line
+    ` `
+    (if
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar `IVM` (`301.93` `"B"` `"CONVERTED"`)@491..513 _ _)@486..514)@486..514)@483..515)@482..515)@480..515
+    (do _)@516..517
+    (quit
+      (postcond
+        (expr
+          (lvar `ERROR` _)@521..526
+          (binop `'=` `""`)@526..530
+          (binop
+            `!`
+            (expr
+              (expr (unary `+` (lvar `RET` _)@533..536)@532..536 (binop `=` `0`)@536..538)@532..538)@531..539)@530..539)@521..539)@520..539
+      _)@519..539)@479..539
+  (line
+    ` . `
+    (set _ (= (lvar `DATA` (`.01`)@550..553)@545..554 `"CONVERTED"`)@545..566)@543..566)@540..566
+  (line
+    ` . `
+    (set
+      _
+      (=
+        (lvar `RET` _)@572..575
+        (extrinsic
+          `ADD`
+          `DGENDBS`
+          ((lvar `FILE` _)@590..594 `""` (byref `DATA`)@598..603 (byref `ERROR`)@604..610)@590..610)@578..611)@572..611)@570..611)@567..611
+  (line
+    ` . `
+    (if
+      (expr
+        (lvar `ERROR` _)@617..622
+        (binop `'=` `""`)@622..626
+        (binop
+          `!`
+          (expr
+            (expr (unary `+` (lvar `RET` _)@629..632)@628..632 (binop `=` `0`)@632..634)@628..634)@627..635)@626..635)@617..635)@615..635
+    (do _)@636..637)@612..637
+  (line
+    ` . . `
+    (set
+      _
+      (=
+        (lvar `RET` _)@645..648
+        (expr
+          (unary `-` `1`)@649..651
+          (binop `_` `"^"`)@651..655
+          (binop `_` (lvar `ERROR` _)@656..661)@655..661)@649..661)@645..661)@643..661)@638..661
+  (line
+    ` . . `
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@669..674
+        ((lvar `RET` _)@675..678 `"Updating #301.93"`)@675..697
+        _)@669..698)@667..698)@662..698
+  (line
+    ` `
+    (if
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((gvar `IVM` (`301.93` `"B"` `"NOT CONVERTED"`)@711..737 _ _)@706..738)@706..738)@703..739)@702..739)@700..739
+    (do _)@740..741
+    (quit
+      (postcond
+        (expr
+          (lvar `ERROR` _)@745..750
+          (binop `'=` `""`)@750..754
+          (binop
+            `!`
+            (expr
+              (expr (unary `+` (lvar `RET` _)@757..760)@756..760 (binop `=` `0`)@760..762)@756..762)@755..763)@754..763)@745..763)@744..763
+      _)@743..763)@699..763
+  (line
+    ` . `
+    (set _ (= (lvar `DATA` (`.01`)@774..777)@769..778 `"NOT CONVERTED"`)@769..794)@767..794)@764..794
+  (line
+    ` . `
+    (set
+      _
+      (=
+        (lvar `RET` _)@800..803
+        (extrinsic
+          `ADD`
+          `DGENDBS`
+          ((lvar `FILE` _)@818..822 `""` (byref `DATA`)@826..831 (byref `ERROR`)@832..838)@818..838)@806..839)@800..839)@798..839)@795..839
+  (line
+    ` . `
+    (if
+      (expr
+        (lvar `ERROR` _)@845..850
+        (binop `'=` `""`)@850..854
+        (binop
+          `!`
+          (expr
+            (expr (unary `+` (lvar `RET` _)@857..860)@856..860 (binop `=` `0`)@860..862)@856..862)@855..863)@854..863)@845..863)@843..863
+    (do _)@864..865)@840..865
+  (line
+    ` . . `
+    (set
+      _
+      (=
+        (lvar `RET` _)@873..876
+        (expr
+          (unary `-` `1`)@877..879
+          (binop `_` `"^"`)@879..883
+          (binop `_` (lvar `ERROR` _)@884..889)@883..889)@877..889)@873..889)@871..889)@866..889
+  (line
+    ` . . `
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@897..902
+        ((lvar `RET` _)@903..906 `"Updating #301.93"`)@903..925
+        _)@897..926)@895..926)@890..926
+  (line ` ` (quit _ _)@928..929)@927..929
+  (line ` `)@930..931
+  (label `SETLL16` (`STATION` `RLLN` `SLLN`)@941..958 _)@933..960
+  (line ` `)@962..963
+  (line ` `)@992..993
+  (line ` `)@1040..1041
+  (line ` `)@1086..1087
+  (line ` `)@1089..1090
+  (line ` `)@1123..1124
+  (line ` `)@1126..1127
+  (line ` `)@1184..1185
+  (line ` ` (new _ `ADDR` `PORT` `RECVLL` `SENDLL` `RET` `VISN` `M` `IENS`)@1188..1229)@1187..1229
+  (line ` `)@1230..1231
+  (line ` ` (set _ (= (lvar `PORT` _)@1236..1240 `7788`)@1236..1245)@1234..1245)@1233..1257
+  (line ` `)@1271..1272
+  (line ` `)@1274..1275
+  (line ` ` (set _ (= (lvar `SLLN` _)@1301..1305 `"LLEDBOUT"`)@1301..1316)@1299..1316)@1298..1316
+  (line
+    ` `
+    (set _ (= (lvar `ADDR` _)@1320..1324 `"10.224.132.101"`)@1320..1341)@1318..1341)@1317..1343
+  (line ` `)@1363..1364
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `RET` _)@1412..1415
+        (extrinsic
+          `LL16`
+          `IVM2069Q`
+          ((lvar `SLLN` _)@1432..1436
+            `"TCP"`
+            `"NC"`
+            `10`
+            (lvar `ADDR` _)@1451..1455
+            (lvar `PORT` _)@1456..1460
+            `"C"`
+            `"N"`
+            `""`)@1432..1471)@1418..1472)@1412..1472)@1410..1472)@1409..1472
+  (line
+    ` `
+    (if
+      (expr (unary `+` (lvar `RET` _)@1477..1480)@1476..1480 (binop `<` `0`)@1480..1482)@1476..1482)@1474..1482
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@1485..1490
+        ((lvar `RET` _)@1491..1494
+          (expr `"Edb Send Link:"` (binop `_` (lvar `SLLN` _)@1512..1516)@1511..1516)@1495..1516)@1491..1516
+        _)@1485..1517)@1483..1517
+    (quit _ `1`)@1518..1521)@1473..1521
+  (line ` `)@1522..1523
+  (label `RLL` _ _)@1525..1529
+  (line ` ` (set _ (= (lvar `RLLN` _)@1557..1561 `"LLEDBIN"`)@1557..1571)@1555..1571)@1554..1571
+  (line ` ` (set _ (= (lvar `ADDR` _)@1575..1579 `""`)@1575..1582)@1573..1582)@1572..1582
+  (line ` ` (set _ (= (lvar `PORT` _)@1586..1590 `""`)@1586..1593)@1584..1593)@1583..1597
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `RET` _)@1634..1637
+        (extrinsic
+          `LL16`
+          `IVM2069Q`
+          ((lvar `RLLN` _)@1654..1658
+            `"TCP"`
+            `"MS"`
+            `10`
+            (lvar `ADDR` _)@1673..1677
+            (lvar `PORT` _)@1678..1682
+            `"M"`
+            `"N"`
+            `""`)@1654..1693)@1640..1694)@1634..1694)@1632..1694)@1631..1694
+  (line
+    ` `
+    (if
+      (expr (unary `+` (lvar `RET` _)@1699..1702)@1698..1702 (binop `<` `0`)@1702..1704)@1698..1704)@1696..1704
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@1707..1712
+        ((lvar `RET` _)@1713..1716
+          (expr `"Edb Receive Link:"` (binop `_` (lvar `RLLN` _)@1737..1741)@1736..1741)@1717..1741)@1713..1741
+        _)@1707..1742)@1705..1742
+    (quit _ `1`)@1743..1746)@1695..1746
+  (label `LL16EXIT` _ _ (quit _ (lvar `STOP` _)@1758..1762)@1756..1762)@1747..1762
+  (line ` `)@1763..1764
+  (line ` `)@1766..1767
+  (label `SETAPP` (`STATION` `AN`)@1776..1786 _)@1769..1788
+  (line ` `)@1790..1791
+  (line ` `)@1821..1822
+  (line ` `)@1885..1886
+  (line ` `)@1888..1889
+  (line ` `)@1922..1923
+  (line ` `)@1925..1926
+  (line ` `)@1994..1995
+  (line ` ` (new _ `RECVAPP` `SENDAPP`)@1998..2015)@1997..2015
+  (line
+    ` `
+    (set _ (= (lvar `AN` (`"S"`)@2022..2025)@2019..2026 `"EAS EDB"`)@2019..2036)@2017..2036)@2016..2036
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `SENDAPP` _)@2040..2047
+        (extrinsic
+          `APP`
+          `IVM2069Q`
+          ((lvar `AN` (`"S"`)@2066..2069)@2063..2070
+            `"a"`
+            (lvar `STATION` _)@2075..2082
+            `"USA"`)@2063..2088)@2050..2089)@2040..2089)@2038..2089)@2037..2089
+  (line
+    ` `
+    (if
+      (expr
+        (unary `+` (lvar `SENDAPP` _)@2094..2101)@2093..2101
+        (binop `<` `0`)@2101..2103)@2093..2103)@2091..2103
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@2106..2111
+        ((lvar `SENDAPP` _)@2112..2119
+          (expr
+            `"Sending App:"`
+            (binop `_` (lvar `AN` (`"S"`)@2138..2141)@2135..2142)@2134..2142)@2120..2142)@2112..2142
+        _)@2106..2143)@2104..2143
+    (goto _ (call (ref `APPEXIT` _ _)@2146..2153 _ _)@2146..2153)@2144..2153)@2090..2153
+  (line ` `)@2154..2155
+  (label
+    `ANR`
+    _
+    _
+    (set _ (= (lvar `AN` (`"R"`)@2166..2169)@2163..2170 `"EDB eGate"`)@2163..2182)@2161..2182)@2157..2182
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `RECVAPP` _)@2186..2193
+        (extrinsic
+          `APP`
+          `IVM2069Q`
+          ((lvar `AN` (`"R"`)@2212..2215)@2209..2216 `"a"` `200` `"USA"`)@2209..2230)@2196..2231)@2186..2231)@2184..2231)@2183..2231
+  (line
+    ` `
+    (if
+      (expr
+        (unary `+` (lvar `RECVAPP` _)@2236..2243)@2235..2243
+        (binop `<` `0`)@2243..2245)@2235..2245)@2233..2245
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@2248..2253
+        ((lvar `RECVAPP` _)@2254..2261
+          (expr
+            `"Receiving App:"`
+            (binop `_` (lvar `AN` (`"R"`)@2282..2285)@2279..2286)@2278..2286)@2262..2286)@2254..2286
+        _)@2248..2287)@2246..2287)@2232..2287
+  (label `APPEXIT` _ _ (quit _ (lvar `STOP` _)@2298..2302)@2296..2302)@2288..2302
+  (line ` `)@2303..2304
+  (line ` `)@2306..2307
+  (label `PROTOCOL` (`STATION` `RLLN` `SLLN` `AN`)@2318..2338 _)@2309..2340
+  (line ` `)@2342..2343
+  (line ` `)@2373..2374
+  (line ` `)@2422..2423
+  (line ` `)@2469..2470
+  (line ` `)@2529..2530
+  (line ` `)@2532..2533
+  (line ` `)@2548..2549
+  (line ` `)@2551..2552
+  (line ` `)@2611..2612
+  (line ` `)@2670..2671
+  (line ` `)@2710..2711
+  (line
+    ` `
+    (new _ `RESULT` `SIEN` `DUZ` `V` `N` `N1` `LNCNT` `LINE` `PROTRET` `NAM`)@2714..2761)@2713..2761
+  (line ` `)@2762..2763
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `N1` _)@2798..2800 `""`)@2798..2803
+      (= (lvar `V` _)@2804..2805 `"2.3.1"`)@2804..2813)@2796..2813)@2795..2813
+  (line ` `)@2814..2815
+  (line ` ` (set _ (= (lvar `LNCNT` _)@2820..2825 `1`)@2820..2827)@2818..2827)@2817..2827
+  (line
+    ` `
+    (for _)@2829..2830
+    (set
+      _
+      (=
+        (lvar `LINE` _)@2834..2838
+        (text `PROTDAT` (lvar `LNCNT` _)@2850..2855 _)@2839..2856)@2834..2856)@2832..2856
+    (quit
+      (postcond
+        (expr
+          (intrinsic `P`#212 ((lvar `LINE` _)@2862..2866 `";"` `3`)@2862..2872)@2859..2873
+          (binop `=` `"END"`)@2873..2879)@2859..2879)@2858..2879
+      _)@2857..2879
+    (do _)@2881..2882
+    (quit (postcond (lvar `STOP` _)@2886..2890)@2885..2890 _)@2884..2890)@2828..2890
+  (line ` . ` (kill _ (lvar `D` _)@2896..2897 (lvar `RESULT` _)@2898..2904)@2894..2904)@2891..2904
+  (line
+    ` . `
+    (for (lvar `N` _)@2910..2911 (range `3` `1` _)@2912..2915)@2910..2915
+    (quit
+      (postcond
         (expr
           (intrinsic
             `P`#212
-            ((expr (extrinsic (`SITE` `VASITE`))) (expr (str `"^"`)) (expr (num `3`))))))))
-  (` `)
-  (` ` _ (set _ (= (lvar `STOP`) (expr (num `0`)))))
-  (` `
-    _
-    (quit
+            ((lvar `LINE` _)@2921..2925 `";"` (lvar `N` _)@2930..2931)@2921..2931)@2918..2932
+          (binop `=` `"LEND"`)@2932..2939)@2918..2939)@2917..2939
+      _)@2916..2939
+    (set
+      _
+      (=
+        (lvar `D` ((lvar `N` _)@2945..2946)@2945..2946)@2943..2947
+        (extrinsic
+          `V`
+          _
+          ((intrinsic
+             `P`#212
+             ((lvar `LINE` _)@2955..2959 `";"` (lvar `N` _)@2964..2965)@2955..2965)@2952..2966)@2952..2966)@2950..2967)@2943..2967)@2941..2967)@2905..2967
+  (line
+    ` . `
+    (set
+      _
+      (=
+        (lvar `NAM` _)@2973..2976
+        (expr
+          (lvar `D` (`3`)@2979..2980)@2977..2981
+          (binop `_` (lvar `D` (`4`)@2984..2985)@2982..2986)@2981..2986
+          (binop `_` (lvar `D` (`5`)@2989..2990)@2987..2991)@2986..2991)@2977..2991)@2973..2991)@2971..2991)@2968..2991
+  (line
+    ` . `
+    (do
       (postcond
-        (expr (extrinsic (`SETLL16` ((expr (lvar `STATION`)) (byref `RLLN`) (byref `SLLN`))))))))
-  (` ` _ (quit (postcond (expr (extrinsic (`SETAPP` ((expr (lvar `STATION`)) (byref `AN`))))))))
-  (` `
-    _
+        (expr (lvar `NAM` _)@2997..3000 (binop `[` `"CLIENT"`)@3000..3009)@2997..3009)@2996..3009)@2995..3009)@2992..3009
+  (line
+    ` . . `
+    (set
+      _
+      (=
+        (lvar `SIEN` _)@3017..3021
+        (extrinsic
+          `SP`
+          `IVM2069Q`
+          ((lvar `NAM` _)@3036..3039
+            (lvar `D` (`6`)@3042..3043)@3040..3044
+            (lvar `D` (`7`)@3047..3048)@3045..3049
+            (lvar `D` (`8`)@3052..3053)@3050..3054
+            (lvar `D` (`9`)@3057..3058)@3055..3059
+            (lvar `D` (`10`)@3062..3064)@3060..3065)@3036..3065)@3024..3066)@3017..3066)@3015..3066)@3010..3066
+  (line
+    ` . . `
+    (if
+      (expr (unary `+` (lvar `SIEN` _)@3075..3079)@3074..3079 (binop `<` `0`)@3079..3081)@3074..3081)@3072..3081
     (do
       _
       (call
-        (ref `PROTOCOL`)
-        ((expr (lvar `STATION`)) (expr (lvar `RLLN`)) (expr (lvar `SLLN`)) (byref `AN`)))))
-  (` `)
-  (` `)
-  (` `)
-  (label `CLOSREA` _ ((set _ (= (lvar `FILE`) (expr (num `301.93`))))))
-  (` ` _ (set _ (= (lvar `ERROR`) (expr (str `""`)))))
-  (` ` _ (kill _ (lvar `DATA`)))
-  (` `
-    _
+        (ref `ERROR` _ _)@3084..3089
+        ((lvar `SIEN` _)@3090..3094
+          (expr `"Subscriber:"` (binop `_` (lvar `NAM` _)@3109..3112)@3108..3112)@3095..3112)@3090..3112
+        _)@3084..3113)@3082..3113)@3067..3113
+  (line
+    ` . `
+    (do
+      (postcond
+        (expr (lvar `NAM` _)@3119..3122 (binop `[` `"SERVER"`)@3122..3131)@3119..3131)@3118..3131)@3117..3131)@3114..3131
+  (line ` . . ` (new _ `TMPNAM` `ITEMTXT`)@3137..3153)@3132..3153
+  (line
+    ` . . `
+    (set
+      _
+      (=
+        (lvar `TMPNAM` _)@3161..3167
+        (expr
+          (lvar `D` (`6`)@3170..3171)@3168..3172
+          (binop `_` (lvar `D` (`7`)@3175..3176)@3173..3177)@3172..3177
+          (binop
+            `_`
+            (intrinsic `P`#212 ((lvar `NAM` _)@3181..3184 `"SERVER "` `2`)@3181..3196)@3178..3197)@3177..3197)@3168..3197)@3161..3197)@3159..3197)@3154..3197
+  (line
+    ` . . `
+    (set
+      _
+      (=
+        (lvar `ITEMTXT` _)@3205..3212
+        (extrinsic `GETIT` _ ((lvar `TMPNAM` _)@3221..3227)@3221..3227)@3215..3228)@3205..3228)@3203..3228)@3198..3228
+  (line
+    ` . . `
+    (set
+      _
+      (=
+        (lvar `RESULT` _)@3236..3242
+        (extrinsic
+          `EDP`
+          `IVM2069Q`
+          ((lvar `NAM` _)@3258..3261
+            (lvar `D` (`6`)@3264..3265)@3262..3266
+            (lvar `D` (`7`)@3269..3270)@3267..3271
+            (lvar `D` (`8`)@3274..3275)@3272..3276
+            (lvar `D` (`9`)@3279..3280)@3277..3281
+            (lvar `D` (`10`)@3284..3286)@3282..3287
+            (lvar `D` (`11`)@3290..3292)@3288..3293
+            (lvar `D` (`12`)@3296..3298)@3294..3299
+            (lvar `ITEMTXT` _)@3300..3307)@3258..3307)@3245..3308)@3236..3308)@3234..3308)@3229..3308
+  (line
+    ` . . `
     (if
       (expr
-        (`'`
-          (intrinsic
-            `D`#202
-            ((expr
-               (gvar `IVM` ((expr (num `301.93`)) (expr (str `"B"`)) (expr (str `"CONVERTED"`))))))))))
-    (do)
-    (quit
-      (postcond
-        (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))))
-  (` . `#1 _ (set _ (= (lvar `DATA` ((expr (num `.01`)))) (expr (str `"CONVERTED"`)))))
-  (` . `#1
-    _
+        (unary `+` (lvar `RESULT` _)@3317..3323)@3316..3323
+        (binop `<` `0`)@3323..3325)@3316..3325)@3314..3325
+    (do
+      _
+      (call
+        (ref `ERROR` _ _)@3328..3333
+        ((lvar `RESULT` _)@3334..3340
+          (expr `"Event Driver:"` (binop `_` (lvar `NAM` _)@3357..3360)@3356..3360)@3341..3360)@3334..3360
+        _)@3328..3361)@3326..3361)@3309..3361
+  (line
+    ` . `
     (set
       _
       (=
-        (lvar `RET`)
-        (expr
-          (extrinsic
-            ((`ADD` `DGENDBS`)
-              ((expr (lvar `FILE`)) (expr (str `""`)) (byref `DATA`) (byref `ERROR`))))))))
-  (` . `#1
-    _
-    (if (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))
-    (do))
-  (` . . `#2
-    _
-    (set _ (= (lvar `RET`) (expr (`-` (num `1`)) (`_` (str `"^"`)) (`_` (lvar `ERROR`))))))
-  (` . . `#2 _ (do _ (call (ref `ERROR`) ((expr (lvar `RET`)) (expr (str `"Updating #301.93"`))))))
-  (` `
-    _
+        (lvar `LNCNT` _)@3367..3372
+        (expr (lvar `LNCNT` _)@3373..3378 (binop `+` `1`)@3378..3380)@3373..3380)@3367..3380)@3365..3380)@3362..3380
+  (line ` ` (kill _ (lvar `D` _)@3384..3385)@3382..3385)@3381..3385
+  (line ` ` (quit _ _)@3387..3388)@3386..3388
+  (line ` `)@3389..3390
+  (label `ERROR` (`ERRMSG` `SUBJ`)@3398..3409 _)@3392..3411
+  (line ` `)@3413..3414
+  (line ` `)@3452..3453
+  (line ` `)@3495..3496
+  (line ` `)@3498..3499
+  (line ` `)@3514..3515
+  (line ` `)@3517..3518
+  (line ` `)@3575..3576
+  (line ` `)@3630..3631
+  (line ` `)@3689..3690
+  (line ` ` (new _ `TXT`)@3693..3698)@3692..3698
+  (line ` ` (set _ (= (lvar `STOP` _)@3702..3706 `1`)@3702..3708)@3700..3708)@3699..3708
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `TXT` _)@3712..3715
+        (intrinsic `P`#212 ((lvar `ERRMSG` _)@3719..3725 `"^"` `2`)@3719..3731)@3716..3732)@3712..3732)@3710..3732)@3709..3732
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@3736..3737
+      `"===================================================="`)@3734..3792)@3733..3792
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@3796..3797
+      `"=                   ERROR                          ="`)@3794..3852)@3793..3852
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@3856..3857
+      `"===================================================="`)@3854..3912)@3853..3912
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@3916..3917
+      (expr `"When creating "` (binop `_` (lvar `SUBJ` _)@3935..3939)@3934..3939)@3918..3939)@3914..3939)@3913..3939
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@3943..3944
+      `"===================================================="`)@3941..3999)@3940..3999
+  (line
+    ` `
+    (write _ (posformat _ `!`)@4003..4004 `"**ERROR MSG: "` (lvar `TXT` _)@4021..4024)@4001..4024)@4000..4024
+  (line ` ` (quit _ _)@4026..4027)@4025..4027
+  (line ` `)@4028..4029
+  (label `V` (`VALUE`)@4033..4038 _)@4031..4040
+  (line ` `)@4091..4092
+  (line
+    ` `
     (if
       (expr
-        (`'`
+        (intrinsic `E`#203 ((lvar `VALUE` _)@4100..4105)@4100..4105)@4097..4106
+        (binop `=` `"@"`)@4106..4110)@4097..4110)@4095..4110
+    (quit
+      _
+      (@name
+        (expr
           (intrinsic
-            `D`#202
-            ((expr
-               (gvar
-                 `IVM`
-                 ((expr (num `301.93`)) (expr (str `"B"`)) (expr (str `"NOT CONVERTED"`))))))))))
-    (do)
+            `E`#203
+            ((lvar `VALUE` _)@4118..4123
+              `2`
+              (intrinsic `L`#209 ((lvar `VALUE` _)@4129..4134)@4129..4134)@4126..4135)@4118..4135)@4115..4136)@4114..4137)@4113..4137)@4111..4137)@4094..4137
+  (line ` ` (quit _ (lvar `VALUE` _)@4141..4146)@4139..4146)@4138..4146
+  (line ` `)@4147..4148
+  (label `GETIT` (`N`)@4156..4157 _)@4150..4159
+  (line ` `)@4215..4216
+  (line
+    ` `
     (quit
       (postcond
-        (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))))
-  (` . `#1 _ (set _ (= (lvar `DATA` ((expr (num `.01`)))) (expr (str `"NOT CONVERTED"`)))))
-  (` . `#1
-    _
-    (set
-      _
-      (=
-        (lvar `RET`)
-        (expr
-          (extrinsic
-            ((`ADD` `DGENDBS`)
-              ((expr (lvar `FILE`)) (expr (str `""`)) (byref `DATA`) (byref `ERROR`))))))))
-  (` . `#1
-    _
-    (if (expr (lvar `ERROR`) (`'=` (str `""`)) (`!` (expr (`+` (lvar `RET`)) (`=` (num `0`))))))
-    (do))
-  (` . . `#2
-    _
-    (set _ (= (lvar `RET`) (expr (`-` (num `1`)) (`_` (str `"^"`)) (`_` (lvar `ERROR`))))))
-  (` . . `#2 _ (do _ (call (ref `ERROR`) ((expr (lvar `RET`)) (expr (str `"Updating #301.93"`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `SETLL16` (`STATION` `RLLN` `SLLN`))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (new _ `ADDR` `PORT` `RECVLL` `SENDLL` `RET` `VISN` `M` `IENS`))
-  (` `)
-  (` ` _ (set _ (= (lvar `PORT`) (expr (num `7788`)))))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `SLLN`) (expr (str `"LLEDBOUT"`)))))
-  (` ` _ (set _ (= (lvar `ADDR`) (expr (str `"10.224.132.101"`)))))
-  (` `)
-  (` `
-    _
-    (set
-      _
-      (=
-        (lvar `RET`)
-        (expr
-          (extrinsic
-            ((`LL16` `IVM2069Q`)
-              ((expr (lvar `SLLN`))
-                (expr (str `"TCP"`))
-                (expr (str `"NC"`))
-                (expr (num `10`))
-                (expr (lvar `ADDR`))
-                (expr (lvar `PORT`))
-                (expr (str `"C"`))
-                (expr (str `"N"`))
-                (expr (str `""`)))))))))
-  (` `
-    _
-    (if (expr (`+` (lvar `RET`)) (`<` (num `0`))))
-    (do
-      _
-      (call (ref `ERROR`) ((expr (lvar `RET`)) (expr (str `"Edb Send Link:"`) (`_` (lvar `SLLN`))))))
-    (quit _ (expr (num `1`))))
-  (` `)
-  (label `RLL`)
-  (` ` _ (set _ (= (lvar `RLLN`) (expr (str `"LLEDBIN"`)))))
-  (` ` _ (set _ (= (lvar `ADDR`) (expr (str `""`)))))
-  (` ` _ (set _ (= (lvar `PORT`) (expr (str `""`)))))
-  (` `
-    _
-    (set
-      _
-      (=
-        (lvar `RET`)
-        (expr
-          (extrinsic
-            ((`LL16` `IVM2069Q`)
-              ((expr (lvar `RLLN`))
-                (expr (str `"TCP"`))
-                (expr (str `"MS"`))
-                (expr (num `10`))
-                (expr (lvar `ADDR`))
-                (expr (lvar `PORT`))
-                (expr (str `"M"`))
-                (expr (str `"N"`))
-                (expr (str `""`)))))))))
-  (` `
-    _
-    (if (expr (`+` (lvar `RET`)) (`<` (num `0`))))
-    (do
-      _
-      (call
-        (ref `ERROR`)
-        ((expr (lvar `RET`)) (expr (str `"Edb Receive Link:"`) (`_` (lvar `RLLN`))))))
-    (quit _ (expr (num `1`))))
-  (label `LL16EXIT` _ ((quit _ (expr (lvar `STOP`)))))
-  (` `)
-  (` `)
-  (label `SETAPP` (`STATION` `AN`))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (new _ `RECVAPP` `SENDAPP`))
-  (` ` _ (set _ (= (lvar `AN` ((expr (str `"S"`)))) (expr (str `"EAS EDB"`)))))
-  (` `
-    _
-    (set
-      _
-      (=
-        (lvar `SENDAPP`)
-        (expr
-          (extrinsic
-            ((`APP` `IVM2069Q`)
-              ((expr (lvar `AN` ((expr (str `"S"`)))))
-                (expr (str `"a"`))
-                (expr (lvar `STATION`))
-                (expr (str `"USA"`)))))))))
-  (` `
-    _
-    (if (expr (`+` (lvar `SENDAPP`)) (`<` (num `0`))))
-    (do
-      _
-      (call
-        (ref `ERROR`)
-        ((expr (lvar `SENDAPP`))
-          (expr (str `"Sending App:"`) (`_` (lvar `AN` ((expr (str `"S"`)))))))))
-    (goto _ ((ref `APPEXIT`))))
-  (` `)
-  (label `ANR` _ ((set _ (= (lvar `AN` ((expr (str `"R"`)))) (expr (str `"EDB eGate"`))))))
-  (` `
-    _
-    (set
-      _
-      (=
-        (lvar `RECVAPP`)
-        (expr
-          (extrinsic
-            ((`APP` `IVM2069Q`)
-              ((expr (lvar `AN` ((expr (str `"R"`)))))
-                (expr (str `"a"`))
-                (expr (num `200`))
-                (expr (str `"USA"`)))))))))
-  (` `
-    _
-    (if (expr (`+` (lvar `RECVAPP`)) (`<` (num `0`))))
-    (do
-      _
-      (call
-        (ref `ERROR`)
-        ((expr (lvar `RECVAPP`))
-          (expr (str `"Receiving App:"`) (`_` (lvar `AN` ((expr (str `"R"`))))))))))
-  (label `APPEXIT` _ ((quit _ (expr (lvar `STOP`)))))
-  (` `)
-  (` `)
-  (label `PROTOCOL` (`STATION` `RLLN` `SLLN` `AN`))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (new _ `RESULT` `SIEN` `DUZ` `V` `N` `N1` `LNCNT` `LINE` `PROTRET` `NAM`))
-  (` `)
-  (` ` _ (set _ (= (lvar `N1`) (expr (str `""`))) (= (lvar `V`) (expr (str `"2.3.1"`)))))
-  (` `)
-  (` ` _ (set _ (= (lvar `LNCNT`) (expr (num `1`)))))
-  (` `
-    _
-    (for)
-    (set _ (= (lvar `LINE`) (expr (text `PROTDAT` (expr (lvar `LNCNT`))))))
+        (expr (lvar `N` _)@4256..4257 (binop `=` `"ORUZ06"`)@4257..4266)@4256..4266)@4255..4266
+      `"IVM Case Status/Unsolicited HEC/Edb to VAMC"`)@4254..4312)@4253..4312
+  (line
+    ` `
     (quit
       (postcond
-        (expr
-          (intrinsic `P`#212 ((expr (lvar `LINE`)) (expr (str `";"`)) (expr (num `3`))))
-          (`=` (str `"END"`)))))
-    (do)
-    (quit (postcond (expr (lvar `STOP`)))))
-  (` . `#1 _ (kill _ (lvar `D`) (lvar `RESULT`)))
-  (` . `#1
-    _
-    (for (lvar `N`) (range (expr (num `3`)) (expr (num `1`))))
-    (quit
-      (postcond
-        (expr
-          (intrinsic `P`#212 ((expr (lvar `LINE`)) (expr (str `";"`)) (expr (lvar `N`))))
-          (`=` (str `"LEND"`)))))
-    (set
-      _
-      (=
-        (lvar `D` ((expr (lvar `N`))))
-        (expr
-          (extrinsic
-            (`V`
-              ((expr
-                 (intrinsic `P`#212 ((expr (lvar `LINE`)) (expr (str `";"`)) (expr (lvar `N`))))))))))))
-  (` . `#1
-    _
-    (set
-      _
-      (=
-        (lvar `NAM`)
-        (expr
-          (lvar `D` ((expr (num `3`))))
-          (`_` (lvar `D` ((expr (num `4`)))))
-          (`_` (lvar `D` ((expr (num `5`)))))))))
-  (` . `#1 _ (do (postcond (expr (lvar `NAM`) (`[` (str `"CLIENT"`))))))
-  (` . . `#2
-    _
-    (set
-      _
-      (=
-        (lvar `SIEN`)
-        (expr
-          (extrinsic
-            ((`SP` `IVM2069Q`)
-              ((expr (lvar `NAM`))
-                (expr (lvar `D` ((expr (num `6`)))))
-                (expr (lvar `D` ((expr (num `7`)))))
-                (expr (lvar `D` ((expr (num `8`)))))
-                (expr (lvar `D` ((expr (num `9`)))))
-                (expr (lvar `D` ((expr (num `10`))))))))))))
-  (` . . `#2
-    _
-    (if (expr (`+` (lvar `SIEN`)) (`<` (num `0`))))
-    (do
-      _
-      (call (ref `ERROR`) ((expr (lvar `SIEN`)) (expr (str `"Subscriber:"`) (`_` (lvar `NAM`)))))))
-  (` . `#1 _ (do (postcond (expr (lvar `NAM`) (`[` (str `"SERVER"`))))))
-  (` . . `#2 _ (new _ `TMPNAM` `ITEMTXT`))
-  (` . . `#2
-    _
-    (set
-      _
-      (=
-        (lvar `TMPNAM`)
-        (expr
-          (lvar `D` ((expr (num `6`))))
-          (`_` (lvar `D` ((expr (num `7`)))))
-          (`_` (intrinsic `P`#212 ((expr (lvar `NAM`)) (expr (str `"SERVER "`)) (expr (num `2`)))))))))
-  (` . . `#2 _ (set _ (= (lvar `ITEMTXT`) (expr (extrinsic (`GETIT` ((expr (lvar `TMPNAM`)))))))))
-  (` . . `#2
-    _
-    (set
-      _
-      (=
-        (lvar `RESULT`)
-        (expr
-          (extrinsic
-            ((`EDP` `IVM2069Q`)
-              ((expr (lvar `NAM`))
-                (expr (lvar `D` ((expr (num `6`)))))
-                (expr (lvar `D` ((expr (num `7`)))))
-                (expr (lvar `D` ((expr (num `8`)))))
-                (expr (lvar `D` ((expr (num `9`)))))
-                (expr (lvar `D` ((expr (num `10`)))))
-                (expr (lvar `D` ((expr (num `11`)))))
-                (expr (lvar `D` ((expr (num `12`)))))
-                (expr (lvar `ITEMTXT`)))))))))
-  (` . . `#2
-    _
-    (if (expr (`+` (lvar `RESULT`)) (`<` (num `0`))))
-    (do
-      _
-      (call
-        (ref `ERROR`)
-        ((expr (lvar `RESULT`)) (expr (str `"Event Driver:"`) (`_` (lvar `NAM`)))))))
-  (` . `#1 _ (set _ (= (lvar `LNCNT`) (expr (lvar `LNCNT`) (`+` (num `1`))))))
-  (` ` _ (kill _ (lvar `D`)))
-  (` ` _ (quit))
-  (` `)
-  (label `ERROR` (`ERRMSG` `SUBJ`))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (new _ `TXT`))
-  (` ` _ (set _ (= (lvar `STOP`) (expr (num `1`)))))
-  (` `
-    _
-    (set
-      _
-      (=
-        (lvar `TXT`)
-        (expr (intrinsic `P`#212 ((expr (lvar `ERRMSG`)) (expr (str `"^"`)) (expr (num `2`))))))))
-  (` `
-    _
-    (write _ (posformat `!`) (expr (str `"===================================================="`))))
-  (` `
-    _
-    (write _ (posformat `!`) (expr (str `"=                   ERROR                          ="`))))
-  (` `
-    _
-    (write _ (posformat `!`) (expr (str `"===================================================="`))))
-  (` ` _ (write _ (posformat `!`) (expr (str `"When creating "`) (`_` (lvar `SUBJ`)))))
-  (` `
-    _
-    (write _ (posformat `!`) (expr (str `"===================================================="`))))
-  (` ` _ (write _ (posformat `!`) (expr (str `"**ERROR MSG: "`)) (expr (lvar `TXT`))))
-  (` ` _ (quit))
-  (` `)
-  (label `V` (`VALUE`))
-  (` `)
-  (` `
-    _
-    (if (expr (intrinsic `E`#203 ((expr (lvar `VALUE`)))) (`=` (str `"@"`))))
-    (quit
-      _
-      (expr
-        (@name
-          (expr
-            (intrinsic
-              `E`#203
-              ((expr (lvar `VALUE`))
-                (expr (num `2`))
-                (expr (intrinsic `L`#209 ((expr (lvar `VALUE`))))))))))))
-  (` ` _ (quit _ (expr (lvar `VALUE`))))
-  (` `)
-  (label `GETIT` (`N`))
-  (` `)
-  (` `
-    _
-    (quit
-      (postcond (expr (lvar `N`) (`=` (str `"ORUZ06"`))))
-      (expr (str `"IVM Case Status/Unsolicited HEC/Edb to VAMC"`))))
-  (` `
-    _
-    (quit
-      (postcond (expr (lvar `N`) (`=` (str `"ORUZ09"`))))
-      (expr (str `"IVM BILLING/COLLECTION/Unsolicited VAMC to HEC/Edb"`))))
-  (` ` _ (quit _ (expr (str `""`))))
-  (` `)
-  (label `PROTDAT`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `))
+        (expr (lvar `N` _)@4316..4317 (binop `=` `"ORUZ09"`)@4317..4326)@4316..4326)@4315..4326
+      `"IVM BILLING/COLLECTION/Unsolicited VAMC to HEC/Edb"`)@4314..4379)@4313..4379
+  (line ` ` (quit _ `""`)@4381..4385)@4380..4385
+  (line ` `)@4386..4387
+  (label `PROTDAT` _ _)@4389..4397
+  (line ` `)@4419..4420
+  (line ` `)@4490..4491
+  (line ` `)@4584..4585
+  (line ` `)@4641..4642
+  (line ` `)@4749..4750
+  (line ` `)@4756..4757
+  _)@0..4759

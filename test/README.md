@@ -91,10 +91,10 @@ The in-repo suites:
 | `lists` | `X*`, `X+`, `L(X)`, `L(X, sep)`, `L(X?)` without a schema; its `lists.zig` parses 100,000-item lists in a fixed memory budget | hand-written |
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
-| `spans` | the MUMPS grammar generated with `--spans` | MUMPS cases |
+| `spans` | the Zag grammar generated with `--spans` (node spans without a schema) | the Zag cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (copied from Rig v0.2.0) | 138 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
-| `mumps` | em's MUMPS grammar | hand-written cases, 27 VistA routines (4 pinned at their parse error), 22 MVTS-derived em compliance routines |
+| `mumps` | em's schema-mode MUMPS grammar and lang module (copied from em) | hand-written cases, 27 VistA routines, 22 MVTS-derived em compliance routines |
 | `zag`, `ruby`, `slash`, `nexis` | downstream grammars without a schema | the Zag examples, hand-written Ruby and Slash, a sample of Nexis tests and examples |
 
 Parse errors are part of the output (`!error …`), so a case may pin down

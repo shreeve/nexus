@@ -1,204 +1,224 @@
 (routine
-  (label `DATETIME`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/strings/DATETIME"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `DATETIME` _ _)@0..9
+  (line ` `)@58..59
+  (line ` `)@61..62
+  (line ` `)@85..86
+  (line ` `)@123..124
+  (line ` `)@163..164
+  (line ` `)@203..204
+  (line ` `)@246..247
+  (line ` `)@249..250
+  (line ` `)@313..314
+  (line ` `)@334..335
+  (line ` `)@352..353
+  (line ` `)@393..394
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@399..409 (`"compliance/strings/DATETIME"`)@410..439 _)@399..440)@397..440)@396..440
+  (line ` `)@441..442
+  (line ` `)@444..445
+  (line ` `)@484..485
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD epoch fmt 1"`)) (expr (str `"01/01/70"`)) (expr (str `"$ZD(47117,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@532..540
+        (`"$ZD epoch fmt 1"` `"01/01/70"` `"$ZD(47117,1)"`)@541..584
+        _)@532..585)@530..585)@529..585
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD epoch fmt 2"`)) (expr (str `"01/01/1970"`)) (expr (str `"$ZD(47117,2)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@589..597
+        (`"$ZD epoch fmt 2"` `"01/01/1970"` `"$ZD(47117,2)"`)@598..643
+        _)@589..644)@587..644)@586..644
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD epoch fmt 3"`)) (expr (str `"01-01-1970"`)) (expr (str `"$ZD(47117,3)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@648..656
+        (`"$ZD epoch fmt 3"` `"01-01-1970"` `"$ZD(47117,3)"`)@657..702
+        _)@648..703)@646..703)@645..703
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD numeric arg works"`))
-          (expr (str `"01/01/1970"`))
-          (expr (str `"$ZD(47117,2)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@707..715
+        (`"$ZD numeric arg works"` `"01/01/1970"` `"$ZD(47117,2)"`)@716..767
+        _)@707..768)@705..768)@704..768
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD string arg works"`))
-          (expr (str `"01/01/1970"`))
-          (expr (str `"$ZD(""47117"",2)"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@772..780
+        (`"$ZD string arg works"` `"01/01/1970"` `"$ZD(""47117"",2)"`)@781..835
+        _)@772..836)@770..836)@769..836
+  (line ` `)@837..838
+  (line ` `)@840..841
+  (line ` `)@867..868
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD MUMPS day 0"`)) (expr (str `"12/31/40"`)) (expr (str `"$ZD(0,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@936..944
+        (`"$ZD MUMPS day 0"` `"12/31/40"` `"$ZD(0,1)"`)@945..984
+        _)@936..985)@934..985)@933..985
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD MUMPS day 1"`)) (expr (str `"01/01/41"`)) (expr (str `"$ZD(1,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@989..997
+        (`"$ZD MUMPS day 1"` `"01/01/41"` `"$ZD(1,1)"`)@998..1037
+        _)@989..1038)@987..1038)@986..1038
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD MUMPS day 0 long"`))
-          (expr (str `"12/31/1840"`))
-          (expr (str `"$ZD(0,2)"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1042..1050
+        (`"$ZD MUMPS day 0 long"` `"12/31/1840"` `"$ZD(0,2)"`)@1051..1097
+        _)@1042..1098)@1040..1098)@1039..1098
+  (line ` `)@1099..1100
+  (line ` `)@1102..1103
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT 0 (midnight)"`)) (expr (str `"00:00:00"`)) (expr (str `"$ZT(0,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1147..1155
+        (`"$ZT 0 (midnight)"` `"00:00:00"` `"$ZT(0,1)"`)@1156..1196
+        _)@1147..1197)@1145..1197)@1144..1197
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT 1 (00:00:01)"`)) (expr (str `"00:00:01"`)) (expr (str `"$ZT(1,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1201..1209
+        (`"$ZT 1 (00:00:01)"` `"00:00:01"` `"$ZT(1,1)"`)@1210..1250
+        _)@1201..1251)@1199..1251)@1198..1251
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT noon"`)) (expr (str `"12:00:00"`)) (expr (str `"$ZT(43200,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1255..1263
+        (`"$ZT noon"` `"12:00:00"` `"$ZT(43200,1)"`)@1264..1300
+        _)@1255..1301)@1253..1301)@1252..1301
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT one minute"`)) (expr (str `"00:01:00"`)) (expr (str `"$ZT(60,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1305..1313
+        (`"$ZT one minute"` `"00:01:00"` `"$ZT(60,1)"`)@1314..1353
+        _)@1305..1354)@1303..1354)@1302..1354
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT one hour"`)) (expr (str `"01:00:00"`)) (expr (str `"$ZT(3600,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1358..1366
+        (`"$ZT one hour"` `"01:00:00"` `"$ZT(3600,1)"`)@1367..1406
+        _)@1358..1407)@1356..1407)@1355..1407
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT 23:59:59"`)) (expr (str `"23:59:59"`)) (expr (str `"$ZT(86399,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1411..1419
+        (`"$ZT 23:59:59"` `"23:59:59"` `"$ZT(86399,1)"`)@1420..1460
+        _)@1411..1461)@1409..1461)@1408..1461
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZT format 2 HH:MM"`)) (expr (str `"12:00"`)) (expr (str `"$ZT(43200,2)"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1465..1473
+        (`"$ZT format 2 HH:MM"` `"12:00"` `"$ZT(43200,2)"`)@1474..1517
+        _)@1465..1518)@1463..1518)@1462..1518
+  (line ` `)@1519..1520
+  (line ` `)@1522..1523
+  (line ` `)@1544..1545
+  (line ` `)@1616..1617
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZDATETIME epoch noon"`))
-          (expr (str `"01/01/1970 12:00:00"`))
-          (expr (str `"$ZDATETIME(""47117,43200"",2,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1664..1672
+        (`"$ZDATETIME epoch noon"`
+          `"01/01/1970 12:00:00"`
+          `"$ZDATETIME(""47117,43200"",2,1)"`)@1673..1752
+        _)@1664..1753)@1662..1753)@1661..1753
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZDATETIME epoch midnight"`))
-          (expr (str `"01/01/1970 00:00:00"`))
-          (expr (str `"$ZDATETIME(""47117,0"",2,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1757..1765
+        (`"$ZDATETIME epoch midnight"`
+          `"01/01/1970 00:00:00"`
+          `"$ZDATETIME(""47117,0"",2,1)"`)@1766..1845
+        _)@1757..1846)@1755..1846)@1754..1846
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZDATETIME with $ZH 4-field horolog"`))
-          (expr (str `"01/01/1970 12:00:00"`))
-          (expr (str `"$ZDATETIME(""47117,43200,12345,21600"",2,1)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1850..1858
+        (`"$ZDATETIME with $ZH 4-field horolog"`
+          `"01/01/1970 12:00:00"`
+          `"$ZDATETIME(""47117,43200,12345,21600"",2,1)"`)@1859..1964
+        _)@1850..1965)@1848..1965)@1847..1965
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZDATETIME numeric date arg"`))
-          (expr (str `"12/31/1840 00:00:00"`))
-          (expr (str `"$$ZDTNUM^DATETIME()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1969..1977
+        (`"$ZDATETIME numeric date arg"` `"12/31/1840 00:00:00"` `"$$ZDTNUM^DATETIME()"`)@1978..2051
+        _)@1969..2052)@1967..2052)@1966..2052
+  (line ` `)@2053..2054
+  (line ` `)@2056..2057
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD day-after epoch"`))
-          (expr (str `"01/02/1970"`))
-          (expr (str `"$ZD(47117+1,2)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2097..2105
+        (`"$ZD day-after epoch"` `"01/02/1970"` `"$ZD(47117+1,2)"`)@2106..2157
+        _)@2097..2158)@2095..2158)@2094..2158
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZD year boundary"`))
-          (expr (str `"12/31/1970"`))
-          (expr (str `"$ZD(47117+364,2)"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/strings/DATETIME"`))))))
-  (` ` _ (quit))
-  (` `)
+        (ref `RUN` _ `TEST`)@2162..2170
+        (`"$ZD year boundary"` `"12/31/1970"` `"$ZD(47117+364,2)"`)@2171..2222
+        _)@2162..2223)@2160..2223)@2159..2223
+  (line ` `)@2224..2225
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `END` _ `TEST`)@2230..2238
+        (`"compliance/strings/DATETIME"`)@2239..2268
+        _)@2230..2269)@2228..2269)@2227..2269
+  (line ` ` (quit _ _)@2271..2272)@2270..2272
+  (line ` `)@2273..2274
   (label
     `ZDTNUM`
     _
-    ((quit
-       _
-       (expr (intrinsic `ZDATETIME`#227 ((expr (str `"0,0"`)) (expr (num `2`)) (expr (num `1`)))))))))
+    _
+    (quit _ (intrinsic `ZDATETIME`#227 (`"0,0"` `2` `1`)@2298..2307)@2287..2308)@2285..2308)@2276..2308
+  _)@0..2309

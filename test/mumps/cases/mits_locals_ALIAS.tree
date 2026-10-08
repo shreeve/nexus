@@ -1,174 +1,247 @@
 (routine
-  (label `ALIAS`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/locals/ALIAS"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `ALIAS` _ _)@0..6
+  (line ` `)@47..48
+  (line ` `)@50..51
+  (line ` `)@117..118
+  (line ` `)@120..121
+  (line ` `)@172..173
+  (line ` `)@244..245
+  (line ` `)@247..248
+  (line ` `)@320..321
+  (line ` `)@390..391
+  (line ` `)@459..460
+  (line ` `)@476..477
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@482..492 (`"compliance/locals/ALIAS"`)@493..518 _)@482..519)@480..519)@479..519
+  (line ` `)@520..521
+  (line ` `)@523..524
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"alias mutation visible"`))
-          (expr (str `"mutated"`))
-          (expr (str `"$$BASIC^ALIAS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@583..591
+        (`"alias mutation visible"` `"mutated"` `"$$BASIC^ALIAS()"`)@592..644
+        _)@583..645)@581..645)@580..645
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"alias preserves value if no write"`))
-          (expr (num `42`))
-          (expr (str `"$$READONLY^ALIAS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@649..657
+        (`"alias preserves value if no write"` `42` `"$$READONLY^ALIAS()"`)@658..717
+        _)@649..718)@647..718)@646..718
+  (line ` `)@719..720
+  (line ` `)@722..723
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"by-value: caller unchanged"`))
-          (expr (str `"orig"`))
-          (expr (str `"$$BYVAL^ALIAS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@798..806
+        (`"by-value: caller unchanged"` `"orig"` `"$$BYVAL^ALIAS()"`)@807..860
+        _)@798..861)@796..861)@795..861
+  (line ` `)@862..863
+  (line ` `)@865..866
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"alias subtree mutation"`))
-          (expr (num `1`))
-          (expr (str `"$$SUBTREE^ALIAS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@919..927
+        (`"alias subtree mutation"` `1` `"$$SUBTREE^ALIAS()"`)@928..974
+        _)@919..975)@917..975)@916..975
+  (line ` `)@976..977
+  (line ` `)@979..980
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"two aliases swap"`)) (expr (num `1`)) (expr (str `"$$DOSWAP^ALIAS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1018..1026
+        (`"two aliases swap"` `1` `"$$DOSWAP^ALIAS()"`)@1027..1066
+        _)@1018..1067)@1016..1067)@1015..1067
+  (line ` `)@1068..1069
+  (line ` `)@1071..1072
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"alias multi-write"`)) (expr (num `6`)) (expr (str `"$$MULTI^ALIAS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1133..1141
+        (`"alias multi-write"` `6` `"$$MULTI^ALIAS()"`)@1142..1181
+        _)@1133..1182)@1131..1182)@1130..1183
+  (line ` `)@1191..1192
+  (line ` `)@1194..1195
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"alias read"`)) (expr (num `100`)) (expr (str `"$$READ^ALIAS()"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/locals/ALIAS"`))))))
-  (` ` _ (quit))
-  (` `)
+        (ref `RUN` _ `TEST`)@1234..1242
+        (`"alias read"` `100` `"$$READ^ALIAS()"`)@1243..1276
+        _)@1234..1277)@1232..1277)@1231..1277
+  (line ` `)@1278..1279
+  (line
+    ` `
+    (do
+      _
+      (call (ref `END` _ `TEST`)@1284..1292 (`"compliance/locals/ALIAS"`)@1293..1318 _)@1284..1319)@1282..1319)@1281..1319
+  (line ` ` (quit _ _)@1321..1322)@1320..1322
+  (line ` `)@1323..1324
   (label
     `BASIC`
     _
-    ((new _ `x`)
-      (set _ (= (lvar `x`) (expr (str `"orig"`))))
-      (do _ (call (ref `MUT`) ((byref `x`))))))
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (label `MUT` (`p`) ((set _ (= (lvar `p`) (expr (str `"mutated"`))))))
-  (` ` _ (quit))
-  (` `)
+    _
+    (new _ `x`)@1334..1337
+    (set _ (= (lvar `x` _)@1340..1341 `"orig"`)@1340..1348)@1338..1348
+    (do
+      _
+      (call (ref `MUT` _ _)@1351..1354 ((byref `x`)@1355..1357)@1355..1357 _)@1351..1358)@1349..1358)@1326..1358
+  (line ` ` (quit _ (lvar `x` _)@1362..1363)@1360..1363)@1359..1363
+  (label
+    `MUT`
+    (`p`)@1368..1369
+    _
+    (set _ (= (lvar `p` _)@1373..1374 `"mutated"`)@1373..1384)@1371..1384)@1364..1384
+  (line ` ` (quit _ _)@1386..1387)@1385..1387
+  (line ` `)@1388..1389
   (label
     `READONLY`
     _
-    ((new _ `x`) (set _ (= (lvar `x`) (expr (num `42`)))) (do _ (call (ref `NOMUT`) ((byref `x`))))))
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (label `NOMUT` (`p`) ((new _ `v`) (set _ (= (lvar `v`) (expr (lvar `p`))))))
-  (` ` _ (quit))
-  (` `)
+    _
+    (new _ `x`)@1402..1405
+    (set _ (= (lvar `x` _)@1408..1409 `42`)@1408..1412)@1406..1412
+    (do
+      _
+      (call (ref `NOMUT` _ _)@1415..1420 ((byref `x`)@1421..1423)@1421..1423 _)@1415..1424)@1413..1424)@1391..1424
+  (line ` ` (quit _ (lvar `x` _)@1428..1429)@1426..1429)@1425..1429
+  (label
+    `NOMUT`
+    (`p`)@1436..1437
+    _
+    (new _ `v`)@1439..1442
+    (set _ (= (lvar `v` _)@1445..1446 (lvar `p` _)@1447..1448)@1445..1448)@1443..1448)@1430..1450
+  (line ` ` (quit _ _)@1463..1464)@1462..1464
+  (line ` `)@1465..1466
   (label
     `BYVAL`
     _
-    ((new _ `x`)
-      (set _ (= (lvar `x`) (expr (str `"orig"`))))
-      (do _ (call (ref `MUT2`) ((expr (lvar `x`)))))))
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (label `MUT2` (`p`) ((set _ (= (lvar `p`) (expr (str `"mutated"`))))))
-  (` ` _ (quit))
-  (` `)
+    _
+    (new _ `x`)@1476..1479
+    (set _ (= (lvar `x` _)@1482..1483 `"orig"`)@1482..1490)@1480..1490
+    (do
+      _
+      (call (ref `MUT2` _ _)@1493..1497 ((lvar `x` _)@1498..1499)@1498..1499 _)@1493..1500)@1491..1500)@1468..1502
+  (line ` ` (quit _ (lvar `x` _)@1522..1523)@1520..1523)@1519..1523
+  (label
+    `MUT2`
+    (`p`)@1529..1530
+    _
+    (set _ (= (lvar `p` _)@1534..1535 `"mutated"`)@1534..1545)@1532..1545)@1524..1545
+  (line ` ` (quit _ _)@1547..1548)@1546..1548
+  (line ` `)@1549..1550
   (label
     `SUBTREE`
     _
-    ((new _ `x`)
-      (set _ (= (lvar `x` ((expr (str `"a"`)))) (expr (num `0`))))
-      (do _ (call (ref `INCSUB`) ((byref `x`))))))
-  (` ` _ (quit _ (expr (lvar `x` ((expr (str `"a"`)))))))
+    _
+    (new _ `x`)@1562..1565
+    (set _ (= (lvar `x` (`"a"`)@1570..1573)@1568..1574 `0`)@1568..1576)@1566..1576
+    (do
+      _
+      (call (ref `INCSUB` _ _)@1579..1585 ((byref `x`)@1586..1588)@1586..1588 _)@1579..1589)@1577..1589)@1552..1589
+  (line ` ` (quit _ (lvar `x` (`"a"`)@1595..1598)@1593..1599)@1591..1599)@1590..1599
   (label
     `INCSUB`
-    (`p`)
-    ((set
-       _
-       (= (lvar `p` ((expr (str `"a"`)))) (expr (lvar `p` ((expr (str `"a"`)))) (`+` (num `1`)))))))
-  (` ` _ (quit))
-  (` `)
+    (`p`)@1607..1608
+    _
+    (set
+      _
+      (=
+        (lvar `p` (`"a"`)@1614..1617)@1612..1618
+        (expr (lvar `p` (`"a"`)@1621..1624)@1619..1625 (binop `+` `1`)@1625..1627)@1619..1627)@1612..1627)@1610..1627)@1600..1627
+  (line ` ` (quit _ _)@1629..1630)@1628..1630
+  (line ` `)@1631..1632
   (label
     `DOSWAP`
     _
-    ((new _ `a` `b`)
-      (set _ (= (lvar `a`) (expr (num `1`))) (= (lvar `b`) (expr (num `2`))))
-      (do _ (call (ref `DSWAP`) ((byref `a`) (byref `b`))))))
-  (` `)
-  (` ` _ (quit _ (expr (lvar `b`))))
+    _
+    (new _ `a` `b`)@1643..1648
+    (set
+      _
+      (= (lvar `a` _)@1651..1652 `1`)@1651..1654
+      (= (lvar `b` _)@1655..1656 `2`)@1655..1658)@1649..1658
+    (do
+      _
+      (call
+        (ref `DSWAP` _ _)@1661..1666
+        ((byref `a`)@1667..1669 (byref `b`)@1670..1672)@1667..1672
+        _)@1661..1673)@1659..1673)@1634..1673
+  (line ` `)@1674..1675
+  (line ` ` (quit _ (lvar `b` _)@1696..1697)@1694..1697)@1693..1697
   (label
     `DSWAP`
-    (`p` `q`)
-    ((new _ `t`)
-      (set
-        _
-        (= (lvar `t`) (expr (lvar `p`)))
-        (= (lvar `p`) (expr (lvar `q`)))
-        (= (lvar `q`) (expr (lvar `t`))))))
-  (` ` _ (quit))
-  (` `)
+    (`p` `q`)@1704..1707
+    _
+    (new _ `t`)@1709..1712
+    (set
+      _
+      (= (lvar `t` _)@1715..1716 (lvar `p` _)@1717..1718)@1715..1718
+      (= (lvar `p` _)@1719..1720 (lvar `q` _)@1721..1722)@1719..1722
+      (= (lvar `q` _)@1723..1724 (lvar `t` _)@1725..1726)@1723..1726)@1713..1726)@1698..1726
+  (line ` ` (quit _ _)@1728..1729)@1727..1729
+  (line ` `)@1730..1731
   (label
     `MULTI`
     _
-    ((new _ `a` `b` `c`) (do _ (call (ref `ASSIGN3`) ((byref `a`) (byref `b`) (byref `c`))))))
-  (` ` _ (quit _ (expr (lvar `a`) (`+` (lvar `b`)) (`+` (lvar `c`)))))
+    _
+    (new _ `a` `b` `c`)@1741..1748
+    (do
+      _
+      (call
+        (ref `ASSIGN3` _ _)@1751..1758
+        ((byref `a`)@1759..1761 (byref `b`)@1762..1764 (byref `c`)@1765..1767)@1759..1767
+        _)@1751..1768)@1749..1768)@1733..1768
+  (line
+    ` `
+    (quit
+      _
+      (expr
+        (lvar `a` _)@1772..1773
+        (binop `+` (lvar `b` _)@1774..1775)@1773..1775
+        (binop `+` (lvar `c` _)@1776..1777)@1775..1777)@1772..1777)@1770..1777)@1769..1777
   (label
     `ASSIGN3`
-    (`p` `q` `r`)
-    ((set
-       _
-       (= (lvar `p`) (expr (num `1`)))
-       (= (lvar `q`) (expr (num `2`)))
-       (= (lvar `r`) (expr (num `3`))))))
-  (` ` _ (quit))
-  (` `)
+    (`p` `q` `r`)@1786..1791
+    _
+    (set
+      _
+      (= (lvar `p` _)@1795..1796 `1`)@1795..1798
+      (= (lvar `q` _)@1799..1800 `2`)@1799..1802
+      (= (lvar `r` _)@1803..1804 `3`)@1803..1806)@1793..1806)@1778..1806
+  (line ` ` (quit _ _)@1808..1809)@1807..1809
+  (line ` `)@1810..1811
   (label
     `READ`
     _
-    ((new _ `x`)
-      (set _ (= (lvar `x`) (expr (num `100`))))
-      (new _ `r`)
-      (do _ (call (ref `READIT`) ((byref `x`) (byref `r`))))))
-  (` ` _ (quit _ (expr (lvar `r`))))
-  (label `READIT` (`src` `out`) ((set _ (= (lvar `out`) (expr (lvar `src`))))))
-  (` ` _ (quit)))
+    _
+    (new _ `x`)@1820..1823
+    (set _ (= (lvar `x` _)@1826..1827 `100`)@1826..1831)@1824..1831
+    (new _ `r`)@1832..1835
+    (do
+      _
+      (call
+        (ref `READIT` _ _)@1838..1844
+        ((byref `x`)@1845..1847 (byref `r`)@1848..1850)@1845..1850
+        _)@1838..1851)@1836..1851)@1813..1851
+  (line ` ` (quit _ (lvar `r` _)@1855..1856)@1853..1856)@1852..1856
+  (label
+    `READIT`
+    (`src` `out`)@1864..1871
+    _
+    (set _ (= (lvar `out` _)@1875..1878 (lvar `src` _)@1879..1882)@1875..1882)@1873..1882)@1857..1882
+  (line ` ` (quit _ _)@1884..1885)@1883..1885
+  _)@0..1886

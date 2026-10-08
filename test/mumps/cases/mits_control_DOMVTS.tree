@@ -1,175 +1,335 @@
 (routine
-  (label `DOMVTS`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/control/DOMVTS"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `DOMVTS` _ _)@0..7
+  (line ` `)@64..65
+  (line ` `)@67..68
+  (line ` `)@136..137
+  (line ` `)@163..164
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@169..179 (`"compliance/control/DOMVTS"`)@180..207 _)@169..208)@167..208)@166..208
+  (line ` `)@209..210
+  (line ` `)@212..213
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"DO LBL+N where N is computed"`))
-          (expr (str `"third"`))
-          (expr (str `"$$T1^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@256..264
+        (`"DO LBL+N where N is computed"` `"third"` `"$$T1^DOMVTS()"`)@265..319
+        _)@256..320)@254..320)@253..320
+  (line ` `)@321..322
+  (line ` `)@324..325
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"DO chain through arg-passing"`))
-          (expr (num `10`))
-          (expr (str `"$$T2^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@367..375
+        (`"DO chain through arg-passing"` `10` `"$$T2^DOMVTS()"`)@376..425
+        _)@367..426)@365..426)@364..426
+  (line ` `)@427..428
+  (line ` `)@430..431
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"DO:cond where cond was set by prior DO"`))
-          (expr (str `"yes"`))
-          (expr (str `"$$T3^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@505..513
+        (`"DO:cond where cond was set by prior DO"` `"yes"` `"$$T3^DOMVTS()"`)@514..576
+        _)@505..577)@503..577)@502..577
+  (line ` `)@578..579
+  (line ` `)@581..582
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"DO same label twice cumulative"`))
-          (expr (num `2`))
-          (expr (str `"$$T4^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@661..669
+        (`"DO same label twice cumulative"` `2` `"$$T4^DOMVTS()"`)@670..720
+        _)@661..721)@659..721)@658..721
+  (line ` `)@722..723
+  (line ` `)@725..726
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"Q expr propagates through DO chain"`))
-          (expr (str `"leaf"`))
-          (expr (str `"$$T5^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@772..780
+        (`"Q expr propagates through DO chain"` `"leaf"` `"$$T5^DOMVTS()"`)@781..840
+        _)@772..841)@770..841)@769..841
+  (line ` `)@842..843
+  (line ` `)@845..846
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"DO arg-by-ref builds caller's array"`))
-          (expr (num `6`))
-          (expr (str `"$$T6^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@901..909
+        (`"DO arg-by-ref builds caller's array"` `6` `"$$T6^DOMVTS()"`)@910..965
+        _)@901..966)@899..966)@898..967
+  (line ` `)@979..980
+  (line ` `)@982..983
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"argless-DO multi-line block"`))
-          (expr (num `15`))
-          (expr (str `"$$T7^DOMVTS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1040..1048
+        (`"argless-DO multi-line block"` `15` `"$$T7^DOMVTS()"`)@1049..1097
+        _)@1040..1098)@1038..1098)@1037..1099
+  (line ` `)@1110..1111
+  (line ` `)@1113..1114
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"DO recursion 5 deep accumulates"`))
-          (expr (num `15`))
-          (expr (str `"$$T8^DOMVTS()"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/control/DOMVTS"`))))))
-  (` ` _ (quit))
-  (` `)
+        (ref `RUN` _ `TEST`)@1164..1172
+        (`"DO recursion 5 deep accumulates"` `15` `"$$T8^DOMVTS()"`)@1173..1225
+        _)@1164..1226)@1162..1226)@1161..1227
+  (line ` `)@1239..1240
+  (line
+    ` `
+    (do
+      _
+      (call (ref `END` _ `TEST`)@1245..1253 (`"compliance/control/DOMVTS"`)@1254..1281 _)@1245..1282)@1243..1282)@1242..1282
+  (line ` ` (quit _ _)@1284..1285)@1283..1285
+  (line ` `)@1286..1287
   (label
     `T1`
     _
-    ((new _ `r` `n`)
-      (set _ (= (lvar `n`) (expr (num `2`))))
-      (do _ (call (ref `LBL` (expr (lvar `n`)))))))
-  (` ` _ (quit _ (expr (lvar `r`))))
-  (label `LBL` _ ((set _ (= (lvar `r`) (expr (str `"first"`)))) (quit)))
-  (` ` _ (set _ (= (lvar `r`) (expr (str `"second"`)))) (quit))
-  (` ` _ (set _ (= (lvar `r`) (expr (str `"third"`)))) (quit))
-  (` `)
-  (label `T2` _ ((new _ `a` `b` `c`) (set _ (= (lvar `a`) (expr (num `0`))))))
-  (` `
     _
+    (new _ `r` `n`)@1294..1299
+    (set _ (= (lvar `n` _)@1302..1303 `2`)@1302..1305)@1300..1305
+    (do _ (call (ref `LBL` (lvar `n` _)@1312..1313 _)@1308..1313 _ _)@1308..1313)@1306..1313)@1289..1313
+  (line ` ` (quit _ (lvar `r` _)@1317..1318)@1315..1318)@1314..1318
+  (label
+    `LBL`
+    _
+    _
+    (set _ (= (lvar `r` _)@1325..1326 `"first"`)@1325..1334)@1323..1334
+    (quit _ _)@1335..1336)@1319..1336
+  (line
+    ` `
+    (set _ (= (lvar `r` _)@1340..1341 `"second"`)@1340..1350)@1338..1350
+    (quit _ _)@1351..1352)@1337..1352
+  (line
+    ` `
+    (set _ (= (lvar `r` _)@1356..1357 `"third"`)@1356..1365)@1354..1365
+    (quit _ _)@1366..1367)@1353..1367
+  (line ` `)@1368..1369
+  (label
+    `T2`
+    _
+    _
+    (new _ `a` `b` `c`)@1376..1383
+    (set _ (= (lvar `a` _)@1386..1387 `0`)@1386..1389)@1384..1389)@1371..1389
+  (line
+    ` `
     (do
       _
-      (call (ref `ADD1`) ((byref `a`)))
-      (call (ref `ADD2`) ((byref `a`)))
-      (call (ref `ADD3`) ((byref `a`)))
-      (call (ref `ADD4`) ((byref `a`)))))
-  (` ` _ (quit _ (expr (lvar `a`))))
-  (label `ADD1` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `1`))))) (quit)))
-  (label `ADD2` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `2`))))) (quit)))
-  (label `ADD3` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `3`))))) (quit)))
-  (label `ADD4` (`x`) ((set _ (= (lvar `x`) (expr (lvar `x`) (`+` (num `4`))))) (quit)))
-  (` `)
-  (label `T3` _ ((new _ `r`) (set _ (= (lvar `r`) (expr (str `"no"`))))))
-  (` ` _ (do _ (call (ref `SETFLAG`))))
-  (` `)
-  (` ` _ (do (postcond (expr (lvar `flag`))) (call (ref `SETOK`))))
-  (` ` _ (quit _ (expr (lvar `r`))))
-  (label `SETFLAG` _ ((set _ (= (lvar `flag`) (expr (num `1`)))) (quit)))
-  (label `SETOK` _ ((set _ (= (lvar `r`) (expr (str `"yes"`)))) (quit)))
-  (` `)
-  (label `T4` _ ((new _ `c`) (set _ (= (lvar `c`) (expr (num `0`))))))
-  (` ` _ (do _ (call (ref `INC4`))))
-  (` ` _ (do _ (call (ref `INC4`))))
-  (` ` _ (quit _ (expr (lvar `c`))))
-  (label `INC4` _ ((set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))) (quit)))
-  (` `)
-  (label `T5` _ ((quit _ (expr (extrinsic (`LEAF` (_)))))))
-  (label `LEAF` _ ((quit _ (expr (str `"leaf"`)))))
-  (` `)
-  (label `T6` _ ((new _ `x`) (do _ (call (ref `BUILD`) ((byref `x`) (expr (num `3`)))))))
-  (` `
+      (call (ref `ADD1` _ _)@1393..1397 ((byref `a`)@1398..1400)@1398..1400 _)@1393..1401
+      (call (ref `ADD2` _ _)@1402..1406 ((byref `a`)@1407..1409)@1407..1409 _)@1402..1410
+      (call (ref `ADD3` _ _)@1411..1415 ((byref `a`)@1416..1418)@1416..1418 _)@1411..1419
+      (call (ref `ADD4` _ _)@1420..1424 ((byref `a`)@1425..1427)@1425..1427 _)@1420..1428)@1391..1428)@1390..1428
+  (line ` ` (quit _ (lvar `a` _)@1432..1433)@1430..1433)@1429..1433
+  (label
+    `ADD1`
+    (`x`)@1439..1440
     _
-    (new _ `s` `k`)
-    (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `k`) (expr (str `""`))))
-    (for)
-    (set _ (= (lvar `k`) (expr (intrinsic `O`#211 ((expr (lvar `x` ((expr (lvar `k`))))))))))
-    (quit (postcond (expr (lvar `k`) (`=` (str `""`)))))
-    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `x` ((expr (lvar `k`)))))))))
-  (` ` _ (quit _ (expr (lvar `s`))))
+    (set
+      _
+      (=
+        (lvar `x` _)@1444..1445
+        (expr (lvar `x` _)@1446..1447 (binop `+` `1`)@1447..1449)@1446..1449)@1444..1449)@1442..1449
+    (quit _ _)@1450..1451)@1434..1451
+  (label
+    `ADD2`
+    (`x`)@1457..1458
+    _
+    (set
+      _
+      (=
+        (lvar `x` _)@1462..1463
+        (expr (lvar `x` _)@1464..1465 (binop `+` `2`)@1465..1467)@1464..1467)@1462..1467)@1460..1467
+    (quit _ _)@1468..1469)@1452..1469
+  (label
+    `ADD3`
+    (`x`)@1475..1476
+    _
+    (set
+      _
+      (=
+        (lvar `x` _)@1480..1481
+        (expr (lvar `x` _)@1482..1483 (binop `+` `3`)@1483..1485)@1482..1485)@1480..1485)@1478..1485
+    (quit _ _)@1486..1487)@1470..1487
+  (label
+    `ADD4`
+    (`x`)@1493..1494
+    _
+    (set
+      _
+      (=
+        (lvar `x` _)@1498..1499
+        (expr (lvar `x` _)@1500..1501 (binop `+` `4`)@1501..1503)@1500..1503)@1498..1503)@1496..1503
+    (quit _ _)@1504..1505)@1488..1505
+  (line ` `)@1506..1507
+  (label
+    `T3`
+    _
+    _
+    (new _ `r`)@1514..1517
+    (set _ (= (lvar `r` _)@1520..1521 `"no"`)@1520..1526)@1518..1526)@1509..1526
+  (line ` ` (do _ (call (ref `SETFLAG` _ _)@1530..1537 _ _)@1530..1537)@1528..1537)@1527..1537
+  (line ` `)@1538..1539
+  (line
+    ` `
+    (do
+      (postcond (lvar `flag` _)@1592..1596)@1591..1596
+      (call (ref `SETOK` _ _)@1597..1602 _ _)@1597..1602)@1590..1602)@1589..1602
+  (line ` ` (quit _ (lvar `r` _)@1606..1607)@1604..1607)@1603..1607
+  (label
+    `SETFLAG`
+    _
+    _
+    (set _ (= (lvar `flag` _)@1618..1622 `1`)@1618..1624)@1616..1624
+    (quit _ _)@1625..1626)@1608..1626
+  (label
+    `SETOK`
+    _
+    _
+    (set _ (= (lvar `r` _)@1635..1636 `"yes"`)@1635..1642)@1633..1642
+    (quit _ _)@1643..1644)@1627..1644
+  (line ` `)@1645..1646
+  (label
+    `T4`
+    _
+    _
+    (new _ `c`)@1653..1656
+    (set _ (= (lvar `c` _)@1659..1660 `0`)@1659..1662)@1657..1662)@1648..1662
+  (line ` ` (do _ (call (ref `INC4` _ _)@1666..1670 _ _)@1666..1670)@1664..1670)@1663..1670
+  (line ` ` (do _ (call (ref `INC4` _ _)@1674..1678 _ _)@1674..1678)@1672..1678)@1671..1678
+  (line ` ` (quit _ (lvar `c` _)@1682..1683)@1680..1683)@1679..1683
+  (label
+    `INC4`
+    _
+    _
+    (set
+      _
+      (=
+        (lvar `c` _)@1691..1692
+        (expr (lvar `c` _)@1693..1694 (binop `+` `1`)@1694..1696)@1693..1696)@1691..1696)@1689..1696
+    (quit _ _)@1697..1698)@1684..1698
+  (line ` `)@1699..1700
+  (label `T5` _ _ (quit _ (extrinsic `LEAF` _ (_)@1716..1716)@1711..1717)@1707..1717)@1702..1717
+  (label `LEAF` _ _ (quit _ `"leaf"`)@1725..1733)@1718..1733
+  (line ` `)@1734..1735
+  (label
+    `T6`
+    _
+    _
+    (new _ `x`)@1742..1745
+    (do
+      _
+      (call (ref `BUILD` _ _)@1748..1753 ((byref `x`)@1754..1756 `3`)@1754..1758 _)@1748..1759)@1746..1759)@1737..1759
+  (line
+    ` `
+    (new _ `s` `k`)@1761..1766
+    (set
+      _
+      (= (lvar `s` _)@1769..1770 `0`)@1769..1772
+      (= (lvar `k` _)@1773..1774 `""`)@1773..1777)@1767..1777
+    (for _)@1778..1779
+    (set
+      _
+      (=
+        (lvar `k` _)@1783..1784
+        (intrinsic
+          `O`#211
+          ((lvar `x` ((lvar `k` _)@1790..1791)@1790..1791)@1788..1792)@1788..1792)@1785..1793)@1783..1793)@1781..1793
+    (quit
+      (postcond (expr (lvar `k` _)@1796..1797 (binop `=` `""`)@1797..1800)@1796..1800)@1795..1800
+      _)@1794..1800
+    (set
+      _
+      (=
+        (lvar `s` _)@1804..1805
+        (expr
+          (lvar `s` _)@1806..1807
+          (binop `+` (lvar `x` ((lvar `k` _)@1810..1811)@1810..1811)@1808..1812)@1807..1812)@1806..1812)@1804..1812)@1802..1812)@1760..1812
+  (line ` ` (quit _ (lvar `s` _)@1816..1817)@1814..1817)@1813..1817
   (label
     `BUILD`
-    (`arr` `n`)
-    ((quit (postcond (expr (lvar `n`) (`=` (num `0`)))))
-      (set _ (= (lvar `arr` ((expr (lvar `n`)))) (expr (lvar `n`))))
-      (do _ (call (ref `BUILD`) ((byref `arr`) (expr (lvar `n`) (`-` (num `1`))))))))
-  (` ` _ (quit))
-  (` `)
-  (label `T7` _ ((new _ `s` `i`) (set _ (= (lvar `s`) (expr (num `0`))))))
-  (` ` _ (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `5`)))) (do))
-  (` . `#1 _ (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `i`))))))
-  (` ` _ (quit _ (expr (lvar `s`))))
-  (` `)
-  (label `T8` _ ((new _ `s`) (set _ (= (lvar `s`) (expr (num `0`))))))
-  (` ` _ (do _ (call (ref `REC`) ((expr (num `5`)) (byref `s`)))))
-  (` ` _ (quit _ (expr (lvar `s`))))
+    (`arr` `n`)@1824..1829
+    _
+    (quit
+      (postcond (expr (lvar `n` _)@1833..1834 (binop `=` `0`)@1834..1836)@1833..1836)@1832..1836
+      _)@1831..1836
+    (set
+      _
+      (=
+        (lvar `arr` ((lvar `n` _)@1844..1845)@1844..1845)@1840..1846
+        (lvar `n` _)@1847..1848)@1840..1848)@1838..1848
+    (do
+      _
+      (call
+        (ref `BUILD` _ _)@1851..1856
+        ((byref `arr`)@1857..1861
+          (expr (lvar `n` _)@1862..1863 (binop `-` `1`)@1863..1865)@1862..1865)@1857..1865
+        _)@1851..1866)@1849..1866)@1818..1866
+  (line ` ` (quit _ _)@1868..1869)@1867..1869
+  (line ` `)@1870..1871
+  (label
+    `T7`
+    _
+    _
+    (new _ `s` `i`)@1878..1883
+    (set _ (= (lvar `s` _)@1886..1887 `0`)@1886..1889)@1884..1889)@1873..1889
+  (line
+    ` `
+    (for (lvar `i` _)@1893..1894 (range `1` `1` `5`)@1895..1900)@1893..1900
+    (do _)@1901..1902)@1890..1902
+  (line
+    ` . `
+    (set
+      _
+      (=
+        (lvar `s` _)@1908..1909
+        (expr (lvar `s` _)@1910..1911 (binop `+` (lvar `i` _)@1912..1913)@1911..1913)@1910..1913)@1908..1913)@1906..1913)@1903..1913
+  (line ` ` (quit _ (lvar `s` _)@1917..1918)@1915..1918)@1914..1918
+  (line ` `)@1919..1920
+  (label
+    `T8`
+    _
+    _
+    (new _ `s`)@1927..1930
+    (set _ (= (lvar `s` _)@1933..1934 `0`)@1933..1936)@1931..1936)@1922..1936
+  (line
+    ` `
+    (do
+      _
+      (call (ref `REC` _ _)@1940..1943 (`5` (byref `s`)@1946..1948)@1944..1948 _)@1940..1949)@1938..1949)@1937..1949
+  (line ` ` (quit _ (lvar `s` _)@1953..1954)@1951..1954)@1950..1954
   (label
     `REC`
-    (`n` `acc`)
-    ((quit (postcond (expr (lvar `n`) (`=` (num `0`)))))
-      (set _ (= (lvar `acc`) (expr (lvar `acc`) (`+` (lvar `n`)))))
-      (do _ (call (ref `REC`) ((expr (lvar `n`) (`-` (num `1`))) (byref `acc`))))))
-  (` ` _ (quit)))
+    (`n` `acc`)@1959..1964
+    _
+    (quit
+      (postcond (expr (lvar `n` _)@1968..1969 (binop `=` `0`)@1969..1971)@1968..1971)@1967..1971
+      _)@1966..1971
+    (set
+      _
+      (=
+        (lvar `acc` _)@1975..1978
+        (expr (lvar `acc` _)@1979..1982 (binop `+` (lvar `n` _)@1983..1984)@1982..1984)@1979..1984)@1975..1984)@1973..1984
+    (do
+      _
+      (call
+        (ref `REC` _ _)@1987..1990
+        ((expr (lvar `n` _)@1991..1992 (binop `-` `1`)@1992..1994)@1991..1994
+          (byref `acc`)@1995..1999)@1991..1999
+        _)@1987..2000)@1985..2000)@1955..2000
+  (line ` ` (quit _ _)@2002..2003)@2001..2003
+  _)@0..2004

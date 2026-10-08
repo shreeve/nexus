@@ -1,183 +1,240 @@
 (routine
-  (label `REGRESS`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/regress/REGRESS"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `REGRESS` _ _)@0..8
+  (line ` `)@67..68
+  (line ` `)@70..71
+  (line ` `)@139..140
+  (line ` `)@211..212
+  (line ` `)@214..215
+  (line ` `)@289..290
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@295..305 (`"compliance/regress/REGRESS"`)@306..334 _)@295..335)@293..335)@292..335
+  (line ` `)@336..337
+  (line ` `)@339..340
+  (line ` `)@392..393
+  (line ` `)@462..463
+  (line ` `)@532..533
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"ac8b68a indir UAF: 50x repeated XECUTE"`))
-          (expr (num `50`))
-          (expr (str `"$$INDIRUAF^REGRESS()"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@605..613
+        (`"ac8b68a indir UAF: 50x repeated XECUTE"` `50` `"$$INDIRUAF^REGRESS()"`)@614..680
+        _)@605..681)@603..681)@602..681
+  (line ` `)@682..683
+  (line ` `)@685..686
+  (line ` `)@733..734
+  (line ` `)@802..803
+  (line ` `)@871..872
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"2b49ec5 \\$I returns new value"`))
-          (expr (num `1`))
-          (expr (str `"$$INCRET^REGRESS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@946..954
+        (`"2b49ec5 \\$I returns new value"` `1` `"$$INCRET^REGRESS()"`)@955..1009
+        _)@946..1010)@944..1010)@943..1010
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"2b49ec5 \\$I mutates source"`))
-          (expr (num `1`))
-          (expr (str `"$$INCMUT^REGRESS()"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1014..1022
+        (`"2b49ec5 \\$I mutates source"` `1` `"$$INCMUT^REGRESS()"`)@1023..1074
+        _)@1014..1075)@1012..1075)@1011..1075
+  (line ` `)@1076..1077
+  (line ` `)@1079..1080
+  (line ` `)@1135..1136
+  (line ` `)@1202..1203
+  (line ` `)@1270..1271
+  (line ` `)@1338..1339
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"2b49ec5 cache holds active routine"`))
-          (expr (str `"ok"`))
-          (expr (str `"$$CACHEHOLD^REGRESS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1378..1386
+        (`"2b49ec5 cache holds active routine"` `"ok"` `"$$CACHEHOLD^REGRESS()"`)@1387..1452
+        _)@1378..1453)@1376..1453)@1375..1453
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"2b49ec5 100K nested unique X"`))
-          (expr (str `"ok"`))
-          (expr (str `"$$NESTSTRESS^REGRESS()"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1457..1465
+        (`"2b49ec5 100K nested unique X"` `"ok"` `"$$NESTSTRESS^REGRESS()"`)@1466..1526
+        _)@1457..1527)@1455..1527)@1454..1527
+  (line ` `)@1528..1529
+  (line ` `)@1531..1532
+  (line ` `)@1584..1585
+  (line ` `)@1652..1653
+  (line ` `)@1718..1719
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"256f75f i64 boundary add"`))
-          (expr (str `"1000000000000000000"`))
-          (expr (str `"999999999999999999+1"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1767..1775
+        (`"256f75f i64 boundary add"` `"1000000000000000000"` `"999999999999999999+1"`)@1776..1847
+        _)@1767..1848)@1765..1848)@1764..1848
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"256f75f i64 boundary mul"`))
-          (expr (num `100000000000000000`))
-          (expr (str `"10000000000000000*10"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1852..1860
+        (`"256f75f i64 boundary mul"` `100000000000000000` `"10000000000000000*10"`)@1861..1929
+        _)@1852..1930)@1850..1930)@1849..1930
+  (line ` `)@1931..1932
+  (line ` `)@1934..1935
+  (line ` `)@1993..1994
+  (line ` `)@2060..2061
+  (line ` `)@2129..2130
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"4f23114 tight literal loop"`))
-          (expr (num `1000000`))
-          (expr (str `"$$LITLOOP^REGRESS()"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2163..2171
+        (`"4f23114 tight literal loop"` `1000000` `"$$LITLOOP^REGRESS()"`)@2172..2230
+        _)@2163..2231)@2161..2231)@2160..2231
+  (line ` `)@2232..2233
+  (line ` `)@2235..2236
+  (line ` `)@2295..2296
+  (line ` `)@2356..2357
+  (line ` `)@2420..2421
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"256f75f FOR 100K iterations"`))
-          (expr (num `100000`))
-          (expr (str `"$$FORHOT^REGRESS()"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/regress/REGRESS"`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `INDIRUAF` _ ((new _ `i` `result`) (set _ (= (lvar `result`) (expr (num `0`))))))
-  (` ` _ (new _ `c`) (set _ (= (lvar `c`) (expr (str `"S y=42"`)))))
-  (` `)
-  (` `
+        (ref `RUN` _ `TEST`)@2488..2496
+        (`"256f75f FOR 100K iterations"` `100000` `"$$FORHOT^REGRESS()"`)@2497..2554
+        _)@2488..2555)@2486..2555)@2485..2555
+  (line ` `)@2556..2557
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `END` _ `TEST`)@2562..2570
+        (`"compliance/regress/REGRESS"`)@2571..2599
+        _)@2562..2600)@2560..2600)@2559..2600
+  (line ` ` (quit _ _)@2602..2603)@2601..2603
+  (line ` `)@2604..2605
+  (label
+    `INDIRUAF`
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `50`))))
-    (xecute _ ((expr (lvar `c`))))
-    (set _ (= (lvar `result`) (expr (lvar `result`) (`+` (num `1`))))))
-  (` ` _ (quit _ (expr (lvar `result`))))
-  (` `)
-  (label `INCRET` _ ((new _ `x`)))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))
-  (` `)
+    _
+    (new _ `i` `result`)@2618..2628
+    (set _ (= (lvar `result` _)@2631..2637 `0`)@2631..2639)@2629..2639)@2607..2639
+  (line
+    ` `
+    (new _ `c`)@2641..2644
+    (set _ (= (lvar `c` _)@2647..2648 `"S y=42"`)@2647..2657)@2645..2657)@2640..2657
+  (line ` `)@2658..2659
+  (line
+    ` `
+    (for (lvar `i` _)@2719..2720 (range `1` `1` `50`)@2721..2727)@2719..2727
+    (xecute _ (arg (lvar `c` _)@2730..2731 _)@2730..2731)@2728..2731
+    (set
+      _
+      (=
+        (lvar `result` _)@2734..2740
+        (expr (lvar `result` _)@2741..2747 (binop `+` `1`)@2747..2749)@2741..2749)@2734..2749)@2732..2749)@2716..2749
+  (line ` ` (quit _ (lvar `result` _)@2753..2759)@2751..2759)@2750..2759
+  (line ` `)@2760..2761
+  (label `INCRET` _ _ (new _ `x`)@2772..2775)@2763..2775
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@2782..2783)@2782..2783)@2779..2784)@2777..2784)@2776..2784
+  (line ` `)@2785..2786
   (label
     `INCMUT`
     _
-    ((new _ `x`) (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))))
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (` `)
-  (label `CACHEHOLD` _ ((new _ `r` `A` `C`)))
-  (` `)
-  (` ` _ (set _ (= (lvar `C`) (expr (str `"$$INNER1^REGRESS()"`)))))
-  (` ` _ (xecute _ ((expr (str `"S A="`) (`_` (lvar `C`))))))
-  (` ` _ (quit _ (expr (lvar `A`))))
-  (` `)
-  (label `INNER1` _ ((new _ `i` `x`)))
-  (` `
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10000`))))
-    (xecute _ ((expr (str `"S x="`) (`_` (lvar `i`))))))
-  (` ` _ (quit _ (expr (str `"ok"`))))
-  (` `)
-  (label `NESTSTRESS` _ ((new _ `r` `A` `C`)))
-  (` `)
-  (` ` _ (set _ (= (lvar `C`) (expr (str `"$$INNER2^REGRESS()"`)))))
-  (` ` _ (xecute _ ((expr (str `"S A="`) (`_` (lvar `C`))))))
-  (` ` _ (quit _ (expr (lvar `A`))))
-  (` `)
-  (label `INNER2` _ ((new _ `i` `x`)))
-  (` `
+    (new _ `x`)@2797..2800
+    (set
+      _
+      (=
+        (lvar `r` _)@2803..2804
+        (intrinsic `I`#207 ((lvar `x` _)@2808..2809)@2808..2809)@2805..2810)@2803..2810)@2801..2810)@2788..2810
+  (line ` ` (quit _ (lvar `x` _)@2814..2815)@2812..2815)@2811..2815
+  (line ` `)@2816..2817
+  (label `CACHEHOLD` _ _ (new _ `r` `A` `C`)@2831..2838)@2819..2838
+  (line ` `)@2839..2840
+  (line
+    ` `
+    (set _ (= (lvar `C` _)@2913..2914 `"$$INNER1^REGRESS()"`)@2913..2935)@2911..2935)@2910..2935
+  (line
+    ` `
+    (xecute
+      _
+      (arg (expr `"S A="` (binop `_` (lvar `C` _)@2946..2947)@2945..2947)@2939..2947 _)@2939..2947)@2937..2947)@2936..2947
+  (line ` ` (quit _ (lvar `A` _)@2951..2952)@2949..2952)@2948..2952
+  (line ` `)@2953..2954
+  (label `INNER1` _ _ (new _ `i` `x`)@2965..2970)@2956..2970
+  (line
+    ` `
+    (for (lvar `i` _)@2974..2975 (range `1` `1` `10000`)@2976..2985)@2974..2985
+    (xecute
+      _
+      (arg (expr `"S x="` (binop `_` (lvar `i` _)@2995..2996)@2994..2996)@2988..2996 _)@2988..2996)@2986..2996)@2971..2996
+  (line ` ` (quit _ `"ok"`)@2998..3004)@2997..3004
+  (line ` `)@3005..3006
+  (label `NESTSTRESS` _ _ (new _ `r` `A` `C`)@3021..3028)@3008..3028
+  (line ` `)@3029..3030
+  (line
+    ` `
+    (set _ (= (lvar `C` _)@3077..3078 `"$$INNER2^REGRESS()"`)@3077..3099)@3075..3099)@3074..3099
+  (line
+    ` `
+    (xecute
+      _
+      (arg (expr `"S A="` (binop `_` (lvar `C` _)@3110..3111)@3109..3111)@3103..3111 _)@3103..3111)@3101..3111)@3100..3111
+  (line ` ` (quit _ (lvar `A` _)@3115..3116)@3113..3116)@3112..3116
+  (line ` `)@3117..3118
+  (label `INNER2` _ _ (new _ `i` `x`)@3129..3134)@3120..3134
+  (line
+    ` `
+    (for (lvar `i` _)@3138..3139 (range `1` `1` `100000`)@3140..3150)@3138..3150
+    (xecute
+      _
+      (arg (expr `"S x="` (binop `_` (lvar `i` _)@3160..3161)@3159..3161)@3153..3161 _)@3153..3161)@3151..3161)@3135..3161
+  (line ` ` (quit _ `"ok"`)@3163..3169)@3162..3169
+  (line ` `)@3170..3171
+  (label
+    `LITLOOP`
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100000`))))
-    (xecute _ ((expr (str `"S x="`) (`_` (lvar `i`))))))
-  (` ` _ (quit _ (expr (str `"ok"`))))
-  (` `)
-  (label `LITLOOP` _ ((new _ `i` `s`) (set _ (= (lvar `s`) (expr (num `0`))))))
-  (` `
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `1000000`))))
-    (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (num `1`))))))
-  (` ` _ (quit _ (expr (lvar `s`))))
-  (` `)
-  (label `FORHOT` _ ((new _ `i` `c`) (set _ (= (lvar `c`) (expr (num `0`))))))
-  (` `
+    (new _ `i` `s`)@3183..3188
+    (set _ (= (lvar `s` _)@3191..3192 `0`)@3191..3194)@3189..3194)@3173..3194
+  (line
+    ` `
+    (for (lvar `i` _)@3198..3199 (range `1` `1` `1000000`)@3200..3211)@3198..3211
+    (set
+      _
+      (=
+        (lvar `s` _)@3214..3215
+        (expr (lvar `s` _)@3216..3217 (binop `+` `1`)@3217..3219)@3216..3219)@3214..3219)@3212..3219)@3195..3219
+  (line ` ` (quit _ (lvar `s` _)@3223..3224)@3221..3224)@3220..3224
+  (line ` `)@3225..3226
+  (label
+    `FORHOT`
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100000`))))
-    (set _ (= (lvar `c`) (expr (lvar `c`) (`+` (num `1`))))))
-  (` ` _ (quit _ (expr (lvar `c`)))))
+    _
+    (new _ `i` `c`)@3237..3242
+    (set _ (= (lvar `c` _)@3245..3246 `0`)@3245..3248)@3243..3248)@3228..3248
+  (line
+    ` `
+    (for (lvar `i` _)@3252..3253 (range `1` `1` `100000`)@3254..3264)@3252..3264
+    (set
+      _
+      (=
+        (lvar `c` _)@3267..3268
+        (expr (lvar `c` _)@3269..3270 (binop `+` `1`)@3270..3272)@3269..3272)@3267..3272)@3265..3272)@3249..3272
+  (line ` ` (quit _ (lvar `c` _)@3276..3277)@3274..3277)@3273..3277
+  _)@0..3278
