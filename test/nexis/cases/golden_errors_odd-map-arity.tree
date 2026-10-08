@@ -1,1 +1,1 @@
-(program (map (keyword `:a`)))
+(program (map `{` (keyword `:a`) `}`))

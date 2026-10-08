@@ -1,6 +1,6 @@
 ; examples/maps-sets.nx — collection literals.
 ;
-; nexis now supports maps {} and sets #{} as runtime values.
+; Maps {} and sets #{} are runtime values.
 ; Both quoted compound literals and runtime-computed forms work.
 ; Keys/values/elements can be arbitrary expressions; duplicates
 ; collapse per Clojure semantics (later-wins for maps, set-
@@ -10,10 +10,10 @@
 ; with structural sharing. Hash + equality come from the
 ; dispatch layer (same machinery used everywhere else).
 
-(let [project-id :nexis
+(println (let [project-id :nexis
       version    :v0-2-alpha
       tags       #{:phase-3 :collections :ready}]
   {:project project-id
    :version version
    :tags    tags
-   :status  :shipped})
+   :status  :shipped}))

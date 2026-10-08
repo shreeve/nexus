@@ -1,1 +1,1 @@
-(program (unquote (symbol `x`)))
+(program (unquote `~` (symbol `x`)))

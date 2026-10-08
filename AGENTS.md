@@ -92,14 +92,13 @@ Rig, em (MUMPS) and nexis check in parsers that Nexus generates
 generated code reaches them when they regenerate; their suites are the
 final check. Slash, Zag and nanoruby check in parsers from Nexus 0.10.3;
 their grammars for this Nexus are `test/slash/slash.grammar`,
-`test/zag/zag.grammar` and `test/ruby/ruby.grammar` here. `test/rig` holds
-the grammar, lang module and test programs of Rig's main, copied
-verbatim, and `test/mumps` the grammar and lang module of em (its
-`test.conf` names the em commit). `test/nexis` holds a snapshot of nexis's
-grammar, older than the original, with its lang module kept on this
-Nexus's API; it is re-synced, in its own commit, when nexis moves to Zig
-0.17 and this Nexus. The edits a release asks of each downstream repository are in
-`CHANGELOG.md`.
+`test/zag/zag.grammar` and `test/ruby/ruby.grammar` here. `test/rig`,
+`test/mumps` and `test/nexis` hold the grammar and lang module of Rig, em
+and nexis as their main branches have them, copied verbatim, with case
+programs copied from their tests and examples; each `test.conf` names the
+source commit. A copy is re-synced, in its own commit, when its project
+changes its grammar or lang module. The edits a release asks of each
+downstream repository are in `CHANGELOG.md`.
 
 ## Map
 

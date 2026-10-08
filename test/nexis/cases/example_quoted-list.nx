@@ -1,16 +1,15 @@
-; examples/quoted-list.nx — quoted compound collections, step #8c.1.
+; examples/quoted-list.nx — quoted compound collections.
 ;
-; The quoted list is constructed at runtime via the internal
-; `#%list` primitive (emitted by `lowerQuotePayload` for any
-; compound list payload). Elements are recursively
-; quote-lowered: symbols intern via the VM Interner, keywords
-; same, fixnums use the literal Tiny variant.
+; A quoted list is data: every element is quoted too (symbols and
+; keywords interned), and the compiler folds the whole list into one
+; constant of the routine (`bin/nexis disasm` shows it as
+; `load-const (point x y)`).
 ;
-; Syntax-quote `\`(a ~b)` and splicing `~@xs` sit on top of this
-; same runtime substrate (see syntax-quote.nx).
+; Syntax-quote `\`(a ~b)` and splicing `~@xs` build their lists at
+; run time instead (see syntax-quote.nx).
 
 (defn point [x y] (quote (point x y)))
 
 ; Result: the data list (point x y) — NOT a call. quote
 ; preserves the structural form as a runtime list value.
-(point 3 4)
+(println (point 3 4))

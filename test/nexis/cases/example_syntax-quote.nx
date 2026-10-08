@@ -2,7 +2,7 @@
 ;
 ; Demonstrates the macro author's primary tool. The runtime
 ; constructs lists, splices in computed lists, and auto-gensyms
-; hygenic names — all without any stdlib.
+; hygienic names — all without any stdlib.
 
 (def parts (quote (b c d)))
 
@@ -10,5 +10,5 @@
 ; spreads the elements of `parts` inline; bracketing `a` and `e`
 ; are literal symbols, qualified to the current namespace the
 ; way Clojure's syntax-quote does.
-`(a ~@parts e)
+(println `(a ~@parts e))
 ; => (user/a b c d user/e)

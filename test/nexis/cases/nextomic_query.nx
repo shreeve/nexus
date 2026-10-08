@@ -78,6 +78,9 @@
        (= #{} (d/q '[:find ?n :where [?e :person/tags :nope/tag] [?e :person/name ?n]] db)))
 (t/check "a lookup ref that names nothing matches nothing"
        (= #{} (d/q '[:find ?n :where [?e :person/boss [:person/email "nobody@x"]] [?e :person/name ?n]] db)))
+(t/check "a list constant is a value, not a lookup ref, though = to one"
+       (and (= #{} (d/q '[:find ?n :where [?e :person/boss (:person/email "ann@x")] [?e :person/name ?n]] db))
+            (= #{["Bob"] ["Cy"]} (d/q '[:find ?n :where [?e :person/boss [:person/email "ann@x"]] [?e :person/name ?n]] db))))
 (t/check "the tx position binds the transaction entity"
        (= 1 (count (d/q '[:find ?tx :where [?e :person/name "Flo" ?tx]] db))))
 
@@ -91,6 +94,43 @@
 (println (rows (d/q '[:find ?n ?total :in $ ?status ?min :where [?o :order/status ?status] [?o :order/total ?total]
                      [(> ?total ?min)] [?o :order/customer ?e] [?e :person/name ?n]] db :status/open 20.0)))
 
+; --- the arg-map form ----------------------------------------------------
+
+(println (rows (d/q {:query '[:find ?n :in $ ?a :where [?e :person/age ?a] [?e :person/name ?n]] :args [db 30]})))
+(println (d/q {:query '{:find [?x] :in [[?x ...]]} :args [[1 2]]}))
+; Datomic's :timeout and :io-context are accepted and ignored.
+(println (d/q {:query '[:find ?x :in ?x] :args [1] :timeout 10 :io-context :request-7}))
+(println (t/caught (d/q {:query '[:find ?x :in ?x] :args [1] :limit 10})))
+(println (t/caught (d/q {:query '[:find ?x :in ?x] :args 1})))
+
+; --- queries over their inputs alone ---------------------------------------
+
+(println (d/q '[:find ?x :in [?x ...]] [1 2 3]))
+(println (rows (d/q '[:find ?x ?y :in [?x ...] ?y :where [(< ?x ?y)]] [1 2 3] 3)))
+(println (d/q '[:find (sum ?x) . :in [?x ...]] [1 2 3]))
+(println (rows (d/q '[:find ?x ?n :in ?x [[?n]] :where [(* ?x ?n) ?z] [(> ?z 5)]] 3 [[1] [2] [3]])))
+(println (d/q '[:find ?n . :in ?x $ :where [?e :person/age ?x] [?e :person/name ?n]] 41 db))
+(println (t/caught (d/q '[:find ?e :in ?x :where [?e :person/age ?x]] 1)))
+(println (t/caught (d/q '[:find ?e :in ?x :where [(missing? $ ?x :person/age)] [(identity ?x) ?e]] 1)))
+(println (t/caught (d/q '[:find (pull ?x [*]) :in ?x] 1)))
+(println (t/caught (d/q '[:find ?e :in $2 $ :where [?e :person/age 1]] db db)))
+(println (t/caught (d/q '[:find ?e :where [?e :person/age 1]])))
+
+; --- collections of tuples as data sources ---------------------------------
+
+(def edges [[1 :to 2] [2 :to 3] [3 :to 1] [3 :to 4]])
+(println (rows (d/q '[:find ?a ?b :in $ :where [?a :to ?b]] edges)))
+(println (d/q '[:find ?c :in $ :where [?a :to ?b] [?b :to ?c] [(= ?a 1)]] edges))
+(println (rows (d/q '[:find ?n ?w :in $ $words :where [?x :person/age ?a] [?x :person/name ?n] [$words ?a ?w]]
+                    db [[30 "thirty"] [25 "twenty-five"] [26 "twenty-six"]])))
+(println (rows (d/q '[:find ?x :in $ :where [?x ?x]] [[1 1] [1 2] [3 3] [4]])))
+(println (count (d/q '[:find ?a ?b :in $ % :where (reach ?a ?b)] edges
+                     '[[(reach ?a ?b) [?a :to ?b]] [(reach ?a ?b) [?a :to ?m] (reach ?m ?b)]])))
+(println (t/caught (d/q '[:find ?x :in $ :where [?x :to [:person/email "a@x"]]] edges)))
+(println (t/caught (d/q '[:find ?x :in $ :where [?x :to _] [(missing? $ ?x :to)]] edges)))
+(println (t/caught (d/q '[:find (pull ?x [*]) :in $ :where [?x :to _]] edges)))
+(println (t/caught (d/q '[:find ?x :in $ :where [?x :to _]] [1 2])))
+
 ; --- predicates: built-in, defn'd, core, alias-qualified ------------------
 
 (defn adult? [age] (>= age 30))
@@ -99,9 +139,22 @@
 (println (rows (d/q '[:find ?n :where [?e :person/age ?a] [(< 26 ?a 41)] [?e :person/name ?n]] db)))
 (println (rows (d/q '[:find ?n :where [?e :person/name ?n] [(not= ?n "Ann")] [?e :person/role _]] db)))
 (println (rows (d/q '[:find ?n :where [?e :person/name ?n] [(missing? $ ?e :person/tags)]] db)))
+(println (rows (d/q '[:find ?n ?old :where [?e :person/name ?n] [?e :person/age ?a] [(>= ?a 33) ?old]] db)))
+(println (rows (d/q '[:find ?n ?untagged :where [?e :person/name ?n] [(missing? $ ?e :person/tags) ?untagged]] db)))
 (println (rows (d/q '[:find ?n :where [?e :person/age ?a] [(adult? ?a)] [?e :person/name ?n]] db)))
 (println (rows (d/q '[:find ?n :where [?e :person/age ?a] [(even? ?a)] [?e :person/name ?n]] db)))
 (println (rows (d/q '[:find ?n :where [?e :person/name ?n] [(string? ?n)]] db)))
+; A predicate's result is tested and dropped, never realized: a lazy
+; seq, empty or infinite, is truthy and its body never runs.
+(def pred-runs (atom 0))
+(defn counted [n] (lazy-seq (swap! pred-runs inc) nil))
+(t/check "a predicate's lazy seq is truthy and stays unrealized"
+       (and (= 6 (count (d/q '[:find ?n :where [?e :person/name ?n] [(user/counted ?n)]] db)))
+            (= 0 @pred-runs)))
+(t/check "a predicate returning an infinite seq ends"
+       (= 6 (count (d/q '[:find ?n :where [?e :person/name ?n] [(repeat ?n)]] db))))
+(t/check "a predicate through a variable is tested the same way"
+       (= 6 (count (d/q '[:find ?n :in $ ?f :where [?e :person/name ?n] [(?f ?n)]] db repeat))))
 (println (rows (d/q '[:find ?n :where [?e :person/name ?n] [(s/lower-case ?n) ?l] [(= ?l "ann")]] db)))
 
 ; --- a variable in function position: bound to a function, a keyword, a map --
@@ -120,6 +173,11 @@
 (println (rows (d/q '[:find ?u :where [?e :person/name ?n] [(nexis.string/upper-case ?n) ?u]] db)))
 (println (rows (d/q '[:find ?n ?a :where [?e :person/name ?n] [(get-else $ ?e :person/age -1) ?a]] db)))
 (println (rows (d/q '[:find ?n ?a ?v :where [?e :person/name ?n] [(get-some $ ?e :person/height :person/age) [?a ?v]]] db)))
+(println (t/caught (d/q '[:find ?n ?t :where [?e :person/name ?n] [(get-else $ ?e :person/tags :none) ?t]] db)))
+(println (t/caught (d/q '[:find ?n ?a :where [?e :person/name ?n] [(get-else $ ?e :person/age nil) ?a]] db)))
+(println (t/caught (d/q '[:find ?n ?a :in $ ?d :where [?e :person/name ?n] [(get-else $ ?e :person/age ?d) ?a]] db nil)))
+(println (t/caught (d/q '[:find ?n ?a :where [?e :person/name ?n] [(get-else $ ?e :person/nope 0) ?a]] db)))
+(println (t/caught (d/q '[:find ?n :where [?e :person/name ?n] [(missing? $ ?e :person/nope)]] db)))
 (println (rows (d/q '[:find ?n ?i ?s ?l :where [?e :person/name ?n] [(!= ?n "Ann")] [(identity ?n) ?i] [(subs ?n 0 1) ?s] [(count ?n) ?l]] db)))
 (println (rows (d/q '[:find ?n ?t :where [(ground [:red :green]) [?t ...]] [?e :person/tags ?t] [?e :person/name ?n]] db)))
 (println (rows (d/q '[:find ?pair :where [?e :person/name ?n] [?e :person/age ?a] [(tuple ?n ?a) ?pair]] db)))
@@ -136,6 +194,8 @@
 (println (d/q '[:find [(min ?a) (max ?a) (sum ?a) (avg ?a) (count-distinct ?a) (count ?e)] :where [?e :person/age ?a]] db))
 (println (d/q '[:find (sum ?a) . :where [?e :person/age ?a]] db))
 (println (d/q '[:find (sum ?a) . :with ?e :where [?e :person/age ?a]] db))
+(t/check "a sum past the fixnum range is a bignum, as + gives"
+       (= (* 3 140737488355327) (d/q '[:find (sum ?x) . :with ?i :in $ [[?i ?x]]] db [[1 140737488355327] [2 140737488355327] [3 140737488355327]])))
 (println (rows (d/q '[:find ?b (count ?e) :where [?e :person/boss ?x] [?x :person/name ?b]] db)))
 (println (d/q '[:find [(median ?a) (variance ?a) (stddev ?a) (max 2 ?a) (min 2 ?a)] :with ?e :where [?e :person/age ?a]] db))
 (println (d/q '[:find (median ?a) . :where [?e :person/age ?a] [(< ?a 41)]] db))
@@ -144,6 +204,19 @@
 (println (map count (d/q '[:find [(sample 3 ?a) (rand 8 ?a) (sample 100 ?a)] :where [?e :person/age ?a]] db)))
 (println (t/caught (d/q '[:find (variance ?n) :where [_ :person/name ?n]] db)))
 (println (sort (d/q '[:find (distinct ?t) . :where [_ :person/tags ?t]] db)))
+(t/check "keywords compare and aggregate by name, as compare orders them"
+       (and (= :red (d/q '[:find (max ?t) . :where [_ :person/tags ?t]] db))
+            (= :blue (d/q '[:find (min ?t) . :where [_ :person/tags ?t]] db))
+            (= [:red :green] (d/q '[:find (max 2 ?t) . :where [_ :person/tags ?t]] db))
+            (= #{[:blue]} (d/q '[:find ?t :where [_ :person/tags ?t] [(< ?t :c)]] db))
+            (= #{[:green] [:red]} (d/q '[:find ?t :where [_ :person/tags ?t] [(>= ?t :green)]] db))))
+(t/check "an unqualified keyword orders before a qualified one, as compare orders them"
+  (let [ks [:b :a/b :c :b/a :ab]]
+    (and (= #{[:ab]} (d/q '[:find ?x :in [?x ...] :where [(< ?x :b)]] ks))
+         (= #{[:a/b] [:b/a]} (d/q '[:find ?x :in [?x ...] :where [(> ?x :c)]] ks))
+         (= [(first (sort ks)) (last (sort ks))] (d/q '[:find [(min ?x) (max ?x)] :in [?x ...]] ks))
+         (= (take 2 (sort ks)) (d/q '[:find (min 2 ?x) . :in [?x ...]] ks))
+         (= (take 2 (reverse (sort ks))) (d/q '[:find (max 2 ?x) . :in [?x ...]] ks)))))
 (println (d/q '[:find ?n . :where [?e :person/age 55] [?e :person/name ?n]] db))
 (println (d/q '[:find ?n . :where [?e :person/age 99] [?e :person/name ?n]] db))
 (println (sort (d/q '[:find [?n ...] :where [?e :person/boss _] [?e :person/name ?n]] db)))
@@ -161,7 +234,22 @@
 (println (sort (map (fn [m] (get m 'n)) (d/q '[:find ?n (count ?e) :syms n c :where [?e :person/name ?n]] db))))
 (println (t/caught (d/q '[:find ?n ?a :keys name :where [?e :person/name ?n] [?e :person/age ?a]] db)))
 (println (t/caught (d/q '[:find (pull ?e [:nope/attr]) :where [?e :person/age 30]] db)))
+;; A bad pull pattern fails before any user function runs.
+(def pulled (atom 0))
+(defn count-pull! [e] (swap! pulled inc) true)
+(println (t/caught (d/q '[:find (pull ?e [:nope/attr]) :where [?e :person/age 30] [(user/count-pull! ?e)]] db)) @pulled)
 (println (t/caught (d/q '[:find (pull ?e [:person/name]) :where [?e :person/age 30]] (d/history db))))
+(println (d/q '[:find (pull ?e ?p) . :in $ ?p :where [?e :person/email "cy@x"]] db [:person/name :person/age]))
+;; The entity of a pull is an id, an ident or a lookup ref; one that
+;; names nothing pulls as nil.
+(println (d/q '[:find (pull ?e [:person/name]) . :in $ ?e] db [:person/email "cy@x"]))
+(println (d/q '[:find (pull ?e [:db/ident]) . :in $ ?e] db :person/name))
+(println (d/q '[:find (pull ?e [:person/name]) . :in $ ?e] db [:person/email "nobody@x"]))
+(println (t/caught (d/q '[:find (pull ?e [:person/name]) . :in $ ?e] db "cy@x")))
+(println (d/q '[:find [(pull $then ?e [:person/name]) (pull ?e [:person/name])] :in $ $then :where [?e :person/email "ed@x"]]
+              db (d/as-of db (:tx people))))
+(println (t/caught (d/q '[:find (pull ?e ?p) :where [?e :person/age 30] [(ground [:person/name]) ?p]] db)))
+(println (t/caught (d/q '[:find (pull $2 ?e [:person/name]) :where [?e :person/age 30]] db)))
 
 ; --- not, or, not-join, or-join ------------------------------------------
 
@@ -208,6 +296,29 @@
 (println (sort (d/q '[:find [?n ...] :in $ % :where [?b :person/email "cy@x"] (responsible ?b ?e) [?e :person/name ?n]] db rules)))
 (println (rows (d/q '[:find ?b ?n :in $ % :where (responsible ?x ?e) [?x :person/name ?b] [?e :person/name ?n]] db rules)))
 (println (sort (d/q '[:find [?n ...] :in $ $2 % :where [?b :person/email "ann@x"] ($2 responsible ?b ?e) [?e :person/name ?n]] db before rules)))
+; An input resolves in the source of the first step that reads it, a
+; recursive rule's call included: here `$2`, where the lookup ref names
+; an entity that the older `$` does not hold.
+(def kc (d/connect "knows.edb"))
+(def kschema (d/transact! kc [{:db/ident :k/email :db/valueType :db.type/string :db/cardinality :db.cardinality/one
+                               :db/unique :db.unique/identity}
+                              {:db/ident :k/friend :db/valueType :db.type/ref :db/cardinality :db.cardinality/many}
+                              {:db/ident :k/age :db/valueType :db.type/long :db/cardinality :db.cardinality/one}]))
+(def kr (d/transact! kc [{:db/id "a" :k/email "a@x"} {:db/id "b" :k/email "b@x" :k/friend ["a"]}
+                         {:db/id "c" :k/email "c@x" :k/friend ["b"]}]))
+(def knows '[[(knows ?x ?y) [?x :k/friend ?y]] [(knows ?x ?y) [?x :k/friend ?m] (knows ?m ?y)]])
+(let [now (d/db kc)
+      old (d/as-of now (:tx kschema))
+      ka (get (:tempids kr) "a")
+      kcc (get (:tempids kr) "c")]
+  (doseq [e [kcc [:k/email "c@x"]]]
+    (println (d/q '[:find ?e :in $ $2 % ?e ?b :where ($2 knows ?e ?b) (not [?e :k/age 99])] old now knows e ka)
+             (d/q '[:find ?e :in $ $2 % ?e ?b :where (not [?e :k/age 99]) ($2 knows ?e ?b)] old now knows e ka))))
+(d/release kc)
+(println (t/caught (d/q '[:find ?n :in $ % :where [?x :person/name ?n] (outranks ?x)] db
+                        '[[(outranks ?x) [?x :person/friend ?y] (not (outranks ?y))]])))
+(println (t/caught (d/q '[:find ?n :in $ % :where [?x :person/name ?n] (ra ?x)] db
+                        '[[(ra ?x) [?x :person/friend ?y] (not (rb ?y))] [(rb ?x) [?x :person/friend ?y] (ra ?y)]])))
 (t/check "a repeated query and rule set are served from the caches"
        (= (d/q '[:find [?n ...] :in $ % :where [?b :person/email "ann@x"] (responsible ?b ?e) [?e :person/name ?n]] db rules)
           (d/q '[:find [?n ...] :in $ % :where [?b :person/email "ann@x"] (responsible ?b ?e) [?e :person/name ?n]] db rules)))
@@ -226,6 +337,16 @@
 (def plan (d/explain '[:find ?n :in $ % :where [?e :person/age 30] [?e :person/name ?n] (not [?e :person/tags :red])
                       (responsible ?e ?x) [(< 1 2)]] db rules))
 (t/check "explain returns the plan as text" (and (string? plan) (> (count plan) 0)))
+(def pc (d/connect "plan.edb"))
+(d/transact! pc [{:db/ident :p/age :db/valueType :db.type/long :db/cardinality :db.cardinality/one}
+                 {:db/ident :p/name :db/valueType :db.type/string :db/cardinality :db.cardinality/one}])
+(d/transact! pc (mapv (fn [i] (merge {:p/name (str "n" i)} (when (< i 40) {:p/age (mod i 2)}))) (range 60)))
+(t/check "a rule call is costed by its bodies: the smaller scan runs first, then the call"
+       (let [lines (s/split (d/explain '[:find ?n :in $ % :where [?e :p/age 1] (named ?e ?n)] (d/db pc)
+                                       '[[(named ?e ?n) [?e :p/name ?n]]])
+                            "\n")]
+         (and (= "1. scan" (subs (first lines) 0 7))
+              (= "2. or-join" (subs (second lines) 0 10)))))
 
 ; --- errors ---------------------------------------------------------------
 
@@ -242,6 +363,14 @@
 (println (t/caught (d/q '[:find ?e :where [?e :nope/attr ?v]] db)))
 (println (t/caught (d/q '[:find ?e :where [?e :person/boss [:nope/attr 1]]] db)))
 (println (t/caught (d/q '[:find (sum ?n) :where [?e :person/name ?n]] db)))
+(println (t/caught (d/q '[:find () :where [?e :person/name ?n]] db)))
+(println (t/caught (d/q '[:find ?x ?y :in $ % :where [?x :person/name _] (half ?x ?y)] db '[[(half ?a ?b) [?a :person/age _]]])))
+(println (t/caught (d/q '[:find ?e :where [?e :person/name ?n] (not-join [?zz] [?zz :person/tags :blue])] db)))
+(println (t/caught (d/q '[:find ?e :where [?e :person/name ?n] (or-join [[?zz] ?e] [?e :person/age ?zz] [?e :person/tags ?zz])] db)))
+(println (rows (d/q '[:find ?n :in $ ?a :where (or-join [[?a] ?e] [?e :person/age ?a] [?e :person/height ?a]) [?e :person/name ?n]] db 30)))
+(def bad-arity '[[(linked ?a ?b) [?a :person/friend ?b]] [(linked ?a ?b) [?a :person/friend ?m] (linked ?m)]])
+(println (t/caught (d/q '[:find ?y :in $ % ?x ?y :where (linked ?x ?y)] db bad-arity 1 2)))
+(println (t/caught (d/q '[:find ?x ?y :in $ % :where (linked ?x ?y)] db bad-arity)))
 (println (t/caught (d/explain '[:find ?e :where [?e bogus]] db)))
 (println (t/caught (d/q '[:find ?e :where [?e :person/name ?n] [(boom ?n)]] db)))
 (t/check "the store still works after a predicate threw"
@@ -266,6 +395,8 @@
 (println (rows (d/q '[:find ?n :where [(fulltext $ :person/bio "red") [[?e ?v]]] [?e :person/name ?n]] ft)))
 (println (rows (d/q '[:find ?n ?v :where [(fulltext $ :person/bio "RED team") [[?e ?v]]] [?e :person/name ?n]] ft)))
 (println (rows (d/q '[:find ?n :where [(fulltext $ :person/bio "café") [[?e ?v]]] [?e :person/name ?n]] ft)))
+; Case folds by Unicode simple case folding, not ASCII alone.
+(println (rows (d/q '[:find ?n :where [(fulltext $ :person/bio "CAFÉ NOIR") [[?e ?v]]] [?e :person/name ?n]] ft)))
 (println (rows (d/q '[:find ?n :in $ ?needle :where [(fulltext $ :person/bio ?needle) [[?e ?v]]] [?e :person/name ?n]] ft "team blue x2")))
 (println (d/q '[:find ?e :where [(fulltext $ :person/bio "red green") [[?e ?v]]]] ft))
 (println (d/q '[:find ?e :where [(fulltext $ :person/bio "...") [[?e ?v]]]] ft))
@@ -294,4 +425,4 @@
 
 (d/release c)
 (println (t/caught (d/q ages db)))
-:query-done
+(println :query-done)
