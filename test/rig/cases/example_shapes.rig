@@ -22,7 +22,7 @@ struct Pair[T]
   left: T
   right: T
 
-sub main
+sub main()
   shapes: Pair[Shape] = Pair(left: .circle(2), right: .rect(w: 3, h: 5))
   print(area(?shapes.left))
   print(area(?shapes.right))

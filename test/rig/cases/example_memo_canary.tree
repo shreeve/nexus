@@ -97,40 +97,40 @@
   (sub
     `main`
     _
-    _
+    ()@1233..1235
     _
     (block
-      (set _ `count` _ (call (member `IntSource` `new`)@1244..1257 `1`)@1244..1260)@1236..1260
+      (set _ `count` _ (call (member `IntSource` `new`)@1246..1259 `1`)@1246..1262)@1238..1262
       (set
         _
         `doubled`
         _
         (call
-          (member `count` `map`)@1273..1282
+          (member `count` `map`)@1275..1284
           (share
-            (lambda _ (`n`)@1284..1287 (block (* `n` `2`)@1288..1293)@1288..1293)@1284..1293)@1283..1293)@1273..1294)@1263..1294
+            (lambda _ (`n`)@1286..1289 (block (* `n` `2`)@1290..1295)@1290..1295)@1286..1295)@1285..1295)@1275..1296)@1265..1296
       (set
         _
         `squared`
         _
         (call
-          (member `doubled` `map`)@1307..1318
+          (member `doubled` `map`)@1309..1320
           (share
-            (lambda _ (`n`)@1320..1323 (block (* `n` `n`)@1324..1329)@1324..1329)@1320..1329)@1319..1329)@1307..1330)@1297..1330
+            (lambda _ (`n`)@1322..1325 (block (* `n` `n`)@1326..1331)@1326..1331)@1322..1331)@1321..1331)@1309..1332)@1299..1332
       (call
-        (member `squared` `subscribe`)@1333..1350
+        (member `squared` `subscribe`)@1335..1352
         (share
           (lambda
             _
-            (`n`)@1352..1355
-            (block (call `print` `"squared"` `n`)@1356..1375)@1356..1375)@1352..1375)@1351..1375)@1333..1376
+            (`n`)@1354..1357
+            (block (call `print` `"squared"` `n`)@1358..1377)@1358..1377)@1354..1377)@1353..1377)@1335..1378
       (call
         `print`
-        (call (member `doubled` `get`)@1385..1396)@1385..1398
-        (call (member `squared` `get`)@1400..1411)@1400..1413)@1379..1414
-      (call (member `count` `set`)@1426..1435 `3`)@1426..1438
-      (call (member `count` `set`)@1479..1488 `5`)@1479..1491
+        (call (member `doubled` `get`)@1387..1398)@1387..1400
+        (call (member `squared` `get`)@1402..1413)@1402..1415)@1381..1416
+      (call (member `count` `set`)@1428..1437 `3`)@1428..1440
+      (call (member `count` `set`)@1481..1490 `5`)@1481..1493
       (call
         `print`
-        (call (member `doubled` `get`)@1539..1550)@1539..1552
-        (call (member `squared` `get`)@1554..1565)@1554..1567)@1533..1568)@1236..1633)@1225..1633)@357..1633
+        (call (member `doubled` `get`)@1541..1552)@1541..1554
+        (call (member `squared` `get`)@1556..1567)@1556..1569)@1535..1570)@1238..1635)@1225..1635)@357..1635

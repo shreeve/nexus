@@ -2,7 +2,7 @@
 ;
 ; A user macro is a fn that runs at COMPILE TIME, takes
 ; unevaluated arg Forms as data, and returns a Form that
-; replaces the call site. v1 macros use syntax-quote to
+; replaces the call site. These macros use syntax-quote to
 ; build their output (`/`~`/`~@`); collection-manipulation
 ; fns like cons/first/rest are host builtins in the stdlib.
 ;
@@ -29,6 +29,6 @@
 
 (println (safe-div 6 3) (safe-div 1 0))
 
-(my-when (unless false true)
+(println (my-when (unless false true)
   :all-the-macros-work
-  :and-the-do-block-returns-this-last-one)
+  :and-the-do-block-returns-this-last-one))

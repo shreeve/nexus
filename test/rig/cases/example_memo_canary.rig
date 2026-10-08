@@ -35,7 +35,7 @@ struct IntSource
         d.set(f(v)))
     derived
 
-sub main
+sub main()
   count = IntSource.new(1)
   doubled = count.map(*|n| n * 2)
   squared = doubled.map(*|n| n * n)

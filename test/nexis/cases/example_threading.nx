@@ -6,8 +6,8 @@
 ;
 ; Host macros: let/fn/->.
 
-(let [start 0]
+(println (let [start 0]
   (-> start
       (+ 1)
       (+ 10)
-      (+ 100)))
+      (+ 100))))

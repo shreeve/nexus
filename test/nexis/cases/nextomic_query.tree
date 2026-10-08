@@ -1,18 +1,40 @@
 (program
-  (list (symbol `require`) (quote (vector (symbol `nextomic`) (keyword `:as`) (symbol `d`))))
-  (list (symbol `require`) (quote (vector (symbol `prelude`) (keyword `:as`) (symbol `t`))))
-  (list (symbol `require`) (quote (vector (symbol `nexis.string`) (keyword `:as`) (symbol `s`))))
   (list
+    `(`
+    (symbol `require`)
+    (quote `'` (vector `[` (symbol `nextomic`) (keyword `:as`) (symbol `d`) `]`))
+    `)`)
+  (list
+    `(`
+    (symbol `require`)
+    (quote `'` (vector `[` (symbol `prelude`) (keyword `:as`) (symbol `t`) `]`))
+    `)`)
+  (list
+    `(`
+    (symbol `require`)
+    (quote `'` (vector `[` (symbol `nexis.string`) (keyword `:as`) (symbol `s`) `]`))
+    `)`)
+  (list
+    `(`
     (symbol `defn`)
     (symbol `rows`)
-    (vector (symbol `res`))
-    (list (symbol `sort`) (symbol `res`)))
-  (list (symbol `def`) (symbol `c`) (list (symbol `d/connect`) (string `"query.edb"`)))
+    (vector `[` (symbol `res`) `]`)
+    (list `(` (symbol `sort`) (symbol `res`) `)`)
+    `)`)
   (list
+    `(`
+    (symbol `def`)
+    (symbol `c`)
+    (list `(` (symbol `d/connect`) (string `"query.edb"`) `)`)
+    `)`)
+  (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c`)
     (vector
+      `[`
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/name`)
         (keyword `:db/valueType`)
@@ -20,8 +42,10 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/index`)
-        (symbol `true`))
+        (symbol `true`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/email`)
         (keyword `:db/valueType`)
@@ -29,57 +53,73 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/unique`)
-        (keyword `:db.unique/identity`))
+        (keyword `:db.unique/identity`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/age`)
         (keyword `:db/valueType`)
         (keyword `:db.type/long`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/height`)
         (keyword `:db/valueType`)
         (keyword `:db.type/double`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/active`)
         (keyword `:db/valueType`)
         (keyword `:db.type/boolean`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/tags`)
         (keyword `:db/valueType`)
         (keyword `:db.type/keyword`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/many`))
+        (keyword `:db.cardinality/many`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/friend`)
         (keyword `:db/valueType`)
         (keyword `:db.type/ref`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/many`))
+        (keyword `:db.cardinality/many`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/boss`)
         (keyword `:db/valueType`)
         (keyword `:db.type/ref`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/role`)
         (keyword `:db/valueType`)
         (keyword `:db.type/keyword`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:order/number`)
         (keyword `:db/valueType`)
@@ -87,15 +127,19 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/unique`)
-        (keyword `:db.unique/value`))
+        (keyword `:db.unique/value`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:order/customer`)
         (keyword `:db/valueType`)
         (keyword `:db.type/ref`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:order/total`)
         (keyword `:db/valueType`)
@@ -103,8 +147,10 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/index`)
-        (symbol `true`))
+        (symbol `true`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:order/status`)
         (keyword `:db/valueType`)
@@ -112,24 +158,33 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/index`)
-        (symbol `true`))
+        (symbol `true`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:order/items`)
         (keyword `:db/valueType`)
         (keyword `:db.type/string`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/many`))
-      (map (keyword `:db/ident`) (keyword `:role/admin`))
-      (map (keyword `:db/ident`) (keyword `:role/user`))))
+        (keyword `:db.cardinality/many`)
+        `}`)
+      (map `{` (keyword `:db/ident`) (keyword `:role/admin`) `}`)
+      (map `{` (keyword `:db/ident`) (keyword `:role/user`) `}`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `people`)
     (list
+      `(`
       (symbol `d/transact!`)
       (symbol `c`)
       (vector
+        `[`
         (map
+          `{`
           (keyword `:db/id`)
           (string `"ann"`)
           (keyword `:person/name`)
@@ -143,10 +198,12 @@
           (keyword `:person/active`)
           (symbol `true`)
           (keyword `:person/tags`)
-          (vector (keyword `:red`) (keyword `:blue`))
+          (vector `[` (keyword `:red`) (keyword `:blue`) `]`)
           (keyword `:person/role`)
-          (keyword `:role/admin`))
+          (keyword `:role/admin`)
+          `}`)
         (map
+          `{`
           (keyword `:db/id`)
           (string `"bob"`)
           (keyword `:person/name`)
@@ -160,14 +217,16 @@
           (keyword `:person/active`)
           (symbol `false`)
           (keyword `:person/tags`)
-          (vector (keyword `:blue`))
+          (vector `[` (keyword `:blue`) `]`)
           (keyword `:person/friend`)
-          (vector (string `"ann"`))
+          (vector `[` (string `"ann"`) `]`)
           (keyword `:person/boss`)
           (string `"ann"`)
           (keyword `:person/role`)
-          (keyword `:role/user`))
+          (keyword `:role/user`)
+          `}`)
         (map
+          `{`
           (keyword `:db/id`)
           (string `"cy"`)
           (keyword `:person/name`)
@@ -181,12 +240,14 @@
           (keyword `:person/active`)
           (symbol `true`)
           (keyword `:person/tags`)
-          (vector (keyword `:red`) (keyword `:green`))
+          (vector `[` (keyword `:red`) (keyword `:green`) `]`)
           (keyword `:person/friend`)
-          (vector (string `"ann"`) (string `"bob"`))
+          (vector `[` (string `"ann"`) (string `"bob"`) `]`)
           (keyword `:person/boss`)
-          (string `"ann"`))
+          (string `"ann"`)
+          `}`)
         (map
+          `{`
           (keyword `:db/id`)
           (string `"di"`)
           (keyword `:person/name`)
@@ -198,10 +259,12 @@
           (keyword `:person/active`)
           (symbol `true`)
           (keyword `:person/friend`)
-          (vector (string `"cy"`))
+          (vector `[` (string `"cy"`) `]`)
           (keyword `:person/boss`)
-          (string `"cy"`))
+          (string `"cy"`)
+          `}`)
         (map
+          `{`
           (keyword `:db/id`)
           (string `"ed"`)
           (keyword `:person/name`)
@@ -211,78 +274,104 @@
           (keyword `:person/age`)
           (int `55`)
           (keyword `:person/tags`)
-          (vector (keyword `:green`))
+          (vector `[` (keyword `:green`) `]`)
           (keyword `:person/role`)
-          (keyword `:role/admin`)))))
+          (keyword `:role/admin`)
+          `}`)
+        `]`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c`)
     (vector
+      `[`
       (map
+        `{`
         (keyword `:order/number`)
         (int `1`)
         (keyword `:order/customer`)
-        (vector (keyword `:person/email`) (string `"ann@x"`))
+        (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
         (keyword `:order/total`)
         (real `10.5`)
         (keyword `:order/status`)
         (keyword `:status/open`)
         (keyword `:order/items`)
-        (vector (string `"apple"`) (string `"pear"`)))
+        (vector `[` (string `"apple"`) (string `"pear"`) `]`)
+        `}`)
       (map
+        `{`
         (keyword `:order/number`)
         (int `2`)
         (keyword `:order/customer`)
-        (vector (keyword `:person/email`) (string `"bob@x"`))
+        (vector `[` (keyword `:person/email`) (string `"bob@x"`) `]`)
         (keyword `:order/total`)
         (real `99.0`)
         (keyword `:order/status`)
         (keyword `:status/shipped`)
         (keyword `:order/items`)
-        (vector (string `"fig"`)))
+        (vector `[` (string `"fig"`) `]`)
+        `}`)
       (map
+        `{`
         (keyword `:order/number`)
         (int `3`)
         (keyword `:order/customer`)
-        (vector (keyword `:person/email`) (string `"ann@x"`))
+        (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
         (keyword `:order/total`)
         (real `5.25`)
         (keyword `:order/status`)
-        (keyword `:status/shipped`))
+        (keyword `:status/shipped`)
+        `}`)
       (map
+        `{`
         (keyword `:order/number`)
         (int `4`)
         (keyword `:order/customer`)
-        (vector (keyword `:person/email`) (string `"cy@x"`))
+        (vector `[` (keyword `:person/email`) (string `"cy@x"`) `]`)
         (keyword `:order/total`)
         (real `42.0`)
         (keyword `:order/status`)
         (keyword `:status/open`)
         (keyword `:order/items`)
-        (vector (string `"apple"`)))))
+        (vector `[` (string `"apple"`) `]`)
+        `}`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `update`)
     (list
+      `(`
       (symbol `d/transact!`)
       (symbol `c`)
       (vector
+        `[`
         (vector
+          `[`
           (keyword `:db/add`)
-          (vector (keyword `:person/email`) (string `"bob@x"`))
+          (vector `[` (keyword `:person/email`) (string `"bob@x"`) `]`)
           (keyword `:person/age`)
-          (int `26`))
+          (int `26`)
+          `]`)
         (vector
+          `[`
           (keyword `:db/retract`)
-          (vector (keyword `:person/email`) (string `"ann@x"`))
+          (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
           (keyword `:person/tags`)
-          (keyword `:red`))
+          (keyword `:red`)
+          `]`)
         (map
+          `{`
           (keyword `:db/id`)
-          (vector (keyword `:person/email`) (string `"ed@x"`))
+          (vector `[` (keyword `:person/email`) (string `"ed@x"`) `]`)
           (keyword `:person/name`)
-          (string `"Edward"`))
+          (string `"Edward"`)
+          `}`)
         (map
+          `{`
           (keyword `:db/id`)
           (string `"flo"`)
           (keyword `:person/name`)
@@ -292,239 +381,455 @@
           (keyword `:person/age`)
           (int `33`)
           (keyword `:person/friend`)
-          (vector (vector (keyword `:person/email`) (string `"bob@x"`))))
+          (vector `[` (vector `[` (keyword `:person/email`) (string `"bob@x"`) `]`) `]`)
+          `}`)
         (vector
+          `[`
           (keyword `:db/retract`)
-          (vector (keyword `:person/email`) (string `"cy@x"`))
+          (vector `[` (keyword `:person/email`) (string `"cy@x"`) `]`)
           (keyword `:person/friend`)
-          (vector (keyword `:person/email`) (string `"bob@x"`))))))
-  (list (symbol `def`) (symbol `db`) (list (symbol `d/db`) (symbol `c`)))
+          (vector `[` (keyword `:person/email`) (string `"bob@x"`) `]`)
+          `]`)
+        `]`)
+      `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `db`) (list `(` (symbol `d/db`) (symbol `c`) `)`) `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `ann`)
-    (list (symbol `d/entid`) (symbol `db`) (vector (keyword `:person/email`) (string `"ann@x"`))))
+    (list
+      `(`
+      (symbol `d/entid`)
+      (symbol `db`)
+      (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?a`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (int `30`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/height`) (real `1.8`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/height`) (real `1.8`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/active`) (symbol `true`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/active`) (symbol `true`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/role`) (keyword `:role/admin`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/role`) (keyword `:role/admin`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
-              (vector (keyword `:person/email`) (string `"ann@x"`))
+              `[`
+              (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
               (keyword `:person/name`)
-              (symbol `?n`))))
-        (symbol `db`))))
+              (symbol `?n`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
+              `[`
               (symbol `?e`)
               (keyword `:person/boss`)
-              (vector (keyword `:person/email`) (string `"ann@x"`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+              (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?t`)
             (keyword `:where`)
-            (vector (symbol `_`) (keyword `:person/tags`) (symbol `?t`))))
-        (symbol `db`))))
+            (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `_`))
-            (vector (symbol `?e`) (keyword `:person/tags`) (symbol `_`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `_`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/tags`) (symbol `_`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?f`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/friend`) (symbol `?x`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?x`) (keyword `:person/name`) (symbol `?f`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/friend`) (symbol `?x`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `?f`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?item`)
             (keyword `:where`)
-            (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?e`))
-            (vector (symbol `?o`) (keyword `:order/items`) (symbol `?item`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?o`) (keyword `:order/customer`) (symbol `?e`) `]`)
+            (vector `[` (symbol `?o`) (keyword `:order/items`) (symbol `?item`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"a constant that names nothing matches nothing"`)
     (list
+      `(`
       (symbol `=`)
-      (set)
+      (set `#{` `}`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:nope/tag`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/tags`) (keyword `:nope/tag`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"a lookup ref that names nothing matches nothing"`)
     (list
+      `(`
       (symbol `=`)
-      (set)
+      (set `#{` `}`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
+              `[`
               (symbol `?e`)
               (keyword `:person/boss`)
-              (vector (keyword `:person/email`) (string `"nobody@x"`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+              (vector `[` (keyword `:person/email`) (string `"nobody@x"`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
+    (symbol `t/check`)
+    (string `"a list constant is a value, not a lookup ref, though = to one"`)
+    (list
+      `(`
+      (symbol `and`)
+      (list
+        `(`
+        (symbol `=`)
+        (set `#{` `}`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?n`)
+              (keyword `:where`)
+              (vector
+                `[`
+                (symbol `?e`)
+                (keyword `:person/boss`)
+                (list `(` (keyword `:person/email`) (string `"ann@x"`) `)`)
+                `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      (list
+        `(`
+        (symbol `=`)
+        (set `#{` (vector `[` (string `"Bob"`) `]`) (vector `[` (string `"Cy"`) `]`) `}`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?n`)
+              (keyword `:where`)
+              (vector
+                `[`
+                (symbol `?e`)
+                (keyword `:person/boss`)
+                (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
+                `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
     (symbol `t/check`)
     (string `"the tx position binds the transaction entity"`)
     (list
+      `(`
       (symbol `=`)
       (int `1`)
       (list
+        `(`
         (symbol `count`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
               (symbol `?tx`)
               (keyword `:where`)
-              (vector (symbol `?e`) (keyword `:person/name`) (string `"Flo"`) (symbol `?tx`))))
-          (symbol `db`)))))
+              (vector
+                `[`
+                (symbol `?e`)
+                (keyword `:person/name`)
+                (string `"Flo"`)
+                (symbol `?tx`)
+                `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?n`)
           (symbol `.`)
@@ -532,94 +837,138 @@
           (symbol `$`)
           (symbol `?age`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?age`))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?age`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          `]`))
       (symbol `db`)
-      (int `41`)))
+      (int `41`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?a`)
             (keyword `:in`)
             (symbol `$`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            `]`))
         (symbol `db`)
-        (vector (string `"Ann"`) (string `"Di"`) (string `"Nobody"`)))))
+        (vector `[` (string `"Ann"`) (string `"Di"`) (string `"Nobody"`) `]`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?e`)
           (symbol `.`)
           (keyword `:in`)
           (symbol `$`)
-          (vector (symbol `?n`) (symbol `?a`))
+          (vector `[` (symbol `?n`) (symbol `?a`) `]`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
       (symbol `db`)
-      (vector (string `"Ann"`) (int `30`))))
+      (vector `[` (string `"Ann"`) (int `30`) `]`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?a`)
             (symbol `?e`)
             (keyword `:in`)
             (symbol `$`)
-            (vector (vector (symbol `?n`) (symbol `?a`)))
+            (vector `[` (vector `[` (symbol `?n`) (symbol `?a`) `]`) `]`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            `]`))
         (symbol `db`)
         (vector
-          (vector (string `"Ann"`) (int `30`))
-          (vector (string `"Bob"`) (int `26`))
-          (vector (string `"Bob"`) (int `25`))))))
+          `[`
+          (vector `[` (string `"Ann"`) (int `30`) `]`)
+          (vector `[` (string `"Bob"`) (int `26`) `]`)
+          (vector `[` (string `"Bob"`) (int `25`) `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `ann`))))
+        (symbol `ann`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?total`)
@@ -628,154 +977,1029 @@
             (symbol `?status`)
             (symbol `?min`)
             (keyword `:where`)
-            (vector (symbol `?o`) (keyword `:order/status`) (symbol `?status`))
-            (vector (symbol `?o`) (keyword `:order/total`) (symbol `?total`))
-            (vector (list (symbol `>`) (symbol `?total`) (symbol `?min`)))
-            (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?e`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?o`) (keyword `:order/status`) (symbol `?status`) `]`)
+            (vector `[` (symbol `?o`) (keyword `:order/total`) (symbol `?total`) `]`)
+            (vector `[` (list `(` (symbol `>`) (symbol `?total`) (symbol `?min`) `)`) `]`)
+            (vector `[` (symbol `?o`) (keyword `:order/customer`) (symbol `?e`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
         (keyword `:status/open`)
-        (real `20.0`))))
+        (real `20.0`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (map
+          `{`
+          (keyword `:query`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?n`)
+              (keyword `:in`)
+              (symbol `$`)
+              (symbol `?a`)
+              (keyword `:where`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              `]`))
+          (keyword `:args`)
+          (vector `[` (symbol `db`) (int `30`) `]`)
+          `}`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (map
+        `{`
+        (keyword `:query`)
+        (quote
+          `'`
+          (map
+            `{`
+            (keyword `:find`)
+            (vector `[` (symbol `?x`) `]`)
+            (keyword `:in`)
+            (vector `[` (vector `[` (symbol `?x`) (symbol `...`) `]`) `]`)
+            `}`))
+        (keyword `:args`)
+        (vector `[` (vector `[` (int `1`) (int `2`) `]`) `]`)
+        `}`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (map
+        `{`
+        (keyword `:query`)
+        (quote `'` (vector `[` (keyword `:find`) (symbol `?x`) (keyword `:in`) (symbol `?x`) `]`))
+        (keyword `:args`)
+        (vector `[` (int `1`) `]`)
+        (keyword `:timeout`)
+        (int `10`)
+        (keyword `:io-context`)
+        (keyword `:request-7`)
+        `}`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (map
+          `{`
+          (keyword `:query`)
+          (quote `'` (vector `[` (keyword `:find`) (symbol `?x`) (keyword `:in`) (symbol `?x`) `]`))
+          (keyword `:args`)
+          (vector `[` (int `1`) `]`)
+          (keyword `:limit`)
+          (int `10`)
+          `}`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (map
+          `{`
+          (keyword `:query`)
+          (quote `'` (vector `[` (keyword `:find`) (symbol `?x`) (keyword `:in`) (symbol `?x`) `]`))
+          (keyword `:args`)
+          (int `1`)
+          `}`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (symbol `?x`)
+          (keyword `:in`)
+          (vector `[` (symbol `?x`) (symbol `...`) `]`)
+          `]`))
+      (vector `[` (int `1`) (int `2`) (int `3`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (symbol `?y`)
+            (keyword `:in`)
+            (vector `[` (symbol `?x`) (symbol `...`) `]`)
+            (symbol `?y`)
+            (keyword `:where`)
+            (vector `[` (list `(` (symbol `<`) (symbol `?x`) (symbol `?y`) `)`) `]`)
+            `]`))
+        (vector `[` (int `1`) (int `2`) (int `3`) `]`)
+        (int `3`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (list `(` (symbol `sum`) (symbol `?x`) `)`)
+          (symbol `.`)
+          (keyword `:in`)
+          (vector `[` (symbol `?x`) (symbol `...`) `]`)
+          `]`))
+      (vector `[` (int `1`) (int `2`) (int `3`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `?x`)
+            (vector `[` (vector `[` (symbol `?n`) `]`) `]`)
+            (keyword `:where`)
+            (vector `[` (list `(` (symbol `*`) (symbol `?x`) (symbol `?n`) `)`) (symbol `?z`) `]`)
+            (vector `[` (list `(` (symbol `>`) (symbol `?z`) (int `5`) `)`) `]`)
+            `]`))
+        (int `3`)
+        (vector
+          `[`
+          (vector `[` (int `1`) `]`)
+          (vector `[` (int `2`) `]`)
+          (vector `[` (int `3`) `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (symbol `?n`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `?x`)
+          (symbol `$`)
+          (keyword `:where`)
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?x`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          `]`))
+      (int `41`)
+      (symbol `db`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:in`)
+            (symbol `?x`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?x`) `]`)
+            `]`))
+        (int `1`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:in`)
+            (symbol `?x`)
+            (keyword `:where`)
+            (vector
+              `[`
+              (list `(` (symbol `missing?`) (symbol `$`) (symbol `?x`) (keyword `:person/age`) `)`)
+              `]`)
+            (vector `[` (list `(` (symbol `identity`) (symbol `?x`) `)`) (symbol `?e`) `]`)
+            `]`))
+        (int `1`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (list `(` (symbol `pull`) (symbol `?x`) (vector `[` (symbol `*`) `]`) `)`)
+            (keyword `:in`)
+            (symbol `?x`)
+            `]`))
+        (int `1`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:in`)
+            (symbol `$2`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `1`) `]`)
+            `]`))
+        (symbol `db`)
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `1`) `]`)
+            `]`))
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `edges`)
+    (vector
+      `[`
+      (vector `[` (int `1`) (keyword `:to`) (int `2`) `]`)
+      (vector `[` (int `2`) (keyword `:to`) (int `3`) `]`)
+      (vector `[` (int `3`) (keyword `:to`) (int `1`) `]`)
+      (vector `[` (int `3`) (keyword `:to`) (int `4`) `]`)
+      `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?a`)
+            (symbol `?b`)
+            (keyword `:in`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector `[` (symbol `?a`) (keyword `:to`) (symbol `?b`) `]`)
+            `]`))
+        (symbol `edges`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (symbol `?c`)
+          (keyword `:in`)
+          (symbol `$`)
+          (keyword `:where`)
+          (vector `[` (symbol `?a`) (keyword `:to`) (symbol `?b`) `]`)
+          (vector `[` (symbol `?b`) (keyword `:to`) (symbol `?c`) `]`)
+          (vector `[` (list `(` (symbol `=`) (symbol `?a`) (int `1`) `)`) `]`)
+          `]`))
+      (symbol `edges`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?w`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `$words`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `$words`) (symbol `?a`) (symbol `?w`) `]`)
+            `]`))
+        (symbol `db`)
+        (vector
+          `[`
+          (vector `[` (int `30`) (string `"thirty"`) `]`)
+          (vector `[` (int `25`) (string `"twenty-five"`) `]`)
+          (vector `[` (int `26`) (string `"twenty-six"`) `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (keyword `:in`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (symbol `?x`) `]`)
+            `]`))
+        (vector
+          `[`
+          (vector `[` (int `1`) (int `1`) `]`)
+          (vector `[` (int `1`) (int `2`) `]`)
+          (vector `[` (int `3`) (int `3`) `]`)
+          (vector `[` (int `4`) `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `count`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?a`)
+            (symbol `?b`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (list `(` (symbol `reach`) (symbol `?a`) (symbol `?b`) `)`)
+            `]`))
+        (symbol `edges`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (vector
+              `[`
+              (list `(` (symbol `reach`) (symbol `?a`) (symbol `?b`) `)`)
+              (vector `[` (symbol `?a`) (keyword `:to`) (symbol `?b`) `]`)
+              `]`)
+            (vector
+              `[`
+              (list `(` (symbol `reach`) (symbol `?a`) (symbol `?b`) `)`)
+              (vector `[` (symbol `?a`) (keyword `:to`) (symbol `?m`) `]`)
+              (list `(` (symbol `reach`) (symbol `?m`) (symbol `?b`) `)`)
+              `]`)
+            `]`))
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (keyword `:in`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector
+              `[`
+              (symbol `?x`)
+              (keyword `:to`)
+              (vector `[` (keyword `:person/email`) (string `"a@x"`) `]`)
+              `]`)
+            `]`))
+        (symbol `edges`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (keyword `:in`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:to`) (symbol `_`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `missing?`) (symbol `$`) (symbol `?x`) (keyword `:to`) `)`)
+              `]`)
+            `]`))
+        (symbol `edges`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (list `(` (symbol `pull`) (symbol `?x`) (vector `[` (symbol `*`) `]`) `)`)
+            (keyword `:in`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:to`) (symbol `_`) `]`)
+            `]`))
+        (symbol `edges`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (keyword `:in`)
+            (symbol `$`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:to`) (symbol `_`) `]`)
+            `]`))
+        (vector `[` (int `1`) (int `2`) `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
     (symbol `defn`)
     (symbol `adult?`)
-    (vector (symbol `age`))
-    (list (symbol `>=`) (symbol `age`) (int `30`)))
+    (vector `[` (symbol `age`) `]`)
+    (list `(` (symbol `>=`) (symbol `age`) (int `30`) `)`)
+    `)`)
   (list
+    `(`
     (symbol `defn`)
     (symbol `boom`)
-    (vector (symbol `x`))
-    (list (symbol `throw`) (keyword `:boom`)))
+    (vector `[` (symbol `x`) `]`)
+    (list `(` (symbol `throw`) (keyword `:boom`) `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `<`) (int `26`) (symbol `?a`) (int `41`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `<`) (int `26`) (symbol `?a`) (int `41`) `)`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `not=`) (symbol `?n`) (string `"Ann"`)))
-            (vector (symbol `?e`) (keyword `:person/role`) (symbol `_`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `not=`) (symbol `?n`) (string `"Ann"`) `)`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/role`) (symbol `_`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `missing?`) (symbol `$`) (symbol `?e`) (keyword `:person/tags`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `missing?`) (symbol `$`) (symbol `?e`) (keyword `:person/tags`) `)`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?old`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `>=`) (symbol `?a`) (int `33`) `)`) (symbol `?old`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?untagged`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `missing?`) (symbol `$`) (symbol `?e`) (keyword `:person/tags`) `)`)
+              (symbol `?untagged`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `adult?`) (symbol `?a`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `adult?`) (symbol `?a`) `)`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `even?`) (symbol `?a`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `even?`) (symbol `?a`) `)`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `string?`) (symbol `?n`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `string?`) (symbol `?n`) `)`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `pred-runs`) (list `(` (symbol `atom`) (int `0`) `)`) `)`)
   (list
+    `(`
+    (symbol `defn`)
+    (symbol `counted`)
+    (vector `[` (symbol `n`) `]`)
+    (list
+      `(`
+      (symbol `lazy-seq`)
+      (list `(` (symbol `swap!`) (symbol `pred-runs`) (symbol `inc`) `)`)
+      (symbol `nil`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"a predicate's lazy seq is truthy and stays unrealized"`)
+    (list
+      `(`
+      (symbol `and`)
+      (list
+        `(`
+        (symbol `=`)
+        (int `6`)
+        (list
+          `(`
+          (symbol `count`)
+          (list
+            `(`
+            (symbol `d/q`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (symbol `?n`)
+                (keyword `:where`)
+                (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+                (vector `[` (list `(` (symbol `user/counted`) (symbol `?n`) `)`) `]`)
+                `]`))
+            (symbol `db`)
+            `)`)
+          `)`)
+        `)`)
+      (list `(` (symbol `=`) (int `0`) (deref `@` (symbol `pred-runs`)) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"a predicate returning an infinite seq ends"`)
+    (list
+      `(`
+      (symbol `=`)
+      (int `6`)
+      (list
+        `(`
+        (symbol `count`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?n`)
+              (keyword `:where`)
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              (vector `[` (list `(` (symbol `repeat`) (symbol `?n`) `)`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"a predicate through a variable is tested the same way"`)
+    (list
+      `(`
+      (symbol `=`)
+      (int `6`)
+      (list
+        `(`
+        (symbol `count`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?n`)
+              (keyword `:in`)
+              (symbol `$`)
+              (symbol `?f`)
+              (keyword `:where`)
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              (vector `[` (list `(` (symbol `?f`) (symbol `?n`) `)`) `]`)
+              `]`))
+          (symbol `db`)
+          (symbol `repeat`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `s/lower-case`) (symbol `?n`)) (symbol `?l`))
-            (vector (list (symbol `=`) (symbol `?l`) (string `"ann"`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `s/lower-case`) (symbol `?n`) `)`) (symbol `?l`) `]`)
+            (vector `[` (list `(` (symbol `=`) (symbol `?l`) (string `"ann"`) `)`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `?pred`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `?pred`) (symbol `?a`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `?pred`) (symbol `?a`) `)`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `adult?`))))
+        (symbol `adult?`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?next`)
@@ -783,38 +2007,56 @@
             (symbol `$`)
             (symbol `?f`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `?f`) (symbol `?a`)) (symbol `?next`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `?f`) (symbol `?a`) `)`) (symbol `?next`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `inc`))))
+        (symbol `inc`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `?f`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `?f`) (symbol `?n`)) (symbol `?len`))
-            (vector (list (symbol `<`) (symbol `?len`) (int `3`)))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `?f`) (symbol `?n`) `)`) (symbol `?len`) `]`)
+            (vector `[` (list `(` (symbol `<`) (symbol `?len`) (int `3`) `)`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `count`))))
+        (symbol `count`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?v`)
@@ -822,19 +2064,32 @@
             (symbol `$`)
             (symbol `?k`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `ground`) (map (keyword `:x`) (int `1`))) (symbol `?m`))
-            (vector (list (symbol `?k`) (symbol `?m`)) (symbol `?v`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `ground`) (map `{` (keyword `:x`) (int `1`) `}`) `)`)
+              (symbol `?m`)
+              `]`)
+            (vector `[` (list `(` (symbol `?k`) (symbol `?m`) `)`) (symbol `?v`) `]`)
+            `]`))
         (symbol `db`)
-        (keyword `:x`))))
+        (keyword `:x`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?v`)
@@ -842,527 +2097,1301 @@
             (symbol `$`)
             (symbol `?m`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `?m`) (symbol `?n`)) (symbol `?v`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `?m`) (symbol `?n`) `)`) (symbol `?v`) `]`)
+            `]`))
         (symbol `db`)
-        (map (string `"Ann"`) (int `1`) (string `"Bob"`) (int `2`)))))
+        (map `{` (string `"Ann"`) (int `1`) (string `"Bob"`) (int `2`) `}`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
-            (vector (symbol `?f`) (symbol `...`))
+            (vector `[` (symbol `?f`) (symbol `...`) `]`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `?f`) (symbol `?a`)) (symbol `?r`))
-            (vector (list (symbol `>`) (symbol `?r`) (int `41`)))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `?f`) (symbol `?a`) `)`) (symbol `?r`) `]`)
+            (vector `[` (list `(` (symbol `>`) (symbol `?r`) (int `41`) `)`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (vector (symbol `inc`) (symbol `identity`)))))
+        (vector `[` (symbol `inc`) (symbol `identity`) `]`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?s`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
             (vector
-              (list (symbol `str`) (symbol `?n`) (string `" is "`) (symbol `?a`))
-              (symbol `?s`))))
-        (symbol `db`))))
+              `[`
+              (list `(` (symbol `str`) (symbol `?n`) (string `" is "`) (symbol `?a`) `)`)
+              (symbol `?s`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?next`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `+`) (symbol `?a`) (int `1`)) (symbol `?next`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector `[` (list `(` (symbol `+`) (symbol `?a`) (int `1`) `)`) (symbol `?next`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?u`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `nexis.string/upper-case`) (symbol `?n`)) (symbol `?u`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `nexis.string/upper-case`) (symbol `?n`) `)`)
+              (symbol `?u`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?a`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (vector
+              `[`
               (list
+                `(`
                 (symbol `get-else`)
                 (symbol `$`)
                 (symbol `?e`)
                 (keyword `:person/age`)
-                (int `-1`))
-              (symbol `?a`))))
-        (symbol `db`))))
+                (int `-1`)
+                `)`)
+              (symbol `?a`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?a`)
             (symbol `?v`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (vector
+              `[`
               (list
+                `(`
                 (symbol `get-some`)
                 (symbol `$`)
                 (symbol `?e`)
                 (keyword `:person/height`)
-                (keyword `:person/age`))
-              (vector (symbol `?a`) (symbol `?v`)))))
-        (symbol `db`))))
+                (keyword `:person/age`)
+                `)`)
+              (vector `[` (symbol `?a`) (symbol `?v`) `]`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
-      (symbol `rows`)
+      `(`
+      (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?t`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `get-else`)
+                (symbol `$`)
+                (symbol `?e`)
+                (keyword `:person/tags`)
+                (keyword `:none`)
+                `)`)
+              (symbol `?t`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `get-else`)
+                (symbol `$`)
+                (symbol `?e`)
+                (keyword `:person/age`)
+                (symbol `nil`)
+                `)`)
+              (symbol `?a`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?d`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `get-else`)
+                (symbol `$`)
+                (symbol `?e`)
+                (keyword `:person/age`)
+                (symbol `?d`)
+                `)`)
+              (symbol `?a`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        (symbol `nil`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (symbol `?a`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `get-else`)
+                (symbol `$`)
+                (symbol `?e`)
+                (keyword `:person/nope`)
+                (int `0`)
+                `)`)
+              (symbol `?a`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `missing?`) (symbol `$`) (symbol `?e`) (keyword `:person/nope`) `)`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?i`)
             (symbol `?s`)
             (symbol `?l`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `!=`) (symbol `?n`) (string `"Ann"`)))
-            (vector (list (symbol `identity`) (symbol `?n`)) (symbol `?i`))
-            (vector (list (symbol `subs`) (symbol `?n`) (int `0`) (int `1`)) (symbol `?s`))
-            (vector (list (symbol `count`) (symbol `?n`)) (symbol `?l`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `!=`) (symbol `?n`) (string `"Ann"`) `)`) `]`)
+            (vector `[` (list `(` (symbol `identity`) (symbol `?n`) `)`) (symbol `?i`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `subs`) (symbol `?n`) (int `0`) (int `1`) `)`)
+              (symbol `?s`)
+              `]`)
+            (vector `[` (list `(` (symbol `count`) (symbol `?n`) `)`) (symbol `?l`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?t`)
             (keyword `:where`)
             (vector
-              (list (symbol `ground`) (vector (keyword `:red`) (keyword `:green`)))
-              (vector (symbol `?t`) (symbol `...`)))
-            (vector (symbol `?e`) (keyword `:person/tags`) (symbol `?t`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+              `[`
+              (list `(` (symbol `ground`) (vector `[` (keyword `:red`) (keyword `:green`) `]`) `)`)
+              (vector `[` (symbol `?t`) (symbol `...`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/tags`) (symbol `?t`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?pair`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-            (vector (list (symbol `tuple`) (symbol `?n`) (symbol `?a`)) (symbol `?pair`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `tuple`) (symbol `?n`) (symbol `?a`) `)`)
+              (symbol `?pair`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `defn`)
     (symbol `name-and-length`)
-    (vector (symbol `n`))
-    (vector (symbol `n`) (list (symbol `count`) (symbol `n`))))
+    (vector `[` (symbol `n`) `]`)
+    (vector `[` (symbol `n`) (list `(` (symbol `count`) (symbol `n`) `)`) `]`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?len`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?x`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?x`) `]`)
             (vector
-              (list (symbol `name-and-length`) (symbol `?x`))
-              (vector (symbol `?n`) (symbol `?len`)))))
-        (symbol `db`))))
+              `[`
+              (list `(` (symbol `name-and-length`) (symbol `?x`) `)`)
+              (vector `[` (symbol `?n`) (symbol `?len`) `]`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `defn`)
     (symbol `twice`)
-    (vector (symbol `n`))
-    (vector (vector (symbol `n`) (int `1`)) (vector (symbol `n`) (int `2`))))
+    (vector `[` (symbol `n`) `]`)
+    (vector `[` (vector `[` (symbol `n`) (int `1`) `]`) (vector `[` (symbol `n`) (int `2`) `]`) `]`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?k`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (string `"Ann"`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?x`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (string `"Ann"`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?x`) `]`)
             (vector
-              (list (symbol `twice`) (symbol `?x`))
-              (vector (vector (symbol `?n`) (symbol `?k`))))))
-        (symbol `db`))))
+              `[`
+              (list `(` (symbol `twice`) (symbol `?x`) `)`)
+              (vector `[` (vector `[` (symbol `?n`) (symbol `?k`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `defn`)
     (symbol `maybe-name`)
-    (vector (symbol `n`))
-    (list (symbol `when`) (list (symbol `=`) (symbol `n`) (string `"Cy"`)) (symbol `n`)))
+    (vector `[` (symbol `n`) `]`)
+    (list
+      `(`
+      (symbol `when`)
+      (list `(` (symbol `=`) (symbol `n`) (string `"Cy"`) `)`)
+      (symbol `n`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"a nil function result drops the row"`)
     (list
+      `(`
       (symbol `=`)
-      (set (vector (string `"Cy"`)))
+      (set `#{` (vector `[` (string `"Cy"`) `]`) `}`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?m`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `maybe-name`) (symbol `?n`)) (symbol `?m`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `maybe-name`) (symbol `?n`) `)`) (symbol `?m`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (vector
-            (list (symbol `min`) (symbol `?a`))
-            (list (symbol `max`) (symbol `?a`))
-            (list (symbol `sum`) (symbol `?a`))
-            (list (symbol `avg`) (symbol `?a`))
-            (list (symbol `count-distinct`) (symbol `?a`))
-            (list (symbol `count`) (symbol `?e`)))
+            `[`
+            (list `(` (symbol `min`) (symbol `?a`) `)`)
+            (list `(` (symbol `max`) (symbol `?a`) `)`)
+            (list `(` (symbol `sum`) (symbol `?a`) `)`)
+            (list `(` (symbol `avg`) (symbol `?a`) `)`)
+            (list `(` (symbol `count-distinct`) (symbol `?a`) `)`)
+            (list `(` (symbol `count`) (symbol `?e`) `)`)
+            `]`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
-          (list (symbol `sum`) (symbol `?a`))
+          (list `(` (symbol `sum`) (symbol `?a`) `)`)
           (symbol `.`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
-          (list (symbol `sum`) (symbol `?a`))
+          (list `(` (symbol `sum`) (symbol `?a`) `)`)
           (symbol `.`)
           (keyword `:with`)
           (symbol `?e`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
-    (symbol `println`)
+    `(`
+    (symbol `t/check`)
+    (string `"a sum past the fixnum range is a bignum, as + gives"`)
     (list
-      (symbol `rows`)
+      `(`
+      (symbol `=`)
+      (list `(` (symbol `*`) (int `3`) (int `140737488355327`) `)`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
+            (keyword `:find`)
+            (list `(` (symbol `sum`) (symbol `?x`) `)`)
+            (symbol `.`)
+            (keyword `:with`)
+            (symbol `?i`)
+            (keyword `:in`)
+            (symbol `$`)
+            (vector `[` (vector `[` (symbol `?i`) (symbol `?x`) `]`) `]`)
+            `]`))
+        (symbol `db`)
+        (vector
+          `[`
+          (vector `[` (int `1`) (int `140737488355327`) `]`)
+          (vector `[` (int `2`) (int `140737488355327`) `]`)
+          (vector `[` (int `3`) (int `140737488355327`) `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
             (keyword `:find`)
             (symbol `?b`)
-            (list (symbol `count`) (symbol `?e`))
+            (list `(` (symbol `count`) (symbol `?e`) `)`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?x`))
-            (vector (symbol `?x`) (keyword `:person/name`) (symbol `?b`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/boss`) (symbol `?x`) `]`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `?b`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (vector
-            (list (symbol `median`) (symbol `?a`))
-            (list (symbol `variance`) (symbol `?a`))
-            (list (symbol `stddev`) (symbol `?a`))
-            (list (symbol `max`) (int `2`) (symbol `?a`))
-            (list (symbol `min`) (int `2`) (symbol `?a`)))
+            `[`
+            (list `(` (symbol `median`) (symbol `?a`) `)`)
+            (list `(` (symbol `variance`) (symbol `?a`) `)`)
+            (list `(` (symbol `stddev`) (symbol `?a`) `)`)
+            (list `(` (symbol `max`) (int `2`) (symbol `?a`) `)`)
+            (list `(` (symbol `min`) (int `2`) (symbol `?a`) `)`)
+            `]`)
           (keyword `:with`)
           (symbol `?e`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
-          (list (symbol `median`) (symbol `?a`))
+          (list `(` (symbol `median`) (symbol `?a`) `)`)
           (symbol `.`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))
-          (vector (list (symbol `<`) (symbol `?a`) (int `41`)))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          (vector `[` (list `(` (symbol `<`) (symbol `?a`) (int `41`) `)`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `defn`)
     (symbol `total`)
-    (vector (symbol `xs`))
-    (list (symbol `reduce`) (symbol `+`) (int `0`) (symbol `xs`)))
+    (vector `[` (symbol `xs`) `]`)
+    (list `(` (symbol `reduce`) (symbol `+`) (int `0`) (symbol `xs`) `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
-            (list (symbol `total`) (symbol `?num`))
+            (list `(` (symbol `total`) (symbol `?num`) `)`)
             (keyword `:with`)
             (symbol `?o`)
             (keyword `:where`)
-            (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?c`))
-            (vector (symbol `?c`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?o`) (keyword `:order/number`) (symbol `?num`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?o`) (keyword `:order/customer`) (symbol `?c`) `]`)
+            (vector `[` (symbol `?c`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?o`) (keyword `:order/number`) (symbol `?num`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `map`)
       (symbol `count`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (vector
-              (list (symbol `sample`) (int `3`) (symbol `?a`))
-              (list (symbol `rand`) (int `8`) (symbol `?a`))
-              (list (symbol `sample`) (int `100`) (symbol `?a`)))
+              `[`
+              (list `(` (symbol `sample`) (int `3`) (symbol `?a`) `)`)
+              (list `(` (symbol `rand`) (int `8`) (symbol `?a`) `)`)
+              (list `(` (symbol `sample`) (int `100`) (symbol `?a`) `)`)
+              `]`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (list (symbol `variance`) (symbol `?n`))
+            (list `(` (symbol `variance`) (symbol `?n`) `)`)
             (keyword `:where`)
-            (vector (symbol `_`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `_`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (list (symbol `distinct`) (symbol `?t`))
+            (list `(` (symbol `distinct`) (symbol `?t`) `)`)
             (symbol `.`)
             (keyword `:where`)
-            (vector (symbol `_`) (keyword `:person/tags`) (symbol `?t`))))
-        (symbol `db`))))
+            (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
+    (symbol `t/check`)
+    (string `"keywords compare and aggregate by name, as compare orders them"`)
+    (list
+      `(`
+      (symbol `and`)
+      (list
+        `(`
+        (symbol `=`)
+        (keyword `:red`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (list `(` (symbol `max`) (symbol `?t`) `)`)
+              (symbol `.`)
+              (keyword `:where`)
+              (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      (list
+        `(`
+        (symbol `=`)
+        (keyword `:blue`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (list `(` (symbol `min`) (symbol `?t`) `)`)
+              (symbol `.`)
+              (keyword `:where`)
+              (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      (list
+        `(`
+        (symbol `=`)
+        (vector `[` (keyword `:red`) (keyword `:green`) `]`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (list `(` (symbol `max`) (int `2`) (symbol `?t`) `)`)
+              (symbol `.`)
+              (keyword `:where`)
+              (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      (list
+        `(`
+        (symbol `=`)
+        (set `#{` (vector `[` (keyword `:blue`) `]`) `}`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?t`)
+              (keyword `:where`)
+              (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+              (vector `[` (list `(` (symbol `<`) (symbol `?t`) (keyword `:c`) `)`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      (list
+        `(`
+        (symbol `=`)
+        (set `#{` (vector `[` (keyword `:green`) `]`) (vector `[` (keyword `:red`) `]`) `}`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?t`)
+              (keyword `:where`)
+              (vector `[` (symbol `_`) (keyword `:person/tags`) (symbol `?t`) `]`)
+              (vector `[` (list `(` (symbol `>=`) (symbol `?t`) (keyword `:green`) `)`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"an unqualified keyword orders before a qualified one, as compare orders them"`)
+    (list
+      `(`
+      (symbol `let`)
+      (vector
+        `[`
+        (symbol `ks`)
+        (vector
+          `[`
+          (keyword `:b`)
+          (keyword `:a/b`)
+          (keyword `:c`)
+          (keyword `:b/a`)
+          (keyword `:ab`)
+          `]`)
+        `]`)
+      (list
+        `(`
+        (symbol `and`)
+        (list
+          `(`
+          (symbol `=`)
+          (set `#{` (vector `[` (keyword `:ab`) `]`) `}`)
+          (list
+            `(`
+            (symbol `d/q`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (symbol `?x`)
+                (keyword `:in`)
+                (vector `[` (symbol `?x`) (symbol `...`) `]`)
+                (keyword `:where`)
+                (vector `[` (list `(` (symbol `<`) (symbol `?x`) (keyword `:b`) `)`) `]`)
+                `]`))
+            (symbol `ks`)
+            `)`)
+          `)`)
+        (list
+          `(`
+          (symbol `=`)
+          (set `#{` (vector `[` (keyword `:a/b`) `]`) (vector `[` (keyword `:b/a`) `]`) `}`)
+          (list
+            `(`
+            (symbol `d/q`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (symbol `?x`)
+                (keyword `:in`)
+                (vector `[` (symbol `?x`) (symbol `...`) `]`)
+                (keyword `:where`)
+                (vector `[` (list `(` (symbol `>`) (symbol `?x`) (keyword `:c`) `)`) `]`)
+                `]`))
+            (symbol `ks`)
+            `)`)
+          `)`)
+        (list
+          `(`
+          (symbol `=`)
+          (vector
+            `[`
+            (list `(` (symbol `first`) (list `(` (symbol `sort`) (symbol `ks`) `)`) `)`)
+            (list `(` (symbol `last`) (list `(` (symbol `sort`) (symbol `ks`) `)`) `)`)
+            `]`)
+          (list
+            `(`
+            (symbol `d/q`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (vector
+                  `[`
+                  (list `(` (symbol `min`) (symbol `?x`) `)`)
+                  (list `(` (symbol `max`) (symbol `?x`) `)`)
+                  `]`)
+                (keyword `:in`)
+                (vector `[` (symbol `?x`) (symbol `...`) `]`)
+                `]`))
+            (symbol `ks`)
+            `)`)
+          `)`)
+        (list
+          `(`
+          (symbol `=`)
+          (list `(` (symbol `take`) (int `2`) (list `(` (symbol `sort`) (symbol `ks`) `)`) `)`)
+          (list
+            `(`
+            (symbol `d/q`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (list `(` (symbol `min`) (int `2`) (symbol `?x`) `)`)
+                (symbol `.`)
+                (keyword `:in`)
+                (vector `[` (symbol `?x`) (symbol `...`) `]`)
+                `]`))
+            (symbol `ks`)
+            `)`)
+          `)`)
+        (list
+          `(`
+          (symbol `=`)
+          (list
+            `(`
+            (symbol `take`)
+            (int `2`)
+            (list `(` (symbol `reverse`) (list `(` (symbol `sort`) (symbol `ks`) `)`) `)`)
+            `)`)
+          (list
+            `(`
+            (symbol `d/q`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (list `(` (symbol `max`) (int `2`) (symbol `?x`) `)`)
+                (symbol `.`)
+                (keyword `:in`)
+                (vector `[` (symbol `?x`) (symbol `...`) `]`)
+                `]`))
+            (symbol `ks`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?n`)
           (symbol `.`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (int `55`))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (int `55`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?n`)
           (symbol `.`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (int `99`))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (int `99`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/boss`) (symbol `_`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/boss`) (symbol `_`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
-          (vector (symbol `?n`) (symbol `?a`))
+          (vector `[` (symbol `?n`) (symbol `?a`) `]`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
-          (vector (symbol `?n`) (symbol `?a`))
+          (vector `[` (symbol `?n`) (symbol `?a`) `]`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/email`) (string `"nobody@x"`))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-          (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"nobody@x"`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (list
+            `(`
             (symbol `pull`)
             (symbol `?e`)
-            (vector (keyword `:person/name`) (keyword `:person/age`)))
+            (vector `[` (keyword `:person/name`) (keyword `:person/age`) `]`)
+            `)`)
           (symbol `.`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`))))
-      (symbol `db`)))
+          (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`) `]`)
+          `]`))
+      (symbol `db`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `map`)
         (keyword `:person/name`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
               (vector
-                (list (symbol `pull`) (symbol `?e`) (vector (keyword `:person/name`)))
-                (symbol `...`))
+                `[`
+                (list
+                  `(`
+                  (symbol `pull`)
+                  (symbol `?e`)
+                  (vector `[` (keyword `:person/name`) `]`)
+                  `)`)
+                (symbol `...`)
+                `]`)
               (keyword `:where`)
-              (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:green`))))
-          (symbol `db`)))))
+              (vector `[` (symbol `?e`) (keyword `:person/tags`) (keyword `:green`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `map`)
         (list
+          `(`
           (symbol `fn`)
-          (vector (vector (symbol `m`) (symbol `n`)))
-          (vector (list (keyword `:person/name`) (symbol `m`)) (symbol `n`)))
+          (vector `[` (vector `[` (symbol `m`) (symbol `n`) `]`) `]`)
+          (vector `[` (list `(` (keyword `:person/name`) (symbol `m`) `)`) (symbol `n`) `]`)
+          `)`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
-              (list (symbol `pull`) (symbol `?c`) (vector (keyword `:person/name`)))
-              (list (symbol `count`) (symbol `?o`))
+              (list `(` (symbol `pull`) (symbol `?c`) (vector `[` (keyword `:person/name`) `]`) `)`)
+              (list `(` (symbol `count`) (symbol `?o`) `)`)
               (keyword `:where`)
-              (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?c`))))
-          (symbol `db`)))))
+              (vector `[` (symbol `?o`) (keyword `:order/customer`) (symbol `?c`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `map`)
         (keyword `:name`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
               (symbol `?n`)
               (symbol `?a`)
@@ -1370,180 +3399,529 @@
               (symbol `name`)
               (symbol `age`)
               (keyword `:where`)
-              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-              (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-          (symbol `db`)))))
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `map`)
         (list
+          `(`
           (symbol `fn`)
-          (vector (symbol `m`))
-          (list (symbol `get`) (symbol `m`) (string `"name"`)))
+          (vector `[` (symbol `m`) `]`)
+          (list `(` (symbol `get`) (symbol `m`) (string `"name"`) `)`)
+          `)`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
               (symbol `?n`)
               (keyword `:strs`)
               (symbol `name`)
               (keyword `:where`)
-              (vector (symbol `?e`) (keyword `:person/age`) (int `30`))
-              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-          (symbol `db`)))))
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `map`)
         (list
+          `(`
           (symbol `fn`)
-          (vector (symbol `m`))
-          (list (symbol `get`) (symbol `m`) (quote (symbol `n`))))
+          (vector `[` (symbol `m`) `]`)
+          (list `(` (symbol `get`) (symbol `m`) (quote `'` (symbol `n`)) `)`)
+          `)`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
               (symbol `?n`)
-              (list (symbol `count`) (symbol `?e`))
+              (list `(` (symbol `count`) (symbol `?e`) `)`)
               (keyword `:syms`)
               (symbol `n`)
               (symbol `c`)
               (keyword `:where`)
-              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-          (symbol `db`)))))
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              `]`))
+          (symbol `db`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?a`)
             (keyword `:keys`)
             (symbol `name`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (list (symbol `pull`) (symbol `?e`) (vector (keyword `:nope/attr`)))
+            (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:nope/attr`) `]`) `)`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (int `30`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `pulled`) (list `(` (symbol `atom`) (int `0`) `)`) `)`)
   (list
+    `(`
+    (symbol `defn`)
+    (symbol `count-pull!`)
+    (vector `[` (symbol `e`) `]`)
+    (list `(` (symbol `swap!`) (symbol `pulled`) (symbol `inc`) `)`)
+    (symbol `true`)
+    `)`)
+  (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (list (symbol `pull`) (symbol `?e`) (vector (keyword `:person/name`)))
+            (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:nope/attr`) `]`) `)`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/age`) (int `30`))))
-        (list (symbol `d/history`) (symbol `db`)))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+            (vector `[` (list `(` (symbol `user/count-pull!`) (symbol `?e`) `)`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    (deref `@` (symbol `pulled`))
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
-      (symbol `rows`)
+      `(`
+      (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (symbol `?n`)
+            (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:person/name`) `]`) `)`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (list (symbol `not`) (vector (symbol `?e`) (keyword `:person/tags`) (symbol `_`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+            `]`))
+        (list `(` (symbol `d/history`) (symbol `db`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
-      (symbol `rows`)
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (list `(` (symbol `pull`) (symbol `?e`) (symbol `?p`) `)`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `?p`)
+          (keyword `:where`)
+          (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"cy@x"`) `]`)
+          `]`))
+      (symbol `db`)
+      (vector `[` (keyword `:person/name`) (keyword `:person/age`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:person/name`) `]`) `)`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `?e`)
+          `]`))
+      (symbol `db`)
+      (vector `[` (keyword `:person/email`) (string `"cy@x"`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:db/ident`) `]`) `)`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `?e`)
+          `]`))
+      (symbol `db`)
+      (keyword `:person/name`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:person/name`) `]`) `)`)
+          (symbol `.`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `?e`)
+          `]`))
+      (symbol `db`)
+      (vector `[` (keyword `:person/email`) (string `"nobody@x"`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (symbol `?n`)
-            (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:person/name`) `]`) `)`)
+            (symbol `.`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?e`)
+            `]`))
+        (symbol `db`)
+        (string `"cy@x"`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `d/q`)
+      (quote
+        `'`
+        (vector
+          `[`
+          (keyword `:find`)
+          (vector
+            `[`
             (list
+              `(`
+              (symbol `pull`)
+              (symbol `$then`)
+              (symbol `?e`)
+              (vector `[` (keyword `:person/name`) `]`)
+              `)`)
+            (list `(` (symbol `pull`) (symbol `?e`) (vector `[` (keyword `:person/name`) `]`) `)`)
+            `]`)
+          (keyword `:in`)
+          (symbol `$`)
+          (symbol `$then`)
+          (keyword `:where`)
+          (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"ed@x"`) `]`)
+          `]`))
+      (symbol `db`)
+      (list
+        `(`
+        (symbol `d/as-of`)
+        (symbol `db`)
+        (list `(` (keyword `:tx`) (symbol `people`) `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (list `(` (symbol `pull`) (symbol `?e`) (symbol `?p`) `)`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `ground`) (vector `[` (keyword `:person/name`) `]`) `)`)
+              (symbol `?p`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (list
+              `(`
+              (symbol `pull`)
+              (symbol `$2`)
+              (symbol `?e`)
+              (vector `[` (keyword `:person/name`) `]`)
+              `)`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list
+              `(`
+              (symbol `not`)
+              (vector `[` (symbol `?e`) (keyword `:person/tags`) (symbol `_`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list
+              `(`
               (symbol `or`)
-              (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:green`))
-              (vector (symbol `?e`) (keyword `:person/age`) (int `30`)))))
-        (symbol `db`))))
+              (vector `[` (symbol `?e`) (keyword `:person/tags`) (keyword `:green`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `_`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `_`) `]`)
             (list
+              `(`
               (symbol `not-join`)
-              (vector (symbol `?e`))
-              (vector (symbol `?o`) (keyword `:order/customer`) (symbol `?e`))
-              (vector (symbol `?o`) (keyword `:order/status`) (keyword `:status/open`)))))
-        (symbol `db`))))
+              (vector `[` (symbol `?e`) `]`)
+              (vector `[` (symbol `?o`) (keyword `:order/customer`) (symbol `?e`) `]`)
+              (vector `[` (symbol `?o`) (keyword `:order/status`) (keyword `:status/open`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (list
+              `(`
               (symbol `or-join`)
-              (vector (symbol `?e`))
-              (vector (symbol `?e`) (keyword `:person/role`) (keyword `:role/admin`))
+              (vector `[` (symbol `?e`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/role`) (keyword `:role/admin`) `]`)
               (list
+                `(`
                 (symbol `and`)
-                (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?b`))
-                (vector (symbol `?b`) (keyword `:person/role`) (keyword `:role/admin`))))))
-        (symbol `db`))))
+                (vector `[` (symbol `?e`) (keyword `:person/boss`) (symbol `?b`) `]`)
+                (vector `[` (symbol `?b`) (keyword `:person/role`) (keyword `:role/admin`) `]`)
+                `)`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `before`)
-    (list (symbol `d/as-of`) (symbol `db`) (list (keyword `:tx`) (symbol `people`))))
+    (list `(` (symbol `d/as-of`) (symbol `db`) (list `(` (keyword `:tx`) (symbol `people`) `)`) `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?then`)
@@ -1552,100 +3930,161 @@
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `?e`) (keyword `:person/age`) (symbol `?now`))
-            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (symbol `?then`))
-            (vector (list (symbol `not=`) (symbol `?then`) (symbol `?now`)))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?now`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (symbol `?then`) `]`)
+            (vector `[` (list `(` (symbol `not=`) (symbol `?then`) (symbol `?now`) `)`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `before`))))
+        (symbol `before`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (list
+              `(`
               (symbol `not`)
-              (vector (symbol `$2`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`)))))
+              (vector `[` (symbol `$2`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              `)`)
+            `]`))
         (symbol `db`)
-        (symbol `before`))))
+        (symbol `before`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `missing?`) (symbol `$2`) (symbol `?e`) (keyword `:person/name`)))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `missing?`)
+                (symbol `$2`)
+                (symbol `?e`)
+                (keyword `:person/name`)
+                `)`)
+              `]`)
+            `]`))
         (symbol `db`)
-        (symbol `before`))))
+        (symbol `before`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$db`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `$db`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `$`) (symbol `?e`) (keyword `:person/age`) (symbol `?now`))
-            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (symbol `?then`))
-            (vector (list (symbol `not=`) (symbol `?then`) (symbol `?now`)))))
+            (vector `[` (symbol `$db`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `$`) (symbol `?e`) (keyword `:person/age`) (symbol `?now`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (symbol `?then`) `]`)
+            (vector `[` (list `(` (symbol `not=`) (symbol `?then`) (symbol `?now`) `)`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `before`))))
+        (symbol `before`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$hist`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (vector
+              `[`
               (symbol `$hist`)
               (symbol `?e`)
               (keyword `:person/tags`)
               (keyword `:red`)
               (symbol `_`)
-              (symbol `false`))))
+              (symbol `false`)
+              `]`)
+            `]`))
         (symbol `db`)
-        (list (symbol `d/history`) (symbol `db`)))))
-  (list (symbol `def`) (symbol `c2`) (list (symbol `d/connect`) (string `"query2.edb"`)))
+        (list `(` (symbol `d/history`) (symbol `db`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
+    (symbol `def`)
+    (symbol `c2`)
+    (list `(` (symbol `d/connect`) (string `"query2.edb"`) `)`)
+    `)`)
+  (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c2`)
     (vector
+      `[`
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:city/name`)
         (keyword `:db/valueType`)
@@ -1653,54 +4092,76 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/unique`)
-        (keyword `:db.unique/identity`))
+        (keyword `:db.unique/identity`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:city/mayor`)
         (keyword `:db/valueType`)
         (keyword `:db.type/string`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))
+        (keyword `:db.cardinality/one`)
+        `}`)
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:city/size`)
         (keyword `:db/valueType`)
         (keyword `:db.type/keyword`)
         (keyword `:db/cardinality`)
-        (keyword `:db.cardinality/one`))))
+        (keyword `:db.cardinality/one`)
+        `}`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c2`)
     (vector
+      `[`
       (map
+        `{`
         (keyword `:city/name`)
         (string `"Ann Arbor"`)
         (keyword `:city/mayor`)
         (string `"Ann"`)
         (keyword `:city/size`)
-        (keyword `:size/small`))
+        (keyword `:size/small`)
+        `}`)
       (map
+        `{`
         (keyword `:city/name`)
         (string `"Cyprus"`)
         (keyword `:city/mayor`)
         (string `"Cy"`)
         (keyword `:city/size`)
-        (keyword `:size/large`))
+        (keyword `:size/large`)
+        `}`)
       (map
+        `{`
         (keyword `:city/name`)
         (string `"Nowhere"`)
         (keyword `:city/mayor`)
         (string `"Zed"`)
         (keyword `:city/size`)
-        (keyword `:size/small`))))
+        (keyword `:size/small`)
+        `}`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?city`)
@@ -1709,144 +4170,216 @@
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/mayor`) (symbol `?n`))
-            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/name`) (symbol `?city`))
-            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/size`) (symbol `?size`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?c`) (keyword `:city/mayor`) (symbol `?n`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?c`) (keyword `:city/name`) (symbol `?city`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?c`) (keyword `:city/size`) (symbol `?size`) `]`)
+            `]`))
         (symbol `db`)
-        (list (symbol `d/db`) (symbol `c2`)))))
+        (list `(` (symbol `d/db`) (symbol `c2`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?size`)
-            (list (symbol `count`) (symbol `?e`))
+            (list `(` (symbol `count`) (symbol `?e`) `)`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/mayor`) (symbol `?n`))
-            (vector (symbol `$2`) (symbol `?c`) (keyword `:city/size`) (symbol `?size`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `$2`) (symbol `?c`) (keyword `:city/mayor`) (symbol `?n`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?c`) (keyword `:city/size`) (symbol `?size`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (list (symbol `d/db`) (symbol `c2`)))))
+        (list `(` (symbol `d/db`) (symbol `c2`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `$3`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `$3`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `before`))))
+        (symbol `before`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `$2`) (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (int `7`))))
+        (int `7`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"explain names a scan's source"`)
     (list
+      `(`
       (symbol `string?`)
       (list
+        `(`
         (symbol `d/explain`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (int `25`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (symbol `$2`) (symbol `?e`) (keyword `:person/age`) (int `25`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `before`))))
-  (list (symbol `d/release`) (symbol `c2`))
+        (symbol `before`)
+        `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `d/release`) (symbol `c2`) `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `rules`)
     (quote
+      `'`
       (vector
+        `[`
         (vector
-          (list (symbol `responsible`) (symbol `?boss`) (symbol `?e`))
-          (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?boss`)))
+          `[`
+          (list `(` (symbol `responsible`) (symbol `?boss`) (symbol `?e`) `)`)
+          (vector `[` (symbol `?e`) (keyword `:person/boss`) (symbol `?boss`) `]`)
+          `]`)
         (vector
-          (list (symbol `responsible`) (symbol `?boss`) (symbol `?e`))
-          (vector (symbol `?e`) (keyword `:person/boss`) (symbol `?mid`))
-          (list (symbol `responsible`) (symbol `?boss`) (symbol `?mid`))))))
+          `[`
+          (list `(` (symbol `responsible`) (symbol `?boss`) (symbol `?e`) `)`)
+          (vector `[` (symbol `?e`) (keyword `:person/boss`) (symbol `?mid`) `]`)
+          (list `(` (symbol `responsible`) (symbol `?boss`) (symbol `?mid`) `)`)
+          `]`)
+        `]`))
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `%`)
             (keyword `:where`)
-            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
-            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`) `]`)
+            (list `(` (symbol `responsible`) (symbol `?b`) (symbol `?e`) `)`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `rules`))))
+        (symbol `rules`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `%`)
             (keyword `:where`)
-            (vector (symbol `?b`) (keyword `:person/email`) (string `"cy@x"`))
-            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?b`) (keyword `:person/email`) (string `"cy@x"`) `]`)
+            (list `(` (symbol `responsible`) (symbol `?b`) (symbol `?e`) `)`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `rules`))))
+        (symbol `rules`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?b`)
             (symbol `?n`)
@@ -1854,438 +4387,1341 @@
             (symbol `$`)
             (symbol `%`)
             (keyword `:where`)
-            (list (symbol `responsible`) (symbol `?x`) (symbol `?e`))
-            (vector (symbol `?x`) (keyword `:person/name`) (symbol `?b`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (list `(` (symbol `responsible`) (symbol `?x`) (symbol `?e`) `)`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `?b`) `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `rules`))))
+        (symbol `rules`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `sort`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `$2`)
             (symbol `%`)
             (keyword `:where`)
-            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
-            (list (symbol `$2`) (symbol `responsible`) (symbol `?b`) (symbol `?e`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`) `]`)
+            (list `(` (symbol `$2`) (symbol `responsible`) (symbol `?b`) (symbol `?e`) `)`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
         (symbol `before`)
-        (symbol `rules`))))
+        (symbol `rules`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
+    (symbol `def`)
+    (symbol `kc`)
+    (list `(` (symbol `d/connect`) (string `"knows.edb"`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `kschema`)
+    (list
+      `(`
+      (symbol `d/transact!`)
+      (symbol `kc`)
+      (vector
+        `[`
+        (map
+          `{`
+          (keyword `:db/ident`)
+          (keyword `:k/email`)
+          (keyword `:db/valueType`)
+          (keyword `:db.type/string`)
+          (keyword `:db/cardinality`)
+          (keyword `:db.cardinality/one`)
+          (keyword `:db/unique`)
+          (keyword `:db.unique/identity`)
+          `}`)
+        (map
+          `{`
+          (keyword `:db/ident`)
+          (keyword `:k/friend`)
+          (keyword `:db/valueType`)
+          (keyword `:db.type/ref`)
+          (keyword `:db/cardinality`)
+          (keyword `:db.cardinality/many`)
+          `}`)
+        (map
+          `{`
+          (keyword `:db/ident`)
+          (keyword `:k/age`)
+          (keyword `:db/valueType`)
+          (keyword `:db.type/long`)
+          (keyword `:db/cardinality`)
+          (keyword `:db.cardinality/one`)
+          `}`)
+        `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `kr`)
+    (list
+      `(`
+      (symbol `d/transact!`)
+      (symbol `kc`)
+      (vector
+        `[`
+        (map `{` (keyword `:db/id`) (string `"a"`) (keyword `:k/email`) (string `"a@x"`) `}`)
+        (map
+          `{`
+          (keyword `:db/id`)
+          (string `"b"`)
+          (keyword `:k/email`)
+          (string `"b@x"`)
+          (keyword `:k/friend`)
+          (vector `[` (string `"a"`) `]`)
+          `}`)
+        (map
+          `{`
+          (keyword `:db/id`)
+          (string `"c"`)
+          (keyword `:k/email`)
+          (string `"c@x"`)
+          (keyword `:k/friend`)
+          (vector `[` (string `"b"`) `]`)
+          `}`)
+        `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `knows`)
+    (quote
+      `'`
+      (vector
+        `[`
+        (vector
+          `[`
+          (list `(` (symbol `knows`) (symbol `?x`) (symbol `?y`) `)`)
+          (vector `[` (symbol `?x`) (keyword `:k/friend`) (symbol `?y`) `]`)
+          `]`)
+        (vector
+          `[`
+          (list `(` (symbol `knows`) (symbol `?x`) (symbol `?y`) `)`)
+          (vector `[` (symbol `?x`) (keyword `:k/friend`) (symbol `?m`) `]`)
+          (list `(` (symbol `knows`) (symbol `?m`) (symbol `?y`) `)`)
+          `]`)
+        `]`))
+    `)`)
+  (list
+    `(`
+    (symbol `let`)
+    (vector
+      `[`
+      (symbol `now`)
+      (list `(` (symbol `d/db`) (symbol `kc`) `)`)
+      (symbol `old`)
+      (list
+        `(`
+        (symbol `d/as-of`)
+        (symbol `now`)
+        (list `(` (keyword `:tx`) (symbol `kschema`) `)`)
+        `)`)
+      (symbol `ka`)
+      (list `(` (symbol `get`) (list `(` (keyword `:tempids`) (symbol `kr`) `)`) (string `"a"`) `)`)
+      (symbol `kcc`)
+      (list `(` (symbol `get`) (list `(` (keyword `:tempids`) (symbol `kr`) `)`) (string `"c"`) `)`)
+      `]`)
+    (list
+      `(`
+      (symbol `doseq`)
+      (vector
+        `[`
+        (symbol `e`)
+        (vector `[` (symbol `kcc`) (vector `[` (keyword `:k/email`) (string `"c@x"`) `]`) `]`)
+        `]`)
+      (list
+        `(`
+        (symbol `println`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?e`)
+              (keyword `:in`)
+              (symbol `$`)
+              (symbol `$2`)
+              (symbol `%`)
+              (symbol `?e`)
+              (symbol `?b`)
+              (keyword `:where`)
+              (list `(` (symbol `$2`) (symbol `knows`) (symbol `?e`) (symbol `?b`) `)`)
+              (list
+                `(`
+                (symbol `not`)
+                (vector `[` (symbol `?e`) (keyword `:k/age`) (int `99`) `]`)
+                `)`)
+              `]`))
+          (symbol `old`)
+          (symbol `now`)
+          (symbol `knows`)
+          (symbol `e`)
+          (symbol `ka`)
+          `)`)
+        (list
+          `(`
+          (symbol `d/q`)
+          (quote
+            `'`
+            (vector
+              `[`
+              (keyword `:find`)
+              (symbol `?e`)
+              (keyword `:in`)
+              (symbol `$`)
+              (symbol `$2`)
+              (symbol `%`)
+              (symbol `?e`)
+              (symbol `?b`)
+              (keyword `:where`)
+              (list
+                `(`
+                (symbol `not`)
+                (vector `[` (symbol `?e`) (keyword `:k/age`) (int `99`) `]`)
+                `)`)
+              (list `(` (symbol `$2`) (symbol `knows`) (symbol `?e`) (symbol `?b`) `)`)
+              `]`))
+          (symbol `old`)
+          (symbol `now`)
+          (symbol `knows`)
+          (symbol `e`)
+          (symbol `ka`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `d/release`) (symbol `kc`) `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list `(` (symbol `outranks`) (symbol `?x`) `)`)
+            `]`))
+        (symbol `db`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (vector
+              `[`
+              (list `(` (symbol `outranks`) (symbol `?x`) `)`)
+              (vector `[` (symbol `?x`) (keyword `:person/friend`) (symbol `?y`) `]`)
+              (list `(` (symbol `not`) (list `(` (symbol `outranks`) (symbol `?y`) `)`) `)`)
+              `]`)
+            `]`))
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list `(` (symbol `ra`) (symbol `?x`) `)`)
+            `]`))
+        (symbol `db`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (vector
+              `[`
+              (list `(` (symbol `ra`) (symbol `?x`) `)`)
+              (vector `[` (symbol `?x`) (keyword `:person/friend`) (symbol `?y`) `]`)
+              (list `(` (symbol `not`) (list `(` (symbol `rb`) (symbol `?y`) `)`) `)`)
+              `]`)
+            (vector
+              `[`
+              (list `(` (symbol `rb`) (symbol `?x`) `)`)
+              (vector `[` (symbol `?x`) (keyword `:person/friend`) (symbol `?y`) `]`)
+              (list `(` (symbol `ra`) (symbol `?y`) `)`)
+              `]`)
+            `]`))
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
     (symbol `t/check`)
     (string `"a repeated query and rule set are served from the caches"`)
     (list
+      `(`
       (symbol `=`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `%`)
             (keyword `:where`)
-            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
-            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`) `]`)
+            (list `(` (symbol `responsible`) (symbol `?b`) (symbol `?e`) `)`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `rules`))
+        (symbol `rules`)
+        `)`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (vector (symbol `?n`) (symbol `...`))
+            (vector `[` (symbol `?n`) (symbol `...`) `]`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `%`)
             (keyword `:where`)
-            (vector (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`))
-            (list (symbol `responsible`) (symbol `?b`) (symbol `?e`))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+            (vector `[` (symbol `?b`) (keyword `:person/email`) (string `"ann@x"`) `]`)
+            (list `(` (symbol `responsible`) (symbol `?b`) (symbol `?e`) `)`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `db`)
-        (symbol `rules`))))
-  (list (symbol `def`) (symbol `t-people`) (list (keyword `:tx`) (symbol `people`)))
+        (symbol `rules`)
+        `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `t-people`) (list `(` (keyword `:tx`) (symbol `people`) `)`) `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `ages`)
     (quote
+      `'`
       (vector
+        `[`
         (keyword `:find`)
         (symbol `?n`)
         (symbol `?a`)
         (keyword `:where`)
-        (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-        (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`)))))
+        (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+        (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+        `]`))
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (symbol `ages`)
-        (list (symbol `d/as-of`) (symbol `db`) (symbol `t-people`)))))
+        (list `(` (symbol `d/as-of`) (symbol `db`) (symbol `t-people`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (symbol `ages`)
-        (list (symbol `d/since`) (symbol `db`) (symbol `t-people`)))))
+        (list `(` (symbol `d/since`) (symbol `db`) (symbol `t-people`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?a`)
             (symbol `?added`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/email`) (string `"bob@x"`))
+            (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"bob@x"`) `]`)
             (vector
+              `[`
               (symbol `?e`)
               (keyword `:person/age`)
               (symbol `?a`)
               (symbol `_`)
-              (symbol `?added`))))
-        (list (symbol `d/history`) (symbol `db`)))))
+              (symbol `?added`)
+              `]`)
+            `]`))
+        (list `(` (symbol `d/history`) (symbol `db`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?added`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/email`) (string `"ed@x"`))
+            (vector `[` (symbol `?e`) (keyword `:person/email`) (string `"ed@x"`) `]`)
             (vector
+              `[`
               (symbol `?e`)
               (keyword `:person/name`)
               (symbol `?n`)
               (symbol `_`)
-              (symbol `?added`))))
-        (list (symbol `d/history`) (symbol `db`)))))
+              (symbol `?added`)
+              `]`)
+            `]`))
+        (list `(` (symbol `d/history`) (symbol `db`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `def`)
     (symbol `plan`)
     (list
+      `(`
       (symbol `d/explain`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?n`)
           (keyword `:in`)
           (symbol `$`)
           (symbol `%`)
           (keyword `:where`)
-          (vector (symbol `?e`) (keyword `:person/age`) (int `30`))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-          (list (symbol `not`) (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:red`)))
-          (list (symbol `responsible`) (symbol `?e`) (symbol `?x`))
-          (vector (list (symbol `<`) (int `1`) (int `2`)))))
+          (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          (list
+            `(`
+            (symbol `not`)
+            (vector `[` (symbol `?e`) (keyword `:person/tags`) (keyword `:red`) `]`)
+            `)`)
+          (list `(` (symbol `responsible`) (symbol `?e`) (symbol `?x`) `)`)
+          (vector `[` (list `(` (symbol `<`) (int `1`) (int `2`) `)`) `]`)
+          `]`))
       (symbol `db`)
-      (symbol `rules`)))
+      (symbol `rules`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"explain returns the plan as text"`)
     (list
+      `(`
       (symbol `and`)
-      (list (symbol `string?`) (symbol `plan`))
-      (list (symbol `>`) (list (symbol `count`) (symbol `plan`)) (int `0`))))
+      (list `(` (symbol `string?`) (symbol `plan`) `)`)
+      (list `(` (symbol `>`) (list `(` (symbol `count`) (symbol `plan`) `)`) (int `0`) `)`)
+      `)`)
+    `)`)
   (list
+    `(`
+    (symbol `def`)
+    (symbol `pc`)
+    (list `(` (symbol `d/connect`) (string `"plan.edb"`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `d/transact!`)
+    (symbol `pc`)
+    (vector
+      `[`
+      (map
+        `{`
+        (keyword `:db/ident`)
+        (keyword `:p/age`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/long`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        `}`)
+      (map
+        `{`
+        (keyword `:db/ident`)
+        (keyword `:p/name`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/string`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/one`)
+        `}`)
+      `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `d/transact!`)
+    (symbol `pc`)
+    (list
+      `(`
+      (symbol `mapv`)
+      (list
+        `(`
+        (symbol `fn`)
+        (vector `[` (symbol `i`) `]`)
+        (list
+          `(`
+          (symbol `merge`)
+          (map
+            `{`
+            (keyword `:p/name`)
+            (list `(` (symbol `str`) (string `"n"`) (symbol `i`) `)`)
+            `}`)
+          (list
+            `(`
+            (symbol `when`)
+            (list `(` (symbol `<`) (symbol `i`) (int `40`) `)`)
+            (map `{` (keyword `:p/age`) (list `(` (symbol `mod`) (symbol `i`) (int `2`) `)`) `}`)
+            `)`)
+          `)`)
+        `)`)
+      (list `(` (symbol `range`) (int `60`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"a rule call is costed by its bodies: the smaller scan runs first, then the call"`)
+    (list
+      `(`
+      (symbol `let`)
+      (vector
+        `[`
+        (symbol `lines`)
+        (list
+          `(`
+          (symbol `s/split`)
+          (list
+            `(`
+            (symbol `d/explain`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (keyword `:find`)
+                (symbol `?n`)
+                (keyword `:in`)
+                (symbol `$`)
+                (symbol `%`)
+                (keyword `:where`)
+                (vector `[` (symbol `?e`) (keyword `:p/age`) (int `1`) `]`)
+                (list `(` (symbol `named`) (symbol `?e`) (symbol `?n`) `)`)
+                `]`))
+            (list `(` (symbol `d/db`) (symbol `pc`) `)`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (vector
+                  `[`
+                  (list `(` (symbol `named`) (symbol `?e`) (symbol `?n`) `)`)
+                  (vector `[` (symbol `?e`) (keyword `:p/name`) (symbol `?n`) `]`)
+                  `]`)
+                `]`))
+            `)`)
+          (string `"\\n"`)
+          `)`)
+        `]`)
+      (list
+        `(`
+        (symbol `and`)
+        (list
+          `(`
+          (symbol `=`)
+          (string `"1. scan"`)
+          (list
+            `(`
+            (symbol `subs`)
+            (list `(` (symbol `first`) (symbol `lines`) `)`)
+            (int `0`)
+            (int `7`)
+            `)`)
+          `)`)
+        (list
+          `(`
+          (symbol `=`)
+          (string `"2. or-join"`)
+          (list
+            `(`
+            (symbol `subs`)
+            (list `(` (symbol `second`) (symbol `lines`) `)`)
+            (int `0`)
+            (int `10`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (symbol `bogus`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (symbol `bogus`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?x`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `?a`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `nope`) (symbol `?n`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `nope`) (symbol `?n`) `)`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:in`)
             (symbol `$`)
             (symbol `?pred`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `?pred`) (symbol `?n`)))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `?pred`) (symbol `?n`) `)`) `]`)
+            `]`))
         (symbol `db`)
-        (int `42`))))
+        (int `42`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `?pred`) (symbol `?n`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `?pred`) (symbol `?n`) `)`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (list (symbol `not`) (vector (symbol `?x`) (keyword `:person/tags`) (keyword `:blue`)))))
-        (symbol `db`))))
-  (list
-    (symbol `println`)
-    (list
-      (symbol `t/caught`)
-      (list
-        (symbol `d/q`)
-        (quote
-          (vector
-            (keyword `:find`)
-            (symbol `?n`)
-            (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (list
+              `(`
+              (symbol `not`)
+              (vector `[` (symbol `?x`) (keyword `:person/tags`) (keyword `:blue`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list
+              `(`
               (symbol `or`)
-              (vector (symbol `?e`) (keyword `:person/tags`) (keyword `:blue`))
-              (vector (symbol `?x`) (keyword `:person/tags`) (keyword `:green`)))))
-        (symbol `db`))))
+              (vector `[` (symbol `?e`) (keyword `:person/tags`) (keyword `:blue`) `]`)
+              (vector `[` (symbol `?x`) (keyword `:person/tags`) (keyword `:green`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
             (list
+              `(`
               (symbol `or-join`)
-              (vector (symbol `?e`) (symbol `?w`))
-              (vector (symbol `?e`) (keyword `:person/tags`) (symbol `?w`))
-              (vector (symbol `?e`) (keyword `:person/age`) (int `30`)))))
-        (symbol `db`))))
+              (vector `[` (symbol `?e`) (symbol `?w`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/tags`) (symbol `?w`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (int `30`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (symbol `?a`)
             (symbol `?v`)
             (keyword `:where`)
-            (vector (symbol `?e`) (symbol `?a`) (symbol `?v`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (symbol `?a`) (symbol `?v`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:nope/attr`) (symbol `?v`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:nope/attr`) (symbol `?v`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
             (vector
+              `[`
               (symbol `?e`)
               (keyword `:person/boss`)
-              (vector (keyword `:nope/attr`) (int `1`)))))
-        (symbol `db`))))
+              (vector `[` (keyword `:nope/attr`) (int `1`) `]`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
-            (list (symbol `sum`) (symbol `?n`))
+            (list `(` (symbol `sum`) (symbol `?n`) `)`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (list `(` `)`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (symbol `?y`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (vector `[` (symbol `?x`) (keyword `:person/name`) (symbol `_`) `]`)
+            (list `(` (symbol `half`) (symbol `?x`) (symbol `?y`) `)`)
+            `]`))
+        (symbol `db`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (vector
+              `[`
+              (list `(` (symbol `half`) (symbol `?a`) (symbol `?b`) `)`)
+              (vector `[` (symbol `?a`) (keyword `:person/age`) (symbol `_`) `]`)
+              `]`)
+            `]`))
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list
+              `(`
+              (symbol `not-join`)
+              (vector `[` (symbol `?zz`) `]`)
+              (vector `[` (symbol `?zz`) (keyword `:person/tags`) (keyword `:blue`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (list
+              `(`
+              (symbol `or-join`)
+              (vector `[` (vector `[` (symbol `?zz`) `]`) (symbol `?e`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?zz`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/tags`) (symbol `?zz`) `]`)
+              `)`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `?a`)
+            (keyword `:where`)
+            (list
+              `(`
+              (symbol `or-join`)
+              (vector `[` (vector `[` (symbol `?a`) `]`) (symbol `?e`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/height`) (symbol `?a`) `]`)
+              `)`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `db`)
+        (int `30`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `bad-arity`)
+    (quote
+      `'`
+      (vector
+        `[`
+        (vector
+          `[`
+          (list `(` (symbol `linked`) (symbol `?a`) (symbol `?b`) `)`)
+          (vector `[` (symbol `?a`) (keyword `:person/friend`) (symbol `?b`) `]`)
+          `]`)
+        (vector
+          `[`
+          (list `(` (symbol `linked`) (symbol `?a`) (symbol `?b`) `)`)
+          (vector `[` (symbol `?a`) (keyword `:person/friend`) (symbol `?m`) `]`)
+          (list `(` (symbol `linked`) (symbol `?m`) `)`)
+          `]`)
+        `]`))
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?y`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (symbol `?x`)
+            (symbol `?y`)
+            (keyword `:where`)
+            (list `(` (symbol `linked`) (symbol `?x`) (symbol `?y`) `)`)
+            `]`))
+        (symbol `db`)
+        (symbol `bad-arity`)
+        (int `1`)
+        (int `2`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?x`)
+            (symbol `?y`)
+            (keyword `:in`)
+            (symbol `$`)
+            (symbol `%`)
+            (keyword `:where`)
+            (list `(` (symbol `linked`) (symbol `?x`) (symbol `?y`) `)`)
+            `]`))
+        (symbol `db`)
+        (symbol `bad-arity`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `t/caught`)
+      (list
+        `(`
         (symbol `d/explain`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (symbol `bogus`))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (symbol `bogus`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?e`)
             (keyword `:where`)
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-            (vector (list (symbol `boom`) (symbol `?n`)))))
-        (symbol `db`))))
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            (vector `[` (list `(` (symbol `boom`) (symbol `?n`) `)`) `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"the store still works after a predicate threw"`)
     (list
+      `(`
       (symbol `=`)
-      (list (symbol `inc`) (list (symbol `d/basis-t`) (symbol `db`)))
+      (list `(` (symbol `inc`) (list `(` (symbol `d/basis-t`) (symbol `db`) `)`) `)`)
       (list
+        `(`
         (keyword `:tx`)
         (list
+          `(`
           (symbol `d/transact!`)
           (symbol `c`)
           (vector
+            `[`
             (map
+              `{`
               (keyword `:person/email`)
               (string `"gil@x"`)
               (keyword `:person/name`)
-              (string `"Gil"`)))))))
+              (string `"Gil"`)
+              `}`)
+            `]`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `"results are ordinary sets"`)
     (list
+      `(`
       (symbol `let`)
       (vector
+        `[`
         (symbol `res`)
         (list
+          `(`
           (symbol `d/q`)
           (quote
+            `'`
             (vector
+              `[`
               (keyword `:find`)
               (symbol `?n`)
               (symbol `?a`)
               (keyword `:where`)
-              (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))
-              (vector (symbol `?e`) (keyword `:person/age`) (symbol `?a`))))
-          (list (symbol `d/db`) (symbol `c`))))
+              (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+              (vector `[` (symbol `?e`) (keyword `:person/age`) (symbol `?a`) `]`)
+              `]`))
+          (list `(` (symbol `d/db`) (symbol `c`) `)`)
+          `)`)
+        `]`)
       (list
+        `(`
         (symbol `and`)
-        (list (symbol `set?`) (symbol `res`))
-        (list (symbol `=`) (int `6`) (list (symbol `count`) (symbol `res`)))
+        (list `(` (symbol `set?`) (symbol `res`) `)`)
+        (list `(` (symbol `=`) (int `6`) (list `(` (symbol `count`) (symbol `res`) `)`) `)`)
         (list
+          `(`
           (symbol `=`)
           (vector
+            `[`
             (string `"Ann"`)
             (string `"Bob"`)
             (string `"Cy"`)
             (string `"Di"`)
             (string `"Edward"`)
-            (string `"Flo"`))
-          (list (symbol `sort`) (list (symbol `map`) (symbol `first`) (symbol `res`))))
-        (list (symbol `contains?`) (symbol `res`) (vector (string `"Bob"`) (int `26`))))))
+            (string `"Flo"`)
+            `]`)
+          (list
+            `(`
+            (symbol `sort`)
+            (list `(` (symbol `map`) (symbol `first`) (symbol `res`) `)`)
+            `)`)
+          `)`)
+        (list
+          `(`
+          (symbol `contains?`)
+          (symbol `res`)
+          (vector `[` (string `"Bob"`) (int `26`) `]`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c`)
     (vector
+      `[`
       (map
+        `{`
         (keyword `:db/ident`)
         (keyword `:person/bio`)
         (keyword `:db/valueType`)
@@ -2293,102 +5729,229 @@
         (keyword `:db/cardinality`)
         (keyword `:db.cardinality/one`)
         (keyword `:db/fulltext`)
-        (symbol `true`))))
+        (symbol `true`)
+        `}`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c`)
     (vector
+      `[`
       (map
+        `{`
         (keyword `:person/email`)
         (string `"ann@x"`)
         (keyword `:person/bio`)
-        (string `"Ann runs the red team; loves Café Noir."`))
+        (string `"Ann runs the red team; loves Café Noir."`)
+        `}`)
       (map
+        `{`
         (keyword `:person/email`)
         (string `"bob@x"`)
         (keyword `:person/bio`)
-        (string `"Bob, the Red Baron of billing"`))
+        (string `"Bob, the Red Baron of billing"`)
+        `}`)
       (map
+        `{`
         (keyword `:person/email`)
         (string `"cy@x"`)
         (keyword `:person/bio`)
-        (string `"Cy: blue-team lead, x2"`))))
-  (list (symbol `def`) (symbol `before-items`) (list (symbol `d/db`) (symbol `c`)))
+        (string `"Cy: blue-team lead, x2"`)
+        `}`)
+      `]`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `before-items`) (list `(` (symbol `d/db`) (symbol `c`) `)`) `)`)
   (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c`)
     (vector
-      (vector (keyword `:db/add`) (keyword `:order/items`) (keyword `:db/fulltext`) (symbol `true`))))
-  (list (symbol `def`) (symbol `ft`) (list (symbol `d/db`) (symbol `c`)))
+      `[`
+      (vector
+        `[`
+        (keyword `:db/add`)
+        (keyword `:order/items`)
+        (keyword `:db/fulltext`)
+        (symbol `true`)
+        `]`)
+      `]`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `ft`) (list `(` (symbol `d/db`) (symbol `c`) `)`) `)`)
   (list
+    `(`
     (symbol `println`)
     (vector
+      `[`
       (list
+        `(`
         (keyword `:db/fulltext`)
         (list
+          `(`
           (symbol `get`)
-          (list (symbol `d/schema`) (symbol `before-items`))
-          (keyword `:order/items`)))
+          (list `(` (symbol `d/schema`) (symbol `before-items`) `)`)
+          (keyword `:order/items`)
+          `)`)
+        `)`)
       (list
+        `(`
         (keyword `:db/fulltext`)
-        (list (symbol `get`) (list (symbol `d/schema`) (symbol `ft`)) (keyword `:order/items`)))))
+        (list
+          `(`
+          (symbol `get`)
+          (list `(` (symbol `d/schema`) (symbol `ft`) `)`)
+          (keyword `:order/items`)
+          `)`)
+        `)`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `ft`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string `"red"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"RED team"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `ft`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string `"RED team"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"café"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (symbol `ft`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string `"café"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?n`)
+            (keyword `:where`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string `"CAFÉ NOIR"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:in`)
@@ -2396,256 +5959,493 @@
             (symbol `?needle`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (symbol `?needle`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (symbol `?needle`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (symbol `ft`)
-        (string `"team blue x2"`))))
+        (string `"team blue x2"`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?e`)
           (keyword `:where`)
           (vector
-            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red green"`))
-            (vector (vector (symbol `?e`) (symbol `?v`))))))
-      (symbol `ft`)))
+            `[`
+            (list
+              `(`
+              (symbol `fulltext`)
+              (symbol `$`)
+              (keyword `:person/bio`)
+              (string `"red green"`)
+              `)`)
+            (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+            `]`)
+          `]`))
+      (symbol `ft`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?e`)
           (keyword `:where`)
           (vector
-            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"..."`))
-            (vector (vector (symbol `?e`) (symbol `?v`))))))
-      (symbol `ft`)))
+            `[`
+            (list `(` (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"..."`) `)`)
+            (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+            `]`)
+          `]`))
+      (symbol `ft`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?o`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:order/items`) (string `"apple"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:order/number`) (symbol `?o`))))
-        (symbol `ft`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:order/items`)
+                (string `"apple"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:order/number`) (symbol `?o`) `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `d/transact!`)
     (symbol `c`)
     (vector
+      `[`
       (vector
+        `[`
         (keyword `:db/retract`)
-        (vector (keyword `:person/email`) (string `"bob@x"`))
+        (vector `[` (keyword `:person/email`) (string `"bob@x"`) `]`)
         (keyword `:person/bio`)
-        (string `"Bob, the Red Baron of billing"`))
+        (string `"Bob, the Red Baron of billing"`)
+        `]`)
       (map
+        `{`
         (keyword `:person/email`)
         (string `"bob@x"`)
         (keyword `:person/bio`)
-        (string `"Bob now bills in blue"`))
+        (string `"Bob now bills in blue"`)
+        `}`)
       (vector
+        `[`
         (keyword `:db/retract`)
-        (vector (keyword `:order/number`) (int `1`))
+        (vector `[` (keyword `:order/number`) (int `1`) `]`)
         (keyword `:order/items`)
-        (string `"apple"`))))
+        (string `"apple"`)
+        `]`)
+      `]`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-        (list (symbol `d/db`) (symbol `c`)))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string `"red"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
+        (list `(` (symbol `d/db`) (symbol `c`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?o`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:order/items`) (string `"apple"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:order/number`) (symbol `?o`))))
-        (list (symbol `d/db`) (symbol `c`)))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:order/items`)
+                (string `"apple"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:order/number`) (symbol `?o`) `]`)
+            `]`))
+        (list `(` (symbol `d/db`) (symbol `c`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `rows`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?n`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))
-            (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string `"red"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+            `]`))
         (list
+          `(`
           (symbol `d/as-of`)
-          (list (symbol `d/db`) (symbol `c`))
-          (list (symbol `d/basis-t`) (symbol `ft`))))))
+          (list `(` (symbol `d/db`) (symbol `c`) `)`)
+          (list `(` (symbol `d/basis-t`) (symbol `ft`) `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?v`)
           (keyword `:where`)
           (vector
-            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"blue"`))
-            (vector (vector (symbol `?e`) (symbol `?v`))))))
+            `[`
+            (list
+              `(`
+              (symbol `fulltext`)
+              (symbol `$`)
+              (keyword `:person/bio`)
+              (string `"blue"`)
+              `)`)
+            (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+            `]`)
+          `]`))
       (list
+        `(`
         (symbol `d/since`)
-        (list (symbol `d/db`) (symbol `c`))
-        (list (symbol `d/basis-t`) (symbol `ft`)))))
+        (list `(` (symbol `d/db`) (symbol `c`) `)`)
+        (list `(` (symbol `d/basis-t`) (symbol `ft`) `)`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `d/excise!`)
     (symbol `c`)
-    (list (symbol `d/entid`) (symbol `ft`) (vector (keyword `:person/email`) (string `"ann@x"`)))
-    (keyword `:person/bio`))
+    (list
+      `(`
+      (symbol `d/entid`)
+      (symbol `ft`)
+      (vector `[` (keyword `:person/email`) (string `"ann@x"`) `]`)
+      `)`)
+    (keyword `:person/bio`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `d/q`)
       (quote
+        `'`
         (vector
+          `[`
           (keyword `:find`)
           (symbol `?n`)
           (keyword `:where`)
           (vector
-            (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`))
-            (vector (vector (symbol `?e`) (symbol `?v`))))
-          (vector (symbol `?e`) (keyword `:person/name`) (symbol `?n`))))
-      (list (symbol `d/db`) (symbol `c`))))
+            `[`
+            (list `(` (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (string `"red"`) `)`)
+            (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+            `]`)
+          (vector `[` (symbol `?e`) (keyword `:person/name`) (symbol `?n`) `]`)
+          `]`))
+      (list `(` (symbol `d/db`) (symbol `c`) `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:order/items`) (string `"apple"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))))
-        (symbol `before-items`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:order/items`)
+                (string `"apple"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `before-items`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/name`) (string `"ann"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))))
-        (symbol `ft`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/name`)
+                (string `"ann"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/nope`) (string `"ann"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))))
-        (symbol `ft`))))
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/nope`)
+                (string `"ann"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (int `42`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))))
-        (symbol `ft`))))
+              `[`
+              (list `(` (symbol `fulltext`) (symbol `$`) (keyword `:person/bio`) (int `42`) `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/q`)
         (quote
+          `'`
           (vector
+            `[`
             (keyword `:find`)
             (symbol `?v`)
             (keyword `:where`)
             (vector
-              (list (symbol `fulltext`) (keyword `:person/bio`) (string `"ann"`))
-              (vector (vector (symbol `?e`) (symbol `?v`))))))
-        (symbol `ft`))))
+              `[`
+              (list `(` (symbol `fulltext`) (keyword `:person/bio`) (string `"ann"`) `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/transact!`)
         (symbol `c`)
         (vector
+          `[`
           (vector
+            `[`
             (keyword `:db/add`)
             (keyword `:person/age`)
             (keyword `:db/fulltext`)
-            (symbol `true`))))))
+            (symbol `true`)
+            `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/transact!`)
         (symbol `c`)
         (vector
+          `[`
           (map
+            `{`
             (keyword `:db/ident`)
             (keyword `:person/nick`)
             (keyword `:db/valueType`)
@@ -2653,26 +6453,50 @@
             (keyword `:db/cardinality`)
             (keyword `:db.cardinality/one`)
             (keyword `:db/fulltext`)
-            (symbol `true`))))))
+            (symbol `true`)
+            `}`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `println`)
     (list
+      `(`
       (symbol `t/caught`)
       (list
+        `(`
         (symbol `d/transact!`)
         (symbol `c`)
         (vector
+          `[`
           (vector
+            `[`
             (keyword `:db/retract`)
             (keyword `:person/bio`)
             (keyword `:db/fulltext`)
-            (symbol `true`))))))
+            (symbol `true`)
+            `]`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
   (list
+    `(`
     (symbol `t/check`)
     (string `":db/fulltext is a bootstrap attribute"`)
-    (list (symbol `=`) (int `22`) (list (symbol `d/entid`) (symbol `ft`) (keyword `:db/fulltext`))))
-  (list (symbol `d/release`) (symbol `c`))
+    (list
+      `(`
+      (symbol `=`)
+      (int `22`)
+      (list `(` (symbol `d/entid`) (symbol `ft`) (keyword `:db/fulltext`) `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `d/release`) (symbol `c`) `)`)
   (list
+    `(`
     (symbol `println`)
-    (list (symbol `t/caught`) (list (symbol `d/q`) (symbol `ages`) (symbol `db`))))
-  (keyword `:query-done`))
+    (list `(` (symbol `t/caught`) (list `(` (symbol `d/q`) (symbol `ages`) (symbol `db`) `)`) `)`)
+    `)`)
+  (list `(` (symbol `println`) (keyword `:query-done`) `)`))

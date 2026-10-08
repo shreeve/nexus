@@ -98,6 +98,7 @@
 (t/check ":default does not replace a present one" (= 30 (:person/age (d/pull db '[(:person/age :default 0)] ann))))
 (t/check "(default attr v) is the same spec" (= [] (:person/tags (d/pull db '[(default :person/tags [])] di))))
 (t/check ":as renames the key" (= {:db/id ann :nm "Ann" :yrs 30} (d/pull db '[(:person/name :as :nm) (:person/age :as :yrs)] ann)))
+(t/check ":as takes any value as the key" (= {:db/id ann "name" "Ann" 'age 30} (d/pull db '[(:person/name :as "name") [:person/age :as age]] ann)))
 (println (d/pull db '[{(:person/friend :limit 1 :as :pal) [:person/name]}] cy))
 
 ; Time views: the update retracts a tag, renames Ed and adds a friend.
@@ -131,4 +132,4 @@
 
 (d/release c)
 (println (t/caught (d/pull now '[*] ann)))
-:pull-done
+(println :pull-done)

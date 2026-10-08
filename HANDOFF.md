@@ -27,16 +27,14 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 
 ## Open work
 
-1. **Downstream moves to Zig 0.17 and this Nexus,** one repository at a
-   time, each regenerating its parser once and applying its steps from
-   CHANGELOG "Migrating":
-   - **nexis:** delete its `Tag` enum, the API renames.
-   Rig and em have moved: `test/rig` holds the grammar, lang module and
-   test programs of Rig v0.2.0, and `test/mumps` em's grammar and lang
-   module. When nexis lands, re-sync its copy here (`test/nexis`;
-   [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep `./test/run`
-   green: until then the suite tests an older nexis grammar than the one
-   nexis runs.
+1. **Keep the downstream copies current.** Rig, em and nexis run Zig 0.17
+   and this Nexus; `test/rig`, `test/mumps` and `test/nexis` hold their
+   grammars and lang modules as their main branches have them, and each
+   `test.conf` names the source commit. When one of them changes its
+   grammar or lang module, re-sync its copy in its own commit
+   ([AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
+   `./test/run` green. Rig's revamp (a contextual `unique`, `const` and
+   `new` forms) is the next change on its way.
 2. **Slash, Zag and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
    `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the

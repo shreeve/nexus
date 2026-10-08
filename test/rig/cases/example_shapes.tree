@@ -41,40 +41,40 @@
   (sub
     `main`
     _
-    _
+    ()@440..442
     _
     (block
       (set
         _
         `shapes`
-        (generic_inst `Pair` `Shape`)@451..462
+        (generic_inst `Pair` `Shape`)@453..464
         (call
           `Pair`
-          (kwarg `left` (call (enum_lit `circle`)@476..483 `2`)@476..486)@470..486
+          (kwarg `left` (call (enum_lit `circle`)@478..485 `2`)@478..488)@472..488
           (kwarg
             `right`
             (call
-              (enum_lit `rect`)@495..500
-              (kwarg `w` `3`)@501..505
-              (kwarg `h` `5`)@507..511)@495..512)@488..512)@465..513)@443..513
+              (enum_lit `rect`)@497..502
+              (kwarg `w` `3`)@503..507
+              (kwarg `h` `5`)@509..513)@497..514)@490..514)@467..515)@445..515
       (call
         `print`
-        (call `area` (read (member `shapes` `left`)@528..539)@527..539)@522..540)@516..541
+        (call `area` (read (member `shapes` `left`)@530..541)@529..541)@524..542)@518..543
       (call
         `print`
-        (call `area` (read (member `shapes` `right`)@556..568)@555..568)@550..569)@544..570
+        (call `area` (read (member `shapes` `right`)@558..570)@557..570)@552..571)@546..572
       (set
         _
         `canvas`
         _
-        (call `Canvas` (kwarg `width` `4`)@590..598 (kwarg `height` `3`)@600..609)@583..610)@574..610
+        (call `Canvas` (kwarg `width` `4`)@592..600 (kwarg `height` `3`)@602..611)@585..612)@576..612
       (call
         `print`
         (call
-          (member `canvas` `fits`)@619..630
-          (read (member `shapes` `left`)@632..643)@631..643)@619..644)@613..645
+          (member `canvas` `fits`)@621..632
+          (read (member `shapes` `left`)@634..645)@633..645)@621..646)@615..647
       (call
         `print`
         (call
-          (member `canvas` `fits`)@654..665
-          (read (member `shapes` `right`)@667..679)@666..679)@654..680)@648..681)@443..718)@432..718)@82..718
+          (member `canvas` `fits`)@656..667
+          (read (member `shapes` `right`)@669..681)@668..681)@656..682)@650..683)@445..720)@432..720)@82..720

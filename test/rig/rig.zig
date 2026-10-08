@@ -73,6 +73,13 @@ pub fn isBracketList(e: Sexp) bool {
     return e.isKind(.index) or e.isKind(.inst);
 }
 
+/// Whether a call of `callee` is a method call: a member, or a member
+/// followed by a bracket list (`v.put[2](x)`).
+pub fn isMethodCallee(callee: Sexp) bool {
+    if (callee.isKind(.member)) return true;
+    return isBracketList(callee) and ir.get(callee, .object).isKind(.member);
+}
+
 /// A slice, `xs[a..b]`: an index node whose index is a range.
 pub fn isRangeIndex(e: Sexp) bool {
     return e.isKind(.index) and ir.Index.index(e).isKind(.@"..");
@@ -830,10 +837,10 @@ pub const Lexer = struct {
     /// A keyword names a member where nothing else can stand: after
     /// `.`, before `:` inside ( ) (a keyword argument or payload field),
     /// and in a member list before `:` (a field) or after `fun` / `sub`
-    /// (a method).
+    /// (a method). After `@` it names a builtin (`@type(x)`).
     fn memberName(self: *const Lexer) ?TokenCat {
         switch (self.last_cat) {
-            .dot => return .ident,
+            .dot, .at => return .ident,
             .fun, .sub => return if (self.in_members[self.depth]) .ident else null,
             else => {},
         }
@@ -1108,6 +1115,10 @@ pub const Parser = struct {
     base: BaseParser,
     /// Set when parsing succeeded but the tree was rejected.
     failure: ?diag.Diagnostic = null,
+    /// The definitions after the first rejected one that also leave
+    /// out their parameter list, each reported, so that one run shows
+    /// every header to fix.
+    more_failures: std.ArrayList(diag.Diagnostic) = .empty,
     /// The node ids of the `(read place)`, `(write place)`, and
     /// `(move place)` receivers written in front of the call
     /// (`!v.push(x)`), not in parentheses.
@@ -1311,7 +1322,7 @@ pub const Parser = struct {
             },
             else => return null,
         };
-        return .{ .severity = .@"error", .pos = pos, .end = pos + 1, .message = "unexpected `:`; a block's header ends without one: drop the `:`, and indent the block below" };
+        return .{ .severity = .@"error", .pos = pos, .end = pos + 1, .message = "unexpected `:`; a block's header ends without one: remove the `:`, and indent the block below" };
     }
 
     /// `0..=3`: Rig's ranges exclude their end. Reported at the `..=`.
@@ -1466,7 +1477,7 @@ pub const Parser = struct {
             const eol = std.mem.findScalarPos(u8, src, tok.pos, '\n') orelse src.len;
             const rest = std.mem.trim(u8, src[tok.pos + 1 .. eol], " \r");
             if (rest.len > 0 and rest[0] != '#') return "unexpected `;`; Rig ends a statement at the end of its line; put each statement on its own line";
-            return "unexpected `;`; Rig ends a statement at the end of its line; drop the `;`";
+            return "unexpected `;`; Rig ends a statement at the end of its line; remove the `;`";
         }
         const open = lex.brackets[lex.nesting - 1];
         if (src[open] != '[') return "unexpected `;`";
@@ -1614,7 +1625,11 @@ pub const Parser = struct {
             },
             .read_view, .write_view, .shared => self.touchesOperand(out),
             // The body's value is returned.
-            .fun => if (ir.Fun.returns(out) != .nil) try self.valueTail(ir.Fun.body(out), true),
+            .fun => {
+                try self.paramList(out);
+                if (ir.Fun.returns(out) != .nil) try self.valueTail(ir.Fun.body(out), true);
+            },
+            .sub, .extern_fun, .extern_sub => try self.paramList(out),
             // The expression's value is bound or returned.
             .set => try self.valueTail(ir.Set.value(out), false),
             .@"return" => try self.valueTail(ir.Return.value(out), false),
@@ -1648,6 +1663,44 @@ pub const Parser = struct {
                 else => {},
             }
         }
+    }
+
+    /// A function's parameter list is always written, even when empty,
+    /// as its calls and its type write theirs: `sub main()`, not `sub
+    /// main`. The grammar parses a definition without one so that the
+    /// fix-it can show the header with it.
+    fn paramList(self: *Parser, def: Sexp) std.mem.Allocator.Error!void {
+        if (ir.get(def, .params) != .nil) return;
+        const src = self.base.source;
+        const name = ir.get(def, .name);
+        const start = self.span(def).start;
+        // The list goes after the name and its compile-time parameters.
+        var at: usize = self.span(name).end;
+        var probe = at;
+        while (probe < src.len and src[probe] == ' ') probe += 1;
+        if (probe < src.len and src[probe] == '[') {
+            var depth: u32 = 0;
+            while (probe < src.len) : (probe += 1) {
+                if (src[probe] == '[') depth += 1;
+                if (src[probe] == ']') {
+                    depth -= 1;
+                    if (depth == 0) break;
+                }
+            }
+            at = @min(probe + 1, src.len);
+        }
+        var end = at;
+        while (end < src.len and src[end] != '\n' and src[end] != '#') end += 1;
+        const rest = std.mem.trimEnd(u8, src[at..end], " \t\r");
+        const message = self.format("write `{s}(){s}`: a function's parameter list is always written, even when empty", .{ src[start..at], rest });
+        if (self.failure == null) return self.reject(name, message);
+        const at_name = self.span(name);
+        try self.more_failures.append(self.allocator(), .{ .severity = .@"error", .pos = at_name.start, .end = at_name.end, .message = message });
+    }
+
+    /// The rejections after the first (`diagnostic()`), in source order.
+    pub fn moreDiagnostics(self: *const Parser) []const diag.Diagnostic {
+        return if (self.failure != null) self.more_failures.items else &.{};
     }
 
     /// `pub` on a field or method: the member stands in the member list
@@ -1772,24 +1825,42 @@ pub const Parser = struct {
     /// and every postfix after it apply to the lent or moved place:
     ///   (write (propagate_none (call (member v pop))))
     ///   → (propagate_none (call (member (write v) pop)))
-    /// Anything else keeps its sigil outside: a chain that is all place
-    /// (`!x.v`), one whose head is called (`<f(x).g()`), and one whose
-    /// spine is parenthesized (`!(v.pop())`), which starts after the
-    /// token after the sigil, a `(`.
+    /// The sigil reaches the receiver of the chain's first method call.
+    /// A `!` reaches one that is a value no name holds too: one a call
+    /// that is no method call makes (`!mk().bump()` is
+    /// `(!mk()).bump()`), a literal, or a parenthesized expression
+    /// (`!(+s).bump()`); a call of a call's value is walked through to
+    /// the first call (`!a.b(x)(y).g()` is `(!a).b(x)(y).g()`). Anything
+    /// else keeps its
+    /// sigil outside: a chain that is all place (`!x.v`), a `?` or `<`
+    /// chain whose head is called (`<f(x).g()`), and one whose spine is
+    /// parenthesized (`!(v.pop())`), which starts after the token after
+    /// the sigil, a `(`.
     fn receiverSigil(self: *Parser, node: Sexp) std.mem.Allocator.Error!Sexp {
         const tag: parser.Tag = node.kind().?;
         const at = self.afterSigil(node);
+        // `!` lends any value to write, so its chain may start from a
+        // value no name holds: a call that is no method call
+        // (`!mk().bump()`), a literal (`![a, b][0].bump()`), or a
+        // parenthesized expression (`!(+s).bump()`).
+        const any_head = tag == .write;
         // The chain from the operand down to its head, outermost first.
         var chain: std.ArrayList(Sexp) = .empty;
         var e = ir.get(node, .operand);
         while (true) {
-            if (self.span(e).start != at) return node;
+            if (self.span(e).start != at) {
+                if (!any_head or chain.items.len == 0) return node;
+                try chain.append(self.allocator(), e);
+                break;
+            }
             try chain.append(self.allocator(), e);
             e = switch (e.kind() orelse break) {
                 .propagate, .propagate_none => ir.get(e, .value),
                 .member, .index, .inst => ir.get(e, .object),
-                .call => ir.Call.callee(e),
-                else => return node,
+                // A call of a call's value (`a.b(x)(y)`) is walked to
+                // the first call, as before.
+                .call => if (any_head and !isMethodCallee(ir.Call.callee(e)) and !ir.Call.callee(e).isKind(.call)) break else ir.Call.callee(e),
+                else => if (any_head) break else return node,
             };
         }
         const spine = chain.items;
@@ -1949,13 +2020,13 @@ test "`unique` is a keyword only after a struct header's name or type parameters
 test "`from` and `static` are keywords only after a function's result type" {
     try testing.expect(keyword("from") == null and keyword("static") == null);
     try expectCats("fun f(a: ?T) -> ?T from a", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .question, .ident, .rparen, .arrow, .question, .ident, .from, .ident });
-    try expectCats("pub fun f -> String from static", &.{ .@"pub", .fun, .ident, .arrow, .ident, .from, .static });
-    try expectCats("fun f -> T? from a, b", &.{ .fun, .ident, .arrow, .ident, .question, .from, .ident, .comma, .ident });
+    try expectCats("pub fun f() -> String from static", &.{ .@"pub", .fun, .ident, .lparen, .rparen, .arrow, .ident, .from, .static });
+    try expectCats("fun f() -> T? from a, b", &.{ .fun, .ident, .lparen, .rparen, .arrow, .ident, .question, .from, .ident, .comma, .ident });
     try expectCats("extern fun f(s: String) -> String from s", &.{ .@"extern", .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident, .from, .ident });
     try expectCats("fun span(from: Int) -> Int", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident });
     try expectCats("from = static", &.{ .ident, .assign, .ident });
     try expectCats("f = |x: Int| x\nfrom = 1", &.{ .ident, .assign, .bar_capture, .ident, .colon, .ident, .bar_capture, .ident, .newline, .ident });
-    try expectCats("fun f -> Int\n  from", &.{ .fun, .ident, .arrow, .ident, .indent, .ident });
+    try expectCats("fun f() -> Int\n  from", &.{ .fun, .ident, .lparen, .rparen, .arrow, .ident, .indent, .ident });
     try expectCats("fun f(g: fun(Int) -> Int, from: Int)", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .fun, .lparen, .ident, .rparen, .arrow, .ident, .comma, .kwarg_name });
 }
 
@@ -2072,7 +2143,7 @@ test "parser: for-source sigil moves into the mode slot" {
 }
 
 test "parser: a receiver sigil moves onto the place before the method" {
-    const source = "!x.v[0].push(1)\n(!v).push(2)\n!(v.pop())\n!f(x).g()\n?p.m()\n?(p.m())\n";
+    const source = "!x.v[0].push(1)\n(!v).push(2)\n!(v.pop())\n!f(x).g()\n?p.m()\n?(p.m())\n?f(x).g()\n!(+s).g()\n!a.b(x)(y).g()\n";
     var p = Parser.init(testing.allocator, source);
     defer p.deinit();
     const tree = try p.parseProgram();
@@ -2087,12 +2158,24 @@ test "parser: a receiver sigil moves onto the place before the method" {
     const long = ir.Member.object(ir.Call.callee(stmts[1]));
     try testing.expect(long.isKind(.write) and !p.isReceiverSigil(long));
     try testing.expect(stmts[2].isKind(.write));
-    // A called head is not a place.
-    try testing.expect(stmts[3].isKind(.write));
+    // `!` lends any value to write: a called head is the receiver.
+    const made = ir.Member.object(ir.Call.callee(stmts[3]));
+    try testing.expect(made.isKind(.write) and p.isReceiverSigil(made));
+    try testing.expect(ir.Write.operand(made).isKind(.call));
     // `?` reaches the receiver too, and lends a parenthesized call.
     const read = ir.Member.object(ir.Call.callee(stmts[4]));
     try testing.expect(read.isKind(.read) and p.isReceiverSigil(read));
     try testing.expect(stmts[5].isKind(.read));
+    // A `?` before a called head lends the result.
+    try testing.expect(stmts[6].isKind(.read));
+    // A parenthesized receiver is lent to write by `!`.
+    const paren = ir.Member.object(ir.Call.callee(stmts[7]));
+    try testing.expect(paren.isKind(.write) and p.isReceiverSigil(paren));
+    try testing.expect(ir.Write.operand(paren).isKind(.clone));
+    // A call of a call's value: the first method call's receiver, `a`.
+    var head = stmts[8];
+    while (!head.isKind(.write)) head = if (head.isKind(.call)) ir.Call.callee(head) else ir.get(head, .object);
+    try testing.expect(p.isReceiverSigil(head) and ir.Write.operand(head) == .src);
 }
 
 test "parser: bar lists split into captures and parameters, all with node ids" {
@@ -2158,7 +2241,7 @@ test "parser: every form parses" {
         \\
         \\extern fun abs(n: Int) -> Int
         \\extern fun tick(n: Int)
-        \\extern sub halt
+        \\extern sub halt()
         \\extern count: Int
         \\
         \\pub fun f[c: Int](a: Int, b: Int = 2) -> Int!
@@ -2201,7 +2284,7 @@ test "parser: every form parses" {
         \\    _
         \\      print(2)
         \\  g = |+c, <d, ~e, k: Int, j| c + k
-        \\  h = *|+c| c.set(@sizeOf(Int))
+        \\  h = *|+c| c.set(@size(Int))
         \\  i = || print(1)
         \\  v = f(1, b: 3) catch 0
         \\  u = f(1)!
@@ -2221,4 +2304,32 @@ test "parser: every form parses" {
         \\  return x
         \\
     );
+}
+
+test "parser: a definition writes its parameter list, even when empty" {
+    const cases = [_][2][]const u8{
+        .{ "sub main\n  pass\n", "write `sub main()`: a function's parameter list is always written, even when empty" },
+        .{ "fun answer -> Int  # the answer\n  42\n", "write `fun answer() -> Int`" },
+        .{ "fun first[T, n: Int] -> T?\n  none\n", "write `fun first[T, n: Int]() -> T?`" },
+        .{ "sub save!\n  pass\n", "write `sub save()!`" },
+        .{ "struct S\n  n: Int\n\n  pub fun get -> Int\n    1\n", "write `fun get() -> Int`" },
+        .{ "extern fun now -> Int\n", "write `extern fun now() -> Int`" },
+        .{ "extern sub halt\n", "write `extern sub halt()`" },
+        .{ "extern zig \"z.zig\"\n  pub fun one -> Int\n", "write `fun one() -> Int`" },
+    };
+    for (cases) |c| {
+        var p = Parser.init(testing.allocator, c[0]);
+        defer p.deinit();
+        try testing.expectError(error.ParseError, p.parseProgram());
+        const d = p.diagnostic();
+        testing.expect(std.mem.startsWith(u8, d.message, c[1])) catch |e| {
+            std.debug.print("source: {s}\n  got: {s}\n", .{ c[0], d.message });
+            return e;
+        };
+    }
+}
+
+test "a keyword after `@` names a builtin" {
+    try expectCats("@type(x)", &.{ .at, .ident, .lparen, .ident, .rparen });
+    try expectCats("@size(@type(x))", &.{ .at, .ident, .lparen, .at, .ident, .lparen, .ident, .rparen, .rparen });
 }

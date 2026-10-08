@@ -15,8 +15,9 @@
 #     a closure body that starts below its bar list, which is laid out in
 #     blocks as anywhere else;
 #   * classifies keywords (every keyword is reserved, but reads as a name
-#     where it names a member: after `.`, before `:` inside ( ), and in a
-#     member list before `:` or after `fun` / `sub`); `of` is a keyword
+#     where it names a member or a builtin: after `.` or `@`, before `:`
+#     inside ( ), and in a member list before `:` or after `fun` /
+#     `sub`); `of` is a keyword
 #     only after a value directly inside [ ] (`[n of x]`), `unique` only
 #     after a struct header's name or type parameters (`struct Random
 #     unique`), `from` only after a function's result type (`-> ?Item
@@ -483,6 +484,9 @@ use      = USE name:mpath                           → (use)
 mpath    = name
          | object:name "." name:name                → (member)
 
+# A function always writes its parameter list, even when empty
+# (`sub main()`). Every definition parses without one, so that the
+# Parser wrapper can reject it with the header to write.
 fun      = FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
 sub      = SUB name:name [tparams:tparams] [params:params] body:block → (sub)
          | SUB name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)  # `sub save(p: Page)!`

@@ -4,4 +4,4 @@
 (defn greet [name]
   name)
 
-(greet 'world)
+(println (greet 'world))

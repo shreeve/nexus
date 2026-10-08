@@ -1,1 +1,1 @@
-(program (unquote-splicing (symbol `xs`)))
+(program (unquote-splicing `~@` (symbol `xs`)))

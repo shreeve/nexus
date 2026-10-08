@@ -12,17 +12,17 @@
   (sub
     `main`
     _
-    _
+    ()@260..262
     _
     (block
       (set
         _
         `c`
-        (shared (generic_inst `Cell` `Int`)@267..276)@266..276
-        (share (call `Cell` `42`)@280..288)@279..288)@263..288
+        (shared (generic_inst `Cell` `Int`)@269..278)@268..278
+        (share (call `Cell` `42`)@282..290)@281..290)@265..290
       (set
         _
         `o`
         `Owner`
-        (call `Owner` (kwarg `cell` (move `c`)@314..316)@308..316)@302..317)@291..317
-      (call `print` `0`)@320..328)@263..425)@252..425)@177..425
+        (call `Owner` (kwarg `cell` (move `c`)@316..318)@310..318)@304..319)@293..319
+      (call `print` `0`)@322..330)@265..427)@252..427)@177..427

@@ -1,5 +1,5 @@
 ; test/golden/reader-literals.nx — exhaustive coverage of every reader
-; construct from PLAN §7.2. Each top-level form exercises one feature.
+; construct (FORMS.md §2–§3). Each top-level form exercises one feature.
 
 ; ----------------------------------------------------------------------
 ; Numbers — decimal, hex, binary, negative, real, exponent
@@ -13,6 +13,9 @@
 1e9
 1.5e-3
 1.5E+10
+##Inf
+##-Inf
+##NaN
 9223372036854775807
 18446744073709551616
 -0x10000000000000000
@@ -25,6 +28,19 @@
 "newline\n"
 "quote\"inside"
 "snowman \u{2603}"
+"Clojure's escape \u00e9 and a pair \uD83D\uDE00"
+"raw UTF-8 é ☃"
+"a string may
+  span lines"
+
+; ----------------------------------------------------------------------
+; Regex literals — the text between the quotes as written
+
+#"a\d+"
+#"\""
+#"\\"
+#"é[😀]"
+#{#"a" #"a"}
 
 ; ----------------------------------------------------------------------
 ; Characters — single, named, and unicode-escaped
@@ -39,6 +55,11 @@
 \formfeed
 \backspace
 \u{2603}
+\u2603
+\é
+\☃
+\(
+\\
 
 ; ----------------------------------------------------------------------
 ; Keywords and symbols — plain and namespaced
@@ -60,6 +81,9 @@ set!
 +
 -foo
 *earmuffs*
+λ
+ns.é/π
+:ключ
 
 nil
 true
@@ -85,6 +109,9 @@ false
 `(inc ~x)
 `(inc ~@xs)
 @r
+#'x
+#'nexis.core/inc
+'#'x
 #(+ %1 %2)
 #(+ % 1)
 
@@ -110,6 +137,8 @@ false
 (+ #_(expensive-thing) 1 2)
 (+ #_ #_ x y 3 4)
 #_ #_ #_ a b c d
+'#_ discarded kept
+^:m #_ discarded target
 [1,2,3,4]
 
 ; Anon-fn shapes — placeholder rewriting happens in the macroexpander;

@@ -1,5 +1,5 @@
 ; test/golden/basic.nx — canonical reader round-trip over a representative
-; source file. Exercises the happy-path surface of §7.2 (FORMS.md §7).
+; source file. Exercises the reader's happy-path surface (FORMS.md §7).
 
 (ns nexis.example
   (:require [nexis.core :as core]))
