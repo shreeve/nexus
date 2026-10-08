@@ -1,0 +1,136 @@
+# Pico control protocol handler — converted from net/protocol.zig
+# Parses commands from TCP and dispatches them
+
+use tcp
+use console
+use engine
+use storage
+
+enum Command
+  upload
+  run
+  restart
+  logs
+  repl
+  ping
+  unknown
+
+MAX_SCRIPT_SIZE =! 64 * 1024
+script_len = 0
+pending_upload_size = 0
+
+enum State
+  idle
+  receiving_upload
+
+proto_state = State.idle
+
+sub init
+  proto_state = State.idle
+  script_len = 0
+  pending_upload_size = 0
+
+sub poll
+  return if !tcp.isConnected()
+  return if tcp.rxAvailable() == 0
+
+  match proto_state
+    idle => processCommand()
+    receiving_upload => receiveUpload()
+
+sub processCommand
+  n = tcp.rxConsume(&line_buf)
+  return if n == 0
+
+  line = trimLine(line_buf[0..n])
+  cmd = parseCommand(line)
+
+  match cmd
+    ping => tcp.send("PONG\n")
+    upload
+      size = parseSizeArg(line) ?? 0
+      if size == 0
+        tcp.send("ERR: bad size\n")
+        return
+      if size > MAX_SCRIPT_SIZE
+        tcp.send("ERR: too large\n")
+        return
+      pending_upload_size = size
+      script_len = 0
+      proto_state = State.receiving_upload
+      tcp.send("OK: ready\n")
+    run
+      if script_len == 0
+        tcp.send("ERR: no script\n")
+        return
+      tcp.send("OK: running\n")
+      runScript()
+    restart => tcp.send("OK: restarting\n")
+    logs => tcp.send("OK: log streaming not yet implemented\n")
+    repl => tcp.send("OK: REPL not yet implemented\n")
+    unknown => tcp.send("ERR: unknown command\n")
+
+sub receiveUpload
+  remaining = pending_upload_size - script_len
+  if remaining == 0
+    proto_state = State.idle
+    tcp.send("OK: uploaded\n")
+    console.puts("[proto] script uploaded\n")
+    return
+
+  n = tcp.rxConsume(script_buf[script_len .. script_len + remaining])
+  script_len += n
+
+  if script_len >= pending_upload_size
+    proto_state = State.idle
+    tcp.send("OK: uploaded\n")
+
+sub runScript
+  console.puts("[proto] running script...\n")
+  engine.eval(script_buf[0..script_len], "<remote>") catch 0
+  console.puts("[proto] script done\n")
+
+fun parseCommand line: []u8 -> Command
+  return Command.ping if startsWith(line, "PING")
+  return Command.upload if startsWith(line, "UPLOAD")
+  return Command.run if startsWith(line, "RUN")
+  return Command.restart if startsWith(line, "RESTART")
+  return Command.logs if startsWith(line, "LOGS")
+  return Command.repl if startsWith(line, "REPL")
+  Command.unknown
+
+fun parseSizeArg line: []u8 -> ?usize
+  i = 0
+  while i < line.len
+    break if line[i] == ' '
+    i += 1
+  return null if i >= line.len
+  i += 1
+
+  size = 0
+  while i < line.len
+    d = line[i]
+    break if d < '0'
+    break if d > '9'
+    size = size * 10 + (d - '0')
+    i += 1
+  return null if size == 0
+  size
+
+fun startsWith haystack: []u8, needle: []u8 -> bool
+  return false if haystack.len < needle.len
+  @import("std").mem.eql(u8, haystack[0..needle.len], needle)
+
+fun trimLine s: []u8 -> []u8
+  end = s.len
+  while end > 0
+    break if s[end - 1] != '\n'
+    break if s[end - 1] != '\r'
+    end -= 1
+  s[0..end]
+
+pub fun getScriptBuf -> []u8
+  script_buf[0..script_len]
+
+pub fun hasScript -> bool
+  script_len > 0

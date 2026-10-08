@@ -1,280 +1,342 @@
 (routine
-  (label `ISVS`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/isvs/ISVS"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `ISVS` _ _)@0..5
+  (line ` `)@47..48
+  (line ` `)@50..51
+  (line ` `)@117..118
+  (line ` `)@182..183
+  (line ` `)@243..244
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@249..259 (`"compliance/isvs/ISVS"`)@260..282 _)@249..283)@247..283)@246..283
+  (line ` `)@284..285
+  (line ` `)@287..288
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$T after IF true"`)) (expr (num `1`)) (expr (str `"$$TT^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@312..320
+        (`"$T after IF true"` `1` `"$$TT^ISVS()"`)@321..355
+        _)@312..356)@310..356)@309..356
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$T after IF false"`)) (expr (num `0`)) (expr (str `"$$TF^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@360..368
+        (`"$T after IF false"` `0` `"$$TF^ISVS()"`)@369..404
+        _)@360..405)@358..405)@357..405
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$T persists across non-IF"`)) (expr (num `1`)) (expr (str `"$$TP^ISVS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@409..417
+        (`"$T persists across non-IF"` `1` `"$$TP^ISVS()"`)@418..461
+        _)@409..462)@407..462)@406..462
+  (line ` `)@463..464
+  (line ` `)@466..467
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$TLEVEL = 0 outside transaction"`))
-          (expr (num `0`))
-          (expr (str `"$$TL^ISVS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@488..496
+        (`"$TLEVEL = 0 outside transaction"` `0` `"$$TL^ISVS()"`)@497..546
+        _)@488..547)@486..547)@485..547
+  (line ` `)@548..549
+  (line ` `)@551..552
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@587..595 (`"$JOB > 0"` `1` `"$$JBP^ISVS()"`)@596..623 _)@587..624)@585..624)@584..624
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$JOB > 0"`)) (expr (num `1`)) (expr (str `"$$JBP^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@628..636
+        (`"$JOB constant within process"` `1` `"$$JBC^ISVS()"`)@637..684
+        _)@628..685)@626..685)@625..685
+  (line ` `)@686..687
+  (line ` `)@689..690
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$JOB constant within process"`))
-          (expr (num `1`))
-          (expr (str `"$$JBC^ISVS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@719..727
+        (`"$H has 1 comma"` `1` `"$$HCOMMA^ISVS()"`)@728..764
+        _)@719..765)@717..765)@716..765
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$H has 1 comma"`)) (expr (num `1`)) (expr (str `"$$HCOMMA^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@769..777
+        (`"$H first piece is positive int"` `1` `"$$HDAYS^ISVS()"`)@778..829
+        _)@769..830)@767..830)@766..830
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$H first piece is positive int"`))
-          (expr (num `1`))
-          (expr (str `"$$HDAYS^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@834..842
+        (`"$H second piece is 0..86399"` `1` `"$$HSEC^ISVS()"`)@843..890
+        _)@834..891)@832..891)@831..891
+  (line ` `)@892..893
+  (line ` `)@895..896
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$H second piece is 0..86399"`))
-          (expr (num `1`))
-          (expr (str `"$$HSEC^ISVS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@926..934
+        (`"$ZH has 3 commas"` `3` `"$$ZHC^ISVS()"`)@935..970
+        _)@926..971)@924..971)@923..971
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZH has 3 commas"`)) (expr (num `3`)) (expr (str `"$$ZHC^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@975..983
+        (`"$ZH us field is 0..999999"` `1` `"$$ZHUS^ISVS()"`)@984..1029
+        _)@975..1030)@973..1030)@972..1030
+  (line ` `)@1031..1032
+  (line ` `)@1034..1035
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZH us field is 0..999999"`)) (expr (num `1`)) (expr (str `"$$ZHUS^ISVS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1053..1061
+        (`"$ZUT is positive integer"` `1` `"$$ZUTP^ISVS()"`)@1062..1106
+        _)@1053..1107)@1051..1107)@1050..1107
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZUT is positive integer"`)) (expr (num `1`)) (expr (str `"$$ZUTP^ISVS()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1111..1119
+        (`"$ZUT increases monotonically"` `1` `"$$ZUTM^ISVS()"`)@1120..1168
+        _)@1111..1169)@1109..1169)@1108..1169
+  (line ` `)@1170..1171
+  (line ` `)@1173..1174
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$ZUT increases monotonically"`))
-          (expr (num `1`))
-          (expr (str `"$$ZUTM^ISVS()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1200..1208
+        (`"$STORAGE > 0"` `1` `"$$STG^ISVS()"`)@1209..1240
+        _)@1200..1241)@1198..1241)@1197..1241
+  (line ` `)@1242..1243
+  (line
+    ` `
     (do
       _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$STORAGE > 0"`)) (expr (num `1`)) (expr (str `"$$STG^ISVS()"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/isvs/ISVS"`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `TT` _ ((if (expr (num `1`))) (quit _ (expr (intrinsic `T`#221)))))
-  (` ` _ (quit _ (expr (`-` (num `1`)))))
-  (` `)
-  (label `TF` _ ((if (expr (num `0`)))))
-  (` ` _ (quit _ (expr (intrinsic `T`#221))))
-  (` `)
-  (label `TP` _ ((new _ `x`) (if (expr (num `1`))) (set _ (= (lvar `x`) (expr (num `1`))))))
-  (` `)
-  (` ` _ (quit _ (expr (intrinsic `T`#221))))
-  (` `)
-  (label `TL` _ ((quit _ (expr (intrinsic `TLEVEL`#315)))))
-  (` `)
+      (call (ref `END` _ `TEST`)@1248..1256 (`"compliance/isvs/ISVS"`)@1257..1279 _)@1248..1280)@1246..1280)@1245..1280
+  (line ` ` (quit _ _)@1282..1283)@1281..1283
+  (line ` `)@1284..1285
+  (label
+    `TT`
+    _
+    _
+    (if `1`)@1292..1295
+    (quit _ (intrinsic `T`#221 _)@1298..1300)@1296..1300)@1287..1300
+  (line ` ` (quit _ (unary `-` `1`)@1304..1306)@1302..1306)@1301..1306
+  (line ` `)@1307..1308
+  (label `TF` _ _ (if `0`)@1315..1318)@1310..1320
+  (line ` ` (quit _ (intrinsic `T`#221 _)@1349..1351)@1347..1351)@1346..1351
+  (line ` `)@1352..1353
+  (label
+    `TP`
+    _
+    _
+    (new _ `x`)@1360..1363
+    (if `1`)@1364..1367
+    (set _ (= (lvar `x` _)@1370..1371 `1`)@1370..1373)@1368..1373)@1355..1373
+  (line ` `)@1374..1375
+  (line ` ` (quit _ (intrinsic `T`#221 _)@1412..1414)@1410..1414)@1409..1414
+  (line ` `)@1415..1416
+  (label `TL` _ _ (quit _ (intrinsic `TLEVEL`#315 _)@1425..1432)@1423..1432)@1418..1432
+  (line ` `)@1433..1434
   (label
     `JBP`
     _
-    ((quit
-       _
-       (expr
-         (select
-           ((expr (intrinsic `JOB`#306) (`>` (num `0`))) (expr (num `1`)))
-           ((expr (num `1`)) (expr (num `0`))))))))
-  (` `)
-  (label `JBC` _ ((new _ `a` `b`) (set _ (= (lvar `a`) (expr (intrinsic `JOB`#306))))))
-  (` `)
-  (` `
-    _
-    (new _ `i`)
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100`))))
-    (set _ (= (lvar `b`) (expr (lvar `i`)))))
-  (` ` _ (set _ (= (lvar `b`) (expr (intrinsic `JOB`#306)))))
-  (` `
     _
     (quit
       _
-      (expr
-        (select
-          ((expr (lvar `a`) (`=` (lvar `b`))) (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`)))))))
-  (` `)
+      (select
+        (case
+          (expr (intrinsic `JOB`#306 _)@1447..1451 (binop `>` `0`)@1451..1453)@1447..1453
+          `1`)@1447..1455
+        (case `1` `0`)@1456..1459)@1444..1460)@1442..1460)@1436..1460
+  (line ` `)@1461..1462
+  (label
+    `JBC`
+    _
+    _
+    (new _ `a` `b`)@1470..1475
+    (set _ (= (lvar `a` _)@1478..1479 (intrinsic `JOB`#306 _)@1480..1484)@1478..1484)@1476..1484)@1464..1484
+  (line ` `)@1485..1486
+  (line
+    ` `
+    (new _ `i`)@1506..1509
+    (for (lvar `i` _)@1512..1513 (range `1` `1` `100`)@1514..1521)@1512..1521
+    (set _ (= (lvar `b` _)@1524..1525 (lvar `i` _)@1526..1527)@1524..1527)@1522..1527)@1505..1527
+  (line
+    ` `
+    (set _ (= (lvar `b` _)@1531..1532 (intrinsic `JOB`#306 _)@1533..1537)@1531..1537)@1529..1537)@1528..1537
+  (line
+    ` `
+    (quit
+      _
+      (select
+        (case
+          (expr (lvar `a` _)@1544..1545 (binop `=` (lvar `b` _)@1546..1547)@1545..1547)@1544..1547
+          `1`)@1544..1549
+        (case `1` `0`)@1550..1553)@1541..1554)@1539..1554)@1538..1554
+  (line ` `)@1555..1556
   (label
     `HCOMMA`
     _
-    ((quit
-       _
-       (expr (intrinsic `L`#209 ((expr (intrinsic `H`#304)) (expr (str `","`)))) (`-` (num `1`))))))
-  (` `)
+    _
+    (quit
+      _
+      (expr
+        (intrinsic `L`#209 ((intrinsic `H`#304 _)@1572..1574 `","`)@1572..1578)@1569..1579
+        (binop `-` `1`)@1579..1581)@1569..1581)@1567..1581)@1558..1581
+  (line ` `)@1582..1583
   (label
     `HDAYS`
     _
-    ((new _ `d`)
-      (set
-        _
-        (=
-          (lvar `d`)
-          (expr
-            (intrinsic `P`#212 ((expr (intrinsic `H`#304)) (expr (str `","`)) (expr (num `1`)))))))))
-  (` `
     _
+    (new _ `d`)@1593..1596
+    (set
+      _
+      (=
+        (lvar `d` _)@1599..1600
+        (intrinsic `P`#212 ((intrinsic `H`#304 _)@1604..1606 `","` `1`)@1604..1612)@1601..1613)@1599..1613)@1597..1613)@1585..1613
+  (line
+    ` `
     (quit
       _
-      (expr
-        (select
-          ((expr (lvar `d`) (`>` (num `0`))) (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`)))))))
-  (` `)
+      (select
+        (case (expr (lvar `d` _)@1620..1621 (binop `>` `0`)@1621..1623)@1620..1623 `1`)@1620..1625
+        (case `1` `0`)@1626..1629)@1617..1630)@1615..1630)@1614..1630
+  (line ` `)@1631..1632
   (label
     `HSEC`
     _
-    ((new _ `s`)
-      (set
-        _
-        (=
-          (lvar `s`)
-          (expr
-            (intrinsic `P`#212 ((expr (intrinsic `H`#304)) (expr (str `","`)) (expr (num `2`)))))))))
-  (` `
     _
+    (new _ `s`)@1641..1644
+    (set
+      _
+      (=
+        (lvar `s` _)@1647..1648
+        (intrinsic `P`#212 ((intrinsic `H`#304 _)@1652..1654 `","` `2`)@1652..1660)@1649..1661)@1647..1661)@1645..1661)@1634..1661
+  (line
+    ` `
     (quit
       _
-      (expr
-        (select
-          ((expr (lvar `s`) (`>=` (num `0`)) (`&` (expr (lvar `s`) (`<` (num `86400`)))))
-            (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`)))))))
-  (` `)
+      (select
+        (case
+          (expr
+            (lvar `s` _)@1668..1669
+            (binop `>=` `0`)@1669..1672
+            (binop
+              `&`
+              (expr
+                (expr (lvar `s` _)@1674..1675 (binop `<` `86400`)@1675..1681)@1674..1681)@1673..1682)@1672..1682)@1668..1682
+          `1`)@1668..1684
+        (case `1` `0`)@1685..1688)@1665..1689)@1663..1689)@1662..1689
+  (line ` `)@1690..1691
   (label
     `ZHC`
     _
-    ((quit
-       _
-       (expr (intrinsic `L`#209 ((expr (intrinsic `ZH`#324)) (expr (str `","`)))) (`-` (num `1`))))))
-  (` `)
+    _
+    (quit
+      _
+      (expr
+        (intrinsic `L`#209 ((intrinsic `ZH`#324 _)@1704..1707 `","`)@1704..1711)@1701..1712
+        (binop `-` `1`)@1712..1714)@1701..1714)@1699..1714)@1693..1714
+  (line ` `)@1715..1716
   (label
     `ZHUS`
     _
-    ((new _ `us`)
-      (set
-        _
-        (=
-          (lvar `us`)
+    _
+    (new _ `us`)@1725..1729
+    (set
+      _
+      (=
+        (lvar `us` _)@1732..1734
+        (intrinsic `P`#212 ((intrinsic `ZH`#324 _)@1738..1741 `","` `3`)@1738..1747)@1735..1748)@1732..1748)@1730..1748)@1718..1748
+  (line
+    ` `
+    (quit
+      _
+      (select
+        (case
           (expr
-            (intrinsic `P`#212 ((expr (intrinsic `ZH`#324)) (expr (str `","`)) (expr (num `3`)))))))))
-  (` `
+            (lvar `us` _)@1755..1757
+            (binop `>=` `0`)@1757..1760
+            (binop
+              `&`
+              (expr
+                (expr (lvar `us` _)@1762..1764 (binop `<` `1000000`)@1764..1772)@1762..1772)@1761..1773)@1760..1773)@1755..1773
+          `1`)@1755..1775
+        (case `1` `0`)@1776..1779)@1752..1780)@1750..1780)@1749..1780
+  (line ` `)@1781..1782
+  (label
+    `ZUTP`
     _
+    _
+    (new _ `z`)@1791..1794
+    (set _ (= (lvar `z` _)@1797..1798 (intrinsic `ZUT`#335 _)@1799..1803)@1797..1803)@1795..1803)@1784..1803
+  (line
+    ` `
     (quit
       _
-      (expr
-        (select
-          ((expr (lvar `us`) (`>=` (num `0`)) (`&` (expr (lvar `us`) (`<` (num `1000000`)))))
-            (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`)))))))
-  (` `)
-  (label `ZUTP` _ ((new _ `z`) (set _ (= (lvar `z`) (expr (intrinsic `ZUT`#335))))))
-  (` `
+      (select
+        (case (expr (lvar `z` _)@1810..1811 (binop `>` `0`)@1811..1813)@1810..1813 `1`)@1810..1815
+        (case `1` `0`)@1816..1819)@1807..1820)@1805..1820)@1804..1820
+  (line ` `)@1821..1822
+  (label
+    `ZUTM`
     _
+    _
+    (new _ `a` `b` `i`)@1831..1838
+    (set _ (= (lvar `a` _)@1841..1842 (intrinsic `ZUT`#335 _)@1843..1847)@1841..1847)@1839..1847)@1824..1847
+  (line
+    ` `
+    (for (lvar `i` _)@1851..1852 (range `1` `1` `1000`)@1853..1861)@1851..1861
+    (set _ (= (lvar `b` _)@1864..1865 (lvar `i` _)@1866..1867)@1864..1867)@1862..1867)@1848..1867
+  (line
+    ` `
+    (set _ (= (lvar `b` _)@1871..1872 (intrinsic `ZUT`#335 _)@1873..1877)@1871..1877)@1869..1877)@1868..1877
+  (line
+    ` `
     (quit
       _
-      (expr
-        (select
-          ((expr (lvar `z`) (`>` (num `0`))) (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`)))))))
-  (` `)
-  (label `ZUTM` _ ((new _ `a` `b` `i`) (set _ (= (lvar `a`) (expr (intrinsic `ZUT`#335))))))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `1000`))))
-    (set _ (= (lvar `b`) (expr (lvar `i`)))))
-  (` ` _ (set _ (= (lvar `b`) (expr (intrinsic `ZUT`#335)))))
-  (` `
-    _
-    (quit
-      _
-      (expr
-        (select
-          ((expr (lvar `b`) (`>=` (lvar `a`))) (expr (num `1`)))
-          ((expr (num `1`)) (expr (num `0`)))))))
-  (` `)
+      (select
+        (case
+          (expr (lvar `b` _)@1884..1885 (binop `>=` (lvar `a` _)@1887..1888)@1885..1888)@1884..1888
+          `1`)@1884..1890
+        (case `1` `0`)@1891..1894)@1881..1895)@1879..1895)@1878..1895
+  (line ` `)@1896..1897
   (label
     `STG`
     _
-    ((quit
-       _
-       (expr
-         (select
-           ((expr (intrinsic `STORAGE`) (`>` (num `0`))) (expr (num `1`)))
-           ((expr (num `1`)) (expr (num `0`)))))))))
+    _
+    (quit
+      _
+      (select
+        (case
+          (expr (intrinsic `STORAGE`#312 _)@1910..1918 (binop `>` `0`)@1918..1920)@1910..1920
+          `1`)@1910..1922
+        (case `1` `0`)@1923..1926)@1907..1927)@1905..1927)@1899..1927
+  _)@0..1928

@@ -1,267 +1,271 @@
 (routine
-  (label `COERCE`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/operators/COERCE"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `COERCE` _ _)@0..7
+  (line ` `)@51..52
+  (line ` `)@54..55
+  (line ` `)@122..123
+  (line ` `)@189..190
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@195..205 (`"compliance/operators/COERCE"`)@206..235 _)@195..236)@193..236)@192..236
+  (line ` `)@237..238
+  (line ` `)@240..241
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@284..292 (`"+ on plain digit"` `5` `"+""5"""`)@293..322 _)@284..323)@282..323)@281..323
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ on plain digit"`)) (expr (num `5`)) (expr (str `"+""5"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@327..335
+        (`"+ leading sign"` (unary `-` `5`)@353..355 `"+""-5"""`)@336..365
+        _)@327..366)@325..366)@324..366
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ leading sign"`)) (expr (`-` (num `5`))) (expr (str `"+""-5"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@370..378
+        (`"+ leading + ignored"` `5` `"+""+5"""`)@379..412
+        _)@370..413)@368..413)@367..413
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ leading + ignored"`)) (expr (num `5`)) (expr (str `"+""+5"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@417..425
+        (`"+ leading zeros stripped"` `5` `"+""005"""`)@426..465
+        _)@417..466)@415..466)@414..466
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ leading zeros stripped"`)) (expr (num `5`)) (expr (str `"+""005"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@470..478
+        (`"+ trailing junk"` `5` `"+""5abc"""`)@479..510
+        _)@470..511)@468..511)@467..511
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ trailing junk"`)) (expr (num `5`)) (expr (str `"+""5abc"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@515..523
+        (`"+ numeric in middle ignores trailing"` `5` `"+""5 6"""`)@524..575
+        _)@515..576)@513..576)@512..577
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ numeric in middle ignores trailing"`))
-          (expr (num `5`))
-          (expr (str `"+""5 6"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@597..605
+        (`"+ leading whitespace = 0 (per spec)"` `0` `"+"" 5"""`)@606..655
+        _)@597..656)@595..656)@594..657
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@702..710 (`"+ scientific"` `100` `"+""1E2"""`)@711..740 _)@702..741)@700..741)@699..741
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ leading whitespace = 0 (per spec)"`))
-          (expr (num `0`))
-          (expr (str `"+"" 5"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@745..753
+        (`"+ neg scientific"` `.01` `"+""1E-2"""`)@754..788
+        _)@745..789)@743..789)@742..789
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@793..801 (`"+ decimal"` `3.14` `"+""3.14"""`)@802..830 _)@793..831)@791..831)@790..831
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@835..843 (`"+ leading dot"` `.5` `"+"".5"""`)@844..872 _)@835..873)@833..873)@832..873
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ scientific"`)) (expr (num `100`)) (expr (str `"+""1E2"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@877..885
+        (`"+ trailing dot ignored"` `5` `"+""5."""`)@886..922
+        _)@877..923)@875..923)@874..923
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@927..935 (`"+ all junk = 0"` `0` `"+""xyz"""`)@936..965 _)@927..966)@925..966)@924..966
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@970..978 (`"+ empty = 0"` `0` `"+"""""`)@979..1002 _)@970..1003)@968..1003)@967..1003
+  (line ` `)@1004..1005
+  (line ` `)@1007..1008
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ neg scientific"`)) (expr (num `.01`)) (expr (str `"+""1E-2"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1055..1063
+        (`"1.5 in concat"` `"val=1.5"` `"""val=""_1.5"`)@1064..1104
+        _)@1055..1105)@1053..1105)@1052..1105
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ decimal"`)) (expr (num `3.14`)) (expr (str `"+""3.14"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1109..1117
+        (`"trailing zeros stripped"` `"val=1.5"` `"""val=""_1.50"`)@1118..1169
+        _)@1109..1170)@1107..1170)@1106..1170
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ leading dot"`)) (expr (num `.5`)) (expr (str `"+"".5"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1174..1182
+        (`"leading zeros stripped"` `"val=5"` `"""val=""_05"`)@1183..1229
+        _)@1174..1230)@1172..1230)@1171..1230
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ trailing dot ignored"`)) (expr (num `5`)) (expr (str `"+""5."""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1234..1242
+        (`"scientific normalized"` `"val=100"` `"""val=""_1E2"`)@1243..1291
+        _)@1234..1292)@1232..1292)@1231..1292
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ all junk = 0"`)) (expr (num `0`)) (expr (str `"+""xyz"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1296..1304
+        (`"negative zero is just 0"` `"val=0"` `"""val=""_(-0)"`)@1305..1354
+        _)@1296..1355)@1294..1355)@1293..1355
+  (line ` `)@1356..1357
+  (line ` `)@1359..1360
+  (line ` `)@1424..1425
+  (line ` `)@1490..1491
+  (line ` `)@1553..1554
+  (line ` `)@1623..1624
+  (line ` `)@1695..1696
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ empty = 0"`)) (expr (num `0`)) (expr (str `"+"""""`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1745..1753
+        (`"string non-canon != canonical"` `0` `"""05""=5"`)@1754..1798
+        _)@1745..1799)@1743..1799)@1742..1799
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"1.5 in concat"`)) (expr (str `"val=1.5"`)) (expr (str `"""val=""_1.5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1803..1811
+        (`"decimal-form string != canon"` `0` `"""5.0""=5"`)@1812..1856
+        _)@1803..1857)@1801..1857)@1800..1857
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"trailing zeros stripped"`))
-          (expr (str `"val=1.5"`))
-          (expr (str `"""val=""_1.50"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1861..1869
+        (`"string with garbage != number"` `0` `"""5abc""=5"`)@1870..1916
+        _)@1861..1917)@1859..1917)@1858..1917
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"leading zeros stripped"`))
-          (expr (str `"val=5"`))
-          (expr (str `"""val=""_05"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1921..1929
+        (`"non-numeric string != zero"` `0` `"""abc""=0"`)@1930..1972
+        _)@1921..1973)@1919..1973)@1918..1973
+  (line ` `)@1974..1975
+  (line ` `)@1977..1978
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"scientific normalized"`))
-          (expr (str `"val=100"`))
-          (expr (str `"""val=""_1E2"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2029..2037
+        (`"""abc""<1 coerces to 0"` `1` `"""abc""<1"`)@2038..2076
+        _)@2029..2077)@2027..2077)@2026..2077
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"negative zero is just 0"`))
-          (expr (str `"val=0"`))
-          (expr (str `"""val=""_(-0)"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2081..2089
+        (`"""5abc""<10 coerces to 5"` `1` `"""5abc""<10"`)@2090..2132
+        _)@2081..2133)@2079..2133)@2078..2133
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"string non-canon != canonical"`)) (expr (num `0`)) (expr (str `"""05""=5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2137..2145
+        (`"""5abc"">4 coerces to 5"` `1` `"""5abc"">4"`)@2146..2186
+        _)@2137..2187)@2135..2187)@2134..2187
+  (line ` `)@2188..2189
+  (line ` `)@2191..2192
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@2228..2236 (`"+ on true (1)"` `1` `"+1"`)@2237..2259 _)@2228..2260)@2226..2260)@2225..2260
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@2264..2272 (`"+ on false (0)"` `0` `"+0"`)@2273..2296 _)@2264..2297)@2262..2297)@2261..2297
+  (line ` `)@2298..2299
+  (line ` `)@2301..2302
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"decimal-form string != canon"`)) (expr (num `0`)) (expr (str `"""5.0""=5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2363..2371
+        (`"$L of number = digits in canonical"` `1` `"$L(05)"`)@2372..2419
+        _)@2363..2420)@2361..2420)@2360..2421
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"string with garbage != number"`))
-          (expr (num `0`))
-          (expr (str `"""5abc""=5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2444..2452
+        (`"$L of negative"` `2` `"$L(-5)"`)@2453..2480
+        _)@2444..2481)@2442..2481)@2441..2481
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"non-numeric string != zero"`)) (expr (num `0`)) (expr (str `"""abc""=0"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2485..2493
+        (`"$L of decimal"` `3` `"$L(1.5)"`)@2494..2521
+        _)@2485..2522)@2483..2522)@2482..2522
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"""abc""<1 coerces to 0"`)) (expr (num `1`)) (expr (str `"""abc""<1"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2526..2534
+        (`"$L of scientific normalized"` `3` `"$L(1E2)"`)@2535..2576
+        _)@2526..2577)@2524..2577)@2523..2578
+  (line ` `)@2586..2587
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"""5abc""<10 coerces to 5"`)) (expr (num `1`)) (expr (str `"""5abc""<10"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"""5abc"">4 coerces to 5"`)) (expr (num `1`)) (expr (str `"""5abc"">4"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ on true (1)"`)) (expr (num `1`)) (expr (str `"+1"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"+ on false (0)"`)) (expr (num `0`)) (expr (str `"+0"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$L of number = digits in canonical"`))
-          (expr (num `1`))
-          (expr (str `"$L(05)"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$L of negative"`)) (expr (num `2`)) (expr (str `"$L(-5)"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$L of decimal"`)) (expr (num `3`)) (expr (str `"$L(1.5)"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$L of scientific normalized"`)) (expr (num `3`)) (expr (str `"$L(1E2)"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/operators/COERCE"`))))))
-  (` ` _ (quit)))
+        (ref `END` _ `TEST`)@2592..2600
+        (`"compliance/operators/COERCE"`)@2601..2630
+        _)@2592..2631)@2590..2631)@2589..2631
+  (line ` ` (quit _ _)@2633..2634)@2632..2634
+  _)@0..2635

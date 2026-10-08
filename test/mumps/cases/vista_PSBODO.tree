@@ -1,469 +1,586 @@
 (routine
-  (label `PSBODO`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (label `EN`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (new _ `PSBGBL` `DFN`))
-  (` `
-    _
+  (label `PSBODO` _ _)@0..7
+  (line ` `)@75..76
+  (line ` `)@133..134
+  (line ` `)@200..201
+  (line ` `)@203..204
+  (line ` `)@219..220
+  (label `EN` _ _)@239..242
+  (line ` `)@244..245
+  (line ` `)@247..248
+  (line ` `)@263..264
+  (line ` `)@336..337
+  (line ` ` (new _ `PSBGBL` `DFN`)@340..352)@339..352
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `PSBGBL`)
-        (expr
-          (intrinsic
-            `NAME`#210
-            ((expr
-               (gvar `TMP` ((expr (str `"PSBO"`)) (expr (intrinsic `J`#208)) (expr (str `"B"`)))))))))))
-  (` `
-    _
-    (for)
-    (set _ (= (lvar `PSBGBL`) (expr (intrinsic `Q`#215 ((expr (@name (lvar `PSBGBL`))))))))
-    (quit (postcond (expr (lvar `PSBGBL`) (`=` (str `""`)))))
+        (lvar `PSBGBL` _)@356..362
+        (intrinsic
+          `NAME`#210
+          ((gvar `TMP` (`"PSBO"` (intrinsic `J`#208 _)@381..383 `"B"`)@374..387 _ _)@369..388)@369..388)@363..389)@356..389)@354..389)@353..389
+  (line
+    ` `
+    (for _)@391..392
+    (set
+      _
+      (=
+        (lvar `PSBGBL` _)@396..402
+        (intrinsic `Q`#215 ((@name (lvar `PSBGBL` _)@407..413)@406..413)@406..413)@403..414)@396..414)@394..414
+    (quit
+      (postcond (expr (lvar `PSBGBL` _)@417..423 (binop `=` `""`)@423..426)@417..426)@416..426
+      _)@415..426
     (quit
       (postcond
         (expr
-          (intrinsic `QS`#214 ((expr (lvar `PSBGBL`)) (expr (num `2`))))
-          (`'=` (intrinsic `J`#208)))))
+          (intrinsic `QS`#214 ((lvar `PSBGBL` _)@434..440 `2`)@434..442)@430..443
+          (binop `'=` (intrinsic `J`#208 _)@445..447)@443..447)@430..447)@429..447
+      _)@428..447
     (quit
       (postcond
-        (expr (intrinsic `QS`#214 ((expr (lvar `PSBGBL`)) (expr (num `1`)))) (`'[` (str `"PSBO"`)))))
-    (do))
-  (` .`#1
-    _
-    (set _ (= (lvar `DFN`) (expr (intrinsic `QS`#214 ((expr (lvar `PSBGBL`)) (expr (num `5`))))))))
-  (` .`#1 _ (do _ (call (ref `DISPORD`))))
-  (` ` _ (quit))
-  (` `)
-  (label `DISPORD`)
-  (` ` _ (new _ `PSBGBL` `PSBOI` `PSBHDR` `PSJGLO`))
-  (` `
-    _
+        (expr
+          (intrinsic `QS`#214 ((lvar `PSBGBL` _)@455..461 `1`)@455..463)@451..464
+          (binop `'[` `"PSBO"`)@464..472)@451..472)@450..472
+      _)@449..472
+    (do _)@474..475)@390..475
+  (line
+    ` .`
     (set
       _
       (=
-        (lvar `PSBOI`)
-        (expr
-          (extrinsic
-            ((`GET1` `DIQ`)
-              ((expr (num `53.69`)) (expr (lvar `PSBRPT`) (`_` (str `","`))) (expr (num `.09`)))))))))
-  (` ` _ (do _ (call (ref `EN` _ `PSJBCMA2`) ((expr (lvar `DFN`)) (expr (lvar `PSBOI`))))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `PSJGLO`) (expr (str `"^TMP(""PSJ"""`) (`_` (str `","`)) (`_` (intrinsic `J`#208))))))
-  (` ` _ (do _ (call (ref `CLEAN` _ `PSBVT`))))
-  (` ` _ (do _ (call (ref `PSJ1` _ `PSBVT`) ((expr (lvar `DFN`)) (expr (lvar `PSBOI`))))))
-  (` `
-    _
-    (set _ (= (lvar `PSBHDR` ((expr (num `1`)))) (expr (str `"BCMA - Display Order"`))))
-    (do _ (call (ref `PT` _ `PSBOHDR`) ((expr (lvar `DFN`)) (byref `PSBHDR`))))
-    (write _ (posformat `!`)))
-  (` `
-    _
-    (if (expr (`'` (intrinsic `G`#206 ((expr (lvar `PSBONX`)))))))
-    (write _ (posformat `!`) (expr (str `"Invalid Order"`))))
-  (` ` _ (do (postcond (expr (intrinsic `G`#206 ((expr (lvar `PSBONX`))))))))
-  (` .`#1 _ (write _ (posformat `!`) (expr (str `"Orderable Item: "`)) (expr (lvar `PSBOITX`))))
-  (` .`#1
-    _
-    (if (expr (lvar `PSBONX`) (`[` (str `"V"`))))
-    (write _ (posformat `!`) (expr (str `"Infusion Rate:  "`)) (expr (lvar `PSBIFR`))))
-  (` .`#1
-    _
-    (if (expr (lvar `PSBONX`) (`'[` (str `"V"`))))
-    (write _ (posformat `!`) (expr (str `"Dosage Ordered: "`)) (expr (lvar `PSBDOSE`))))
-  (` .`#1 _ (write _ (? (expr (num `40`))) (expr (str `"Start:    "`)) (expr (lvar `PSBOSTX`))))
-  (` .`#1
-    _
-    (write
-      _
-      (posformat (? (expr (num `40`))) `!`)
-      (expr (str `"Stop:     "`))
-      (expr (lvar `PSBOSPX`))))
-  (` .`#1 _ (write _ (posformat `!`) (expr (str `"Med Route:      "`)) (expr (lvar `PSBMR`))))
-  (` .`#1 _ (write _ (posformat `!`) (expr (str `"Schedule Type:  "`)) (expr (lvar `PSBSCHTX`))))
-  (` .`#1
-    _
-    (if (expr (lvar `PSBONX`) (`'[` (str `"V"`))))
-    (write _ (? (expr (num `40`))) (expr (str `"Self Med: "`)) (expr (lvar `PSBSMX`))))
-  (` .`#1
-    _
-    (write
-      (postcond (expr (lvar `PSBSM`)))
-      (posformat (? (expr (num `40`))) `!`)
-      (expr (str `"Hosp Sup: "`))
-      (expr (lvar `PSBSMX`))))
-  (` .`#1
-    _
-    (write
-      (postcond (expr (lvar `PSBSCH`) (`'=` (str `""`))))
-      (posformat `!`)
-      (expr (str `"Schedule: "`))
-      (expr (lvar `PSBSCH`))))
-  (` .`#1
-    _
-    (if (expr (lvar `PSBONX`) (`'[` (str `"V"`))))
-    (write _ (posformat `!`) (expr (str `"Admin Times:    "`)) (expr (lvar `PSBADST`))))
-  (` .`#1
-    _
-    (if
-      (expr (lvar `PSBONX`) (`[` (str `"V"`)))
-      (expr
-        (expr
-          (expr (lvar `PSBIVT`) (`=` (str `"P"`)))
-          (`!` (expr (lvar `PSBISYR`) (`=` (num `1`)))))))
-    (write _ (posformat `!`) (expr (str `"Admin Times:    "`)) (expr (lvar `PSBADST`))))
-  (` .`#1 _ (write _ (posformat `!`) (expr (str `"Provider: "`)) (expr (lvar `PSBMDX`))))
-  (` .`#1
-    _
-    (if (expr (intrinsic `E`#203 ((expr (lvar `PSBOTXT`)) (expr (num `1`)))) (`=` (str `"!"`))))
-    (set _ (setfn `E` (lvar `PSBOTXT`) (expr (num `1`)) (expr (str `""`)))))
-  (` .`#1 _ (write _ (posformat `!`) (expr (str `"Spec Inst:      "`)) (expr (lvar `PSBOTXT`))))
-  (` .`#1 _ (write _ (posformat `!`)))
-  (` .`#1 _ (if (expr (intrinsic `D`#202 ((expr (lvar `PSBDDA` ((expr (num `1`))))))))) (do))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr (str `"Dispense Drugs"`))
-      (posformat `!`)
-      (expr (str `"Drug Name"`))
-      (? (expr (num `40`)))
-      (expr (str `"Units"`))
-      (? (expr (num `50`)))
-      (expr (str `"Inactive Date"`))))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `TR`#222
-          ((expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `75`)))))
-            (expr (str `" "`))
-            (expr (str `"-"`)))))))
-  (` ..`#2
-    _
-    (for (lvar `Y`) (range (expr (num `0`)) (expr (num `0`))))
-    (set _ (= (lvar `Y`) (expr (intrinsic `O`#211 ((expr (lvar `PSBDDA` ((expr (lvar `Y`))))))))))
-    (quit (postcond (expr (`'` (lvar `Y`)))))
-    (do))
-  (` ...`#3
-    _
+        (lvar `DFN` _)@480..483
+        (intrinsic `QS`#214 ((lvar `PSBGBL` _)@488..494 `5`)@488..496)@484..497)@480..497)@478..497)@476..497
+  (line ` .` (do _ (call (ref `DISPORD` _ _)@502..509 _ _)@502..509)@500..509)@498..509
+  (line ` ` (quit _ _)@511..512)@510..512
+  (line ` `)@513..514
+  (label `DISPORD` _ _)@516..524
+  (line ` ` (new _ `PSBGBL` `PSBOI` `PSBHDR` `PSJGLO`)@527..555)@526..555
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `X`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (lvar `PSBDDA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `4`))))))))
-  (` ...`#3
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (lvar `PSBDDA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `3`)))))
-      (? (expr (num `40`)))
-      (expr
-        (select
-          ((expr (lvar `X`) (`]` (str `""`))) (expr (lvar `X`)))
-          ((expr (num `1`)) (expr (num `1`)))))))
-  (` ...`#3
-    _
-    (set
-      _
-      (=
-        (lvar `X`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (lvar `PSBDDA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `5`)))))))
-    (quit (postcond (expr (`'` (lvar `X`))))))
-  (` ...`#3
-    _
-    (write
-      _
-      (? (expr (num `50`)))
-      (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `4`)) (expr (num `5`)))))
-      (expr (str `"/"`))
-      (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `6`)) (expr (num `7`)))))
-      (expr (str `"/"`))
-      (expr
-        (expr
-          (num `1700`)
-          (`+` (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `3`)))))))))
-  (` .`#1 _ (if (expr (intrinsic `D`#202 ((expr (lvar `PSBADA` ((expr (num `1`))))))))) (do))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!` `!`)
-      (expr (str `"Additives"`))
-      (posformat `!`)
-      (expr (str `"Name"`))
-      (? (expr (num `40`)))
-      (expr (str `"Strength"`))))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `TR`#222
-          ((expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `75`)))))
-            (expr (str `" "`))
-            (expr (str `"-"`)))))))
-  (` ..`#2
-    _
-    (for (lvar `Y`) (range (expr (num `0`)) (expr (num `0`))))
-    (set _ (= (lvar `Y`) (expr (intrinsic `O`#211 ((expr (lvar `PSBADA` ((expr (lvar `Y`))))))))))
-    (quit (postcond (expr (`'` (lvar `Y`)))))
-    (do))
-  (` ...`#3
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (lvar `PSBADA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `3`)))))
-      (? (expr (num `40`)))
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (lvar `PSBADA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `4`)))))))
-  (` .`#1 _ (if (expr (intrinsic `D`#202 ((expr (lvar `PSBSOLA` ((expr (num `1`))))))))) (do))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!` `!`)
-      (expr (str `"Solution"`))
-      (posformat `!`)
-      (expr (str `"Name"`))
-      (? (expr (num `40`)))
-      (expr (str `"Volume"`))))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `TR`#222
-          ((expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `75`)))))
-            (expr (str `" "`))
-            (expr (str `"-"`)))))))
-  (` ..`#2
-    _
-    (for (lvar `Y`) (range (expr (num `0`)) (expr (num `0`))))
-    (set _ (= (lvar `Y`) (expr (intrinsic `O`#211 ((expr (lvar `PSBSOLA` ((expr (lvar `Y`))))))))))
-    (quit (postcond (expr (`'` (lvar `Y`)))))
-    (do))
-  (` ...`#3
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (lvar `PSBSOLA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `3`)))))
-      (? (expr (num `40`)))
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (lvar `PSBSOLA` ((expr (lvar `Y`))))) (expr (lvar `U`)) (expr (num `4`)))))))
-  (` .`#1
-    _
-    (if
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (@name (expr (lvar `PSJGLO`) (`_` (str `","`)) (`_` (num `0`)) (`_` (str `")"`)))))
-            (expr (lvar `U`))
-            (expr (num `1`))))
-        (`'=` (`-` (num `1`)))))
-    (do))
-  (` ..`#2
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr
-        (intrinsic
-          `TR`#222
-          ((expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `75`)))))
-            (expr (str `" "`))
-            (expr (str `"-"`)))))))
-  (` ..`#2 _ (write _ (posformat `!`) (expr (str `"Pharmacy Activity Log: "`))))
-  (` ..`#2
-    _
-    (for
-      (lvar `I`)
-      (range
-        (expr (num `1`))
-        (expr (num `1`))
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr
-               (@name (expr (lvar `PSJGLO`) (`_` (str `","`)) (`_` (num `0`)) (`_` (str `")"`)))))
-              (expr (lvar `U`))
-              (expr (num `4`)))))))
-    (do))
-  (` ...`#3
-    _
-    (write
-      _
-      (posformat (? (expr (num `9`))) `!`)
-      (expr (str `"Date:  "`))
-      (expr
+        (lvar `PSBOI` _)@559..564
         (extrinsic
-          ((`FMTE` `XLFDT`)
-            ((expr
-               (intrinsic
-                 `P`#212
-                 ((expr
-                    (@name
-                      (expr
-                        (lvar `PSJGLO`)
-                        (`_` (str `","`))
-                        (`_` (lvar `I`))
-                        (`_` (str `","`))
-                        (`_` (num `1`))
-                        (`_` (str `")"`)))))
-                   (expr (lvar `U`))
-                   (expr (num `1`)))))))))
-      (? (expr (num `35`)))
-      (expr (str `"User:  "`))
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr
-             (@name
-               (expr
-                 (lvar `PSJGLO`)
-                 (`_` (str `","`))
-                 (`_` (lvar `I`))
-                 (`_` (str `","`))
-                 (`_` (num `1`))
-                 (`_` (str `")"`)))))
-            (expr (lvar `U`))
-            (expr (num `2`)))))))
-  (` ...`#3
-    _
+          `GET1`
+          `DIQ`
+          (`53.69`
+            (expr (lvar `PSBRPT` _)@582..588 (binop `_` `","`)@588..592)@582..592
+            `.09`)@576..596)@567..597)@559..597)@557..597)@556..597
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `EN` _ `PSJBCMA2`)@601..612
+        ((lvar `DFN` _)@613..616 (lvar `PSBOI` _)@617..622)@613..622
+        _)@601..623)@599..623)@598..623
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `PSJGLO` _)@627..633
+        (expr
+          `"^TMP(""PSJ"""`
+          (binop `_` `","`)@648..652
+          (binop `_` (intrinsic `J`#208 _)@653..655)@652..655)@634..655)@627..655)@625..655)@624..655
+  (line ` ` (do _ (call (ref `CLEAN` _ `PSBVT`)@659..670 _ _)@659..670)@657..670)@656..670
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `PSJ1` _ `PSBVT`)@674..684
+        ((lvar `DFN` _)@685..688 (lvar `PSBOI` _)@689..694)@685..694
+        _)@674..695)@672..695)@671..695
+  (line
+    ` `
+    (set _ (= (lvar `PSBHDR` (`1`)@706..707)@699..708 `"BCMA - Display Order"`)@699..731)@697..731
+    (do
+      _
+      (call
+        (ref `PT` _ `PSBOHDR`)@734..744
+        ((lvar `DFN` _)@745..748 (byref `PSBHDR`)@749..756)@745..756
+        _)@734..757)@732..757
+    (write _ (posformat _ `!`)@760..761)@758..761)@696..761
+  (line
+    ` `
+    (if
+      (unary `'` (intrinsic `G`#206 ((lvar `PSBONX` _)@769..775)@769..775)@766..776)@765..776)@763..776
+    (write _ (posformat _ `!`)@779..780 `"Invalid Order"`)@777..796)@762..796
+  (line
+    ` `
+    (do
+      (postcond (intrinsic `G`#206 ((lvar `PSBONX` _)@803..809)@803..809)@800..810)@799..810)@798..810)@797..810
+  (line
+    ` .`
+    (write _ (posformat _ `!`)@815..816 `"Orderable Item: "` (lvar `PSBOITX` _)@836..843)@813..843)@811..843
+  (line
+    ` .`
+    (if (expr (lvar `PSBONX` _)@848..854 (binop `[` `"V"`)@854..858)@848..858)@846..858
+    (write _ (posformat _ `!`)@861..862 `"Infusion Rate:  "` (lvar `PSBIFR` _)@882..888)@859..888)@844..888
+  (line
+    ` .`
+    (if (expr (lvar `PSBONX` _)@893..899 (binop `'[` `"V"`)@899..904)@893..904)@891..904
+    (write _ (posformat _ `!`)@907..908 `"Dosage Ordered: "` (lvar `PSBDOSE` _)@928..935)@905..935)@889..935
+  (line
+    ` .`
+    (write _ (tab `40`)@940..943 `"Start:    "` (lvar `PSBOSTX` _)@957..964)@938..964)@936..964
+  (line
+    ` .`
     (write
       _
-      (posformat (? (expr (num `5`))) `!`)
-      (expr (str `"Activity:  "`))
+      (posformat (tab `40`)@970..973 `!`)@969..973
+      `"Stop:     "`
+      (lvar `PSBOSPX` _)@987..994)@967..994)@965..994
+  (line
+    ` .`
+    (write _ (posformat _ `!`)@999..1000 `"Med Route:      "` (lvar `PSBMR` _)@1020..1025)@997..1025)@995..1025
+  (line
+    ` .`
+    (write
+      _
+      (posformat _ `!`)@1030..1031
+      `"Schedule Type:  "`
+      (lvar `PSBSCHTX` _)@1051..1059)@1028..1059)@1026..1059
+  (line
+    ` .`
+    (if (expr (lvar `PSBONX` _)@1064..1070 (binop `'[` `"V"`)@1070..1075)@1064..1075)@1062..1075
+    (write _ (tab `40`)@1078..1081 `"Self Med: "` (lvar `PSBSMX` _)@1095..1101)@1076..1101)@1060..1101
+  (line
+    ` .`
+    (write
+      (postcond (lvar `PSBSM` _)@1106..1111)@1105..1111
+      (posformat (tab `40`)@1113..1116 `!`)@1112..1116
+      `"Hosp Sup: "`
+      (lvar `PSBSMX` _)@1130..1136)@1104..1136)@1102..1136
+  (line
+    ` .`
+    (write
+      (postcond
+        (expr (lvar `PSBSCH` _)@1141..1147 (binop `'=` `""`)@1147..1151)@1141..1151)@1140..1151
+      (posformat _ `!`)@1152..1153
+      `"Schedule: "`
+      (lvar `PSBSCH` _)@1167..1173)@1139..1173)@1137..1173
+  (line
+    ` .`
+    (if (expr (lvar `PSBONX` _)@1178..1184 (binop `'[` `"V"`)@1184..1189)@1178..1189)@1176..1189
+    (write
+      _
+      (posformat _ `!`)@1192..1193
+      `"Admin Times:    "`
+      (lvar `PSBADST` _)@1213..1220)@1190..1220)@1174..1220
+  (line
+    ` .`
+    (if
+      (expr (lvar `PSBONX` _)@1225..1231 (binop `[` `"V"`)@1231..1235)@1225..1235
       (expr
+        (expr
+          (expr
+            (expr (lvar `PSBIVT` _)@1238..1244 (binop `=` `"P"`)@1244..1248)@1238..1248)@1237..1249
+          (binop
+            `!`
+            (expr
+              (expr (lvar `PSBISYR` _)@1251..1258 (binop `=` `1`)@1258..1260)@1251..1260)@1250..1261)@1249..1261)@1237..1261)@1236..1262)@1223..1262
+    (write
+      _
+      (posformat _ `!`)@1265..1266
+      `"Admin Times:    "`
+      (lvar `PSBADST` _)@1286..1293)@1263..1293)@1221..1293
+  (line
+    ` .`
+    (write _ (posformat _ `!`)@1298..1299 `"Provider: "` (lvar `PSBMDX` _)@1313..1319)@1296..1319)@1294..1319
+  (line
+    ` .`
+    (if
+      (expr
+        (intrinsic `E`#203 ((lvar `PSBOTXT` _)@1327..1334 `1`)@1327..1336)@1324..1337
+        (binop `=` `"!"`)@1337..1341)@1324..1341)@1322..1341
+    (set _ (= (setfn `E` (lvar `PSBOTXT` _)@1348..1355 `1`)@1345..1358 `""`)@1345..1361)@1343..1361)@1320..1361
+  (line
+    ` .`
+    (write
+      _
+      (posformat _ `!`)@1366..1367
+      `"Spec Inst:      "`
+      (lvar `PSBOTXT` _)@1387..1394)@1364..1394)@1362..1394
+  (line ` .` (write _ (posformat _ `!`)@1399..1400)@1397..1400)@1395..1400
+  (line
+    ` .`
+    (if
+      (intrinsic `D`#202 ((lvar `PSBDDA` (`1`)@1415..1416)@1408..1417)@1408..1417)@1405..1418)@1403..1418
+    (do _)@1419..1420)@1401..1420
+  (line
+    ` ..`
+    (write
+      _
+      (posformat _ `!`)@1426..1427
+      `"Dispense Drugs"`
+      (posformat _ `!`)@1445..1446
+      `"Drug Name"`
+      (tab `40`)@1459..1462
+      `"Units"`
+      (tab `50`)@1471..1474
+      `"Inactive Date"`)@1424..1490)@1421..1490
+  (line
+    ` ..`
+    (write
+      _
+      (posformat _ `!`)@1496..1497
+      (intrinsic
+        `TR`#222
+        ((intrinsic `J`#208 (`""` `75`)@1505..1510)@1502..1511 `" "` `"-"`)@1502..1519)@1498..1520)@1494..1520)@1491..1520
+  (line
+    ` ..`
+    (for (lvar `Y` _)@1526..1527 (range `0` `0` _)@1528..1531)@1526..1531
+    (set
+      _
+      (=
+        (lvar `Y` _)@1534..1535
+        (intrinsic
+          `O`#211
+          ((lvar `PSBDDA` ((lvar `Y` _)@1546..1547)@1546..1547)@1539..1548)@1539..1548)@1536..1549)@1534..1549)@1532..1549
+    (quit (postcond (unary `'` (lvar `Y` _)@1553..1554)@1552..1554)@1551..1554 _)@1550..1554
+    (do _)@1556..1557)@1521..1557
+  (line
+    ` ...`
+    (set
+      _
+      (=
+        (lvar `X` _)@1564..1565
         (intrinsic
           `P`#212
-          ((expr
-             (@name
-               (expr
-                 (lvar `PSJGLO`)
-                 (`_` (str `","`))
-                 (`_` (lvar `I`))
-                 (`_` (str `","`))
-                 (`_` (num `1`))
-                 (`_` (str `")"`)))))
-            (expr (lvar `U`))
-            (expr (num `4`)))))))
-  (` ...`#3
-    _
+          ((lvar `PSBDDA` ((lvar `Y` _)@1576..1577)@1576..1577)@1569..1578
+            (lvar `U` _)@1579..1580
+            `4`)@1569..1582)@1566..1583)@1564..1583)@1562..1583)@1558..1583
+  (line
+    ` ...`
+    (write
+      _
+      (posformat _ `!`)@1590..1591
+      (intrinsic
+        `P`#212
+        ((lvar `PSBDDA` ((lvar `Y` _)@1602..1603)@1602..1603)@1595..1604
+          (lvar `U` _)@1605..1606
+          `3`)@1595..1608)@1592..1609
+      (tab `40`)@1610..1613
+      (select
+        (case
+          (expr (lvar `X` _)@1617..1618 (binop `]` `""`)@1618..1621)@1617..1621
+          (lvar `X` _)@1622..1623)@1617..1623
+        (case `1` `1`)@1624..1627)@1614..1628)@1588..1628)@1584..1628
+  (line
+    ` ...`
+    (set
+      _
+      (=
+        (lvar `X` _)@1635..1636
+        (intrinsic
+          `P`#212
+          ((lvar `PSBDDA` ((lvar `Y` _)@1647..1648)@1647..1648)@1640..1649
+            (lvar `U` _)@1650..1651
+            `5`)@1640..1653)@1637..1654)@1635..1654)@1633..1654
+    (quit (postcond (unary `'` (lvar `X` _)@1658..1659)@1657..1659)@1656..1659 _)@1655..1659)@1629..1659
+  (line
+    ` ...`
+    (write
+      _
+      (tab `50`)@1666..1669
+      (intrinsic `E`#203 ((lvar `X` _)@1673..1674 `4` `5`)@1673..1678)@1670..1679
+      `"/"`
+      (intrinsic `E`#203 ((lvar `X` _)@1687..1688 `6` `7`)@1687..1692)@1684..1693
+      `"/"`
+      (expr
+        (expr
+          `1700`
+          (binop
+            `+`
+            (intrinsic `E`#203 ((lvar `X` _)@1707..1708 `1` `3`)@1707..1712)@1704..1713)@1703..1713)@1699..1713)@1698..1714)@1664..1714)@1660..1714
+  (line
+    ` .`
+    (if
+      (intrinsic `D`#202 ((lvar `PSBADA` (`1`)@1729..1730)@1722..1731)@1722..1731)@1719..1732)@1717..1732
+    (do _)@1733..1734)@1715..1734
+  (line
+    ` ..`
+    (write
+      _
+      (posformat _ `!` `!`)@1740..1742
+      `"Additives"`
+      (posformat _ `!`)@1755..1756
+      `"Name"`
+      (tab `40`)@1764..1767
+      `"Strength"`)@1738..1778)@1735..1778
+  (line
+    ` ..`
+    (write
+      _
+      (posformat _ `!`)@1784..1785
+      (intrinsic
+        `TR`#222
+        ((intrinsic `J`#208 (`""` `75`)@1793..1798)@1790..1799 `" "` `"-"`)@1790..1807)@1786..1808)@1782..1808)@1779..1808
+  (line
+    ` ..`
+    (for (lvar `Y` _)@1814..1815 (range `0` `0` _)@1816..1819)@1814..1819
+    (set
+      _
+      (=
+        (lvar `Y` _)@1822..1823
+        (intrinsic
+          `O`#211
+          ((lvar `PSBADA` ((lvar `Y` _)@1834..1835)@1834..1835)@1827..1836)@1827..1836)@1824..1837)@1822..1837)@1820..1837
+    (quit (postcond (unary `'` (lvar `Y` _)@1841..1842)@1840..1842)@1839..1842 _)@1838..1842
+    (do _)@1844..1845)@1809..1845
+  (line
+    ` ...`
+    (write
+      _
+      (posformat _ `!`)@1852..1853
+      (intrinsic
+        `P`#212
+        ((lvar `PSBADA` ((lvar `Y` _)@1864..1865)@1864..1865)@1857..1866
+          (lvar `U` _)@1867..1868
+          `3`)@1857..1870)@1854..1871
+      (tab `40`)@1872..1875
+      (intrinsic
+        `P`#212
+        ((lvar `PSBADA` ((lvar `Y` _)@1886..1887)@1886..1887)@1879..1888
+          (lvar `U` _)@1889..1890
+          `4`)@1879..1892)@1876..1893)@1850..1893)@1846..1893
+  (line
+    ` .`
+    (if
+      (intrinsic `D`#202 ((lvar `PSBSOLA` (`1`)@1909..1910)@1901..1911)@1901..1911)@1898..1912)@1896..1912
+    (do _)@1913..1914)@1894..1914
+  (line
+    ` ..`
+    (write
+      _
+      (posformat _ `!` `!`)@1920..1922
+      `"Solution"`
+      (posformat _ `!`)@1934..1935
+      `"Name"`
+      (tab `40`)@1943..1946
+      `"Volume"`)@1918..1955)@1915..1955
+  (line
+    ` ..`
+    (write
+      _
+      (posformat _ `!`)@1961..1962
+      (intrinsic
+        `TR`#222
+        ((intrinsic `J`#208 (`""` `75`)@1970..1975)@1967..1976 `" "` `"-"`)@1967..1984)@1963..1985)@1959..1985)@1956..1985
+  (line
+    ` ..`
+    (for (lvar `Y` _)@1991..1992 (range `0` `0` _)@1993..1996)@1991..1996
+    (set
+      _
+      (=
+        (lvar `Y` _)@1999..2000
+        (intrinsic
+          `O`#211
+          ((lvar `PSBSOLA` ((lvar `Y` _)@2012..2013)@2012..2013)@2004..2014)@2004..2014)@2001..2015)@1999..2015)@1997..2015
+    (quit (postcond (unary `'` (lvar `Y` _)@2019..2020)@2018..2020)@2017..2020 _)@2016..2020
+    (do _)@2022..2023)@1986..2023
+  (line
+    ` ...`
+    (write
+      _
+      (posformat _ `!`)@2030..2031
+      (intrinsic
+        `P`#212
+        ((lvar `PSBSOLA` ((lvar `Y` _)@2043..2044)@2043..2044)@2035..2045
+          (lvar `U` _)@2046..2047
+          `3`)@2035..2049)@2032..2050
+      (tab `40`)@2051..2054
+      (intrinsic
+        `P`#212
+        ((lvar `PSBSOLA` ((lvar `Y` _)@2066..2067)@2066..2067)@2058..2068
+          (lvar `U` _)@2069..2070
+          `4`)@2058..2072)@2055..2073)@2028..2073)@2024..2073
+  (line
+    ` .`
     (if
       (expr
         (intrinsic
-          `D`#202
-          ((expr
-             (@name
+          `P`#212
+          ((@name
+             (expr
                (expr
-                 (lvar `PSJGLO`)
-                 (`_` (str `","`))
-                 (`_` (lvar `I`))
-                 (`_` (str `","`))
-                 (`_` (num `2`))
-                 (`_` (str `")"`)))))))))
+                 (lvar `PSJGLO` _)@2083..2089
+                 (binop `_` `","`)@2089..2093
+                 (binop `_` `0`)@2093..2095
+                 (binop `_` `")"`)@2095..2099)@2083..2099)@2082..2100)@2081..2100
+            (lvar `U` _)@2101..2102
+            `1`)@2081..2104)@2078..2105
+        (binop `'=` (unary `-` `1`)@2107..2109)@2105..2109)@2078..2109)@2076..2109
+    (do _)@2110..2111)@2074..2111
+  (line
+    ` ..`
     (write
       _
-      (posformat (? (expr (num `8`))) `!`)
-      (expr (str `"Field:  "`))
-      (expr
+      (posformat _ `!`)@2117..2118
+      (intrinsic
+        `TR`#222
+        ((intrinsic `J`#208 (`""` `75`)@2126..2131)@2123..2132 `" "` `"-"`)@2123..2140)@2119..2141)@2115..2141)@2112..2141
+  (line
+    ` ..`
+    (write _ (posformat _ `!`)@2147..2148 `"Pharmacy Activity Log: "`)@2145..2174)@2142..2174
+  (line
+    ` ..`
+    (for
+      (lvar `I` _)@2180..2181
+      (range
+        `1`
+        `1`
         (intrinsic
           `P`#212
-          ((expr
-             (@name
+          ((@name
+             (expr
                (expr
-                 (lvar `PSJGLO`)
-                 (`_` (str `","`))
-                 (`_` (lvar `I`))
-                 (`_` (str `","`))
-                 (`_` (num `1`))
-                 (`_` (str `")"`)))))
-            (expr (lvar `U`))
-            (expr (num `3`)))))
-      (posformat (? (expr (num `5`))) `!`)
-      (expr (str `"Old Data:  "`))
-      (expr
-        (@name
-          (expr
-            (lvar `PSJGLO`)
-            (`_` (str `","`))
-            (`_` (lvar `I`))
-            (`_` (str `","`))
-            (`_` (num `2`))
-            (`_` (str `")"`)))))))
-  (` ...`#3
-    _
-    (if
-      (expr
-        (intrinsic
-          `D`#202
-          ((expr
-             (@name
-               (expr
-                 (lvar `PSJGLO`)
-                 (`_` (str `","`))
-                 (`_` (lvar `I`))
-                 (`_` (str `","`))
-                 (`_` (num `3`))
-                 (`_` (str `")"`)))))))))
+                 (lvar `PSJGLO` _)@2191..2197
+                 (binop `_` `","`)@2197..2201
+                 (binop `_` `0`)@2201..2203
+                 (binop `_` `")"`)@2203..2207)@2191..2207)@2190..2208)@2189..2208
+            (lvar `U` _)@2209..2210
+            `4`)@2189..2212)@2186..2213)@2182..2213)@2180..2213
+    (do _)@2214..2215)@2175..2215
+  (line
+    ` ...`
     (write
       _
-      (posformat (? (expr (num `7`))) `!`)
-      (expr (str `"Reason:  "`))
-      (expr
-        (@name
+      (posformat (tab `9`)@2223..2225 `!`)@2222..2225
+      `"Date:  "`
+      (extrinsic
+        `FMTE`
+        `XLFDT`
+        ((intrinsic
+           `P`#212
+           ((@name
+              (expr
+                (expr
+                  (lvar `PSJGLO` _)@2254..2260
+                  (binop `_` `","`)@2260..2264
+                  (binop `_` (lvar `I` _)@2265..2266)@2264..2266
+                  (binop `_` `","`)@2266..2270
+                  (binop `_` `1`)@2270..2272
+                  (binop `_` `")"`)@2272..2276)@2254..2276)@2253..2277)@2252..2277
+             (lvar `U` _)@2278..2279
+             `1`)@2252..2281)@2249..2282)@2249..2282)@2238..2283
+      (tab `35`)@2284..2287
+      `"User:  "`
+      (intrinsic
+        `P`#212
+        ((@name
+           (expr
+             (expr
+               (lvar `PSJGLO` _)@2303..2309
+               (binop `_` `","`)@2309..2313
+               (binop `_` (lvar `I` _)@2314..2315)@2313..2315
+               (binop `_` `","`)@2315..2319
+               (binop `_` `1`)@2319..2321
+               (binop `_` `")"`)@2321..2325)@2303..2325)@2302..2326)@2301..2326
+          (lvar `U` _)@2327..2328
+          `2`)@2301..2330)@2298..2331)@2220..2331)@2216..2331
+  (line
+    ` ...`
+    (write
+      _
+      (posformat (tab `5`)@2339..2341 `!`)@2338..2341
+      `"Activity:  "`
+      (intrinsic
+        `P`#212
+        ((@name
+           (expr
+             (expr
+               (lvar `PSJGLO` _)@2361..2367
+               (binop `_` `","`)@2367..2371
+               (binop `_` (lvar `I` _)@2372..2373)@2371..2373
+               (binop `_` `","`)@2373..2377
+               (binop `_` `1`)@2377..2379
+               (binop `_` `")"`)@2379..2383)@2361..2383)@2360..2384)@2359..2384
+          (lvar `U` _)@2385..2386
+          `4`)@2359..2388)@2356..2389)@2336..2389)@2332..2389
+  (line
+    ` ...`
+    (if
+      (intrinsic
+        `D`#202
+        ((@name
+           (expr
+             (expr
+               (lvar `PSJGLO` _)@2401..2407
+               (binop `_` `","`)@2407..2411
+               (binop `_` (lvar `I` _)@2412..2413)@2411..2413
+               (binop `_` `","`)@2413..2417
+               (binop `_` `2`)@2417..2419
+               (binop `_` `")"`)@2419..2423)@2401..2423)@2400..2424)@2399..2424)@2399..2424)@2396..2425)@2394..2425
+    (write
+      _
+      (posformat (tab `8`)@2429..2431 `!`)@2428..2431
+      `"Field:  "`
+      (intrinsic
+        `P`#212
+        ((@name
+           (expr
+             (expr
+               (lvar `PSJGLO` _)@2448..2454
+               (binop `_` `","`)@2454..2458
+               (binop `_` (lvar `I` _)@2459..2460)@2458..2460
+               (binop `_` `","`)@2460..2464
+               (binop `_` `1`)@2464..2466
+               (binop `_` `")"`)@2466..2470)@2448..2470)@2447..2471)@2446..2471
+          (lvar `U` _)@2472..2473
+          `3`)@2446..2475)@2443..2476
+      (posformat (tab `5`)@2478..2480 `!`)@2477..2480
+      `"Old Data:  "`
+      (@name
+        (expr
           (expr
-            (lvar `PSJGLO`)
-            (`_` (str `","`))
-            (`_` (lvar `I`))
-            (`_` (str `","`))
-            (`_` (num `3`))
-            (`_` (str `")"`)))))))
-  (` ...`#3 _ (write _ (posformat `!`)))
-  (` ` _ (write _ (posformat `!` `!`)))
-  (` `
-    _
-    (do _ (call (ref `CLEAN` _ `PSBVT`)))
-    (kill _ (@args (expr (lvar `PSJGLO`) (`_` (str `")"`))))))
-  (` ` _ (quit)))
+            (lvar `PSJGLO` _)@2497..2503
+            (binop `_` `","`)@2503..2507
+            (binop `_` (lvar `I` _)@2508..2509)@2507..2509
+            (binop `_` `","`)@2509..2513
+            (binop `_` `2`)@2513..2515
+            (binop `_` `")"`)@2515..2519)@2497..2519)@2496..2520)@2495..2520)@2426..2520)@2390..2520
+  (line
+    ` ...`
+    (if
+      (intrinsic
+        `D`#202
+        ((@name
+           (expr
+             (expr
+               (lvar `PSJGLO` _)@2532..2538
+               (binop `_` `","`)@2538..2542
+               (binop `_` (lvar `I` _)@2543..2544)@2542..2544
+               (binop `_` `","`)@2544..2548
+               (binop `_` `3`)@2548..2550
+               (binop `_` `")"`)@2550..2554)@2532..2554)@2531..2555)@2530..2555)@2530..2555)@2527..2556)@2525..2556
+    (write
+      _
+      (posformat (tab `7`)@2560..2562 `!`)@2559..2562
+      `"Reason:  "`
+      (@name
+        (expr
+          (expr
+            (lvar `PSJGLO` _)@2577..2583
+            (binop `_` `","`)@2583..2587
+            (binop `_` (lvar `I` _)@2588..2589)@2587..2589
+            (binop `_` `","`)@2589..2593
+            (binop `_` `3`)@2593..2595
+            (binop `_` `")"`)@2595..2599)@2577..2599)@2576..2600)@2575..2600)@2557..2600)@2521..2600
+  (line ` ...` (write _ (posformat _ `!`)@2607..2608)@2605..2608)@2601..2608
+  (line ` ` (write _ (posformat _ `!` `!`)@2612..2614)@2610..2614)@2609..2614
+  (line
+    ` `
+    (do _ (call (ref `CLEAN` _ `PSBVT`)@2618..2629 _ _)@2618..2629)@2616..2629
+    (kill
+      _
+      (@args
+        (expr
+          (expr (lvar `PSJGLO` _)@2634..2640 (binop `_` `")"`)@2640..2644)@2634..2644)@2633..2645)@2632..2645)@2630..2645)@2615..2645
+  (line ` ` (quit _ _)@2647..2648)@2646..2648
+  _)@0..2649

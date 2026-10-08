@@ -1,183 +1,234 @@
 (routine
-  (label `SDSCNSCP`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (quit))
-  (label `EN`)
-  (` `
-    _
-    (new _ `ZTQUEUED` `POP` `ZTRTN` `ZTDTH` `ZTDESC` `ZTSAVE` `SDSCDVSL` `SDSCDVLN` `DIR` `X` `Y`))
-  (` ` _ (new _ `DTOUT` `DUOUT`))
-  (` `)
-  (` `
-    _
-    (do _ (call (ref `GETDATE` _ `SDSCOMP`)))
-    (if (expr (lvar `SDSCTDT`) (`=` (str `""`))))
-    (goto _ ((ref `EXIT`))))
-  (` `)
-  (` ` _ (do _ (call (ref `DIV` _ `SDSCUTL`))))
-  (` ` _ (do _ (call (ref _ _ `DIR`))))
-  (` `
-    _
+  (label `SDSCNSCP` _ _)@0..9
+  (line ` `)@63..64
+  (line ` `)@111..112
+  (line ` `)@114..115
+  (line ` `)@140..141
+  (line ` `)@207..208
+  (line ` `)@276..277
+  (line ` `)@345..346
+  (line ` ` (quit _ _)@389..390)@388..390
+  (label `EN` _ _)@391..394
+  (line
+    ` `
+    (new
+      _
+      `ZTQUEUED`
+      `POP`
+      `ZTRTN`
+      `ZTDTH`
+      `ZTDESC`
+      `ZTSAVE`
+      `SDSCDVSL`
+      `SDSCDVLN`
+      `DIR`
+      `X`
+      `Y`)@410..476)@409..476
+  (line ` ` (new _ `DTOUT` `DUOUT`)@478..491)@477..491
+  (line ` `)@492..493
+  (line
+    ` `
+    (do _ (call (ref `GETDATE` _ `SDSCOMP`)@542..557 _ _)@542..557)@540..557
+    (if (expr (lvar `SDSCTDT` _)@560..567 (binop `=` `""`)@567..570)@560..570)@558..570
+    (goto _ (call (ref `EXIT` _ _)@573..577 _ _)@573..577)@571..577)@539..577
+  (line ` `)@578..579
+  (line ` ` (do _ (call (ref `DIV` _ `SDSCUTL`)@602..613 _ _)@602..613)@600..613)@599..613
+  (line ` ` (do _ (call (ref _ _ `DIR`)@617..621 _ _)@617..621)@615..621)@614..621
+  (line
+    ` `
     (if
       (expr
-        (intrinsic `G`#206 ((expr (lvar `DTOUT`))))
-        (`!` (expr (intrinsic `G`#206 ((expr (lvar `DUOUT`))))))))
-    (goto _ ((ref `EXIT`))))
-  (` ` _ (set _ (= (lvar `SDSCDVSL`) (expr (lvar `Y`))) (= (lvar `SDSCDVLN`) (expr (lvar `SCLN`)))))
-  (` ` _ (kill _ (lvar `SCLN`) (lvar `DIR`)))
-  (` `)
-  (` ` _ (do _ (call (ref `TYPE` _ `SDSCUTL`))))
-  (` `
-    _
-    (if (expr (lvar `SDTYPE`) (`'=` (str `"S"`))))
-    (write _ (posformat `!` `!`) (expr (str `"You do not have privileges to run this report."`)))
-    (quit))
-  (` `
-    _
-    (write
-      _
-      (posformat `!` `!`)
-      (expr (str `"This option will permanently remove the outpatient encounters that are at a"`))))
-  (` `
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr (str `"NEW status when both the Encounter SC value and the ASCD value are 'NO' from"`))))
-  (` `
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr (str `"the SDSC SERVICE CONNECTED CHANGES file (#409.48)."`))
-      (posformat `!`)))
-  (` `
-    _
+        (intrinsic `G`#206 ((lvar `DTOUT` _)@628..633)@628..633)@625..634
+        (binop
+          `!`
+          (expr (intrinsic `G`#206 ((lvar `DUOUT` _)@639..644)@639..644)@636..645)@635..646)@634..646)@625..646)@623..646
+    (goto _ (call (ref `EXIT` _ _)@649..653 _ _)@649..653)@647..653)@622..653
+  (line
+    ` `
     (set
       _
-      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"Y"`)))
-      (= (lvar `DIR` ((expr (str `"A"`)))) (expr (str `"Are you sure you want to continue"`)))
-      (= (lvar `DIR` ((expr (str `"B"`)))) (expr (str `"N"`)))))
-  (` `
-    _
+      (= (lvar `SDSCDVSL` _)@657..665 (lvar `Y` _)@666..667)@657..667
+      (= (lvar `SDSCDVLN` _)@668..676 (lvar `SCLN` _)@677..681)@668..681)@655..681)@654..681
+  (line ` ` (kill _ (lvar `SCLN` _)@685..689 (lvar `DIR` _)@690..693)@683..693)@682..693
+  (line ` `)@694..695
+  (line ` ` (do _ (call (ref `TYPE` _ `SDSCUTL`)@724..736 _ _)@724..736)@722..736)@721..736
+  (line
+    ` `
+    (if (expr (lvar `SDTYPE` _)@740..746 (binop `'=` `"S"`)@746..751)@740..751)@738..751
+    (write
+      _
+      (posformat _ `!` `!`)@754..756
+      `"You do not have privileges to run this report."`)@752..805
+    (quit _ _)@806..807)@737..807
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!` `!`)@811..813
+      `"This option will permanently remove the outpatient encounters that are at a"`)@809..891)@808..891
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@895..896
+      `"NEW status when both the Encounter SC value and the ASCD value are 'NO' from"`)@893..975)@892..975
+  (line
+    ` `
+    (write
+      _
+      (posformat _ `!`)@979..980
+      `"the SDSC SERVICE CONNECTED CHANGES file (#409.48)."`
+      (posformat _ `!`)@1034..1035)@977..1035)@976..1035
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `DIR` (`0`)@1043..1044)@1039..1045 `"Y"`)@1039..1049
+      (=
+        (lvar `DIR` (`"A"`)@1054..1057)@1050..1058
+        `"Are you sure you want to continue"`)@1050..1094
+      (= (lvar `DIR` (`"B"`)@1099..1102)@1095..1103 `"N"`)@1095..1107)@1037..1107)@1036..1107
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `DIR` ((expr (str `"?"`))))
-        (expr (str `"YES to remove encounters from the Review file, NO to Exit."`)))))
-  (` ` _ (do _ (call (ref _ _ `DIR`))))
-  (` `
-    _
+        (lvar `DIR` (`"?"`)@1115..1118)@1111..1119
+        `"YES to remove encounters from the Review file, NO to Exit."`)@1111..1180)@1109..1180)@1108..1180
+  (line ` ` (do _ (call (ref _ _ `DIR`)@1184..1188 _ _)@1184..1188)@1182..1188)@1181..1188
+  (line
+    ` `
     (if
       (expr
-        (expr (`'` (lvar `Y`)))
-        (`!` (expr (intrinsic `G`#206 ((expr (lvar `DTOUT`))))))
-        (`!` (expr (intrinsic `G`#206 ((expr (lvar `DUOUT`))))))))
-    (goto _ ((ref `EXIT`))))
-  (` `)
-  (` `
-    _
-    (kill _ (lvar `%ZIS`) (lvar `IOP`) (lvar `IOC`) (lvar `ZTIO`))
-    (set _ (= (lvar `%ZIS`) (expr (str `"QM"`))))
-    (do _ (call (ref _ _ `%ZIS`)))
-    (goto (postcond (expr (lvar `POP`))) ((ref `EXIT`))))
-  (` `
-    _
-    (if (expr (intrinsic `D`#202 ((expr (lvar `IO` ((expr (str `"Q"`)))))))))
-    (do)
-    (goto _ ((ref `EXIT`))))
-  (` . `#1
-    _
+        (expr (unary `'` (lvar `Y` _)@1194..1195)@1193..1195)@1192..1196
+        (binop
+          `!`
+          (expr (intrinsic `G`#206 ((lvar `DTOUT` _)@1201..1206)@1201..1206)@1198..1207)@1197..1208)@1196..1208
+        (binop
+          `!`
+          (expr (intrinsic `G`#206 ((lvar `DUOUT` _)@1213..1218)@1213..1218)@1210..1219)@1209..1220)@1208..1220)@1192..1220)@1190..1220
+    (goto _ (call (ref `EXIT` _ _)@1223..1227 _ _)@1223..1227)@1221..1227)@1189..1227
+  (line ` `)@1228..1229
+  (line
+    ` `
+    (kill
+      _
+      (lvar `%ZIS` _)@1234..1238
+      (lvar `IOP` _)@1239..1242
+      (lvar `IOC` _)@1243..1246
+      (lvar `ZTIO` _)@1247..1251)@1232..1251
+    (set _ (= (lvar `%ZIS` _)@1254..1258 `"QM"`)@1254..1263)@1252..1263
+    (do _ (call (ref _ _ `%ZIS`)@1266..1271 _ _)@1266..1271)@1264..1271
+    (goto
+      (postcond (lvar `POP` _)@1274..1277)@1273..1277
+      (call (ref `EXIT` _ _)@1278..1282 _ _)@1278..1282)@1272..1282)@1231..1282
+  (line
+    ` `
+    (if
+      (intrinsic `D`#202 ((lvar `IO` (`"Q"`)@1292..1295)@1289..1296)@1289..1296)@1286..1297)@1284..1297
+    (do _)@1298..1299
+    (goto _ (call (ref `EXIT` _ _)@1303..1307 _ _)@1303..1307)@1301..1307)@1283..1307
+  (line
+    ` . `
     (set
       _
-      (= (lvar `ZTRTN`) (expr (str `"BEG^SDSCNSCP"`)))
-      (= (lvar `ZTDTH`) (expr (intrinsic `H`#304)))
-      (= (lvar `ZTDESC`) (expr (str `"Purge ASCD NSC Encounters"`)))))
-  (` . `#1
-    _
+      (= (lvar `ZTRTN` _)@1313..1318 `"BEG^SDSCNSCP"`)@1313..1333
+      (= (lvar `ZTDTH` _)@1334..1339 (intrinsic `H`#304 _)@1340..1342)@1334..1342
+      (= (lvar `ZTDESC` _)@1343..1349 `"Purge ASCD NSC Encounters"`)@1343..1377)@1311..1377)@1308..1377
+  (line
+    ` . `
     (set
       _
-      (= (lvar `ZTSAVE` ((expr (str `"SDSCDVSL"`)))) (expr (str `""`)))
-      (= (lvar `ZTSAVE` ((expr (str `"SDSCDVLN"`)))) (expr (str `""`)))
-      (= (lvar `ZTSAVE` ((expr (str `"SDEDT"`)))) (expr (str `""`)))))
-  (` . `#1
-    _
+      (= (lvar `ZTSAVE` (`"SDSCDVSL"`)@1390..1400)@1383..1401 `""`)@1383..1404
+      (= (lvar `ZTSAVE` (`"SDSCDVLN"`)@1412..1422)@1405..1423 `""`)@1405..1426
+      (= (lvar `ZTSAVE` (`"SDEDT"`)@1434..1441)@1427..1442 `""`)@1427..1445)@1381..1445)@1378..1445
+  (line
+    ` . `
     (set
       _
-      (= (lvar `ZTSAVE` ((expr (str `"SDSCTDT"`)))) (expr (str `""`)))
-      (= (lvar `ZTIO`) (expr (lvar `ION`)))))
-  (` . `#1
-    _
-    (kill _ (lvar `IO` ((expr (str `"Q"`)))))
-    (do _ (call (ref _ _ `%ZTLOAD`)))
-    (write _ (posformat `!`) (expr (str `"REQUEST QUEUED"`))))
-  (` `)
-  (label `BEG`)
-  (` ` _ (new _ `SDSCDIV` `SDSCDNM` `SDI` `SDGTOT` `SDPG`))
-  (` ` _ (set _ (= (lvar `SDGTOT`) (expr (num `0`))) (= (lvar `SDPG`) (expr (num `1`)))))
-  (` `
-    _
+      (= (lvar `ZTSAVE` (`"SDSCTDT"`)@1458..1467)@1451..1468 `""`)@1451..1471
+      (= (lvar `ZTIO` _)@1472..1476 (lvar `ION` _)@1477..1480)@1472..1480)@1449..1480)@1446..1480
+  (line
+    ` . `
+    (kill _ (lvar `IO` (`"Q"`)@1489..1492)@1486..1493)@1484..1493
+    (do _ (call (ref _ _ `%ZTLOAD`)@1496..1504 _ _)@1496..1504)@1494..1504
+    (write _ (posformat _ `!`)@1507..1508 `"REQUEST QUEUED"`)@1505..1525)@1481..1525
+  (line ` `)@1526..1527
+  (label `BEG` _ _)@1529..1533
+  (line ` ` (new _ `SDSCDIV` `SDSCDNM` `SDI` `SDGTOT` `SDPG`)@1549..1582)@1548..1582
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `SDGTOT` _)@1586..1592 `0`)@1586..1594
+      (= (lvar `SDPG` _)@1595..1599 `1`)@1595..1601)@1584..1601)@1583..1601
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `SDSCDIV`)
-        (expr
-          (select
-            ((expr (lvar `SDSCDVSL`) (`'[` (lvar `SDSCDVLN`))) (expr (lvar `SDSCDVSL`)))
-            ((expr (num `1`)) (expr (str `""`))))))))
-  (` `
-    _
-    (if (expr (lvar `SDSCDIV`) (`=` (str `""`))))
-    (set _ (= (lvar `SDSCDNM`) (expr (str `"ALL"`))))
-    (do _ (call (ref `FND`)))
-    (goto _ ((ref `EXIT`))))
-  (` ` _ (if (expr (lvar `SDSCDIV`) (`'=` (str `""`)))) (do))
-  (` . `#1
-    _
+        (lvar `SDSCDIV` _)@1605..1612
+        (select
+          (case
+            (expr
+              (lvar `SDSCDVSL` _)@1616..1624
+              (binop `'[` (lvar `SDSCDVLN` _)@1626..1634)@1624..1634)@1616..1634
+            (lvar `SDSCDVSL` _)@1635..1643)@1616..1643
+          (case `1` `""`)@1644..1648)@1613..1649)@1605..1649)@1603..1649)@1602..1649
+  (line
+    ` `
+    (if (expr (lvar `SDSCDIV` _)@1653..1660 (binop `=` `""`)@1660..1663)@1653..1663)@1651..1663
+    (set _ (= (lvar `SDSCDNM` _)@1666..1673 `"ALL"`)@1666..1679)@1664..1679
+    (do _ (call (ref `FND` _ _)@1682..1685 _ _)@1682..1685)@1680..1685
+    (goto _ (call (ref `EXIT` _ _)@1688..1692 _ _)@1688..1692)@1686..1692)@1650..1692
+  (line
+    ` `
+    (if (expr (lvar `SDSCDIV` _)@1696..1703 (binop `'=` `""`)@1703..1707)@1696..1707)@1694..1707
+    (do _)@1708..1709)@1693..1709
+  (line
+    ` . `
     (for
-      (lvar `SDI`)
+      (lvar `SDI` _)@1715..1718
       (range
-        (expr (num `1`))
-        (expr (num `1`))
-        (expr (intrinsic `L`#209 ((expr (lvar `SDSCDVSL`)) (expr (str `","`)))))))
+        `1`
+        `1`
+        (intrinsic `L`#209 ((lvar `SDSCDVSL` _)@1726..1734 `","`)@1726..1738)@1723..1739)@1719..1739)@1715..1739
     (set
       _
       (=
-        (lvar `SDSCDIV`)
-        (expr (intrinsic `P`#212 ((expr (lvar `SDSCDVSL`)) (expr (str `","`)) (expr (lvar `SDI`)))))))
-    (quit (postcond (expr (lvar `SDSCDIV`) (`=` (str `""`)))))
-    (do))
-  (` .. `#2
-    _
+        (lvar `SDSCDIV` _)@1742..1749
+        (intrinsic
+          `P`#212
+          ((lvar `SDSCDVSL` _)@1753..1761 `","` (lvar `SDI` _)@1766..1769)@1753..1769)@1750..1770)@1742..1770)@1740..1770
+    (quit
+      (postcond
+        (expr (lvar `SDSCDIV` _)@1773..1780 (binop `=` `""`)@1780..1783)@1773..1783)@1772..1783
+      _)@1771..1783
+    (do _)@1785..1786)@1710..1786
+  (line
+    ` .. `
     (set
       _
       (=
-        (lvar `SDSCDNM`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (gvar `DG` ((expr (num `40.8`)) (expr (lvar `SDSCDIV`)) (expr (num `0`)))))
-              (expr (str `"^"`))
-              (expr (num `1`))))))))
-  (` .. `#2 _ (do _ (call (ref `FND`))))
-  (` `
-    _
+        (lvar `SDSCDNM` _)@1793..1800
+        (intrinsic
+          `P`#212
+          ((gvar `DG` (`40.8` (lvar `SDSCDIV` _)@1813..1820 `0`)@1808..1822 _ _)@1804..1823
+            `"^"`
+            `1`)@1804..1829)@1801..1830)@1793..1830)@1791..1830)@1787..1830
+  (line ` .. ` (do _ (call (ref `FND` _ _)@1837..1840 _ _)@1837..1840)@1835..1840)@1831..1840
+  (line
+    ` `
     (write
       _
-      (posformat `!` `!`)
-      (expr (str `"Grand total of NSC Records Purged: "`))
-      (expr (lvar `SDGTOT`))))
-  (` ` _ (goto _ ((ref `EXIT`))))
-  (` `)
-  (label `FND`)
-  (` `
-    _
+      (posformat _ `!` `!`)@1844..1846
+      `"Grand total of NSC Records Purged: "`
+      (lvar `SDGTOT` _)@1885..1891)@1842..1891)@1841..1891
+  (line ` ` (goto _ (call (ref `EXIT` _ _)@1895..1899 _ _)@1895..1899)@1893..1899)@1892..1899
+  (line ` `)@1900..1901
+  (label `FND` _ _)@1903..1907
+  (line
+    ` `
     (new
       _
       `SDOEDT`
@@ -192,247 +243,300 @@
       `SDCNT`
       `DFN`
       `DIK`
-      `DA`))
-  (` `)
-  (` ` _ (do _ (call (ref `HDR`))))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `SDOEDT`) (expr (lvar `SDSCTDT`) (`-` (num `1`))))
-      (setmulti (expr (num `0`)) (lvar `SDL`) (lvar `SDCNT`))))
-  (` `
-    _
-    (for)
+      `DA`)@1934..2007)@1933..2007
+  (line ` `)@2008..2009
+  (line ` ` (do _ (call (ref `HDR` _ _)@2014..2017 _ _)@2014..2017)@2012..2017)@2011..2017
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `SDOEDT`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr (gvar `SDSC` ((expr (num `409.48`)) (expr (str `"AE"`)) (expr (lvar `SDOEDT`))))))))))
+        (lvar `SDOEDT` _)@2021..2027
+        (expr (lvar `SDSCTDT` _)@2028..2035 (binop `-` `1`)@2035..2037)@2028..2037)@2021..2037
+      (setmulti `0` (lvar `SDL` _)@2039..2042 (lvar `SDCNT` _)@2043..2048)@2038..2051)@2019..2051)@2018..2051
+  (line
+    ` `
+    (for _)@2053..2054
+    (set
+      _
+      (=
+        (lvar `SDOEDT` _)@2058..2064
+        (intrinsic
+          `O`#211
+          ((gvar `SDSC` (`409.48` `"AE"` (lvar `SDOEDT` _)@2086..2092)@2074..2092 _ _)@2068..2093)@2068..2093)@2065..2094)@2058..2094)@2056..2094
     (quit
       (postcond
         (expr
-          (lvar `SDOEDT`)
-          (`\\` (num `1`))
-          (`>` (lvar `SDEDT`))
-          (`!` (expr (lvar `SDOEDT`) (`=` (str `""`)))))))
-    (do))
-  (` . `#1 _ (set _ (= (lvar `SDOE`) (expr (str `""`)))))
-  (` . `#1
-    _
-    (for)
+          (lvar `SDOEDT` _)@2097..2103
+          (binop `\\` `1`)@2103..2105
+          (binop `>` (lvar `SDEDT` _)@2106..2111)@2105..2111
+          (binop
+            `!`
+            (expr
+              (expr (lvar `SDOEDT` _)@2113..2119 (binop `=` `""`)@2119..2122)@2113..2122)@2112..2123)@2111..2123)@2097..2123)@2096..2123
+      _)@2095..2123
+    (do _)@2125..2126)@2052..2126
+  (line ` . ` (set _ (= (lvar `SDOE` _)@2132..2136 `""`)@2132..2139)@2130..2139)@2127..2139
+  (line
+    ` . `
+    (for _)@2143..2144
     (set
       _
       (=
-        (lvar `SDOE`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr
-               (gvar
-                 `SDSC`
-                 ((expr (num `409.48`))
-                   (expr (str `"AE"`))
-                   (expr (lvar `SDOEDT`))
-                   (expr (lvar `SDOE`))))))))))
-    (quit (postcond (expr (lvar `SDOE`) (`=` (str `""`)))))
-    (do))
-  (` .. `#2
-    _
+        (lvar `SDOE` _)@2148..2152
+        (intrinsic
+          `O`#211
+          ((gvar
+             `SDSC`
+             (`409.48` `"AE"` (lvar `SDOEDT` _)@2174..2180 (lvar `SDOE` _)@2181..2185)@2162..2185
+             _
+             _)@2156..2186)@2156..2186)@2153..2187)@2148..2187)@2146..2187
+    (quit
+      (postcond (expr (lvar `SDOE` _)@2190..2194 (binop `=` `""`)@2194..2197)@2190..2197)@2189..2197
+      _)@2188..2197
+    (do _)@2199..2200)@2140..2200
+  (line
+    ` .. `
     (set
       _
-      (= (lvar `SDOE0`) (expr (extrinsic ((`GETOE` `SDOE`) ((expr (lvar `SDOE`)))))))
       (=
-        (lvar `SDSCDATA`)
-        (expr
-          (intrinsic
-            `G`#206
-            ((expr (gvar `SDSC` ((expr (num `409.48`)) (expr (lvar `SDOE`)) (expr (num `0`)))))))))))
-  (` .. `#2
-    _
-    (quit (postcond (expr (lvar `SDOE0`) (`=` (str `""`)))))
-    (quit (postcond (expr (lvar `SDSCDATA`) (`=` (str `""`))))))
-  (` .. `#2)
-  (` .. `#2
-    _
+        (lvar `SDOE0` _)@2207..2212
+        (extrinsic `GETOE` `SDOE` ((lvar `SDOE` _)@2226..2230)@2226..2230)@2215..2231)@2207..2231
+      (=
+        (lvar `SDSCDATA` _)@2232..2240
+        (intrinsic
+          `G`#206
+          ((gvar `SDSC` (`409.48` (lvar `SDOE` _)@2257..2261 `0`)@2250..2263 _ _)@2244..2264)@2244..2264)@2241..2265)@2232..2265)@2205..2265)@2201..2265
+  (line
+    ` .. `
+    (quit
+      (postcond
+        (expr (lvar `SDOE0` _)@2272..2277 (binop `=` `""`)@2277..2280)@2272..2280)@2271..2280
+      _)@2270..2280
+    (quit
+      (postcond
+        (expr (lvar `SDSCDATA` _)@2284..2292 (binop `=` `""`)@2292..2295)@2284..2295)@2283..2295
+      _)@2282..2295)@2266..2295
+  (line ` .. `)@2296..2300
+  (line
+    ` .. `
     (if
-      (expr
-        (intrinsic `P`#212 ((expr (lvar `SDSCDATA`)) (expr (lvar `U`)) (expr (num `5`))))
-        (`'=` (str `"N"`))))
-    (quit))
-  (` .. `#2
-    _
-    (set
-      _
-      (=
-        (lvar `SDEDIV`)
-        (expr (intrinsic `P`#212 ((expr (lvar `SDSCDATA`)) (expr (lvar `U`)) (expr (num `12`)))))))
-    (quit (postcond (expr (lvar `SDEDIV`) (`=` (str `""`))))))
-  (` .. `#2
-    _
-    (if (expr (lvar `SDSCDIV`) (`'=` (str `""`))))
-    (quit (postcond (expr (lvar `SDEDIV`) (`'=` (lvar `SDSCDIV`))))))
-  (` .. `#2)
-  (` .. `#2
-    _
-    (if
-      (expr
-        (intrinsic `P`#212 ((expr (lvar `SDSCDATA`)) (expr (lvar `U`)) (expr (num `9`))))
-        (`'=` (num `0`))))
-    (quit))
-  (` .. `#2)
-  (` .. `#2
-    _
-    (set
-      _
-      (=
-        (lvar `SDV0`)
-        (expr (intrinsic `P`#212 ((expr (lvar `SDOE0`)) (expr (lvar `U`)) (expr (num `5`))))))
-      (=
-        (lvar `SCVST`)
-        (expr
-          (extrinsic
-            ((`GET1` `DIQ`)
-              ((expr (num `9000010`))
-                (expr (lvar `SDV0`) (`_` (str `","`)))
-                (expr (num `80001`))
-                (expr (str `"I"`)))))))))
-  (` .. `#2 _ (if (expr (lvar `SCVST`) (`'=` (num `0`)))) (quit))
-  (` .. `#2
-    _
-    (set
-      _
-      (=
-        (lvar `DFN`)
-        (expr (intrinsic `P`#212 ((expr (lvar `SDOE0`)) (expr (lvar `U`)) (expr (str `"2Z"`)))))))
-    (do _ (call (ref `DEM` _ `VADPT`))))
-  (` .. `#2
-    _
-    (set
-      _
-      (= (lvar `SDCNT`) (expr (lvar `SDCNT`) (`+` (num `1`))))
-      (= (lvar `SDGTOT`) (expr (lvar `SDGTOT`) (`+` (num `1`))))
-      (=
-        (lvar `SCVST`)
-        (expr
-          (select
-            ((expr (lvar `SCVST`)) (expr (str `"Y"`)))
-            ((expr (lvar `SCVST`) (`=` (num `0`))) (expr (str `"NO"`)))
-            ((expr (num `1`)) (expr (str `""`))))))))
-  (` .. `#2
-    _
-    (set
-      _
-      (=
-        (lvar `SDPRV`)
-        (expr
-          (extrinsic
-            ((`GET1` `DIQ`)
-              ((expr (num `200`))
-                (expr (extrinsic ((`PRIMVPRV` `PXUTL1`) ((expr (lvar `SDV0`))))) (`_` (str `","`)))
-                (expr (num `.01`))
-                (expr (str `"E"`)))))))
-      (= (lvar `SDL`) (expr (lvar `SDL`) (`+` (num `1`))))))
-  (` .. `#2
-    _
-    (write
-      _
-      (posformat `!`)
-      (expr (extrinsic ((`FMTE` `XLFDT`) ((expr (lvar `SDOEDT`)) (expr (num `2`))))))
-      (? (expr (num `16`)))
-      (expr (lvar `SDOE`))
-      (? (expr (num `30`)))
       (expr
         (intrinsic
-          `E`#203
-          ((expr (lvar `VADM` ((expr (num `1`))))) (expr (num `1`)) (expr (num `25`)))))
-      (? (expr (num `55`)))
-      (expr (intrinsic `E`#203 ((expr (lvar `SDPRV`)) (expr (num `1`)) (expr (num `19`)))))
-      (? (expr (num `75`)))
-      (expr (lvar `SCVST`))))
-  (` .. `#2
-    _
-    (set _ (= (lvar `DIK`) (expr (str `"^SDSC(409.48,"`))) (= (lvar `DA`) (expr (lvar `SDOE`))))
-    (do _ (call (ref _ _ `DIK`))))
-  (` .. `#2 _ (do _ (call (ref `KVA` _ `VADPT`))))
-  (` .. `#2
-    _
+          `P`#212
+          ((lvar `SDSCDATA` _)@2334..2342 (lvar `U` _)@2343..2344 `5`)@2334..2346)@2331..2347
+        (binop `'=` `"N"`)@2347..2352)@2331..2352)@2329..2352
+    (quit _ _)@2353..2354)@2325..2354
+  (line
+    ` .. `
+    (set
+      _
+      (=
+        (lvar `SDEDIV` _)@2361..2367
+        (intrinsic
+          `P`#212
+          ((lvar `SDSCDATA` _)@2371..2379 (lvar `U` _)@2380..2381 `12`)@2371..2384)@2368..2385)@2361..2385)@2359..2385
+    (quit
+      (postcond
+        (expr (lvar `SDEDIV` _)@2388..2394 (binop `=` `""`)@2394..2397)@2388..2397)@2387..2397
+      _)@2386..2397)@2355..2397
+  (line
+    ` .. `
+    (if (expr (lvar `SDSCDIV` _)@2404..2411 (binop `'=` `""`)@2411..2415)@2404..2415)@2402..2415
+    (quit
+      (postcond
+        (expr
+          (lvar `SDEDIV` _)@2418..2424
+          (binop `'=` (lvar `SDSCDIV` _)@2426..2433)@2424..2433)@2418..2433)@2417..2433
+      _)@2416..2433)@2398..2433
+  (line ` .. `)@2434..2438
+  (line
+    ` .. `
     (if
       (expr
-        (intrinsic `E`#203 ((expr (lvar `IOST`)) (expr (num `1`)) (expr (num `2`))))
-        (`'=` (str `"C-"`)))
-      (expr (lvar `SDL`) (`+` (num `4`)) (`>` (lvar `IOSL`))))
-    (do _ (call (ref `HDR`))))
-  (` `
-    _
+        (intrinsic
+          `P`#212
+          ((lvar `SDSCDATA` _)@2473..2481 (lvar `U` _)@2482..2483 `9`)@2473..2485)@2470..2486
+        (binop `'=` `0`)@2486..2489)@2470..2489)@2468..2489
+    (quit _ _)@2490..2491)@2464..2491
+  (line ` .. `)@2492..2496
+  (line
+    ` .. `
+    (set
+      _
+      (=
+        (lvar `SDV0` _)@2529..2533
+        (intrinsic
+          `P`#212
+          ((lvar `SDOE0` _)@2537..2542 (lvar `U` _)@2543..2544 `5`)@2537..2546)@2534..2547)@2529..2547
+      (=
+        (lvar `SCVST` _)@2548..2553
+        (extrinsic
+          `GET1`
+          `DIQ`
+          (`9000010`
+            (expr (lvar `SDV0` _)@2573..2577 (binop `_` `","`)@2577..2581)@2573..2581
+            `80001`
+            `"I"`)@2565..2591)@2556..2592)@2548..2592)@2527..2592)@2523..2592
+  (line
+    ` .. `
+    (if (expr (lvar `SCVST` _)@2599..2604 (binop `'=` `0`)@2604..2607)@2599..2607)@2597..2607
+    (quit _ _)@2608..2609)@2593..2609
+  (line
+    ` .. `
+    (set
+      _
+      (=
+        (lvar `DFN` _)@2616..2619
+        (intrinsic
+          `P`#212
+          ((lvar `SDOE0` _)@2623..2628 (lvar `U` _)@2629..2630 `"2Z"`)@2623..2635)@2620..2636)@2616..2636)@2614..2636
+    (do _ (call (ref `DEM` _ `VADPT`)@2639..2648 _ _)@2639..2648)@2637..2648)@2610..2648
+  (line
+    ` .. `
+    (set
+      _
+      (=
+        (lvar `SDCNT` _)@2655..2660
+        (expr (lvar `SDCNT` _)@2661..2666 (binop `+` `1`)@2666..2668)@2661..2668)@2655..2668
+      (=
+        (lvar `SDGTOT` _)@2669..2675
+        (expr (lvar `SDGTOT` _)@2676..2682 (binop `+` `1`)@2682..2684)@2676..2684)@2669..2684
+      (=
+        (lvar `SCVST` _)@2685..2690
+        (select
+          (case (lvar `SCVST` _)@2694..2699 `"Y"`)@2694..2703
+          (case
+            (expr (lvar `SCVST` _)@2704..2709 (binop `=` `0`)@2709..2711)@2704..2711
+            `"NO"`)@2704..2716
+          (case `1` `""`)@2717..2721)@2691..2722)@2685..2722)@2653..2722)@2649..2722
+  (line
+    ` .. `
+    (set
+      _
+      (=
+        (lvar `SDPRV` _)@2729..2734
+        (extrinsic
+          `GET1`
+          `DIQ`
+          (`200`
+            (expr
+              (extrinsic `PRIMVPRV` `PXUTL1` ((lvar `SDV0` _)@2768..2772)@2768..2772)@2752..2773
+              (binop `_` `","`)@2773..2777)@2750..2777
+            `.01`
+            `"E"`)@2746..2785)@2737..2786)@2729..2786
+      (=
+        (lvar `SDL` _)@2787..2790
+        (expr (lvar `SDL` _)@2791..2794 (binop `+` `1`)@2794..2796)@2791..2796)@2787..2796)@2727..2796)@2723..2796
+  (line
+    ` .. `
     (write
       _
-      (posformat `!` `!`)
-      (expr (str `"Number of NSC Records Purged: "`))
-      (expr (lvar `SDCNT`))
-      (expr (str `" for "`) (`_` (lvar `SDSCDNM`)))))
-  (` ` _ (quit))
-  (` `)
-  (label `HDR`)
-  (` ` _ (new _ `SDHDR` `I`))
-  (` ` _ (set _ (= (lvar `SDHDR`) (expr (str `"Purge ASCD NSC Encounters"`)))))
-  (` ` _ (write _ (expr (@name (lvar `IOF`)))))
-  (` `
-    _
+      (posformat _ `!`)@2803..2804
+      (extrinsic `FMTE` `XLFDT` ((lvar `SDOEDT` _)@2818..2824 `2`)@2818..2826)@2807..2827
+      (tab `16`)@2828..2831
+      (lvar `SDOE` _)@2832..2836
+      (tab `30`)@2837..2840
+      (intrinsic `E`#203 ((lvar `VADM` (`1`)@2849..2850)@2844..2851 `1` `25`)@2844..2856)@2841..2857
+      (tab `55`)@2858..2861
+      (intrinsic `E`#203 ((lvar `SDPRV` _)@2865..2870 `1` `19`)@2865..2875)@2862..2876
+      (tab `75`)@2877..2880
+      (lvar `SCVST` _)@2881..2886)@2801..2886)@2797..2886
+  (line
+    ` .. `
+    (set
+      _
+      (= (lvar `DIK` _)@2893..2896 `"^SDSC(409.48,"`)@2893..2912
+      (= (lvar `DA` _)@2913..2915 (lvar `SDOE` _)@2916..2920)@2913..2920)@2891..2920
+    (do _ (call (ref _ _ `DIK`)@2923..2927 _ _)@2923..2927)@2921..2927)@2887..2927
+  (line ` .. ` (do _ (call (ref `KVA` _ `VADPT`)@2934..2943 _ _)@2934..2943)@2932..2943)@2928..2943
+  (line
+    ` .. `
+    (if
+      (expr
+        (intrinsic `E`#203 ((lvar `IOST` _)@2953..2957 `1` `2`)@2953..2961)@2950..2962
+        (binop `'=` `"C-"`)@2962..2968)@2950..2968
+      (expr
+        (lvar `SDL` _)@2969..2972
+        (binop `+` `4`)@2972..2974
+        (binop `>` (lvar `IOSL` _)@2975..2979)@2974..2979)@2969..2979)@2948..2979
+    (do _ (call (ref `HDR` _ _)@2982..2985 _ _)@2982..2985)@2980..2985)@2944..2985
+  (line
+    ` `
     (write
       _
-      (expr (lvar `SDHDR`))
-      (? (expr (num `67`)))
-      (expr (str `"PAGE: "`))
-      (expr (lvar `SDPG`))))
-  (` `
-    _
+      (posformat _ `!` `!`)@2989..2991
+      `"Number of NSC Records Purged: "`
+      (lvar `SDCNT` _)@3025..3030
+      (expr `" for "` (binop `_` (lvar `SDSCDNM` _)@3039..3046)@3038..3046)@3031..3046)@2987..3046)@2986..3046
+  (line ` ` (quit _ _)@3048..3049)@3047..3049
+  (line ` `)@3050..3051
+  (label `HDR` _ _)@3053..3057
+  (line ` ` (new _ `SDHDR` `I`)@3074..3083)@3073..3083
+  (line
+    ` `
+    (set _ (= (lvar `SDHDR` _)@3087..3092 `"Purge ASCD NSC Encounters"`)@3087..3120)@3085..3120)@3084..3120
+  (line ` ` (write _ (@name (lvar `IOF` _)@3125..3128)@3124..3128)@3122..3128)@3121..3128
+  (line
+    ` `
     (write
       _
-      (posformat `!`)
-      (? (expr (num `5`)))
-      (expr (str `"For Encounters Dated "`))
-      (expr (extrinsic ((`FMTE` `XLFDT`) ((expr (lvar `SDSCTDT`)) (expr (num `2`))))))
-      (expr (str `" THRU "`))
-      (expr (extrinsic ((`FMTE` `XLFDT`) ((expr (lvar `SDEDT`)) (expr (num `2`))))))
-      (expr (str `" For Division: "`))
-      (expr (lvar `SDSCDNM`))
-      (posformat `!` `!`)))
-  (` `
-    _
+      (lvar `SDHDR` _)@3132..3137
+      (tab `67`)@3138..3141
+      `"PAGE: "`
+      (lvar `SDPG` _)@3151..3155)@3130..3155)@3129..3155
+  (line
+    ` `
     (write
       _
-      (expr (str `"Encounter Date"`))
-      (? (expr (num `16`)))
-      (expr (str `"Encounter No."`))
-      (? (expr (num `30`)))
-      (expr (str `"Patient Name"`))
-      (? (expr (num `55`)))
-      (expr (str `"Provider"`))
-      (? (expr (num `73`)))
-      (expr (str `"SC Val"`))))
-  (` `
-    _
-    (write _ (posformat `!`))
-    (for (lvar `I`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `79`))))
-    (write _ (expr (str `"-"`))))
-  (` ` _ (set _ (= (lvar `SDPG`) (expr (lvar `SDPG`) (`+` (num `1`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `EXIT`)
-  (` `
-    _
+      (posformat _ `!`)@3159..3160
+      (tab `5`)@3161..3163
+      `"For Encounters Dated "`
+      (extrinsic `FMTE` `XLFDT` ((lvar `SDSCTDT` _)@3201..3208 `2`)@3201..3210)@3190..3211
+      `" THRU "`
+      (extrinsic `FMTE` `XLFDT` ((lvar `SDEDT` _)@3234..3239 `2`)@3234..3241)@3223..3242
+      `" For Division: "`
+      (lvar `SDSCDNM` _)@3261..3268
+      (posformat _ `!` `!`)@3269..3271)@3157..3271)@3156..3271
+  (line
+    ` `
+    (write
+      _
+      `"Encounter Date"`
+      (tab `16`)@3292..3295
+      `"Encounter No."`
+      (tab `30`)@3312..3315
+      `"Patient Name"`
+      (tab `55`)@3331..3334
+      `"Provider"`
+      (tab `73`)@3346..3349
+      `"SC Val"`)@3273..3358)@3272..3358
+  (line
+    ` `
+    (write _ (posformat _ `!`)@3362..3363)@3360..3363
+    (for (lvar `I` _)@3366..3367 (range `1` `1` `79`)@3368..3374)@3366..3374
+    (write _ `"-"`)@3375..3380)@3359..3380
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `SDPG` _)@3384..3388
+        (expr (lvar `SDPG` _)@3389..3393 (binop `+` `1`)@3393..3395)@3389..3395)@3384..3395)@3382..3395)@3381..3395
+  (line ` ` (quit _ _)@3397..3398)@3396..3398
+  (line ` `)@3399..3400
+  (label `EXIT` _ _)@3402..3407
+  (line
+    ` `
     (kill
       _
-      (lvar `SDEDT`)
-      (lvar `SDOPT`)
-      (lvar `SDSCBDT`)
-      (lvar `SDSCCR`)
-      (lvar `SDSCEDT`)
-      (lvar `SDSCTAT`)
-      (lvar `SDSCTDT`)
-      (lvar `SDTYPE`)))
-  (` ` _ (quit)))
+      (lvar `SDEDT` _)@3452..3457
+      (lvar `SDOPT` _)@3458..3463
+      (lvar `SDSCBDT` _)@3464..3471
+      (lvar `SDSCCR` _)@3472..3478
+      (lvar `SDSCEDT` _)@3479..3486
+      (lvar `SDSCTAT` _)@3487..3494
+      (lvar `SDSCTDT` _)@3495..3502
+      (lvar `SDTYPE` _)@3503..3509)@3450..3509)@3449..3509
+  (line ` ` (quit _ _)@3511..3512)@3510..3512
+  _)@0..3513

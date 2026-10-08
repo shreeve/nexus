@@ -1,321 +1,438 @@
 (routine
-  (label `INC`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/modern/INC"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `INC` _ _)@0..4
+  (line ` `)@51..52
+  (line ` `)@54..55
+  (line ` `)@83..84
+  (line ` `)@144..145
+  (line ` `)@173..174
+  (line ` `)@210..211
+  (line ` `)@213..214
+  (line ` `)@282..283
+  (line ` `)@337..338
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@343..353 (`"compliance/modern/INC"`)@354..377 _)@343..378)@341..378)@340..378
+  (line ` `)@379..380
+  (line ` `)@382..383
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I undefined creates with 1"`))
-          (expr (num `1`))
-          (expr (str `"$$BASIC^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@428..436
+        (`"$I undefined creates with 1"` `1` `"$$BASIC^INC()"`)@437..484
+        _)@428..485)@426..485)@425..485
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I existing adds 1"`)) (expr (num `2`)) (expr (str `"$$EXIST^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@489..497
+        (`"$I existing adds 1"` `2` `"$$EXIST^INC()"`)@498..536
+        _)@489..537)@487..537)@486..537
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I returns new value"`)) (expr (num `10`)) (expr (str `"$$RETVAL^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@541..549
+        (`"$I returns new value"` `10` `"$$RETVAL^INC()"`)@550..592
+        _)@541..593)@539..593)@538..593
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I mutates in place"`)) (expr (num `6`)) (expr (str `"$$MUT^INC()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@597..605
+        (`"$I mutates in place"` `6` `"$$MUT^INC()"`)@606..643
+        _)@597..644)@595..644)@594..644
+  (line ` `)@645..646
+  (line ` `)@648..649
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@673..681 (`"$I delta=5"` `5` `"$$D5^INC()"`)@682..709 _)@673..710)@671..710)@670..710
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I delta=5"`)) (expr (num `5`)) (expr (str `"$$D5^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@714..722
+        (`"$I negative delta"` (unary `-` `3`)@743..745 `"$$DNEG^INC()"`)@723..760
+        _)@714..761)@712..761)@711..761
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I negative delta"`)) (expr (`-` (num `3`))) (expr (str `"$$DNEG^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@765..773
+        (`"$I delta=0 returns current"` `7` `"$$D0^INC()"`)@774..817
+        _)@765..818)@763..818)@762..818
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I delta=0 returns current"`)) (expr (num `7`)) (expr (str `"$$D0^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@822..830
+        (`"$I decimal delta"` `1.5` `"$$DDEC^INC()"`)@831..868
+        _)@822..869)@820..869)@819..869
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I decimal delta"`)) (expr (num `1.5`)) (expr (str `"$$DDEC^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@873..881
+        (`"$I large positive delta"` `1000` `"$$DLG^INC()"`)@882..926
+        _)@873..927)@871..927)@870..927
+  (line ` `)@928..929
+  (line ` `)@931..932
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I large positive delta"`)) (expr (num `1000`)) (expr (str `"$$DLG^INC()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@963..971
+        (`"$I in 100-iter loop"` `100` `"$$LOOP^INC()"`)@972..1012
+        _)@963..1013)@961..1013)@960..1013
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I in 100-iter loop"`)) (expr (num `100`)) (expr (str `"$$LOOP^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1017..1025
+        (`"$I sum-of-1-to-10"` `55` `"$$MIXLOOP^INC()"`)@1026..1066
+        _)@1017..1067)@1015..1067)@1014..1067
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I sum-of-1-to-10"`)) (expr (num `55`)) (expr (str `"$$MIXLOOP^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1071..1079
+        (`"$I as condition (truthy after first)"` `1` `"$$ASCOND^INC()"`)@1080..1137
+        _)@1071..1138)@1069..1138)@1068..1138
+  (line ` `)@1139..1140
+  (line ` `)@1142..1143
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I as condition (truthy after first)"`))
-          (expr (num `1`))
-          (expr (str `"$$ASCOND^INC()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1174..1182
+        (`"multiple counters independent"` `3` `"$$MULT^INC()"`)@1183..1231
+        _)@1174..1232)@1172..1232)@1171..1232
+  (line ` `)@1233..1234
+  (line ` `)@1236..1237
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"multiple counters independent"`))
-          (expr (num `3`))
-          (expr (str `"$$MULT^INC()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1267..1275
+        (`"$I subscripted local"` `1` `"$$SUB1^INC()"`)@1276..1315
+        _)@1267..1316)@1265..1316)@1264..1316
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I subscripted local"`)) (expr (num `1`)) (expr (str `"$$SUB1^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1320..1328
+        (`"$I subscripted with delta"` `5` `"$$SUB5^INC()"`)@1329..1373
+        _)@1320..1374)@1318..1374)@1317..1374
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I subscripted with delta"`)) (expr (num `5`)) (expr (str `"$$SUB5^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1378..1386
+        (`"$I deep subscript creates and increments"` `1` `"$$DEEPSUB^INC()"`)@1387..1449
+        _)@1378..1450)@1376..1450)@1375..1450
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I deep subscript creates and increments"`))
-          (expr (num `1`))
-          (expr (str `"$$DEEPSUB^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1454..1462
+        (`"$I deep with delta"` `10` `"$$DEEPDEL^INC()"`)@1463..1504
+        _)@1454..1505)@1452..1505)@1451..1505
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I deep with delta"`)) (expr (num `10`)) (expr (str `"$$DEEPDEL^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1509..1517
+        (`"$I subscripted in loop accumulates"` `55` `"$$SUBLOOP^INC()"`)@1518..1575
+        _)@1509..1576)@1507..1576)@1506..1576
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I subscripted in loop accumulates"`))
-          (expr (num `55`))
-          (expr (str `"$$SUBLOOP^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1580..1588
+        (`"$I global subscripted"` `1` `"$$GSUB^INC()"`)@1589..1629
+        _)@1580..1630)@1578..1630)@1577..1630
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I global subscripted"`)) (expr (num `1`)) (expr (str `"$$GSUB^INC()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1634..1642
+        (`"$I sibling counters independent"` `"2,3"` `"$$SIBLINGS^INC()"`)@1643..1701
+        _)@1634..1702)@1632..1702)@1631..1702
+  (line ` `)@1703..1704
+  (line
+    ` `
     (do
       _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$I sibling counters independent"`))
-          (expr (str `"2,3"`))
-          (expr (str `"$$SIBLINGS^INC()"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/modern/INC"`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `BASIC` _ ((new _ `x`)))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))
-  (` `)
-  (label `EXIST` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `1`))))))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)))))))
-  (` `)
-  (label `RETVAL` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `9`))))))
-  (` ` _ (new _ `r`) (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`))))))))
-  (` ` _ (quit _ (expr (lvar `r`))))
-  (` `)
-  (label `MUT` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `5`))))))
-  (` ` _ (new _ `r`) (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`))))))))
-  (` `)
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (` `)
-  (label `D5` _ ((new _ `x`)))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `5`)))))))
-  (` `)
-  (label `DNEG` _ ((new _ `x`)))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (`-` (num `3`))))))))
-  (` `)
-  (label `D0` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `7`))))))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `0`)))))))
-  (` `)
-  (label `DDEC` _ ((new _ `x`) (set _ (= (lvar `x`) (expr (num `1`))))))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `0.5`)))))))
-  (` `)
-  (label `DLG` _ ((new _ `x`)))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (num `1000`)))))))
-  (` `)
-  (label `LOOP` _ ((new _ `x` `i` `r`)))
-  (` `
+      (call (ref `END` _ `TEST`)@1709..1717 (`"compliance/modern/INC"`)@1718..1741 _)@1709..1742)@1707..1742)@1706..1742
+  (line ` ` (quit _ _)@1744..1745)@1743..1745
+  (line ` `)@1746..1747
+  (label `BASIC` _ _ (new _ `x`)@1757..1760)@1749..1760
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@1767..1768)@1767..1768)@1764..1769)@1762..1769)@1761..1769
+  (line ` `)@1770..1771
+  (label
+    `EXIST`
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `100`))))
-    (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`))))))))
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (` `)
-  (label `MIXLOOP` _ ((new _ `x` `i` `r`)))
-  (` `
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
-    (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x`)) (expr (lvar `i`))))))))
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (` `)
-  (label `ASCOND` _ ((new _ `x` `result`) (set _ (= (lvar `result`) (expr (num `0`))))))
-  (` `)
-  (` `
+    (new _ `x`)@1781..1784
+    (set _ (= (lvar `x` _)@1787..1788 `1`)@1787..1790)@1785..1790)@1773..1790
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@1797..1798)@1797..1798)@1794..1799)@1792..1799)@1791..1799
+  (line ` `)@1800..1801
+  (label
+    `RETVAL`
     _
-    (if (expr (intrinsic `I`#207 ((expr (lvar `x`))))))
-    (set _ (= (lvar `result`) (expr (num `1`)))))
-  (` ` _ (quit _ (expr (lvar `result`))))
-  (` `)
-  (label `MULT` _ ((new _ `x` `y`)))
-  (` `)
-  (` `
     _
-    (new _ `r`)
+    (new _ `x`)@1812..1815
+    (set _ (= (lvar `x` _)@1818..1819 `9`)@1818..1821)@1816..1821)@1803..1821
+  (line
+    ` `
+    (new _ `r`)@1823..1826
     (set
       _
       (=
-        (lvar `r`)
+        (lvar `r` _)@1829..1830
+        (intrinsic `I`#207 ((lvar `x` _)@1834..1835)@1834..1835)@1831..1836)@1829..1836)@1827..1836)@1822..1836
+  (line ` ` (quit _ (lvar `r` _)@1840..1841)@1838..1841)@1837..1841
+  (line ` `)@1842..1843
+  (label
+    `MUT`
+    _
+    _
+    (new _ `x`)@1851..1854
+    (set _ (= (lvar `x` _)@1857..1858 `5`)@1857..1860)@1855..1860)@1845..1860
+  (line
+    ` `
+    (new _ `r`)@1862..1865
+    (set
+      _
+      (=
+        (lvar `r` _)@1868..1869
+        (intrinsic `I`#207 ((lvar `x` _)@1873..1874)@1873..1874)@1870..1875)@1868..1875)@1866..1875)@1861..1875
+  (line ` `)@1876..1877
+  (line ` ` (quit _ (lvar `x` _)@1937..1938)@1935..1938)@1934..1938
+  (line ` `)@1939..1940
+  (label `D5` _ _ (new _ `x`)@1947..1950)@1942..1950
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@1957..1958 `5`)@1957..1960)@1954..1961)@1952..1961)@1951..1961
+  (line ` `)@1962..1963
+  (label `DNEG` _ _ (new _ `x`)@1972..1975)@1965..1975
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic `I`#207 ((lvar `x` _)@1982..1983 (unary `-` `3`)@1984..1986)@1982..1986)@1979..1987)@1977..1987)@1976..1987
+  (line ` `)@1988..1989
+  (label
+    `D0`
+    _
+    _
+    (new _ `x`)@1996..1999
+    (set _ (= (lvar `x` _)@2002..2003 `7`)@2002..2005)@2000..2005)@1991..2005
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@2012..2013 `0`)@2012..2015)@2009..2016)@2007..2016)@2006..2016
+  (line ` `)@2017..2018
+  (label
+    `DDEC`
+    _
+    _
+    (new _ `x`)@2027..2030
+    (set _ (= (lvar `x` _)@2033..2034 `1`)@2033..2036)@2031..2036)@2020..2036
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@2043..2044 `0.5`)@2043..2048)@2040..2049)@2038..2049)@2037..2049
+  (line ` `)@2050..2051
+  (label `DLG` _ _ (new _ `x`)@2059..2062)@2053..2062
+  (line
+    ` `
+    (quit _ (intrinsic `I`#207 ((lvar `x` _)@2069..2070 `1000`)@2069..2075)@2066..2076)@2064..2076)@2063..2076
+  (line ` `)@2077..2078
+  (label `LOOP` _ _ (new _ `x` `i` `r`)@2087..2094)@2080..2094
+  (line
+    ` `
+    (for (lvar `i` _)@2098..2099 (range `1` `1` `100`)@2100..2107)@2098..2107
+    (set
+      _
+      (=
+        (lvar `r` _)@2110..2111
+        (intrinsic `I`#207 ((lvar `x` _)@2115..2116)@2115..2116)@2112..2117)@2110..2117)@2108..2117)@2095..2117
+  (line ` ` (quit _ (lvar `x` _)@2121..2122)@2119..2122)@2118..2122
+  (line ` `)@2123..2124
+  (label `MIXLOOP` _ _ (new _ `x` `i` `r`)@2136..2143)@2126..2143
+  (line
+    ` `
+    (for (lvar `i` _)@2147..2148 (range `1` `1` `10`)@2149..2155)@2147..2155
+    (set
+      _
+      (=
+        (lvar `r` _)@2158..2159
+        (intrinsic `I`#207 ((lvar `x` _)@2163..2164 (lvar `i` _)@2165..2166)@2163..2166)@2160..2167)@2158..2167)@2156..2167)@2144..2167
+  (line ` ` (quit _ (lvar `x` _)@2171..2172)@2169..2172)@2168..2172
+  (line ` `)@2173..2174
+  (label
+    `ASCOND`
+    _
+    _
+    (new _ `x` `result`)@2185..2195
+    (set _ (= (lvar `result` _)@2198..2204 `0`)@2198..2206)@2196..2206)@2176..2206
+  (line ` `)@2207..2208
+  (line
+    ` `
+    (if (intrinsic `I`#207 ((lvar `x` _)@2271..2272)@2271..2272)@2268..2273)@2266..2273
+    (set _ (= (lvar `result` _)@2276..2282 `1`)@2276..2284)@2274..2284)@2265..2284
+  (line ` ` (quit _ (lvar `result` _)@2288..2294)@2286..2294)@2285..2294
+  (line ` `)@2295..2296
+  (label `MULT` _ _ (new _ `x` `y`)@2305..2310)@2298..2310
+  (line ` `)@2311..2312
+  (line
+    ` `
+    (new _ `r`)@2336..2339
+    (set
+      _
+      (=
+        (lvar `r` _)@2342..2343
         (expr
-          (intrinsic `I`#207 ((expr (lvar `x`))))
-          (`+` (intrinsic `I`#207 ((expr (lvar `x`)))))
-          (`+` (intrinsic `I`#207 ((expr (lvar `y`)))))
-          (`+` (intrinsic `I`#207 ((expr (lvar `y`)))))
-          (`+` (intrinsic `I`#207 ((expr (lvar `x`)))))))))
-  (` `)
-  (` ` _ (quit _ (expr (lvar `x`))))
-  (` `)
-  (label `SUB1` _ ((new _ `x`)))
-  (` ` _ (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"k"`))))))))))
-  (` `)
-  (label `SUB5` _ ((new _ `x`)))
-  (` `
-    _
-    (quit _ (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"k"`))))) (expr (num `5`)))))))
-  (` `)
-  (label `DEEPSUB` _ ((new _ `x` `r`)))
-  (` `
-    _
+          (intrinsic `I`#207 ((lvar `x` _)@2347..2348)@2347..2348)@2344..2349
+          (binop `+` (intrinsic `I`#207 ((lvar `x` _)@2353..2354)@2353..2354)@2350..2355)@2349..2355
+          (binop `+` (intrinsic `I`#207 ((lvar `y` _)@2359..2360)@2359..2360)@2356..2361)@2355..2361
+          (binop `+` (intrinsic `I`#207 ((lvar `y` _)@2365..2366)@2365..2366)@2362..2367)@2361..2367
+          (binop `+` (intrinsic `I`#207 ((lvar `x` _)@2371..2372)@2371..2372)@2368..2373)@2367..2373)@2344..2373)@2342..2373)@2340..2373)@2335..2373
+  (line ` `)@2374..2375
+  (line ` ` (quit _ (lvar `x` _)@2407..2408)@2405..2408)@2404..2408
+  (line ` `)@2409..2410
+  (label `SUB1` _ _ (new _ `x`)@2419..2422)@2412..2422
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic `I`#207 ((lvar `x` (`"k"`)@2431..2434)@2429..2435)@2429..2435)@2426..2436)@2424..2436)@2423..2436
+  (line ` `)@2437..2438
+  (label `SUB5` _ _ (new _ `x`)@2447..2450)@2440..2450
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic `I`#207 ((lvar `x` (`"k"`)@2459..2462)@2457..2463 `5`)@2457..2465)@2454..2466)@2452..2466)@2451..2466
+  (line ` `)@2467..2468
+  (label `DEEPSUB` _ _ (new _ `x` `r`)@2480..2485)@2470..2485
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic
+        `I`#207
+        ((lvar `x` (`"a"` `"b"` `"c"`)@2494..2505)@2492..2506)@2492..2506)@2489..2507)@2487..2507)@2486..2507
+  (line ` `)@2508..2509
+  (label `DEEPDEL` _ _ (new _ `x` `i` `r`)@2521..2528)@2511..2528
+  (line
+    ` `
+    (for (lvar `i` _)@2532..2533 (range `1` `1` `10`)@2534..2540)@2532..2540
+    (set
+      _
+      (=
+        (lvar `r` _)@2543..2544
+        (intrinsic `I`#207 ((lvar `x` (`"counter"`)@2550..2559)@2548..2560)@2548..2560)@2545..2561)@2543..2561)@2541..2561)@2529..2561
+  (line ` ` (quit _ (lvar `x` (`"counter"`)@2567..2576)@2565..2577)@2563..2577)@2562..2577
+  (line ` `)@2578..2579
+  (label `SUBLOOP` _ _ (new _ `x` `i` `r`)@2591..2598)@2581..2598
+  (line
+    ` `
+    (for (lvar `i` _)@2602..2603 (range `1` `1` `10`)@2604..2610)@2602..2610
+    (set
+      _
+      (=
+        (lvar `r` _)@2613..2614
+        (intrinsic
+          `I`#207
+          ((lvar `x` (`"k"`)@2620..2623)@2618..2624 (lvar `i` _)@2625..2626)@2618..2626)@2615..2627)@2613..2627)@2611..2627)@2599..2627
+  (line ` ` (quit _ (lvar `x` (`"k"`)@2633..2636)@2631..2637)@2629..2637)@2628..2637
+  (line ` `)@2638..2639
+  (label `GSUB` _ _ (kill _ (gvar `MITS` _ _ _)@2650..2655)@2648..2655)@2641..2655
+  (line
+    ` `
+    (new _ `r`)@2657..2660
+    (set
+      _
+      (=
+        (lvar `r` _)@2663..2664
+        (intrinsic
+          `I`#207
+          ((gvar `MITS` (`"counter"`)@2674..2683 _ _)@2668..2684)@2668..2684)@2665..2685)@2663..2685)@2661..2685)@2656..2685
+  (line
+    ` `
+    (new _ `v`)@2687..2690
+    (set
+      _
+      (= (lvar `v` _)@2693..2694 (gvar `MITS` (`"counter"`)@2701..2710 _ _)@2695..2711)@2693..2711)@2691..2711)@2686..2711
+  (line ` ` (kill _ (gvar `MITS` _ _ _)@2715..2720)@2713..2720)@2712..2720
+  (line ` ` (quit _ (lvar `v` _)@2724..2725)@2722..2725)@2721..2725
+  (line ` `)@2726..2727
+  (label `SIBLINGS` _ _ (new _ `x`)@2740..2743)@2729..2743
+  (line
+    ` `
+    (new _ `r1`)@2745..2749
+    (set
+      _
+      (=
+        (lvar `r1` _)@2752..2754
+        (intrinsic `I`#207 ((lvar `x` (`"a"`)@2760..2763)@2758..2764)@2758..2764)@2755..2765)@2752..2765)@2750..2765)@2744..2770
+  (line
+    ` `
+    (new _ `r2`)@2775..2779
+    (set
+      _
+      (=
+        (lvar `r2` _)@2782..2784
+        (intrinsic `I`#207 ((lvar `x` (`"b"`)@2790..2793)@2788..2794)@2788..2794)@2785..2795)@2782..2795)@2780..2795)@2774..2800
+  (line
+    ` `
+    (new _ `r3`)@2805..2809
+    (set
+      _
+      (=
+        (lvar `r3` _)@2812..2814
+        (intrinsic `I`#207 ((lvar `x` (`"a"`)@2820..2823)@2818..2824)@2818..2824)@2815..2825)@2812..2825)@2810..2825)@2804..2830
+  (line
+    ` `
+    (new _ `r4`)@2835..2839
+    (set
+      _
+      (=
+        (lvar `r4` _)@2842..2844
+        (intrinsic `I`#207 ((lvar `x` (`"b"`)@2850..2853)@2848..2854 `2`)@2848..2856)@2845..2857)@2842..2857)@2840..2857)@2834..2860
+  (line
+    ` `
     (quit
       _
       (expr
-        (intrinsic
-          `I`#207
-          ((expr (lvar `x` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))))))))
-  (` `)
-  (label `DEEPDEL` _ ((new _ `x` `i` `r`)))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
-    (set _ (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"counter"`)))))))))))
-  (` ` _ (quit _ (expr (lvar `x` ((expr (str `"counter"`)))))))
-  (` `)
-  (label `SUBLOOP` _ ((new _ `x` `i` `r`)))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `10`))))
-    (set
-      _
-      (=
-        (lvar `r`)
-        (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"k"`))))) (expr (lvar `i`))))))))
-  (` ` _ (quit _ (expr (lvar `x` ((expr (str `"k"`)))))))
-  (` `)
-  (label `GSUB` _ ((kill _ (gvar `MITS`))))
-  (` `
-    _
-    (new _ `r`)
-    (set
-      _
-      (= (lvar `r`) (expr (intrinsic `I`#207 ((expr (gvar `MITS` ((expr (str `"counter"`)))))))))))
-  (` ` _ (new _ `v`) (set _ (= (lvar `v`) (expr (gvar `MITS` ((expr (str `"counter"`))))))))
-  (` ` _ (kill _ (gvar `MITS`)))
-  (` ` _ (quit _ (expr (lvar `v`))))
-  (` `)
-  (label `SIBLINGS` _ ((new _ `x`)))
-  (` `
-    _
-    (new _ `r1`)
-    (set _ (= (lvar `r1`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"a"`)))))))))))
-  (` `
-    _
-    (new _ `r2`)
-    (set _ (= (lvar `r2`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"b"`)))))))))))
-  (` `
-    _
-    (new _ `r3`)
-    (set _ (= (lvar `r3`) (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"a"`)))))))))))
-  (` `
-    _
-    (new _ `r4`)
-    (set
-      _
-      (=
-        (lvar `r4`)
-        (expr (intrinsic `I`#207 ((expr (lvar `x` ((expr (str `"b"`))))) (expr (num `2`))))))))
-  (` `
-    _
-    (quit
-      _
-      (expr (lvar `x` ((expr (str `"a"`)))) (`_` (str `","`)) (`_` (lvar `x` ((expr (str `"b"`)))))))))
+        (lvar `x` (`"a"`)@2869..2872)@2867..2873
+        (binop `_` `","`)@2873..2877
+        (binop `_` (lvar `x` (`"b"`)@2880..2883)@2878..2884)@2877..2884)@2867..2884)@2865..2884)@2864..2884
+  _)@0..2885

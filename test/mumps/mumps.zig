@@ -1,34 +1,26 @@
-//! em MUMPS Language Helper
+//! em MUMPS language module for the generated parser (`@lang = "mumps"`):
 //!
-//! Language-specific support for the MUMPS parser, providing:
-//! - Command IDs and abbreviation matching (CmdId, cmdAs)
-//! - Function IDs and abbreviation matching (FnId, fnAs)
-//! - System variable (ISV) IDs and matching (IsvId, isvAs)
-//! - Structured system variable (SSVN) IDs and matching (SsvnId, ssvnAs)
+//! - the Lexer wrapper (the escape hatch for what mumps.grammar can't say)
+//! - the keyword IDs and abbreviation tables: CmdId/cmdAs, FnId/fnAs,
+//!   SvId/svAs, IsvId/isvAs, SsvnId/ssvnAs (the grammar's `@as` lookups)
+//! - the keywords VIEW takes (viewKeywords)
 //!
-//! Uses efficient first-char dispatch with proper prefix matching:
-//! - O(1) first character dispatch via switch
-//! - O(m) case-insensitive prefix comparison where m = input length
-//! - Rejects names shorter than minimum or longer than maximum
+//! The tree's node kinds (parser.Tag) come from mumps.grammar's @schema.
 
 const std = @import("std");
 const parser = @import("parser.zig");
 const BaseLexer = parser.BaseLexer;
 const Token = parser.Token;
-const TokenCat = parser.TokenCat;
 
 // =============================================================================
 // LEXER WRAPPER
 // =============================================================================
 //
-// Wraps the nexus-generated BaseLexer to provide MUMPS-specific scanning
-// behavior that the declarative grammar cannot express:
-//
-//   - Pattern mode exit on whitespace, newlines, EOF, and `!` (with hold semantics)
-//   - Indent dot-counting at line start
-//   - Spaces token with adjacency exclusion (not after comma/paren)
-//   - Pattern mode entry after `?`, `'?`, and `'` tokens
-//
+// mumps.grammar declares every token shape, the pattern-mode entry and exit
+// rules, INDENT, SPACES and zdigits. The generated BaseLexer does all the
+// scanning; this wrapper adds the one thing a lexer rule cannot say: the end
+// of input ends a pattern (`X?1N` at EOF yields PATEND, then EOF), since no
+// rule can match at the end of input.
 
 pub const Lexer = struct {
     base: BaseLexer,
@@ -37,245 +29,15 @@ pub const Lexer = struct {
         return .{ .base = BaseLexer.init(source) };
     }
 
-    inline fn isWs(c: u8) bool {
-        return c == ' ' or c == '\t';
-    }
-
     pub fn next(self: *Lexer) Token {
-        const src = self.base.source;
-        const wsStart: u32 = self.base.pos;
-        while (self.base.pos < src.len and isWs(src[self.base.pos])) {
-            self.base.pos += 1;
-        }
-        const wsCount: u8 = @intCast(@min(self.base.pos - wsStart, 255));
-
-        // Pattern mode exit on whitespace (HOLD): rewind so whitespace
-        // is re-lexed on the next call as indent/spaces/pre.
-        if (self.base.pat != 0 and wsCount > 0) {
-            self.base.pat = 0;
-            self.base.pos = wsStart;
-            return Token{ .cat = .patend, .pre = 0, .pos = wsStart, .len = 0 };
-        }
-
-        // Indent with dot-counting at line start
-        if (self.base.beg != 0 and wsCount >= 1) {
-            self.base.beg = 0;
-            var dotCount: u8 = 0;
-            while (self.base.pos < src.len and src[self.base.pos] == '.') {
-                self.base.pos += 1;
-                dotCount +|= 1;
-                while (self.base.pos < src.len and isWs(src[self.base.pos])) {
-                    self.base.pos += 1;
-                }
-            }
-            self.base.aux = dotCount;
-            return BaseLexer.makeToken(.indent, dotCount, wsStart, self.base.pos);
-        }
-
-        // Spaces with adjacency exclusion: 2+ spaces mid-line signals an
-        // argumentless command, but NOT when adjacent to arglist punctuation.
-        if (self.base.beg == 0 and wsCount >= 2) {
-            const prevCh: u8 = if (wsStart > 0) src[wsStart - 1] else 0;
-            const nextCh: u8 = if (self.base.pos < src.len) src[self.base.pos] else 0;
-            if (prevCh != ',' and prevCh != '(' and nextCh != ',' and nextCh != ')') {
-                return Token{ .cat = .spaces, .pre = 0, .pos = wsStart, .len = wsCount };
-            }
-            // Excluded: whitespace absorbed into the next token's pre field.
-            // Don't rewind -- lex the next real token from current position.
-        }
-
-        // EOF
-        if (self.base.pos >= src.len) {
-            if (self.base.pat != 0) {
-                self.base.pat = 0;
-                return Token{ .cat = .patend, .pre = wsCount, .pos = self.base.pos, .len = 0 };
-            }
-            return Token{ .cat = .eof, .pre = wsCount, .pos = self.base.pos, .len = 0 };
-        }
-
-        // Pattern mode: dedicated handler for all pattern-specific tokens
-        if (self.base.pat != 0) {
-            return self.lexPatternToken(wsCount);
-        }
-
-        // Normal lexing: delegate to generated BaseLexer.
-        // Rewind only when whitespace is 0-1 chars (normal pre field).
-        // When wsCount >= 2, we already decided not to emit SPACES (adjacency
-        // exclusion above), so don't rewind or base.next() would re-emit SPACES.
-        if (wsCount < 2) {
-            self.base.pos = wsStart;
-        }
         var tok = self.base.next();
-        if (wsCount >= 2) {
-            tok.pre = wsCount;
+        if (tok.cat == .eof and self.base.pat != 0) {
+            self.base.pat = 0;
+            tok.cat = .patend;
         }
-
-        // Reclassify leading-zero integers (01, 007) as zdigits for labels
-        if (tok.cat == .integer and tok.len > 1 and src[tok.pos] == '0') {
-            tok.cat = .zdigits;
-        }
-
-        // Pattern mode entry after ?, '?, and ' tokens.
-        // checkPatternMode does lookahead to disambiguate pattern starts
-        // (like ?1N) from non-pattern uses (like ?1E+2 or bare ?).
-        switch (tok.cat) {
-            .question, .notques, .not => {
-                if (self.base.pat == 0) {
-                    if (checkPatternMode(self.base.source, self.base.pos))
-                        self.base.pat = 1;
-                }
-            },
-            else => {},
-        }
-
         return tok;
     }
-
-    /// Lex a token while in pattern mode. Handles all pattern-specific tokens
-    /// directly, avoiding BaseLexer issues with pattern-mode idents (must be
-    /// single-char), numbers (integer only, no decimal/exponent), and hold
-    /// semantics for pattern-terminating characters.
-    fn lexPatternToken(self: *Lexer, wsCount: u8) Token {
-        const src = self.base.source;
-        const pos = self.base.pos;
-        const c = src[pos];
-
-        // Newline: exit pattern mode without consuming (hold)
-        if (c == '\n' or c == '\r') {
-            self.base.pat = 0;
-            self.base.dep = 0;
-            return Token{ .cat = .patend, .pre = wsCount, .pos = pos, .len = 0 };
-        }
-
-        // Underscore: always exits pattern mode (hold)
-        if (c == '_') {
-            self.base.pat = 0;
-            return Token{ .cat = .patend, .pre = wsCount, .pos = pos, .len = 0 };
-        }
-
-        // At depth 0, these characters terminate the pattern (hold).
-        // They belong to the enclosing expression, not the pattern.
-        if (self.base.dep == 0) {
-            switch (c) {
-                '!', ')', ',', ':', '+' => {
-                    self.base.pat = 0;
-                    return Token{ .cat = .patend, .pre = wsCount, .pos = pos, .len = 0 };
-                },
-                else => {},
-            }
-        }
-
-        // Pattern-specific tokens
-        switch (c) {
-            // Single-char pattern code (A, C, E, L, N, P, U, etc.)
-            'A'...'Z', 'a'...'z' => {
-                self.base.pos += 1;
-                self.base.beg = 0;
-                return Token{ .cat = .ident, .pre = wsCount, .pos = pos, .len = 1 };
-            },
-            // Repetition count: digits only (no decimal/exponent)
-            '0'...'9' => {
-                while (self.base.pos < src.len and src[self.base.pos] >= '0' and src[self.base.pos] <= '9') {
-                    self.base.pos += 1;
-                }
-                self.base.beg = 0;
-                return BaseLexer.makeToken(.integer, wsCount, pos, self.base.pos);
-            },
-            // Dot is a range separator in patterns (1.3 = "1 to 3 of"),
-            // not a decimal point. Emit as dot to prevent number scanning.
-            '.' => {
-                self.base.pos += 1;
-                self.base.beg = 0;
-                return Token{ .cat = .dot, .pre = wsCount, .pos = pos, .len = 1 };
-            },
-            // Open paren: alternation group, track depth
-            '(' => {
-                self.base.dep += 1;
-                self.base.pos += 1;
-                self.base.beg = 0;
-                return Token{ .cat = .lparen, .pre = wsCount, .pos = pos, .len = 1 };
-            },
-            // Close paren at dep > 0 (dep == 0 handled above as patend)
-            ')' => {
-                self.base.dep -= 1;
-                self.base.pos += 1;
-                self.base.beg = 0;
-                return Token{ .cat = .rparen, .pre = wsCount, .pos = pos, .len = 1 };
-            },
-            // Fall through to base.next() for mode-invariant tokens:
-            // string literal, question mark, apostrophe
-            else => {
-                self.base.beg = 0;
-                var tok = self.base.next();
-                tok.pre = wsCount;
-                return tok;
-            },
-        }
-    }
 };
-
-// =============================================================================
-// LEXER HELPERS
-// =============================================================================
-
-/// Check if we should enter pattern mode after ? or '?
-///
-/// MUMPS patterns look like ?1N3A but ?1E+2 is E-notation (not a pattern).
-/// This function performs lookahead from the current position to disambiguate.
-/// Returns true if pattern mode should be entered.
-pub fn checkPatternMode(source: []const u8, pos: u32) bool {
-    const p: usize = pos;
-    var i: usize = 0;
-
-    while (p + i < source.len) : (i += 1) {
-        const ch = source[p + i];
-        if ((ch < '0' or ch > '9') and ch != '.') break;
-    }
-
-    if (i > 0 and p + i < source.len) {
-        const pc = source[p + i];
-        const pcLower = pc | 0x20;
-
-        if (pcLower == 'e') {
-            const nextPos = p + i + 1;
-            if (nextPos < source.len) {
-                const nextChar = source[nextPos];
-                if (nextChar == '+' or nextChar == '-') return false;
-                if (nextChar >= '0' and nextChar <= '9') {
-                    var j: usize = 1;
-                    while (nextPos + j < source.len and source[nextPos + j] >= '0' and source[nextPos + j] <= '9') : (j += 1) {}
-                    if (nextPos + j < source.len) {
-                        const after = source[nextPos + j];
-                        const afterLower = after | 0x20;
-                        if (afterLower == 'a' or afterLower == 'c' or afterLower == 'e' or
-                            afterLower == 'l' or afterLower == 'n' or afterLower == 'p' or
-                            afterLower == 'u' or after == '"' or after == '\'' or
-                            after == '.' or after == '(')
-                        {
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-            }
-        }
-
-        if (pcLower == 'a' or pcLower == 'c' or pcLower == 'e' or pcLower == 'l' or
-            pcLower == 'n' or pcLower == 'p' or pcLower == 'u' or pc == '(' or
-            pc == '"')
-        {
-            return true;
-        }
-        // ' triggers pattern mode only for negated pattern strings like ?1'"ABC",
-        // NOT when followed by ? (which would be a '? operator, e.g. 0'?1N).
-        if (pc == '\'') {
-            const next = p + i + 1;
-            return next >= source.len or source[next] != '?';
-        }
-    }
-
-    return false;
-}
 
 // =============================================================================
 // COMMAND IDS
@@ -313,6 +75,7 @@ pub const CmdId = enum(u16) {
     ZBREAK,
     ZHALT,
     ZKILL,
+    ZSYSTEM,
     ZWRITE,
 };
 
@@ -321,7 +84,6 @@ pub const CmdId = enum(u16) {
 // =============================================================================
 
 pub const FnId = enum(u16) {
-    unknown = 0, // Parser sets id=0 for unrecognized functions
     ASCII = 200,
     CHAR,
     DATA,
@@ -358,6 +120,9 @@ pub const FnId = enum(u16) {
     ZSEARCH,
     ZTIME,
     ZWRITE,
+
+    // Obsolete: $ORDER's predecessor in the 1977-1990 standards
+    NEXT,
 };
 
 // =============================================================================
@@ -365,7 +130,6 @@ pub const FnId = enum(u16) {
 // =============================================================================
 
 pub const IsvId = enum(u16) {
-    unknown = 0, // Parser sets id=0 for unrecognized ISVs
     DEVICE = 300,
     ECODE,
     ESTACK,
@@ -407,12 +171,21 @@ pub const IsvId = enum(u16) {
     ZVERSION,
 };
 
+/// The special variables SET can assign, for the grammar's SV terminal
+/// (`S $X=0`, `S ($X,$Y)=0`, `S $ZE=""`); each id is the variable's IsvId.
+pub const SvId = enum(u16) {
+    ECODE = @backingInt(IsvId.ECODE),
+    ETRAP = @backingInt(IsvId.ETRAP),
+    X = @backingInt(IsvId.X),
+    Y = @backingInt(IsvId.Y),
+    ZERROR = @backingInt(IsvId.ZERROR),
+};
+
 // =============================================================================
 // STRUCTURED SYSTEM VARIABLE IDS (^$GLOBAL, ^$JOB, etc.)
 // =============================================================================
 
 pub const SsvnId = enum(u16) {
-    unknown = 0, // Parser sets id=0 for unrecognized SSVNs
     GLOBAL = 400,
     JOB,
     LOCK,
@@ -422,485 +195,169 @@ pub const SsvnId = enum(u16) {
 };
 
 // =============================================================================
-// CORE MATCHING FUNCTION
+// KEYWORD TABLES (the grammar's `@as` lookups)
 // =============================================================================
+//
+// Each keyword is written as the standard writes it: the bracketed part is
+// optional, so `H[ANG]` is H, HA, HAN or HANG, in any case, and `HALT` must be
+// written in full. `ALIAS=NAME` makes the exact word ALIAS another spelling of
+// NAME. No two entries accept the same word (checked at compile time), so the
+// order of a table does not matter.
 
-/// Case-insensitive prefix match with length bounds.
-/// Returns true if `name` is a valid abbreviation of `full` (min to full.len chars).
-/// - name.len < min → false (too short)
-/// - name.len > full.len → false (too long, e.g., "INCREMENTTTINGSTUFF")
-/// - name must be a case-insensitive prefix of full
-inline fn match(name: []const u8, full: []const u8, min: usize) bool {
-    if (name.len < min or name.len > full.len) return false;
-    for (name, 0..) |c, i| {
-        if (std.ascii.toUpper(c) != full[i]) return false;
-    }
-    return true;
-}
-
-/// Case-insensitive exact match (for aliases)
-inline fn exact(name: []const u8, target: []const u8) bool {
-    if (name.len != target.len) return false;
-    for (name, target) |a, b| {
-        if (std.ascii.toUpper(a) != std.ascii.toUpper(b)) return false;
-    }
-    return true;
-}
-
-// =============================================================================
-// COMMAND LOOKUP
-// =============================================================================
-
-/// Validate command name with abbreviation support.
-/// Returns CmdId if valid, null otherwise.
-///
-/// Examples:
-///   "S", "SE", "SET" → .SET
-///   "SETX", "SETTER" → null (too long)
-///   "TC", "TCOMMIT" → .TCOMMIT
-///   "H" → .HANG (HALT requires full word)
 pub fn cmdAs(name: []const u8) ?CmdId {
-    if (name.len == 0) return null;
-
-    return switch (std.ascii.toUpper(name[0])) {
-        'B' => if (match(name, "BREAK", 1)) .BREAK else null,
-        'C' => if (match(name, "CLOSE", 1)) .CLOSE else null,
-        'D' => if (match(name, "DO", 1)) .DO else null,
-        'E' => if (match(name, "ELSE", 1)) .ELSE else null,
-        'F' => if (match(name, "FOR", 1)) .FOR else null,
-        'G' => if (match(name, "GOTO", 1)) .GOTO else null,
-        'H' => {
-            // HALT requires full word (min=4), HANG can be abbreviated (min=1)
-            if (match(name, "HALT", 4)) return .HALT;
-            if (match(name, "HANG", 1)) return .HANG;
-            return null;
-        },
-        'I' => if (match(name, "IF", 1)) .IF else null,
-        'J' => if (match(name, "JOB", 1)) .JOB else null,
-        'K' => if (match(name, "KILL", 1)) .KILL else null,
-        'L' => if (match(name, "LOCK", 1)) .LOCK else null,
-        'M' => if (match(name, "MERGE", 1)) .MERGE else null,
-        'N' => if (match(name, "NEW", 1)) .NEW else null,
-        'O' => if (match(name, "OPEN", 1)) .OPEN else null,
-        'Q' => if (match(name, "QUIT", 1)) .QUIT else null,
-        'R' => if (match(name, "READ", 1)) .READ else null,
-        'S' => if (match(name, "SET", 1)) .SET else null,
-        'T' => {
-            // TC[OMMIT], TRE[START], TRO[LLBACK], TS[TART]
-            if (name.len < 2) return null;
-            return switch (std.ascii.toUpper(name[1])) {
-                'C' => if (match(name, "TCOMMIT", 2)) .TCOMMIT else null,
-                'R' => {
-                    // TRE vs TRO - need third char
-                    if (name.len < 3) return null;
-                    return switch (std.ascii.toUpper(name[2])) {
-                        'E' => if (match(name, "TRESTART", 3)) .TRESTART else null,
-                        'O' => if (match(name, "TROLLBACK", 3)) .TROLLBACK else null,
-                        else => null,
-                    };
-                },
-                'S' => if (match(name, "TSTART", 2)) .TSTART else null,
-                else => null,
-            };
-        },
-        'U' => if (match(name, "USE", 1)) .USE else null,
-        'V' => if (match(name, "VIEW", 1)) .VIEW else null,
-        'W' => if (match(name, "WRITE", 1)) .WRITE else null,
-        'X' => if (match(name, "XECUTE", 1)) .XECUTE else null,
-        'Z' => {
-            // ZB[REAK], ZHALT (full), ZK[ILL], ZW[RITE]
-            if (name.len < 2) return null;
-            return switch (std.ascii.toUpper(name[1])) {
-                'B' => if (match(name, "ZBREAK", 2)) .ZBREAK else null,
-                'H' => if (match(name, "ZHALT", 5)) .ZHALT else null,
-                'K' => if (match(name, "ZKILL", 2)) .ZKILL else null,
-                'W' => if (match(name, "ZWRITE", 2)) .ZWRITE else null,
-                else => null,
-            };
-        },
-        else => null,
-    };
+    return lookup(CmdId, &commands, name);
 }
 
-// =============================================================================
-// FUNCTION LOOKUP
-// =============================================================================
-
-/// Validate intrinsic function name (WITHOUT $ prefix - grammar handles $ separately).
-/// Returns FnId if valid, null otherwise.
-/// Also handles non-prefix aliases like INCR → INCREMENT.
-///
-/// Examples:
-///   "P", "PIE", "PIECE" → .PIECE
-///   "PIECEX" → null (too long)
-///   "INCR" → .INCREMENT (alias)
-///   "F" → .FIND, "FN" → .FNUMBER (min length disambiguation)
+/// The name follows `$` (the grammar lexes `$` separately), as for isvAs.
 pub fn fnAs(name: []const u8) ?FnId {
-    if (name.len == 0) return null;
-
-    return switch (std.ascii.toUpper(name[0])) {
-        'A' => if (match(name, "ASCII", 1)) .ASCII else null,
-        'C' => if (match(name, "CHAR", 1)) .CHAR else null,
-        'D' => if (match(name, "DATA", 1)) .DATA else null,
-        'E' => if (match(name, "EXTRACT", 1)) .EXTRACT else null,
-        'F' => {
-            // FN[UMBER] min=2, F[IND] min=1
-            if (match(name, "FNUMBER", 2)) return .FNUMBER;
-            if (match(name, "FIND", 1)) return .FIND;
-            return null;
-        },
-        'G' => if (match(name, "GET", 1)) .GET else null,
-        'I' => {
-            // I[NCREMENT] min=1, plus INCR alias
-            if (match(name, "INCREMENT", 1)) return .INCREMENT;
-            if (exact(name, "INCR")) return .INCREMENT; // alias
-            return null;
-        },
-        'J' => if (match(name, "JUSTIFY", 1)) .JUSTIFY else null,
-        'L' => if (match(name, "LENGTH", 1)) .LENGTH else null,
-        'N' => if (match(name, "NAME", 2)) .NAME else null, // NA[ME]
-        'O' => if (match(name, "ORDER", 1)) .ORDER else null,
-        'P' => if (match(name, "PIECE", 1)) .PIECE else null,
-        'Q' => {
-            // QL[ENGTH] min=2, QS[UBSCRIPT] min=2, Q[UERY] min=1
-            if (name.len < 2) {
-                return if (match(name, "QUERY", 1)) .QUERY else null;
-            }
-            return switch (std.ascii.toUpper(name[1])) {
-                'L' => if (match(name, "QLENGTH", 2)) .QLENGTH else null,
-                'S' => if (match(name, "QSUBSCRIPT", 2)) .QSUBSCRIPT else null,
-                else => if (match(name, "QUERY", 1)) .QUERY else null,
-            };
-        },
-        'R' => {
-            // RE[VERSE] min=2, REPLACE min=7, R[ANDOM] min=1
-            if (match(name, "REVERSE", 2)) return .REVERSE;
-            if (match(name, "REPLACE", 7)) return .REPLACE;
-            if (match(name, "RANDOM", 1)) return .RANDOM;
-            return null;
-        },
-        'S' => {
-            // ST[ACK] min=2, S[ELECT] min=1
-            if (match(name, "STACK", 2)) return .STACK;
-            if (match(name, "SELECT", 1)) return .SELECT;
-            return null;
-        },
-        'T' => {
-            // TR[ANSLATE] min=2, T[EXT] min=1
-            if (match(name, "TRANSLATE", 2)) return .TRANSLATE;
-            if (match(name, "TEXT", 1)) return .TEXT;
-            return null;
-        },
-        'V' => if (match(name, "VIEW", 1)) .VIEW else null,
-        'Z' => {
-            if (name.len < 2) return null;
-            return switch (std.ascii.toUpper(name[1])) {
-                'C' => if (match(name, "ZCONVERT", 3)) .ZCONVERT else null,
-                'D' => {
-                    // ZDATETIME min=9, ZDATEH min=6, ZD[ATE] min=2
-                    if (match(name, "ZDATETIME", 9)) return .ZDATETIME;
-                    if (match(name, "ZDATEH", 6)) return .ZDATEH;
-                    if (match(name, "ZDATE", 2)) return .ZDATE;
-                    return null;
-                },
-                'I' => {
-                    // ZINCR, ZINCREMENT → INCREMENT aliases
-                    if (exact(name, "ZINCR")) return .INCREMENT;
-                    if (exact(name, "ZINCREMENT")) return .INCREMENT;
-                    return null;
-                },
-                'L' => if (match(name, "ZLENGTH", 2)) .ZLENGTH else null,
-                'M' => if (match(name, "ZMESSAGE", 2)) .ZMESSAGE else null,
-                'P' => if (match(name, "ZPREVIOUS", 2)) .ZPREVIOUS else null,
-                'S' => if (match(name, "ZSEARCH", 7)) .ZSEARCH else null,
-                'T' => {
-                    // ZTIME min=5, ZT alias
-                    if (match(name, "ZTIME", 5)) return .ZTIME;
-                    if (exact(name, "ZT")) return .ZTIME; // alias
-                    return null;
-                },
-                'W' => if (match(name, "ZWRITE", 6)) .ZWRITE else null,
-                else => null,
-            };
-        },
-        else => null,
-    };
+    return lookup(FnId, &functions, name);
 }
 
-// =============================================================================
-// SYSTEM VARIABLE LOOKUP
-// =============================================================================
-
-/// Validate system variable name (WITH $ prefix).
-/// Returns IsvId if valid, null otherwise.
-///
-/// Examples:
-///   "$H", "$HOROLOG" → .HOROLOG
-///   "$T", "$TEST" → .TEST
-///   "$X", "$Y" → .X, .Y
 pub fn isvAs(name: []const u8) ?IsvId {
-    if (name.len == 0) return null;
-
-    return switch (std.ascii.toUpper(name[0])) {
-        'D' => if (match(name, "DEVICE", 2)) .DEVICE else null, // DE[VICE] - $D is $DATA()
-        'E' => {
-            // EC[ODE], ES[TACK], ET[RAP]
-            if (name.len < 2) return null;
-            return switch (std.ascii.toUpper(name[1])) {
-                'C' => if (match(name, "ECODE", 2)) .ECODE else null,
-                'S' => if (match(name, "ESTACK", 2)) .ESTACK else null,
-                'T' => if (match(name, "ETRAP", 2)) .ETRAP else null,
-                else => null,
-            };
-        },
-        'H' => if (match(name, "HOROLOG", 1)) .HOROLOG else null,
-        'I' => if (match(name, "IO", 2)) .IO else null, // min=2 to avoid $I function
-        'J' => if (match(name, "JOB", 1)) .JOB else null,
-        'K' => if (match(name, "KEY", 1)) .KEY else null,
-        'P' => if (match(name, "PRINCIPAL", 2)) .PRINCIPAL else null, // PR[INCIPAL] - $P is $PIECE()
-        'Q' => if (match(name, "QUIT", 2)) .QUIT else null, // QU[IT] - $Q is $QUERY()
-        'R' => if (match(name, "REFERENCE", 2)) .REFERENCE else null, // RE[FERENCE] - $R is $RANDOM()
-        'S' => {
-            // ST[ACK], S[TORAGE], SY[STEM]
-            if (name.len < 2) {
-                return if (match(name, "STORAGE", 1)) .STORAGE else null;
-            }
-            return switch (std.ascii.toUpper(name[1])) {
-                'T' => if (match(name, "STACK", 2)) .STACK else null,
-                'Y' => if (match(name, "SYSTEM", 2)) .SYSTEM else null,
-                else => if (match(name, "STORAGE", 1)) .STORAGE else null,
-            };
-        },
-        'T' => {
-            // T[EST], TL[EVEL], TR[ESTART]
-            if (name.len < 2) {
-                return if (match(name, "TEST", 1)) .TEST else null;
-            }
-            return switch (std.ascii.toUpper(name[1])) {
-                'L' => if (match(name, "TLEVEL", 2)) .TLEVEL else null,
-                'R' => if (match(name, "TRESTART", 2)) .TRESTART else null,
-                else => if (match(name, "TEST", 1)) .TEST else null,
-            };
-        },
-        'X' => if (match(name, "X", 1)) .X else null,
-        'Y' => if (match(name, "Y", 1)) .Y else null,
-        'Z' => {
-            if (name.len < 2) return null;
-            return switch (std.ascii.toUpper(name[1])) {
-                'A' => if (match(name, "ZA", 2)) .ZA else null,
-                'B' => if (match(name, "ZB", 2)) .ZB else null,
-                'E' => {
-                    // ZEO[F], ZE[RROR]
-                    if (name.len >= 3 and std.ascii.toUpper(name[2]) == 'O') {
-                        return if (match(name, "ZEOF", 3)) .ZEOF else null;
-                    }
-                    return if (match(name, "ZERROR", 2)) .ZERROR else null;
-                },
-                'G' => if (match(name, "ZGBLDIR", 2)) .ZGBLDIR else null,
-                'H' => if (match(name, "ZHOROLOG", 2)) .ZHOROLOG else null,
-                'I' => if (match(name, "ZIO", 3)) .ZIO else null,
-                'J' => if (match(name, "ZJOB", 2)) .ZJOB else null,
-                'K' => if (match(name, "ZKEY", 4)) .ZKEY else null,
-                'L' => if (match(name, "ZLEVEL", 2)) .ZLEVEL else null,
-                'N' => if (match(name, "ZNSPACE", 3)) .ZNSPACE else null,
-                'P' => if (match(name, "ZPOSITION", 4)) .ZPOSITION else null,
-                'R' => if (match(name, "ZROUTINES", 3)) .ZROUTINES else null,
-                'S' => {
-                    // ZS[TATUS], ZSY[STEM]
-                    if (name.len >= 3 and std.ascii.toUpper(name[2]) == 'Y') {
-                        return if (match(name, "ZSYSTEM", 3)) .ZSYSTEM else null;
-                    }
-                    return if (match(name, "ZSTATUS", 2)) .ZSTATUS else null;
-                },
-                'T' => if (match(name, "ZTRAP", 2)) .ZTRAP else null,
-                'U' => if (match(name, "ZUT", 3)) .ZUT else null,
-                'V' => if (match(name, "ZVERSION", 2)) .ZVERSION else null,
-                else => null,
-            };
-        },
-        else => null,
-    };
+    return lookup(IsvId, &variables, name);
 }
 
-// =============================================================================
-// STRUCTURED SYSTEM VARIABLE LOOKUP
-// =============================================================================
+/// A special variable SET can assign; the name follows `$`.
+pub fn svAs(name: []const u8) ?SvId {
+    return std.enums.fromInt(SvId, @backingInt(isvAs(name) orelse return null));
+}
 
-/// Validate SSVN name (WITHOUT ^$ prefix - just the name part).
-/// Returns SsvnId if valid, null otherwise.
-///
-/// Examples:
-///   "G", "GLOBAL" → .GLOBAL
-///   "J", "JOB" → .JOB
-///   "SYS", "SYSTEM" → .SYSTEM
+/// The name follows `^$`.
 pub fn ssvnAs(name: []const u8) ?SsvnId {
-    if (name.len == 0) return null;
+    return lookup(SsvnId, &structured, name);
+}
 
-    return switch (std.ascii.toUpper(name[0])) {
-        'G' => if (match(name, "GLOBAL", 1)) .GLOBAL else null,
-        'J' => if (match(name, "JOB", 1)) .JOB else null,
-        'L' => if (match(name, "LOCK", 1)) .LOCK else null,
-        'R' => if (match(name, "ROUTINE", 1)) .ROUTINE else null,
-        'S' => if (match(name, "SYSTEM", 3)) .SYSTEM else null, // SYS[TEM]
-        'Z' => if (match(name, "ZENVIRONMENT", 5)) .ZENVIRONMENT else null, // ZENV[IRONMENT]
-        else => null,
+/// The keywords VIEW takes, none with parameters, in any case. em checks
+/// no characters for validity, so "BADCHAR" (check them) and "NOBADCHAR"
+/// (do not) both do nothing. Any other VIEW is an error naming it
+/// (docs/user/FEATURES.md).
+pub const viewKeywords = [_][]const u8{ "BADCHAR", "NOBADCHAR" };
+
+/// Whether `name` is one of viewKeywords.
+pub fn isViewKeyword(name: []const u8) bool {
+    for (viewKeywords) |k| if (std.ascii.eqlIgnoreCase(k, name)) return true;
+    return false;
+}
+
+const commands = keywords(CmdId, &.{
+    "B[REAK]",   "C[LOSE]",    "D[O]",        "E[LSE]",   "F[OR]",   "G[OTO]",
+    "HALT",      "H[ANG]",     "I[F]",        "J[OB]",    "K[ILL]",  "L[OCK]",
+    "M[ERGE]",   "N[EW]",      "O[PEN]",      "Q[UIT]",   "R[EAD]",  "S[ET]",
+    "TC[OMMIT]", "TRE[START]", "TRO[LLBACK]", "TS[TART]", "U[SE]",   "V[IEW]",
+    "W[RITE]",   "X[ECUTE]",   "ZB[REAK]",    "ZHALT",    "ZK[ILL]", "ZSY[STEM]",
+    "ZW[RITE]",
+});
+
+const functions = keywords(FnId, &.{
+    "A[SCII]",              "C[HAR]",      "D[ATA]",     "E[XTRACT]",    "F[IND]",    "FN[UMBER]",
+    "G[ET]",                "I[NCREMENT]", "J[USTIFY]",  "L[ENGTH]",     "NA[ME]",    "N[EXT]",
+    "O[RDER]",              "P[IECE]",     "QL[ENGTH]",  "QS[UBSCRIPT]", "Q[UERY]",   "R[ANDOM]",
+    "RE[VERSE]",            "REPLACE",     "S[ELECT]",   "ST[ACK]",      "T[EXT]",    "TR[ANSLATE]",
+    "V[IEW]",               "ZCO[NVERT]",  "ZD[ATE]",    "ZDATEH",       "ZDATETIME", "ZINCR=INCREMENT",
+    "ZINCREMENT=INCREMENT", "ZL[ENGTH]",   "ZM[ESSAGE]", "ZP[REVIOUS]",  "ZSEARCH",   "ZTIME",
+    "ZT=ZTIME",             "ZWRITE",
+});
+
+// $STORAGE is $S or the full name: $ST... is $STACK.
+const variables = keywords(IsvId, &.{
+    "D[EVICE]",  "EC[ODE]",     "ES[TACK]",    "ET[RAP]",   "H[OROLOG]",   "I[O]",
+    "J[OB]",     "K[EY]",       "P[RINCIPAL]", "Q[UIT]",    "R[EFERENCE]", "ST[ACK]",
+    "S=STORAGE", "STORAGE",     "SY[STEM]",    "T[EST]",    "TL[EVEL]",    "TR[ESTART]",
+    "X",         "Y",           "ZA",          "ZB",        "ZEO[F]",      "ZE[RROR]",
+    "ZG[BLDIR]", "ZH[OROLOG]",  "ZIO",         "ZJ[OB]",    "ZKEY",        "ZL[EVEL]",
+    "ZNS[PACE]", "ZPOS[ITION]", "ZRO[UTINES]", "ZS[TATUS]", "ZSY[STEM]",   "ZT[RAP]",
+    "ZUT",       "ZV[ERSION]",
+});
+
+const structured = keywords(SsvnId, &.{
+    "G[LOBAL]", "J[OB]", "L[OCK]", "R[OUTINE]", "SYS[TEM]", "ZENVI[RONMENT]",
+});
+
+fn Keyword(comptime Id: type) type {
+    return struct { name: []const u8, min: usize, id: Id };
+}
+
+/// A table's entries grouped by initial letter.
+fn keywords(comptime Id: type, comptime specs: []const []const u8) [26][]const Keyword(Id) {
+    @setEvalBranchQuota(100_000);
+    var entries: [specs.len]Keyword(Id) = undefined;
+    for (specs, &entries) |spec, *e| {
+        const eq = std.mem.findScalar(u8, spec, '=');
+        const word = spec[0 .. eq orelse spec.len];
+        const open = std.mem.findScalar(u8, word, '[') orelse word.len;
+        const name = word[0..open] ++ (if (open < word.len) word[open + 1 .. word.len - 1] else "");
+        e.* = .{ .name = name, .min = open, .id = @field(Id, if (eq) |i| spec[i + 1 ..] else name) };
+    }
+    for (entries, 0..) |a, i| for (entries[i + 1 ..]) |b| {
+        // Two entries overlap when both accept the shortest word both allow.
+        const n = @max(a.min, b.min);
+        if (n <= @min(a.name.len, b.name.len) and std.mem.eql(u8, a.name[0..n], b.name[0..n]))
+            @compileError(a.name ++ " and " ++ b.name ++ " both accept " ++ a.name[0..n]);
     };
+    var byLetter: [26][]const Keyword(Id) = @splat(&.{});
+    for (entries) |e| byLetter[e.name[0] - 'A'] = byLetter[e.name[0] - 'A'] ++ .{e};
+    const result = byLetter;
+    return result;
+}
+
+fn lookup(comptime Id: type, table: *const [26][]const Keyword(Id), name: []const u8) ?Id {
+    if (name.len == 0) return null;
+    const first = std.ascii.toUpper(name[0]);
+    if (first < 'A' or first > 'Z') return null;
+    entry: for (table[first - 'A']) |e| {
+        if (name.len < e.min or name.len > e.name.len) continue;
+        for (name[1..], e.name[1..name.len]) |c, k| {
+            if (std.ascii.toUpper(c) != k) continue :entry;
+        }
+        return e.id;
+    }
+    return null;
 }
 
 // =============================================================================
 // TESTS
 // =============================================================================
 
-test "cmdAs - basic commands" {
-    // Full names
-    try std.testing.expectEqual(CmdId.SET, cmdAs("SET").?);
-    try std.testing.expectEqual(CmdId.WRITE, cmdAs("WRITE").?);
-    try std.testing.expectEqual(CmdId.QUIT, cmdAs("QUIT").?);
-
-    // Minimum abbreviations
-    try std.testing.expectEqual(CmdId.SET, cmdAs("S").?);
-    try std.testing.expectEqual(CmdId.WRITE, cmdAs("W").?);
-    try std.testing.expectEqual(CmdId.QUIT, cmdAs("Q").?);
-
-    // Intermediate lengths
-    try std.testing.expectEqual(CmdId.SET, cmdAs("SE").?);
-    try std.testing.expectEqual(CmdId.MERGE, cmdAs("MER").?);
-
-    // Case insensitive
-    try std.testing.expectEqual(CmdId.SET, cmdAs("set").?);
-    try std.testing.expectEqual(CmdId.SET, cmdAs("Set").?);
+test "keyword abbreviations" {
+    const t = std.testing;
+    try t.expectEqual(CmdId.SET, cmdAs("s").?);
+    try t.expectEqual(CmdId.MERGE, cmdAs("Mer").?);
+    try t.expectEqual(CmdId.HANG, cmdAs("HAN").?);
+    try t.expectEqual(CmdId.HALT, cmdAs("HALT").?);
+    try t.expectEqual(CmdId.TROLLBACK, cmdAs("TRO").?);
+    try t.expectEqual(CmdId.ZSYSTEM, cmdAs("zsy").?);
+    try t.expectEqual(CmdId.ZSYSTEM, cmdAs("ZSYSTEM").?);
+    try t.expectEqual(IsvId.ZSYSTEM, isvAs("ZSY").?);
+    try t.expectEqual(FnId.FIND, fnAs("F").?);
+    try t.expectEqual(FnId.FNUMBER, fnAs("FN").?);
+    try t.expectEqual(FnId.INCREMENT, fnAs("zincr").?);
+    try t.expectEqual(FnId.NEXT, fnAs("N").?);
+    try t.expectEqual(FnId.NAME, fnAs("NA").?);
+    try t.expectEqual(FnId.ZTIME, fnAs("ZT").?);
+    try t.expectEqual(IsvId.STORAGE, isvAs("S").?);
+    try t.expectEqual(IsvId.STORAGE, isvAs("storage").?);
+    try t.expectEqual(IsvId.STACK, isvAs("ST").?);
+    try t.expectEqual(IsvId.DEVICE, isvAs("D").?);
+    try t.expectEqual(IsvId.IO, isvAs("I").?);
+    try t.expectEqual(IsvId.REFERENCE, isvAs("R").?);
+    try t.expectEqual(IsvId.ZEOF, isvAs("ZEO").?);
+    try t.expectEqual(IsvId.ZERROR, isvAs("ZE").?);
+    try t.expectEqual(SsvnId.SYSTEM, ssvnAs("SYS").?);
+    // Too short, too long, not a prefix, empty.
+    for ([_][]const u8{ "", "T", "TR", "HAL", "ZH", "ZS", "SETX", "MERCOLA" }) |w| try t.expect(cmdAs(w) == null);
+    for ([_][]const u8{ "", "NX", "REP", "ZTI", "PIECEX", "INCREMENTT" }) |w| try t.expect(fnAs(w) == null);
+    for ([_][]const u8{ "", "E", "STO", "STORAGES", "ZK" }) |w| try t.expect(isvAs(w) == null);
+    for ([_][]const u8{ "", "S", "ZENV" }) |w| try t.expect(ssvnAs(w) == null);
 }
 
-test "cmdAs - too long rejected" {
-    try std.testing.expect(cmdAs("SETX") == null);
-    try std.testing.expect(cmdAs("SETTER") == null);
-    try std.testing.expect(cmdAs("MERGER") == null);
-    try std.testing.expect(cmdAs("MERCOLA") == null);
-}
-
-test "cmdAs - HALT vs HANG" {
-    // HALT requires full word (min=4)
-    try std.testing.expectEqual(CmdId.HALT, cmdAs("HALT").?);
-    try std.testing.expect(cmdAs("HAL") == null); // not HALT, not HANG
-
-    // HANG can be abbreviated (min=1)
-    try std.testing.expectEqual(CmdId.HANG, cmdAs("H").?);
-    try std.testing.expectEqual(CmdId.HANG, cmdAs("HA").?);
-    try std.testing.expectEqual(CmdId.HANG, cmdAs("HAN").?);
-    try std.testing.expectEqual(CmdId.HANG, cmdAs("HANG").?);
-}
-
-test "cmdAs - T commands" {
-    try std.testing.expectEqual(CmdId.TCOMMIT, cmdAs("TC").?);
-    try std.testing.expectEqual(CmdId.TCOMMIT, cmdAs("TCOMMIT").?);
-    try std.testing.expectEqual(CmdId.TSTART, cmdAs("TS").?);
-    try std.testing.expectEqual(CmdId.TRESTART, cmdAs("TRE").?);
-    try std.testing.expectEqual(CmdId.TROLLBACK, cmdAs("TRO").?);
-    try std.testing.expect(cmdAs("T") == null);
-    try std.testing.expect(cmdAs("TR") == null);
-}
-
-test "cmdAs - Z commands" {
-    try std.testing.expectEqual(CmdId.ZBREAK, cmdAs("ZB").?);
-    try std.testing.expectEqual(CmdId.ZKILL, cmdAs("ZK").?);
-    try std.testing.expectEqual(CmdId.ZWRITE, cmdAs("ZW").?);
-    try std.testing.expectEqual(CmdId.ZHALT, cmdAs("ZHALT").?);
-    try std.testing.expect(cmdAs("Z") == null);
-    try std.testing.expect(cmdAs("ZH") == null); // ZHALT requires full word
-}
-
-test "fnAs - basic functions" {
-    try std.testing.expectEqual(FnId.PIECE, fnAs("PIECE").?);
-    try std.testing.expectEqual(FnId.PIECE, fnAs("P").?);
-    try std.testing.expectEqual(FnId.LENGTH, fnAs("LENGTH").?);
-    try std.testing.expectEqual(FnId.LENGTH, fnAs("L").?);
-}
-
-test "fnAs - too long rejected" {
-    try std.testing.expect(fnAs("PIECEX") == null);
-    try std.testing.expect(fnAs("PIECEEE") == null);
-    try std.testing.expect(fnAs("INCREMENTT") == null);
-    try std.testing.expect(fnAs("INCREMENTTTINGSTUFF") == null);
-}
-
-test "fnAs - disambiguation by min length" {
-    // F = FIND (min=1), FN = FNUMBER (min=2)
-    try std.testing.expectEqual(FnId.FIND, fnAs("F").?);
-    try std.testing.expectEqual(FnId.FIND, fnAs("FI").?);
-    try std.testing.expectEqual(FnId.FNUMBER, fnAs("FN").?);
-    try std.testing.expectEqual(FnId.FNUMBER, fnAs("FNU").?);
-
-    // L[ENGTH] min=1
-    try std.testing.expectEqual(FnId.LENGTH, fnAs("L").?);
-    try std.testing.expectEqual(FnId.LENGTH, fnAs("LE").?);
-    try std.testing.expectEqual(FnId.LENGTH, fnAs("LEN").?);
-    try std.testing.expectEqual(FnId.LENGTH, fnAs("LENGTH").?);
-}
-
-test "fnAs - aliases" {
-    // INCR → INCREMENT
-    try std.testing.expectEqual(FnId.INCREMENT, fnAs("INCR").?);
-    try std.testing.expectEqual(FnId.INCREMENT, fnAs("I").?);
-    try std.testing.expectEqual(FnId.INCREMENT, fnAs("INCREMENT").?);
-
-    // ZINCR, ZINCREMENT → INCREMENT
-    try std.testing.expectEqual(FnId.INCREMENT, fnAs("ZINCR").?);
-    try std.testing.expectEqual(FnId.INCREMENT, fnAs("ZINCREMENT").?);
-
-    // ZT → ZTIME
-    try std.testing.expectEqual(FnId.ZTIME, fnAs("ZT").?);
-    try std.testing.expectEqual(FnId.ZTIME, fnAs("ZTIME").?);
-}
-
-test "fnAs - empty rejected" {
-    try std.testing.expect(fnAs("") == null);
-}
-
-test "isvAs - basic ISVs" {
-    // isvAs expects name WITHOUT $ prefix (grammar tokenizes $ separately)
-    try std.testing.expectEqual(IsvId.HOROLOG, isvAs("H").?);
-    try std.testing.expectEqual(IsvId.HOROLOG, isvAs("HOROLOG").?);
-    try std.testing.expectEqual(IsvId.TEST, isvAs("T").?);
-    try std.testing.expectEqual(IsvId.TEST, isvAs("TEST").?);
-    try std.testing.expectEqual(IsvId.X, isvAs("X").?);
-    try std.testing.expectEqual(IsvId.Y, isvAs("Y").?);
-}
-
-test "isvAs - IO requires min=2" {
-    try std.testing.expectEqual(IsvId.IO, isvAs("IO").?);
-    try std.testing.expect(isvAs("I") == null); // too short, conflicts with $I function
-}
-
-test "isvAs - Z ISVs" {
-    try std.testing.expectEqual(IsvId.ZERROR, isvAs("ZE").?);
-    try std.testing.expectEqual(IsvId.ZEOF, isvAs("ZEOF").?);
-    try std.testing.expectEqual(IsvId.ZSTATUS, isvAs("ZS").?);
-    try std.testing.expectEqual(IsvId.ZSYSTEM, isvAs("ZSY").?);
-}
-
-test "ssvnAs - basic SSVNs" {
-    try std.testing.expectEqual(SsvnId.GLOBAL, ssvnAs("G").?);
-    try std.testing.expectEqual(SsvnId.GLOBAL, ssvnAs("GLOBAL").?);
-    try std.testing.expectEqual(SsvnId.JOB, ssvnAs("J").?);
-    try std.testing.expectEqual(SsvnId.LOCK, ssvnAs("L").?);
-    try std.testing.expectEqual(SsvnId.ROUTINE, ssvnAs("R").?);
-    try std.testing.expectEqual(SsvnId.SYSTEM, ssvnAs("SYS").?);
-    try std.testing.expectEqual(SsvnId.SYSTEM, ssvnAs("SYSTEM").?);
-    try std.testing.expect(ssvnAs("S") == null); // too short for SYSTEM
-}
-
-test "an indent longer than a token can hold is an err token" {
-    // " . . . ... S X=1" with 32,768 dots: a 65,537-byte indent.
-    const n = 32768;
-    const source = try std.testing.allocator.alloc(u8, 1 + 2 * n + 6);
-    defer std.testing.allocator.free(source);
-    source[0] = ' ';
-    for (0..n) |i| source[1 + 2 * i ..][0..2].* = ". ".*;
-    source[1 + 2 * n ..][0..6].* = "S X=1\n".*;
-    var lx = Lexer.init(source);
-    const tok = lx.next();
-    try std.testing.expectEqual(TokenCat.err, tok.cat);
-    try std.testing.expectEqual(std.math.maxInt(u16), tok.len);
-    // The scan goes on after the whole indent.
-    try std.testing.expectEqual(source.len - 6, lx.base.pos);
+test "settable special variables" {
+    const t = std.testing;
+    try t.expectEqual(SvId.X, svAs("x").?);
+    try t.expectEqual(SvId.ECODE, svAs("EC").?);
+    try t.expectEqual(SvId.ETRAP, svAs("etrap").?);
+    try t.expectEqual(SvId.ZERROR, svAs("ZE").?);
+    try t.expectEqual(SvId.ZERROR, svAs("zerror").?);
+    try t.expectEqual(@backingInt(IsvId.Y), @backingInt(svAs("Y").?));
+    // Special variables SET may not assign, and non-names.
+    for ([_][]const u8{ "", "H", "J", "T", "ZT", "ZTRAP", "ZS", "ZSTATUS", "ZA", "ZB", "E" }) |w| try t.expect(svAs(w) == null);
 }

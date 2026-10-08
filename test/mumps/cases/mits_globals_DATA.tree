@@ -1,219 +1,293 @@
 (routine
-  (label `DATA`)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/globals/DATA"`))))))
-  (` `)
-  (` ` _ (kill _ (gvar `MITS`)))
-  (` `)
-  (` `
-    _
+  (label `DATA` _ _)@0..5
+  (line ` `)@31..32
+  (line
+    ` `
+    (do _ (call (ref `START` _ `TEST`)@37..47 (`"compliance/globals/DATA"`)@48..73 _)@37..74)@35..74)@34..74
+  (line ` `)@75..76
+  (line ` ` (kill _ (gvar `MITS` _ _ _)@81..86)@79..86)@78..86
+  (line ` `)@87..88
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D undefined ^G"`)) (expr (num `0`)) (expr (str `"$$UND^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@93..101
+        (`"$D undefined ^G"` `0` `"$$UND^DATA()"`)@102..136
+        _)@93..137)@91..137)@90..137
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D defined value"`)) (expr (num `1`)) (expr (str `"$$VAL^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@141..149
+        (`"$D defined value"` `1` `"$$VAL^DATA()"`)@150..185
+        _)@141..186)@139..186)@138..186
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D subscripted value"`)) (expr (num `1`)) (expr (str `"$$SUBVAL^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@190..198
+        (`"$D subscripted value"` `1` `"$$SUBVAL^DATA()"`)@199..241
+        _)@190..242)@188..242)@187..242
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D empty string value"`)) (expr (num `1`)) (expr (str `"$$EMPTY^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@246..254
+        (`"$D empty string value"` `1` `"$$EMPTY^DATA()"`)@255..297
+        _)@246..298)@244..298)@243..298
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D zero value"`)) (expr (num `1`)) (expr (str `"$$ZERO^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@302..310
+        (`"$D zero value"` `1` `"$$ZERO^DATA()"`)@311..344
+        _)@302..345)@300..345)@299..345
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D root with leaf only"`))
-          (expr (num `10`))
-          (expr (str `"$$LEAFONLY^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@349..357
+        (`"$D root with leaf only"` `10` `"$$LEAFONLY^DATA()"`)@358..405
+        _)@349..406)@347..406)@346..406
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D intermediate"`)) (expr (num `10`)) (expr (str `"$$INTERMED^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@410..418
+        (`"$D intermediate"` `10` `"$$INTERMED^DATA()"`)@419..459
+        _)@410..460)@408..460)@407..460
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D both value and leaves"`)) (expr (num `11`)) (expr (str `"$$BOTH^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@464..472
+        (`"$D both value and leaves"` `11` `"$$BOTH^DATA()"`)@473..518
+        _)@464..519)@462..519)@461..519
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D after K leaf"`)) (expr (num `0`)) (expr (str `"$$KLEAF^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@523..531
+        (`"$D after K leaf"` `0` `"$$KLEAF^DATA()"`)@532..568
+        _)@523..569)@521..569)@520..569
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D after K root"`)) (expr (num `0`)) (expr (str `"$$KROOT^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@573..581
+        (`"$D after K root"` `0` `"$$KROOT^DATA()"`)@582..618
+        _)@573..619)@571..619)@570..619
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D 3-level deep value"`)) (expr (num `1`)) (expr (str `"$$DEEP^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@623..631
+        (`"$D 3-level deep value"` `1` `"$$DEEP^DATA()"`)@632..673
+        _)@623..674)@621..674)@620..674
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D 2-level intermediate with deep"`))
-          (expr (num `10`))
-          (expr (str `"$$DEEPINT^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@678..686
+        (`"$D 2-level intermediate with deep"` `10` `"$$DEEPINT^DATA()"`)@687..744
+        _)@678..745)@676..745)@675..745
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D in IF context truthy"`)) (expr (num `1`)) (expr (str `"$$IFEX^DATA()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@749..757
+        (`"$D in IF context truthy"` `1` `"$$IFEX^DATA()"`)@758..801
+        _)@749..802)@747..802)@746..802
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"$D in IF context falsy"`)) (expr (num `0`)) (expr (str `"$$IFNX^DATA()"`))))))
-  (` `)
-  (` ` _ (kill _ (gvar `MITS`)))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/globals/DATA"`))))))
-  (` ` _ (quit))
-  (` `)
-  (label `UND` _ ((kill _ (gvar `MITS`))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
-  (label `VAL` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (num `42`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
+        (ref `RUN` _ `TEST`)@806..814
+        (`"$D in IF context falsy"` `0` `"$$IFNX^DATA()"`)@815..857
+        _)@806..858)@804..858)@803..858
+  (line ` `)@859..860
+  (line ` ` (kill _ (gvar `MITS` _ _ _)@865..870)@863..870)@862..870
+  (line ` `)@871..872
+  (line
+    ` `
+    (do
+      _
+      (call (ref `END` _ `TEST`)@877..885 (`"compliance/globals/DATA"`)@886..911 _)@877..912)@875..912)@874..912
+  (line ` ` (quit _ _)@914..915)@913..915
+  (line ` `)@916..917
+  (label `UND` _ _ (kill _ (gvar `MITS` _ _ _)@927..932)@925..932)@919..932
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@939..944)@939..944)@936..945)@934..945)@933..945
+  (line ` `)@946..947
+  (label
+    `VAL`
+    _
+    _
+    (kill _ (gvar `MITS` _ _ _)@957..962)@955..962
+    (set _ (= (gvar `MITS` _ _ _)@965..970 `42`)@965..973)@963..973)@949..973
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@980..985)@980..985)@977..986)@975..986)@974..986
+  (line ` `)@987..988
   (label
     `SUBVAL`
     _
-    ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `1`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"a"`))))))))))
-  (` `)
-  (label `EMPTY` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (str `""`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
-  (label `ZERO` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (num `0`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
+    _
+    (kill _ (gvar `MITS` _ _ _)@1001..1006)@999..1006
+    (set _ (= (gvar `MITS` (`"a"`)@1015..1018 _ _)@1009..1019 `1`)@1009..1021)@1007..1021)@990..1021
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic `D`#202 ((gvar `MITS` (`"a"`)@1034..1037 _ _)@1028..1038)@1028..1038)@1025..1039)@1023..1039)@1022..1039
+  (line ` `)@1040..1041
+  (label
+    `EMPTY`
+    _
+    _
+    (kill _ (gvar `MITS` _ _ _)@1053..1058)@1051..1058
+    (set _ (= (gvar `MITS` _ _ _)@1061..1066 `""`)@1061..1069)@1059..1069)@1043..1069
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1076..1081)@1076..1081)@1073..1082)@1071..1082)@1070..1082
+  (line ` `)@1083..1084
+  (label
+    `ZERO`
+    _
+    _
+    (kill _ (gvar `MITS` _ _ _)@1095..1100)@1093..1100
+    (set _ (= (gvar `MITS` _ _ _)@1103..1108 `0`)@1103..1110)@1101..1110)@1086..1110
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1117..1122)@1117..1122)@1114..1123)@1112..1123)@1111..1123
+  (line ` `)@1124..1125
   (label
     `LEAFONLY`
     _
-    ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS` ((expr (str `"leaf"`)))) (expr (num `1`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
+    _
+    (kill _ (gvar `MITS` _ _ _)@1140..1145)@1138..1145
+    (set _ (= (gvar `MITS` (`"leaf"`)@1154..1160 _ _)@1148..1161 `1`)@1148..1163)@1146..1163)@1127..1163
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1170..1175)@1170..1175)@1167..1176)@1165..1176)@1164..1176
+  (line ` `)@1177..1178
   (label
     `INTERMED`
     _
-    ((kill _ (gvar `MITS`))
-      (set
-        _
-        (=
-          (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))
-          (expr (num `1`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"a"`))))))))))
-  (` `)
+    _
+    (kill _ (gvar `MITS` _ _ _)@1193..1198)@1191..1198
+    (set
+      _
+      (= (gvar `MITS` (`"a"` `"b"` `"c"`)@1207..1218 _ _)@1201..1219 `1`)@1201..1221)@1199..1221)@1180..1221
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic `D`#202 ((gvar `MITS` (`"a"`)@1234..1237 _ _)@1228..1238)@1228..1238)@1225..1239)@1223..1239)@1222..1239
+  (line ` `)@1240..1241
   (label
     `BOTH`
     _
-    ((kill _ (gvar `MITS`))
-      (set
-        _
-        (= (gvar `MITS`) (expr (num `99`)))
-        (= (gvar `MITS` ((expr (str `"leaf"`)))) (expr (num `1`))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
+    _
+    (kill _ (gvar `MITS` _ _ _)@1252..1257)@1250..1257
+    (set
+      _
+      (= (gvar `MITS` _ _ _)@1260..1265 `99`)@1260..1268
+      (= (gvar `MITS` (`"leaf"`)@1275..1281 _ _)@1269..1282 `1`)@1269..1284)@1258..1284)@1243..1284
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1291..1296)@1291..1296)@1288..1297)@1286..1297)@1285..1297
+  (line ` `)@1298..1299
   (label
     `KLEAF`
     _
-    ((kill _ (gvar `MITS`))
-      (set _ (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `1`))))
-      (kill _ (gvar `MITS` ((expr (str `"a"`)))))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"a"`))))))))))
-  (` `)
+    _
+    (kill _ (gvar `MITS` _ _ _)@1311..1316)@1309..1316
+    (set _ (= (gvar `MITS` (`"a"`)@1325..1328 _ _)@1319..1329 `1`)@1319..1331)@1317..1331
+    (kill _ (gvar `MITS` (`"a"`)@1340..1343 _ _)@1334..1344)@1332..1344)@1301..1344
+  (line
+    ` `
+    (quit
+      _
+      (intrinsic `D`#202 ((gvar `MITS` (`"a"`)@1357..1360 _ _)@1351..1361)@1351..1361)@1348..1362)@1346..1362)@1345..1362
+  (line ` `)@1363..1364
   (label
     `KROOT`
     _
-    ((kill _ (gvar `MITS`))
-      (set
-        _
-        (= (gvar `MITS`) (expr (num `1`)))
-        (= (gvar `MITS` ((expr (str `"a"`)))) (expr (num `2`))))
-      (kill _ (gvar `MITS`))))
-  (` ` _ (quit _ (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))))
-  (` `)
+    _
+    (kill _ (gvar `MITS` _ _ _)@1376..1381)@1374..1381
+    (set
+      _
+      (= (gvar `MITS` _ _ _)@1384..1389 `1`)@1384..1391
+      (= (gvar `MITS` (`"a"`)@1398..1401 _ _)@1392..1402 `2`)@1392..1404)@1382..1404
+    (kill _ (gvar `MITS` _ _ _)@1407..1412)@1405..1412)@1366..1412
+  (line
+    ` `
+    (quit _ (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1419..1424)@1419..1424)@1416..1425)@1414..1425)@1413..1425
+  (line ` `)@1426..1427
   (label
     `DEEP`
     _
-    ((kill _ (gvar `MITS`))
-      (set
-        _
-        (=
-          (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))
-          (expr (num `42`))))))
-  (` `
     _
+    (kill _ (gvar `MITS` _ _ _)@1438..1443)@1436..1443
+    (set
+      _
+      (= (gvar `MITS` (`"a"` `"b"` `"c"`)@1452..1463 _ _)@1446..1464 `42`)@1446..1467)@1444..1467)@1429..1467
+  (line
+    ` `
     (quit
       _
-      (expr
-        (intrinsic
-          `D`#202
-          ((expr (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))))))))
-  (` `)
+      (intrinsic
+        `D`#202
+        ((gvar `MITS` (`"a"` `"b"` `"c"`)@1480..1491 _ _)@1474..1492)@1474..1492)@1471..1493)@1469..1493)@1468..1493
+  (line ` `)@1494..1495
   (label
     `DEEPINT`
     _
-    ((kill _ (gvar `MITS`))
-      (set
-        _
-        (=
-          (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`)) (expr (str `"c"`))))
-          (expr (num `42`))))))
-  (` `
     _
+    (kill _ (gvar `MITS` _ _ _)@1509..1514)@1507..1514
+    (set
+      _
+      (= (gvar `MITS` (`"a"` `"b"` `"c"`)@1523..1534 _ _)@1517..1535 `42`)@1517..1538)@1515..1538)@1497..1538
+  (line
+    ` `
     (quit
       _
-      (expr (intrinsic `D`#202 ((expr (gvar `MITS` ((expr (str `"a"`)) (expr (str `"b"`))))))))))
-  (` `)
-  (label `IFEX` _ ((kill _ (gvar `MITS`)) (set _ (= (gvar `MITS`) (expr (num `1`))))))
-  (` ` _ (if (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))) (quit _ (expr (num `1`))))
-  (` ` _ (quit _ (expr (num `0`))))
-  (` `)
-  (label `IFNX` _ ((kill _ (gvar `MITS`))))
-  (` ` _ (if (expr (intrinsic `D`#202 ((expr (gvar `MITS`)))))) (quit _ (expr (num `1`))))
-  (` ` _ (quit _ (expr (num `0`)))))
+      (intrinsic
+        `D`#202
+        ((gvar `MITS` (`"a"` `"b"`)@1551..1558 _ _)@1545..1559)@1545..1559)@1542..1560)@1540..1560)@1539..1560
+  (line ` `)@1561..1562
+  (label
+    `IFEX`
+    _
+    _
+    (kill _ (gvar `MITS` _ _ _)@1573..1578)@1571..1578
+    (set _ (= (gvar `MITS` _ _ _)@1581..1586 `1`)@1581..1588)@1579..1588)@1564..1588
+  (line
+    ` `
+    (if (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1595..1600)@1595..1600)@1592..1601)@1590..1601
+    (quit _ `1`)@1602..1605)@1589..1605
+  (line ` ` (quit _ `0`)@1607..1610)@1606..1610
+  (line ` `)@1611..1612
+  (label `IFNX` _ _ (kill _ (gvar `MITS` _ _ _)@1623..1628)@1621..1628)@1614..1628
+  (line
+    ` `
+    (if (intrinsic `D`#202 ((gvar `MITS` _ _ _)@1635..1640)@1635..1640)@1632..1641)@1630..1641
+    (quit _ `1`)@1642..1645)@1629..1645
+  (line ` ` (quit _ `0`)@1647..1650)@1646..1650
+  _)@0..1651

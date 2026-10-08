@@ -1,468 +1,516 @@
 (routine
-  (label `SROXR1`)
-  (` `)
-  (label `ATT`)
-  (` `
-    _
-    (new _ `SRDIV` `SREQ`)
-    (set _ (= (lvar `SRDIV`) (expr (extrinsic ((`SITE` `SROUTL0`) ((expr (lvar `DA`))))))))
-    (quit (postcond (expr (`'` (lvar `SRDIV`))))))
-  (` `
-    _
+  (label `SROXR1` _ _)@0..7
+  (line ` `)@58..59
+  (label `ATT` _ _)@106..110
+  (line
+    ` `
+    (new _ `SRDIV` `SREQ`)@156..168
+    (set
+      _
+      (=
+        (lvar `SRDIV` _)@171..176
+        (extrinsic `SITE` `SROUTL0` ((lvar `DA` _)@192..194)@192..194)@179..195)@171..195)@169..195
+    (quit (postcond (unary `'` (lvar `SRDIV` _)@199..204)@198..204)@197..204 _)@196..204)@155..204
+  (line
+    ` `
     (if
       (expr
         (intrinsic
           `P`#212
-          ((expr (gvar `SRO` ((expr (num `133`)) (expr (lvar `SRDIV`)) (expr (num `0`)))))
-            (expr (str `"^"`))
-            (expr (num `19`))))
-        (`'=` (num `0`))))
-    (quit))
-  (` `
-    _
+          ((gvar `SRO` (`133` (lvar `SRDIV` _)@220..225 `0`)@216..227 _ _)@211..228
+            `"^"`
+            `19`)@211..235)@208..236
+        (binop `'=` `0`)@236..239)@208..239)@206..239
+    (quit _ _)@240..241)@205..241
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `SREQ` ((expr (num `130`)) (expr (lvar `DA`) (`_` (str `","`))) (expr (num `.164`))))
-        (expr (lvar `X`))))
+        (lvar
+          `SREQ`
+          (`130` (expr (lvar `DA` _)@254..256 (binop `_` `","`)@256..260)@254..260 `.164`)@250..265)@245..266
+        (lvar `X` _)@267..268)@245..268)@243..268
     (do
       _
-      (call
-        (ref `FILE` _ `DIE`)
-        ((expr (str `""`)) (expr (str `"SREQ"`)) (expr (str `"^TMP(""SR"",$J)"`))))))
-  (` ` _ (quit))
-  (label `KATT`)
-  (` ` _ (quit))
-  (label `ATTP`)
-  (` `
-    _
-    (new _ `SRDIV` `SREQ`)
-    (set _ (= (lvar `SRDIV`) (expr (extrinsic ((`SITE` `SROUTL0`) ((expr (lvar `DA`))))))))
-    (quit (postcond (expr (`'` (lvar `SRDIV`))))))
-  (` `
-    _
+      (call (ref `FILE` _ `DIE`)@271..279 (`""` `"SREQ"` `"^TMP(""SR"",$J)"`)@280..307 _)@271..308)@269..308)@242..308
+  (line ` ` (quit _ _)@310..311)@309..311
+  (label `KATT` _ _)@312..317
+  (line ` ` (quit _ _)@345..346)@344..346
+  (label `ATTP` _ _)@347..352
+  (line
+    ` `
+    (new _ `SRDIV` `SREQ`)@404..416
+    (set
+      _
+      (=
+        (lvar `SRDIV` _)@419..424
+        (extrinsic `SITE` `SROUTL0` ((lvar `DA` _)@440..442)@440..442)@427..443)@419..443)@417..443
+    (quit (postcond (unary `'` (lvar `SRDIV` _)@447..452)@446..452)@445..452 _)@444..452)@403..452
+  (line
+    ` `
     (if
       (expr
         (intrinsic
           `P`#212
-          ((expr (gvar `SRO` ((expr (num `133`)) (expr (lvar `SRDIV`)) (expr (num `0`)))))
-            (expr (str `"^"`))
-            (expr (num `19`))))
-        (`'=` (num `0`))))
-    (quit))
-  (` `
-    _
+          ((gvar `SRO` (`133` (lvar `SRDIV` _)@468..473 `0`)@464..475 _ _)@459..476
+            `"^"`
+            `19`)@459..483)@456..484
+        (binop `'=` `0`)@484..487)@456..487)@454..487
+    (quit _ _)@488..489)@453..489
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `SREQ` ((expr (num `130`)) (expr (lvar `DA`) (`_` (str `","`))) (expr (num `124`))))
-        (expr (lvar `X`))))
+        (lvar
+          `SREQ`
+          (`130` (expr (lvar `DA` _)@502..504 (binop `_` `","`)@504..508)@502..508 `124`)@498..512)@493..513
+        (lvar `X` _)@514..515)@493..515)@491..515
     (do
       _
-      (call
-        (ref `FILE` _ `DIE`)
-        ((expr (str `""`)) (expr (str `"SREQ"`)) (expr (str `"^TMP(""SR"",$J)"`))))))
-  (` ` _ (quit))
-  (label `KATTP`)
-  (` ` _ (quit))
-  (label `AR`)
-  (` `)
-  (` `
-    _
+      (call (ref `FILE` _ `DIE`)@518..526 (`""` `"SREQ"` `"^TMP(""SR"",$J)"`)@527..554 _)@518..555)@516..555)@490..555
+  (line ` ` (quit _ _)@557..558)@556..558
+  (label `KATTP` _ _)@559..565
+  (line ` ` (quit _ _)@594..595)@593..595
+  (label `AR` _ _)@596..599
+  (line ` `)@639..640
+  (line
+    ` `
     (quit
       (postcond
-        (expr
-          (`'` (intrinsic `D`#202 ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (str `"REQ"`)))))))))))
+        (unary
+          `'`
+          (intrinsic
+            `D`#202
+            ((gvar `SRF` ((lvar `DA` _)@686..688 `"REQ"`)@686..694 _ _)@681..695)@681..695)@678..696)@677..696)@676..696
+      _)@675..696
     (if
       (expr
         (intrinsic
           `P`#212
-          ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (str `"REQ"`))))) (expr (str `"^"`))))
-        (`'=` (num `1`))))
-    (quit))
-  (` `
-    _
+          ((gvar `SRF` ((lvar `DA` _)@708..710 `"REQ"`)@708..716 _ _)@703..717 `"^"`)@703..721)@700..722
+        (binop `'=` `1`)@722..725)@700..725)@698..725
+    (quit _ _)@726..727)@674..727
+  (line
+    ` `
     (if
-      (expr (intrinsic `D`#202 ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `31`))))))))
-      (expr
-        (intrinsic `P`#212 ((expr (naked (expr (num `31`)))) (expr (str `"^"`)) (expr (num `4`))))))
-    (quit))
-  (` `
-    _
+      (intrinsic
+        `D`#202
+        ((gvar `SRF` ((lvar `DA` _)@739..741 `31`)@739..744 _ _)@734..745)@734..745)@731..746
+      (intrinsic `P`#212 ((naked `31`)@750..755 `"^"` `4`)@750..761)@747..762)@729..762
+    (quit _ _)@763..764)@728..764
+  (line
+    ` `
     (set
       (postcond
         (expr
-          (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`))))
-          (`'<` (lvar `DT`))))
+          (intrinsic `E`#203 ((lvar `X` _)@771..772 `1` `7`)@771..776)@768..777
+          (binop `'<` (lvar `DT` _)@779..781)@777..781)@768..781)@767..781
       (=
-        (lvar `DFN`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`))))) (expr (str `"^"`))))))
+        (lvar `DFN` _)@782..785
+        (intrinsic
+          `P`#212
+          ((gvar `SRF` ((lvar `DA` _)@794..796 `0`)@794..798 _ _)@789..799 `"^"`)@789..803)@786..804)@782..804
       (=
         (gvar
           `SRF`
-          ((expr (str `"AR"`))
-            (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`)))))
-            (expr (lvar `DFN`))
-            (expr (lvar `DA`))))
-        (expr (str `""`)))))
-  (` ` _ (quit))
-  (label `KAR`)
-  (` `)
-  (` `
-    _
+          (`"AR"`
+            (intrinsic `E`#203 ((lvar `X` _)@818..819 `1` `7`)@818..823)@815..824
+            (lvar `DFN` _)@825..828
+            (lvar `DA` _)@829..831)@810..831
+          _
+          _)@805..832
+        `""`)@805..835)@766..835)@765..835
+  (line ` ` (quit _ _)@837..838)@836..838
+  (label `KAR` _ _)@839..843
+  (line ` `)@892..893
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `DFN`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`))))) (expr (str `"^"`)))))))
+        (lvar `DFN` _)@941..944
+        (intrinsic
+          `P`#212
+          ((gvar `SRF` ((lvar `DA` _)@953..955 `0`)@953..957 _ _)@948..958 `"^"`)@948..962)@945..963)@941..963)@939..963
     (kill
       _
       (gvar
         `SRF`
-        ((expr (str `"AR"`))
-          (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`)))))
-          (expr (lvar `DFN`))
-          (expr (lvar `DA`))))))
-  (` ` _ (quit))
-  (label `SP`)
-  (` `
-    _
+        (`"AR"`
+          (intrinsic `E`#203 ((lvar `X` _)@979..980 `1` `7`)@979..984)@976..985
+          (lvar `DFN` _)@986..989
+          (lvar `DA` _)@990..992)@971..992
+        _
+        _)@966..993)@964..993)@938..993
+  (line ` ` (quit _ _)@995..996)@994..996
+  (label `SP` _ _)@997..1000
+  (line
+    ` `
     (if
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`)))))
-            (expr (str `"^"`))
-            (expr (num `4`))))))
+      (intrinsic
+        `P`#212
+        ((gvar `SRF` ((lvar `DA` _)@1061..1063 `0`)@1061..1065 _ _)@1056..1066 `"^"` `4`)@1056..1072)@1053..1073)@1051..1073
     (set
       _
       (=
         (gvar
           `SRF`
-          ((expr (str `"ASP"`))
-            (expr
-              (intrinsic
-                `P`#212
-                ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `4`)))))
-            (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`)))))
-            (expr (lvar `DA`))))
-        (expr (lvar `DA`)))))
+          (`"ASP"`
+            (intrinsic `P`#212 ((naked `0`)@1090..1094 `"^"` `4`)@1090..1100)@1087..1101
+            (intrinsic `E`#203 ((lvar `X` _)@1105..1106 `1` `7`)@1105..1110)@1102..1111
+            (lvar `DA` _)@1112..1114)@1081..1114
+          _
+          _)@1076..1115
+        (lvar `DA` _)@1116..1118)@1076..1118)@1074..1118)@1050..1118
   (label
     `OR`
     _
-    ((if
-       (expr
-         (intrinsic
-           `P`#212
-           ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`)))))
-             (expr (str `"^"`))
-             (expr (num `2`))))))
-      (set
-        _
-        (=
-          (gvar
-            `SRF`
-            ((expr (str `"AOR"`))
-              (expr
-                (intrinsic
-                  `P`#212
-                  ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `2`)))))
-              (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`)))))
-              (expr (lvar `DA`))))
-          (expr (str `""`))))))
-  (` ` _ (quit))
-  (label `KSP`)
-  (` `
     _
     (if
-      (expr
-        (intrinsic
-          `P`#212
-          ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`)))))
-            (expr (str `"^"`))
-            (expr (num `4`))))))
+      (intrinsic
+        `P`#212
+        ((gvar `SRF` ((lvar `DA` _)@1132..1134 `0`)@1132..1136 _ _)@1127..1137 `"^"` `2`)@1127..1143)@1124..1144)@1122..1144
+    (set
+      _
+      (=
+        (gvar
+          `SRF`
+          (`"AOR"`
+            (intrinsic `P`#212 ((naked `0`)@1161..1165 `"^"` `2`)@1161..1171)@1158..1172
+            (intrinsic `E`#203 ((lvar `X` _)@1176..1177 `1` `7`)@1176..1181)@1173..1182
+            (lvar `DA` _)@1183..1185)@1152..1185
+          _
+          _)@1147..1186
+        `""`)@1147..1189)@1145..1189)@1119..1189
+  (line ` ` (quit _ _)@1191..1192)@1190..1192
+  (label `KSP` _ _)@1193..1197
+  (line
+    ` `
+    (if
+      (intrinsic
+        `P`#212
+        ((gvar `SRF` ((lvar `DA` _)@1259..1261 `0`)@1259..1263 _ _)@1254..1264 `"^"` `4`)@1254..1270)@1251..1271)@1249..1271
     (kill
       _
       (gvar
         `SRF`
-        ((expr (str `"ASP"`))
-          (expr
-            (intrinsic
-              `P`#212
-              ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `4`)))))
-          (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`)))))
-          (expr (lvar `DA`))))))
+        (`"ASP"`
+          (intrinsic `P`#212 ((naked `0`)@1288..1292 `"^"` `4`)@1288..1298)@1285..1299
+          (intrinsic `E`#203 ((lvar `X` _)@1303..1304 `1` `7`)@1303..1308)@1300..1309
+          (lvar `DA` _)@1310..1312)@1279..1312
+        _
+        _)@1274..1313)@1272..1313)@1248..1313
   (label
     `KOR`
     _
-    ((set
-       _
-       (=
-         (lvar `DFN`)
-         (expr
-           (intrinsic
-             `P`#212
-             ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`))))) (expr (str `"^"`)))))))
-      (if
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (gvar `SRF` ((expr (lvar `DA`)) (expr (num `0`)))))
-              (expr (str `"^"`))
-              (expr (num `2`))))))
-      (kill
-        _
-        (gvar
-          `SRF`
-          ((expr (str `"AOR"`))
-            (expr
-              (intrinsic
-                `P`#212
-                ((expr (naked (expr (num `0`)))) (expr (str `"^"`)) (expr (num `2`)))))
-            (expr (intrinsic `E`#203 ((expr (lvar `X`)) (expr (num `1`)) (expr (num `7`)))))
-            (expr (lvar `DA`)))))))
-  (` ` _ (quit))
-  (label `IV`)
-  (` `
     _
-    (set _ (= (lvar `SRT` ((expr (str `"X"`)))) (expr (lvar `X`))))
-    (do _ (call (ref `NOW` _ `%DTC`)))
     (set
       _
-      (= (lvar `X`) (expr (lvar `SRT` ((expr (str `"X"`))))))
       (=
-        (lvar `X1`)
-        (expr (intrinsic `E`#203 ((expr (lvar `%`)) (expr (num `1`)) (expr (num `12`)))))))
-    (do _ (call (ref `MINS` _ `SRSUTL2`))))
-  (` ` _ (if (expr (lvar `X`) (`>` (num `1440`)))) (do _ (call (ref `OUT`))) (quit))
-  (` ` _ (if (expr (lvar `X`) (`>` (num `60`)))) (do))
-  (` .`#1
-    _
+        (lvar `DFN` _)@1320..1323
+        (intrinsic
+          `P`#212
+          ((gvar `SRF` ((lvar `DA` _)@1332..1334 `0`)@1332..1336 _ _)@1327..1337 `"^"`)@1327..1341)@1324..1342)@1320..1342)@1318..1342
+    (if
+      (intrinsic
+        `P`#212
+        ((gvar `SRF` ((lvar `DA` _)@1353..1355 `0`)@1353..1357 _ _)@1348..1358 `"^"` `2`)@1348..1364)@1345..1365)@1343..1365
+    (kill
+      _
+      (gvar
+        `SRF`
+        (`"AOR"`
+          (intrinsic `P`#212 ((naked `0`)@1382..1386 `"^"` `2`)@1382..1392)@1379..1393
+          (intrinsic `E`#203 ((lvar `X` _)@1397..1398 `1` `7`)@1397..1402)@1394..1403
+          (lvar `DA` _)@1404..1406)@1373..1406
+        _
+        _)@1368..1407)@1366..1407)@1314..1407
+  (line ` ` (quit _ _)@1409..1410)@1408..1410
+  (label `IV` _ _)@1411..1414
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `SRT` (`"X"`)@1440..1443)@1436..1444 (lvar `X` _)@1445..1446)@1436..1446)@1434..1446
+    (do _ (call (ref `NOW` _ `%DTC`)@1449..1457 _ _)@1449..1457)@1447..1457
+    (set
+      _
+      (= (lvar `X` _)@1460..1461 (lvar `SRT` (`"X"`)@1466..1469)@1462..1470)@1460..1470
+      (=
+        (lvar `X1` _)@1471..1473
+        (intrinsic `E`#203 ((lvar `%` _)@1477..1478 `1` `12`)@1477..1483)@1474..1484)@1471..1484)@1458..1484
+    (do _ (call (ref `MINS` _ `SRSUTL2`)@1487..1499 _ _)@1487..1499)@1485..1499)@1433..1499
+  (line
+    ` `
+    (if (expr (lvar `X` _)@1503..1504 (binop `>` `1440`)@1504..1509)@1503..1509)@1501..1509
+    (do _ (call (ref `OUT` _ _)@1512..1515 _ _)@1512..1515)@1510..1515
+    (quit _ _)@1516..1517)@1500..1517
+  (line
+    ` `
+    (if (expr (lvar `X` _)@1521..1522 (binop `>` `60`)@1522..1525)@1521..1525)@1519..1525
+    (do _)@1526..1527)@1518..1527
+  (line
+    ` .`
     (do
       _
       (call
-        (ref `EN` _ `DDIOL`)
+        (ref `EN` _ `DDIOL`)@1532..1540
         ((expr
-           (str `"A considerable amount of time has passed since the "`)
-           (`_`
+           `"A considerable amount of time has passed since the "`
+           (binop
+             `_`
              (select
-               ((expr
-                  (intrinsic
-                    `P`#212
-                    ((expr
-                       (intrinsic
-                         `G`#206
-                         ((expr (gvar `SRF` ((expr (lvar `SRTN`)) (expr (str `"NON"`))))))))
-                      (expr (str `"^"`))))
-                  (`=` (str `"Y"`)))
-                 (expr (str `"procedure"`)))
-               ((expr (num `1`)) (expr (str `"operation"`)))))
-           (`_` (str `" start"`)))
+               (case
+                 (expr
+                   (intrinsic
+                     `P`#212
+                     ((intrinsic
+                        `G`#206
+                        ((gvar `SRF` ((lvar `SRTN` _)@1609..1613 `"NON"`)@1609..1619 _ _)@1604..1620)@1604..1620)@1601..1621
+                       `"^"`)@1601..1625)@1598..1626
+                   (binop `=` `"Y"`)@1626..1630)@1598..1630
+                 `"procedure"`)@1598..1642
+               (case `1` `"operation"`)@1643..1656)@1595..1657)@1594..1657
+           (binop `_` `" start"`)@1657..1666)@1541..1666
           _
-          (expr (str `"!!,?2"`))))))
-  (` .`#1
-    _
+          `"!!,?2"`)@1541..1675
+        _)@1532..1676)@1530..1676)@1528..1676
+  (line
+    ` .`
     (do
       _
       (call
-        (ref `EN` _ `DDIOL`)
-        ((expr (str `"time and the present time."`)) _ (expr (str `"!,?2"`))))))
-  (` ` _ (do _ (call (ref `IV1`))))
+        (ref `EN` _ `DDIOL`)@1681..1689
+        (`"time and the present time."` _ `"!,?2"`)@1690..1726
+        _)@1681..1727)@1679..1727)@1677..1727
+  (line ` ` (do _ (call (ref `IV1` _ _)@1731..1734 _ _)@1731..1734)@1729..1734)@1728..1734
   (label
     `OUT`
     _
-    ((set _ (= (lvar `X`) (expr (lvar `SRT` ((expr (str `"X"`)))))))
-      (kill _ (lvar `SRT`) (lvar `X1`) (lvar `Y`))))
-  (` ` _ (quit))
+    _
+    (set
+      _
+      (= (lvar `X` _)@1741..1742 (lvar `SRT` (`"X"`)@1747..1750)@1743..1751)@1741..1751)@1739..1751
+    (kill _ (lvar `SRT` _)@1754..1757 (lvar `X1` _)@1758..1760 (lvar `Y` _)@1761..1762)@1752..1762)@1735..1762
+  (line ` ` (quit _ _)@1764..1765)@1763..1765
   (label
     `IV1`
     _
-    ((kill _ (lvar `DIR`))
-      (write _ (posformat `!`))
-      (set
-        _
-        (=
-          (lvar `DIR` ((expr (str `"?"`)) (expr (num `1`))))
-          (expr (str `"Enter 'YES' to cancel current IV orders. Enter 'NO' or '^' to continue"`)))
-        (=
-          (lvar `DIR` ((expr (str `"?"`))))
-          (expr (str `"without cancelling the patient's current IV orders."`)))
-        (=
-          (lvar `DIR` ((expr (str `"B"`))))
-          (expr
-            (select
-              ((expr
-                 (intrinsic
-                   `P`#212
-                   ((expr
-                      (intrinsic
-                        `G`#206
-                        ((expr (gvar `SRF` ((expr (lvar `SRTN`)) (expr (str `"NON"`))))))))
-                     (expr (str `"^"`))))
-                 (`=` (str `"Y"`)))
-                (expr (str `"NO"`)))
-              ((expr (num `1`)) (expr (str `"YES"`)))))))))
-  (` `
     _
+    (kill _ (lvar `DIR` _)@1772..1775)@1770..1775
+    (write _ (posformat _ `!`)@1778..1779)@1776..1779
     (set
       _
       (=
-        (lvar `DIR` ((expr (str `"A"`))))
-        (expr (str `"Do you want to cancel all current IV orders for this patient (Y/N)"`)))
-      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"Y"`))))
-    (do _ (call (ref _ _ `DIR`)))
-    (if
-      (expr
-        (intrinsic `D`#202 ((expr (lvar `DTOUT`))))
-        (`!` (expr (lvar `Y`) (`=` (num `0`))))
-        (`!` (intrinsic `D`#202 ((expr (lvar `DUOUT`)))))))
-    (quit))
-  (` `
-    _
-    (set _ (= (lvar `X`) (expr (str `"PSIVACT"`))))
-    (xecute _ ((expr (gvar `%ZOSF` ((expr (str `"TEST"`)))))))
-    (quit (postcond (expr (`'` (intrinsic `T`#221))))))
-  (` `
-    _
+        (lvar `DIR` (`"?"` `1`)@1786..1791)@1782..1792
+        `"Enter 'YES' to cancel current IV orders. Enter 'NO' or '^' to continue"`)@1782..1865
+      (=
+        (lvar `DIR` (`"?"`)@1870..1873)@1866..1874
+        `"without cancelling the patient's current IV orders."`)@1866..1928
+      (=
+        (lvar `DIR` (`"B"`)@1933..1936)@1929..1937
+        (select
+          (case
+            (expr
+              (intrinsic
+                `P`#212
+                ((intrinsic
+                   `G`#206
+                   ((gvar `SRF` ((lvar `SRTN` _)@1952..1956 `"NON"`)@1952..1962 _ _)@1947..1963)@1947..1963)@1944..1964
+                  `"^"`)@1944..1968)@1941..1969
+              (binop `=` `"Y"`)@1969..1973)@1941..1973
+            `"NO"`)@1941..1978
+          (case `1` `"YES"`)@1979..1986)@1938..1987)@1929..1987)@1780..1987)@1766..1987
+  (line
+    ` `
     (set
       _
-      (= (lvar `ZTDESC`) (expr (str `"Cancel IV Orders from Surgery"`)))
-      (= (lvar `ZTDTH`) (expr (intrinsic `H`#304)))
-      (= (lvar `ZTIO`) (expr (str `""`)))
-      (= (lvar `ZTRTN`) (expr (str `"DCOR^SROXR1"`)))
-      (= (lvar `ZTSAVE` ((expr (str `"PSIVRES"`)))) (expr (str `"SURGERY PACKAGE"`)))
-      (= (lvar `ZTSAVE` ((expr (str `"DFN"`)))) (expr (lvar `DFN`))))
-    (new _ `X` `Y`)
-    (do _ (call (ref _ _ `%ZTLOAD`))))
-  (` ` _ (quit))
-  (label `DCOR`)
-  (` ` _ (do _ (call (ref `DCOR` _ `PSIVACT`))) (set _ (= (lvar `ZTREQ`) (expr (str `"@"`)))))
-  (` ` _ (quit))
+      (=
+        (lvar `DIR` (`"A"`)@1995..1998)@1991..1999
+        `"Do you want to cancel all current IV orders for this patient (Y/N)"`)@1991..2068
+      (= (lvar `DIR` (`0`)@2073..2074)@2069..2075 `"Y"`)@2069..2079)@1989..2079
+    (do _ (call (ref _ _ `DIR`)@2082..2086 _ _)@2082..2086)@2080..2086
+    (if
+      (expr
+        (intrinsic `D`#202 ((lvar `DTOUT` _)@2092..2097)@2092..2097)@2089..2098
+        (binop
+          `!`
+          (expr (expr (lvar `Y` _)@2100..2101 (binop `=` `0`)@2101..2103)@2100..2103)@2099..2104)@2098..2104
+        (binop
+          `!`
+          (intrinsic `D`#202 ((lvar `DUOUT` _)@2108..2113)@2108..2113)@2105..2114)@2104..2114)@2089..2114)@2087..2114
+    (quit _ _)@2115..2116)@1988..2116
+  (line
+    ` `
+    (set _ (= (lvar `X` _)@2120..2121 `"PSIVACT"`)@2120..2131)@2118..2131
+    (xecute _ (arg (gvar `%ZOSF` (`"TEST"`)@2141..2147 _ _)@2134..2148 _)@2134..2148)@2132..2148
+    (quit
+      (postcond (unary `'` (intrinsic `T`#221 _)@2152..2154)@2151..2154)@2150..2154
+      _)@2149..2154)@2117..2154
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `ZTDESC` _)@2158..2164 `"Cancel IV Orders from Surgery"`)@2158..2196
+      (= (lvar `ZTDTH` _)@2197..2202 (intrinsic `H`#304 _)@2203..2205)@2197..2205
+      (= (lvar `ZTIO` _)@2206..2210 `""`)@2206..2213
+      (= (lvar `ZTRTN` _)@2214..2219 `"DCOR^SROXR1"`)@2214..2233
+      (= (lvar `ZTSAVE` (`"PSIVRES"`)@2241..2250)@2234..2251 `"SURGERY PACKAGE"`)@2234..2269
+      (= (lvar `ZTSAVE` (`"DFN"`)@2277..2282)@2270..2283 (lvar `DFN` _)@2284..2287)@2270..2287)@2156..2287
+    (new _ `X` `Y`)@2288..2293
+    (do _ (call (ref _ _ `%ZTLOAD`)@2296..2304 _ _)@2296..2304)@2294..2304)@2155..2304
+  (line ` ` (quit _ _)@2306..2307)@2305..2307
+  (label `DCOR` _ _)@2308..2313
+  (line
+    ` `
+    (do _ (call (ref `DCOR` _ `PSIVACT`)@2353..2365 _ _)@2353..2365)@2351..2365
+    (set _ (= (lvar `ZTREQ` _)@2368..2373 `"@"`)@2368..2377)@2366..2377)@2350..2377
+  (line ` ` (quit _ _)@2379..2380)@2378..2380
   (label
     `END`
     _
-    ((kill _ (lvar `DFN`) (lvar `I`) (lvar `S`) (lvar `SRSC1`) (lvar `SRSDAT`) (lvar `SRSOR`))))
-  (` ` _ (quit))
-  (label `STAFF`)
-  (` `
     _
-    (set _ (= (lvar `STAFF`) (expr (str `"R"`))))
+    (kill
+      _
+      (lvar `DFN` _)@2387..2390
+      (lvar `I` _)@2391..2392
+      (lvar `S` _)@2393..2394
+      (lvar `SRSC1` _)@2395..2400
+      (lvar `SRSDAT` _)@2401..2407
+      (lvar `SRSOR` _)@2408..2413)@2385..2413)@2381..2413
+  (line ` ` (quit _ _)@2415..2416)@2414..2416
+  (label `STAFF` _ _)@2417..2423
+  (line
+    ` `
+    (set _ (= (lvar `STAFF` _)@2456..2461 `"R"`)@2456..2465)@2454..2465
     (if
-      (expr
+      (intrinsic
+        `D`#202
+        ((gvar `XUSEC` (`"SR STAFF SURGEON"` (lvar `X` _)@2497..2498)@2478..2498 _ _)@2471..2499)@2471..2499)@2468..2500)@2466..2500
+    (set _ (= (lvar `STAFF` _)@2503..2508 `"S"`)@2503..2512)@2501..2512)@2453..2512
+  (line
+    ` `
+    (set
+      _
+      (=
+        (setfn
+          `P`
+          (gvar `SRF` ((lvar `DA` _)@2524..2526 `.1`)@2524..2529 _ _)@2519..2530
+          `"^"`
+          `3`)@2516..2537
+        (lvar `STAFF` _)@2538..2543)@2516..2543)@2514..2543)@2513..2543
+  (line ` ` (quit _ _)@2545..2546)@2544..2546
+  (label `KSTAFF` _ _)@2547..2554
+  (line
+    ` `
+    (set
+      _
+      (=
+        (setfn
+          `P`
+          (gvar `SRF` ((lvar `DA` _)@2602..2604 `.1`)@2602..2607 _ _)@2597..2608
+          `"^"`
+          `3`)@2594..2615
+        `""`)@2594..2618)@2592..2618)@2591..2618
+  (line ` ` (quit _ _)@2620..2621)@2619..2621
+  (label `ANES` _ _)@2622..2627
+  (line
+    ` `
+    (new _ `SRASITE` `SRAML` `SRACAT`)@2664..2686
+    (set
+      _
+      (=
+        (lvar `SRASITE` _)@2689..2696
         (intrinsic
-          `D`#202
-          ((expr (gvar `XUSEC` ((expr (str `"SR STAFF SURGEON"`)) (expr (lvar `X`)))))))))
-    (set _ (= (lvar `STAFF`) (expr (str `"S"`)))))
-  (` `
-    _
-    (set
-      _
-      (setfn
-        `P`
-        (gvar `SRF` ((expr (lvar `DA`)) (expr (num `.1`))))
-        (expr (str `"^"`))
-        (expr (num `3`))
-        (expr (lvar `STAFF`)))))
-  (` ` _ (quit))
-  (label `KSTAFF`)
-  (` `
-    _
-    (set
-      _
-      (setfn
-        `P`
-        (gvar `SRF` ((expr (lvar `DA`)) (expr (num `.1`))))
-        (expr (str `"^"`))
-        (expr (num `3`))
-        (expr (str `""`)))))
-  (` ` _ (quit))
-  (label `ANES`)
-  (` `
-    _
-    (new _ `SRASITE` `SRAML` `SRACAT`)
+          `O`#211
+          ((gvar `SRO` (`133` `0`)@2705..2710 _ _)@2700..2711)@2700..2711)@2697..2712)@2689..2712)@2687..2712
+    (if (lvar `SRASITE` _)@2715..2722)@2713..2722
     (set
       _
       (=
-        (lvar `SRASITE`)
-        (expr (intrinsic `O`#211 ((expr (gvar `SRO` ((expr (num `133`)) (expr (num `0`))))))))))
-    (if (expr (lvar `SRASITE`)))
+        (lvar `SRAML` _)@2725..2730
+        (intrinsic
+          `P`#212
+          ((gvar `SRO` (`133` (lvar `SRASITE` _)@2743..2750 `0`)@2739..2752 _ _)@2734..2753
+            `"^"`
+            `4`)@2734..2759)@2731..2760)@2725..2760)@2723..2760)@2663..2760
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `SRAML`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (gvar `SRO` ((expr (num `133`)) (expr (lvar `SRASITE`)) (expr (num `0`)))))
-              (expr (str `"^"`))
-              (expr (num `4`))))))))
-  (` `
-    _
-    (set
-      _
-      (=
-        (lvar `SRACAT`)
-        (expr
-          (select
-            ((expr
-               (intrinsic
-                 `D`#202
-                 ((expr (gvar `XUSEC` ((expr (str `"SR ANESTHESIOLOGIST"`)) (expr (lvar `X`))))))))
-              (expr (str `"A"`)))
-            ((expr
-               (intrinsic
-                 `D`#202
-                 ((expr (gvar `XUSEC` ((expr (str `"SR SURGEON"`)) (expr (lvar `X`))))))))
-              (expr (str `"A"`)))
-            ((expr
-               (intrinsic
-                 `D`#202
-                 ((expr (gvar `XUSEC` ((expr (str `"SR NURSE ANESTHETIST"`)) (expr (lvar `X`))))))))
-              (expr (str `"N"`)))
-            ((expr (num `1`)) (expr (str `"O"`))))))))
-  (` `
-    _
+        (lvar `SRACAT` _)@2764..2770
+        (select
+          (case
+            (intrinsic
+              `D`#202
+              ((gvar
+                 `XUSEC`
+                 (`"SR ANESTHESIOLOGIST"` (lvar `X` _)@2806..2807)@2784..2807
+                 _
+                 _)@2777..2808)@2777..2808)@2774..2809
+            `"A"`)@2774..2813
+          (case
+            (intrinsic
+              `D`#202
+              ((gvar `XUSEC` (`"SR SURGEON"` (lvar `X` _)@2837..2838)@2824..2838 _ _)@2817..2839)@2817..2839)@2814..2840
+            `"A"`)@2814..2844
+          (case
+            (intrinsic
+              `D`#202
+              ((gvar
+                 `XUSEC`
+                 (`"SR NURSE ANESTHETIST"` (lvar `X` _)@2878..2879)@2855..2879
+                 _
+                 _)@2848..2880)@2848..2880)@2845..2881
+            `"N"`)@2845..2885
+          (case `1` `"O"`)@2886..2891)@2771..2892)@2764..2892)@2762..2892)@2761..2892
+  (line
+    ` `
     (if
-      (expr (lvar `SRACAT`) (`=` (str `"A"`)))
+      (expr (lvar `SRACAT` _)@2896..2902 (binop `=` `"A"`)@2902..2906)@2896..2906
       (expr
-        (lvar `SRAML`)
-        (`'=`
+        (lvar `SRAML` _)@2907..2912
+        (binop
+          `'=`
           (intrinsic
             `P`#212
-            ((expr
-               (intrinsic
-                 `G`#206
-                 ((expr (gvar `VA` ((expr (num `200`)) (expr (lvar `X`)) (expr (num `5`))))))))
-              (expr (str `"^"`))
-              (expr (num `2`)))))))
-    (set _ (= (lvar `SRACAT`) (expr (str `"O"`)))))
-  (` `
-    _
+            ((intrinsic
+               `G`#206
+               ((gvar `VA` (`200` (lvar `X` _)@2928..2929 `5`)@2924..2931 _ _)@2920..2932)@2920..2932)@2917..2933
+              `"^"`
+              `2`)@2917..2939)@2914..2940)@2912..2940)@2907..2940)@2894..2940
+    (set _ (= (lvar `SRACAT` _)@2943..2949 `"O"`)@2943..2953)@2941..2953)@2893..2953
+  (line
+    ` `
     (set
       _
-      (setfn
-        `P`
-        (gvar `SRF` ((expr (lvar `DA`)) (expr (num `.3`))))
-        (expr (str `"^"`))
-        (expr (num `8`))
-        (expr (lvar `SRACAT`))))
-    (kill _ (lvar `SRASITE`) (lvar `SRAML`) (lvar `SRACAT`)))
-  (` ` _ (quit))
-  (label `KANES`)
-  (` `
-    _
+      (=
+        (setfn
+          `P`
+          (gvar `SRF` ((lvar `DA` _)@2965..2967 `.3`)@2965..2970 _ _)@2960..2971
+          `"^"`
+          `8`)@2957..2978
+        (lvar `SRACAT` _)@2979..2985)@2957..2985)@2955..2985
+    (kill
+      _
+      (lvar `SRASITE` _)@2988..2995
+      (lvar `SRAML` _)@2996..3001
+      (lvar `SRACAT` _)@3002..3008)@2986..3008)@2954..3008
+  (line ` ` (quit _ _)@3010..3011)@3009..3011
+  (label `KANES` _ _)@3012..3018
+  (line
+    ` `
     (set
       _
-      (setfn
-        `P`
-        (gvar `SRF` ((expr (lvar `DA`)) (expr (num `.3`))))
-        (expr (str `"^"`))
-        (expr (num `8`))
-        (expr (str `""`)))))
-  (` ` _ (quit)))
+      (=
+        (setfn
+          `P`
+          (gvar `SRF` ((lvar `DA` _)@3072..3074 `.3`)@3072..3077 _ _)@3067..3078
+          `"^"`
+          `8`)@3064..3085
+        `""`)@3064..3088)@3062..3088)@3061..3088
+  (line ` ` (quit _ _)@3090..3091)@3089..3091
+  _)@0..3092

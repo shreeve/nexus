@@ -1,4 +1,4 @@
 (expr
-  (intrinsic `P`#212 ((expr (lvar `X`)) (expr (str `"^"`)) (expr (num `2`))))
-  (`_` (str `"-"`))
-  (`_` (intrinsic `E`#203 ((expr (lvar `Y`)) (expr (num `1`))))))
+  (intrinsic `P`#212 ((lvar `X` _)@3..4 `"^"` `2`)@3..10)@0..11
+  (binop `_` `"-"`)@11..15
+  (binop `_` (intrinsic `E`#203 ((lvar `Y` _)@19..20 `1`)@19..22)@16..23)@15..23)@0..23

@@ -1,225 +1,257 @@
 (routine
-  (label `PATTERN`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/patterns/PATTERN"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `PATTERN` _ _)@0..8
+  (line ` `)@53..54
+  (line ` `)@56..57
+  (line ` `)@125..126
+  (line ` `)@143..144
+  (line ` `)@194..195
+  (line ` `)@242..243
+  (line ` `)@268..269
+  (line ` `)@297..298
+  (line ` `)@319..320
+  (line ` `)@341..342
+  (line ` `)@365..366
+  (line ` `)@391..392
+  (line ` `)@425..426
+  (line ` `)@484..485
+  (line ` `)@516..517
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@522..532 (`"compliance/patterns/PATTERN"`)@533..562 _)@522..563)@520..563)@519..563
+  (line ` `)@564..565
+  (line ` `)@567..568
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3N exact 3 digits"`)) (expr (num `1`)) (expr (str `"""123""?3N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@598..606
+        (`"3N exact 3 digits"` `1` `"""123""?3N"`)@607..641
+        _)@598..642)@596..642)@595..642
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3N reject 2 digits"`)) (expr (num `0`)) (expr (str `"""12""?3N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@646..654
+        (`"3N reject 2 digits"` `0` `"""12""?3N"`)@655..689
+        _)@646..690)@644..690)@643..690
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3N reject 4 digits"`)) (expr (num `0`)) (expr (str `"""1234""?3N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@694..702
+        (`"3N reject 4 digits"` `0` `"""1234""?3N"`)@703..739
+        _)@694..740)@692..740)@691..740
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `".N matches 0 digits"`)) (expr (num `1`)) (expr (str `"""""?.N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@744..752
+        (`".N matches 0 digits"` `1` `"""""?.N"`)@753..786
+        _)@744..787)@742..787)@741..787
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `".N matches many digits"`)) (expr (num `1`)) (expr (str `"""123456789""?.N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@791..799
+        (`".N matches many digits"` `1` `"""123456789""?.N"`)@800..845
+        _)@791..846)@789..846)@788..846
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `".N rejects letters"`)) (expr (num `0`)) (expr (str `"""abc""?.N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@850..858
+        (`".N rejects letters"` `0` `"""abc""?.N"`)@859..894
+        _)@850..895)@848..895)@847..895
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"1.3N range 1-3 digits OK"`)) (expr (num `1`)) (expr (str `"""12""?1.3N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@899..907
+        (`"1.3N range 1-3 digits OK"` `1` `"""12""?1.3N"`)@908..950
+        _)@899..951)@897..951)@896..951
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"1.3N range too many"`)) (expr (num `0`)) (expr (str `"""1234""?1.3N"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@955..963
+        (`"1.3N range too many"` `0` `"""1234""?1.3N"`)@964..1003
+        _)@955..1004)@953..1004)@952..1004
+  (line ` `)@1005..1006
+  (line ` `)@1008..1009
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3A letters"`)) (expr (num `1`)) (expr (str `"""abc""?3A"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1044..1052
+        (`"3A letters"` `1` `"""abc""?3A"`)@1053..1080
+        _)@1044..1081)@1042..1081)@1041..1081
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3U uppercase"`)) (expr (num `1`)) (expr (str `"""ABC""?3U"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1085..1093
+        (`"3U uppercase"` `1` `"""ABC""?3U"`)@1094..1123
+        _)@1085..1124)@1083..1124)@1082..1124
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3U rejects lowercase"`)) (expr (num `0`)) (expr (str `"""abc""?3U"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1128..1136
+        (`"3U rejects lowercase"` `0` `"""abc""?3U"`)@1137..1174
+        _)@1128..1175)@1126..1175)@1125..1175
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3L lowercase"`)) (expr (num `1`)) (expr (str `"""abc""?3L"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1179..1187
+        (`"3L lowercase"` `1` `"""abc""?3L"`)@1188..1217
+        _)@1179..1218)@1177..1218)@1176..1218
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3L rejects uppercase"`)) (expr (num `0`)) (expr (str `"""ABC""?3L"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1222..1230
+        (`"3L rejects uppercase"` `0` `"""ABC""?3L"`)@1231..1268
+        _)@1222..1269)@1220..1269)@1219..1269
+  (line ` `)@1270..1271
+  (line ` `)@1273..1274
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3N1.E1A digit-anychar-letter"`))
-          (expr (num `1`))
-          (expr (str `"""123 z""?3N1.E1A"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1306..1314
+        (`"3N1.E1A digit-anychar-letter"` `1` `"""123 z""?3N1.E1A"`)@1315..1367
+        _)@1306..1368)@1304..1368)@1303..1368
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"phone-like 3N1""-""4N"`))
-          (expr (num `1`))
-          (expr (str `"""555-1234""?3N1""-""4N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1372..1380
+        (`"phone-like 3N1""-""4N"` `1` `"""555-1234""?3N1""-""4N"`)@1381..1432
+        _)@1372..1433)@1370..1433)@1369..1433
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"phone reject no dash"`))
-          (expr (num `0`))
-          (expr (str `"""5551234""?3N1""-""4N"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1437..1445
+        (`"phone reject no dash"` `0` `"""5551234""?3N1""-""4N"`)@1446..1495
+        _)@1437..1496)@1435..1496)@1434..1496
+  (line ` `)@1497..1498
+  (line ` `)@1500..1501
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"literal exact match"`)) (expr (num `1`)) (expr (str `"""ABC""?1""ABC"""`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1531..1539
+        (`"literal exact match"` `1` `"""ABC""?1""ABC"""`)@1540..1582
+        _)@1531..1583)@1529..1583)@1528..1583
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"literal reject differ"`)) (expr (num `0`)) (expr (str `"""XYZ""?1""ABC"""`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1587..1595
+        (`"literal reject differ"` `0` `"""XYZ""?1""ABC"""`)@1596..1640
+        _)@1587..1641)@1585..1641)@1584..1641
+  (line ` `)@1642..1643
+  (line ` `)@1645..1646
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `".A on empty matches"`)) (expr (num `1`)) (expr (str `"""""?.A"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1678..1686
+        (`".A on empty matches"` `1` `"""""?.A"`)@1687..1720
+        _)@1678..1721)@1676..1721)@1675..1721
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"0N on empty"`)) (expr (num `1`)) (expr (str `"""""?0N"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1725..1733
+        (`"0N on empty"` `1` `"""""?0N"`)@1734..1759
+        _)@1725..1760)@1723..1760)@1722..1760
+  (line ` `)@1761..1762
+  (line ` `)@1764..1765
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3P punctuation"`)) (expr (num `1`)) (expr (str `"""!@#""?3P"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1800..1808
+        (`"3P punctuation"` `1` `"""!@#""?3P"`)@1809..1840
+        _)@1800..1841)@1798..1841)@1797..1841
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"3P rejects letters"`)) (expr (num `0`)) (expr (str `"""abc""?3P"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1845..1853
+        (`"3P rejects letters"` `0` `"""abc""?3P"`)@1854..1889
+        _)@1845..1890)@1843..1890)@1842..1890
+  (line ` `)@1891..1892
+  (line ` `)@1894..1895
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `".E matches anything"`)) (expr (num `1`)) (expr (str `"""whatever""?.E"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1939..1947
+        (`".E matches anything"` `1` `"""whatever""?.E"`)@1948..1989
+        _)@1939..1990)@1937..1990)@1936..1990
+  (line ` `)@1991..1992
+  (line ` `)@1994..1995
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"simple email-like ID"`)) (expr (num `1`)) (expr (str `"""ab12""?2A2N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2028..2036
+        (`"simple email-like ID"` `1` `"""ab12""?2A2N"`)@2037..2077
+        _)@2028..2078)@2026..2078)@2025..2078
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"US zip 5N"`)) (expr (num `1`)) (expr (str `"""12345""?5N"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2082..2090
+        (`"US zip 5N"` `1` `"""12345""?5N"`)@2091..2119
+        _)@2082..2120)@2080..2120)@2079..2120
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"US zip+4 like"`)) (expr (num `1`)) (expr (str `"""12345-6789""?5N1""-""4N"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/patterns/PATTERN"`))))))
-  (` ` _ (quit)))
+        (ref `RUN` _ `TEST`)@2124..2132
+        (`"US zip+4 like"` `1` `"""12345-6789""?5N1""-""4N"`)@2133..2178
+        _)@2124..2179)@2122..2179)@2121..2179
+  (line ` `)@2180..2181
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `END` _ `TEST`)@2186..2194
+        (`"compliance/patterns/PATTERN"`)@2195..2224
+        _)@2186..2225)@2184..2225)@2183..2225
+  (line ` ` (quit _ _)@2227..2228)@2226..2228
+  _)@0..2229

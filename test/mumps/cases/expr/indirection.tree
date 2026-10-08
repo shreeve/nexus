@@ -1,1 +1,1 @@
-(expr (@subs (lvar `X`) ((expr (num `1`)) (expr (num `2`)))))
+(@subs (lvar `X` _)@1..2 (`1` `2`)@4..7)@0..8

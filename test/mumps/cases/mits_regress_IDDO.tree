@@ -1,248 +1,340 @@
 (routine
-  (label `IDDO`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/regress/IDDO"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `IDDO` _ _)@0..5
+  (line ` `)@45..46
+  (line ` `)@48..49
+  (line ` `)@122..123
+  (line ` `)@181..182
+  (line ` `)@184..185
+  (line ` `)@257..258
+  (line ` `)@322..323
+  (line ` `)@389..390
+  (line ` `)@459..460
+  (line ` `)@505..506
+  (line ` `)@508..509
+  (line ` `)@577..578
+  (line ` `)@648..649
+  (line ` `)@686..687
+  (line ` `)@689..690
+  (line ` `)@761..762
+  (line ` `)@832..833
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@838..848 (`"compliance/regress/IDDO"`)@849..874 _)@838..875)@836..875)@835..875
+  (line ` `)@876..877
+  (line ` `)@879..880
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-466 indirect routine ref"`))
-          (expr (str `"V1IDDO1"`))
-          (expr (str `"$$IND466^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@928..936
+        (`"I-466 indirect routine ref"` `"V1IDDO1"` `"$$IND466^IDDO()"`)@937..993
+        _)@928..994)@926..994)@925..994
+  (line ` `)@995..996
+  (line ` `)@998..999
+  (line ` `)@1050..1051
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-468 dlabel^routine indirect"`))
-          (expr (str `"11"`))
-          (expr (str `"$$IND468^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1116..1124
+        (`"I-468 dlabel^routine indirect"` `"11"` `"$$IND468^IDDO()"`)@1125..1179
+        _)@1116..1180)@1114..1180)@1113..1180
+  (line ` `)@1181..1182
+  (line ` `)@1184..1185
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-469 offset indirect"`))
-          (expr (str `"V1IDDO+1"`))
-          (expr (str `"$$IND469^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1244..1252
+        (`"I-469 offset indirect"` `"V1IDDO+1"` `"$$IND469^IDDO()"`)@1253..1305
+        _)@1244..1306)@1242..1306)@1241..1306
+  (line ` `)@1307..1308
+  (line ` `)@1310..1311
+  (line ` `)@1377..1378
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-470 arg indir no postcond"`))
-          (expr (num `21`))
-          (expr (str `"$$IND470^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1450..1458
+        (`"I-470 arg indir no postcond"` `21` `"$$IND470^IDDO()"`)@1459..1509
+        _)@1450..1510)@1448..1510)@1447..1510
+  (line ` `)@1511..1512
+  (line ` `)@1514..1515
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-480 indirect chain"`)) (expr (str `"2"`)) (expr (str `"$$IND480^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1581..1589
+        (`"I-480 indirect chain"` `"2"` `"$$IND480^IDDO()"`)@1590..1634
+        _)@1581..1635)@1579..1635)@1578..1635
+  (line ` `)@1636..1637
+  (line ` `)@1639..1640
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-810 xecute indir level 1"`))
-          (expr (str `"42"`))
-          (expr (str `"$$IND810^IDDO()"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1696..1704
+        (`"I-810 xecute indir level 1"` `"42"` `"$$IND810^IDDO()"`)@1705..1756
+        _)@1696..1757)@1694..1757)@1693..1757
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-810 xecute indir level 2"`))
-          (expr (str `"42"`))
-          (expr (str `"$$IND810B^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1761..1769
+        (`"I-810 xecute indir level 2"` `"42"` `"$$IND810B^IDDO()"`)@1770..1822
+        _)@1761..1823)@1759..1823)@1758..1823
+  (line ` `)@1824..1825
+  (line ` `)@1827..1828
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-811 xecute goto overlay"`))
-          (expr (str `"12"`))
-          (expr (str `"$$IND811^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1882..1890
+        (`"I-811 xecute goto overlay"` `"12"` `"$$IND811^IDDO()"`)@1891..1941
+        _)@1882..1942)@1880..1942)@1879..1942
+  (line ` `)@1943..1944
+  (line ` `)@1946..1947
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-813 xecute do external"`))
-          (expr (str `"13"`))
-          (expr (str `"$$IND813^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2003..2011
+        (`"I-813 xecute do external"` `"13"` `"$$IND813^IDDO()"`)@2012..2061
+        _)@2003..2062)@2001..2062)@2000..2062
+  (line ` `)@2063..2064
+  (line ` `)@2066..2067
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-791 for xecute do"`)) (expr (str `"27"`)) (expr (str `"$$IND791^IDDO()"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@2119..2127
+        (`"I-791 for xecute do"` `"27"` `"$$IND791^IDDO()"`)@2128..2172
+        _)@2119..2173)@2117..2173)@2116..2173
+  (line ` `)@2174..2175
+  (line ` `)@2177..2178
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"I-791 for xecute goto"`))
-          (expr (str `"15"`))
-          (expr (str `"$$IND791G^IDDO()"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/regress/IDDO"`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (label `IND466` _ ((new _ `r` `i`) (set _ (= (lvar `r`) (expr (str `"V1IDDO1"`))))))
-  (` `)
-  (` ` _ (new _ `out`) (set _ (= (lvar `out`) (expr (str `""`)))))
-  (` `
+        (ref `RUN` _ `TEST`)@2232..2240
+        (`"I-791 for xecute goto"` `"15"` `"$$IND791G^IDDO()"`)@2241..2288
+        _)@2232..2289)@2230..2289)@2229..2289
+  (line ` `)@2290..2291
+  (line
+    ` `
+    (do
+      _
+      (call (ref `END` _ `TEST`)@2296..2304 (`"compliance/regress/IDDO"`)@2305..2330 _)@2296..2331)@2294..2331)@2293..2331
+  (line ` ` (quit _ _)@2333..2334)@2332..2334
+  (line ` `)@2335..2336
+  (line ` `)@2338..2339
+  (line ` `)@2415..2416
+  (line ` `)@2455..2456
+  (label
+    `IND466`
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `5`))))
-    (set _ (= (lvar `out`) (expr (lvar `r`)))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND468` _ ((new _ `r` `result`)))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `r`) (expr (str `"$$VAL^IDDO()"`)))))
-  (` ` _ (new _ `out`) (set _ (= (lvar `out`) (expr (str `""`)))))
-  (` ` _ (xecute _ ((expr (str `"S out=out_"`) (`_` (lvar `r`))))))
-  (` ` _ (xecute _ ((expr (str `"S out=out_"`) (`_` (lvar `r`))))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND469` _ ((new _ `r`)))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `r`) (expr (str `"V1IDDO+1"`)))))
-  (` ` _ (new _ `i` `seen`) (set _ (= (lvar `seen`) (expr (str `""`)))))
-  (` `
     _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `5`))))
-    (set _ (= (lvar `seen`) (expr (lvar `r`)))))
-  (` ` _ (quit _ (expr (lvar `seen`))))
-  (` `)
-  (label `IND470` _ ((new _ `expr` `i` `result`)))
-  (` `)
-  (` ` _ (set _ (= (lvar `expr`) (expr (str `"20+1"`)))))
-  (` ` _ (new _ `out`) (set _ (= (lvar `out`) (expr (num `0`)))))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `3`))))
-    (xecute _ ((expr (str `"S out="`) (`_` (lvar `expr`))))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND480` _ ((new _ `r` `result`)))
-  (` ` _ (set _ (= (lvar `r`) (expr (str `"2"`)))))
-  (` ` _ (new _ `out`) (set _ (= (lvar `out`) (expr (num `0`)))))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `5`))))
-    (xecute _ ((expr (str `"S out="`) (`_` (lvar `r`))))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND810` _ ((new _ `c`)))
-  (` ` _ (set _ (= (lvar `c`) (expr (str `"42"`)))))
-  (` ` _ (new _ `v`) (xecute _ ((expr (str `"S v="`) (`_` (lvar `c`))))))
-  (` ` _ (quit _ (expr (lvar `v`))))
-  (` `)
-  (label `IND810B` _ ((new _ `c1` `c2`)))
-  (` `)
-  (` ` _ (set _ (= (lvar `c1`) (expr (str `"42"`)))))
-  (` ` _ (set _ (= (lvar `c2`) (expr (str `"X ""S out=""_c1"`)))))
-  (` ` _ (new _ `out`) (xecute _ ((expr (lvar `c2`)))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND811` _ ((new _ `x`)))
-  (` ` _ (set _ (= (lvar `x`) (expr (str `"6+6"`)))))
-  (` ` _ (new _ `out`) (xecute _ ((expr (str `"S out="`) (`_` (lvar `x`))))))
-  (` `)
-  (` ` _ (xecute _ ((expr (str `"S out="`) (`_` (lvar `x`)) (`_` (str `"+0"`))))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND813` _ ((new _ `x`)))
-  (` ` _ (set _ (= (lvar `x`) (expr (str `"6+7"`)))))
-  (` ` _ (new _ `out`) (xecute _ ((expr (str `"S out="`) (`_` (lvar `x`))))))
-  (` `)
-  (` ` _ (xecute _ ((expr (str `"S out="`) (`_` (lvar `x`)) (`_` (str `"+0"`))))))
-  (` ` _ (quit _ (expr (lvar `out`))))
-  (` `)
-  (label `IND791` _ ((new _ `s` `i`)))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `s`) (expr (num `0`)))))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`)) (expr (num `6`))))
-    (xecute _ ((expr (str `"S s=s+i"`)))))
-  (` `)
-  (` ` _ (set _ (= (lvar `s`) (expr (lvar `s`) (`+` (lvar `i`))))))
-  (` `)
-  (` `
-    _
+    (new _ `r` `i`)@2467..2472
+    (set _ (= (lvar `r` _)@2475..2476 `"V1IDDO1"`)@2475..2486)@2473..2486)@2458..2486
+  (line ` `)@2487..2488
+  (line
+    ` `
+    (new _ `out`)@2553..2558
+    (set _ (= (lvar `out` _)@2561..2564 `""`)@2561..2567)@2559..2567)@2552..2567
+  (line
+    ` `
+    (for (lvar `i` _)@2571..2572 (range `1` `1` `5`)@2573..2578)@2571..2578
+    (set _ (= (lvar `out` _)@2582..2585 (lvar `r` _)@2586..2587)@2582..2587)@2580..2587)@2568..2587
+  (line ` ` (quit _ (lvar `out` _)@2591..2594)@2589..2594)@2588..2594
+  (line ` `)@2595..2596
+  (label `IND468` _ _ (new _ `r` `result`)@2607..2617)@2598..2617
+  (line ` `)@2618..2619
+  (line ` `)@2682..2683
+  (line ` ` (set _ (= (lvar `r` _)@2735..2736 `"$$VAL^IDDO()"`)@2735..2751)@2733..2751)@2732..2751
+  (line
+    ` `
+    (new _ `out`)@2753..2758
+    (set _ (= (lvar `out` _)@2761..2764 `""`)@2761..2767)@2759..2767)@2752..2767
+  (line
+    ` `
+    (xecute
+      _
+      (arg
+        (expr `"S out=out_"` (binop `_` (lvar `r` _)@2784..2785)@2783..2785)@2771..2785
+        _)@2771..2785)@2769..2785)@2768..2785
+  (line
+    ` `
+    (xecute
+      _
+      (arg
+        (expr `"S out=out_"` (binop `_` (lvar `r` _)@2802..2803)@2801..2803)@2789..2803
+        _)@2789..2803)@2787..2803)@2786..2805
+  (line ` ` (quit _ (lvar `out` _)@2849..2852)@2847..2852)@2846..2852
+  (line ` `)@2853..2854
+  (label `IND469` _ _ (new _ `r`)@2865..2868)@2856..2868
+  (line ` `)@2869..2870
+  (line ` `)@2934..2935
+  (line ` ` (set _ (= (lvar `r` _)@2998..2999 `"V1IDDO+1"`)@2998..3010)@2996..3010)@2995..3010
+  (line
+    ` `
+    (new _ `i` `seen`)@3012..3020
+    (set _ (= (lvar `seen` _)@3023..3027 `""`)@3023..3030)@3021..3030)@3011..3030
+  (line
+    ` `
+    (for (lvar `i` _)@3034..3035 (range `1` `1` `5`)@3036..3041)@3034..3041
+    (set _ (= (lvar `seen` _)@3045..3049 (lvar `r` _)@3050..3051)@3045..3051)@3043..3051)@3031..3051
+  (line ` ` (quit _ (lvar `seen` _)@3055..3059)@3053..3059)@3052..3059
+  (line ` `)@3060..3061
+  (label `IND470` _ _ (new _ `expr` `i` `result`)@3072..3087)@3063..3087
+  (line ` `)@3088..3089
+  (line ` ` (set _ (= (lvar `expr` _)@3144..3148 `"20+1"`)@3144..3155)@3142..3155)@3141..3155
+  (line
+    ` `
+    (new _ `out`)@3157..3162
+    (set _ (= (lvar `out` _)@3165..3168 `0`)@3165..3170)@3163..3170)@3156..3170
+  (line
+    ` `
+    (for (lvar `i` _)@3174..3175 (range `1` `1` `3`)@3176..3181)@3174..3181
+    (xecute
+      _
+      (arg
+        (expr `"S out="` (binop `_` (lvar `expr` _)@3194..3198)@3193..3198)@3185..3198
+        _)@3185..3198)@3183..3198)@3171..3198
+  (line ` ` (quit _ (lvar `out` _)@3202..3205)@3200..3205)@3199..3205
+  (line ` `)@3206..3207
+  (label `IND480` _ _ (new _ `r` `result`)@3218..3228)@3209..3228
+  (line ` ` (set _ (= (lvar `r` _)@3232..3233 `"2"`)@3232..3237)@3230..3237)@3229..3237
+  (line
+    ` `
+    (new _ `out`)@3239..3244
+    (set _ (= (lvar `out` _)@3247..3250 `0`)@3247..3252)@3245..3252)@3238..3252
+  (line
+    ` `
+    (for (lvar `i` _)@3256..3257 (range `1` `1` `5`)@3258..3263)@3256..3263
+    (xecute
+      _
+      (arg (expr `"S out="` (binop `_` (lvar `r` _)@3276..3277)@3275..3277)@3267..3277 _)@3267..3277)@3265..3277)@3253..3277
+  (line ` ` (quit _ (lvar `out` _)@3281..3284)@3279..3284)@3278..3284
+  (line ` `)@3285..3286
+  (label `IND810` _ _ (new _ `c`)@3297..3300)@3288..3300
+  (line ` ` (set _ (= (lvar `c` _)@3304..3305 `"42"`)@3304..3310)@3302..3310)@3301..3310
+  (line
+    ` `
+    (new _ `v`)@3312..3315
+    (xecute
+      _
+      (arg (expr `"S v="` (binop `_` (lvar `c` _)@3325..3326)@3324..3326)@3318..3326 _)@3318..3326)@3316..3326)@3311..3326
+  (line ` ` (quit _ (lvar `v` _)@3330..3331)@3328..3331)@3327..3331
+  (line ` `)@3332..3333
+  (label `IND810B` _ _ (new _ `c1` `c2`)@3345..3352)@3335..3352
+  (line ` `)@3353..3354
+  (line ` ` (set _ (= (lvar `c1` _)@3419..3421 `"42"`)@3419..3426)@3417..3426)@3416..3426
+  (line
+    ` `
+    (set _ (= (lvar `c2` _)@3430..3432 `"X ""S out=""_c1"`)@3430..3450)@3428..3450)@3427..3450
+  (line
+    ` `
+    (new _ `out`)@3452..3457
+    (xecute _ (arg (lvar `c2` _)@3460..3462 _)@3460..3462)@3458..3462)@3451..3462
+  (line ` ` (quit _ (lvar `out` _)@3466..3469)@3464..3469)@3463..3469
+  (line ` `)@3470..3471
+  (label `IND811` _ _ (new _ `x`)@3482..3485)@3473..3485
+  (line ` ` (set _ (= (lvar `x` _)@3489..3490 `"6+6"`)@3489..3496)@3487..3496)@3486..3496
+  (line
+    ` `
+    (new _ `out`)@3498..3503
+    (xecute
+      _
+      (arg (expr `"S out="` (binop `_` (lvar `x` _)@3515..3516)@3514..3516)@3506..3516 _)@3506..3516)@3504..3516)@3497..3516
+  (line ` `)@3517..3518
+  (line
+    ` `
+    (xecute
+      _
+      (arg
+        (expr
+          `"S out="`
+          (binop `_` (lvar `x` _)@3595..3596)@3594..3596
+          (binop `_` `"+0"`)@3596..3601)@3586..3601
+        _)@3586..3601)@3584..3601)@3583..3601
+  (line ` ` (quit _ (lvar `out` _)@3605..3608)@3603..3608)@3602..3608
+  (line ` `)@3609..3610
+  (label `IND813` _ _ (new _ `x`)@3621..3624)@3612..3624
+  (line ` ` (set _ (= (lvar `x` _)@3628..3629 `"6+7"`)@3628..3635)@3626..3635)@3625..3635
+  (line
+    ` `
+    (new _ `out`)@3637..3642
+    (xecute
+      _
+      (arg (expr `"S out="` (binop `_` (lvar `x` _)@3654..3655)@3653..3655)@3645..3655 _)@3645..3655)@3643..3655)@3636..3655
+  (line ` `)@3656..3657
+  (line
+    ` `
+    (xecute
+      _
+      (arg
+        (expr
+          `"S out="`
+          (binop `_` (lvar `x` _)@3726..3727)@3725..3727
+          (binop `_` `"+0"`)@3727..3732)@3717..3732
+        _)@3717..3732)@3715..3732)@3714..3732
+  (line ` ` (quit _ (lvar `out` _)@3736..3739)@3734..3739)@3733..3739
+  (line ` `)@3740..3741
+  (label `IND791` _ _ (new _ `s` `i`)@3752..3757)@3743..3757
+  (line ` `)@3758..3759
+  (line ` `)@3809..3810
+  (line ` ` (set _ (= (lvar `s` _)@3876..3877 `0`)@3876..3879)@3874..3879)@3873..3879
+  (line
+    ` `
+    (for (lvar `i` _)@3883..3884 (range `1` `1` `6`)@3885..3890)@3883..3890
+    (xecute _ (arg `"S s=s+i"` _)@3894..3903)@3892..3903)@3880..3903
+  (line ` `)@3904..3905
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `s` _)@3982..3983
+        (expr (lvar `s` _)@3984..3985 (binop `+` (lvar `i` _)@3986..3987)@3985..3987)@3984..3987)@3982..3987)@3980..3987)@3979..3989
+  (line ` `)@4058..4059
+  (line
+    ` `
     (quit
       _
-      (expr
-        (select
-          ((expr (lvar `s`) (`>` (num `20`))) (expr (lvar `s`)))
-          ((expr (num `1`)) (expr (lvar `s`)))))))
-  (` `)
-  (label `IND791G` _ ((new _ `s` `i` `exit`)))
-  (` ` _ (set _ (= (lvar `s`) (expr (num `0`))) (= (lvar `exit`) (expr (num `0`)))))
-  (` `
-    _
-    (for (lvar `i`) (range (expr (num `1`)) (expr (num `1`))))
-    (xecute _ ((expr (str `"S s=s+i"`))))
-    (quit (postcond (expr (lvar `i`) (`'<` (num `5`))))))
-  (` ` _ (quit _ (expr (lvar `s`))))
-  (` `)
-  (label `VAL` _ ((quit _ (expr (str `"1"`))))))
+      (select
+        (case
+          (expr (lvar `s` _)@4091..4092 (binop `>` `20`)@4092..4095)@4091..4095
+          (lvar `s` _)@4096..4097)@4091..4097
+        (case `1` (lvar `s` _)@4100..4101)@4098..4101)@4088..4102)@4086..4102)@4085..4102
+  (line ` `)@4103..4104
+  (label `IND791G` _ _ (new _ `s` `i` `exit`)@4116..4126)@4106..4126
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `s` _)@4130..4131 `0`)@4130..4133
+      (= (lvar `exit` _)@4134..4138 `0`)@4134..4140)@4128..4140)@4127..4140
+  (line
+    ` `
+    (for (lvar `i` _)@4144..4145 (range `1` `1` _)@4146..4149)@4144..4149
+    (xecute _ (arg `"S s=s+i"` _)@4153..4162)@4151..4162
+    (quit
+      (postcond (expr (lvar `i` _)@4165..4166 (binop `'<` `5`)@4166..4169)@4165..4169)@4164..4169
+      _)@4163..4169)@4141..4169
+  (line ` ` (quit _ (lvar `s` _)@4173..4174)@4171..4174)@4170..4174
+  (line ` `)@4175..4176
+  (label `VAL` _ _ (quit _ `"1"`)@4184..4189)@4178..4189
+  _)@0..4190

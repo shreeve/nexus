@@ -1,0 +1,9 @@
+fun add a: i32, b: i32 -> i32
+  a + b
+
+sub main
+  total = add 1, 2
+  if total > 0
+    print total
+  else
+    print 0

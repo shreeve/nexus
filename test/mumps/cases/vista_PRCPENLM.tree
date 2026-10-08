@@ -1,733 +1,956 @@
 (routine
-  (label `PRCPENLM`)
-  (label `V`)
-  (` `)
-  (` `
-    _
-    (do _ (call (ref _ _ `PRCPUSEL`)))
-    (quit (postcond (expr (`'` (intrinsic `G`#206 ((expr (lvar `PRCP` ((expr (str `"I"`))))))))))))
-  (label `ENTERNEW`)
-  (` ` _ (new _ `CLREND` `COLUMN` `LINE` `PRCPINPT` `PRCPDATA` `PRCPSU` `PRCPTYPE` `X`))
-  (` `
-    _
-    (kill _ (lvar `X`))
+  (label `PRCPENLM` _ _)@0..9
+  (label `V` _ _)@88..90
+  (line ` `)@121..122
+  (line
+    ` `
+    (do _ (call (ref _ _ `PRCPUSEL`)@192..201 _ _)@192..201)@190..201
+    (quit
+      (postcond
+        (unary
+          `'`
+          (intrinsic `G`#206 ((lvar `PRCP` (`"I"`)@213..216)@208..217)@208..217)@205..218)@204..218)@203..218
+      _)@202..218)@189..218
+  (label `ENTERNEW` _ _)@219..228
+  (line
+    ` `
+    (new _ `CLREND` `COLUMN` `LINE` `PRCPINPT` `PRCPDATA` `PRCPSU` `PRCPTYPE` `X`)@267..323)@266..323
+  (line
+    ` `
+    (kill _ (lvar `X` _)@327..328)@325..328
     (set
       _
       (=
-        (lvar `X` ((expr (num `1`))))
+        (lvar `X` (`1`)@333..334)@331..335
         (expr
-          (str `"You have the option to edit ALL "`)
-          (`_`
+          `"You have the option to edit ALL "`
+          (binop
+            `_`
             (select
-              ((expr (lvar `PRCP` ((expr (str `"DPTYPE"`)))) (`=` (str `"W"`)))
-                (expr (str `"WAREHOUSE"`)))
-              ((expr (lvar `PRCP` ((expr (str `"DPTYPE"`)))) (`=` (str `"P"`)))
-                (expr (str `"PRIMARY"`)))
-              ((expr (num `1`)) (expr (str `"SECONDARY"`)))))
-          (`_` (str `" inventory points you have access to."`)))))
-    (do _ (call (ref `DISPLAY` _ `PRCPUX2`) ((expr (num `2`)) (expr (num `40`)) (byref `X`)))))
-  (` ` _ (set _ (= (lvar `PRCPSU`) (expr (num `1`)))))
-  (` `
-    _
+              (case
+                (expr
+                  (lvar `PRCP` (`"DPTYPE"`)@379..387)@374..388
+                  (binop `=` `"W"`)@388..392)@374..392
+                `"WAREHOUSE"`)@374..404
+              (case
+                (expr
+                  (lvar `PRCP` (`"DPTYPE"`)@410..418)@405..419
+                  (binop `=` `"P"`)@419..423)@405..423
+                `"PRIMARY"`)@405..433
+              (case `1` `"SECONDARY"`)@434..447)@371..448)@370..448
+          (binop `_` `" inventory points you have access to."`)@448..488)@336..488)@331..488)@329..488
+    (do
+      _
+      (call
+        (ref `DISPLAY` _ `PRCPUX2`)@491..506
+        (`2` `40` (byref `X`)@512..514)@507..514
+        _)@491..515)@489..515)@324..515
+  (line ` ` (set _ (= (lvar `PRCPSU` _)@519..525 `1`)@519..527)@517..527)@516..528
+  (line
+    ` `
     (if
       (expr
         (intrinsic
           `G`#206
-          ((expr (gvar `VA` ((expr (num `200`)) (expr (lvar `DUZ`)) (expr (num `400`)))))))
-        (`+` (num `0`))
-        (`=` (num `4`))))
-    (set _ (= (lvar `PRCPSU`) (expr (num `0`)))))
-  (` `
-    _
-    (for)
+          ((gvar `VA` (`200` (lvar `DUZ` _)@572..575 `400`)@568..579 _ _)@564..580)@564..580)@561..581
+        (binop `+` `0`)@581..583
+        (binop `=` `4`)@583..585)@561..585)@559..585
+    (set _ (= (lvar `PRCPSU` _)@588..594 `0`)@588..596)@586..596)@558..597
+  (line
+    ` `
+    (for _)@625..626
     (set
       _
       (=
-        (lvar `PRCPINPT`)
-        (expr
-          (extrinsic
-            ((`INVPT` `PRCPUINV`)
-              ((expr (lvar `PRC` ((expr (str `"SITE"`)))))
-                (expr (lvar `PRCP` ((expr (str `"DPTYPE"`)))))
-                (expr (num `1`))
-                (expr (lvar `PRCPSU`))
-                (expr (str `""`))))))))
-    (quit (postcond (expr (`'` (lvar `PRCPINPT`)))))
-    (do))
-  (` .   `#1
-    _
+        (lvar `PRCPINPT` _)@630..638
+        (extrinsic
+          `INVPT`
+          `PRCPUINV`
+          ((lvar `PRC` (`"SITE"`)@660..666)@656..667
+            (lvar `PRCP` (`"DPTYPE"`)@673..681)@668..682
+            `1`
+            (lvar `PRCPSU` _)@685..691
+            `""`)@656..694)@641..695)@630..695)@628..695
+    (quit (postcond (unary `'` (lvar `PRCPINPT` _)@699..707)@698..707)@697..707 _)@696..707
+    (do _)@709..710)@624..710
+  (line
+    ` .   `
     (set
       _
       (=
-        (lvar `PRCPTYPE`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr
-               (intrinsic
-                 `G`#206
-                 ((expr
-                    (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`))))))))
-              (expr (str `"^"`))
-              (expr (num `3`))))))))
-  (` .   `#1
-    _
+        (lvar `PRCPTYPE` _)@718..726
+        (intrinsic
+          `P`#212
+          ((intrinsic
+             `G`#206
+             ((gvar `PRCP` (`445` (lvar `PRCPINPT` _)@743..751 `0`)@739..753 _ _)@733..754)@733..754)@730..755
+            `"^"`
+            `3`)@730..761)@727..762)@718..762)@716..762)@711..762
+  (line
+    ` .   `
     (lock
       _
       (lock+
-        (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`))))
-        (expr (num `1`))))
-    (if (expr (`'` (intrinsic `T`#221))))
+        `1`
+        (gvar `PRCP` (`445` (lvar `PRCPINPT` _)@781..789 `0`)@777..791 _ _)@771..792)@770..794)@768..794
+    (if (unary `'` (intrinsic `T`#221 _)@798..800)@797..800)@795..800
     (do
       _
       (call
-        (ref `SHOWWHO` _ `PRCPULOC`)
-        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-0"`))) (expr (num `0`)))))
-    (quit))
-  (` .   `#1
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`))))
+        (ref `SHOWWHO` _ `PRCPULOC`)@803..819
+        (`445`
+          (expr (lvar `PRCPINPT` _)@824..832 (binop `_` `"-0"`)@832..837)@824..837
+          `0`)@820..839
+        _)@803..840)@801..840
+    (quit _ _)@841..842)@763..842
+  (line
+    ` .   `
+    (if (expr (lvar `PRCPTYPE` _)@850..858 (binop `=` `"S"`)@858..862)@850..862)@848..862
     (lock
       _
       (lock+
-        (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `5`))))
-        (expr (num `1`))))
-    (if (expr (`'` (intrinsic `T`#221))))
-    (do)
-    (quit))
-  (` .   .   `#2
-    _
+        `1`
+        (gvar `PRCP` (`445` (lvar `PRCPINPT` _)@876..884 `5`)@872..886 _ _)@866..887)@865..889)@863..889
+    (if (unary `'` (intrinsic `T`#221 _)@893..895)@892..895)@890..895
+    (do _)@896..897
+    (quit _ _)@899..900)@843..900
+  (line
+    ` .   .   `
     (do
       _
       (call
-        (ref `SHOWWHO` _ `PRCPULOC`)
-        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-0"`))) (expr (num `5`))))))
-  (` .   .   `#2
-    _
-    (lock _ (lock- (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`)))))))
-  (` .   `#1
-    _
+        (ref `SHOWWHO` _ `PRCPULOC`)@912..928
+        (`445`
+          (expr (lvar `PRCPINPT` _)@933..941 (binop `_` `"-0"`)@941..946)@933..946
+          `5`)@929..948
+        _)@912..949)@910..949)@901..949
+  (line
+    ` .   .   `
+    (lock
+      _
+      (lock-
+        _
+        (gvar `PRCP` (`445` (lvar `PRCPINPT` _)@972..980 `0`)@968..982 _ _)@962..983)@961..983)@959..983)@950..983
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `ADD` _ `PRCPULOC`)
-        ((expr (num `445`))
-          (expr (lvar `PRCPINPT`) (`_` (str `"-0"`)))
-          (expr (num `0`))
-          (expr (str `"Enter/Edit Inventory Parameters"`))))))
-  (` .   `#1
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`))))
+        (ref `ADD` _ `PRCPULOC`)@991..1003
+        (`445`
+          (expr (lvar `PRCPINPT` _)@1008..1016 (binop `_` `"-0"`)@1016..1021)@1008..1021
+          `0`
+          `"Enter/Edit Inventory Parameters"`)@1004..1057
+        _)@991..1058)@989..1058)@984..1058
+  (line
+    ` .   `
+    (if (expr (lvar `PRCPTYPE` _)@1066..1074 (binop `=` `"S"`)@1074..1078)@1066..1078)@1064..1078
     (do
       _
       (call
-        (ref `ADD` _ `PRCPULOC`)
-        ((expr (num `445`))
-          (expr (lvar `PRCPINPT`) (`_` (str `"-5"`)))
-          (expr (num `0`))
-          (expr (str `"Enter/Edit Inventory Parameters"`))))))
-  (` .   `#1 _ (do _ (call (ref `EN` _ `VALM`) ((expr (str `"PRCP INVENTORY PARAMETERS"`))))))
-  (` .   `#1
-    _
+        (ref `ADD` _ `PRCPULOC`)@1081..1093
+        (`445`
+          (expr (lvar `PRCPINPT` _)@1098..1106 (binop `_` `"-5"`)@1106..1111)@1098..1111
+          `0`
+          `"Enter/Edit Inventory Parameters"`)@1094..1147
+        _)@1081..1148)@1079..1148)@1059..1148
+  (line
+    ` .   `
+    (do
+      _
+      (call (ref `EN` _ `VALM`)@1156..1163 (`"PRCP INVENTORY PARAMETERS"`)@1164..1191 _)@1156..1192)@1154..1192)@1149..1192
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `CLEAR` _ `PRCPULOC`)
-        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-0"`))) (expr (num `0`))))))
-  (` .   `#1
-    _
-    (lock _ (lock- (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `0`)))))))
-  (` .   `#1 _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`)))) (do))
-  (` .   .   `#2
-    _
+        (ref `CLEAR` _ `PRCPULOC`)@1200..1214
+        (`445`
+          (expr (lvar `PRCPINPT` _)@1219..1227 (binop `_` `"-0"`)@1227..1232)@1219..1232
+          `0`)@1215..1234
+        _)@1200..1235)@1198..1235)@1193..1235
+  (line
+    ` .   `
+    (lock
+      _
+      (lock-
+        _
+        (gvar `PRCP` (`445` (lvar `PRCPINPT` _)@1254..1262 `0`)@1250..1264 _ _)@1244..1265)@1243..1265)@1241..1265)@1236..1265
+  (line
+    ` .   `
+    (if (expr (lvar `PRCPTYPE` _)@1273..1281 (binop `=` `"S"`)@1281..1285)@1273..1285)@1271..1285
+    (do _)@1286..1287)@1266..1287
+  (line
+    ` .   .   `
     (do
       _
       (call
-        (ref `CLEAR` _ `PRCPULOC`)
-        ((expr (num `445`)) (expr (lvar `PRCPINPT`) (`_` (str `"-5"`))) (expr (num `0`))))))
-  (` .   .   `#2
-    _
-    (lock _ (lock- (gvar `PRCP` ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `5`)))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `HDR`)
-  (` `
-    _
+        (ref `CLEAR` _ `PRCPULOC`)@1299..1313
+        (`445`
+          (expr (lvar `PRCPINPT` _)@1318..1326 (binop `_` `"-5"`)@1326..1331)@1318..1331
+          `0`)@1314..1333
+        _)@1299..1334)@1297..1334)@1288..1334
+  (line
+    ` .   .   `
+    (lock
+      _
+      (lock-
+        _
+        (gvar `PRCP` (`445` (lvar `PRCPINPT` _)@1357..1365 `5`)@1353..1367 _ _)@1347..1368)@1346..1368)@1344..1368)@1335..1368
+  (line ` ` (quit _ _)@1370..1371)@1369..1371
+  (line ` `)@1372..1373
+  (line ` `)@1375..1376
+  (label `HDR` _ _)@1378..1382
+  (line
+    ` `
     (set
       _
       (=
-        (lvar `VALMHDR` ((expr (num `1`))))
+        (lvar `VALMHDR` (`1`)@1409..1410)@1401..1411
         (expr
-          (str `"INVENTORY POINT: "`)
-          (`_` (extrinsic ((`INVNAME` `PRCPUX1`) ((expr (lvar `PRCPINPT`))))))
-          (`_` (str `"    TOTAL NUMBER OF ITEMS: "`))
-          (`_`
-            (`+`
+          `"INVENTORY POINT: "`
+          (binop
+            `_`
+            (extrinsic `INVNAME` `PRCPUX1` ((lvar `PRCPINPT` _)@1450..1458)@1450..1458)@1434..1459)@1431..1459
+          (binop `_` `"    TOTAL NUMBER OF ITEMS: "`)@1459..1489
+          (binop
+            `_`
+            (unary
+              `+`
               (intrinsic
                 `P`#212
-                ((expr
-                   (intrinsic
-                     `G`#206
-                     ((expr
-                        (gvar
-                          `PRCP`
-                          ((expr (num `445`))
-                            (expr (lvar `PRCPINPT`))
-                            (expr (num `1`))
-                            (expr (num `0`))))))))
-                  (expr (str `"^"`))
-                  (expr (num `4`))))))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `INIT`)
-  (` `
-    _
-    (kill _ (lvar `PRCPDATA`) (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (str `"PRCPENLM"`))))))
-  (` ` _ (do _ (call (ref `DIQ`) ((expr (str `".01:22"`))))))
-  (` `
-    _
-    (do _ (call (ref `DESCRIP`)) (call (ref `SPECIAL`)) (call (ref `FLAGS`)) (call (ref `USERS`))))
-  (` `
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"W"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))))
-    (do _ (call (ref `DISTRPTS` _ `PRCPENL1`))))
-  (` `
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"P"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"S"`))))))
-    (do _ (call (ref `STOCKED` _ `PRCPENL1`))))
-  (` `
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"W"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))))
-    (do _ (call (ref `FCP` _ `PRCPENL1`))))
-  (` `
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`)) (`!` (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))))
-    (do _ (call (ref `MISCOSTS` _ `PRCPENL1`))))
-  (` ` _ (do _ (call (ref `PURGE` _ `PRCPENL1`))))
-  (` ` _ (set _ (= (lvar `VALMCNT`) (expr (lvar `LINE`)))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `DESCRIP`)
-  (` `
-    _
+                ((intrinsic
+                   `G`#206
+                   ((gvar
+                      `PRCP`
+                      (`445` (lvar `PRCPINPT` _)@1507..1515 `1` `0`)@1503..1519
+                      _
+                      _)@1497..1520)@1497..1520)@1494..1521
+                  `"^"`
+                  `4`)@1494..1527)@1491..1528)@1490..1528)@1489..1528)@1412..1528)@1401..1528)@1399..1528)@1398..1528
+  (line ` ` (quit _ _)@1530..1531)@1529..1531
+  (line ` `)@1532..1533
+  (line ` `)@1535..1536
+  (label `INIT` _ _)@1538..1543
+  (line
+    ` `
+    (kill
+      _
+      (lvar `PRCPDATA` _)@1561..1569
+      (gvar `TMP` ((intrinsic `J`#208 _)@1575..1577 `"PRCPENLM"`)@1575..1588 _ _)@1570..1589)@1559..1589)@1558..1589
+  (line
+    ` `
+    (do _ (call (ref `DIQ` _ _)@1593..1596 (`".01:22"`)@1597..1605 _)@1593..1606)@1591..1606)@1590..1606
+  (line
+    ` `
+    (do
+      _
+      (call (ref `DESCRIP` _ _)@1610..1617 _ _)@1610..1617
+      (call (ref `SPECIAL` _ _)@1618..1625 _ _)@1618..1625
+      (call (ref `FLAGS` _ _)@1626..1631 _ _)@1626..1631
+      (call (ref `USERS` _ _)@1632..1637 _ _)@1632..1637)@1608..1637)@1607..1637
+  (line
+    ` `
+    (if
+      (expr
+        (lvar `PRCPTYPE` _)@1641..1649
+        (binop `=` `"W"`)@1649..1653
+        (binop
+          `!`
+          (expr
+            (expr (lvar `PRCPTYPE` _)@1655..1663 (binop `=` `"P"`)@1663..1667)@1655..1667)@1654..1668)@1653..1668)@1641..1668)@1639..1668
+    (do _ (call (ref `DISTRPTS` _ `PRCPENL1`)@1671..1688 _ _)@1671..1688)@1669..1688)@1638..1688
+  (line
+    ` `
+    (if
+      (expr
+        (lvar `PRCPTYPE` _)@1692..1700
+        (binop `=` `"P"`)@1700..1704
+        (binop
+          `!`
+          (expr
+            (expr (lvar `PRCPTYPE` _)@1706..1714 (binop `=` `"S"`)@1714..1718)@1706..1718)@1705..1719)@1704..1719)@1692..1719)@1690..1719
+    (do _ (call (ref `STOCKED` _ `PRCPENL1`)@1722..1738 _ _)@1722..1738)@1720..1738)@1689..1738
+  (line
+    ` `
+    (if
+      (expr
+        (lvar `PRCPTYPE` _)@1742..1750
+        (binop `=` `"W"`)@1750..1754
+        (binop
+          `!`
+          (expr
+            (expr (lvar `PRCPTYPE` _)@1756..1764 (binop `=` `"P"`)@1764..1768)@1756..1768)@1755..1769)@1754..1769)@1742..1769)@1740..1769
+    (do _ (call (ref `FCP` _ `PRCPENL1`)@1772..1784 _ _)@1772..1784)@1770..1784)@1739..1784
+  (line
+    ` `
+    (if
+      (expr
+        (lvar `PRCPTYPE` _)@1788..1796
+        (binop `=` `"S"`)@1796..1800
+        (binop
+          `!`
+          (expr
+            (expr (lvar `PRCPTYPE` _)@1802..1810 (binop `=` `"P"`)@1810..1814)@1802..1814)@1801..1815)@1800..1815)@1788..1815)@1786..1815
+    (do _ (call (ref `MISCOSTS` _ `PRCPENL1`)@1818..1835 _ _)@1818..1835)@1816..1835)@1785..1835
+  (line
+    ` `
+    (do _ (call (ref `PURGE` _ `PRCPENL1`)@1839..1853 _ _)@1839..1853)@1837..1853)@1836..1853
+  (line
+    ` `
+    (set _ (= (lvar `VALMCNT` _)@1857..1864 (lvar `LINE` _)@1865..1869)@1857..1869)@1855..1869)@1854..1869
+  (line ` ` (quit _ _)@1871..1872)@1870..1872
+  (line ` `)@1873..1874
+  (line ` `)@1876..1877
+  (label `DESCRIP` _ _)@1879..1887
+  (line
+    ` `
     (set
       _
-      (= (lvar `LINE`) (expr (num `1`)))
-      (= (lvar `COLUMN`) (expr (num `1`)))
-      (= (lvar `CLREND`) (expr (num `80`)))))
-  (` `
-    _
+      (= (lvar `LINE` _)@1917..1921 `1`)@1917..1923
+      (= (lvar `COLUMN` _)@1924..1930 `1`)@1924..1932
+      (= (lvar `CLREND` _)@1933..1939 `80`)@1933..1942)@1915..1942)@1914..1942
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Description"`))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `0`))
-          (expr (lvar `IORVON`))
-          (expr (lvar `IORVOFF`))))))
-  (` `
-    _
+        (ref `SET` _ _)@1946..1949
+        (`"Description"`
+          (lvar `LINE` _)@1964..1968
+          (lvar `COLUMN` _)@1969..1975
+          (lvar `CLREND` _)@1976..1982
+          `0`
+          (lvar `IORVON` _)@1985..1991
+          (lvar `IORVOFF` _)@1992..1999)@1950..1999
+        _)@1946..2000)@1944..2000)@1943..2000
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Type of Inventory Point   "`))
-          (expr (lvar `LINE`) (`+` (num `1`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `.7`))))))
-  (` `
-    _
+        (ref `SET` _ _)@2004..2007
+        (`"Type of Inventory Point   "`
+          (expr (lvar `LINE` _)@2037..2041 (binop `+` `1`)@2041..2043)@2037..2043
+          (lvar `COLUMN` _)@2044..2050
+          (lvar `CLREND` _)@2051..2057
+          `.7`)@2008..2060
+        _)@2004..2061)@2002..2061)@2001..2061
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Abbreviated Name          "`))
-          (expr (lvar `LINE`) (`+` (num `2`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `.8`))))))
-  (` `
-    _
+        (ref `SET` _ _)@2065..2068
+        (`"Abbreviated Name          "`
+          (expr (lvar `LINE` _)@2098..2102 (binop `+` `2`)@2102..2104)@2098..2104
+          (lvar `COLUMN` _)@2105..2111
+          (lvar `CLREND` _)@2112..2118
+          `.8`)@2069..2121
+        _)@2065..2122)@2063..2122)@2062..2122
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Keep Perpetual Inventory  "`))
-          (expr (lvar `LINE`) (`+` (num `3`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `.5`))))))
-  (` `
-    _
+        (ref `SET` _ _)@2126..2129
+        (`"Keep Perpetual Inventory  "`
+          (expr (lvar `LINE` _)@2159..2163 (binop `+` `3`)@2163..2165)@2159..2165
+          (lvar `COLUMN` _)@2166..2172
+          (lvar `CLREND` _)@2173..2179
+          `.5`)@2130..2182
+        _)@2126..2183)@2124..2183)@2123..2183
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Keep Transaction Register "`))
-          (expr (lvar `LINE`) (`+` (num `4`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `.6`))))))
-  (` `
-    _
+        (ref `SET` _ _)@2187..2190
+        (`"Keep Transaction Register "`
+          (expr (lvar `LINE` _)@2220..2224 (binop `+` `4`)@2224..2226)@2220..2226
+          (lvar `COLUMN` _)@2227..2233
+          (lvar `CLREND` _)@2234..2240
+          `.6`)@2191..2243
+        _)@2187..2244)@2185..2244)@2184..2244
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `""`))
-          (expr (lvar `LINE`) (`+` (num `5`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `SPECIAL`)
-  (` ` _ (new _ `COUNT` `ORD`))
-  (` `
-    _
+        (ref `SET` _ _)@2248..2251
+        (`""`
+          (expr (lvar `LINE` _)@2255..2259 (binop `+` `5`)@2259..2261)@2255..2261
+          (lvar `COLUMN` _)@2262..2268
+          (lvar `CLREND` _)@2269..2275)@2252..2275
+        _)@2248..2276)@2246..2276)@2245..2276
+  (line ` ` (quit _ _)@2278..2279)@2277..2279
+  (line ` `)@2280..2281
+  (line ` `)@2283..2284
+  (label `SPECIAL` _ _)@2286..2294
+  (line ` ` (new _ `COUNT` `ORD`)@2329..2340)@2328..2340
+  (line
+    ` `
     (set
       _
-      (= (lvar `LINE`) (expr (num `7`)))
-      (= (lvar `COLUMN`) (expr (num `1`)))
-      (= (lvar `CLREND`) (expr (num `80`)))
-      (= (lvar `ORD`) (expr (num `0`)))))
-  (` `
-    _
+      (= (lvar `LINE` _)@2344..2348 `7`)@2344..2350
+      (= (lvar `COLUMN` _)@2351..2357 `1`)@2351..2359
+      (= (lvar `CLREND` _)@2360..2366 `80`)@2360..2369
+      (= (lvar `ORD` _)@2370..2373 `0`)@2370..2375)@2342..2375)@2341..2375
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Special Parameters"`))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `0`))
-          (expr (lvar `IORVON`))
-          (expr (lvar `IORVOFF`))))))
-  (` `
-    _
+        (ref `SET` _ _)@2379..2382
+        (`"Special Parameters"`
+          (lvar `LINE` _)@2404..2408
+          (lvar `COLUMN` _)@2409..2415
+          (lvar `CLREND` _)@2416..2422
+          `0`
+          (lvar `IORVON` _)@2425..2431
+          (lvar `IORVOFF` _)@2432..2439)@2383..2439
+        _)@2379..2440)@2377..2440)@2376..2440
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Months Inactive Before Item Deletion"`))
-          (expr (lvar `LINE`) (`+` (num `1`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `12`))))))
-  (` ` _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"W"`)))) (do))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2444..2447
+        (`"Months Inactive Before Item Deletion"`
+          (expr (lvar `LINE` _)@2487..2491 (binop `+` `1`)@2491..2493)@2487..2493
+          (lvar `COLUMN` _)@2494..2500
+          (lvar `CLREND` _)@2501..2507
+          `12`)@2448..2510
+        _)@2444..2511)@2442..2511)@2441..2511
+  (line
+    ` `
+    (if (expr (lvar `PRCPTYPE` _)@2515..2523 (binop `=` `"W"`)@2523..2527)@2515..2527)@2513..2527
+    (do _)@2528..2529)@2512..2529
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Cost Center                         "`))
-          (expr (lvar `LINE`) (`+` (num `2`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `.9`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2537..2540
+        (`"Cost Center                         "`
+          (expr (lvar `LINE` _)@2580..2584 (binop `+` `2`)@2584..2586)@2580..2586
+          (lvar `COLUMN` _)@2587..2593
+          (lvar `CLREND` _)@2594..2600
+          `.9`)@2541..2603
+        _)@2537..2604)@2535..2604)@2530..2604
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Default Picking Ticket Printer      "`))
-          (expr (lvar `LINE`) (`+` (num `3`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `16`))))))
-  (` .   `#1 _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `3`))))))
-  (` ` _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"P"`)))) (do))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2612..2615
+        (`"Default Picking Ticket Printer      "`
+          (expr (lvar `LINE` _)@2655..2659 (binop `+` `3`)@2659..2661)@2655..2661
+          (lvar `COLUMN` _)@2662..2668
+          (lvar `CLREND` _)@2669..2675
+          `16`)@2616..2678
+        _)@2612..2679)@2610..2679)@2605..2679
+  (line
+    ` .   `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@2687..2691
+        (expr (lvar `LINE` _)@2692..2696 (binop `+` `3`)@2696..2698)@2692..2698)@2687..2698)@2685..2698)@2680..2698
+  (line
+    ` `
+    (if (expr (lvar `PRCPTYPE` _)@2702..2710 (binop `=` `"P"`)@2710..2714)@2702..2714)@2700..2714
+    (do _)@2715..2716)@2699..2716
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Primary Updated By Warehouse        "`))
-          (expr (lvar `LINE`) (`+` (num `2`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `14`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2724..2727
+        (`"Primary Updated By Warehouse        "`
+          (expr (lvar `LINE` _)@2767..2771 (binop `+` `2`)@2771..2773)@2767..2773
+          (lvar `COLUMN` _)@2774..2780
+          (lvar `CLREND` _)@2781..2787
+          `14`)@2728..2790
+        _)@2724..2791)@2722..2791)@2717..2791
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Special Inventory Point Type        "`))
-          (expr (lvar `LINE`) (`+` (num `3`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `15`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2799..2802
+        (`"Special Inventory Point Type        "`
+          (expr (lvar `LINE` _)@2842..2846 (binop `+` `3`)@2846..2848)@2842..2848
+          (lvar `COLUMN` _)@2849..2855
+          (lvar `CLREND` _)@2856..2862
+          `15`)@2803..2865
+        _)@2799..2866)@2797..2866)@2792..2866
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Department Number                   "`))
-          (expr (lvar `LINE`) (`+` (num `4`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `5`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2874..2877
+        (`"Department Number                   "`
+          (expr (lvar `LINE` _)@2917..2921 (binop `+` `4`)@2921..2923)@2917..2923
+          (lvar `COLUMN` _)@2924..2930
+          (lvar `CLREND` _)@2931..2937
+          `5`)@2878..2939
+        _)@2874..2940)@2872..2940)@2867..2940
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Issue Book Sort                     "`))
-          (expr (lvar `LINE`) (`+` (num `5`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `5.5`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@2948..2951
+        (`"Issue Book Sort                     "`
+          (expr (lvar `LINE` _)@2991..2995 (binop `+` `5`)@2995..2997)@2991..2997
+          (lvar `COLUMN` _)@2998..3004
+          (lvar `CLREND` _)@3005..3011
+          `5.5`)@2952..3015
+        _)@2948..3016)@2946..3016)@2941..3016
+  (line
+    ` .   `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"Regular Whse Issues Schedule        "`))
-          (expr (lvar `LINE`) (`+` (num `6`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `9`))))))
-  (` .   `#1 _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `6`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@3024..3027
+        (`"Regular Whse Issues Schedule        "`
+          (expr (lvar `LINE` _)@3067..3071 (binop `+` `6`)@3071..3073)@3067..3073
+          (lvar `COLUMN` _)@3074..3080
+          (lvar `CLREND` _)@3081..3087
+          `9`)@3028..3089
+        _)@3024..3090)@3022..3090)@3017..3090
+  (line
+    ` .   `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3098..3102
+        (expr (lvar `LINE` _)@3103..3107 (binop `+` `6`)@3107..3109)@3103..3109)@3098..3109)@3096..3109)@3091..3109
+  (line
+    ` .   `
     (if
       (expr
         (intrinsic
           `G`#206
-          ((expr
-             (lvar
-               `PRCPDATA`
-               ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `15`)) (expr (str `"E"`)))))))
-        (`=` (str `"SPD"`))))
-    (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`)))))
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"SPD Picking Ticket Printer          "`))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `16`))))))
-  (` ` _ (if (expr (lvar `PRCPTYPE`) (`=` (str `"S"`)))) (do))
-  (` .   `#1
-    _
-    (set _ (= (lvar `ORD`) (expr (extrinsic ((`SSCHK` `PRCPENE1`) ((expr (lvar `PRCPINPT`)))))))))
-  (` .   `#1
-    _
-    (if (expr (`'` (lvar `ORD`))))
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"Supply Station Provider             "`))
-          (expr (lvar `LINE`) (`+` (num `2`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `22`))))))
-  (` .   `#1
-    _
-    (if (expr (lvar `ORD`)))
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"(Supply Station Provider)           "`))
-          (expr (lvar `LINE`) (`+` (num `2`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `22`))))))
-  (` .   `#1 _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `2`))))))
-  (` ` _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `""`)) (expr (lvar `LINE`)) (expr (lvar `COLUMN`)) (expr (lvar `CLREND`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `FLAGS`)
-  (` `
-    _
-    (set
-      _
-      (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))
-      (= (lvar `COLUMN`) (expr (num `1`)))
-      (= (lvar `CLREND`) (expr (num `80`)))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"Flags"`))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `0`))
-          (expr (lvar `IORVON`))
-          (expr (lvar `IORVOFF`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"Print Emergency Stock Levels "`))
-          (expr (lvar `LINE`) (`+` (num `1`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `7`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"Automatic Purge              "`))
-          (expr (lvar `LINE`) (`+` (num `2`)))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `7.9`))))))
-  (` ` _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `2`))))))
-  (` `
-    _
-    (if (expr (lvar `PRCPTYPE`) (`=` (str `"P"`))))
-    (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`)))))
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"Regular Whse Issues Due Date "`))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `10`))))))
-  (` ` _ (set _ (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `""`)) (expr (lvar `LINE`)) (expr (lvar `COLUMN`)) (expr (lvar `CLREND`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `USERS`)
-  (` ` _ (new _ `USER`))
-  (` `
-    _
-    (set
-      _
-      (= (lvar `LINE`) (expr (lvar `LINE`) (`+` (num `1`))))
-      (= (lvar `COLUMN`) (expr (num `1`)))
-      (= (lvar `CLREND`) (expr (num `80`)))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET`)
-        ((expr (str `"Inventory Users"`))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))
-          (expr (num `0`))
-          (expr (lvar `IORVON`))
-          (expr (lvar `IORVOFF`))))))
-  (` `
-    _
-    (set _ (= (lvar `USER`) (expr (num `0`))))
-    (for (lvar `LINE`) (range (expr (lvar `LINE`) (`+` (num `1`))) (expr (num `1`))))
+          ((lvar `PRCPDATA` (`445` (lvar `PRCPINPT` _)@3133..3141 `15` `"E"`)@3129..3148)@3120..3149)@3120..3149)@3117..3150
+        (binop `=` `"SPD"`)@3150..3156)@3117..3156)@3115..3156
     (set
       _
       (=
-        (lvar `USER`)
-        (expr
-          (intrinsic
-            `O`#211
-            ((expr
-               (gvar
-                 `PRCP`
-                 ((expr (num `445`)) (expr (lvar `PRCPINPT`)) (expr (num `4`)) (expr (lvar `USER`))))))))))
-    (quit (postcond (expr (`'` (lvar `USER`)))))
-    (do))
-  (` .   `#1
-    _
+        (lvar `LINE` _)@3159..3163
+        (expr (lvar `LINE` _)@3164..3168 (binop `+` `1`)@3168..3170)@3164..3170)@3159..3170)@3157..3170
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"     : "`) (`_` (extrinsic ((`USER` `PRCPUREP`) ((expr (lvar `USER`)))))))
-          (expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (lvar `CLREND`))))))
-  (` .   `#1
-    _
+        (ref `SET` _ _)@3173..3176
+        (`"SPD Picking Ticket Printer          "`
+          (lvar `LINE` _)@3216..3220
+          (lvar `COLUMN` _)@3221..3227
+          (lvar `CLREND` _)@3228..3234
+          `16`)@3177..3237
+        _)@3173..3238)@3171..3238)@3110..3238
+  (line
+    ` `
+    (if (expr (lvar `PRCPTYPE` _)@3242..3250 (binop `=` `"S"`)@3250..3254)@3242..3254)@3240..3254
+    (do _)@3255..3256)@3239..3256
+  (line
+    ` .   `
+    (set
+      _
+      (=
+        (lvar `ORD` _)@3264..3267
+        (extrinsic `SSCHK` `PRCPENE1` ((lvar `PRCPINPT` _)@3285..3293)@3285..3293)@3270..3294)@3264..3294)@3262..3294)@3257..3294
+  (line
+    ` .   `
+    (if (unary `'` (lvar `ORD` _)@3303..3306)@3302..3306)@3300..3306
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3309..3312
+        (`"Supply Station Provider             "`
+          (expr (lvar `LINE` _)@3352..3356 (binop `+` `2`)@3356..3358)@3352..3358
+          (lvar `COLUMN` _)@3359..3365
+          (lvar `CLREND` _)@3366..3372
+          `22`)@3313..3375
+        _)@3309..3376)@3307..3376)@3295..3376
+  (line
+    ` .   `
+    (if (lvar `ORD` _)@3384..3387)@3382..3387
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3390..3393
+        (`"(Supply Station Provider)           "`
+          (expr (lvar `LINE` _)@3433..3437 (binop `+` `2`)@3437..3439)@3433..3439
+          (lvar `COLUMN` _)@3440..3446
+          (lvar `CLREND` _)@3447..3453
+          `22`)@3394..3456
+        _)@3390..3457)@3388..3457)@3377..3457
+  (line
+    ` .   `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3465..3469
+        (expr (lvar `LINE` _)@3470..3474 (binop `+` `2`)@3474..3476)@3470..3476)@3465..3476)@3463..3476)@3458..3476
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3480..3484
+        (expr (lvar `LINE` _)@3485..3489 (binop `+` `1`)@3489..3491)@3485..3491)@3480..3491)@3478..3491)@3477..3491
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3495..3498
+        (`""`
+          (lvar `LINE` _)@3502..3506
+          (lvar `COLUMN` _)@3507..3513
+          (lvar `CLREND` _)@3514..3520)@3499..3520
+        _)@3495..3521)@3493..3521)@3492..3521
+  (line ` ` (quit _ _)@3523..3524)@3522..3524
+  (line ` `)@3525..3526
+  (line ` `)@3528..3529
+  (label `FLAGS` _ _)@3531..3537
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3561..3565
+        (expr (lvar `LINE` _)@3566..3570 (binop `+` `1`)@3570..3572)@3566..3572)@3561..3572
+      (= (lvar `COLUMN` _)@3573..3579 `1`)@3573..3581
+      (= (lvar `CLREND` _)@3582..3588 `80`)@3582..3591)@3559..3591)@3558..3591
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3595..3598
+        (`"Flags"`
+          (lvar `LINE` _)@3607..3611
+          (lvar `COLUMN` _)@3612..3618
+          (lvar `CLREND` _)@3619..3625
+          `0`
+          (lvar `IORVON` _)@3628..3634
+          (lvar `IORVOFF` _)@3635..3642)@3599..3642
+        _)@3595..3643)@3593..3643)@3592..3643
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3647..3650
+        (`"Print Emergency Stock Levels "`
+          (expr (lvar `LINE` _)@3683..3687 (binop `+` `1`)@3687..3689)@3683..3689
+          (lvar `COLUMN` _)@3690..3696
+          (lvar `CLREND` _)@3697..3703
+          `7`)@3651..3705
+        _)@3647..3706)@3645..3706)@3644..3706
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3710..3713
+        (`"Automatic Purge              "`
+          (expr (lvar `LINE` _)@3746..3750 (binop `+` `2`)@3750..3752)@3746..3752
+          (lvar `COLUMN` _)@3753..3759
+          (lvar `CLREND` _)@3760..3766
+          `7.9`)@3714..3770
+        _)@3710..3771)@3708..3771)@3707..3771
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3775..3779
+        (expr (lvar `LINE` _)@3780..3784 (binop `+` `2`)@3784..3786)@3780..3786)@3775..3786)@3773..3786)@3772..3786
+  (line
+    ` `
+    (if (expr (lvar `PRCPTYPE` _)@3790..3798 (binop `=` `"P"`)@3798..3802)@3790..3802)@3788..3802
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3805..3809
+        (expr (lvar `LINE` _)@3810..3814 (binop `+` `1`)@3814..3816)@3810..3816)@3805..3816)@3803..3816
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3819..3822
+        (`"Regular Whse Issues Due Date "`
+          (lvar `LINE` _)@3855..3859
+          (lvar `COLUMN` _)@3860..3866
+          (lvar `CLREND` _)@3867..3873
+          `10`)@3823..3876
+        _)@3819..3877)@3817..3877)@3787..3877
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3881..3885
+        (expr (lvar `LINE` _)@3886..3890 (binop `+` `1`)@3890..3892)@3886..3892)@3881..3892)@3879..3892)@3878..3892
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@3896..3899
+        (`""`
+          (lvar `LINE` _)@3903..3907
+          (lvar `COLUMN` _)@3908..3914
+          (lvar `CLREND` _)@3915..3921)@3900..3921
+        _)@3896..3922)@3894..3922)@3893..3922
+  (line ` ` (quit _ _)@3924..3925)@3923..3925
+  (line ` `)@3926..3927
+  (line ` `)@3929..3930
+  (label `USERS` _ _)@3932..3938
+  (line ` ` (new _ `USER`)@3970..3976)@3969..3976
+  (line
+    ` `
+    (set
+      _
+      (=
+        (lvar `LINE` _)@3980..3984
+        (expr (lvar `LINE` _)@3985..3989 (binop `+` `1`)@3989..3991)@3985..3991)@3980..3991
+      (= (lvar `COLUMN` _)@3992..3998 `1`)@3992..4000
+      (= (lvar `CLREND` _)@4001..4007 `80`)@4001..4010)@3978..4010)@3977..4010
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@4014..4017
+        (`"Inventory Users"`
+          (lvar `LINE` _)@4036..4040
+          (lvar `COLUMN` _)@4041..4047
+          (lvar `CLREND` _)@4048..4054
+          `0`
+          (lvar `IORVON` _)@4057..4063
+          (lvar `IORVOFF` _)@4064..4071)@4018..4071
+        _)@4014..4072)@4012..4072)@4011..4072
+  (line
+    ` `
+    (set _ (= (lvar `USER` _)@4076..4080 `0`)@4076..4082)@4074..4082
+    (for
+      (lvar `LINE` _)@4085..4089
+      (range
+        (expr (lvar `LINE` _)@4090..4094 (binop `+` `1`)@4094..4096)@4090..4096
+        `1`
+        _)@4090..4098)@4085..4098
+    (set
+      _
+      (=
+        (lvar `USER` _)@4101..4105
+        (intrinsic
+          `O`#211
+          ((gvar
+             `PRCP`
+             (`445` (lvar `PRCPINPT` _)@4119..4127 `4` (lvar `USER` _)@4130..4134)@4115..4134
+             _
+             _)@4109..4135)@4109..4135)@4106..4136)@4101..4136)@4099..4136
+    (quit (postcond (unary `'` (lvar `USER` _)@4140..4144)@4139..4144)@4138..4144 _)@4137..4144
+    (do _)@4146..4147)@4073..4147
+  (line
+    ` .   `
+    (do
+      _
+      (call
+        (ref `SET` _ _)@4155..4158
+        ((expr
+           `"     : "`
+           (binop
+             `_`
+             (extrinsic `USER` `PRCPUREP` ((lvar `USER` _)@4185..4189)@4185..4189)@4171..4190)@4168..4190)@4159..4190
+          (lvar `LINE` _)@4191..4195
+          (lvar `COLUMN` _)@4196..4202
+          (lvar `CLREND` _)@4203..4209)@4159..4209
+        _)@4155..4210)@4153..4210)@4148..4210
+  (line
+    ` .   `
     (if
-      (expr
-        (extrinsic
-          ((`KEY` `PRCPUREP`)
-            ((expr
-               (str `"PRCP"`)
-               (`_`
-                 (intrinsic
-                   `TR`#222
-                   ((expr (lvar `PRCPTYPE`)) (expr (str `"WSP"`)) (expr (str `"W2"`)))))
-               (`_` (str `" MGRKEY"`)))
-              (expr (lvar `USER`)))))))
+      (extrinsic
+        `KEY`
+        `PRCPUREP`
+        ((expr
+           `"PRCP"`
+           (binop
+             `_`
+             (intrinsic
+               `TR`#222
+               ((lvar `PRCPTYPE` _)@4244..4252 `"WSP"` `"W2"`)@4244..4263)@4240..4264)@4239..4264
+           (binop `_` `" MGRKEY"`)@4264..4274)@4233..4274
+          (lvar `USER` _)@4275..4279)@4233..4279)@4220..4280)@4216..4280
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `"*** MANAGER ***"`))
-          (expr (lvar `LINE`))
-          (expr (num `65`))
-          (expr (lvar `CLREND`))))))
-  (` `
-    _
+        (ref `SET` _ _)@4283..4286
+        (`"*** MANAGER ***"`
+          (lvar `LINE` _)@4305..4309
+          `65`
+          (lvar `CLREND` _)@4313..4319)@4287..4319
+        _)@4283..4320)@4281..4320)@4211..4320
+  (line
+    ` `
     (do
       _
       (call
-        (ref `SET`)
-        ((expr (str `""`)) (expr (lvar `LINE`)) (expr (lvar `COLUMN`)) (expr (lvar `CLREND`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `EXIT`)
-  (` ` _ (kill _ (gvar `TMP` ((expr (intrinsic `J`#208)) (expr (str `"PRCPENLM"`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `DIQ` (`DR`))
-  (` ` _ (new _ `D0` `DA` `DIC` `DIQ` `DIQ2`))
-  (` `
-    _
+        (ref `SET` _ _)@4324..4327
+        (`""`
+          (lvar `LINE` _)@4331..4335
+          (lvar `COLUMN` _)@4336..4342
+          (lvar `CLREND` _)@4343..4349)@4328..4349
+        _)@4324..4350)@4322..4350)@4321..4350
+  (line ` ` (quit _ _)@4352..4353)@4351..4353
+  (line ` `)@4354..4355
+  (line ` `)@4357..4358
+  (label `EXIT` _ _)@4360..4365
+  (line
+    ` `
+    (kill
+      _
+      (gvar `TMP` ((intrinsic `J`#208 _)@4394..4396 `"PRCPENLM"`)@4394..4407 _ _)@4389..4408)@4387..4408)@4386..4408
+  (line ` ` (quit _ _)@4410..4411)@4409..4411
+  (line ` `)@4412..4413
+  (line ` `)@4415..4416
+  (label `DIQ` (`DR`)@4422..4424 _)@4418..4426
+  (line ` ` (new _ `D0` `DA` `DIC` `DIQ` `DIQ2`)@4470..4490)@4469..4490
+  (line
+    ` `
     (set
       _
-      (= (lvar `DA`) (expr (lvar `PRCPINPT`)))
-      (= (lvar `DIQ` ((expr (num `0`)))) (expr (str `"E"`)))
-      (= (lvar `DIC`) (expr (str `"^PRCP(445,"`)))
-      (= (lvar `DIQ`) (expr (str `"PRCPDATA"`))))
-    (do _ (call (ref `EN` _ `DIQ1`))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `SET` (`STRING` `LINE` `COLUMN` `CLREND` `FIELD` `ON` `OFF`))
-  (` `
-    _
-    (if (expr (intrinsic `G`#206 ((expr (lvar `FIELD`))))))
+      (= (lvar `DA` _)@4494..4496 (lvar `PRCPINPT` _)@4497..4505)@4494..4505
+      (= (lvar `DIQ` (`0`)@4510..4511)@4506..4512 `"E"`)@4506..4516
+      (= (lvar `DIC` _)@4517..4520 `"^PRCP(445,"`)@4517..4533
+      (= (lvar `DIQ` _)@4534..4537 `"PRCPDATA"`)@4534..4548)@4492..4548
+    (do _ (call (ref `EN` _ `DIQ1`)@4551..4558 _ _)@4551..4558)@4549..4558)@4491..4558
+  (line ` ` (quit _ _)@4560..4561)@4559..4561
+  (line ` `)@4562..4563
+  (line ` `)@4565..4566
+  (label `SET` (`STRING` `LINE` `COLUMN` `CLREND` `FIELD` `ON` `OFF`)@4572..4610 _)@4568..4617
+  (line
+    ` `
+    (if (intrinsic `G`#206 ((lvar `FIELD` _)@4636..4641)@4636..4641)@4633..4642)@4631..4642
     (set
       _
       (=
-        (lvar `STRING`)
+        (lvar `STRING` _)@4645..4651
         (expr
-          (lvar `STRING`)
-          (`_` (str `": "`))
-          (`_`
+          (lvar `STRING` _)@4652..4658
+          (binop `_` `": "`)@4658..4663
+          (binop
+            `_`
             (intrinsic
               `G`#206
-              ((expr
-                 (lvar
-                   `PRCPDATA`
-                   ((expr (num `445`))
-                     (expr (lvar `PRCPINPT`))
-                     (expr (lvar `FIELD`))
-                     (expr (str `"E"`))))))))))))
-  (` `
-    _
-    (if (expr (lvar `STRING`) (`=` (str `""`))))
+              ((lvar
+                 `PRCPDATA`
+                 (`445` (lvar `PRCPINPT` _)@4680..4688 (lvar `FIELD` _)@4689..4694 `"E"`)@4676..4698)@4667..4699)@4667..4699)@4664..4700)@4663..4700)@4652..4700)@4645..4700)@4643..4700)@4630..4700
+  (line
+    ` `
+    (if (expr (lvar `STRING` _)@4704..4710 (binop `=` `""`)@4710..4713)@4704..4713)@4702..4713
     (do
       _
       (call
-        (ref `SET` _ `VALM10`)
-        ((expr (lvar `LINE`)) (expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `80`))))))))
-    (quit))
-  (` `
-    _
+        (ref `SET` _ `VALM10`)@4716..4726
+        ((lvar `LINE` _)@4727..4731
+          (intrinsic `J`#208 (`""` `80`)@4735..4740)@4732..4741)@4727..4741
+        _)@4716..4742)@4714..4742
+    (quit _ _)@4743..4744)@4701..4744
+  (line
+    ` `
+    (if
+      (unary
+        `'`
+        (intrinsic
+          `D`#202
+          ((@subs
+             (lvar `VALMAR` _)@4753..4759
+             ((lvar `LINE` _)@4761..4765 `0`)@4761..4767)@4752..4768)@4752..4768)@4749..4769)@4748..4769)@4746..4769
+    (do
+      _
+      (call
+        (ref `SET` _ `VALM10`)@4772..4782
+        ((lvar `LINE` _)@4783..4787
+          (intrinsic `J`#208 (`""` `80`)@4791..4796)@4788..4797)@4783..4797
+        _)@4772..4798)@4770..4798)@4745..4798
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `SET` _ `VALM10`)@4802..4812
+        ((lvar `LINE` _)@4813..4817
+          (extrinsic
+            `SETSTR`
+            `VALM1`
+            ((lvar `STRING` _)@4833..4839
+              (@subs
+                (lvar `VALMAR` _)@4841..4847
+                ((lvar `LINE` _)@4849..4853 `0`)@4849..4855)@4840..4856
+              (lvar `COLUMN` _)@4857..4863
+              (lvar `CLREND` _)@4864..4870)@4833..4870)@4820..4871)@4813..4871
+        _)@4802..4872)@4800..4872)@4799..4872
+  (line
+    ` `
     (if
       (expr
-        (`'`
-          (intrinsic
-            `D`#202
-            ((expr (@subs (lvar `VALMAR`) ((expr (lvar `LINE`)) (expr (num `0`))))))))))
-    (do
-      _
-      (call
-        (ref `SET` _ `VALM10`)
-        ((expr (lvar `LINE`)) (expr (intrinsic `J`#208 ((expr (str `""`)) (expr (num `80`)))))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `SET` _ `VALM10`)
-        ((expr (lvar `LINE`))
+        (intrinsic `G`#206 ((lvar `ON` _)@4879..4881)@4879..4881)@4876..4882
+        (binop `]` `""`)@4882..4885
+        (binop
+          `!`
           (expr
-            (extrinsic
-              ((`SETSTR` `VALM1`)
-                ((expr (lvar `STRING`))
-                  (expr (@subs (lvar `VALMAR`) ((expr (lvar `LINE`)) (expr (num `0`)))))
-                  (expr (lvar `COLUMN`))
-                  (expr (lvar `CLREND`))))))))))
-  (` `
-    _
-    (if
-      (expr
-        (intrinsic `G`#206 ((expr (lvar `ON`))))
-        (`]` (str `""`))
-        (`!` (expr (intrinsic `G`#206 ((expr (lvar `OFF`)))) (`]` (str `""`))))))
+            (expr
+              (intrinsic `G`#206 ((lvar `OFF` _)@4890..4893)@4890..4893)@4887..4894
+              (binop `]` `""`)@4894..4897)@4887..4897)@4886..4898)@4885..4898)@4876..4898)@4874..4898
     (do
       _
       (call
-        (ref `CNTRL` _ `VALM10`)
-        ((expr (lvar `LINE`))
-          (expr (lvar `COLUMN`))
-          (expr (intrinsic `L`#209 ((expr (lvar `STRING`)))))
-          (expr (lvar `ON`))
-          (expr (lvar `OFF`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `ADDNEW`)
-  (` `)
-  (` `
-    _
-    (if (expr (`'` (intrinsic `G`#206 ((expr (lvar `PRC` ((expr (str `"SITE"`))))))))))
-    (set _ (= (lvar `PRCF` ((expr (str `"X"`)))) (expr (str `"S"`))))
-    (do _ (call (ref _ _ `PRCFSITE`))))
-  (` `
-    _
+        (ref `CNTRL` _ `VALM10`)@4901..4913
+        ((lvar `LINE` _)@4914..4918
+          (lvar `COLUMN` _)@4919..4925
+          (intrinsic `L`#209 ((lvar `STRING` _)@4929..4935)@4929..4935)@4926..4936
+          (lvar `ON` _)@4937..4939
+          (lvar `OFF` _)@4940..4943)@4914..4943
+        _)@4901..4944)@4899..4944)@4873..4944
+  (line ` ` (quit _ _)@4946..4947)@4945..4947
+  (line ` `)@4948..4949
+  (line ` `)@4951..4952
+  (label `ADDNEW` _ _)@4954..4961
+  (line ` `)@5023..5024
+  (line
+    ` `
+    (if
+      (unary
+        `'`
+        (intrinsic `G`#206 ((lvar `PRC` (`"SITE"`)@5090..5096)@5086..5097)@5086..5097)@5083..5098)@5082..5098)@5080..5098
+    (set _ (= (lvar `PRCF` (`"X"`)@5106..5109)@5101..5110 `"S"`)@5101..5114)@5099..5114
+    (do _ (call (ref _ _ `PRCFSITE`)@5117..5126 _ _)@5117..5126)@5115..5126)@5079..5126
+  (line
+    ` `
     (set
       _
-      (= (lvar `DIR` ((expr (num `0`)))) (expr (str `"SO^W:Warehouse;P:Primary"`)))
+      (= (lvar `DIR` (`0`)@5134..5135)@5130..5136 `"SO^W:Warehouse;P:Primary"`)@5130..5163
       (=
-        (lvar `DIR` ((expr (str `"A"`))))
-        (expr (str `"Select the type of inventory point to edit"`))))
-    (do _ (call (ref _ _ `DIR`)))
-    (kill _ (lvar `DIR`))
-    (if (expr (lvar `Y`) (`'=` (str `"W"`))) (expr (lvar `Y`) (`'=` (str `"P"`))))
-    (quit))
-  (` ` _ (set _ (= (lvar `PRCP` ((expr (str `"DPTYPE"`)))) (expr (lvar `Y`)))))
-  (` ` _ (do _ (call (ref `ENTERNEW`))))
-  (` ` _ (kill _ (lvar `PRCP`)))
-  (` ` _ (goto _ ((ref `ADDNEW`)))))
+        (lvar `DIR` (`"A"`)@5168..5171)@5164..5172
+        `"Select the type of inventory point to edit"`)@5164..5217)@5128..5217
+    (do _ (call (ref _ _ `DIR`)@5220..5224 _ _)@5220..5224)@5218..5224
+    (kill _ (lvar `DIR` _)@5227..5230)@5225..5230
+    (if
+      (expr (lvar `Y` _)@5233..5234 (binop `'=` `"W"`)@5234..5239)@5233..5239
+      (expr (lvar `Y` _)@5240..5241 (binop `'=` `"P"`)@5241..5246)@5240..5246)@5231..5246
+    (quit _ _)@5247..5248)@5127..5248
+  (line
+    ` `
+    (set
+      _
+      (= (lvar `PRCP` (`"DPTYPE"`)@5257..5265)@5252..5266 (lvar `Y` _)@5267..5268)@5252..5268)@5250..5268)@5249..5268
+  (line ` ` (do _ (call (ref `ENTERNEW` _ _)@5272..5280 _ _)@5272..5280)@5270..5280)@5269..5280
+  (line ` ` (kill _ (lvar `PRCP` _)@5284..5288)@5282..5288)@5281..5288
+  (line ` ` (goto _ (call (ref `ADDNEW` _ _)@5292..5298 _ _)@5292..5298)@5290..5298)@5289..5298
+  _)@0..5299

@@ -1,207 +1,214 @@
 (routine
-  (label `ADD`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` ` _ (do _ (call (ref `START` _ `TEST`) ((expr (str `"compliance/arith/ADD"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+  (label `ADD` _ _)@0..4
+  (line ` `)@30..31
+  (line ` `)@33..34
+  (line ` `)@101..102
+  (line ` `)@172..173
+  (line
+    ` `
+    (do
+      _
+      (call (ref `START` _ `TEST`)@178..188 (`"compliance/arith/ADD"`)@189..211 _)@178..212)@176..212)@175..212
+  (line ` `)@213..214
+  (line ` `)@216..217
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@254..262 (`"add basic positive"` `3` `"1+2"`)@263..291 _)@254..292)@252..292)@251..292
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@296..304 (`"add identity left"` `5` `"0+5"`)@305..332 _)@296..333)@294..333)@293..333
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@337..345 (`"add identity right"` `5` `"5+0"`)@346..374 _)@337..375)@335..375)@334..375
+  (line ` `)@376..377
+  (line ` `)@444..445
+  (line ` `)@504..505
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add basic positive"`)) (expr (num `3`)) (expr (str `"1+2"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@561..569
+        (`"add commutative"` `1` `"(3+4)=(4+3)"`)@570..603
+        _)@561..604)@559..604)@558..604
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add identity left"`)) (expr (num `5`)) (expr (str `"0+5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@608..616
+        (`"add associative"` `1` `"((1+2)+3)=(1+(2+3))"`)@617..658
+        _)@608..659)@606..659)@605..659
+  (line ` `)@660..661
+  (line ` `)@663..664
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add identity right"`)) (expr (num `5`)) (expr (str `"5+0"`))))))
-  (` `)
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@704..712
+        (`"add negative"` (unary `-` `1`)@728..730 `"1+-2"`)@713..737
+        _)@704..738)@702..738)@701..738
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add commutative"`)) (expr (num `1`)) (expr (str `"(3+4)=(4+3)"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@742..750
+        (`"add both negative"` (unary `-` `3`)@771..773 `"-1+-2"`)@751..781
+        _)@742..782)@740..782)@739..782
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@786..794 (`"add cancel to zero"` `0` `"5+-5"`)@795..824 _)@786..825)@784..825)@783..825
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@829..837 (`"add neg cancel"` `0` `"-5+5"`)@838..863 _)@829..864)@827..864)@826..864
+  (line ` `)@865..866
+  (line ` `)@868..869
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add associative"`)) (expr (num `1`)) (expr (str `"((1+2)+3)=(1+(2+3))"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@900..908
+        (`"add fraction simple"` `1.5` `"1+0.5"`)@909..942
+        _)@900..943)@898..943)@897..943
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add negative"`)) (expr (`-` (num `1`))) (expr (str `"1+-2"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@947..955
+        (`"add fraction lossless"` `.3` `".1+.2"`)@956..990
+        _)@947..991)@945..991)@944..991
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add both negative"`)) (expr (`-` (num `3`))) (expr (str `"-1+-2"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@995..1003
+        (`"add fraction negative"` `.5` `"1.5+-1"`)@1004..1039
+        _)@995..1040)@993..1040)@992..1040
+  (line ` `)@1041..1042
+  (line ` `)@1044..1045
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add cancel to zero"`)) (expr (num `0`)) (expr (str `"5+-5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1095..1103
+        (`"add large"` `1000000` `"999999+1"`)@1104..1134
+        _)@1095..1135)@1093..1135)@1092..1135
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add neg cancel"`)) (expr (num `0`)) (expr (str `"-5+5"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1139..1147
+        (`"add large negative"` (unary `-` `1000000`)@1169..1177 `"-999999+-1"`)@1148..1190
+        _)@1139..1191)@1137..1191)@1136..1191
+  (line ` `)@1192..1193
+  (line ` `)@1195..1196
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add fraction simple"`)) (expr (num `1.5`)) (expr (str `"1+0.5"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1263..1271
+        (`"add at 18-digit boundary"` `1000000000000000000` `"999999999999999999+1"`)@1272..1341
+        _)@1263..1342)@1261..1342)@1260..1342
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add fraction lossless"`)) (expr (num `.3`)) (expr (str `".1+.2"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1346..1354
+        (`"add crossing 18 digits"` `1000000000000000000` `"999999999999999999+2"`)@1355..1422
+        _)@1346..1423)@1344..1423)@1343..1423
+  (line ` `)@1424..1425
+  (line ` `)@1427..1428
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add fraction negative"`)) (expr (num `.5`)) (expr (str `"1.5+-1"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1461..1469
+        (`"add scientific small"` `.011` `"1E-2+1E-3"`)@1470..1509
+        _)@1461..1510)@1459..1510)@1458..1510
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add large"`)) (expr (num `1000000`)) (expr (str `"999999+1"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1514..1522
+        (`"add scientific large"` `2000` `"1E3+1E3"`)@1523..1560
+        _)@1514..1561)@1512..1561)@1511..1561
+  (line ` `)@1562..1563
+  (line ` `)@1565..1566
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add large negative"`))
-          (expr (`-` (num `1000000`)))
-          (expr (str `"-999999+-1"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1591..1599
+        (`"add big plus small"` `1000000000.001` `"1E9+.001"`)@1600..1646
+        _)@1591..1647)@1589..1647)@1588..1647
+  (line ` `)@1648..1649
+  (line ` `)@1651..1652
+  (line
+    ` `
+    (do
+      _
+      (call (ref `RUN` _ `TEST`)@1699..1707 (`"add three"` `6` `"1+2+3"`)@1708..1729 _)@1699..1730)@1697..1730)@1696..1730
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add at 18-digit boundary"`))
-          (expr (num `1000000000000000000`))
-          (expr (str `"999999999999999999+1"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1734..1742
+        (`"add long chain"` `55` `"1+2+3+4+5+6+7+8+9+10"`)@1743..1785
+        _)@1734..1786)@1732..1786)@1731..1786
+  (line ` `)@1787..1788
+  (line ` `)@1790..1791
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add crossing 18 digits"`))
-          (expr (num `1000000000000000000`))
-          (expr (str `"999999999999999999+2"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1840..1848
+        (`"add unary minus"` `2` `"3+-1"`)@1849..1875
+        _)@1840..1876)@1838..1876)@1837..1876
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add scientific small"`)) (expr (num `.011`)) (expr (str `"1E-2+1E-3"`))))))
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1880..1888
+        (`"add double unary"` `4` `"3+--1"`)@1889..1917
+        _)@1880..1918)@1878..1918)@1877..1918
+  (line
+    ` `
     (do
       _
       (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add scientific large"`)) (expr (num `2000`)) (expr (str `"1E3+1E3"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
+        (ref `RUN` _ `TEST`)@1922..1930
+        (`"add triple unary"` `2` `"3+---1"`)@1931..1960
+        _)@1922..1961)@1920..1961)@1919..1961
+  (line ` `)@1962..1963
+  (line
+    ` `
     (do
       _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add big plus small"`))
-          (expr (num `1000000000.001`))
-          (expr (str `"1E9+.001"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add three"`)) (expr (num `6`)) (expr (str `"1+2+3"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add long chain"`)) (expr (num `55`)) (expr (str `"1+2+3+4+5+6+7+8+9+10"`))))))
-  (` `)
-  (` `)
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add unary minus"`)) (expr (num `2`)) (expr (str `"3+-1"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add double unary"`)) (expr (num `4`)) (expr (str `"3+--1"`))))))
-  (` `
-    _
-    (do
-      _
-      (call
-        (ref `RUN` _ `TEST`)
-        ((expr (str `"add triple unary"`)) (expr (num `2`)) (expr (str `"3+---1"`))))))
-  (` `)
-  (` ` _ (do _ (call (ref `END` _ `TEST`) ((expr (str `"compliance/arith/ADD"`))))))
-  (` ` _ (quit)))
+      (call (ref `END` _ `TEST`)@1968..1976 (`"compliance/arith/ADD"`)@1977..1999 _)@1968..2000)@1966..2000)@1965..2000
+  (line ` ` (quit _ _)@2002..2003)@2001..2003
+  _)@0..2004

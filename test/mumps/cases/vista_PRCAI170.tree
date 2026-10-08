@@ -1,83 +1,91 @@
 (routine
-  (label `PRCAI170`)
-  (` `)
-  (` `)
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `PREINIT`)
-  (` ` _ (new _ `%` `CURDATA` `NEWDATA` `RCERROR`))
-  (` `)
-  (` `
-    _
+  (label `PRCAI170` _ _)@0..9
+  (line ` `)@51..52
+  (line ` `)@99..100
+  (line ` ` (quit _ _)@169..170)@168..170
+  (line ` `)@171..172
+  (line ` `)@174..175
+  (label `PREINIT` _ _)@177..185
+  (line ` ` (new _ `%` `CURDATA` `NEWDATA` `RCERROR`)@254..281)@253..281
+  (line ` `)@282..283
+  (line
+    ` `
     (do
       _
       (call
-        (ref `BMES` _ `XPDUTL`)
-        ((expr (str `" >>  Starting the Pre-Initialization routine ..."`))))))
-  (` `
-    _
+        (ref `BMES` _ `XPDUTL`)@288..299
+        (`" >>  Starting the Pre-Initialization routine ..."`)@300..350
+        _)@288..351)@286..351)@285..351
+  (line
+    ` `
     (do
       _
       (call
-        (ref `MES` _ `XPDUTL`)
-        ((expr (str `"     -> Checking file 430.2 prior to adding new entries ..."`))))))
-  (` `)
-  (` `)
-  (` ` _ (set _ (= (lvar `RCERROR`) (expr (num `0`)))))
-  (` `
-    _
-    (for (lvar `%`) (range (expr (num `33`)) (expr (num `1`)) (expr (num `39`))))
+        (ref `MES` _ `XPDUTL`)@355..365
+        (`"     -> Checking file 430.2 prior to adding new entries ..."`)@366..427
+        _)@355..428)@353..428)@352..428
+  (line ` `)@429..430
+  (line ` `)@432..433
+  (line ` ` (set _ (= (lvar `RCERROR` _)@496..503 `0`)@496..505)@494..505)@493..505
+  (line
+    ` `
+    (for (lvar `%` _)@509..510 (range `33` `1` `39`)@511..518)@509..518
     (set
       _
       (=
-        (lvar `CURDATA`)
-        (expr
-          (intrinsic
-            `G`#206
-            ((expr (gvar `PRCA` ((expr (num `430.2`)) (expr (lvar `%`)) (expr (num `0`))))))))))
-    (if (expr (lvar `CURDATA`) (`'=` (str `""`))))
+        (lvar `CURDATA` _)@521..528
+        (intrinsic
+          `G`#206
+          ((gvar `PRCA` (`430.2` (lvar `%` _)@544..545 `0`)@538..547 _ _)@532..548)@532..548)@529..549)@521..549)@519..549
+    (if (expr (lvar `CURDATA` _)@552..559 (binop `'=` `""`)@559..563)@552..563)@550..563
     (set
       _
       (=
-        (lvar `NEWDATA`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (text (@ref (lvar `%`)))) (expr (str `";"`)) (expr (num `3`)) (expr (num `99`)))))))
+        (lvar `NEWDATA` _)@566..573
+        (intrinsic
+          `P`#212
+          ((text (@ref (lvar `%` _)@581..582 _ _)@580..582 _ _)@577..583 `";"` `3` `99`)@577..592)@574..593)@566..593)@564..593
     (if
       (expr
-        (intrinsic `P`#212 ((expr (lvar `CURDATA`)) (expr (str `"^"`))))
-        (`'=` (intrinsic `P`#212 ((expr (lvar `NEWDATA`)) (expr (str `"^"`)))))))
-    (set _ (= (lvar `RCERROR`) (expr (num `1`)))))
-  (` `)
-  (` `)
-  (` `
-    _
-    (if (expr (lvar `RCERROR`)))
-    (set _ (= (lvar `XPDQUIT`) (expr (num `1`))))
+        (intrinsic `P`#212 ((lvar `CURDATA` _)@599..606 `"^"`)@599..610)@596..611
+        (binop
+          `'=`
+          (intrinsic `P`#212 ((lvar `NEWDATA` _)@616..623 `"^"`)@616..627)@613..628)@611..628)@596..628)@594..628
+    (set _ (= (lvar `RCERROR` _)@631..638 `1`)@631..640)@629..640)@506..640
+  (line ` `)@641..642
+  (line ` `)@644..645
+  (line
+    ` `
+    (if (lvar `RCERROR` _)@672..679)@670..679
+    (set _ (= (lvar `XPDQUIT` _)@682..689 `1`)@682..691)@680..691
     (do
       _
       (call
-        (ref `MES` _ `XPDUTL`)
-        ((expr (str `"        WARNING: FILE 430.2 IS CORRUPT.  UNABLE TO INSTALL PATCH."`))))
-      (call (ref `MES` _ `XPDUTL`) ((expr (str `"        PLEASE LOG A NOIS."`))))))
-  (` `
-    _
-    (if (expr (`'` (lvar `RCERROR`))))
-    (do _ (call (ref `MES` _ `XPDUTL`) ((expr (str `"        Everything is OK!"`))))))
-  (` `)
-  (` `
-    _
+        (ref `MES` _ `XPDUTL`)@694..704
+        (`"        WARNING: FILE 430.2 IS CORRUPT.  UNABLE TO INSTALL PATCH."`)@705..772
+        _)@694..773
+      (call (ref `MES` _ `XPDUTL`)@774..784 (`"        PLEASE LOG A NOIS."`)@785..813 _)@774..814)@692..814)@669..814
+  (line
+    ` `
+    (if (unary `'` (lvar `RCERROR` _)@819..826)@818..826)@816..826
     (do
       _
-      (call (ref `MES` _ `XPDUTL`) ((expr (str `" >>  End of the Pre-Initialization routine."`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (label `POSTINIT`)
-  (` `
-    _
+      (call (ref `MES` _ `XPDUTL`)@829..839 (`"        Everything is OK!"`)@840..867 _)@829..868)@827..868)@815..868
+  (line ` `)@869..870
+  (line
+    ` `
+    (do
+      _
+      (call
+        (ref `MES` _ `XPDUTL`)@875..885
+        (`" >>  End of the Pre-Initialization routine."`)@886..931
+        _)@875..932)@873..932)@872..932
+  (line ` ` (quit _ _)@934..935)@933..935
+  (line ` `)@936..937
+  (line ` `)@939..940
+  (label `POSTINIT` _ _)@942..951
+  (line
+    ` `
     (new
       _
       `%`
@@ -95,129 +103,163 @@
       `RCDATA`
       `RCDINUM`
       `X`
-      `Y`))
-  (` `)
-  (` `
-    _
+      `Y`)@971..1035)@970..1035
+  (line ` `)@1036..1037
+  (line
+    ` `
     (do
       _
       (call
-        (ref `BMES` _ `XPDUTL`)
-        ((expr (str `" >>  Starting the Post-Initialization routine ..."`))))))
-  (` `
-    _
+        (ref `BMES` _ `XPDUTL`)@1042..1053
+        (`" >>  Starting the Post-Initialization routine ..."`)@1054..1105
+        _)@1042..1106)@1040..1106)@1039..1106
+  (line
+    ` `
     (do
       _
       (call
-        (ref `MES` _ `XPDUTL`)
-        ((expr (str `"     -> Adding new AR Category entries to file 430.2 ..."`))))))
-  (` `)
-  (` `)
-  (` ` _ (for (lvar `RCDINUM`) (range (expr (num `33`)) (expr (num `1`)) (expr (num `39`)))) (do))
-  (` .   `#1
-    _
+        (ref `MES` _ `XPDUTL`)@1110..1120
+        (`"     -> Adding new AR Category entries to file 430.2 ..."`)@1121..1179
+        _)@1110..1180)@1108..1180)@1107..1180
+  (line ` `)@1181..1182
+  (line ` `)@1184..1185
+  (line
+    ` `
+    (for (lvar `RCDINUM` _)@1221..1228 (range `33` `1` `39`)@1229..1236)@1221..1236
+    (do _)@1237..1238)@1218..1238
+  (line
+    ` .   `
     (set
       _
       (=
-        (lvar `RCDATA`)
-        (expr
-          (intrinsic
-            `P`#212
-            ((expr (text (@ref (lvar `RCDINUM`))))
-              (expr (str `";"`))
-              (expr (num `3`))
-              (expr (num `99`))))))))
-  (` .   `#1
-    _
-    (set
-      _
-      (setmulti (expr (str `"^PRCA(430.2,"`)) (lvar `DIC`) (lvar `DIE`))
-      (= (lvar `DIC` ((expr (num `0`)))) (expr (str `"L"`)))
-      (= (lvar `DLAYGO`) (expr (num `430.2`)))))
-  (` .   `#1)
-  (` .   `#1)
-  (` .   `#1
-    _
-    (if
-      (expr
+        (lvar `RCDATA` _)@1246..1252
         (intrinsic
-          `D`#202
-          ((expr (gvar `PRCA` ((expr (num `430.2`)) (expr (lvar `RCDINUM`)) (expr (num `0`)))))))))
-    (set _ (= (lvar `DIK`) (expr (str `"^PRCA(430.2,"`))) (= (lvar `DA`) (expr (lvar `RCDINUM`))))
-    (do _ (call (ref _ _ `DIK`))))
-  (` .   `#1)
-  (` .   `#1)
-  (` .   `#1 _ (set _ (= (lvar `DINUM`) (expr (lvar `RCDINUM`)))))
-  (` .   `#1
-    _
-    (set _ (= (lvar `X`) (expr (intrinsic `P`#212 ((expr (lvar `RCDATA`)) (expr (str `"^"`))))))))
-  (` .   `#1 _ (do _ (call (ref `FILE` _ `DICN`))))
-  (` .   `#1)
-  (` .   `#1)
-  (` .   `#1 _ (set _ (= (lvar `DA`) (expr (lvar `RCDINUM`)))))
-  (` .   `#1
-    _
+          `P`#212
+          ((text (@ref (lvar `RCDINUM` _)@1260..1267 _ _)@1259..1267 _ _)@1256..1268
+            `";"`
+            `3`
+            `99`)@1256..1277)@1253..1278)@1246..1278)@1244..1278)@1239..1278
+  (line
+    ` .   `
+    (set
+      _
+      (setmulti `"^PRCA(430.2,"` (lvar `DIC` _)@1287..1290 (lvar `DIE` _)@1291..1294)@1286..1310
+      (= (lvar `DIC` (`0`)@1315..1316)@1311..1317 `"L"`)@1311..1321
+      (= (lvar `DLAYGO` _)@1322..1328 `430.2`)@1322..1334)@1284..1334)@1279..1334
+  (line ` .   `)@1335..1340
+  (line ` .   `)@1342..1347
+  (line
+    ` .   `
+    (if
+      (intrinsic
+        `D`#202
+        ((gvar `PRCA` (`430.2` (lvar `RCDINUM` _)@1442..1449 `0`)@1436..1451 _ _)@1430..1452)@1430..1452)@1427..1453)@1425..1453
+    (set
+      _
+      (= (lvar `DIK` _)@1456..1459 `"^PRCA(430.2,"`)@1456..1474
+      (= (lvar `DA` _)@1475..1477 (lvar `RCDINUM` _)@1478..1485)@1475..1485)@1454..1485
+    (do _ (call (ref _ _ `DIK`)@1488..1492 _ _)@1488..1492)@1486..1492)@1420..1492
+  (line ` .   `)@1493..1498
+  (line ` .   `)@1500..1505
+  (line
+    ` .   `
+    (set _ (= (lvar `DINUM` _)@1525..1530 (lvar `RCDINUM` _)@1531..1538)@1525..1538)@1523..1538)@1518..1538
+  (line
+    ` .   `
     (set
       _
       (=
-        (lvar `DR`)
-        (expr
-          (str `"1///"`)
-          (`_` (intrinsic `P`#212 ((expr (lvar `RCDATA`)) (expr (str `"^"`)) (expr (num `2`)))))
-          (`_` (str `";2////0;3///1319;5///P;"`))))))
-  (` .   `#1)
-  (` .   `#1
-    _
+        (lvar `X` _)@1546..1547
+        (intrinsic `P`#212 ((lvar `RCDATA` _)@1551..1557 `"^"`)@1551..1561)@1548..1562)@1546..1562)@1544..1562)@1539..1562
+  (line ` .   ` (do _ (call (ref `FILE` _ `DICN`)@1570..1579 _ _)@1570..1579)@1568..1579)@1563..1579
+  (line ` .   `)@1580..1585
+  (line ` .   `)@1587..1592
+  (line
+    ` .   `
+    (set _ (= (lvar `DA` _)@1617..1619 (lvar `RCDINUM` _)@1620..1627)@1617..1627)@1615..1627)@1610..1627
+  (line
+    ` .   `
     (set
       _
       (=
-        (lvar `DR`)
+        (lvar `DR` _)@1635..1637
         (expr
-          (lvar `DR`)
-          (`_` (str `"6////"`))
-          (`_` (intrinsic `P`#212 ((expr (lvar `RCDATA`)) (expr (str `"^"`)) (expr (num `3`)))))
-          (`_` (str `";"`))))))
-  (` .   `#1
-    _
+          `"1///"`
+          (binop
+            `_`
+            (intrinsic `P`#212 ((lvar `RCDATA` _)@1648..1654 `"^"` `2`)@1648..1660)@1645..1661)@1644..1661
+          (binop `_` `";2////0;3///1319;5///P;"`)@1661..1687)@1638..1687)@1635..1687)@1633..1687)@1628..1687
+  (line ` .   `)@1688..1693
+  (line
+    ` .   `
     (set
       _
-      (= (lvar `DR`) (expr (lvar `DR`) (`_` (str `"7///2;9///1;10///1;11///1;12///1;13///2;"`))))))
-  (` .   `#1)
-  (` .   `#1
-    _
-    (set _ (= (lvar `DR`) (expr (lvar `DR`) (`_` (str `"14///30,40,55,80,85,50,60,65,70;"`))))))
-  (` .   `#1 _ (do _ (call (ref _ _ `DIE`))))
-  (` `)
-  (` ` _ (do _ (call (ref `MES` _ `XPDUTL`) ((expr (str `"        OK, I'm done!"`))))))
-  (` `
-    _
+      (=
+        (lvar `DR` _)@1750..1752
+        (expr
+          (lvar `DR` _)@1753..1755
+          (binop `_` `"6////"`)@1755..1763
+          (binop
+            `_`
+            (intrinsic `P`#212 ((lvar `RCDATA` _)@1767..1773 `"^"` `3`)@1767..1779)@1764..1780)@1763..1780
+          (binop `_` `";"`)@1780..1784)@1753..1784)@1750..1784)@1748..1784)@1743..1784
+  (line
+    ` .   `
+    (set
+      _
+      (=
+        (lvar `DR` _)@1792..1794
+        (expr
+          (lvar `DR` _)@1795..1797
+          (binop `_` `"7///2;9///1;10///1;11///1;12///1;13///2;"`)@1797..1840)@1795..1840)@1792..1840)@1790..1840)@1785..1840
+  (line ` .   `)@1841..1846
+  (line
+    ` .   `
+    (set
+      _
+      (=
+        (lvar `DR` _)@1872..1874
+        (expr
+          (lvar `DR` _)@1875..1877
+          (binop `_` `"14///30,40,55,80,85,50,60,65,70;"`)@1877..1912)@1875..1912)@1872..1912)@1870..1912)@1865..1912
+  (line ` .   ` (do _ (call (ref _ _ `DIE`)@1920..1924 _ _)@1920..1924)@1918..1924)@1913..1924
+  (line ` `)@1925..1926
+  (line
+    ` `
+    (do
+      _
+      (call (ref `MES` _ `XPDUTL`)@1931..1941 (`"        OK, I'm done!"`)@1942..1965 _)@1931..1966)@1929..1966)@1928..1966
+  (line
+    ` `
     (do
       _
       (call
-        (ref `MES` _ `XPDUTL`)
-        ((expr (str `" >>  End of the Post-Initialization routine ..."`))))))
-  (` ` _ (quit))
-  (` `)
-  (` `)
-  (` `)
-  (label `33`)
-  (label `34`)
-  (label `35`)
-  (label `36`)
-  (label `37`)
-  (label `38`)
-  (label `39`)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `)
-  (` `))
+        (ref `MES` _ `XPDUTL`)@1970..1980
+        (`" >>  End of the Post-Initialization routine ..."`)@1981..2030
+        _)@1970..2031)@1968..2031)@1967..2031
+  (line ` ` (quit _ _)@2033..2034)@2032..2034
+  (line ` `)@2035..2036
+  (line ` `)@2038..2039
+  (line ` `)@2041..2042
+  (label `33` _ _)@2090..2093
+  (label `34` _ _)@2122..2125
+  (label `35` _ _)@2144..2147
+  (label `36` _ _)@2181..2184
+  (label `37` _ _)@2222..2225
+  (label `38` _ _)@2261..2264
+  (label `39` _ _)@2302..2305
+  (line ` `)@2334..2335
+  (line ` `)@2337..2338
+  (line ` `)@2340..2341
+  (line ` `)@2343..2344
+  (line ` `)@2401..2402
+  (line ` `)@2460..2461
+  (line ` `)@2515..2516
+  (line ` `)@2564..2565
+  (line ` `)@2595..2596
+  (line ` `)@2616..2617
+  (line ` `)@2652..2653
+  (line ` `)@2692..2693
+  (line ` `)@2730..2731
+  (line ` `)@2770..2771
+  _)@0..2801
