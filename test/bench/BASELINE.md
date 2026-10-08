@@ -15,9 +15,9 @@ without a shell, so the time includes the process start of nexus itself).
 
 | grammar | mean ms | min ms | output lines | output KB |
 |---|---:|---:|---:|---:|
-| mumps | 5.2 | 4.8 | 4693 | 691 |
+| mumps | 6.2 | 5.9 | 6626 | 840 |
 | ruby | 4.3 | 4.1 | 3844 | 421 |
-| rig | 4.9 | 4.8 | 5778 | 509 |
+| rig | 5.2 | 4.9 | 5901 | 547 |
 | zag | 3.8 | 3.5 | 3331 | 324 |
 | slash | 2.6 | 2.5 | 2635 | 139 |
 | nexis | 2.5 | 2.3 | 2566 | 104 |
@@ -38,22 +38,24 @@ Best of 5 rounds, one thread, all input in memory, a fresh parser per file.
 *parse* is lexing + LR parsing + tree building (the raw grammar tree:
 `parseRoutine` for MUMPS, `parseTree` for Rig).
 
-- **mumps**: every routine in `em/misc/vista` (24,704 files, 86.5 MB);
-  22,709 parse to the end, the rest stop at gaps in the suite's MUMPS
-  grammar (`test/mumps`).
-- **rig**: Rig's behavior tests and examples that parse on their own,
-  listed again and again until the list holds about 4 MB (8,410 small
-  files), from Rig's Zig 0.17 port (`RIG_CORPUS`). The per-file cost of a
-  fresh parser weighs more on these short programs than on VistA's
-  routines. The Rig rows were recorded with Rig's grammar of this release
-  under a light load (about 3); the other rows on an idle machine.
+- **mumps**: every routine in `em/misc/vista` (24,704 files, 86.5 MB),
+  parsed with em's schema-mode grammar (`test/mumps`); 24,603 parse to
+  the end, the rest stop at gaps in the grammar.
+- **rig**: Rig's behavior tests and examples that parse on their own
+  (`~/Data/Code/rig`), listed again and again until the list holds about
+  4 MB (7,098 small files). The per-file cost of a fresh parser weighs more
+  on these short programs than on VistA's routines.
+
+The MUMPS and Rig rows were recorded with the grammars `test/mumps` and
+`test/rig` hold, under a light load (about 4); the other rows on an idle
+machine.
 
 | input | files | MB | tokens | lex ms | lex MB/s | parse ms | parse MB/s | parsed ok |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| mumps | 24704 | 86.5 | 32,130,205 | 249.2 | 347.2 | 1323.3 | 65.4 | 22709 |
-| rig | 8410 | 4.1 | 1,186,180 | 19.9 | 203.5 | 83.4 | 48.6 | 8410 |
+| mumps | 24704 | 86.5 | 35,634,361 | 205.0 | 422.0 | 1329.2 | 65.1 | 24603 |
+| rig | 7098 | 3.9 | 1,193,829 | 21.3 | 182.7 | 85.5 | 45.5 | 7098 |
 
-Parsing costs about 5x lexing on MUMPS (24 M tokens/s end to end), so
+Parsing costs about 6.5x lexing on MUMPS (27 M tokens/s end to end), so
 parser-side work (tables, reductions, tree building) dominates.
 
 ## Reading a difference
