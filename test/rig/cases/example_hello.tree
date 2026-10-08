@@ -1,1 +1,2 @@
-(module (sub `main` _ _ _ (block (call `print` `"hello, rig"`)@51..70)@51..95)@40..95)@40..95
+(module
+  (sub `main` _ ()@48..50 _ (block (call `print` `"hello, rig"`)@53..72)@53..97)@40..97)@40..97

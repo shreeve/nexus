@@ -32,7 +32,7 @@ fun label(t: String) -> String from static
   else
     "short"
 
-fun mk -> Vec[Int]
+fun mk() -> Vec[Int]
   v: Vec[Int] = Vec()
   !v.push(9)
   v
@@ -40,7 +40,7 @@ fun mk -> Vec[Int]
 fun span(from: Int, to: Int) -> Int
   to - from
 
-sub main
+sub main()
   x: Vec[Int] = Vec()
   y: Vec[Int] = Vec()
   !x.push(1)

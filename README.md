@@ -176,14 +176,14 @@ naming the rule.
 
 The grammars in `test/` generate with this checkout, compile, and parse
 their cases in `./test/run`, trees compared with goldens. The Rig grammar
-and its cases are those of Rig v0.2.0, the MUMPS grammar is em's, and the
+and its cases are those of Rig's main, the MUMPS grammar is em's, and the
 Nexis grammar is a snapshot taken from nexis, older than the grammar it
 builds with (AGENTS.md, "Downstream"). The suite's
 `tools/readme` test checks every number in this table.
 
 | Language | Grammar | Lines | LR states | Declared conflicts (cells) | Suite cases | Mode |
 |---|---|---:|---:|---:|---:|---|
-| Rig | `test/rig/rig.grammar` | 909 | 736 | 0 | 138 | schema |
+| Rig | `test/rig/rig.grammar` | 913 | 736 | 0 | 138 | schema |
 | MUMPS | `test/mumps/mumps.grammar` | 1089 | 943 | 8 (12) | 62 | schema |
 | Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 | plain |
 | Zag | `test/zag/zag.grammar` | 511 | 465 | 19 (22) | 5 (+ 5 with `--spans`) | plain |

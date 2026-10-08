@@ -21,7 +21,7 @@ sub main()
   print(a - b)
   y = -x              # negation
   print(y)
-  print(@sizeOf(Wrap)) # builtin call
+  print(@size(Wrap)) # builtin call
   s = *Wrap(v: 10)     # share
   t = +s              # clone
   u = <s              # move

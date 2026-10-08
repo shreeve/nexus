@@ -2,6 +2,7 @@
 # read view, and through a `?self` method of a struct holding one. A
 # value holding a Cell is unique: a by-value parameter owns the value
 # moved into it, which it may lend out.
+# release
 
 struct Counter
   hits: Cell[Int]

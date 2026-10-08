@@ -23,12 +23,12 @@
       (call `print` (- `a` `b`)@469..474)@463..475
       (set _ `y` _ (neg `x`)@482..484)@478..484
       (call `print` `y`)@511..519
-      (call `print` (builtin `sizeOf` `Wrap`)@528..541)@522..542
-      (set _ `s` _ (share (call `Wrap` (kwarg `v` `10`)@570..575)@565..576)@564..576)@560..576
-      (set _ `t` _ (clone `s`)@595..597)@591..597
-      (set _ `u` _ (move `s`)@625..627)@621..627
-      (call `print` (member `u` `v`)@656..659)@650..660
-      (drop `u`)@663..665
-      (call `print` (member `t` `v`)@708..711)@702..712
-      (set _ `box` _ (call `Wrap` (kwarg `v` `1`)@726..730)@721..731)@715..731
-      (call `print` (call `show` (read `box`)@745..749)@740..750)@734..751)@379..825)@366..825)@311..825
+      (call `print` (builtin `size` `Wrap`)@528..539)@522..540
+      (set _ `s` _ (share (call `Wrap` (kwarg `v` `10`)@568..573)@563..574)@562..574)@558..574
+      (set _ `t` _ (clone `s`)@593..595)@589..595
+      (set _ `u` _ (move `s`)@623..625)@619..625
+      (call `print` (member `u` `v`)@654..657)@648..658
+      (drop `u`)@661..663
+      (call `print` (member `t` `v`)@706..709)@700..710
+      (set _ `box` _ (call `Wrap` (kwarg `v` `1`)@724..728)@719..729)@713..729
+      (call `print` (call `show` (read `box`)@743..747)@738..748)@732..749)@379..823)@366..823)@311..823

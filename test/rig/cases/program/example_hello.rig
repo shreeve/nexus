@@ -1,6 +1,6 @@
 # The smallest meaningful Rig program.
 
-sub main
+sub main()
   print("hello, rig")
 
 # expect:

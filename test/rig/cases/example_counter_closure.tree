@@ -23,27 +23,27 @@
   (sub
     `main`
     _
-    _
+    ()@436..438
     _
     (block
       (set
         _
         `count`
-        (shared (generic_inst `Cell` `Int`)@447..456)@446..456
-        (share (call `Cell` `0`)@460..467)@459..467)@439..467
+        (shared (generic_inst `Cell` `Int`)@449..458)@448..458
+        (share (call `Cell` `0`)@462..469)@461..469)@441..469
       (set
         _
         `bump`
         _
         (lambda
           _
-          ((cap_clone `count`)@478..484)@477..485
+          ((cap_clone `count`)@480..486)@479..487
           (block
             (call
-              (member `count` `set`)@486..495
-              (+ (call (member `count` `get`)@496..505)@496..507 `1`)@496..511)@486..512)@486..512)@477..512)@470..512
-      (call `bump`)@515..521
-      (call `bump`)@524..530
-      (call `print` (call (member `count` `get`)@539..548)@539..550)@533..551
-      (set _ `next` _ (call `make_counter` `100`)@562..579)@555..579
-      (call `print` (call `next` `1`)@588..595 (call `next` `10`)@597..605)@582..606)@439..632)@428..632)@275..632
+              (member `count` `set`)@488..497
+              (+ (call (member `count` `get`)@498..507)@498..509 `1`)@498..513)@488..514)@488..514)@479..514)@472..514
+      (call `bump`)@517..523
+      (call `bump`)@526..532
+      (call `print` (call (member `count` `get`)@541..550)@541..552)@535..553
+      (set _ `next` _ (call `make_counter` `100`)@564..581)@557..581
+      (call `print` (call `next` `1`)@590..597 (call `next` `10`)@599..607)@584..608)@441..634)@428..634)@275..634

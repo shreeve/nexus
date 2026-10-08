@@ -9,7 +9,7 @@ fun make_counter(start: Int) -> *fun(Int) -> Int
     count.set(count.get() + step)
     count.get()
 
-sub main
+sub main()
   count: *Cell[Int] = *Cell(0)
   bump = |+count| count.set(count.get() + 1)
   bump()

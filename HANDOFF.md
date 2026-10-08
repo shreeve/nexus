@@ -32,7 +32,7 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    CHANGELOG "Migrating":
    - **nexis:** delete its `Tag` enum, the API renames.
    Rig and em have moved: `test/rig` holds the grammar, lang module and
-   test programs of Rig v0.2.0, and `test/mumps` em's grammar and lang
+   test programs of Rig's main, and `test/mumps` em's grammar and lang
    module. When nexis lands, re-sync its copy here (`test/nexis`;
    [AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep `./test/run`
    green: until then the suite tests an older nexis grammar than the one
