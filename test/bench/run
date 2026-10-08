@@ -59,7 +59,6 @@ GRAMMARS=(
     "mumps test/mumps/mumps.grammar"
     "ruby test/ruby/ruby.grammar"
     "rig test/rig/rig.grammar"
-    "zag test/zag/zag.grammar"
     "slash test/slash/slash.grammar"
     "nexis test/nexis/nexis.grammar"
     "nexus nexus.grammar"

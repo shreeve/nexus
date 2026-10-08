@@ -1,0 +1,20 @@
+(program
+  stmts
+  (if
+    (> `a` `1`)@3..8
+    (stmts (send _ `puts` (args `"big"`)@16..21)@11..21)@11..21
+    (if
+      (== `a` `1`)@28..34
+      (stmts (send _ `puts` (args `"one"`)@42..47)@37..47)@37..47
+      (stmts (send _ `puts` (args `"small"`)@60..67)@55..67)@55..67)@22..68)@0..71
+  (unless `done` (stmts `work`)@86..90 ()@91..91)@72..94
+  (while (< `i` `10`)@101..107 (stmts (+= `i` `1`)@110..116)@110..116)@95..120
+  (until (send `queue` `empty?`)@127..139 (stmts (send `queue` `pop`)@142..151)@142..151)@121..155
+  (for `x` (array `1` `2` `3`)@165..174 (stmts (+= `total` `x`)@177..187)@177..187)@156..191
+  (case
+    `value`
+    (when (stmts `:low`)@218..222 `1` `2`)@203..223
+    (when (stmts `:mid`)@235..239 (.. `3` `5`)@228..232)@223..240
+    (stmts `:high`)@247..252)@192..256
+  (if `ready` (assign `x` `1`)@257..262)@257..271
+  (unless `failed` (assign `y` `2`)@272..277)@272..291)@0..292

@@ -35,9 +35,9 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    ([AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
    `./test/run` green. Rig's revamp (a contextual `unique`, `const` and
    `new` forms) is the next change on its way.
-2. **Slash, Zag and nanoruby onto this Nexus.** Their repositories check in
+2. **Slash and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
-   `test/slash`, `test/zag` and `test/ruby` here. `test/diff` compares the
+   `test/slash` and `test/ruby` here. `test/diff` compares the
    trees of a 0.10.3 build (from tag `v0.10.3`) with this checkout's.
 3. **Deferred by the owner until em's grammar work is done:** the
    schemaless tree rules for a leading `role:N` head (named only in

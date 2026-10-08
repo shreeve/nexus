@@ -5,7 +5,7 @@
 #   ./test/run [options] [filter...]
 #
 #   filter      only run tests whose id contains one of these substrings;
-#               ids look like mumps/label_dots, rig/known/..., gen/zag,
+#               ids look like mumps/label_dots, rig/known/..., gen/ruby,
 #               sexp/nexus, determinism/ruby, adverse/no_arrow,
 #               known/multi_alt_start, unit/mumps, unit/nexus, bootstrap,
 #               tools/diff, docs/GRAMMAR/L42-calc (see test/README.md)

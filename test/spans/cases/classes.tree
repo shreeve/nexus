@@ -1,0 +1,35 @@
+(program
+  stmts
+  (module
+    `Geometry`
+    (stmts
+      (class
+        `Point`
+        _
+        (stmts
+          (send _ `attr_reader` (args `:x` `:y`)@46..52)@34..52
+          (def
+            `initialize`
+            (params `x` `y`)@72..78
+            (stmts (assign `@x` `x`)@85..91 (assign `@y` `y`)@98..104)@85..104
+            ()@109..109
+            ()@109..109)@58..112
+          (def
+            `add`
+            (params `other`)@125..132
+            (stmts
+              (send
+                `Point`
+                `new`
+                (args
+                  (+ `@x` (send `other` `x`)@154..161)@149..161
+                  (+ `@y` (send `other` `y`)@168..175)@163..175)@148..176)@139..176)@139..176
+            ()@181..181
+            ()@181..181)@118..184
+          (defs
+            (self)@194..198
+            `origin`
+            _
+            (stmts (send _ `new` (args `0` `0`)@215..221)@212..221)@212..221
+            ()@226..226
+            ()@226..226)@190..229)@34..229)@18..235)@18..235)@0..239)@0..240

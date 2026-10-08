@@ -18,7 +18,6 @@ without a shell, so the time includes the process start of nexus itself).
 | mumps | 6.2 | 5.9 | 6626 | 840 |
 | ruby | 4.3 | 4.1 | 3844 | 421 |
 | rig | 5.2 | 4.9 | 5901 | 547 |
-| zag | 3.8 | 3.5 | 3331 | 324 |
 | slash | 2.6 | 2.5 | 2635 | 139 |
 | nexis | 2.5 | 2.3 | 2566 | 104 |
 | nexus | 3.1 | 2.9 | 3931 | 265 |

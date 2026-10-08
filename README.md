@@ -184,8 +184,7 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 |---|---|---:|---:|---:|---:|---|
 | Rig | `test/rig/rig.grammar` | 913 | 736 | 0 | 138 | schema |
 | MUMPS | `test/mumps/mumps.grammar` | 1089 | 943 | 8 (12) | 62 | schema |
-| Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 | plain |
-| Zag | `test/zag/zag.grammar` | 511 | 465 | 19 (22) | 5 (+ 5 with `--spans`) | plain |
+| Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
 | Slash | `test/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |
 | Nexis (a Clojure reader) | `test/nexis/nexis.grammar` | 98 | 63 | 0 | 27 | plain |
 | Nexus grammar files | `nexus.grammar` | 554 | 359 | 0 | 11 + every grammar in the suite | schema |

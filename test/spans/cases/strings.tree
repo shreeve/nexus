@@ -1,0 +1,14 @@
+(program
+  stmts
+  (assign `a` `'single'`)@0..12
+  (assign
+    `b`
+    (dstr
+      `double `
+      (evstr (stmts `a`)@27..28)@25..29
+      ` interp `
+      (evstr (stmts (+ `1` `2`)@39..44)@39..44)@37..45)@17..46)@13..46
+  (assign `c` `:sym`)@47..55
+  (assign `d` `%w[one two three]`)@56..77
+  (assign `e` `3.14`)@78..86
+  (assign `f` `1_000`)@87..96)@0..97

@@ -1,0 +1,30 @@
+(program
+  stmts
+  (send
+    (array `1` `2` `3`)@0..9
+    `each`
+    _
+    (block
+      (params `n`)@18..21
+      (stmts (send _ `puts` (args (* `n` `2`)@29..34)@28..35)@24..35)@24..35)@15..39)@0..39
+  (send `list` `map` _ (block (params `x`)@51..54 (stmts (+ `x` `1`)@55..60)@55..60)@49..62)@40..62
+  (assign
+    `h`
+    (hash
+      (pair `a` `1`)@69..73
+      (pair `"b"` `2`)@75..83
+      (pair `c` (array `3` `4`)@88..94)@85..94)@67..96)@63..96
+  (assign
+    `sq`
+    (lambda (params `x`)@104..107 (block _ (stmts (* `x` `x`)@110..115)@110..115)@108..117)@102..117)@97..117
+  (send
+    `File`
+    `open`
+    (args `path`)@127..133
+    (block (params `f`)@136..139 (stmts (send `f` `read`)@140..146)@140..146)@134..148)@118..148
+  (def
+    `run`
+    (params (restarg `args`)@157..162 (blockarg `blk`)@164..168)@156..169
+    (stmts (yield (args `1` `2`)@178..182)@172..182)@172..182
+    ()@183..183
+    ()@183..183)@149..186)@0..187

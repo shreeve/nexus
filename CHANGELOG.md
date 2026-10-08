@@ -335,18 +335,14 @@ Per repository:
   in `reader.zig`) locate a parse error with `lastError().?.span`, not
   `current`. Its scanner keeps its own long-token encoding through
   `aux` (`srcLen`).
-- **slash, zag, nanoruby** check in Nexus 0.10.3 parsers. Porting one of
+- **slash, nanoruby** check in Nexus 0.10.3 parsers. Porting one of
   them from 0.10.3 starts from this repository's port of its grammar
-  and lang module (`test/slash`, `test/zag`, `test/ruby`), the reference
+  and lang module (`test/slash`, `test/ruby`), the reference
   that carries every change below; each item says what changed in that
   port since 1.1.0.
 - **slash** (`test/slash`): delete `Tag`, `Lexer.text` and `Lexer.reset`;
   the heredoc, string-definition and UTF-8 identifier and variable tokens
   use `makeToken`.
-- **zag** (`test/zag`): in `@conflicts`, `shift L(arg).tail → ε 2` becomes
-  `shift call → call L(arg) 1`, and `shift L(expr).tail → ε 2` becomes
-  `shift L(expr) → expr 2`. Delete `Tag`, `Lexer.text` and `Lexer.reset`;
-  `matchRules()` → `next()` (5 sites).
 - **nanoruby** (`test/ruby`): delete `Tag`, `Lexer.text` and
   `Lexer.reset`; `matchRules()` → `next()` (4 sites); symbols, `%w`/`%i`
   arrays, number extension and string segments use `makeToken`.

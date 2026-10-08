@@ -90,9 +90,9 @@ zig fmt --check build.zig src/*.zig src/{codegen,lexgen,lr} src/frontend/{lang,l
 Rig, em (MUMPS) and nexis check in parsers that Nexus generates
 (`zig build parser` in each, using `../nexus/bin/nexus`). A change to
 generated code reaches them when they regenerate; their suites are the
-final check. Slash, Zag and nanoruby check in parsers from Nexus 0.10.3;
-their grammars for this Nexus are `test/slash/slash.grammar`,
-`test/zag/zag.grammar` and `test/ruby/ruby.grammar` here. `test/rig`,
+final check. Slash and nanoruby check in parsers from Nexus 0.10.3;
+their grammars for this Nexus are `test/slash/slash.grammar` and
+`test/ruby/ruby.grammar` here. `test/rig`,
 `test/mumps` and `test/nexis` hold the grammar and lang module of Rig, em
 and nexis as their main branches have them, copied verbatim, with case
 programs copied from their tests and examples; each `test.conf` names the

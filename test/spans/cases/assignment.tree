@@ -1,0 +1,11 @@
+(program
+  stmts
+  (masgn (mlhs `a` `b`)@0..4 (mrhs `1` `2`)@7..11)@0..11
+  (||= `x` `5`)@12..19
+  (&&= `y` (+ `y` `1`)@26..31)@20..31
+  (assign (attrasgn `obj` `attr`)@32..40 `3`)@32..44
+  (assign
+    (indexasgn `arr` (args `0`)@49..50)@45..51
+    (** (index `arr` (args `1`)@58..59)@54..60 `2`)@54..65)@45..65
+  (assign `z` (if `cond` `1` `2`)@70..82)@66..82
+  (assign `$glob` `@@cvar`)@83..97)@0..98

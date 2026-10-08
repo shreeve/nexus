@@ -1,0 +1,11 @@
+(program
+  stmts
+  (begin
+    (stmts `risky`)@8..13
+    (rescue
+      (`ArgumentError`)@21..34
+      `e`
+      (stmts (send _ `puts` (args (send `e` `message`)@47..56)@47..56)@42..56)@42..56
+      (rescue _ _ (stmts (retry)@66..71)@66..71)@57..72)@14..72
+    (ensure (stmts `cleanup`)@81..88)@72..89)@0..92
+  (rescue (assign `x` `risky`)@93..102 `0`)@93..111)@0..112
