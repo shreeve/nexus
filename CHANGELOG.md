@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Faster generated parsers, with the same trees and the same API.
+  Downstream repositories need no edits; regenerate the parsers to get
+  the speed.
+  - An `@infix` table is generated folded when it parses the same as its
+    chain: one rule per operator, decided by precedence in the parse
+    table, so an operand no longer reduces once per level. Conflict
+    reports and `@conflicts` still name the levels (`infix("+" "-")`).
+    Rule and state numbers of such a parser change, and so may the
+    expected list of an error inside an expression.
+
 ## 2.0.0 — 2026-10-03
 
 Changes marked **Breaking** need edits in a grammar or a lang module;

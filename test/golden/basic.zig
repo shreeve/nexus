@@ -14,6 +14,7 @@ pub const TokenCat = enum(u8) {
     @"star",
     @"slash",
     @"power",
+    @"eqeq",
     @"lparen",
     @"rparen",
     @"newline",
@@ -110,10 +111,10 @@ pub const BaseLexer = struct {
             0 => {
                 if (p < n and cls0[src[p]]) {
                     p += 1;
-                    continue :dfa 10;
+                    continue :dfa 11;
                 }
                 if (p < n) switch (src[p]) {
-                    0x00...0x08, 0x0B...0x1F, '!'...'\'', ',', '.', ':'...'@', '['...'^', '`', '{'...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    0x00...0x08, 0x0B...0x1F, '!'...'\'', ',', '.', ':'...'<', '>'...'@', '['...'^', '`', '{'...0xFF => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '\n' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"newline", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '(' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"lparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     ')' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"rparen", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
@@ -122,6 +123,7 @@ pub const BaseLexer = struct {
                     '-' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"minus", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '/' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"slash", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
                     '0'...'9' => { p += 1; continue :dfa 9; },
+                    '=' => { p += 1; continue :dfa 10; },
                     else => {},
                 };
                 break :dfa;
@@ -140,6 +142,14 @@ pub const BaseLexer = struct {
                 return makeToken(.@"integer", pre, start, p);
             },
             10 => {
+                if (p < n) switch (src[p]) {
+                    '=' => { p += 1; self.pos = @intCast(p); return .{ .cat = .@"eqeq", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }; },
+                    else => {},
+                };
+                self.pos = @intCast(p);
+                return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) };
+            },
+            11 => {
                 while (p < n and cls1[src[p]]) p += 1;
                 self.pos = @intCast(p);
                 return makeToken(.@"ident", pre, start, p);
@@ -161,6 +171,7 @@ pub const Lexer = BaseLexer;
 pub const Tag = enum(u8) {
     @"module",
     @"neg",
+    @"==",
     @"+",
     @"-",
     @"*",
@@ -1684,7 +1695,7 @@ const hasTrivia = false;
 const hasRepair = false;
 /// `@as` groups the promotable token may become (see `promote`).
 const asGroups = 0;
-const numSymbols = 26;
+const numSymbols = 24;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
@@ -1697,10 +1708,11 @@ fn tokenToSymbol(token: Token) u16 {
         .@"minus" => 10,
         .@"lparen" => 13,
         .@"rparen" => 14,
-        .@"plus" => 22,
-        .@"star" => 23,
-        .@"slash" => 24,
-        .@"power" => 25,
+        .@"plus" => 20,
+        .@"star" => 21,
+        .@"slash" => 22,
+        .@"eqeq" => 19,
+        .@"power" => 23,
         else => 2, // error
     };
 }
@@ -1715,58 +1727,58 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         1 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
         2 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
         5 => self.buildOf(&.{ .{ .tag = .@"neg" }, .{ .elem = 1 } }, pass, .tree, true),
-        12 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        13 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        12 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"==" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        13 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        14 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
         15 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         16 => self.buildOf(&.{ .{ .tag = .@"/" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
-        18 => self.buildOf(&.{ .{ .tag = .@"**" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
+        17 => self.buildOf(&.{ .{ .tag = .@"**" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         else => unreachable,
     };
 }
 
-const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 6, 6, 7, 7, 7, 16, 18, 19, 19, 19, 20, 20, 20, 21, 21, 9 };
-const ruleLen = [_]u8{ 1, 1, 3, 2, 1, 2, 1, 1, 1, 3, 3, 3, 3, 3, 1, 3, 3, 1, 3, 1, 1 };
+const ruleLhs = [_]u16{ 3, 5, 5, 5, 4, 6, 6, 7, 7, 7, 16, 18, 9, 9, 9, 9, 9, 9, 9 };
+const ruleLen = [_]u8{ 1, 1, 3, 2, 1, 2, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1 };
 /// A rule's value: 0 = executeAction builds it, 1 = nil, n = element n - 2.
-const ruleValue = [_]u8{ 0, 0, 0, 2, 2, 0, 2, 2, 2, 3, 0, 0, 0, 0, 2, 0, 0, 2, 0, 2, 2 };
+const ruleValue = [_]u8{ 0, 0, 0, 2, 2, 0, 2, 2, 2, 3, 0, 0, 0, 0, 0, 0, 0, 0, 2 };
 
-// Parse table: 35 states x 26 symbols. 0 = error, > 0 = shift or
+// Parse table: 34 states x 24 symbols. 0 = error, > 0 = shift or
 // goto, -1 = accept, <= -2 = reduce rule (-a - 2).
 const parseTable = [_][numSymbols]i16{
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0,0,0},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0},
-    .{0,0,0,4,6,5,11,13,0,7,12,14,15,16,0,0,0,0,0,8,9,10,0,0,0,0},
-    .{0,0,0,0,17,0,11,13,0,7,12,14,15,16,0,0,0,0,0,8,9,10,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-2,0,0,0,0,0,0,19,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-3,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-6,0,0,0,0,0,0,-6,0,0,0,0,0,-6,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-22,0,0,0,0,0,0,-22,0,21,0,0,0,-22,0,0,0,0,0,0,0,20,0,0,0},
-    .{0,-16,0,0,0,0,0,0,-16,0,-16,0,0,0,-16,0,0,0,0,0,0,0,-16,22,23,0},
-    .{0,-19,0,0,0,0,0,0,-19,0,-19,0,0,0,-19,0,0,0,0,0,0,0,-19,-19,-19,0},
-    .{0,-21,0,0,0,0,0,0,-21,0,-21,0,0,0,-21,0,0,0,0,0,0,0,-21,-21,-21,24},
-    .{0,0,0,0,0,0,25,13,0,0,12,14,15,16,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-8,0,0,0,0,0,0,-8,0,-8,0,0,0,-8,0,0,0,0,0,0,0,-8,-8,-8,-8},
-    .{0,-9,0,0,0,0,0,0,-9,0,-9,0,0,0,-9,0,0,0,0,0,0,0,-9,-9,-9,-9},
-    .{0,-10,0,0,0,0,0,0,-10,0,-10,0,0,0,-10,0,0,0,0,0,0,0,-10,-10,-10,-10},
-    .{0,0,0,0,26,0,11,13,0,7,12,14,15,16,0,0,0,0,0,8,9,10,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-5,0,0,28,0,11,13,-5,7,12,14,15,16,0,0,0,0,0,8,9,10,0,0,0,0},
-    .{0,0,0,0,0,0,11,13,0,0,12,14,15,16,0,0,0,0,0,0,29,10,0,0,0,0},
-    .{0,0,0,0,0,0,11,13,0,0,12,14,15,16,0,0,0,0,0,0,30,10,0,0,0,0},
-    .{0,0,0,0,0,0,11,13,0,0,12,14,15,16,0,0,0,0,0,0,0,31,0,0,0,0},
-    .{0,0,0,0,0,0,11,13,0,0,12,14,15,16,0,0,0,0,0,0,0,32,0,0,0,0},
-    .{0,0,0,0,0,0,11,13,0,0,12,14,15,16,0,0,0,0,0,0,0,33,0,0,0,0},
-    .{0,-7,0,0,0,0,0,0,-7,0,-7,0,0,0,-7,0,0,0,0,0,0,0,-7,-7,-7,-7},
-    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,34,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-4,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-14,0,0,0,0,0,0,-14,0,-14,0,0,0,-14,0,0,0,0,0,0,0,-14,22,23,0},
-    .{0,-15,0,0,0,0,0,0,-15,0,-15,0,0,0,-15,0,0,0,0,0,0,0,-15,22,23,0},
-    .{0,-17,0,0,0,0,0,0,-17,0,-17,0,0,0,-17,0,0,0,0,0,0,0,-17,-17,-17,0},
-    .{0,-18,0,0,0,0,0,0,-18,0,-18,0,0,0,-18,0,0,0,0,0,0,0,-18,-18,-18,0},
-    .{0,-20,0,0,0,0,0,0,-20,0,-20,0,0,0,-20,0,0,0,0,0,0,0,-20,-20,-20,0},
-    .{0,-11,0,0,0,0,0,0,-11,0,-11,0,0,0,-11,0,0,0,0,0,0,0,-11,-11,-11,-11},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,2,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0},
+    .{0,0,0,4,6,5,8,10,0,7,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,14,0,8,10,0,7,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-2,0,0,0,0,0,0,16,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-3,0,0,0,0,0,0,-3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-6,0,0,0,0,0,0,-6,0,19,0,0,0,-6,0,0,0,0,17,18,20,21,22},
+    .{0,-20,0,0,0,0,0,0,-20,0,-20,0,0,0,-20,0,0,0,0,-20,-20,-20,-20,-20},
+    .{0,0,0,0,0,0,23,10,0,0,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,-8,0,0,0,0,0,0,-8,0,-8,0,0,0,-8,0,0,0,0,-8,-8,-8,-8,-8},
+    .{0,-9,0,0,0,0,0,0,-9,0,-9,0,0,0,-9,0,0,0,0,-9,-9,-9,-9,-9},
+    .{0,-10,0,0,0,0,0,0,-10,0,-10,0,0,0,-10,0,0,0,0,-10,-10,-10,-10,-10},
+    .{0,0,0,0,24,0,8,10,0,7,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-5,0,0,26,0,8,10,-5,7,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,8,10,0,27,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,8,10,0,28,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,8,10,0,29,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,8,10,0,30,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,8,10,0,31,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,0,0,0,0,0,8,10,0,32,9,11,12,13,0,0,0,0,0,0,0,0,0,0},
+    .{0,-7,0,0,0,0,0,0,-7,0,-7,0,0,0,-7,0,0,0,0,-7,-7,-7,-7,-7},
+    .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,33,0,0,0,0,0,0,0,0,0},
+    .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-4,0,0,0,0,0,0,-4,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-14,0,0,0,0,0,0,-14,0,19,0,0,0,-14,0,0,0,0,0,18,20,21,22},
+    .{0,-15,0,0,0,0,0,0,-15,0,-15,0,0,0,-15,0,0,0,0,-15,-15,20,21,22},
+    .{0,-16,0,0,0,0,0,0,-16,0,-16,0,0,0,-16,0,0,0,0,-16,-16,20,21,22},
+    .{0,-17,0,0,0,0,0,0,-17,0,-17,0,0,0,-17,0,0,0,0,-17,-17,-17,-17,22},
+    .{0,-18,0,0,0,0,0,0,-18,0,-18,0,0,0,-18,0,0,0,0,-18,-18,-18,-18,22},
+    .{0,-19,0,0,0,0,0,0,-19,0,-19,0,0,0,-19,0,0,0,0,-19,-19,-19,-19,22},
+    .{0,-11,0,0,0,0,0,0,-11,0,-11,0,0,0,-11,0,0,0,0,-11,-11,-11,-11,-11},
 };
 
 // X "c" excludes: shift the hinted token instead of reducing when it
@@ -1793,18 +1805,18 @@ fn startMarker(start: Start) u16 {
 /// Expected symbols per state: state s expects list i = expectedOf[s],
 /// expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]].
 const expectedSymbols = [_]u16{
-    10, 11, 12, 13, 1, 1, 8, 1, 8, 14, 1, 8, 10, 14, 22, 1, 8, 10, 14, 22, 23, 24, 1, 8,
-    10, 14, 22, 23, 24, 25, 1, 8, 10, 11, 12, 13, 14,
+    10, 11, 12, 13, 1, 1, 8, 1, 8, 10, 14, 19, 20, 21, 22, 23, 1, 8, 10, 11, 12, 13, 14, 1,
+    8, 10, 14, 20, 21, 22, 23,
 };
 const expectedOffsets = [_]u32{
-    0, 0, 4, 5, 7, 10, 15, 22, 30, 36, 37,
+    0, 0, 4, 5, 7, 16, 22, 23, 31,
 };
 const expectedOf = [_]u16{
-    0, 0, 1, 1, 2, 3, 3, 4, 5, 6, 6, 7, 1, 7, 7, 7, 1, 2, 2, 8, 1, 1, 1, 1,
-    1, 7, 9, 2, 3, 6, 6, 6, 6, 6, 7,
+    0, 0, 1, 1, 2, 3, 3, 4, 4, 1, 4, 4, 4, 1, 2, 2, 5, 1, 1, 1, 1, 1, 1, 4,
+    6, 2, 3, 7, 4, 4, 4, 4, 4, 4,
 };
 /// The most symbols a state expects: room for `BaseParser.expectedNames`.
-pub const maxExpected = 8;
+pub const maxExpected = 9;
 
 fn symbolName(sym: u16) []const u8 {
     return switch (sym) {
@@ -1815,10 +1827,11 @@ fn symbolName(sym: u16) []const u8 {
         12 => "integer",
         13 => "\"(\"",
         14 => "\")\"",
-        22 => "\"+\"",
-        23 => "\"*\"",
-        24 => "\"/\"",
-        25 => "\"**\"",
+        19 => "\"==\"",
+        20 => "\"+\"",
+        21 => "\"*\"",
+        22 => "\"/\"",
+        23 => "\"**\"",
         else => "",
     };
 }

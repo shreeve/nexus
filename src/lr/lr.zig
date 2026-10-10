@@ -82,6 +82,68 @@ pub fn run(g: *Grammar, opts: Options) Error!Result {
     return .{ .automaton = auto, .table = tbl };
 }
 
+/// Whether the `@infix` table `decl` of the checked chain grammar `g`
+/// (table `tbl`) parses the same when folded (`expand.Options.foldInfix`):
+/// each level has one associativity, no operator repeats, and no conflict
+/// involves a rule of the chain. An operator that can also follow a whole
+/// `infix` from outside the table is such a conflict (the chain both
+/// reduces an operand to the operator's level and shifts the operator),
+/// so every operator after an operand belongs to the table's own
+/// structure, which precedence decides as the chain does. (A level mixing
+/// `none` with `left` is conflict-free as a chain, `a n b l c` parsing and
+/// `a l b n c` not, which no precedence order reproduces.)
+pub fn foldable(g: *const Grammar, tbl: *const table.Table, decl: grammar.InfixDecl) bool {
+    for (decl.ops, 0..) |op, i| for (decl.ops[0..i]) |o| {
+        if (o.prec == op.prec and o.assoc != op.assoc) return false;
+        if (std.mem.eql(u8, o.op, op.op)) return false;
+    };
+    const infixId = g.getSymbol("infix") orelse return false;
+    for (tbl.conflictList) |c| {
+        if (isChainRule(g, infixId, c.rule) or (c.kind == .reduce and isChainRule(g, infixId, c.over))) return false;
+    }
+    return true;
+}
+
+/// A rule of the `@infix` chain: its lhs is `infix` or a level.
+fn isChainRule(g: *const Grammar, infixId: u16, rule: u16) bool {
+    const lhs = g.rules.items[rule].lhs;
+    return lhs == infixId or std.mem.startsWith(u8, g.symbols.items[lhs].name, "infix(");
+}
+
+/// The automaton and table of `folded`, the folded form of the checked
+/// grammar `chain` (table `chainTbl`, which `foldable` accepts), or null
+/// when they differ in anything but the `@infix` table: its conflicts
+/// (by rule text and cell count), its `X "c"` hints used, or a reduce
+/// loop.
+pub fn runFolded(folded: *Grammar, chain: *const Grammar, chainTbl: *const table.Table) Error!?Result {
+    const a = folded.allocator;
+    const costs = try repair.insertCosts(a, folded);
+    const auto = automaton.build(folded) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.TooManyStates => return null,
+    };
+    const la = try lookahead.compute(folded, &auto, costs);
+    const tbl = try table.build(folded, &auto, la);
+    if (try emptyLoop(a, folded, &tbl) != null) return null;
+    if (tbl.hints.len != chainTbl.hints.len) return null;
+    for (tbl.hints, chainTbl.hints) |x, y| if (x.used != y.used) return null;
+    const mine = try conflicts.entries(a, &tbl);
+    const theirs = try conflicts.entries(a, chainTbl);
+    if (mine.len != theirs.len) return null;
+    for (mine, theirs) |x, y| {
+        if (x.kind != y.kind or x.count != y.count) return null;
+        if (!try sameRule(a, folded, x.rule, chain, y.rule)) return null;
+        if (x.kind == .reduce and !try sameRule(a, folded, x.over, chain, y.over)) return null;
+    }
+    return .{ .automaton = auto, .table = tbl };
+}
+
+fn sameRule(a: Allocator, g1: *const Grammar, r1: u16, g2: *const Grammar, r2: u16) Allocator.Error!bool {
+    const x = conflicts.ruleText(a, g1, r1) catch return error.OutOfMemory;
+    const y = conflicts.ruleText(a, g2, r2) catch return error.OutOfMemory;
+    return std.mem.eql(u8, x, y);
+}
+
 /// The unproductive nonterminals to report (those that derive no finite
 /// input: `costs` infinite), ascending: the members of each bottom strongly
 /// connected component of "a rule of A uses B" among unproductive

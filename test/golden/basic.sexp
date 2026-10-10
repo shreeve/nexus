@@ -1,11 +1,12 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `integer` `ident` `plus` `minus` `star` `slash` `power` `lparen` `rparen` `newline` `eof` `err`)
+  (tokens `tokens` `integer` `ident` `plus` `minus` `star` `slash` `power` `eqeq` `lparen` `rparen` `newline` `eof` `err`)
   (lex_rule `'+'` _ `plus`)
   (lex_rule `'-'` _ `minus`)
   (lex_rule `'*'` _ `star`)
   (lex_rule `'/'` _ `slash`)
   (lex_rule `"**"` _ `power`)
+  (lex_rule `"=="` _ `eqeq`)
   (lex_rule `'('` _ `lparen`)
   (lex_rule `')'` _ `rparen`)
   (lex_rule `'\\n'` _ `newline`)
@@ -109,6 +110,8 @@
       _))
   (infix
     `unary`
+    (level
+      (infix_op `"=="` `none`))
     (level
       (infix_op `"+"` `left`)
       (infix_op `"-"` `left`))

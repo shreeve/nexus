@@ -145,7 +145,8 @@ expander resolves.
   them in place and the parse stack stays flat; their actions keep nils,
   one item per element;
 - `@infix` becomes one rule per precedence level (`infix("+" "-")`) with
-  left, right or no associativity built into the recursion;
+  left, right or no associativity built into the recursion (the chain;
+  see [LR](#lr) for the folded form the parser is generated from);
 - each start symbol `x` gets a marker terminal `x!` and an accept rule
   `$accept_x → x! x $end`; `parseX` pushes the marker first, which selects
   the start symbol without adding conflicts.
@@ -211,6 +212,25 @@ computes each state's expected list (the `@errors`-named rules it waits
 for, then the terminals none of them starts), and `repair.zig` ranks the
 `@repair` insertion candidates per state by class and by the minimum
 number of further tokens the item needs.
+
+Every check runs on the `@infix` chain, which costs the parser one unit
+reduction per level for every operand. When no conflict involves a rule
+of the chain, each level has one associativity and no operator repeats
+(`lr.foldable`), the grammar is expanded again with the table folded:
+`infix → infix op infix` per operator, carrying its level and
+associativity, and `infix → base`. `table.zig` decides a shift of an
+operator against the reduction of one operator rule by precedence, as
+yacc's `%left`, `%right` and `%nonassoc` do (a tighter operator shifts, a
+looser one reduces, the same level goes by its associativity; `none` is
+an error cell, so chains reject). Those cells are not conflicts. An
+operator that could also follow a whole `infix` from outside the table
+would be a conflict of the chain, so every decision precedence makes is
+one the chain makes too; a level mixing `none` with `left` is
+conflict-free as a chain yet has no precedence equivalent, hence the
+associativity condition. `lr.runFolded` builds the folded table and keeps
+it only when its conflicts (by rule text and cell count) and the `X "c"`
+hints it uses match the chain's and it has no reduce loop; the parser, and its rule and
+state numbers, come from the folded grammar, and trees are the chain's.
 
 ### Code generation
 
