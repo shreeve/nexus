@@ -1227,11 +1227,9 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(out.items, id) };
     }
 
-    /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items, use);
+    /// Finish a list allocated at its length and filled.
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+        return self.node(out[0..trimmedLen(out)], use);
     }
 
     /// An item of a list an action builds from its elements alone.
@@ -1871,9 +1869,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
         0 => self.sexpSpread(.prog, pass[1]),
         1 => blk: {
-            var out: std.ArrayList(Sexp) = .empty;
-            out.append(self.allocator(), pass[0]) catch break :blk self.oomNil();
-            break :blk self.finishList(&out, .spread);
+            const out = self.allocItems(1) catch break :blk self.oomNil();
+            out[0] = pass[0];
+            break :blk self.finishItems(out, .spread);
         },
         2 => blk: {
             var out = self.extendList(pass, 0) catch break :blk self.oomNil();
@@ -1985,9 +1983,9 @@ test "a list that reaches the tree keeps its node id as it grows" {
     const items = [_]Sexp{ .{ .src = .{ .pos = 0, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 2, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 4, .len = 1, .id = 0 } } };
     p.reduction = .{ .rule = 1, .start = 0 };
     p.lastEnd = 1;
-    var out: std.ArrayList(Sexp) = .empty;
-    try out.append(p.allocator(), items[0]);
-    try p.pushEntry(4, p.finishList(&out, .tree), 0, 1);
+    const out = try p.allocItems(1);
+    out[0] = items[0];
+    try p.pushEntry(4, p.finishItems(out, .tree), 0, 1);
     for (items[1..], 1..) |item, i| {
         // The reduction `stmts = stmts IDENT → (...1 2)` with the stack
         // holding the list and the new item.
@@ -2012,9 +2010,9 @@ test "a list that reaches the tree keeps its node id as it grows" {
 
     // `(...1 (...2 3))`: an extension nested in another; each list keeps
     // its own id.
-    var out2: std.ArrayList(Sexp) = .empty;
-    try out2.append(p.allocator(), items[1]);
-    try p.pushEntry(4, p.finishList(&out2, .tree), 2, 3);
+    const out2 = try p.allocItems(1);
+    out2[0] = items[1];
+    try p.pushEntry(4, p.finishItems(out2, .tree), 2, 3);
     const pass = p.valueStack.items[0..2];
     const m = pass[1];
     try testing.expectEqual(@as(u32, 2), p.nodeCount());

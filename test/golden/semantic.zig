@@ -1488,11 +1488,9 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(out.items, id) };
     }
 
-    /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items, use);
+    /// Finish a list allocated at its length and filled.
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+        return self.node(out[0..trimmedLen(out)], use);
     }
 
     /// An item of a list an action builds from its elements alone.
@@ -2103,7 +2101,7 @@ fn promote(_: *BaseParser, _: Token) u16 {
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
-        0 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"module" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        0 => blk: { const out = self.allocItems(1 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"module" }; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
         1 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         2 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
         4 => self.buildOf(&.{ .{ .tag = .@"set" }, .nil, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
@@ -2122,7 +2120,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         17 => self.buildOf(&.{ .{ .tag = .@"for" }, .nil, .{ .elem = 1 }, .nil, .{ .elem = 3 }, .{ .elem = 5 } }, pass, .tree, false),
         18 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
         19 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        22 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"call" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        22 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"call" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         23 => self.buildOf(&.{ .{ .tag = .@"swap" }, .{ .elem = 2 }, .{ .elem = 4 }, .{ .elem = 8 }, .{ .elem = 10 } }, pass, .tree, false),
         24 => self.buildOf(&.{ .{ .tag = .@"return" }, .nil }, pass, .tree, false),
         25 => self.buildOf(&.{ .{ .tag = .@"return" }, .{ .elem = 1 } }, pass, .tree, false),
@@ -2134,7 +2132,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         32 => self.buildOf(&.{ .{ .tag = .@"name" }, .{ .elem = 0 } }, pass, .tree, false),
         34 => self.buildOf(&.{ .{ .tag = .@"num" }, .{ .elem = 0 } }, pass, .tree, false),
         35 => self.build(&.{ .{ .tag = .@"neg" }, self.nested(self.buildOf(&.{ .{ .tag = .@"num" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1) }, .tree),
-        37 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"array" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        37 => blk: { const out = self.allocItems(1 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"array" }; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         39 => self.buildOf(&.{ .{ .tag = .@"+" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         40 => self.buildOf(&.{ .{ .tag = .@"-" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         41 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),

@@ -1989,11 +1989,9 @@ pub const BaseParser = struct {
         return .{ .list = List.withId(out.items, id) };
     }
 
-    /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items, use);
+    /// Finish a list allocated at its length and filled.
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+        return self.node(out[0..trimmedLen(out)], use);
     }
 
     /// An item of a list an action builds from its elements alone.
@@ -2348,7 +2346,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
         0 => self.sexpSpread(.@"toks", pass[0]),
         1 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
-        2 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); break :blk self.finishList(&out, .spread); },
+        2 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = pass[0]; n += 1; break :blk self.finishItems(out, .spread); },
         3 => self.buildOf(&.{ .{ .tag = .@"word" }, .{ .elem = 0 } }, pass, .tree, true),
         4 => self.buildOf(&.{ .{ .tag = .@"if" }, .{ .elem = 0 } }, pass, .tree, true),
         5 => self.buildOf(&.{ .{ .tag = .@"num" }, .{ .elem = 0 } }, pass, .tree, true),

@@ -357,12 +357,13 @@ const Emitter = struct {
 
     // --- Shared ------------------------------------------------------------
 
-    /// A labeled block that appends the head and every item to a list.
-    /// A leading `...N` whose N is not used again extends that list in
-    /// place (amortized O(1) growth of left-recursive lists; each reduced
-    /// value is consumed once). Trailing nils are dropped by the runtime
-    /// (keepList/finishList) unless the schema fixes positions or the list
-    /// keeps its nils.
+    /// A labeled block that builds a list with spreads. A leading `...N`
+    /// whose N is not used again extends that list in place (amortized
+    /// O(1) growth of left-recursive lists; each reduced value is consumed
+    /// once). Any other list is allocated once, at its length (the single
+    /// items plus each spread's), and filled. Trailing nils are dropped by
+    /// the runtime (keepList/finishItems) unless the schema fixes
+    /// positions or the list keeps its nils.
     fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         var extend: ?u16 = null;
         if (l.head == .none and l.items.len > 0 and l.items[0].elem == .spread) {
@@ -374,34 +375,36 @@ const Emitter = struct {
         }
         if (extend) |n| {
             try w.print("{s}: {{ var out = self.extendList(pass, {d}) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
-        } else {
-            try w.print("{s}: {{ var out: std.ArrayList(Sexp) = .empty; ", .{label});
-        }
-        if (headValue(l.head)) |_| {
-            try w.writeAll("out.append(self.allocator(), ");
-            try self.headExpr(w, l.head);
-            try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
-        }
-        for (l.items, 0..) |item, i| {
-            if (extend != null and i == 0) continue;
-            switch (item.elem) {
-                .spread => |p| {
-                    const at = index(p);
-                    try w.print("for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} " ++ allocFailed ++ "; ", .{ at, label });
-                },
+            for (l.items[1..]) |item| switch (item.elem) {
+                .spread => |p| try w.print("for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} " ++ allocFailed ++ "; ", .{ index(p), label }),
                 else => {
                     try w.writeAll("out.append(self.allocator(), ");
                     try self.value(w, item.elem);
                     try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
                 },
-            }
-        }
-        if (extend != null) {
+            };
             const keep = if (l.keepNils) "keepListNils" else "keepList";
-            try w.print("break :{s} self.{s}(&out, pass, {d}, {s}); }}", .{ label, keep, index(extend.?), self.listUse(l) });
-        } else {
-            try w.print("break :{s} " ++ listFromOwned ++ "; }}", .{ label, self.listUse(l) });
+            return w.print("break :{s} self.{s}(&out, pass, {d}, {s}); }}", .{ label, keep, index(extend.?), self.listUse(l) });
         }
+        var singles: usize = @intFromBool(headValue(l.head) != null);
+        for (l.items) |item| singles += @intFromBool(item.elem != .spread);
+        try w.print("{s}: {{ const out = self.allocItems({d}", .{ label, singles });
+        for (l.items) |item| if (item.elem == .spread) try w.print(" + " ++ itemsOf ++ ".len", .{index(item.elem.spread)});
+        try w.print(") catch break :{s} " ++ allocFailed ++ "; var n: usize = 0; ", .{label});
+        if (headValue(l.head)) |_| {
+            try w.writeAll("out[n] = ");
+            try self.headExpr(w, l.head);
+            try w.writeAll("; n += 1; ");
+        }
+        for (l.items) |item| switch (item.elem) {
+            .spread => |p| try w.print("@memcpy(out[n..][0.." ++ itemsOf ++ ".len], " ++ itemsOf ++ "); n += " ++ itemsOf ++ ".len; ", .{ index(p), index(p), index(p) }),
+            else => {
+                try w.writeAll("out[n] = ");
+                try self.value(w, item.elem);
+                try w.writeAll("; n += 1; ");
+            },
+        };
+        try w.print("break :{s} " ++ listFromItems ++ "; }}", .{ label, self.listUse(l) });
     }
 
     fn headValue(head: ActionList.Head) ?void {
@@ -541,9 +544,9 @@ fn literalText(allocator: Allocator, name: []const u8) ![]const u8 {
 /// items.
 const listFromSlicePrefix = "self.build(&.{ ";
 const listFromSliceSuffix = " }}, {s})";
-/// The list node holding the items of the ArrayList `out` (format: the
-/// list's `ListUse`).
-const listFromOwned = "self.finishList(&out, {s})";
+/// The list node over the filled items `out` (format: the list's
+/// `ListUse`).
+const listFromItems = "self.finishItems(out, {s})";
 /// `()` (format: its `ListUse`)
 const emptyList = "self.emptyList({s})";
 /// The items of the list in `pass[{d}]` (none for any other value).
