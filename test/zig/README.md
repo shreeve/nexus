@@ -195,15 +195,15 @@ bytes.
 
 | | run 1 | run 2 |
 |---|---:|---:|
-| Nexus lexer (with the `zig.zig` wrapper) | 689.8 MB/s | 696.9 MB/s |
-| `std.zig.Tokenizer` | 702.3 MB/s | 731.4 MB/s |
-| Nexus parse, with `@schema` (typed tree with spans) | 131.4 MB/s | 126.5 MB/s |
-| Nexus parse, without `@schema` (plain tree) | 149.1 MB/s | 145.3 MB/s |
-| `std.zig.Ast.parse` (tokenize and parse) | 385.4 / 397.1 MB/s | 412.3 / 398.5 MB/s |
+| Nexus lexer (with the `zig.zig` wrapper) | 739.5 MB/s | 744.8 MB/s |
+| `std.zig.Tokenizer` | 760.5 MB/s | 751.7 MB/s |
+| Nexus parse, with `@schema` (typed tree with spans) | 149.4 MB/s | 149.5 MB/s |
+| Nexus parse, without `@schema` (plain tree) | 159.3 MB/s | 158.9 MB/s |
+| `std.zig.Ast.parse` (tokenize and parse) | 444.3 / 441.0 MB/s | 443.4 / 440.5 MB/s |
 
-The lexer runs at the tokenizer's speed: 12,805,547 tokens in 102.6 to
-103.6 ms, against 97.7 to 101.8 ms. Parsing takes 2.9 to 3.3 times as
-long as `Ast.parse` with the schema, and 2.7 times without it (the two
+The lexer runs at the tokenizer's speed: 12,805,547 tokens in 96.0 to
+96.7 ms, against 94.0 to 95.1 ms. Parsing takes 3.0 times as long as
+`Ast.parse` with the schema, and 2.8 times without it (the two
 `Ast.parse` figures are its runs beside each). Ast.parse is a
 hand-written recursive descent parser that fills a compact
 struct-of-arrays tree; the Nexus parser is table-driven and builds a
