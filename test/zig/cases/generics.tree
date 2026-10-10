@@ -1,88 +1,146 @@
 (root
+  _
   (fn_decl
-    _
-    _
-    (fn_proto `List` (params (param `comptime` `T` `type`)) _ _ _ _ _ `type`)
+    (fn_proto _ _ _ _ `List` ((param _ `comptime` `T` `type`)@8..24)@8..24 _ _ _ _ _ `type`)@0..30
     (block
       _
       (return
         (container_decl
           _
-          (struct)
-          (container_field _ `items` (ptr_type slice _ () `T`))
-          (container_field _ `len` `usize` _ `0`)
-          (var_decl _ _ _ (var_decl_proto `const` `Self`) (builtin_call `@This`))
+          `struct`
+          _
+          _
+          _
+          (container_field _ _ `items` (ptr_type slice _ _ _ _ _ `T`)@68..71 _ _)@61..71
+          (container_field _ _ `len` `usize` _ `0`)@81..95
+          (var_decl _ _ _ _ _ _ `const` `Self` _ _ _ _ (builtin_call `@This`)@119..126)@106..127
           (fn_decl
-            `pub`
-            _
             (fn_proto
+              _
+              `pub`
+              _
+              _
               `append`
-              (params (param _ `self` (ptr_type one _ () `Self`)) (param _ `item` `T`))
+              ((param _ _ `self` (ptr_type one _ _ _ _ _ `Self`)@157..162)@151..162
+                (param _ _ `item` `T`)@164..171)@151..171
               _
               _
               _
               _
               `!`
-              `void`)
+              `void`)@137..178
             (block
               _
               (assign
                 `=`
-                (array_access (field_access `self` `items`) (field_access `self` `len`))
-                `item`)
-              (assign `+=` (field_access `self` `len`) `1`)))))))
+                (array_access
+                  (field_access `self` `items`)@193..203
+                  (field_access `self` `len`)@204..212)@193..213
+                `item`)@193..221
+              (assign `+=` (field_access `self` `len`)@234..242 `1`)@234..248)@179..258)@137..258)@44..264)@37..264)@31..267)@0..267
   (fn_decl
-    _
-    _
     (fn_proto
+      _
+      _
+      _
+      _
       `max`
-      (params (param _ `a` `anytype`) (param _ `b` (builtin_call `@TypeOf` `a`)))
+      ((param _ _ `a` `anytype`)@276..286
+        (param _ _ `b` (builtin_call `@TypeOf` `a`)@291..301)@288..301)@276..301
       _
       _
       _
       _
       _
-      (builtin_call `@TypeOf` `a`))
-    (block _ (return (if ((binary `>` `a` `b`)) `a` _ `b`))))
+      (builtin_call `@TypeOf` `a`)@303..313)@269..313
+    (block _ (return (if (binary `>` `a` `b`)@331..336 _ `a` _ `b`)@327..346)@320..346)@314..349)@269..349
   (fn_decl
-    _
-    _
     (fn_proto
+      _
+      _
+      _
+      _
       `typed`
-      (params (param `comptime` `n` `usize`) (param `comptime` _ `anytype`))
+      ((param _ `comptime` `n` `usize`)@360..377 (param _ `comptime` _ `anytype`)@379..395)@360..395
       _
       _
       _
       _
       _
-      (array_type `n` _ `u8`))
-    (block _ (return (builtin_call `@splat` `0`))))
-  (var_decl _ _ _ (var_decl_proto `const` `ListU8`) (call `List` `u8`))
+      (array_type `n` _ `u8`)@397..402)@351..402
+    (block _ (return (builtin_call `@splat` `0`)@416..425)@409..425)@403..428)@351..428
+  (var_decl _ _ _ _ _ _ `const` `ListU8` _ _ _ _ (call `List` `u8`)@445..453)@430..454
   (var_decl
     _
     _
     _
-    (var_decl_proto
-      `const`
-      `f`
-      (fn_proto _ (params (param _ _ `u8`)) _ _ _ (callconv (enum_literal `c`)) _ `u8`))
-    `undefined`)
+    _
+    _
+    _
+    `const`
+    `f`
+    (fn_proto
+      _
+      _
+      _
+      _
+      _
+      ((param _ _ _ `u8`)@468..470)@468..470
+      _
+      _
+      _
+      (enum_literal `c`)@481..483
+      _
+      `u8`)@464..487
+    _
+    _
+    _
+    `undefined`)@455..500
   (var_decl
     _
     _
     _
-    (var_decl_proto
-      `const`
-      `g`
-      (ptr_type
-        one
+    _
+    _
+    _
+    `const`
+    `g`
+    (ptr_type
+      one
+      _
+      _
+      _
+      _
+      _
+      (fn_proto
         _
-        (`const`)
-        (fn_proto _ (params (param `comptime` _ `type`) (param _ _ `anytype`)) _ _ _ _ _ `void`)))
-    `undefined`)
+        _
+        _
+        _
+        _
+        ((param _ `comptime` _ `type`)@521..534 (param _ _ _ `anytype`)@536..543)@521..543
+        _
+        _
+        _
+        _
+        _
+        `void`)@517..549
+      `const`)@510..549
+    _
+    _
+    _
+    `undefined`)@501..562
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `anon`)
-    (struct_init (fn_proto _ (params) _ _ _ _ _ `void`))))
+    _
+    _
+    _
+    `const`
+    `anon`
+    _
+    _
+    _
+    _
+    (struct_init (fn_proto _ _ _ _ _ ()@579..581 _ _ _ _ _ `void`)@576..586)@576..588)@563..589)@0..589

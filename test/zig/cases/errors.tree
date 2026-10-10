@@ -1,36 +1,117 @@
 (root
-  (var_decl _ _ _ (var_decl_proto `const` `Error`) (error_set_decl `Bad` `Worse`))
+  _
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `Error`
+    _
+    _
+    _
+    _
+    (error_set_decl (error_name _ `Bad`)@21..24 (error_name _ `Worse`)@26..31)@14..33)@0..34
   (fn_decl
-    _
-    _
-    (fn_proto `mayFail` (params (param _ `x` `u8`)) _ _ _ _ _ (error_union `Error` `u8`))
-    (block _ (if ((binary `==` `x` `0`)) (return (error_value `Bad`))) (return `x`)))
-  (fn_decl
-    _
-    _
-    (fn_proto `handle` (params) _ _ _ _ `!` `void`)
+    (fn_proto
+      _
+      _
+      _
+      _
+      `mayFail`
+      ((param _ _ `x` `u8`)@47..52)@47..52
+      _
+      _
+      _
+      _
+      _
+      (error_union `Error` `u8`)@54..62)@36..62
     (block
       _
-      (var_decl _ _ _ (var_decl_proto `const` `a`) (try (call `mayFail` `1`)))
+      (if (binary `==` `x` `0`)@73..79 _ (return (error_value `Bad`)@88..97)@81..97 _ _)@69..98
+      (return `x`)@103..111)@63..114)@36..114
+  (fn_decl
+    (fn_proto _ _ _ _ `handle` ()@125..127 _ _ _ _ `!` `void`)@116..133
+    (block
+      _
       (var_decl
         _
         _
         _
-        (var_decl_proto `const` `b`)
+        _
+        _
+        _
+        `const`
+        `a`
+        _
+        _
+        _
+        _
+        (try (call `mayFail` `1`)@154..164)@150..164)@140..165
+      (var_decl
+        _
+        _
+        _
+        _
+        _
+        _
+        `const`
+        `b`
+        _
+        _
+        _
+        _
         (catch
-          (call `mayFail` `0`)
+          (call `mayFail` `0`)@180..190
           `err`
           (switch
             _
             `err`
-            (switch_case _ ((error_value `Bad`)) _ `0`)
-            (switch_case _ ((error_value `Worse`)) _ (return `err`)))))
-      (var_decl _ _ _ (var_decl_proto `const` `c`) (catch (call `mayFail` `2`) _ `7`))
-      (errdefer (call (field_access (field_access `std` `log`) `err`) `"failed"` (struct_init)))
-      (defer (block _ (assign `=` `_` `a`)))
-      (var_decl _ _ _ (var_decl_proto `const` `d` (optional_type `u8`)) `null`)
-      (var_decl _ _ _ (var_decl_proto `const` `e`) (binary `orelse` (binary `orelse` `d` `b`) `c`))
-      (var_decl _ _ _ (var_decl_proto `const` `f`) (unwrap_optional `d`))
-      (assign `=` `_` (array_init _ `e` `f`))
-      (catch (call `mayFail` `3`) _ (unreachable_literal))))
-  (var_decl _ _ _ (var_decl_proto `const` `std`) (builtin_call `@import` `"std"`)))
+            (switch_case _ ((error_value `Bad`)@226..235)@226..235 _ _ `0`)@226..240
+            (switch_case
+              _
+              ((error_value `Worse`)@250..261)@250..261
+              _
+              _
+              (return `err`)@265..275)@250..275)@203..282)@180..282)@170..283
+      (var_decl
+        _
+        _
+        _
+        _
+        _
+        _
+        `const`
+        `c`
+        _
+        _
+        _
+        _
+        (catch (call `mayFail` `2`)@298..308 _ `7`)@298..316)@288..317
+      (errdefer
+        (call
+          (field_access (field_access `std` `log`)@331..338 `err`)@331..342
+          `"failed"`
+          (struct_init _)@353..356)@331..357)@322..358
+      (defer (block _ (assign `=` `_` `a`)@379..385)@369..391)@363..391
+      (var_decl _ _ _ _ _ _ `const` `d` (optional_type `u8`)@405..408 _ _ _ `null`)@396..416
+      (var_decl
+        _
+        _
+        _
+        _
+        _
+        _
+        `const`
+        `e`
+        _
+        _
+        _
+        _
+        (binary `orelse` (binary `orelse` `d` `b`)@431..441 `c`)@431..450)@421..451
+      (var_decl _ _ _ _ _ _ `const` `f` _ _ _ _ (unwrap_optional `d`)@466..469)@456..470
+      (assign `=` `_` (array_init _ `e` `f`)@479..488)@475..489
+      (catch (call `mayFail` `3`)@494..504 _ `unreachable`)@494..522)@134..525)@116..525
+  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@539..553)@527..554)@0..554

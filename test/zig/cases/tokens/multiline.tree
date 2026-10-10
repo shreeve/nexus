@@ -1,17 +1,17 @@
 (tokens
-  (keyword_const `const`)
-  (identifier `s`)
-  (equal `=`)
-  (multiline_string_literal_line `\\\\first line`)
-  (multiline_string_literal_line `\\\\  "quoted" \\\\ \\x00 ' // not a comment`)
-  (multiline_string_literal_line `\\\\`)
-  (multiline_string_literal_line `\\\\café`)
-  (semicolon `;`)
-  (keyword_const `const`)
-  (identifier `t`)
-  (equal `=`)
-  (multiline_string_literal_line `\\\\one`)
-  (plus_plus `++`)
-  (multiline_string_literal_line `\\\\two`)
-  (semicolon `;`)
-  (multiline_string_literal_line `\\\\a\\\\b`))
+  (keyword_const `const`)@0..5
+  (identifier `s`)@6..7
+  (equal `=`)@8..9
+  (multiline_string_literal_line `\\\\first line`)@14..26
+  (multiline_string_literal_line `\\\\  "quoted" \\\\ \\x00 ' // not a comment`)@31..70
+  (multiline_string_literal_line `\\\\`)@75..77
+  (multiline_string_literal_line `\\\\café`)@82..89
+  (semicolon `;`)@90..91
+  (keyword_const `const`)@92..97
+  (identifier `t`)@98..99
+  (equal `=`)@100..101
+  (multiline_string_literal_line `\\\\one`)@102..107
+  (plus_plus `++`)@108..110
+  (multiline_string_literal_line `\\\\two`)@111..116
+  (semicolon `;`)@118..119
+  (multiline_string_literal_line `\\\\a\\\\b`)@120..126)@0..126

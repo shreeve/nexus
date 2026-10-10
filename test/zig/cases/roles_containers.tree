@@ -1,0 +1,59 @@
+(root
+  (`//! Containers: the layout, the kind, \`union(enum)\`'s \`enum\`, the argument,`
+    `//! the container doc comments (\`doc\`), then the members; a field's doc`
+    `//! comments, \`comptime\`, name, type, alignment and default value.`)@0..214
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `S`
+    _
+    _
+    _
+    _
+    (container_decl
+      `extern`
+      `struct`
+      _
+      _
+      (`//! S's doc`)@246..257
+      (container_field (`/// x's doc`)@262..273 `comptime` `x` `u32` `4` `1`)@262..306
+      (container_field _ _ _ `u8` _ _)@312..314)@226..317)@216..318
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `U`
+    _
+    _
+    _
+    _
+    (container_decl
+      `packed`
+      `union`
+      `enum`
+      `u8`
+      (`//! U's doc`)@358..369
+      (container_field _ _ `a` `u8` _ _)@374..379)@329..382)@319..383
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `T`
+    _
+    _
+    _
+    _
+    (container_decl _ `enum` _ `u8` (`//! an empty container`)@409..431)@394..433)@384..434)@0..434

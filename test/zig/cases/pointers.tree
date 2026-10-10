@@ -1,72 +1,218 @@
 (root
-  (var_decl _ _ _ (var_decl_proto `const` `a` (ptr_type one _ () `u8`)) `undefined`)
+  _
+  (var_decl _ _ _ _ _ _ `const` `a` (ptr_type one _ _ _ _ _ `u8`)@9..12 _ _ _ `undefined`)@0..25
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `b` (ptr_type one _ (`const` `volatile`) `u8`))
-    `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `c` (ptr_type one _ ((align `4`)) `u8`)) `undefined`)
+    _
+    _
+    _
+    `const`
+    `b`
+    (ptr_type one _ _ _ _ _ `u8` `const` `volatile`)@35..53
+    _
+    _
+    _
+    `undefined`)@26..66
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `d` (ptr_type one _ ((align `1` `3` `8`)) `u8`))
-    `undefined`)
+    _
+    _
+    _
+    `const`
+    `c`
+    (ptr_type one _ `4` _ _ _ `u8`)@76..88
+    _
+    _
+    _
+    `undefined`)@67..101
   (var_decl
     _
     _
     _
-    (var_decl_proto
-      `const`
-      `e`
-      (ptr_type one _ (`allowzero` (addrspace (enum_literal `generic`)) (align `2`) `const`) `u8`))
-    `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `f` (ptr_type many _ () `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `g` (ptr_type many `0` (`const`) `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `h` (ptr_type c _ () `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `i` (ptr_type slice _ () `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `j` (ptr_type slice `0` (`const`) `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `k` (ptr_type slice _ ((align `8`)) `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `l` (array_type `4` _ `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `m` (array_type `4` `0` `u8`)) `undefined`)
+    _
+    _
+    _
+    `const`
+    `d`
+    (ptr_type one _ `1` `3` `8` _ `u8`)@111..127
+    _
+    _
+    _
+    `undefined`)@102..140
   (var_decl
     _
     _
     _
-    (var_decl_proto
-      `const`
-      `n`
-      (optional_type (ptr_type one _ (`const`) (fn_proto _ (params) _ _ _ _ _ `void`))))
-    `null`)
-  (var_decl _ _ _ (var_decl_proto `const` `o` (anyframe_type `u8`)) `undefined`)
-  (var_decl _ _ _ (var_decl_proto `const` `p` (anyframe_literal)) `undefined`)
+    _
+    _
+    _
+    `const`
+    `e`
+    (ptr_type one _ `2` _ _ (enum_literal `generic`)@171..179 `u8` `allowzero` `const`)@150..198
+    _
+    _
+    _
+    `undefined`)@141..211
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `q` (ptr_type one _ () (ptr_type one _ () `u8`)))
-    `undefined`)
+    _
+    _
+    _
+    `const`
+    `f`
+    (ptr_type many _ _ _ _ _ `u8`)@221..226
+    _
+    _
+    _
+    `undefined`)@212..239
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `r` (array_type `2` _ (array_type `3` _ `u8`)))
-    `undefined`)
+    _
+    _
+    _
+    `const`
+    `g`
+    (ptr_type many `0` _ _ _ _ `u8` `const`)@249..262
+    _
+    _
+    _
+    `undefined`)@240..275
+  (var_decl _ _ _ _ _ _ `const` `h` (ptr_type c _ _ _ _ _ `u8`)@285..291 _ _ _ `undefined`)@276..304
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `s` (ptr_type slice _ () (ptr_type many _ () `u8`)))
-    `undefined`)
+    _
+    _
+    _
+    `const`
+    `i`
+    (ptr_type slice _ _ _ _ _ `u8`)@314..318
+    _
+    _
+    _
+    `undefined`)@305..331
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `t`)
-    (address_of (array_init (array_type `_` _ `u8`) `1` `2` `3`)))
-  (var_decl _ _ _ (var_decl_proto `const` `u`) (slice `l` `0` `2`))
-  (var_decl _ _ _ (var_decl_proto `const` `v`) (slice `l` `1`))
-  (var_decl _ _ _ (var_decl_proto `const` `w`) (slice `g` `0` `3` `0`))
-  (var_decl _ _ _ (var_decl_proto `const` `x`) (deref `a`))
-  (var_decl _ _ _ (var_decl_proto `const` `y`) (unwrap_optional `n`)))
+    _
+    _
+    _
+    `const`
+    `j`
+    (ptr_type slice `0` _ _ _ _ `u8` `const`)@341..353
+    _
+    _
+    _
+    `undefined`)@332..366
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `k`
+    (ptr_type slice _ `8` _ _ _ `u8`)@376..389
+    _
+    _
+    _
+    `undefined`)@367..402
+  (var_decl _ _ _ _ _ _ `const` `l` (array_type `4` _ `u8`)@412..417 _ _ _ `undefined`)@403..430
+  (var_decl _ _ _ _ _ _ `const` `m` (array_type `4` `0` `u8`)@440..447 _ _ _ `undefined`)@431..460
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `n`
+    (optional_type
+      (ptr_type
+        one
+        _
+        _
+        _
+        _
+        _
+        (fn_proto _ _ _ _ _ ()@481..483 _ _ _ _ _ `void`)@478..488
+        `const`)@471..488)@470..488
+    _
+    _
+    _
+    `null`)@461..496
+  (var_decl _ _ _ _ _ _ `const` `o` (anyframe_type `u8`)@506..518 _ _ _ `undefined`)@497..531
+  (var_decl _ _ _ _ _ _ `const` `p` `anyframe` _ _ _ `undefined`)@532..562
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `q`
+    (ptr_type one _ _ _ _ _ (ptr_type one _ _ _ _ _ `u8`)@573..576)@572..576
+    _
+    _
+    _
+    `undefined`)@563..589
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `r`
+    (array_type `2` _ (array_type `3` _ `u8`)@602..607)@599..607
+    _
+    _
+    _
+    `undefined`)@590..620
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `s`
+    (ptr_type slice _ _ _ _ _ (ptr_type many _ _ _ _ _ `u8`)@632..637)@630..637
+    _
+    _
+    _
+    `undefined`)@621..650
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `t`
+    _
+    _
+    _
+    _
+    (address_of (array_init (array_type `_` _ `u8`)@662..667 `1` `2` `3`)@662..678)@661..678)@651..679
+  (var_decl _ _ _ _ _ _ `const` `u` _ _ _ _ (slice `l` `0` `2` _)@690..697)@680..698
+  (var_decl _ _ _ _ _ _ `const` `v` _ _ _ _ (slice `l` `1` _ _)@709..715)@699..716
+  (var_decl _ _ _ _ _ _ `const` `w` _ _ _ _ (slice `g` `0` `3` `0`)@727..737)@717..738
+  (var_decl _ _ _ _ _ _ `const` `x` _ _ _ _ (deref `a`)@749..752)@739..753
+  (var_decl _ _ _ _ _ _ `const` `y` _ _ _ _ (unwrap_optional `n`)@764..767)@754..768)@0..768

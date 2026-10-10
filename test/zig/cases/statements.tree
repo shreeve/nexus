@@ -1,31 +1,69 @@
 (root
+  _
   (test_decl
     _
     (block
       _
-      (var_decl _ _ _ (var_decl_proto `var` `x` `u32`) `1`)
-      (assign `=` `x` `2`)
-      (assign `+=` `x` `1`)
-      (assign `-%=` `x` `1`)
-      (assign `<<|=` `x` `1`)
+      (var_decl _ _ _ _ _ _ `var` `x` `u32` _ _ _ `1`)@11..26
+      (assign `=` `x` `2`)@31..37
+      (assign `+=` `x` `1`)@42..49
+      (assign `-%=` `x` `1`)@54..62
+      (assign `<<|=` `x` `1`)@67..76
       (assign_destructure
         _
-        ((var_decl_proto `const` `a`) (var_decl_proto `var` `b`))
-        (array_init _ `1` `2`))
-      (assign_destructure _ (`a` `b`) (array_init _ `b` `a`))
-      (var_decl _ _ _ (var_decl_proto `var` `arr` (array_type `2` _ `u32`)) `undefined`)
+        ((var_decl _ _ _ _ _ _ `const` `a` _ _ _ _ _)@81..88
+          (var_decl _ _ _ _ _ _ `var` `b` _ _ _ _ _)@90..95)@81..95
+        (array_init _ `1` `2`)@98..107)@81..108
+      (assign_destructure _ (`a` `b`)@113..117 (array_init _ `b` `a`)@120..129)@113..130
+      (var_decl
+        _
+        _
+        _
+        _
+        _
+        _
+        `var`
+        `arr`
+        (array_type `2` _ `u32`)@144..150
+        _
+        _
+        _
+        `undefined`)@135..163
       (assign_destructure
         _
-        ((array_access `arr` `0`) (array_access `arr` `1`))
-        (array_init _ `3` `4`))
-      (block _ (defer (assign `=` `x` `0`)) (errdefer (assign `=` `x` `1`)) (defer (block)))
-      (suspend (block))
-      (nosuspend (call `foo`))
-      (block `blk` (break `blk`))
-      (assign `=` `_` (address_of `b`))
-      (if ((binary `>` `x` `0`)) (assign `=` `x` `0`))
-      (if ((binary `>` `x` `0`)) (assign `=` `x` `0`) _ (assign `=` `x` `1`))
-      (while _ _ ((binary `<` `x` `3`)) (assign `+=` `x` `1`))
-      (for _ _ ((`arr`) ((capture _ `v`))) (assign `+=` `x` `v`))
-      (for `lbl` _ ((`arr`) ((capture _ `v`))) (block _ (if ((binary `==` `v` `0`)) (break `lbl`))))
-      (return))))
+        ((array_access `arr` `0`)@168..174 (array_access `arr` `1`)@176..182)@168..182
+        (array_init _ `3` `4`)@185..194)@168..195
+      (block
+        _
+        (defer (assign `=` `x` `0`)@216..221)@210..222
+        (errdefer (assign `=` `x` `1`)@240..245)@231..246
+        (defer (block _)@261..263)@255..263)@200..269
+      (suspend (block _)@282..284)@274..284
+      (nosuspend (call `foo`)@299..304)@289..305
+      (block `blk` (break `blk` _)@325..335)@310..342
+      (assign `=` `_` (address_of `b`)@351..353)@347..354
+      (if (binary `>` `x` `0`)@363..368 _ (assign `=` `x` `0`)@370..375 _ _)@359..376
+      (if
+        (binary `>` `x` `0`)@385..390
+        _
+        (assign `=` `x` `0`)@392..397
+        _
+        (assign `=` `x` `1`)@403..408)@381..409
+      (while _ _ (binary `<` `x` `3`)@421..426 _ _ (assign `+=` `x` `1`)@428..434 _ _)@414..435
+      (for
+        _
+        _
+        (`arr`)@445..448
+        ((capture _ `v`)@451..452)@451..452
+        (assign `+=` `x` `v`)@454..460
+        _)@440..461
+      (for
+        `lbl`
+        _
+        (`arr`)@476..479
+        ((capture _ `v`)@482..483)@482..483
+        (block
+          _
+          (if (binary `==` `v` `0`)@499..505 _ (break `lbl` _)@507..517 _ _)@495..518)@485..524
+        _)@466..524
+      (return _)@529..535)@5..538)@0..538)@0..538

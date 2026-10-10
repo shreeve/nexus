@@ -1,20 +1,48 @@
 (root
+  _
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Point`)
+    _
+    _
+    _
+    `const`
+    `Point`
+    _
+    _
+    _
+    _
     (container_decl
       _
-      (struct)
-      (container_field _ `x` `f32`)
-      (container_field _ `y` `f32` _ `0`)
-      (container_field `comptime` `tag` (ptr_type slice _ (`const`) `u8`) _ `"point"`)
-      (container_field _ `z` `f32` (align `4`) `1`)
-      (fn_decl
-        `pub`
+      `struct`
+      _
+      _
+      _
+      (container_field _ _ `x` `f32` _ _)@27..33
+      (container_field _ _ `y` `f32` _ `0`)@39..49
+      (container_field
         _
-        (fn_proto `len` (params (param _ `self` `Point`)) _ _ _ _ _ `f32`)
+        `comptime`
+        `tag`
+        (ptr_type slice _ _ _ _ _ `u8` `const`)@69..79
+        _
+        `"point"`)@55..89
+      (container_field _ _ `z` `f32` `4` `1`)@95..114
+      (fn_decl
+        (fn_proto
+          _
+          `pub`
+          _
+          _
+          `len`
+          ((param _ _ `self` `Point`)@132..143)@132..143
+          _
+          _
+          _
+          _
+          _
+          `f32`)@121..148
         (block
           _
           (return
@@ -22,111 +50,325 @@
               `@sqrt`
               (binary
                 `+`
-                (binary `*` (field_access `self` `x`) (field_access `self` `x`))
-                (binary `*` (field_access `self` `y`) (field_access `self` `y`)))))))))
+                (binary
+                  `*`
+                  (field_access `self` `x`)@172..178
+                  (field_access `self` `x`)@181..187)@172..187
+                (binary
+                  `*`
+                  (field_access `self` `y`)@190..196
+                  (field_access `self` `y`)@199..205)@190..205)@172..205)@166..206)@159..206)@149..213)@121..213)@14..215)@0..216
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Tuple`)
+    _
+    _
+    _
+    `const`
+    `Tuple`
+    _
+    _
+    _
+    _
     (container_decl
       _
-      (struct)
-      (container_field _ _ `u8`)
-      (container_field _ _ (ptr_type slice _ (`const`) `u8`))
-      (container_field `comptime` _ `u32` _ `3`)))
+      `struct`
+      _
+      _
+      _
+      (container_field _ _ _ `u8` _ _)@241..243
+      (container_field _ _ _ (ptr_type slice _ _ _ _ _ `u8` `const`)@245..255 _ _)@245..255
+      (container_field _ `comptime` _ `u32` _ `3`)@257..273)@232..275)@218..276
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Color`)
+    _
+    _
+    _
+    `const`
+    `Color`
+    _
+    _
+    _
+    _
     (container_decl
       _
-      (enum `u8`)
-      (container_field _ _ `red` _ `1`)
-      (container_field _ _ `green`)
-      (container_field _ _ `blue`)
-      (container_field _ _ `_`)))
+      `enum`
+      _
+      `u8`
+      _
+      (container_field _ _ _ `red` _ `1`)@302..309
+      (container_field _ _ _ `green` _ _)@311..316
+      (container_field _ _ _ `blue` _ _)@318..322
+      (container_field _ _ _ `_` _ _)@324..325)@291..327)@277..328
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Plain`)
-    (container_decl _ (enum) (container_field _ _ `a`) (container_field _ _ `b`)))
-  (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Value`)
+    `const`
+    `Plain`
+    _
+    _
+    _
+    _
     (container_decl
       _
-      (union enum)
-      (container_field _ `int` `i64`)
-      (container_field _ `float` `f64`)
-      (container_field _ _ `none`)))
+      `enum`
+      _
+      _
+      _
+      (container_field _ _ _ `a` _ _)@350..351
+      (container_field _ _ _ `b` _ _)@353..354)@343..356)@329..357
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Tagged`)
-    (container_decl _ (union enum `u8`) (container_field _ `a` `u8`) (container_field _ `b` `void`)))
+    _
+    _
+    _
+    `const`
+    `Value`
+    _
+    _
+    _
+    _
+    (container_decl
+      _
+      `union`
+      `enum`
+      _
+      _
+      (container_field _ _ `int` `i64` _ _)@390..398
+      (container_field _ _ `float` `f64` _ _)@404..414
+      (container_field _ _ _ `none` _ _)@420..424)@372..427)@358..428
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Bare`)
-    (container_decl _ (union `Plain`) (container_field _ `a` `u8`) (container_field _ `b` `u16`)))
+    _
+    _
+    _
+    `const`
+    `Tagged`
+    _
+    _
+    _
+    _
+    (container_decl
+      _
+      `union`
+      `enum`
+      `u8`
+      _
+      (container_field _ _ `a` `u8` _ _)@462..467
+      (container_field _ _ `b` `void` _ _)@469..476)@444..478)@429..479
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Untagged`)
-    (container_decl _ (union) (container_field _ `a` `u8`) (container_field _ `b` `u16`)))
-  (var_decl _ _ _ (var_decl_proto `const` `Handle`) (container_decl _ (opaque)))
+    _
+    _
+    _
+    `const`
+    `Bare`
+    _
+    _
+    _
+    _
+    (container_decl
+      _
+      `union`
+      _
+      `Plain`
+      _
+      (container_field _ _ `a` `u8` _ _)@508..513
+      (container_field _ _ `b` `u16` _ _)@515..521)@493..523)@480..524
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Flags`)
+    _
+    _
+    _
+    `const`
+    `Untagged`
+    _
+    _
+    _
+    _
+    (container_decl
+      _
+      `union`
+      _
+      _
+      _
+      (container_field _ _ `a` `u8` _ _)@550..555
+      (container_field _ _ `b` `u16` _ _)@557..563)@542..565)@525..566
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `Handle`
+    _
+    _
+    _
+    _
+    (container_decl _ `opaque` _ _ _)@582..591)@567..592
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `Flags`
+    _
+    _
+    _
+    _
     (container_decl
       `packed`
-      (struct `u8`)
-      (container_field _ `a` `bool`)
-      (container_field _ `b` `bool`)
-      (container_field _ `rest` `u6`)))
+      `struct`
+      _
+      `u8`
+      _
+      (container_field _ _ `a` `bool` _ _)@627..634
+      (container_field _ _ `b` `bool` _ _)@636..643
+      (container_field _ _ `rest` `u6` _ _)@645..653)@607..655)@593..656
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `C`)
+    _
+    _
+    _
+    `const`
+    `C`
+    _
+    _
+    _
+    _
     (container_decl
       `extern`
-      (struct)
-      (container_field _ `a` `c_int`)
+      `struct`
+      _
+      _
+      _
+      (container_field _ _ `a` `c_int` _ _)@683..691
       (container_field
         _
+        _
         `b`
-        (container_decl `extern` (union) (container_field _ `x` `u8`) (container_field _ `y` `u16`)))))
-  (var_decl _ _ _ (var_decl_proto `const` `Empty`) (container_decl _ (struct)))
+        (container_decl
+          `extern`
+          `union`
+          _
+          _
+          _
+          (container_field _ _ `x` `u8` _ _)@711..716
+          (container_field _ _ `y` `u16` _ _)@718..724)@696..726
+        _
+        _)@693..726)@667..728)@657..729
+  (var_decl _ _ _ _ _ _ `const` `Empty` _ _ _ _ (container_decl _ `struct` _ _ _)@744..753)@730..754
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Mixed`)
+    _
+    _
+    _
+    `const`
+    `Mixed`
+    _
+    _
+    _
+    _
     (container_decl
       _
-      (struct)
-      (var_decl _ _ _ (var_decl_proto `const` `before`) `1`)
-      (container_field _ `a` `u8`)
-      (container_field _ `b` `u16`)
-      (var_decl _ _ _ (var_decl_proto `const` `after`) `2`)
-      (fn_decl _ _ (fn_proto `method` (params) _ _ _ _ _ `void`) (block))))
+      `struct`
+      _
+      _
+      _
+      (var_decl _ _ _ _ _ _ `const` `before` _ _ _ _ `1`)@782..799
+      (container_field _ _ `a` `u8` _ _)@804..809
+      (container_field _ _ `b` `u16` _ _)@815..821
+      (var_decl _ _ _ _ _ _ `const` `after` _ _ _ _ `2`)@827..843
+      (fn_decl
+        (fn_proto _ _ _ _ `method` ()@857..859 _ _ _ _ _ `void`)@848..864
+        (block _)@865..867)@848..867)@769..869)@755..870
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `Inner`)
-    (container_decl _ (struct) (container_field _ `x` `u8`)))
-  (var_decl _ _ _ (var_decl_proto `const` `ErrSet`) (error_set_decl `OutOfMemory` `Overflow`))
-  (var_decl _ _ _ (var_decl_proto `const` `Docs`) (error_set_decl `A` `B`))
-  (var_decl _ _ _ (var_decl_proto `const` `Merged`) (binary `||` `ErrSet` (error_set_decl `Other`))))
+    _
+    _
+    _
+    `const`
+    `Inner`
+    _
+    _
+    _
+    _
+    (container_decl
+      _
+      `struct`
+      _
+      _
+      (`//! A container doc comment inside a container.`)@898..945
+      (container_field _ _ `x` `u8` _ _)@950..955)@885..958)@871..959
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `ErrSet`
+    _
+    _
+    _
+    _
+    (error_set_decl
+      (error_name _ `OutOfMemory`)@982..993
+      (error_name _ `Overflow`)@995..1003)@975..1005)@960..1006
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `Docs`
+    _
+    _
+    _
+    _
+    (error_set_decl
+      (error_name (`/// Documented.`)@1031..1046 `A`)@1031..1052
+      (error_name _ `B`)@1058..1059)@1020..1062)@1007..1063
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `Merged`
+    _
+    _
+    _
+    _
+    (binary `||` `ErrSet` (error_set_decl (error_name _ `Other`)@1095..1100)@1089..1101)@1079..1101)@1064..1102)@0..1102

@@ -26,6 +26,9 @@
 # categories). The wrapper also skips a UTF-8 byte order mark at offset 0,
 # as Tokenizer.init does; no rule can see the start of the input.
 #
+# The tree is std.zig.Ast's, node for node and span for span, in the kinds
+# and roles of the @schema below, which test/zig/compare-trees checks.
+#
 # The second start symbol, `tokens`, lists the tokens as the parser sees
 # them, each in a node named by its category.
 # ==============================================================================
@@ -295,6 +298,105 @@ tokens
 
 @parser
 
+# The tree (std.zig.Ast, node for node). One kind per Ast.Node.Tag family:
+# the arity, trailing-comma and storage variants of a tag (`call_one`,
+# `call_comma`, `block_two_semicolon`, `simple_var_decl`, `fn_proto_multi`,
+# `ptr_type_aligned`, ...) are one kind; the 28 binary operator tags are
+# `binary` and the 18 assignment tags `assign`, each with its operator as
+# the `op` leaf. What Ast keeps only as tokens, found by scanning around
+# a node (labels, payload captures, `pub`, `extern "c"`, `export`,
+# `inline`, `threadlocal`, `comptime`, `volatile`, pointer qualifiers, the
+# inferred-error `!`, doc comments), is a named role here. Ast has no node
+# for a parameter, a capture, a struct initializer's `.name = value` or an
+# error set's member, so `param`, `capture`, `field_init` and `error_name`
+# are kinds of their own. Identifiers, number, character and string
+# literals, `unreachable` and `anyframe` are leaves (Ast's `identifier`,
+# `number_literal`, ... nodes hold one token). A trailing comma is not
+# kept: it is formatting, which Ast records only in the `_comma` variant
+# of a tag. test/zig/compare-trees checks the tree against std.zig.Ast.
+@schema
+    # Containers and declarations
+    root                doc:group? ...members
+    tokens              ...tokens
+    container_decl      layout:leaf? kind:leaf enum:leaf? arg? doc:group? ...members
+    container_field     doc:group? comptime:leaf? name:leaf? type align? value?
+    test_decl           name:leaf? body:block
+    fn_decl             proto:fn_proto body:block
+    fn_proto            doc:group? visib:leaf? modifier:leaf? lib_name:leaf? name:leaf? params:group align? addrspace? section? callconv? bang:leaf? return_type
+    param               doc:group? modifier:leaf? name:leaf? type
+    var_decl            doc:group? visib:leaf? modifier:leaf? lib_name:leaf? threadlocal:leaf? comptime:leaf? mut:leaf name:leaf type? align? addrspace? section? init?
+
+    # Statements and control flow
+    block               label:leaf? ...statements
+    comptime, nosuspend, resume     operand
+    defer, errdefer, suspend        body
+    assign              op:leaf target value
+    assign_destructure  comptime:leaf? targets:group value
+    if                  cond capture:capture? then else_capture:leaf? else?
+    while               label:leaf? inline:leaf? cond capture:capture? cont? then else_capture:leaf? else?
+    for                 label:leaf? inline:leaf? inputs:group captures:group then else?
+    for_range           start end?
+    capture             ptr:leaf? name:leaf
+    switch              label:leaf? cond ...cases:switch_case
+    switch_case         inline:leaf? values:group capture:capture? index:leaf? body
+    switch_range        start end
+    return              value?
+    break, continue     label:leaf? value?
+
+    # Expressions
+    binary              op:leaf lhs rhs
+    catch               lhs payload:leaf? rhs
+    bool_not, negation, bit_not, negation_wrap, address_of, try     operand
+    deref, unwrap_optional, grouped_expression                      operand
+    call                callee ...args
+    builtin_call        name:leaf ...args
+    field_access        operand name:leaf
+    array_access        operand index
+    slice               operand start end? sentinel?
+    struct_init         type? ...fields:field_init
+    field_init          name:leaf value
+    array_init          type? ...elements
+    enum_literal, error_value       name:leaf
+    multiline_string_literal        ...lines:leaf
+    asm                 volatile:leaf? template clobbers? ...items:asm_output|asm_input
+    asm_output          name:leaf constraint:leaf variable:leaf? type?
+    asm_input           name:leaf constraint:leaf value
+
+    # Types
+    error_union         error_set payload
+    optional_type       child
+    anyframe_type       result
+    array_type          len sentinel? elem
+    ptr_type            size:tag(one|many|slice|c) sentinel? align? bit_start? bit_end? addrspace? child ...quals:leaf
+    error_set_decl      ...members:error_name
+    error_name          doc:group? name:leaf
+
+    # The `tokens` start symbol: one node per token, named by its category
+    invalid, identifier, string_literal, multiline_string_literal_line, char_literal, builtin     token:leaf
+    number_literal, doc_comment, container_doc_comment, bang, pipe, pipe_pipe, pipe_equal         token:leaf
+    equal, equal_equal, equal_angle_bracket_right, bang_equal, l_paren, r_paren, semicolon        token:leaf
+    percent, percent_equal, l_brace, r_brace, l_bracket, r_bracket, period, period_asterisk       token:leaf
+    ellipsis2, ellipsis3, caret, caret_equal, plus, plus_plus, plus_equal, plus_percent           token:leaf
+    plus_percent_equal, plus_pipe, plus_pipe_equal, minus, minus_equal, minus_percent             token:leaf
+    minus_percent_equal, minus_pipe, minus_pipe_equal, asterisk, asterisk_equal                   token:leaf
+    asterisk_percent, asterisk_percent_equal, asterisk_pipe, asterisk_pipe_equal, arrow, colon    token:leaf
+    slash, slash_equal, comma, ampersand, ampersand_equal, question_mark, angle_bracket_left      token:leaf
+    angle_bracket_left_equal, angle_bracket_angle_bracket_left                                    token:leaf
+    angle_bracket_angle_bracket_left_equal, angle_bracket_angle_bracket_left_pipe                 token:leaf
+    angle_bracket_angle_bracket_left_pipe_equal, angle_bracket_right, angle_bracket_right_equal   token:leaf
+    angle_bracket_angle_bracket_right, angle_bracket_angle_bracket_right_equal, tilde             token:leaf
+    keyword_addrspace, keyword_align, keyword_allowzero, keyword_and, keyword_anyframe            token:leaf
+    keyword_anytype, keyword_asm, keyword_break, keyword_callconv, keyword_catch                  token:leaf
+    keyword_comptime, keyword_const, keyword_continue, keyword_defer, keyword_else, keyword_enum  token:leaf
+    keyword_errdefer, keyword_error, keyword_export, keyword_extern, keyword_fn, keyword_for      token:leaf
+    keyword_if, keyword_inline, keyword_noalias, keyword_noinline, keyword_nosuspend              token:leaf
+    keyword_opaque, keyword_or, keyword_orelse, keyword_packed, keyword_pub, keyword_resume       token:leaf
+    keyword_return, keyword_linksection, keyword_struct, keyword_suspend, keyword_switch          token:leaf
+    keyword_test, keyword_threadlocal, keyword_try, keyword_union, keyword_unreachable            token:leaf
+    keyword_var, keyword_volatile, keyword_while, err, label, break_colon, ptr_star, c_ptr        token:leaf
+    enum_tag, bad_doc_comment, minus_prefix, minus_percent_prefix, ampersand_prefix               token:leaf
+    asterisk_prefix, pipe_payload, bad_operator                                                   token:leaf
+
 # Every conflict below resolves as Parse.zig decides. A bare `return`,
 # `break` or `continue` is followed by its operand when one can start:
 # Parse.zig parses the operand with parseExpr, so a `-`, `-%`, `&` or `*`
@@ -309,13 +411,12 @@ tokens
     shift jump → "break" break_label  4  # the operand of `break :l` is parseExpr: a prefix operator starts it
     shift jump → "continue"  4  # the operand of `continue` is parseExpr: a prefix operator starts it
     shift jump → "continue" break_label  4  # the operand of `continue :l` is parseExpr: a prefix operator starts it
-    reduce for_expr → for_prefix bool_or over for_expr → "inline" for_prefix bool_or  3  # a prong's leading `inline` is its flag
-    reduce for_expr → for_prefix bool_or "else" bool_or over for_expr → "inline" for_prefix bool_or "else" bool_or  3  # a prong's leading `inline` is its flag
-    reduce while_expr → while_prefix bool_or over while_expr → "inline" while_prefix bool_or  3  # a prong's leading `inline` is its flag
-    reduce while_expr → while_prefix bool_or "else" bool_or over while_expr → "inline" while_prefix bool_or "else" bool_or  3  # a prong's leading `inline` is its flag
-    reduce while_expr → while_prefix bool_or "else" payload bool_or over while_expr → "inline" while_prefix bool_or "else" payload bool_or  3  # a prong's leading `inline` is its flag
+    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or  3  # a prong's leading `inline` is its flag
+    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or "else" bool_or over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or "else" bool_or  3  # a prong's leading `inline` is its flag
+    reduce while_expr → "while" "(" bool_or ")" ptr_payload while_cont bool_or over while_expr → "inline" "while" "(" bool_or ")" ptr_payload while_cont bool_or  3  # a prong's leading `inline` is its flag
+    reduce while_expr → "while" "(" bool_or ")" ptr_payload while_cont bool_or "else" else_payload bool_or over while_expr → "inline" "while" "(" bool_or ")" ptr_payload while_cont bool_or "else" else_payload bool_or  3  # a prong's leading `inline` is its flag
 
-root!       = container_body                                → (root ...1)
+root!       = container_docs members                        → (root 1 ...2)
 tokens!     = token*                                        → (tokens ...1)
 
 # ==============================================================================
@@ -331,7 +432,10 @@ tokens!     = token*                                        → (tokens ...1)
 # comment belongs to the field or declaration after it; `test` and
 # `comptime { ... }` take none, and one with nothing after it is an error.
 
-container_body      = [CONTAINER_DOC_COMMENT+] [container_members]  → 2
+container_docs      =
+                    | CONTAINER_DOC_COMMENT+
+members             =
+                    | container_members
 
 # The members, left to right: declarations only (decls), then fields each
 # followed by a comma (fields), then declarations after them (rest). Every
@@ -355,18 +459,29 @@ rest                = fields container_decl                 → (...1 2)
 
 docs                = DOC_COMMENT+
 
+# A declaration. A function without a body is its prototype (Ast's
+# fn_proto at the top level); `extern` takes none. The optional parts
+# after a name are rules that may be empty: each starts with its own
+# keyword, so the next token decides.
 container_decl      = "test" [test_name] block                              → (test_decl 2 3)
                     | "comptime" block                                      → (comptime 2)
-                    | [docs] ["pub"] [fn_prefix] fn_proto ";"               → (fn_decl 2 3 4)
-                    | [docs] ["pub"] [fn_prefix] fn_proto block             → (fn_decl 2 3 4 5)
-                    | [docs] ["pub"] extern_prefix fn_proto ";"             → (fn_decl 2 3 4)
-                    | [docs] ["pub"] [var_prefix] ["threadlocal"] var_decl_proto ["=" expr] ";"
-                                                                            → (var_decl 2 3 4 5 7)
+                    | fn_decl_proto ";"                                     → 1
+                    | fn_decl_proto block                                   → (fn_decl 1 2)
+                    | fn_extern_proto ";"                                   → 1
+                    | [docs] ["pub"] ["threadlocal"] var_mut var_name var_type var_align var_addrspace var_section var_init ";"
+                                                                            → (var_decl 1 2 _ _ 3 _ 4 5 6 7 8 9 10)
+                    | [docs] ["pub"] "export" ["threadlocal"] var_mut var_name var_type var_align var_addrspace var_section var_init ";"
+                                                                            → (var_decl 1 2 3 _ 4 _ 5 6 7 8 9 10 11)
+                    | [docs] ["pub"] "extern" [STRING_LITERAL] ["threadlocal"] var_mut var_name var_type var_align var_addrspace var_section var_init ";"
+                                                                            → (var_decl 1 2 3 4 5 _ 6 7 8 9 10 11 12)
 
 test_name           = STRING_LITERAL | IDENTIFIER
 fn_prefix           = "export" | "inline" | "noinline"
-var_prefix          = "export" | extern_prefix
-extern_prefix       = "extern" [STRING_LITERAL]                             → (extern 2)
+
+fn_decl_proto       = [docs] ["pub"] [fn_prefix] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (fn_proto 1 2 3 _ 5 6 7 8 9 10 11 12)
+fn_extern_proto     = [docs] ["pub"] "extern" [STRING_LITERAL] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (fn_proto 1 2 3 4 6 7 8 9 10 11 12 13)
 
 # A field. Parse.zig takes `comptime` as the field's flag and `x:` as its
 # name whenever they are there, so an unnamed field's type starts with
@@ -374,33 +489,43 @@ extern_prefix       = "extern" [STRING_LITERAL]                             → 
 # and no label); `extern` and `inline` start a field only before a
 # container keyword, resp. `for` or `while` (the next token decides).
 container_field     = [docs] ["comptime"] field_name ":" type_expr [byte_align] ["=" expr]
-                                                                            → (container_field 2 3 5 6 8)
-                    | [docs] type_expr_f [byte_align] ["=" expr]            → (container_field _ _ 2 3 5)
-                    | [docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 2 _ 3 4 6)
+                                                                            → (container_field 1 2 3 5 6 8)
+                    | [docs] type_expr_f [byte_align] ["=" expr]            → (container_field 1 _ _ 2 3 5)
+                    | [docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 1 2 _ 3 4 6)
 
 field_name          = IDENTIFIER | LABEL
 
 # fn name? (params) align? addrspace? linksection? callconv? !? ReturnType
-fn_proto            = "fn" [IDENTIFIER] param_decl_list [byte_align] [addr_space] [link_section] [call_conv] ["!"] type_expr
-                                                                            → (fn_proto 2 3 4 5 6 7 8 9)
+fn_proto            = "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (fn_proto _ _ _ _ 2 3 4 5 6 7 8 9)
 
-var_decl_proto      = var_mut var_name [":" type_expr] [byte_align] [addr_space] [link_section]
-                                                                            → (var_decl_proto 1 2 4 5 6 7)
 var_mut             = "const" | "var"
 var_name            = IDENTIFIER | LABEL
+var_type            =
+                    | ":" type_expr                                         → 2
+var_align           =
+                    | byte_align
+var_addrspace       =
+                    | addr_space
+var_section         =
+                    | link_section
+var_init            =
+                    | "=" expr                                              → 2
+fn_callconv         =
+                    | call_conv
 
 # Parameters (Parse.zig parseParamDeclList, expectParamDecl). `...` comes
 # last; like any parameter it may follow doc comments.
-param_decl_list     = "(" ")"                                               → (params)
-                    | "(" L(param_decl) [","] ")"                           → (params ...2)
-                    | "(" L(param_decl) "," var_args [","] ")"              → (params ...2 4)
-                    | "(" var_args [","] ")"                                → (params 2)
+param_decl_list     = "(" ")"                                               → ()
+                    | "(" L(param_decl) !","? ")"                           → 2
+                    | "(" L(param_decl) "," var_args !","? ")"              → (...2 4)
+                    | "(" var_args !","? ")"                                → (2)
 
-var_args            = [docs] "..."                                          → (var_args)
+var_args            = [docs] "..."                                          → (param 1 _ _ 2)
 
-param_decl          = [docs] [param_flag] param_name ":" param_type         → (param 2 3 5)
-                    | [docs] param_type_p                                   → (param _ _ 2)
-                    | [docs] param_flag param_type_n                        → (param 2 _ 3)
+param_decl          = [docs] [param_flag] param_name ":" param_type         → (param 1 2 3 5)
+                    | [docs] param_type_p                                   → (param 1 _ _ 2)
+                    | [docs] param_flag param_type_n                        → (param 1 2 _ 3)
 
 param_flag          = "comptime" | "noalias"
 param_name          = IDENTIFIER | LABEL
@@ -408,10 +533,10 @@ param_type          = "anytype" | type_expr
 param_type_p        = "anytype" | type_expr_p
 param_type_n        = "anytype" | type_expr_n
 
-byte_align          = "align" "(" expr ")"                                  → (align 3)
-addr_space          = "addrspace" "(" expr ")"                              → (addrspace 3)
-link_section        = "linksection" "(" expr ")"                            → (linksection 3)
-call_conv           = "callconv" "(" expr ")"                               → (callconv 3)
+byte_align          = "align" "(" expr ")"                                  → 3
+addr_space          = "addrspace" "(" expr ")"                              → 3
+link_section        = "linksection" "(" expr ")"                            → 3
+call_conv           = "callconv" "(" expr ")"                               → 3
 
 # ==============================================================================
 # STATEMENTS (grammar.peg BlockStatement ... VarAssignStatement; Parse.zig
@@ -433,7 +558,10 @@ labeled_block       = LABEL ":" "{" block_statement* "}"            → (block 1
 block_expr          = block | labeled_block
 
 # A statement inside a block. A single variable declaration needs `=`;
-# a destructure may mix declarations and assignable expressions.
+# a destructure may mix declarations and assignable expressions. A
+# `comptime` before a declaration or a destructure is its flag; before an
+# assignment or an expression, a `comptime` node (Parse.zig
+# expectVarAssignStatement).
 block_statement     = "comptime" block_expr                         → (comptime 2)
                     | "nosuspend" block_expr_statement              → (nosuspend 2)
                     | "suspend" block_expr_statement                → (suspend 2)
@@ -441,11 +569,13 @@ block_statement     = "comptime" block_expr                         → (comptim
                     | "errdefer" block_expr_statement               → (errdefer 2)
                     | if_statement
                     | labeled_statement
-                    | var_decl_proto "=" expr ";"                   → (var_decl _ _ _ 1 3)
+                    | var_mut var_name var_type var_align var_addrspace var_section "=" expr ";"
+                                                                    → (var_decl _ _ _ _ _ _ 1 2 3 4 5 6 8)
                     | expr_s ";"                                    → 1
                     | expr_s assign_op expr ";"                     → (assign 2 1 3)
                     | destructure_s "=" expr ";"                    → (assign_destructure _ 1 3)
-                    | "comptime" var_decl_proto "=" expr ";"        → (var_decl _ 1 _ 2 4)
+                    | "comptime" var_mut var_name var_type var_align var_addrspace var_section "=" expr ";"
+                                                                    → (var_decl _ _ _ _ _ 1 2 3 4 5 6 7 9)
                     | "comptime" expr_c ";"                         → (comptime 2)
                     | "comptime" expr_c assign_op expr ";"          → (comptime (assign 3 2 4))
                     | "comptime" destructure_c "=" expr ";"         → (assign_destructure 1 2 4)
@@ -454,14 +584,18 @@ destructure_s       = destructure_head_s "," destructure_item       → (1 3)
                     | destructure_s "," destructure_item            → (...1 3)
 destructure_c       = destructure_head_c "," destructure_item       → (1 3)
                     | destructure_c "," destructure_item            → (...1 3)
-destructure_head_s  = var_decl_proto | expr_s
-destructure_head_c  = var_decl_proto | expr_c
-destructure_item    = var_decl_proto | expr
+destructure_head_s  = destructure_var | expr_s
+destructure_head_c  = destructure_var | expr_c
+destructure_item    = destructure_var | expr
+destructure_var     = var_mut var_name var_type var_align var_addrspace var_section
+                                                                    → (var_decl _ _ _ _ _ _ 1 2 3 4 5 6 _)
 
 # A statement after `else` (Parse.zig expectStatement(false)): no
 # declaration, no `defer` or `errdefer`.
 statement           = "comptime" block_expr                         → (comptime 2)
-                    | "comptime" assign_c ";"                       → (comptime 2)
+                    | "comptime" expr_c ";"                         → (comptime 2)
+                    | "comptime" expr_c assign_op expr ";"          → (comptime (assign 3 2 4))
+                    | "comptime" destructure_ec "=" expr ";"        → (assign_destructure 1 2 4)
                     | "nosuspend" block_expr_statement              → (nosuspend 2)
                     | "suspend" block_expr_statement                → (suspend 2)
                     | if_statement
@@ -480,32 +614,35 @@ labeled_statement   = block_expr
 # if, for and while statements (Parse.zig expectIfStatement,
 # parseForStatement, parseWhileStatement): a block body may take `else`;
 # an assignment body ends in `;`, or takes `else`, which it then needs.
-if_statement        = if_prefix block_expr                                      → (if 1 2)
-                    | if_prefix block_expr "else" [payload] statement           → (if 1 2 4 5)
-                    | if_prefix assign_c ";"                                    → (if 1 2)
-                    | if_prefix assign_c "else" [payload] statement             → (if 1 2 4 5)
+if_statement        = "if" "(" expr ")" ptr_payload block_expr                                  → (if 3 5 6)
+                    | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement    → (if 3 5 6 8 9)
+                    | "if" "(" expr ")" ptr_payload assign_c ";"                                → (if 3 5 6)
+                    | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement      → (if 3 5 6 8 9)
 
-for_statement       = [LABEL ":"] ["inline"] for_prefix block_expr                      → (for 1 3 4 5)
-                    | [LABEL ":"] ["inline"] for_prefix block_expr "else" statement     → (for 1 3 4 5 7)
-                    | [LABEL ":"] ["inline"] for_prefix assign_c ";"                    → (for 1 3 4 5)
-                    | [LABEL ":"] ["inline"] for_prefix assign_c "else" statement       → (for 1 3 4 5 7)
+for_statement       = [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload block_expr
+                                                                                        → (for 1 3 6 9 10)
+                    | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload block_expr "else" statement
+                                                                                        → (for 1 3 6 9 10 12)
+                    | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload assign_c ";"
+                                                                                        → (for 1 3 6 9 10)
+                    | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload assign_c "else" statement
+                                                                                        → (for 1 3 6 9 10 12)
 
-while_statement     = [LABEL ":"] ["inline"] while_prefix block_expr                    → (while 1 3 4 5)
-                    | [LABEL ":"] ["inline"] while_prefix block_expr "else" [payload] statement
-                                                                                        → (while 1 3 4 5 7 8)
-                    | [LABEL ":"] ["inline"] while_prefix assign_c ";"                  → (while 1 3 4 5)
-                    | [LABEL ":"] ["inline"] while_prefix assign_c "else" [payload] statement
-                                                                                        → (while 1 3 4 5 7 8)
-
-if_prefix           = "if" "(" expr ")" [ptr_payload]               → (3 5)
-while_prefix        = "while" "(" expr ")" [ptr_payload] [while_continue_expr]   → (3 5 6)
-for_prefix          = "for" "(" L(for_item) [","] ")" ptr_list_payload           → (3 6)
+while_statement     = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont block_expr
+                                                                                        → (while 1 3 6 8 9 10)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont block_expr "else" else_payload statement
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont assign_c ";"
+                                                                                        → (while 1 3 6 8 9 10)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont assign_c "else" else_payload statement
+                                                                                        → (while 1 3 6 8 9 10 12 13)
 
 for_item            = expr
                     | expr ".."                                     → (for_range 1)
                     | expr ".." expr                                → (for_range 1 3)
 
-while_continue_expr = ":" "(" assign_expr ")"                       → 3
+while_cont          =
+                    | ":" "(" assign_expr ")"                       → 3
 
 # Assignments (Parse.zig parseAssignExpr, finishAssignExpr): one operator,
 # or a destructure.
@@ -705,8 +842,10 @@ multiply_pk   = prefix_pk
               | multiply_pk multiply_op prefix_k            → (binary 2 1 3)
 
 
+
 # Prefix operators (Parse.zig parsePrefixExpr). After a prefix operator
-# any operand may follow, so the variants share them.
+# any operand may follow, so the variants share them. Which token a `-`,
+# `-%`, `&` or `*` is (the wrapper's spacing categories) is not kept.
 prefix      = primary | prefixed
 prefix_k    = primary_k | prefixed_k
 prefix_s    = primary_s | prefixed
@@ -717,16 +856,16 @@ prefix_p    = ptr_curly
 prefix_pk   = ptr_curly
 
 prefixed    = "!" prefix                                    → (bool_not 2)
-            | minus prefix                                  → (negation 2)
+            | !minus prefix                                 → (negation 2)
             | "~" prefix                                    → (bit_not 2)
-            | minus_wrap prefix                             → (negation_wrap 2)
-            | amp prefix                                    → (address_of 2)
+            | !minus_wrap prefix                            → (negation_wrap 2)
+            | !amp prefix                                   → (address_of 2)
             | "try" prefix                                  → (try 2)
 prefixed_k  = "!" prefix_k                                  → (bool_not 2)
-            | minus prefix_k                                → (negation 2)
+            | !minus prefix_k                               → (negation 2)
             | "~" prefix_k                                  → (bit_not 2)
-            | minus_wrap prefix_k                           → (negation_wrap 2)
-            | amp prefix_k                                  → (address_of 2)
+            | !minus_wrap prefix_k                          → (negation_wrap 2)
+            | !amp prefix_k                                 → (address_of 2)
             | "try" prefix_k                                → (try 2)
 
 minus       = "-" | MINUS_PREFIX
@@ -766,49 +905,52 @@ open_expr   = jump_open
 # An `else` belongs to the innermost if, for or while that can take it
 # (Parse.zig expectIf, expectFor, expectWhileExpr): `>` on each form
 # without `else` makes it shift.
-if_expr     = if_prefix expr  >                                             → (if 1 2)
-            | if_prefix expr "else" [payload] expr                          → (if 1 2 4 5)
+if_expr     = "if" "(" expr ")" ptr_payload expr  >                                     → (if 3 5 6)
+            | "if" "(" expr ")" ptr_payload expr "else" else_payload expr               → (if 3 5 6 8 9)
 
-for_expr    = [LABEL ":"] for_prefix expr  >                                → (for 1 _ 3 4)
-            | [LABEL ":"] for_prefix expr "else" expr                       → (for 1 _ 3 4 6)
-            | [LABEL ":"] "inline" for_prefix expr  >                       → (for 1 3 4 5)
-            | [LABEL ":"] "inline" for_prefix expr "else" expr              → (for 1 3 4 5 7)
+for_expr    = [LABEL ":"] "for" "(" L(for_item) !","? ")" ptr_list_payload expr  >                      → (for 1 _ 5 8 9)
+            | [LABEL ":"] "for" "(" L(for_item) !","? ")" ptr_list_payload expr "else" expr             → (for 1 _ 5 8 9 11)
+            | [LABEL ":"] "inline" "for" "(" L(for_item) !","? ")" ptr_list_payload expr  >             → (for 1 3 6 9 10)
+            | [LABEL ":"] "inline" "for" "(" L(for_item) !","? ")" ptr_list_payload expr "else" expr    → (for 1 3 6 9 10 12)
 
-while_expr  = [LABEL ":"] while_prefix expr  >                              → (while 1 _ 3 4)
-            | [LABEL ":"] while_prefix expr "else" [payload] expr           → (while 1 _ 3 4 6 7)
-            | [LABEL ":"] "inline" while_prefix expr  >                     → (while 1 3 4 5)
-            | [LABEL ":"] "inline" while_prefix expr "else" [payload] expr  → (while 1 3 4 5 7 8)
+while_expr  = [LABEL ":"] "while" "(" expr ")" ptr_payload while_cont expr  >                           → (while 1 _ 5 7 8 9)
+            | [LABEL ":"] "while" "(" expr ")" ptr_payload while_cont expr "else" else_payload expr     → (while 1 _ 5 7 8 9 11 12)
+            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_cont expr  >                  → (while 1 3 6 8 9 10)
+            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_cont expr "else" else_payload expr
+                                                                                                        → (while 1 3 6 8 9 10 12 13)
 
 # Initializer lists (Parse.zig parseCurlySuffixExpr): a type expression,
 # then fields or elements in braces.
 curly       = type_e
             | type_e "{" "}"                                → (struct_init 1)
-            | type_e "{" L(field_init) [","] "}"            → (struct_init 1 ...3)
-            | type_e "{" L(expr) [","] "}"                  → (array_init 1 ...3)
+            | type_e "{" L(field_init) !","? "}"            → (struct_init 1 ...3)
+            | type_e "{" L(expr) !","? "}"                  → (array_init 1 ...3)
 curly_s     = type_s
             | type_s "{" "}"                                → (struct_init 1)
-            | type_s "{" L(field_init) [","] "}"            → (struct_init 1 ...3)
-            | type_s "{" L(expr) [","] "}"                  → (array_init 1 ...3)
+            | type_s "{" L(field_init) !","? "}"            → (struct_init 1 ...3)
+            | type_s "{" L(expr) !","? "}"                  → (array_init 1 ...3)
 curly_c     = type_c
             | type_c "{" "}"                                → (struct_init 1)
-            | type_c "{" L(field_init) [","] "}"            → (struct_init 1 ...3)
-            | type_c "{" L(expr) [","] "}"                  → (array_init 1 ...3)
+            | type_c "{" L(field_init) !","? "}"            → (struct_init 1 ...3)
+            | type_c "{" L(expr) !","? "}"                  → (array_init 1 ...3)
 
 # `a[*T ...]`: a single-item pointer type led by PTR_STAR, as the index.
 ptr_curly   = ptr_led
             | ptr_led "{" "}"                               → (struct_init 1)
-            | ptr_led "{" L(field_init) [","] "}"           → (struct_init 1 ...3)
-            | ptr_led "{" L(expr) [","] "}"                 → (array_init 1 ...3)
-ptr_led     = PTR_STAR single_ptr_mods type_expr            → (ptr_type one _ 2 3)
+            | ptr_led "{" L(field_init) !","? "}"           → (struct_init 1 ...3)
+            | ptr_led "{" L(expr) !","? "}"                 → (array_init 1 ...3)
 
 field_init  = "." IDENTIFIER "=" expr                       → (field_init 2 4)
 
 # Payloads (Parse.zig parsePayload, parsePtrPayload, parsePtrIndexPayload,
-# forPrefix).
-payload             = pipe IDENTIFIER pipe                  → 2
-ptr_payload         = pipe [star] IDENTIFIER pipe           → (capture 2 3)
-ptr_index_payload   = pipe [star] IDENTIFIER ["," IDENTIFIER] pipe          → (capture 2 3 5)
-ptr_list_payload    = pipe L(capture) [","] pipe            → 2
+# forPrefix). The bars carry nothing; ptr_payload and else_payload may be
+# empty, as nothing else starts with `|` where they go.
+payload             = !pipe IDENTIFIER !pipe                → 2
+ptr_payload         =
+                    | !pipe capture !pipe                   → 2
+else_payload        =
+                    | payload
+ptr_list_payload    = !pipe L(capture) !","? !pipe          → 2
 capture             = [star] IDENTIFIER                     → (capture 1 2)
 
 # ==============================================================================
@@ -863,36 +1005,70 @@ type_e      = prefix_type | error_union | fn_proto
 type_s      = prefix_type | error_union_s | fn_proto
 type_c      = prefix_type | error_union_c | fn_proto
 
+# Pointer types (Parse.zig parseTypeExpr, parsePtrModifiers): `const`,
+# `volatile` and `allowzero` in any number and order (the `quals` leaves),
+# at most one `align` and one `addrspace` (extra_align_qualifier,
+# extra_addrspace_qualifier); only a single-item pointer's `align` takes a
+# bit range (invalid_bit_range). Each pointer form lists the orders of
+# `align` and `addrspace` it allows.
 prefix_type = "?" type_expr                                             → (optional_type 2)
             | "anyframe" "->" type_expr                                 → (anyframe_type 3)
-            | star single_ptr_mods type_expr                            → (ptr_type one _ 2 3)
-            | "[" PTR_STAR "]" ptr_mods type_expr                       → (ptr_type many _ 4 5)
-            | "[" PTR_STAR C_PTR "]" ptr_mods type_expr                 → (ptr_type c _ 5 6)
-            | "[" PTR_STAR ":" expr "]" ptr_mods type_expr              → (ptr_type many 4 6 7)
-            | "[" "]" ptr_mods type_expr                                → (ptr_type slice _ 3 4)
-            | "[" ":" expr "]" ptr_mods type_expr                       → (ptr_type slice 3 5 6)
+            | single_ptr
+            | "[" PTR_STAR "]" ptr_quals type_expr                                                  → (ptr_type many _ _ _ _ _ 5 ...4)
+            | "[" PTR_STAR "]" ptr_quals byte_align ptr_quals type_expr                             → (ptr_type many _ 5 _ _ _ 7 ...4 ...6)
+            | "[" PTR_STAR "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr        → (ptr_type many _ 5 _ _ 7 9 ...4 ...6 ...8)
+            | "[" PTR_STAR "]" ptr_quals addr_space ptr_quals type_expr                             → (ptr_type many _ _ _ _ 5 7 ...4 ...6)
+            | "[" PTR_STAR "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr        → (ptr_type many _ 7 _ _ 5 9 ...4 ...6 ...8)
+            | "[" PTR_STAR C_PTR "]" ptr_quals type_expr                                            → (ptr_type c _ _ _ _ _ 6 ...5)
+            | "[" PTR_STAR C_PTR "]" ptr_quals byte_align ptr_quals type_expr                       → (ptr_type c _ 6 _ _ _ 8 ...5 ...7)
+            | "[" PTR_STAR C_PTR "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr  → (ptr_type c _ 6 _ _ 8 10 ...5 ...7 ...9)
+            | "[" PTR_STAR C_PTR "]" ptr_quals addr_space ptr_quals type_expr                       → (ptr_type c _ _ _ _ 6 8 ...5 ...7)
+            | "[" PTR_STAR C_PTR "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr  → (ptr_type c _ 8 _ _ 6 10 ...5 ...7 ...9)
+            | "[" PTR_STAR ":" expr "]" ptr_quals type_expr                                         → (ptr_type many 4 _ _ _ _ 7 ...6)
+            | "[" PTR_STAR ":" expr "]" ptr_quals byte_align ptr_quals type_expr                    → (ptr_type many 4 7 _ _ _ 9 ...6 ...8)
+            | "[" PTR_STAR ":" expr "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr
+                                                                                                    → (ptr_type many 4 7 _ _ 9 11 ...6 ...8 ...10)
+            | "[" PTR_STAR ":" expr "]" ptr_quals addr_space ptr_quals type_expr                    → (ptr_type many 4 _ _ _ 7 9 ...6 ...8)
+            | "[" PTR_STAR ":" expr "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr
+                                                                                                    → (ptr_type many 4 9 _ _ 7 11 ...6 ...8 ...10)
+            | "[" "]" ptr_quals type_expr                                                           → (ptr_type slice _ _ _ _ _ 4 ...3)
+            | "[" "]" ptr_quals byte_align ptr_quals type_expr                                      → (ptr_type slice _ 4 _ _ _ 6 ...3 ...5)
+            | "[" "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                 → (ptr_type slice _ 4 _ _ 6 8 ...3 ...5 ...7)
+            | "[" "]" ptr_quals addr_space ptr_quals type_expr                                      → (ptr_type slice _ _ _ _ 4 6 ...3 ...5)
+            | "[" "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr                 → (ptr_type slice _ 6 _ _ 4 8 ...3 ...5 ...7)
+            | "[" ":" expr "]" ptr_quals type_expr                                                  → (ptr_type slice 3 _ _ _ _ 6 ...5)
+            | "[" ":" expr "]" ptr_quals byte_align ptr_quals type_expr                             → (ptr_type slice 3 6 _ _ _ 8 ...5 ...7)
+            | "[" ":" expr "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr        → (ptr_type slice 3 6 _ _ 8 10 ...5 ...7 ...9)
+            | "[" ":" expr "]" ptr_quals addr_space ptr_quals type_expr                             → (ptr_type slice 3 _ _ _ 6 8 ...5 ...7)
+            | "[" ":" expr "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr        → (ptr_type slice 3 8 _ _ 6 10 ...5 ...7 ...9)
             | "[" expr "]" type_expr                                    → (array_type 2 _ 4)
             | "[" expr ":" expr "]" type_expr                           → (array_type 2 4 6)
 
-# Pointer modifiers (Parse.zig parsePtrModifiers): `const`, `volatile` and
-# `allowzero` in any number and order, at most one `align` and one
-# `addrspace` (extra_align_qualifier, extra_addrspace_qualifier); only a
-# single-item pointer's `align` takes a bit range (invalid_bit_range).
-single_ptr_mods = ptr_quals                                             → (...1)
-            | ptr_quals bit_align ptr_quals                             → (...1 2 ...3)
-            | ptr_quals bit_align ptr_quals addr_space ptr_quals        → (...1 2 ...3 4 ...5)
-            | ptr_quals addr_space ptr_quals                            → (...1 2 ...3)
-            | ptr_quals addr_space ptr_quals bit_align ptr_quals        → (...1 2 ...3 4 ...5)
-ptr_mods    = ptr_quals                                                 → (...1)
-            | ptr_quals byte_align ptr_quals                            → (...1 2 ...3)
-            | ptr_quals byte_align ptr_quals addr_space ptr_quals       → (...1 2 ...3 4 ...5)
-            | ptr_quals addr_space ptr_quals                            → (...1 2 ...3)
-            | ptr_quals addr_space ptr_quals byte_align ptr_quals       → (...1 2 ...3 4 ...5)
+# `*T`, and `a[*T ...]` (ptr_led, led by PTR_STAR): a single-item
+# pointer, whose `align` may take a bit range.
+single_ptr  = !star ptr_quals type_expr                                                             → (ptr_type one _ _ _ _ _ 3 ...2)
+            | !star ptr_quals byte_align ptr_quals type_expr                                        → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
+            | !star ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                   → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
+            | !star ptr_quals addr_space ptr_quals type_expr                                        → (ptr_type one _ _ _ _ 3 5 ...2 ...4)
+            | !star ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr                   → (ptr_type one _ 5 _ _ 3 7 ...2 ...4 ...6)
+            | !star ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr            → (ptr_type one _ 5 7 9 _ 12 ...2 ...11)
+            | !star ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals addr_space ptr_quals type_expr
+                                                                                                    → (ptr_type one _ 5 7 9 12 14 ...2 ...11 ...13)
+            | !star ptr_quals addr_space ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr
+                                                                                                    → (ptr_type one _ 7 9 11 3 14 ...2 ...4 ...13)
+ptr_led     = PTR_STAR ptr_quals type_expr                                                          → (ptr_type one _ _ _ _ _ 3 ...2)
+            | PTR_STAR ptr_quals byte_align ptr_quals type_expr                                     → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
+            | PTR_STAR ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
+            | PTR_STAR ptr_quals addr_space ptr_quals type_expr                                     → (ptr_type one _ _ _ _ 3 5 ...2 ...4)
+            | PTR_STAR ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr                → (ptr_type one _ 5 _ _ 3 7 ...2 ...4 ...6)
+            | PTR_STAR ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr         → (ptr_type one _ 5 7 9 _ 12 ...2 ...11)
+            | PTR_STAR ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals addr_space ptr_quals type_expr
+                                                                                                    → (ptr_type one _ 5 7 9 12 14 ...2 ...11 ...13)
+            | PTR_STAR ptr_quals addr_space ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr
+                                                                                                    → (ptr_type one _ 7 9 11 3 14 ...2 ...4 ...13)
 
 ptr_quals   = ptr_qual*
 ptr_qual    = "const" | "volatile" | "allowzero"
-bit_align   = "align" "(" expr ":" expr ":" expr ")"                    → (align 3 5 7)
-            | byte_align
 
 error_union     = suffix | suffix "!" type_expr                         → (error_union 1 3)
 error_union_s   = suffix_s | suffix_s "!" type_expr                     → (error_union 1 3)
@@ -903,42 +1079,45 @@ error_union_n   = suffix_n | suffix_n "!" type_expr                     → (err
 # of the primary type expressions: a labeled block or switch is one in a
 # type or an expression, but not where a statement or field name would be
 # taken first, and a plain `switch` starts no expression statement.
+# `a[*c]` indexes `a` with the single-item pointer type `*c`.
 suffix      = primary_type
             | suffix "(" ")"                                            → (call 1)
-            | suffix "(" L(expr) [","] ")"                              → (call 1 ...3)
+            | suffix "(" L(expr) !","? ")"                              → (call 1 ...3)
             | suffix "[" index_expr "]"                                 → (array_access 1 3)
-            | suffix "[" PTR_STAR C_PTR "]"                             → (array_access 1 (ptr_type one _ _ 4))
+            | suffix "[" c_ptr_index "]"                                → (array_access 1 3)
             | suffix "[" index_expr ".." [expr] [":" expr] "]"          → (slice 1 3 5 7)
             | suffix "." IDENTIFIER                                     → (field_access 1 3)
             | suffix ".*"                                               → (deref 1)
             | suffix "." "?"                                            → (unwrap_optional 1)
 suffix_s    = primary_type_s
             | suffix_s "(" ")"                                          → (call 1)
-            | suffix_s "(" L(expr) [","] ")"                            → (call 1 ...3)
+            | suffix_s "(" L(expr) !","? ")"                            → (call 1 ...3)
             | suffix_s "[" index_expr "]"                               → (array_access 1 3)
-            | suffix_s "[" PTR_STAR C_PTR "]"                           → (array_access 1 (ptr_type one _ _ 4))
+            | suffix_s "[" c_ptr_index "]"                              → (array_access 1 3)
             | suffix_s "[" index_expr ".." [expr] [":" expr] "]"        → (slice 1 3 5 7)
             | suffix_s "." IDENTIFIER                                   → (field_access 1 3)
             | suffix_s ".*"                                             → (deref 1)
             | suffix_s "." "?"                                          → (unwrap_optional 1)
 suffix_c    = primary_type_c
             | suffix_c "(" ")"                                          → (call 1)
-            | suffix_c "(" L(expr) [","] ")"                            → (call 1 ...3)
+            | suffix_c "(" L(expr) !","? ")"                            → (call 1 ...3)
             | suffix_c "[" index_expr "]"                               → (array_access 1 3)
-            | suffix_c "[" PTR_STAR C_PTR "]"                           → (array_access 1 (ptr_type one _ _ 4))
+            | suffix_c "[" c_ptr_index "]"                              → (array_access 1 3)
             | suffix_c "[" index_expr ".." [expr] [":" expr] "]"        → (slice 1 3 5 7)
             | suffix_c "." IDENTIFIER                                   → (field_access 1 3)
             | suffix_c ".*"                                             → (deref 1)
             | suffix_c "." "?"                                          → (unwrap_optional 1)
 suffix_n    = primary_type_n
             | suffix_n "(" ")"                                          → (call 1)
-            | suffix_n "(" L(expr) [","] ")"                            → (call 1 ...3)
+            | suffix_n "(" L(expr) !","? ")"                            → (call 1 ...3)
             | suffix_n "[" index_expr "]"                               → (array_access 1 3)
-            | suffix_n "[" PTR_STAR C_PTR "]"                           → (array_access 1 (ptr_type one _ _ 4))
+            | suffix_n "[" c_ptr_index "]"                              → (array_access 1 3)
             | suffix_n "[" index_expr ".." [expr] [":" expr] "]"        → (slice 1 3 5 7)
             | suffix_n "." IDENTIFIER                                   → (field_access 1 3)
             | suffix_n ".*"                                             → (deref 1)
             | suffix_n "." "?"                                          → (unwrap_optional 1)
+
+c_ptr_index = PTR_STAR C_PTR                                            → (ptr_type one _ _ _ _ _ 2)
 
 primary_type    = atom | switch_expr | labeled_switch | labeled_block
 primary_type_s  = atom
@@ -951,81 +1130,94 @@ atom        = IDENTIFIER
             | STRING_LITERAL
             | MULTILINE_STRING_LITERAL_LINE+                            → (multiline_string_literal ...1)
             | BUILTIN "(" ")"                                           → (builtin_call 1)
-            | BUILTIN "(" L(expr) [","] ")"                             → (builtin_call 1 ...3)
+            | BUILTIN "(" L(expr) !","? ")"                             → (builtin_call 1 ...3)
             | "(" expr ")"                                              → (grouped_expression 2)
             | "." IDENTIFIER                                            → (enum_literal 2)
             | "." "{" "}"                                               → (struct_init _)
-            | "." "{" L(field_init) [","] "}"                           → (struct_init _ ...3)
-            | "." "{" L(expr) [","] "}"                                 → (array_init _ ...3)
+            | "." "{" L(field_init) !","? "}"                           → (struct_init _ ...3)
+            | "." "{" L(expr) !","? "}"                                 → (array_init _ ...3)
             | "error" "." IDENTIFIER                                    → (error_value 3)
             | "error" "{" "}"                                           → (error_set_decl)
-            | "error" "{" L(error_name) [","] "}"                       → (error_set_decl ...3)
-            | "unreachable"                                             → (unreachable_literal)
-            | "anyframe"                                                → (anyframe_literal)
+            | "error" "{" L(error_name) !","? "}"                       → (error_set_decl ...3)
+            | "unreachable"                                             → 1
+            | "anyframe"                                                → 1
             | container_type
 
-error_name  = [docs] IDENTIFIER                                         → 2
+error_name  = [docs] IDENTIFIER                                         → (error_name 1 2)
 
 # if, for and while type expressions (Parse.zig expectIf(expectTypeExpr),
 # expectFor(expectTypeExpr), expectWhileTypeExpr). The labeled loops are
 # apart: neither an unnamed field nor an unnamed parameter starts with one.
-if_type_expr    = if_prefix type_expr  >                                        → (if 1 2)
-                | if_prefix type_expr "else" [payload] type_expr                → (if 1 2 4 5)
+if_type_expr    = "if" "(" expr ")" ptr_payload type_expr  >                            → (if 3 5 6)
+                | "if" "(" expr ")" ptr_payload type_expr "else" else_payload type_expr → (if 3 5 6 8 9)
 
-for_type_expr   = ["inline"] for_prefix type_expr  >                            → (for _ 1 2 3)
-                | ["inline"] for_prefix type_expr "else" type_expr              → (for _ 1 2 3 5)
-labeled_for_type_expr = LABEL ":" ["inline"] for_prefix type_expr  >                  → (for 1 3 4 5)
-                | LABEL ":" ["inline"] for_prefix type_expr "else" type_expr    → (for 1 3 4 5 7)
+for_type_expr   = ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >                  → (for _ 1 4 7 8)
+                | ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr    → (for _ 1 4 7 8 10)
+labeled_for_type_expr = LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >  → (for 1 3 6 9 10)
+                | LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr
+                                                                                                            → (for 1 3 6 9 10 12)
 
-while_type_expr = ["inline"] while_prefix type_expr  >                          → (while _ 1 2 3)
-                | ["inline"] while_prefix type_expr "else" [payload] type_expr  → (while _ 1 2 3 5 6)
-labeled_while_type_expr = LABEL ":" ["inline"] while_prefix type_expr  >                → (while 1 3 4 5)
-                | LABEL ":" ["inline"] while_prefix type_expr "else" [payload] type_expr
-                                                                                → (while 1 3 4 5 7 8)
+while_type_expr = ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr  >   → (while _ 1 4 6 7 8)
+                | ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr "else" else_payload type_expr
+                                                                                        → (while _ 1 4 6 7 8 10 11)
+labeled_while_type_expr = LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr
+                                                                                     >  → (while 1 3 6 8 9 10)
+                | LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr "else" else_payload type_expr
+                                                                                        → (while 1 3 6 8 9 10 12 13)
 
 # Container types (Parse.zig expectContainerDeclAuto). The wrapper names
 # the `enum` of `union(enum` ENUM_TAG: Parse.zig takes it as the tag kind
 # and never as the start of an expression.
-container_type  = [container_layout] container_kind "{" container_body "}"     → (container_decl 1 2 ...4)
+container_type  = [container_layout] container_kind "{" container_docs members "}"
+                                                                        → (container_decl 1 2 _ _ 4 ...5)
+                | [container_layout] container_arg_kind "(" expr ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 _ 4 7 ...8)
+                | [container_layout] "union" "(" expr ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 _ 4 7 ...8)
+                | [container_layout] "union" "(" ENUM_TAG ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 4 _ 7 ...8)
+                | [container_layout] "union" "(" ENUM_TAG "(" expr ")" ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 4 6 10 ...11)
 container_layout = "extern" | "packed"
-container_kind  = "struct"                                              → (struct)
-                | "struct" "(" expr ")"                                 → (struct 3)
-                | "opaque"                                              → (opaque)
-                | "enum"                                                → (enum)
-                | "enum" "(" expr ")"                                   → (enum 3)
-                | "union"                                               → (union)
-                | "union" "(" expr ")"                                  → (union 3)
-                | "union" "(" ENUM_TAG ")"                              → (union enum)
-                | "union" "(" ENUM_TAG "(" expr ")" ")"                 → (union enum 5)
+container_kind  = "struct" | "opaque" | "enum" | "union"
+container_arg_kind = "struct" | "enum"
 
-# switch (Parse.zig expectSwitchSuffix, parseSwitchProng).
+# switch (Parse.zig expectSwitchSuffix, parseSwitchProng). An `else`
+# prong has no values.
 switch_expr     = "switch" "(" expr ")" "{" [switch_prongs] "}"         → (switch _ 3 ...6)
 labeled_switch  = LABEL ":" "switch" "(" expr ")" "{" [switch_prongs] "}"  → (switch 1 5 ...8)
 
-switch_prongs   = L(switch_prong) [","]                                 → 1
+switch_prongs   = L(switch_prong) !","?                                 → 1
 
-switch_prong    = switch_case "=>" [ptr_index_payload] single_assign_expr          → (switch_case _ 1 3 4)
-                | "inline" switch_case "=>" [ptr_index_payload] single_assign_expr → (switch_case 1 2 4 5)
+switch_prong    = switch_values "=>" single_assign_expr                                     → (switch_case _ 1 _ _ 3)
+                | switch_values "=>" !pipe capture !pipe single_assign_expr                 → (switch_case _ 1 4 _ 6)
+                | switch_values "=>" !pipe capture "," IDENTIFIER !pipe single_assign_expr  → (switch_case _ 1 4 6 8)
+                | "inline" switch_values "=>" single_assign_expr                            → (switch_case 1 2 _ _ 4)
+                | "inline" switch_values "=>" !pipe capture !pipe single_assign_expr        → (switch_case 1 2 5 _ 7)
+                | "inline" switch_values "=>" !pipe capture "," IDENTIFIER !pipe single_assign_expr
+                                                                                            → (switch_case 1 2 5 7 9)
 
-switch_case     = "else"                                                → (else)
-                | L(switch_item) [","]                                  → 1
+switch_values   = "else"                                                → ()
+                | L(switch_item) !","?                                  → 1
 
 switch_item     = expr
                 | expr "..." expr                                       → (switch_range 1 3)
 
 # asm (Parse.zig expectAsmExpr). The clobbers are an expression.
 asm_expr        = "asm" ["volatile"] "(" expr ")"                       → (asm 2 4)
-                | "asm" ["volatile"] "(" expr ":" [asm_outputs] ")"     → (asm 2 4 6)
-                | "asm" ["volatile"] "(" expr ":" [asm_outputs] ":" [asm_inputs] ")"
-                                                                        → (asm 2 4 6 8)
-                | "asm" ["volatile"] "(" expr ":" [asm_outputs] ":" [asm_inputs] ":" expr ")"
-                                                                        → (asm 2 4 6 8 10)
+                | "asm" ["volatile"] "(" expr ":" asm_outputs ")"       → (asm 2 4 _ ...6)
+                | "asm" ["volatile"] "(" expr ":" asm_outputs ":" asm_inputs ")"
+                                                                        → (asm 2 4 _ ...6 ...8)
+                | "asm" ["volatile"] "(" expr ":" asm_outputs ":" asm_inputs ":" expr ")"
+                                                                        → (asm 2 4 10 ...6 ...8)
 
-asm_outputs     = L(asm_output_item) [","]                              → 1
-asm_inputs      = L(asm_input_item) [","]                               → 1
+asm_outputs     =                                                       → ()
+                | L(asm_output_item) !","?                              → 1
+asm_inputs      =                                                       → ()
+                | L(asm_input_item) !","?                               → 1
 
-asm_output_item = "[" IDENTIFIER "]" STRING_LITERAL "(" "->" type_expr ")"      → (asm_output 2 4 7)
-                | "[" IDENTIFIER "]" STRING_LITERAL "(" IDENTIFIER ")"          → (asm_output 2 4 6)
+asm_output_item = "[" IDENTIFIER "]" STRING_LITERAL "(" "->" type_expr ")"      → (asm_output 2 4 _ 7)
+                | "[" IDENTIFIER "]" STRING_LITERAL "(" IDENTIFIER ")"          → (asm_output 2 4 6 _)
 asm_input_item  = "[" IDENTIFIER "]" STRING_LITERAL "(" expr ")"                → (asm_input 2 4 6)
 
 # ==============================================================================

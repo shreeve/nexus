@@ -1,19 +1,19 @@
 (tokens
-  (doc_comment `/// a doc comment`)
-  (doc_comment `///`)
-  (doc_comment `///a doc comment without a space`)
-  (container_doc_comment `//! a container doc comment`)
-  (container_doc_comment `//!`)
-  (container_doc_comment `//!! two bangs`)
-  (container_doc_comment `//!/ bang slash`)
-  (doc_comment `/// é   UTF-8 in a doc comment`)
-  (identifier `x`)
-  (identifier `y`)
-  (bad_doc_comment `/// trailing doc comment`)
-  (identifier `z`)
-  (container_doc_comment `//! trailing container doc comment`)
-  (identifier `a`)
-  (slash `/`)
-  (identifier `b`)
-  (slash_equal `/=`)
-  (identifier `c`))
+  (doc_comment `/// a doc comment`)@60..77
+  (doc_comment `///`)@78..81
+  (doc_comment `///a doc comment without a space`)@82..114
+  (container_doc_comment `//! a container doc comment`)@156..183
+  (container_doc_comment `//!`)@184..187
+  (container_doc_comment `//!! two bangs`)@188..202
+  (container_doc_comment `//!/ bang slash`)@203..218
+  (doc_comment `/// é   UTF-8 in a doc comment`)@219..252
+  (identifier `x`)@292..293
+  (identifier `y`)@314..315
+  (bad_doc_comment `/// trailing doc comment`)@316..340
+  (identifier `z`)@341..342
+  (container_doc_comment `//! trailing container doc comment`)@343..377
+  (identifier `a`)@378..379
+  (slash `/`)@380..381
+  (identifier `b`)@382..383
+  (slash_equal `/=`)@384..386
+  (identifier `c`)@387..388)@60..388

@@ -1,37 +1,56 @@
 (root
-  (var_decl _ _ _ (var_decl_proto `const` `std`) (builtin_call `@import` `"std"`))
+  _
+  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@12..26)@0..27
   (var_decl
     _
     _
     _
-    (var_decl_proto `const` `table`)
+    _
+    _
+    _
+    `const`
+    `table`
+    _
+    _
+    _
+    _
     (comptime
       (block
         `blk`
-        (var_decl _ _ _ (var_decl_proto `var` `t` (array_type `16` _ `u8`)) `undefined`)
+        (var_decl _ _ _ _ _ _ `var` `t` (array_type `16` _ `u8`)@70..76 _ _ _ `undefined`)@63..89
         (for
           _
           _
-          (((address_of `t`) (for_range `0`)) ((capture `*` `v`) (capture _ `i`)))
-          (assign `=` (deref `v`) (builtin_call `@intCast` `i`)))
-        (break `blk` `t`))))
+          ((address_of `t`)@99..101 (for_range `0` _)@103..106)@99..106
+          ((capture `*` `v`)@109..111 (capture _ `i`)@113..114)@109..114
+          (assign `=` (deref `v`)@116..119 (builtin_call `@intCast` `i`)@122..133)@116..133
+          _)@94..134
+        (break `blk` `t`)@139..151)@52..154)@43..154)@29..155
   (fn_decl
-    _
-    _
     (fn_proto
+      _
+      _
+      _
+      _
       `sum`
-      (params (param `comptime` `xs` (ptr_type slice _ (`const`) `u32`)))
+      ((param _ `comptime` `xs` (ptr_type slice _ _ _ _ _ `u32` `const`)@177..188)@164..188)@164..188
       _
       _
       _
       _
       _
-      `u32`)
+      `u32`)@157..193
     (block
       _
-      (var_decl _ `comptime` _ (var_decl_proto `var` `total` `u32`) `0`)
-      (for _ `inline` ((`xs`) ((capture _ `x`))) (assign `+=` `total` `x`))
-      (return `total`)))
+      (var_decl _ _ _ _ _ `comptime` `var` `total` `u32` _ _ _ `0`)@200..228
+      (for
+        _
+        `inline`
+        (`xs`)@245..247
+        ((capture _ `x`)@250..251)@250..251
+        (assign `+=` `total` `x`)@253..263
+        _)@233..264
+      (return `total`)@269..281)@194..284)@157..284
   (test_decl
     _
     (block
@@ -40,15 +59,35 @@
         (block
           _
           (call
-            (field_access (field_access `std` `debug`) `assert`)
-            (binary `==` (call `sum` (address_of (array_init _ `1` `2` `3`))) `6`))))
-      (var_decl _ `comptime` _ (var_decl_proto `var` `i`) `0`)
-      (comptime (assign `+=` `i` `1`))
-      (comptime (call (field_access (field_access `std` `debug`) `assert`) (binary `==` `i` `1`)))
-      (var_decl _ _ _ (var_decl_proto `const` `T`) (comptime (if (`true`) `u8` _ `u16`)))
-      (assign `=` `_` `T`)
+            (field_access (field_access `std` `debug`)@316..325 `assert`)@316..332
+            (binary
+              `==`
+              (call `sum` (address_of (array_init _ `1` `2` `3`)@338..350)@337..350)@333..351
+              `6`)@333..356)@316..357)@306..364)@297..364
+      (var_decl _ _ _ _ _ `comptime` `var` `i` _ _ _ _ `0`)@369..388
+      (comptime (assign `+=` `i` `1`)@402..408)@393..409
+      (comptime
+        (call
+          (field_access (field_access `std` `debug`)@423..432 `assert`)@423..439
+          (binary `==` `i` `1`)@440..446)@423..447)@414..448
+      (var_decl
+        _
+        _
+        _
+        _
+        _
+        _
+        `const`
+        `T`
+        _
+        _
+        _
+        _
+        (comptime (if `true` _ `u8` _ `u16`)@472..493)@463..493)@453..494
+      (assign `=` `_` `T`)@499..505
       (assign_destructure
         `comptime`
-        ((var_decl_proto `var` `a` `u8`) (var_decl_proto `var` `b` `u8`))
-        (array_init _ `1` `2`))
-      (assign_destructure _ (`a` `b`) (array_init _ `b` `a`)))))
+        ((var_decl _ _ _ _ _ _ `var` `a` `u8` _ _ _ _)@519..528
+          (var_decl _ _ _ _ _ _ `var` `b` `u8` _ _ _ _)@530..539)@519..539
+        (array_init _ `1` `2`)@542..551)@510..552
+      (assign_destructure _ (`a` `b`)@557..561 (array_init _ `b` `a`)@564..573)@557..574)@291..576)@286..576)@0..576
