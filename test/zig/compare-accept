@@ -1,0 +1,68 @@
+#!/bin/bash
+# Compares what the parser generated from test/zig/zig.grammar accepts
+# with what std.zig.Ast.parse accepts (the Zig that runs this script,
+# which must be 0.17.0), input by input: a strict parse of a whole file
+# against Ast.parse(.{ .recover = false }).
+#
+# Usage:
+#   test/zig/compare-accept [options] (DIR|FILE|--list LIST|--inline FILE)...
+#
+#   DIR             every *.zig file under DIR
+#   --list LIST     the paths in LIST, one per line (paths may hold spaces)
+#   --inline FILE   the sources given as string literals to testCanonical,
+#                   testTransform, testError and checkAgainstOracle in FILE
+#                   (lib/std/zig/parser_test.zig, parser_fuzz.zig)
+#   --fuzz N        compare on N inputs made by token edits of the given
+#                   ones (--seed S, default 0); see tools/accept.zig
+#   --bench N       time parsing alone instead, both parsers, best of N
+#                   rounds (ReleaseFast, single thread, files in memory)
+#   -O MODE         optimize mode of the tool (default ReleaseFast)
+#
+# The tool is built in .zig-cache/nexus-test/zig-accept/ from this
+# checkout's bin/nexus (run `zig build` first). It prints one line per
+# input on which the parsers disagree, with the first error of the side
+# that rejects (line:col and the token or Ast error tag), and a summary;
+# it exits 1 when any input differs. A file Nexus rejects only at a token
+# over 65535 bytes, the most a Nexus token holds, is listed as LONG.
+
+set -uo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)
+OUT="$ROOT/.zig-cache/nexus-test/zig-accept"
+MODE=ReleaseFast TOOL_ARGS=()
+LIST="$OUT/list.txt"
+mkdir -p "$OUT"
+: >"$LIST.new"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --list) cat "$2" >>"$LIST.new"; shift ;;
+        --inline) TOOL_ARGS+=(--inline "$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"); shift ;;
+        --bench) TOOL_ARGS+=(--bench "$2"); shift ;;
+        --fuzz) TOOL_ARGS+=(--fuzz "$2"); shift ;;
+        --seed) TOOL_ARGS+=(--seed "$2"); shift ;;
+        -O) MODE=$2; shift ;;
+        -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+        -*) echo "unknown option $1" >&2; exit 2 ;;
+        *)
+            if [[ -d $1 ]]; then
+                find "$(cd "$1" && pwd)" -name '*.zig' -type f | LC_ALL=C sort >>"$LIST.new"
+            elif [[ -f $1 ]]; then
+                echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")" >>"$LIST.new"
+            else
+                echo "no such file or directory: $1" >&2; exit 2
+            fi ;;
+    esac
+    shift
+done
+mv "$LIST.new" "$LIST"
+[[ -s $LIST || ${#TOOL_ARGS[@]} -gt 0 ]] || { echo "no input files" >&2; exit 2; }
+
+# Build: generate the parser, compile the tool next to it.
+NEXUS="$ROOT/bin/nexus"
+[[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
+(cd "$HERE" && "$NEXUS" zig.grammar "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
+cp "$HERE/zig.zig" "$HERE/tools/accept.zig" "$OUT/"
+(cd "$OUT" && zig build-exe -O "$MODE" accept.zig -femit-bin=accept --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
+    >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
+
+exec "$OUT/accept" ${TOOL_ARGS[@]+"${TOOL_ARGS[@]}"} --list "$LIST"

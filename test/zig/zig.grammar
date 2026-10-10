@@ -12,8 +12,9 @@
 # holds, which std.zig.Tokenizer lexes as one token.
 #
 # The parser is built to accept exactly what std.zig.Ast.parse
-# (lib/std/zig/Parse.zig) accepts with recovery off: a whole file from
-# `root`, with the rules named after grammar.peg's (doc/langref/grammar.peg).
+# (lib/std/zig/Parse.zig) accepts with recovery off, which
+# test/zig/compare-accept checks: a whole file from `root`, with the rules
+# named after grammar.peg's (doc/langref/grammar.peg).
 # Parse.zig is predictive: it commits to a reading after looking at a token
 # or two and never backtracks. Where LALR(1) would decide later and accept
 # more, the grammar encodes the commitment as a restricted variant of a
