@@ -678,17 +678,27 @@ pub const BaseParser = struct {
     }
 
 
-    /// Parse the whole input as `start`.
+    /// Parse the whole input as `start`. The state and the current token's
+    /// symbol live in locals: the symbol changes only when a token is
+    /// shifted, except that `@as` promotion depends on the state, so a
+    /// promotable token is promoted again after each reduction.
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
+        // The start marker, which the start state shifts before any input.
+        if (self.injectedToken) |marker| try self.shift(@intCast(getAction(self.stateStack.last().?, marker)));
+        var state = self.stateStack.last().?;
+        var raw = tokenToSymbol(self.current);
+        var sym = self.promoted(raw);
         while (true) {
-            const state = self.stateStack.last().?;
-            const sym = self.lookahead();
-            const action = self.actionFor(state, sym);
+            const action = self.strictAction(state, sym);
             if (action > 0) {
-                try self.shift(@intCast(action));
+                state = @intCast(action);
+                try self.shiftToken(state);
+                raw = tokenToSymbol(self.current);
+                sym = self.promoted(raw);
             } else if (action < -1) {
-                try self.reduceOrPass(@intCast(-action - 2));
+                state = try self.reduceOrPass(@intCast(-action - 2));
+                if (asGroups > 0 and raw == needsPromotion) sym = self.promoted(raw);
             } else if (action == -1) {
                 return self.valueStack.last().?;
             } else {
@@ -696,6 +706,13 @@ pub const BaseParser = struct {
                 return error.ParseError;
             }
         }
+    }
+
+    /// The symbol of the current token, `raw` from `tokenToSymbol`, after
+    /// `@as` promotion in the current state.
+    inline fn promoted(self: *BaseParser, raw: u16) u16 {
+        if (asGroups > 0 and raw == needsPromotion) return promote(self, self.current);
+        return raw;
     }
 
     /// Parse `start`, repairing syntax errors for an editor: the parse goes
@@ -742,7 +759,7 @@ pub const BaseParser = struct {
                 if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
-                try self.reduceOrPass(@intCast(-action - 2));
+                _ = try self.reduceOrPass(@intCast(-action - 2));
             } else if (action == -1) {
                 result.sexp = self.valueStack.last().?;
                 result.complete = true;
@@ -881,8 +898,14 @@ pub const BaseParser = struct {
     /// on the hinted token and it touches the previous token, shift
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
+        if (self.pendingInsert != null or self.injectedToken != null) return getAction(state, sym);
+        return self.strictAction(state, sym);
+    }
+
+    /// `actionFor` on a token of the input.
+    inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null) {
+        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
             if (getImmediateShift(state, sym)) |target| return target;
         }
         return action;
@@ -897,18 +920,21 @@ pub const BaseParser = struct {
             try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
             if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
-        } else {
-            const tok = self.current;
-            // The lexer's id is taken even when an `@as` ordinal replaces
-            // it, so it never reaches the next token.
-            const lexerId = takeLexerId(&self.lexer);
-            const id = if (self.lastMatchedId != 0) self.lastMatchedId else lexerId;
-            self.lastMatchedId = 0;
-            const end = tok.pos + tok.len;
-            try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
-            if (nodeStore) self.lastEnd = end;
-            try self.advance();
-        }
+        } else try self.shiftToken(target);
+    }
+
+    /// Shift the current token, a token of the input.
+    inline fn shiftToken(self: *BaseParser, target: u16) !void {
+        const tok = self.current;
+        // The lexer's id is taken even when an `@as` ordinal replaces it,
+        // so it never reaches the next token.
+        const lexerId = takeLexerId(&self.lexer);
+        const id = if (asGroups > 0 and self.lastMatchedId != 0) self.lastMatchedId else lexerId;
+        if (asGroups > 0) self.lastMatchedId = 0;
+        const end = tok.pos + tok.len;
+        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+        if (nodeStore) self.lastEnd = end;
+        try self.advance();
     }
 
     /// Push a state, its value, and (with a node store) where the value
@@ -947,13 +973,17 @@ pub const BaseParser = struct {
     /// element) only replaces the top state with the goto on A: the value,
     /// its start and end, and its spare stay; it builds no node, so it
     /// places no empty element and records no side-band role.
-    inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !void {
+    /// It returns the new top state.
+    inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !u16 {
         if (ruleLen[ruleId] == 1 and ruleValue[ruleId] == 2) {
             const states = self.stateStack.items;
             const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
             std.debug.assert(next > 0); // every reduction has a goto
             states[states.len - 1] = @intCast(next);
-        } else try self.reduce(ruleId);
+            return @intCast(next);
+        }
+        try self.reduce(ruleId);
+        return self.stateStack.items[self.stateStack.items.len - 1];
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
