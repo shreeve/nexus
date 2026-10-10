@@ -9,7 +9,7 @@
   (doc_comment `/// é   UTF-8 in a doc comment`)
   (identifier `x`)
   (identifier `y`)
-  (doc_comment `/// trailing doc comment`)
+  (bad_doc_comment `/// trailing doc comment`)
   (identifier `z`)
   (container_doc_comment `//! trailing container doc comment`)
   (identifier `a`)
