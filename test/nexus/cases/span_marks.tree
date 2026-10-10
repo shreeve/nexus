@@ -1,0 +1,22 @@
+(grammar
+  (rule
+    (name `stmt`)@0..4
+    (alt
+      _
+      ((unspanned
+         (label `doc` (quantified (tok `DOC`)@12..15 (zero_plus)@15..16)@12..16)@8..16)@7..16
+        (unspanned (skip_q (tok `COMMENT`)@19..26 (opt)@26..27)@18..27)@17..27
+        (tok `KW`)@28..30
+        (tok `IDENT`)@31..36
+        (unspanned (lit `";"`)@38..41)@37..41)@7..41
+      (node `stmt` (pos `3`)@54..55)@48..56
+      _)@7..56
+    (alt
+      _
+      ((unspanned (group _ ((tok `A`)@66..67)@66..67 ((tok `B`)@70..71)@70..71)@65..72)@64..72
+        (unspanned (group opt ((tok `C`)@75..76 (tok `D`)@77..78)@75..78)@75..78)@73..79
+        (ref `x`)@80..81
+        (unspanned (list_req `L` (plain `y`)@85..86)@83..87)@82..87
+        (unspanned (skip_q (ref `z`)@90..91 (one_plus)@91..92)@89..92)@88..92)@64..92
+      (node `s` (pos `3`)@102..103)@99..104
+      _)@64..104)@0..104)@0..105

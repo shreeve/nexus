@@ -162,7 +162,13 @@ pub fn generateRuleAction(allocator: Allocator, writer: anytype, g: *const Gramm
         uses.pass = true;
         return writer.print("self.build(pass, {s})", .{e.use});
     };
+    // Span marks: the node spans its unmarked elements, as a nested node
+    // spans the elements it references.
+    const elems = rule.spanElems orelse return e.list(writer, tree.list, "blk");
+    uses.nested = true;
+    try writer.writeAll("self.nested(");
     try e.list(writer, tree.list, "blk");
+    try writer.print(", {d}, {d})", .{ elems.first, elems.last });
 }
 
 const Emitter = struct {

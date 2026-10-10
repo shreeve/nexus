@@ -13,6 +13,16 @@
   available, and each item's type against its role; an absent optional
   head leaves its roles nil. Additive: both forms were errors before, and
   grammars that do not use them generate the same parsers. No migration.
+- Span marks: `-X` on a leading or trailing element of a pattern leaves
+  that element out of the span of the node the alternative builds, so a
+  statement's node can exclude its `;` and the doc comments before it
+  (`stmt = -doc:DOC* "var" name:IDENT "=" value:expr -";" → (var)`). The
+  element keeps its position and value, and the parent node still spans
+  it. Generation rejects a mark inside a group, on a middle element, on an
+  alternative that builds no node, or one that leaves the node no element
+  that is always there. Applies with `@schema`, and with `--spans` without
+  one. Additive: grammars without marks generate the same parsers. No
+  migration.
 
 ## 2.1.0 — 2026-10-10
 

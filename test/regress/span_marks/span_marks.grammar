@@ -1,0 +1,50 @@
+# Span marks: `-X` leaves a leading or trailing top-level element out of
+# the span of the node the alternative builds. A statement's doc comments
+# and its `;` stay out of its node's span, but in its parent's (`block`
+# spans everything); the marked elements keep their values (`doc`).
+# Without a mark (`call`) a node spans its whole reduction. An optional
+# marked element (`[";"]`) and a choice are marked as a whole.
+
+@lexer
+tokens
+    ident
+    doc
+    kw_var
+    kw_let
+    eq
+    semi
+    comma
+    lparen
+    rparen
+    eof
+    err
+'\n'                                        → skip, skip
+'///' [^\n]*                                → doc
+"var"                                       → kw_var
+"let"                                       → kw_let
+'='                                         → eq
+';'                                         → semi
+','                                         → comma
+'('                                         → lparen
+')'                                         → rparen
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "span_marks"
+
+@schema
+    block       ...stmts
+    var         doc:group? mut:tag(var|let) name:leaf value
+    call        callee:leaf
+    expr        value
+
+program!    = stmt*                                 → (block ...1)
+
+stmt        = -doc:DOC* mut:("var" | "let") name:IDENT "=" value:operand -";"
+                                                    → (var)
+            | IDENT "(" ")" ";"                     → (call 1)
+            | operand -![";"] -!("," | ";" ";")     → (expr 1)
+
+operand     = IDENT
+            | "(" stmt ")"                          → 2

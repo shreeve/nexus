@@ -135,11 +135,15 @@ expander resolves.
   written inline: a top-level `[A B]` group, `[X]` on a rule or list, a
   non-repeated choice, and a non-repeated group with labels inside.
   `checkPatterns` walks every pattern before semantics or expansion and
-  rejects what has no position (labels deeper down, a nested `[A B]`) and
-  nesting beyond 64 levels;
+  rejects what has no position (labels deeper down, a nested `[A B]`),
+  nesting beyond 64 levels, and span marks (`-X`) anywhere but on a
+  leading or trailing run of an alternative that builds a node;
 - inline elements expand into one alternative per combination; `Layout`
   maps every action position to its element in each variant (or to
-  absent), so actions keep their positions. Without a schema, an expanded
+  absent), so actions keep their positions. A variant of an alternative
+  with span marks records the first and last unmarked element it has
+  (`Rule.spanElems`), and codegen wraps its action in `self.nested`, which
+  gives the node the span of those elements. Without a schema, an expanded
   action is cut after its last present position or nested node;
 - `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`, other groups and choices
   become shared synthesized rules named in source syntax (`L(X)`,

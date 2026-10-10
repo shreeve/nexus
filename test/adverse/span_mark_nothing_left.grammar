@@ -1,0 +1,19 @@
+# The node must span some element in every expanded variant: here the
+# only unmarked element is optional.
+# error: span_mark_nothing_left.grammar:18:9:
+# error: span marks leave the node no element that is always there
+@lexer
+tokens
+    ident
+    semi
+    comma
+    eof
+    err
+';'                                         → semi
+','                                         → comma
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = -IDENT [item] -";"                   → (top 1 2)
+item = IDENT

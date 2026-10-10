@@ -597,6 +597,9 @@ counting, so the trees of earlier parses stay valid (until `reset`).
   tokens that are not in the tree (keywords, punctuation). `(1 + 2)` passed
   through by `→ 2` keeps the span of the `+` node inside it.
 - A nested node (`value:(num 2)`) spans the elements it references.
+- A span mark, `-X` on a leading or trailing element of a pattern, leaves
+  that element out of the span of the node the alternative builds (see
+  below); the node's parent still spans it.
 - A leaf spans its token. A list without an id (built by a wrapper with
   `List.of`, or any list without the node store) spans the hull of its
   children: from the least start to the greatest end, in whatever order
@@ -607,6 +610,55 @@ counting, so the trees of earlier parses stay valid (until `reset`).
 
 The store costs one 12-byte entry per node. Grammars without `@schema` get
 it with `nexus --spans`.
+
+### Span marks
+
+A statement's `;` and the doc comments before it belong to the source of
+the statement, but a tool that points at the statement wants neither. A
+span mark keeps them out of the node's span, and nothing else changes:
+
+```grammar marks.grammar
+@lexer
+
+tokens
+    ident, doc, kw_var, eq, semi, eof, err
+
+'\n'                        → skip, skip
+'///' [^\n]*                → doc
+"var"                       → kw_var
+'='                         → eq
+';'                         → semi
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    block      ...stmts
+    var        doc:group? name:leaf value:leaf
+
+program! = stmt*                                → (block ...1)
+
+stmt     = -doc:DOC* "var" name:IDENT "=" value:IDENT -";"
+                                                → (var)
+```
+
+```input
+/// the answer
+var x = y;
+var z = w;
+```
+
+```tree
+(block (var (`/// the answer`)@0..14 `x` `y`)@15..24 (var ()@26..26 `z` `w`)@26..35)@0..36
+```
+
+The marked elements are positions and values as before (`doc` fills its
+role, and coverage applies to them). A span mark needs an action that
+builds a node, `(kind ...)`, and goes on a top-level element: a leading
+run and a trailing run of the pattern may be marked, as long as some
+unmarked element is always there. Without `@schema`, span marks apply
+with `nexus --spans`.
 
 ## Facts
 

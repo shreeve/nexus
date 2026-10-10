@@ -1,0 +1,17 @@
+# A span mark belongs on a top-level element of the pattern.
+# error: span_mark_nested.grammar:17:20:
+# error: a span mark `-X` applies to a top-level element of the pattern; write it outside ( ) and [ ]
+@lexer
+tokens
+    ident
+    semi
+    comma
+    eof
+    err
+';'                                         → semi
+','                                         → comma
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT ("," -IDENT)* ";"              → (top 1 2)
