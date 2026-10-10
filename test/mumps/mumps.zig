@@ -2,7 +2,7 @@
 //!
 //! - the Lexer wrapper (the escape hatch for what mumps.grammar can't say)
 //! - the keyword IDs and abbreviation tables: CmdId/cmdAs, FnId/fnAs,
-//!   SvId/svAs, IsvId/isvAs, SsvnId/ssvnAs (the grammar's `@as` lookups)
+//!   IsvId/isvAs, SsvnId/ssvnAs (the grammar's `@as` lookups)
 //! - the keywords VIEW takes (viewKeywords)
 //!
 //! The tree's node kinds (parser.Tag) come from mumps.grammar's @schema.
@@ -123,6 +123,9 @@ pub const FnId = enum(u16) {
 
     // Obsolete: $ORDER's predecessor in the 1977-1990 standards
     NEXT,
+
+    // A process environment variable (an extension)
+    ZENV,
 };
 
 // =============================================================================
@@ -169,16 +172,7 @@ pub const IsvId = enum(u16) {
     ZTRAP,
     ZUT,
     ZVERSION,
-};
-
-/// The special variables SET can assign, for the grammar's SV terminal
-/// (`S $X=0`, `S ($X,$Y)=0`, `S $ZE=""`); each id is the variable's IsvId.
-pub const SvId = enum(u16) {
-    ECODE = @backingInt(IsvId.ECODE),
-    ETRAP = @backingInt(IsvId.ETRAP),
-    X = @backingInt(IsvId.X),
-    Y = @backingInt(IsvId.Y),
-    ZERROR = @backingInt(IsvId.ZERROR),
+    ZDIRECTORY,
 };
 
 // =============================================================================
@@ -217,11 +211,6 @@ pub fn isvAs(name: []const u8) ?IsvId {
     return lookup(IsvId, &variables, name);
 }
 
-/// A special variable SET can assign; the name follows `$`.
-pub fn svAs(name: []const u8) ?SvId {
-    return std.enums.fromInt(SvId, @backingInt(isvAs(name) orelse return null));
-}
-
 /// The name follows `^$`.
 pub fn ssvnAs(name: []const u8) ?SsvnId {
     return lookup(SsvnId, &structured, name);
@@ -255,7 +244,7 @@ const functions = keywords(FnId, &.{
     "RE[VERSE]",            "REPLACE",     "S[ELECT]",   "ST[ACK]",      "T[EXT]",    "TR[ANSLATE]",
     "V[IEW]",               "ZCO[NVERT]",  "ZD[ATE]",    "ZDATEH",       "ZDATETIME", "ZINCR=INCREMENT",
     "ZINCREMENT=INCREMENT", "ZL[ENGTH]",   "ZM[ESSAGE]", "ZP[REVIOUS]",  "ZSEARCH",   "ZTIME",
-    "ZT=ZTIME",             "ZWRITE",
+    "ZT=ZTIME",             "ZWRITE",      "ZENV",
 });
 
 // $STORAGE is $S or the full name: $ST... is $STACK.
@@ -266,7 +255,7 @@ const variables = keywords(IsvId, &.{
     "X",         "Y",           "ZA",          "ZB",        "ZEO[F]",      "ZE[RROR]",
     "ZG[BLDIR]", "ZH[OROLOG]",  "ZIO",         "ZJ[OB]",    "ZKEY",        "ZL[EVEL]",
     "ZNS[PACE]", "ZPOS[ITION]", "ZRO[UTINES]", "ZS[TATUS]", "ZSY[STEM]",   "ZT[RAP]",
-    "ZUT",       "ZV[ERSION]",
+    "ZUT",       "ZV[ERSION]",  "ZDIR[ECTORY]",
 });
 
 const structured = keywords(SsvnId, &.{
@@ -342,22 +331,12 @@ test "keyword abbreviations" {
     try t.expectEqual(IsvId.REFERENCE, isvAs("R").?);
     try t.expectEqual(IsvId.ZEOF, isvAs("ZEO").?);
     try t.expectEqual(IsvId.ZERROR, isvAs("ZE").?);
+    try t.expectEqual(IsvId.ZDIRECTORY, isvAs("zdir").?);
+    try t.expectEqual(@as(?IsvId, null), isvAs("ZD"));
     try t.expectEqual(SsvnId.SYSTEM, ssvnAs("SYS").?);
     // Too short, too long, not a prefix, empty.
     for ([_][]const u8{ "", "T", "TR", "HAL", "ZH", "ZS", "SETX", "MERCOLA" }) |w| try t.expect(cmdAs(w) == null);
     for ([_][]const u8{ "", "NX", "REP", "ZTI", "PIECEX", "INCREMENTT" }) |w| try t.expect(fnAs(w) == null);
     for ([_][]const u8{ "", "E", "STO", "STORAGES", "ZK" }) |w| try t.expect(isvAs(w) == null);
     for ([_][]const u8{ "", "S", "ZENV" }) |w| try t.expect(ssvnAs(w) == null);
-}
-
-test "settable special variables" {
-    const t = std.testing;
-    try t.expectEqual(SvId.X, svAs("x").?);
-    try t.expectEqual(SvId.ECODE, svAs("EC").?);
-    try t.expectEqual(SvId.ETRAP, svAs("etrap").?);
-    try t.expectEqual(SvId.ZERROR, svAs("ZE").?);
-    try t.expectEqual(SvId.ZERROR, svAs("zerror").?);
-    try t.expectEqual(@backingInt(IsvId.Y), @backingInt(svAs("Y").?));
-    // Special variables SET may not assign, and non-names.
-    for ([_][]const u8{ "", "H", "J", "T", "ZT", "ZTRAP", "ZS", "ZSTATUS", "ZA", "ZB", "E" }) |w| try t.expect(svAs(w) == null);
 }

@@ -121,7 +121,7 @@
   (line
     ` `
     (new _ (intrinsic `ETRAP` _)@2575..2581 (intrinsic `ESTACK` _)@2582..2589)@2573..2589
-    (set _ (= (setisv `ETRAP`#303)@2593..2598 `"D ERR^MAGJEX2"`)@2592..2614)@2590..2614)@2572..2614
+    (set _ (= (setisv `ETRAP`)@2593..2598 `"D ERR^MAGJEX2"`)@2592..2614)@2590..2614)@2572..2614
   (line ` ` (kill _ (lvar `MAGGRY` _)@2618..2624)@2616..2624)@2615..2624
   (line ` ` (new _ `RADFN` `RADTI` `RACNI` `RARPT` `RADATA`)@2626..2658)@2625..2658
   (line

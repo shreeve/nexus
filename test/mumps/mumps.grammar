@@ -372,15 +372,18 @@ after
 
 @conflicts
     shift  deviceparam → expr                           1  # USE dev:(x): the parentheses group an expression, the same value as a one-parameter list
+    shift  expr → atom exprtail+                        1  # [ after a JOB entry reference's offset (J A+1[E]) continues the offset: "contains"
     shift  patatom → repcount IDENT+                    1  # pattern code letters after a repeat count run as far as they go
     shift  lvn → IDENT                                  1  # name= after USE dev: is a keyword device parameter
     shift  rgvn → "^" "|" expr "|" IDENT                1  # ( after an extended global name starts its subscripts
     shift  rgvn → "^" "|" expr "," expr "|" IDENT       1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "[" envexpr "]" IDENT             1  # ( after an extended global name starts its subscripts
+    shift  rgvn → "^" "[" envexpr "," envexpr "]" IDENT 1  # ( after an extended global name starts its subscripts
     shift  extrinsicref → "@" xatom                     2  # ( after $$@X starts its actual list
     shift  extrinsicref → "@" xatom "^" routineref      1  # ( after $$@X^RTN starts its actual list
     reduce actual? → ε over L(actual?)? → ε             4  # an empty () argument list holds one absent actual
 
-@as ident = [fn, sv, isv, ssvn, self, cmd]
+@as ident = [fn, isv, ssvn, self, cmd]
 
 # Reader names for syntax errors: "expected an operator, "," or the end of
 # the line, got ".""
@@ -397,7 +400,7 @@ after
     INDENT: "a leading space", QUESAT: "\"?@\"",
     FN: "a function name", TEXT: "a function name", SELECT: "a function name",
     JUSTIFY: "a function name", INCREMENT: "a function name",
-    ISV: "a special variable name", SV: "a special variable name",
+    ISV: "a special variable name",
     SSVN: "a structured system variable name",
     SET: "a command", NEW: "a command", MERGE: "a command", KILL: "a command",
     IF: "a command", ELSE: "a command", FOR: "a command", DO: "a command",
@@ -460,7 +463,7 @@ after
     ref              label:leaf? offset? routine?
     "@ref"           label offset? routine?
     arg              value pc:postcond?
-    jobarg           ref:ref|"@ref" args:group? params:jobparams? env?
+    jobarg           ref:ref|"@ref" args:group? params:jobparams? env:group?
     jobparams        params:group? timeout?
     viewarg          value params:group?
     openarg          device params:group? timeout? mnemonic?
@@ -582,19 +585,20 @@ postcond = ":" expr                         → (postcond 2)
 # ==============================================================================
 
 # A SET target is a variable, a name indirection, $PIECE/$EXTRACT of one
-# (setfn), or a settable special variable (SV: $X, $Y, $ECODE, $ETRAP,
-# $ZERROR); a parenthesized list sets each target to the one value.
+# (setfn), or a special variable (setisv: any name, so that the compiler
+# says which it is when SET cannot assign it); a parenthesized list sets
+# each target to the one value.
 set     = SET [postcond] !SP L(setarg)      → (set 2 ...4)
 setarg  = "@" atom "=" expr                 → (= (@name 2) 4)
         | "@" atom                          → (@args 2)
         | glvn "=" expr                     → (= 1 3)
         | "(" L(setglvn) ")" "=" expr       → (setmulti 5 ...2)
         | setfn "=" expr                    → (= 1 3)
-        | "$" SV "=" expr                   → (= (setisv 2) 4)
+        | "$" name "=" expr                 → (= (setisv 2) 4)
 setglvn = glvn
         | "@" atom                          → (@name 2)
         | setfn
-        | "$" SV                            → (setisv 2)
+        | "$" name                          → (setisv 2)
 setfn   = "$" name "(" setglvn "," L(expr) ")" → (setfn 2 4 ...6)
         | "$" name "(" setglvn ")"          → (setfn 2 4)
 
@@ -675,8 +679,10 @@ hang    = HANG [postcond] >                 → (hang 2)
 halt = HALT [postcond]                      → (halt 2)
 
 job       = JOB [postcond] !SP L(jobarg)    → (job 2 ...4)
-jobarg    = "|" expr "|" indirrefcmd [actuallist] [jobparams] → (jobarg 4 5 6 2)
-          | "|" expr "|" entryref    [actuallist] [jobparams] → (jobarg 4 5 6 2)
+jobarg    = "|" expr "|" indirrefcmd [actuallist] [jobparams] → (jobarg 4 5 6 (2))
+          | "|" expr "|" entryref    [actuallist] [jobparams] → (jobarg 4 5 6 (2))
+          | entryref [actuallist] "[" envexpr "]" [jobparams]              → (jobarg 1 2 6 (4))
+          | entryref [actuallist] "[" envexpr "," envexpr "]" [jobparams]  → (jobarg 1 2 8 (4 6))
           |              indirrefcmd [actuallist] [jobparams] → (jobarg 1 2 3)
           |              entryref    [actuallist] [jobparams] → (jobarg 1 2 3)
           | "@" atom                        → (@args 2)
@@ -839,6 +845,8 @@ zwref  = name                               → (lvar 1)
        | "^" "@" atom                       → (@gname 3)
        | "^" "|" expr "|"          name [zwsubs] → (gvar 5 6 3)
        | "^" "|" expr "," expr "|" name [zwsubs] → (gvar 7 8 3 5)
+       | "^" "[" envexpr "]"                name [zwsubs] → (gvar 5 6 3)
+       | "^" "[" envexpr "," envexpr "]"    name [zwsubs] → (gvar 7 8 3 5)
 # A slot of ZWRITE's: a value; * (as the last, nothing more: every node
 # below is written anyway); a range of subscripts at its level, either
 # end optional; a test of the subscript; or, empty, any subscript at its
@@ -872,8 +880,10 @@ zbreak = ZBREAK [postcond] >                → (zbreak 2)
 zhalt = ZHALT [postcond] >                  → (zhalt 2)
       | ZHALT [postcond] !SP [expr]         → (zhalt 2 4)
 
-# ZKILL - kill with subscript removal
-zkill = ZKILL [postcond] !SP L(glvn)        → (zkill 2 ...4)
+# ZKILL - kill a node's value, keeping its descendants
+zkill    = ZKILL [postcond] !SP L(zkillarg) → (zkill 2 ...4)
+zkillarg = glvn
+         | "@" atom                         → (@args 2)
 
 # ZSYSTEM - run each argument through the shell; with none, an
 # interactive shell
@@ -1013,8 +1023,10 @@ gvn = rgvn
 
 # Real (non-indirected) global variable
 # Includes naked reference: ^(subs), subscript indirection: ^@X@(subs) (X's
-# value names a global), and extended references ^|env|X (the bracket form
-# ^[env]X is not supported)
+# value names a global), and extended references, ^|env|X and ^[env]X, of
+# one or two parts (^|e1,e2|X, ^[e1,e2]X), each an expression: env and uci
+# hold them, the same in either form (the compiler reads which from the
+# character after the ^)
 # Subscripted global first so string subscripts reduce correctly via subs rule.
 rgvn = "^" name subs                        → (gvar 2 3)
      | "^" name X "("                       → (gvar 2)
@@ -1022,6 +1034,23 @@ rgvn = "^" name subs                        → (gvar 2 3)
      | "^" "@" atom "@" subs                → (@gsubs 3 5)
      | "^" "|" expr "|"          name [subs] → (gvar 5 6 3)
      | "^" "|" expr "," expr "|" name [subs] → (gvar 7 8 3 5)
+     | "^" "[" envexpr "]"                name [subs] → (gvar 5 6 3)
+     | "^" "[" envexpr "," envexpr "]"    name [subs] → (gvar 7 8 3 5)
+
+# A part of the bracket form's environment: an expression whose operators
+# leave out `]` (follows), which closes the bracket; `]` in parentheses
+# is the operator, as in ^[(A]B)]X
+envexpr = atom >                            → 1
+        | atom envtail+                     → (expr 1 ...2)
+envtail = envop atom                        → (binop 1 2)
+        | "?" pattern                       → (? 2)
+        | "'?" pattern                      → ('? 2)
+        | PATIND atom                       → (?@ 2)
+        | "'?" "@" atom                     → ('?@ 3)
+envop   = "_" | "+"  | "-"  | "*"  | "/"  | "\\" | "#"  | "**"
+        | "=" | "==" | "'=" | "<"  | ">"  | "'<" | "'>" | "<=" | ">="
+        | "[" |        "'[" | "']" | "]=" | "]]" | "]]=" | "']]"
+        | "&" | "!"  | "'&" | "'!"
 
 # System Structured Variables: ^$ROUTINE, ^$GLOBAL, ^$JOB, etc.
 # Name indirection: ^$@X@(subs) where X holds SSVN name (like ROUTINE)
