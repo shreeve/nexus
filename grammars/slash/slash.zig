@@ -1,4 +1,5 @@
-//! Slash language module — keyword promotion, lexer wrapper.
+//! Slash language module — the lexer wrapper. The keywords (`KeywordId`,
+//! `keywordAs`) are generated from slash.grammar's @keywords.
 //!
 //! The lexer wrapper around the generated `BaseLexer` adds three responsibilities
 //! that would clutter the grammar if done declaratively:
@@ -27,39 +28,6 @@ pub const Token = parser.Token;
 pub const TokenCat = parser.TokenCat;
 const BaseLexer = parser.BaseLexer;
 const makeToken = BaseLexer.makeToken;
-
-// =============================================================================
-// Keyword promotion
-// =============================================================================
-//
-// `@as ident = [keyword]` in the grammar invokes `keywordAs` for every IDENT
-// lookahead. The returned `KeywordId` is mapped by the generated parser to
-// the actual symbol id; if that symbol is legal in the current state, the
-// IDENT is promoted to the keyword token and shifted.
-
-pub const KeywordId = enum(u16) {
-    IF,
-    ELSE,
-    WHILE,
-    FOR,
-    IN,
-    CMD,
-    MATCH,
-};
-
-const keyword_map = std.StaticStringMap(KeywordId).initComptime(.{
-    .{ "if", .IF },
-    .{ "else", .ELSE },
-    .{ "while", .WHILE },
-    .{ "for", .FOR },
-    .{ "in", .IN },
-    .{ "cmd", .CMD },
-    .{ "match", .MATCH },
-});
-
-pub fn keywordAs(text: []const u8) ?KeywordId {
-    return keyword_map.get(text);
-}
 
 // =============================================================================
 // Lexer wrapper

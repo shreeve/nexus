@@ -153,7 +153,8 @@ naming the rule.
 - **Actions next to rules.** `→ (set 1 3)` is the tree. Optional groups
   keep positions stable; lists (`L(X)`, `X*`, `[X ...]`) build in linear
   time; choices, operator-precedence chains (`@infix`), contextual
-  keywords (`@as`).
+  keywords (`@as`) from keyword tables the grammar declares (`@keywords`:
+  caseless, abbreviated, aliased).
 - **A verified semantic layer** (`@schema`): fixed-length nodes, named
   roles, labels in patterns, a coverage gate that no value is dropped by
   accident, static result types checked by fixpoint, generated `Tag`/`Role`
@@ -184,10 +185,10 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 |---|---|---:|---:|---:|---:|---|
 | Rig | `grammars/rig/rig.grammar` | 915 | 725 | 0 | 138 | schema |
 | MUMPS | `grammars/mumps/mumps.grammar` | 1118 | 1023 | 11 (15) | 62 | schema |
-| Ruby subset | `grammars/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
-| Slash | `grammars/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |
+| Ruby subset | `grammars/ruby/ruby.grammar` | 780 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
+| Slash | `grammars/slash/slash.grammar` | 388 | 156 | 0 | 7 | plain |
 | Nexis (a Clojure reader) | `grammars/nexis/nexis.grammar` | 98 | 63 | 0 | 27 | plain |
-| Nexus grammar files | `nexus.grammar` | 560 | 362 | 0 | 12 + every grammar in the suite | schema |
+| Nexus grammar files | `nexus.grammar` | 581 | 371 | 0 | 14 + every grammar in the suite | schema |
 
 A declared conflict is one manifest entry; it covers one or more table
 cells. [test/bench/BASELINE.md](test/bench/BASELINE.md) records generation

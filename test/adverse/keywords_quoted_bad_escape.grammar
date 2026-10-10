@@ -1,0 +1,16 @@
+# A quoted keyword takes the escapes of a literal.
+# error: keywords_quoted_bad_escape.grammar:12:14:
+# error: unknown escape sequence
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if "a\qb":AB
+
+@as IDENT = [kw]
+
+prog! = IDENT*

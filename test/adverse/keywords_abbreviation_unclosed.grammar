@@ -1,0 +1,15 @@
+# An abbreviation is PRE[REST].
+# error: malformed abbreviation `A[`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if A[
+
+@as IDENT = [kw]
+
+prog! = IDENT*

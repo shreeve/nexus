@@ -1,0 +1,16 @@
+# A keyword's terminal is the word in capitals, which must be a terminal
+# name (a capital letter first): `__file__` needs one of its own.
+# error: the keyword `__file__` has no terminal name of its own: give it one, `__file__:NAME`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if __file__
+
+@as IDENT = [kw]
+
+prog! = IDENT*

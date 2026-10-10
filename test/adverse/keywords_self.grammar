@@ -1,0 +1,16 @@
+# `self` in an @as list is the checkpoint, never a group: a keyword group
+# named `self` is the group of no @as.
+# error: keyword group `self` is the group of no @as
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    self  if
+
+@as IDENT = [self]
+
+prog! = IDENT*

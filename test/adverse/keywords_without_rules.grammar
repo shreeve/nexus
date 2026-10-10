@@ -1,0 +1,15 @@
+# A grammar without parser rules generates the lexer alone, with no
+# parser to promote keywords: its @keywords would be dropped.
+# error: keywords_without_rules.grammar:13:5:
+# error: @keywords needs parser rules: a grammar without them generates the lexer alone
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if else
+
+@as IDENT = [kw]

@@ -1,0 +1,14 @@
+s x 1
+SET y 2
+sE z 3
+w x, 1
+WRITE x
+h 5
+HAN 5
+halt
+q
+quit x
+zt x
+ZW x
+tro
+TRESTART

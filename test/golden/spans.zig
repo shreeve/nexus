@@ -2779,7 +2779,7 @@ fn promote(self: *BaseParser, token: Token) u16 {
     self.lastMatchedId = 0;
     const text = self.source[token.pos..][0..token.len];
     if (text.len == 0) return promotableSymbol;
-    if (self.tryPromote(0, text, lang.keywordAs, &keywordToSymbol, keywordFallbackSymbol, true)) |sym| return sym;
+    if (self.tryPromote(0, text, keywordAs, &keywordToSymbol, keywordFallbackSymbol, true)) |sym| return sym;
     return promotableSymbol;
 }
 
@@ -2991,106 +2991,183 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
 
 const promotableSymbol: u16 = 92;
 
-/// lang.KeywordId ordinal -> grammar symbol (0 = none)
+/// The keyword terminals of `@keywords keyword`; a value becomes its leaf's id.
+pub const KeywordId = enum(u16) {
+    IF = 1,
+    UNLESS,
+    ELSIF,
+    ELSE,
+    END,
+    WHILE,
+    UNTIL,
+    FOR,
+    IN,
+    DO,
+    CASE,
+    WHEN,
+    DEF,
+    CLASS,
+    MODULE,
+    RETURN,
+    BREAK,
+    NEXT,
+    YIELD,
+    BEGIN_KW,
+    RESCUE,
+    ENSURE,
+    THEN,
+    AND_KW,
+    OR_KW,
+    NOT_KW,
+    DEFINED,
+    ALIAS,
+    UNDEF,
+    RETRY,
+    REDO,
+    SUPER,
+    SELF,
+    TRUE,
+    FALSE,
+    NIL,
+    KW__FILE__,
+    KW__LINE__,
+    KW__ENCODING__,
+};
+
+/// The `keyword` keyword `text` spells, or null.
+pub fn keywordAs(text: []const u8) ?KeywordId {
+    if (text.len == 0 or text.len > 12) return null;
+    const t = text;
+    switch (t[0]) {
+        '_' => {
+            if (std.mem.eql(u8, t, "__ENCODING__")) return .KW__ENCODING__;
+            if (std.mem.eql(u8, t, "__FILE__")) return .KW__FILE__;
+            if (std.mem.eql(u8, t, "__LINE__")) return .KW__LINE__;
+        },
+        'a' => {
+            if (std.mem.eql(u8, t, "alias")) return .ALIAS;
+            if (std.mem.eql(u8, t, "and")) return .AND_KW;
+        },
+        'b' => {
+            if (std.mem.eql(u8, t, "begin")) return .BEGIN_KW;
+            if (std.mem.eql(u8, t, "break")) return .BREAK;
+        },
+        'c' => {
+            if (std.mem.eql(u8, t, "case")) return .CASE;
+            if (std.mem.eql(u8, t, "class")) return .CLASS;
+        },
+        'd' => {
+            if (std.mem.eql(u8, t, "def")) return .DEF;
+            if (std.mem.eql(u8, t, "defined?")) return .DEFINED;
+            if (std.mem.eql(u8, t, "do")) return .DO;
+        },
+        'e' => {
+            if (std.mem.eql(u8, t, "else")) return .ELSE;
+            if (std.mem.eql(u8, t, "elsif")) return .ELSIF;
+            if (std.mem.eql(u8, t, "end")) return .END;
+            if (std.mem.eql(u8, t, "ensure")) return .ENSURE;
+        },
+        'f' => {
+            if (std.mem.eql(u8, t, "false")) return .FALSE;
+            if (std.mem.eql(u8, t, "for")) return .FOR;
+        },
+        'i' => {
+            if (std.mem.eql(u8, t, "if")) return .IF;
+            if (std.mem.eql(u8, t, "in")) return .IN;
+        },
+        'm' => {
+            if (std.mem.eql(u8, t, "module")) return .MODULE;
+        },
+        'n' => {
+            if (std.mem.eql(u8, t, "next")) return .NEXT;
+            if (std.mem.eql(u8, t, "nil")) return .NIL;
+            if (std.mem.eql(u8, t, "not")) return .NOT_KW;
+        },
+        'o' => {
+            if (std.mem.eql(u8, t, "or")) return .OR_KW;
+        },
+        'r' => {
+            if (std.mem.eql(u8, t, "redo")) return .REDO;
+            if (std.mem.eql(u8, t, "rescue")) return .RESCUE;
+            if (std.mem.eql(u8, t, "retry")) return .RETRY;
+            if (std.mem.eql(u8, t, "return")) return .RETURN;
+        },
+        's' => {
+            if (std.mem.eql(u8, t, "self")) return .SELF;
+            if (std.mem.eql(u8, t, "super")) return .SUPER;
+        },
+        't' => {
+            if (std.mem.eql(u8, t, "then")) return .THEN;
+            if (std.mem.eql(u8, t, "true")) return .TRUE;
+        },
+        'u' => {
+            if (std.mem.eql(u8, t, "undef")) return .UNDEF;
+            if (std.mem.eql(u8, t, "unless")) return .UNLESS;
+            if (std.mem.eql(u8, t, "until")) return .UNTIL;
+        },
+        'w' => {
+            if (std.mem.eql(u8, t, "when")) return .WHEN;
+            if (std.mem.eql(u8, t, "while")) return .WHILE;
+        },
+        'y' => {
+            if (std.mem.eql(u8, t, "yield")) return .YIELD;
+        },
+        else => {},
+    }
+    return null;
+}
+
+/// KeywordId -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {
-    var arr: [idCount(lang.KeywordId)]u16 = @splat(0);
-    if (@hasField(lang.KeywordId, "NEWLINE")) arr[@backingInt(lang.KeywordId.NEWLINE)] = 66;
-    if (@hasField(lang.KeywordId, "SEMICOLON")) arr[@backingInt(lang.KeywordId.SEMICOLON)] = 67;
-    if (@hasField(lang.KeywordId, "IF_MOD")) arr[@backingInt(lang.KeywordId.IF_MOD)] = 68;
-    if (@hasField(lang.KeywordId, "UNLESS_MOD")) arr[@backingInt(lang.KeywordId.UNLESS_MOD)] = 69;
-    if (@hasField(lang.KeywordId, "WHILE_MOD")) arr[@backingInt(lang.KeywordId.WHILE_MOD)] = 70;
-    if (@hasField(lang.KeywordId, "UNTIL_MOD")) arr[@backingInt(lang.KeywordId.UNTIL_MOD)] = 71;
-    if (@hasField(lang.KeywordId, "RESCUE_MOD")) arr[@backingInt(lang.KeywordId.RESCUE_MOD)] = 72;
-    if (@hasField(lang.KeywordId, "NOT_KW")) arr[@backingInt(lang.KeywordId.NOT_KW)] = 73;
-    if (@hasField(lang.KeywordId, "OR_KW")) arr[@backingInt(lang.KeywordId.OR_KW)] = 74;
-    if (@hasField(lang.KeywordId, "AND_KW")) arr[@backingInt(lang.KeywordId.AND_KW)] = 75;
-    if (@hasField(lang.KeywordId, "ASSIGN")) arr[@backingInt(lang.KeywordId.ASSIGN)] = 76;
-    if (@hasField(lang.KeywordId, "PLUS_EQ")) arr[@backingInt(lang.KeywordId.PLUS_EQ)] = 77;
-    if (@hasField(lang.KeywordId, "MINUS_EQ")) arr[@backingInt(lang.KeywordId.MINUS_EQ)] = 78;
-    if (@hasField(lang.KeywordId, "STAR_EQ")) arr[@backingInt(lang.KeywordId.STAR_EQ)] = 79;
-    if (@hasField(lang.KeywordId, "SLASH_EQ")) arr[@backingInt(lang.KeywordId.SLASH_EQ)] = 80;
-    if (@hasField(lang.KeywordId, "PERCENT_EQ")) arr[@backingInt(lang.KeywordId.PERCENT_EQ)] = 81;
-    if (@hasField(lang.KeywordId, "POWER_EQ")) arr[@backingInt(lang.KeywordId.POWER_EQ)] = 82;
-    if (@hasField(lang.KeywordId, "PIPE_EQ")) arr[@backingInt(lang.KeywordId.PIPE_EQ)] = 83;
-    if (@hasField(lang.KeywordId, "AMP_EQ")) arr[@backingInt(lang.KeywordId.AMP_EQ)] = 84;
-    if (@hasField(lang.KeywordId, "CARET_EQ")) arr[@backingInt(lang.KeywordId.CARET_EQ)] = 85;
-    if (@hasField(lang.KeywordId, "LSHIFT_EQ")) arr[@backingInt(lang.KeywordId.LSHIFT_EQ)] = 86;
-    if (@hasField(lang.KeywordId, "RSHIFT_EQ")) arr[@backingInt(lang.KeywordId.RSHIFT_EQ)] = 87;
-    if (@hasField(lang.KeywordId, "OROR_EQ")) arr[@backingInt(lang.KeywordId.OROR_EQ)] = 88;
-    if (@hasField(lang.KeywordId, "ANDAND_EQ")) arr[@backingInt(lang.KeywordId.ANDAND_EQ)] = 89;
-    if (@hasField(lang.KeywordId, "STAR_SPLAT")) arr[@backingInt(lang.KeywordId.STAR_SPLAT)] = 91;
-    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 92;
-    if (@hasField(lang.KeywordId, "IVAR")) arr[@backingInt(lang.KeywordId.IVAR)] = 93;
-    if (@hasField(lang.KeywordId, "CVAR")) arr[@backingInt(lang.KeywordId.CVAR)] = 94;
-    if (@hasField(lang.KeywordId, "GVAR")) arr[@backingInt(lang.KeywordId.GVAR)] = 95;
-    if (@hasField(lang.KeywordId, "CONSTANT")) arr[@backingInt(lang.KeywordId.CONSTANT)] = 96;
-    if (@hasField(lang.KeywordId, "QUESTION")) arr[@backingInt(lang.KeywordId.QUESTION)] = 101;
-    if (@hasField(lang.KeywordId, "COLON")) arr[@backingInt(lang.KeywordId.COLON)] = 102;
-    if (@hasField(lang.KeywordId, "MINUS_U")) arr[@backingInt(lang.KeywordId.MINUS_U)] = 103;
-    if (@hasField(lang.KeywordId, "PLUS_U")) arr[@backingInt(lang.KeywordId.PLUS_U)] = 104;
-    if (@hasField(lang.KeywordId, "BANG")) arr[@backingInt(lang.KeywordId.BANG)] = 105;
-    if (@hasField(lang.KeywordId, "TILDE")) arr[@backingInt(lang.KeywordId.TILDE)] = 106;
-    if (@hasField(lang.KeywordId, "DEFINED")) arr[@backingInt(lang.KeywordId.DEFINED)] = 107;
-    if (@hasField(lang.KeywordId, "POWER")) arr[@backingInt(lang.KeywordId.POWER)] = 108;
-    if (@hasField(lang.KeywordId, "SUPER")) arr[@backingInt(lang.KeywordId.SUPER)] = 111;
-    if (@hasField(lang.KeywordId, "YIELD")) arr[@backingInt(lang.KeywordId.YIELD)] = 112;
-    if (@hasField(lang.KeywordId, "AMP_BLOCK")) arr[@backingInt(lang.KeywordId.AMP_BLOCK)] = 116;
-    if (@hasField(lang.KeywordId, "CMD_IDENT")) arr[@backingInt(lang.KeywordId.CMD_IDENT)] = 117;
-    if (@hasField(lang.KeywordId, "DO_BLOCK")) arr[@backingInt(lang.KeywordId.DO_BLOCK)] = 119;
-    if (@hasField(lang.KeywordId, "END")) arr[@backingInt(lang.KeywordId.END)] = 120;
-    if (@hasField(lang.KeywordId, "LBRACE_BLOCK")) arr[@backingInt(lang.KeywordId.LBRACE_BLOCK)] = 121;
-    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 125;
-    if (@hasField(lang.KeywordId, "FLOAT")) arr[@backingInt(lang.KeywordId.FLOAT)] = 126;
-    if (@hasField(lang.KeywordId, "RATIONAL")) arr[@backingInt(lang.KeywordId.RATIONAL)] = 127;
-    if (@hasField(lang.KeywordId, "IMAGINARY")) arr[@backingInt(lang.KeywordId.IMAGINARY)] = 128;
-    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 129;
-    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 130;
-    if (@hasField(lang.KeywordId, "PCT_W")) arr[@backingInt(lang.KeywordId.PCT_W)] = 131;
-    if (@hasField(lang.KeywordId, "PCT_I")) arr[@backingInt(lang.KeywordId.PCT_I)] = 132;
-    if (@hasField(lang.KeywordId, "SYMBOL")) arr[@backingInt(lang.KeywordId.SYMBOL)] = 133;
-    if (@hasField(lang.KeywordId, "TRUE")) arr[@backingInt(lang.KeywordId.TRUE)] = 134;
-    if (@hasField(lang.KeywordId, "FALSE")) arr[@backingInt(lang.KeywordId.FALSE)] = 135;
-    if (@hasField(lang.KeywordId, "NIL")) arr[@backingInt(lang.KeywordId.NIL)] = 136;
-    if (@hasField(lang.KeywordId, "SELF")) arr[@backingInt(lang.KeywordId.SELF)] = 137;
-    if (@hasField(lang.KeywordId, "KW__FILE__")) arr[@backingInt(lang.KeywordId.KW__FILE__)] = 138;
-    if (@hasField(lang.KeywordId, "KW__LINE__")) arr[@backingInt(lang.KeywordId.KW__LINE__)] = 139;
-    if (@hasField(lang.KeywordId, "KW__ENCODING__")) arr[@backingInt(lang.KeywordId.KW__ENCODING__)] = 140;
-    if (@hasField(lang.KeywordId, "ARROW")) arr[@backingInt(lang.KeywordId.ARROW)] = 141;
-    if (@hasField(lang.KeywordId, "DSTR_BEG")) arr[@backingInt(lang.KeywordId.DSTR_BEG)] = 142;
-    if (@hasField(lang.KeywordId, "DSTR_END")) arr[@backingInt(lang.KeywordId.DSTR_END)] = 144;
-    if (@hasField(lang.KeywordId, "STR_CONTENT")) arr[@backingInt(lang.KeywordId.STR_CONTENT)] = 145;
-    if (@hasField(lang.KeywordId, "EMBEXPR_BEG")) arr[@backingInt(lang.KeywordId.EMBEXPR_BEG)] = 146;
-    if (@hasField(lang.KeywordId, "EMBEXPR_END")) arr[@backingInt(lang.KeywordId.EMBEXPR_END)] = 147;
-    if (@hasField(lang.KeywordId, "LBRACE")) arr[@backingInt(lang.KeywordId.LBRACE)] = 150;
-    if (@hasField(lang.KeywordId, "LABEL")) arr[@backingInt(lang.KeywordId.LABEL)] = 153;
-    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 155;
-    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 156;
-    if (@hasField(lang.KeywordId, "ELSIF")) arr[@backingInt(lang.KeywordId.ELSIF)] = 157;
-    if (@hasField(lang.KeywordId, "THEN_SEP")) arr[@backingInt(lang.KeywordId.THEN_SEP)] = 158;
-    if (@hasField(lang.KeywordId, "UNLESS")) arr[@backingInt(lang.KeywordId.UNLESS)] = 159;
-    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 160;
-    if (@hasField(lang.KeywordId, "UNTIL")) arr[@backingInt(lang.KeywordId.UNTIL)] = 161;
-    if (@hasField(lang.KeywordId, "DO_SEP")) arr[@backingInt(lang.KeywordId.DO_SEP)] = 162;
-    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 163;
-    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 164;
-    if (@hasField(lang.KeywordId, "CASE")) arr[@backingInt(lang.KeywordId.CASE)] = 165;
-    if (@hasField(lang.KeywordId, "WHEN")) arr[@backingInt(lang.KeywordId.WHEN)] = 167;
-    if (@hasField(lang.KeywordId, "BEGIN_KW")) arr[@backingInt(lang.KeywordId.BEGIN_KW)] = 168;
-    if (@hasField(lang.KeywordId, "RESCUE")) arr[@backingInt(lang.KeywordId.RESCUE)] = 169;
-    if (@hasField(lang.KeywordId, "ENSURE")) arr[@backingInt(lang.KeywordId.ENSURE)] = 171;
-    if (@hasField(lang.KeywordId, "DEF")) arr[@backingInt(lang.KeywordId.DEF)] = 172;
-    if (@hasField(lang.KeywordId, "CLASS")) arr[@backingInt(lang.KeywordId.CLASS)] = 173;
-    if (@hasField(lang.KeywordId, "MODULE")) arr[@backingInt(lang.KeywordId.MODULE)] = 176;
-    if (@hasField(lang.KeywordId, "ALIAS")) arr[@backingInt(lang.KeywordId.ALIAS)] = 177;
-    if (@hasField(lang.KeywordId, "UNDEF")) arr[@backingInt(lang.KeywordId.UNDEF)] = 178;
-    if (@hasField(lang.KeywordId, "RETURN")) arr[@backingInt(lang.KeywordId.RETURN)] = 180;
-    if (@hasField(lang.KeywordId, "BREAK")) arr[@backingInt(lang.KeywordId.BREAK)] = 181;
-    if (@hasField(lang.KeywordId, "NEXT")) arr[@backingInt(lang.KeywordId.NEXT)] = 182;
-    if (@hasField(lang.KeywordId, "RETRY")) arr[@backingInt(lang.KeywordId.RETRY)] = 183;
-    if (@hasField(lang.KeywordId, "REDO")) arr[@backingInt(lang.KeywordId.REDO)] = 184;
+    var arr: [idCount(KeywordId)]u16 = @splat(0);
+    arr[@backingInt(KeywordId.IF)] = 155;
+    arr[@backingInt(KeywordId.UNLESS)] = 159;
+    arr[@backingInt(KeywordId.ELSIF)] = 157;
+    arr[@backingInt(KeywordId.ELSE)] = 156;
+    arr[@backingInt(KeywordId.END)] = 120;
+    arr[@backingInt(KeywordId.WHILE)] = 160;
+    arr[@backingInt(KeywordId.UNTIL)] = 161;
+    arr[@backingInt(KeywordId.FOR)] = 163;
+    arr[@backingInt(KeywordId.IN)] = 164;
+    arr[@backingInt(KeywordId.CASE)] = 165;
+    arr[@backingInt(KeywordId.WHEN)] = 167;
+    arr[@backingInt(KeywordId.DEF)] = 172;
+    arr[@backingInt(KeywordId.CLASS)] = 173;
+    arr[@backingInt(KeywordId.MODULE)] = 176;
+    arr[@backingInt(KeywordId.RETURN)] = 180;
+    arr[@backingInt(KeywordId.BREAK)] = 181;
+    arr[@backingInt(KeywordId.NEXT)] = 182;
+    arr[@backingInt(KeywordId.YIELD)] = 112;
+    arr[@backingInt(KeywordId.BEGIN_KW)] = 168;
+    arr[@backingInt(KeywordId.RESCUE)] = 169;
+    arr[@backingInt(KeywordId.ENSURE)] = 171;
+    arr[@backingInt(KeywordId.AND_KW)] = 75;
+    arr[@backingInt(KeywordId.OR_KW)] = 74;
+    arr[@backingInt(KeywordId.NOT_KW)] = 73;
+    arr[@backingInt(KeywordId.DEFINED)] = 107;
+    arr[@backingInt(KeywordId.ALIAS)] = 177;
+    arr[@backingInt(KeywordId.UNDEF)] = 178;
+    arr[@backingInt(KeywordId.RETRY)] = 183;
+    arr[@backingInt(KeywordId.REDO)] = 184;
+    arr[@backingInt(KeywordId.SUPER)] = 111;
+    arr[@backingInt(KeywordId.SELF)] = 137;
+    arr[@backingInt(KeywordId.TRUE)] = 134;
+    arr[@backingInt(KeywordId.FALSE)] = 135;
+    arr[@backingInt(KeywordId.NIL)] = 136;
+    arr[@backingInt(KeywordId.KW__FILE__)] = 138;
+    arr[@backingInt(KeywordId.KW__LINE__)] = 139;
+    arr[@backingInt(KeywordId.KW__ENCODING__)] = 140;
     break :blk arr;
 };
 const keywordFallbackSymbol: u16 = 0;
+
+// A group is declared once: by @keywords or by the lang module (which
+// may re-export the generated declarations).
+comptime {
+    if (@hasDecl(lang, "KeywordId") and (@TypeOf(lang.KeywordId) != type or lang.KeywordId != KeywordId) or
+        @hasDecl(lang, "keywordAs") and (@TypeOf(lang.keywordAs) != @TypeOf(keywordAs) or lang.keywordAs != keywordAs))
+        @compileError("the keyword group keyword is declared by @keywords and by the lang module (KeywordId or keywordAs): declare it once");
+}
 
 const ruleLhs = [_]u16{ 3, 5, 5, 6, 6, 6, 6, 6, 7, 7, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9, 9, 4, 10, 10, 11, 11, 12, 12, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 14, 14, 14, 15, 16, 16, 16, 17, 18, 18, 18, 18, 18, 18, 18, 18, 19, 19, 20, 20, 20, 20, 20, 20, 21, 21, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 22, 113, 113, 23, 24, 24, 25, 25, 25, 25, 25, 26, 26, 26, 26, 118, 118, 27, 28, 28, 28, 28, 28, 29, 29, 29, 29, 124, 124, 30, 30, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 31, 32, 32, 32, 32, 32, 32, 32, 33, 33, 143, 143, 34, 34, 35, 35, 148, 148, 149, 149, 36, 37, 37, 151, 151, 152, 152, 38, 39, 39, 39, 40, 41, 41, 41, 42, 43, 44, 44, 45, 46, 47, 48, 166, 166, 49, 49, 50, 51, 52, 52, 52, 53, 53, 170, 170, 53, 53, 54, 54, 55, 55, 55, 55, 56, 56, 57, 57, 57, 57, 57, 57, 57, 58, 58, 58, 59, 60, 61, 61, 62, 179, 179, 63, 64, 64, 65, 65, 65, 65, 65, 65, 65, 65, 65, 65, 186, 188, 189, 189, 189, 190, 190, 191, 191, 192, 192, 192, 192, 192, 192, 192, 193, 193, 193, 193, 193, 194, 194, 194, 195, 195, 196, 196, 196, 197, 197, 197, 198, 198, 198, 198, 100 };
 const ruleLen = [_]u8{ 1, 1, 0, 3, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 1, 2, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1, 3, 3, 3, 2, 3, 3, 3, 2, 1, 1, 1, 1, 1, 3, 3, 4, 5, 1, 2, 2, 2, 2, 2, 1, 3, 1, 3, 4, 4, 5, 3, 4, 4, 5, 3, 4, 3, 2, 2, 3, 2, 1, 2, 1, 2, 1, 1, 3, 1, 2, 3, 1, 2, 2, 2, 1, 2, 3, 4, 5, 1, 3, 1, 1, 2, 2, 2, 1, 3, 4, 3, 4, 1, 3, 3, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3, 1, 1, 1, 1, 1, 1, 1, 2, 3, 1, 2, 3, 2, 1, 3, 1, 3, 1, 0, 3, 1, 2, 1, 3, 1, 0, 3, 2, 3, 2, 6, 0, 2, 5, 1, 6, 0, 2, 5, 5, 1, 7, 1, 2, 6, 5, 4, 6, 1, 2, 0, 3, 5, 1, 3, 4, 6, 3, 0, 7, 8, 9, 10, 2, 3, 1, 3, 1, 2, 2, 2, 2, 5, 6, 6, 2, 5, 1, 3, 3, 1, 3, 2, 1, 1, 2, 1, 2, 1, 2, 1, 2, 2, 1, 1, 3, 3, 3, 3, 1, 3, 1, 3, 1, 3, 3, 3, 3, 3, 3, 1, 3, 3, 3, 3, 1, 3, 3, 1, 3, 1, 3, 3, 1, 3, 3, 1, 3, 3, 3, 1, 1 };

@@ -1,0 +1,15 @@
+# `base` is followed by the first id.
+# error: `base` takes the first id, a number from 1 to 65535
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  base if else
+
+@as IDENT = [kw]
+
+prog! = IDENT*

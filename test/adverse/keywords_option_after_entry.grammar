@@ -1,0 +1,18 @@
+# Options come before the entries; an unquoted option word among the
+# entries is a misplaced option, not a keyword (a keyword spelled like one
+# is quoted).
+# error: keywords_option_after_entry.grammar:14:12:
+# error: the option `caseless` comes before the group's keywords
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if caseless else
+
+@as IDENT = [kw]
+
+prog! = IDENT*

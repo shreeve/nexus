@@ -13,6 +13,11 @@
 //!     token; one `newline` always precedes `eof` after content.
 //!   - Comments. Trailing comments are dropped, except in `@conflicts`
 //!     entries (below).
+//!   - `@keywords` groups. Each indented line of the block is split into
+//!     blank-separated words, a quoted part (`"defined?":DEFINED`) within
+//!     a word: the group name first (`ident`, or `token` when capitalized),
+//!     then each option or entry whole (`keyword`). A line indented further
+//!     than the block's first group line continues the group above.
 //!   - `@conflicts` entries. Each indented line of the block is split into
 //!     the kind word (`ident`), the rule text verbatim (`rule_text`; any
 //!     symbol syntax, `→`/`->`, `ε`), `over` (`kw_over`) and a second rule
@@ -95,6 +100,10 @@ pub const Lexer = struct {
     /// Why the last `err` token was produced, when the token alone does not
     /// say (see `Problem`).
     problem: ?Problem = null,
+    /// `@keywords`: the current line is a group line, and the indentation
+    /// of the block's first group line (deeper lines continue a group).
+    keywordLine: bool = false,
+    keywordIndent: usize = 0,
     /// The last @lexer-section pattern: a syntax error later on its line is
     /// reported as the pattern's own error when the pattern is invalid.
     lastPattern: ?Token = null,
@@ -105,7 +114,7 @@ pub const Lexer = struct {
     pub const maxTokenLen = std.math.maxInt(@FieldType(Token, "len"));
 
     const Mode = enum { normal, action };
-    const Block = enum { none, as, conflicts, infix, schema, other };
+    const Block = enum { none, as, conflicts, infix, schema, keywords, other };
     pub const Section = enum { preamble, lexer, parser };
 
     /// A scanning error the parser reports instead of "unexpected err":
@@ -183,6 +192,9 @@ pub const Lexer = struct {
         while (p < s.len and (s[p] == ' ' or s[p] == '\t' or s[p] == '\r')) p += 1;
         if (self.block == .conflicts and self.lineStart and !self.afterAt and p < s.len and s[p] != '\n') {
             return self.splitConflict(p);
+        }
+        if (self.block == .keywords and self.keywordLine and p < s.len and s[p] != '\n' and s[p] != '#') {
+            return self.keywordWord(p);
         }
         // The Unicode arrow is not in the generated lexer.
         if (p + 2 < s.len and s[p] == 0xE2 and s[p + 1] == 0x86 and s[p + 2] == 0x92) {
@@ -301,6 +313,21 @@ pub const Lexer = struct {
         return toks[0];
     }
 
+    /// A word of a `@keywords` group line at `p`, taken whole (quoted
+    /// parts included): the group name (`ident`) first, then `keyword`s.
+    fn keywordWord(self: *Lexer, p: usize) Token {
+        const s = self.src();
+        var end = p;
+        while (end < s.len and s[end] != '\n') end += 1;
+        const w = nextWord(s, p, end).?;
+        self.base.pos = @intCast(w.b);
+        const t = s[w.a..w.b];
+        const cat: TokenCat = if (!self.lineStart or identPrefix(t) != t.len)
+            .keyword
+        else if (std.ascii.isUpper(t[0])) .token else .ident;
+        return self.make(cat, w.a, w.b - w.a);
+    }
+
     const Word = struct { a: usize, b: usize };
 
     /// The next blank-separated word in `s[from..end]`; a `"..."` string,
@@ -362,7 +389,19 @@ pub const Lexer = struct {
                 self.base.pos = @intCast(i + 1);
                 return self.make(.next_alt, i, 1);
             }
-            if (i > lineBegin) return self.make(.cont, pos, 1);
+            if (i > lineBegin) {
+                if (self.block == .keywords) {
+                    // A line indented further than the first group line
+                    // continues the group above.
+                    if (self.keywordIndent == 0) self.keywordIndent = i - lineBegin;
+                    if (i - lineBegin > self.keywordIndent) {
+                        self.lineStart = false;
+                        return null;
+                    }
+                    self.keywordLine = true;
+                }
+                return self.make(.cont, pos, 1);
+            }
             self.block = .none;
             return self.make(.newline, pos, 1);
         }
@@ -391,8 +430,11 @@ pub const Lexer = struct {
                     .kw_conflicts => .conflicts,
                     .kw_infix => .infix,
                     .kw_schema => .schema,
+                    .kw_keywords => .keywords,
                     else => .other,
                 };
+                self.keywordLine = false;
+                self.keywordIndent = 0;
                 return kw;
             }
         }
@@ -417,12 +459,13 @@ pub const Lexer = struct {
 
     fn directiveKeyword(t: []const u8) ?TokenCat {
         const map = [_]struct { []const u8, TokenCat }{
-            .{ "lang", .kw_lang },     .{ "conflicts", .kw_conflicts },
-            .{ "as", .kw_as },         .{ "op", .kw_op },
-            .{ "errors", .kw_errors }, .{ "display", .kw_display },
-            .{ "infix", .kw_infix },   .{ "schema", .kw_schema },
-            .{ "tags", .kw_tags },     .{ "trivia", .kw_trivia },
-            .{ "repair", .kw_repair }, .{ "wrapper", .kw_wrapper },
+            .{ "lang", .kw_lang },         .{ "conflicts", .kw_conflicts },
+            .{ "as", .kw_as },             .{ "op", .kw_op },
+            .{ "errors", .kw_errors },     .{ "display", .kw_display },
+            .{ "infix", .kw_infix },       .{ "schema", .kw_schema },
+            .{ "tags", .kw_tags },         .{ "trivia", .kw_trivia },
+            .{ "repair", .kw_repair },     .{ "wrapper", .kw_wrapper },
+            .{ "keywords", .kw_keywords },
         };
         for (map) |entry| if (eql(t, entry[0])) return entry[1];
         return null;

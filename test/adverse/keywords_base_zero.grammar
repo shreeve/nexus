@@ -1,0 +1,16 @@
+# Id 0 means "no id": the first id is at least 1.
+# error: keywords_base_zero.grammar:12:9:
+# error: `base` takes the first id, a number from 1 to 65535
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  base 0 if
+
+@as IDENT = [kw]
+
+prog! = IDENT*

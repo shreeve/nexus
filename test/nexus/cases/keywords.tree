@@ -1,0 +1,9 @@
+(grammar
+  (keywords
+    (kw_group `kw` `if` `else` `"defined?":DEFINED` `begin:BEGIN_KW` `while`)@183..260
+    (kw_group `cmd` `caseless` `base` `100` `B[REAK]` `HALT` `ZT=ZTIME` `ZTIME` `"#"`)@266..321
+    (kw_group `empty`)@326..331)@169..331
+  (as `IDENT` _ (as_entry _ `kw` _)@346..348 (as_entry _ `cmd` _)@350..353)@337..354
+  (rule
+    (name `a`)@356..357
+    (alt _ ((tok `IF`)@360..362 (tok `IDENT`)@363..368)@360..368 _ _)@360..368)@356..368)@169..369

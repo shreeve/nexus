@@ -1,0 +1,15 @@
+# Ids are u16: base + terminals - 1 must stay at most 65535.
+# error: keyword group `kw` numbers its 2 terminals from 65535, past 65535
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  base 65535 if else
+
+@as IDENT = [kw]
+
+prog! = IDENT*

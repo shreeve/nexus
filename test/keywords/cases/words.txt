@@ -1,0 +1,6 @@
+w begin x end
+w begin end end
+w nil? x
+w END
+s begin 1
+w set

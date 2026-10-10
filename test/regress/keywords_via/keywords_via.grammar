@@ -1,0 +1,30 @@
+# generated-has: self.tryPromote(0, text, lang.findKeyword, &kwToSymbol,
+#
+# `via fn` keeps its meaning on a @keywords group: the lang function `fn`
+# looks words up, returning the group's generated Id (`?parser.KwId`),
+# and the group's terminals and symbol map stay the generated ones. Here
+# `findKeyword` also accepts `halt` as STOP.
+
+@lexer
+tokens
+    ident
+    newline
+    eof
+    err
+'\n'                                        → newline
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "keywords_via"
+
+@keywords
+    kw  go stop
+
+@as IDENT = [kw via findKeyword]
+
+prog! = line+                               → (prog ...1)
+line  = item NEWLINE                        → 1
+item  = STOP                                → (stop 1)
+      | GO IDENT                            → (go 1 2)
+      | IDENT

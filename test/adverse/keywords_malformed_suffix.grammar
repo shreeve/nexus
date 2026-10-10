@@ -1,0 +1,15 @@
+# After the word comes `=NAME` or `:NAME`, NAME a terminal name.
+# error: malformed keyword `zt=ztime`: the word may be followed by `=NAME`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  ztime zt=ztime
+
+@as IDENT = [kw]
+
+prog! = IDENT*

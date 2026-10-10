@@ -489,12 +489,15 @@ const Codegen = struct {
                 try w.writeAll("    if (getAction(self.stateStack.last().?, promotableSymbol) != 0) return promotableSymbol;\n");
                 continue;
             }
-            // The lang lookup is `via` when given, else `<group>As`.
-            const lookup = if (self.g.lang != null)
-                try self.allocator.print("lang.{s}", .{directive.via orelse try self.allocator.print("{s}As", .{directive.rule})})
+            // The lookup is `lang.fn` for `via fn`, else `<group>As`: the
+            // lang module's, or the module's own for a `@keywords` group
+            // (and the one-word group of a grammar without @lang).
+            const generated = self.g.keywordGroup(directive.rule) != null or self.g.lang == null;
+            const lookup = if (directive.via) |via|
+                try self.allocator.print("lang.{s}", .{via})
             else
-                try self.allocator.print("{s}As", .{directive.rule});
-            const fallback = if (self.g.lang != null) try self.allocator.print("{s}FallbackSymbol", .{directive.rule}) else "0";
+                try self.allocator.print("{s}{s}As", .{ if (generated) "" else "lang.", directive.rule });
+            const fallback = if (self.g.lang != null or self.g.keywordGroup(directive.rule) != null) try self.allocator.print("{s}FallbackSymbol", .{directive.rule}) else "0";
             try w.print("    if (self.tryPromote({d}, text, {s}, &{s}ToSymbol, {s}, {})) |sym| return sym;\n", .{
                 group, lookup, directive.rule, fallback, directive.permissive or seenSelf,
             });
@@ -570,6 +573,10 @@ const Codegen = struct {
 
             const cap = try capitalized(self.allocator, directive.rule);
             const upper = try std.ascii.allocUpperString(self.allocator, directive.rule);
+            if (self.g.keywordGroup(directive.rule)) |group| {
+                try self.emitKeywordGroup(w, group, cap, upper);
+                continue;
+            }
             const idType = if (self.g.lang != null)
                 try self.allocator.print("lang.{s}Id", .{cap})
             else
@@ -627,16 +634,97 @@ const Codegen = struct {
         try self.emitKeywordCheck(w);
     }
 
+    /// A `@keywords` group: its `<Group>Id` enum and `<group>As` lookup
+    /// (public: a lang wrapper may classify words with them), its symbol
+    /// map, and its fallback symbol (the terminal named like the group).
+    fn emitKeywordGroup(self: *Codegen, w: *std.Io.Writer, group: grammar.KeywordGroup, cap: []const u8, upper: []const u8) !void {
+        const name = group.name;
+        try w.print("\n/// The keyword terminals of `@keywords {s}`; a value becomes its leaf's id.\npub const {s}Id = enum(u16) {{\n", .{ name, cap });
+        for (group.terminals, 0..) |t, i| {
+            if (i == 0) try w.print("    {f} = {d},\n", .{ std.zig.fmtId(t), group.base }) else try w.print("    {f},\n", .{std.zig.fmtId(t)});
+        }
+        try w.writeAll("};\n");
+
+        // The lookup: by the first byte, then each entry of that byte. An
+        // abbreviation `PRE[REST]` accepts every prefix of PREREST at least
+        // as long as PRE. No two entries accept one word (lower.zig), so
+        // their order does not matter.
+        var longest: usize = 0;
+        for (group.entries) |e| longest = @max(longest, e.word.len);
+        try w.print("\n/// The `{s}` keyword `text` spells, or null.\npub fn {s}As(text: []const u8) ?{s}Id {{\n", .{ name, name, cap });
+        try w.print("    if (text.len == 0 or text.len > {d}) return null;\n", .{longest});
+        if (group.caseless) {
+            try w.print("    var folded: [{d}]u8 = undefined;\n    const t = std.ascii.upperString(&folded, text);\n", .{longest});
+        } else try w.writeAll("    const t = text;\n");
+        try w.writeAll("    switch (t[0]) {\n");
+        var i: usize = 0;
+        while (i < group.entries.len) {
+            const c = group.entries[i].word[0];
+            if (std.ascii.isAlphanumeric(c) or c == '_') try w.print("        '{c}' => {{\n", .{c}) else try w.print("        0x{X:0>2} => {{\n", .{c});
+            while (i < group.entries.len and group.entries[i].word[0] == c) : (i += 1) {
+                const e = group.entries[i];
+                const terminal = std.zig.fmtId(group.terminals[e.terminal]);
+                if (e.min == e.word.len) {
+                    try w.print("            if (std.mem.eql(u8, t, \"{f}\")) return .{f};\n", .{ std.zig.fmtString(e.word), terminal });
+                } else {
+                    // `text.len` is at least 1 and at most `longest`.
+                    try w.writeAll("            if (");
+                    if (e.min > 1) try w.print("t.len >= {d} and ", .{e.min});
+                    if (e.word.len < longest) try w.print("t.len <= {d} and ", .{e.word.len});
+                    try w.print("std.mem.eql(u8, t, \"{f}\"[0..t.len])) return .{f};\n", .{ std.zig.fmtString(e.word), terminal });
+                }
+            }
+            try w.writeAll("        },\n");
+        }
+        try w.writeAll("        else => {},\n    }\n    return null;\n}\n");
+
+        // The group's own terminal (`KW` for `kw`) receives every keyword
+        // without a terminal of its own.
+        var fallbackId: u16 = 0;
+        for (self.g.symbols.items) |sym| {
+            if (sym.kind == .terminal and std.mem.eql(u8, sym.name, upper)) {
+                fallbackId = sym.id;
+                break;
+            }
+        }
+        try w.print("\n/// {s}Id -> grammar symbol (0 = none)\nconst {s}ToSymbol = blk: {{\n", .{ cap, name });
+        const symbols = try self.allocator.alloc(u16, group.terminals.len);
+        for (group.terminals, symbols) |t, *symbol| symbol.* = for (self.g.symbols.items) |sym| {
+            if (sym.kind == .terminal and std.mem.eql(u8, sym.name, t)) break sym.id;
+        } else fallbackId;
+        const any = std.mem.findNone(u16, symbols, &.{0}) != null;
+        try w.print("    {s} arr: [idCount({s}Id)]u16 = @splat(0);\n", .{ if (any) "var" else "const", cap });
+        for (group.terminals, symbols) |t, symbol| {
+            if (symbol != 0) try w.print("    arr[@backingInt({s}Id.{f})] = {d};\n", .{ cap, std.zig.fmtId(t), symbol });
+        }
+        try w.writeAll("    break :blk arr;\n};\n");
+        try w.print("const {s}FallbackSymbol: u16 = {d};\n", .{ name, fallbackId });
+        if (self.g.lang != null) try w.print(
+            \\
+            \\// A group is declared once: by @keywords or by the lang module (which
+            \\// may re-export the generated declarations).
+            \\comptime {{
+            \\    if (@hasDecl(lang, "{s}Id") and (@TypeOf(lang.{s}Id) != type or lang.{s}Id != {s}Id) or
+            \\        @hasDecl(lang, "{s}As") and (@TypeOf(lang.{s}As) != @TypeOf({s}As) or lang.{s}As != {s}As))
+            \\        @compileError("the keyword group {s} is declared by @keywords and by the lang module ({s}Id or {s}As): declare it once");
+            \\}}
+            \\
+        , .{ cap, cap, cap, cap, name, name, name, name, name, name, cap, name });
+    }
+
     /// A terminal that is no lexer token reaches the parser only as a
     /// member of an `@as` group's Id enum; one no group names could never
     /// match. Without @lang the groups are known here (each matches its own
     /// name), so that is a generation error; with @lang the Id enums live
     /// in the lang module, so the parser fails to build naming it.
     fn emitKeywordCheck(self: *Codegen, w: *std.Io.Writer) !void {
+        // Every group, and the groups whose Id enum the lang module declares.
         var groups: std.ArrayList([]const u8) = .empty;
+        var langGroups: std.ArrayList([]const u8) = .empty;
         for (self.g.asDirectives) |directive| {
             if (isSelf(directive)) continue;
             try groups.append(self.allocator, directive.rule);
+            if (self.g.keywordGroup(directive.rule) == null) try langGroups.append(self.allocator, directive.rule);
         }
         var any = false;
         for (self.g.symbols.items) |sym| {
@@ -654,20 +742,23 @@ const Codegen = struct {
                 if (std.ascii.eqlIgnoreCase(group, sym.name)) break true;
             } else false;
             if (named) continue;
-            if (self.g.lang == null) {
+            const listed = for (self.g.keywordGroups) |group| {
+                if (group.hasTerminal(sym.name)) break true;
+            } else false;
+            if (listed) continue;
+            if (self.g.lang == null or langGroups.items.len == 0) {
                 self.errAtUse(sym.id, "{s} is no lexer token, and no @as group matches it (without @lang, group `x` promotes only the word `x`)", .{sym.name});
                 return error.UnknownKeyword;
             }
             if (!any) try w.writeAll("\n// Every @as keyword terminal is a field of some group's Id enum.\ncomptime {\n");
             any = true;
             try w.writeAll("    if (!(");
-            for (groups.items, 0..) |group, i| {
+            for (langGroups.items, 0..) |group, i| {
                 if (i > 0) try w.writeAll(" or ");
                 try w.print("@hasField(lang.{s}Id, \"{s}\")", .{ try capitalized(self.allocator, group), sym.name });
             }
-            if (groups.items.len == 0) try w.writeAll("false");
             try w.print(")) @compileError(\"{s} is no lexer token, and no @as group's Id enum (", .{sym.name});
-            for (groups.items, 0..) |group, i| {
+            for (langGroups.items, 0..) |group, i| {
                 if (i > 0) try w.writeAll(", ");
                 try w.print("lang.{s}Id", .{try capitalized(self.allocator, group)});
             }

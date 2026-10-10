@@ -154,11 +154,16 @@ pub fn validateSymbols(g: *const Grammar, ir: *const GrammarIR, lexerSpec: *cons
                 }
             }
             if (isAsKeyword) continue;
+            // A `@keywords` group has the terminals it lists.
+            for (g.keywordGroups) |group| {
+                if (group.hasTerminal(sym.name)) isAsKeyword = true;
+            }
+            if (isAsKeyword) continue;
 
-            // When @lang is set, keyword terminals are resolved by the
-            // lang module's keyword matcher at compile time. Trust the
-            // Zig compiler to catch mismatches.
-            if (g.lang != null and g.asDirectives.len > 0) continue;
+            // The Id enum of a group the lang module declares is known
+            // only to the compiler: the generated parser checks at
+            // compile time that some group has the terminal.
+            if (g.lang != null and hasLangGroup(g)) continue;
 
             var found = false;
 
@@ -189,6 +194,16 @@ pub fn validateSymbols(g: *const Grammar, ir: *const GrammarIR, lexerSpec: *cons
     }
 
     return errors;
+}
+
+/// Whether some `@as` group is the lang module's (not `self`, not a
+/// `@keywords` group).
+fn hasLangGroup(g: *const Grammar) bool {
+    for (g.asDirectives) |d| {
+        if (std.mem.eql(u8, d.rule, "self") or std.mem.eql(u8, d.rule, d.token)) continue;
+        if (g.keywordGroup(d.rule) == null) return true;
+    }
+    return false;
 }
 
 /// Binds each lexer token to the terminal it reaches the parser as

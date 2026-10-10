@@ -278,6 +278,7 @@ The module exports:
 | `ir.has(kind, role)` | whether a kind has a role |
 | `ir.slot(kind, role)`, `ir.restSlot(kind, role)`, `ir.width(kind)` | compile-time slot numbers (the head is slot 0) and the fixed width |
 | `ir.Let.name(node)` ... | per-kind views, one function per role (`ir.@"+".left` for quoted kinds) |
+| `GId`, `gAs(text)` | per `@keywords` group `g`: its keyword terminals (`enum(u16)`, values from 1 or its `base`) and its lookup, `?GId` ([GRAMMAR.md](GRAMMAR.md#keywords-keyword-tables)) |
 | `Parser` | the lang module's `Parser` wrapper, or `BaseParser` |
 | `parseProgram(allocator, source)` | per start symbol: a new parser and its tree, as `.parser` and `.sexp`; `deinit()` the parser when done |
 | `nodeStore` | whether the parser records spans and node ids (`@schema` or `--spans`) |
@@ -746,7 +747,8 @@ reads only these declarations from it, each optional:
 |---|---|
 | `Lexer` | a wrapper over the generated scanner: a field `base: BaseLexer`, `pub fn init(source: []const u8) Lexer` and `pub fn next(self: *Lexer) Token`. The parser calls nothing else. Setting `base.aux` before returning a token gives its leaf that id (`src.id`). A token whose length the wrapper computes is built with `BaseLexer.makeToken`, so a match over 65535 bytes is an `err` token as in the scanner. A wrapper without `base: BaseLexer` is a compile error. |
 | `Parser` | a wrapper over the generated parser: a field `base: BaseParser`, `pub fn init(allocator, source) Parser`, `pub fn deinit(self: *Parser) void`, and `pub fn parse<Start>(self: *Parser) !Sexp` per start symbol it offers. Everything it does not forward is `p.base.X`; generic code reaches the generated parser as `if (Parser == BaseParser) &p else &p.base`. It is returned by value from `parseX(allocator, source)`, so it must be movable. |
-| `GId`, `gAs` | per `@as` group `g`: an enum whose field names are the group's keyword terminals (values from 1 become the leaf's id), and `pub fn gAs(text: []const u8) ?GId` (or the function `@as ... via` names); see [GRAMMAR.md](GRAMMAR.md#as-keywords-that-are-also-names) |
+| `GId`, `gAs` | per `@as` group `g` that `@keywords` does not declare: an enum whose field names are the group's keyword terminals (values from 1 become the leaf's id), and `pub fn gAs(text: []const u8) ?GId`; see [GRAMMAR.md](GRAMMAR.md#as-keywords-that-are-also-names). For a `@keywords` group, declaring its own is a compile error of the generated parser; re-exporting the generated ones (`pub const GId = parser.GId;`) is not |
+| `lookup` | per `@as ... via lookup`: `pub fn lookup(text: []const u8) ?GId`, the group's lookup (`?parser.GId` for a `@keywords` group) |
 | `f` | per `@code = f`: `pub fn f(source: []const u8, pos: u32) bool`, called by the lexer method of that name |
 
 `Tag` comes from the grammar, never from the lang module.

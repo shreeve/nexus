@@ -428,6 +428,7 @@ const Expander = struct {
         try self.addStartRules();
 
         g.asDirectives = ir.asDirectives;
+        g.keywordGroups = ir.keywordGroups;
         g.opMappings = ir.opMappings;
         g.errorNames = ir.errorNames;
         g.displayNames = ir.displayNames;

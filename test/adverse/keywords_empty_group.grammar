@@ -1,0 +1,16 @@
+# A group with no keywords would never promote anything.
+# error: keywords_empty_group.grammar:12:5:
+# error: keyword group `kw` has no keywords
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  caseless
+
+@as IDENT = [kw]
+
+prog! = IDENT*

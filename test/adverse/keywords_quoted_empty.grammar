@@ -1,0 +1,15 @@
+# A quoted keyword is a word: not empty, no blanks.
+# error: `""` is not a keyword
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if ""
+
+@as IDENT = [kw]
+
+prog! = IDENT*

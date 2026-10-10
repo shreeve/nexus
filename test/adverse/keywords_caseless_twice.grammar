@@ -1,0 +1,16 @@
+# An option is given once.
+# error: keywords_caseless_twice.grammar:12:18:
+# error: `caseless` is given twice
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  caseless caseless if
+
+@as IDENT = [kw]
+
+prog! = IDENT*

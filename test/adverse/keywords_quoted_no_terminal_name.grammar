@@ -1,0 +1,15 @@
+# A quoted word that is no name has no terminal name in capitals.
+# error: the keyword `"defined?"` has no terminal name of its own
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if "defined?"
+
+@as IDENT = [kw]
+
+prog! = IDENT*

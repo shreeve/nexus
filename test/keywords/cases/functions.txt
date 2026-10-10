@@ -1,0 +1,4 @@
+w $l(x)
+w $LENGTH(x), $e(x, 1)
+w $zd(x), $ZDAT(x), $zdateh(x)
+w $p(x, 2)

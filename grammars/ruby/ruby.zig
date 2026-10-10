@@ -1,8 +1,8 @@
 //! Ruby — Language module for the Nanoruby grammar
 //!
-//! Provides language-specific support for the generated parser:
-//!   - Keyword matching (KeywordId, keywordAs)
-//!   - Lexer wrapper with context-sensitive token rewriting
+//! Provides language-specific support for the generated parser: a lexer
+//! wrapper with context-sensitive token rewriting. The keywords
+//! (`KeywordId`, `keywordAs`) are generated from ruby.grammar's @keywords.
 //!
 //! Imported by parser.zig via @lang = "ruby" directive.
 
@@ -12,139 +12,6 @@ pub const Token = parser.Token;
 pub const TokenCat = parser.TokenCat;
 const BaseLexer = parser.BaseLexer;
 const makeToken = BaseLexer.makeToken;
-
-// =============================================================================
-// Keyword Lookup — maps identifier text to parser symbol IDs
-// =============================================================================
-
-pub const KeywordId = enum(u16) {
-    // Keywords
-    IF,
-    UNLESS,
-    ELSIF,
-    ELSE,
-    END,
-    WHILE,
-    UNTIL,
-    FOR,
-    IN,
-    DO,
-    CASE,
-    WHEN,
-    DEF,
-    CLASS,
-    MODULE,
-    RETURN,
-    BREAK,
-    NEXT,
-    YIELD,
-    BEGIN_KW,
-    RESCUE,
-    ENSURE,
-    THEN,
-    AND_KW,
-    OR_KW,
-    NOT_KW,
-    DEFINED,
-    ALIAS,
-    UNDEF,
-    RETRY,
-    REDO,
-    SUPER,
-    SELF,
-    TRUE,
-    FALSE,
-    NIL,
-    KW__FILE__,
-    KW__LINE__,
-    KW__ENCODING__,
-
-    // Rewriter-classified keyword variants
-    IF_MOD,
-    UNLESS_MOD,
-    WHILE_MOD,
-    UNTIL_MOD,
-    RESCUE_MOD,
-    DO_BLOCK,
-    DO_COND,
-
-    // Token categories (parser needs these as symbols)
-    IDENT,
-    CONSTANT,
-    IVAR,
-    CVAR,
-    GVAR,
-    INTEGER,
-    FLOAT,
-    RATIONAL,
-    IMAGINARY,
-    STRING_SQ,
-    STRING_DQ,
-    SYMBOL,
-    PCT_W,
-    PCT_I,
-    LABEL,
-    CMD_IDENT,
-    LBRACE_BLOCK,
-    PLUS_U,
-    MINUS_U,
-    STAR_SPLAT,
-    AMP_BLOCK,
-    DSTR_BEG,
-    STR_CONTENT,
-    EMBEXPR_BEG,
-    EMBEXPR_END,
-    DSTR_END,
-    NEWLINE,
-    COMMENT,
-    EOF,
-};
-
-const keywordMap = std.StaticStringMap(KeywordId).initComptime(.{
-    .{ "if", .IF },
-    .{ "unless", .UNLESS },
-    .{ "elsif", .ELSIF },
-    .{ "else", .ELSE },
-    .{ "end", .END },
-    .{ "while", .WHILE },
-    .{ "until", .UNTIL },
-    .{ "for", .FOR },
-    .{ "in", .IN },
-    .{ "do", .DO },
-    .{ "case", .CASE },
-    .{ "when", .WHEN },
-    .{ "def", .DEF },
-    .{ "class", .CLASS },
-    .{ "module", .MODULE },
-    .{ "return", .RETURN },
-    .{ "break", .BREAK },
-    .{ "next", .NEXT },
-    .{ "yield", .YIELD },
-    .{ "begin", .BEGIN_KW },
-    .{ "rescue", .RESCUE },
-    .{ "ensure", .ENSURE },
-    .{ "then", .THEN },
-    .{ "and", .AND_KW },
-    .{ "or", .OR_KW },
-    .{ "not", .NOT_KW },
-    .{ "defined?", .DEFINED },
-    .{ "alias", .ALIAS },
-    .{ "undef", .UNDEF },
-    .{ "retry", .RETRY },
-    .{ "redo", .REDO },
-    .{ "super", .SUPER },
-    .{ "self", .SELF },
-    .{ "true", .TRUE },
-    .{ "false", .FALSE },
-    .{ "nil", .NIL },
-    .{ "__FILE__", .KW__FILE__ },
-    .{ "__LINE__", .KW__LINE__ },
-    .{ "__ENCODING__", .KW__ENCODING__ },
-});
-
-pub fn keywordAs(name: []const u8) ?KeywordId {
-    return keywordMap.get(name);
-}
 
 // =============================================================================
 // Lexer — context-sensitive rewriter wrapping the generated BaseLexer
@@ -521,7 +388,7 @@ pub const Lexer = struct {
                 }
 
                 // Command ident classification
-                if (self.cmd_context and keywordMap.get(kw_text) == null) {
+                if (self.cmd_context and parser.keywordAs(kw_text) == null) {
                     if (self.isCommandArg()) {
                         tok.cat = .cmd_ident;
                         self.last_cat = .cmd_ident;
@@ -1058,6 +925,8 @@ pub const Lexer = struct {
 // =============================================================================
 
 test "keywordAs - core keywords" {
+    const KeywordId = parser.KeywordId;
+    const keywordAs = parser.keywordAs;
     try std.testing.expectEqual(KeywordId.IF, keywordAs("if").?);
     try std.testing.expectEqual(KeywordId.ELSE, keywordAs("else").?);
     try std.testing.expectEqual(KeywordId.DEF, keywordAs("def").?);
@@ -1069,6 +938,7 @@ test "keywordAs - core keywords" {
 }
 
 test "keywordAs - not a keyword" {
+    const keywordAs = parser.keywordAs;
     try std.testing.expect(keywordAs("puts") == null);
     try std.testing.expect(keywordAs("foo") == null);
     try std.testing.expect(keywordAs("Dog") == null);
