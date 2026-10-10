@@ -133,6 +133,17 @@ ensure_built() {
 # Checks. Each sets REASON and returns 0 on pass; details go to $LOG.
 # -----------------------------------------------------------------------------
 
+check_wasm32() { # check_wasm32 <suite dir>: the parser and driver build for 32-bit wasm
+    local dir=$1
+    check_built "$dir" || return 1
+    local out="$OUTROOT/build/$(key_of "$dir")"
+    if ! (cd "$out" && with_timeout 300 zig build-exe -target wasm32-wasi -fno-emit-bin driver.zig --cache-dir "$OUTROOT/zig") >>"$LOG" 2>&1; then
+        REASON="does not build for wasm32-wasi"
+        return 1
+    fi
+    return 0
+}
+
 check_built() { # check_built <suite dir>
     local key st why
     key=$(key_of "$1")
@@ -533,6 +544,7 @@ worker() {
         determinism) check_determinism "$a" "$b"; ok=$? ;;
         bootstrap)   check_bootstrap; ok=$? ;;
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
+        wasm32)      check_wasm32 "$a"; ok=$? ;;
         unit-nexus)  check_unit_nexus; ok=$? ;;
         diff-tool)   check_diff_tool; ok=$? ;;
         cli)         check_cli; ok=$? ;;
@@ -685,6 +697,7 @@ for dir in grammars/*/ test/*/; do
     case $SEXP_SEEN in *"|$GRAMMAR|"*) ;; *) add "sexp/$name" sexp "$dir" "$name" ;; esac
     SEXP_SEEN="$SEXP_SEEN|$GRAMMAR|"
     add "determinism/$name" determinism "$dir" "$name"
+    add "wasm32/$name" wasm32 "$dir" && need_build "$dir"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
         add "unit/$name" unit-lang "$dir" && need_build "$dir"
     fi

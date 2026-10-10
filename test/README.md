@@ -30,6 +30,7 @@ systems' own tools.
 | `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp`; every grammar file has one, under the first suite that uses it |
 | `determinism/<grammar>` | two generations (with the suite's `flags`), and two `--dump-sexp` runs, are identical |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
+| `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
 | `unit/nexus` | the generator's own Zig unit tests (`zig build unit`) |
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |

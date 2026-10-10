@@ -79,7 +79,8 @@ pub const List = struct {
     }
 };
 
-/// The uniform tree value: 24 bytes, O(1) dispatch on the head tag.
+/// The uniform tree value: 24 bytes on 64-bit targets and 16 on 32-bit
+/// ones, O(1) dispatch on the head tag.
 pub const Sexp = union(enum) {
     nil,
     tag: Tag,
@@ -88,7 +89,7 @@ pub const Sexp = union(enum) {
     list: List,
 
     comptime {
-        std.debug.assert(@sizeOf(Sexp) == 24);
+        std.debug.assert(@sizeOf(Sexp) == if (@sizeOf(usize) == 8) 24 else 16);
     }
 
     /// A list value over `xs` with no node id.
@@ -1968,8 +1969,8 @@ fn errorText(p: *BaseParser) ![]const u8 {
     return out.written();
 }
 
-test "Sexp is 24 bytes; list helpers" {
-    try testing.expectEqual(24, @sizeOf(Sexp));
+test "Sexp is 24 bytes (16 on 32-bit targets); list helpers" {
+    try testing.expectEqual(if (@sizeOf(usize) == 8) 24 else 16, @sizeOf(Sexp));
     const kids = [_]Sexp{ .{ .tag = .add }, .nil };
     const s = Sexp{ .list = List.withId(&kids, 5) };
     try testing.expectEqual(@as(usize, 2), s.items().len);

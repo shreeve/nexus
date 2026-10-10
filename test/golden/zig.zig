@@ -4356,7 +4356,8 @@ pub const List = struct {
     }
 };
 
-/// The uniform tree value: 24 bytes, O(1) dispatch on the head tag.
+/// The uniform tree value: 24 bytes on 64-bit targets and 16 on 32-bit
+/// ones, O(1) dispatch on the head tag.
 pub const Sexp = union(enum) {
     nil,
     tag: Tag,
@@ -4365,7 +4366,7 @@ pub const Sexp = union(enum) {
     list: List,
 
     comptime {
-        std.debug.assert(@sizeOf(Sexp) == 24);
+        std.debug.assert(@sizeOf(Sexp) == if (@sizeOf(usize) == 8) 24 else 16);
     }
 
     /// A list value over `xs` with no node id.
