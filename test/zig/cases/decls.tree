@@ -1,0 +1,145 @@
+(root
+  (`//! Container-level declarations: every kind of decl and field order.`
+    `//! A second container doc comment line.`)@0..110
+  (var_decl
+    (`/// A documented constant.`)@112..138
+    `pub`
+    _
+    _
+    _
+    _
+    `const`
+    `answer`
+    `u32`
+    _
+    _
+    _
+    `42`)@139..165
+  (var_decl _ _ _ _ _ _ `var` `counter` `usize` `8` _ _ `0`)@167..198
+  (fn_proto
+    _
+    `pub`
+    `extern`
+    `"c"`
+    `write`
+    ((param _ _ `fd` `c_int`)@224..233
+      (param _ _ `buf` (ptr_type many _ _ _ _ _ `u8` `const`)@240..251)@235..251
+      (param _ _ `len` `usize`)@253..263)@224..263
+    _
+    _
+    _
+    _
+    _
+    `isize`)@200..270
+  (fn_proto
+    _
+    _
+    `extern`
+    _
+    `exit`
+    ((param _ _ `code` `c_int`)@287..298)@287..298
+    _
+    _
+    _
+    _
+    _
+    `noreturn`)@272..308
+  (fn_decl
+    (fn_proto
+      _
+      _
+      `export`
+      _
+      `exported`
+      ()@328..330
+      _
+      _
+      _
+      (enum_literal `c`)@340..342
+      _
+      `void`)@310..348
+    (block _)@349..351)@310..351
+  (fn_decl
+    (fn_proto
+      _
+      `pub`
+      `inline`
+      _
+      `twice`
+      ((param _ _ `x` `anytype`)@372..382)@372..382
+      _
+      _
+      _
+      _
+      _
+      (builtin_call `@TypeOf` `x`)@384..394)@352..394
+    (block _ (return (binary `+` `x` `x`)@408..413)@401..413)@395..416)@352..416
+  (fn_decl
+    (fn_proto _ _ `noinline` _ `slow` ()@433..435 _ _ _ _ _ `void`)@417..440
+    (block _)@441..443)@417..443
+  (fn_proto _ _ _ _ `proto` ((param _ _ _ `u8`)@453..455)@453..455 _ _ _ _ _ `void`)@444..461
+  (var_decl _ _ _ _ `threadlocal` _ `var` `tls` `u32` _ _ _ `1`)@463..491
+  (var_decl _ `pub` `extern` `"kernel32"` `threadlocal` _ `var` `tls2` `u32` _ _ _ _)@493..540
+  (var_decl _ _ `export` _ _ _ `var` `exported_var` `i32` _ _ `".data"` `3`)@542..595
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `in_addrspace`
+    `u32`
+    _
+    (enum_literal `generic`)@631..639
+    _
+    `0`)@597..644
+  (fn_decl
+    (fn_proto
+      _
+      _
+      _
+      _
+      `modifiers`
+      ()@658..660
+      `16`
+      (enum_literal `generic`)@681..689
+      `".text"`
+      (enum_literal `c`)@721..723
+      `!`
+      `void`)@646..730
+    (block _)@731..733)@646..733
+  (test_decl `"a string name"` (block _)@756..758)@735..758
+  (test_decl `ident_name` (block _)@775..777)@759..777
+  (test_decl _ (block _)@783..785)@778..785
+  (comptime (block _ (assign `=` `_` `answer`)@802..812)@796..815)@787..815
+  (fn_proto
+    _
+    _
+    _
+    _
+    `varargs`
+    ((param _ _ `fmt` (ptr_type many `0` _ _ _ _ `u8` `const`)@833..846)@828..846
+      (param _ _ _ `...`)@848..851)@827..852
+    _
+    _
+    _
+    (enum_literal `c`)@862..864
+    _
+    `c_int`)@817..871
+  (fn_proto
+    _
+    _
+    _
+    _
+    `documented`
+    ((param (`/// The first parameter.`)@892..916 `comptime` `T` `type`)@921..937
+      (param _ `noalias` `out` (ptr_type one _ _ _ _ _ `T`)@956..958)@943..958
+      (param (`/// Trailing varargs may be documented too.`)@964..1007 _ _ `...`)@1012..1015)@886..1018
+    _
+    _
+    _
+    _
+    _
+    `void`)@873..1023)@0..1024

@@ -1,0 +1,7 @@
+(tokens
+  (keyword_const `const`)@3..8
+  (identifier `x`)@9..10
+  (equal `=`)@11..12
+  (number_literal `1`)@13..14
+  (semicolon `;`)@14..15
+  (invalid `﻿ a second BOM is an invalid line`)@16..51)@3..51

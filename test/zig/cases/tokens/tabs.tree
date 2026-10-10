@@ -1,0 +1,7 @@
+(tokens
+  (keyword_const `const`)@1..6
+  (identifier `x`)@7..8
+  (equal `=`)@9..10
+  (number_literal `1`)@11..12
+  (semicolon `;`)@12..13
+  (doc_comment `/// a doc comment after tabs`)@43..71)@1..71

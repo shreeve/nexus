@@ -1,0 +1,31 @@
+(tokens
+  (string_literal `""`)@0..2
+  (string_literal `"abc"`)@3..8
+  (string_literal `"a\\"b"`)@9..15
+  (string_literal `"\\\\"`)@16..20
+  (string_literal `"\\n\\r\\t\\'\\""`)@21..33
+  (string_literal `"\\x00\\x7f"`)@34..44
+  (string_literal `"\\u{1F4A9}"`)@45..56
+  (string_literal `"\\u{}"`)@57..63
+  (string_literal `"\\q"`)@64..68
+  (string_literal `"café"`)@69..76
+  (string_literal `"€"`)@77..82
+  (string_literal `"��"`)@83..87
+  (char_literal `''`)@88..90
+  (char_literal `'c'`)@91..94
+  (char_literal `'\\''`)@95..99
+  (char_literal `'\\\\'`)@100..104
+  (char_literal `'\\n'`)@105..109
+  (char_literal `'\\x1b'`)@110..116
+  (char_literal `'\\x1'`)@117..122
+  (char_literal `'\\u{3f9}'`)@123..132
+  (char_literal `'\\u0333'`)@133..141
+  (char_literal `'💩'`)@142..148
+  (char_literal `'ab'`)@149..153
+  (identifier `@"identifier with spaces"`)@154..179
+  (identifier `@"\\x41"`)@180..187
+  (identifier `@"é"`)@188..193
+  (builtin `@import`)@194..201
+  (builtin `@This`)@202..207
+  (builtin `@_`)@208..210
+  (builtin `@a_9`)@211..215)@0..215

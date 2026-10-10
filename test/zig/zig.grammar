@@ -1,0 +1,1525 @@
+# ==============================================================================
+# zig.grammar — the syntax of Zig 0.17.0, as one Nexus grammar
+# ==============================================================================
+#
+# What this is. A grammar for all of Zig's syntax, from which Nexus
+# generates one standalone Zig module: a DFA lexer, an LALR(1) parser and
+# a typed tree. It is written to agree exactly with Zig 0.17.0's own front
+# end, std.zig (lib/std/zig/tokenizer.zig, Parse.zig, Ast.zig), and the
+# tools in test/zig/ check that it does; test/zig/README.md has the
+# evidence, the measurements and the commands.
+#
+#   Tokens   the lexer is std.zig.Tokenizer written as Nexus rules: for
+#            every input it yields the same tokens, with the same tags and
+#            the same byte boundaries, invalid tokens included
+#            (tokens_test.zig, compare-tokens). Every token name is the
+#            std.zig.Token.Tag of the same name.
+#   Accept   the parser accepts exactly what std.zig.Ast.parse accepts with
+#            recovery off, from `root`, a whole file (compare-accept).
+#   Trees    the tree is std.zig.Ast's, node for node and span for span, in
+#            the kinds and roles of the @schema below (compare-trees;
+#            trees.zig lists how the two trees are put in one form).
+#
+# The one known difference: a token longer than 65535 bytes, the most a
+# Nexus token holds, which std.zig.Tokenizer lexes as one token. Nexus
+# makes it an `err` token, which no rule takes; `err` comes from no rule
+# here, as every byte starts one.
+#
+# How it is written. Rules follow grammar.peg (doc/langref/grammar.peg),
+# section by section and with its rule names in snake_case (BoolOrExpr is
+# bool_or_expr); where grammar.peg and Parse.zig disagree, Parse.zig
+# decides, since it is what the compiler runs. Parse.zig is predictive:
+# it commits to a reading after looking at a token or two and never
+# backtracks. Where LALR(1) would decide later and accept more, the
+# grammar encodes the commitment as a restricted variant of a rule, named
+# by a suffix: `_s`, `_c`, `_p` expressions and `_k` operands (EXPRESSION
+# LEVEL), `_e`, `_s`, `_c`, `_f`, `_p`, `_n` types (Type expressions).
+# Where the decision needs more than one token of lookahead, or the bytes
+# around a token, the lang module's Lexer wrapper (zig.zig) makes it and
+# names the token by it: label, break_colon, ptr_star, c_ptr, enum_tag,
+# bad_doc_comment and the operator spacing categories, each documented
+# there. The wrapper also skips a UTF-8 byte order mark at offset 0, as
+# Tokenizer.init does; no rule can see the start of the input.
+#
+# Sections: @lexer (tokenizer.zig's states, cited by name); @schema (the
+# tree); @conflicts; TOP LEVEL, BLOCK LEVEL, EXPRESSION LEVEL, ASSEMBLY
+# and HELPER GRAMMAR (grammar.peg's sections); TOKENS, the second start
+# symbol, `tokens`, which lists the tokens as the parser sees them, each
+# in a node named by its category.
+# ==============================================================================
+
+@lang = "zig"
+
+@lexer
+
+tokens
+    invalid
+    identifier, string_literal, multiline_string_literal_line, char_literal
+    builtin, number_literal, doc_comment, container_doc_comment
+
+    bang, pipe, pipe_pipe, pipe_equal, equal, equal_equal
+    equal_angle_bracket_right, bang_equal, l_paren, r_paren, semicolon
+    percent, percent_equal, l_brace, r_brace, l_bracket, r_bracket
+    period, period_asterisk, ellipsis2, ellipsis3, caret, caret_equal
+    plus, plus_plus, plus_equal, plus_percent, plus_percent_equal
+    plus_pipe, plus_pipe_equal, minus, minus_equal, minus_percent
+    minus_percent_equal, minus_pipe, minus_pipe_equal, asterisk
+    asterisk_equal, asterisk_percent, asterisk_percent_equal, asterisk_pipe
+    asterisk_pipe_equal, arrow, colon, slash, slash_equal, comma, ampersand
+    ampersand_equal, question_mark, angle_bracket_left
+    angle_bracket_left_equal, angle_bracket_angle_bracket_left
+    angle_bracket_angle_bracket_left_equal
+    angle_bracket_angle_bracket_left_pipe
+    angle_bracket_angle_bracket_left_pipe_equal, angle_bracket_right
+    angle_bracket_right_equal, angle_bracket_angle_bracket_right
+    angle_bracket_angle_bracket_right_equal, tilde
+
+    keyword_addrspace, keyword_align, keyword_allowzero, keyword_and
+    keyword_anyframe, keyword_anytype, keyword_asm, keyword_break
+    keyword_callconv, keyword_catch, keyword_comptime, keyword_const
+    keyword_continue, keyword_defer, keyword_else, keyword_enum
+    keyword_errdefer, keyword_error, keyword_export, keyword_extern
+    keyword_fn, keyword_for, keyword_if, keyword_inline, keyword_noalias
+    keyword_noinline, keyword_nosuspend, keyword_opaque, keyword_or
+    keyword_orelse, keyword_packed, keyword_pub, keyword_resume
+    keyword_return, keyword_linksection, keyword_struct, keyword_suspend
+    keyword_switch, keyword_test, keyword_threadlocal, keyword_try
+    keyword_union, keyword_unreachable, keyword_var, keyword_volatile
+    keyword_while
+
+    # given by the lang module's Lexer wrapper (zig.zig), never by a rule
+    label, break_colon, ptr_star, c_ptr, enum_tag, bad_doc_comment
+    minus_prefix, minus_percent_prefix, ampersand_prefix, asterisk_prefix
+    pipe_payload, bad_operator
+
+    eof, err
+
+# The tokenizer's states are cited as tokenizer.zig `.state`. Three ways a
+# token goes wrong recur below, and each rule copies one:
+#
+#   - consume to the end of the line (`continue :state .invalid`): a
+#     control byte in a literal, comment or `\\` line, a stray CR in a
+#     comment or `\\` line, a NUL inside the input. The invalid token runs
+#     to the next LF, which it does not include, or to the end of input;
+#   - stop here (`result.tag = .invalid` without advancing): a LF or the
+#     end of input in an unterminated literal. The next token starts at
+#     that byte;
+#   - valid only before CRLF: a comment or `\\` line may end in a CR only
+#     when a LF follows. Trailing context counts toward longest match, so
+#     `body / "\r\n"` beats the invalid `body '\r' [^\n]*` exactly when a
+#     LF follows the CR.
+#
+# Nexus lexes a []const u8 with no sentinel: the end of input is the end,
+# and a NUL is an ordinary byte, which is the tokenizer's distinction
+# between `index == buffer.len` and an embedded 0.
+
+# --- Whitespace (`.start`) ----------------------------------------------------
+# Spaces and tabs are skipped by every Nexus lexer; CR and LF are
+# whitespace too.
+
+[\r\n]+                                                         → skip, skip
+
+# --- Comments (`.slash`, `.line_comment*`, `.doc_comment*`, `.expect_newline`)
+# A comment holds no control byte or DEL, but a CR right before its LF. A
+# TAB, a stray CR or a NUL makes the rest of the line one invalid token
+# that starts at the `//`. `///` (not `////`) is a doc comment and `//!` a
+# container doc comment; both stop before a NUL, a LF or a CRLF, so a NUL
+# then starts an invalid token of its own.
+
+'//' ([^!/\x00-\x1f\x7f] [^\x00-\x1f\x7f]* | '//' [^\x00-\x1f\x7f]*)?        → skip, skip
+'//' ([^!/\x00-\x1f\x7f] [^\x00-\x1f\x7f]* | '//' [^\x00-\x1f\x7f]*)? "\r\n" → skip, skip
+'//' ([^!/\x00-\x1f\x7f] [^\x00-\x1f\x7f]* | '//' [^\x00-\x1f\x7f]*)? ([\x00-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+
+'///' ([^/\x00-\x1f\x7f] [^\x00-\x1f\x7f]*)? / "\r\n"           → doc_comment
+'///' ([^/\x00-\x1f\x7f] [^\x00-\x1f\x7f]*)?                    → doc_comment
+'///' ([^/\x00-\x1f\x7f] [^\x00-\x1f\x7f]*)? ([\x01-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+
+'//!' [^\x00-\x1f\x7f]* / "\r\n"                                → container_doc_comment
+'//!' [^\x00-\x1f\x7f]*                                         → container_doc_comment
+'//!' [^\x00-\x1f\x7f]* ([\x01-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+
+# --- String and character literals (`.string_literal*`, `.char_literal*`) ---
+# A body byte is anything but the quote, a backslash, a control byte or
+# DEL; a backslash escapes any byte but a control byte or DEL (escapes are
+# checked later, by std.zig.string_literal). A control byte or NUL in the
+# body makes the rest of the line invalid; a LF or the end of input ends
+# an unterminated literal there. After a backslash a NUL ends a string's
+# invalid token (`.string_literal_backslash`) but is consumed by a
+# character literal's (`.char_literal_backslash`).
+
+'"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* '"'           → string_literal
+'"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* ('\\'? | [\x00-\x09\x0b-\x1f\x7f] [^\n]* | '\\' [\x01-\x09\x0b-\x1f\x7f] [^\n]*) → invalid
+
+"'" ([^'\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* "'"           → char_literal
+"'" ([^'\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* ('\\'? | [\x00-\x09\x0b-\x1f\x7f] [^\n]* | '\\' [\x00-\x09\x0b-\x1f\x7f] [^\n]*) → invalid
+
+# --- Builtins and quoted identifiers (`.saw_at_sign`, `.builtin`) -----------
+# `@"` lexes the rest as a string literal, invalid tails included. `@`
+# before a LF, a NUL or the end of input is an invalid token by itself;
+# before any other byte that starts neither form, it makes the rest of the
+# line invalid.
+
+'@' [A-Za-z_] [A-Za-z0-9_]*                                     → builtin
+'@"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* '"'          → identifier
+'@"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* ('\\'? | [\x00-\x09\x0b-\x1f\x7f] [^\n]* | '\\' [\x01-\x09\x0b-\x1f\x7f] [^\n]*) → invalid
+'@' ([^"A-Za-z_\n\x00] [^\n]*)?                                  → invalid
+
+# --- Multiline string literal lines (`.backslash`, `.multiline_string_literal_line`)
+# `\\` to the end of the line, which holds no control byte or DEL (a TAB
+# neither) but a CR right before the LF. A lone `\` is invalid: by itself
+# before a LF, a NUL or the end of input, to the end of the line before
+# any other byte.
+
+'\\\\' [^\x00-\x1f\x7f]* / "\r\n"                                → multiline_string_literal_line
+'\\\\' [^\x00-\x1f\x7f]*                                         → multiline_string_literal_line
+'\\\\' [^\x00-\x1f\x7f]* ([\x00-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+'\\' ([^\\\n\x00] [^\n]*)?                                       → invalid
+
+# --- Number literals (`.int`, `.int_exponent`, `.int_period`, `.float*`) ----
+# A digit, then letters, digits and `_`. An exponent letter (e E p P)
+# followed by a sign takes the sign and moves on to the fraction, where no
+# `.` follows; so does a `.` followed by a letter, digit or `_`, so `1..2`
+# and `1.` leave the `.` out. The digits are checked later
+# (std.zig.number_literal), not here.
+
+[0-9] [_0-9a-zA-Z]* ([eEpP] [-+] ([_0-9a-zA-Z] | [eEpP] [-+])* | '.' ([_0-9a-zA-Z] | [eEpP] [-+]) ([_0-9a-zA-Z] | [eEpP] [-+])*)? → number_literal
+
+# --- Keywords (Token.keywords) and identifiers (`.identifier`) --------------
+# A keyword rule ties with the identifier rule on its own text and wins by
+# coming first; a longer word (`iffy`) is an identifier.
+
+"addrspace"     → keyword_addrspace
+"align"         → keyword_align
+"allowzero"     → keyword_allowzero
+"and"           → keyword_and
+"anyframe"      → keyword_anyframe
+"anytype"       → keyword_anytype
+"asm"           → keyword_asm
+"break"         → keyword_break
+"callconv"      → keyword_callconv
+"catch"         → keyword_catch
+"comptime"      → keyword_comptime
+"const"         → keyword_const
+"continue"      → keyword_continue
+"defer"         → keyword_defer
+"else"          → keyword_else
+"enum"          → keyword_enum
+"errdefer"      → keyword_errdefer
+"error"         → keyword_error
+"export"        → keyword_export
+"extern"        → keyword_extern
+"fn"            → keyword_fn
+"for"           → keyword_for
+"if"            → keyword_if
+"inline"        → keyword_inline
+"noalias"       → keyword_noalias
+"noinline"      → keyword_noinline
+"nosuspend"     → keyword_nosuspend
+"opaque"        → keyword_opaque
+"or"            → keyword_or
+"orelse"        → keyword_orelse
+"packed"        → keyword_packed
+"pub"           → keyword_pub
+"resume"        → keyword_resume
+"return"        → keyword_return
+"linksection"   → keyword_linksection
+"struct"        → keyword_struct
+"suspend"       → keyword_suspend
+"switch"        → keyword_switch
+"test"          → keyword_test
+"threadlocal"   → keyword_threadlocal
+"try"           → keyword_try
+"union"         → keyword_union
+"unreachable"   → keyword_unreachable
+"var"           → keyword_var
+"volatile"      → keyword_volatile
+"while"         → keyword_while
+
+[A-Za-z_] [A-Za-z0-9_]*                                         → identifier
+
+# --- Operators and punctuation ------------------------------------------------
+# Every prefix of an operator is an operator, so longest match is the
+# tokenizer's maximal munch.
+
+"!"     → bang
+"!="    → bang_equal
+"|"     → pipe
+"||"    → pipe_pipe
+"|="    → pipe_equal
+"="     → equal
+"=="    → equal_equal
+"=>"    → equal_angle_bracket_right
+"("     → l_paren
+")"     → r_paren
+";"     → semicolon
+"%"     → percent
+"%="    → percent_equal
+"{"     → l_brace
+"}"     → r_brace
+"["     → l_bracket
+"]"     → r_bracket
+"."     → period
+".*"    → period_asterisk
+".."    → ellipsis2
+"..."   → ellipsis3
+"^"     → caret
+"^="    → caret_equal
+"+"     → plus
+"++"    → plus_plus
+"+="    → plus_equal
+"+%"    → plus_percent
+"+%="   → plus_percent_equal
+"+|"    → plus_pipe
+"+|="   → plus_pipe_equal
+"-"     → minus
+"-="    → minus_equal
+"-%"    → minus_percent
+"-%="   → minus_percent_equal
+"-|"    → minus_pipe
+"-|="   → minus_pipe_equal
+"*"     → asterisk
+"*="    → asterisk_equal
+"*%"    → asterisk_percent
+"*%="   → asterisk_percent_equal
+"*|"    → asterisk_pipe
+"*|="   → asterisk_pipe_equal
+"->"    → arrow
+":"     → colon
+"/"     → slash
+"/="    → slash_equal
+","     → comma
+"&"     → ampersand
+"&="    → ampersand_equal
+"?"     → question_mark
+"<"     → angle_bracket_left
+"<="    → angle_bracket_left_equal
+"<<"    → angle_bracket_angle_bracket_left
+"<<="   → angle_bracket_angle_bracket_left_equal
+"<<|"   → angle_bracket_angle_bracket_left_pipe
+"<<|="  → angle_bracket_angle_bracket_left_pipe_equal
+">"     → angle_bracket_right
+">="    → angle_bracket_right_equal
+">>"    → angle_bracket_angle_bracket_right
+">>="   → angle_bracket_angle_bracket_right_equal
+"~"     → tilde
+
+# --- Invalid bytes (`.start`, `.invalid`) -------------------------------------
+# Any other byte starts an invalid token that runs to the end of the line:
+# a control byte but TAB, LF and CR, `#`, `$`, backquote, DEL, and every
+# byte from 0x80 (outside literals and comments the tokenizer does not
+# decode UTF-8).
+
+[\x00-\x08\x0b\x0c\x0e-\x1f\x23\x24\x60\x7f-\xff] [^\n]*        → invalid
+
+@parser
+
+# The tree (std.zig.Ast, node for node). One kind per Ast.Node.Tag family:
+# the arity, trailing-comma and storage variants of a tag (`call_one`,
+# `call_comma`, `block_two_semicolon`, `simple_var_decl`, `fn_proto_multi`,
+# `ptr_type_aligned`, ...) are one kind; the 28 binary operator tags are
+# `binary` and the 18 assignment tags `assign`, each with its operator as
+# the `op` leaf. What Ast keeps only as tokens, found by scanning around
+# a node (labels, payload captures, `pub`, `extern "c"`, `export`,
+# `inline`, `threadlocal`, `comptime`, `volatile`, pointer qualifiers, the
+# inferred-error `!`, doc comments), is a named role here. Ast has no node
+# for a parameter, a capture, a struct initializer's `.name = value` or an
+# error set's member, so `param`, `capture`, `field_init` and `error_name`
+# are kinds of their own. Identifiers, number, character and string
+# literals, `unreachable` and `anyframe` are leaves (Ast's `identifier`,
+# `number_literal`, ... nodes hold one token). A trailing comma is not
+# kept: it is formatting, which Ast records only in the `_comma` variant
+# of a tag. test/zig/compare-trees checks the tree against std.zig.Ast.
+@schema
+    # Containers and declarations
+    root                doc:group? ...members
+    tokens              ...tokens
+    container_decl      layout:leaf? kind:leaf enum:leaf? arg? doc:group? ...members
+    container_field     doc:group? comptime:leaf? name:leaf? type align? value?
+    test_decl           name:leaf? body:block
+    fn_decl             proto:fn_proto body:block
+    fn_proto            doc:group? visib:leaf? modifier:leaf? lib_name:leaf? name:leaf? params:group align? addrspace? section? callconv? bang:leaf? return_type
+    param               doc:group? modifier:leaf? name:leaf? type
+    var_decl            doc:group? visib:leaf? modifier:leaf? lib_name:leaf? threadlocal:leaf? comptime:leaf? mut:leaf name:leaf type? align? addrspace? section? init?
+
+    # Statements and control flow
+    block               label:leaf? ...statements
+    comptime, nosuspend, resume     operand
+    defer, errdefer, suspend        body
+    assign              op:leaf target value
+    assign_destructure  comptime:leaf? targets:group value
+    if                  cond capture:capture? then else_capture:leaf? else?
+    while               label:leaf? inline:leaf? cond capture:capture? cont? then else_capture:leaf? else?
+    for                 label:leaf? inline:leaf? inputs:group captures:group then else?
+    for_range           start end?
+    capture             ptr:leaf? name:leaf
+    switch              label:leaf? cond ...cases:switch_case
+    switch_case         inline:leaf? values:group capture:capture? index:leaf? body
+    switch_range        start end
+    return              value?
+    break, continue     label:leaf? value?
+
+    # Expressions
+    binary              op:leaf lhs rhs
+    catch               lhs payload:leaf? rhs
+    bool_not, negation, bit_not, negation_wrap, address_of, try     operand
+    deref, unwrap_optional, grouped_expression                      operand
+    call                callee ...args
+    builtin_call        name:leaf ...args
+    field_access        operand name:leaf
+    array_access        operand index
+    slice               operand start end? sentinel?
+    struct_init         type? ...fields:field_init
+    field_init          name:leaf value
+    array_init          type? ...elements
+    enum_literal, error_value       name:leaf
+    multiline_string_literal        ...lines:leaf
+    asm                 volatile:leaf? template clobbers? ...items:asm_output|asm_input
+    asm_output          name:leaf constraint:leaf variable:leaf? type?
+    asm_input           name:leaf constraint:leaf value
+
+    # Types
+    error_union         error_set payload
+    optional_type       child
+    anyframe_type       result
+    array_type          len sentinel? elem
+    ptr_type            size:tag(one|many|slice|c) sentinel? align? bit_start? bit_end? addrspace? child ...quals:leaf
+    error_set_decl      ...members:error_name
+    error_name          doc:group? name:leaf
+
+    # The `tokens` start symbol: one node per token, named by its category
+    invalid, identifier, string_literal, multiline_string_literal_line, char_literal, builtin     token:leaf
+    number_literal, doc_comment, container_doc_comment, bang, pipe, pipe_pipe, pipe_equal         token:leaf
+    equal, equal_equal, equal_angle_bracket_right, bang_equal, l_paren, r_paren, semicolon        token:leaf
+    percent, percent_equal, l_brace, r_brace, l_bracket, r_bracket, period, period_asterisk       token:leaf
+    ellipsis2, ellipsis3, caret, caret_equal, plus, plus_plus, plus_equal, plus_percent           token:leaf
+    plus_percent_equal, plus_pipe, plus_pipe_equal, minus, minus_equal, minus_percent             token:leaf
+    minus_percent_equal, minus_pipe, minus_pipe_equal, asterisk, asterisk_equal                   token:leaf
+    asterisk_percent, asterisk_percent_equal, asterisk_pipe, asterisk_pipe_equal, arrow, colon    token:leaf
+    slash, slash_equal, comma, ampersand, ampersand_equal, question_mark, angle_bracket_left      token:leaf
+    angle_bracket_left_equal, angle_bracket_angle_bracket_left                                    token:leaf
+    angle_bracket_angle_bracket_left_equal, angle_bracket_angle_bracket_left_pipe                 token:leaf
+    angle_bracket_angle_bracket_left_pipe_equal, angle_bracket_right, angle_bracket_right_equal   token:leaf
+    angle_bracket_angle_bracket_right, angle_bracket_angle_bracket_right_equal, tilde             token:leaf
+    keyword_addrspace, keyword_align, keyword_allowzero, keyword_and, keyword_anyframe            token:leaf
+    keyword_anytype, keyword_asm, keyword_break, keyword_callconv, keyword_catch                  token:leaf
+    keyword_comptime, keyword_const, keyword_continue, keyword_defer, keyword_else, keyword_enum  token:leaf
+    keyword_errdefer, keyword_error, keyword_export, keyword_extern, keyword_fn, keyword_for      token:leaf
+    keyword_if, keyword_inline, keyword_noalias, keyword_noinline, keyword_nosuspend              token:leaf
+    keyword_opaque, keyword_or, keyword_orelse, keyword_packed, keyword_pub, keyword_resume       token:leaf
+    keyword_return, keyword_linksection, keyword_struct, keyword_suspend, keyword_switch          token:leaf
+    keyword_test, keyword_threadlocal, keyword_try, keyword_union, keyword_unreachable            token:leaf
+    keyword_var, keyword_volatile, keyword_while, err, label, break_colon, ptr_star, c_ptr        token:leaf
+    enum_tag, bad_doc_comment, minus_prefix, minus_percent_prefix, ampersand_prefix               token:leaf
+    asterisk_prefix, pipe_payload, bad_operator                                                   token:leaf
+
+# Every conflict below resolves as Parse.zig decides.
+#
+# return, break and continue: a bare `return`, `break`, `break :blk`,
+# `continue` or `continue :blk` takes an operand when one can start, as
+# Parse.zig parses it with parseExpr. A `-`, `-%`, `&` or `*` after one
+# with even spacing (the 4 cells of each entry) is a prefix operator that
+# starts the operand: `return - x` returns `-x`, `return * T` returns the
+# pointer type `*T`.
+#
+# inline in a switch prong: a prong's leading `inline` is the prong's flag
+# (parseSwitchProng takes it first), never the start of an `inline for` or
+# `inline while` body. The two readings take the same tokens, and the
+# plain loop wins.
+@conflicts
+    shift jump → "return"  4  # `return - x`, `return & x`, `return * T`: the operand of return is parseExpr, which a prefix operator starts
+    shift jump → "break"  4  # `break - x`: the operand of break is parseExpr, which a prefix operator starts
+    shift jump → "break" break_label  4  # `break :blk - x`: the operand of a labeled break is parseExpr, which a prefix operator starts
+    shift jump → "continue"  4  # `continue - x`: the operand of continue is parseExpr, which a prefix operator starts
+    shift jump → "continue" break_label  4  # `continue :blk - x`: the operand of a labeled continue is parseExpr, which a prefix operator starts
+    reduce for_expr → for_prefix bool_or_expr over for_expr → "inline" for_prefix bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce for_expr → for_prefix bool_or_expr "else" bool_or_expr over for_expr → "inline" for_prefix bool_or_expr "else" bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+
+# Syntax errors read as std.zig's do: tokens by std.zig.Token.Tag.symbol()
+# ('*', 'fn', an identifier), a wrapper category by the token it stands
+# for, and the places that wait for an expression, a type expression, a
+# statement, a block or a declaration by that name.
+@display
+    EOF: "EOF", INVALID: "invalid bytes", IDENTIFIER: "an identifier",
+    LABEL: "an identifier", C_PTR: "'c'",
+    STRING_LITERAL: "a string literal",
+    MULTILINE_STRING_LITERAL_LINE: "a multiline string literal",
+    CHAR_LITERAL: "a character literal", BUILTIN: "a builtin function",
+    NUMBER_LITERAL: "a number literal", DOC_COMMENT: "a document comment",
+    CONTAINER_DOC_COMMENT: "a document comment",
+    BAD_DOC_COMMENT: "a same line documentation comment",
+    BREAK_COLON: "':'", PTR_STAR: "'*'", ASTERISK_PREFIX: "'*'",
+    ENUM_TAG: "'enum'", MINUS_PREFIX: "'-'", MINUS_PERCENT_PREFIX: "'-%'",
+    AMPERSAND_PREFIX: "'&'", PIPE_PAYLOAD: "'|'",
+    BAD_OPERATOR: "a binary operator with whitespace on one side only",
+    ERR: "a token over 65535 bytes",
+    "!": "'!'", "!=": "'!='", "|": "'|'", "||": "'||'", "|=": "'|='",
+    "=": "'='", "==": "'=='", "=>": "'=>'", "(": "'('", ")": "')'",
+    ";": "';'", "%": "'%'", "%=": "'%='", "{": "'{'", "}": "'}'",
+    "[": "'['", "]": "']'", ".": "'.'", ".*": "'.*'", "..": "'..'",
+    "...": "'...'", "^": "'^'", "^=": "'^='", "+": "'+'", "++": "'++'",
+    "+=": "'+='", "+%": "'+%'", "+%=": "'+%='", "+|": "'+|'",
+    "+|=": "'+|='", "-": "'-'", "-=": "'-='", "-%": "'-%'", "-%=": "'-%='",
+    "-|": "'-|'", "-|=": "'-|='", "*": "'*'", "*=": "'*='", "*%": "'*%'",
+    "*%=": "'*%='", "*|": "'*|'", "*|=": "'*|='", "->": "'->'", ":": "':'",
+    "/": "'/'", "/=": "'/='", ",": "','", "&": "'&'", "&=": "'&='",
+    "?": "'?'", "<": "'<'", "<=": "'<='", "<<": "'<<'", "<<=": "'<<='",
+    "<<|": "'<<|'", "<<|=": "'<<|='", ">": "'>'", ">=": "'>='",
+    ">>": "'>>'", ">>=": "'>>='", "~": "'~'",
+    "addrspace": "'addrspace'", "align": "'align'",
+    "allowzero": "'allowzero'", "and": "'and'", "anyframe": "'anyframe'",
+    "anytype": "'anytype'", "asm": "'asm'", "break": "'break'",
+    "callconv": "'callconv'", "catch": "'catch'", "comptime": "'comptime'",
+    "const": "'const'", "continue": "'continue'", "defer": "'defer'",
+    "else": "'else'", "enum": "'enum'", "errdefer": "'errdefer'",
+    "error": "'error'", "export": "'export'", "extern": "'extern'",
+    "fn": "'fn'", "for": "'for'", "if": "'if'", "inline": "'inline'",
+    "noalias": "'noalias'", "noinline": "'noinline'",
+    "nosuspend": "'nosuspend'", "opaque": "'opaque'", "or": "'or'",
+    "orelse": "'orelse'", "packed": "'packed'", "pub": "'pub'",
+    "resume": "'resume'", "return": "'return'",
+    "linksection": "'linksection'", "struct": "'struct'",
+    "suspend": "'suspend'", "switch": "'switch'", "test": "'test'",
+    "threadlocal": "'threadlocal'", "try": "'try'", "union": "'union'",
+    "unreachable": "'unreachable'", "var": "'var'",
+    "volatile": "'volatile'", "while": "'while'"
+
+@errors
+    expr: "an expression", expr_s: "an expression", expr_c: "an expression",
+    expr_p: "an expression", index_expr: "an expression",
+    bool_or_expr: "an expression", bool_or_expr_k: "an expression",
+    bool_or_expr_s: "an expression", bool_or_expr_sk: "an expression",
+    bool_or_expr_c: "an expression", bool_or_expr_ck: "an expression",
+    bool_or_expr_p: "an expression", bool_or_expr_pk: "an expression",
+    bool_and_expr: "an expression", bool_and_expr_k: "an expression",
+    bool_and_expr_s: "an expression", bool_and_expr_sk: "an expression",
+    bool_and_expr_c: "an expression", bool_and_expr_ck: "an expression",
+    bool_and_expr_p: "an expression", bool_and_expr_pk: "an expression",
+    compare_expr: "an expression", compare_expr_k: "an expression",
+    compare_expr_s: "an expression", compare_expr_sk: "an expression",
+    compare_expr_c: "an expression", compare_expr_ck: "an expression",
+    compare_expr_p: "an expression", compare_expr_pk: "an expression",
+    bitwise_expr: "an expression", bitwise_expr_k: "an expression",
+    bitwise_expr_s: "an expression", bitwise_expr_sk: "an expression",
+    bitwise_expr_c: "an expression", bitwise_expr_ck: "an expression",
+    bitwise_expr_p: "an expression", bitwise_expr_pk: "an expression",
+    bit_shift_expr: "an expression", bit_shift_expr_k: "an expression",
+    bit_shift_expr_s: "an expression", bit_shift_expr_sk: "an expression",
+    bit_shift_expr_c: "an expression", bit_shift_expr_ck: "an expression",
+    bit_shift_expr_p: "an expression", bit_shift_expr_pk: "an expression",
+    addition_expr: "an expression", addition_expr_k: "an expression",
+    addition_expr_s: "an expression", addition_expr_sk: "an expression",
+    addition_expr_c: "an expression", addition_expr_ck: "an expression",
+    addition_expr_p: "an expression", addition_expr_pk: "an expression",
+    multiply_expr: "an expression", multiply_expr_k: "an expression",
+    multiply_expr_s: "an expression", multiply_expr_sk: "an expression",
+    multiply_expr_c: "an expression", multiply_expr_ck: "an expression",
+    multiply_expr_p: "an expression", multiply_expr_pk: "an expression",
+    prefix_expr: "an expression", prefix_expr_k: "an expression",
+    prefix_expr_s: "an expression", prefix_expr_sk: "an expression",
+    prefix_expr_c: "an expression", prefix_expr_ck: "an expression",
+    prefix_expr_p: "an expression", prefix_expr_pk: "an expression",
+    type_expr: "a type expression", type_expr_f: "a type expression",
+    type_expr_p: "a type expression", type_expr_n: "a type expression",
+    assign_expr: "an assignment", assign_s: "an assignment",
+    assign_c: "an assignment", single_assign_expr: "an assignment",
+    block_statement: "a statement", statement: "a statement",
+    statement_semi: "a statement",
+    block_expr: "a block", container_decl: "a declaration",
+    container_field: "a container field", param_decl: "a parameter",
+    field_init: "a field initializer", switch_prong: "a switch prong"
+
+root!       = container_docs members                        → (root 1 ...2)
+tokens!     = token*                                        → (tokens ...1)
+
+# ==============================================================================
+# TOP LEVEL (grammar.peg Root, ContainerMembers ... ContainerField;
+# Parse.zig parseContainerMembers, expectTopLevelDecl, expectContainerField)
+# ==============================================================================
+#
+# A container (a file, or the braces of `struct`, `enum`, `union`,
+# `opaque`) holds container doc comments, then declarations and fields:
+# fields form one run, each followed by a comma except a last one that ends
+# the container; declarations may come before the run and, after a comma,
+# behind it, but never between two fields (decl_between_fields). A doc
+# comment belongs to the field or declaration after it; `test` and
+# `comptime { ... }` take none, and one with nothing after it is an error.
+
+container_docs      =
+                    | CONTAINER_DOC_COMMENT+
+members             =
+                    | container_members
+
+# The members, left to right: declarations only (decls), then fields each
+# followed by a comma (fields), then declarations after them (rest). Every
+# member is reduced as it ends, so a doc comment, `comptime`, `extern` or
+# `inline` is shifted before the next token says whether a field or a
+# declaration follows.
+container_members   = decls
+                    | fields
+                    | rest
+                    | container_field                       → (1)
+                    | decls container_field                 → (...1 2)
+                    | fields container_field                → (...1 2)
+
+decls               = container_decl                        → (1)
+                    | decls container_decl                  → (...1 2)
+fields              = container_field ","                   → (1)
+                    | decls container_field ","             → (...1 2)
+                    | fields container_field ","            → (...1 2)
+rest                = fields container_decl                 → (...1 2)
+                    | rest container_decl                   → (...1 2)
+
+# The doc comments of a declaration, field, parameter or error name: a
+# role of its node, but left out of its span (`-[docs]`), which starts
+# after them, as Ast's does.
+docs                = DOC_COMMENT+
+
+# A declaration. A function without a body is its prototype (Ast's
+# fn_proto at the top level); `extern` takes none. The head of a function
+# and of a variable (grammar.peg FnProto, VarDeclProto) is a rule of its
+# own, spread into the roles of the node. The optional parts after a name
+# are rules that may be empty: each starts with its own keyword, so the
+# next token decides. Ast ends a declaration before its `;` (`-";"`).
+container_decl      = "test" [test_name] block                              → (test_decl 2 3)
+                    | "comptime" block                                      → (comptime 2)
+                    | -[docs] fn_decl_proto -";"                            → (fn_proto 1 ...2)
+                    | -[docs] fn_decl_proto block                           → (fn_decl (fn_proto 1 ...2) 3)
+                    | -[docs] fn_extern_proto -";"                          → (fn_proto 1 ...2)
+                    | -[docs] ["pub"] ["threadlocal"] var_decl_proto var_init -";"
+                                                                            → (var_decl 1 2 _ _ 3 _ ...4 5)
+                    | -[docs] ["pub"] "export" ["threadlocal"] var_decl_proto var_init -";"
+                                                                            → (var_decl 1 2 3 _ 4 _ ...5 6)
+                    | -[docs] ["pub"] "extern" [STRING_LITERAL] ["threadlocal"] var_decl_proto var_init -";"
+                                                                            → (var_decl 1 2 3 4 5 _ ...6 7)
+
+test_name           = STRING_LITERAL | IDENTIFIER
+fn_prefix           = "export" | "inline" | "noinline"
+
+fn_decl_proto       = ["pub"] [fn_prefix] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (1 2 _ 4 5 6 7 8 9 10 11)
+fn_extern_proto     = ["pub"] "extern" [STRING_LITERAL] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (1 2 3 5 6 7 8 9 10 11 12)
+
+# fn name? (params) align? addrspace? linksection? callconv? !? ReturnType
+fn_proto            = "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (fn_proto _ _ _ _ 2 3 4 5 6 7 8 9)
+
+# const|var name (: Type)? align? addrspace? linksection?
+var_decl_proto      = var_mut var_name var_type var_align var_addrspace var_section
+                                                                            → (1 2 3 4 5 6)
+var_mut             = "const" | "var"
+var_name            = IDENTIFIER | LABEL
+var_type            =
+                    | ":" type_expr                                         → 2
+var_align           =
+                    | byte_align
+var_addrspace       =
+                    | addr_space
+var_section         =
+                    | link_section
+var_init            =
+                    | "=" expr                                              → 2
+fn_callconv         =
+                    | call_conv
+
+# A field. Parse.zig takes `comptime` as the field's flag and `x:` as its
+# name whenever they are there, so an unnamed field's type starts with
+# neither (type_expr_f: no `comptime`, no `fn`, which starts a declaration,
+# and no label); `extern` and `inline` start a field only before a
+# container keyword, resp. `for` or `while` (the next token decides).
+container_field     = -[docs] ["comptime"] field_name ":" type_expr [byte_align] ["=" expr]
+                                                                            → (container_field 1 2 3 5 6 8)
+                    | -[docs] type_expr_f [byte_align] ["=" expr]           → (container_field 1 _ _ 2 3 5)
+                    | -[docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 1 2 _ 3 4 6)
+
+field_name          = IDENTIFIER | LABEL
+
+# ==============================================================================
+# BLOCK LEVEL (grammar.peg BlockStatement ... VarAssignStatement; Parse.zig
+# expectStatement, expectVarAssignStatement, the statement forms of if,
+# for and while, parseBlockExprStatement)
+# ==============================================================================
+#
+# Parse.zig decides a statement by its first tokens and never revisits the
+# choice. A statement that starts with `comptime`, `nosuspend`, `suspend`,
+# `defer`, `errdefer`, `if`, a label, `{`, `inline`, `for`, `while` or
+# `switch` is that statement, so an expression statement starts with none
+# of them: it uses the `_s` expressions. Where Parse.zig tries a block
+# before an assignment (after `comptime`, `defer`, `errdefer`, `suspend`,
+# `nosuspend`, and in the bodies of if, for and while statements) the
+# assignment uses the `_c` expressions, which start with no block.
+
+# A statement inside a block. A single variable declaration needs `=`;
+# a destructure may mix declarations and assignable expressions. A
+# `comptime` before a declaration or a destructure is its flag; before an
+# assignment or an expression, a `comptime` node (Parse.zig
+# expectVarAssignStatement). Ast ends a statement at its last child, so a
+# statement's `;` is left out of the span of its node (`-";"`), and a
+# statement whose last part is itself a statement ending in `;`
+# (statement_semi: `if (a) b else c;`) takes the `;` here, at the top.
+block_statement     = "comptime" block_expr                         → (comptime 2)
+                    | "nosuspend" block_expr                        → (nosuspend 2)
+                    | "nosuspend" assign_c -";"                     → (nosuspend 2)
+                    | "suspend" block_expr                          → (suspend 2)
+                    | "suspend" assign_c -";"                       → (suspend 2)
+                    | "defer" block_expr                            → (defer 2)
+                    | "defer" assign_c -";"                         → (defer 2)
+                    | "errdefer" block_expr                         → (errdefer 2)
+                    | "errdefer" assign_c -";"                      → (errdefer 2)
+                    | if_statement
+                    | if_statement_semi ";"                         → 1
+                    | labeled_statement
+                    | labeled_statement_semi ";"                    → 1
+                    | var_decl_proto "=" expr -";"                  → (var_decl _ _ _ _ _ _ ...1 3)
+                    | expr_s ";"                                    → 1
+                    | expr_s assign_op expr -";"                    → (assign 2 1 3)
+                    | destructure_s "=" expr -";"                   → (assign_destructure _ 1 3)
+                    | "comptime" var_decl_proto "=" expr -";"       → (var_decl _ _ _ _ _ 1 ...2 4)
+                    | "comptime" expr_c -";"                        → (comptime 2)
+                    | "comptime" expr_c assign_op expr -";"         → (comptime (assign 3 2 4))
+                    | "comptime" destructure_c "=" expr -";"        → (assign_destructure 1 2 4)
+
+# A statement after `else` (Parse.zig expectStatement(false)): no
+# declaration, no `defer` or `errdefer`. One that ends in `;`
+# (statement_semi) leaves the `;` to the block statement that holds it.
+statement           = "comptime" block_expr                         → (comptime 2)
+                    | "nosuspend" block_expr                        → (nosuspend 2)
+                    | "suspend" block_expr                          → (suspend 2)
+                    | if_statement
+                    | labeled_statement
+statement_semi      = "comptime" expr_c                             → (comptime 2)
+                    | "comptime" expr_c assign_op expr              → (comptime (assign 3 2 4))
+                    | "comptime" destructure_ec "=" expr            → (assign_destructure 1 2 4)
+                    | "nosuspend" assign_c                          → (nosuspend 2)
+                    | "suspend" assign_c                            → (suspend 2)
+                    | if_statement_semi
+                    | labeled_statement_semi
+                    | assign_s
+
+# if, for and while statements (Parse.zig expectIfStatement,
+# parseForStatement, parseWhileStatement): a block body may take `else`;
+# an assignment body ends in `;`, or takes `else`, which it then needs.
+# The forms that end in a block, directly or in their `else` statement,
+# are the `_statement` rules; those that end in an assignment, and so in
+# `;`, are the `_statement_semi` rules, which leave the `;` out.
+if_statement        = "if" "(" expr ")" ptr_payload block_expr                          → (if 3 5 6)
+                    | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement
+                                                                                        → (if 3 5 6 8 9)
+                    | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement
+                                                                                        → (if 3 5 6 8 9)
+if_statement_semi   = "if" "(" expr ")" ptr_payload assign_c                            → (if 3 5 6)
+                    | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement_semi
+                                                                                        → (if 3 5 6 8 9)
+                    | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement_semi
+                                                                                        → (if 3 5 6 8 9)
+
+labeled_statement   = block_expr
+                    | for_statement
+                    | while_statement
+                    | switch_expr
+                    | labeled_switch
+labeled_statement_semi = for_statement_semi
+                    | while_statement_semi
+
+for_statement       = [LABEL ":"] ["inline"] for_prefix block_expr                      → (for 1 3 ...4 5)
+                    | [LABEL ":"] ["inline"] for_prefix block_expr "else" statement     → (for 1 3 ...4 5 7)
+                    | [LABEL ":"] ["inline"] for_prefix assign_c "else" statement       → (for 1 3 ...4 5 7)
+for_statement_semi  = [LABEL ":"] ["inline"] for_prefix assign_c                        → (for 1 3 ...4 5)
+                    | [LABEL ":"] ["inline"] for_prefix block_expr "else" statement_semi
+                                                                                        → (for 1 3 ...4 5 7)
+                    | [LABEL ":"] ["inline"] for_prefix assign_c "else" statement_semi  → (for 1 3 ...4 5 7)
+
+while_statement     = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr
+                                                                                        → (while 1 3 6 8 9 10)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+while_statement_semi = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c
+                                                                                        → (while 1 3 6 8 9 10)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement_semi
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement_semi
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+
+# The head of a for (grammar.peg ForPrefix), which its statement,
+# expression and type forms share, spread into the roles of the node.
+# if and while write theirs out (IfPrefix, WhilePrefix): they end in parts
+# that may be absent, so as a rule of their own the state after the `)`
+# would serve every form and a syntax error there would list every token
+# any form takes; written out, it names what that form waits for
+# (`expected a block, an assignment or '|'`).
+for_prefix          = "for" "(" L(for_item) !","? ")" ptr_list_payload      → (3 6)
+
+# A block, with or without a label (grammar.peg BlockExpr, Block).
+block_expr          = block | labeled_block
+
+block               = "{" block_statement* "}"                      → (block _ ...2)
+labeled_block       = LABEL ":" "{" block_statement* "}"            → (block 1 ...4)
+
+# A destructure statement (grammar.peg VarAssignStatement): declarations
+# and assignable expressions, then `=`.
+destructure_s       = destructure_head_s "," destructure_item       → (1 3)
+                    | destructure_s "," destructure_item            → (...1 3)
+destructure_c       = destructure_head_c "," destructure_item       → (1 3)
+                    | destructure_c "," destructure_item            → (...1 3)
+destructure_head_s  = destructure_var | expr_s
+destructure_head_c  = destructure_var | expr_c
+destructure_item    = destructure_var | expr
+destructure_var     = var_decl_proto                                → (var_decl _ _ _ _ _ _ ...1 _)
+
+# ==============================================================================
+# EXPRESSION LEVEL (grammar.peg AssignExpr ... SwitchExpr; Parse.zig
+# parseAssignExpr, parseExprPrecedence, parsePrefixExpr, parsePrimaryExpr,
+# parseTypeExpr, parseSuffixExpr, parsePrimaryTypeExpr)
+# ==============================================================================
+
+# Assignments (Parse.zig parseAssignExpr, finishAssignExpr): one operator,
+# or a destructure.
+assign_expr         = expr
+                    | expr assign_op expr                           → (assign 2 1 3)
+                    | destructure "=" expr                          → (assign_destructure _ 1 3)
+assign_s            = expr_s
+                    | expr_s assign_op expr                         → (assign 2 1 3)
+                    | destructure_es "=" expr                       → (assign_destructure _ 1 3)
+assign_c            = expr_c
+                    | expr_c assign_op expr                         → (assign 2 1 3)
+                    | destructure_ec "=" expr                       → (assign_destructure _ 1 3)
+single_assign_expr  = expr
+                    | expr assign_op expr                           → (assign 2 1 3)
+
+destructure         = expr "," expr                                 → (1 3)
+                    | destructure "," expr                          → (...1 3)
+destructure_es      = expr_s "," expr                               → (1 3)
+                    | destructure_es "," expr                       → (...1 3)
+destructure_ec      = expr_c "," expr                               → (1 3)
+                    | destructure_ec "," expr                       → (...1 3)
+
+# Zig's operator table (Parse.zig operTable), one rule per level, loosest
+# first: or 10, and 20, comparison 30 (non-associative: a second
+# comparison is chained_comparison_operators), `& ^ | orelse catch` 40,
+# shifts 50, additive 60, multiplicative 70. Each level comes in variants
+# that differ only at the left edge, where Parse.zig has committed to a
+# reading before it gets there:
+#
+#   (none)  anywhere an expression goes
+#   _s      an expression statement (see BLOCK LEVEL)
+#   _c      after a block was tried first (see BLOCK LEVEL)
+#   _p      the index of `a[...]` when it starts with `*`: the wrapper
+#           names a `*` right after `[` PTR_STAR, which a pointer type
+#           `[*]T` needs, but Parse.zig parses `a[*T]` as indexing by the
+#           pointer type `*T`
+#
+# and each has a `_k` form ("ends closed"): its last operand is not an
+# open expression. `return x`, `break :l x`, `continue x`, `resume x`,
+# `comptime x`, `nosuspend x`, `if (c) a else b` and the loops end in an
+# expression that Parse.zig parses with parseExpr, which takes every
+# operator after it; so an open expression is only ever the last operand,
+# and the left operand of an operator is always a `_k` expression.
+#
+# The wrapper names a binary operator with whitespace on one side only
+# (mismatched_binary_op_whitespace) and an `&` right before `&`
+# (invalid_ampersand_ampersand): such a `-`, `-%`, `&` or `*` can only be
+# a prefix operator or a pointer, such a `|` only a payload's bar, and any
+# other such operator is BAD_OPERATOR, which no rule takes.
+expr        = bool_or_expr
+expr_s      = bool_or_expr_s
+expr_c      = bool_or_expr_c
+expr_p      = bool_or_expr_p
+
+index_expr  = expr | expr_p
+
+bool_or_expr       = bool_and_expr
+                   | bool_or_expr_k "or" bool_and_expr               → (binary 2 1 3)
+bool_or_expr_k     = bool_and_expr_k
+                   | bool_or_expr_k "or" bool_and_expr_k             → (binary 2 1 3)
+bool_or_expr_s     = bool_and_expr_s
+                   | bool_or_expr_sk "or" bool_and_expr              → (binary 2 1 3)
+bool_or_expr_sk    = bool_and_expr_sk
+                   | bool_or_expr_sk "or" bool_and_expr_k            → (binary 2 1 3)
+bool_or_expr_c     = bool_and_expr_c
+                   | bool_or_expr_ck "or" bool_and_expr              → (binary 2 1 3)
+bool_or_expr_ck    = bool_and_expr_ck
+                   | bool_or_expr_ck "or" bool_and_expr_k            → (binary 2 1 3)
+bool_or_expr_p     = bool_and_expr_p
+                   | bool_or_expr_pk "or" bool_and_expr              → (binary 2 1 3)
+bool_or_expr_pk    = bool_and_expr_pk
+                   | bool_or_expr_pk "or" bool_and_expr_k            → (binary 2 1 3)
+
+bool_and_expr      = compare_expr
+                   | bool_and_expr_k "and" compare_expr              → (binary 2 1 3)
+bool_and_expr_k    = compare_expr_k
+                   | bool_and_expr_k "and" compare_expr_k            → (binary 2 1 3)
+bool_and_expr_s    = compare_expr_s
+                   | bool_and_expr_sk "and" compare_expr             → (binary 2 1 3)
+bool_and_expr_sk   = compare_expr_sk
+                   | bool_and_expr_sk "and" compare_expr_k           → (binary 2 1 3)
+bool_and_expr_c    = compare_expr_c
+                   | bool_and_expr_ck "and" compare_expr             → (binary 2 1 3)
+bool_and_expr_ck   = compare_expr_ck
+                   | bool_and_expr_ck "and" compare_expr_k           → (binary 2 1 3)
+bool_and_expr_p    = compare_expr_p
+                   | bool_and_expr_pk "and" compare_expr             → (binary 2 1 3)
+bool_and_expr_pk   = compare_expr_pk
+                   | bool_and_expr_pk "and" compare_expr_k           → (binary 2 1 3)
+
+compare_expr       = bitwise_expr
+                   | bitwise_expr_k compare_op bitwise_expr          → (binary 2 1 3)
+compare_expr_k     = bitwise_expr_k
+                   | bitwise_expr_k compare_op bitwise_expr_k        → (binary 2 1 3)
+compare_expr_s     = bitwise_expr_s
+                   | bitwise_expr_sk compare_op bitwise_expr         → (binary 2 1 3)
+compare_expr_sk    = bitwise_expr_sk
+                   | bitwise_expr_sk compare_op bitwise_expr_k       → (binary 2 1 3)
+compare_expr_c     = bitwise_expr_c
+                   | bitwise_expr_ck compare_op bitwise_expr         → (binary 2 1 3)
+compare_expr_ck    = bitwise_expr_ck
+                   | bitwise_expr_ck compare_op bitwise_expr_k       → (binary 2 1 3)
+compare_expr_p     = bitwise_expr_p
+                   | bitwise_expr_pk compare_op bitwise_expr         → (binary 2 1 3)
+compare_expr_pk    = bitwise_expr_pk
+                   | bitwise_expr_pk compare_op bitwise_expr_k       → (binary 2 1 3)
+
+bitwise_expr       = bit_shift_expr
+                   | bitwise_expr_k bitwise_op bit_shift_expr            → (binary 2 1 3)
+                   | bitwise_expr_k "catch" [payload] bit_shift_expr     → (catch 1 3 4)
+bitwise_expr_k     = bit_shift_expr_k
+                   | bitwise_expr_k bitwise_op bit_shift_expr_k          → (binary 2 1 3)
+                   | bitwise_expr_k "catch" [payload] bit_shift_expr_k   → (catch 1 3 4)
+bitwise_expr_s     = bit_shift_expr_s
+                   | bitwise_expr_sk bitwise_op bit_shift_expr           → (binary 2 1 3)
+                   | bitwise_expr_sk "catch" [payload] bit_shift_expr    → (catch 1 3 4)
+bitwise_expr_sk    = bit_shift_expr_sk
+                   | bitwise_expr_sk bitwise_op bit_shift_expr_k         → (binary 2 1 3)
+                   | bitwise_expr_sk "catch" [payload] bit_shift_expr_k  → (catch 1 3 4)
+bitwise_expr_c     = bit_shift_expr_c
+                   | bitwise_expr_ck bitwise_op bit_shift_expr           → (binary 2 1 3)
+                   | bitwise_expr_ck "catch" [payload] bit_shift_expr    → (catch 1 3 4)
+bitwise_expr_ck    = bit_shift_expr_ck
+                   | bitwise_expr_ck bitwise_op bit_shift_expr_k         → (binary 2 1 3)
+                   | bitwise_expr_ck "catch" [payload] bit_shift_expr_k  → (catch 1 3 4)
+bitwise_expr_p     = bit_shift_expr_p
+                   | bitwise_expr_pk bitwise_op bit_shift_expr           → (binary 2 1 3)
+                   | bitwise_expr_pk "catch" [payload] bit_shift_expr    → (catch 1 3 4)
+bitwise_expr_pk    = bit_shift_expr_pk
+                   | bitwise_expr_pk bitwise_op bit_shift_expr_k         → (binary 2 1 3)
+                   | bitwise_expr_pk "catch" [payload] bit_shift_expr_k  → (catch 1 3 4)
+
+bit_shift_expr     = addition_expr
+                   | bit_shift_expr_k bit_shift_op addition_expr     → (binary 2 1 3)
+bit_shift_expr_k   = addition_expr_k
+                   | bit_shift_expr_k bit_shift_op addition_expr_k   → (binary 2 1 3)
+bit_shift_expr_s   = addition_expr_s
+                   | bit_shift_expr_sk bit_shift_op addition_expr    → (binary 2 1 3)
+bit_shift_expr_sk  = addition_expr_sk
+                   | bit_shift_expr_sk bit_shift_op addition_expr_k  → (binary 2 1 3)
+bit_shift_expr_c   = addition_expr_c
+                   | bit_shift_expr_ck bit_shift_op addition_expr    → (binary 2 1 3)
+bit_shift_expr_ck  = addition_expr_ck
+                   | bit_shift_expr_ck bit_shift_op addition_expr_k  → (binary 2 1 3)
+bit_shift_expr_p   = addition_expr_p
+                   | bit_shift_expr_pk bit_shift_op addition_expr    → (binary 2 1 3)
+bit_shift_expr_pk  = addition_expr_pk
+                   | bit_shift_expr_pk bit_shift_op addition_expr_k  → (binary 2 1 3)
+
+addition_expr      = multiply_expr
+                   | addition_expr_k addition_op multiply_expr       → (binary 2 1 3)
+addition_expr_k    = multiply_expr_k
+                   | addition_expr_k addition_op multiply_expr_k     → (binary 2 1 3)
+addition_expr_s    = multiply_expr_s
+                   | addition_expr_sk addition_op multiply_expr      → (binary 2 1 3)
+addition_expr_sk   = multiply_expr_sk
+                   | addition_expr_sk addition_op multiply_expr_k    → (binary 2 1 3)
+addition_expr_c    = multiply_expr_c
+                   | addition_expr_ck addition_op multiply_expr      → (binary 2 1 3)
+addition_expr_ck   = multiply_expr_ck
+                   | addition_expr_ck addition_op multiply_expr_k    → (binary 2 1 3)
+addition_expr_p    = multiply_expr_p
+                   | addition_expr_pk addition_op multiply_expr      → (binary 2 1 3)
+addition_expr_pk   = multiply_expr_pk
+                   | addition_expr_pk addition_op multiply_expr_k    → (binary 2 1 3)
+
+multiply_expr      = prefix_expr
+                   | multiply_expr_k multiply_op prefix_expr         → (binary 2 1 3)
+multiply_expr_k    = prefix_expr_k
+                   | multiply_expr_k multiply_op prefix_expr_k       → (binary 2 1 3)
+multiply_expr_s    = prefix_expr_s
+                   | multiply_expr_sk multiply_op prefix_expr        → (binary 2 1 3)
+multiply_expr_sk   = prefix_expr_sk
+                   | multiply_expr_sk multiply_op prefix_expr_k      → (binary 2 1 3)
+multiply_expr_c    = prefix_expr_c
+                   | multiply_expr_ck multiply_op prefix_expr        → (binary 2 1 3)
+multiply_expr_ck   = prefix_expr_ck
+                   | multiply_expr_ck multiply_op prefix_expr_k      → (binary 2 1 3)
+multiply_expr_p    = prefix_expr_p
+                   | multiply_expr_pk multiply_op prefix_expr        → (binary 2 1 3)
+multiply_expr_pk   = prefix_expr_pk
+                   | multiply_expr_pk multiply_op prefix_expr_k      → (binary 2 1 3)
+
+# Prefix operators (Parse.zig parsePrefixExpr). After a prefix operator
+# any operand may follow, so the variants share them. A `-`, `-%` or `&`
+# is the operator or its spacing category (see above), which the tree does
+# not keep. The choice is written in place, not as a rule of its own, as
+# is the `*` of a pointer type: a syntax error right after the operator is
+# then reported where the operand is awaited ("expected an expression").
+prefix_expr      = primary_expr | prefixed
+prefix_expr_k    = primary_expr_k | prefixed_k
+prefix_expr_s    = primary_expr_s | prefixed
+prefix_expr_sk   = primary_expr_sk | prefixed_k
+prefix_expr_c    = primary_expr_c | prefixed
+prefix_expr_ck   = primary_expr_ck | prefixed_k
+prefix_expr_p    = ptr_curly_suffix_expr
+prefix_expr_pk   = ptr_curly_suffix_expr
+
+prefixed    = "!" prefix_expr                               → (bool_not 2)
+            | !("-" | MINUS_PREFIX) prefix_expr             → (negation 2)
+            | "~" prefix_expr                               → (bit_not 2)
+            | !("-%" | MINUS_PERCENT_PREFIX) prefix_expr    → (negation_wrap 2)
+            | !("&" | AMPERSAND_PREFIX) prefix_expr         → (address_of 2)
+            | "try" prefix_expr                             → (try 2)
+prefixed_k  = "!" prefix_expr_k                             → (bool_not 2)
+            | !("-" | MINUS_PREFIX) prefix_expr_k           → (negation 2)
+            | "~" prefix_expr_k                             → (bit_not 2)
+            | !("-%" | MINUS_PERCENT_PREFIX) prefix_expr_k  → (negation_wrap 2)
+            | !("&" | AMPERSAND_PREFIX) prefix_expr_k       → (address_of 2)
+            | "try" prefix_expr_k                           → (try 2)
+
+# Primary expressions (Parse.zig parsePrimaryExpr). A block is a primary
+# but takes no suffix; it never starts an `_s` or `_c` expression.
+primary_expr     = primary_expr_k | open_expr
+primary_expr_k   = curly_suffix_expr | asm_expr | block | jump
+primary_expr_s   = primary_expr_sk | jump_open
+primary_expr_sk  = curly_suffix_expr_s | asm_expr | jump
+primary_expr_c   = primary_expr_ck | open_expr
+primary_expr_ck  = curly_suffix_expr_c | asm_expr | jump
+
+# `return`, `break` and `continue` without an operand are closed; with one
+# they are open.
+jump        = "return"                                      → (return)
+            | "break" [break_label]                         → (break 2)
+            | "continue" [break_label]                      → (continue 2)
+jump_open   = "return" expr                                 → (return 2)
+            | "break" [break_label] expr                    → (break 2 3)
+            | "continue" [break_label] expr                 → (continue 2 3)
+            | "resume" expr                                 → (resume 2)
+
+open_expr   = jump_open
+            | "comptime" expr                               → (comptime 2)
+            | "nosuspend" expr                              → (nosuspend 2)
+            | if_expr
+            | for_expr
+            | while_expr
+
+# An `else` belongs to the innermost if, for or while that can take it
+# (Parse.zig expectIf, expectFor, expectWhileExpr): `>` on each form
+# without `else` makes it shift.
+if_expr     = "if" "(" expr ")" ptr_payload expr  >                                     → (if 3 5 6)
+            | "if" "(" expr ")" ptr_payload expr "else" else_payload expr               → (if 3 5 6 8 9)
+
+for_expr    = [LABEL ":"] for_prefix expr  >                                            → (for 1 _ ...3 4)
+            | [LABEL ":"] for_prefix expr "else" expr                                   → (for 1 _ ...3 4 6)
+            | [LABEL ":"] "inline" for_prefix expr  >                                   → (for 1 3 ...4 5)
+            | [LABEL ":"] "inline" for_prefix expr "else" expr                          → (for 1 3 ...4 5 7)
+
+while_expr  = [LABEL ":"] "while" "(" expr ")" ptr_payload while_continue_expr expr  >                          → (while 1 _ 5 7 8 9)
+            | [LABEL ":"] "while" "(" expr ")" ptr_payload while_continue_expr expr "else" else_payload expr    → (while 1 _ 5 7 8 9 11 12)
+            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_continue_expr expr  >                 → (while 1 3 6 8 9 10)
+            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_continue_expr expr "else" else_payload expr
+                                                                                                        → (while 1 3 6 8 9 10 12 13)
+
+# Initializer lists (Parse.zig parseCurlySuffixExpr): a type expression,
+# then fields or elements in braces.
+curly_suffix_expr       = type_e
+                        | type_e "{" "}"                      → (struct_init 1)
+                        | type_e "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | type_e "{" L(expr) !","? "}"        → (array_init 1 ...3)
+curly_suffix_expr_s     = type_s
+                        | type_s "{" "}"                      → (struct_init 1)
+                        | type_s "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | type_s "{" L(expr) !","? "}"        → (array_init 1 ...3)
+curly_suffix_expr_c     = type_c
+                        | type_c "{" "}"                      → (struct_init 1)
+                        | type_c "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | type_c "{" L(expr) !","? "}"        → (array_init 1 ...3)
+
+# `a[*T ...]`: a single-item pointer type led by PTR_STAR, as the index.
+ptr_curly_suffix_expr   = ptr_led
+                        | ptr_led "{" "}"                      → (struct_init 1)
+                        | ptr_led "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | ptr_led "{" L(expr) !","? "}"        → (array_init 1 ...3)
+
+# --- Type expressions (grammar.peg TypeExpr ... PrimaryTypeExpr) -------------
+#
+# type_expr is a type expression where Parse.zig calls parseTypeExpr.
+# The expression variants reach parseTypeExpr through parsePrimaryExpr,
+# which has taken `if`, the loops, `comptime` and a labeled loop as
+# expressions first (type_e, type_s, type_c), and the field and parameter
+# variants after a name or flag was not there (type_expr_f, _p, _n). A type
+# expression that ends in a type expression (`if`, `for`, `while`,
+# `comptime`, `fn`) sits at this level, not among the suffix operands:
+# its last type expression takes every suffix and `!` after it.
+type_expr   = prefix_type
+            | error_union_expr
+            | if_type_expr
+            | for_type_expr
+            | labeled_for_type_expr
+            | while_type_expr
+            | labeled_while_type_expr
+            | "comptime" type_expr                         → (comptime 2)
+            | fn_proto
+
+# An unnamed field without `comptime`: no `comptime`, no `fn`, no label.
+type_expr_f = prefix_type
+            | error_union_expr_n
+            | if_type_expr
+            | for_type_expr
+            | while_type_expr
+
+# An unnamed parameter without a flag: no `comptime`, no label.
+type_expr_p = prefix_type
+            | error_union_expr_n
+            | if_type_expr
+            | for_type_expr
+            | while_type_expr
+            | fn_proto
+
+# An unnamed field or parameter after `comptime` or `noalias`: no label.
+type_expr_n = prefix_type
+            | error_union_expr_n
+            | if_type_expr
+            | for_type_expr
+            | while_type_expr
+            | "comptime" type_expr                         → (comptime 2)
+            | fn_proto
+
+type_e      = prefix_type | error_union_expr | fn_proto
+type_s      = prefix_type | error_union_expr_s | fn_proto
+type_c      = prefix_type | error_union_expr_c | fn_proto
+
+# Pointer types (Parse.zig parseTypeExpr, parsePtrModifiers): `const`,
+# `volatile` and `allowzero` in any number and order (the `quals` leaves),
+# at most one `align` and one `addrspace` (extra_align_qualifier,
+# extra_addrspace_qualifier); only a single-item pointer's `align` takes a
+# bit range (invalid_bit_range). Each pointer form lists the orders of
+# `align` and `addrspace` it allows.
+prefix_type = "?" type_expr                                             → (optional_type 2)
+            | "anyframe" "->" type_expr                                 → (anyframe_type 3)
+            | single_ptr
+            | "[" PTR_STAR "]" ptr_quals type_expr                                                  → (ptr_type many _ _ _ _ _ 5 ...4)
+            | "[" PTR_STAR "]" ptr_quals byte_align ptr_quals type_expr                             → (ptr_type many _ 5 _ _ _ 7 ...4 ...6)
+            | "[" PTR_STAR "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr        → (ptr_type many _ 5 _ _ 7 9 ...4 ...6 ...8)
+            | "[" PTR_STAR "]" ptr_quals addr_space ptr_quals type_expr                             → (ptr_type many _ _ _ _ 5 7 ...4 ...6)
+            | "[" PTR_STAR "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr        → (ptr_type many _ 7 _ _ 5 9 ...4 ...6 ...8)
+            | "[" PTR_STAR C_PTR "]" ptr_quals type_expr                                            → (ptr_type c _ _ _ _ _ 6 ...5)
+            | "[" PTR_STAR C_PTR "]" ptr_quals byte_align ptr_quals type_expr                       → (ptr_type c _ 6 _ _ _ 8 ...5 ...7)
+            | "[" PTR_STAR C_PTR "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr  → (ptr_type c _ 6 _ _ 8 10 ...5 ...7 ...9)
+            | "[" PTR_STAR C_PTR "]" ptr_quals addr_space ptr_quals type_expr                       → (ptr_type c _ _ _ _ 6 8 ...5 ...7)
+            | "[" PTR_STAR C_PTR "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr  → (ptr_type c _ 8 _ _ 6 10 ...5 ...7 ...9)
+            | "[" PTR_STAR ":" expr "]" ptr_quals type_expr                                         → (ptr_type many 4 _ _ _ _ 7 ...6)
+            | "[" PTR_STAR ":" expr "]" ptr_quals byte_align ptr_quals type_expr                    → (ptr_type many 4 7 _ _ _ 9 ...6 ...8)
+            | "[" PTR_STAR ":" expr "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr
+                                                                                                    → (ptr_type many 4 7 _ _ 9 11 ...6 ...8 ...10)
+            | "[" PTR_STAR ":" expr "]" ptr_quals addr_space ptr_quals type_expr                    → (ptr_type many 4 _ _ _ 7 9 ...6 ...8)
+            | "[" PTR_STAR ":" expr "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr
+                                                                                                    → (ptr_type many 4 9 _ _ 7 11 ...6 ...8 ...10)
+            | "[" "]" ptr_quals type_expr                                                           → (ptr_type slice _ _ _ _ _ 4 ...3)
+            | "[" "]" ptr_quals byte_align ptr_quals type_expr                                      → (ptr_type slice _ 4 _ _ _ 6 ...3 ...5)
+            | "[" "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                 → (ptr_type slice _ 4 _ _ 6 8 ...3 ...5 ...7)
+            | "[" "]" ptr_quals addr_space ptr_quals type_expr                                      → (ptr_type slice _ _ _ _ 4 6 ...3 ...5)
+            | "[" "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr                 → (ptr_type slice _ 6 _ _ 4 8 ...3 ...5 ...7)
+            | "[" ":" expr "]" ptr_quals type_expr                                                  → (ptr_type slice 3 _ _ _ _ 6 ...5)
+            | "[" ":" expr "]" ptr_quals byte_align ptr_quals type_expr                             → (ptr_type slice 3 6 _ _ _ 8 ...5 ...7)
+            | "[" ":" expr "]" ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr        → (ptr_type slice 3 6 _ _ 8 10 ...5 ...7 ...9)
+            | "[" ":" expr "]" ptr_quals addr_space ptr_quals type_expr                             → (ptr_type slice 3 _ _ _ 6 8 ...5 ...7)
+            | "[" ":" expr "]" ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr        → (ptr_type slice 3 8 _ _ 6 10 ...5 ...7 ...9)
+            | "[" expr "]" type_expr                                    → (array_type 2 _ 4)
+            | "[" expr ":" expr "]" type_expr                           → (array_type 2 4 6)
+
+# `*T`, and `a[*T ...]` (ptr_led, led by PTR_STAR): a single-item
+# pointer, whose `align` may take a bit range.
+single_ptr  = !("*" | ASTERISK_PREFIX) ptr_quals type_expr                                                   → (ptr_type one _ _ _ _ _ 3 ...2)
+            | !("*" | ASTERISK_PREFIX) ptr_quals byte_align ptr_quals type_expr                              → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
+            | !("*" | ASTERISK_PREFIX) ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr         → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
+            | !("*" | ASTERISK_PREFIX) ptr_quals addr_space ptr_quals type_expr                              → (ptr_type one _ _ _ _ 3 5 ...2 ...4)
+            | !("*" | ASTERISK_PREFIX) ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr         → (ptr_type one _ 5 _ _ 3 7 ...2 ...4 ...6)
+            | !("*" | ASTERISK_PREFIX) ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr  → (ptr_type one _ 5 7 9 _ 12 ...2 ...11)
+            | !("*" | ASTERISK_PREFIX) ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals addr_space ptr_quals type_expr
+                                                                                                             → (ptr_type one _ 5 7 9 12 14 ...2 ...11 ...13)
+            | !("*" | ASTERISK_PREFIX) ptr_quals addr_space ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr
+                                                                                                             → (ptr_type one _ 7 9 11 3 14 ...2 ...4 ...13)
+ptr_led     = PTR_STAR ptr_quals type_expr                                                          → (ptr_type one _ _ _ _ _ 3 ...2)
+            | PTR_STAR ptr_quals byte_align ptr_quals type_expr                                     → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
+            | PTR_STAR ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
+            | PTR_STAR ptr_quals addr_space ptr_quals type_expr                                     → (ptr_type one _ _ _ _ 3 5 ...2 ...4)
+            | PTR_STAR ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr                → (ptr_type one _ 5 _ _ 3 7 ...2 ...4 ...6)
+            | PTR_STAR ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr         → (ptr_type one _ 5 7 9 _ 12 ...2 ...11)
+            | PTR_STAR ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals addr_space ptr_quals type_expr
+                                                                                                    → (ptr_type one _ 5 7 9 12 14 ...2 ...11 ...13)
+            | PTR_STAR ptr_quals addr_space ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr
+                                                                                                    → (ptr_type one _ 7 9 11 3 14 ...2 ...4 ...13)
+
+ptr_quals   = ptr_qual*
+ptr_qual    = "const" | "volatile" | "allowzero"
+
+error_union_expr     = suffix_expr | suffix_expr "!" type_expr                        → (error_union 1 3)
+error_union_expr_s   = suffix_expr_s | suffix_expr_s "!" type_expr                    → (error_union 1 3)
+error_union_expr_c   = suffix_expr_c | suffix_expr_c "!" type_expr                    → (error_union 1 3)
+error_union_expr_n   = suffix_expr_n | suffix_expr_n "!" type_expr                    → (error_union 1 3)
+
+# Suffix operators (Parse.zig parseSuffixOp), in the left-edge variants
+# of the primary type expressions: a labeled block or switch is one in a
+# type or an expression, but not where a statement or field name would be
+# taken first, and a plain `switch` starts no expression statement.
+# `a[*c]` indexes `a` with the single-item pointer type `*c`.
+suffix_expr      = primary_type_expr
+                 | suffix_expr "(" ")"                                      → (call 1)
+                 | suffix_expr "(" L(expr) !","? ")"                        → (call 1 ...3)
+                 | suffix_expr "[" index_expr "]"                           → (array_access 1 3)
+                 | suffix_expr "[" c_ptr_index "]"                          → (array_access 1 3)
+                 | suffix_expr "[" index_expr ".." [expr] [":" expr] "]"    → (slice 1 3 5 7)
+                 | suffix_expr "." IDENTIFIER                               → (field_access 1 3)
+                 | suffix_expr ".*"                                         → (deref 1)
+                 | suffix_expr "." "?"                                      → (unwrap_optional 1)
+suffix_expr_s    = primary_type_expr_s
+                 | suffix_expr_s "(" ")"                                    → (call 1)
+                 | suffix_expr_s "(" L(expr) !","? ")"                      → (call 1 ...3)
+                 | suffix_expr_s "[" index_expr "]"                         → (array_access 1 3)
+                 | suffix_expr_s "[" c_ptr_index "]"                        → (array_access 1 3)
+                 | suffix_expr_s "[" index_expr ".." [expr] [":" expr] "]"  → (slice 1 3 5 7)
+                 | suffix_expr_s "." IDENTIFIER                             → (field_access 1 3)
+                 | suffix_expr_s ".*"                                       → (deref 1)
+                 | suffix_expr_s "." "?"                                    → (unwrap_optional 1)
+suffix_expr_c    = primary_type_expr_c
+                 | suffix_expr_c "(" ")"                                    → (call 1)
+                 | suffix_expr_c "(" L(expr) !","? ")"                      → (call 1 ...3)
+                 | suffix_expr_c "[" index_expr "]"                         → (array_access 1 3)
+                 | suffix_expr_c "[" c_ptr_index "]"                        → (array_access 1 3)
+                 | suffix_expr_c "[" index_expr ".." [expr] [":" expr] "]"  → (slice 1 3 5 7)
+                 | suffix_expr_c "." IDENTIFIER                             → (field_access 1 3)
+                 | suffix_expr_c ".*"                                       → (deref 1)
+                 | suffix_expr_c "." "?"                                    → (unwrap_optional 1)
+suffix_expr_n    = primary_type_expr_n
+                 | suffix_expr_n "(" ")"                                    → (call 1)
+                 | suffix_expr_n "(" L(expr) !","? ")"                      → (call 1 ...3)
+                 | suffix_expr_n "[" index_expr "]"                         → (array_access 1 3)
+                 | suffix_expr_n "[" c_ptr_index "]"                        → (array_access 1 3)
+                 | suffix_expr_n "[" index_expr ".." [expr] [":" expr] "]"  → (slice 1 3 5 7)
+                 | suffix_expr_n "." IDENTIFIER                             → (field_access 1 3)
+                 | suffix_expr_n ".*"                                       → (deref 1)
+                 | suffix_expr_n "." "?"                                    → (unwrap_optional 1)
+
+c_ptr_index = PTR_STAR C_PTR                                            → (ptr_type one _ _ _ _ _ 2)
+
+primary_type_expr    = atom | switch_expr | labeled_switch | labeled_block
+primary_type_expr_s  = atom
+primary_type_expr_c  = atom | switch_expr | labeled_switch
+primary_type_expr_n  = atom | switch_expr
+
+atom        = IDENTIFIER
+            | NUMBER_LITERAL
+            | CHAR_LITERAL
+            | STRING_LITERAL
+            | MULTILINE_STRING_LITERAL_LINE+                            → (multiline_string_literal ...1)
+            | BUILTIN "(" ")"                                           → (builtin_call 1)
+            | BUILTIN "(" L(expr) !","? ")"                             → (builtin_call 1 ...3)
+            | "(" expr ")"                                              → (grouped_expression 2)
+            | "." IDENTIFIER                                            → (enum_literal 2)
+            | "." "{" "}"                                               → (struct_init _)
+            | "." "{" L(field_init) !","? "}"                           → (struct_init _ ...3)
+            | "." "{" L(expr) !","? "}"                                 → (array_init _ ...3)
+            | "error" "." IDENTIFIER                                    → (error_value 3)
+            | "error" "{" "}"                                           → (error_set_decl)
+            | "error" "{" L(error_name) !","? "}"                       → (error_set_decl ...3)
+            | "unreachable"                                             → 1
+            | "anyframe"                                                → 1
+            | container_type
+
+error_name  = -[docs] IDENTIFIER                                        → (error_name 1 2)
+
+# Container types (Parse.zig expectContainerDeclAuto). The wrapper names
+# the `enum` of `union(enum` ENUM_TAG: Parse.zig takes it as the tag kind
+# and never as the start of an expression.
+container_type  = [container_layout] container_kind "{" container_docs members "}"
+                                                                        → (container_decl 1 2 _ _ 4 ...5)
+                | [container_layout] container_arg_kind "(" expr ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 _ 4 7 ...8)
+                | [container_layout] "union" "(" expr ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 _ 4 7 ...8)
+                | [container_layout] "union" "(" ENUM_TAG ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 4 _ 7 ...8)
+                | [container_layout] "union" "(" ENUM_TAG "(" expr ")" ")" "{" container_docs members "}"
+                                                                        → (container_decl 1 2 4 6 10 ...11)
+container_layout = "extern" | "packed"
+container_kind  = "struct" | "opaque" | "enum" | "union"
+container_arg_kind = "struct" | "enum"
+
+# if, for and while type expressions (Parse.zig expectIf(expectTypeExpr),
+# expectFor(expectTypeExpr), expectWhileTypeExpr). The labeled loops are
+# apart: neither an unnamed field nor an unnamed parameter starts with one.
+if_type_expr    = "if" "(" expr ")" ptr_payload type_expr  >                            → (if 3 5 6)
+                | "if" "(" expr ")" ptr_payload type_expr "else" else_payload type_expr → (if 3 5 6 8 9)
+
+for_type_expr   = ["inline"] for_prefix type_expr  >                                    → (for _ 1 ...2 3)
+                | ["inline"] for_prefix type_expr "else" type_expr                      → (for _ 1 ...2 3 5)
+labeled_for_type_expr = LABEL ":" ["inline"] for_prefix type_expr  >                    → (for 1 3 ...4 5)
+                | LABEL ":" ["inline"] for_prefix type_expr "else" type_expr            → (for 1 3 ...4 5 7)
+
+while_type_expr         = ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr  >  → (while _ 1 4 6 7 8)
+                        | ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr "else" else_payload type_expr
+                                                                                        → (while _ 1 4 6 7 8 10 11)
+labeled_while_type_expr = LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr
+                                                                                     >                  → (while 1 3 6 8 9 10)
+                        | LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr "else" else_payload type_expr
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+
+# switch (Parse.zig expectSwitchSuffix, parseSwitchProng). An `else`
+# prong has no values.
+switch_expr     = "switch" "(" expr ")" "{" [switch_prong_list] "}"            → (switch _ 3 ...6)
+labeled_switch  = LABEL ":" "switch" "(" expr ")" "{" [switch_prong_list] "}"  → (switch 1 5 ...8)
+
+# ==============================================================================
+# ASSEMBLY (grammar.peg AsmExpr ... AsmClobbers; Parse.zig expectAsmExpr)
+# ==============================================================================
+
+# The clobbers are an expression.
+asm_expr        = "asm" ["volatile"] "(" expr ")"                          → (asm 2 4)
+                | "asm" ["volatile"] "(" expr ":" asm_output_list ")"      → (asm 2 4 _ ...6)
+                | "asm" ["volatile"] "(" expr ":" asm_output_list ":" asm_input_list ")"
+                                                                        → (asm 2 4 _ ...6 ...8)
+                | "asm" ["volatile"] "(" expr ":" asm_output_list ":" asm_input_list ":" expr ")"
+                                                                        → (asm 2 4 10 ...6 ...8)
+
+asm_output_list     =                                                      → ()
+                    | L(asm_output_item) !","?                             → 1
+asm_input_list      =                                                      → ()
+                    | L(asm_input_item) !","?                              → 1
+
+asm_output_item = "[" IDENTIFIER "]" STRING_LITERAL "(" "->" type_expr ")"      → (asm_output 2 4 _ 7)
+                | "[" IDENTIFIER "]" STRING_LITERAL "(" IDENTIFIER ")"          → (asm_output 2 4 6 _)
+asm_input_item  = "[" IDENTIFIER "]" STRING_LITERAL "(" expr ")"                → (asm_input 2 4 6)
+
+# ==============================================================================
+# HELPER GRAMMAR (grammar.peg BreakLabel ... Lists, in its order: labels,
+# field initializers, the parts of a prototype, parameters, payloads,
+# switch prongs, for operands, operators, alignment)
+# ==============================================================================
+
+break_label = BREAK_COLON IDENTIFIER                        → 2
+
+field_init  = "." IDENTIFIER "=" expr                       → (field_init 2 4)
+
+# `: (i += 1)` after a while condition (grammar.peg WhileContinueExpr).
+while_continue_expr =
+                    | ":" "(" assign_expr ")"                       → 3
+
+link_section        = "linksection" "(" expr ")"                    → 3
+addr_space          = "addrspace" "(" expr ")"                      → 3
+call_conv           = "callconv" "(" expr ")"                       → 3
+
+# Parameters (Parse.zig parseParamDeclList, expectParamDecl). `...` comes
+# last; like any parameter it may follow doc comments.
+param_decl_list     = "(" ")"                                               → ()
+                    | "(" L(param_decl) !","? ")"                           → 2
+                    | "(" L(param_decl) "," var_args !","? ")"              → (...2 4)
+                    | "(" var_args !","? ")"                                → (2)
+
+var_args            = -[docs] "..."                                         → (param 1 _ _ 2)
+
+param_decl          = -[docs] [param_flag] param_name ":" param_type        → (param 1 2 3 5)
+                    | -[docs] param_type_p                                  → (param 1 _ _ 2)
+                    | -[docs] param_flag param_type_n                       → (param 1 2 _ 3)
+
+param_flag          = "comptime" | "noalias"
+param_name          = IDENTIFIER | LABEL
+param_type          = "anytype" | type_expr
+param_type_p        = "anytype" | type_expr_p
+param_type_n        = "anytype" | type_expr_n
+
+# Payloads (Parse.zig parsePayload, parsePtrPayload, parsePtrIndexPayload,
+# forPrefix). The bars carry nothing; ptr_payload and else_payload may be
+# empty, as nothing else starts with `|` where they go.
+payload             = !pipe IDENTIFIER !pipe                → 2
+ptr_payload         =
+                    | !pipe capture !pipe                   → 2
+else_payload        =
+                    | payload
+ptr_list_payload    = !pipe L(capture) !","? !pipe          → 2
+capture             = [star] IDENTIFIER                     → (capture 1 2)
+
+# Switch prongs (Parse.zig parseSwitchProngList, parseSwitchProng). An
+# `else` prong has no values.
+switch_prong_list   = L(switch_prong) !","?                                → 1
+
+switch_prong    = switch_values "=>" single_assign_expr                                     → (switch_case _ 1 _ _ 3)
+                | switch_values "=>" !pipe capture !pipe single_assign_expr                 → (switch_case _ 1 4 _ 6)
+                | switch_values "=>" !pipe capture "," IDENTIFIER !pipe single_assign_expr  → (switch_case _ 1 4 6 8)
+                | "inline" switch_values "=>" single_assign_expr                            → (switch_case 1 2 _ _ 4)
+                | "inline" switch_values "=>" !pipe capture !pipe single_assign_expr        → (switch_case 1 2 5 _ 7)
+                | "inline" switch_values "=>" !pipe capture "," IDENTIFIER !pipe single_assign_expr
+                                                                                            → (switch_case 1 2 5 7 9)
+
+switch_values   = "else"                                                → ()
+                | L(switch_item) !","?                                  → 1
+
+switch_item     = expr
+                | expr "..." expr                                       → (switch_range 1 3)
+
+# A for operand (grammar.peg ForItem): an expression or a range.
+for_item            = expr
+                    | expr ".."                                     → (for_range 1)
+                    | expr ".." expr                                → (for_range 1 3)
+
+# Operators (grammar.peg AssignOp ... MultiplyOp).
+assign_op           = "=" | "*=" | "*|=" | "/=" | "%=" | "+=" | "+|=" | "-=" | "-|="
+                    | "<<=" | "<<|=" | ">>=" | "&=" | "^=" | "|=" | "*%=" | "+%=" | "-%="
+
+compare_op      = "==" | "!=" | "<" | ">" | "<=" | ">="
+bitwise_op      = "&" | "^" | "|" | "orelse"
+bit_shift_op    = "<<" | ">>" | "<<|"
+addition_op     = "+" | "-" | "++" | "+%" | "-%" | "+|" | "-|"
+multiply_op     = "||" | "*" | "/" | "%" | "*%" | "*|"
+
+# A capture's `*` (the `ptr` role), and a payload's bars.
+star        = "*" | ASTERISK_PREFIX
+pipe        = "|" | PIPE_PAYLOAD
+
+# Alignment (grammar.peg ByteAlign; BitAlign is the single-item pointer's).
+byte_align          = "align" "(" expr ")"                                  → 3
+
+# ==============================================================================
+# TOKENS: the start symbol `tokens` lists the tokens the parser sees, each
+# in a node named by its category: std.zig.Token.Tag's name for the
+# lexer's own, the wrapper's name for the categories it gives.
+# ==============================================================================
+
+token       = INVALID                       → (invalid 1)
+            | IDENTIFIER                    → (identifier 1)
+            | STRING_LITERAL                → (string_literal 1)
+            | MULTILINE_STRING_LITERAL_LINE → (multiline_string_literal_line 1)
+            | CHAR_LITERAL                  → (char_literal 1)
+            | BUILTIN                       → (builtin 1)
+            | NUMBER_LITERAL                → (number_literal 1)
+            | DOC_COMMENT                   → (doc_comment 1)
+            | CONTAINER_DOC_COMMENT         → (container_doc_comment 1)
+            | "!"                           → (bang 1)
+            | "|"                           → (pipe 1)
+            | "||"                          → (pipe_pipe 1)
+            | "|="                          → (pipe_equal 1)
+            | "="                           → (equal 1)
+            | "=="                          → (equal_equal 1)
+            | "=>"                          → (equal_angle_bracket_right 1)
+            | "!="                          → (bang_equal 1)
+            | "("                           → (l_paren 1)
+            | ")"                           → (r_paren 1)
+            | ";"                           → (semicolon 1)
+            | "%"                           → (percent 1)
+            | "%="                          → (percent_equal 1)
+            | "{"                           → (l_brace 1)
+            | "}"                           → (r_brace 1)
+            | "["                           → (l_bracket 1)
+            | "]"                           → (r_bracket 1)
+            | "."                           → (period 1)
+            | ".*"                          → (period_asterisk 1)
+            | ".."                          → (ellipsis2 1)
+            | "..."                         → (ellipsis3 1)
+            | "^"                           → (caret 1)
+            | "^="                          → (caret_equal 1)
+            | "+"                           → (plus 1)
+            | "++"                          → (plus_plus 1)
+            | "+="                          → (plus_equal 1)
+            | "+%"                          → (plus_percent 1)
+            | "+%="                         → (plus_percent_equal 1)
+            | "+|"                          → (plus_pipe 1)
+            | "+|="                         → (plus_pipe_equal 1)
+            | "-"                           → (minus 1)
+            | "-="                          → (minus_equal 1)
+            | "-%"                          → (minus_percent 1)
+            | "-%="                         → (minus_percent_equal 1)
+            | "-|"                          → (minus_pipe 1)
+            | "-|="                         → (minus_pipe_equal 1)
+            | "*"                           → (asterisk 1)
+            | "*="                          → (asterisk_equal 1)
+            | "*%"                          → (asterisk_percent 1)
+            | "*%="                         → (asterisk_percent_equal 1)
+            | "*|"                          → (asterisk_pipe 1)
+            | "*|="                         → (asterisk_pipe_equal 1)
+            | "->"                          → (arrow 1)
+            | ":"                           → (colon 1)
+            | "/"                           → (slash 1)
+            | "/="                          → (slash_equal 1)
+            | ","                           → (comma 1)
+            | "&"                           → (ampersand 1)
+            | "&="                          → (ampersand_equal 1)
+            | "?"                           → (question_mark 1)
+            | "<"                           → (angle_bracket_left 1)
+            | "<="                          → (angle_bracket_left_equal 1)
+            | "<<"                          → (angle_bracket_angle_bracket_left 1)
+            | "<<="                         → (angle_bracket_angle_bracket_left_equal 1)
+            | "<<|"                         → (angle_bracket_angle_bracket_left_pipe 1)
+            | "<<|="                        → (angle_bracket_angle_bracket_left_pipe_equal 1)
+            | ">"                           → (angle_bracket_right 1)
+            | ">="                          → (angle_bracket_right_equal 1)
+            | ">>"                          → (angle_bracket_angle_bracket_right 1)
+            | ">>="                         → (angle_bracket_angle_bracket_right_equal 1)
+            | "~"                           → (tilde 1)
+            | "addrspace"                   → (keyword_addrspace 1)
+            | "align"                       → (keyword_align 1)
+            | "allowzero"                   → (keyword_allowzero 1)
+            | "and"                         → (keyword_and 1)
+            | "anyframe"                    → (keyword_anyframe 1)
+            | "anytype"                     → (keyword_anytype 1)
+            | "asm"                         → (keyword_asm 1)
+            | "break"                       → (keyword_break 1)
+            | "callconv"                    → (keyword_callconv 1)
+            | "catch"                       → (keyword_catch 1)
+            | "comptime"                    → (keyword_comptime 1)
+            | "const"                       → (keyword_const 1)
+            | "continue"                    → (keyword_continue 1)
+            | "defer"                       → (keyword_defer 1)
+            | "else"                        → (keyword_else 1)
+            | "enum"                        → (keyword_enum 1)
+            | "errdefer"                    → (keyword_errdefer 1)
+            | "error"                       → (keyword_error 1)
+            | "export"                      → (keyword_export 1)
+            | "extern"                      → (keyword_extern 1)
+            | "fn"                          → (keyword_fn 1)
+            | "for"                         → (keyword_for 1)
+            | "if"                          → (keyword_if 1)
+            | "inline"                      → (keyword_inline 1)
+            | "noalias"                     → (keyword_noalias 1)
+            | "noinline"                    → (keyword_noinline 1)
+            | "nosuspend"                   → (keyword_nosuspend 1)
+            | "opaque"                      → (keyword_opaque 1)
+            | "or"                          → (keyword_or 1)
+            | "orelse"                      → (keyword_orelse 1)
+            | "packed"                      → (keyword_packed 1)
+            | "pub"                         → (keyword_pub 1)
+            | "resume"                      → (keyword_resume 1)
+            | "return"                      → (keyword_return 1)
+            | "linksection"                 → (keyword_linksection 1)
+            | "struct"                      → (keyword_struct 1)
+            | "suspend"                     → (keyword_suspend 1)
+            | "switch"                      → (keyword_switch 1)
+            | "test"                        → (keyword_test 1)
+            | "threadlocal"                 → (keyword_threadlocal 1)
+            | "try"                         → (keyword_try 1)
+            | "union"                       → (keyword_union 1)
+            | "unreachable"                 → (keyword_unreachable 1)
+            | "var"                         → (keyword_var 1)
+            | "volatile"                    → (keyword_volatile 1)
+            | "while"                       → (keyword_while 1)
+            | ERR                           → (err 1)
+            | LABEL                         → (label 1)
+            | BREAK_COLON                   → (break_colon 1)
+            | PTR_STAR                      → (ptr_star 1)
+            | C_PTR                         → (c_ptr 1)
+            | ENUM_TAG                      → (enum_tag 1)
+            | BAD_DOC_COMMENT               → (bad_doc_comment 1)
+            | MINUS_PREFIX                  → (minus_prefix 1)
+            | MINUS_PERCENT_PREFIX          → (minus_percent_prefix 1)
+            | AMPERSAND_PREFIX              → (ampersand_prefix 1)
+            | ASTERISK_PREFIX               → (asterisk_prefix 1)
+            | PIPE_PAYLOAD                  → (pipe_payload 1)
+            | BAD_OPERATOR                  → (bad_operator 1)

@@ -1,0 +1,146 @@
+(root
+  _
+  (fn_decl
+    (fn_proto _ _ _ _ `List` ((param _ `comptime` `T` `type`)@8..24)@8..24 _ _ _ _ _ `type`)@0..30
+    (block
+      _
+      (return
+        (container_decl
+          _
+          `struct`
+          _
+          _
+          _
+          (container_field _ _ `items` (ptr_type slice _ _ _ _ _ `T`)@68..71 _ _)@61..71
+          (container_field _ _ `len` `usize` _ `0`)@81..95
+          (var_decl _ _ _ _ _ _ `const` `Self` _ _ _ _ (builtin_call `@This`)@119..126)@106..126
+          (fn_decl
+            (fn_proto
+              _
+              `pub`
+              _
+              _
+              `append`
+              ((param _ _ `self` (ptr_type one _ _ _ _ _ `Self`)@157..162)@151..162
+                (param _ _ `item` `T`)@164..171)@151..171
+              _
+              _
+              _
+              _
+              `!`
+              `void`)@137..178
+            (block
+              _
+              (assign
+                `=`
+                (array_access
+                  (field_access `self` `items`)@193..203
+                  (field_access `self` `len`)@204..212)@193..213
+                `item`)@193..220
+              (assign `+=` (field_access `self` `len`)@234..242 `1`)@234..247)@179..258)@137..258)@44..264)@37..264)@31..267)@0..267
+  (fn_decl
+    (fn_proto
+      _
+      _
+      _
+      _
+      `max`
+      ((param _ _ `a` `anytype`)@276..286
+        (param _ _ `b` (builtin_call `@TypeOf` `a`)@291..301)@288..301)@276..301
+      _
+      _
+      _
+      _
+      _
+      (builtin_call `@TypeOf` `a`)@303..313)@269..313
+    (block _ (return (if (binary `>` `a` `b`)@331..336 _ `a` _ `b`)@327..346)@320..346)@314..349)@269..349
+  (fn_decl
+    (fn_proto
+      _
+      _
+      _
+      _
+      `typed`
+      ((param _ `comptime` `n` `usize`)@360..377 (param _ `comptime` _ `anytype`)@379..395)@360..395
+      _
+      _
+      _
+      _
+      _
+      (array_type `n` _ `u8`)@397..402)@351..402
+    (block _ (return (builtin_call `@splat` `0`)@416..425)@409..425)@403..428)@351..428
+  (var_decl _ _ _ _ _ _ `const` `ListU8` _ _ _ _ (call `List` `u8`)@445..453)@430..453
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `f`
+    (fn_proto
+      _
+      _
+      _
+      _
+      _
+      ((param _ _ _ `u8`)@468..470)@468..470
+      _
+      _
+      _
+      (enum_literal `c`)@481..483
+      _
+      `u8`)@464..487
+    _
+    _
+    _
+    `undefined`)@455..499
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `g`
+    (ptr_type
+      one
+      _
+      _
+      _
+      _
+      _
+      (fn_proto
+        _
+        _
+        _
+        _
+        _
+        ((param _ `comptime` _ `type`)@521..534 (param _ _ _ `anytype`)@536..543)@521..543
+        _
+        _
+        _
+        _
+        _
+        `void`)@517..549
+      `const`)@510..549
+    _
+    _
+    _
+    `undefined`)@501..561
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `anon`
+    _
+    _
+    _
+    _
+    (struct_init (fn_proto _ _ _ _ _ ()@579..581 _ _ _ _ _ `void`)@576..586)@576..588)@563..588)@0..589

@@ -1,0 +1,43 @@
+(root
+  _
+  (fn_decl
+    (fn_proto
+      _
+      _
+      _
+      _
+      `syscall1`
+      ((param _ _ `number` `usize`)@12..25 (param _ _ `arg1` `usize`)@27..38)@12..38
+      _
+      _
+      _
+      _
+      _
+      `usize`)@0..45
+    (block
+      _
+      (return
+        (asm
+          `volatile`
+          `"syscall"`
+          (struct_init
+            _
+            (field_init `rcx` `true`)@203..214
+            (field_init `r11` `true`)@216..227
+            (field_init `memory` `true`)@229..243)@200..245
+          (asm_output `ret` `"={rax}"` _ `usize`)@93..118
+          (asm_input `number` `"{rax}"` `number`)@130..155
+          (asm_input `arg1` `"{rdi}"` `arg1`)@167..188)@59..246)@52..246)@46..249)@0..249
+  (fn_decl
+    (fn_proto _ _ _ _ `nop` ()@257..259 _ _ _ _ _ `void`)@251..264
+    (block
+      _
+      (asm `volatile` `"nop"` _)@271..291
+      (asm `volatile` `""` (struct_init _ (field_init `memory` `true`)@321..335)@318..337)@297..338
+      (var_decl _ _ _ _ _ _ `var` `x` `u32` _ _ _ `0`)@344..358
+      (asm
+        _
+        `"mov %[a], %[out]"`
+        _
+        (asm_output `out` `"=r"` `x` _)@398..412
+        (asm_input `a` `"r"` `1`)@424..435)@364..442)@265..445)@251..445)@0..445

@@ -1,0 +1,108 @@
+(root
+  (`//! The facts std.zig.Ast keeps only as tokens, each in its role: doc`
+    `//! comments (\`doc\`), \`pub\` (\`visib\`), \`extern\`/\`export\`/\`inline\``
+    `//! (\`modifier\`), library names, \`threadlocal\`, \`comptime\`, parameter`
+    `//! flags, names and \`anytype\`/\`...\` types, the inferred-error \`!\``
+    `//! (\`bang\`), labels, captures, else captures, prong flags and indexes,`
+    `//! pointer qualifiers (\`quals\`), struct initializer names, error set`
+    `//! members.`)@0..427
+  (var_decl
+    (`/// doc`)@429..436
+    `pub`
+    `extern`
+    `"c"`
+    `threadlocal`
+    _
+    `var`
+    `a`
+    `u8`
+    _
+    _
+    _
+    _)@437..473
+  (fn_decl
+    (fn_proto
+      (`/// doc`)@475..482
+      `pub`
+      `inline`
+      _
+      `b`
+      ((param _ `comptime` `T` `type`)@499..515
+        (param _ `noalias` `p` (ptr_type one _ _ _ _ _ `T`)@528..530)@517..530
+        (param _ _ `q` `anytype`)@532..542
+        (param _ _ _ `...`)@544..547)@498..548
+      _
+      _
+      _
+      _
+      `!`
+      `void`)@483..554
+    (block
+      _
+      (block
+        `blk`
+        (assign_destructure
+          `comptime`
+          ((var_decl _ _ _ _ _ _ `var` `c` _ _ _ _ _)@585..590
+            (var_decl _ _ _ _ _ _ `var` `d` _ _ _ _ _)@592..597)@585..597
+          (array_init _ `1` `2`)@600..609)@576..609
+        (for
+          `outer`
+          _
+          (`p` (for_range `0` _)@634..637)@631..637
+          ((capture `*` `e`)@640..642 (capture _ `i`)@644..645)@640..645
+          (while
+            _
+            _
+            `q`
+            (capture _ `f`)@658..659
+            (assign `+=` `c` `1`)@664..670
+            (block _)@672..674
+            `err`
+            (break `outer` `err`)@686..702)@647..702
+          _)@619..702
+        (switch
+          `sw`
+          `c`
+          (switch_case
+            `inline`
+            (`0` (switch_range `1` `2`)@751..756)@748..756
+            (capture _ `v`)@761..762
+            `tag`
+            (continue `sw` (binary `+` `v` `tag`)@782..789)@769..789)@741..789
+          (switch_case
+            _
+            ()@803..807
+            (capture _ `v`)@812..813
+            _
+            (break `blk` (catch `v` `e` `e`)@826..839)@815..839)@803..839)@712..850)@561..856)@555..858)@483..858
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `g`
+    (ptr_type one _ `4` `0` `8` _ `u8` `allowzero` `const` `volatile`)@868..909
+    _
+    _
+    _
+    (struct_init _ (field_init `h` `1`)@915..921 (field_init `i` `2`)@923..929)@912..931)@859..931
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `E`
+    _
+    _
+    _
+    _
+    (error_set_decl
+      (error_name (`/// doc`)@954..961 `A`)@966..967
+      (error_name _ `B`)@973..974)@943..977)@933..977)@0..978

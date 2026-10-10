@@ -1,0 +1,1 @@
+extern fn f() void {}

@@ -1,0 +1,63 @@
+(root
+  (`//! Readings that follow from Parse.zig's choices.`)@0..50
+  (fn_decl
+    (fn_proto _ _ _ _ `quirks` ()@60..62 _ _ _ _ _ `void`)@51..67
+    (block
+      _
+      (assign `=` `_` (array_access `a` (ptr_type one _ _ _ _ _ `T`)@80..82)@78..83)@74..83
+      (assign `=` `_` (array_access `a` (ptr_type one _ _ _ _ _ `c`)@95..97)@93..98)@89..98
+      (assign
+        `=`
+        `_`
+        (slice `a` (ptr_type one _ _ _ _ _ `T` `const`)@110..118 _ _)@108..121)@104..121
+      (assign `=` `_` (ptr_type c _ _ _ _ _ `u8`)@131..137)@127..137
+      (assign
+        `=`
+        `_`
+        (block `blk` (break `blk` (negation `x`)@173..176)@162..176)@147..183)@143..183
+      (switch _ `x`)@189..202
+      (assign `=` (enum_literal `field`)@202..208 `1`)@202..212
+      (block _)@218..220
+      (negation `x`)@221..224
+      (var_decl
+        _
+        _
+        _
+        _
+        _
+        _
+        `const`
+        `S`
+        _
+        _
+        _
+        _
+        (container_decl
+          _
+          `struct`
+          _
+          _
+          _
+          (container_field
+            _
+            _
+            `x`
+            (switch _ `a` (switch_case _ ()@273..277 _ _ `u8`)@273..283)@252..290
+            _
+            _)@249..290)@240..292)@230..292
+      (assign `=` `_` `S`)@298..303
+      (assign `=` `_` (catch `a` `e` (return `e`)@325..333)@313..333)@309..333
+      (assign `=` `_` (binary `orelse` `a` (return _)@352..358)@343..358)@339..358
+      (assign `=` `_` (binary `orelse` (return _)@368..374 `x`)@368..383)@364..383
+      (assign
+        `=`
+        `_`
+        (struct_init (fn_proto _ _ _ _ _ ()@396..398 _ _ _ _ _ `void`)@393..403)@393..405)@389..405
+      (assign `=` `_` (if `a` _ `b` _ (if `c` _ `d` _ `e`)@429..444)@415..444)@411..444
+      (assign
+        `=`
+        `_`
+        (array_type (enum_literal `x`)@455..457 (block _)@459..461 `u8`)@454..464)@450..464
+      (assign `=` `_` (slice `a` `0` (break `x` _)@479..487 (block _)@489..491)@474..492)@470..492
+      (assign `=` `_` (unwrap_optional `0`)@502..506)@498..506
+      (return (negation `x`)@519..522)@512..522)@68..525)@51..525)@0..525

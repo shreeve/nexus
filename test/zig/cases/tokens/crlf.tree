@@ -1,0 +1,21 @@
+(tokens
+  (doc_comment `/// doc comment`)@33..48
+  (container_doc_comment `//! container doc comment`)@50..75
+  (keyword_const `const`)@77..82
+  (identifier `s`)@83..84
+  (equal `=`)@85..86
+  (multiline_string_literal_line `\\\\multiline`)@92..103
+  (multiline_string_literal_line `\\\\line`)@109..115
+  (semicolon `;`)@117..118
+  (keyword_pub `pub`)@120..123
+  (keyword_fn `fn`)@124..126
+  (identifier `main`)@127..131
+  (l_paren `(`)@131..132
+  (r_paren `)`)@132..133
+  (identifier `void`)@134..138
+  (l_brace `{`)@139..140
+  (r_brace `}`)@140..141
+  (identifier `x`)@143..144
+  (identifier `y`)@145..146
+  (identifier `z`)@149..150
+  (invalid `// a stray CR then CRLF\r\r`)@152..177)@33..177

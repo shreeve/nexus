@@ -1,0 +1,36 @@
+(tokens
+  (invalid `# hash`)@0..6
+  (invalid `$ dollar`)@7..15
+  (invalid `\` backquote`)@16..27
+  (invalid `\x7f del`)@28..33
+  (invalid `\x01 control`)@34..43
+  (invalid `é UTF-8 outside literals`)@44..69
+  (identifier `x`)@70..71
+  (invalid `\x00 nul, then the rest of the line`)@72..104
+  (invalid `"unterminated`)@105..118
+  (invalid `'u`)@119..121
+  (invalid `"tab\tin a string" ok`)@122..142
+  (invalid `'tab\tin a char' ok`)@143..161
+  (invalid `"bad escape \\\t" ok`)@162..180
+  (invalid `"nul escape \\`)@181..194
+  (invalid `\x00" ok`)@194..199
+  (invalid `'nul escape \\\x00' ok`)@200..218
+  (invalid `@"unterminated`)@219..233
+  (invalid `@`)@234..235
+  (invalid `@0 digit after @`)@236..252
+  (invalid `@( paren after @`)@253..269
+  (invalid `\\ alone, then the rest of the line`)@270..304
+  (invalid `\\`)@305..306
+  (invalid `// tab\tin a comment`)@307..326
+  (invalid `/// tab\tin a doc comment`)@327..351
+  (invalid `//! tab\tin a container doc comment`)@352..386
+  (invalid `\\\\ tab\tin a multiline line`)@387..413
+  (invalid `// stray\rcarriage return`)@414..438
+  (invalid `/// stray\rcarriage return`)@439..464
+  (invalid `\\\\ stray\rcarriage return`)@465..489
+  (doc_comment `/// nul`)@490..497
+  (invalid `\x00 stops a doc comment`)@497..518
+  (container_doc_comment `//! nul`)@519..526
+  (invalid `\x00 stops a container doc comment`)@526..557
+  (invalid `// nul\x00 in a plain comment`)@558..584
+  (invalid `"\\`)@585..587)@0..587

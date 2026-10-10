@@ -1,0 +1,119 @@
+#!/bin/bash
+# Compares the lexer generated from test/zig/zig.grammar with
+# std.zig.Tokenizer (the Zig that runs this script) token for token: tag by
+# name, start and end, invalid tokens included, up to and including eof.
+#
+# Usage:
+#   test/zig/compare-tokens [options] (DIR|FILE|--list LIST)...
+#   test/zig/compare-tokens --fuzz N [--seed S]
+#
+#   DIR             every *.zig file under DIR
+#   --list LIST     the paths in LIST, one per line (paths may hold spaces)
+#   --oracle BIN    compare with the output of a zigtok binary instead of
+#                   std.zig.Tokenizer in process (`BIN --list`, format
+#                   `# path bytes` then `tag start end` per token; both
+#                   dumps stay in the build directory when a file differs)
+#   --fuzz N        compare on N random inputs instead (up to 511 bytes,
+#                   std.zig.Tokenizer's fuzz-test byte weights alternating
+#                   with a mix of token fragments; --seed S, default 0)
+#   --bench N       time tokenizing alone instead, both lexers, best of N
+#                   rounds (ReleaseFast, single thread, files in memory)
+#   --dump nexus|std  print one lexer's stream in the zigtok format
+#   -O MODE         optimize mode of the tool (default ReleaseFast)
+#
+# The tool is built in .zig-cache/nexus-test/zig-tokens/ from this
+# checkout's bin/nexus (run `zig build` first). Compare prints one line per
+# input whose streams differ, with the first difference, and a summary with
+# the longest token; it exits 1 when any file differs. A token longer than
+# 65535 bytes, the most a Nexus token holds, is lexed as `err` over the
+# same bytes; a file whose only such differences are these is listed as
+# LONG, not counted as differing.
+
+set -uo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)
+OUT="$ROOT/.zig-cache/nexus-test/zig-tokens"
+MODE=ReleaseFast ORACLE="" TOOL_ARGS=() FUZZ=0
+LIST="$OUT/list.txt"
+mkdir -p "$OUT"
+: >"$LIST.new"
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --list) cat "$2" >>"$LIST.new"; shift ;;
+        --oracle) ORACLE=$2; shift ;;
+        --bench) TOOL_ARGS+=(--bench "$2"); shift ;;
+        --dump) TOOL_ARGS+=(--dump "$2"); shift ;;
+        --fuzz) TOOL_ARGS+=(--fuzz "$2"); FUZZ=1; shift ;;
+        --seed) TOOL_ARGS+=(--seed "$2"); shift ;;
+        -O) MODE=$2; shift ;;
+        -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
+        -*) echo "unknown option $1" >&2; exit 2 ;;
+        *)
+            if [[ -d $1 ]]; then
+                find "$(cd "$1" && pwd)" -name '*.zig' -type f | LC_ALL=C sort >>"$LIST.new"
+            elif [[ -f $1 ]]; then
+                echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")" >>"$LIST.new"
+            else
+                echo "no such file or directory: $1" >&2; exit 2
+            fi ;;
+    esac
+    shift
+done
+mv "$LIST.new" "$LIST"
+[[ -s $LIST || $FUZZ == 1 ]] || { echo "no input files" >&2; exit 2; }
+
+# Build: generate the lexer, compile the tool next to it.
+NEXUS="$ROOT/bin/nexus"
+[[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
+(cd "$HERE" && "$NEXUS" zig.grammar "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
+cp "$HERE/zig.zig" "$HERE/tools/tokens.zig" "$OUT/"
+(cd "$OUT" && zig build-exe -O "$MODE" tokens.zig -femit-bin=tokens --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
+    >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
+
+if [[ -z $ORACLE ]]; then
+    [[ $FUZZ == 1 ]] && exec "$OUT/tokens" "${TOOL_ARGS[@]}"
+    exec "$OUT/tokens" ${TOOL_ARGS[@]+"${TOOL_ARGS[@]}"} --list "$LIST"
+fi
+
+# Against a zigtok binary: both dumps, compared file by file.
+"$OUT/tokens" --dump nexus --list "$LIST" >"$OUT/nexus.tok" || exit 2
+"$ORACLE" --list "$LIST" >"$OUT/oracle.tok" || exit 2
+perl -e '
+    sub load {
+        my ($f) = @_; my (%h, @order, $cur);
+        open my $fh, "<", $f or die "$f: $!\n";
+        while (<$fh>) {
+            chomp;
+            if (/^# (.*) \d+$/) { $cur = $1; push @order, $cur; $h{$cur} = []; next }
+            push @{$h{$cur}}, $_;
+        }
+        return (\%h, \@order);
+    }
+    my ($n, $order) = load($ARGV[0]);
+    my ($o) = load($ARGV[1]);
+    my ($differ, $long, $tokens) = (0, 0, 0);
+    for my $p (@$order) {
+        my ($a, $b) = ($n->{$p}, $o->{$p} // []);
+        my $len = @$a > @$b ? @$a : @$b;
+        for my $i (0 .. $len - 1) {
+            my ($x, $y) = ($a->[$i] // "(ended)", $b->[$i] // "(ended)");
+            next if $x eq $y;
+            my @x = split / /, $x; my @y = split / /, $y;
+            if ($x[0] eq "err" && @y == 3 && $x[1] == $y[1] && $x[2] == $y[2] && $y[2] - $y[1] > 65535) {
+                print "LONG $p: token $i: oracle $y (", $y[2] - $y[1], " bytes) is a Nexus err token\n";
+                $long++;
+                next;
+            }
+            print "DIFF $p: token $i: nexus $x | oracle $y\n";
+            $differ++;
+            last;
+        }
+        $tokens += @$b;
+    }
+    printf "%d files, %d differ, %d with a token over 65535 bytes, %d tokens (against %s)\n",
+        scalar @$order, $differ, $long, $tokens, $ARGV[2];
+    exit($differ ? 1 : 0);
+' "$OUT/nexus.tok" "$OUT/oracle.tok" "$ORACLE"
+rc=$?
+[[ $rc -eq 0 ]] && rm -f "$OUT/nexus.tok" "$OUT/oracle.tok"   # kept for inspection when a file differs
+exit $rc
