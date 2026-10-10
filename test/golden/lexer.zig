@@ -1044,6 +1044,11 @@ inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
 
+/// Whether rule `r` is a pass-through `A → B`: one element, and its value.
+inline fn isPassThrough(r: u16) bool {
+    return ruleLen[r] == 1 and ruleValue[r] == 2;
+}
+
 /// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
 /// decides it (no rule has this number: rules are fewer than 32766).
 const hinted: i16 = std.math.minInt(i16);
@@ -1319,10 +1324,12 @@ pub const BaseParser = struct {
     }
 
 
-    /// Parse the whole input as `start`. The state and the current token's
-    /// symbol live in locals: the symbol changes only when a token is
-    /// shifted, except that `@as` promotion depends on the state, so a
-    /// promotable token is promoted again after each reduction.
+    /// Parse the whole input as `start`. The state, the current token's
+    /// symbol and the next action live in locals: the symbol changes only
+    /// when a token is shifted, except that `@as` promotion depends on the
+    /// state, so a promotable token is promoted again after each
+    /// reduction. A run of pass-throughs (an operand climbing a chain of
+    /// `A → B` rules) keeps the state below it and writes the stack once.
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
         // The start marker, which the start state shifts before any input.
@@ -1330,16 +1337,32 @@ pub const BaseParser = struct {
         var state = self.stateStack.last().?;
         var raw = tokenToSymbol(self.current);
         var sym = self.promoted(raw);
+        var action = self.strictAction(state, sym);
         while (true) {
-            const action = self.strictAction(state, sym);
             if (action > 0) {
                 state = @intCast(action);
                 try self.shiftToken(state);
                 raw = tokenToSymbol(self.current);
                 sym = self.promoted(raw);
+                action = self.strictAction(state, sym);
             } else if (action < -1) {
-                state = try self.reduceOrPass(@intCast(-action - 2));
-                if (asGroups > 0 and raw == needsPromotion) sym = self.promoted(raw);
+                var rule: u16 = @intCast(-action - 2);
+                if (isPassThrough(rule) and !(asGroups > 0 and raw == needsPromotion)) {
+                    const states = self.stateStack.items;
+                    const below = states[states.len - 2];
+                    while (true) {
+                        state = @intCast(getAction(below, ruleLhs[rule]));
+                        action = self.strictAction(state, sym);
+                        if (action >= -1) break;
+                        rule = @intCast(-action - 2);
+                        if (!isPassThrough(rule)) break;
+                    }
+                    states[states.len - 1] = state;
+                } else {
+                    state = try self.reduceOrPass(rule);
+                    if (asGroups > 0 and raw == needsPromotion) sym = self.promoted(raw);
+                    action = self.strictAction(state, sym);
+                }
             } else if (action == -1) {
                 return self.valueStack.last().?;
             } else {
@@ -1616,7 +1639,7 @@ pub const BaseParser = struct {
     /// places no empty element and records no side-band role.
     /// It returns the new top state.
     inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !u16 {
-        if (ruleLen[ruleId] == 1 and ruleValue[ruleId] == 2) {
+        if (isPassThrough(ruleId)) {
             const states = self.stateStack.items;
             const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
             std.debug.assert(next > 0); // every reduction has a goto
