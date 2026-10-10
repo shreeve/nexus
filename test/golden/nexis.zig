@@ -1738,7 +1738,7 @@ const numSymbols = 36;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
-fn tokenToSymbol(token: Token) u16 {
+inline fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
         .@"hash_discard" => 9,

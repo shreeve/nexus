@@ -406,7 +406,7 @@ const Codegen = struct {
 
     /// tokenToSymbol: TokenCat -> grammar symbol, computed once per token.
     fn emitTokenToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
-        try w.writeAll("\nfn tokenToSymbol(token: Token) u16 {\n    return switch (token.cat) {\n");
+        try w.writeAll("\ninline fn tokenToSymbol(token: Token) u16 {\n    return switch (token.cat) {\n");
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
         // The promotable token's symbol depends on the state (`promote`).
         if (self.promotable) |tok| try w.print("        .@\"{s}\" => {s},\n", .{ tok, if (self.asGroups() > 0) "needsPromotion" else "promotableSymbol" });
