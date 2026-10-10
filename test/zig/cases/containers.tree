@@ -57,7 +57,7 @@
                 (binary
                   `*`
                   (field_access `self` `y`)@190..196
-                  (field_access `self` `y`)@199..205)@190..205)@172..205)@166..206)@159..206)@149..213)@121..213)@14..215)@0..216
+                  (field_access `self` `y`)@199..205)@190..205)@172..205)@166..206)@159..206)@149..213)@121..213)@14..215)@0..215
   (var_decl
     _
     _
@@ -79,7 +79,7 @@
       _
       (container_field _ _ _ `u8` _ _)@241..243
       (container_field _ _ _ (ptr_type slice _ _ _ _ _ `u8` `const`)@245..255 _ _)@245..255
-      (container_field _ `comptime` _ `u32` _ `3`)@257..273)@232..275)@218..276
+      (container_field _ `comptime` _ `u32` _ `3`)@257..273)@232..275)@218..275
   (var_decl
     _
     _
@@ -102,7 +102,7 @@
       (container_field _ _ _ `red` _ `1`)@302..309
       (container_field _ _ _ `green` _ _)@311..316
       (container_field _ _ _ `blue` _ _)@318..322
-      (container_field _ _ _ `_` _ _)@324..325)@291..327)@277..328
+      (container_field _ _ _ `_` _ _)@324..325)@291..327)@277..327
   (var_decl
     _
     _
@@ -123,7 +123,7 @@
       _
       _
       (container_field _ _ _ `a` _ _)@350..351
-      (container_field _ _ _ `b` _ _)@353..354)@343..356)@329..357
+      (container_field _ _ _ `b` _ _)@353..354)@343..356)@329..356
   (var_decl
     _
     _
@@ -145,7 +145,7 @@
       _
       (container_field _ _ `int` `i64` _ _)@390..398
       (container_field _ _ `float` `f64` _ _)@404..414
-      (container_field _ _ _ `none` _ _)@420..424)@372..427)@358..428
+      (container_field _ _ _ `none` _ _)@420..424)@372..427)@358..427
   (var_decl
     _
     _
@@ -166,7 +166,7 @@
       `u8`
       _
       (container_field _ _ `a` `u8` _ _)@462..467
-      (container_field _ _ `b` `void` _ _)@469..476)@444..478)@429..479
+      (container_field _ _ `b` `void` _ _)@469..476)@444..478)@429..478
   (var_decl
     _
     _
@@ -187,7 +187,7 @@
       `Plain`
       _
       (container_field _ _ `a` `u8` _ _)@508..513
-      (container_field _ _ `b` `u16` _ _)@515..521)@493..523)@480..524
+      (container_field _ _ `b` `u16` _ _)@515..521)@493..523)@480..523
   (var_decl
     _
     _
@@ -208,7 +208,7 @@
       _
       _
       (container_field _ _ `a` `u8` _ _)@550..555
-      (container_field _ _ `b` `u16` _ _)@557..563)@542..565)@525..566
+      (container_field _ _ `b` `u16` _ _)@557..563)@542..565)@525..565
   (var_decl
     _
     _
@@ -222,7 +222,7 @@
     _
     _
     _
-    (container_decl _ `opaque` _ _ _)@582..591)@567..592
+    (container_decl _ `opaque` _ _ _)@582..591)@567..591
   (var_decl
     _
     _
@@ -244,7 +244,7 @@
       _
       (container_field _ _ `a` `bool` _ _)@627..634
       (container_field _ _ `b` `bool` _ _)@636..643
-      (container_field _ _ `rest` `u6` _ _)@645..653)@607..655)@593..656
+      (container_field _ _ `rest` `u6` _ _)@645..653)@607..655)@593..655
   (var_decl
     _
     _
@@ -278,8 +278,8 @@
           (container_field _ _ `x` `u8` _ _)@711..716
           (container_field _ _ `y` `u16` _ _)@718..724)@696..726
         _
-        _)@693..726)@667..728)@657..729
-  (var_decl _ _ _ _ _ _ `const` `Empty` _ _ _ _ (container_decl _ `struct` _ _ _)@744..753)@730..754
+        _)@693..726)@667..728)@657..728
+  (var_decl _ _ _ _ _ _ `const` `Empty` _ _ _ _ (container_decl _ `struct` _ _ _)@744..753)@730..753
   (var_decl
     _
     _
@@ -299,13 +299,13 @@
       _
       _
       _
-      (var_decl _ _ _ _ _ _ `const` `before` _ _ _ _ `1`)@782..799
+      (var_decl _ _ _ _ _ _ `const` `before` _ _ _ _ `1`)@782..798
       (container_field _ _ `a` `u8` _ _)@804..809
       (container_field _ _ `b` `u16` _ _)@815..821
-      (var_decl _ _ _ _ _ _ `const` `after` _ _ _ _ `2`)@827..843
+      (var_decl _ _ _ _ _ _ `const` `after` _ _ _ _ `2`)@827..842
       (fn_decl
         (fn_proto _ _ _ _ `method` ()@857..859 _ _ _ _ _ `void`)@848..864
-        (block _)@865..867)@848..867)@769..869)@755..870
+        (block _)@865..867)@848..867)@769..869)@755..869
   (var_decl
     _
     _
@@ -325,7 +325,7 @@
       _
       _
       (`//! A container doc comment inside a container.`)@898..945
-      (container_field _ _ `x` `u8` _ _)@950..955)@885..958)@871..959
+      (container_field _ _ `x` `u8` _ _)@950..955)@885..958)@871..958
   (var_decl
     _
     _
@@ -341,7 +341,7 @@
     _
     (error_set_decl
       (error_name _ `OutOfMemory`)@982..993
-      (error_name _ `Overflow`)@995..1003)@975..1005)@960..1006
+      (error_name _ `Overflow`)@995..1003)@975..1005)@960..1005
   (var_decl
     _
     _
@@ -356,8 +356,8 @@
     _
     _
     (error_set_decl
-      (error_name (`/// Documented.`)@1031..1046 `A`)@1031..1052
-      (error_name _ `B`)@1058..1059)@1020..1062)@1007..1063
+      (error_name (`/// Documented.`)@1031..1046 `A`)@1051..1052
+      (error_name _ `B`)@1058..1059)@1020..1062)@1007..1062
   (var_decl
     _
     _
@@ -371,4 +371,4 @@
     _
     _
     _
-    (binary `||` `ErrSet` (error_set_decl (error_name _ `Other`)@1095..1100)@1089..1101)@1079..1101)@1064..1102)@0..1102
+    (binary `||` `ErrSet` (error_set_decl (error_name _ `Other`)@1095..1100)@1089..1101)@1079..1101)@1064..1101)@0..1102

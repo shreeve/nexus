@@ -13,7 +13,7 @@
           _
           (container_field _ _ `items` (ptr_type slice _ _ _ _ _ `T`)@68..71 _ _)@61..71
           (container_field _ _ `len` `usize` _ `0`)@81..95
-          (var_decl _ _ _ _ _ _ `const` `Self` _ _ _ _ (builtin_call `@This`)@119..126)@106..127
+          (var_decl _ _ _ _ _ _ `const` `Self` _ _ _ _ (builtin_call `@This`)@119..126)@106..126
           (fn_decl
             (fn_proto
               _
@@ -36,8 +36,8 @@
                 (array_access
                   (field_access `self` `items`)@193..203
                   (field_access `self` `len`)@204..212)@193..213
-                `item`)@193..221
-              (assign `+=` (field_access `self` `len`)@234..242 `1`)@234..248)@179..258)@137..258)@44..264)@37..264)@31..267)@0..267
+                `item`)@193..220
+              (assign `+=` (field_access `self` `len`)@234..242 `1`)@234..247)@179..258)@137..258)@44..264)@37..264)@31..267)@0..267
   (fn_decl
     (fn_proto
       _
@@ -69,7 +69,7 @@
       _
       (array_type `n` _ `u8`)@397..402)@351..402
     (block _ (return (builtin_call `@splat` `0`)@416..425)@409..425)@403..428)@351..428
-  (var_decl _ _ _ _ _ _ `const` `ListU8` _ _ _ _ (call `List` `u8`)@445..453)@430..454
+  (var_decl _ _ _ _ _ _ `const` `ListU8` _ _ _ _ (call `List` `u8`)@445..453)@430..453
   (var_decl
     _
     _
@@ -95,7 +95,7 @@
     _
     _
     _
-    `undefined`)@455..500
+    `undefined`)@455..499
   (var_decl
     _
     _
@@ -129,7 +129,7 @@
     _
     _
     _
-    `undefined`)@501..562
+    `undefined`)@501..561
   (var_decl
     _
     _
@@ -143,4 +143,4 @@
     _
     _
     _
-    (struct_init (fn_proto _ _ _ _ _ ()@579..581 _ _ _ _ _ `void`)@576..586)@576..588)@563..589)@0..589
+    (struct_init (fn_proto _ _ _ _ _ ()@579..581 _ _ _ _ _ `void`)@576..586)@576..588)@563..588)@0..589

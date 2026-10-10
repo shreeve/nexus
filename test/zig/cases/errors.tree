@@ -13,7 +13,7 @@
     _
     _
     _
-    (error_set_decl (error_name _ `Bad`)@21..24 (error_name _ `Worse`)@26..31)@14..33)@0..34
+    (error_set_decl (error_name _ `Bad`)@21..24 (error_name _ `Worse`)@26..31)@14..33)@0..33
   (fn_decl
     (fn_proto
       _
@@ -30,7 +30,7 @@
       (error_union `Error` `u8`)@54..62)@36..62
     (block
       _
-      (if (binary `==` `x` `0`)@73..79 _ (return (error_value `Bad`)@88..97)@81..97 _ _)@69..98
+      (if (binary `==` `x` `0`)@73..79 _ (return (error_value `Bad`)@88..97)@81..97 _ _)@69..97
       (return `x`)@103..111)@63..114)@36..114
   (fn_decl
     (fn_proto _ _ _ _ `handle` ()@125..127 _ _ _ _ `!` `void`)@116..133
@@ -49,7 +49,7 @@
         _
         _
         _
-        (try (call `mayFail` `1`)@154..164)@150..164)@140..165
+        (try (call `mayFail` `1`)@154..164)@150..164)@140..164
       (var_decl
         _
         _
@@ -75,7 +75,7 @@
               ((error_value `Worse`)@250..261)@250..261
               _
               _
-              (return `err`)@265..275)@250..275)@203..282)@180..282)@170..283
+              (return `err`)@265..275)@250..275)@203..282)@180..282)@170..282
       (var_decl
         _
         _
@@ -89,14 +89,14 @@
         _
         _
         _
-        (catch (call `mayFail` `2`)@298..308 _ `7`)@298..316)@288..317
+        (catch (call `mayFail` `2`)@298..308 _ `7`)@298..316)@288..316
       (errdefer
         (call
           (field_access (field_access `std` `log`)@331..338 `err`)@331..342
           `"failed"`
-          (struct_init _)@353..356)@331..357)@322..358
-      (defer (block _ (assign `=` `_` `a`)@379..385)@369..391)@363..391
-      (var_decl _ _ _ _ _ _ `const` `d` (optional_type `u8`)@405..408 _ _ _ `null`)@396..416
+          (struct_init _)@353..356)@331..357)@322..357
+      (defer (block _ (assign `=` `_` `a`)@379..384)@369..391)@363..391
+      (var_decl _ _ _ _ _ _ `const` `d` (optional_type `u8`)@405..408 _ _ _ `null`)@396..415
       (var_decl
         _
         _
@@ -110,8 +110,8 @@
         _
         _
         _
-        (binary `orelse` (binary `orelse` `d` `b`)@431..441 `c`)@431..450)@421..451
-      (var_decl _ _ _ _ _ _ `const` `f` _ _ _ _ (unwrap_optional `d`)@466..469)@456..470
-      (assign `=` `_` (array_init _ `e` `f`)@479..488)@475..489
+        (binary `orelse` (binary `orelse` `d` `b`)@431..441 `c`)@431..450)@421..450
+      (var_decl _ _ _ _ _ _ `const` `f` _ _ _ _ (unwrap_optional `d`)@466..469)@456..469
+      (assign `=` `_` (array_init _ `e` `f`)@479..488)@475..488
       (catch (call `mayFail` `3`)@494..504 _ `unreachable`)@494..522)@134..525)@116..525
-  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@539..553)@527..554)@0..554
+  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@539..553)@527..553)@0..554

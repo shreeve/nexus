@@ -59,9 +59,21 @@ documented in `zig.zig`. Every LR conflict the grammar has is declared in
 switch prong's leading `inline` is the prong's), and resolves as
 Parse.zig does.
 
-The grammar has 130 tokens (333 DFA states) and 212 rules, which expand
-to 963; the parser has 2,097 LR states and 32 conflict cells in 9
-declared entries. Nexus generates the 2.2 MB module in 0.12 s.
+The heads of a for, a function and a variable declaration (grammar.peg
+ForPrefix, FnProto, VarDeclProto) are rules of their own, each spread
+into the roles of the node that holds it (`→ (for 1 3 ...4 5)`). The
+heads of if and while are written out in each form: they end in parts
+that may be absent, and as rules of their own they would make a syntax
+error right after the `)` list every token any form can take, where
+written out it names what that form waits for. Spans are Ast's: a span
+mark leaves a statement's `;` (`-";"`) and the doc comments before a
+declaration, field, parameter or error name (`-[docs]`) out of the span
+of its node, and a statement that ends in another one ending in `;`
+(`if (a) b else c;`) takes the `;` at the top, so no node spans it.
+
+The grammar has 130 tokens (333 DFA states) and 218 rules, which expand
+to 984; the parser has 1,872 LR states and 32 conflict cells in 9
+declared entries. Nexus generates the 2.1 MB module in 0.11 s.
 
 ## Equivalence
 
@@ -87,11 +99,10 @@ the same token and tree comparisons on the inputs `tokens_test.zig` and
 `std.zig.Ast` and the Nexus tree describe the same parse in different
 representations, so `trees.zig` prints both in one canonical form (the
 grammar's `@schema`: kinds, named roles, spans, `text@position` leaves)
-and compares them as text. Eleven rules map one onto the other; each
-is a difference of representation, stated in full in `trees.zig`:
+and compares them as text. The Nexus tree is printed as it is, spans
+included. Nine rules map Ast's onto it; each is a difference of
+representation, stated in full in `trees.zig`:
 
-- S1, S2 (Nexus spans): a node's span leaves out a trailing `;` and leading
-  doc comments, as Ast's do.
 - T1: the kinds Ast has no node for (`param`, `capture`, `field_init`,
   `error_name`) are built from Ast's tokens and `full*` helpers.
 - T2: facts Ast keeps only as tokens (labels, `pub`, `extern "c"`,

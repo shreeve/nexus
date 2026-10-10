@@ -1078,8 +1078,8 @@
     (conflict `shift` `jump → "break" break_label` _ `4` `# \`break :blk - x\`: the operand of a labeled break is parseExpr, which a prefix operator starts`)
     (conflict `shift` `jump → "continue"` _ `4` `# \`continue - x\`: the operand of continue is parseExpr, which a prefix operator starts`)
     (conflict `shift` `jump → "continue" break_label` _ `4` `# \`continue :blk - x\`: the operand of a labeled continue is parseExpr, which a prefix operator starts`)
-    (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
-    (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
+    (conflict `reduce` `for_expr → for_prefix bool_or_expr` `for_expr → "inline" for_prefix bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
+    (conflict `reduce` `for_expr → for_prefix bool_or_expr "else" bool_or_expr` `for_expr → "inline" for_prefix bool_or_expr "else" bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
     (conflict `reduce` `while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr` `while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
     (conflict `reduce` `while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr` `while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`))
   (display
@@ -1293,6 +1293,7 @@
     (name_pair `single_assign_expr` `"an assignment"`)
     (name_pair `block_statement` `"a statement"`)
     (name_pair `statement` `"a statement"`)
+    (name_pair `statement_semi` `"a statement"`)
     (name_pair `block_expr` `"a block"`)
     (name_pair `container_decl` `"a declaration"`)
     (name_pair `container_field` `"a container field"`)
@@ -1472,44 +1473,64 @@
       _)
     (alt
       _
-      ((ref `fn_decl_proto`)
-        (lit `";"`))
-      (pos `1`)
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
+        (ref `fn_decl_proto`)
+        (unspanned
+          (lit `";"`)))
+      (node
+        `fn_proto`
+        (pos `1`)
+        (spread `2`))
       _)
     (alt
       _
-      ((ref `fn_decl_proto`)
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
+        (ref `fn_decl_proto`)
         (ref `block`))
       (node
         `fn_decl`
+        (node
+          `fn_proto`
+          (pos `1`)
+          (spread `2`))
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
+        (ref `fn_extern_proto`)
+        (unspanned
+          (lit `";"`)))
+      (node
+        `fn_proto`
         (pos `1`)
-        (pos `2`))
+        (spread `2`))
       _)
     (alt
       _
-      ((ref `fn_extern_proto`)
-        (lit `";"`))
-      (pos `1`)
-      _)
-    (alt
-      _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (group
           opt
           ((lit `"pub"`)))
         (group
           opt
           ((lit `"threadlocal"`)))
-        (ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`)
+        (ref `var_decl_proto`)
         (ref `var_init`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `var_decl`
         (pos `1`)
@@ -1518,19 +1539,15 @@
         (null)
         (pos `3`)
         (null)
-        (pos `4`)
-        (pos `5`)
-        (pos `6`)
-        (pos `7`)
-        (pos `8`)
-        (pos `9`)
-        (pos `10`))
+        (spread `4`)
+        (pos `5`))
       _)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (group
           opt
           ((lit `"pub"`)))
@@ -1538,14 +1555,10 @@
         (group
           opt
           ((lit `"threadlocal"`)))
-        (ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`)
+        (ref `var_decl_proto`)
         (ref `var_init`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `var_decl`
         (pos `1`)
@@ -1554,19 +1567,15 @@
         (null)
         (pos `4`)
         (null)
-        (pos `5`)
-        (pos `6`)
-        (pos `7`)
-        (pos `8`)
-        (pos `9`)
-        (pos `10`)
-        (pos `11`))
+        (spread `5`)
+        (pos `6`))
       _)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (group
           opt
           ((lit `"pub"`)))
@@ -1577,14 +1586,10 @@
         (group
           opt
           ((lit `"threadlocal"`)))
-        (ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`)
+        (ref `var_decl_proto`)
         (ref `var_init`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `var_decl`
         (pos `1`)
@@ -1593,13 +1598,8 @@
         (pos `4`)
         (pos `5`)
         (null)
-        (pos `6`)
-        (pos `7`)
-        (pos `8`)
-        (pos `9`)
-        (pos `10`)
-        (pos `11`)
-        (pos `12`))
+        (spread `6`)
+        (pos `7`))
       _))
   (rule
     (name `test_name`)
@@ -1636,9 +1636,6 @@
       _
       ((group
           opt
-          ((ref `docs`)))
-        (group
-          opt
           ((lit `"pub"`)))
         (group
           opt
@@ -1656,29 +1653,24 @@
           opt
           ((lit `"!"`)))
         (ref `type_expr`))
-      (node
-        `fn_proto`
+      (list
         (pos `1`)
         (pos `2`)
-        (pos `3`)
         (null)
+        (pos `4`)
         (pos `5`)
         (pos `6`)
         (pos `7`)
         (pos `8`)
         (pos `9`)
         (pos `10`)
-        (pos `11`)
-        (pos `12`))
+        (pos `11`))
       _))
   (rule
     (name `fn_extern_proto`)
     (alt
       _
       ((group
-          opt
-          ((ref `docs`)))
-        (group
           opt
           ((lit `"pub"`)))
         (lit `"extern"`)
@@ -1698,20 +1690,18 @@
           opt
           ((lit `"!"`)))
         (ref `type_expr`))
-      (node
-        `fn_proto`
+      (list
         (pos `1`)
         (pos `2`)
         (pos `3`)
-        (pos `4`)
+        (pos `5`)
         (pos `6`)
         (pos `7`)
         (pos `8`)
         (pos `9`)
         (pos `10`)
         (pos `11`)
-        (pos `12`)
-        (pos `13`))
+        (pos `12`))
       _))
   (rule
     (name `fn_proto`)
@@ -1744,6 +1734,24 @@
         (pos `7`)
         (pos `8`)
         (pos `9`))
+      _))
+  (rule
+    (name `var_decl_proto`)
+    (alt
+      _
+      ((ref `var_mut`)
+        (ref `var_name`)
+        (ref `var_type`)
+        (ref `var_align`)
+        (ref `var_addrspace`)
+        (ref `var_section`))
+      (list
+        (pos `1`)
+        (pos `2`)
+        (pos `3`)
+        (pos `4`)
+        (pos `5`)
+        (pos `6`))
       _))
   (rule
     (name `var_mut`)
@@ -1823,9 +1831,10 @@
     (name `container_field`)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (group
           opt
           ((lit `"comptime"`)))
@@ -1850,9 +1859,10 @@
       _)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (ref `type_expr_f`)
         (group
           opt
@@ -1872,9 +1882,10 @@
       _)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (lit `"comptime"`)
         (ref `type_expr_n`)
         (group
@@ -1918,7 +1929,17 @@
     (alt
       _
       ((lit `"nosuspend"`)
-        (ref `block_expr_statement`))
+        (ref `block_expr`))
+      (node
+        `nosuspend`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"nosuspend"`)
+        (ref `assign_c`)
+        (unspanned
+          (lit `";"`)))
       (node
         `nosuspend`
         (pos `2`))
@@ -1926,7 +1947,17 @@
     (alt
       _
       ((lit `"suspend"`)
-        (ref `block_expr_statement`))
+        (ref `block_expr`))
+      (node
+        `suspend`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"suspend"`)
+        (ref `assign_c`)
+        (unspanned
+          (lit `";"`)))
       (node
         `suspend`
         (pos `2`))
@@ -1934,7 +1965,17 @@
     (alt
       _
       ((lit `"defer"`)
-        (ref `block_expr_statement`))
+        (ref `block_expr`))
+      (node
+        `defer`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"defer"`)
+        (ref `assign_c`)
+        (unspanned
+          (lit `";"`)))
       (node
         `defer`
         (pos `2`))
@@ -1942,7 +1983,17 @@
     (alt
       _
       ((lit `"errdefer"`)
-        (ref `block_expr_statement`))
+        (ref `block_expr`))
+      (node
+        `errdefer`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"errdefer"`)
+        (ref `assign_c`)
+        (unspanned
+          (lit `";"`)))
       (node
         `errdefer`
         (pos `2`))
@@ -1954,20 +2005,28 @@
       _)
     (alt
       _
+      ((ref `if_statement_semi`)
+        (lit `";"`))
+      (pos `1`)
+      _)
+    (alt
+      _
       ((ref `labeled_statement`))
       _
       _)
     (alt
       _
-      ((ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`)
+      ((ref `labeled_statement_semi`)
+        (lit `";"`))
+      (pos `1`)
+      _)
+    (alt
+      _
+      ((ref `var_decl_proto`)
         (lit `"="`)
         (ref `expr`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `var_decl`
         (null)
@@ -1976,13 +2035,8 @@
         (null)
         (null)
         (null)
-        (pos `1`)
-        (pos `2`)
-        (pos `3`)
-        (pos `4`)
-        (pos `5`)
-        (pos `6`)
-        (pos `8`))
+        (spread `1`)
+        (pos `3`))
       _)
     (alt
       _
@@ -1995,7 +2049,8 @@
       ((ref `expr_s`)
         (ref `assign_op`)
         (ref `expr`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `assign`
         (pos `2`)
@@ -2007,7 +2062,8 @@
       ((ref `destructure_s`)
         (lit `"="`)
         (ref `expr`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `assign_destructure`
         (null)
@@ -2017,15 +2073,11 @@
     (alt
       _
       ((lit `"comptime"`)
-        (ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`)
+        (ref `var_decl_proto`)
         (lit `"="`)
         (ref `expr`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `var_decl`
         (null)
@@ -2034,19 +2086,15 @@
         (null)
         (null)
         (pos `1`)
-        (pos `2`)
-        (pos `3`)
-        (pos `4`)
-        (pos `5`)
-        (pos `6`)
-        (pos `7`)
-        (pos `9`))
+        (spread `2`)
+        (pos `4`))
       _)
     (alt
       _
       ((lit `"comptime"`)
         (ref `expr_c`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `comptime`
         (pos `2`))
@@ -2057,7 +2105,8 @@
         (ref `expr_c`)
         (ref `assign_op`)
         (ref `expr`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `comptime`
         (node
@@ -2072,7 +2121,8 @@
         (ref `destructure_c`)
         (lit `"="`)
         (ref `expr`)
-        (lit `";"`))
+        (unspanned
+          (lit `";"`)))
       (node
         `assign_destructure`
         (pos `1`)
@@ -2091,45 +2141,8 @@
       _)
     (alt
       _
-      ((lit `"comptime"`)
-        (ref `expr_c`)
-        (lit `";"`))
-      (node
-        `comptime`
-        (pos `2`))
-      _)
-    (alt
-      _
-      ((lit `"comptime"`)
-        (ref `expr_c`)
-        (ref `assign_op`)
-        (ref `expr`)
-        (lit `";"`))
-      (node
-        `comptime`
-        (node
-          `assign`
-          (pos `3`)
-          (pos `2`)
-          (pos `4`)))
-      _)
-    (alt
-      _
-      ((lit `"comptime"`)
-        (ref `destructure_ec`)
-        (lit `"="`)
-        (ref `expr`)
-        (lit `";"`))
-      (node
-        `assign_destructure`
-        (pos `1`)
-        (pos `2`)
-        (pos `4`))
-      _)
-    (alt
-      _
       ((lit `"nosuspend"`)
-        (ref `block_expr_statement`))
+        (ref `block_expr`))
       (node
         `nosuspend`
         (pos `2`))
@@ -2137,7 +2150,7 @@
     (alt
       _
       ((lit `"suspend"`)
-        (ref `block_expr_statement`))
+        (ref `block_expr`))
       (node
         `suspend`
         (pos `2`))
@@ -2151,12 +2164,73 @@
       _
       ((ref `labeled_statement`))
       _
+      _))
+  (rule
+    (name `statement_semi`)
+    (alt
+      _
+      ((lit `"comptime"`)
+        (ref `expr_c`))
+      (node
+        `comptime`
+        (pos `2`))
       _)
     (alt
       _
-      ((ref `assign_s`)
-        (lit `";"`))
-      (pos `1`)
+      ((lit `"comptime"`)
+        (ref `expr_c`)
+        (ref `assign_op`)
+        (ref `expr`))
+      (node
+        `comptime`
+        (node
+          `assign`
+          (pos `3`)
+          (pos `2`)
+          (pos `4`)))
+      _)
+    (alt
+      _
+      ((lit `"comptime"`)
+        (ref `destructure_ec`)
+        (lit `"="`)
+        (ref `expr`))
+      (node
+        `assign_destructure`
+        (pos `1`)
+        (pos `2`)
+        (pos `4`))
+      _)
+    (alt
+      _
+      ((lit `"nosuspend"`)
+        (ref `assign_c`))
+      (node
+        `nosuspend`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"suspend"`)
+        (ref `assign_c`))
+      (node
+        `suspend`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `if_statement_semi`))
+      _
+      _)
+    (alt
+      _
+      ((ref `labeled_statement_semi`))
+      _
+      _)
+    (alt
+      _
+      ((ref `assign_s`))
+      _
       _))
   (rule
     (name `if_statement`)
@@ -2201,7 +2275,27 @@
         (lit `")"`)
         (ref `ptr_payload`)
         (ref `assign_c`)
-        (lit `";"`))
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `statement`))
+      (node
+        `if`
+        (pos `3`)
+        (pos `5`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`))
+      _))
+  (rule
+    (name `if_statement_semi`)
+    (alt
+      _
+      ((lit `"if"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `assign_c`))
       (node
         `if`
         (pos `3`)
@@ -2215,10 +2309,29 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
+        (ref `block_expr`)
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `statement_semi`))
+      (node
+        `if`
+        (pos `3`)
+        (pos `5`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`))
+      _)
+    (alt
+      _
+      ((lit `"if"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
         (ref `assign_c`)
         (lit `"else"`)
         (ref `else_payload`)
-        (ref `statement`))
+        (ref `statement_semi`))
       (node
         `if`
         (pos `3`)
@@ -2255,6 +2368,18 @@
       _
       _))
   (rule
+    (name `labeled_statement_semi`)
+    (alt
+      _
+      ((ref `for_statement_semi`))
+      _
+      _)
+    (alt
+      _
+      ((ref `while_statement_semi`))
+      _
+      _))
+  (rule
     (name `for_statement`)
     (alt
       _
@@ -2265,24 +2390,14 @@
         (group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `block_expr`))
       (node
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`))
+        (spread `4`)
+        (pos `5`))
       _)
     (alt
       _
@@ -2293,16 +2408,7 @@
         (group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `block_expr`)
         (lit `"else"`)
         (ref `statement`))
@@ -2310,10 +2416,9 @@
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`)
-        (pos `12`))
+        (spread `4`)
+        (pos `5`)
+        (pos `7`))
       _)
     (alt
       _
@@ -2324,45 +2429,7 @@
         (group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
-        (ref `assign_c`)
-        (lit `";"`))
-      (node
-        `for`
-        (pos `1`)
-        (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`))
-      _)
-    (alt
-      _
-      ((group
-          opt
-          ((tok `LABEL`)
-            (lit `":"`)))
-        (group
-          opt
-          ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `assign_c`)
         (lit `"else"`)
         (ref `statement`))
@@ -2370,10 +2437,71 @@
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`)
-        (pos `12`))
+        (spread `4`)
+        (pos `5`)
+        (pos `7`))
+      _))
+  (rule
+    (name `for_statement_semi`)
+    (alt
+      _
+      ((group
+          opt
+          ((tok `LABEL`)
+            (lit `":"`)))
+        (group
+          opt
+          ((lit `"inline"`)))
+        (ref `for_prefix`)
+        (ref `assign_c`))
+      (node
+        `for`
+        (pos `1`)
+        (pos `3`)
+        (spread `4`)
+        (pos `5`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((tok `LABEL`)
+            (lit `":"`)))
+        (group
+          opt
+          ((lit `"inline"`)))
+        (ref `for_prefix`)
+        (ref `block_expr`)
+        (lit `"else"`)
+        (ref `statement_semi`))
+      (node
+        `for`
+        (pos `1`)
+        (pos `3`)
+        (spread `4`)
+        (pos `5`)
+        (pos `7`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((tok `LABEL`)
+            (lit `":"`)))
+        (group
+          opt
+          ((lit `"inline"`)))
+        (ref `for_prefix`)
+        (ref `assign_c`)
+        (lit `"else"`)
+        (ref `statement_semi`))
+      (node
+        `for`
+        (pos `1`)
+        (pos `3`)
+        (spread `4`)
+        (pos `5`)
+        (pos `7`))
       _))
   (rule
     (name `while_statement`)
@@ -2448,7 +2576,38 @@
         (ref `ptr_payload`)
         (ref `while_continue_expr`)
         (ref `assign_c`)
-        (lit `";"`))
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `statement`))
+      (node
+        `while`
+        (pos `1`)
+        (pos `3`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`)
+        (pos `10`)
+        (pos `12`)
+        (pos `13`))
+      _))
+  (rule
+    (name `while_statement_semi`)
+    (alt
+      _
+      ((group
+          opt
+          ((tok `LABEL`)
+            (lit `":"`)))
+        (group
+          opt
+          ((lit `"inline"`)))
+        (lit `"while"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `while_continue_expr`)
+        (ref `assign_c`))
       (node
         `while`
         (pos `1`)
@@ -2473,10 +2632,40 @@
         (lit `")"`)
         (ref `ptr_payload`)
         (ref `while_continue_expr`)
+        (ref `block_expr`)
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `statement_semi`))
+      (node
+        `while`
+        (pos `1`)
+        (pos `3`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`)
+        (pos `10`)
+        (pos `12`)
+        (pos `13`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((tok `LABEL`)
+            (lit `":"`)))
+        (group
+          opt
+          ((lit `"inline"`)))
+        (lit `"while"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `while_continue_expr`)
         (ref `assign_c`)
         (lit `"else"`)
         (ref `else_payload`)
-        (ref `statement`))
+        (ref `statement_semi`))
       (node
         `while`
         (pos `1`)
@@ -2489,17 +2678,22 @@
         (pos `13`))
       _))
   (rule
-    (name `block_expr_statement`)
+    (name `for_prefix`)
     (alt
       _
-      ((ref `block_expr`))
-      _
-      _)
-    (alt
-      _
-      ((ref `assign_c`)
-        (lit `";"`))
-      (pos `1`)
+      ((lit `"for"`)
+        (lit `"("`)
+        (list_req
+          `L`
+          (plain `for_item`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`)
+        (ref `ptr_list_payload`))
+      (list
+        (pos `3`)
+        (pos `6`))
       _))
   (rule
     (name `block_expr`)
@@ -2623,12 +2817,7 @@
     (name `destructure_var`)
     (alt
       _
-      ((ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`))
+      ((ref `var_decl_proto`))
       (node
         `var_decl`
         (null)
@@ -2637,12 +2826,7 @@
         (null)
         (null)
         (null)
-        (pos `1`)
-        (pos `2`)
-        (pos `3`)
-        (pos `4`)
-        (pos `5`)
-        (pos `6`)
+        (spread `1`)
         (null))
       _))
   (rule
@@ -4422,24 +4606,14 @@
           opt
           ((tok `LABEL`)
             (lit `":"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `expr`))
       (node
         `for`
         (pos `1`)
         (null)
-        (pos `5`)
-        (pos `8`)
-        (pos `9`))
+        (spread `3`)
+        (pos `4`))
       _)
     (alt
       _
@@ -4447,16 +4621,7 @@
           opt
           ((tok `LABEL`)
             (lit `":"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `expr`)
         (lit `"else"`)
         (ref `expr`))
@@ -4464,10 +4629,9 @@
         `for`
         (pos `1`)
         (null)
-        (pos `5`)
-        (pos `8`)
-        (pos `9`)
-        (pos `11`))
+        (spread `3`)
+        (pos `4`)
+        (pos `6`))
       _)
     (alt
       `>`
@@ -4476,24 +4640,14 @@
           ((tok `LABEL`)
             (lit `":"`)))
         (lit `"inline"`)
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `expr`))
       (node
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`))
+        (spread `4`)
+        (pos `5`))
       _)
     (alt
       _
@@ -4502,16 +4656,7 @@
           ((tok `LABEL`)
             (lit `":"`)))
         (lit `"inline"`)
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `expr`)
         (lit `"else"`)
         (ref `expr`))
@@ -4519,10 +4664,9 @@
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`)
-        (pos `12`))
+        (spread `4`)
+        (pos `5`)
+        (pos `7`))
       _))
   (rule
     (name `while_expr`)
@@ -6763,9 +6907,10 @@
     (name `error_name`)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (tok `IDENTIFIER`))
       (node
         `error_name`
@@ -6972,40 +7117,21 @@
       ((group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `type_expr`))
       (node
         `for`
         (null)
         (pos `1`)
-        (pos `4`)
-        (pos `7`)
-        (pos `8`))
+        (spread `2`)
+        (pos `3`))
       _)
     (alt
       _
       ((group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `type_expr`)
         (lit `"else"`)
         (ref `type_expr`))
@@ -7013,10 +7139,9 @@
         `for`
         (null)
         (pos `1`)
-        (pos `4`)
-        (pos `7`)
-        (pos `8`)
-        (pos `10`))
+        (spread `2`)
+        (pos `3`)
+        (pos `5`))
       _))
   (rule
     (name `labeled_for_type_expr`)
@@ -7027,24 +7152,14 @@
         (group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `type_expr`))
       (node
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`))
+        (spread `4`)
+        (pos `5`))
       _)
     (alt
       _
@@ -7053,16 +7168,7 @@
         (group
           opt
           ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
+        (ref `for_prefix`)
         (ref `type_expr`)
         (lit `"else"`)
         (ref `type_expr`))
@@ -7070,10 +7176,9 @@
         `for`
         (pos `1`)
         (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`)
-        (pos `12`))
+        (spread `4`)
+        (pos `5`)
+        (pos `7`))
       _))
   (rule
     (name `while_type_expr`)
@@ -7494,9 +7599,10 @@
     (name `var_args`)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (lit `"..."`))
       (node
         `param`
@@ -7509,9 +7615,10 @@
     (name `param_decl`)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (group
           opt
           ((ref `param_flag`)))
@@ -7527,9 +7634,10 @@
       _)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (ref `param_type_p`))
       (node
         `param`
@@ -7540,9 +7648,10 @@
       _)
     (alt
       _
-      ((group
-          opt
-          ((ref `docs`)))
+      ((unspanned
+          (group
+            opt
+            ((ref `docs`))))
         (ref `param_flag`)
         (ref `param_type_n`))
       (node

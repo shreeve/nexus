@@ -1,6 +1,6 @@
 (root
   _
-  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@12..26)@0..27
+  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@12..26)@0..26
   (var_decl
     _
     _
@@ -17,15 +17,15 @@
     (comptime
       (block
         `blk`
-        (var_decl _ _ _ _ _ _ `var` `t` (array_type `16` _ `u8`)@70..76 _ _ _ `undefined`)@63..89
+        (var_decl _ _ _ _ _ _ `var` `t` (array_type `16` _ `u8`)@70..76 _ _ _ `undefined`)@63..88
         (for
           _
           _
           ((address_of `t`)@99..101 (for_range `0` _)@103..106)@99..106
           ((capture `*` `v`)@109..111 (capture _ `i`)@113..114)@109..114
           (assign `=` (deref `v`)@116..119 (builtin_call `@intCast` `i`)@122..133)@116..133
-          _)@94..134
-        (break `blk` `t`)@139..151)@52..154)@43..154)@29..155
+          _)@94..133
+        (break `blk` `t`)@139..151)@52..154)@43..154)@29..154
   (fn_decl
     (fn_proto
       _
@@ -42,14 +42,14 @@
       `u32`)@157..193
     (block
       _
-      (var_decl _ _ _ _ _ `comptime` `var` `total` `u32` _ _ _ `0`)@200..228
+      (var_decl _ _ _ _ _ `comptime` `var` `total` `u32` _ _ _ `0`)@200..227
       (for
         _
         `inline`
         (`xs`)@245..247
         ((capture _ `x`)@250..251)@250..251
         (assign `+=` `total` `x`)@253..263
-        _)@233..264
+        _)@233..263
       (return `total`)@269..281)@194..284)@157..284
   (test_decl
     _
@@ -64,12 +64,12 @@
               `==`
               (call `sum` (address_of (array_init _ `1` `2` `3`)@338..350)@337..350)@333..351
               `6`)@333..356)@316..357)@306..364)@297..364
-      (var_decl _ _ _ _ _ `comptime` `var` `i` _ _ _ _ `0`)@369..388
-      (comptime (assign `+=` `i` `1`)@402..408)@393..409
+      (var_decl _ _ _ _ _ `comptime` `var` `i` _ _ _ _ `0`)@369..387
+      (comptime (assign `+=` `i` `1`)@402..408)@393..408
       (comptime
         (call
           (field_access (field_access `std` `debug`)@423..432 `assert`)@423..439
-          (binary `==` `i` `1`)@440..446)@423..447)@414..448
+          (binary `==` `i` `1`)@440..446)@423..447)@414..447
       (var_decl
         _
         _
@@ -83,11 +83,11 @@
         _
         _
         _
-        (comptime (if `true` _ `u8` _ `u16`)@472..493)@463..493)@453..494
-      (assign `=` `_` `T`)@499..505
+        (comptime (if `true` _ `u8` _ `u16`)@472..493)@463..493)@453..493
+      (assign `=` `_` `T`)@499..504
       (assign_destructure
         `comptime`
         ((var_decl _ _ _ _ _ _ `var` `a` `u8` _ _ _ _)@519..528
           (var_decl _ _ _ _ _ _ `var` `b` `u8` _ _ _ _)@530..539)@519..539
-        (array_init _ `1` `2`)@542..551)@510..552
-      (assign_destructure _ (`a` `b`)@557..561 (array_init _ `b` `a`)@564..573)@557..574)@291..576)@286..576)@0..576
+        (array_init _ `1` `2`)@542..551)@510..551
+      (assign_destructure _ (`a` `b`)@557..561 (array_init _ `b` `a`)@564..573)@557..573)@291..576)@286..576)@0..576

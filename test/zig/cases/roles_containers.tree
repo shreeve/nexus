@@ -21,8 +21,8 @@
       _
       _
       (`//! S's doc`)@246..257
-      (container_field (`/// x's doc`)@262..273 `comptime` `x` `u32` `4` `1`)@262..306
-      (container_field _ _ _ `u8` _ _)@312..314)@226..317)@216..318
+      (container_field (`/// x's doc`)@262..273 `comptime` `x` `u32` `4` `1`)@278..306
+      (container_field _ _ _ `u8` _ _)@312..314)@226..317)@216..317
   (var_decl
     _
     _
@@ -42,7 +42,7 @@
       `enum`
       `u8`
       (`//! U's doc`)@358..369
-      (container_field _ _ `a` `u8` _ _)@374..379)@329..382)@319..383
+      (container_field _ _ `a` `u8` _ _)@374..379)@329..382)@319..382
   (var_decl
     _
     _
@@ -56,4 +56,4 @@
     _
     _
     _
-    (container_decl _ `enum` _ `u8` (`//! an empty container`)@409..431)@394..433)@384..434)@0..434
+    (container_decl _ `enum` _ `u8` (`//! an empty container`)@409..431)@394..433)@384..433)@0..434

@@ -9,20 +9,13 @@
 //! node, as `role: value`, where a value is a node `kind start..end`, a
 //! leaf `text@start`, a tag, or `[` for a group, whose items follow as
 //! `- value`. Nil children and empty groups are not printed; the root has
-//! no span. The Nexus side prints its tree as it is, with two span rules;
-//! the std side maps each Ast node to its kind and roles with Ast's full*
-//! helpers and the tokens around the node. The rules, each a difference in
+//! no span. The Nexus side prints its tree as it is: the grammar's span
+//! marks leave a statement's `;` and a declaration's, field's or
+//! parameter's doc comments out of its node's span, as Ast does. The std
+//! side maps each Ast node to its kind and roles with Ast's full* helpers
+//! and the tokens around the node. The rules, each a difference in
 //! representation:
 //!
-//!   Nexus spans
-//!     S1  a node's span does not end with a `;`: Ast ends a declaration
-//!         or statement at its last child and leaves the `;` out; Nexus
-//!         spans the reduction, which takes it in.
-//!     S2  a node's span does not start with a doc comment: Ast starts a
-//!         declaration, field or parameter after its doc comments, which
-//!         are tokens, not nodes; Nexus keeps them, in the `doc` role, so
-//!         they are part of the reduction.
-//!   Ast tree
 //!     T1  the kinds Ast has no node for are made from its tokens and
 //!         helpers: `param` (FnProto.iterate: first token after the doc
 //!         comments to the type or `anytype`/`...`), `capture` (`*`? name),
@@ -204,44 +197,10 @@ fn writeAtom(w: *Io.Writer, text: []const u8) !void {
 }
 
 // -----------------------------------------------------------------------------
-// Tokens: span rules S1 and S2, by Ast's token list (the same tokens as the
-// Nexus lexer's, which test/zig/compare-tokens checks)
-// -----------------------------------------------------------------------------
-
-const Tokens = struct {
-    starts: []const u32,
-    tags: []const std.zig.Token.Tag,
-    tree: *const Ast,
-
-    /// The index of the token that starts at `pos`.
-    fn at(t: Tokens, pos: u32) usize {
-        var lo: usize = 0;
-        var hi: usize = t.starts.len;
-        while (lo < hi) {
-            const mid = (lo + hi) / 2;
-            if (t.starts[mid] < pos) lo = mid + 1 else hi = mid;
-        }
-        return lo;
-    }
-
-    fn end(t: Tokens, i: usize) u32 {
-        return t.starts[i] + @as(u32, @intCast(t.tree.tokenSlice(@intCast(i)).len));
-    }
-
-    fn trim(t: Tokens, span: parser.Span) [2]u32 {
-        var first = t.at(span.start);
-        while (t.tags[first] == .doc_comment) first += 1; // S2
-        var last = t.at(span.end) - 1;
-        if (t.tags[last] == .semicolon) last -= 1; // S1
-        return .{ t.starts[first], t.end(last) };
-    }
-};
-
-// -----------------------------------------------------------------------------
 // The Nexus side: the tree as it is
 // -----------------------------------------------------------------------------
 
-fn fromSexp(a: Allocator, p: *parser.Parser, toks: Tokens, s: Sexp) !Item {
+fn fromSexp(a: Allocator, p: *parser.Parser, s: Sexp) !Item {
     switch (s) {
         .nil => return .nil,
         .src => |l| return .{ .leaf = .{ .pos = l.pos, .len = l.len } },
@@ -251,20 +210,23 @@ fn fromSexp(a: Allocator, p: *parser.Parser, toks: Tokens, s: Sexp) !Item {
             const items = s.items();
             const kind = s.kind() orelse {
                 const g = try a.alloc(Item, items.len);
-                for (items, g) |x, *y| y.* = try fromSexp(a, p, toks, x);
+                for (items, g) |x, *y| y.* = try fromSexp(a, p, x);
                 return .{ .group = g };
             };
             const k = info(kind);
             const n = try a.create(Node);
             n.* = .{
                 .kind = kind,
-                .span = if (kind == .root) null else toks.trim(p.span(s)),
+                .span = if (kind == .root) null else span: {
+                    const sp = p.span(s);
+                    break :span .{ sp.start, sp.end };
+                },
                 .slots = try a.alloc(Item, k.slots.len),
             };
-            for (n.slots, 0..) |*y, i| y.* = if (1 + i < items.len) try fromSexp(a, p, toks, items[1 + i]) else .nil;
+            for (n.slots, 0..) |*y, i| y.* = if (1 + i < items.len) try fromSexp(a, p, items[1 + i]) else .nil;
             if (items.len > 1 + k.slots.len) {
                 const r = try a.alloc(Item, items.len - 1 - k.slots.len);
-                for (items[1 + k.slots.len ..], r) |x, *y| y.* = try fromSexp(a, p, toks, x);
+                for (items[1 + k.slots.len ..], r) |x, *y| y.* = try fromSexp(a, p, x);
                 n.rest = r;
             }
             return .{ .node = n };
@@ -1048,8 +1010,7 @@ pub fn compare(
         else => |e| return e,
     };
 
-    const toks: Tokens = .{ .starts = tree.tokens.items(.start), .tags = tree.tokens.items(.tag), .tree = &tree };
-    const mine = try fromSexp(a, p, toks, root);
+    const mine = try fromSexp(a, p, root);
     var conv: Conv = .{ .a = a, .tree = &tree };
     const theirs = try conv.convert(.root);
 

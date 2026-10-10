@@ -30,7 +30,7 @@ fn expectSameTree(src: [:0]const u8) !void {
     }
 }
 
-test "declarations, containers, fields, doc comments (S2)" {
+test "declarations, containers, fields, doc comments" {
     try expectSameTree(
         \\//! A file.
         \\//! Its doc.
@@ -77,7 +77,7 @@ test "declarations, containers, fields, doc comments (S2)" {
     );
 }
 
-test "statements, `;` (S1), destructures (T3), labels (T5)" {
+test "statements, `;`, destructures (T3), labels (T5)" {
     try expectSameTree(
         \\fn f() void {
         \\    var x: u32 = 0;

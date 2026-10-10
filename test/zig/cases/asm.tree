@@ -34,7 +34,7 @@
       _
       (asm `volatile` `"nop"` _)@271..291
       (asm `volatile` `""` (struct_init _ (field_init `memory` `true`)@321..335)@318..337)@297..338
-      (var_decl _ _ _ _ _ _ `var` `x` `u32` _ _ _ `0`)@344..359
+      (var_decl _ _ _ _ _ _ `var` `x` `u32` _ _ _ `0`)@344..358
       (asm
         _
         `"mov %[a], %[out]"`

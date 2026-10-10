@@ -431,8 +431,8 @@ tokens
     shift jump → "break" break_label  4  # `break :blk - x`: the operand of a labeled break is parseExpr, which a prefix operator starts
     shift jump → "continue"  4  # `continue - x`: the operand of continue is parseExpr, which a prefix operator starts
     shift jump → "continue" break_label  4  # `continue :blk - x`: the operand of a labeled continue is parseExpr, which a prefix operator starts
-    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
-    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce for_expr → for_prefix bool_or_expr over for_expr → "inline" for_prefix bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce for_expr → for_prefix bool_or_expr "else" bool_or_expr over for_expr → "inline" for_prefix bool_or_expr "else" bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
     reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
     reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
 
@@ -525,6 +525,7 @@ tokens
     assign_expr: "an assignment", assign_s: "an assignment",
     assign_c: "an assignment", single_assign_expr: "an assignment",
     block_statement: "a statement", statement: "a statement",
+    statement_semi: "a statement",
     block_expr: "a block", container_decl: "a declaration",
     container_field: "a container field", param_decl: "a parameter",
     field_init: "a field initializer", switch_prong: "a switch prong"
@@ -570,36 +571,44 @@ fields              = container_field ","                   → (1)
 rest                = fields container_decl                 → (...1 2)
                     | rest container_decl                   → (...1 2)
 
+# The doc comments of a declaration, field, parameter or error name: a
+# role of its node, but left out of its span (`-[docs]`), which starts
+# after them, as Ast's does.
 docs                = DOC_COMMENT+
 
 # A declaration. A function without a body is its prototype (Ast's
-# fn_proto at the top level); `extern` takes none. The optional parts
-# after a name are rules that may be empty: each starts with its own
-# keyword, so the next token decides.
+# fn_proto at the top level); `extern` takes none. The head of a function
+# and of a variable (grammar.peg FnProto, VarDeclProto) is a rule of its
+# own, spread into the roles of the node. The optional parts after a name
+# are rules that may be empty: each starts with its own keyword, so the
+# next token decides. Ast ends a declaration before its `;` (`-";"`).
 container_decl      = "test" [test_name] block                              → (test_decl 2 3)
                     | "comptime" block                                      → (comptime 2)
-                    | fn_decl_proto ";"                                     → 1
-                    | fn_decl_proto block                                   → (fn_decl 1 2)
-                    | fn_extern_proto ";"                                   → 1
-                    | [docs] ["pub"] ["threadlocal"] var_mut var_name var_type var_align var_addrspace var_section var_init ";"
-                                                                            → (var_decl 1 2 _ _ 3 _ 4 5 6 7 8 9 10)
-                    | [docs] ["pub"] "export" ["threadlocal"] var_mut var_name var_type var_align var_addrspace var_section var_init ";"
-                                                                            → (var_decl 1 2 3 _ 4 _ 5 6 7 8 9 10 11)
-                    | [docs] ["pub"] "extern" [STRING_LITERAL] ["threadlocal"] var_mut var_name var_type var_align var_addrspace var_section var_init ";"
-                                                                            → (var_decl 1 2 3 4 5 _ 6 7 8 9 10 11 12)
+                    | -[docs] fn_decl_proto -";"                            → (fn_proto 1 ...2)
+                    | -[docs] fn_decl_proto block                           → (fn_decl (fn_proto 1 ...2) 3)
+                    | -[docs] fn_extern_proto -";"                          → (fn_proto 1 ...2)
+                    | -[docs] ["pub"] ["threadlocal"] var_decl_proto var_init -";"
+                                                                            → (var_decl 1 2 _ _ 3 _ ...4 5)
+                    | -[docs] ["pub"] "export" ["threadlocal"] var_decl_proto var_init -";"
+                                                                            → (var_decl 1 2 3 _ 4 _ ...5 6)
+                    | -[docs] ["pub"] "extern" [STRING_LITERAL] ["threadlocal"] var_decl_proto var_init -";"
+                                                                            → (var_decl 1 2 3 4 5 _ ...6 7)
 
 test_name           = STRING_LITERAL | IDENTIFIER
 fn_prefix           = "export" | "inline" | "noinline"
 
-fn_decl_proto       = [docs] ["pub"] [fn_prefix] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
-                                                                            → (fn_proto 1 2 3 _ 5 6 7 8 9 10 11 12)
-fn_extern_proto     = [docs] ["pub"] "extern" [STRING_LITERAL] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
-                                                                            → (fn_proto 1 2 3 4 6 7 8 9 10 11 12 13)
+fn_decl_proto       = ["pub"] [fn_prefix] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (1 2 _ 4 5 6 7 8 9 10 11)
+fn_extern_proto     = ["pub"] "extern" [STRING_LITERAL] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
+                                                                            → (1 2 3 5 6 7 8 9 10 11 12)
 
 # fn name? (params) align? addrspace? linksection? callconv? !? ReturnType
 fn_proto            = "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
                                                                             → (fn_proto _ _ _ _ 2 3 4 5 6 7 8 9)
 
+# const|var name (: Type)? align? addrspace? linksection?
+var_decl_proto      = var_mut var_name var_type var_align var_addrspace var_section
+                                                                            → (1 2 3 4 5 6)
 var_mut             = "const" | "var"
 var_name            = IDENTIFIER | LABEL
 var_type            =
@@ -620,10 +629,10 @@ fn_callconv         =
 # neither (type_expr_f: no `comptime`, no `fn`, which starts a declaration,
 # and no label); `extern` and `inline` start a field only before a
 # container keyword, resp. `for` or `while` (the next token decides).
-container_field     = [docs] ["comptime"] field_name ":" type_expr [byte_align] ["=" expr]
+container_field     = -[docs] ["comptime"] field_name ":" type_expr [byte_align] ["=" expr]
                                                                             → (container_field 1 2 3 5 6 8)
-                    | [docs] type_expr_f [byte_align] ["=" expr]            → (container_field 1 _ _ 2 3 5)
-                    | [docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 1 2 _ 3 4 6)
+                    | -[docs] type_expr_f [byte_align] ["=" expr]           → (container_field 1 _ _ 2 3 5)
+                    | -[docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 1 2 _ 3 4 6)
 
 field_name          = IDENTIFIER | LABEL
 
@@ -646,71 +655,103 @@ field_name          = IDENTIFIER | LABEL
 # a destructure may mix declarations and assignable expressions. A
 # `comptime` before a declaration or a destructure is its flag; before an
 # assignment or an expression, a `comptime` node (Parse.zig
-# expectVarAssignStatement).
+# expectVarAssignStatement). Ast ends a statement at its last child, so a
+# statement's `;` is left out of the span of its node (`-";"`), and a
+# statement whose last part is itself a statement ending in `;`
+# (statement_semi: `if (a) b else c;`) takes the `;` here, at the top.
 block_statement     = "comptime" block_expr                         → (comptime 2)
-                    | "nosuspend" block_expr_statement              → (nosuspend 2)
-                    | "suspend" block_expr_statement                → (suspend 2)
-                    | "defer" block_expr_statement                  → (defer 2)
-                    | "errdefer" block_expr_statement               → (errdefer 2)
+                    | "nosuspend" block_expr                        → (nosuspend 2)
+                    | "nosuspend" assign_c -";"                     → (nosuspend 2)
+                    | "suspend" block_expr                          → (suspend 2)
+                    | "suspend" assign_c -";"                       → (suspend 2)
+                    | "defer" block_expr                            → (defer 2)
+                    | "defer" assign_c -";"                         → (defer 2)
+                    | "errdefer" block_expr                         → (errdefer 2)
+                    | "errdefer" assign_c -";"                      → (errdefer 2)
                     | if_statement
+                    | if_statement_semi ";"                         → 1
                     | labeled_statement
-                    | var_mut var_name var_type var_align var_addrspace var_section "=" expr ";"
-                                                                    → (var_decl _ _ _ _ _ _ 1 2 3 4 5 6 8)
+                    | labeled_statement_semi ";"                    → 1
+                    | var_decl_proto "=" expr -";"                  → (var_decl _ _ _ _ _ _ ...1 3)
                     | expr_s ";"                                    → 1
-                    | expr_s assign_op expr ";"                     → (assign 2 1 3)
-                    | destructure_s "=" expr ";"                    → (assign_destructure _ 1 3)
-                    | "comptime" var_mut var_name var_type var_align var_addrspace var_section "=" expr ";"
-                                                                    → (var_decl _ _ _ _ _ 1 2 3 4 5 6 7 9)
-                    | "comptime" expr_c ";"                         → (comptime 2)
-                    | "comptime" expr_c assign_op expr ";"          → (comptime (assign 3 2 4))
-                    | "comptime" destructure_c "=" expr ";"         → (assign_destructure 1 2 4)
+                    | expr_s assign_op expr -";"                    → (assign 2 1 3)
+                    | destructure_s "=" expr -";"                   → (assign_destructure _ 1 3)
+                    | "comptime" var_decl_proto "=" expr -";"       → (var_decl _ _ _ _ _ 1 ...2 4)
+                    | "comptime" expr_c -";"                        → (comptime 2)
+                    | "comptime" expr_c assign_op expr -";"         → (comptime (assign 3 2 4))
+                    | "comptime" destructure_c "=" expr -";"        → (assign_destructure 1 2 4)
 
 # A statement after `else` (Parse.zig expectStatement(false)): no
-# declaration, no `defer` or `errdefer`.
+# declaration, no `defer` or `errdefer`. One that ends in `;`
+# (statement_semi) leaves the `;` to the block statement that holds it.
 statement           = "comptime" block_expr                         → (comptime 2)
-                    | "comptime" expr_c ";"                         → (comptime 2)
-                    | "comptime" expr_c assign_op expr ";"          → (comptime (assign 3 2 4))
-                    | "comptime" destructure_ec "=" expr ";"        → (assign_destructure 1 2 4)
-                    | "nosuspend" block_expr_statement              → (nosuspend 2)
-                    | "suspend" block_expr_statement                → (suspend 2)
+                    | "nosuspend" block_expr                        → (nosuspend 2)
+                    | "suspend" block_expr                          → (suspend 2)
                     | if_statement
                     | labeled_statement
-                    | assign_s ";"                                  → 1
+statement_semi      = "comptime" expr_c                             → (comptime 2)
+                    | "comptime" expr_c assign_op expr              → (comptime (assign 3 2 4))
+                    | "comptime" destructure_ec "=" expr            → (assign_destructure 1 2 4)
+                    | "nosuspend" assign_c                          → (nosuspend 2)
+                    | "suspend" assign_c                            → (suspend 2)
+                    | if_statement_semi
+                    | labeled_statement_semi
+                    | assign_s
 
 # if, for and while statements (Parse.zig expectIfStatement,
 # parseForStatement, parseWhileStatement): a block body may take `else`;
 # an assignment body ends in `;`, or takes `else`, which it then needs.
-if_statement        = "if" "(" expr ")" ptr_payload block_expr                                  → (if 3 5 6)
-                    | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement    → (if 3 5 6 8 9)
-                    | "if" "(" expr ")" ptr_payload assign_c ";"                                → (if 3 5 6)
-                    | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement      → (if 3 5 6 8 9)
+# The forms that end in a block, directly or in their `else` statement,
+# are the `_statement` rules; those that end in an assignment, and so in
+# `;`, are the `_statement_semi` rules, which leave the `;` out.
+if_statement        = "if" "(" expr ")" ptr_payload block_expr                          → (if 3 5 6)
+                    | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement
+                                                                                        → (if 3 5 6 8 9)
+                    | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement
+                                                                                        → (if 3 5 6 8 9)
+if_statement_semi   = "if" "(" expr ")" ptr_payload assign_c                            → (if 3 5 6)
+                    | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement_semi
+                                                                                        → (if 3 5 6 8 9)
+                    | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement_semi
+                                                                                        → (if 3 5 6 8 9)
 
 labeled_statement   = block_expr
                     | for_statement
                     | while_statement
                     | switch_expr
                     | labeled_switch
+labeled_statement_semi = for_statement_semi
+                    | while_statement_semi
 
-for_statement       = [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload block_expr
-                                                                                        → (for 1 3 6 9 10)
-                    | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload block_expr "else" statement
-                                                                                        → (for 1 3 6 9 10 12)
-                    | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload assign_c ";"
-                                                                                        → (for 1 3 6 9 10)
-                    | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload assign_c "else" statement
-                                                                                        → (for 1 3 6 9 10 12)
+for_statement       = [LABEL ":"] ["inline"] for_prefix block_expr                      → (for 1 3 ...4 5)
+                    | [LABEL ":"] ["inline"] for_prefix block_expr "else" statement     → (for 1 3 ...4 5 7)
+                    | [LABEL ":"] ["inline"] for_prefix assign_c "else" statement       → (for 1 3 ...4 5 7)
+for_statement_semi  = [LABEL ":"] ["inline"] for_prefix assign_c                        → (for 1 3 ...4 5)
+                    | [LABEL ":"] ["inline"] for_prefix block_expr "else" statement_semi
+                                                                                        → (for 1 3 ...4 5 7)
+                    | [LABEL ":"] ["inline"] for_prefix assign_c "else" statement_semi  → (for 1 3 ...4 5 7)
 
 while_statement     = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr
                                                                                         → (while 1 3 6 8 9 10)
                     | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement
                                                                                         → (while 1 3 6 8 9 10 12 13)
-                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c ";"
-                                                                                        → (while 1 3 6 8 9 10)
                     | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement
                                                                                         → (while 1 3 6 8 9 10 12 13)
+while_statement_semi = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c
+                                                                                        → (while 1 3 6 8 9 10)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement_semi
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement_semi
+                                                                                        → (while 1 3 6 8 9 10 12 13)
 
-block_expr_statement = block_expr
-                    | assign_c ";"                                  → 1
+# The head of a for (grammar.peg ForPrefix), which its statement,
+# expression and type forms share, spread into the roles of the node.
+# if and while write theirs out (IfPrefix, WhilePrefix): they end in parts
+# that may be absent, so as a rule of their own the state after the `)`
+# would serve every form and a syntax error there would list every token
+# any form takes; written out, it names what that form waits for
+# (`expected a block, an assignment or '|'`).
+for_prefix          = "for" "(" L(for_item) !","? ")" ptr_list_payload      → (3 6)
 
 # A block, with or without a label (grammar.peg BlockExpr, Block).
 block_expr          = block | labeled_block
@@ -727,8 +768,7 @@ destructure_c       = destructure_head_c "," destructure_item       → (1 3)
 destructure_head_s  = destructure_var | expr_s
 destructure_head_c  = destructure_var | expr_c
 destructure_item    = destructure_var | expr
-destructure_var     = var_mut var_name var_type var_align var_addrspace var_section
-                                                                    → (var_decl _ _ _ _ _ _ 1 2 3 4 5 6 _)
+destructure_var     = var_decl_proto                                → (var_decl _ _ _ _ _ _ ...1 _)
 
 # ==============================================================================
 # EXPRESSION LEVEL (grammar.peg AssignExpr ... SwitchExpr; Parse.zig
@@ -978,10 +1018,10 @@ open_expr   = jump_open
 if_expr     = "if" "(" expr ")" ptr_payload expr  >                                     → (if 3 5 6)
             | "if" "(" expr ")" ptr_payload expr "else" else_payload expr               → (if 3 5 6 8 9)
 
-for_expr    = [LABEL ":"] "for" "(" L(for_item) !","? ")" ptr_list_payload expr  >                      → (for 1 _ 5 8 9)
-            | [LABEL ":"] "for" "(" L(for_item) !","? ")" ptr_list_payload expr "else" expr             → (for 1 _ 5 8 9 11)
-            | [LABEL ":"] "inline" "for" "(" L(for_item) !","? ")" ptr_list_payload expr  >             → (for 1 3 6 9 10)
-            | [LABEL ":"] "inline" "for" "(" L(for_item) !","? ")" ptr_list_payload expr "else" expr    → (for 1 3 6 9 10 12)
+for_expr    = [LABEL ":"] for_prefix expr  >                                            → (for 1 _ ...3 4)
+            | [LABEL ":"] for_prefix expr "else" expr                                   → (for 1 _ ...3 4 6)
+            | [LABEL ":"] "inline" for_prefix expr  >                                   → (for 1 3 ...4 5)
+            | [LABEL ":"] "inline" for_prefix expr "else" expr                          → (for 1 3 ...4 5 7)
 
 while_expr  = [LABEL ":"] "while" "(" expr ")" ptr_payload while_continue_expr expr  >                          → (while 1 _ 5 7 8 9)
             | [LABEL ":"] "while" "(" expr ")" ptr_payload while_continue_expr expr "else" else_payload expr    → (while 1 _ 5 7 8 9 11 12)
@@ -1196,7 +1236,7 @@ atom        = IDENTIFIER
             | "anyframe"                                                → 1
             | container_type
 
-error_name  = [docs] IDENTIFIER                                         → (error_name 1 2)
+error_name  = -[docs] IDENTIFIER                                        → (error_name 1 2)
 
 # Container types (Parse.zig expectContainerDeclAuto). The wrapper names
 # the `enum` of `union(enum` ENUM_TAG: Parse.zig takes it as the tag kind
@@ -1221,11 +1261,10 @@ container_arg_kind = "struct" | "enum"
 if_type_expr    = "if" "(" expr ")" ptr_payload type_expr  >                            → (if 3 5 6)
                 | "if" "(" expr ")" ptr_payload type_expr "else" else_payload type_expr → (if 3 5 6 8 9)
 
-for_type_expr   = ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >                  → (for _ 1 4 7 8)
-                | ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr    → (for _ 1 4 7 8 10)
-labeled_for_type_expr = LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >  → (for 1 3 6 9 10)
-                | LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr
-                                                                                                            → (for 1 3 6 9 10 12)
+for_type_expr   = ["inline"] for_prefix type_expr  >                                    → (for _ 1 ...2 3)
+                | ["inline"] for_prefix type_expr "else" type_expr                      → (for _ 1 ...2 3 5)
+labeled_for_type_expr = LABEL ":" ["inline"] for_prefix type_expr  >                    → (for 1 3 ...4 5)
+                | LABEL ":" ["inline"] for_prefix type_expr "else" type_expr            → (for 1 3 ...4 5 7)
 
 while_type_expr         = ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr  >  → (while _ 1 4 6 7 8)
                         | ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr "else" else_payload type_expr
@@ -1286,11 +1325,11 @@ param_decl_list     = "(" ")"                                               → 
                     | "(" L(param_decl) "," var_args !","? ")"              → (...2 4)
                     | "(" var_args !","? ")"                                → (2)
 
-var_args            = [docs] "..."                                          → (param 1 _ _ 2)
+var_args            = -[docs] "..."                                         → (param 1 _ _ 2)
 
-param_decl          = [docs] [param_flag] param_name ":" param_type         → (param 1 2 3 5)
-                    | [docs] param_type_p                                   → (param 1 _ _ 2)
-                    | [docs] param_flag param_type_n                        → (param 1 2 _ 3)
+param_decl          = -[docs] [param_flag] param_name ":" param_type        → (param 1 2 3 5)
+                    | -[docs] param_type_p                                  → (param 1 _ _ 2)
+                    | -[docs] param_flag param_type_n                       → (param 1 2 _ 3)
 
 param_flag          = "comptime" | "noalias"
 param_name          = IDENTIFIER | LABEL
