@@ -13,7 +13,8 @@
 #   * turns indentation into INDENT / OUTDENT / NEWLINE, and joins lines
 #     inside ( ) and [ ] (a newline there is plain whitespace), except in
 #     a closure body that starts below its bar list, which is laid out in
-#     blocks as anywhere else;
+#     blocks as anywhere else and ends with the bracket around it on a
+#     line of its own;
 #   * classifies keywords (every keyword is reserved, but reads as a name
 #     where it names a member or a builtin: after `.` or `@`, before `:`
 #     inside ( ), and in a member list before `:` or after `fun` /
@@ -29,8 +30,6 @@
 #     state, by position, never by spacing:
 #
 #       |+a, b|  ||  *|a|            closure bar list (vs bitwise `|`)
-#       -x                           a drop, as a whole statement (vs
-#                                    negation)
 #       ?? return                    `??` before a jump (vs the operator)
 #       while c : i += 1             a `while` step (vs a label's `:`)
 #       a if c else b                ternary vs postfix guard `stmt if c`
@@ -38,7 +37,9 @@
 #     A character that both starts and continues an operand (`-x` and
 #     `a - b`, `f(x)` and `(x)`, `T?` and `?T`) is one token: the parser
 #     tells the forms apart by where it stands. The rewriter only
-#     checks that a prefix sigil touches its operand.
+#     checks the spacing: a prefix sigil touches its operand, a postfix
+#     what it follows, and an infix operator has the same spacing on
+#     both sides.
 #
 # The grammar has no LALR conflicts; see docs/INTERNALS.md (Conflicts policy).
 # ==============================================================================
@@ -166,7 +167,6 @@ tokens
     bar_capture     # |   closure bar list delimiter: `|+a, b|`
     bar_empty       # ||  an empty closure bar list: `|| print(1)`
     kwarg_name      # name directly followed by `:` inside ( )
-    drop_stmt       # -x  drop, as a whole statement
     of              # of  after a value inside [ ]: a fill literal `[n of x]`
     unique          # unique  after a struct header's name or `]`: the struct is unique
     from            # from  after a function's result type: what the result views
@@ -316,7 +316,7 @@ tokens
 
     # Bindings: `op` is the binding kind (see BindingKind in src/rig.zig)
     set                         op:tag(fixed|shadow|shadow_fixed|"+="|"-="|"*="|"/="|"%="|"+%="|"-%="|"*%="|"&="|"|="|"^="|"<<="|">>=")? target type? value
-    drop                        name:leaf
+    drop                        target @wrapper  # a name, or the (move e) whose value is dropped
     pass
 
     # Control flow
@@ -381,7 +381,7 @@ tokens
     NEWLINE: "the end of the line", INDENT: "an indented block"
     OUTDENT: "the end of the block"
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
-    KWARG_NAME: "a keyword argument", DROP_STMT: "`-`"
+    KWARG_NAME: "a keyword argument"
     OF: "`of`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
     DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
@@ -435,7 +435,9 @@ stmt     = use
          | simple POST_IF cond:value                → (if then:(block 1))
 
 # A simple statement: an expression, a binding, `pass`, or a flow statement. Only these take a postfix guard (`return x if done`).
-# A compound assignment's `op` is the tag its operator names (`+=`).
+# A compound assignment's `op` is the tag its operator names (`+=`). A
+# statement `<e` parses as the expression; the Parser wrapper makes it
+# `(drop ...)` where its value is not used.
 simple   = tail
          | assign
          | target:name ":" type:type "=" value:tail → (set)
@@ -445,7 +447,6 @@ simple   = tail
          | NEW target:name ":" type:type "=" value:tail → (set op:shadow)
          | NEW CONST target:name "=" value:tail     → (set op:shadow_fixed)
          | NEW CONST target:name ":" type:type "=" value:tail → (set op:shadow_fixed)
-         | DROP_STMT name:name                      → (drop)
          | PASS                                     → (pass)
          | RETURN [value:tail]                      → (return)
          | BREAK [":" label:name] [value:tail]      → (break)
@@ -786,9 +787,10 @@ patatom  = name
 
 pqual    = object:name "." name:name                → (member)
 
-# A payload field is bound by position (`.rect(w, h)`) or, reserved for
-# the checker to reject, by name (`.rect(w: a)`). Written out rather
-# than `L(pbind)`, which conflicts with a trailing comma.
+# A payload field is bound by position (`.rect(w, h)`) or by name
+# (`.rect(w: a)`); the checker rejects a pattern that mixes the two.
+# Written out rather than `L(pbind)`, which conflicts with a trailing
+# comma.
 pbinds   = pbind                                    → (1)
          | pbinds "," pbind                         → (...1 3)
 

@@ -404,10 +404,13 @@
   (lang `"mumps"`)
   (manifest
     (conflict `shift` `deviceparam → expr` _ `1` `# USE dev:(x): the parentheses group an expression, the same value as a one-parameter list`)
+    (conflict `shift` `expr → atom exprtail+` _ `1` `# [ after a JOB entry reference's offset (J A+1[E]) continues the offset: "contains"`)
     (conflict `shift` `patatom → repcount IDENT+` _ `1` `# pattern code letters after a repeat count run as far as they go`)
     (conflict `shift` `lvn → IDENT` _ `1` `# name= after USE dev: is a keyword device parameter`)
     (conflict `shift` `rgvn → "^" "|" expr "|" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
     (conflict `shift` `rgvn → "^" "|" expr "," expr "|" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
+    (conflict `shift` `rgvn → "^" "[" envexpr "]" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
+    (conflict `shift` `rgvn → "^" "[" envexpr "," envexpr "]" IDENT` _ `1` `# ( after an extended global name starts its subscripts`)
     (conflict `shift` `extrinsicref → "@" xatom` _ `2` `# ( after $$@X starts its actual list`)
     (conflict `shift` `extrinsicref → "@" xatom "^" routineref` _ `1` `# ( after $$@X^RTN starts its actual list`)
     (conflict `reduce` `actual? → ε` `L(actual?)? → ε` `4` `# an empty () argument list holds one absent actual`))
@@ -415,7 +418,6 @@
     `ident`
     _
     (as_entry _ `fn` _)
-    (as_entry _ `sv` _)
     (as_entry _ `isv` _)
     (as_entry _ `ssvn` _)
     (as_entry _ `self` _)
@@ -448,7 +450,6 @@
     (name_pair `JUSTIFY` `"a function name"`)
     (name_pair `INCREMENT` `"a function name"`)
     (name_pair `ISV` `"a special variable name"`)
-    (name_pair `SV` `"a special variable name"`)
     (name_pair `SSVN` `"a structured system variable name"`)
     (name_pair `SET` `"a command"`)
     (name_pair `NEW` `"a command"`)
@@ -739,7 +740,11 @@
           `params`
           (type `jobparams`)
           opt)
-        (role _ `env` _ opt))
+        (role
+          _
+          `env`
+          (type `group`)
+          opt))
       _
       _)
     (kind_decl
@@ -1675,7 +1680,7 @@
     (alt
       _
       ((lit `"$"`)
-        (tok `SV`)
+        (ref `name`)
         (lit `"="`)
         (ref `expr`))
       (node
@@ -1708,7 +1713,7 @@
     (alt
       _
       ((lit `"$"`)
-        (tok `SV`))
+        (ref `name`))
       (node
         `setisv`
         (pos `2`))
@@ -2389,7 +2394,8 @@
         (pos `4`)
         (pos `5`)
         (pos `6`)
-        (pos `2`))
+        (list
+          (pos `2`)))
       _)
     (alt
       _
@@ -2408,7 +2414,51 @@
         (pos `4`)
         (pos `5`)
         (pos `6`)
-        (pos `2`))
+        (list
+          (pos `2`)))
+      _)
+    (alt
+      _
+      ((ref `entryref`)
+        (group
+          opt
+          ((ref `actuallist`)))
+        (lit `"["`)
+        (ref `envexpr`)
+        (lit `"]"`)
+        (group
+          opt
+          ((ref `jobparams`))))
+      (node
+        `jobarg`
+        (pos `1`)
+        (pos `2`)
+        (pos `6`)
+        (list
+          (pos `4`)))
+      _)
+    (alt
+      _
+      ((ref `entryref`)
+        (group
+          opt
+          ((ref `actuallist`)))
+        (lit `"["`)
+        (ref `envexpr`)
+        (lit `","`)
+        (ref `envexpr`)
+        (lit `"]"`)
+        (group
+          opt
+          ((ref `jobparams`))))
+      (node
+        `jobarg`
+        (pos `1`)
+        (pos `2`)
+        (pos `8`)
+        (list
+          (pos `4`)
+          (pos `6`)))
       _)
     (alt
       _
@@ -3568,6 +3618,41 @@
         (pos `8`)
         (pos `3`)
         (pos `5`))
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (lit `"["`)
+        (ref `envexpr`)
+        (lit `"]"`)
+        (ref `name`)
+        (group
+          opt
+          ((ref `zwsubs`))))
+      (node
+        `gvar`
+        (pos `5`)
+        (pos `6`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (lit `"["`)
+        (ref `envexpr`)
+        (lit `","`)
+        (ref `envexpr`)
+        (lit `"]"`)
+        (ref `name`)
+        (group
+          opt
+          ((ref `zwsubs`))))
+      (node
+        `gvar`
+        (pos `7`)
+        (pos `8`)
+        (pos `3`)
+        (pos `5`))
       _))
   (rule
     (name `zwsubs`)
@@ -3830,11 +3915,26 @@
           (tok `SP`))
         (list_req
           `L`
-          (plain `glvn`)))
+          (plain `zkillarg`)))
       (node
         `zkill`
         (pos `2`)
         (spread `4`))
+      _))
+  (rule
+    (name `zkillarg`)
+    (alt
+      _
+      ((ref `glvn`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (ref `atom`))
+      (node
+        `@args`
+        (pos `2`))
       _))
   (rule
     (name `zsystem`)
@@ -4591,6 +4691,245 @@
         (pos `8`)
         (pos `3`)
         (pos `5`))
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (lit `"["`)
+        (ref `envexpr`)
+        (lit `"]"`)
+        (ref `name`)
+        (group
+          opt
+          ((ref `subs`))))
+      (node
+        `gvar`
+        (pos `5`)
+        (pos `6`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (lit `"["`)
+        (ref `envexpr`)
+        (lit `","`)
+        (ref `envexpr`)
+        (lit `"]"`)
+        (ref `name`)
+        (group
+          opt
+          ((ref `subs`))))
+      (node
+        `gvar`
+        (pos `7`)
+        (pos `8`)
+        (pos `3`)
+        (pos `5`))
+      _))
+  (rule
+    (name `envexpr`)
+    (alt
+      `>`
+      ((ref `atom`))
+      (pos `1`)
+      _)
+    (alt
+      _
+      ((ref `atom`)
+        (quantified
+          (ref `envtail`)
+          (one_plus)))
+      (node
+        `expr`
+        (pos `1`)
+        (spread `2`))
+      _))
+  (rule
+    (name `envtail`)
+    (alt
+      _
+      ((ref `envop`)
+        (ref `atom`))
+      (node
+        `binop`
+        (pos `1`)
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"?"`)
+        (ref `pattern`))
+      (node
+        `?`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"'?"`)
+        (ref `pattern`))
+      (node
+        `'?`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((tok `PATIND`)
+        (ref `atom`))
+      (node
+        `?@`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"'?"`)
+        (lit `"@"`)
+        (ref `atom`))
+      (node
+        `'?@`
+        (pos `3`))
+      _))
+  (rule
+    (name `envop`)
+    (alt
+      _
+      ((lit `"_"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"+"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"*"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"/"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"\\\\"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"#"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"**"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"=="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"'="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `">"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"'<"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"'>"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `">="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"["`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"'["`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"']"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"]="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"]]"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"]]="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"']]"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"&"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"!"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"'&"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"'!"`))
+      _
       _))
   (rule
     (name `ssvn`)

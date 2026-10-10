@@ -51,7 +51,7 @@
       (set _ `s` _ (share (call `Node` (kwarg `value` `2`)@497..505)@492..506)@491..506)@487..506
       (set _ `t` _ (clone `s`)@513..515)@509..515
       (set _ `w` _ (weak `t`)@522..524)@518..524
-      (drop `s`)@527..529
+      (move `s`)@527..529
       (set _ `log` _ (call `Log` (kwarg `lines` (call `Vec`)@550..555)@543..555)@539..556)@533..556
       (write (call (member `log` `add`)@560..567 `1`)@560..570)@559..570
       (write (call (member `log` `add`)@574..581 `2`)@574..584)@573..584

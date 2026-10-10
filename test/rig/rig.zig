@@ -295,11 +295,15 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 //
 //       sig.subscribe(*|~sig|
 //         if sig.upgrade() as s
-//           print(s.get()))
+//           print(s.get())
+//       )
 //
 //   The island closes when a line comes back to the indentation of the
 //   line the closure started on, or when the bracket around it closes;
-//   its open blocks end there.
+//   its open blocks end there. The line that closes it starts with that
+//   bracket, at the indentation of the line that opened the bracket; a
+//   bracket that closes it anywhere else is recorded (`layouts`), and
+//   reported once the source parses.
 //
 // Position
 //   Whitespace inside an expression never picks a form. A character that
@@ -313,12 +317,19 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 //     `|x| ...` starts a closure's bar list; after a value `|` is
 //     bitwise or.
 //
-//     `-x` at the start of a statement (or a match arm) that is nothing
-//     but `-name` is a drop; otherwise `-x` is negation.
-//
 //     A prefix sigil touches its operand: `- b` and `< x` are errors,
 //     so `a <- b` is not quietly `a < -b`. After a type's `]` the
 //     parser decides (`[2]?T`), and the Parser wrapper checks the touch.
+//
+//     Spacing never picks a form, but spacing that reads as another
+//     form is wrong: an infix operator has the same spacing on both
+//     sides (`a < b`, `a<b`, never `a <b`), a postfix `?` or `!` touches
+//     what it follows, a member `.` touches both sides (a chain may go
+//     on at the start of the next line inside brackets), an enum
+//     literal's `.` touches its name, and a range's `..` with one bound
+//     touches it. The lexer records each such operator (`spacings`);
+//     the Parser wrapper reports them once the source parses, so that a
+//     parse error is the one reported.
 //
 //   Token boundaries still matter, as in `!=` and `==`: `=!` is one
 //   token, and an error wherever it stands, so `x =!y` is never quietly
@@ -385,6 +396,19 @@ pub const Lexer = struct {
     /// The last token is a statement's label: a statement starts after
     /// it, and it ends no operand.
     after_label: bool = false,
+    /// The last token is the label of a jump (`break :outer`): what
+    /// follows it starts the jump's value, though the label is a name.
+    after_jump_label: bool = false,
+    /// The category of the token before the last one.
+    last2_cat: TokenCat = .eof,
+    /// The operators whose spacing breaks the rule (an infix operator
+    /// has the same spacing on both sides; a postfix, a member `.`, and a
+    /// range's open end touch what they join), and the closure bodies
+    /// laid out below their bar lists that end anywhere but on a line of
+    /// their own: the first `max_layouts` of them, reported once the
+    /// source parses (`Parser.layoutMessage`).
+    layouts: [max_layouts]Layout = undefined,
+    layout_count: u32 = 0,
     /// The bracket nesting of the `while` header being lexed, whose first
     /// `:` there starts the step; null outside one.
     while_header: ?u32 = null,
@@ -416,12 +440,48 @@ pub const Lexer = struct {
     pub const max_indent_depth = 64;
     pub const max_nesting = 512;
     pub const max_islands = 32;
+    pub const max_layouts = 32;
 
     /// A closure body laid out inside brackets. Its blocks sit on the
     /// layout stack above `depth`; `column` is the indentation of the
     /// line the closure starts on, and the layout state to restore is
     /// `depth` / `outer_column`.
     const Island = struct { nesting: u32, depth: u32, column: u32, outer_column: u32 };
+
+    /// An operator whose spacing, or a closure body whose layout, breaks
+    /// the rule, at `pos`.
+    pub const Layout = struct {
+        pos: u32,
+        len: u32,
+        kind: Kind,
+        /// For a closure body: the indentation of the line that opened
+        /// the bracket around it, where its closing bracket goes.
+        column: u32 = 0,
+
+        pub const Kind = enum {
+            /// An infix operator with whitespace before it only (`a <b`).
+            infix_before,
+            /// An infix operator with whitespace after it only (`a< b`).
+            infix_after,
+            /// A postfix `?` or `!` apart from what it follows (`f() !`).
+            postfix,
+            /// A member `.` with whitespace beside it (`w . get()`).
+            member,
+            /// An enum literal's `.` apart from its name (`. red`).
+            enum_dot,
+            /// A range's `..` apart from its only bound (`.. b`, `a ..]`).
+            range_end,
+            /// The bracket around a closure body laid out below its bar
+            /// list closes on the body's last line (`print(x))`).
+            closure_hanging,
+            /// The line that ends such a body starts with something other
+            /// than that bracket (`, 1)`).
+            closure_close,
+            /// It starts with the bracket, at another indentation than
+            /// the line that opened the bracket.
+            closure_indent,
+        };
+    };
 
     pub const LexError = enum {
         none,
@@ -496,6 +556,8 @@ pub const Lexer = struct {
         self.after_label = self.label_colon and tok.cat == .ident;
         self.label_colon = tok.cat == .colon and self.stmtStart();
         self.after_value = !self.after_label and (isValue(tok.cat) or (self.after_value and (tok.cat == .question or tok.cat == .not_sym)));
+        self.after_jump_label = tok.cat == .ident and self.last_cat == .colon and (self.last2_cat == .@"break" or self.last2_cat == .@"continue");
+        self.last2_cat = self.last_cat;
         self.last_cat = tok.cat;
         switch (tok.cat) {
             .@"while" => self.while_header = self.nesting,
@@ -660,6 +722,7 @@ pub const Lexer = struct {
             // Back at the closure's own line: the island ends and the
             // bracketed expression continues.
             if (self.inIsland() and p - line <= self.islands[self.island_count - 1].column) {
+                self.checkIslandClose(p, p - line);
                 return self.closeIsland(p, null) orelse self.produce();
             }
             return self.indentTo(p - line, p, nl);
@@ -729,8 +792,12 @@ pub const Lexer = struct {
     // -------------------------------------------------------------------------
 
     fn classify(self: *Lexer, tok: Token) Token {
-        // The bracket around an island closes: so do the island's blocks.
+        // The bracket around an island closes on the body's last line:
+        // so do the island's blocks. The bracket belongs on a line of its
+        // own.
         if ((tok.cat == .rparen or tok.cat == .rbracket) and self.inIsland()) {
+            const kind: Layout.Kind = if (self.startsLine(tok)) .closure_indent else .closure_hanging;
+            self.recordLayout(.{ .pos = tok.pos, .len = 1, .kind = kind, .column = self.lineIndent(self.brackets[self.nesting - 1]) });
             if (self.closeIsland(tok.pos, tok)) |outdent| return outdent;
         }
         const after_value = self.after_value;
@@ -747,7 +814,6 @@ pub const Lexer = struct {
                 if (self.nesting > 0) self.nesting -= 1;
                 break :blk tok.cat;
             },
-            .minus => if (!after_value and self.stmtStart() and self.isWholeDropStatement()) .drop_stmt else .minus,
             .at => if (self.isBuiltinCall()) .at else return self.fail(.pin_sigil, tok.pos),
             .bar => if (self.isCaptureBar(tok, after_value)) .bar_capture else .bar,
             .and_sym => return self.fail(.and_operator, tok.pos),
@@ -779,6 +845,7 @@ pub const Lexer = struct {
             if (twice and tok.cat == .minus) return self.fail(.decrement, tok.pos - 1);
             return self.fail(.detached_prefix, tok.pos);
         }
+        if (self.layout_count < max_layouts) self.checkSpacing(tok, out.cat, after_value and !self.after_jump_label);
         switch (out.cat) {
             .@"if", .@"while", .@"for" => self.takes_else[self.depth] = true,
             else => {},
@@ -788,6 +855,56 @@ pub const Lexer = struct {
             self.head_pos = tok.pos;
         }
         return out;
+    }
+
+    /// Record the first operator whose spacing breaks the rule:
+    /// `after_value` says the token follows an operand, so it continues
+    /// it (an infix operator, a postfix, a member `.`).
+    fn checkSpacing(self: *Lexer, tok: Token, cat: TokenCat, after_value: bool) void {
+        const src = self.base.source;
+        const before = tok.pos > 0 and isSpaceBefore(src[tok.pos - 1]);
+        const after = isSpace(self.charAfter(tok));
+        const kind: ?Layout.Kind = switch (cat) {
+            .question, .not_sym => if (after_value and before) .postfix else null,
+            // A member may start a line inside brackets, continuing a
+            // chain from the line before.
+            .dot => if (after_value) (if ((before and !self.startsLine(tok)) or after) .member else null) else if (after) .enum_dot else null,
+            .dotdot => if (!after_value) (if (after) .range_end else null) else if (before != after) (if (before) .infix_before else .infix_after) else null,
+            .dotdot_open => if (after_value and before) .range_end else null,
+            else => if (after_value and isInfix(cat) and before != after) (if (before) .infix_before else .infix_after) else null,
+        };
+        if (kind) |k| self.recordLayout(.{ .pos = tok.pos, .len = tok.len, .kind = k });
+    }
+
+    fn recordLayout(self: *Lexer, layout: Layout) void {
+        if (self.layout_count == max_layouts) return;
+        self.layouts[self.layout_count] = layout;
+        self.layout_count += 1;
+    }
+
+    /// The line at `pos`, `width` deep, ends a closure body laid out in
+    /// the innermost island: it starts with the bracket around the body,
+    /// at the indentation of the line that opened that bracket.
+    fn checkIslandClose(self: *Lexer, pos: u32, width: u32) void {
+        const open = self.brackets[self.nesting - 1];
+        const closer: u8 = if (self.base.source[open] == '(') ')' else ']';
+        const want = self.lineIndent(open);
+        if (self.base.source[pos] != closer) {
+            self.recordLayout(.{ .pos = pos, .len = 1, .kind = .closure_close, .column = want });
+        } else if (width != want) {
+            self.recordLayout(.{ .pos = pos, .len = 1, .kind = .closure_indent, .column = want });
+        }
+    }
+
+    /// Only whitespace stands before `tok` on its line.
+    fn startsLine(self: *const Lexer, tok: Token) bool {
+        var p = tok.pos;
+        while (p > 0) : (p -= 1) switch (self.base.source[p - 1]) {
+            ' ', '\t', '\r' => {},
+            '\n' => return true,
+            else => return false,
+        };
+        return true;
     }
 
     fn classifyWord(self: *const Lexer, tok: Token) TokenCat {
@@ -847,21 +964,6 @@ pub const Lexer = struct {
         if (self.nextCat() != .colon) return null;
         if (self.inParens()) return .kwarg_name;
         return if (self.in_members[self.depth] and (self.stmtStart() or self.last_cat == .@"pub")) .ident else null;
-    }
-
-    /// `-name` is a whole statement, a drop: after `-` comes a name and
-    /// then the end of the line, a comment, or a postfix guard. Anywhere
-    /// else, `-x` is negation.
-    fn isWholeDropStatement(self: *const Lexer) bool {
-        var probe = self.base;
-        const name = probe.next();
-        if (name.cat != .ident or keyword(self.base.text(name)) != null) return false;
-        const after = probe.next();
-        return switch (after.cat) {
-            .newline, .eof, .comment => true,
-            .ident => std.mem.eql(u8, self.base.text(after), "if"),
-            else => false,
-        };
     }
 
     /// `@name(...)` is a builtin call; `@name` alone is the reserved pin
@@ -1091,6 +1193,27 @@ fn isSigil(cat: TokenCat) bool {
     };
 }
 
+/// The infix operators, whose spacing is the same on both sides.
+fn isInfix(cat: TokenCat) bool {
+    return switch (cat) {
+        .plus, .minus, .star, .slash, .percent, .plus_wrap, .minus_wrap, .star_wrap => true,
+        .eq, .ne, .lt, .gt, .le, .ge, .nullish, .nullish_jump => true,
+        .bar, .ampersand, .caret, .lshift, .rshift => true,
+        .assign, .plus_assign, .minus_assign, .star_assign, .slash_assign, .percent_assign => true,
+        .amp_assign, .bar_assign, .caret_assign, .lshift_assign, .rshift_assign => true,
+        .plus_wrap_assign, .minus_wrap_assign, .star_wrap_assign => true,
+        else => false,
+    };
+}
+
+/// Whitespace before a token.
+fn isSpaceBefore(c: u8) bool {
+    return switch (c) {
+        ' ', '\t', '\r', '\n' => true,
+        else => false,
+    };
+}
+
 /// Whitespace, or the end of the line or source, after a token.
 fn isSpace(c: u8) bool {
     return switch (c) {
@@ -1123,9 +1246,6 @@ pub const Parser = struct {
     /// `(move place)` receivers written in front of the call
     /// (`!v.push(x)`), not in parentheses.
     receiver_sigils: std.AutoHashMapUnmanaged(parser.NodeId, void) = .empty,
-    /// The node ids of the `-name` lines rewritten to `(neg name)`
-    /// because their value is used, and whether it is a function's value.
-    value_tails: std.AutoHashMapUnmanaged(parser.NodeId, bool) = .empty,
     /// The node ids of the `(share x)` and `(weak x)` whose operand has a
     /// `?` suffix inside parentheses that open right after the sigil
     /// (`*(T?)`), which the tree does not keep.
@@ -1150,8 +1270,184 @@ pub const Parser = struct {
     /// `diagnostic()` describes the failure.
     pub fn parseProgram(self: *Parser) !Sexp {
         const tree = try self.rewrite(try self.parseTree());
+        // Spacing is checked once the source parses, so that an error in
+        // the parse is the one reported.
+        if (self.failure == null) {
+            const lexer = &self.base.lexer;
+            for (lexer.layouts[0..lexer.layout_count]) |sp| {
+                const d: diag.Diagnostic = .{ .severity = .@"error", .pos = sp.pos, .end = sp.pos + sp.len, .message = self.layoutMessage(sp) };
+                if (self.failure == null) self.failure = d else try self.more_failures.append(self.allocator(), d);
+            }
+        }
         if (self.failure != null) return error.ParseError;
         return tree;
+    }
+
+    /// Why an operator's spacing is wrong, with the text to write.
+    fn layoutMessage(self: *Parser, sp: Lexer.Layout) []const u8 {
+        const src = self.base.source;
+        const op = src[sp.pos .. sp.pos + sp.len];
+        const left = operandBefore(src, sp.pos) orelse "a";
+        const right = operandAfter(src, sp.pos + sp.len) orelse "b";
+        // `print -1`: a call without its parentheses.
+        if (sp.kind == .infix_before and std.mem.eql(u8, left, "print")) return self.format("`print` is called with parentheses: `print({s}{s})`", .{ op, right });
+        return switch (sp.kind) {
+            .infix_before => if (prefixMeaning(op)) |m|
+                self.format("`{s} {s}{s}`: an operator has the same spacing on both sides; write `{s} {s} {s}` to {s}, or `{s}, {s}{s}` to {s} `{s}` as a value of its own", .{ left, op, right, left, op, right, m.infix, left, op, right, m.prefix, right })
+            else if (std.mem.eql(u8, op, ".."))
+                self.format("`{s} {s}{s}`: an operator has the same spacing on both sides; write `{s}{s}{s}` or `{s} {s} {s}`", .{ left, op, right, left, op, right, left, op, right })
+            else
+                self.format("`{s} {s}{s}`: an operator has the same spacing on both sides; write `{s} {s} {s}`", .{ left, op, right, left, op, right }),
+            .infix_after => if (std.mem.eql(u8, op, ".."))
+                self.format("`{s}{s} {s}`: an operator has the same spacing on both sides; write `{s}{s}{s}` or `{s} {s} {s}`", .{ left, op, right, left, op, right, left, op, right })
+            else
+                self.format("`{s}{s} {s}`: an operator has the same spacing on both sides; write `{s} {s} {s}`", .{ left, op, right, left, op, right }),
+            .postfix => if (sp.pos + sp.len < src.len and !isSpace(src[sp.pos + sp.len]))
+                self.format("`{s} {s}{s}`: a `{s}` after a value touches it; write `{s}{s}{s}`", .{ left, op, right, op, left, op, right })
+            else
+                self.format("`{s} {s}`: a postfix `{s}` touches what it follows; write `{s}{s}`", .{ left, op, op, left, op }),
+            .member => self.format("a member `.` touches both sides; write `{s}.{s}`", .{ left, right }),
+            .enum_dot => self.format("`.` touches the name after it; write `.{s}`", .{right}),
+            .range_end => if (sp.pos + sp.len < src.len and src[sp.pos + sp.len] == ']')
+                self.format("a range's `..` touches its only bound; write `{s}..`", .{left})
+            else
+                self.format("a range's `..` touches its only bound; write `..{s}`", .{right}),
+            .closure_hanging => self.format("a closure body below its bar list ends with `{s}` on a line of its own: end this line before the `{s}`, and write `{s}` on the next line at the indentation of the line that opened it (column {d}); a one-line body may instead follow the bar list on its line", .{ op, op, op, sp.column + 1 }),
+            .closure_close => self.format("a closure body below its bar list ends where the `{c}` around it stands alone at the start of a line, at the indentation of the line that opened it (column {d})", .{ closerOf(src, sp), sp.column + 1 }),
+            .closure_indent => self.format("write this `{s}`, which ends a closure body below its bar list, at the indentation of the line that opened it (column {d})", .{ op, sp.column + 1 }),
+        };
+    }
+
+    /// The bracket that closes the island a `closure_close` ends.
+    fn closerOf(src: []const u8, sp: Lexer.Layout) u8 {
+        // The opening bracket is on the line at `column`'s indentation
+        // above; the island's bracket is the innermost one open there.
+        var depth: i32 = 0;
+        var p = sp.pos;
+        while (p > 0) {
+            p -= 1;
+            switch (src[p]) {
+                ')', ']' => depth += 1,
+                '(', '[' => {
+                    if (depth == 0) return if (src[p] == '(') ')' else ']';
+                    depth -= 1;
+                },
+                else => {},
+            }
+        }
+        return ')';
+    }
+
+    const Meaning = struct { infix: []const u8, prefix: []const u8 };
+
+    /// What an operator that is also a prefix sigil does in each place.
+    fn prefixMeaning(op: []const u8) ?Meaning {
+        if (op.len != 1) return null;
+        return switch (op[0]) {
+            '<' => .{ .infix = "compare", .prefix = "move" },
+            '-' => .{ .infix = "subtract", .prefix = "negate" },
+            '+' => .{ .infix = "add", .prefix = "clone" },
+            '*' => .{ .infix = "multiply", .prefix = "share" },
+            else => null,
+        };
+    }
+
+    /// The operand that ends at `end` (past whitespace, line breaks
+    /// included, and a comment that ends a line), as written, when it is
+    /// short: a name, a literal, or a call or index on one (`f(x)`,
+    /// `a.b[i]`).
+    fn operandBefore(src: []const u8, end: u32) ?[]const u8 {
+        var e: usize = end;
+        while (true) {
+            while (e > 0 and (src[e - 1] == ' ' or src[e - 1] == '\t' or src[e - 1] == '\r')) e -= 1;
+            if (e == 0 or src[e - 1] != '\n') break;
+            // The line before may end in a comment, which is no operand.
+            e -= 1;
+            const line = if (std.mem.lastIndexOfScalar(u8, src[0..e], '\n')) |nl| nl + 1 else 0;
+            if (commentStart(src[line..e])) |c| e = line + c;
+        }
+        var s = e;
+        while (s > 0) {
+            const c = src[s - 1];
+            if (c == ')' or c == ']') {
+                const open: u8 = if (c == ')') '(' else '[';
+                var depth: u32 = 0;
+                while (s > 0) {
+                    s -= 1;
+                    if (src[s] == '\n') return null;
+                    if (src[s] == c) depth += 1;
+                    if (src[s] == open) {
+                        depth -= 1;
+                        if (depth == 0) break;
+                    }
+                }
+            } else if (c == '"' or c == '\'') {
+                s -= 1;
+                while (s > 0 and src[s - 1] != c) : (s -= 1) if (src[s - 1] == '\n') return null;
+                if (s == 0) return null;
+                s -= 1;
+            } else if (isIdentCont(c) or c == '.' or c == '?' or c == '!') {
+                s -= 1;
+            } else break;
+        }
+        while (s < e and (src[s] == '.' or src[s] == '?' or src[s] == '!')) s += 1;
+        if (s == e or e - s > 24) return null;
+        return src[s..e];
+    }
+
+    /// Where a comment starts on `line`: its first `#` outside a string.
+    fn commentStart(line: []const u8) ?usize {
+        var i: usize = 0;
+        while (i < line.len) : (i += 1) switch (line[i]) {
+            '#' => return i,
+            '"', '\'' => {
+                const q = line[i];
+                i += 1;
+                while (i < line.len and line[i] != q) : (i += 1) {
+                    if (q == '"' and line[i] == '\\') i += 1;
+                }
+            },
+            else => {},
+        };
+        return null;
+    }
+
+    /// The operand that starts at `start` (past whitespace on its line),
+    /// as written, when it is short.
+    fn operandAfter(src: []const u8, start: u32) ?[]const u8 {
+        var s: usize = start;
+        while (s < src.len and (src[s] == ' ' or src[s] == '\t')) s += 1;
+        var e = s;
+        while (e < src.len and std.mem.findScalar(u8, "<?!+-*~.", src[e]) != null) e += 1;
+        if (e < src.len and (src[e] == '"' or src[e] == '\'')) {
+            const q = src[e];
+            e += 1;
+            while (e < src.len and src[e] != q and src[e] != '\n') e += 1;
+            if (e == src.len or src[e] != q) return null;
+            e += 1;
+        }
+        while (e < src.len) {
+            const c = src[e];
+            if (isIdentCont(c) or c == '.') {
+                e += 1;
+            } else if (c == '(' or c == '[') {
+                const close: u8 = if (c == '(') ')' else ']';
+                var depth: u32 = 0;
+                while (e < src.len) : (e += 1) {
+                    if (src[e] == '\n') return null;
+                    if (src[e] == c) depth += 1;
+                    if (src[e] == close) {
+                        depth -= 1;
+                        if (depth == 0) break;
+                    }
+                }
+                if (e == src.len) return null;
+                e += 1;
+            } else break;
+        }
+        while (e > s and src[e - 1] == '.') e -= 1;
+        if (e == s or e - s > 24) return null;
+        return src[s..e];
     }
 
     /// Parse without the IR rewrites: the grammar's own output.
@@ -1583,11 +1879,14 @@ pub const Parser = struct {
     //       (lambda _ ((cap_clone v) a) _ body)  →  (lambda (captures (cap_clone v)) (a) _ body)
     //   * `for` source sigils move into the mode slot:
     //       (for iter x _ (read xs) body _)  →  (for read x _ xs body _)
-    //   * a `-name` statement whose value is used is negation, not a drop:
-    //     the last statement of a `fun` body, a `break` value, or the last
-    //     statement of a branch, arm, `catch` handler, or loop `else`
-    //     block whose value is used, becomes (neg name). (A
-    //     closure has no declared result, so its body is not rewritten.)
+    //   * a statement `<e` whose value is not used drops now: a block's
+    //     statement, a `defer` or `errdefer` body, an arm's body, or a
+    //     labeled statement becomes (drop x) for a name, and
+    //     (drop (move e)) for anything else; the last statement of a
+    //     `fun` body, a closure body, a `break` or `return` value, a
+    //     binding's value, or a branch, arm, `catch` handler, or loop
+    //     `else` block whose value is used keeps its (move e):
+    //       (block (move x))  →  (block (drop x))
     //   * a jump fallback belongs to the nearest `??` (the grammar reads
     //     it at the level of `catch`, after the chain before it):
     //       (?? (?? a b) (return v))  →  (?? a (?? b (return v)))
@@ -1615,7 +1914,15 @@ pub const Parser = struct {
         switch (out.kind() orelse return out) {
             .module => self.moduleConsts(out),
             .@"struct", .@"enum", .errors, .generic_struct, .generic_enum => try self.pubMembers(out),
-            .lambda => try self.splitBars(out, walked),
+            .lambda => {
+                try self.splitBars(out, walked);
+                // A closure's value is its body's last line.
+                try self.valueTail(&walked[ir.slot(.lambda, .body)]);
+            },
+            .block => for (walked[1..]) |*stmt| try self.dropStatement(stmt),
+            .@"defer", .@"errdefer" => try self.dropStatement(&walked[ir.slot(.@"defer", .body)]),
+            .arm => try self.dropStatement(&walked[ir.slot(.arm, .body)]),
+            .labeled => try self.dropStatement(&walked[ir.slot(.labeled, .stmt)]),
             .@"??" => return self.nearestFallback(out),
             .read, .write, .move => return self.receiverSigil(out),
             .share => try self.noteParenSuffix(out),
@@ -1627,14 +1934,14 @@ pub const Parser = struct {
             // The body's value is returned.
             .fun => {
                 try self.paramList(out);
-                if (ir.Fun.returns(out) != .nil) try self.valueTail(ir.Fun.body(out), true);
+                if (ir.Fun.returns(out) != .nil) try self.valueTail(&walked[ir.slot(.fun, .body)]);
             },
             .sub, .extern_fun, .extern_sub => try self.paramList(out),
             // The expression's value is bound or returned.
-            .set => try self.valueTail(ir.Set.value(out), false),
-            .@"return" => try self.valueTail(ir.Return.value(out), false),
+            .set => try self.valueTail(&walked[ir.slot(.set, .value)]),
+            .@"return" => try self.valueTail(&walked[ir.slot(.@"return", .value)]),
             // A loop's value is always used.
-            .@"break" => try self.valueTail(ir.Break.value(out), false),
+            .@"break" => try self.valueTail(&walked[ir.slot(.@"break", .value)]),
             else => {},
         }
         return out;
@@ -1926,38 +2233,55 @@ pub const Parser = struct {
         items[ir.slot(.lambda, .params)] = if (params.items.len > 0) .{ .list = parser.List.withId(params.items, bars.list.id) } else .nil;
     }
 
-    /// `sexp` (already walked, so its lists are freshly allocated) is in
-    /// value position, `function` when it is a function's body: a
-    /// trailing `(drop x)` there is `(neg x)`.
-    fn valueTail(self: *Parser, sexp: Sexp, function: bool) std.mem.Allocator.Error!void {
-        const kind = sexp.kind() orelse return;
-        const items = @constCast(sexp.items());
-        switch (kind) {
-            .drop => {
-                items[0] = .{ .tag = .neg };
-                try self.value_tails.put(self.allocator(), sexp.list.id, function);
-            },
-            .block => {
-                const stmts = ir.Block.stmts(sexp);
-                if (stmts.len > 0) try self.valueTail(stmts[stmts.len - 1], function);
-            },
-            .@"if" => {
-                try self.valueTail(ir.If.then(sexp), false);
-                try self.valueTail(ir.If.@"else"(sexp), false);
-            },
-            .match => for (ir.Match.arms(sexp)) |arm| try self.valueTail(ir.Arm.body(arm), false),
-            .@"catch" => try self.valueTail(ir.Catch.handler(sexp), false),
-            .@"while" => try self.valueTail(ir.While.@"else"(sexp), false),
-            .@"for" => try self.valueTail(ir.For.@"else"(sexp), false),
-            else => {},
+    /// A statement `<e` drops what it moves: `(move x)` of a name becomes
+    /// `(drop x)`, keeping its node id; `(move e)` of anything else is
+    /// held by a new `(drop (move e))`, so that every pass reads the move
+    /// as `_ = <e` reads it. `valueTail` undoes it where the value is used.
+    fn dropStatement(self: *Parser, slot: *Sexp) std.mem.Allocator.Error!void {
+        if (!slot.isKind(.move)) return;
+        const operand = ir.Move.operand(slot.*);
+        if (operand == .src and isBindingName(self.base.source, operand)) {
+            @constCast(slot.items())[0] = .{ .tag = .drop };
+            return;
         }
+        slot.* = try self.base.newNode(.drop, &.{slot.*}, self.span(slot.*));
     }
 
-    /// For a `-name` line that is a value (`valueTail`): whether it is a
-    /// function's value; null for any other node.
-    pub fn valueTailOf(self: *const Parser, node: Sexp) ?bool {
-        if (node != .list) return null;
-        return self.value_tails.get(node.list.id);
+    /// A name a binding may have: not a literal, `true`, or `false`.
+    fn isBindingName(source: []const u8, leaf: Sexp) bool {
+        const text = leaf.getText(source);
+        if (text.len == 0 or !isIdentStart(text[0])) return false;
+        return keyword(text) == null;
+    }
+
+    /// `slot` (already walked, so its lists are freshly allocated) is in
+    /// value position: a drop `dropStatement` made of its last statement
+    /// is the move again.
+    fn valueTail(self: *Parser, slot: *Sexp) std.mem.Allocator.Error!void {
+        const kind = slot.kind() orelse return;
+        const items = @constCast(slot.items());
+        switch (kind) {
+            .drop => {
+                const target = ir.Drop.target(slot.*);
+                if (target == .list) {
+                    slot.* = target;
+                } else {
+                    items[0] = .{ .tag = .move };
+                }
+            },
+            .block => if (items.len > 1) try self.valueTail(&items[items.len - 1]),
+            .@"if" => {
+                try self.valueTail(&items[ir.slot(.@"if", .then)]);
+                try self.valueTail(&items[ir.slot(.@"if", .@"else")]);
+            },
+            .match => for (ir.Match.arms(slot.*)) |arm| try self.valueTail(&@constCast(arm.items())[ir.slot(.arm, .body)]),
+            .@"catch" => try self.valueTail(&items[ir.slot(.@"catch", .handler)]),
+            .@"while" => try self.valueTail(&items[ir.slot(.@"while", .@"else")]),
+            .@"for" => try self.valueTail(&items[ir.slot(.@"for", .@"else")]),
+            .labeled => try self.valueTail(&items[ir.slot(.labeled, .stmt)]),
+            .raw_block => try self.valueTail(&items[ir.slot(.raw_block, .body)]),
+            else => {},
+        }
     }
 
     /// Promote the source's `?xs` / `!xs` / `<xs` wrapper into the mode.
@@ -2043,6 +2367,42 @@ test "a prefix sigil touches its operand; after a value it is infix or a suffix"
     try expectCats("f = | +b , a | a", &.{ .ident, .assign, .bar_capture, .plus, .ident, .comma, .ident, .bar_capture, .ident });
 }
 
+/// The spacing kinds the lexer records for `source`, in order.
+fn expectLayout(source: []const u8, expected: []const Lexer.Layout.Kind) !void {
+    var lx = Lexer.init(source);
+    while (true) {
+        const t = lx.next();
+        if (t.cat == .eof or t.cat == .err) break;
+    }
+    const got = lx.layouts[0..lx.layout_count];
+    testing.expectEqual(expected.len, got.len) catch |e| {
+        std.debug.print("source: {s}\n", .{source});
+        return e;
+    };
+    for (expected, got) |want, sp| try testing.expectEqual(want, sp.kind);
+}
+
+test "spacing: an infix operator is balanced; a postfix, a member, and an open range touch" {
+    for ([_][]const u8{ "a < b", "a<b", "a - 1", "a-1", "x = -1", "x=1", "a ?? b", "0..n", "0 .. n", "f()!", "x?", "w.get()", "c = .red", "xs[..2]", "xs[a..]", "a < -b", "a<-b", "f(\n  a\n  .b())", "[]?T", "[2]*T", "break :a !n", "f = |a| a + 1", "while i < n : i += 1" }) |src| {
+        try expectLayout(src, &.{});
+    }
+    try expectLayout("a <b", &.{.infix_before});
+    try expectLayout("a< b", &.{.infix_after});
+    try expectLayout("x =1", &.{.infix_before});
+    try expectLayout("f() !", &.{.postfix});
+    try expectLayout("[] ?T", &.{.postfix});
+    try expectLayout("w . get()", &.{.member});
+    try expectLayout("w .get()", &.{.member});
+    try expectLayout("c = . red", &.{.enum_dot});
+    try expectLayout("xs[.. 2]", &.{.range_end});
+    try expectLayout("xs[a ..]", &.{.range_end});
+    try expectLayout("0 ..n", &.{.infix_before});
+    // Inside brackets a line break is whitespace, so a line starting
+    // `-1` after a value is a subtraction with one side spaced.
+    try expectLayout("f(a\n  -1)", &.{.infix_before});
+    try expectLayout("a -1 + b *c", &.{ .infix_before, .infix_before });
+}
+
 test "`name:` is a keyword argument inside ( ), a name inside [ ]" {
     try expectCats("fun f[n: Int](x: Int)", &.{ .fun, .ident, .lbracket, .ident, .colon, .ident, .rbracket, .lparen, .kwarg_name, .colon, .ident, .rparen });
     try expectCats("pre = 1", &.{ .ident, .assign, .integer });
@@ -2050,7 +2410,7 @@ test "`name:` is a keyword argument inside ( ), a name inside [ ]" {
 
 test "a statement label ends no operand" {
     try expectCats(":a if x", &.{ .colon, .ident, .@"if", .ident });
-    try expectCats(":a -x", &.{ .colon, .ident, .drop_stmt, .ident });
+    try expectCats(":a -x", &.{ .colon, .ident, .minus, .ident });
 }
 
 test "a `while` header's first `:` starts its step; another after a jump is a label's" {
@@ -2060,14 +2420,13 @@ test "a `while` header's first `:` starts its step; another after a jump is a la
     try expectCats("x = a ?? break :b", &.{ .ident, .assign, .ident, .nullish_jump, .@"break", .colon, .ident });
 }
 
-test "minus: infix, negation, drop" {
+test "minus: infix or negation, never a drop" {
     try expectCats("a - b", &.{ .ident, .minus, .ident });
-    try expectCats("a -b", &.{ .ident, .minus, .ident });
-    try expectCats("-x", &.{ .drop_stmt, .ident });
+    try expectCats("-x", &.{ .minus, .ident });
     try expectCats("- x", &.{.err});
     try expectCats("-x + 1", &.{ .minus, .ident, .plus, .integer });
     try expectCats("y = -x", &.{ .ident, .assign, .minus, .ident });
-    try expectCats("defer -x", &.{ .@"defer", .drop_stmt, .ident });
+    try expectCats("defer -x", &.{ .@"defer", .minus, .ident });
 }
 
 test "if: block, guard, ternary" {
@@ -2118,6 +2477,13 @@ test "layout: a closure body inside brackets is laid out in blocks" {
     });
     // Coming back to the closure's line ends the body.
     try expectCats("f(||\n  g\n, 1)", &.{ .ident, .lparen, .bar_empty, .indent, .ident, .outdent, .comma, .integer, .rparen });
+    // The bracket around the body goes on a line of its own, at the
+    // indentation of the line that opened it.
+    try expectLayout("f(*|x|\n  g(x)\n  h\n)\ny", &.{});
+    try expectLayout("  r = (|+n|\n    n\n  )()", &.{});
+    try expectLayout("f(*|x|\n  g(x)\n  h)\ny", &.{.closure_hanging});
+    try expectLayout("f(||\n  g\n, 1)", &.{.closure_close});
+    try expectLayout("f(||\n  g\n  )", &.{.closure_indent});
 }
 
 test "writeZigIdent escapes Zig keywords and emitter names" {
@@ -2261,7 +2627,7 @@ test "parser: every form parses" {
         \\  x += 1
         \\  x <<= 2
         \\  z = <w
-        \\  -z
+        \\  <z
         \\  if x > 1
         \\    print(x, y)
         \\  else if not (x < 0 and true)

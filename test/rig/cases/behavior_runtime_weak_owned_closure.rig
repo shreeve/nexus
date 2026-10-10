@@ -20,7 +20,7 @@ sub main()
   w: ~fun(Int) -> Int = ~f
   if w.upgrade() as h
     print(h(1), g(1))
-  -f
+  <f
   print(g(1))
 
   s: *sub() = *|| print("hi")
@@ -30,7 +30,7 @@ sub main()
   !v.push(~s)
   for x in ?v
     call(?x)
-  -s
+  <s
   call(?holder.cb)
 
 # expect:

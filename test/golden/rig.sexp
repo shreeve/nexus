@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `not` `or` `pass` `pub` `raw` `return` `struct` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `drop_stmt` `of` `unique` `from` `static` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `not` `or` `pass` `pub` `raw` `return` `struct` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `unique` `from` `static` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
   (lex_rule `"\\\\\\r\\n"` _ `skip`)
@@ -419,13 +419,9 @@
     (kind_decl
       (kinds `drop`)
       (roles
-        (role
-          _
-          `name`
-          (type `leaf`)
-          _))
+        (role _ `target` _ _))
       _
-      _)
+      wrapper)
     (kind_decl
       (kinds `pass`)
       (roles)
@@ -811,7 +807,6 @@
     (name_pair `BAR_CAPTURE` `"\`|\`"`)
     (name_pair `BAR_EMPTY` `"\`||\`"`)
     (name_pair `KWARG_NAME` `"a keyword argument"`)
-    (name_pair `DROP_STMT` `"\`-\`"`)
     (name_pair `OF` `"\`of\`"`)
     (name_pair `UNIQUE` `"\`unique\`"`)
     (name_pair `FROM` `"\`from\`"`)
@@ -1176,14 +1171,6 @@
         (named
           `op`
           (tag `shadow_fixed`)))
-      _)
-    (alt
-      _
-      ((tok `DROP_STMT`)
-        (label
-          `name`
-          (ref `name`)))
-      (node `drop`)
       _)
     (alt
       _

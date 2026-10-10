@@ -34,6 +34,6 @@
         (share
           (call `Account` (kwarg `owner` `"bob"`)@432..444 (kwarg `balance` `7`)@446..456)@424..457)@423..457)@414..457
       (set _ `other` _ (clone `shared`)@468..475)@460..475
-      (drop `shared`)@532..539
+      (move `shared`)@532..539
       (call `print` (member `other` `balance`)@621..634)@615..635
       (call `close` (move `moved`)@645..651)@639..652)@213..742)@200..742)@63..742

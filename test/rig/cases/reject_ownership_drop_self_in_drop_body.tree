@@ -3,4 +3,4 @@
     `Owner`
     _
     (: `cell` (shared (generic_inst `Cell` `Int`)@57..66)@56..66)@50..66
-    (drop_decl ((write `self`)@75..80)@74..81 (block (drop `self`)@86..91)@86..146)@70..146)@35..146)@35..146
+    (drop_decl ((write `self`)@75..80)@74..81 (block (move `self`)@86..91)@86..146)@70..146)@35..146)@35..146

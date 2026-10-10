@@ -32,7 +32,7 @@ sub main()
   s = *Node(value: 2)
   t = +s
   w = ~t
-  -s
+  <s
 
   log = Log(lines: Vec())
   !log.add(1)

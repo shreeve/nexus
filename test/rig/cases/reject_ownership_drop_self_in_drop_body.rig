@@ -4,6 +4,6 @@ struct Owner
   cell: *Cell[Int]
 
   drop(!self)
-    -self
+    <self
 
 # error: cannot drop `self` inside its own drop body

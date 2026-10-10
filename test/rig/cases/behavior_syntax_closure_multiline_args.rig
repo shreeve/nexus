@@ -1,8 +1,9 @@
 # A closure passed inside parentheses or brackets may have a multi-line
 # body: when its bar list ends the line, the body below is laid out in
-# blocks as anywhere else. The body ends where the bracket around it
-# closes, or where a line comes back to the closure's own indentation.
-# A trailing closure argument, the last, lays out its body the same way.
+# blocks as anywhere else, and the bracket around it closes on a line of
+# its own, at the indentation of the line that opened it. A one-line
+# body stays on the bar list's line. The other layouts are rejected, in
+# reject/syntax/closure_body_close.rig.
 
 sub each_n(n: Int, f: *sub(Int))
   i = 0
@@ -17,7 +18,8 @@ sub main()
   sig: *Signal[Int] = *Signal(0)
   sig.subscribe(*|~sig|
     if sig.upgrade() as s
-      print("got", s.get()))
+      print("got", s.get())
+  )
   sig.set(4)
 
   total: *Cell[Int] = *Cell(0)
@@ -31,28 +33,30 @@ sub main()
     if i == 0
       print("zero")
     else
-      print("one"))
+      print("one")
+  )
 
   twice(*||
-    each_n(2, *|i|
-      print("inner", i))
-    print("outer"))
+    each_n(2, *|i| print("inner", i))
+    print("outer")
+  )
 
   handlers: Vec[*sub()] = Vec()
   !handlers.push(*|+total|
     n = total.get()
-    print("handler", n))
+    print("handler", n)
+  )
   for h in ?handlers
     h()
 
   n = 3
   r = (|+n|
     m = n * 2
-    m + 1)()
+    m + 1
+  )()
   print(r)
 
-  each_n(2, *|i|
-    print("trailing", i))
+  each_n(2, *|i| print("trailing", i))
 
 # expect:
 # got 4
