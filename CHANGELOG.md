@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Fixed
+
+- Generated parsers compile for 32-bit targets, WebAssembly among them:
+  the runtime's size check on `Sexp` asserted 24 bytes, which holds only
+  with 64-bit pointers (a `Sexp` is 16 bytes on 32-bit targets). Every
+  grammar suite checks a `wasm32-wasi` build (`wasm32/<grammar>`). One
+  generated line changes; migration: regenerate the parser.
+
 ### Changed
 
 - The real-language grammars live in `grammars/` (`grammars/zig`,

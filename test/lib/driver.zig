@@ -28,6 +28,7 @@
 //! method `fn (*Parser) !Sexp` whose name starts with `parse` can be named.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const parser = @import("parser.zig");
 
 const Sexp = parser.Sexp;
@@ -269,7 +270,9 @@ fn usage() noreturn {
 
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
-    const gpa = std.heap.smp_allocator;
+    // smp_allocator needs threads; single-threaded targets (wasm) take
+    // the allocator std chooses for them.
+    const gpa = if (builtin.single_threaded) init.gpa else std.heap.smp_allocator;
     const io = init.io;
     const args = try init.minimal.args.toSlice(arena);
 
