@@ -374,7 +374,8 @@ const Codegen = struct {
             \\/// Lists keep trailing nils: positions are fixed by the schema.
             \\const keepTrailingNils = {};
             \\const hasTrivia = {};
-            \\const hasRepair = {};
+            \\/// The grammar has `@repair`: `parseTolerant` is available.
+            \\pub const hasRepair = {};
             \\/// `@as` groups the promotable token may become (see `promote`).
             \\const asGroups = {d};
             \\const numSymbols = {d};

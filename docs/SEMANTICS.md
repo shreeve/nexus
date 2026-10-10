@@ -224,6 +224,11 @@ test "syntax errors name what was expected" {
     var w: std.Io.Writer = .fixed(&buf);
     try p.writeError(&w);
     try testing.expectEqualStrings("1:9: expected an expression, got end of line", w.buffered());
+
+    // The line, and a marker under the offending token.
+    w = .fixed(&buf);
+    try p.writeExcerpt(&w, p.lastError().?.span);
+    try testing.expectEqualStrings("let x = \n        ^\n", w.buffered());
 }
 
 test "tolerant parsing" {
@@ -276,6 +281,7 @@ The module exports:
 | `Parser` | the lang module's `Parser` wrapper, or `BaseParser` |
 | `parseProgram(allocator, source)` | per start symbol: a new parser and its tree, as `.parser` and `.sexp`; `deinit()` the parser when done |
 | `nodeStore` | whether the parser records spans and node ids (`@schema` or `--spans`) |
+| `hasRepair` | whether the grammar has `@repair`, so `parseTolerant` exists |
 | `maxExpected` | the most symbols any state expects: room for `expectedNames` |
 
 `BaseParser` methods: `init(allocator, source)`, `deinit()`,
@@ -285,7 +291,7 @@ by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `parseTolerant(start, budget)`, `span(sexp)`, `ruleOf(sexp)`, `nodeCount()`,
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
 `writeFacts(w, root)`, `trivia()`, `lastError()`, `writeError(w)`,
-`printError()`, `lineCol(pos)`, `expected(state)`,
+`printError()`, `writeExcerpt(w, span)`, `lineCol(pos)`, `expected(state)`,
 `expectedNames(state, buf)`, `symbolText(symbol)`; fields `source` and
 `lexer` (the lexer as it stood at the error, for a lang Lexer's own error
 message). A parse fails with `error.ParseError` (see `lastError()`),
@@ -686,7 +692,9 @@ tools. A rule may not use a trivia token.
 
 A failed parse returns `error.ParseError`; `lastError()` gives the
 offending token's span, category and state, and `writeError(w)` writes
-`line:col: expected X, Y or Z, got W`. The expected set is computed per
+`line:col: expected X, Y or Z, got W`. `writeExcerpt(w, span)` writes the
+source line holding a span and a line marking it with `^~~` (tabs kept,
+one column per character), for a diagnostic under that message. The expected set is computed per
 state at generation time: the `@errors`-named rules the state is waiting
 for, then the tokens none of them can begin with. Tokens print with their
 `@display` names, else as their literal or their name in lower case.
@@ -698,8 +706,8 @@ words its own message; `buf` is a `[parser.maxExpected][]const u8`.
 
 A grammar with `@repair` gets `parseTolerant(start, budget)`, a second
 driver for editors: it parses past errors and returns `Tolerant` (`sexp`,
-`failure`, `repairs`, `insertions`, `deletions`, `complete`). Strict parsing
-is unaffected. The rules:
+`failure`, `repairs`, `insertions`, `deletions`, `drops`, `complete`,
+`pieces`). Strict parsing is unaffected. The rules:
 
 1. The first error is recorded exactly as a strict parse reports it; a
    repaired parse still returns it.
@@ -716,9 +724,17 @@ is unaffected. The rules:
    is consumed, the same token is inserted in the same state again only on
    a shallower stack (a repeat would be a cycle, or nest the construct
    deeper without finishing it).
-5. With no admissible insertion the offending token is deleted; end of
-   input is never deleted.
-6. At most `budget` repairs; then the parse stops, incomplete.
+5. With no admissible insertion in front of a real `structure` or
+   `terminator` token, the parse drops back to the nearest state below the
+   top of the stack that accepts it: the unfinished constructs above that
+   state leave the tree, and parsing resumes at the token (a drop).
+6. Otherwise, with no admissible insertion the offending token is
+   deleted; end of input is never deleted.
+7. At most `budget` repairs; then the parse stops, incomplete.
+
+An incomplete parse has no tree (`sexp` is `.nil`); `pieces` holds what it
+had built when it stopped, in source order: finished subtrees and leaves,
+for an editor to outline the part of the file before the damage.
 
 ## The lang module
 

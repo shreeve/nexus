@@ -1,0 +1,22 @@
+(root
+  _
+  (var_decl _ _ _ _ _ _ `const` `a` _ _ _ _ `1`)@0..11
+  (var_decl
+    _
+    _
+    _
+    _
+    _
+    _
+    `const`
+    `b`
+    _
+    _
+    _
+    _
+    (grouped_expression (binary `+` `2` ``)@24..28)@23..28)@13..28
+  (var_decl _ _ _ _ _ _ `const` `c` _ _ _ _ `3`)@30..41)@0..42
+!tolerant 2 repairs (2 inserted, 0 deleted, 0 dropped)
+!first 2:16: expected 'comptime', 'extern', a string literal, an identifier, 'inline', 'fn', '!', 'nosuspend', 'if', '(', 'while', 'for', '{', '-', '~', '-%', '&', 'try', 'return', 'break', 'continue', 'resume', '?', 'anyframe', '[', '*', '.', a number literal, a character literal, a multiline string literal, a builtin function, 'error', 'unreachable', 'union', 'packed', 'struct', 'opaque', 'enum', 'switch' or 'asm', got ';'
+const b = (2 + ;
+               ^

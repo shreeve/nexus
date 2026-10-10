@@ -530,6 +530,18 @@ tokens
     container_field: "a container field", param_decl: "a parameter",
     field_init: "a field initializer", switch_prong: "a switch prong"
 
+# Tolerant parsing (parseTolerant, for editors) may insert an empty
+# identifier, the brackets, `=`, `=>` and `|` that close declarations,
+# switch prongs and captures, and the `;` that ends a statement or
+# declaration. (An inserted `,` would let a list run on instead of
+# closing, so `,` is not insertable.) At a real one of these tokens that
+# no insertion makes acceptable, the broken construct before it is dropped
+# and parsing resumes there.
+@repair
+    holes       IDENTIFIER
+    structure   "}" ")" "]" "{" "(" "=" "=>" "|"
+    terminator  ";"
+
 root!       = container_docs members                        → (root 1 ...2)
 tokens!     = token*                                        → (tokens ...1)
 

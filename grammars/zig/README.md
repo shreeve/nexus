@@ -20,7 +20,7 @@ use to Zig.
 |---|---|
 | `zig.grammar` | the grammar: lexer, `@schema` (the tree), conflicts, rules in grammar.peg's sections and names |
 | `zig.zig` | the lang module: a Lexer wrapper that skips a byte order mark and gives the token categories Parse.zig decides by looking past the next token |
-| `cases/` | hand-written inputs and their expected trees (`reject_*`: inputs Ast.parse rejects, one per kind of mistake); `cases/tokens/` the token stream |
+| `cases/` | hand-written inputs and their expected trees (`reject_*`: inputs Ast.parse rejects, one per kind of mistake; `tolerant_*`: broken inputs parsed with `parseTolerant`, run with the `.args` file's `--tolerant N`); `cases/tokens/` the token stream |
 | `known/` | the one known difference (below) |
 | `tokens_test.zig` | the lexer against `std.zig.Tokenizer`, on inputs it holds |
 | `trees_test.zig` | the tree against `std.zig.Ast`, on inputs that use every kind and role |
@@ -181,8 +181,10 @@ cannot change:
   `binary operator '+' has whitespace on one side, but not the other`).
   Nexus rejects the same inputs at a token, with an expected set; a
   grammar has no way to attach a message to a mistake. The strict parser
-  also stops at the first error, where Ast.parse can recover and go on
-  (Nexus's tolerant parser, `@repair`, is not set up for this grammar).
+  also stops at the first error, where Ast.parse can recover and go on;
+  the grammar's `@repair` section gives Nexus's tolerant parser
+  (`parseTolerant`) a different recovery, for editors, that the
+  `tolerant_*` cases show.
 
 ## Speed
 

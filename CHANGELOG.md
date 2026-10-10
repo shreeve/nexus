@@ -2,13 +2,20 @@
 
 ## Unreleased
 
-### Fixed
+### Added
 
-- Generated parsers compile for 32-bit targets, WebAssembly among them:
-  the runtime's size check on `Sexp` asserted 24 bytes, which holds only
-  with 64-bit pointers (a `Sexp` is 16 bytes on 32-bit targets). Every
-  grammar suite checks a `wasm32-wasi` build (`wasm32/<grammar>`). One
-  generated line changes; migration: regenerate the parser.
+- `writeExcerpt(w, span)`: the source line holding a span and a line
+  marking it with `^~~`, for a diagnostic under `writeError`'s message.
+- Tolerant parsing returns `pieces` when it cannot complete: the finished
+  subtrees and leaves it had built, in source order, where `sexp` stays
+  `.nil`. `Tolerant.drops` counts the new drop repair (below).
+- `hasRepair` is public: whether the grammar has `@repair`.
+- The Zig grammar has `@repair`; its `tolerant_*` cases show recovery.
+  On every fourth corpus file cut off at a random point, 89.5% of the
+  broken inputs get a full tree (68.2% with a minimal repair set and no
+  drops), and with a 1-20 byte hole in the middle, 89.8% (74.5%).
+- The test driver's `--tolerant N` parses with `parseTolerant`, so
+  recovery has cases and trees like any parse.
 
 ### Changed
 
@@ -18,6 +25,19 @@
   `./test/run` runs both; test ids are unchanged (`rig/...`, `gen/zig`).
   Generated code is unchanged. Migration: Rig, em and nexis re-sync their
   copies into `grammars/<name>/` instead of `test/<name>/`.
+- Tolerant parsing drops unfinished constructs to resume at a real
+  `structure` or `terminator` token that no insertion makes acceptable,
+  where it deleted that token and the ones after it (SEMANTICS.md,
+  "Tolerant parsing", rule 5). Grammars without `@repair` are unaffected;
+  none of Rig, em or nexis has one. Migration: none.
+
+### Fixed
+
+- Generated parsers compile for 32-bit targets, WebAssembly among them:
+  the runtime's size check on `Sexp` asserted 24 bytes, which holds only
+  with 64-bit pointers (a `Sexp` is 16 bytes on 32-bit targets). Every
+  grammar suite checks a `wasm32-wasi` build (`wasm32/<grammar>`). One
+  generated line changes; migration: regenerate the parser.
 
 ## 2.2.0 — 2026-10-10
 

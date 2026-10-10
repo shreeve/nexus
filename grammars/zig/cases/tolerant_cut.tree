@@ -1,0 +1,10 @@
+(root
+  _
+  (var_decl _ _ _ _ _ _ `const` `std` _ _ _ _ (builtin_call `@import` `"std"`)@12..26)@0..26
+  (fn_decl
+    (fn_proto _ `pub` _ _ `main` ()@40..42 _ _ _ _ _ `void`)@29..47
+    (block _ (var_decl _ _ _ _ _ _ `const` `x` _ _ _ _ (call `foo` `1` ``)@64..71)@54..71)@48..71)@29..71)@0..71
+!tolerant 4 repairs (4 inserted, 0 deleted, 0 dropped)
+!first 5:1: expected an expression, ')' or '}', got EOF
+
+^

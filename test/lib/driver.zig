@@ -15,7 +15,7 @@
 //!
 //! Usage:
 //!   driver [--start parseX] [--pretty|--compact|--hash] [--no-spans]
-//!          [--list FILE] [--bench N] FILE...
+//!          [--tolerant N] [--list FILE] [--bench N] FILE...
 //!
 //!   --pretty    (default) indented tree, one file per invocation is typical
 //!   --compact   one line per file: `<path>\t<tree or !error …>`
@@ -23,6 +23,12 @@
 //!   --bench N   time lexing alone and lexing+parsing, best of N rounds
 //!   --no-spans  never print node spans (differential runs between a parser
 //!               with spans and one without)
+//!   --tolerant N  parse with parseTolerant and a budget of N repairs (a
+//!               grammar with @repair; pretty output): the tree, or
+//!               `!incomplete` and the pieces built, then
+//!               `!tolerant R repairs (I inserted, D deleted, X dropped)` and, for
+//!               input with an error, `!first ` and writeError's text
+//!               followed by writeExcerpt's
 //!
 //! The start rule defaults to the first `parse*` method of the parser. Any
 //! method `fn (*Parser) !Sexp` whose name starts with `parse` can be named.
@@ -260,8 +266,51 @@ fn writeError(out: *std.Io.Writer, p: *P, err: anyerror) !void {
     try out.print("!error {s} at {d}:{d} unexpected {s}", .{ @errorName(err), at.line, at.col, @tagName(f.cat) });
 }
 
+/// The `Start` of a generated start method `parseX`, or null for another
+/// method (a lang wrapper's).
+fn startOf(method: []const u8) ?parser.Start {
+    const info = @typeInfo(parser.Start).@"enum";
+    inline for (info.field_names, info.field_values) |field, value| {
+        const name = "parse" ++ [_]u8{std.ascii.toUpper(field[0])} ++ field[1..];
+        if (std.mem.eql(u8, method, name)) return @fromBackingInt(@intCast(value));
+    }
+    return null;
+}
+
+/// `--tolerant`: the tree or the pieces, the repairs, and the first error.
+fn writeTolerant(out: *std.Io.Writer, pr: *Printer, b: *parser.BaseParser, start: []const u8, budget: u32) !bool {
+    if (comptime !parser.hasRepair) {
+        std.debug.print("driver: --tolerant needs a grammar with @repair\n", .{});
+        std.process.exit(2);
+    } else {
+        const s = startOf(start) orelse {
+            std.debug.print("driver: --tolerant needs a generated start rule, not '{s}'\n", .{start});
+            std.process.exit(2);
+        };
+        const r = try b.parseTolerant(s, budget);
+        if (r.complete) {
+            try pr.pretty(r.sexp);
+            try out.writeByte('\n');
+        } else {
+            try out.writeAll("!incomplete\n");
+            for (r.pieces) |piece| {
+                try pr.pretty(piece);
+                try out.writeByte('\n');
+            }
+        }
+        try out.print("!tolerant {d} repairs ({d} inserted, {d} deleted, {d} dropped)", .{ r.repairs, r.insertions, r.deletions, r.drops });
+        if (r.failure) |f| {
+            try out.writeAll("\n!first ");
+            try b.writeError(out);
+            try out.writeByte('\n');
+            try b.writeExcerpt(out, f.span);
+        } else try out.writeByte('\n');
+        return r.complete and r.failure == null;
+    }
+}
+
 fn usage() noreturn {
-    std.debug.print("usage: driver [--start parseX] [--pretty|--compact|--hash] [--no-spans] [--list FILE] [--bench N] FILE...\n", .{});
+    std.debug.print("usage: driver [--start parseX] [--pretty|--compact|--hash] [--no-spans] [--tolerant N] [--list FILE] [--bench N] FILE...\n", .{});
     std.debug.print("start rules:", .{});
     inline for (start_names) |n| std.debug.print(" {s}", .{n});
     std.debug.print("\n", .{});
@@ -281,6 +330,7 @@ pub fn main(init: std.process.Init) !void {
     var mode: Mode = .pretty;
     var spans = true;
     var rounds: usize = 1;
+    var tolerant: ?u32 = null;
     var files: std.ArrayList([]const u8) = .empty;
     const cwd = std.Io.Dir.cwd();
 
@@ -299,6 +349,10 @@ pub fn main(init: std.process.Init) !void {
             mode = .hash;
         } else if (std.mem.eql(u8, a, "--no-spans")) {
             spans = false;
+        } else if (std.mem.eql(u8, a, "--tolerant")) {
+            i += 1;
+            if (i >= args.len) usage();
+            tolerant = try std.fmt.parseInt(u32, args[i], 10);
         } else if (std.mem.eql(u8, a, "--bench")) {
             i += 1;
             if (i >= args.len) usage();
@@ -349,11 +403,17 @@ pub fn main(init: std.process.Init) !void {
 
         var p = P.init(gpa, src);
         defer p.deinit();
-        const result = callStart(&p, start);
 
         render.clearRetainingCapacity();
         const w = &render.writer;
         var pr = Printer{ .src = src, .parser = baseOf(&p), .spans = spans, .out = w, .gpa = gpa };
+        if (tolerant) |budget| {
+            if (!try writeTolerant(w, &pr, baseOf(&p), start, budget)) status = 1;
+            try out.writeAll(render.written());
+            try out.flush();
+            continue;
+        }
+        const result = callStart(&p, start);
         var ok = true;
         if (result) |sexp| {
             switch (mode) {
