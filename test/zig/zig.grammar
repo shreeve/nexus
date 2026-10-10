@@ -436,6 +436,99 @@ tokens
     reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
     reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
 
+# Syntax errors read as std.zig's do: tokens by std.zig.Token.Tag.symbol()
+# ('*', 'fn', an identifier), a wrapper category by the token it stands
+# for, and the places that wait for an expression, a type expression, a
+# statement, a block or a declaration by that name.
+@display
+    EOF: "EOF", INVALID: "invalid bytes", IDENTIFIER: "an identifier",
+    LABEL: "an identifier", C_PTR: "'c'",
+    STRING_LITERAL: "a string literal",
+    MULTILINE_STRING_LITERAL_LINE: "a multiline string literal",
+    CHAR_LITERAL: "a character literal", BUILTIN: "a builtin function",
+    NUMBER_LITERAL: "a number literal", DOC_COMMENT: "a document comment",
+    CONTAINER_DOC_COMMENT: "a document comment",
+    BAD_DOC_COMMENT: "a same line documentation comment",
+    BREAK_COLON: "':'", PTR_STAR: "'*'", ASTERISK_PREFIX: "'*'",
+    ENUM_TAG: "'enum'", MINUS_PREFIX: "'-'", MINUS_PERCENT_PREFIX: "'-%'",
+    AMPERSAND_PREFIX: "'&'", PIPE_PAYLOAD: "'|'",
+    BAD_OPERATOR: "a binary operator with whitespace on one side only",
+    ERR: "a token over 65535 bytes",
+    "!": "'!'", "!=": "'!='", "|": "'|'", "||": "'||'", "|=": "'|='",
+    "=": "'='", "==": "'=='", "=>": "'=>'", "(": "'('", ")": "')'",
+    ";": "';'", "%": "'%'", "%=": "'%='", "{": "'{'", "}": "'}'",
+    "[": "'['", "]": "']'", ".": "'.'", ".*": "'.*'", "..": "'..'",
+    "...": "'...'", "^": "'^'", "^=": "'^='", "+": "'+'", "++": "'++'",
+    "+=": "'+='", "+%": "'+%'", "+%=": "'+%='", "+|": "'+|'",
+    "+|=": "'+|='", "-": "'-'", "-=": "'-='", "-%": "'-%'", "-%=": "'-%='",
+    "-|": "'-|'", "-|=": "'-|='", "*": "'*'", "*=": "'*='", "*%": "'*%'",
+    "*%=": "'*%='", "*|": "'*|'", "*|=": "'*|='", "->": "'->'", ":": "':'",
+    "/": "'/'", "/=": "'/='", ",": "','", "&": "'&'", "&=": "'&='",
+    "?": "'?'", "<": "'<'", "<=": "'<='", "<<": "'<<'", "<<=": "'<<='",
+    "<<|": "'<<|'", "<<|=": "'<<|='", ">": "'>'", ">=": "'>='",
+    ">>": "'>>'", ">>=": "'>>='", "~": "'~'",
+    "addrspace": "'addrspace'", "align": "'align'",
+    "allowzero": "'allowzero'", "and": "'and'", "anyframe": "'anyframe'",
+    "anytype": "'anytype'", "asm": "'asm'", "break": "'break'",
+    "callconv": "'callconv'", "catch": "'catch'", "comptime": "'comptime'",
+    "const": "'const'", "continue": "'continue'", "defer": "'defer'",
+    "else": "'else'", "enum": "'enum'", "errdefer": "'errdefer'",
+    "error": "'error'", "export": "'export'", "extern": "'extern'",
+    "fn": "'fn'", "for": "'for'", "if": "'if'", "inline": "'inline'",
+    "noalias": "'noalias'", "noinline": "'noinline'",
+    "nosuspend": "'nosuspend'", "opaque": "'opaque'", "or": "'or'",
+    "orelse": "'orelse'", "packed": "'packed'", "pub": "'pub'",
+    "resume": "'resume'", "return": "'return'",
+    "linksection": "'linksection'", "struct": "'struct'",
+    "suspend": "'suspend'", "switch": "'switch'", "test": "'test'",
+    "threadlocal": "'threadlocal'", "try": "'try'", "union": "'union'",
+    "unreachable": "'unreachable'", "var": "'var'",
+    "volatile": "'volatile'", "while": "'while'"
+
+@errors
+    expr: "an expression", expr_s: "an expression", expr_c: "an expression",
+    expr_p: "an expression", index_expr: "an expression",
+    bool_or_expr: "an expression", bool_or_expr_k: "an expression",
+    bool_or_expr_s: "an expression", bool_or_expr_sk: "an expression",
+    bool_or_expr_c: "an expression", bool_or_expr_ck: "an expression",
+    bool_or_expr_p: "an expression", bool_or_expr_pk: "an expression",
+    bool_and_expr: "an expression", bool_and_expr_k: "an expression",
+    bool_and_expr_s: "an expression", bool_and_expr_sk: "an expression",
+    bool_and_expr_c: "an expression", bool_and_expr_ck: "an expression",
+    bool_and_expr_p: "an expression", bool_and_expr_pk: "an expression",
+    compare_expr: "an expression", compare_expr_k: "an expression",
+    compare_expr_s: "an expression", compare_expr_sk: "an expression",
+    compare_expr_c: "an expression", compare_expr_ck: "an expression",
+    compare_expr_p: "an expression", compare_expr_pk: "an expression",
+    bitwise_expr: "an expression", bitwise_expr_k: "an expression",
+    bitwise_expr_s: "an expression", bitwise_expr_sk: "an expression",
+    bitwise_expr_c: "an expression", bitwise_expr_ck: "an expression",
+    bitwise_expr_p: "an expression", bitwise_expr_pk: "an expression",
+    bit_shift_expr: "an expression", bit_shift_expr_k: "an expression",
+    bit_shift_expr_s: "an expression", bit_shift_expr_sk: "an expression",
+    bit_shift_expr_c: "an expression", bit_shift_expr_ck: "an expression",
+    bit_shift_expr_p: "an expression", bit_shift_expr_pk: "an expression",
+    addition_expr: "an expression", addition_expr_k: "an expression",
+    addition_expr_s: "an expression", addition_expr_sk: "an expression",
+    addition_expr_c: "an expression", addition_expr_ck: "an expression",
+    addition_expr_p: "an expression", addition_expr_pk: "an expression",
+    multiply_expr: "an expression", multiply_expr_k: "an expression",
+    multiply_expr_s: "an expression", multiply_expr_sk: "an expression",
+    multiply_expr_c: "an expression", multiply_expr_ck: "an expression",
+    multiply_expr_p: "an expression", multiply_expr_pk: "an expression",
+    prefix_expr: "an expression", prefix_expr_k: "an expression",
+    prefix_expr_s: "an expression", prefix_expr_sk: "an expression",
+    prefix_expr_c: "an expression", prefix_expr_ck: "an expression",
+    prefix_expr_p: "an expression", prefix_expr_pk: "an expression",
+    type_expr: "a type expression", type_expr_f: "a type expression",
+    type_expr_p: "a type expression", type_expr_n: "a type expression",
+    assign_expr: "an assignment", assign_s: "an assignment",
+    assign_c: "an assignment", single_assign_expr: "an assignment",
+    block_statement: "a statement", statement: "a statement",
+    block_expr: "a block", container_decl: "a declaration",
+    container_field: "a container field", param_decl: "a parameter",
+    field_init: "a field initializer", switch_prong: "a switch prong"
+
 root!       = container_docs members                        → (root 1 ...2)
 tokens!     = token*                                        → (tokens ...1)
 
@@ -826,8 +919,11 @@ multiply_expr_pk   = prefix_expr_pk
                    | multiply_expr_pk multiply_op prefix_expr_k      → (binary 2 1 3)
 
 # Prefix operators (Parse.zig parsePrefixExpr). After a prefix operator
-# any operand may follow, so the variants share them. Which token a `-`,
-# `-%`, `&` or `*` is (the wrapper's spacing categories) is not kept.
+# any operand may follow, so the variants share them. A `-`, `-%` or `&`
+# is the operator or its spacing category (see above), which the tree does
+# not keep. The choice is written in place, not as a rule of its own, as
+# is the `*` of a pointer type: a syntax error right after the operator is
+# then reported where the operand is awaited ("expected an expression").
 prefix_expr      = primary_expr | prefixed
 prefix_expr_k    = primary_expr_k | prefixed_k
 prefix_expr_s    = primary_expr_s | prefixed
@@ -837,18 +933,18 @@ prefix_expr_ck   = primary_expr_ck | prefixed_k
 prefix_expr_p    = ptr_curly_suffix_expr
 prefix_expr_pk   = ptr_curly_suffix_expr
 
-prefixed    = "!" prefix_expr                                   → (bool_not 2)
-            | !minus prefix_expr                                → (negation 2)
-            | "~" prefix_expr                                   → (bit_not 2)
-            | !minus_wrap prefix_expr                           → (negation_wrap 2)
-            | !amp prefix_expr                                  → (address_of 2)
-            | "try" prefix_expr                                 → (try 2)
-prefixed_k  = "!" prefix_expr_k                                 → (bool_not 2)
-            | !minus prefix_expr_k                              → (negation 2)
-            | "~" prefix_expr_k                                 → (bit_not 2)
-            | !minus_wrap prefix_expr_k                         → (negation_wrap 2)
-            | !amp prefix_expr_k                                → (address_of 2)
-            | "try" prefix_expr_k                               → (try 2)
+prefixed    = "!" prefix_expr                               → (bool_not 2)
+            | !("-" | MINUS_PREFIX) prefix_expr             → (negation 2)
+            | "~" prefix_expr                               → (bit_not 2)
+            | !("-%" | MINUS_PERCENT_PREFIX) prefix_expr    → (negation_wrap 2)
+            | !("&" | AMPERSAND_PREFIX) prefix_expr         → (address_of 2)
+            | "try" prefix_expr                             → (try 2)
+prefixed_k  = "!" prefix_expr_k                             → (bool_not 2)
+            | !("-" | MINUS_PREFIX) prefix_expr_k           → (negation 2)
+            | "~" prefix_expr_k                             → (bit_not 2)
+            | !("-%" | MINUS_PERCENT_PREFIX) prefix_expr_k  → (negation_wrap 2)
+            | !("&" | AMPERSAND_PREFIX) prefix_expr_k       → (address_of 2)
+            | "try" prefix_expr_k                           → (try 2)
 
 # Primary expressions (Parse.zig parsePrimaryExpr). A block is a primary
 # but takes no suffix; it never starts an `_s` or `_c` expression.
@@ -1003,16 +1099,16 @@ prefix_type = "?" type_expr                                             → (opt
 
 # `*T`, and `a[*T ...]` (ptr_led, led by PTR_STAR): a single-item
 # pointer, whose `align` may take a bit range.
-single_ptr  = !star ptr_quals type_expr                                                             → (ptr_type one _ _ _ _ _ 3 ...2)
-            | !star ptr_quals byte_align ptr_quals type_expr                                        → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
-            | !star ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                   → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
-            | !star ptr_quals addr_space ptr_quals type_expr                                        → (ptr_type one _ _ _ _ 3 5 ...2 ...4)
-            | !star ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr                   → (ptr_type one _ 5 _ _ 3 7 ...2 ...4 ...6)
-            | !star ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr            → (ptr_type one _ 5 7 9 _ 12 ...2 ...11)
-            | !star ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals addr_space ptr_quals type_expr
-                                                                                                    → (ptr_type one _ 5 7 9 12 14 ...2 ...11 ...13)
-            | !star ptr_quals addr_space ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr
-                                                                                                    → (ptr_type one _ 7 9 11 3 14 ...2 ...4 ...13)
+single_ptr  = !("*" | ASTERISK_PREFIX) ptr_quals type_expr                                                   → (ptr_type one _ _ _ _ _ 3 ...2)
+            | !("*" | ASTERISK_PREFIX) ptr_quals byte_align ptr_quals type_expr                              → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
+            | !("*" | ASTERISK_PREFIX) ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr         → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
+            | !("*" | ASTERISK_PREFIX) ptr_quals addr_space ptr_quals type_expr                              → (ptr_type one _ _ _ _ 3 5 ...2 ...4)
+            | !("*" | ASTERISK_PREFIX) ptr_quals addr_space ptr_quals byte_align ptr_quals type_expr         → (ptr_type one _ 5 _ _ 3 7 ...2 ...4 ...6)
+            | !("*" | ASTERISK_PREFIX) ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr  → (ptr_type one _ 5 7 9 _ 12 ...2 ...11)
+            | !("*" | ASTERISK_PREFIX) ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals addr_space ptr_quals type_expr
+                                                                                                             → (ptr_type one _ 5 7 9 12 14 ...2 ...11 ...13)
+            | !("*" | ASTERISK_PREFIX) ptr_quals addr_space ptr_quals "align" "(" expr ":" expr ":" expr ")" ptr_quals type_expr
+                                                                                                             → (ptr_type one _ 7 9 11 3 14 ...2 ...4 ...13)
 ptr_led     = PTR_STAR ptr_quals type_expr                                                          → (ptr_type one _ _ _ _ _ 3 ...2)
             | PTR_STAR ptr_quals byte_align ptr_quals type_expr                                     → (ptr_type one _ 3 _ _ _ 5 ...2 ...4)
             | PTR_STAR ptr_quals byte_align ptr_quals addr_space ptr_quals type_expr                → (ptr_type one _ 3 _ _ 5 7 ...2 ...4 ...6)
@@ -1236,10 +1332,7 @@ for_item            = expr
                     | expr ".."                                     → (for_range 1)
                     | expr ".." expr                                → (for_range 1 3)
 
-# Operators (grammar.peg AssignOp ... MultiplyOp). The wrapper's spacing
-# categories of `-`, `-%`, `&`, `*` and `|` (see EXPRESSION LEVEL) stand for
-# the same operator wherever it can only be a prefix operator, a pointer
-# or a payload's bar; which token it was is not kept in the tree.
+# Operators (grammar.peg AssignOp ... MultiplyOp).
 assign_op           = "=" | "*=" | "*|=" | "/=" | "%=" | "+=" | "+|=" | "-=" | "-|="
                     | "<<=" | "<<|=" | ">>=" | "&=" | "^=" | "|=" | "*%=" | "+%=" | "-%="
 
@@ -1249,9 +1342,7 @@ bit_shift_op    = "<<" | ">>" | "<<|"
 addition_op     = "+" | "-" | "++" | "+%" | "-%" | "+|" | "-|"
 multiply_op     = "||" | "*" | "/" | "%" | "*%" | "*|"
 
-minus       = "-" | MINUS_PREFIX
-minus_wrap  = "-%" | MINUS_PERCENT_PREFIX
-amp         = "&" | AMPERSAND_PREFIX
+# A capture's `*` (the `ptr` role), and a payload's bars.
 star        = "*" | ASTERISK_PREFIX
 pipe        = "|" | PIPE_PAYLOAD
 

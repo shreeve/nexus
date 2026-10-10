@@ -6,6 +6,8 @@
 //!   accept --bench N [--list FILE] PATH...           parse-only timing
 //!   accept --fuzz N [--seed S] [--list FILE] [--inline FILE] PATH...
 //!                                                    compare on N mutants
+//!   accept --messages [--list FILE] [--inline FILE] PATH...
+//!                                                    both syntax errors
 //!
 //! The Nexus side is a strict parse from the `root` start symbol; the std
 //! side is Ast.parse(.{ .recover = false, .mode = .zig }), which stops at
@@ -27,6 +29,11 @@
 //! swap two neighbors, insert a token taken from the seed or from a list
 //! of keywords and operators, with a space, a newline or nothing around
 //! it). A differing input is printed in full.
+//!
+//! --messages prints, for every input both parsers reject, the syntax
+//! error each gives (Nexus's writeError, Ast's renderError), and counts
+//! how many of Nexus's name at most 6 expected items, and how many report
+//! the error at the same line and column as Ast.
 //!
 //! --bench N times both parsers over the files held in memory, best of N
 //! rounds, single thread: Nexus's strict parse (one parser, reset per
@@ -103,6 +110,7 @@ pub fn main(init: std.process.Init) !void {
     var rounds: usize = 0;
     var fuzz: usize = 0;
     var seed: u64 = 0;
+    var messages = false;
     var i: usize = 1;
     while (i < args.len) : (i += 1) {
         const arg = args[i];
@@ -121,6 +129,8 @@ pub fn main(init: std.process.Init) !void {
         } else if (std.mem.eql(u8, arg, "--fuzz") and value) {
             i += 1;
             fuzz = try std.fmt.parseUnsigned(usize, args[i], 10);
+        } else if (std.mem.eql(u8, arg, "--messages")) {
+            messages = true;
         } else if (std.mem.eql(u8, arg, "--seed") and value) {
             i += 1;
             seed = try std.fmt.parseUnsigned(u64, args[i], 10);
@@ -156,6 +166,8 @@ pub fn main(init: std.process.Init) !void {
     var differ: usize = 0;
     var long: usize = 0;
     var bytes: usize = 0;
+    var short_msg: usize = 0;
+    var same_line_col: usize = 0;
 
     const total = paths.items.len + inline_inputs.items.len;
     for (0..total) |k| {
@@ -180,6 +192,11 @@ pub fn main(init: std.process.Init) !void {
         if (!a.ok and !b.ok) {
             both_reject += 1;
             if (a.pos == b.pos) same_pos += 1;
+            if (messages) {
+                const short, const same = try writeMessages(gpa, &p, input, w);
+                short_msg += @intFromBool(short);
+                same_line_col += @intFromBool(same);
+            }
             continue;
         }
         if (a.long and b.ok) {
@@ -203,8 +220,35 @@ pub fn main(init: std.process.Init) !void {
     try w.print("{d} inputs ({d:.2} MB): {d} accepted by both, {d} rejected by both ({d} at the same byte), {d} differ, {d} with a token over 65535 bytes\n", .{
         count, @as(f64, @floatFromInt(bytes)) / 1e6, both_accept, both_reject, same_pos, differ, long,
     });
+    if (messages) try w.print("{d} rejected by both: {d} Nexus messages name at most 6 expected items, {d} are at Ast's line and column\n", .{
+        both_reject, short_msg, same_line_col,
+    });
     try w.flush();
     if (differ != 0) std.process.exit(1);
+}
+
+/// Both syntax errors of an input both parsers reject (`p` holds Nexus's
+/// failed parse); returns whether Nexus's names at most 6 expected items
+/// and whether it is at Ast's line and column.
+fn writeMessages(gpa: std.mem.Allocator, p: *parser.Parser, input: Input, w: *Io.Writer) !struct { bool, bool } {
+    var nexus: Io.Writer.Allocating = .init(gpa);
+    defer nexus.deinit();
+    try p.writeError(&nexus.writer);
+    var tree = try Ast.parse(gpa, input.src, .{ .recover = false, .mode = .zig });
+    defer tree.deinit(gpa);
+    const e = tree.errors[0];
+    const loc = tree.tokenLocation(0, e.token);
+    var std_msg: Io.Writer.Allocating = .init(gpa);
+    defer std_msg.deinit();
+    try std_msg.writer.print("{d}:{d}: ", .{ loc.line + 1, loc.column + 1 + tree.errorOffset(e) });
+    try tree.renderError(e, &std_msg.writer);
+    try w.print("MSG {s}\n  nexus: {s}\n  std:   {s}\n", .{ input.name, nexus.written(), std_msg.written() });
+    const text = nexus.written();
+    const got = std.mem.findLast(u8, text, ", got ") orelse text.len;
+    const items = std.mem.count(u8, text[0..got], ", ") + std.mem.count(u8, text[0..got], " or ") + 1;
+    const at = text[0 .. std.mem.findScalar(u8, text, ' ') orelse 0];
+    const std_at = std_msg.written()[0 .. std.mem.findScalar(u8, std_msg.written(), ' ') orelse 0];
+    return .{ items <= 6, std.mem.eql(u8, at, std_at) };
 }
 
 fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64, w: *Io.Writer) !void {

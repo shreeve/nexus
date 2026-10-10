@@ -1082,6 +1082,223 @@
     (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
     (conflict `reduce` `while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr` `while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
     (conflict `reduce` `while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr` `while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`))
+  (display
+    (name_pair `EOF` `"EOF"`)
+    (name_pair `INVALID` `"invalid bytes"`)
+    (name_pair `IDENTIFIER` `"an identifier"`)
+    (name_pair `LABEL` `"an identifier"`)
+    (name_pair `C_PTR` `"'c'"`)
+    (name_pair `STRING_LITERAL` `"a string literal"`)
+    (name_pair `MULTILINE_STRING_LITERAL_LINE` `"a multiline string literal"`)
+    (name_pair `CHAR_LITERAL` `"a character literal"`)
+    (name_pair `BUILTIN` `"a builtin function"`)
+    (name_pair `NUMBER_LITERAL` `"a number literal"`)
+    (name_pair `DOC_COMMENT` `"a document comment"`)
+    (name_pair `CONTAINER_DOC_COMMENT` `"a document comment"`)
+    (name_pair `BAD_DOC_COMMENT` `"a same line documentation comment"`)
+    (name_pair `BREAK_COLON` `"':'"`)
+    (name_pair `PTR_STAR` `"'*'"`)
+    (name_pair `ASTERISK_PREFIX` `"'*'"`)
+    (name_pair `ENUM_TAG` `"'enum'"`)
+    (name_pair `MINUS_PREFIX` `"'-'"`)
+    (name_pair `MINUS_PERCENT_PREFIX` `"'-%'"`)
+    (name_pair `AMPERSAND_PREFIX` `"'&'"`)
+    (name_pair `PIPE_PAYLOAD` `"'|'"`)
+    (name_pair `BAD_OPERATOR` `"a binary operator with whitespace on one side only"`)
+    (name_pair `ERR` `"a token over 65535 bytes"`)
+    (name_pair `"!"` `"'!'"`)
+    (name_pair `"!="` `"'!='"`)
+    (name_pair `"|"` `"'|'"`)
+    (name_pair `"||"` `"'||'"`)
+    (name_pair `"|="` `"'|='"`)
+    (name_pair `"="` `"'='"`)
+    (name_pair `"=="` `"'=='"`)
+    (name_pair `"=>"` `"'=>'"`)
+    (name_pair `"("` `"'('"`)
+    (name_pair `")"` `"')'"`)
+    (name_pair `";"` `"';'"`)
+    (name_pair `"%"` `"'%'"`)
+    (name_pair `"%="` `"'%='"`)
+    (name_pair `"{"` `"'{'"`)
+    (name_pair `"}"` `"'}'"`)
+    (name_pair `"["` `"'['"`)
+    (name_pair `"]"` `"']'"`)
+    (name_pair `"."` `"'.'"`)
+    (name_pair `".*"` `"'.*'"`)
+    (name_pair `".."` `"'..'"`)
+    (name_pair `"..."` `"'...'"`)
+    (name_pair `"^"` `"'^'"`)
+    (name_pair `"^="` `"'^='"`)
+    (name_pair `"+"` `"'+'"`)
+    (name_pair `"++"` `"'++'"`)
+    (name_pair `"+="` `"'+='"`)
+    (name_pair `"+%"` `"'+%'"`)
+    (name_pair `"+%="` `"'+%='"`)
+    (name_pair `"+|"` `"'+|'"`)
+    (name_pair `"+|="` `"'+|='"`)
+    (name_pair `"-"` `"'-'"`)
+    (name_pair `"-="` `"'-='"`)
+    (name_pair `"-%"` `"'-%'"`)
+    (name_pair `"-%="` `"'-%='"`)
+    (name_pair `"-|"` `"'-|'"`)
+    (name_pair `"-|="` `"'-|='"`)
+    (name_pair `"*"` `"'*'"`)
+    (name_pair `"*="` `"'*='"`)
+    (name_pair `"*%"` `"'*%'"`)
+    (name_pair `"*%="` `"'*%='"`)
+    (name_pair `"*|"` `"'*|'"`)
+    (name_pair `"*|="` `"'*|='"`)
+    (name_pair `"->"` `"'->'"`)
+    (name_pair `":"` `"':'"`)
+    (name_pair `"/"` `"'/'"`)
+    (name_pair `"/="` `"'/='"`)
+    (name_pair `","` `"','"`)
+    (name_pair `"&"` `"'&'"`)
+    (name_pair `"&="` `"'&='"`)
+    (name_pair `"?"` `"'?'"`)
+    (name_pair `"<"` `"'<'"`)
+    (name_pair `"<="` `"'<='"`)
+    (name_pair `"<<"` `"'<<'"`)
+    (name_pair `"<<="` `"'<<='"`)
+    (name_pair `"<<|"` `"'<<|'"`)
+    (name_pair `"<<|="` `"'<<|='"`)
+    (name_pair `">"` `"'>'"`)
+    (name_pair `">="` `"'>='"`)
+    (name_pair `">>"` `"'>>'"`)
+    (name_pair `">>="` `"'>>='"`)
+    (name_pair `"~"` `"'~'"`)
+    (name_pair `"addrspace"` `"'addrspace'"`)
+    (name_pair `"align"` `"'align'"`)
+    (name_pair `"allowzero"` `"'allowzero'"`)
+    (name_pair `"and"` `"'and'"`)
+    (name_pair `"anyframe"` `"'anyframe'"`)
+    (name_pair `"anytype"` `"'anytype'"`)
+    (name_pair `"asm"` `"'asm'"`)
+    (name_pair `"break"` `"'break'"`)
+    (name_pair `"callconv"` `"'callconv'"`)
+    (name_pair `"catch"` `"'catch'"`)
+    (name_pair `"comptime"` `"'comptime'"`)
+    (name_pair `"const"` `"'const'"`)
+    (name_pair `"continue"` `"'continue'"`)
+    (name_pair `"defer"` `"'defer'"`)
+    (name_pair `"else"` `"'else'"`)
+    (name_pair `"enum"` `"'enum'"`)
+    (name_pair `"errdefer"` `"'errdefer'"`)
+    (name_pair `"error"` `"'error'"`)
+    (name_pair `"export"` `"'export'"`)
+    (name_pair `"extern"` `"'extern'"`)
+    (name_pair `"fn"` `"'fn'"`)
+    (name_pair `"for"` `"'for'"`)
+    (name_pair `"if"` `"'if'"`)
+    (name_pair `"inline"` `"'inline'"`)
+    (name_pair `"noalias"` `"'noalias'"`)
+    (name_pair `"noinline"` `"'noinline'"`)
+    (name_pair `"nosuspend"` `"'nosuspend'"`)
+    (name_pair `"opaque"` `"'opaque'"`)
+    (name_pair `"or"` `"'or'"`)
+    (name_pair `"orelse"` `"'orelse'"`)
+    (name_pair `"packed"` `"'packed'"`)
+    (name_pair `"pub"` `"'pub'"`)
+    (name_pair `"resume"` `"'resume'"`)
+    (name_pair `"return"` `"'return'"`)
+    (name_pair `"linksection"` `"'linksection'"`)
+    (name_pair `"struct"` `"'struct'"`)
+    (name_pair `"suspend"` `"'suspend'"`)
+    (name_pair `"switch"` `"'switch'"`)
+    (name_pair `"test"` `"'test'"`)
+    (name_pair `"threadlocal"` `"'threadlocal'"`)
+    (name_pair `"try"` `"'try'"`)
+    (name_pair `"union"` `"'union'"`)
+    (name_pair `"unreachable"` `"'unreachable'"`)
+    (name_pair `"var"` `"'var'"`)
+    (name_pair `"volatile"` `"'volatile'"`)
+    (name_pair `"while"` `"'while'"`))
+  (errors
+    (name_pair `expr` `"an expression"`)
+    (name_pair `expr_s` `"an expression"`)
+    (name_pair `expr_c` `"an expression"`)
+    (name_pair `expr_p` `"an expression"`)
+    (name_pair `index_expr` `"an expression"`)
+    (name_pair `bool_or_expr` `"an expression"`)
+    (name_pair `bool_or_expr_k` `"an expression"`)
+    (name_pair `bool_or_expr_s` `"an expression"`)
+    (name_pair `bool_or_expr_sk` `"an expression"`)
+    (name_pair `bool_or_expr_c` `"an expression"`)
+    (name_pair `bool_or_expr_ck` `"an expression"`)
+    (name_pair `bool_or_expr_p` `"an expression"`)
+    (name_pair `bool_or_expr_pk` `"an expression"`)
+    (name_pair `bool_and_expr` `"an expression"`)
+    (name_pair `bool_and_expr_k` `"an expression"`)
+    (name_pair `bool_and_expr_s` `"an expression"`)
+    (name_pair `bool_and_expr_sk` `"an expression"`)
+    (name_pair `bool_and_expr_c` `"an expression"`)
+    (name_pair `bool_and_expr_ck` `"an expression"`)
+    (name_pair `bool_and_expr_p` `"an expression"`)
+    (name_pair `bool_and_expr_pk` `"an expression"`)
+    (name_pair `compare_expr` `"an expression"`)
+    (name_pair `compare_expr_k` `"an expression"`)
+    (name_pair `compare_expr_s` `"an expression"`)
+    (name_pair `compare_expr_sk` `"an expression"`)
+    (name_pair `compare_expr_c` `"an expression"`)
+    (name_pair `compare_expr_ck` `"an expression"`)
+    (name_pair `compare_expr_p` `"an expression"`)
+    (name_pair `compare_expr_pk` `"an expression"`)
+    (name_pair `bitwise_expr` `"an expression"`)
+    (name_pair `bitwise_expr_k` `"an expression"`)
+    (name_pair `bitwise_expr_s` `"an expression"`)
+    (name_pair `bitwise_expr_sk` `"an expression"`)
+    (name_pair `bitwise_expr_c` `"an expression"`)
+    (name_pair `bitwise_expr_ck` `"an expression"`)
+    (name_pair `bitwise_expr_p` `"an expression"`)
+    (name_pair `bitwise_expr_pk` `"an expression"`)
+    (name_pair `bit_shift_expr` `"an expression"`)
+    (name_pair `bit_shift_expr_k` `"an expression"`)
+    (name_pair `bit_shift_expr_s` `"an expression"`)
+    (name_pair `bit_shift_expr_sk` `"an expression"`)
+    (name_pair `bit_shift_expr_c` `"an expression"`)
+    (name_pair `bit_shift_expr_ck` `"an expression"`)
+    (name_pair `bit_shift_expr_p` `"an expression"`)
+    (name_pair `bit_shift_expr_pk` `"an expression"`)
+    (name_pair `addition_expr` `"an expression"`)
+    (name_pair `addition_expr_k` `"an expression"`)
+    (name_pair `addition_expr_s` `"an expression"`)
+    (name_pair `addition_expr_sk` `"an expression"`)
+    (name_pair `addition_expr_c` `"an expression"`)
+    (name_pair `addition_expr_ck` `"an expression"`)
+    (name_pair `addition_expr_p` `"an expression"`)
+    (name_pair `addition_expr_pk` `"an expression"`)
+    (name_pair `multiply_expr` `"an expression"`)
+    (name_pair `multiply_expr_k` `"an expression"`)
+    (name_pair `multiply_expr_s` `"an expression"`)
+    (name_pair `multiply_expr_sk` `"an expression"`)
+    (name_pair `multiply_expr_c` `"an expression"`)
+    (name_pair `multiply_expr_ck` `"an expression"`)
+    (name_pair `multiply_expr_p` `"an expression"`)
+    (name_pair `multiply_expr_pk` `"an expression"`)
+    (name_pair `prefix_expr` `"an expression"`)
+    (name_pair `prefix_expr_k` `"an expression"`)
+    (name_pair `prefix_expr_s` `"an expression"`)
+    (name_pair `prefix_expr_sk` `"an expression"`)
+    (name_pair `prefix_expr_c` `"an expression"`)
+    (name_pair `prefix_expr_ck` `"an expression"`)
+    (name_pair `prefix_expr_p` `"an expression"`)
+    (name_pair `prefix_expr_pk` `"an expression"`)
+    (name_pair `type_expr` `"a type expression"`)
+    (name_pair `type_expr_f` `"a type expression"`)
+    (name_pair `type_expr_p` `"a type expression"`)
+    (name_pair `type_expr_n` `"a type expression"`)
+    (name_pair `assign_expr` `"an assignment"`)
+    (name_pair `assign_s` `"an assignment"`)
+    (name_pair `assign_c` `"an assignment"`)
+    (name_pair `single_assign_expr` `"an assignment"`)
+    (name_pair `block_statement` `"a statement"`)
+    (name_pair `statement` `"a statement"`)
+    (name_pair `block_expr` `"a block"`)
+    (name_pair `container_decl` `"a declaration"`)
+    (name_pair `container_field` `"a container field"`)
+    (name_pair `param_decl` `"a parameter"`)
+    (name_pair `field_init` `"a field initializer"`)
+    (name_pair `switch_prong` `"a switch prong"`))
   (rule
     (start `root`)
     (alt
@@ -3852,7 +4069,10 @@
     (alt
       _
       ((skip
-          (ref `minus`))
+          (group
+            _
+            ((lit `"-"`))
+            ((tok `MINUS_PREFIX`))))
         (ref `prefix_expr`))
       (node
         `negation`
@@ -3869,7 +4089,10 @@
     (alt
       _
       ((skip
-          (ref `minus_wrap`))
+          (group
+            _
+            ((lit `"-%"`))
+            ((tok `MINUS_PERCENT_PREFIX`))))
         (ref `prefix_expr`))
       (node
         `negation_wrap`
@@ -3878,7 +4101,10 @@
     (alt
       _
       ((skip
-          (ref `amp`))
+          (group
+            _
+            ((lit `"&"`))
+            ((tok `AMPERSAND_PREFIX`))))
         (ref `prefix_expr`))
       (node
         `address_of`
@@ -3905,7 +4131,10 @@
     (alt
       _
       ((skip
-          (ref `minus`))
+          (group
+            _
+            ((lit `"-"`))
+            ((tok `MINUS_PREFIX`))))
         (ref `prefix_expr_k`))
       (node
         `negation`
@@ -3922,7 +4151,10 @@
     (alt
       _
       ((skip
-          (ref `minus_wrap`))
+          (group
+            _
+            ((lit `"-%"`))
+            ((tok `MINUS_PERCENT_PREFIX`))))
         (ref `prefix_expr_k`))
       (node
         `negation_wrap`
@@ -3931,7 +4163,10 @@
     (alt
       _
       ((skip
-          (ref `amp`))
+          (group
+            _
+            ((lit `"&"`))
+            ((tok `AMPERSAND_PREFIX`))))
         (ref `prefix_expr_k`))
       (node
         `address_of`
@@ -5393,7 +5628,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (ref `type_expr`))
       (node
@@ -5410,7 +5648,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (ref `byte_align`)
         (ref `ptr_quals`)
@@ -5430,7 +5671,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (ref `byte_align`)
         (ref `ptr_quals`)
@@ -5453,7 +5697,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (ref `addr_space`)
         (ref `ptr_quals`)
@@ -5473,7 +5720,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (ref `addr_space`)
         (ref `ptr_quals`)
@@ -5496,7 +5746,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (lit `"align"`)
         (lit `"("`)
@@ -5523,7 +5776,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (lit `"align"`)
         (lit `"("`)
@@ -5553,7 +5809,10 @@
     (alt
       _
       ((skip
-          (ref `star`))
+          (group
+            _
+            ((lit `"*"`))
+            ((tok `ASTERISK_PREFIX`))))
         (ref `ptr_quals`)
         (ref `addr_space`)
         (ref `ptr_quals`)
@@ -7821,42 +8080,6 @@
     (alt
       _
       ((lit `"*|"`))
-      _
-      _))
-  (rule
-    (name `minus`)
-    (alt
-      _
-      ((lit `"-"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `MINUS_PREFIX`))
-      _
-      _))
-  (rule
-    (name `minus_wrap`)
-    (alt
-      _
-      ((lit `"-%"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `MINUS_PERCENT_PREFIX`))
-      _
-      _))
-  (rule
-    (name `amp`)
-    (alt
-      _
-      ((lit `"&"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `AMPERSAND_PREFIX`))
       _
       _))
   (rule
