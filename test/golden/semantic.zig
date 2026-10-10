@@ -1566,25 +1566,17 @@ pub const BaseParser = struct {
     /// An item of a list an action builds from its elements alone.
     const Item = union(enum) { elem: u16, tag: Tag, nil };
 
-    /// A list node over `items`, static data (so the action function needs
-    /// no temporaries for it); unless positions are fixed (`trim` false,
-    /// or a schema), without its trailing nils.
-    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
-        var len = items.len;
-        if (trim and !keepTrailingNils) {
-            while (len > 0) : (len -= 1) switch (items[len - 1]) {
-                .elem => |i| if (pass[i] != .nil) break,
-                .tag => break,
-                .nil => {},
-            };
-        }
-        const out = self.allocItems(len) catch return self.oomNil();
-        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+    /// A list node over `items`, known at compile time (so each call
+    /// stores its items directly); unless positions are fixed (`trim`
+    /// false, or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        inline for (out[0..items.len], items) |*o, it| o.* = switch (it) {
             .elem => |i| pass[i],
             .tag => |t| .{ .tag = t },
             .nil => .nil,
         };
-        return self.node(out, use);
+        return self.node(if (trim) out[0..trimmedLen(out)] else out, use);
     }
 
     /// `(tag items...)`
