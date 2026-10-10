@@ -454,6 +454,8 @@ const Emitter = struct {
                 const label = try std.mem.print(&buf, "blk{d}", .{self.depth});
                 var range: Range = .{};
                 range.addList(n.*);
+                // Span marks leave their elements out of nested nodes too.
+                if (self.rule.spanElems) |elems| range.clamp(elems.first + 1, elems.last + 1);
                 if (range.lo) |lo| {
                     self.uses.nested = true;
                     try w.writeAll("self.nested(");
@@ -487,6 +489,14 @@ const Range = struct {
             .node => |n| self.addList(n.*),
             .nil, .tagLit => {},
         }
+    }
+
+    /// Keep only positions first..last; none left is no range.
+    fn clamp(self: *Range, first: u16, last: u16) void {
+        const lo = self.lo orelse return;
+        self.lo = @max(lo, first);
+        self.hi = @min(self.hi, last);
+        if (self.lo.? > self.hi) self.lo = null;
     }
 
     fn addList(self: *Range, l: ActionList) void {

@@ -143,7 +143,8 @@ expander resolves.
   absent), so actions keep their positions. A variant of an alternative
   with span marks records the first and last unmarked element it has
   (`Rule.spanElems`), and codegen wraps its action in `self.nested`, which
-  gives the node the span of those elements. Without a schema, an expanded
+  gives the node the span of those elements, and narrows the element
+  range of each nested node to them. Without a schema, an expanded
   action is cut after its last present position or nested node;
 - `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`, other groups and choices
   become shared synthesized rules named in source syntax (`L(X)`,

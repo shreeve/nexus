@@ -14,7 +14,8 @@
   head leaves its roles nil. Additive: both forms were errors before, and
   grammars that do not use them generate the same parsers. No migration.
 - Span marks: `-X` on a leading or trailing element of a pattern leaves
-  that element out of the span of the node the alternative builds, so a
+  that element out of the span of the node the alternative builds (and of
+  the nested nodes of its action), so a
   statement's node can exclude its `;` and the doc comments before it
   (`stmt = -doc:DOC* "var" name:IDENT "=" value:expr -";" → (var)`). The
   element keeps its position and value, and the parent node still spans

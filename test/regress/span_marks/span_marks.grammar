@@ -3,7 +3,8 @@
 # and its `;` stay out of its node's span, but in its parent's (`block`
 # spans everything); the marked elements keep their values (`doc`).
 # Without a mark (`call`) a node spans its whole reduction. An optional
-# marked element (`[";"]`) and a choice are marked as a whole.
+# marked element (`[";"]`) and a choice are marked as a whole. A nested
+# node leaves the marked elements out too (`(var 1 let 3 3)`).
 
 @lexer
 tokens
@@ -44,6 +45,7 @@ program!    = stmt*                                 → (block ...1)
 stmt        = -doc:DOC* mut:("var" | "let") name:IDENT "=" value:operand -";"
                                                     → (var)
             | IDENT "(" ")" ";"                     → (call 1)
+            | -DOC* "let" IDENT "(" ")" -";"        → (expr (var 1 let 3 3))
             | operand -![";"] -!("," | ";" ";")     → (expr 1)
 
 operand     = IDENT

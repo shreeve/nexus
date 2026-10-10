@@ -598,8 +598,9 @@ counting, so the trees of earlier parses stay valid (until `reset`).
   through by `→ 2` keeps the span of the `+` node inside it.
 - A nested node (`value:(num 2)`) spans the elements it references.
 - A span mark, `-X` on a leading or trailing element of a pattern, leaves
-  that element out of the span of the node the alternative builds (see
-  below); the node's parent still spans it.
+  that element out of the span of the node the alternative builds and of
+  the nested nodes of its action (see below); the node's parent still
+  spans it.
 - A leaf spans its token. A list without an id (built by a wrapper with
   `List.of`, or any list without the node store) spans the hull of its
   children: from the least start to the greatest end, in whatever order
