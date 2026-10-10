@@ -20,7 +20,7 @@ sub main()
   while i < n
     head = *Node(value: i, seen: +seen, next: <head)
     i += 1
-  -head
+  <head
   print("dropped down to", seen.get())
 
 # expect:

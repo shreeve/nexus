@@ -5,7 +5,7 @@
     _
     ((: `rc` (shared `Wrap`)@212..217)@208..217)@207..218
     _
-    (block (call `print` (member `rc` `value`)@227..235)@221..236 (drop `rc`)@239..242)@221..244)@197..244
+    (block (call `print` (member `rc` `value`)@227..235)@221..236 (move `rc`)@239..242)@221..244)@197..244
   (sub
     `consumer`
     _

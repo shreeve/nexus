@@ -12,12 +12,12 @@ sub main()
   v: Vec[*B] = Vec()
   for i in 0..4
     !v.push(*B(n: i))
-  x = !v.pop()
+  x = (!v).pop()
   print(x == none)
-  if !v.pop() as y
+  if (!v).pop() as y
     print("y", y.n)
-  _ = !v.pop()
-  while !v.pop() as z
+  _ = (!v).pop()
+  while (!v).pop() as z
     print("z", z.n)
   print("end", v.len)
 

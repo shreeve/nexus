@@ -6,7 +6,7 @@ sub main()
   count: *Cell[Int] = *Cell(0)
   cb: *sub() = *|+count| count.set(count.get() + 1)
   cb2 = +cb
-  -cb
+  <cb
   cb2()
   cb2()
   print(count.get())                # 2

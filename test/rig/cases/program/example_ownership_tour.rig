@@ -18,7 +18,7 @@ sub main()
 
   shared = *Account(owner: "bob", balance: 7)
   other = +shared             # clone the handle: two owners, one value
-  -shared                     # drop our handle now; `other` keeps the value alive
+  <shared                     # drop our handle now; `other` keeps the value alive
   print(other.balance)
 
   close(<moved)

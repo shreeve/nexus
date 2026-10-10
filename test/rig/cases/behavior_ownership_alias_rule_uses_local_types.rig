@@ -7,7 +7,7 @@ struct Wrap
 
 sub holder(rc: *Wrap)
   print(rc.value)
-  -rc
+  <rc
 
 sub consumer(rc: Int)
   print(rc)

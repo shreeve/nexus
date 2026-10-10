@@ -1,5 +1,6 @@
 # A write view held in an enum payload, an optional, a generic field,
-# or an array element still writes through to the viewed value.
+# or an array element still writes through to the viewed value. (A
+# payload is written through with `match !s`; `match s` reads it.)
 
 struct Wrap
   n: Int
@@ -15,7 +16,7 @@ sub main()
   b = Wrap(n: 1)
   if true
     s: Slot = .held(b: !b)
-    match s
+    match !s
       .held(r) => r.n = 2
       .empty => print(0)
   print(b.n)

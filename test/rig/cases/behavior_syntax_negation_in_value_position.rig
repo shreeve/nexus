@@ -1,6 +1,5 @@
-# `-x` alone on a line drops `x` in a `sub`, but where the line's value
-# is used — the last line of a `fun`, of an `if` or `match` branch whose
-# value is used — it is negation.
+# `-x` is negation wherever a line's value is used: the last line of a
+# `fun`, or of an `if` or `match` branch whose value is used.
 
 enum Sign
   plus

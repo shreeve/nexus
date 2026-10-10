@@ -32,7 +32,8 @@ struct IntSource
     derived = IntSource.new(f(self.get()))
     self.subscribe(*|~derived, +f, v|
       if derived.upgrade() as d
-        d.set(f(v)))
+        d.set(f(v))
+    )
     derived
 
 sub main()

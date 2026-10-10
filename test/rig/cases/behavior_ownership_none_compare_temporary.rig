@@ -12,7 +12,7 @@ sub main()
   print(w.upgrade() == none)
   if w.upgrade() != none
     print("alive")
-  -rc
+  <rc
   print(w.upgrade() == none)
 
 # expect:
