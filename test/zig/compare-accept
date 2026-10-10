@@ -18,6 +18,9 @@
 #                   reject (Nexus's writeError, Ast's renderError)
 #   --bench N       time parsing alone instead, both parsers, best of N
 #                   rounds (ReleaseFast, single thread, files in memory)
+#   --no-schema     build the parser from zig.grammar without its @schema
+#                   section (a plain tree, no node kinds or roles), to
+#                   measure what the schema costs with --bench
 #   -O MODE         optimize mode of the tool (default ReleaseFast)
 #
 # The tool is built in .zig-cache/nexus-test/zig-accept/ from this
@@ -31,7 +34,7 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT="$ROOT/.zig-cache/nexus-test/zig-accept"
-MODE=ReleaseFast TOOL_ARGS=()
+MODE=ReleaseFast TOOL_ARGS=() SCHEMA=1
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
 : >"$LIST.new"
@@ -42,6 +45,7 @@ while [[ $# -gt 0 ]]; do
         --bench) TOOL_ARGS+=(--bench "$2"); shift ;;
         --fuzz) TOOL_ARGS+=(--fuzz "$2"); shift ;;
         --messages) TOOL_ARGS+=(--messages) ;;
+        --no-schema) SCHEMA=0 ;;
         --seed) TOOL_ARGS+=(--seed "$2"); shift ;;
         -O) MODE=$2; shift ;;
         -h|--help) awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 0 ;;
@@ -63,7 +67,13 @@ mv "$LIST.new" "$LIST"
 # Build: generate the parser, compile the tool next to it.
 NEXUS="$ROOT/bin/nexus"
 [[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
-(cd "$HERE" && "$NEXUS" zig.grammar "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
+GRAMMAR="$HERE/zig.grammar"
+if [[ $SCHEMA == 0 ]]; then
+    # Drop the @schema line and its indented body (comments included).
+    awk '/^@schema/ { skip = 1; next } skip && /^[^ \t#]/ { skip = 0 } !skip' "$GRAMMAR" >"$OUT/zig.grammar"
+    GRAMMAR="$OUT/zig.grammar"
+fi
+(cd "$HERE" && "$NEXUS" "$GRAMMAR" "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
 cp "$HERE/zig.zig" "$HERE/tools/accept.zig" "$HERE/tools/inputs.zig" "$OUT/"
 (cd "$OUT" && zig build-exe -O "$MODE" accept.zig -femit-bin=accept --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
     >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
