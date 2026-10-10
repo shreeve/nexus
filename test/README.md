@@ -96,7 +96,7 @@ The in-repo suites:
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (copied from Rig's main; `test.conf` names the commit) | 138 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's schema-mode MUMPS grammar and lang module (copied from em) | hand-written cases, 27 VistA routines, 22 MVTS-derived em compliance routines |
 | `ruby`, `slash`, `nexis` | downstream grammars without a schema (`nexis`: copied from nexis's main; `test.conf` names the commit) | hand-written Ruby and Slash, a sample of Nexis tests and examples |
-| `zig` | Zig 0.17.0's `std.zig.Tokenizer` as Nexus rules, with a token-list parser; its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs | hand-written, every token kind and every way a token goes invalid |
+| `zig` | Zig 0.17.0's `std.zig.Tokenizer` as Nexus rules, with a token-list parser; its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, and `test/zig/compare-tokens` does so over any corpus | hand-written, every token kind and every way a token goes invalid |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
 where and how an input fails.
