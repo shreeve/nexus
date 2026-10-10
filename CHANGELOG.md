@@ -4,6 +4,33 @@
 
 ### Added
 
+- `@keywords`: keyword tables declared in the grammar. Each indented line
+  is a group, `name [caseless] [base N] entry ...`, with entries `word`,
+  `PRE[REST]` (every prefix of PREREST at least as long as PRE),
+  `"quoted word"`, `entry:NAME` (its terminal) and `entry=NAME` (an alias
+  of the group's terminal NAME). The module exports, per group `g`,
+  `pub const GId = enum(u16)` (the terminals in order, ids from 1 or `N`)
+  and `pub fn gAs(text) ?GId`, and `@as TOKEN = [g]` uses them with or
+  without `@lang`. Generation rejects two entries that accept one word,
+  and every other malformed table (GRAMMAR.md, "@keywords"). The Ruby and
+  Slash grammars here declare their keywords this way; their lang modules'
+  tables are gone. Additive: grammars without `@keywords` generate the
+  same parsers. No migration required.
+
+  A downstream grammar may replace a hand-written `GId`/`gAs` table: list
+  the words in `@keywords`, delete the lang module's enum and lookup (or
+  re-export the generated ones, `pub const GId = parser.GId;`; a lang
+  module that declares its own for a `@keywords` group fails to build),
+  and read ids from `parser.GId`. em's MUMPS tables map one to one:
+  `keywords(CmdId, &.{ "B[REAK]", "HALT", "ZT=ZTIME", ... })` with
+  `CmdId = enum(u16) { BREAK = 100, ... }` is the line
+  `cmd caseless base 100 B[REAK] ... HALT ... ZT=ZTIME`, with the entries
+  in the enum's order (ids follow the order of the entries that are not
+  aliases); likewise `fn` (base 200), `isv` (300) and `ssvn` (400), and
+  em's overlap proof is the generator's. Rig's reserved-word table maps
+  words to token categories for its lexer wrapper, not to `@as` ids, and
+  stays as it is.
+
 - `writeExcerpt(w, span)`: the source line holding a span and a line
   marking it with `^~~`, for a diagnostic under `writeError`'s message.
 - Tolerant parsing returns `pieces` when it cannot complete: the finished

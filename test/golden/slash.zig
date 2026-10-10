@@ -2301,7 +2301,7 @@ fn promote(self: *BaseParser, token: Token) u16 {
     self.lastMatchedId = 0;
     const text = self.source[token.pos..][0..token.len];
     if (text.len == 0) return promotableSymbol;
-    if (self.tryPromote(0, text, lang.keywordAs, &keywordToSymbol, keywordFallbackSymbol, true)) |sym| return sym;
+    if (self.tryPromote(0, text, keywordAs, &keywordToSymbol, keywordFallbackSymbol, true)) |sym| return sym;
     return promotableSymbol;
 }
 
@@ -2391,68 +2391,66 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
 
 const promotableSymbol: u16 = 55;
 
-/// lang.KeywordId ordinal -> grammar symbol (0 = none)
+/// The keyword terminals of `@keywords keyword`; a value becomes its leaf's id.
+pub const KeywordId = enum(u16) {
+    IF = 1,
+    ELSE,
+    WHILE,
+    FOR,
+    IN,
+    CMD,
+    MATCH,
+};
+
+/// The `keyword` keyword `text` spells, or null.
+pub fn keywordAs(text: []const u8) ?KeywordId {
+    if (text.len == 0 or text.len > 5) return null;
+    const t = text;
+    switch (t[0]) {
+        'c' => {
+            if (std.mem.eql(u8, t, "cmd")) return .CMD;
+        },
+        'e' => {
+            if (std.mem.eql(u8, t, "else")) return .ELSE;
+        },
+        'f' => {
+            if (std.mem.eql(u8, t, "for")) return .FOR;
+        },
+        'i' => {
+            if (std.mem.eql(u8, t, "if")) return .IF;
+            if (std.mem.eql(u8, t, "in")) return .IN;
+        },
+        'm' => {
+            if (std.mem.eql(u8, t, "match")) return .MATCH;
+        },
+        'w' => {
+            if (std.mem.eql(u8, t, "while")) return .WHILE;
+        },
+        else => {},
+    }
+    return null;
+}
+
+/// KeywordId -> grammar symbol (0 = none)
 const keywordToSymbol = blk: {
-    var arr: [idCount(lang.KeywordId)]u16 = @splat(0);
-    if (@hasField(lang.KeywordId, "SEMI")) arr[@backingInt(lang.KeywordId.SEMI)] = 38;
-    if (@hasField(lang.KeywordId, "AND_AND")) arr[@backingInt(lang.KeywordId.AND_AND)] = 39;
-    if (@hasField(lang.KeywordId, "OR_OR")) arr[@backingInt(lang.KeywordId.OR_OR)] = 40;
-    if (@hasField(lang.KeywordId, "AMP")) arr[@backingInt(lang.KeywordId.AMP)] = 41;
-    if (@hasField(lang.KeywordId, "PIPE")) arr[@backingInt(lang.KeywordId.PIPE)] = 43;
-    if (@hasField(lang.KeywordId, "LPAREN")) arr[@backingInt(lang.KeywordId.LPAREN)] = 44;
-    if (@hasField(lang.KeywordId, "RPAREN")) arr[@backingInt(lang.KeywordId.RPAREN)] = 45;
-    if (@hasField(lang.KeywordId, "LBRACE")) arr[@backingInt(lang.KeywordId.LBRACE)] = 46;
-    if (@hasField(lang.KeywordId, "RBRACE")) arr[@backingInt(lang.KeywordId.RBRACE)] = 47;
-    if (@hasField(lang.KeywordId, "NAME_EQ")) arr[@backingInt(lang.KeywordId.NAME_EQ)] = 51;
-    if (@hasField(lang.KeywordId, "LBRACKET")) arr[@backingInt(lang.KeywordId.LBRACKET)] = 52;
-    if (@hasField(lang.KeywordId, "RBRACKET")) arr[@backingInt(lang.KeywordId.RBRACKET)] = 53;
-    if (@hasField(lang.KeywordId, "IDENT")) arr[@backingInt(lang.KeywordId.IDENT)] = 55;
-    if (@hasField(lang.KeywordId, "INTEGER")) arr[@backingInt(lang.KeywordId.INTEGER)] = 56;
-    if (@hasField(lang.KeywordId, "STRING_SQ")) arr[@backingInt(lang.KeywordId.STRING_SQ)] = 57;
-    if (@hasField(lang.KeywordId, "STRING_DQ")) arr[@backingInt(lang.KeywordId.STRING_DQ)] = 58;
-    if (@hasField(lang.KeywordId, "VARIABLE")) arr[@backingInt(lang.KeywordId.VARIABLE)] = 59;
-    if (@hasField(lang.KeywordId, "VAR_BRACED")) arr[@backingInt(lang.KeywordId.VAR_BRACED)] = 60;
-    if (@hasField(lang.KeywordId, "DOLLAR_PAREN")) arr[@backingInt(lang.KeywordId.DOLLAR_PAREN)] = 61;
-    if (@hasField(lang.KeywordId, "AT_PAREN")) arr[@backingInt(lang.KeywordId.AT_PAREN)] = 62;
-    if (@hasField(lang.KeywordId, "PROC_SUB_IN")) arr[@backingInt(lang.KeywordId.PROC_SUB_IN)] = 63;
-    if (@hasField(lang.KeywordId, "PROC_SUB_OUT")) arr[@backingInt(lang.KeywordId.PROC_SUB_OUT)] = 64;
-    if (@hasField(lang.KeywordId, "ASSIGN")) arr[@backingInt(lang.KeywordId.ASSIGN)] = 65;
-    if (@hasField(lang.KeywordId, "IF")) arr[@backingInt(lang.KeywordId.IF)] = 66;
-    if (@hasField(lang.KeywordId, "ELSE")) arr[@backingInt(lang.KeywordId.ELSE)] = 67;
-    if (@hasField(lang.KeywordId, "INDENT")) arr[@backingInt(lang.KeywordId.INDENT)] = 68;
-    if (@hasField(lang.KeywordId, "OUTDENT")) arr[@backingInt(lang.KeywordId.OUTDENT)] = 69;
-    if (@hasField(lang.KeywordId, "WHILE")) arr[@backingInt(lang.KeywordId.WHILE)] = 70;
-    if (@hasField(lang.KeywordId, "FOR")) arr[@backingInt(lang.KeywordId.FOR)] = 71;
-    if (@hasField(lang.KeywordId, "IN")) arr[@backingInt(lang.KeywordId.IN)] = 72;
-    if (@hasField(lang.KeywordId, "MATCH")) arr[@backingInt(lang.KeywordId.MATCH)] = 73;
-    if (@hasField(lang.KeywordId, "CMD")) arr[@backingInt(lang.KeywordId.CMD)] = 75;
-    if (@hasField(lang.KeywordId, "STR_OPEN")) arr[@backingInt(lang.KeywordId.STR_OPEN)] = 76;
-    if (@hasField(lang.KeywordId, "STR_BODY")) arr[@backingInt(lang.KeywordId.STR_BODY)] = 77;
-    if (@hasField(lang.KeywordId, "LT")) arr[@backingInt(lang.KeywordId.LT)] = 79;
-    if (@hasField(lang.KeywordId, "FD_LT")) arr[@backingInt(lang.KeywordId.FD_LT)] = 80;
-    if (@hasField(lang.KeywordId, "GT")) arr[@backingInt(lang.KeywordId.GT)] = 81;
-    if (@hasField(lang.KeywordId, "FD_GT")) arr[@backingInt(lang.KeywordId.FD_GT)] = 82;
-    if (@hasField(lang.KeywordId, "GT_GT")) arr[@backingInt(lang.KeywordId.GT_GT)] = 83;
-    if (@hasField(lang.KeywordId, "AMP_GT")) arr[@backingInt(lang.KeywordId.AMP_GT)] = 84;
-    if (@hasField(lang.KeywordId, "AMP_GT_GT")) arr[@backingInt(lang.KeywordId.AMP_GT_GT)] = 85;
-    if (@hasField(lang.KeywordId, "FD_DUP_OUT")) arr[@backingInt(lang.KeywordId.FD_DUP_OUT)] = 86;
-    if (@hasField(lang.KeywordId, "FD_DUP_IN")) arr[@backingInt(lang.KeywordId.FD_DUP_IN)] = 87;
-    if (@hasField(lang.KeywordId, "HEREDOC_OPEN")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN)] = 88;
-    if (@hasField(lang.KeywordId, "HEREDOC_BODY")) arr[@backingInt(lang.KeywordId.HEREDOC_BODY)] = 89;
-    if (@hasField(lang.KeywordId, "HEREDOC_OPEN_LIT")) arr[@backingInt(lang.KeywordId.HEREDOC_OPEN_LIT)] = 90;
+    var arr: [idCount(KeywordId)]u16 = @splat(0);
+    arr[@backingInt(KeywordId.IF)] = 66;
+    arr[@backingInt(KeywordId.ELSE)] = 67;
+    arr[@backingInt(KeywordId.WHILE)] = 70;
+    arr[@backingInt(KeywordId.FOR)] = 71;
+    arr[@backingInt(KeywordId.IN)] = 72;
+    arr[@backingInt(KeywordId.CMD)] = 75;
+    arr[@backingInt(KeywordId.MATCH)] = 73;
     break :blk arr;
 };
 const keywordFallbackSymbol: u16 = 0;
 
-// Every @as keyword terminal is a field of some group's Id enum.
+// A group is declared once: by @keywords or by the lang module (which
+// may re-export the generated declarations).
 comptime {
-    if (!(@hasField(lang.KeywordId, "IF"))) @compileError("IF is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field IF: rules using it could never match");
-    if (!(@hasField(lang.KeywordId, "ELSE"))) @compileError("ELSE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field ELSE: rules using it could never match");
-    if (!(@hasField(lang.KeywordId, "WHILE"))) @compileError("WHILE is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field WHILE: rules using it could never match");
-    if (!(@hasField(lang.KeywordId, "FOR"))) @compileError("FOR is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field FOR: rules using it could never match");
-    if (!(@hasField(lang.KeywordId, "IN"))) @compileError("IN is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field IN: rules using it could never match");
-    if (!(@hasField(lang.KeywordId, "MATCH"))) @compileError("MATCH is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field MATCH: rules using it could never match");
-    if (!(@hasField(lang.KeywordId, "CMD"))) @compileError("CMD is no lexer token, and no @as group's Id enum (lang.KeywordId) has a field CMD: rules using it could never match");
+    if (@hasDecl(lang, "KeywordId") and (@TypeOf(lang.KeywordId) != type or lang.KeywordId != KeywordId) or
+        @hasDecl(lang, "keywordAs") and (@TypeOf(lang.keywordAs) != @TypeOf(keywordAs) or lang.keywordAs != keywordAs))
+        @compileError("the keyword group keyword is declared by @keywords and by the lang module (KeywordId or keywordAs): declare it once");
 }
 
 const ruleLhs = [_]u16{ 3, 37, 37, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 42, 42, 7, 8, 9, 9, 10, 10, 11, 11, 48, 48, 12, 49, 49, 13, 13, 50, 50, 14, 15, 16, 17, 17, 54, 54, 18, 19, 19, 20, 20, 20, 20, 20, 20, 20, 20, 20, 20, 21, 21, 21, 22, 22, 23, 23, 23, 24, 24, 25, 25, 26, 27, 28, 29, 29, 74, 74, 30, 31, 31, 32, 33, 34, 78, 78, 35, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 92 };

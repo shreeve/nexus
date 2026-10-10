@@ -1,0 +1,21 @@
+# With @keywords groups only (the lang module declares none), every
+# keyword terminal is known at generation: STOPP is in no group.
+# error: keywords_unknown_terminal.grammar:19:9:
+# error: undefined token 'STOPP'
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "keywords_unknown_terminal"
+@keywords
+    kw  stop go
+
+@as IDENT = [kw]
+
+prog! = item*
+item  = STOPP                               → (stop 1)
+      | GO
+      | IDENT

@@ -669,14 +669,20 @@ parser can use them. For each `TOKEN` (the promotable token, e.g. `IDENT`)
 the parser tries the groups in order and turns it into the first keyword
 terminal the current state accepts; otherwise it stays `TOKEN`.
 
-- With `@lang`, group `g` is looked up with `lang.gAs(text) ?lang.GId`
-  (or `@as TOKEN via fn = [g]` / `[g via fn]`: `lang.fn(text)`), where `GId`
-  is an enum whose field names are the grammar's keyword terminals
-  (`IF`, `THEN`, ...). The enum value becomes the leaf's id (`src.id`, a
-  `u16`), so give keywords values from 1 (0 means "no id"). A terminal
-  named like the group in capitals (`G`) receives every value that has no
-  terminal of its own.
-- Without `@lang`, group `g` is the single word `g`, promoted to `G`.
+- A group declared in [`@keywords`](#keywords-keyword-tables) is looked
+  up in the table generated from it, `gAs(text) ?GId`, with or without
+  `@lang`.
+- Otherwise, with `@lang`, group `g` is looked up with
+  `lang.gAs(text) ?lang.GId`, where `GId` is an enum whose field names are
+  the grammar's keyword terminals (`IF`, `THEN`, ...).
+- Otherwise (without `@lang`), group `g` is the single word `g`, promoted
+  to `G`.
+- `@as TOKEN via fn = [g]` / `[g via fn]` looks group `g` up with
+  `lang.fn(text)` instead, which returns `?GId` (`?parser.GId` for a
+  `@keywords` group).
+- The enum value becomes the leaf's id (`src.id`, a `u16`), so keywords
+  have values from 1 (0 means "no id"). A terminal named like the group in
+  capitals (`G`) receives every value that has no terminal of its own.
 - Matching is strict (the state must shift the keyword) for groups before
   `self`, and permissive (any action, including a reduction first) for
   groups after `self` or written `g!`. `self` keeps `TOKEN` itself when the
@@ -685,9 +691,9 @@ terminal the current state accepts; otherwise it stays `TOKEN`.
 A capitalized terminal the `tokens` block declares (or a lexer rule
 produces) reaches the parser as its own token; any other capitalized
 terminal is a keyword that reaches it only through `@as`. A keyword no
-group can produce is an error: at generation without `@lang`, and with
-`@lang` a compile error of the generated parser naming it and the `GId`
-enums. One grammar promotes one token; several `@as` lines for it add
+group can produce is an error: at generation when every group is a
+`@keywords` group or a one-word group, and otherwise a compile error of
+the generated parser naming it and the lang module's `GId` enums. One grammar promotes one token; several `@as` lines for it add
 their groups in order.
 
 ```grammar kw.grammar
@@ -741,6 +747,121 @@ goto 10
 
 `print goto` prints the variable `goto`: after `print` the state expects an
 expression, so `goto` stays an identifier.
+
+### @keywords: keyword tables
+
+`@keywords` declares keyword groups and generates each group's table into
+the module, for the `@as` groups of those names. Each indented line is a
+group: its name, its options, then its entries. A line indented further
+than the block's first group line continues the group above.
+
+```text
+@keywords
+    group  [caseless] [base N]  entry entry ...
+```
+
+| Entry | Accepts | Terminal (and id) |
+|---|---|---|
+| `word` | the word | `WORD`, the word in capitals |
+| `PRE[REST]` | every prefix of `PREREST` at least as long as `PRE` (`H[ANG]`: `H`, `HA`, `HAN`, `HANG`) | `PREREST` |
+| `"word"` | the word, for one that is not a name (a string with the escapes of a literal, no blanks) | the word in capitals, which must be a terminal name |
+| `entry:NAME` | as `entry` | `NAME` |
+| `entry=NAME` | as `entry`: an alias | the terminal `NAME` of another entry of the group |
+
+A bare word is a name (letters, digits and `_`, not starting with a
+digit); any other word is quoted, and so is a keyword spelled like an
+option. The options:
+
+- `caseless`: words match with ASCII case folded;
+- `base N`: the first terminal's id is `N` (1 to 65535) rather than 1, so
+  that the ids of several groups differ.
+
+For each group `g` the module exports `pub const GId = enum(u16)`, whose
+fields are the group's terminals in the order written (aliases have none)
+with ids from 1 or `N`, and `pub fn gAs(text: []const u8) ?GId`, the
+lookup `@as` uses, which a lang wrapper may call too. The lookup switches
+on the word's first byte, then compares the word with each entry starting
+with it; it allocates nothing. The order of entries does not matter, since
+no two entries may accept one word.
+
+Below, `w` is an abbreviation of `WRITE` with no terminal of its own, so it
+becomes `CMD`; `zq` is an alias of `QUIT`; `HALT` must be written in full,
+and `ha` is `HANG`. The `lit` group is case-sensitive (`TRUE` stays a
+name), and `nil?` is a quoted word with its own terminal name. After `set` the state expects a
+name, so the second `set` stays an identifier.
+
+```grammar keywords.grammar
+@lexer
+
+tokens
+    ident, number, newline, eof, err
+
+'\n'                            → newline
+[0-9]+                          → number
+[a-zA-Z_][a-zA-Z0-9_]* '?'?     → ident
+.                               → err
+
+@parser
+
+@keywords
+    cmd   caseless  S[ET] W[RITE] H[ANG] HALT Q[UIT] ZQ=QUIT
+    lit   true false "nil?":NIL_P
+
+@as IDENT = [cmd!, lit!]
+
+prog! = line+                          → (prog ...1)
+
+line  = SET IDENT value NEWLINE        → (set 1 2 3)
+      | CMD value* NEWLINE             → (cmd 1 ...2)
+
+value = IDENT | NUMBER | TRUE | FALSE
+      | NIL_P value                    → (nil? 1 2)
+```
+
+```input
+s x 10
+SET y true
+w x Y
+ha 5
+halt
+zq
+write nil? false TRUE
+set set 1
+```
+
+```tree
+(prog
+  (set `s`#1 `x` `10`)
+  (set `SET`#1 `y` `true`#1)
+  (cmd `w`#2 `x` `Y`)
+  (cmd `ha`#3 `5`)
+  (cmd `halt`#4)
+  (cmd `zq`#5)
+  (cmd `write`#2 (nil? `nil?`#3 `false`#2) `TRUE`)
+  (set `set`#1 `set` `1`))
+```
+
+The module has, for the `cmd` group:
+
+```zig fragment
+pub const CmdId = enum(u16) { SET = 1, WRITE, HANG, HALT, QUIT };
+pub fn cmdAs(text: []const u8) ?CmdId { ... }
+```
+
+Generation rejects two entries that accept one word (after case folding,
+abbreviations included; the error names both and the word), two entries
+of one terminal (write the second as an alias), an alias of a name that is
+no terminal of its group, a malformed abbreviation (`A[`, `[X]`, `A[]`),
+an unquoted word that is not a name, a word whose capitals are no terminal
+name (`__FILE__` needs `__FILE__:NAME`), an option given twice or after an
+entry, `base` without a number from 1 to 65535, ids past 65535, an empty
+group, a group declared twice, a group named `node` (its enum would be the
+module's `NodeId`), a group that is the group of no `@as` (`self` and the
+promoted token's name are never groups), and `@keywords` in a grammar
+without parser rules. A lang module that declares its own `GId` or `gAs`
+for a `@keywords` group makes the generated parser fail to build, naming
+the group; it may re-export the generated ones
+(`pub const GId = parser.GId;`).
 
 ## Conflicts and hints
 
@@ -929,6 +1050,7 @@ when it decides a cell for any rule its alternative expands into.
 | `@infix base` | any | an operator-precedence chain |
 | `@op = [ "lit" → "token", ... ]` | any | literal-to-token mappings |
 | `@as TOKEN [via fn] = [g, ...]` | any | contextual keywords |
+| `@keywords` | any | keyword tables for `@as` groups |
 | `@display` | any | reader names of tokens for syntax errors |
 | `@errors` | any | reader names of rules for syntax errors |
 | `@trivia T ...` | any | tokens kept on a side channel, never parsed |
@@ -1028,6 +1150,7 @@ early:
 | `X "(" on expr → ... names the terminal "["` | the grammar writes that token as another literal |
 | `X "[" on expr → ... names OPEN, as X "(" does` | two hints of one alternative name one terminal |
 | `X "%" on expr → ... the token @as promotes` | a hint names the promotable token |
+| ``keywords `HA[LT]` and `H[ANG]` (3:9) both accept `HA` `` | two `@keywords` entries of a group accept one word |
 
 `nexus check grammar` runs every check generation runs, and writes
 nothing.

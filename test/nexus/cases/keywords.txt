@@ -1,0 +1,13 @@
+# @keywords: one group per line, each word whole; a line indented further
+# than the first group line continues the group above. Comments and blank
+# lines are skipped.
+@keywords
+    kw    if else "defined?":DEFINED begin:BEGIN_KW   # a comment
+          while
+
+    cmd   caseless base 100 B[REAK] HALT ZT=ZTIME ZTIME "#"
+    empty
+
+@as IDENT = [kw, cmd]
+
+a = IF IDENT

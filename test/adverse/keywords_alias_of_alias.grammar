@@ -1,0 +1,15 @@
+# An alias names an entry's terminal, not another alias.
+# error: `z=ZT` is an alias of ZT, which is no terminal of the group `kw`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  ztime zt=ZTIME z=ZT
+
+@as IDENT = [kw]
+
+prog! = IDENT*

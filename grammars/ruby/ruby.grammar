@@ -352,6 +352,13 @@ tokens
     reduce arg → POWER expr over pair → POWER expr                            4  # **expr in call arguments is a double splat argument
     reduce cmd_arg → POWER expr over pair → POWER expr                        16  # **expr in command arguments is a double splat argument
 
+@keywords
+    keyword  if unless elsif else end while until for in do case when def class
+             module return break next yield begin:BEGIN_KW rescue ensure then
+             and:AND_KW or:OR_KW not:NOT_KW "defined?":DEFINED alias undef retry
+             redo super self true false nil __FILE__:KW__FILE__ __LINE__:KW__LINE__
+             __ENCODING__:KW__ENCODING__
+
 @as ident = [keyword!]
 
 # ==============================================================================

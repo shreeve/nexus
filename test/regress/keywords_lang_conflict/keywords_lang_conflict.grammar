@@ -1,0 +1,27 @@
+# compile-error: the keyword group kw is declared by @keywords and by the lang module (KwId or kwAs): declare it once
+#
+# A group is declared by @keywords or by the lang module, never both: the
+# generated parser fails to build naming the group when the lang module
+# declares its own `KwId` or `kwAs` too (the generator cannot see the
+# lang module). Re-exporting the generated ones is allowed (keywords.zig).
+
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "keywords_lang_conflict"
+
+@keywords
+    kw  go stop
+
+@as IDENT = [kw]
+
+prog! = item+                               → (prog ...1)
+item  = STOP                                → (stop 1)
+      | GO                                  → (go 1)
+      | IDENT

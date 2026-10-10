@@ -150,6 +150,8 @@
     (conflict `reduce` `lhs → call "[" index_args "]"` `call → call "[" index_args "]"` `1` `# an index before a comma is an assignment target`)
     (conflict `reduce` `arg → POWER expr` `pair → POWER expr` `4` `# **expr in call arguments is a double splat argument`)
     (conflict `reduce` `cmd_arg → POWER expr` `pair → POWER expr` `16` `# **expr in command arguments is a double splat argument`))
+  (keywords
+    (kw_group `keyword` `if` `unless` `elsif` `else` `end` `while` `until` `for` `in` `do` `case` `when` `def` `class` `module` `return` `break` `next` `yield` `begin:BEGIN_KW` `rescue` `ensure` `then` `and:AND_KW` `or:OR_KW` `not:NOT_KW` `"defined?":DEFINED` `alias` `undef` `retry` `redo` `super` `self` `true` `false` `nil` `__FILE__:KW__FILE__` `__LINE__:KW__LINE__` `__ENCODING__:KW__ENCODING__`))
   (as
     `ident`
     _

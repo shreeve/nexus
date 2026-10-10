@@ -1,0 +1,16 @@
+# Two entries that accept one word: H[ANG] and H[ALT] both accept HA.
+# error: keywords_overlap.grammar:12:26:
+# error: keywords `HA[LT]` and `H[ANG]` (12:19) both accept `HA`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  caseless  H[ANG] HA[LT]
+
+@as IDENT = [kw]
+
+prog! = IDENT*

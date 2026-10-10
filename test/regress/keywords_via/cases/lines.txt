@@ -1,0 +1,4 @@
+go stop
+stop
+halt
+x

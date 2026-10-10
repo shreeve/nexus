@@ -1,0 +1,7 @@
+(prog
+  (write `w`#101 (block `begin`#1 `x` `end`#2))
+  (write `w`#101 (block `begin`#1 `end` `end`#2))
+  (write `w`#101 (nil? `nil?`#3 `x`))
+  (write `w`#101 `END`)
+  (set `s`#100 `begin` `1`)
+  (write `w`#101 `set`))

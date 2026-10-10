@@ -1,0 +1,15 @@
+# Caseless entries overlap after case folding.
+# error: keywords `If:OTHER` and `IF` (11:18) both accept `IF`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  caseless IF If:OTHER
+
+@as IDENT = [kw]
+
+prog! = IDENT*

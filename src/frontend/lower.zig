@@ -24,6 +24,7 @@ const ParsedElement = grammar.ParsedElement;
 const InfixDecl = grammar.InfixDecl;
 const InfixOp = grammar.InfixOp;
 const AsDirective = grammar.AsDirective;
+const KeywordGroup = grammar.KeywordGroup;
 const OpMapping = grammar.OpMapping;
 const ErrorName = grammar.ErrorName;
 const Schema = grammar.Schema;
@@ -61,6 +62,9 @@ pub const GrammarLowerer = struct {
     rules: std.ArrayList(ParsedRule) = .empty,
     startSymbols: std.ArrayList([]const u8) = .empty,
     asDirectives: std.ArrayList(AsDirective) = .empty,
+    keywordGroups: std.ArrayList(KeywordGroup) = .empty,
+    /// The group name of each of `keywordGroups`, for locating it.
+    keywordNodes: std.ArrayList(Sexp) = .empty,
     opMappings: std.ArrayList(OpMapping) = .empty,
     errorNames: std.ArrayList(ErrorName) = .empty,
     displayNames: std.ArrayList(DisplayName) = .empty,
@@ -99,6 +103,7 @@ pub const GrammarLowerer = struct {
         if (self.lexer) |*spec| spec.langName = self.lang;
         if (self.codeNode) |node| if (self.lang == null)
             return self.fail(node, "@code = {s} needs @lang (the function is imported from the lang module)", .{self.text(ir.Code.name(node))});
+        try self.checkKeywordsUsed();
         const extraTags = try self.extraTags.toOwnedSlice(allocator);
         // Without a `name!` rule, the first rule is the start symbol.
         if (self.startSymbols.items.len == 0 and self.rules.items.len > 0)
@@ -125,6 +130,7 @@ pub const GrammarLowerer = struct {
             .displayNames = try self.displayNames.toOwnedSlice(allocator),
             .trivia = try self.trivia.toOwnedSlice(allocator),
             .repair = self.repair,
+            .keywordGroups = try self.keywordGroups.toOwnedSlice(allocator),
             .lexer = self.lexer,
         };
     }
@@ -220,7 +226,7 @@ pub const GrammarLowerer = struct {
         switch (kind) {
             // Each directive but @as (one line per promoted token) appears
             // once; repeated blocks are not merged.
-            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair => {
+            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords => {
                 if (self.directives.contains(kind))
                     return self.failAt(self.spans.?.span(entry).start, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
                 self.directives.insert(kind);
@@ -239,6 +245,7 @@ pub const GrammarLowerer = struct {
             .tags => try self.lowerNames(ir.Tags.names(entry), "@tags", &self.extraTags),
             .trivia => try self.lowerNames(ir.Trivia.names(entry), "@trivia", &self.trivia),
             .repair => try self.lowerRepair(entry),
+            .keywords => for (ir.Keywords.groups(entry)) |group| try self.lowerKeywordGroup(group),
             .rule => {
                 if (self.section != .parser)
                     return self.fail(entry, "rules belong in the @parser section", .{});
@@ -576,6 +583,206 @@ pub const GrammarLowerer = struct {
         }
         if (sharedVia != null and groups != 1)
             return self.fail(sharedViaNode, "`@as TOKEN via fn` names the lookup of a single group; give each group its own `via`", .{});
+    }
+
+    // --- @keywords ---
+
+    /// One `@keywords` line: `name [caseless] [base N] entry ...`.
+    fn lowerKeywordGroup(self: *GrammarLowerer, node: Sexp) LowerError!void {
+        const nameNode = ir.KwGroup.name(node);
+        const name = self.text(nameNode);
+        for (self.keywordGroups.items, self.keywordNodes.items) |other, otherNode| if (std.mem.eql(u8, other.name, name)) {
+            const at = self.loc(otherNode);
+            return self.fail(nameNode, "keyword group `{s}` is declared twice (first on line {d})", .{ name, at.line });
+        };
+        if (std.mem.eql(u8, name, "node"))
+            return self.fail(nameNode, "keyword group `node` would generate NodeId, the generated module's node id type; name the group otherwise", .{});
+
+        const words = ir.KwGroup.words(node);
+        var caseless = false;
+        var base: ?u16 = null;
+        var i: usize = 0;
+        while (i < words.len) {
+            const word = self.text(words[i]);
+            if (std.mem.eql(u8, word, "caseless")) {
+                if (caseless) return self.fail(words[i], "`caseless` is given twice", .{});
+                caseless = true;
+                i += 1;
+            } else if (std.mem.eql(u8, word, "base")) {
+                if (base != null) return self.fail(words[i], "`base` is given twice", .{});
+                const value: ?u16 = if (i + 1 < words.len) std.fmt.parseInt(u16, self.text(words[i + 1]), 10) catch null else null;
+                if (value == null or value.? == 0)
+                    return self.fail(words[i], "`base` takes the first id, a number from 1 to 65535", .{});
+                base = value;
+                i += 2;
+            } else break;
+        }
+
+        // The entries; non-alias entries number the terminals in order.
+        const Written = struct { node: Sexp, word: []const u8, min: usize, alias: ?[]const u8, terminal: usize = 0 };
+        var written: std.ArrayList(Written) = .empty;
+        var terminals: std.ArrayList([]const u8) = .empty;
+        var owners: std.ArrayList(Sexp) = .empty;
+        for (words[i..]) |w| {
+            const raw = self.text(w);
+            if (std.mem.eql(u8, raw, "caseless") or std.mem.eql(u8, raw, "base"))
+                return self.fail(w, "the option `{s}` comes before the group's keywords (quote a keyword spelled like it: \"{s}\")", .{ raw, raw });
+            const e = try self.keywordEntry(w);
+            const word = if (caseless) try std.ascii.allocUpperString(self.allocator, e.word) else e.word;
+            var entry: Written = .{ .node = w, .word = word, .min = e.min, .alias = if (e.alias) e.name else null };
+            if (!e.alias) {
+                const terminal = e.name orelse derived: {
+                    const upper = try std.ascii.allocUpperString(self.allocator, e.word);
+                    if (!isTerminalName(upper))
+                        return self.fail(w, "the keyword `{s}` has no terminal name of its own: give it one, `{s}:NAME`", .{ raw, raw });
+                    break :derived upper;
+                };
+                for (terminals.items, owners.items) |t, owner| if (std.mem.eql(u8, t, terminal)) {
+                    const at = self.loc(owner);
+                    const spelled = raw[0 .. raw.len - if (e.name) |n| n.len + 1 else 0];
+                    return self.fail(w, "`{s}` is the terminal {s} again (`{s}`, {d}:{d}); make it an alias, `{s}={s}`", .{ raw, terminal, self.text(owner), at.line, at.col, spelled, terminal });
+                };
+                entry.terminal = terminals.items.len;
+                try terminals.append(self.allocator, terminal);
+                try owners.append(self.allocator, w);
+            }
+            try written.append(self.allocator, entry);
+        }
+        if (written.items.len == 0)
+            return self.fail(nameNode, "keyword group `{s}` has no keywords", .{name});
+        const first = base orelse 1;
+        if (@as(usize, first) + terminals.items.len - 1 > std.math.maxInt(u16))
+            return self.fail(nameNode, "keyword group `{s}` numbers its {d} terminals from {d}, past 65535", .{ name, terminals.items.len, first });
+        for (written.items) |*entry| if (entry.alias) |target| {
+            entry.terminal = for (terminals.items, 0..) |t, k| {
+                if (std.mem.eql(u8, t, target)) break k;
+            } else return self.fail(entry.node, "`{s}` is an alias of {s}, which is no terminal of the group `{s}`", .{ self.text(entry.node), target, name });
+        };
+
+        // No two entries accept one word: both accept the shortest word
+        // both allow, when any.
+        const sorted = try self.allocator.dupe(Written, written.items);
+        std.mem.sort(Written, sorted, {}, struct {
+            fn less(_: void, a: Written, b: Written) bool {
+                return switch (std.mem.order(u8, a.word, b.word)) {
+                    .lt => true,
+                    .gt => false,
+                    .eq => a.min < b.min,
+                };
+            }
+        }.less);
+        for (sorted, 0..) |a, k| for (sorted[k + 1 ..]) |b| {
+            if (b.word[0] != a.word[0]) break;
+            const n = @max(a.min, b.min);
+            if (n > @min(a.word.len, b.word.len) or !std.mem.eql(u8, a.word[0..n], b.word[0..n])) continue;
+            const later, const earlier = if (a.node.src.pos > b.node.src.pos) .{ a, b } else .{ b, a };
+            const at = self.loc(earlier.node);
+            return self.fail(later.node, "keywords `{s}` and `{s}` ({d}:{d}) both accept `{s}`", .{ self.text(later.node), self.text(earlier.node), at.line, at.col, a.word[0..n] });
+        };
+
+        const entries = try self.allocator.alloc(KeywordGroup.Entry, sorted.len);
+        for (sorted, entries) |w, *e| e.* = .{ .word = w.word, .min = w.min, .terminal = @intCast(w.terminal) };
+        const at = self.loc(nameNode);
+        try self.keywordGroups.append(self.allocator, .{
+            .name = name,
+            .caseless = caseless,
+            .base = first,
+            .terminals = try terminals.toOwnedSlice(self.allocator),
+            .entries = entries,
+            .line = at.line,
+            .col = at.col,
+        });
+        try self.keywordNodes.append(self.allocator, nameNode);
+    }
+
+    /// An entry's word (abbreviation expanded), its shortest accepted
+    /// prefix, and its `:NAME` terminal or `=NAME` alias target.
+    const KeywordEntry = struct { word: []const u8, min: usize, name: ?[]const u8, alias: bool };
+
+    /// A `@keywords` entry: `word`, `PRE[REST]` or `"quoted word"`, then
+    /// optionally `=NAME` (an alias) or `:NAME` (its terminal).
+    fn keywordEntry(self: *GrammarLowerer, node: Sexp) LowerError!KeywordEntry {
+        const raw = self.text(node);
+        var result: KeywordEntry = .{ .word = "", .min = 0, .name = null, .alias = false };
+        var rest: []const u8 = undefined;
+        if (raw[0] == '"') {
+            var j: usize = 1;
+            while (j < raw.len and raw[j] != '"') : (j += 1) {
+                if (raw[j] == '\\') j += 1;
+            }
+            if (j >= raw.len) return self.notAKeyword(node);
+            const body = raw[1..j];
+            var out: std.ArrayList(u8) = .empty;
+            var k: usize = 0;
+            while (k < body.len) {
+                var e: grammar.Escape = .{ .byte = body[k], .len = 1 };
+                if (body[k] == '\\') e = grammar.escapeAt(body, k) orelse
+                    return self.failAt(node.src.pos + 1 + k, "unknown escape sequence (the escapes are \\n \\r \\t \\0 \\\\ \\' \\\" and \\xHH)", .{});
+                try out.append(self.allocator, e.byte);
+                k += e.len;
+            }
+            if (out.items.len == 0) return self.notAKeyword(node);
+            for (out.items) |c| if (c <= ' ' or c == 0x7f) return self.notAKeyword(node);
+            result.word = out.items;
+            result.min = out.items.len;
+            rest = raw[j + 1 ..];
+        } else {
+            const end = std.mem.findAny(u8, raw, "=:") orelse raw.len;
+            const core = raw[0..end];
+            rest = raw[end..];
+            if (std.mem.findAny(u8, core, "[]")) |open| {
+                const ok = open > 0 and core[open] == '[' and core[core.len - 1] == ']' and
+                    isName(core[0..open]) and core.len - open > 2 and
+                    allNameBytes(core[open + 1 .. core.len - 1]);
+                if (!ok) return self.fail(node, "malformed abbreviation `{s}`: write PRE[REST], a name and the letters, digits or `_` that may follow it", .{core});
+                result.word = try std.mem.concat(self.allocator, u8, &.{ core[0..open], core[open + 1 .. core.len - 1] });
+                result.min = open;
+            } else {
+                if (!isName(core)) return self.notAKeyword(node);
+                result.word = core;
+                result.min = core.len;
+            }
+        }
+        if (rest.len > 0) {
+            if (!isTerminalName(rest[1..]))
+                return self.fail(node, "malformed keyword `{s}`: the word may be followed by `=NAME` (an alias of the terminal NAME) or `:NAME` (its terminal)", .{raw});
+            result.alias = rest[0] == '=';
+            result.name = rest[1..];
+        }
+        return result;
+    }
+
+    fn notAKeyword(self: *GrammarLowerer, node: Sexp) LowerError {
+        return self.fail(node, "`{s}` is not a keyword: write a name (letters, digits, `_`), or any other word as a quoted string without blanks", .{self.text(node)});
+    }
+
+    /// A name: a letter or `_`, then letters, digits and `_`.
+    fn isName(s: []const u8) bool {
+        if (s.len == 0 or !(std.ascii.isAlphabetic(s[0]) or s[0] == '_')) return false;
+        return allNameBytes(s);
+    }
+
+    fn allNameBytes(s: []const u8) bool {
+        for (s) |c| if (!(std.ascii.isAlphanumeric(c) or c == '_')) return false;
+        return true;
+    }
+
+    /// A terminal name: a capital letter, then letters, digits and `_`.
+    fn isTerminalName(s: []const u8) bool {
+        return s.len > 0 and std.ascii.isUpper(s[0]) and allNameBytes(s);
+    }
+
+    /// Every `@keywords` group is the group of some `@as` of a grammar
+    /// with parser rules (nothing would use its table otherwise).
+    fn checkKeywordsUsed(self: *const GrammarLowerer) LowerError!void {
+        if (self.keywordNodes.items.len > 0 and self.rules.items.len == 0)
+            return self.fail(self.keywordNodes.items[0], "@keywords needs parser rules: a grammar without them generates the lexer alone", .{});
+        for (self.keywordGroups.items, self.keywordNodes.items) |group, node| {
+            const used = for (self.asDirectives.items) |d| {
+                if (std.mem.eql(u8, d.rule, group.name) and !std.mem.eql(u8, d.rule, "self") and !std.ascii.eqlIgnoreCase(d.rule, d.token)) break true;
+            } else false;
+            if (!used) return self.fail(node, "keyword group `{s}` is the group of no @as", .{group.name});
+        }
     }
 
     fn lowerOp(self: *GrammarLowerer, node: Sexp) LowerError!void {

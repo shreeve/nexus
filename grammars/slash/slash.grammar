@@ -178,6 +178,9 @@ tokens
 
 @lang      = "slash"
 
+@keywords
+    keyword  if else while for in cmd match
+
 @as ident = [keyword!]
 
 # ------------------------------------------------------------------------------

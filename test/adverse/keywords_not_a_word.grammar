@@ -1,0 +1,16 @@
+# A word that is no name is quoted.
+# error: keywords_not_a_word.grammar:12:12:
+# error: `defined?` is not a keyword: write a name
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if defined?
+
+@as IDENT = [kw]
+
+prog! = IDENT*

@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
   (lex_rule
     `[ \\t\\r]+`
     _
@@ -67,6 +67,8 @@
     (name_pair `KW_TAGS` `"tags"`)
     (name_pair `KW_TRIVIA` `"trivia"`)
     (name_pair `KW_REPAIR` `"repair"`)
+    (name_pair `KW_KEYWORDS` `"keywords"`)
+    (name_pair `KEYWORD` `"a keyword"`)
     (name_pair `KW_WRAPPER` `"wrapper"`)
     (name_pair `KW_VIA` `"via"`)
     (name_pair `KW_OVER` `"over"`)
@@ -89,7 +91,7 @@
         (role
           rest
           `entries`
-          (type `section` `state` `after` `tokens` `code` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `rule`)
+          (type `section` `state` `after` `tokens` `code` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `rule`)
           _))
       _
       _)
@@ -604,6 +606,31 @@
         (role
           rest
           `names`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `keywords`)
+      (roles
+        (role
+          rest
+          `groups`
+          (type `kw_group`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `kw_group`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `words`
           (type `leaf`)
           _))
       _
@@ -1388,6 +1415,15 @@
           `lines`
           (ref `repair_lines`)))
       (node `repair`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_KEYWORDS`)
+        (label
+          `groups`
+          (ref `keyword_lines`)))
+      (node `keywords`)
       _))
   (rule
     (name `conflict_lines`)
@@ -2079,6 +2115,51 @@
           `names`
           (ref `name_items`)))
       (node `repair_line`)
+      _))
+  (rule
+    (name `keyword_lines`)
+    (alt
+      _
+      ((tok `CONT`)
+        (ref `keyword_line`))
+      (list
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `keyword_lines`)
+        (tok `CONT`)
+        (ref `keyword_line`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `keyword_line`)
+    (alt
+      _
+      ((label
+          `name`
+          (tok `IDENT`))
+        (label
+          `words`
+          (ref `keyword_words`)))
+      (node `kw_group`)
+      _))
+  (rule
+    (name `keyword_words`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((ref `keyword_words`)
+        (tok `KEYWORD`))
+      (list
+        (spread `1`)
+        (pos `2`))
       _))
   (rule
     (name `production`)

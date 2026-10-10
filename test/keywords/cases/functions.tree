@@ -1,0 +1,5 @@
+(prog
+  (write `w`#101 (length `l`#200 `x`))
+  (write `w`#101 (length `LENGTH`#200 `x`) (call `e`#201 `x` `1`))
+  (write `w`#101 (call `zd`#203 `x`) (call `ZDAT`#203 `x`) (call `zdateh`#204 `x`))
+  (write `w`#101 (call `p`#202 `x` `2`)))

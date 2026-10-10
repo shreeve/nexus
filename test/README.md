@@ -94,6 +94,7 @@ The suites under `test/`:
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
+| `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
 
 The suites under `grammars/`:

@@ -214,6 +214,8 @@ pub const GrammarIR = struct {
     trivia: []const []const u8 = &.{},
     /// `@repair`: the tolerant-repair alphabet; null = no tolerant driver.
     repair: ?RepairSpec = null,
+    /// `@keywords`: the keyword groups, in the order written.
+    keywordGroups: []const KeywordGroup = &.{},
     /// The @lexer section; null when the file has none.
     lexer: ?LexerSpec = null,
 };
@@ -492,6 +494,36 @@ pub const AsDirective = struct {
     via: ?[]const u8 = null,
 };
 
+/// A `@keywords` group: the generated `<Group>Id` enum and `<group>As`
+/// lookup an `@as` group of that name uses.
+pub const KeywordGroup = struct {
+    name: []const u8,
+    /// Words match ASCII case-insensitively; `entries` hold them upper-cased.
+    caseless: bool,
+    /// The id of the first terminal (`base`, else 1).
+    base: u16,
+    /// The keyword terminals, in id order: `terminals[i]` has id `base + i`.
+    terminals: []const []const u8,
+    /// Every entry, sorted by `word` (then `min`) for deterministic output.
+    entries: []const Entry,
+    line: u32,
+    col: u32,
+
+    /// One entry: the words `word[0..n]` for `min <= n <= word.len`
+    /// (`min == word.len` for an exact word), each spelling `terminal`.
+    pub const Entry = struct {
+        word: []const u8,
+        min: usize,
+        terminal: u16,
+    };
+
+    /// Whether `name` is one of the group's terminals.
+    pub fn hasTerminal(self: KeywordGroup, name: []const u8) bool {
+        for (self.terminals) |t| if (std.mem.eql(u8, t, name)) return true;
+        return false;
+    }
+};
+
 /// @op directive for operator literal-to-token mappings
 pub const OpMapping = struct {
     lit: []const u8, // "'=" (the literal in the grammar)
@@ -605,6 +637,7 @@ pub const Grammar = struct {
 
     // Directives carried over from the IR
     asDirectives: []const AsDirective = &.{},
+    keywordGroups: []const KeywordGroup = &.{},
     opMappings: []const OpMapping = &.{},
     errorNames: []const ErrorName = &.{},
     displayNames: []const DisplayName = &.{},
@@ -677,6 +710,12 @@ pub const Grammar = struct {
             for (sp.rules.items) |rule| if (std.ascii.eqlIgnoreCase(rule.token, name)) return false;
         }
         return self.promotable() != null;
+    }
+
+    /// The `@keywords` group `name`, if the grammar declares one.
+    pub fn keywordGroup(self: *const Grammar, name: []const u8) ?KeywordGroup {
+        for (self.keywordGroups) |group| if (std.mem.eql(u8, group.name, name)) return group;
+        return null;
     }
 
     pub fn isAcceptRule(self: *const Grammar, ruleId: u16) bool {

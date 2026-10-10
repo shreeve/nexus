@@ -1,0 +1,17 @@
+# A keyword group no @as uses: its table would be generated for nothing.
+# error: keywords_unused.grammar:13:5:
+# error: keyword group `other` is the group of no @as
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if
+    other  else
+
+@as IDENT = [kw]
+
+prog! = IDENT*

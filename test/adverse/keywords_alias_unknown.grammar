@@ -1,0 +1,16 @@
+# An alias names a terminal of its own group.
+# error: keywords_alias_unknown.grammar:12:15:
+# error: `zt=ZTIM` is an alias of ZTIM, which is no terminal of the group `kw`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  ztime zt=ZTIM
+
+@as IDENT = [kw]
+
+prog! = IDENT*

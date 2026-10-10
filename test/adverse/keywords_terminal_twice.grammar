@@ -1,0 +1,16 @@
+# Two entries of one terminal: the second must say it is an alias.
+# error: keywords_terminal_twice.grammar:12:12:
+# error: `If` is the terminal IF again (`if`, 12:9); make it an alias, `If=IF`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if If
+
+@as IDENT = [kw]
+
+prog! = IDENT*

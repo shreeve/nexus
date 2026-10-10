@@ -1,0 +1,15 @@
+# An option is given once.
+# error: `base` is given twice
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  base 10 base 20 if
+
+@as IDENT = [kw]
+
+prog! = IDENT*

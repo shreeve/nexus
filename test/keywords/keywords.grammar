@@ -1,0 +1,50 @@
+# @keywords: the tables `@as` promotes words from, generated from the
+# grammar. Commands and functions are caseless, with abbreviations
+# (`S[ET]`), exact words (`HALT`, `ZDATEH`), an alias (`ZT=ZWRITE`), ids
+# from a base, and a catch-all terminal (CMD, FN) for every keyword without
+# a terminal of its own. The words group is case-sensitive, with a quoted
+# word and terminals named explicitly. keywords.zig tests the generated
+# lookups directly.
+
+@lexer
+
+tokens
+    ident, number, dollar, lparen, rparen, comma, newline, eof, err
+
+'\n'                            → newline
+'$'                             → dollar
+'('                             → lparen
+')'                             → rparen
+','                             → comma
+[0-9]+                          → number
+[a-zA-Z_][a-zA-Z0-9_]* '?'?     → ident
+.                               → err
+
+@parser
+
+@lang = "keywords"
+
+@keywords
+    cmd   caseless base 100  S[ET] W[RITE] H[ANG] HALT Q[UIT] ZW[RITE] ZT=ZWRITE
+          TRO[LLBACK] TRE[START]
+    fn    caseless base 200  L[ENGTH] E[XTRACT] P[IECE] ZD[ATE] ZDATEH
+    word  begin:BEGIN_KW end "nil?":NIL_P
+
+@as IDENT = [cmd!, fn!, word!]
+
+prog! = line+                               → (prog ...1)
+
+line  = cmd NEWLINE                         → 1
+
+cmd   = SET IDENT expr                      → (set 1 2 3)
+      | WRITE L(expr)                       → (write 1 ...2)
+      | HANG expr                           → (hang 1 2)
+      | HALT                                → (halt 1)
+      | CMD [L(expr)]                       → (cmd 1 ...2)
+
+expr  = IDENT
+      | NUMBER
+      | "$" LENGTH "(" expr ")"             → (length 2 4)
+      | "$" FN "(" L(expr) ")"              → (call 2 ...4)
+      | BEGIN_KW expr END                   → (block 1 2 3)
+      | NIL_P expr                          → (nil? 1 2)

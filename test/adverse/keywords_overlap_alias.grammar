@@ -1,0 +1,15 @@
+# An alias overlaps like any entry: ZT=ZTIME and ZT[RAP] both accept ZT.
+# error: keywords `ZT[RAP]` and `ZT=ZTIME` (11:15) both accept `ZT`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  ZTIME ZT=ZTIME ZT[RAP]
+
+@as IDENT = [kw]
+
+prog! = IDENT*

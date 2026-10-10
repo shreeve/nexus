@@ -1,0 +1,15 @@
+# An abbreviation has a name before `[`.
+# error: malformed abbreviation `[X]`
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if [X]
+
+@as IDENT = [kw]
+
+prog! = IDENT*

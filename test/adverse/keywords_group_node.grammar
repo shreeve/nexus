@@ -1,0 +1,15 @@
+# A group `node` would generate NodeId, which every generated module declares.
+# error: keyword group `node` would generate NodeId
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    node  if else
+
+@as IDENT = [node]
+
+prog! = IDENT*

@@ -1,0 +1,19 @@
+# Two @keywords blocks: one block holds every group.
+# error: keywords_duplicate_block.grammar:14:1:
+# error: duplicate @keywords
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if else
+
+@keywords
+    other  while
+
+@as IDENT = [kw, other]
+
+prog! = IDENT*

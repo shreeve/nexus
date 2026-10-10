@@ -1,0 +1,17 @@
+# A keyword group declared twice would merge or replace silently.
+# error: keywords_duplicate_group.grammar:13:5:
+# error: keyword group `kw` is declared twice (first on line 12)
+@lexer
+tokens
+    ident, eof, err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@keywords
+    kw  if else
+    kw  while
+
+@as IDENT = [kw]
+
+prog! = IDENT*

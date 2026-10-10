@@ -49,6 +49,9 @@ everything that depends on layout or context, turning the generated
   later), the rest of the line into tokens;
 - `@conflicts` entry lines are split into kind, rule text, `over`, count,
   and the rationale comment;
+- `@keywords` group lines are split into blank-separated words, quoted
+  parts included: the group name, then each option or entry whole (a line
+  indented further than the block's first continues the group above);
 - a token longer than 65535 bytes, or `(` and `[` nested more than 64
   deep, is an `err` token with a message. This one cap bounds the depth of
   every tree the later stages recurse through.
@@ -70,7 +73,9 @@ checks meaning: what a well-formed tree can still get wrong (a position 0,
 an unknown associativity, a value outside its variable's range, an unknown
 escape, a directive given twice, `@code` without `@lang`, a `[...]` whose
 body can match nothing, more than 65534 positions in an alternative), each
-reported at its source position as `error.LowerError`.
+reported at its source position as `error.LowerError`. It reads each
+`@keywords` entry from its text, numbers the group's terminals, and checks
+that no two entries accept one word.
 
 ### Lexer generation
 
@@ -274,7 +279,9 @@ from its first element's start to the end of the last token shifted. Node
 store entries (span and rule, 12 bytes) live in chunks of 128 that never
 move. Parse memory comes from a bump allocator over chunks of the arena
 (the arena itself is threadsafe, and the parser needs no atomics). An
-`@as` keyword is looked up once per token, per group; only the table
+`@as` keyword is looked up once per token, per group (in a `@keywords`
+group's generated `gAs`: a switch on the first byte, then a comparison per
+entry with that byte); only the table
 checks run again in each state. The strict loop keeps the state, the
 token's symbol and the next action in locals. A pass-through rule (`A →
 B`, the value of its one element) builds nothing, so reducing it only

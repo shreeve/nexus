@@ -93,6 +93,8 @@
   (lex_rule `.` _ `err`)
   (section `parser`)
   (lang `"slash"`)
+  (keywords
+    (kw_group `keyword` `if` `else` `while` `for` `in` `cmd` `match`))
   (as
     `ident`
     _
