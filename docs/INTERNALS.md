@@ -243,7 +243,8 @@ takes its value: a rule whose value is nil or one of its elements needs no
 call of `executeAction`. `src/codegen/actions.zig` compiles every other
 action tree into the Zig expression `executeAction` returns for it: a list
 whose items are elements, tags or nil is a comptime-known item array that
-one builder reads, and `(...N x)` extends a left-recursive list in place
+one builder unrolls, a list with spreads is allocated once at its length
+and filled, and `(...N x)` extends a left-recursive list in place
 (amortized O(1) per element). It also decides, per rule, whether an
 untagged list can reach the tree (and needs a node id) or is only ever
 spliced (plumbing, no id).
@@ -265,7 +266,13 @@ store entries (span and rule, 12 bytes) live in chunks of 128 that never
 move. Parse memory comes from a bump allocator over chunks of the arena
 (the arena itself is threadsafe, and the parser needs no atomics). An
 `@as` keyword is looked up once per token, per group; only the table
-checks run again in each state. Every walk of a tree (`write`, `span`,
+checks run again in each state. The strict loop keeps the state, the
+token's symbol and the next action in locals. A pass-through rule (`A →
+B`, the value of its one element) builds nothing, so reducing it only
+replaces the top state, and a run of them (an operand climbing a chain of
+levels) keeps the state below in a register and writes the stack once. A
+cell an `X "c"` hint overrides holds a marker (`hinted`), so no other cell
+pays for the check. Every walk of a tree (`write`, `span`,
 `writeFacts`, placing the empty leaf of `~N`) keeps its frames on an
 explicit stack, so a tree as deep as its input is long never overflows the
 native stack.

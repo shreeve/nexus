@@ -13,6 +13,13 @@
     reports and `@conflicts` still name the levels (`infix("+" "-")`).
     Rule and state numbers of such a parser change, and so may the
     expected list of an error inside an expression.
+  - A pass-through rule (`A → B`) only replaces the top state, and a run
+    of them is climbed in an inner loop; the strict loop keeps the state
+    and the token's symbol in locals.
+  - Lists with spreads are allocated once at their length; left-recursive
+    lists grow without `std.ArrayList`; static lists are unrolled.
+  - `X "c"` overrides are marked in the parse table (`xExcludes` entries
+    gain the overridden reduction).
 
 ## 2.0.0 — 2026-10-03
 
