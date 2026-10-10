@@ -37,11 +37,9 @@ const std = @import("std");
 const Io = std.Io;
 const Ast = std.zig.Ast;
 const parser = @import("parser.zig");
-
-const Input = struct {
-    name: []const u8,
-    src: [:0]const u8,
-};
+const inputs = @import("inputs.zig");
+const Input = inputs.Input;
+const writeQuoted = inputs.writeQuoted;
 
 /// One parser's verdict: accepted, or the byte offset of its first error.
 const Verdict = struct {
@@ -93,62 +91,6 @@ fn writeVerdict(w: *Io.Writer, src: []const u8, v: Verdict) !void {
     try w.print("reject {d}:{d} {s}", .{ line, col, v.what });
 }
 
-fn writeQuoted(w: *Io.Writer, text: []const u8) !void {
-    try w.writeByte('"');
-    for (text) |c| switch (c) {
-        '"' => try w.writeAll("\\\""),
-        '\\' => try w.writeAll("\\\\"),
-        '\n' => try w.writeAll("\\n"),
-        '\r' => try w.writeAll("\\r"),
-        '\t' => try w.writeAll("\\t"),
-        0x20...0x21, 0x23...0x5b, 0x5d...0x7e => try w.writeByte(c),
-        else => try w.print("\\x{x:0>2}", .{c}),
-    };
-    try w.writeByte('"');
-}
-
-/// The string literals passed to the test helpers in `path`.
-fn inlineInputs(io: Io, arena: std.mem.Allocator, path: []const u8, out: *std.ArrayList(Input)) !void {
-    const file = try Io.Dir.cwd().readFileAllocOptions(io, path, arena, .unlimited, .of(u8), 0);
-    var tree = try Ast.parse(arena, file, .{});
-    if (tree.errors.len != 0) std.process.fatal("{s}: does not parse", .{path});
-    const helpers = [_][]const u8{ "testCanonical", "testTransform", "testError", "checkAgainstOracle" };
-    for (0..tree.nodes.len) |i| {
-        const node: Ast.Node.Index = @fromBackingInt(@intCast(i));
-        var b: [1]Ast.Node.Index = undefined;
-        const call = tree.fullCall(&b, node) orelse continue;
-        const f = call.ast.fn_expr;
-        if (tree.nodeTag(f) != .identifier) continue;
-        const name = tree.tokenSlice(tree.nodeMainToken(f));
-        const helper = for (helpers) |h| {
-            if (std.mem.eql(u8, name, h)) break h;
-        } else continue;
-        const nargs: usize = if (std.mem.eql(u8, helper, "testTransform")) 2 else 1;
-        for (call.ast.params[0..@min(nargs, call.ast.params.len)]) |arg| {
-            var bytes: std.ArrayList(u8) = .empty;
-            switch (tree.nodeTag(arg)) {
-                .string_literal => {
-                    const lit = tree.tokenSlice(tree.nodeMainToken(arg));
-                    try bytes.appendSlice(arena, try std.zig.string_literal.parseAlloc(arena, lit));
-                },
-                .multiline_string_literal => {
-                    const first, const last = tree.nodeData(arg).token_and_token;
-                    var t = first;
-                    while (t <= last) : (t += 1) {
-                        if (t != first) try bytes.append(arena, '\n');
-                        try bytes.appendSlice(arena, tree.tokenSlice(t)[2..]);
-                    }
-                },
-                else => continue,
-            }
-            const loc = tree.tokenLocation(0, tree.firstToken(arg));
-            try bytes.append(arena, 0);
-            const src = bytes.items[0 .. bytes.items.len - 1 :0];
-            try out.append(arena, .{ .name = try std.fmt.allocPrint(arena, "{s}:{d}", .{ path, loc.line + 1 }), .src = src });
-        }
-    }
-}
-
 pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const gpa = init.gpa;
@@ -172,7 +114,7 @@ pub fn main(init: std.process.Init) !void {
             while (it.next()) |line| try paths.append(arena, line);
         } else if (std.mem.eql(u8, arg, "--inline") and value) {
             i += 1;
-            try inlineInputs(io, arena, args[i], &inline_inputs);
+            try inputs.inlineInputs(io, arena, args[i], &inline_inputs);
         } else if (std.mem.eql(u8, arg, "--bench") and value) {
             i += 1;
             rounds = try std.fmt.parseUnsigned(usize, args[i], 10);
@@ -207,7 +149,7 @@ pub fn main(init: std.process.Init) !void {
 
     var p = parser.Parser.init(gpa, "");
     defer p.deinit();
-    var inputs: usize = 0;
+    var count: usize = 0;
     var both_accept: usize = 0;
     var both_reject: usize = 0;
     var same_pos: usize = 0;
@@ -226,7 +168,7 @@ pub fn main(init: std.process.Init) !void {
             owned = src;
             break :blk .{ .name = path, .src = src };
         } else inline_inputs.items[k - paths.items.len];
-        inputs += 1;
+        count += 1;
         bytes += input.src.len;
 
         const a = nexusVerdict(&p, input.src);
@@ -259,102 +201,21 @@ pub fn main(init: std.process.Init) !void {
         }
     }
     try w.print("{d} inputs ({d:.2} MB): {d} accepted by both, {d} rejected by both ({d} at the same byte), {d} differ, {d} with a token over 65535 bytes\n", .{
-        inputs, @as(f64, @floatFromInt(bytes)) / 1e6, both_accept, both_reject, same_pos, differ, long,
+        count, @as(f64, @floatFromInt(bytes)) / 1e6, both_accept, both_reject, same_pos, differ, long,
     });
     try w.flush();
     if (differ != 0) std.process.exit(1);
 }
 
-const pool = [_][]const u8{
-    "const",   "var",       "fn",       "pub",         "comptime", "inline",   "extern",      "export",    "test",   "struct",   "enum",
-    "union",   "error",     "if",       "else",        "while",    "for",      "switch",      "return",    "break",  "continue", "try",
-    "catch",   "orelse",    "and",      "or",          "defer",    "errdefer", "suspend",     "nosuspend", "resume", "asm",      "volatile",
-    "align",   "addrspace", "callconv", "linksection", "anytype",  "noalias",  "threadlocal", "packed",    "opaque", "anyframe", "unreachable",
-    "x",       "blk",       "c",        "_",           "0",        "1",        "'a'",         "\"s\"",     "@f",     "///d\n",   "//!d\n",
-    "\\\\l\n", "(",         ")",        "[",           "]",        "{",        "}",           ".",         ",",      ";",        ":",
-    "?",       "!",         "*",        "**",          "&",        "&&",       "|",           "||",        "-",      "-%",       "+",
-    "~",       "=",         "==",       "=>",          "->",       "..",       "...",         ".*",        ".?",     "<",        ">",
-    "<<",      "%",         "/",        "^",           "+=",       "[*",       "[*c]",        "[*]",       "[]",     "[_]",      ".{",
-    "x:",      ":x",        "|x|",      "|*x|",        "|x, y|",
-};
-
 fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64, w: *Io.Writer) !void {
-    var prng: std.Random.DefaultPrng = .init(seed);
-    const rand = prng.random();
+    var mutator: inputs.Mutator = .init(seed);
+    defer mutator.deinit(gpa);
     var p = parser.Parser.init(gpa, "");
     defer p.deinit();
-    var out: std.ArrayList(u8) = .empty;
-    defer out.deinit(gpa);
-    var toks: std.ArrayList([2]usize) = .empty;
-    defer toks.deinit(gpa);
-    var piece_buf: std.ArrayList(u8) = .empty;
-    defer piece_buf.deinit(gpa);
     var stats: [3]usize = .{ 0, 0, 0 };
     var differ: usize = 0;
     for (0..n) |k| {
-        const s = seeds[rand.uintLessThan(usize, seeds.len)];
-        piece_buf.clearRetainingCapacity();
-        try piece_buf.appendSlice(gpa, window(rand, s.src));
-        try piece_buf.append(gpa, 0);
-        const piece = piece_buf.items[0 .. piece_buf.items.len - 1 :0];
-        toks.clearRetainingCapacity();
-        var tz: std.zig.Tokenizer = .init(piece);
-        while (true) {
-            const t = tz.next();
-            if (t.tag == .eof) break;
-            try toks.append(gpa, .{ t.loc.start, t.loc.end });
-        }
-        out.clearRetainingCapacity();
-        // The gaps between tokens are kept with the token after them.
-        var edits = rand.intRangeAtMost(usize, 1, 4);
-        var i: usize = 0;
-        var gap_start: usize = 0;
-        while (i <= toks.items.len) : (i += 1) {
-            const end = if (i < toks.items.len) toks.items[i][1] else piece.len;
-            const start = if (i < toks.items.len) toks.items[i][0] else piece.len;
-            if (edits > 0 and rand.uintLessThan(usize, toks.items.len + 1) < 2) {
-                edits -= 1;
-                switch (rand.uintLessThan(u8, 4)) {
-                    0 => { // delete
-                        try out.appendSlice(gpa, piece[gap_start..start]);
-                        gap_start = end;
-                        continue;
-                    },
-                    1 => try out.appendSlice(gpa, piece[start..end]), // duplicate
-                    2 => { // insert from the pool or the seed
-                        const ins = if (rand.boolean() or toks.items.len == 0) pool[rand.uintLessThan(usize, pool.len)] else blk: {
-                            const t = toks.items[rand.uintLessThan(usize, toks.items.len)];
-                            break :blk piece[t[0]..t[1]];
-                        };
-                        try out.appendSlice(gpa, switch (rand.uintLessThan(u8, 3)) {
-                            0 => "",
-                            1 => " ",
-                            else => "\n",
-                        });
-                        try out.appendSlice(gpa, ins);
-                        try out.appendSlice(gpa, switch (rand.uintLessThan(u8, 3)) {
-                            0 => "",
-                            1 => " ",
-                            else => "\n",
-                        });
-                    },
-                    else => if (i + 1 < toks.items.len) { // swap with the next token
-                        const nx = toks.items[i + 1];
-                        try out.appendSlice(gpa, piece[gap_start..start]);
-                        try out.appendSlice(gpa, piece[nx[0]..nx[1]]);
-                        try out.appendSlice(gpa, piece[end..nx[0]]);
-                        try out.appendSlice(gpa, piece[start..end]);
-                        gap_start = nx[1];
-                        i += 1;
-                        continue;
-                    },
-                }
-            }
-            try out.appendSlice(gpa, piece[gap_start..end]);
-            gap_start = end;
-        }
-        try out.append(gpa, 0);
-        const src = out.items[0 .. out.items.len - 1 :0];
+        const s, const src = try mutator.next(gpa, seeds);
         const a = nexusVerdict(&p, src);
         const b = try stdVerdict(gpa, src);
         if (a.ok == b.ok) {
@@ -379,25 +240,6 @@ fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64
     });
     try w.flush();
     if (differ != 0) std.process.exit(1);
-}
-
-/// A seed of up to 4 KB whole; of a bigger one, the lines from a random
-/// line that starts in column 1 up to one of the next few such lines.
-fn window(rand: std.Random, src: []const u8) []const u8 {
-    if (src.len <= 4096) return src;
-    var starts: [8]usize = undefined;
-    var count: usize = 0;
-    var pos = rand.uintLessThan(usize, src.len);
-    while (count < starts.len) {
-        const nl = std.mem.findScalarPos(u8, src, pos, '\n') orelse break;
-        pos = nl + 1;
-        if (pos < src.len and src[pos] != ' ' and src[pos] != '\n' and src[pos] != '}') {
-            starts[count] = pos;
-            count += 1;
-        }
-    }
-    if (count < 2) return src[0..4096];
-    return src[starts[0]..starts[rand.intRangeAtMost(usize, 1, count - 1)]];
 }
 
 fn now(io: Io) i96 {

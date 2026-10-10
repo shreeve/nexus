@@ -61,7 +61,7 @@ mv "$LIST.new" "$LIST"
 NEXUS="$ROOT/bin/nexus"
 [[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
 (cd "$HERE" && "$NEXUS" zig.grammar "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
-cp "$HERE/zig.zig" "$HERE/tools/accept.zig" "$OUT/"
+cp "$HERE/zig.zig" "$HERE/tools/accept.zig" "$HERE/tools/inputs.zig" "$OUT/"
 (cd "$OUT" && zig build-exe -O "$MODE" accept.zig -femit-bin=accept --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
     >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
 
