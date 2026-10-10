@@ -27,9 +27,9 @@
 # checkout's bin/nexus (rebuilt first).
 #
 # Examples:
-#   test/diff OLD/bin/nexus current test/mumps/mumps.grammar test/mumps/mumps.grammar \
+#   test/diff OLD/bin/nexus current grammars/mumps/mumps.grammar grammars/mumps/mumps.grammar \
 #       --ext .m ~/Data/Code/em/misc/vista
-#   test/diff --start parseProgram current current OLD/rig.grammar test/rig/rig.grammar \
+#   test/diff --start parseProgram current current OLD/rig.grammar grammars/rig/rig.grammar \
 #       --ext .rig ~/Data/Code/rig/test ~/Data/Code/rig/examples
 #
 # Exit status: 0 when every file gives the same tree (or the same parse

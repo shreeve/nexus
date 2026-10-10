@@ -30,8 +30,8 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 ## Open work
 
 1. **Keep the downstream copies current.** Rig, em and nexis run Zig 0.17
-   and this Nexus; `test/rig`, `test/mumps` and `test/nexis` hold their
-   grammars and lang modules as their main branches have them, and each
+   and this Nexus; `grammars/rig`, `grammars/mumps` and `grammars/nexis`
+   hold their grammars and lang modules as their main branches have them, and each
    `test.conf` names the source commit. When one of them changes its
    grammar or lang module, re-sync its copy in its own commit
    ([AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
@@ -39,7 +39,7 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    `new` forms) is the next change on its way.
 2. **Slash and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
-   `test/slash` and `test/ruby` here. `test/diff` compares the
+   `grammars/slash` and `grammars/ruby` here. `test/diff` compares the
    trees of a 0.10.3 build (from tag `v0.10.3`) with this checkout's.
 3. **Deferred by the owner until em's grammar work is done:** the
    schemaless tree rules for a leading `role:N` head (named only in

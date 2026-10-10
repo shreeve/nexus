@@ -20,7 +20,7 @@ systems' own tools.
 
 | Test id | Contract |
 |---|---|
-| `<grammar>/<case>` | the grammar generates, **compiles** with its `@lang` module and the tree driver, and parsing `test/<grammar>/cases/<case>.*` prints exactly `<case>.tree` |
+| `<grammar>/<case>` | the grammar generates, **compiles** with its `@lang` module and the tree driver, and parsing `<suite>/cases/<case>.*` prints exactly `<case>.tree` |
 | `<grammar>/known/<case>` | same, for a case whose `.tree` is the correct output, which the parser does not produce |
 | `known/<bug>` | a self-contained test of the correct behavior for one known bug (see below) |
 | `regress/<bug>` | a fixed `known/<bug>`, kept as a regression test |
@@ -35,7 +35,7 @@ systems' own tools.
 | `tools/diff` | `test/diff` finds no differences between a parser and itself on the MUMPS cases |
 | `tools/fmt` | the `zig fmt --check` command of `AGENTS.md` passes |
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
-| `tools/messages` | every error the generator's source can print is printed by `nexus check` on some grammar under `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
+| `tools/messages` | every error the generator's source can print is printed by `nexus check` on some grammar under `grammars/` or `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
 | `tools/readme` | `docs/index.html` shows README.md's tested `calc.grammar`, and every number in README.md's validated-languages table (lines, LR states, declared conflicts and cells, suite cases, mode) is this checkout's (`test/lib/readme`) |
 | `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
@@ -48,12 +48,13 @@ A missing golden fails too; `--update` writes it.
 
 ## Grammar suites
 
-Each directory `test/<grammar>/` is a suite (except `golden`, `adverse`,
-`known`, `regress`, `lib`, `bench`, `lexfuzz`), and one without a grammar
-fails. Nothing needs registering: add a directory, a grammar, and cases.
+Each directory `grammars/<grammar>/` (the real languages) and
+`test/<grammar>/` (except `golden`, `adverse`, `known`, `regress`, `lib`,
+`bench`, `lexfuzz`) is a suite, and one without a grammar fails. Nothing
+needs registering: add a directory, a grammar, and cases.
 
 ```
-test/mumps/
+grammars/mumps/
   mumps.grammar         the grammar
   mumps.zig             its @lang module (every *.zig here is copied next to the parser)
   test.conf             optional settings
@@ -83,7 +84,7 @@ arguments for it. A
 subdirectory `cases/<s>/` uses the start rule `parse<S>` (`expr/` →
 `parseExpr`), or `<s>` itself when it starts with `parse`.
 
-The in-repo suites:
+The suites under `test/`:
 
 | Suite | Grammar | Corpus |
 |---|---|---|
@@ -93,10 +94,15 @@ The in-repo suites:
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
+
+The suites under `grammars/`:
+
+| Suite | Grammar | Corpus |
+|---|---|---|
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (copied from Rig's main; `test.conf` names the commit) | 138 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's schema-mode MUMPS grammar and lang module (copied from em) | hand-written cases, 27 VistA routines, 22 MVTS-derived em compliance routines |
 | `ruby`, `slash`, `nexis` | downstream grammars without a schema (`nexis`: copied from nexis's main; `test.conf` names the commit) | hand-written Ruby and Slash, a sample of Nexis tests and examples |
-| `zig` | Zig 0.17.0: `std.zig.Tokenizer` as Nexus rules and a parser for all of Zig's syntax (lang `Lexer` wrapper for Parse.zig's lookahead and spacing decisions); its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, `test/zig/compare-tokens` does so over any corpus, and `test/zig/compare-accept` compares acceptance with `std.zig.Ast.parse` over a corpus, std.zig's parser test sources, or token-edit mutants | hand-written: every token kind and every way a token goes invalid; declarations, containers, statements, expressions, types, `asm`; inputs Ast.parse rejects beyond the PEG |
+| `zig` | Zig 0.17.0: `std.zig.Tokenizer` as Nexus rules and a parser for all of Zig's syntax (lang `Lexer` wrapper for Parse.zig's lookahead and spacing decisions); its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, `grammars/zig/compare-tokens` does so over any corpus, and `grammars/zig/compare-accept` compares acceptance with `std.zig.Ast.parse` over a corpus, std.zig's parser test sources, or token-edit mutants | hand-written: every token kind and every way a token goes invalid; declarations, containers, statements, expressions, types, `asm`; inputs Ast.parse rejects beyond the PEG |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
 where and how an input fails.
@@ -157,7 +163,7 @@ checkout's `bin/nexus` (rebuilt first).
 
 ```bash
 # A generator change under review: the previous build against this checkout, over VistA
-test/diff /tmp/nexus-before/bin/nexus current test/mumps/mumps.grammar test/mumps/mumps.grammar \
+test/diff /tmp/nexus-before/bin/nexus current grammars/mumps/mumps.grammar grammars/mumps/mumps.grammar \
     --ext .m ~/Data/Code/em/misc/vista
 
 # A grammar change under review, after a lang Parser wrapper
@@ -244,7 +250,7 @@ the current numbers; update it when a change moves them.
 Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite
 builds in `build/<suite>/`, with `gen.log` and `compile.log`), so a failing
 case's parser can be run by hand:
-`.zig-cache/nexus-test/build/mumps/driver test/mumps/cases/hand_dots.m`.
+`.zig-cache/nexus-test/build/mumps/driver grammars/mumps/cases/hand_dots.m`.
 A suite's compile is skipped when its inputs (the generated parser, its
 lang files, the driver, the mode and the compiler) are byte for byte those
 of its last build. One `test/run` runs per checkout at a time; a second

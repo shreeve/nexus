@@ -1,11 +1,11 @@
 #!/bin/bash
-# Compares what the parser generated from test/zig/zig.grammar accepts
+# Compares what the parser generated from grammars/zig/zig.grammar accepts
 # with what std.zig.Ast.parse accepts (the Zig that runs this script,
 # which must be 0.17.0), input by input: a strict parse of a whole file
 # against Ast.parse(.{ .recover = false }).
 #
 # Usage:
-#   test/zig/compare-accept [options] (DIR|FILE|--list LIST|--inline FILE)...
+#   grammars/zig/compare-accept [options] (DIR|FILE|--list LIST|--inline FILE)...
 #
 #   DIR             every *.zig file under DIR
 #   --list LIST     the paths in LIST, one per line (paths may hold spaces)
@@ -23,7 +23,7 @@
 #                   measure what the schema costs with --bench
 #   -O MODE         optimize mode of the tool (default ReleaseFast)
 #
-# The tool is built in .zig-cache/nexus-test/zig-accept/ from this
+# The tool is built in .zig-cache/nexus-grammars/zig-accept/ from this
 # checkout's bin/nexus (run `zig build` first). It prints one line per
 # input on which the parsers disagree, with the first error of the side
 # that rejects (line:col and the token or Ast error tag), and a summary;
@@ -33,7 +33,7 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-OUT="$ROOT/.zig-cache/nexus-test/zig-accept"
+OUT="$ROOT/.zig-cache/nexus-grammars/zig-accept"
 MODE=ReleaseFast TOOL_ARGS=() SCHEMA=1
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
@@ -75,7 +75,7 @@ if [[ $SCHEMA == 0 ]]; then
 fi
 (cd "$HERE" && "$NEXUS" "$GRAMMAR" "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
 cp "$HERE/zig.zig" "$HERE/tools/accept.zig" "$HERE/tools/inputs.zig" "$OUT/"
-(cd "$OUT" && zig build-exe -O "$MODE" accept.zig -femit-bin=accept --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
+(cd "$OUT" && zig build-exe -O "$MODE" accept.zig -femit-bin=accept --cache-dir "$ROOT/.zig-cache/nexus-grammars/zig") \
     >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
 
 exec "$OUT/accept" ${TOOL_ARGS[@]+"${TOOL_ARGS[@]}"} --list "$LIST"

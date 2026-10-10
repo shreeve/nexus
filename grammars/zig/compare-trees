@@ -1,12 +1,12 @@
 #!/bin/bash
-# Compares the tree the parser generated from test/zig/zig.grammar builds
+# Compares the tree the parser generated from grammars/zig/zig.grammar builds
 # with the tree std.zig.Ast.parse builds (the Zig that runs this script,
 # which must be 0.17.0), input by input, node for node: both are printed
 # in one canonical form (the grammar's @schema, with spans) and compared
 # as text. trees.zig lists the rules that map one onto the other.
 #
 # Usage:
-#   test/zig/compare-trees [options] (DIR|FILE|--list LIST|--inline FILE)...
+#   grammars/zig/compare-trees [options] (DIR|FILE|--list LIST|--inline FILE)...
 #
 #   DIR             every *.zig file under DIR
 #   --list LIST     the paths in LIST, one per line (paths may hold spaces)
@@ -20,7 +20,7 @@
 #   --show          print the canonical form of each input whose trees agree
 #   -O MODE         optimize mode of the tool (default ReleaseSafe)
 #
-# The tool is built in .zig-cache/nexus-test/zig-trees/ from this
+# The tool is built in .zig-cache/nexus-grammars/zig-trees/ from this
 # checkout's bin/nexus (run `zig build` first). Inputs that either parser
 # rejects are not compared (compare-accept compares those). It prints one
 # line per input whose trees differ, with the first differing line of
@@ -29,7 +29,7 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-OUT="$ROOT/.zig-cache/nexus-test/zig-trees"
+OUT="$ROOT/.zig-cache/nexus-grammars/zig-trees"
 MODE=ReleaseSafe TOOL_ARGS=()
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
@@ -64,7 +64,7 @@ NEXUS="$ROOT/bin/nexus"
 [[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
 (cd "$HERE" && "$NEXUS" zig.grammar "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
 cp "$HERE/zig.zig" "$HERE/trees.zig" "$HERE/tools/compare_trees.zig" "$HERE/tools/inputs.zig" "$OUT/"
-(cd "$OUT" && zig build-exe -O "$MODE" compare_trees.zig -femit-bin=compare_trees --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
+(cd "$OUT" && zig build-exe -O "$MODE" compare_trees.zig -femit-bin=compare_trees --cache-dir "$ROOT/.zig-cache/nexus-grammars/zig") \
     >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
 
 exec "$OUT/compare_trees" ${TOOL_ARGS[@]+"${TOOL_ARGS[@]}"} --list "$LIST"

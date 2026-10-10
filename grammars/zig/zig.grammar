@@ -6,7 +6,7 @@
 # generates one standalone Zig module: a DFA lexer, an LALR(1) parser and
 # a typed tree. It is written to agree exactly with Zig 0.17.0's own front
 # end, std.zig (lib/std/zig/tokenizer.zig, Parse.zig, Ast.zig), and the
-# tools in test/zig/ check that it does; test/zig/README.md has the
+# tools in grammars/zig/ check that it does; grammars/zig/README.md has the
 # evidence, the measurements and the commands.
 #
 #   Tokens   the lexer is std.zig.Tokenizer written as Nexus rules: for
@@ -328,7 +328,7 @@ tokens
 # literals, `unreachable` and `anyframe` are leaves (Ast's `identifier`,
 # `number_literal`, ... nodes hold one token). A trailing comma is not
 # kept: it is formatting, which Ast records only in the `_comma` variant
-# of a tag. test/zig/compare-trees checks the tree against std.zig.Ast.
+# of a tag. grammars/zig/compare-trees checks the tree against std.zig.Ast.
 @schema
     # Containers and declarations
     root                doc:group? ...members

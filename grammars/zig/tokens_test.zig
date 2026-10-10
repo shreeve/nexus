@@ -2,7 +2,7 @@
 //! Zig that runs the test: the same tokens (tag by name, start, end), up to
 //! and including eof, on the inputs of std.zig.Tokenizer's own tests, on
 //! line-ending, byte-order-mark and control-byte cases, and on random
-//! inputs. test/zig/compare-tokens runs the same comparison over any
+//! inputs. grammars/zig/compare-tokens runs the same comparison over any
 //! corpus.
 const std = @import("std");
 const parser = @import("parser.zig");

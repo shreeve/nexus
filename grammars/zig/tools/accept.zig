@@ -1,5 +1,5 @@
 //! Compares what the parser generated from zig.grammar accepts with what
-//! std.zig.Ast.parse accepts. Built by test/zig/compare-accept next to the
+//! std.zig.Ast.parse accepts. Built by grammars/zig/compare-accept next to the
 //! generated parser.zig and zig.zig; see that script for usage.
 //!
 //!   accept [--list FILE] [--inline FILE] PATH...    compare, input by input

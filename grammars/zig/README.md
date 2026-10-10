@@ -220,27 +220,27 @@ is a checkout of Zig at tag 0.17.0.
 P="--inline $Z/lib/std/zig/parser_test.zig --inline $Z/lib/std/zig/parser_fuzz.zig"
 S="$Z/test/behavior $Z/test/cases/compile_errors $Z/lib/std/zig"
 
-test/zig/compare-tokens $Z                        # tokens: 2,620 files, 12,805,547 tokens
-test/zig/compare-tokens --fuzz 2000000 --seed 0   # tokens: random inputs
-test/zig/compare-tokens --fuzz 2000000 --seed 1
+grammars/zig/compare-tokens $Z                        # tokens: 2,620 files, 12,805,547 tokens
+grammars/zig/compare-tokens --fuzz 2000000 --seed 0   # tokens: random inputs
+grammars/zig/compare-tokens --fuzz 2000000 --seed 1
 
-test/zig/compare-accept $Z $P                     # accept: 3,134 inputs
-test/zig/compare-accept --fuzz 60000 --seed 13 $Z/lib/std/zig $Z/test/behavior \
+grammars/zig/compare-accept $Z $P                     # accept: 3,134 inputs
+grammars/zig/compare-accept --fuzz 60000 --seed 13 $Z/lib/std/zig $Z/test/behavior \
     $Z/test/cases/compile_errors --inline $Z/lib/std/zig/parser_test.zig
-test/zig/compare-accept --fuzz 30000 --seed 21 $P
-test/zig/compare-accept --fuzz 60000 --seed 22 $S
+grammars/zig/compare-accept --fuzz 30000 --seed 21 $P
+grammars/zig/compare-accept --fuzz 60000 --seed 22 $S
 
-test/zig/compare-trees $Z $P                      # trees: the 3,035 inputs both accept
-test/zig/compare-trees --fuzz 30000 --seed 11 $P
-test/zig/compare-trees --fuzz 60000 --seed 12 $Z/lib/std/zig $Z/test/behavior
-test/zig/compare-trees --fuzz 70000 --seed 31 $P
-test/zig/compare-trees --fuzz 70000 --seed 32 $S
-test/zig/compare-trees --fuzz 70000 --seed 33 $Z/lib/std/zig $Z/src/Sema.zig $Z/lib/std/mem.zig
+grammars/zig/compare-trees $Z $P                      # trees: the 3,035 inputs both accept
+grammars/zig/compare-trees --fuzz 30000 --seed 11 $P
+grammars/zig/compare-trees --fuzz 60000 --seed 12 $Z/lib/std/zig $Z/test/behavior
+grammars/zig/compare-trees --fuzz 70000 --seed 31 $P
+grammars/zig/compare-trees --fuzz 70000 --seed 32 $S
+grammars/zig/compare-trees --fuzz 70000 --seed 33 $Z/lib/std/zig $Z/src/Sema.zig $Z/lib/std/mem.zig
 
-test/zig/compare-accept --messages $Z $P          # both syntax errors of every input both reject
-test/zig/compare-tokens --bench 5 $Z              # lexer speed
-test/zig/compare-accept --bench 5 $Z              # parse speed
-test/zig/compare-accept --bench 5 --no-schema $Z  # parse speed, plain tree
+grammars/zig/compare-accept --messages $Z $P          # both syntax errors of every input both reject
+grammars/zig/compare-tokens --bench 5 $Z              # lexer speed
+grammars/zig/compare-accept --bench 5 $Z              # parse speed
+grammars/zig/compare-accept --bench 5 --no-schema $Z  # parse speed, plain tree
 ```
 
 Each comparison prints one line per input that differs and a summary,

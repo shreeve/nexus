@@ -749,8 +749,8 @@ actions, with these differences: lists drop trailing nils (positions of
 what is present stay stable); `role:v` items are positional; labels other
 than `_:X` are errors; the `Tag` enum is as
 [GRAMMAR.md, "Actions"](GRAMMAR.md#actions) describes; there is no `ir`; spans and facts
-need `--spans`. The MUMPS, Ruby, Slash and Nexis grammars in `test/`
-use this mode.
+need `--spans`. The Ruby, Slash and Nexis grammars in
+`grammars/` use this mode.
 
 ## Lineage
 

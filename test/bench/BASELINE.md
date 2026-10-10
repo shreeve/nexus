@@ -41,15 +41,15 @@ Best of 5 rounds, one thread, all input in memory, a fresh parser per file.
 `parseRoutine` for MUMPS, `parseTree` for Rig).
 
 - **mumps**: every routine in `em/misc/vista` (24,704 files, 86.5 MB),
-  parsed with em's schema-mode grammar (`test/mumps`); 24,603 parse to
+  parsed with em's schema-mode grammar (`grammars/mumps`); 24,603 parse to
   the end, the rest stop at gaps in the grammar.
 - **rig**: Rig's behavior tests and examples that parse on their own
   (`~/Data/Code/rig`), listed again and again until the list holds about
   4 MB (6,474 small files). The per-file cost of a fresh parser weighs more
   on these short programs than on VistA's routines.
 
-The MUMPS and Rig rows were recorded with the grammars `test/mumps` and
-`test/rig` hold.
+The MUMPS and Rig rows were recorded with the grammars `grammars/mumps` and
+`grammars/rig` hold.
 
 | input | files | MB | tokens | lex ms | lex MB/s | parse ms | parse MB/s | parsed ok |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|

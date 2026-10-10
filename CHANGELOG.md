@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- The real-language grammars live in `grammars/` (`grammars/zig`,
+  `grammars/rig`, `grammars/mumps`, `grammars/nexis`, `grammars/ruby`,
+  `grammars/slash`), apart from the feature suites in `test/`.
+  `./test/run` runs both; test ids are unchanged (`rig/...`, `gen/zig`).
+  Generated code is unchanged. Migration: Rig, em and nexis re-sync their
+  copies into `grammars/<name>/` instead of `test/<name>/`.
+
 ## 2.2.0 — 2026-10-10
 
 ### Added

@@ -1,6 +1,6 @@
 //! The trees the parser generated from zig.grammar builds against
 //! std.zig.Ast's (trees.zig), on inputs that use every kind and role of
-//! the schema and every rule trees.zig lists. test/zig/compare-trees runs
+//! the schema and every rule trees.zig lists. grammars/zig/compare-trees runs
 //! the same comparison over any corpus.
 const std = @import("std");
 const parser = @import("parser.zig");
