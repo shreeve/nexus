@@ -1,0 +1,26 @@
+# Each item of a spread into fixed roles has the static type of that item
+# of the list, checked against the role it fills.
+# error: schema_spread_fixed_type.grammar:22:11: error: rule 'top': role 'cond' of 'if' takes any value, but item 1 of the list of element 1 (head) can be nil (from head → "(" ")" IDENT, line 24)
+# error: schema_spread_fixed_type.grammar:22:11: error: rule 'top': role 'capture' of 'if' takes a leaf or nil, but item 2 of the list of element 1 (head) can be a 'name' node (from head → "(" name ")", line 25)
+@lexer
+tokens
+    ident
+    lparen
+    rparen
+    eof
+    err
+'('                                         → lparen
+')'                                         → rparen
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    if          cond capture:leaf? then
+    name        id:leaf
+
+top!    = head name                         → (if ...1 2)
+
+head    = "(" [name] ")" IDENT              → (2 4)
+        | "(" name ")"                      → (_ 2)
+name    = IDENT                             → (name 1)

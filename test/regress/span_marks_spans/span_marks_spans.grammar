@@ -1,0 +1,28 @@
+# Span marks without a schema: with `--spans`, the node a marked
+# alternative builds spans its unmarked elements (the doc comments and the
+# `;` stay out); unmarked nodes span their whole reduction.
+
+@lexer
+tokens
+    ident
+    doc
+    kw_var
+    eq
+    semi
+    eof
+    err
+'\n'                                        → skip, skip
+'///' [^\n]*                                → doc
+"var"                                       → kw_var
+'='                                         → eq
+';'                                         → semi
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "span_marks_spans"
+
+program!    = stmt*                                 → (block ...1)
+
+stmt        = -DOC* "var" IDENT "=" IDENT -";"      → (var 1 3 5)
+            | IDENT ";"                             → (expr 1)

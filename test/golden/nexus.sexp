@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
   (lex_rule
     `[ \\t\\r]+`
     _
@@ -14,6 +14,7 @@
   (lex_rule `'?'` _ `question`)
   (lex_rule `'*'` _ `star`)
   (lex_rule `'+'` _ `plus`)
+  (lex_rule `'-'` _ `minus`)
   (lex_rule `'('` _ `lparen`)
   (lex_rule `')'` _ `rparen`)
   (lex_rule `'['` _ `lbracket`)
@@ -770,6 +771,16 @@
           _
           `element`
           (type `ref` `tok` `lit` `list_req` `at_ref` `"group"` `quantified`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `unspanned`)
+      (roles
+        (role
+          _
+          `element`
+          (type `ref` `tok` `lit` `list_req` `at_ref` `"group"` `quantified` `label` `skip` `skip_q`)
           _))
       _
       _)
@@ -2202,6 +2213,29 @@
     (name `element`)
     (alt
       _
+      ((lit `"-"`)
+        (label
+          `element`
+          (ref `spanned`)))
+      (node `unspanned`)
+      _)
+    (alt
+      _
+      ((ref `spanned`))
+      _
+      _)
+    (alt
+      _
+      ((tok `KW_X`)
+        (label
+          `char`
+          (tok `STRING`)))
+      (node `exclude`)
+      _))
+  (rule
+    (name `spanned`)
+    (alt
+      _
       ((label
           `name`
           (tok `LABEL`))
@@ -2244,14 +2278,6 @@
           `element`
           (ref `primary`)))
       (node `skip`)
-      _)
-    (alt
-      _
-      ((tok `KW_X`)
-        (label
-          `char`
-          (tok `STRING`)))
-      (node `exclude`)
       _))
   (rule
     (name `labelable`)

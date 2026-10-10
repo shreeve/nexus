@@ -1,0 +1,18 @@
+# Only a leading and a trailing run of elements can leave a node's span:
+# the span is one range of the source.
+# error: span_mark_middle.grammar:18:15:
+# error: span mark on '-","': only leading and trailing elements can be left out of a node's span
+@lexer
+tokens
+    ident
+    semi
+    comma
+    eof
+    err
+';'                                         → semi
+','                                         → comma
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT -"," IDENT ";"                 → (top 1 3)

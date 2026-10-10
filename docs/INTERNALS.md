@@ -116,7 +116,10 @@ checks random lexers against a model of the lexer's definition.
 With `@schema`, `semantics.resolve` checks the schema (role types name
 declared kinds) and the tag inventory, places every action's items into
 their slots in schema order (positional items, `role:` items, pattern
-labels; nil for the unfilled; rest children last), records side-band
+labels; nil for the unfilled; rest children last; a spread of a list of
+one fixed length becomes one `...N[i]` item per role it fills, after
+checking that every alternative of the element's rule builds that
+length), records side-band
 labels, and runs the coverage gate. It works on the source alternatives, so
 every message names the rule as written. Positions it produces may be
 "internal" positions of elements inside choice alternatives, which only the
@@ -132,11 +135,16 @@ expander resolves.
   written inline: a top-level `[A B]` group, `[X]` on a rule or list, a
   non-repeated choice, and a non-repeated group with labels inside.
   `checkPatterns` walks every pattern before semantics or expansion and
-  rejects what has no position (labels deeper down, a nested `[A B]`) and
-  nesting beyond 64 levels;
+  rejects what has no position (labels deeper down, a nested `[A B]`),
+  nesting beyond 64 levels, and span marks (`-X`) anywhere but on a
+  leading or trailing run of an alternative that builds a node;
 - inline elements expand into one alternative per combination; `Layout`
   maps every action position to its element in each variant (or to
-  absent), so actions keep their positions. Without a schema, an expanded
+  absent), so actions keep their positions. A variant of an alternative
+  with span marks records the first and last unmarked element it has
+  (`Rule.spanElems`), and codegen wraps its action in `self.nested`, which
+  gives the node the span of those elements, and narrows the element
+  range of each nested node to them. Without a schema, an expanded
   action is cut after its last present position or nested node;
 - `X?`, `X*`, `X+`, `L(X)`, `L(X?)`, `L(X, sep)`, other groups and choices
   become shared synthesized rules named in source syntax (`L(X)`,
@@ -153,7 +161,8 @@ expander resolves.
 
 `semantics.checkTypes` then computes, by fixpoint over the expanded rules,
 the set of values each symbol can produce (nil, leaf, tag, untagged list,
-one bit per kind) and the values its lists can hold, and checks every role
+one bit per kind) and the values its lists can hold (and, for a fixed
+spread, the values of each item of its list), and checks every role
 of every node construction against its declared type, naming a production
 that yields the offending value.
 

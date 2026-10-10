@@ -343,7 +343,7 @@ which a required role rejects.
 | Item | Fills the role with |
 |---|---|
 | `N` / `role:N` | element N |
-| `role:...N` | the items of element N (a rest role only) |
+| `role:...N` | the items of element N: a rest role, or, for a list of one fixed length, this role and the ones after it |
 | `role:_` | nil |
 | `role:word` | the tag `word` (`op:+=`, `mode:ptr`) |
 | `role:(kind ...)` | a nested node, with its own id and span |
@@ -356,6 +356,69 @@ stmt = name "+=" expr                → (set += 1 value:3)
 
 Lists without a kind (`(1)`, `(...1 3)`) remain the way to accumulate
 children for a rest role (plumbing); a spread must splice a list.
+
+### Spreads into fixed roles
+
+A spread fills fixed roles when its element's lists have one length. When
+element N names a rule whose every alternative builds an untagged list of
+k items, a positional `...N` fills the next k roles and `role:...N` fills
+`role` and the k − 1 roles after it; positional items after a spread go on
+from the role after its last. A head that several kinds share is written
+once, in one rule, and the parser shares its states:
+
+```grammar heads.grammar
+@lexer
+
+tokens
+    ident, label, kw_if, kw_while, kw_else, lparen, rparen, pipe, semi
+    eof, err
+
+'\n'                        → skip, skip
+"if"                        → kw_if
+"while"                     → kw_while
+"else"                      → kw_else
+'('                         → lparen
+')'                         → rparen
+'|'                         → pipe
+';'                         → semi
+[a-z]+ ':'                  → label
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    block      ...stmts
+    if         cond capture:leaf? then else?
+    while      label:leaf? cond capture:leaf? then
+    call       callee:leaf
+
+program! = stmt*                                → (block ...1)
+
+stmt     = "if" head stmt  >                    → (if ...2 then:3)
+         | "if" head stmt "else" stmt           → (if ...2 3 5)
+         | [LABEL] "while" head stmt            → (while 1 cond:...3 then:4)
+         | IDENT ";"                            → (call 1)
+
+head     = "(" IDENT ")" ["|" IDENT "|"]        → (2 5)
+```
+
+```input
+if (a) |x| f; else loop: while (b) g;
+```
+
+```tree
+(block (if `a` `x` (call `f`)@11..13 (while `loop:` `b` _ (call `g`)@35..37)@19..37)@0..37)@0..37
+```
+
+Generation checks that every alternative of the rule builds a list of the
+same length (its items, a `...M` of an element that is always there and
+is such a list itself, or a pass-through of one), that the kind has that
+many roles from where the spread starts, that none of them is filled
+twice, and the static type of each item against the role it fills: an
+error names the item (`item 2 of the list of element 2 (head)`). When the
+element is optional (`[head]`) and absent, its roles are nil. The list is
+plumbing: it gets no node id, and the node reads its items in place.
 
 ## Labels
 
@@ -397,9 +460,10 @@ its rule, when:
   `@wrapper`) is built by no rule. The report ends with the actions' actual
   inventory as an `@schema` block, ready to paste and edit.
 - **Roles.** A role is unknown, filled twice, given a spread when it takes
-  one value, or required and left empty; a positional item follows a named
-  one; an action gives more items than the kind has slots; a tag is not
-  one of its role's `tag(...)` values.
+  one value (unless the spread is a list of one fixed length and the kind
+  has as many roles from there), or required and left empty; a positional
+  item follows a named one; an action gives more items than the kind has
+  slots; a tag is not one of its role's `tag(...)` values.
 - **Coverage.** Every value-bearing element of a pattern is used by the
   action, labeled, or dropped with `!X` or `_:X`; an alternative opts out
   with `→ (...)  ~ "reason"`. Value-bearing are rules, lists, groups, the
@@ -533,6 +597,10 @@ counting, so the trees of earlier parses stay valid (until `reset`).
   tokens that are not in the tree (keywords, punctuation). `(1 + 2)` passed
   through by `→ 2` keeps the span of the `+` node inside it.
 - A nested node (`value:(num 2)`) spans the elements it references.
+- A span mark, `-X` on a leading or trailing element of a pattern, leaves
+  that element out of the span of the node the alternative builds and of
+  the nested nodes of its action (see below); the node's parent still
+  spans it.
 - A leaf spans its token. A list without an id (built by a wrapper with
   `List.of`, or any list without the node store) spans the hull of its
   children: from the least start to the greatest end, in whatever order
@@ -543,6 +611,55 @@ counting, so the trees of earlier parses stay valid (until `reset`).
 
 The store costs one 12-byte entry per node. Grammars without `@schema` get
 it with `nexus --spans`.
+
+### Span marks
+
+A statement's `;` and the doc comments before it belong to the source of
+the statement, but a tool that points at the statement wants neither. A
+span mark keeps them out of the node's span, and nothing else changes:
+
+```grammar marks.grammar
+@lexer
+
+tokens
+    ident, doc, kw_var, eq, semi, eof, err
+
+'\n'                        → skip, skip
+'///' [^\n]*                → doc
+"var"                       → kw_var
+'='                         → eq
+';'                         → semi
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    block      ...stmts
+    var        doc:group? name:leaf value:leaf
+
+program! = stmt*                                → (block ...1)
+
+stmt     = -doc:DOC* "var" name:IDENT "=" value:IDENT -";"
+                                                → (var)
+```
+
+```input
+/// the answer
+var x = y;
+var z = w;
+```
+
+```tree
+(block (var (`/// the answer`)@0..14 `x` `y`)@15..24 (var ()@26..26 `z` `w`)@26..35)@0..36
+```
+
+The marked elements are positions and values as before (`doc` fills its
+role, and coverage applies to them). A span mark needs an action that
+builds a node, `(kind ...)`, and goes on a top-level element: a leading
+run and a trailing run of the pattern may be marked, as long as some
+unmarked element is always there. Without `@schema`, span marks apply
+with `nexus --spans`.
 
 ## Facts
 

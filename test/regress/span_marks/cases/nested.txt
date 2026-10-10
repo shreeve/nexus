@@ -1,0 +1,3 @@
+/// one
+let f();
+let g ( ) ;

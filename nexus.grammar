@@ -34,6 +34,7 @@ tokens
     question
     star
     plus
+    minus
     lparen
     rparen
     lbracket
@@ -102,6 +103,7 @@ tokens
 '?'                                         → question
 '*'                                         → star
 '+'                                         → plus
+'-'                                         → minus
 '('                                         → lparen
 ')'                                         → rparen
 '['                                         → lbracket
@@ -210,6 +212,7 @@ tokens
     skip                       element:ref|tok|lit|list_req|at_ref|"group"
     exclude                    char:leaf
     label                      name:leaf element:ref|tok|lit|list_req|at_ref|"group"|quantified
+    unspanned                  element:ref|tok|lit|list_req|at_ref|"group"|quantified|label|skip|skip_q
     opt, zero_plus, one_plus
 
     # Actions
@@ -474,12 +477,15 @@ elements   =                                        → ()
            | elements element                       → (...1 2)
            | elements CONT                          → 1
 
-element    = name:LABEL element:labelable           → (label)
+element    = "-" element:spanned                    → (unspanned)
+           | spanned
+           | KW_X char:STRING                       → (exclude)
+
+spanned    = name:LABEL element:labelable           → (label)
            | element:group_paren ":" name:IDENT     → (label)
            | labelable
            | "!" element:primary quant:quantifier   → (skip_q)
            | "!" element:primary                    → (skip)
-           | KW_X char:STRING                       → (exclude)
 
 labelable  = element:primary quant:quantifier       → (quantified)
            | primary

@@ -1,0 +1,58 @@
+# A spread fills fixed roles only from a rule whose every alternative
+# builds an untagged list of one length.
+# error: schema_spread_fixed_not_fixed.grammar:33:11: error: rule 'top': a spread cannot fill role 'a' of 'pair'; only the rest role takes a spread, or a list of one fixed length (rule 'uneven' builds lists of 2 items (line 50) and of 1 (line 51))
+# error: (rule 'kinded' line 52 builds a node, not an untagged list)
+# error: (rule 'nested' builds its list from itself)
+# error: (rule 'partial' line 55: element 2 is not always there)
+# error: (rule 'bare' line 56: an alternative without an action builds no list of fixed length; write one, `(1 2 ...)`)
+# error: (rule 'empty' line 57 gives nil)
+# error: (element 7 (IDENT) is a token)
+# error: (element 8 is a choice or a group, not a rule)
+# error: (element 9 (IDENT*) is repeated)
+# error: (element 10 ((IDENT IDENT)) is not a rule)
+# error: (rule 'lone' line 58: element 1 (IDENT?) can be absent)
+# error: role 'b' of 'pair' takes one value; only the rest role takes a spread, or a list of one fixed length (no rule 'missing')
+@lexer
+tokens
+    ident
+    integer
+    comma
+    eof
+    err
+','                                         → comma
+[0-9]+                                      → integer
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    pair        a:node? b:node?
+    many        ...items
+
+top!    = many
+        | "," "," uneven                    → (pair ...3)
+        | "," "," "," kinded                → (pair ...4)
+        | "," "," "," "," nested            → (pair ...5)
+        | "," "," "," "," "," partial       → (pair ...6)
+        | "," "," "," "," "," "," bare      → (pair ...7)
+        | "," "," "," "," "," "," "," empty → (pair ...8)
+        | "," "," "," "," "," "," IDENT     → (pair ...7)
+        | "," "," "," "," "," "," "," (IDENT | INTEGER)
+                                            → (pair ...8)
+        | "," "," "," "," "," "," "," "," IDENT*
+                                            → (pair ...9)
+        | "," "," "," "," "," "," "," "," "," (IDENT IDENT)
+                                            → (pair ...10)
+        | INTEGER "," lone                  → (pair 1 ...3)
+        | INTEGER INTEGER missing           → (pair 1 b:...3) ~ "an undefined rule"
+many    = IDENT                             → (many 1)
+
+uneven  = IDENT IDENT                       → (1 2)
+        | IDENT                             → (1)
+kinded  = IDENT                             → (many 1)
+nested  = IDENT nested                      → (1 ...2)
+        | IDENT                             → (1)
+partial = IDENT [kinded]                    → (1 ...2)
+bare    = IDENT IDENT
+empty   = !IDENT                            → _
+lone    = IDENT?

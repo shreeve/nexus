@@ -1,0 +1,19 @@
+# A span mark changes the span of the node the action builds: an
+# alternative that builds none (here it passes an element through) has no
+# span to change.
+# error: span_mark_no_node.grammar:19:15:
+# error: span marks need an action that builds a node, `(kind ...)`
+@lexer
+tokens
+    ident
+    semi
+    comma
+    eof
+    err
+';'                                         → semi
+','                                         → comma
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT -";"                           → 1

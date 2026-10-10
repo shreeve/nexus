@@ -832,6 +832,13 @@ pub const GrammarLowerer = struct {
                 if (std.mem.findScalar(u8, exclude.items, c) == null) try exclude.append(self.allocator, c);
                 continue;
             }
+            if (child.isKind(.unspanned)) {
+                // `-X`: a top-level element left out of the node's span.
+                var e = try self.lowerElement(ir.Unspanned.element(child));
+                e.unspanned = true;
+                try elements.append(self.allocator, e);
+                continue;
+            }
             try elements.append(self.allocator, try self.lowerElement(child));
         }
 
@@ -907,6 +914,9 @@ pub const GrammarLowerer = struct {
             .label => try self.lowerLabeled(node),
             // Hints belong to the whole alternative (lowerAlt takes those).
             .exclude => return self.fail(node, "an `X \"c\"` hint applies to the whole alternative; write it outside ( ) and [ ]", .{}),
+            // Span marks belong to the elements of the pattern itself
+            // (lowerAlt takes those).
+            .unspanned => return self.fail(node, "a span mark `-X` applies to a top-level element of the pattern; write it outside ( ) and [ ]", .{}),
             // `element` (the items of `elements` and of group bodies) builds
             // only the kinds above; the roles that nest one are typed so.
             else => unreachable,

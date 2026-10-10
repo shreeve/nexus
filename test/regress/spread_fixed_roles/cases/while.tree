@@ -1,0 +1,3 @@
+(block
+  (while `#outer` (name `a`)@16..17 (capture _ `b`)@19..22 (name `c`)@23..24)@2..25
+  (while _ (name `d`)@33..34 _ (name `e`)@36..37)@26..38)@0..40
