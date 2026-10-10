@@ -1344,10 +1344,14 @@ const NodeStore = struct {
 };
 
 /// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
-/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`.
 inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
+
+/// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
+/// decides it (no rule has this number: rules are fewer than 32766).
+const hinted: i16 = std.math.minInt(i16);
 
 /// What `state` expects, reader-named: list `expectedOf[state]` of
 /// `expectedSymbols`.
@@ -1356,13 +1360,13 @@ fn expectedIn(state: u16) []const u16 {
     return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
 }
 
-/// The `X "c"` override of `state` for `sym`: the state to shift to.
-fn getImmediateShift(state: u16, sym: u16) ?i16 {
-    if (xExcludes.len == 0) return null;
+/// The action of a `hinted` cell: shift to the hint's state when the token
+/// touches the previous one, else the table's reduction.
+fn hintedAction(state: u16, sym: u16, touching: bool) i16 {
     for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-        if (x.sym == sym) return @intCast(x.shift);
+        if (x.sym == sym) return if (touching) @intCast(x.shift) else x.reduce;
     }
-    return null;
+    unreachable; // every hinted cell has its exclude
 }
 
 /// The tokens tolerant repair may insert in `state`, best first.
@@ -1840,16 +1844,16 @@ pub const BaseParser = struct {
     /// on the hinted token and it touches the previous token, shift
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
-        if (self.pendingInsert != null or self.injectedToken != null) return getAction(state, sym);
-        return self.strictAction(state, sym);
+        const action = getAction(state, sym);
+        if (xExcludes.len > 0 and action == hinted)
+            return hintedAction(state, sym, self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null);
+        return action;
     }
 
     /// `actionFor` on a token of the input.
     inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
-            if (getImmediateShift(state, sym)) |target| return target;
-        }
+        if (xExcludes.len > 0 and action == hinted) return hintedAction(state, sym, self.current.pre == 0);
         return action;
     }
 
@@ -2495,9 +2499,7 @@ pub const BaseParser = struct {
             while (true) {
                 const top = pushed.last() orelse self.stateStack.items[depth - 1];
                 var action = getAction(top, sym);
-                if (i == 1 and xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
-                    if (getImmediateShift(top, sym)) |target| action = target;
-                }
+                if (xExcludes.len > 0 and action == hinted) action = hintedAction(top, sym, i == 1 and self.current.pre == 0);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
@@ -3946,7 +3948,8 @@ const ruleLen = [_]u8{ 0, 1, 1, 3, 2, 2, 3, 1, 1, 1, 1, 1, 1, 3, 1, 3, 1, 1, 5, 
 const ruleValue = [_]u8{ 0, 0, 0, 0, 2, 0, 0, 2, 2, 2, 2, 2, 2, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 2, 0, 0, 3, 2, 0, 0, 0, 2, 2, 0, 3, 2, 2, 0, 3, 2, 3, 0, 2, 2, 2, 3, 0, 0, 2, 2, 0, 0, 0, 2, 2, 2, 2, 0, 3, 2, 2, 2, 2, 2, 2, 2, 0, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, 2, 0, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 3, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2 };
 
 // Parse table: 725 states x 199 symbols. 0 = error, > 0 = shift or
-// goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+// goto, -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a
+// reduction an `X "c"` hint overrides (`hinted`).
 const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-2,0,2,3,0,4,12,18,6,0,14,5,0,29,30,0,0,0,0,0,0,0,0,0,0,31,33,32,34,0,0,35,7,8,9,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,17,36,46,0,51,60,73,0,47,48,0,49,50,0,0,0,0,0,0,0,0,0,52,61,37,53,62,0,0,78,38,0,0,0,0,0,55,0,0,0,11,19,0,0,20,21,22,23,24,25,26,27,28,0,0,0,0,0,0,0,0,0,0,0,0,0,15,13,0,69,39,40,83,0,0,0,0,72,0,71,0,82,80,0,41,43,42,0,44,0,45,66,65,16,0,0,0,54,84,63,79,81,0,0,0,74,0,0,0,0,0,76,77,56,57,0,58,0,59,0,0,67,68,75,0,64,70,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -4677,7 +4680,7 @@ const parseTable = [_][numSymbols]i16{
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)
-const xExcludes = [_]struct { sym: u16, shift: u16 }{
+const xExcludes = [_]struct { sym: u16, shift: u16, reduce: i16 }{
 };
 /// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
 const xExcludeStart = [_]u32{};

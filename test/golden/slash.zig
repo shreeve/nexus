@@ -852,10 +852,14 @@ const NodeStore = struct {
 };
 
 /// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
-/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`.
 inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
+
+/// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
+/// decides it (no rule has this number: rules are fewer than 32766).
+const hinted: i16 = std.math.minInt(i16);
 
 /// What `state` expects, reader-named: list `expectedOf[state]` of
 /// `expectedSymbols`.
@@ -864,13 +868,13 @@ fn expectedIn(state: u16) []const u16 {
     return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
 }
 
-/// The `X "c"` override of `state` for `sym`: the state to shift to.
-fn getImmediateShift(state: u16, sym: u16) ?i16 {
-    if (xExcludes.len == 0) return null;
+/// The action of a `hinted` cell: shift to the hint's state when the token
+/// touches the previous one, else the table's reduction.
+fn hintedAction(state: u16, sym: u16, touching: bool) i16 {
     for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-        if (x.sym == sym) return @intCast(x.shift);
+        if (x.sym == sym) return if (touching) @intCast(x.shift) else x.reduce;
     }
-    return null;
+    unreachable; // every hinted cell has its exclude
 }
 
 /// The tokens tolerant repair may insert in `state`, best first.
@@ -1348,16 +1352,16 @@ pub const BaseParser = struct {
     /// on the hinted token and it touches the previous token, shift
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
-        if (self.pendingInsert != null or self.injectedToken != null) return getAction(state, sym);
-        return self.strictAction(state, sym);
+        const action = getAction(state, sym);
+        if (xExcludes.len > 0 and action == hinted)
+            return hintedAction(state, sym, self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null);
+        return action;
     }
 
     /// `actionFor` on a token of the input.
     inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
-            if (getImmediateShift(state, sym)) |target| return target;
-        }
+        if (xExcludes.len > 0 and action == hinted) return hintedAction(state, sym, self.current.pre == 0);
         return action;
     }
 
@@ -2003,9 +2007,7 @@ pub const BaseParser = struct {
             while (true) {
                 const top = pushed.last() orelse self.stateStack.items[depth - 1];
                 var action = getAction(top, sym);
-                if (i == 1 and xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
-                    if (getImmediateShift(top, sym)) |target| action = target;
-                }
+                if (xExcludes.len > 0 and action == hinted) action = hintedAction(top, sym, i == 1 and self.current.pre == 0);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
@@ -2362,7 +2364,8 @@ const ruleLen = [_]u8{ 1, 0, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 1, 2, 2, 2, 1, 
 const ruleValue = [_]u8{ 2, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 3, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 // Parse table: 156 states x 93 symbols. 0 = error, > 0 = shift or
-// goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+// goto, -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a
+// reduction an `X "c"` hint overrides (`hinted`).
 const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0},
     .{0,0,0,2,3,4,0,5,0,14,24,10,0,23,27,11,25,0,0,0,26,0,6,0,0,0,7,8,9,0,0,0,0,12,13,0,0,0,0,0,0,0,0,0,28,0,19,0,0,0,20,29,0,0,0,30,31,32,33,34,35,36,37,38,39,0,15,0,0,0,16,17,0,18,0,21,22,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -2524,7 +2527,7 @@ const parseTable = [_][numSymbols]i16{
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)
-const xExcludes = [_]struct { sym: u16, shift: u16 }{
+const xExcludes = [_]struct { sym: u16, shift: u16, reduce: i16 }{
 };
 /// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
 const xExcludeStart = [_]u32{};
