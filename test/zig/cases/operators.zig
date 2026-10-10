@@ -1,0 +1,18 @@
+const a = 1 + 2 * 3 - 4 / 2 % 3;
+const b = x or y and !z;
+const c = p == q;
+const d = (1 << 3) >> 1 <<| 2;
+const e = m & n | o ^ s;
+const f = -x +% -%y -% z *% w;
+const g = ~h +| i -| j *| k;
+const l = &arr;
+const t = try foo() orelse bar() catch baz;
+const u = q ++ r;
+const v = a < b;
+const w = a <= b;
+const x2 = a >= b;
+const y2 = a != b;
+const z2 = a > b;
+const neg = - -x;
+const addr = & &x;
+const deref = - x;

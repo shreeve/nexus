@@ -1,0 +1,94 @@
+(root
+  (fn_decl
+    _
+    _
+    (fn_proto
+      `control`
+      (params
+        (param _ `xs` (ptr_type slice _ (`const`) `u8`))
+        (param _ `opt` (optional_type `u8`))
+        (param _ `n` `u32`))
+      _
+      _
+      _
+      _
+      _
+      `u32`)
+    (block
+      _
+      (var_decl _ _ _ (var_decl_proto `var` `total` `u32`) `0`)
+      (if (`opt` (capture _ `v`)) (assign `+=` `total` `v`) _ (assign `+=` `total` `1`))
+      (if
+        (`opt` (capture `*` `v`))
+        (block _ (assign `=` `_` `v`))
+        _
+        (if ((binary `>` `n` `2`)) (block _ (assign `=` `total` `2`)) _ (block)))
+      (if ((binary `==` `n` `0`)) (return `0`))
+      (while _ _ ((binary `<` `total` `n`) _ (assign `+=` `total` `1`)) (block))
+      (while _ _ (`opt` (capture _ `v`) (assign `+=` `total` `v`)) (break) `e` (assign `=` `_` `e`))
+      (var_decl _ _ _ (var_decl_proto `var` `i` `usize`) `0`)
+      (while
+        `outer`
+        _
+        ((binary `<` `i` `10`) _ (assign `+=` `i` `1`))
+        (block
+          _
+          (for
+            `inner`
+            _
+            ((`xs` (for_range `0`)) ((capture _ `x`) (capture _ `j`)))
+            (block
+              _
+              (if ((binary `==` `x` `0`)) (continue `outer`))
+              (if ((binary `>` `j` `3`)) (break `inner`))))))
+      (for
+        _
+        _
+        ((`xs` (for_range `0` (field_access `xs` `len`)) (for_range `1`))
+          ((capture _ `x`) (capture _ `a`) (capture _ `b`)))
+        (assign `+=` `total` (binary `+` (binary `+` `x` `a`) `b`)))
+      (for _ _ (((for_range `0` `3`)) ((capture _ `_`))) (block) (block))
+      (var_decl
+        _
+        _
+        _
+        (var_decl_proto `const` `found`)
+        (for
+          _
+          _
+          ((`xs`) ((capture _ `x`)))
+          (block _ (if ((binary `==` `x` `1`)) (break _ `true`)))
+          `false`))
+      (assign `=` `_` `found`)
+      (for _ `inline` (((array_init _ `1` `2`)) ((capture _ `c`))) (assign `+=` `total` `c`))
+      (var_decl
+        _
+        _
+        _
+        (var_decl_proto `const` `r`)
+        (block
+          `blk`
+          (if ((binary `==` `n` `1`)) (break `blk` (builtin_call `@as` `u32` `1`)))
+          (break `blk` `2`)))
+      (assign
+        `+=`
+        `total`
+        (switch
+          _
+          `n`
+          (switch_case _ (`0`) _ `1`)
+          (switch_case _ (`1` `2`) (capture _ `v`) `v`)
+          (switch_case _ ((switch_range `3` `5`)) _ `2`)
+          (switch_case `inline` (`6` `7`) (capture _ `v` `tag`) (binary `+` `v` `tag`))
+          (switch_case _ (else) _ `r`)))
+      (switch
+        `sw`
+        `n`
+        (switch_case _ (`0`) _ (continue `sw` `1`))
+        (switch_case _ (`1`) _ (break `sw`))
+        (switch_case _ (else) _ (block)))
+      (switch
+        _
+        (binary `orelse` `opt` `0`)
+        (switch_case `inline` (else) (capture _ `v`) (assign `+=` `total` `v`)))
+      (return `total`))))

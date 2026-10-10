@@ -1,0 +1,49 @@
+(root
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `a`)
+    (binary `-` (binary `+` `1` (binary `*` `2` `3`)) (binary `%` (binary `/` `4` `2`) `3`)))
+  (var_decl _ _ _ (var_decl_proto `const` `b`) (binary `or` `x` (binary `and` `y` (bool_not `z`))))
+  (var_decl _ _ _ (var_decl_proto `const` `c`) (binary `==` `p` `q`))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `d`)
+    (binary `<<|` (binary `>>` (grouped_expression (binary `<<` `1` `3`)) `1`) `2`))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `e`)
+    (binary `^` (binary `|` (binary `&` `m` `n`) `o`) `s`))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `f`)
+    (binary `-%` (binary `+%` (negation `x`) (negation_wrap `y`)) (binary `*%` `z` `w`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `g`)
+    (binary `-|` (binary `+|` (bit_not `h`) `i`) (binary `*|` `j` `k`)))
+  (var_decl _ _ _ (var_decl_proto `const` `l`) (address_of `arr`))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `t`)
+    (catch (binary `orelse` (try (call `foo`)) (call `bar`)) _ `baz`))
+  (var_decl _ _ _ (var_decl_proto `const` `u`) (binary `++` `q` `r`))
+  (var_decl _ _ _ (var_decl_proto `const` `v`) (binary `<` `a` `b`))
+  (var_decl _ _ _ (var_decl_proto `const` `w`) (binary `<=` `a` `b`))
+  (var_decl _ _ _ (var_decl_proto `const` `x2`) (binary `>=` `a` `b`))
+  (var_decl _ _ _ (var_decl_proto `const` `y2`) (binary `!=` `a` `b`))
+  (var_decl _ _ _ (var_decl_proto `const` `z2`) (binary `>` `a` `b`))
+  (var_decl _ _ _ (var_decl_proto `const` `neg`) (negation (negation `x`)))
+  (var_decl _ _ _ (var_decl_proto `const` `addr`) (address_of (address_of `x`)))
+  (var_decl _ _ _ (var_decl_proto `const` `deref`) (negation `x`)))

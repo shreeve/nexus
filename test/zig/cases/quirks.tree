@@ -1,0 +1,35 @@
+(root
+  (fn_decl
+    _
+    _
+    (fn_proto `quirks` (params) _ _ _ _ _ `void`)
+    (block
+      _
+      (assign `=` `_` (array_access `a` (ptr_type one _ () `T`)))
+      (assign `=` `_` (array_access `a` (ptr_type one _ _ `c`)))
+      (assign `=` `_` (slice `a` (ptr_type one _ (`const`) `T`)))
+      (assign `=` `_` (ptr_type c _ () `u8`))
+      (assign `=` `_` (block `blk` (break `blk` (negation `x`))))
+      (switch _ `x`)
+      (assign `=` (enum_literal `field`) `1`)
+      (block)
+      (negation `x`)
+      (var_decl
+        _
+        _
+        _
+        (var_decl_proto `const` `S`)
+        (container_decl
+          _
+          (struct)
+          (container_field _ `x` (switch _ `a` (switch_case _ (else) _ `u8`)))))
+      (assign `=` `_` `S`)
+      (assign `=` `_` (catch `a` `e` (return `e`)))
+      (assign `=` `_` (binary `orelse` `a` (return)))
+      (assign `=` `_` (binary `orelse` (return) `x`))
+      (assign `=` `_` (struct_init (fn_proto _ (params) _ _ _ _ _ `void`)))
+      (assign `=` `_` (if (`a`) `b` _ (if (`c`) `d` _ `e`)))
+      (assign `=` `_` (array_type (enum_literal `x`) (block) `u8`))
+      (assign `=` `_` (slice `a` `0` (break `x`) (block)))
+      (assign `=` `_` (unwrap_optional `0`))
+      (return (negation `x`)))))

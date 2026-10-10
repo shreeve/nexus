@@ -1,0 +1,72 @@
+(root
+  (var_decl _ _ _ (var_decl_proto `const` `a` (ptr_type one _ () `u8`)) `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `b` (ptr_type one _ (`const` `volatile`) `u8`))
+    `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `c` (ptr_type one _ ((align `4`)) `u8`)) `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `d` (ptr_type one _ ((align `1` `3` `8`)) `u8`))
+    `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto
+      `const`
+      `e`
+      (ptr_type one _ (`allowzero` (addrspace (enum_literal `generic`)) (align `2`) `const`) `u8`))
+    `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `f` (ptr_type many _ () `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `g` (ptr_type many `0` (`const`) `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `h` (ptr_type c _ () `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `i` (ptr_type slice _ () `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `j` (ptr_type slice `0` (`const`) `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `k` (ptr_type slice _ ((align `8`)) `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `l` (array_type `4` _ `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `m` (array_type `4` `0` `u8`)) `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto
+      `const`
+      `n`
+      (optional_type (ptr_type one _ (`const`) (fn_proto _ (params) _ _ _ _ _ `void`))))
+    `null`)
+  (var_decl _ _ _ (var_decl_proto `const` `o` (anyframe_type `u8`)) `undefined`)
+  (var_decl _ _ _ (var_decl_proto `const` `p` (anyframe_literal)) `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `q` (ptr_type one _ () (ptr_type one _ () `u8`)))
+    `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `r` (array_type `2` _ (array_type `3` _ `u8`)))
+    `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `s` (ptr_type slice _ () (ptr_type many _ () `u8`)))
+    `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `t`)
+    (address_of (array_init (array_type `_` _ `u8`) `1` `2` `3`)))
+  (var_decl _ _ _ (var_decl_proto `const` `u`) (slice `l` `0` `2`))
+  (var_decl _ _ _ (var_decl_proto `const` `v`) (slice `l` `1`))
+  (var_decl _ _ _ (var_decl_proto `const` `w`) (slice `g` `0` `3` `0`))
+  (var_decl _ _ _ (var_decl_proto `const` `x`) (deref `a`))
+  (var_decl _ _ _ (var_decl_proto `const` `y`) (unwrap_optional `n`)))

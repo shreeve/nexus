@@ -1,0 +1,36 @@
+(root
+  (var_decl _ _ _ (var_decl_proto `const` `Error`) (error_set_decl `Bad` `Worse`))
+  (fn_decl
+    _
+    _
+    (fn_proto `mayFail` (params (param _ `x` `u8`)) _ _ _ _ _ (error_union `Error` `u8`))
+    (block _ (if ((binary `==` `x` `0`)) (return (error_value `Bad`))) (return `x`)))
+  (fn_decl
+    _
+    _
+    (fn_proto `handle` (params) _ _ _ _ `!` `void`)
+    (block
+      _
+      (var_decl _ _ _ (var_decl_proto `const` `a`) (try (call `mayFail` `1`)))
+      (var_decl
+        _
+        _
+        _
+        (var_decl_proto `const` `b`)
+        (catch
+          (call `mayFail` `0`)
+          `err`
+          (switch
+            _
+            `err`
+            (switch_case _ ((error_value `Bad`)) _ `0`)
+            (switch_case _ ((error_value `Worse`)) _ (return `err`)))))
+      (var_decl _ _ _ (var_decl_proto `const` `c`) (catch (call `mayFail` `2`) _ `7`))
+      (errdefer (call (field_access (field_access `std` `log`) `err`) `"failed"` (struct_init)))
+      (defer (block _ (assign `=` `_` `a`)))
+      (var_decl _ _ _ (var_decl_proto `const` `d` (optional_type `u8`)) `null`)
+      (var_decl _ _ _ (var_decl_proto `const` `e`) (binary `orelse` (binary `orelse` `d` `b`) `c`))
+      (var_decl _ _ _ (var_decl_proto `const` `f`) (unwrap_optional `d`))
+      (assign `=` `_` (array_init _ `e` `f`))
+      (catch (call `mayFail` `3`) _ (unreachable_literal))))
+  (var_decl _ _ _ (var_decl_proto `const` `std`) (builtin_call `@import` `"std"`)))

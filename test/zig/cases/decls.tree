@@ -1,0 +1,89 @@
+(root
+  (var_decl `pub` _ _ (var_decl_proto `const` `answer` `u32`) `42`)
+  (var_decl _ _ _ (var_decl_proto `var` `counter` `usize` (align `8`)) `0`)
+  (fn_decl
+    `pub`
+    (extern `"c"`)
+    (fn_proto
+      `write`
+      (params
+        (param _ `fd` `c_int`)
+        (param _ `buf` (ptr_type many _ (`const`) `u8`))
+        (param _ `len` `usize`))
+      _
+      _
+      _
+      _
+      _
+      `isize`))
+  (fn_decl _ (extern) (fn_proto `exit` (params (param _ `code` `c_int`)) _ _ _ _ _ `noreturn`))
+  (fn_decl
+    _
+    `export`
+    (fn_proto `exported` (params) _ _ _ (callconv (enum_literal `c`)) _ `void`)
+    (block))
+  (fn_decl
+    `pub`
+    `inline`
+    (fn_proto `twice` (params (param _ `x` `anytype`)) _ _ _ _ _ (builtin_call `@TypeOf` `x`))
+    (block _ (return (binary `+` `x` `x`))))
+  (fn_decl _ `noinline` (fn_proto `slow` (params) _ _ _ _ _ `void`) (block))
+  (fn_decl _ _ (fn_proto `proto` (params (param _ _ `u8`)) _ _ _ _ _ `void`))
+  (var_decl _ _ `threadlocal` (var_decl_proto `var` `tls` `u32`) `1`)
+  (var_decl `pub` (extern `"kernel32"`) `threadlocal` (var_decl_proto `var` `tls2` `u32`))
+  (var_decl
+    _
+    `export`
+    _
+    (var_decl_proto `var` `exported_var` `i32` _ _ (linksection `".data"`))
+    `3`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `in_addrspace` `u32` _ (addrspace (enum_literal `generic`)))
+    `0`)
+  (fn_decl
+    _
+    _
+    (fn_proto
+      `modifiers`
+      (params)
+      (align `16`)
+      (addrspace (enum_literal `generic`))
+      (linksection `".text"`)
+      (callconv (enum_literal `c`))
+      `!`
+      `void`)
+    (block))
+  (test_decl `"a string name"` (block))
+  (test_decl `ident_name` (block))
+  (test_decl _ (block))
+  (comptime (block _ (assign `=` `_` `answer`)))
+  (fn_decl
+    _
+    _
+    (fn_proto
+      `varargs`
+      (params (param _ `fmt` (ptr_type many `0` (`const`) `u8`)) (var_args))
+      _
+      _
+      _
+      (callconv (enum_literal `c`))
+      _
+      `c_int`))
+  (fn_decl
+    _
+    _
+    (fn_proto
+      `documented`
+      (params
+        (param `comptime` `T` `type`)
+        (param `noalias` `out` (ptr_type one _ () `T`))
+        (var_args))
+      _
+      _
+      _
+      _
+      _
+      `void`)))

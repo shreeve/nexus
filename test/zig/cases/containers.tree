@@ -1,0 +1,132 @@
+(root
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Point`)
+    (container_decl
+      _
+      (struct)
+      (container_field _ `x` `f32`)
+      (container_field _ `y` `f32` _ `0`)
+      (container_field `comptime` `tag` (ptr_type slice _ (`const`) `u8`) _ `"point"`)
+      (container_field _ `z` `f32` (align `4`) `1`)
+      (fn_decl
+        `pub`
+        _
+        (fn_proto `len` (params (param _ `self` `Point`)) _ _ _ _ _ `f32`)
+        (block
+          _
+          (return
+            (builtin_call
+              `@sqrt`
+              (binary
+                `+`
+                (binary `*` (field_access `self` `x`) (field_access `self` `x`))
+                (binary `*` (field_access `self` `y`) (field_access `self` `y`)))))))))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Tuple`)
+    (container_decl
+      _
+      (struct)
+      (container_field _ _ `u8`)
+      (container_field _ _ (ptr_type slice _ (`const`) `u8`))
+      (container_field `comptime` _ `u32` _ `3`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Color`)
+    (container_decl
+      _
+      (enum `u8`)
+      (container_field _ _ `red` _ `1`)
+      (container_field _ _ `green`)
+      (container_field _ _ `blue`)
+      (container_field _ _ `_`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Plain`)
+    (container_decl _ (enum) (container_field _ _ `a`) (container_field _ _ `b`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Value`)
+    (container_decl
+      _
+      (union enum)
+      (container_field _ `int` `i64`)
+      (container_field _ `float` `f64`)
+      (container_field _ _ `none`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Tagged`)
+    (container_decl _ (union enum `u8`) (container_field _ `a` `u8`) (container_field _ `b` `void`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Bare`)
+    (container_decl _ (union `Plain`) (container_field _ `a` `u8`) (container_field _ `b` `u16`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Untagged`)
+    (container_decl _ (union) (container_field _ `a` `u8`) (container_field _ `b` `u16`)))
+  (var_decl _ _ _ (var_decl_proto `const` `Handle`) (container_decl _ (opaque)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Flags`)
+    (container_decl
+      `packed`
+      (struct `u8`)
+      (container_field _ `a` `bool`)
+      (container_field _ `b` `bool`)
+      (container_field _ `rest` `u6`)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `C`)
+    (container_decl
+      `extern`
+      (struct)
+      (container_field _ `a` `c_int`)
+      (container_field
+        _
+        `b`
+        (container_decl `extern` (union) (container_field _ `x` `u8`) (container_field _ `y` `u16`)))))
+  (var_decl _ _ _ (var_decl_proto `const` `Empty`) (container_decl _ (struct)))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Mixed`)
+    (container_decl
+      _
+      (struct)
+      (var_decl _ _ _ (var_decl_proto `const` `before`) `1`)
+      (container_field _ `a` `u8`)
+      (container_field _ `b` `u16`)
+      (var_decl _ _ _ (var_decl_proto `const` `after`) `2`)
+      (fn_decl _ _ (fn_proto `method` (params) _ _ _ _ _ `void`) (block))))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `Inner`)
+    (container_decl _ (struct) (container_field _ `x` `u8`)))
+  (var_decl _ _ _ (var_decl_proto `const` `ErrSet`) (error_set_decl `OutOfMemory` `Overflow`))
+  (var_decl _ _ _ (var_decl_proto `const` `Docs`) (error_set_decl `A` `B`))
+  (var_decl _ _ _ (var_decl_proto `const` `Merged`) (binary `||` `ErrSet` (error_set_decl `Other`))))

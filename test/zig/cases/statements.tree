@@ -1,0 +1,31 @@
+(root
+  (test_decl
+    _
+    (block
+      _
+      (var_decl _ _ _ (var_decl_proto `var` `x` `u32`) `1`)
+      (assign `=` `x` `2`)
+      (assign `+=` `x` `1`)
+      (assign `-%=` `x` `1`)
+      (assign `<<|=` `x` `1`)
+      (assign_destructure
+        _
+        ((var_decl_proto `const` `a`) (var_decl_proto `var` `b`))
+        (array_init _ `1` `2`))
+      (assign_destructure _ (`a` `b`) (array_init _ `b` `a`))
+      (var_decl _ _ _ (var_decl_proto `var` `arr` (array_type `2` _ `u32`)) `undefined`)
+      (assign_destructure
+        _
+        ((array_access `arr` `0`) (array_access `arr` `1`))
+        (array_init _ `3` `4`))
+      (block _ (defer (assign `=` `x` `0`)) (errdefer (assign `=` `x` `1`)) (defer (block)))
+      (suspend (block))
+      (nosuspend (call `foo`))
+      (block `blk` (break `blk`))
+      (assign `=` `_` (address_of `b`))
+      (if ((binary `>` `x` `0`)) (assign `=` `x` `0`))
+      (if ((binary `>` `x` `0`)) (assign `=` `x` `0`) _ (assign `=` `x` `1`))
+      (while _ _ ((binary `<` `x` `3`)) (assign `+=` `x` `1`))
+      (for _ _ ((`arr`) ((capture _ `v`))) (assign `+=` `x` `v`))
+      (for `lbl` _ ((`arr`) ((capture _ `v`))) (block _ (if ((binary `==` `v` `0`)) (break `lbl`))))
+      (return))))

@@ -1,0 +1,88 @@
+(root
+  (fn_decl
+    _
+    _
+    (fn_proto `List` (params (param `comptime` `T` `type`)) _ _ _ _ _ `type`)
+    (block
+      _
+      (return
+        (container_decl
+          _
+          (struct)
+          (container_field _ `items` (ptr_type slice _ () `T`))
+          (container_field _ `len` `usize` _ `0`)
+          (var_decl _ _ _ (var_decl_proto `const` `Self`) (builtin_call `@This`))
+          (fn_decl
+            `pub`
+            _
+            (fn_proto
+              `append`
+              (params (param _ `self` (ptr_type one _ () `Self`)) (param _ `item` `T`))
+              _
+              _
+              _
+              _
+              `!`
+              `void`)
+            (block
+              _
+              (assign
+                `=`
+                (array_access (field_access `self` `items`) (field_access `self` `len`))
+                `item`)
+              (assign `+=` (field_access `self` `len`) `1`)))))))
+  (fn_decl
+    _
+    _
+    (fn_proto
+      `max`
+      (params (param _ `a` `anytype`) (param _ `b` (builtin_call `@TypeOf` `a`)))
+      _
+      _
+      _
+      _
+      _
+      (builtin_call `@TypeOf` `a`))
+    (block _ (return (if ((binary `>` `a` `b`)) `a` _ `b`))))
+  (fn_decl
+    _
+    _
+    (fn_proto
+      `typed`
+      (params (param `comptime` `n` `usize`) (param `comptime` _ `anytype`))
+      _
+      _
+      _
+      _
+      _
+      (array_type `n` _ `u8`))
+    (block _ (return (builtin_call `@splat` `0`))))
+  (var_decl _ _ _ (var_decl_proto `const` `ListU8`) (call `List` `u8`))
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto
+      `const`
+      `f`
+      (fn_proto _ (params (param _ _ `u8`)) _ _ _ (callconv (enum_literal `c`)) _ `u8`))
+    `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto
+      `const`
+      `g`
+      (ptr_type
+        one
+        _
+        (`const`)
+        (fn_proto _ (params (param `comptime` _ `type`) (param _ _ `anytype`)) _ _ _ _ _ `void`)))
+    `undefined`)
+  (var_decl
+    _
+    _
+    _
+    (var_decl_proto `const` `anon`)
+    (struct_init (fn_proto _ (params) _ _ _ _ _ `void`))))
