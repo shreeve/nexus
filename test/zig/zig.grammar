@@ -1,0 +1,398 @@
+# ==============================================================================
+# zig.grammar — Zig 0.17.0 in Nexus
+# ==============================================================================
+#
+# The lexer is std.zig.Tokenizer (lib/std/zig/tokenizer.zig of Zig 0.17.0)
+# written as Nexus rules: for every input it yields the same tokens, with
+# the same tags and the same byte boundaries, invalid tokens included.
+# Every token name is the std.zig.Token.Tag of the same name (`eof` is
+# Nexus's end of input, as it is Zig's). `err`, the token Nexus makes when
+# no rule matches, never comes from a rule here: every byte starts one. It
+# appears only for a token longer than 65535 bytes, the most a Nexus token
+# holds, which std.zig.Tokenizer lexes as one token.
+#
+# The lang module (zig.zig) skips a UTF-8 byte order mark at offset 0, as
+# Tokenizer.init does; no rule can see the start of the input.
+#
+# The parser lists the tokens, each in a node named by its tag.
+# ==============================================================================
+
+@lang = "zig"
+
+@lexer
+
+tokens
+    invalid
+    identifier, string_literal, multiline_string_literal_line, char_literal
+    builtin, number_literal, doc_comment, container_doc_comment
+
+    bang, pipe, pipe_pipe, pipe_equal, equal, equal_equal
+    equal_angle_bracket_right, bang_equal, l_paren, r_paren, semicolon
+    percent, percent_equal, l_brace, r_brace, l_bracket, r_bracket
+    period, period_asterisk, ellipsis2, ellipsis3, caret, caret_equal
+    plus, plus_plus, plus_equal, plus_percent, plus_percent_equal
+    plus_pipe, plus_pipe_equal, minus, minus_equal, minus_percent
+    minus_percent_equal, minus_pipe, minus_pipe_equal, asterisk
+    asterisk_equal, asterisk_percent, asterisk_percent_equal, asterisk_pipe
+    asterisk_pipe_equal, arrow, colon, slash, slash_equal, comma, ampersand
+    ampersand_equal, question_mark, angle_bracket_left
+    angle_bracket_left_equal, angle_bracket_angle_bracket_left
+    angle_bracket_angle_bracket_left_equal
+    angle_bracket_angle_bracket_left_pipe
+    angle_bracket_angle_bracket_left_pipe_equal, angle_bracket_right
+    angle_bracket_right_equal, angle_bracket_angle_bracket_right
+    angle_bracket_angle_bracket_right_equal, tilde
+
+    keyword_addrspace, keyword_align, keyword_allowzero, keyword_and
+    keyword_anyframe, keyword_anytype, keyword_asm, keyword_break
+    keyword_callconv, keyword_catch, keyword_comptime, keyword_const
+    keyword_continue, keyword_defer, keyword_else, keyword_enum
+    keyword_errdefer, keyword_error, keyword_export, keyword_extern
+    keyword_fn, keyword_for, keyword_if, keyword_inline, keyword_noalias
+    keyword_noinline, keyword_nosuspend, keyword_opaque, keyword_or
+    keyword_orelse, keyword_packed, keyword_pub, keyword_resume
+    keyword_return, keyword_linksection, keyword_struct, keyword_suspend
+    keyword_switch, keyword_test, keyword_threadlocal, keyword_try
+    keyword_union, keyword_unreachable, keyword_var, keyword_volatile
+    keyword_while
+
+    eof, err
+
+# The tokenizer's states are cited as tokenizer.zig `.state`. Three ways a
+# token goes wrong recur below, and each rule copies one:
+#
+#   - consume to the end of the line (`continue :state .invalid`): a
+#     control byte in a literal, comment or `\\` line, a stray CR in a
+#     comment or `\\` line, a NUL inside the input. The invalid token runs
+#     to the next LF, which it does not include, or to the end of input;
+#   - stop here (`result.tag = .invalid` without advancing): a LF or the
+#     end of input in an unterminated literal. The next token starts at
+#     that byte;
+#   - valid only before CRLF: a comment or `\\` line may end in a CR only
+#     when a LF follows. Trailing context counts toward longest match, so
+#     `body / "\r\n"` beats the invalid `body '\r' [^\n]*` exactly when a
+#     LF follows the CR.
+#
+# Nexus lexes a []const u8 with no sentinel: the end of input is the end,
+# and a NUL is an ordinary byte, which is the tokenizer's distinction
+# between `index == buffer.len` and an embedded 0.
+
+# --- Whitespace (`.start`) ----------------------------------------------------
+# Spaces and tabs are skipped by every Nexus lexer; CR and LF are
+# whitespace too.
+
+[\r\n]+                                                         → skip, skip
+
+# --- Comments (`.slash`, `.line_comment*`, `.doc_comment*`, `.expect_newline`)
+# A comment holds no control byte or DEL, but a CR right before its LF. A
+# TAB, a stray CR or a NUL makes the rest of the line one invalid token
+# that starts at the `//`. `///` (not `////`) is a doc comment and `//!` a
+# container doc comment; both stop before a NUL, a LF or a CRLF, so a NUL
+# then starts an invalid token of its own.
+
+'//' ([^!/\x00-\x1f\x7f] [^\x00-\x1f\x7f]* | '//' [^\x00-\x1f\x7f]*)?        → skip, skip
+'//' ([^!/\x00-\x1f\x7f] [^\x00-\x1f\x7f]* | '//' [^\x00-\x1f\x7f]*)? "\r\n" → skip, skip
+'//' ([^!/\x00-\x1f\x7f] [^\x00-\x1f\x7f]* | '//' [^\x00-\x1f\x7f]*)? ([\x00-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+
+'///' ([^/\x00-\x1f\x7f] [^\x00-\x1f\x7f]*)? / "\r\n"           → doc_comment
+'///' ([^/\x00-\x1f\x7f] [^\x00-\x1f\x7f]*)?                    → doc_comment
+'///' ([^/\x00-\x1f\x7f] [^\x00-\x1f\x7f]*)? ([\x01-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+
+'//!' [^\x00-\x1f\x7f]* / "\r\n"                                → container_doc_comment
+'//!' [^\x00-\x1f\x7f]*                                         → container_doc_comment
+'//!' [^\x00-\x1f\x7f]* ([\x01-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+
+# --- String and character literals (`.string_literal*`, `.char_literal*`) ---
+# A body byte is anything but the quote, a backslash, a control byte or
+# DEL; a backslash escapes any byte but a control byte or DEL (escapes are
+# checked later, by std.zig.string_literal). A control byte or NUL in the
+# body makes the rest of the line invalid; a LF or the end of input ends
+# an unterminated literal there. After a backslash a NUL ends a string's
+# invalid token (`.string_literal_backslash`) but is consumed by a
+# character literal's (`.char_literal_backslash`).
+
+'"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* '"'           → string_literal
+'"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* ('\\'? | [\x00-\x09\x0b-\x1f\x7f] [^\n]* | '\\' [\x01-\x09\x0b-\x1f\x7f] [^\n]*) → invalid
+
+"'" ([^'\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* "'"           → char_literal
+"'" ([^'\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* ('\\'? | [\x00-\x09\x0b-\x1f\x7f] [^\n]* | '\\' [\x00-\x09\x0b-\x1f\x7f] [^\n]*) → invalid
+
+# --- Builtins and quoted identifiers (`.saw_at_sign`, `.builtin`) -----------
+# `@"` lexes the rest as a string literal, invalid tails included. `@`
+# before a LF, a NUL or the end of input is an invalid token by itself;
+# before any other byte that starts neither form, it makes the rest of the
+# line invalid.
+
+'@' [A-Za-z_] [A-Za-z0-9_]*                                     → builtin
+'@"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* '"'          → identifier
+'@"' ([^"\\\x00-\x1f\x7f] | '\\' [^\x00-\x1f\x7f])* ('\\'? | [\x00-\x09\x0b-\x1f\x7f] [^\n]* | '\\' [\x01-\x09\x0b-\x1f\x7f] [^\n]*) → invalid
+'@' ([^"A-Za-z_\n\x00] [^\n]*)?                                  → invalid
+
+# --- Multiline string literal lines (`.backslash`, `.multiline_string_literal_line`)
+# `\\` to the end of the line, which holds no control byte or DEL (a TAB
+# neither) but a CR right before the LF. A lone `\` is invalid: by itself
+# before a LF, a NUL or the end of input, to the end of the line before
+# any other byte.
+
+'\\\\' [^\x00-\x1f\x7f]* / "\r\n"                                → multiline_string_literal_line
+'\\\\' [^\x00-\x1f\x7f]*                                         → multiline_string_literal_line
+'\\\\' [^\x00-\x1f\x7f]* ([\x00-\x09\x0b\x0c\x0e-\x1f\x7f] | '\r') [^\n]* → invalid
+'\\' ([^\\\n\x00] [^\n]*)?                                       → invalid
+
+# --- Number literals (`.int`, `.int_exponent`, `.int_period`, `.float*`) ----
+# A digit, then letters, digits and `_`. An exponent letter (e E p P)
+# followed by a sign takes the sign and moves on to the fraction, where no
+# `.` follows; so does a `.` followed by a letter, digit or `_`, so `1..2`
+# and `1.` leave the `.` out. The digits are checked later
+# (std.zig.number_literal), not here.
+
+[0-9] [_0-9a-zA-Z]* ([eEpP] [-+] ([_0-9a-zA-Z] | [eEpP] [-+])* | '.' ([_0-9a-zA-Z] | [eEpP] [-+]) ([_0-9a-zA-Z] | [eEpP] [-+])*)? → number_literal
+
+# --- Keywords (Token.keywords) and identifiers (`.identifier`) --------------
+# A keyword rule ties with the identifier rule on its own text and wins by
+# coming first; a longer word (`iffy`) is an identifier.
+
+"addrspace"     → keyword_addrspace
+"align"         → keyword_align
+"allowzero"     → keyword_allowzero
+"and"           → keyword_and
+"anyframe"      → keyword_anyframe
+"anytype"       → keyword_anytype
+"asm"           → keyword_asm
+"break"         → keyword_break
+"callconv"      → keyword_callconv
+"catch"         → keyword_catch
+"comptime"      → keyword_comptime
+"const"         → keyword_const
+"continue"      → keyword_continue
+"defer"         → keyword_defer
+"else"          → keyword_else
+"enum"          → keyword_enum
+"errdefer"      → keyword_errdefer
+"error"         → keyword_error
+"export"        → keyword_export
+"extern"        → keyword_extern
+"fn"            → keyword_fn
+"for"           → keyword_for
+"if"            → keyword_if
+"inline"        → keyword_inline
+"noalias"       → keyword_noalias
+"noinline"      → keyword_noinline
+"nosuspend"     → keyword_nosuspend
+"opaque"        → keyword_opaque
+"or"            → keyword_or
+"orelse"        → keyword_orelse
+"packed"        → keyword_packed
+"pub"           → keyword_pub
+"resume"        → keyword_resume
+"return"        → keyword_return
+"linksection"   → keyword_linksection
+"struct"        → keyword_struct
+"suspend"       → keyword_suspend
+"switch"        → keyword_switch
+"test"          → keyword_test
+"threadlocal"   → keyword_threadlocal
+"try"           → keyword_try
+"union"         → keyword_union
+"unreachable"   → keyword_unreachable
+"var"           → keyword_var
+"volatile"      → keyword_volatile
+"while"         → keyword_while
+
+[A-Za-z_] [A-Za-z0-9_]*                                         → identifier
+
+# --- Operators and punctuation ------------------------------------------------
+# Every prefix of an operator is an operator, so longest match is the
+# tokenizer's maximal munch.
+
+"!"     → bang
+"!="    → bang_equal
+"|"     → pipe
+"||"    → pipe_pipe
+"|="    → pipe_equal
+"="     → equal
+"=="    → equal_equal
+"=>"    → equal_angle_bracket_right
+"("     → l_paren
+")"     → r_paren
+";"     → semicolon
+"%"     → percent
+"%="    → percent_equal
+"{"     → l_brace
+"}"     → r_brace
+"["     → l_bracket
+"]"     → r_bracket
+"."     → period
+".*"    → period_asterisk
+".."    → ellipsis2
+"..."   → ellipsis3
+"^"     → caret
+"^="    → caret_equal
+"+"     → plus
+"++"    → plus_plus
+"+="    → plus_equal
+"+%"    → plus_percent
+"+%="   → plus_percent_equal
+"+|"    → plus_pipe
+"+|="   → plus_pipe_equal
+"-"     → minus
+"-="    → minus_equal
+"-%"    → minus_percent
+"-%="   → minus_percent_equal
+"-|"    → minus_pipe
+"-|="   → minus_pipe_equal
+"*"     → asterisk
+"*="    → asterisk_equal
+"*%"    → asterisk_percent
+"*%="   → asterisk_percent_equal
+"*|"    → asterisk_pipe
+"*|="   → asterisk_pipe_equal
+"->"    → arrow
+":"     → colon
+"/"     → slash
+"/="    → slash_equal
+","     → comma
+"&"     → ampersand
+"&="    → ampersand_equal
+"?"     → question_mark
+"<"     → angle_bracket_left
+"<="    → angle_bracket_left_equal
+"<<"    → angle_bracket_angle_bracket_left
+"<<="   → angle_bracket_angle_bracket_left_equal
+"<<|"   → angle_bracket_angle_bracket_left_pipe
+"<<|="  → angle_bracket_angle_bracket_left_pipe_equal
+">"     → angle_bracket_right
+">="    → angle_bracket_right_equal
+">>"    → angle_bracket_angle_bracket_right
+">>="   → angle_bracket_angle_bracket_right_equal
+"~"     → tilde
+
+# --- Invalid bytes (`.start`, `.invalid`) -------------------------------------
+# Any other byte starts an invalid token that runs to the end of the line:
+# a control byte but TAB, LF and CR, `#`, `$`, backquote, DEL, and every
+# byte from 0x80 (outside literals and comments the tokenizer does not
+# decode UTF-8).
+
+[\x00-\x08\x0b\x0c\x0e-\x1f\x23\x24\x60\x7f-\xff] [^\n]*        → invalid
+
+@parser
+
+tokens! = token*                        → (tokens ...1)
+
+token   = INVALID                       → (invalid 1)
+        | IDENTIFIER                    → (identifier 1)
+        | STRING_LITERAL                → (string_literal 1)
+        | MULTILINE_STRING_LITERAL_LINE → (multiline_string_literal_line 1)
+        | CHAR_LITERAL                  → (char_literal 1)
+        | BUILTIN                       → (builtin 1)
+        | NUMBER_LITERAL                → (number_literal 1)
+        | DOC_COMMENT                   → (doc_comment 1)
+        | CONTAINER_DOC_COMMENT         → (container_doc_comment 1)
+        | "!"                           → (bang 1)
+        | "|"                           → (pipe 1)
+        | "||"                          → (pipe_pipe 1)
+        | "|="                          → (pipe_equal 1)
+        | "="                           → (equal 1)
+        | "=="                          → (equal_equal 1)
+        | "=>"                          → (equal_angle_bracket_right 1)
+        | "!="                          → (bang_equal 1)
+        | "("                           → (l_paren 1)
+        | ")"                           → (r_paren 1)
+        | ";"                           → (semicolon 1)
+        | "%"                           → (percent 1)
+        | "%="                          → (percent_equal 1)
+        | "{"                           → (l_brace 1)
+        | "}"                           → (r_brace 1)
+        | "["                           → (l_bracket 1)
+        | "]"                           → (r_bracket 1)
+        | "."                           → (period 1)
+        | ".*"                          → (period_asterisk 1)
+        | ".."                          → (ellipsis2 1)
+        | "..."                         → (ellipsis3 1)
+        | "^"                           → (caret 1)
+        | "^="                          → (caret_equal 1)
+        | "+"                           → (plus 1)
+        | "++"                          → (plus_plus 1)
+        | "+="                          → (plus_equal 1)
+        | "+%"                          → (plus_percent 1)
+        | "+%="                         → (plus_percent_equal 1)
+        | "+|"                          → (plus_pipe 1)
+        | "+|="                         → (plus_pipe_equal 1)
+        | "-"                           → (minus 1)
+        | "-="                          → (minus_equal 1)
+        | "-%"                          → (minus_percent 1)
+        | "-%="                         → (minus_percent_equal 1)
+        | "-|"                          → (minus_pipe 1)
+        | "-|="                         → (minus_pipe_equal 1)
+        | "*"                           → (asterisk 1)
+        | "*="                          → (asterisk_equal 1)
+        | "*%"                          → (asterisk_percent 1)
+        | "*%="                         → (asterisk_percent_equal 1)
+        | "*|"                          → (asterisk_pipe 1)
+        | "*|="                         → (asterisk_pipe_equal 1)
+        | "->"                          → (arrow 1)
+        | ":"                           → (colon 1)
+        | "/"                           → (slash 1)
+        | "/="                          → (slash_equal 1)
+        | ","                           → (comma 1)
+        | "&"                           → (ampersand 1)
+        | "&="                          → (ampersand_equal 1)
+        | "?"                           → (question_mark 1)
+        | "<"                           → (angle_bracket_left 1)
+        | "<="                          → (angle_bracket_left_equal 1)
+        | "<<"                          → (angle_bracket_angle_bracket_left 1)
+        | "<<="                         → (angle_bracket_angle_bracket_left_equal 1)
+        | "<<|"                         → (angle_bracket_angle_bracket_left_pipe 1)
+        | "<<|="                        → (angle_bracket_angle_bracket_left_pipe_equal 1)
+        | ">"                           → (angle_bracket_right 1)
+        | ">="                          → (angle_bracket_right_equal 1)
+        | ">>"                          → (angle_bracket_angle_bracket_right 1)
+        | ">>="                         → (angle_bracket_angle_bracket_right_equal 1)
+        | "~"                           → (tilde 1)
+        | "addrspace"                   → (keyword_addrspace 1)
+        | "align"                       → (keyword_align 1)
+        | "allowzero"                   → (keyword_allowzero 1)
+        | "and"                         → (keyword_and 1)
+        | "anyframe"                    → (keyword_anyframe 1)
+        | "anytype"                     → (keyword_anytype 1)
+        | "asm"                         → (keyword_asm 1)
+        | "break"                       → (keyword_break 1)
+        | "callconv"                    → (keyword_callconv 1)
+        | "catch"                       → (keyword_catch 1)
+        | "comptime"                    → (keyword_comptime 1)
+        | "const"                       → (keyword_const 1)
+        | "continue"                    → (keyword_continue 1)
+        | "defer"                       → (keyword_defer 1)
+        | "else"                        → (keyword_else 1)
+        | "enum"                        → (keyword_enum 1)
+        | "errdefer"                    → (keyword_errdefer 1)
+        | "error"                       → (keyword_error 1)
+        | "export"                      → (keyword_export 1)
+        | "extern"                      → (keyword_extern 1)
+        | "fn"                          → (keyword_fn 1)
+        | "for"                         → (keyword_for 1)
+        | "if"                          → (keyword_if 1)
+        | "inline"                      → (keyword_inline 1)
+        | "noalias"                     → (keyword_noalias 1)
+        | "noinline"                    → (keyword_noinline 1)
+        | "nosuspend"                   → (keyword_nosuspend 1)
+        | "opaque"                      → (keyword_opaque 1)
+        | "or"                          → (keyword_or 1)
+        | "orelse"                      → (keyword_orelse 1)
+        | "packed"                      → (keyword_packed 1)
+        | "pub"                         → (keyword_pub 1)
+        | "resume"                      → (keyword_resume 1)
+        | "return"                      → (keyword_return 1)
+        | "linksection"                 → (keyword_linksection 1)
+        | "struct"                      → (keyword_struct 1)
+        | "suspend"                     → (keyword_suspend 1)
+        | "switch"                      → (keyword_switch 1)
+        | "test"                        → (keyword_test 1)
+        | "threadlocal"                 → (keyword_threadlocal 1)
+        | "try"                         → (keyword_try 1)
+        | "union"                       → (keyword_union 1)
+        | "unreachable"                 → (keyword_unreachable 1)
+        | "var"                         → (keyword_var 1)
+        | "volatile"                    → (keyword_volatile 1)
+        | "while"                       → (keyword_while 1)
+        | ERR                           → (err 1)

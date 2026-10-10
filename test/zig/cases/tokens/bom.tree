@@ -1,0 +1,7 @@
+(tokens
+  (keyword_const `const`)
+  (identifier `x`)
+  (equal `=`)
+  (number_literal `1`)
+  (semicolon `;`)
+  (invalid `﻿ a second BOM is an invalid line`))
