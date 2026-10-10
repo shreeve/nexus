@@ -541,10 +541,10 @@ pub const BaseParser = struct {
 
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Per value-stack entry, the list `keepList` left there with its
-    /// capacity, for `extendList` to grow in place. Indexed like
+    /// Per value-stack entry, the list `keepExtended` left there with its
+    /// capacity, for `extendBy` to grow in place. Indexed like
     /// `valueStack`, sized to its capacity. An entry only ever describes a
-    /// live buffer: `extendList` clears the one it takes (its buffer may
+    /// live buffer: `extendBy` clears the one it takes (its buffer may
     /// move and be freed), a rule passing a list on moves the entry with
     /// it, and each parse starts with none (its memory is reused).
     spares: []Spare = &.{},
@@ -1367,40 +1367,53 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of element `n` (a list, else
-    /// nothing) for an action that appends to it. A list `keepList` left
-    /// on the value stack is reused with its spare capacity, so a
-    /// left-recursive list grows in amortized O(1) per element; it keeps
-    /// its node id.
-    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+    /// A list `extendBy` opened for an action that appends to it.
+    const Extension = struct { items: [*]Sexp, len: usize, capacity: usize };
+
+    /// Open a list holding the items of element `n` (a list, else nothing)
+    /// with room for `extra` more. A list `keepExtended` left on the value
+    /// stack is reused with its spare capacity, growing in place when it
+    /// is the allocator's last block, so a left-recursive list grows in
+    /// amortized O(1) per element; it keeps its node id.
+    fn extendBy(self: *BaseParser, pass: []const Sexp, n: usize, extra: usize) error{OutOfMemory}!Extension {
         const base = pass[n];
-        if (base != .list) return .empty;
-        const items = base.list.items();
+        const items: []const Sexp = if (base == .list) base.list.items() else &.{};
+        const need = items.len + extra;
         const spare = &self.spares[self.stackIndex(pass) + n];
         if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
-            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            const buf: [*]Sexp = @constCast(items.ptr);
+            const capacity = spare.capacity;
             spare.* = .none;
-            out.items.len = items.len;
-            return out;
+            if (need <= capacity) return .{ .items = buf, .len = items.len, .capacity = capacity };
+            const start = @intFromPtr(buf);
+            const grown = growCapacity(capacity, need);
+            if (start + capacity * @sizeOf(Sexp) == self.bumpPos and start + grown * @sizeOf(Sexp) <= self.bumpEnd) {
+                self.bumpPos = start + grown * @sizeOf(Sexp);
+                return .{ .items = buf, .len = items.len, .capacity = grown };
+            }
         }
-        var out: std.ArrayList(Sexp) = .empty;
-        try out.appendSlice(self.allocator(), items);
-        return out;
+        const capacity = growCapacity(0, need);
+        const out = try self.allocItems(capacity);
+        @memcpy(out[0..items.len], items);
+        return .{ .items = out.ptr, .len = items.len, .capacity = capacity };
     }
 
-    /// Finish a list from `extendList(pass, n)`, recording its spare
-    /// capacity where the reduction's value goes. It takes over the node
-    /// id of element `n` (still on the value stack), so that nested
-    /// extensions each keep their own.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, pass, n, use);
+    /// A capacity of at least `need`, grown from `capacity` by half plus 2.
+    fn growCapacity(capacity: usize, need: usize) usize {
+        var c = capacity;
+        while (c < need) c += c / 2 + 2;
+        return c;
     }
 
-    /// `keepList` keeping trailing nils: a list of one item per element
-    /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
+    /// Finish a list from `extendBy(pass, n, ...)` holding `len` items,
+    /// without its trailing nils unless `keepNils` (a list of one item per
+    /// element: `X*`, `L(X?)`, ...), recording its spare capacity where
+    /// the reduction's value goes. It takes over the node id of element
+    /// `n` (still on the value stack), so that nested extensions each keep
+    /// their own.
+    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) Sexp {
+        const items = if (keepNils) out.items[0..len] else out.items[0..trimmedLen(out.items[0..len])];
+        self.spares[self.stackIndex(pass)] = .{ .items = items.ptr, .len = @intCast(items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];
@@ -1409,7 +1422,7 @@ pub const BaseParser = struct {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        return .{ .list = List.withId(out.items, id) };
+        return .{ .list = List.withId(items, id) };
     }
 
     /// Finish a list allocated at its length and filled.
@@ -1753,28 +1766,28 @@ fn promote(_: *BaseParser, _: Token) u16 {
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
         0 => self.emptyList(.spread),
-        1 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
+        1 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
         2 => self.sexpSpread(.@"top", pass[0]),
         3 => self.emptyList(.tree),
-        4 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        4 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         5 => self.buildOf(&.{ .{ .tag = .@"star" }, .{ .elem = 1 } }, pass, .tree, true),
         6 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        7 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        7 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         8 => self.buildOf(&.{ .{ .tag = .@"plus" }, .{ .elem = 1 } }, pass, .tree, true),
         9 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        10 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        10 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         11 => self.buildOf(&.{ .{ .tag = .@"list" }, .{ .elem = 1 } }, pass, .tree, true),
         12 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        13 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        13 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         14 => self.buildOf(&.{ .{ .tag = .@"sep" }, .{ .elem = 1 } }, pass, .tree, true),
         17 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        18 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        18 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         19 => self.buildOf(&.{ .{ .tag = .@"opt" }, .{ .elem = 1 } }, pass, .tree, true),
         22 => self.emptyList(.tree),
-        23 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        23 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         24 => self.buildOf(&.{ .{ .tag = .@"nils" }, .{ .elem = 1 } }, pass, .tree, true),
         25 => self.buildOf(&.{ .{ .tag = .@"grow" }, .{ .elem = 1 } }, pass, .tree, true),
-        26 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .tree); },
+        26 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, false); },
         27 => blk: { const out = self.allocItems(1) catch break :blk self.oomNil(); var n: usize = 0; out[n] = pass[0]; n += 1; break :blk self.finishItems(out, .tree); },
         else => unreachable,
     };

@@ -362,7 +362,7 @@ const Emitter = struct {
     /// O(1) growth of left-recursive lists; each reduced value is consumed
     /// once). Any other list is allocated once, at its length (the single
     /// items plus each spread's), and filled. Trailing nils are dropped by
-    /// the runtime (keepList/finishItems) unless the schema fixes
+    /// the runtime (keepExtended/finishItems) unless the schema fixes
     /// positions or the list keeps its nils.
     fn buildList(self: *Emitter, w: anytype, l: ActionList, label: []const u8) anyerror!void {
         var extend: ?u16 = null;
@@ -373,21 +373,15 @@ const Emitter = struct {
                 extend = null;
             };
         }
-        if (extend) |n| {
-            try w.print("{s}: {{ var out = self.extendList(pass, {d}) catch break :{s} " ++ allocFailed ++ "; ", .{ label, index(n), label });
-            for (l.items[1..]) |item| switch (item.elem) {
-                .spread => |p| try w.print("for (" ++ itemsOf ++ ") |item| out.append(self.allocator(), item) catch break :{s} " ++ allocFailed ++ "; ", .{ index(p), label }),
-                else => {
-                    try w.writeAll("out.append(self.allocator(), ");
-                    try self.value(w, item.elem);
-                    try w.print(") catch break :{s} " ++ allocFailed ++ "; ", .{label});
-                },
-            };
-            const keep = if (l.keepNils) "keepListNils" else "keepList";
-            return w.print("break :{s} self.{s}(&out, pass, {d}, {s}); }}", .{ label, keep, index(extend.?), self.listUse(l) });
-        }
         var singles: usize = @intFromBool(headValue(l.head) != null);
         for (l.items) |item| singles += @intFromBool(item.elem != .spread);
+        if (extend) |n| {
+            try w.print("{s}: {{ const out = self.extendBy(pass, {d}, {d}", .{ label, index(n), singles });
+            for (l.items[1..]) |item| if (item.elem == .spread) try w.print(" + " ++ itemsOf ++ ".len", .{index(item.elem.spread)});
+            try w.print(") catch break :{s} " ++ allocFailed ++ "; {s} n = out.len; ", .{ label, if (l.items.len > 1) "var" else "const" });
+            try self.fill(w, "out.items", l.items[1..]);
+            return w.print("break :{s} self.keepExtended(out, n, pass, {d}, {s}, {}); }}", .{ label, index(n), self.listUse(l), l.keepNils });
+        }
         try w.print("{s}: {{ const out = self.allocItems({d}", .{ label, singles });
         for (l.items) |item| if (item.elem == .spread) try w.print(" + " ++ itemsOf ++ ".len", .{index(item.elem.spread)});
         try w.print(") catch break :{s} " ++ allocFailed ++ "; var n: usize = 0; ", .{label});
@@ -396,15 +390,20 @@ const Emitter = struct {
             try self.headExpr(w, l.head);
             try w.writeAll("; n += 1; ");
         }
-        for (l.items) |item| switch (item.elem) {
-            .spread => |p| try w.print("@memcpy(out[n..][0.." ++ itemsOf ++ ".len], " ++ itemsOf ++ "); n += " ++ itemsOf ++ ".len; ", .{ index(p), index(p), index(p) }),
+        try self.fill(w, "out", l.items);
+        try w.print("break :{s} " ++ listFromItems ++ "; }}", .{ label, self.listUse(l) });
+    }
+
+    /// Store `items` into `buf` from index `n` on, advancing `n`.
+    fn fill(self: *Emitter, w: anytype, buf: []const u8, items: []const grammar.ActionItem) anyerror!void {
+        for (items) |item| switch (item.elem) {
+            .spread => |p| try w.print("@memcpy({s}[n..][0.." ++ itemsOf ++ ".len], " ++ itemsOf ++ "); n += " ++ itemsOf ++ ".len; ", .{ buf, index(p), index(p), index(p) }),
             else => {
-                try w.writeAll("out[n] = ");
+                try w.print("{s}[n] = ", .{buf});
                 try self.value(w, item.elem);
                 try w.writeAll("; n += 1; ");
             },
         };
-        try w.print("break :{s} " ++ listFromItems ++ "; }}", .{ label, self.listUse(l) });
     }
 
     fn headValue(head: ActionList.Head) ?void {

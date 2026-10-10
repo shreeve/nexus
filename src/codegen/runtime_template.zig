@@ -416,10 +416,10 @@ pub const BaseParser = struct {
 
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Per value-stack entry, the list `keepList` left there with its
-    /// capacity, for `extendList` to grow in place. Indexed like
+    /// Per value-stack entry, the list `keepExtended` left there with its
+    /// capacity, for `extendBy` to grow in place. Indexed like
     /// `valueStack`, sized to its capacity. An entry only ever describes a
-    /// live buffer: `extendList` clears the one it takes (its buffer may
+    /// live buffer: `extendBy` clears the one it takes (its buffer may
     /// move and be freed), a rule passing a list on moves the entry with
     /// it, and each parse starts with none (its memory is reused).
     spares: []Spare = &.{},
@@ -1239,40 +1239,53 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of element `n` (a list, else
-    /// nothing) for an action that appends to it. A list `keepList` left
-    /// on the value stack is reused with its spare capacity, so a
-    /// left-recursive list grows in amortized O(1) per element; it keeps
-    /// its node id.
-    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+    /// A list `extendBy` opened for an action that appends to it.
+    const Extension = struct { items: [*]Sexp, len: usize, capacity: usize };
+
+    /// Open a list holding the items of element `n` (a list, else nothing)
+    /// with room for `extra` more. A list `keepExtended` left on the value
+    /// stack is reused with its spare capacity, growing in place when it
+    /// is the allocator's last block, so a left-recursive list grows in
+    /// amortized O(1) per element; it keeps its node id.
+    fn extendBy(self: *BaseParser, pass: []const Sexp, n: usize, extra: usize) error{OutOfMemory}!Extension {
         const base = pass[n];
-        if (base != .list) return .empty;
-        const items = base.list.items();
+        const items: []const Sexp = if (base == .list) base.list.items() else &.{};
+        const need = items.len + extra;
         const spare = &self.spares[self.stackIndex(pass) + n];
         if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
-            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            const buf: [*]Sexp = @constCast(items.ptr);
+            const capacity = spare.capacity;
             spare.* = .none;
-            out.items.len = items.len;
-            return out;
+            if (need <= capacity) return .{ .items = buf, .len = items.len, .capacity = capacity };
+            const start = @intFromPtr(buf);
+            const grown = growCapacity(capacity, need);
+            if (start + capacity * @sizeOf(Sexp) == self.bumpPos and start + grown * @sizeOf(Sexp) <= self.bumpEnd) {
+                self.bumpPos = start + grown * @sizeOf(Sexp);
+                return .{ .items = buf, .len = items.len, .capacity = grown };
+            }
         }
-        var out: std.ArrayList(Sexp) = .empty;
-        try out.appendSlice(self.allocator(), items);
-        return out;
+        const capacity = growCapacity(0, need);
+        const out = try self.allocItems(capacity);
+        @memcpy(out[0..items.len], items);
+        return .{ .items = out.ptr, .len = items.len, .capacity = capacity };
     }
 
-    /// Finish a list from `extendList(pass, n)`, recording its spare
-    /// capacity where the reduction's value goes. It takes over the node
-    /// id of element `n` (still on the value stack), so that nested
-    /// extensions each keep their own.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, pass, n, use);
+    /// A capacity of at least `need`, grown from `capacity` by half plus 2.
+    fn growCapacity(capacity: usize, need: usize) usize {
+        var c = capacity;
+        while (c < need) c += c / 2 + 2;
+        return c;
     }
 
-    /// `keepList` keeping trailing nils: a list of one item per element
-    /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
+    /// Finish a list from `extendBy(pass, n, ...)` holding `len` items,
+    /// without its trailing nils unless `keepNils` (a list of one item per
+    /// element: `X*`, `L(X?)`, ...), recording its spare capacity where
+    /// the reduction's value goes. It takes over the node id of element
+    /// `n` (still on the value stack), so that nested extensions each keep
+    /// their own.
+    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) Sexp {
+        const items = if (keepNils) out.items[0..len] else out.items[0..trimmedLen(out.items[0..len])];
+        self.spares[self.stackIndex(pass)] = .{ .items = items.ptr, .len = @intCast(items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];
@@ -1281,7 +1294,7 @@ pub const BaseParser = struct {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        return .{ .list = List.withId(out.items, id) };
+        return .{ .list = List.withId(items, id) };
     }
 
     /// Finish a list allocated at its length and filled.
@@ -1929,9 +1942,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
             break :blk self.finishItems(out, .spread);
         },
         2 => blk: {
-            var out = self.extendList(pass, 0) catch break :blk self.oomNil();
-            out.append(self.allocator(), pass[2]) catch break :blk self.oomNil();
-            break :blk self.keepList(&out, pass, 0, .spread);
+            const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil();
+            out.items[out.len] = pass[2];
+            break :blk self.keepExtended(out, out.len + 1, pass, 0, .spread, false);
         },
         3 => self.buildOf(&.{ .{ .tag = .set }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         6 => self.buildOf(&.{ .{ .tag = .add }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
@@ -2048,11 +2061,11 @@ test "a list that reaches the tree keeps its node id as it grows" {
         p.lastEnd = @intCast(2 * i + 1);
         try p.pushEntry(9, item, item.src.pos, item.src.pos + 1);
         const pass = p.valueStack.items[0..2];
-        var grown = try p.extendList(pass, 0);
+        const grown = try p.extendBy(pass, 0, 1);
         // From the second extension on, the list grows in place.
-        if (i > 1) try testing.expectEqual(pass[0].list.ptr, grown.items.ptr);
-        try grown.append(p.allocator(), pass[1]);
-        const next = p.keepList(&grown, pass, 0, .tree);
+        if (i > 1) try testing.expectEqual(pass[0].list.ptr, grown.items);
+        grown.items[grown.len] = pass[1];
+        const next = p.keepExtended(grown, grown.len + 1, pass, 0, .tree, false);
         try testing.expectEqual(pass[0].list.id, next.list.id);
         p.valueStack.items.len = 1;
         p.stateStack.items.len = 2;
@@ -2071,12 +2084,12 @@ test "a list that reaches the tree keeps its node id as it grows" {
     const pass = p.valueStack.items[0..2];
     const m = pass[1];
     try testing.expectEqual(@as(u32, 2), p.nodeCount());
-    var outer = try p.extendList(pass, 0);
-    var inner = try p.extendList(pass, 1);
-    try inner.append(p.allocator(), items[2]);
-    const innerList = p.keepList(&inner, pass, 1, .tree);
-    try outer.append(p.allocator(), innerList);
-    const outerList = p.keepList(&outer, pass, 0, .tree);
+    const outer = try p.extendBy(pass, 0, 1);
+    const inner = try p.extendBy(pass, 1, 1);
+    inner.items[inner.len] = items[2];
+    const innerList = p.keepExtended(inner, inner.len + 1, pass, 1, .tree, false);
+    outer.items[outer.len] = innerList;
+    const outerList = p.keepExtended(outer, outer.len + 1, pass, 0, .tree, false);
     try testing.expectEqual(m.list.id, innerList.list.id);
     try testing.expectEqual(l.list.id, outerList.list.id);
     try testing.expectEqual(@as(u32, 2), p.nodeCount());
