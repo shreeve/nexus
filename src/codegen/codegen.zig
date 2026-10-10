@@ -406,7 +406,7 @@ const Codegen = struct {
 
     /// tokenToSymbol: TokenCat -> grammar symbol, computed once per token.
     fn emitTokenToSymbol(self: *Codegen, w: *std.Io.Writer) !void {
-        try w.writeAll("\nfn tokenToSymbol(token: Token) u16 {\n    return switch (token.cat) {\n");
+        try w.writeAll("\ninline fn tokenToSymbol(token: Token) u16 {\n    return switch (token.cat) {\n");
         try w.print("        .@\"eof\" => {d},\n", .{self.g.endId});
         // The promotable token's symbol depends on the state (`promote`).
         if (self.promotable) |tok| try w.print("        .@\"{s}\" => {s},\n", .{ tok, if (self.asGroups() > 0) "needsPromotion" else "promotableSymbol" });
@@ -698,6 +698,17 @@ const Codegen = struct {
         try w.writeAll(" };\n");
     }
 
+    /// A table cell as the generated parser encodes it.
+    fn actionValue(action: @import("../lr/table.zig").ParseAction) i16 {
+        return switch (action) {
+            .shift => |t| @intCast(t),
+            .reduce => |r| -@as(i16, @intCast(r)) - 2,
+            .gotoState => |t| @intCast(t),
+            .accept => -1,
+            .err => 0,
+        };
+    }
+
     /// The parse table as a literal, one row of actions per state: no
     /// comptime work, so its size meets no evaluation quota.
     fn emitParseTable(self: *Codegen, w: *std.Io.Writer) !void {
@@ -705,20 +716,19 @@ const Codegen = struct {
         try w.print(
             \\
             \\// Parse table: {d} states x {d} symbols. 0 = error, > 0 = shift or
-            \\// goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+            \\// goto, -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a
+            \\// reduction an `X "c"` hint overrides (`hinted`).
             \\const parseTable = [_][numSymbols]i16{{
             \\
         , .{ rows.len, self.g.symbols.items.len });
-        for (rows) |row| {
+        const xs = self.table.xExcludes.items;
+        for (rows, 0..) |row, state| {
+            const hints = xs[self.table.xExcludeStart[state]..self.table.xExcludeStart[state + 1]];
             try w.writeAll("    .{");
             for (row, 0..) |action, sym| {
-                const value: i16 = switch (action) {
-                    .shift => |t| @intCast(t),
-                    .reduce => |r| -@as(i16, @intCast(r)) - 2,
-                    .gotoState => |t| @intCast(t),
-                    .accept => -1,
-                    .err => 0,
-                };
+                const value: i16 = for (hints) |x| {
+                    if (x.sym == sym) break std.math.minInt(i16);
+                } else actionValue(action);
                 if (sym > 0) try w.writeByte(',');
                 try w.print("{d}", .{value});
             }
@@ -727,12 +737,13 @@ const Codegen = struct {
         try w.writeAll("};\n");
     }
 
-    /// `X "c"` exclusions (grouped by state) and the runtime shift override.
+    /// `X "c"` exclusions (grouped by state): the runtime shift override,
+    /// and the reduction the table holds otherwise.
     fn emitExcludes(self: *Codegen, w: *std.Io.Writer) !void {
         try w.writeAll("\n// X \"c\" excludes: shift the hinted token instead of reducing when it\n// touches the previous token (pre == 0)\n");
-        try w.writeAll("const xExcludes = [_]struct { sym: u16, shift: u16 }{\n");
+        try w.writeAll("const xExcludes = [_]struct { sym: u16, shift: u16, reduce: i16 }{\n");
         for (self.table.xExcludes.items) |x| {
-            try w.print("    .{{ .sym = {d}, .shift = {d} }},\n", .{ x.sym, x.shift });
+            try w.print("    .{{ .sym = {d}, .shift = {d}, .reduce = {d} }},\n", .{ x.sym, x.shift, actionValue(self.table.rows[x.state][x.sym]) });
         }
         try w.writeAll("};\n/// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].\nconst xExcludeStart = [_]u32{");
         if (self.table.xExcludes.items.len > 0) try writeList(w, u32, self.table.xExcludeStart);

@@ -182,7 +182,7 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 
 | Language | Grammar | Lines | LR states | Declared conflicts (cells) | Suite cases | Mode |
 |---|---|---:|---:|---:|---:|---|
-| Rig | `test/rig/rig.grammar` | 915 | 734 | 0 | 138 | schema |
+| Rig | `test/rig/rig.grammar` | 915 | 725 | 0 | 138 | schema |
 | MUMPS | `test/mumps/mumps.grammar` | 1118 | 1023 | 11 (15) | 62 | schema |
 | Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
 | Slash | `test/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |

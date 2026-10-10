@@ -67,6 +67,9 @@ pub const Options = struct {
     resolved: ?[]const []const Resolved = null,
     /// Schema mode: the placed `(op 1 3)` node per `@infix` operator.
     infix: ?[]const Resolved = null,
+    /// Write `@infix` as one rule per operator, `infix → infix op infix`,
+    /// whose cells precedence decides (see `generateInfixChain`).
+    foldInfix: bool = false,
 };
 
 /// Desugar the IR into plain BNF. In schema mode, `opts.resolved` comes
@@ -893,11 +896,21 @@ const Expander = struct {
         return plusId;
     }
 
+    /// `@infix` as a chain: one rule per precedence level, named by its
+    /// operators (`infix("+" "-")`), each operator `this → this op next`
+    /// (left), `next op this` (right) or `next op next` (none), plus
+    /// `this → next` and `infix → loosest`. Conflict checking runs on the
+    /// chain. Folded (`opts.foldInfix`), the same operators are written
+    /// `infix → infix op infix` with their level and associativity, plus
+    /// `infix → base`: the parse table resolves operator against operator
+    /// by precedence, and an operand reaches `infix` in one reduction
+    /// instead of one per level.
     fn generateInfixChain(self: *Expander, infix: InfixDecl) Error!void {
         const g = self.g;
         self.originLine = infix.line;
         self.originCol = infix.col;
         const baseId = try self.nameSymbol(infix.baseRule, false);
+        const fold = self.opts.foldInfix;
 
         // Precedence levels, ascending (level 1 binds loosest).
         var levels: std.ArrayList(u32) = .empty;
@@ -908,7 +921,12 @@ const Expander = struct {
 
         // Each level is named by its operators: `infix("+" "-")`.
         var levelIds: std.ArrayList(u16) = .empty;
+        const foldedId = if (fold) try self.addSymbolAt("infix", .nonterminal, infix.line, infix.col) else 0;
         for (levels.items) |level| {
+            if (fold) {
+                try levelIds.append(g.allocator, foldedId);
+                continue;
+            }
             var name: std.ArrayList(u8) = .empty;
             try name.appendSlice(g.allocator, "infix(");
             var first = true;
@@ -924,7 +942,7 @@ const Expander = struct {
 
         for (levels.items, 0..) |level, i| {
             const thisId = levelIds.items[i];
-            const nextId = if (i + 1 < levels.items.len) levelIds.items[i + 1] else baseId;
+            const nextId = if (fold) foldedId else if (i + 1 < levels.items.len) levelIds.items[i + 1] else baseId;
             for (infix.ops, 0..) |op, opIndex| {
                 if (op.prec != level) continue;
                 const opStr = try g.allocator.print("\"{s}\"", .{op.op});
@@ -948,17 +966,19 @@ const Expander = struct {
                     .rhs = try g.allocator.dupe(u16, &rhs),
                     .actionTree = tree,
                     .kind = kind,
+                    .infix = if (fold) .{ .level = @intCast(i + 1), .assoc = op.assoc } else null,
                     .line = infix.line,
                     .col = infix.col,
                 });
             }
             // this level → the next tighter level
-            _ = try self.addRule(.{ .id = 0, .lhs = thisId, .rhs = try g.allocator.dupe(u16, &.{nextId}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
+            if (!fold) _ = try self.addRule(.{ .id = 0, .lhs = thisId, .rhs = try g.allocator.dupe(u16, &.{nextId}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
         }
 
-        // `infix` → the loosest level
+        // `infix` → the loosest level (folded: the base)
         const infixId = try self.addSymbolAt("infix", .nonterminal, infix.line, infix.col);
-        _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{levelIds.items[0]}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
+        const entry = if (fold) baseId else levelIds.items[0];
+        _ = try self.addRule(.{ .id = 0, .lhs = infixId, .rhs = try g.allocator.dupe(u16, &.{entry}), .actionTree = .{ .pass = 1 }, .line = infix.line, .col = infix.col });
     }
 };
 

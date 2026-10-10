@@ -1,0 +1,24 @@
+# A precedence level mixing `none` and `left` operators: as a chain it is
+# conflict-free, `a ~ b + c` parsing and `a + b ~ c` not. No precedence
+# order gives that, so the table is not folded.
+
+@lexer
+tokens
+    ident
+    plus
+    tilde
+    eof
+    err
+'+'                                         → plus
+'~'                                         → tilde
+[ \t\n]+                                    → skip
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+
+top! = @infix
+atom = IDENT
+
+@infix atom
+    "~" none, "+" left
