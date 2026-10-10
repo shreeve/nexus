@@ -115,7 +115,8 @@ fn markElem(tree: []bool, rule: Rule, e: ActionElem) void {
     switch (e) {
         .ref => |p| tree[rule.rhs[p - 1]] = true,
         .node => |n| markItems(tree, rule, n.*),
-        .spread, .symId, .nil, .tagLit, .litTag => {},
+        // A fixed spread's items reach the tree; the list itself does not.
+        .spread, .item, .symId, .nil, .tagLit, .litTag => {},
     }
 }
 
@@ -270,6 +271,7 @@ const Emitter = struct {
                 hasOther = true;
             },
             .node => {},
+            .item => hasOther = true,
         };
         const plain = firstIsTag and !hasTilde and !hasOther;
         const bare = plain and !hasNil and !hasChildTag and !hasNested(l);
@@ -311,7 +313,7 @@ const Emitter = struct {
     fn staticItem(e: ActionElem) bool {
         return switch (e) {
             .ref, .nil, .tagLit, .litTag => true,
-            .spread, .symId, .node => false,
+            .spread, .symId, .node, .item => false,
         };
     }
 
@@ -346,7 +348,7 @@ const Emitter = struct {
             .nil => try w.writeAll(" .nil"),
             .tagLit => |t| try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
             .litTag => |p| try w.print(" .{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
-            .spread, .symId, .node => unreachable,
+            .spread, .symId, .node, .item => unreachable,
         }
     }
 
@@ -432,6 +434,9 @@ const Emitter = struct {
             .nil => try w.writeAll(".nil"),
             .tagLit => |t| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(t)}),
             .litTag => |p| try w.print(".{{ .tag = .@\"{f}\" }}", .{std.zig.fmtString(try literalText(self.allocator, self.g.symbols.items[self.rule.rhs[p - 1]].name))}),
+            // A list that failed to allocate is nil (the parse then fails
+            // with OutOfMemory): its items are too.
+            .item => |it| try w.print("if (pass[{d}].items().len > {d}) pass[{d}].items()[{d}] else .nil", .{ index(it.pos), it.index, index(it.pos), it.index }),
             .node => |n| {
                 // A nested node gets its own node id, spanning the
                 // pattern elements it references.
@@ -472,6 +477,7 @@ const Range = struct {
     fn addElem(self: *Range, e: ActionElem) void {
         switch (e) {
             .ref, .spread, .symId, .litTag => |p| self.add(p),
+            .item => |it| self.add(it.pos),
             .node => |n| self.addList(n.*),
             .nil, .tagLit => {},
         }
@@ -498,7 +504,7 @@ fn readsElements(l: ActionList) bool {
 
 fn readsElement(e: ActionElem) bool {
     return switch (e) {
-        .ref, .spread, .symId => true,
+        .ref, .spread, .symId, .item => true,
         .node => |n| readsElements(n.*),
         .nil, .tagLit, .litTag => false,
     };
@@ -507,6 +513,7 @@ fn readsElement(e: ActionElem) bool {
 fn refersTo(e: ActionElem, pos: u16) bool {
     return switch (e) {
         .ref, .spread, .symId, .litTag => |p| p == pos,
+        .item => |it| it.pos == pos,
         .node => |n| blk: {
             switch (n.head) {
                 .ref => |h| if (refersTo(h, pos)) break :blk true,

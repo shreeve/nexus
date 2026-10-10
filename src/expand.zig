@@ -693,6 +693,8 @@ const Expander = struct {
                 .spread => |p| if (try self.at(p) != absent) .{ .spread = try self.at(p) } else if (self.schemaless) .nil else null,
                 .node => |l| .{ .node = try self.listPtr(l.*) },
                 .litTag => |p| if (try self.at(p) == absent) .nil else .{ .litTag = try self.at(p) },
+                // An absent list of fixed length leaves its roles nil.
+                .item => |it| if (try self.at(it.pos) == absent) .nil else .{ .item = .{ .pos = try self.at(it.pos), .index = it.index } },
                 .nil, .tagLit => e,
             };
         }
@@ -1070,7 +1072,7 @@ fn trailingCut(original: []const ActionItem, mapped: []const ActionItem) []const
     var lastPresent: ?usize = null;
     var firstRef: ?usize = null;
     for (original, mapped, 0..) |item, m, i| switch (item.elem) {
-        .ref, .spread, .symId, .litTag => {
+        .ref, .spread, .symId, .litTag, .item => {
             if (firstRef == null) firstRef = i;
             if (m.elem != .nil) lastPresent = i;
         },
@@ -1080,7 +1082,7 @@ fn trailingCut(original: []const ActionItem, mapped: []const ActionItem) []const
     const start = firstRef orelse return mapped;
     const cutFrom = if (lastPresent) |lp| blk: {
         for (original[lp + 1 ..], lp + 1..) |item, i| switch (item.elem) {
-            .ref, .spread, .symId, .litTag => break :blk i,
+            .ref, .spread, .symId, .litTag, .item => break :blk i,
             else => {},
         };
         return mapped;

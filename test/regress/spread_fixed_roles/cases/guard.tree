@@ -1,0 +1,3 @@
+(block
+  (guard (name `a`)@12..13 (capture _ `b`)@15..18 (block (name `c`)@21..22)@19..25)@2..25
+  (guard _ _ (block (name `d`)@34..35)@32..38)@26..38)@0..40

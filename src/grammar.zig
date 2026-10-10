@@ -370,11 +370,17 @@ pub const ActionElem = union(enum) {
     litTag: u16,
     /// A nested `(kind …)` node.
     node: *const ActionList,
+    /// Item `index` of element N's list: one slot of a spread that fills
+    /// fixed roles (schema mode; semantics.zig places it).
+    item: Item,
+
+    pub const Item = struct { pos: u16, index: u16 };
 };
 
 /// The canonical text of an action: `N`, `_`, or `(head item ...)` with
-/// items `N`, `...N`, `~N`, `_`, tags, nested lists, each optionally
-/// prefixed by `role:`. Used in generated-code comments and diagnostics.
+/// items `N`, `...N`, `...N[i]` (item i of a fixed spread), `~N`, `_`,
+/// tags, nested lists, each optionally prefixed by `role:`. Used in
+/// generated-code comments and diagnostics.
 pub fn renderAction(allocator: Allocator, tree: ActionTree) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     switch (tree) {
@@ -421,6 +427,7 @@ fn renderElem(allocator: Allocator, out: *std.ArrayList(u8), elem: ActionElem) A
         .tagLit => |t| try out.appendSlice(allocator, t),
         .litTag => |n| try out.print(allocator, "tag({d})", .{n}),
         .node => |l| try renderList(allocator, out, l.*),
+        .item => |it| try out.print(allocator, "...{d}[{d}]", .{ it.pos, it.index }),
     }
 }
 

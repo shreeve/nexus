@@ -343,7 +343,7 @@ which a required role rejects.
 | Item | Fills the role with |
 |---|---|
 | `N` / `role:N` | element N |
-| `role:...N` | the items of element N (a rest role only) |
+| `role:...N` | the items of element N: a rest role, or, for a list of one fixed length, this role and the ones after it |
 | `role:_` | nil |
 | `role:word` | the tag `word` (`op:+=`, `mode:ptr`) |
 | `role:(kind ...)` | a nested node, with its own id and span |
@@ -356,6 +356,69 @@ stmt = name "+=" expr                → (set += 1 value:3)
 
 Lists without a kind (`(1)`, `(...1 3)`) remain the way to accumulate
 children for a rest role (plumbing); a spread must splice a list.
+
+### Spreads into fixed roles
+
+A spread fills fixed roles when its element's lists have one length. When
+element N names a rule whose every alternative builds an untagged list of
+k items, a positional `...N` fills the next k roles and `role:...N` fills
+`role` and the k − 1 roles after it; positional items after a spread go on
+from the role after its last. A head that several kinds share is written
+once, in one rule, and the parser shares its states:
+
+```grammar heads.grammar
+@lexer
+
+tokens
+    ident, label, kw_if, kw_while, kw_else, lparen, rparen, pipe, semi
+    eof, err
+
+'\n'                        → skip, skip
+"if"                        → kw_if
+"while"                     → kw_while
+"else"                      → kw_else
+'('                         → lparen
+')'                         → rparen
+'|'                         → pipe
+';'                         → semi
+[a-z]+ ':'                  → label
+[a-z]+                      → ident
+.                           → err
+
+@parser
+
+@schema
+    block      ...stmts
+    if         cond capture:leaf? then else?
+    while      label:leaf? cond capture:leaf? then
+    call       callee:leaf
+
+program! = stmt*                                → (block ...1)
+
+stmt     = "if" head stmt  >                    → (if ...2 then:3)
+         | "if" head stmt "else" stmt           → (if ...2 3 5)
+         | [LABEL] "while" head stmt            → (while 1 cond:...3 then:4)
+         | IDENT ";"                            → (call 1)
+
+head     = "(" IDENT ")" ["|" IDENT "|"]        → (2 5)
+```
+
+```input
+if (a) |x| f; else loop: while (b) g;
+```
+
+```tree
+(block (if `a` `x` (call `f`)@11..13 (while `loop:` `b` _ (call `g`)@35..37)@19..37)@0..37)@0..37
+```
+
+Generation checks that every alternative of the rule builds a list of the
+same length (its items, a `...M` of an element that is always there and
+is such a list itself, or a pass-through of one), that the kind has that
+many roles from where the spread starts, that none of them is filled
+twice, and the static type of each item against the role it fills: an
+error names the item (`item 2 of the list of element 2 (head)`). When the
+element is optional (`[head]`) and absent, its roles are nil. The list is
+plumbing: it gets no node id, and the node reads its items in place.
 
 ## Labels
 
@@ -397,9 +460,10 @@ its rule, when:
   `@wrapper`) is built by no rule. The report ends with the actions' actual
   inventory as an `@schema` block, ready to paste and edit.
 - **Roles.** A role is unknown, filled twice, given a spread when it takes
-  one value, or required and left empty; a positional item follows a named
-  one; an action gives more items than the kind has slots; a tag is not
-  one of its role's `tag(...)` values.
+  one value (unless the spread is a list of one fixed length and the kind
+  has as many roles from there), or required and left empty; a positional
+  item follows a named one; an action gives more items than the kind has
+  slots; a tag is not one of its role's `tag(...)` values.
 - **Coverage.** Every value-bearing element of a pattern is used by the
   action, labeled, or dropped with `!X` or `_:X`; an alternative opts out
   with `→ (...)  ~ "reason"`. Value-bearing are rules, lists, groups, the

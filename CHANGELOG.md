@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Spreads into fixed roles (schema mode): when element N names a rule
+  whose every alternative builds an untagged list of one length k, a
+  positional `...N` fills the next k roles of a node and `role:...N`
+  fills `role` and the k − 1 after it, so a head shared by several kinds
+  (`if`/`while` conditions and captures, a declaration's modifiers) is
+  written once, in one rule. Generation checks the length, the roles
+  available, and each item's type against its role; an absent optional
+  head leaves its roles nil. Additive: both forms were errors before, and
+  grammars that do not use them generate the same parsers. No migration.
+
 ## 2.1.0 — 2026-10-10
 
 ### Changed

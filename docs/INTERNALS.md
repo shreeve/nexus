@@ -116,7 +116,10 @@ checks random lexers against a model of the lexer's definition.
 With `@schema`, `semantics.resolve` checks the schema (role types name
 declared kinds) and the tag inventory, places every action's items into
 their slots in schema order (positional items, `role:` items, pattern
-labels; nil for the unfilled; rest children last), records side-band
+labels; nil for the unfilled; rest children last; a spread of a list of
+one fixed length becomes one `...N[i]` item per role it fills, after
+checking that every alternative of the element's rule builds that
+length), records side-band
 labels, and runs the coverage gate. It works on the source alternatives, so
 every message names the rule as written. Positions it produces may be
 "internal" positions of elements inside choice alternatives, which only the
@@ -153,7 +156,8 @@ expander resolves.
 
 `semantics.checkTypes` then computes, by fixpoint over the expanded rules,
 the set of values each symbol can produce (nil, leaf, tag, untagged list,
-one bit per kind) and the values its lists can hold, and checks every role
+one bit per kind) and the values its lists can hold (and, for a fixed
+spread, the values of each item of its list), and checks every role
 of every node construction against its declared type, naming a production
 that yields the offending value.
 

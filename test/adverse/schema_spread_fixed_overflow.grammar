@@ -1,0 +1,25 @@
+# A spread into fixed roles fills exactly as many roles as its list has
+# items: no more than the kind has from there, and none filled twice.
+# error: schema_spread_fixed_overflow.grammar:20:11: error: rule 'top': the spread of element 2 fills 3 roles from 'b', but 'trio' has 2 roles from there
+# error: schema_spread_fixed_overflow.grammar:21:11: error: rule 'top': role 'c' of 'trio' is filled twice
+# error: schema_spread_fixed_overflow.grammar:22:19: error: rule 'top': role 'b' of 'trio' is filled by the label and by the action
+@lexer
+tokens
+    ident
+    comma
+    eof
+    err
+','                                         → comma
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@schema
+    trio        a:leaf? b:leaf? c:leaf?
+
+top!    = IDENT three                       → (trio 1 ...2)
+        | "," IDENT two                     → (trio 2 ...3 c:2)
+        | "," "," b:IDENT two               → (trio ...4)
+
+three   = IDENT IDENT IDENT                 → (1 2 3)
+two     = IDENT IDENT                       → (1 2)
