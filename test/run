@@ -81,7 +81,7 @@ with_timeout() {
     ' "$@"
 }
 
-key_of() { local k=${1#test/}; echo "${k//\//__}"; }
+key_of() { local k=${1#test/}; k=${k#grammars/}; echo "${k//\//__}"; }
 
 # directive <name> <file> → all values of `# name: value`
 directive() { sed -n "s/^# $1:[[:space:]]*//p" "$2"; }
@@ -369,7 +369,7 @@ check_unit_lang() { # check_unit_lang <suite dir>: zig test each lang file with 
 check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
     local out
     out=$(NO_COLOR=1 with_timeout 300 test/diff -O Debug -j 4 --keep "$OUTROOT/diff" "$NEXUS" "$NEXUS" \
-        test/mumps/mumps.grammar test/mumps/mumps.grammar --ext .m test/mumps/cases 2>&1)
+        grammars/mumps/mumps.grammar grammars/mumps/mumps.grammar --ext .m grammars/mumps/cases 2>&1)
     local rc=$?
     echo "$out" >>"$LOG"
     if [[ $rc -ne 0 ]]; then REASON="test/diff exited $rc: $(tail -1 <<<"$out")"; return 1; fi
@@ -471,7 +471,7 @@ check_lexfuzz() {
 check_messages() {
     local corpus="$WORK/out/messages.txt" srcs=() f
     {
-        find test "$DOCS_OUT" -name '*.grammar' ! -path 'test/golden/*'
+        find grammars test "$DOCS_OUT" -name '*.grammar' ! -path 'test/golden/*'
         echo nexus.grammar
     } | LC_ALL=C sort | tr '\n' '\0' | with_timeout 300 xargs -0 -r -n 1 "$NEXUS" check >"$corpus" 2>&1
     (CLI_DIR="$WORK/out/messages-cli" LOG="$corpus.cli" check_cli) >/dev/null 2>&1
@@ -550,7 +550,8 @@ worker() {
             case $id in
                 known/*) how="git mv test/$id test/regress/" ;;
                 adverse/known/*) how="git mv test/$id.grammar test/adverse/" ;;
-                *) how="move test/${id%%/*}/known/${id#*/known/}.* (input and .tree) to test/${id%%/*}/cases/" ;;
+                *) local d=grammars/${id%%/*}; [[ -d $d ]] || d=test/${id%%/*}
+                   how="move $d/known/${id#*/known/}.* (input and .tree) to $d/cases/" ;;
             esac
             printf 'fixed\t%s\tpasses: %s\n' "$id" "$how" >"$res"
         else
@@ -661,9 +662,10 @@ need_build() {
     grep -qxF "$line" "$BUILDS" || echo "$line" >>"$BUILDS"
 }
 
-# Grammar suites: test/<name>/ with a grammar (test/known/ is separate).
+# Grammar suites: grammars/<name>/, the real languages, and test/<name>/
+# with a grammar (test/known/ is separate).
 SEXP_SEEN=""
-for dir in test/*/; do
+for dir in grammars/*/ test/*/; do
     dir=${dir%/}
     name=$(basename "$dir")
     case $name in golden|adverse|known|regress|lib|bench|lexfuzz) continue ;; esac

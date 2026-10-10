@@ -1,7 +1,7 @@
 //! The tree the parser generated from zig.grammar builds against the tree
 //! std.zig.Ast.parse builds (the Zig compiling this file, which must be
 //! 0.17.0), node for node: `compare` prints both in one canonical form and
-//! compares them as text. test/zig/compare-trees runs it over a corpus
+//! compares them as text. grammars/zig/compare-trees runs it over a corpus
 //! (tools/compare_trees.zig), trees_test.zig over the inputs it holds.
 //!
 //! Both trees are printed in one canonical form and compared as text. The

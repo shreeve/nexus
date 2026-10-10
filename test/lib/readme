@@ -48,7 +48,7 @@ if (!defined $pre) {
 sub cases {
     my ($suite) = @_;
     my $n = 0;
-    my @dirs = ("test/$suite/cases");
+    my @dirs = ("$suite/cases");
     while (my $d = shift @dirs) {
         opendir my $h, $d or return -1;
         for my $e (sort readdir $h) {
@@ -83,12 +83,12 @@ for my $line (split /\n/, $table // '') {
     if ($text =~ /^\@conflicts\n((?:[ \t].*\n|\n)*)/m) { $entries = () = $1 =~ /^[ \t]+(?:shift|reduce)\b/mg }
     my $want = $entries ? "$entries ($cells)" : "$cells";
     push @problems, "$lang: declared conflicts $want, the table says $conf" if $conf ne $want;
-    my $suite = $g =~ m{^test/([^/]+)/} ? $1 : 'nexus';
+    my $suite = $g =~ m{^((?:grammars|test)/[^/]+)/} ? $1 : 'test/nexus';
     my ($k) = $cases =~ /^(\d+)/;
     my $have = cases($suite);
-    push @problems, "$lang: $have cases in test/$suite, the table says " . ($k // $cases) if !defined $k || $k != $have;
+    push @problems, "$lang: $have cases in $suite, the table says " . ($k // $cases) if !defined $k || $k != $have;
     if ($cases =~ /\+ (\d+) with `--spans`/) {
-        my $sp = cases('spans');
+        my $sp = cases('test/spans');
         push @problems, "$lang: $sp cases in test/spans, the table says $1" if $sp != $1;
     }
     my $m = $text =~ /^\@schema\b/m ? 'schema' : 'plain';

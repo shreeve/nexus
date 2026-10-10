@@ -1,11 +1,11 @@
 #!/bin/bash
-# Compares the lexer generated from test/zig/zig.grammar with
+# Compares the lexer generated from grammars/zig/zig.grammar with
 # std.zig.Tokenizer (the Zig that runs this script) token for token: tag by
 # name, start and end, invalid tokens included, up to and including eof.
 #
 # Usage:
-#   test/zig/compare-tokens [options] (DIR|FILE|--list LIST)...
-#   test/zig/compare-tokens --fuzz N [--seed S]
+#   grammars/zig/compare-tokens [options] (DIR|FILE|--list LIST)...
+#   grammars/zig/compare-tokens --fuzz N [--seed S]
 #
 #   DIR             every *.zig file under DIR
 #   --list LIST     the paths in LIST, one per line (paths may hold spaces)
@@ -21,7 +21,7 @@
 #   --dump nexus|std  print one lexer's stream in the zigtok format
 #   -O MODE         optimize mode of the tool (default ReleaseFast)
 #
-# The tool is built in .zig-cache/nexus-test/zig-tokens/ from this
+# The tool is built in .zig-cache/nexus-grammars/zig-tokens/ from this
 # checkout's bin/nexus (run `zig build` first). Compare prints one line per
 # input whose streams differ, with the first difference, and a summary with
 # the longest token; it exits 1 when any file differs. A token longer than
@@ -32,7 +32,7 @@
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
-OUT="$ROOT/.zig-cache/nexus-test/zig-tokens"
+OUT="$ROOT/.zig-cache/nexus-grammars/zig-tokens"
 MODE=ReleaseFast ORACLE="" TOOL_ARGS=() FUZZ=0
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
@@ -67,7 +67,7 @@ NEXUS="$ROOT/bin/nexus"
 [[ -x $NEXUS ]] || { echo "$NEXUS not found: run zig build" >&2; exit 2; }
 (cd "$HERE" && "$NEXUS" zig.grammar "$OUT/parser.zig") >"$OUT/gen.log" 2>&1 || { cat "$OUT/gen.log" >&2; exit 2; }
 cp "$HERE/zig.zig" "$HERE/tools/tokens.zig" "$OUT/"
-(cd "$OUT" && zig build-exe -O "$MODE" tokens.zig -femit-bin=tokens --cache-dir "$ROOT/.zig-cache/nexus-test/zig") \
+(cd "$OUT" && zig build-exe -O "$MODE" tokens.zig -femit-bin=tokens --cache-dir "$ROOT/.zig-cache/nexus-grammars/zig") \
     >"$OUT/compile.log" 2>&1 || { cat "$OUT/compile.log" >&2; exit 2; }
 
 if [[ -z $ORACLE ]]; then

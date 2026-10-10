@@ -371,4 +371,5 @@ current numbers and how to compare two builds.
 | `src/version.zig` | the version stamped into generated files |
 | `nexus.grammar` | the grammar-file grammar |
 | `build.zig` | `zig build` (bin/nexus), `zig build unit`, `zig build test` |
+| `grammars/` | the real languages, each a suite run by `./test/run` |
 | `test/` | the suite ([test/README.md](../test/README.md)) |

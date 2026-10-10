@@ -53,7 +53,7 @@ dependency. Nexus parses its own grammar files with a parser it generates.
     and a lang module declares only what "The lang module" lists. A change
     to the grammar language or that API lands in one commit with every
     consumer copy in this repository (`src/frontend/lang.zig`, the lang
-    modules under `test/`, `test/lib/driver.zig`, the doc examples) and a
+    modules under `grammars/` and `test/`, `test/lib/driver.zig`, the doc examples) and a
     `CHANGELOG.md` entry with migration steps per downstream repository.
 
 ## Workflow
@@ -91,12 +91,12 @@ Rig, em (MUMPS) and nexis check in parsers that Nexus generates
 (`zig build parser` in each, using `../nexus/bin/nexus`). A change to
 generated code reaches them when they regenerate; their suites are the
 final check. Slash and nanoruby check in parsers from Nexus 0.10.3;
-their grammars for this Nexus are `test/slash/slash.grammar` and
-`test/ruby/ruby.grammar` here. `test/rig`,
-`test/mumps` and `test/nexis` hold the grammar and lang module of Rig, em
-and nexis as their main branches have them, copied verbatim, with case
-programs copied from their tests and examples; each `test.conf` names the
-source commit. A copy is re-synced, in its own commit, when its project
+their grammars for this Nexus are `grammars/slash/slash.grammar` and
+`grammars/ruby/ruby.grammar` here. `grammars/rig`, `grammars/mumps` and
+`grammars/nexis` hold the grammar and lang module of Rig, em and nexis
+as their main branches have them, copied verbatim, with case programs
+copied from their tests and examples; each `test.conf` names the source
+commit. A copy is re-synced, in its own commit, when its project
 changes its grammar or lang module. The edits a release asks of each
 downstream repository are in `CHANGELOG.md`.
 
@@ -106,6 +106,7 @@ downstream repository are in `CHANGELOG.md`.
 |---|---|
 | `nexus.grammar` | the grammar-file grammar (schema mode) |
 | `src/` | the generator; [INTERNALS.md](docs/INTERNALS.md#source-map) maps every file |
+| `grammars/` | the real languages (Zig, Rig, MUMPS, Nexis, Ruby, Slash), each a suite run by `./test/run` |
 | `test/` | the suite, `test/diff`, `test/bench/`, `test/lexfuzz/` ([test/README.md](test/README.md)) |
 | `docs/GRAMMAR.md` | the grammar-file reference |
 | `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |

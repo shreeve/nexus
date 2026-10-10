@@ -1,5 +1,5 @@
 //! Compares the trees the parser generated from zig.grammar builds with
-//! std.zig.Ast's (trees.zig) over a corpus. Built by test/zig/compare-trees
+//! std.zig.Ast's (trees.zig) over a corpus. Built by grammars/zig/compare-trees
 //! next to the generated parser.zig, zig.zig, trees.zig and inputs.zig;
 //! see that script for usage.
 //!

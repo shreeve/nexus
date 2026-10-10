@@ -174,7 +174,7 @@ naming the rule.
 
 ## Validated languages
 
-The grammars in `test/` generate with this checkout, compile, and parse
+The grammars in `grammars/` generate with this checkout, compile, and parse
 their cases in `./test/run`, trees compared with goldens. The Rig grammar
 and its cases are those of Rig's main, and the MUMPS and Nexis grammars
 are em's and nexis's (AGENTS.md, "Downstream"). The suite's
@@ -182,11 +182,11 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 
 | Language | Grammar | Lines | LR states | Declared conflicts (cells) | Suite cases | Mode |
 |---|---|---:|---:|---:|---:|---|
-| Rig | `test/rig/rig.grammar` | 915 | 725 | 0 | 138 | schema |
-| MUMPS | `test/mumps/mumps.grammar` | 1118 | 1023 | 11 (15) | 62 | schema |
-| Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
-| Slash | `test/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |
-| Nexis (a Clojure reader) | `test/nexis/nexis.grammar` | 98 | 63 | 0 | 27 | plain |
+| Rig | `grammars/rig/rig.grammar` | 915 | 725 | 0 | 138 | schema |
+| MUMPS | `grammars/mumps/mumps.grammar` | 1118 | 1023 | 11 (15) | 62 | schema |
+| Ruby subset | `grammars/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
+| Slash | `grammars/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |
+| Nexis (a Clojure reader) | `grammars/nexis/nexis.grammar` | 98 | 63 | 0 | 27 | plain |
 | Nexus grammar files | `nexus.grammar` | 560 | 362 | 0 | 12 + every grammar in the suite | schema |
 
 A declared conflict is one manifest entry; it covers one or more table

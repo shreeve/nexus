@@ -1,5 +1,5 @@
 //! Compares the lexer generated from zig.grammar with std.zig.Tokenizer.
-//! Built by test/zig/compare-tokens next to the generated parser.zig and
+//! Built by grammars/zig/compare-tokens next to the generated parser.zig and
 //! zig.zig; see that script for usage.
 //!
 //!   tokens [--list FILE] PATH...                compare, file by file
