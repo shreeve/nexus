@@ -712,7 +712,7 @@ pub const BaseParser = struct {
             if (action > 0) {
                 try self.shift(@intCast(action));
             } else if (action < -1) {
-                try self.reduce(@intCast(-action - 2));
+                try self.reduceOrPass(@intCast(-action - 2));
             } else if (action == -1) {
                 return self.valueStack.last().?;
             } else {
@@ -766,7 +766,7 @@ pub const BaseParser = struct {
                 if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
-                try self.reduce(@intCast(-action - 2));
+                try self.reduceOrPass(@intCast(-action - 2));
             } else if (action == -1) {
                 result.sexp = self.valueStack.last().?;
                 result.complete = true;
@@ -965,6 +965,19 @@ pub const BaseParser = struct {
     /// reduction in progress.
     fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
         return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
+    }
+
+    /// Reduce by `ruleId`. A pass-through `A → B` (the value of its one
+    /// element) only replaces the top state with the goto on A: the value,
+    /// its start and end, and its spare stay; it builds no node, so it
+    /// places no empty element and records no side-band role.
+    inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !void {
+        if (ruleLen[ruleId] == 1 and ruleValue[ruleId] == 2) {
+            const states = self.stateStack.items;
+            const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
+            std.debug.assert(next > 0); // every reduction has a goto
+            states[states.len - 1] = @intCast(next);
+        } else try self.reduce(ruleId);
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
