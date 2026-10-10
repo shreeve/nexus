@@ -1,36 +1,51 @@
 # ==============================================================================
-# zig.grammar — Zig 0.17.0 in Nexus
+# zig.grammar — the syntax of Zig 0.17.0, as one Nexus grammar
 # ==============================================================================
 #
-# The lexer is std.zig.Tokenizer (lib/std/zig/tokenizer.zig of Zig 0.17.0)
-# written as Nexus rules: for every input it yields the same tokens, with
-# the same tags and the same byte boundaries, invalid tokens included.
-# Every token name is the std.zig.Token.Tag of the same name (`eof` is
-# Nexus's end of input, as it is Zig's). `err`, the token Nexus makes when
-# no rule matches, never comes from a rule here: every byte starts one. It
-# appears only for a token longer than 65535 bytes, the most a Nexus token
-# holds, which std.zig.Tokenizer lexes as one token.
+# What this is. A grammar for all of Zig's syntax, from which Nexus
+# generates one standalone Zig module: a DFA lexer, an LALR(1) parser and
+# a typed tree. It is written to agree exactly with Zig 0.17.0's own front
+# end, std.zig (lib/std/zig/tokenizer.zig, Parse.zig, Ast.zig), and the
+# tools in test/zig/ check that it does; test/zig/README.md has the
+# evidence, the measurements and the commands.
 #
-# The parser is built to accept exactly what std.zig.Ast.parse
-# (lib/std/zig/Parse.zig) accepts with recovery off, which
-# test/zig/compare-accept checks: a whole file from `root`, with the rules
-# named after grammar.peg's (doc/langref/grammar.peg).
-# Parse.zig is predictive: it commits to a reading after looking at a token
-# or two and never backtracks. Where LALR(1) would decide later and accept
-# more, the grammar encodes the commitment as a restricted variant of a
-# rule (the `_s`, `_c`, `_p` expressions, the `_f`, `_p`, `_n` types, the
-# open and closed `_k` operands); where the decision needs more than one
-# token of lookahead, or the bytes around a token, the lang module's Lexer
-# wrapper (zig.zig) makes it and names the token by it (label, break_colon,
-# ptr_star, c_ptr, enum_tag, bad_doc_comment, and the operator spacing
-# categories). The wrapper also skips a UTF-8 byte order mark at offset 0,
-# as Tokenizer.init does; no rule can see the start of the input.
+#   Tokens   the lexer is std.zig.Tokenizer written as Nexus rules: for
+#            every input it yields the same tokens, with the same tags and
+#            the same byte boundaries, invalid tokens included
+#            (tokens_test.zig, compare-tokens). Every token name is the
+#            std.zig.Token.Tag of the same name.
+#   Accept   the parser accepts exactly what std.zig.Ast.parse accepts with
+#            recovery off, from `root`, a whole file (compare-accept).
+#   Trees    the tree is std.zig.Ast's, node for node and span for span, in
+#            the kinds and roles of the @schema below (compare-trees;
+#            trees.zig lists how the two trees are put in one form).
 #
-# The tree is std.zig.Ast's, node for node and span for span, in the kinds
-# and roles of the @schema below, which test/zig/compare-trees checks.
+# The one known difference: a token longer than 65535 bytes, the most a
+# Nexus token holds, which std.zig.Tokenizer lexes as one token. Nexus
+# makes it an `err` token, which no rule takes; `err` comes from no rule
+# here, as every byte starts one.
 #
-# The second start symbol, `tokens`, lists the tokens as the parser sees
-# them, each in a node named by its category.
+# How it is written. Rules follow grammar.peg (doc/langref/grammar.peg),
+# section by section and with its rule names in snake_case (BoolOrExpr is
+# bool_or_expr); where grammar.peg and Parse.zig disagree, Parse.zig
+# decides, since it is what the compiler runs. Parse.zig is predictive:
+# it commits to a reading after looking at a token or two and never
+# backtracks. Where LALR(1) would decide later and accept more, the
+# grammar encodes the commitment as a restricted variant of a rule, named
+# by a suffix: `_s`, `_c`, `_p` expressions and `_k` operands (EXPRESSION
+# LEVEL), `_e`, `_s`, `_c`, `_f`, `_p`, `_n` types (Type expressions).
+# Where the decision needs more than one token of lookahead, or the bytes
+# around a token, the lang module's Lexer wrapper (zig.zig) makes it and
+# names the token by it: label, break_colon, ptr_star, c_ptr, enum_tag,
+# bad_doc_comment and the operator spacing categories, each documented
+# there. The wrapper also skips a UTF-8 byte order mark at offset 0, as
+# Tokenizer.init does; no rule can see the start of the input.
+#
+# Sections: @lexer (tokenizer.zig's states, cited by name); @schema (the
+# tree); @conflicts; TOP LEVEL, BLOCK LEVEL, EXPRESSION LEVEL, ASSEMBLY
+# and HELPER GRAMMAR (grammar.peg's sections); TOKENS, the second start
+# symbol, `tokens`, which lists the tokens as the parser sees them, each
+# in a node named by its category.
 # ==============================================================================
 
 @lang = "zig"
@@ -397,30 +412,35 @@ tokens
     enum_tag, bad_doc_comment, minus_prefix, minus_percent_prefix, ampersand_prefix               token:leaf
     asterisk_prefix, pipe_payload, bad_operator                                                   token:leaf
 
-# Every conflict below resolves as Parse.zig decides. A bare `return`,
-# `break` or `continue` is followed by its operand when one can start:
-# Parse.zig parses the operand with parseExpr, so a `-`, `-%`, `&` or `*`
-# with even spacing after it (the 4 cells of each jump) starts the operand (`return - x` returns
-# `-x`; `return * T` returns the pointer type `*T`). A switch prong's
-# leading `inline` is the prong's flag (Parse.zig parseSwitchProng eats it
-# first), never the start of an `inline for` or `inline while` item: the
-# two readings take the same tokens, and the plain loop wins.
+# Every conflict below resolves as Parse.zig decides.
+#
+# return, break and continue: a bare `return`, `break`, `break :blk`,
+# `continue` or `continue :blk` takes an operand when one can start, as
+# Parse.zig parses it with parseExpr. A `-`, `-%`, `&` or `*` after one
+# with even spacing (the 4 cells of each entry) is a prefix operator that
+# starts the operand: `return - x` returns `-x`, `return * T` returns the
+# pointer type `*T`.
+#
+# inline in a switch prong: a prong's leading `inline` is the prong's flag
+# (parseSwitchProng takes it first), never the start of an `inline for` or
+# `inline while` body. The two readings take the same tokens, and the
+# plain loop wins.
 @conflicts
-    shift jump → "return"  4  # the operand of `return` is parseExpr: a prefix operator starts it
-    shift jump → "break"  4  # the operand of `break` is parseExpr: a prefix operator starts it
-    shift jump → "break" break_label  4  # the operand of `break :l` is parseExpr: a prefix operator starts it
-    shift jump → "continue"  4  # the operand of `continue` is parseExpr: a prefix operator starts it
-    shift jump → "continue" break_label  4  # the operand of `continue :l` is parseExpr: a prefix operator starts it
-    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or  3  # a prong's leading `inline` is its flag
-    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or "else" bool_or over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or "else" bool_or  3  # a prong's leading `inline` is its flag
-    reduce while_expr → "while" "(" bool_or ")" ptr_payload while_cont bool_or over while_expr → "inline" "while" "(" bool_or ")" ptr_payload while_cont bool_or  3  # a prong's leading `inline` is its flag
-    reduce while_expr → "while" "(" bool_or ")" ptr_payload while_cont bool_or "else" else_payload bool_or over while_expr → "inline" "while" "(" bool_or ")" ptr_payload while_cont bool_or "else" else_payload bool_or  3  # a prong's leading `inline` is its flag
+    shift jump → "return"  4  # `return - x`, `return & x`, `return * T`: the operand of return is parseExpr, which a prefix operator starts
+    shift jump → "break"  4  # `break - x`: the operand of break is parseExpr, which a prefix operator starts
+    shift jump → "break" break_label  4  # `break :blk - x`: the operand of a labeled break is parseExpr, which a prefix operator starts
+    shift jump → "continue"  4  # `continue - x`: the operand of continue is parseExpr, which a prefix operator starts
+    shift jump → "continue" break_label  4  # `continue :blk - x`: the operand of a labeled continue is parseExpr, which a prefix operator starts
+    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr over for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
+    reduce while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr over while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr  3  # `inline for`/`inline while` as a prong body: `inline` is the prong's flag (parseSwitchProng)
 
 root!       = container_docs members                        → (root 1 ...2)
 tokens!     = token*                                        → (tokens ...1)
 
 # ==============================================================================
-# CONTAINERS AND DECLARATIONS (grammar.peg Root, ContainerMembers ... Decl;
+# TOP LEVEL (grammar.peg Root, ContainerMembers ... ContainerField;
 # Parse.zig parseContainerMembers, expectTopLevelDecl, expectContainerField)
 # ==============================================================================
 #
@@ -483,18 +503,6 @@ fn_decl_proto       = [docs] ["pub"] [fn_prefix] "fn" [IDENTIFIER] param_decl_li
 fn_extern_proto     = [docs] ["pub"] "extern" [STRING_LITERAL] "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
                                                                             → (fn_proto 1 2 3 4 6 7 8 9 10 11 12 13)
 
-# A field. Parse.zig takes `comptime` as the field's flag and `x:` as its
-# name whenever they are there, so an unnamed field's type starts with
-# neither (type_expr_f: no `comptime`, no `fn`, which starts a declaration,
-# and no label); `extern` and `inline` start a field only before a
-# container keyword, resp. `for` or `while` (the next token decides).
-container_field     = [docs] ["comptime"] field_name ":" type_expr [byte_align] ["=" expr]
-                                                                            → (container_field 1 2 3 5 6 8)
-                    | [docs] type_expr_f [byte_align] ["=" expr]            → (container_field 1 _ _ 2 3 5)
-                    | [docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 1 2 _ 3 4 6)
-
-field_name          = IDENTIFIER | LABEL
-
 # fn name? (params) align? addrspace? linksection? callconv? !? ReturnType
 fn_proto            = "fn" [IDENTIFIER] param_decl_list var_align var_addrspace var_section fn_callconv ["!"] type_expr
                                                                             → (fn_proto _ _ _ _ 2 3 4 5 6 7 8 9)
@@ -514,32 +522,20 @@ var_init            =
 fn_callconv         =
                     | call_conv
 
-# Parameters (Parse.zig parseParamDeclList, expectParamDecl). `...` comes
-# last; like any parameter it may follow doc comments.
-param_decl_list     = "(" ")"                                               → ()
-                    | "(" L(param_decl) !","? ")"                           → 2
-                    | "(" L(param_decl) "," var_args !","? ")"              → (...2 4)
-                    | "(" var_args !","? ")"                                → (2)
+# A field. Parse.zig takes `comptime` as the field's flag and `x:` as its
+# name whenever they are there, so an unnamed field's type starts with
+# neither (type_expr_f: no `comptime`, no `fn`, which starts a declaration,
+# and no label); `extern` and `inline` start a field only before a
+# container keyword, resp. `for` or `while` (the next token decides).
+container_field     = [docs] ["comptime"] field_name ":" type_expr [byte_align] ["=" expr]
+                                                                            → (container_field 1 2 3 5 6 8)
+                    | [docs] type_expr_f [byte_align] ["=" expr]            → (container_field 1 _ _ 2 3 5)
+                    | [docs] "comptime" type_expr_n [byte_align] ["=" expr] → (container_field 1 2 _ 3 4 6)
 
-var_args            = [docs] "..."                                          → (param 1 _ _ 2)
-
-param_decl          = [docs] [param_flag] param_name ":" param_type         → (param 1 2 3 5)
-                    | [docs] param_type_p                                   → (param 1 _ _ 2)
-                    | [docs] param_flag param_type_n                        → (param 1 2 _ 3)
-
-param_flag          = "comptime" | "noalias"
-param_name          = IDENTIFIER | LABEL
-param_type          = "anytype" | type_expr
-param_type_p        = "anytype" | type_expr_p
-param_type_n        = "anytype" | type_expr_n
-
-byte_align          = "align" "(" expr ")"                                  → 3
-addr_space          = "addrspace" "(" expr ")"                              → 3
-link_section        = "linksection" "(" expr ")"                            → 3
-call_conv           = "callconv" "(" expr ")"                               → 3
+field_name          = IDENTIFIER | LABEL
 
 # ==============================================================================
-# STATEMENTS (grammar.peg BlockStatement ... VarAssignStatement; Parse.zig
+# BLOCK LEVEL (grammar.peg BlockStatement ... VarAssignStatement; Parse.zig
 # expectStatement, expectVarAssignStatement, the statement forms of if,
 # for and while, parseBlockExprStatement)
 # ==============================================================================
@@ -552,10 +548,6 @@ call_conv           = "callconv" "(" expr ")"                               → 
 # before an assignment (after `comptime`, `defer`, `errdefer`, `suspend`,
 # `nosuspend`, and in the bodies of if, for and while statements) the
 # assignment uses the `_c` expressions, which start with no block.
-
-block               = "{" block_statement* "}"                      → (block _ ...2)
-labeled_block       = LABEL ":" "{" block_statement* "}"            → (block 1 ...4)
-block_expr          = block | labeled_block
 
 # A statement inside a block. A single variable declaration needs `=`;
 # a destructure may mix declarations and assignable expressions. A
@@ -580,16 +572,6 @@ block_statement     = "comptime" block_expr                         → (comptim
                     | "comptime" expr_c assign_op expr ";"          → (comptime (assign 3 2 4))
                     | "comptime" destructure_c "=" expr ";"         → (assign_destructure 1 2 4)
 
-destructure_s       = destructure_head_s "," destructure_item       → (1 3)
-                    | destructure_s "," destructure_item            → (...1 3)
-destructure_c       = destructure_head_c "," destructure_item       → (1 3)
-                    | destructure_c "," destructure_item            → (...1 3)
-destructure_head_s  = destructure_var | expr_s
-destructure_head_c  = destructure_var | expr_c
-destructure_item    = destructure_var | expr
-destructure_var     = var_mut var_name var_type var_align var_addrspace var_section
-                                                                    → (var_decl _ _ _ _ _ _ 1 2 3 4 5 6 _)
-
 # A statement after `else` (Parse.zig expectStatement(false)): no
 # declaration, no `defer` or `errdefer`.
 statement           = "comptime" block_expr                         → (comptime 2)
@@ -602,15 +584,6 @@ statement           = "comptime" block_expr                         → (comptim
                     | labeled_statement
                     | assign_s ";"                                  → 1
 
-block_expr_statement = block_expr
-                    | assign_c ";"                                  → 1
-
-labeled_statement   = block_expr
-                    | for_statement
-                    | while_statement
-                    | switch_expr
-                    | labeled_switch
-
 # if, for and while statements (Parse.zig expectIfStatement,
 # parseForStatement, parseWhileStatement): a block body may take `else`;
 # an assignment body ends in `;`, or takes `else`, which it then needs.
@@ -618,6 +591,12 @@ if_statement        = "if" "(" expr ")" ptr_payload block_expr                  
                     | "if" "(" expr ")" ptr_payload block_expr "else" else_payload statement    → (if 3 5 6 8 9)
                     | "if" "(" expr ")" ptr_payload assign_c ";"                                → (if 3 5 6)
                     | "if" "(" expr ")" ptr_payload assign_c "else" else_payload statement      → (if 3 5 6 8 9)
+
+labeled_statement   = block_expr
+                    | for_statement
+                    | while_statement
+                    | switch_expr
+                    | labeled_switch
 
 for_statement       = [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload block_expr
                                                                                         → (for 1 3 6 9 10)
@@ -628,21 +607,41 @@ for_statement       = [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr
                     | [LABEL ":"] ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload assign_c "else" statement
                                                                                         → (for 1 3 6 9 10 12)
 
-while_statement     = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont block_expr
+while_statement     = [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr
                                                                                         → (while 1 3 6 8 9 10)
-                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont block_expr "else" else_payload statement
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr block_expr "else" else_payload statement
                                                                                         → (while 1 3 6 8 9 10 12 13)
-                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont assign_c ";"
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c ";"
                                                                                         → (while 1 3 6 8 9 10)
-                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_cont assign_c "else" else_payload statement
+                    | [LABEL ":"] ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr assign_c "else" else_payload statement
                                                                                         → (while 1 3 6 8 9 10 12 13)
 
-for_item            = expr
-                    | expr ".."                                     → (for_range 1)
-                    | expr ".." expr                                → (for_range 1 3)
+block_expr_statement = block_expr
+                    | assign_c ";"                                  → 1
 
-while_cont          =
-                    | ":" "(" assign_expr ")"                       → 3
+# A block, with or without a label (grammar.peg BlockExpr, Block).
+block_expr          = block | labeled_block
+
+block               = "{" block_statement* "}"                      → (block _ ...2)
+labeled_block       = LABEL ":" "{" block_statement* "}"            → (block 1 ...4)
+
+# A destructure statement (grammar.peg VarAssignStatement): declarations
+# and assignable expressions, then `=`.
+destructure_s       = destructure_head_s "," destructure_item       → (1 3)
+                    | destructure_s "," destructure_item            → (...1 3)
+destructure_c       = destructure_head_c "," destructure_item       → (1 3)
+                    | destructure_c "," destructure_item            → (...1 3)
+destructure_head_s  = destructure_var | expr_s
+destructure_head_c  = destructure_var | expr_c
+destructure_item    = destructure_var | expr
+destructure_var     = var_mut var_name var_type var_align var_addrspace var_section
+                                                                    → (var_decl _ _ _ _ _ _ 1 2 3 4 5 6 _)
+
+# ==============================================================================
+# EXPRESSION LEVEL (grammar.peg AssignExpr ... SwitchExpr; Parse.zig
+# parseAssignExpr, parseExprPrecedence, parsePrefixExpr, parsePrimaryExpr,
+# parseTypeExpr, parseSuffixExpr, parsePrimaryTypeExpr)
+# ==============================================================================
 
 # Assignments (Parse.zig parseAssignExpr, finishAssignExpr): one operator,
 # or a destructure.
@@ -665,14 +664,6 @@ destructure_es      = expr_s "," expr                               → (1 3)
 destructure_ec      = expr_c "," expr                               → (1 3)
                     | destructure_ec "," expr                       → (...1 3)
 
-assign_op           = "=" | "*=" | "*|=" | "/=" | "%=" | "+=" | "+|=" | "-=" | "-|="
-                    | "<<=" | "<<|=" | ">>=" | "&=" | "^=" | "|=" | "*%=" | "+%=" | "-%="
-
-# ==============================================================================
-# EXPRESSIONS (grammar.peg Expr ... PrimaryExpr; Parse.zig
-# parseExprPrecedence, parsePrefixExpr, parsePrimaryExpr)
-# ==============================================================================
-#
 # Zig's operator table (Parse.zig operTable), one rule per level, loosest
 # first: or 10, and 20, comparison 30 (non-associative: a second
 # comparison is chained_comparison_operators), `& ^ | orelse catch` 40,
@@ -681,8 +672,8 @@ assign_op           = "=" | "*=" | "*|=" | "/=" | "%=" | "+=" | "+|=" | "-=" | "
 # reading before it gets there:
 #
 #   (none)  anywhere an expression goes
-#   _s      an expression statement (see STATEMENTS)
-#   _c      after a block was tried first (see STATEMENTS)
+#   _s      an expression statement (see BLOCK LEVEL)
+#   _c      after a block was tried first (see BLOCK LEVEL)
 #   _p      the index of `a[...]` when it starts with `*`: the wrapper
 #           names a `*` right after `[` PTR_STAR, which a pointer type
 #           `[*]T` needs, but Parse.zig parses `a[*T]` as indexing by the
@@ -700,188 +691,173 @@ assign_op           = "=" | "*=" | "*|=" | "/=" | "%=" | "+=" | "+|=" | "-=" | "
 # (invalid_ampersand_ampersand): such a `-`, `-%`, `&` or `*` can only be
 # a prefix operator or a pointer, such a `|` only a payload's bar, and any
 # other such operator is BAD_OPERATOR, which no rule takes.
-
-expr        = bool_or
-expr_s      = bool_or_s
-expr_c      = bool_or_c
-expr_p      = bool_or_p
+expr        = bool_or_expr
+expr_s      = bool_or_expr_s
+expr_c      = bool_or_expr_c
+expr_p      = bool_or_expr_p
 
 index_expr  = expr | expr_p
 
-compare_op      = "==" | "!=" | "<" | ">" | "<=" | ">="
-bitwise_op      = "&" | "^" | "|" | "orelse"
-bit_shift_op    = "<<" | ">>" | "<<|"
-addition_op     = "+" | "-" | "++" | "+%" | "-%" | "+|" | "-|"
-multiply_op     = "||" | "*" | "/" | "%" | "*%" | "*|"
+bool_or_expr       = bool_and_expr
+                   | bool_or_expr_k "or" bool_and_expr               → (binary 2 1 3)
+bool_or_expr_k     = bool_and_expr_k
+                   | bool_or_expr_k "or" bool_and_expr_k             → (binary 2 1 3)
+bool_or_expr_s     = bool_and_expr_s
+                   | bool_or_expr_sk "or" bool_and_expr              → (binary 2 1 3)
+bool_or_expr_sk    = bool_and_expr_sk
+                   | bool_or_expr_sk "or" bool_and_expr_k            → (binary 2 1 3)
+bool_or_expr_c     = bool_and_expr_c
+                   | bool_or_expr_ck "or" bool_and_expr              → (binary 2 1 3)
+bool_or_expr_ck    = bool_and_expr_ck
+                   | bool_or_expr_ck "or" bool_and_expr_k            → (binary 2 1 3)
+bool_or_expr_p     = bool_and_expr_p
+                   | bool_or_expr_pk "or" bool_and_expr              → (binary 2 1 3)
+bool_or_expr_pk    = bool_and_expr_pk
+                   | bool_or_expr_pk "or" bool_and_expr_k            → (binary 2 1 3)
 
-bool_or       = bool_and
-              | bool_or_k "or" bool_and                     → (binary 2 1 3)
-bool_or_k     = bool_and_k
-              | bool_or_k "or" bool_and_k                   → (binary 2 1 3)
-bool_or_s     = bool_and_s
-              | bool_or_sk "or" bool_and                    → (binary 2 1 3)
-bool_or_sk    = bool_and_sk
-              | bool_or_sk "or" bool_and_k                  → (binary 2 1 3)
-bool_or_c     = bool_and_c
-              | bool_or_ck "or" bool_and                    → (binary 2 1 3)
-bool_or_ck    = bool_and_ck
-              | bool_or_ck "or" bool_and_k                  → (binary 2 1 3)
-bool_or_p     = bool_and_p
-              | bool_or_pk "or" bool_and                    → (binary 2 1 3)
-bool_or_pk    = bool_and_pk
-              | bool_or_pk "or" bool_and_k                  → (binary 2 1 3)
+bool_and_expr      = compare_expr
+                   | bool_and_expr_k "and" compare_expr              → (binary 2 1 3)
+bool_and_expr_k    = compare_expr_k
+                   | bool_and_expr_k "and" compare_expr_k            → (binary 2 1 3)
+bool_and_expr_s    = compare_expr_s
+                   | bool_and_expr_sk "and" compare_expr             → (binary 2 1 3)
+bool_and_expr_sk   = compare_expr_sk
+                   | bool_and_expr_sk "and" compare_expr_k           → (binary 2 1 3)
+bool_and_expr_c    = compare_expr_c
+                   | bool_and_expr_ck "and" compare_expr             → (binary 2 1 3)
+bool_and_expr_ck   = compare_expr_ck
+                   | bool_and_expr_ck "and" compare_expr_k           → (binary 2 1 3)
+bool_and_expr_p    = compare_expr_p
+                   | bool_and_expr_pk "and" compare_expr             → (binary 2 1 3)
+bool_and_expr_pk   = compare_expr_pk
+                   | bool_and_expr_pk "and" compare_expr_k           → (binary 2 1 3)
 
-bool_and      = compare
-              | bool_and_k "and" compare                    → (binary 2 1 3)
-bool_and_k    = compare_k
-              | bool_and_k "and" compare_k                  → (binary 2 1 3)
-bool_and_s    = compare_s
-              | bool_and_sk "and" compare                   → (binary 2 1 3)
-bool_and_sk   = compare_sk
-              | bool_and_sk "and" compare_k                 → (binary 2 1 3)
-bool_and_c    = compare_c
-              | bool_and_ck "and" compare                   → (binary 2 1 3)
-bool_and_ck   = compare_ck
-              | bool_and_ck "and" compare_k                 → (binary 2 1 3)
-bool_and_p    = compare_p
-              | bool_and_pk "and" compare                   → (binary 2 1 3)
-bool_and_pk   = compare_pk
-              | bool_and_pk "and" compare_k                 → (binary 2 1 3)
+compare_expr       = bitwise_expr
+                   | bitwise_expr_k compare_op bitwise_expr          → (binary 2 1 3)
+compare_expr_k     = bitwise_expr_k
+                   | bitwise_expr_k compare_op bitwise_expr_k        → (binary 2 1 3)
+compare_expr_s     = bitwise_expr_s
+                   | bitwise_expr_sk compare_op bitwise_expr         → (binary 2 1 3)
+compare_expr_sk    = bitwise_expr_sk
+                   | bitwise_expr_sk compare_op bitwise_expr_k       → (binary 2 1 3)
+compare_expr_c     = bitwise_expr_c
+                   | bitwise_expr_ck compare_op bitwise_expr         → (binary 2 1 3)
+compare_expr_ck    = bitwise_expr_ck
+                   | bitwise_expr_ck compare_op bitwise_expr_k       → (binary 2 1 3)
+compare_expr_p     = bitwise_expr_p
+                   | bitwise_expr_pk compare_op bitwise_expr         → (binary 2 1 3)
+compare_expr_pk    = bitwise_expr_pk
+                   | bitwise_expr_pk compare_op bitwise_expr_k       → (binary 2 1 3)
 
-compare       = bitwise
-              | bitwise_k compare_op bitwise                → (binary 2 1 3)
-compare_k     = bitwise_k
-              | bitwise_k compare_op bitwise_k              → (binary 2 1 3)
-compare_s     = bitwise_s
-              | bitwise_sk compare_op bitwise               → (binary 2 1 3)
-compare_sk    = bitwise_sk
-              | bitwise_sk compare_op bitwise_k             → (binary 2 1 3)
-compare_c     = bitwise_c
-              | bitwise_ck compare_op bitwise               → (binary 2 1 3)
-compare_ck    = bitwise_ck
-              | bitwise_ck compare_op bitwise_k             → (binary 2 1 3)
-compare_p     = bitwise_p
-              | bitwise_pk compare_op bitwise               → (binary 2 1 3)
-compare_pk    = bitwise_pk
-              | bitwise_pk compare_op bitwise_k             → (binary 2 1 3)
+bitwise_expr       = bit_shift_expr
+                   | bitwise_expr_k bitwise_op bit_shift_expr            → (binary 2 1 3)
+                   | bitwise_expr_k "catch" [payload] bit_shift_expr     → (catch 1 3 4)
+bitwise_expr_k     = bit_shift_expr_k
+                   | bitwise_expr_k bitwise_op bit_shift_expr_k          → (binary 2 1 3)
+                   | bitwise_expr_k "catch" [payload] bit_shift_expr_k   → (catch 1 3 4)
+bitwise_expr_s     = bit_shift_expr_s
+                   | bitwise_expr_sk bitwise_op bit_shift_expr           → (binary 2 1 3)
+                   | bitwise_expr_sk "catch" [payload] bit_shift_expr    → (catch 1 3 4)
+bitwise_expr_sk    = bit_shift_expr_sk
+                   | bitwise_expr_sk bitwise_op bit_shift_expr_k         → (binary 2 1 3)
+                   | bitwise_expr_sk "catch" [payload] bit_shift_expr_k  → (catch 1 3 4)
+bitwise_expr_c     = bit_shift_expr_c
+                   | bitwise_expr_ck bitwise_op bit_shift_expr           → (binary 2 1 3)
+                   | bitwise_expr_ck "catch" [payload] bit_shift_expr    → (catch 1 3 4)
+bitwise_expr_ck    = bit_shift_expr_ck
+                   | bitwise_expr_ck bitwise_op bit_shift_expr_k         → (binary 2 1 3)
+                   | bitwise_expr_ck "catch" [payload] bit_shift_expr_k  → (catch 1 3 4)
+bitwise_expr_p     = bit_shift_expr_p
+                   | bitwise_expr_pk bitwise_op bit_shift_expr           → (binary 2 1 3)
+                   | bitwise_expr_pk "catch" [payload] bit_shift_expr    → (catch 1 3 4)
+bitwise_expr_pk    = bit_shift_expr_pk
+                   | bitwise_expr_pk bitwise_op bit_shift_expr_k         → (binary 2 1 3)
+                   | bitwise_expr_pk "catch" [payload] bit_shift_expr_k  → (catch 1 3 4)
 
-bitwise       = bit_shift
-              | bitwise_k bitwise_op bit_shift              → (binary 2 1 3)
-              | bitwise_k "catch" [payload] bit_shift       → (catch 1 3 4)
-bitwise_k     = bit_shift_k
-              | bitwise_k bitwise_op bit_shift_k            → (binary 2 1 3)
-              | bitwise_k "catch" [payload] bit_shift_k     → (catch 1 3 4)
-bitwise_s     = bit_shift_s
-              | bitwise_sk bitwise_op bit_shift             → (binary 2 1 3)
-              | bitwise_sk "catch" [payload] bit_shift      → (catch 1 3 4)
-bitwise_sk    = bit_shift_sk
-              | bitwise_sk bitwise_op bit_shift_k           → (binary 2 1 3)
-              | bitwise_sk "catch" [payload] bit_shift_k    → (catch 1 3 4)
-bitwise_c     = bit_shift_c
-              | bitwise_ck bitwise_op bit_shift             → (binary 2 1 3)
-              | bitwise_ck "catch" [payload] bit_shift      → (catch 1 3 4)
-bitwise_ck    = bit_shift_ck
-              | bitwise_ck bitwise_op bit_shift_k           → (binary 2 1 3)
-              | bitwise_ck "catch" [payload] bit_shift_k    → (catch 1 3 4)
-bitwise_p     = bit_shift_p
-              | bitwise_pk bitwise_op bit_shift             → (binary 2 1 3)
-              | bitwise_pk "catch" [payload] bit_shift      → (catch 1 3 4)
-bitwise_pk    = bit_shift_pk
-              | bitwise_pk bitwise_op bit_shift_k           → (binary 2 1 3)
-              | bitwise_pk "catch" [payload] bit_shift_k    → (catch 1 3 4)
+bit_shift_expr     = addition_expr
+                   | bit_shift_expr_k bit_shift_op addition_expr     → (binary 2 1 3)
+bit_shift_expr_k   = addition_expr_k
+                   | bit_shift_expr_k bit_shift_op addition_expr_k   → (binary 2 1 3)
+bit_shift_expr_s   = addition_expr_s
+                   | bit_shift_expr_sk bit_shift_op addition_expr    → (binary 2 1 3)
+bit_shift_expr_sk  = addition_expr_sk
+                   | bit_shift_expr_sk bit_shift_op addition_expr_k  → (binary 2 1 3)
+bit_shift_expr_c   = addition_expr_c
+                   | bit_shift_expr_ck bit_shift_op addition_expr    → (binary 2 1 3)
+bit_shift_expr_ck  = addition_expr_ck
+                   | bit_shift_expr_ck bit_shift_op addition_expr_k  → (binary 2 1 3)
+bit_shift_expr_p   = addition_expr_p
+                   | bit_shift_expr_pk bit_shift_op addition_expr    → (binary 2 1 3)
+bit_shift_expr_pk  = addition_expr_pk
+                   | bit_shift_expr_pk bit_shift_op addition_expr_k  → (binary 2 1 3)
 
-bit_shift     = addition
-              | bit_shift_k bit_shift_op addition           → (binary 2 1 3)
-bit_shift_k   = addition_k
-              | bit_shift_k bit_shift_op addition_k         → (binary 2 1 3)
-bit_shift_s   = addition_s
-              | bit_shift_sk bit_shift_op addition          → (binary 2 1 3)
-bit_shift_sk  = addition_sk
-              | bit_shift_sk bit_shift_op addition_k        → (binary 2 1 3)
-bit_shift_c   = addition_c
-              | bit_shift_ck bit_shift_op addition          → (binary 2 1 3)
-bit_shift_ck  = addition_ck
-              | bit_shift_ck bit_shift_op addition_k        → (binary 2 1 3)
-bit_shift_p   = addition_p
-              | bit_shift_pk bit_shift_op addition          → (binary 2 1 3)
-bit_shift_pk  = addition_pk
-              | bit_shift_pk bit_shift_op addition_k        → (binary 2 1 3)
+addition_expr      = multiply_expr
+                   | addition_expr_k addition_op multiply_expr       → (binary 2 1 3)
+addition_expr_k    = multiply_expr_k
+                   | addition_expr_k addition_op multiply_expr_k     → (binary 2 1 3)
+addition_expr_s    = multiply_expr_s
+                   | addition_expr_sk addition_op multiply_expr      → (binary 2 1 3)
+addition_expr_sk   = multiply_expr_sk
+                   | addition_expr_sk addition_op multiply_expr_k    → (binary 2 1 3)
+addition_expr_c    = multiply_expr_c
+                   | addition_expr_ck addition_op multiply_expr      → (binary 2 1 3)
+addition_expr_ck   = multiply_expr_ck
+                   | addition_expr_ck addition_op multiply_expr_k    → (binary 2 1 3)
+addition_expr_p    = multiply_expr_p
+                   | addition_expr_pk addition_op multiply_expr      → (binary 2 1 3)
+addition_expr_pk   = multiply_expr_pk
+                   | addition_expr_pk addition_op multiply_expr_k    → (binary 2 1 3)
 
-addition      = multiply
-              | addition_k addition_op multiply             → (binary 2 1 3)
-addition_k    = multiply_k
-              | addition_k addition_op multiply_k           → (binary 2 1 3)
-addition_s    = multiply_s
-              | addition_sk addition_op multiply            → (binary 2 1 3)
-addition_sk   = multiply_sk
-              | addition_sk addition_op multiply_k          → (binary 2 1 3)
-addition_c    = multiply_c
-              | addition_ck addition_op multiply            → (binary 2 1 3)
-addition_ck   = multiply_ck
-              | addition_ck addition_op multiply_k          → (binary 2 1 3)
-addition_p    = multiply_p
-              | addition_pk addition_op multiply            → (binary 2 1 3)
-addition_pk   = multiply_pk
-              | addition_pk addition_op multiply_k          → (binary 2 1 3)
-
-multiply      = prefix
-              | multiply_k multiply_op prefix               → (binary 2 1 3)
-multiply_k    = prefix_k
-              | multiply_k multiply_op prefix_k             → (binary 2 1 3)
-multiply_s    = prefix_s
-              | multiply_sk multiply_op prefix              → (binary 2 1 3)
-multiply_sk   = prefix_sk
-              | multiply_sk multiply_op prefix_k            → (binary 2 1 3)
-multiply_c    = prefix_c
-              | multiply_ck multiply_op prefix              → (binary 2 1 3)
-multiply_ck   = prefix_ck
-              | multiply_ck multiply_op prefix_k            → (binary 2 1 3)
-multiply_p    = prefix_p
-              | multiply_pk multiply_op prefix              → (binary 2 1 3)
-multiply_pk   = prefix_pk
-              | multiply_pk multiply_op prefix_k            → (binary 2 1 3)
-
-
+multiply_expr      = prefix_expr
+                   | multiply_expr_k multiply_op prefix_expr         → (binary 2 1 3)
+multiply_expr_k    = prefix_expr_k
+                   | multiply_expr_k multiply_op prefix_expr_k       → (binary 2 1 3)
+multiply_expr_s    = prefix_expr_s
+                   | multiply_expr_sk multiply_op prefix_expr        → (binary 2 1 3)
+multiply_expr_sk   = prefix_expr_sk
+                   | multiply_expr_sk multiply_op prefix_expr_k      → (binary 2 1 3)
+multiply_expr_c    = prefix_expr_c
+                   | multiply_expr_ck multiply_op prefix_expr        → (binary 2 1 3)
+multiply_expr_ck   = prefix_expr_ck
+                   | multiply_expr_ck multiply_op prefix_expr_k      → (binary 2 1 3)
+multiply_expr_p    = prefix_expr_p
+                   | multiply_expr_pk multiply_op prefix_expr        → (binary 2 1 3)
+multiply_expr_pk   = prefix_expr_pk
+                   | multiply_expr_pk multiply_op prefix_expr_k      → (binary 2 1 3)
 
 # Prefix operators (Parse.zig parsePrefixExpr). After a prefix operator
 # any operand may follow, so the variants share them. Which token a `-`,
 # `-%`, `&` or `*` is (the wrapper's spacing categories) is not kept.
-prefix      = primary | prefixed
-prefix_k    = primary_k | prefixed_k
-prefix_s    = primary_s | prefixed
-prefix_sk   = primary_sk | prefixed_k
-prefix_c    = primary_c | prefixed
-prefix_ck   = primary_ck | prefixed_k
-prefix_p    = ptr_curly
-prefix_pk   = ptr_curly
+prefix_expr      = primary_expr | prefixed
+prefix_expr_k    = primary_expr_k | prefixed_k
+prefix_expr_s    = primary_expr_s | prefixed
+prefix_expr_sk   = primary_expr_sk | prefixed_k
+prefix_expr_c    = primary_expr_c | prefixed
+prefix_expr_ck   = primary_expr_ck | prefixed_k
+prefix_expr_p    = ptr_curly_suffix_expr
+prefix_expr_pk   = ptr_curly_suffix_expr
 
-prefixed    = "!" prefix                                    → (bool_not 2)
-            | !minus prefix                                 → (negation 2)
-            | "~" prefix                                    → (bit_not 2)
-            | !minus_wrap prefix                            → (negation_wrap 2)
-            | !amp prefix                                   → (address_of 2)
-            | "try" prefix                                  → (try 2)
-prefixed_k  = "!" prefix_k                                  → (bool_not 2)
-            | !minus prefix_k                               → (negation 2)
-            | "~" prefix_k                                  → (bit_not 2)
-            | !minus_wrap prefix_k                          → (negation_wrap 2)
-            | !amp prefix_k                                 → (address_of 2)
-            | "try" prefix_k                                → (try 2)
-
-minus       = "-" | MINUS_PREFIX
-minus_wrap  = "-%" | MINUS_PERCENT_PREFIX
-amp         = "&" | AMPERSAND_PREFIX
-star        = "*" | ASTERISK_PREFIX
-pipe        = "|" | PIPE_PAYLOAD
+prefixed    = "!" prefix_expr                                   → (bool_not 2)
+            | !minus prefix_expr                                → (negation 2)
+            | "~" prefix_expr                                   → (bit_not 2)
+            | !minus_wrap prefix_expr                           → (negation_wrap 2)
+            | !amp prefix_expr                                  → (address_of 2)
+            | "try" prefix_expr                                 → (try 2)
+prefixed_k  = "!" prefix_expr_k                                 → (bool_not 2)
+            | !minus prefix_expr_k                              → (negation 2)
+            | "~" prefix_expr_k                                 → (bit_not 2)
+            | !minus_wrap prefix_expr_k                         → (negation_wrap 2)
+            | !amp prefix_expr_k                                → (address_of 2)
+            | "try" prefix_expr_k                               → (try 2)
 
 # Primary expressions (Parse.zig parsePrimaryExpr). A block is a primary
 # but takes no suffix; it never starts an `_s` or `_c` expression.
-primary     = primary_k | open_expr
-primary_k   = curly | asm_expr | block | jump
-primary_s   = primary_sk | jump_open
-primary_sk  = curly_s | asm_expr | jump
-primary_c   = primary_ck | open_expr
-primary_ck  = curly_c | asm_expr | jump
+primary_expr     = primary_expr_k | open_expr
+primary_expr_k   = curly_suffix_expr | asm_expr | block | jump
+primary_expr_s   = primary_expr_sk | jump_open
+primary_expr_sk  = curly_suffix_expr_s | asm_expr | jump
+primary_expr_c   = primary_expr_ck | open_expr
+primary_expr_ck  = curly_suffix_expr_c | asm_expr | jump
 
 # `return`, `break` and `continue` without an operand are closed; with one
 # they are open.
@@ -892,8 +868,6 @@ jump_open   = "return" expr                                 → (return 2)
             | "break" [break_label] expr                    → (break 2 3)
             | "continue" [break_label] expr                 → (continue 2 3)
             | "resume" expr                                 → (resume 2)
-
-break_label = BREAK_COLON IDENTIFIER                        → 2
 
 open_expr   = jump_open
             | "comptime" expr                               → (comptime 2)
@@ -913,50 +887,34 @@ for_expr    = [LABEL ":"] "for" "(" L(for_item) !","? ")" ptr_list_payload expr 
             | [LABEL ":"] "inline" "for" "(" L(for_item) !","? ")" ptr_list_payload expr  >             → (for 1 3 6 9 10)
             | [LABEL ":"] "inline" "for" "(" L(for_item) !","? ")" ptr_list_payload expr "else" expr    → (for 1 3 6 9 10 12)
 
-while_expr  = [LABEL ":"] "while" "(" expr ")" ptr_payload while_cont expr  >                           → (while 1 _ 5 7 8 9)
-            | [LABEL ":"] "while" "(" expr ")" ptr_payload while_cont expr "else" else_payload expr     → (while 1 _ 5 7 8 9 11 12)
-            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_cont expr  >                  → (while 1 3 6 8 9 10)
-            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_cont expr "else" else_payload expr
+while_expr  = [LABEL ":"] "while" "(" expr ")" ptr_payload while_continue_expr expr  >                          → (while 1 _ 5 7 8 9)
+            | [LABEL ":"] "while" "(" expr ")" ptr_payload while_continue_expr expr "else" else_payload expr    → (while 1 _ 5 7 8 9 11 12)
+            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_continue_expr expr  >                 → (while 1 3 6 8 9 10)
+            | [LABEL ":"] "inline" "while" "(" expr ")" ptr_payload while_continue_expr expr "else" else_payload expr
                                                                                                         → (while 1 3 6 8 9 10 12 13)
 
 # Initializer lists (Parse.zig parseCurlySuffixExpr): a type expression,
 # then fields or elements in braces.
-curly       = type_e
-            | type_e "{" "}"                                → (struct_init 1)
-            | type_e "{" L(field_init) !","? "}"            → (struct_init 1 ...3)
-            | type_e "{" L(expr) !","? "}"                  → (array_init 1 ...3)
-curly_s     = type_s
-            | type_s "{" "}"                                → (struct_init 1)
-            | type_s "{" L(field_init) !","? "}"            → (struct_init 1 ...3)
-            | type_s "{" L(expr) !","? "}"                  → (array_init 1 ...3)
-curly_c     = type_c
-            | type_c "{" "}"                                → (struct_init 1)
-            | type_c "{" L(field_init) !","? "}"            → (struct_init 1 ...3)
-            | type_c "{" L(expr) !","? "}"                  → (array_init 1 ...3)
+curly_suffix_expr       = type_e
+                        | type_e "{" "}"                      → (struct_init 1)
+                        | type_e "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | type_e "{" L(expr) !","? "}"        → (array_init 1 ...3)
+curly_suffix_expr_s     = type_s
+                        | type_s "{" "}"                      → (struct_init 1)
+                        | type_s "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | type_s "{" L(expr) !","? "}"        → (array_init 1 ...3)
+curly_suffix_expr_c     = type_c
+                        | type_c "{" "}"                      → (struct_init 1)
+                        | type_c "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | type_c "{" L(expr) !","? "}"        → (array_init 1 ...3)
 
 # `a[*T ...]`: a single-item pointer type led by PTR_STAR, as the index.
-ptr_curly   = ptr_led
-            | ptr_led "{" "}"                               → (struct_init 1)
-            | ptr_led "{" L(field_init) !","? "}"           → (struct_init 1 ...3)
-            | ptr_led "{" L(expr) !","? "}"                 → (array_init 1 ...3)
+ptr_curly_suffix_expr   = ptr_led
+                        | ptr_led "{" "}"                      → (struct_init 1)
+                        | ptr_led "{" L(field_init) !","? "}"  → (struct_init 1 ...3)
+                        | ptr_led "{" L(expr) !","? "}"        → (array_init 1 ...3)
 
-field_init  = "." IDENTIFIER "=" expr                       → (field_init 2 4)
-
-# Payloads (Parse.zig parsePayload, parsePtrPayload, parsePtrIndexPayload,
-# forPrefix). The bars carry nothing; ptr_payload and else_payload may be
-# empty, as nothing else starts with `|` where they go.
-payload             = !pipe IDENTIFIER !pipe                → 2
-ptr_payload         =
-                    | !pipe capture !pipe                   → 2
-else_payload        =
-                    | payload
-ptr_list_payload    = !pipe L(capture) !","? !pipe          → 2
-capture             = [star] IDENTIFIER                     → (capture 1 2)
-
-# ==============================================================================
-# TYPE EXPRESSIONS (grammar.peg TypeExpr ... PrimaryTypeExpr; Parse.zig
-# parseTypeExpr, parseErrorUnionExpr, parseSuffixExpr, parsePrimaryTypeExpr)
-# ==============================================================================
+# --- Type expressions (grammar.peg TypeExpr ... PrimaryTypeExpr) -------------
 #
 # type_expr is a type expression where Parse.zig calls parseTypeExpr.
 # The expression variants reach parseTypeExpr through parsePrimaryExpr,
@@ -966,27 +924,26 @@ capture             = [star] IDENTIFIER                     → (capture 1 2)
 # expression that ends in a type expression (`if`, `for`, `while`,
 # `comptime`, `fn`) sits at this level, not among the suffix operands:
 # its last type expression takes every suffix and `!` after it.
-
 type_expr   = prefix_type
-            | error_union
+            | error_union_expr
             | if_type_expr
             | for_type_expr
             | labeled_for_type_expr
             | while_type_expr
             | labeled_while_type_expr
-            | "comptime" type_expr                          → (comptime 2)
+            | "comptime" type_expr                         → (comptime 2)
             | fn_proto
 
 # An unnamed field without `comptime`: no `comptime`, no `fn`, no label.
 type_expr_f = prefix_type
-            | error_union_n
+            | error_union_expr_n
             | if_type_expr
             | for_type_expr
             | while_type_expr
 
 # An unnamed parameter without a flag: no `comptime`, no label.
 type_expr_p = prefix_type
-            | error_union_n
+            | error_union_expr_n
             | if_type_expr
             | for_type_expr
             | while_type_expr
@@ -994,16 +951,16 @@ type_expr_p = prefix_type
 
 # An unnamed field or parameter after `comptime` or `noalias`: no label.
 type_expr_n = prefix_type
-            | error_union_n
+            | error_union_expr_n
             | if_type_expr
             | for_type_expr
             | while_type_expr
-            | "comptime" type_expr                          → (comptime 2)
+            | "comptime" type_expr                         → (comptime 2)
             | fn_proto
 
-type_e      = prefix_type | error_union | fn_proto
-type_s      = prefix_type | error_union_s | fn_proto
-type_c      = prefix_type | error_union_c | fn_proto
+type_e      = prefix_type | error_union_expr | fn_proto
+type_s      = prefix_type | error_union_expr_s | fn_proto
+type_c      = prefix_type | error_union_expr_c | fn_proto
 
 # Pointer types (Parse.zig parseTypeExpr, parsePtrModifiers): `const`,
 # `volatile` and `allowzero` in any number and order (the `quals` leaves),
@@ -1070,59 +1027,59 @@ ptr_led     = PTR_STAR ptr_quals type_expr                                      
 ptr_quals   = ptr_qual*
 ptr_qual    = "const" | "volatile" | "allowzero"
 
-error_union     = suffix | suffix "!" type_expr                         → (error_union 1 3)
-error_union_s   = suffix_s | suffix_s "!" type_expr                     → (error_union 1 3)
-error_union_c   = suffix_c | suffix_c "!" type_expr                     → (error_union 1 3)
-error_union_n   = suffix_n | suffix_n "!" type_expr                     → (error_union 1 3)
+error_union_expr     = suffix_expr | suffix_expr "!" type_expr                        → (error_union 1 3)
+error_union_expr_s   = suffix_expr_s | suffix_expr_s "!" type_expr                    → (error_union 1 3)
+error_union_expr_c   = suffix_expr_c | suffix_expr_c "!" type_expr                    → (error_union 1 3)
+error_union_expr_n   = suffix_expr_n | suffix_expr_n "!" type_expr                    → (error_union 1 3)
 
 # Suffix operators (Parse.zig parseSuffixOp), in the left-edge variants
 # of the primary type expressions: a labeled block or switch is one in a
 # type or an expression, but not where a statement or field name would be
 # taken first, and a plain `switch` starts no expression statement.
 # `a[*c]` indexes `a` with the single-item pointer type `*c`.
-suffix      = primary_type
-            | suffix "(" ")"                                            → (call 1)
-            | suffix "(" L(expr) !","? ")"                              → (call 1 ...3)
-            | suffix "[" index_expr "]"                                 → (array_access 1 3)
-            | suffix "[" c_ptr_index "]"                                → (array_access 1 3)
-            | suffix "[" index_expr ".." [expr] [":" expr] "]"          → (slice 1 3 5 7)
-            | suffix "." IDENTIFIER                                     → (field_access 1 3)
-            | suffix ".*"                                               → (deref 1)
-            | suffix "." "?"                                            → (unwrap_optional 1)
-suffix_s    = primary_type_s
-            | suffix_s "(" ")"                                          → (call 1)
-            | suffix_s "(" L(expr) !","? ")"                            → (call 1 ...3)
-            | suffix_s "[" index_expr "]"                               → (array_access 1 3)
-            | suffix_s "[" c_ptr_index "]"                              → (array_access 1 3)
-            | suffix_s "[" index_expr ".." [expr] [":" expr] "]"        → (slice 1 3 5 7)
-            | suffix_s "." IDENTIFIER                                   → (field_access 1 3)
-            | suffix_s ".*"                                             → (deref 1)
-            | suffix_s "." "?"                                          → (unwrap_optional 1)
-suffix_c    = primary_type_c
-            | suffix_c "(" ")"                                          → (call 1)
-            | suffix_c "(" L(expr) !","? ")"                            → (call 1 ...3)
-            | suffix_c "[" index_expr "]"                               → (array_access 1 3)
-            | suffix_c "[" c_ptr_index "]"                              → (array_access 1 3)
-            | suffix_c "[" index_expr ".." [expr] [":" expr] "]"        → (slice 1 3 5 7)
-            | suffix_c "." IDENTIFIER                                   → (field_access 1 3)
-            | suffix_c ".*"                                             → (deref 1)
-            | suffix_c "." "?"                                          → (unwrap_optional 1)
-suffix_n    = primary_type_n
-            | suffix_n "(" ")"                                          → (call 1)
-            | suffix_n "(" L(expr) !","? ")"                            → (call 1 ...3)
-            | suffix_n "[" index_expr "]"                               → (array_access 1 3)
-            | suffix_n "[" c_ptr_index "]"                              → (array_access 1 3)
-            | suffix_n "[" index_expr ".." [expr] [":" expr] "]"        → (slice 1 3 5 7)
-            | suffix_n "." IDENTIFIER                                   → (field_access 1 3)
-            | suffix_n ".*"                                             → (deref 1)
-            | suffix_n "." "?"                                          → (unwrap_optional 1)
+suffix_expr      = primary_type_expr
+                 | suffix_expr "(" ")"                                      → (call 1)
+                 | suffix_expr "(" L(expr) !","? ")"                        → (call 1 ...3)
+                 | suffix_expr "[" index_expr "]"                           → (array_access 1 3)
+                 | suffix_expr "[" c_ptr_index "]"                          → (array_access 1 3)
+                 | suffix_expr "[" index_expr ".." [expr] [":" expr] "]"    → (slice 1 3 5 7)
+                 | suffix_expr "." IDENTIFIER                               → (field_access 1 3)
+                 | suffix_expr ".*"                                         → (deref 1)
+                 | suffix_expr "." "?"                                      → (unwrap_optional 1)
+suffix_expr_s    = primary_type_expr_s
+                 | suffix_expr_s "(" ")"                                    → (call 1)
+                 | suffix_expr_s "(" L(expr) !","? ")"                      → (call 1 ...3)
+                 | suffix_expr_s "[" index_expr "]"                         → (array_access 1 3)
+                 | suffix_expr_s "[" c_ptr_index "]"                        → (array_access 1 3)
+                 | suffix_expr_s "[" index_expr ".." [expr] [":" expr] "]"  → (slice 1 3 5 7)
+                 | suffix_expr_s "." IDENTIFIER                             → (field_access 1 3)
+                 | suffix_expr_s ".*"                                       → (deref 1)
+                 | suffix_expr_s "." "?"                                    → (unwrap_optional 1)
+suffix_expr_c    = primary_type_expr_c
+                 | suffix_expr_c "(" ")"                                    → (call 1)
+                 | suffix_expr_c "(" L(expr) !","? ")"                      → (call 1 ...3)
+                 | suffix_expr_c "[" index_expr "]"                         → (array_access 1 3)
+                 | suffix_expr_c "[" c_ptr_index "]"                        → (array_access 1 3)
+                 | suffix_expr_c "[" index_expr ".." [expr] [":" expr] "]"  → (slice 1 3 5 7)
+                 | suffix_expr_c "." IDENTIFIER                             → (field_access 1 3)
+                 | suffix_expr_c ".*"                                       → (deref 1)
+                 | suffix_expr_c "." "?"                                    → (unwrap_optional 1)
+suffix_expr_n    = primary_type_expr_n
+                 | suffix_expr_n "(" ")"                                    → (call 1)
+                 | suffix_expr_n "(" L(expr) !","? ")"                      → (call 1 ...3)
+                 | suffix_expr_n "[" index_expr "]"                         → (array_access 1 3)
+                 | suffix_expr_n "[" c_ptr_index "]"                        → (array_access 1 3)
+                 | suffix_expr_n "[" index_expr ".." [expr] [":" expr] "]"  → (slice 1 3 5 7)
+                 | suffix_expr_n "." IDENTIFIER                             → (field_access 1 3)
+                 | suffix_expr_n ".*"                                       → (deref 1)
+                 | suffix_expr_n "." "?"                                    → (unwrap_optional 1)
 
 c_ptr_index = PTR_STAR C_PTR                                            → (ptr_type one _ _ _ _ _ 2)
 
-primary_type    = atom | switch_expr | labeled_switch | labeled_block
-primary_type_s  = atom
-primary_type_c  = atom | switch_expr | labeled_switch
-primary_type_n  = atom | switch_expr
+primary_type_expr    = atom | switch_expr | labeled_switch | labeled_block
+primary_type_expr_s  = atom
+primary_type_expr_c  = atom | switch_expr | labeled_switch
+primary_type_expr_n  = atom | switch_expr
 
 atom        = IDENTIFIER
             | NUMBER_LITERAL
@@ -1145,26 +1102,6 @@ atom        = IDENTIFIER
 
 error_name  = [docs] IDENTIFIER                                         → (error_name 1 2)
 
-# if, for and while type expressions (Parse.zig expectIf(expectTypeExpr),
-# expectFor(expectTypeExpr), expectWhileTypeExpr). The labeled loops are
-# apart: neither an unnamed field nor an unnamed parameter starts with one.
-if_type_expr    = "if" "(" expr ")" ptr_payload type_expr  >                            → (if 3 5 6)
-                | "if" "(" expr ")" ptr_payload type_expr "else" else_payload type_expr → (if 3 5 6 8 9)
-
-for_type_expr   = ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >                  → (for _ 1 4 7 8)
-                | ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr    → (for _ 1 4 7 8 10)
-labeled_for_type_expr = LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >  → (for 1 3 6 9 10)
-                | LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr
-                                                                                                            → (for 1 3 6 9 10 12)
-
-while_type_expr = ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr  >   → (while _ 1 4 6 7 8)
-                | ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr "else" else_payload type_expr
-                                                                                        → (while _ 1 4 6 7 8 10 11)
-labeled_while_type_expr = LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr
-                                                                                     >  → (while 1 3 6 8 9 10)
-                | LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_cont type_expr "else" else_payload type_expr
-                                                                                        → (while 1 3 6 8 9 10 12 13)
-
 # Container types (Parse.zig expectContainerDeclAuto). The wrapper names
 # the `enum` of `union(enum` ENUM_TAG: Parse.zig takes it as the tag kind
 # and never as the start of an expression.
@@ -1182,12 +1119,103 @@ container_layout = "extern" | "packed"
 container_kind  = "struct" | "opaque" | "enum" | "union"
 container_arg_kind = "struct" | "enum"
 
+# if, for and while type expressions (Parse.zig expectIf(expectTypeExpr),
+# expectFor(expectTypeExpr), expectWhileTypeExpr). The labeled loops are
+# apart: neither an unnamed field nor an unnamed parameter starts with one.
+if_type_expr    = "if" "(" expr ")" ptr_payload type_expr  >                            → (if 3 5 6)
+                | "if" "(" expr ")" ptr_payload type_expr "else" else_payload type_expr → (if 3 5 6 8 9)
+
+for_type_expr   = ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >                  → (for _ 1 4 7 8)
+                | ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr    → (for _ 1 4 7 8 10)
+labeled_for_type_expr = LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr  >  → (for 1 3 6 9 10)
+                | LABEL ":" ["inline"] "for" "(" L(for_item) !","? ")" ptr_list_payload type_expr "else" type_expr
+                                                                                                            → (for 1 3 6 9 10 12)
+
+while_type_expr         = ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr  >  → (while _ 1 4 6 7 8)
+                        | ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr "else" else_payload type_expr
+                                                                                        → (while _ 1 4 6 7 8 10 11)
+labeled_while_type_expr = LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr
+                                                                                     >                  → (while 1 3 6 8 9 10)
+                        | LABEL ":" ["inline"] "while" "(" expr ")" ptr_payload while_continue_expr type_expr "else" else_payload type_expr
+                                                                                        → (while 1 3 6 8 9 10 12 13)
+
 # switch (Parse.zig expectSwitchSuffix, parseSwitchProng). An `else`
 # prong has no values.
-switch_expr     = "switch" "(" expr ")" "{" [switch_prongs] "}"         → (switch _ 3 ...6)
-labeled_switch  = LABEL ":" "switch" "(" expr ")" "{" [switch_prongs] "}"  → (switch 1 5 ...8)
+switch_expr     = "switch" "(" expr ")" "{" [switch_prong_list] "}"            → (switch _ 3 ...6)
+labeled_switch  = LABEL ":" "switch" "(" expr ")" "{" [switch_prong_list] "}"  → (switch 1 5 ...8)
 
-switch_prongs   = L(switch_prong) !","?                                 → 1
+# ==============================================================================
+# ASSEMBLY (grammar.peg AsmExpr ... AsmClobbers; Parse.zig expectAsmExpr)
+# ==============================================================================
+
+# The clobbers are an expression.
+asm_expr        = "asm" ["volatile"] "(" expr ")"                          → (asm 2 4)
+                | "asm" ["volatile"] "(" expr ":" asm_output_list ")"      → (asm 2 4 _ ...6)
+                | "asm" ["volatile"] "(" expr ":" asm_output_list ":" asm_input_list ")"
+                                                                        → (asm 2 4 _ ...6 ...8)
+                | "asm" ["volatile"] "(" expr ":" asm_output_list ":" asm_input_list ":" expr ")"
+                                                                        → (asm 2 4 10 ...6 ...8)
+
+asm_output_list     =                                                      → ()
+                    | L(asm_output_item) !","?                             → 1
+asm_input_list      =                                                      → ()
+                    | L(asm_input_item) !","?                              → 1
+
+asm_output_item = "[" IDENTIFIER "]" STRING_LITERAL "(" "->" type_expr ")"      → (asm_output 2 4 _ 7)
+                | "[" IDENTIFIER "]" STRING_LITERAL "(" IDENTIFIER ")"          → (asm_output 2 4 6 _)
+asm_input_item  = "[" IDENTIFIER "]" STRING_LITERAL "(" expr ")"                → (asm_input 2 4 6)
+
+# ==============================================================================
+# HELPER GRAMMAR (grammar.peg BreakLabel ... Lists, in its order: labels,
+# field initializers, the parts of a prototype, parameters, payloads,
+# switch prongs, for operands, operators, alignment)
+# ==============================================================================
+
+break_label = BREAK_COLON IDENTIFIER                        → 2
+
+field_init  = "." IDENTIFIER "=" expr                       → (field_init 2 4)
+
+# `: (i += 1)` after a while condition (grammar.peg WhileContinueExpr).
+while_continue_expr =
+                    | ":" "(" assign_expr ")"                       → 3
+
+link_section        = "linksection" "(" expr ")"                    → 3
+addr_space          = "addrspace" "(" expr ")"                      → 3
+call_conv           = "callconv" "(" expr ")"                       → 3
+
+# Parameters (Parse.zig parseParamDeclList, expectParamDecl). `...` comes
+# last; like any parameter it may follow doc comments.
+param_decl_list     = "(" ")"                                               → ()
+                    | "(" L(param_decl) !","? ")"                           → 2
+                    | "(" L(param_decl) "," var_args !","? ")"              → (...2 4)
+                    | "(" var_args !","? ")"                                → (2)
+
+var_args            = [docs] "..."                                          → (param 1 _ _ 2)
+
+param_decl          = [docs] [param_flag] param_name ":" param_type         → (param 1 2 3 5)
+                    | [docs] param_type_p                                   → (param 1 _ _ 2)
+                    | [docs] param_flag param_type_n                        → (param 1 2 _ 3)
+
+param_flag          = "comptime" | "noalias"
+param_name          = IDENTIFIER | LABEL
+param_type          = "anytype" | type_expr
+param_type_p        = "anytype" | type_expr_p
+param_type_n        = "anytype" | type_expr_n
+
+# Payloads (Parse.zig parsePayload, parsePtrPayload, parsePtrIndexPayload,
+# forPrefix). The bars carry nothing; ptr_payload and else_payload may be
+# empty, as nothing else starts with `|` where they go.
+payload             = !pipe IDENTIFIER !pipe                → 2
+ptr_payload         =
+                    | !pipe capture !pipe                   → 2
+else_payload        =
+                    | payload
+ptr_list_payload    = !pipe L(capture) !","? !pipe          → 2
+capture             = [star] IDENTIFIER                     → (capture 1 2)
+
+# Switch prongs (Parse.zig parseSwitchProngList, parseSwitchProng). An
+# `else` prong has no values.
+switch_prong_list   = L(switch_prong) !","?                                → 1
 
 switch_prong    = switch_values "=>" single_assign_expr                                     → (switch_case _ 1 _ _ 3)
                 | switch_values "=>" !pipe capture !pipe single_assign_expr                 → (switch_case _ 1 4 _ 6)
@@ -1203,22 +1231,32 @@ switch_values   = "else"                                                → ()
 switch_item     = expr
                 | expr "..." expr                                       → (switch_range 1 3)
 
-# asm (Parse.zig expectAsmExpr). The clobbers are an expression.
-asm_expr        = "asm" ["volatile"] "(" expr ")"                       → (asm 2 4)
-                | "asm" ["volatile"] "(" expr ":" asm_outputs ")"       → (asm 2 4 _ ...6)
-                | "asm" ["volatile"] "(" expr ":" asm_outputs ":" asm_inputs ")"
-                                                                        → (asm 2 4 _ ...6 ...8)
-                | "asm" ["volatile"] "(" expr ":" asm_outputs ":" asm_inputs ":" expr ")"
-                                                                        → (asm 2 4 10 ...6 ...8)
+# A for operand (grammar.peg ForItem): an expression or a range.
+for_item            = expr
+                    | expr ".."                                     → (for_range 1)
+                    | expr ".." expr                                → (for_range 1 3)
 
-asm_outputs     =                                                       → ()
-                | L(asm_output_item) !","?                              → 1
-asm_inputs      =                                                       → ()
-                | L(asm_input_item) !","?                               → 1
+# Operators (grammar.peg AssignOp ... MultiplyOp). The wrapper's spacing
+# categories of `-`, `-%`, `&`, `*` and `|` (see EXPRESSION LEVEL) stand for
+# the same operator wherever it can only be a prefix operator, a pointer
+# or a payload's bar; which token it was is not kept in the tree.
+assign_op           = "=" | "*=" | "*|=" | "/=" | "%=" | "+=" | "+|=" | "-=" | "-|="
+                    | "<<=" | "<<|=" | ">>=" | "&=" | "^=" | "|=" | "*%=" | "+%=" | "-%="
 
-asm_output_item = "[" IDENTIFIER "]" STRING_LITERAL "(" "->" type_expr ")"      → (asm_output 2 4 _ 7)
-                | "[" IDENTIFIER "]" STRING_LITERAL "(" IDENTIFIER ")"          → (asm_output 2 4 6 _)
-asm_input_item  = "[" IDENTIFIER "]" STRING_LITERAL "(" expr ")"                → (asm_input 2 4 6)
+compare_op      = "==" | "!=" | "<" | ">" | "<=" | ">="
+bitwise_op      = "&" | "^" | "|" | "orelse"
+bit_shift_op    = "<<" | ">>" | "<<|"
+addition_op     = "+" | "-" | "++" | "+%" | "-%" | "+|" | "-|"
+multiply_op     = "||" | "*" | "/" | "%" | "*%" | "*|"
+
+minus       = "-" | MINUS_PREFIX
+minus_wrap  = "-%" | MINUS_PERCENT_PREFIX
+amp         = "&" | AMPERSAND_PREFIX
+star        = "*" | ASTERISK_PREFIX
+pipe        = "|" | PIPE_PAYLOAD
+
+# Alignment (grammar.peg ByteAlign; BitAlign is the single-item pointer's).
+byte_align          = "align" "(" expr ")"                                  → 3
 
 # ==============================================================================
 # TOKENS: the start symbol `tokens` lists the tokens the parser sees, each

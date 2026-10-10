@@ -1073,15 +1073,15 @@
       _
       _))
   (manifest
-    (conflict `shift` `jump → "return"` _ `4` `# the operand of \`return\` is parseExpr: a prefix operator starts it`)
-    (conflict `shift` `jump → "break"` _ `4` `# the operand of \`break\` is parseExpr: a prefix operator starts it`)
-    (conflict `shift` `jump → "break" break_label` _ `4` `# the operand of \`break :l\` is parseExpr: a prefix operator starts it`)
-    (conflict `shift` `jump → "continue"` _ `4` `# the operand of \`continue\` is parseExpr: a prefix operator starts it`)
-    (conflict `shift` `jump → "continue" break_label` _ `4` `# the operand of \`continue :l\` is parseExpr: a prefix operator starts it`)
-    (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or` `3` `# a prong's leading \`inline\` is its flag`)
-    (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or "else" bool_or` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or "else" bool_or` `3` `# a prong's leading \`inline\` is its flag`)
-    (conflict `reduce` `while_expr → "while" "(" bool_or ")" ptr_payload while_cont bool_or` `while_expr → "inline" "while" "(" bool_or ")" ptr_payload while_cont bool_or` `3` `# a prong's leading \`inline\` is its flag`)
-    (conflict `reduce` `while_expr → "while" "(" bool_or ")" ptr_payload while_cont bool_or "else" else_payload bool_or` `while_expr → "inline" "while" "(" bool_or ")" ptr_payload while_cont bool_or "else" else_payload bool_or` `3` `# a prong's leading \`inline\` is its flag`))
+    (conflict `shift` `jump → "return"` _ `4` `# \`return - x\`, \`return & x\`, \`return * T\`: the operand of return is parseExpr, which a prefix operator starts`)
+    (conflict `shift` `jump → "break"` _ `4` `# \`break - x\`: the operand of break is parseExpr, which a prefix operator starts`)
+    (conflict `shift` `jump → "break" break_label` _ `4` `# \`break :blk - x\`: the operand of a labeled break is parseExpr, which a prefix operator starts`)
+    (conflict `shift` `jump → "continue"` _ `4` `# \`continue - x\`: the operand of continue is parseExpr, which a prefix operator starts`)
+    (conflict `shift` `jump → "continue" break_label` _ `4` `# \`continue :blk - x\`: the operand of a labeled continue is parseExpr, which a prefix operator starts`)
+    (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
+    (conflict `reduce` `for_expr → "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr` `for_expr → "inline" "for" "(" L(for_item) ","? ")" ptr_list_payload bool_or_expr "else" bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
+    (conflict `reduce` `while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr` `while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`)
+    (conflict `reduce` `while_expr → "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr` `while_expr → "inline" "while" "(" bool_or_expr ")" ptr_payload while_continue_expr bool_or_expr "else" else_payload bool_or_expr` `3` `# \`inline for\`/\`inline while\` as a prong body: \`inline\` is the prong's flag (parseSwitchProng)`))
   (rule
     (start `root`)
     (alt
@@ -1497,92 +1497,6 @@
         (pos `13`))
       _))
   (rule
-    (name `container_field`)
-    (alt
-      _
-      ((group
-          opt
-          ((ref `docs`)))
-        (group
-          opt
-          ((lit `"comptime"`)))
-        (ref `field_name`)
-        (lit `":"`)
-        (ref `type_expr`)
-        (group
-          opt
-          ((ref `byte_align`)))
-        (group
-          opt
-          ((lit `"="`)
-            (ref `expr`))))
-      (node
-        `container_field`
-        (pos `1`)
-        (pos `2`)
-        (pos `3`)
-        (pos `5`)
-        (pos `6`)
-        (pos `8`))
-      _)
-    (alt
-      _
-      ((group
-          opt
-          ((ref `docs`)))
-        (ref `type_expr_f`)
-        (group
-          opt
-          ((ref `byte_align`)))
-        (group
-          opt
-          ((lit `"="`)
-            (ref `expr`))))
-      (node
-        `container_field`
-        (pos `1`)
-        (null)
-        (null)
-        (pos `2`)
-        (pos `3`)
-        (pos `5`))
-      _)
-    (alt
-      _
-      ((group
-          opt
-          ((ref `docs`)))
-        (lit `"comptime"`)
-        (ref `type_expr_n`)
-        (group
-          opt
-          ((ref `byte_align`)))
-        (group
-          opt
-          ((lit `"="`)
-            (ref `expr`))))
-      (node
-        `container_field`
-        (pos `1`)
-        (pos `2`)
-        (null)
-        (pos `3`)
-        (pos `4`)
-        (pos `6`))
-      _))
-  (rule
-    (name `field_name`)
-    (alt
-      _
-      ((tok `IDENTIFIER`))
-      _
-      _)
-    (alt
-      _
-      ((tok `LABEL`))
-      _
-      _))
-  (rule
     (name `fn_proto`)
     (alt
       _
@@ -1689,69 +1603,7 @@
       _
       _))
   (rule
-    (name `param_decl_list`)
-    (alt
-      _
-      ((lit `"("`)
-        (lit `")"`))
-      (list)
-      _)
-    (alt
-      _
-      ((lit `"("`)
-        (list_req
-          `L`
-          (plain `param_decl`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`))
-      (pos `2`)
-      _)
-    (alt
-      _
-      ((lit `"("`)
-        (list_req
-          `L`
-          (plain `param_decl`))
-        (lit `","`)
-        (ref `var_args`)
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`))
-      (list
-        (spread `2`)
-        (pos `4`))
-      _)
-    (alt
-      _
-      ((lit `"("`)
-        (ref `var_args`)
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`))
-      (list
-        (pos `2`))
-      _))
-  (rule
-    (name `var_args`)
-    (alt
-      _
-      ((group
-          opt
-          ((ref `docs`)))
-        (lit `"..."`))
-      (node
-        `param`
-        (pos `1`)
-        (null)
-        (null)
-        (pos `2`))
-      _))
-  (rule
-    (name `param_decl`)
+    (name `container_field`)
     (alt
       _
       ((group
@@ -1759,13 +1611,44 @@
           ((ref `docs`)))
         (group
           opt
-          ((ref `param_flag`)))
-        (ref `param_name`)
+          ((lit `"comptime"`)))
+        (ref `field_name`)
         (lit `":"`)
-        (ref `param_type`))
+        (ref `type_expr`)
+        (group
+          opt
+          ((ref `byte_align`)))
+        (group
+          opt
+          ((lit `"="`)
+            (ref `expr`))))
       (node
-        `param`
+        `container_field`
         (pos `1`)
+        (pos `2`)
+        (pos `3`)
+        (pos `5`)
+        (pos `6`)
+        (pos `8`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((ref `docs`)))
+        (ref `type_expr_f`)
+        (group
+          opt
+          ((ref `byte_align`)))
+        (group
+          opt
+          ((lit `"="`)
+            (ref `expr`))))
+      (node
+        `container_field`
+        (pos `1`)
+        (null)
+        (null)
         (pos `2`)
         (pos `3`)
         (pos `5`))
@@ -1775,42 +1658,26 @@
       ((group
           opt
           ((ref `docs`)))
-        (ref `param_type_p`))
-      (node
-        `param`
-        (pos `1`)
-        (null)
-        (null)
-        (pos `2`))
-      _)
-    (alt
-      _
-      ((group
+        (lit `"comptime"`)
+        (ref `type_expr_n`)
+        (group
           opt
-          ((ref `docs`)))
-        (ref `param_flag`)
-        (ref `param_type_n`))
+          ((ref `byte_align`)))
+        (group
+          opt
+          ((lit `"="`)
+            (ref `expr`))))
       (node
-        `param`
+        `container_field`
         (pos `1`)
         (pos `2`)
         (null)
-        (pos `3`))
+        (pos `3`)
+        (pos `4`)
+        (pos `6`))
       _))
   (rule
-    (name `param_flag`)
-    (alt
-      _
-      ((lit `"comptime"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"noalias"`))
-      _
-      _))
-  (rule
-    (name `param_name`)
+    (name `field_name`)
     (alt
       _
       ((tok `IDENTIFIER`))
@@ -1819,124 +1686,6 @@
     (alt
       _
       ((tok `LABEL`))
-      _
-      _))
-  (rule
-    (name `param_type`)
-    (alt
-      _
-      ((lit `"anytype"`))
-      _
-      _)
-    (alt
-      _
-      ((ref `type_expr`))
-      _
-      _))
-  (rule
-    (name `param_type_p`)
-    (alt
-      _
-      ((lit `"anytype"`))
-      _
-      _)
-    (alt
-      _
-      ((ref `type_expr_p`))
-      _
-      _))
-  (rule
-    (name `param_type_n`)
-    (alt
-      _
-      ((lit `"anytype"`))
-      _
-      _)
-    (alt
-      _
-      ((ref `type_expr_n`))
-      _
-      _))
-  (rule
-    (name `byte_align`)
-    (alt
-      _
-      ((lit `"align"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`))
-      (pos `3`)
-      _))
-  (rule
-    (name `addr_space`)
-    (alt
-      _
-      ((lit `"addrspace"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`))
-      (pos `3`)
-      _))
-  (rule
-    (name `link_section`)
-    (alt
-      _
-      ((lit `"linksection"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`))
-      (pos `3`)
-      _))
-  (rule
-    (name `call_conv`)
-    (alt
-      _
-      ((lit `"callconv"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`))
-      (pos `3`)
-      _))
-  (rule
-    (name `block`)
-    (alt
-      _
-      ((lit `"{"`)
-        (quantified
-          (ref `block_statement`)
-          (zero_plus))
-        (lit `"}"`))
-      (node
-        `block`
-        (null)
-        (spread `2`))
-      _))
-  (rule
-    (name `labeled_block`)
-    (alt
-      _
-      ((tok `LABEL`)
-        (lit `":"`)
-        (lit `"{"`)
-        (quantified
-          (ref `block_statement`)
-          (zero_plus))
-        (lit `"}"`))
-      (node
-        `block`
-        (pos `1`)
-        (spread `4`))
-      _))
-  (rule
-    (name `block_expr`)
-    (alt
-      _
-      ((ref `block`))
-      _
-      _)
-    (alt
-      _
-      ((ref `labeled_block`))
       _
       _))
   (rule
@@ -2114,108 +1863,6 @@
         (pos `4`))
       _))
   (rule
-    (name `destructure_s`)
-    (alt
-      _
-      ((ref `destructure_head_s`)
-        (lit `","`)
-        (ref `destructure_item`))
-      (list
-        (pos `1`)
-        (pos `3`))
-      _)
-    (alt
-      _
-      ((ref `destructure_s`)
-        (lit `","`)
-        (ref `destructure_item`))
-      (list
-        (spread `1`)
-        (pos `3`))
-      _))
-  (rule
-    (name `destructure_c`)
-    (alt
-      _
-      ((ref `destructure_head_c`)
-        (lit `","`)
-        (ref `destructure_item`))
-      (list
-        (pos `1`)
-        (pos `3`))
-      _)
-    (alt
-      _
-      ((ref `destructure_c`)
-        (lit `","`)
-        (ref `destructure_item`))
-      (list
-        (spread `1`)
-        (pos `3`))
-      _))
-  (rule
-    (name `destructure_head_s`)
-    (alt
-      _
-      ((ref `destructure_var`))
-      _
-      _)
-    (alt
-      _
-      ((ref `expr_s`))
-      _
-      _))
-  (rule
-    (name `destructure_head_c`)
-    (alt
-      _
-      ((ref `destructure_var`))
-      _
-      _)
-    (alt
-      _
-      ((ref `expr_c`))
-      _
-      _))
-  (rule
-    (name `destructure_item`)
-    (alt
-      _
-      ((ref `destructure_var`))
-      _
-      _)
-    (alt
-      _
-      ((ref `expr`))
-      _
-      _))
-  (rule
-    (name `destructure_var`)
-    (alt
-      _
-      ((ref `var_mut`)
-        (ref `var_name`)
-        (ref `var_type`)
-        (ref `var_align`)
-        (ref `var_addrspace`)
-        (ref `var_section`))
-      (node
-        `var_decl`
-        (null)
-        (null)
-        (null)
-        (null)
-        (null)
-        (null)
-        (pos `1`)
-        (pos `2`)
-        (pos `3`)
-        (pos `4`)
-        (pos `5`)
-        (pos `6`)
-        (null))
-      _))
-  (rule
     (name `statement`)
     (alt
       _
@@ -2295,46 +1942,6 @@
       (pos `1`)
       _))
   (rule
-    (name `block_expr_statement`)
-    (alt
-      _
-      ((ref `block_expr`))
-      _
-      _)
-    (alt
-      _
-      ((ref `assign_c`)
-        (lit `";"`))
-      (pos `1`)
-      _))
-  (rule
-    (name `labeled_statement`)
-    (alt
-      _
-      ((ref `block_expr`))
-      _
-      _)
-    (alt
-      _
-      ((ref `for_statement`))
-      _
-      _)
-    (alt
-      _
-      ((ref `while_statement`))
-      _
-      _)
-    (alt
-      _
-      ((ref `switch_expr`))
-      _
-      _)
-    (alt
-      _
-      ((ref `labeled_switch`))
-      _
-      _))
-  (rule
     (name `if_statement`)
     (alt
       _
@@ -2402,6 +2009,33 @@
         (pos `6`)
         (pos `8`)
         (pos `9`))
+      _))
+  (rule
+    (name `labeled_statement`)
+    (alt
+      _
+      ((ref `block_expr`))
+      _
+      _)
+    (alt
+      _
+      ((ref `for_statement`))
+      _
+      _)
+    (alt
+      _
+      ((ref `while_statement`))
+      _
+      _)
+    (alt
+      _
+      ((ref `switch_expr`))
+      _
+      _)
+    (alt
+      _
+      ((ref `labeled_switch`))
+      _
       _))
   (rule
     (name `for_statement`)
@@ -2540,7 +2174,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `block_expr`))
       (node
         `while`
@@ -2565,7 +2199,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `block_expr`)
         (lit `"else"`)
         (ref `else_payload`)
@@ -2595,7 +2229,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `assign_c`)
         (lit `";"`))
       (node
@@ -2621,7 +2255,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `assign_c`)
         (lit `"else"`)
         (ref `else_payload`)
@@ -2638,40 +2272,161 @@
         (pos `13`))
       _))
   (rule
-    (name `for_item`)
+    (name `block_expr_statement`)
+    (alt
+      _
+      ((ref `block_expr`))
+      _
+      _)
+    (alt
+      _
+      ((ref `assign_c`)
+        (lit `";"`))
+      (pos `1`)
+      _))
+  (rule
+    (name `block_expr`)
+    (alt
+      _
+      ((ref `block`))
+      _
+      _)
+    (alt
+      _
+      ((ref `labeled_block`))
+      _
+      _))
+  (rule
+    (name `block`)
+    (alt
+      _
+      ((lit `"{"`)
+        (quantified
+          (ref `block_statement`)
+          (zero_plus))
+        (lit `"}"`))
+      (node
+        `block`
+        (null)
+        (spread `2`))
+      _))
+  (rule
+    (name `labeled_block`)
+    (alt
+      _
+      ((tok `LABEL`)
+        (lit `":"`)
+        (lit `"{"`)
+        (quantified
+          (ref `block_statement`)
+          (zero_plus))
+        (lit `"}"`))
+      (node
+        `block`
+        (pos `1`)
+        (spread `4`))
+      _))
+  (rule
+    (name `destructure_s`)
+    (alt
+      _
+      ((ref `destructure_head_s`)
+        (lit `","`)
+        (ref `destructure_item`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `destructure_s`)
+        (lit `","`)
+        (ref `destructure_item`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `destructure_c`)
+    (alt
+      _
+      ((ref `destructure_head_c`)
+        (lit `","`)
+        (ref `destructure_item`))
+      (list
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((ref `destructure_c`)
+        (lit `","`)
+        (ref `destructure_item`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `destructure_head_s`)
+    (alt
+      _
+      ((ref `destructure_var`))
+      _
+      _)
+    (alt
+      _
+      ((ref `expr_s`))
+      _
+      _))
+  (rule
+    (name `destructure_head_c`)
+    (alt
+      _
+      ((ref `destructure_var`))
+      _
+      _)
+    (alt
+      _
+      ((ref `expr_c`))
+      _
+      _))
+  (rule
+    (name `destructure_item`)
+    (alt
+      _
+      ((ref `destructure_var`))
+      _
+      _)
     (alt
       _
       ((ref `expr`))
       _
-      _)
-    (alt
-      _
-      ((ref `expr`)
-        (lit `".."`))
-      (node
-        `for_range`
-        (pos `1`))
-      _)
-    (alt
-      _
-      ((ref `expr`)
-        (lit `".."`)
-        (ref `expr`))
-      (node
-        `for_range`
-        (pos `1`)
-        (pos `3`))
       _))
   (rule
-    (name `while_cont`)
-    (alt _ () _ _)
+    (name `destructure_var`)
     (alt
       _
-      ((lit `":"`)
-        (lit `"("`)
-        (ref `assign_expr`)
-        (lit `")"`))
-      (pos `3`)
+      ((ref `var_mut`)
+        (ref `var_name`)
+        (ref `var_type`)
+        (ref `var_align`)
+        (ref `var_addrspace`)
+        (ref `var_section`))
+      (node
+        `var_decl`
+        (null)
+        (null)
+        (null)
+        (null)
+        (null)
+        (null)
+        (pos `1`)
+        (pos `2`)
+        (pos `3`)
+        (pos `4`)
+        (pos `5`)
+        (pos `6`)
+        (null))
       _))
   (rule
     (name `assign_expr`)
@@ -2839,123 +2594,31 @@
         (pos `3`))
       _))
   (rule
-    (name `assign_op`)
-    (alt
-      _
-      ((lit `"="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"*="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"*|="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"/="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"%="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"+="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"+|="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"-="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"-|="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"<<="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"<<|="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `">>="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"&="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"^="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"|="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"*%="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"+%="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"-%="`))
-      _
-      _))
-  (rule
     (name `expr`)
     (alt
       _
-      ((ref `bool_or`))
+      ((ref `bool_or_expr`))
       _
       _))
   (rule
     (name `expr_s`)
     (alt
       _
-      ((ref `bool_or_s`))
+      ((ref `bool_or_expr_s`))
       _
       _))
   (rule
     (name `expr_c`)
     (alt
       _
-      ((ref `bool_or_c`))
+      ((ref `bool_or_expr_c`))
       _
       _))
   (rule
     (name `expr_p`)
     (alt
       _
-      ((ref `bool_or_p`))
+      ((ref `bool_or_expr_p`))
       _
       _))
   (rule
@@ -2971,157 +2634,17 @@
       _
       _))
   (rule
-    (name `compare_op`)
+    (name `bool_or_expr`)
     (alt
       _
-      ((lit `"=="`))
+      ((ref `bool_and_expr`))
       _
       _)
     (alt
       _
-      ((lit `"!="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"<"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `">"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"<="`))
-      _
-      _)
-    (alt
-      _
-      ((lit `">="`))
-      _
-      _))
-  (rule
-    (name `bitwise_op`)
-    (alt
-      _
-      ((lit `"&"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"^"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"|"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"orelse"`))
-      _
-      _))
-  (rule
-    (name `bit_shift_op`)
-    (alt
-      _
-      ((lit `"<<"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `">>"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"<<|"`))
-      _
-      _))
-  (rule
-    (name `addition_op`)
-    (alt
-      _
-      ((lit `"+"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"-"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"++"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"+%"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"-%"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"+|"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"-|"`))
-      _
-      _))
-  (rule
-    (name `multiply_op`)
-    (alt
-      _
-      ((lit `"||"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"*"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"/"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"%"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"*%"`))
-      _
-      _)
-    (alt
-      _
-      ((lit `"*|"`))
-      _
-      _))
-  (rule
-    (name `bool_or`)
-    (alt
-      _
-      ((ref `bool_and`))
-      _
-      _)
-    (alt
-      _
-      ((ref `bool_or_k`)
+      ((ref `bool_or_expr_k`)
         (lit `"or"`)
-        (ref `bool_and`))
+        (ref `bool_and_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3129,17 +2652,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_k`)
+    (name `bool_or_expr_k`)
     (alt
       _
-      ((ref `bool_and_k`))
+      ((ref `bool_and_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_k`)
+      ((ref `bool_or_expr_k`)
         (lit `"or"`)
-        (ref `bool_and_k`))
+        (ref `bool_and_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3147,17 +2670,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_s`)
+    (name `bool_or_expr_s`)
     (alt
       _
-      ((ref `bool_and_s`))
+      ((ref `bool_and_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_sk`)
+      ((ref `bool_or_expr_sk`)
         (lit `"or"`)
-        (ref `bool_and`))
+        (ref `bool_and_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3165,17 +2688,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_sk`)
+    (name `bool_or_expr_sk`)
     (alt
       _
-      ((ref `bool_and_sk`))
+      ((ref `bool_and_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_sk`)
+      ((ref `bool_or_expr_sk`)
         (lit `"or"`)
-        (ref `bool_and_k`))
+        (ref `bool_and_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3183,17 +2706,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_c`)
+    (name `bool_or_expr_c`)
     (alt
       _
-      ((ref `bool_and_c`))
+      ((ref `bool_and_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_ck`)
+      ((ref `bool_or_expr_ck`)
         (lit `"or"`)
-        (ref `bool_and`))
+        (ref `bool_and_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3201,17 +2724,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_ck`)
+    (name `bool_or_expr_ck`)
     (alt
       _
-      ((ref `bool_and_ck`))
+      ((ref `bool_and_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_ck`)
+      ((ref `bool_or_expr_ck`)
         (lit `"or"`)
-        (ref `bool_and_k`))
+        (ref `bool_and_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3219,17 +2742,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_p`)
+    (name `bool_or_expr_p`)
     (alt
       _
-      ((ref `bool_and_p`))
+      ((ref `bool_and_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_pk`)
+      ((ref `bool_or_expr_pk`)
         (lit `"or"`)
-        (ref `bool_and`))
+        (ref `bool_and_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3237,17 +2760,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_or_pk`)
+    (name `bool_or_expr_pk`)
     (alt
       _
-      ((ref `bool_and_pk`))
+      ((ref `bool_and_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `bool_or_pk`)
+      ((ref `bool_or_expr_pk`)
         (lit `"or"`)
-        (ref `bool_and_k`))
+        (ref `bool_and_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3255,17 +2778,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and`)
+    (name `bool_and_expr`)
     (alt
       _
-      ((ref `compare`))
+      ((ref `compare_expr`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_k`)
+      ((ref `bool_and_expr_k`)
         (lit `"and"`)
-        (ref `compare`))
+        (ref `compare_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3273,17 +2796,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_k`)
+    (name `bool_and_expr_k`)
     (alt
       _
-      ((ref `compare_k`))
+      ((ref `compare_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_k`)
+      ((ref `bool_and_expr_k`)
         (lit `"and"`)
-        (ref `compare_k`))
+        (ref `compare_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3291,17 +2814,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_s`)
+    (name `bool_and_expr_s`)
     (alt
       _
-      ((ref `compare_s`))
+      ((ref `compare_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_sk`)
+      ((ref `bool_and_expr_sk`)
         (lit `"and"`)
-        (ref `compare`))
+        (ref `compare_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3309,17 +2832,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_sk`)
+    (name `bool_and_expr_sk`)
     (alt
       _
-      ((ref `compare_sk`))
+      ((ref `compare_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_sk`)
+      ((ref `bool_and_expr_sk`)
         (lit `"and"`)
-        (ref `compare_k`))
+        (ref `compare_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3327,17 +2850,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_c`)
+    (name `bool_and_expr_c`)
     (alt
       _
-      ((ref `compare_c`))
+      ((ref `compare_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_ck`)
+      ((ref `bool_and_expr_ck`)
         (lit `"and"`)
-        (ref `compare`))
+        (ref `compare_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3345,17 +2868,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_ck`)
+    (name `bool_and_expr_ck`)
     (alt
       _
-      ((ref `compare_ck`))
+      ((ref `compare_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_ck`)
+      ((ref `bool_and_expr_ck`)
         (lit `"and"`)
-        (ref `compare_k`))
+        (ref `compare_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3363,17 +2886,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_p`)
+    (name `bool_and_expr_p`)
     (alt
       _
-      ((ref `compare_p`))
+      ((ref `compare_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_pk`)
+      ((ref `bool_and_expr_pk`)
         (lit `"and"`)
-        (ref `compare`))
+        (ref `compare_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3381,17 +2904,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bool_and_pk`)
+    (name `bool_and_expr_pk`)
     (alt
       _
-      ((ref `compare_pk`))
+      ((ref `compare_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `bool_and_pk`)
+      ((ref `bool_and_expr_pk`)
         (lit `"and"`)
-        (ref `compare_k`))
+        (ref `compare_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3399,17 +2922,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare`)
+    (name `compare_expr`)
     (alt
       _
-      ((ref `bitwise`))
+      ((ref `bitwise_expr`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_k`)
+      ((ref `bitwise_expr_k`)
         (ref `compare_op`)
-        (ref `bitwise`))
+        (ref `bitwise_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3417,17 +2940,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_k`)
+    (name `compare_expr_k`)
     (alt
       _
-      ((ref `bitwise_k`))
+      ((ref `bitwise_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_k`)
+      ((ref `bitwise_expr_k`)
         (ref `compare_op`)
-        (ref `bitwise_k`))
+        (ref `bitwise_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3435,17 +2958,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_s`)
+    (name `compare_expr_s`)
     (alt
       _
-      ((ref `bitwise_s`))
+      ((ref `bitwise_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_sk`)
+      ((ref `bitwise_expr_sk`)
         (ref `compare_op`)
-        (ref `bitwise`))
+        (ref `bitwise_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3453,17 +2976,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_sk`)
+    (name `compare_expr_sk`)
     (alt
       _
-      ((ref `bitwise_sk`))
+      ((ref `bitwise_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_sk`)
+      ((ref `bitwise_expr_sk`)
         (ref `compare_op`)
-        (ref `bitwise_k`))
+        (ref `bitwise_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3471,17 +2994,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_c`)
+    (name `compare_expr_c`)
     (alt
       _
-      ((ref `bitwise_c`))
+      ((ref `bitwise_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_ck`)
+      ((ref `bitwise_expr_ck`)
         (ref `compare_op`)
-        (ref `bitwise`))
+        (ref `bitwise_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3489,17 +3012,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_ck`)
+    (name `compare_expr_ck`)
     (alt
       _
-      ((ref `bitwise_ck`))
+      ((ref `bitwise_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_ck`)
+      ((ref `bitwise_expr_ck`)
         (ref `compare_op`)
-        (ref `bitwise_k`))
+        (ref `bitwise_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3507,17 +3030,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_p`)
+    (name `compare_expr_p`)
     (alt
       _
-      ((ref `bitwise_p`))
+      ((ref `bitwise_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_pk`)
+      ((ref `bitwise_expr_pk`)
         (ref `compare_op`)
-        (ref `bitwise`))
+        (ref `bitwise_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3525,17 +3048,17 @@
         (pos `3`))
       _))
   (rule
-    (name `compare_pk`)
+    (name `compare_expr_pk`)
     (alt
       _
-      ((ref `bitwise_pk`))
+      ((ref `bitwise_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_pk`)
+      ((ref `bitwise_expr_pk`)
         (ref `compare_op`)
-        (ref `bitwise_k`))
+        (ref `bitwise_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3543,17 +3066,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bitwise`)
+    (name `bitwise_expr`)
     (alt
       _
-      ((ref `bit_shift`))
+      ((ref `bit_shift_expr`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_k`)
+      ((ref `bitwise_expr_k`)
         (ref `bitwise_op`)
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3562,12 +3085,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_k`)
+      ((ref `bitwise_expr_k`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `catch`
         (pos `1`)
@@ -3575,17 +3098,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_k`)
+    (name `bitwise_expr_k`)
     (alt
       _
-      ((ref `bit_shift_k`))
+      ((ref `bit_shift_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_k`)
+      ((ref `bitwise_expr_k`)
         (ref `bitwise_op`)
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3594,12 +3117,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_k`)
+      ((ref `bitwise_expr_k`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `catch`
         (pos `1`)
@@ -3607,17 +3130,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_s`)
+    (name `bitwise_expr_s`)
     (alt
       _
-      ((ref `bit_shift_s`))
+      ((ref `bit_shift_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_sk`)
+      ((ref `bitwise_expr_sk`)
         (ref `bitwise_op`)
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3626,12 +3149,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_sk`)
+      ((ref `bitwise_expr_sk`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `catch`
         (pos `1`)
@@ -3639,17 +3162,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_sk`)
+    (name `bitwise_expr_sk`)
     (alt
       _
-      ((ref `bit_shift_sk`))
+      ((ref `bit_shift_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_sk`)
+      ((ref `bitwise_expr_sk`)
         (ref `bitwise_op`)
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3658,12 +3181,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_sk`)
+      ((ref `bitwise_expr_sk`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `catch`
         (pos `1`)
@@ -3671,17 +3194,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_c`)
+    (name `bitwise_expr_c`)
     (alt
       _
-      ((ref `bit_shift_c`))
+      ((ref `bit_shift_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_ck`)
+      ((ref `bitwise_expr_ck`)
         (ref `bitwise_op`)
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3690,12 +3213,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_ck`)
+      ((ref `bitwise_expr_ck`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `catch`
         (pos `1`)
@@ -3703,17 +3226,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_ck`)
+    (name `bitwise_expr_ck`)
     (alt
       _
-      ((ref `bit_shift_ck`))
+      ((ref `bit_shift_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_ck`)
+      ((ref `bitwise_expr_ck`)
         (ref `bitwise_op`)
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3722,12 +3245,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_ck`)
+      ((ref `bitwise_expr_ck`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `catch`
         (pos `1`)
@@ -3735,17 +3258,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_p`)
+    (name `bitwise_expr_p`)
     (alt
       _
-      ((ref `bit_shift_p`))
+      ((ref `bit_shift_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_pk`)
+      ((ref `bitwise_expr_pk`)
         (ref `bitwise_op`)
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3754,12 +3277,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_pk`)
+      ((ref `bitwise_expr_pk`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift`))
+        (ref `bit_shift_expr`))
       (node
         `catch`
         (pos `1`)
@@ -3767,17 +3290,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bitwise_pk`)
+    (name `bitwise_expr_pk`)
     (alt
       _
-      ((ref `bit_shift_pk`))
+      ((ref `bit_shift_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `bitwise_pk`)
+      ((ref `bitwise_expr_pk`)
         (ref `bitwise_op`)
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3786,12 +3309,12 @@
       _)
     (alt
       _
-      ((ref `bitwise_pk`)
+      ((ref `bitwise_expr_pk`)
         (lit `"catch"`)
         (group
           opt
           ((ref `payload`)))
-        (ref `bit_shift_k`))
+        (ref `bit_shift_expr_k`))
       (node
         `catch`
         (pos `1`)
@@ -3799,17 +3322,17 @@
         (pos `4`))
       _))
   (rule
-    (name `bit_shift`)
+    (name `bit_shift_expr`)
     (alt
       _
-      ((ref `addition`))
+      ((ref `addition_expr`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_k`)
+      ((ref `bit_shift_expr_k`)
         (ref `bit_shift_op`)
-        (ref `addition`))
+        (ref `addition_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3817,17 +3340,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_k`)
+    (name `bit_shift_expr_k`)
     (alt
       _
-      ((ref `addition_k`))
+      ((ref `addition_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_k`)
+      ((ref `bit_shift_expr_k`)
         (ref `bit_shift_op`)
-        (ref `addition_k`))
+        (ref `addition_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3835,17 +3358,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_s`)
+    (name `bit_shift_expr_s`)
     (alt
       _
-      ((ref `addition_s`))
+      ((ref `addition_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_sk`)
+      ((ref `bit_shift_expr_sk`)
         (ref `bit_shift_op`)
-        (ref `addition`))
+        (ref `addition_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3853,17 +3376,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_sk`)
+    (name `bit_shift_expr_sk`)
     (alt
       _
-      ((ref `addition_sk`))
+      ((ref `addition_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_sk`)
+      ((ref `bit_shift_expr_sk`)
         (ref `bit_shift_op`)
-        (ref `addition_k`))
+        (ref `addition_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3871,17 +3394,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_c`)
+    (name `bit_shift_expr_c`)
     (alt
       _
-      ((ref `addition_c`))
+      ((ref `addition_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_ck`)
+      ((ref `bit_shift_expr_ck`)
         (ref `bit_shift_op`)
-        (ref `addition`))
+        (ref `addition_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3889,17 +3412,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_ck`)
+    (name `bit_shift_expr_ck`)
     (alt
       _
-      ((ref `addition_ck`))
+      ((ref `addition_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_ck`)
+      ((ref `bit_shift_expr_ck`)
         (ref `bit_shift_op`)
-        (ref `addition_k`))
+        (ref `addition_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3907,17 +3430,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_p`)
+    (name `bit_shift_expr_p`)
     (alt
       _
-      ((ref `addition_p`))
+      ((ref `addition_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_pk`)
+      ((ref `bit_shift_expr_pk`)
         (ref `bit_shift_op`)
-        (ref `addition`))
+        (ref `addition_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3925,17 +3448,17 @@
         (pos `3`))
       _))
   (rule
-    (name `bit_shift_pk`)
+    (name `bit_shift_expr_pk`)
     (alt
       _
-      ((ref `addition_pk`))
+      ((ref `addition_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `bit_shift_pk`)
+      ((ref `bit_shift_expr_pk`)
         (ref `bit_shift_op`)
-        (ref `addition_k`))
+        (ref `addition_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3943,17 +3466,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition`)
+    (name `addition_expr`)
     (alt
       _
-      ((ref `multiply`))
+      ((ref `multiply_expr`))
       _
       _)
     (alt
       _
-      ((ref `addition_k`)
+      ((ref `addition_expr_k`)
         (ref `addition_op`)
-        (ref `multiply`))
+        (ref `multiply_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3961,17 +3484,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_k`)
+    (name `addition_expr_k`)
     (alt
       _
-      ((ref `multiply_k`))
+      ((ref `multiply_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `addition_k`)
+      ((ref `addition_expr_k`)
         (ref `addition_op`)
-        (ref `multiply_k`))
+        (ref `multiply_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -3979,17 +3502,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_s`)
+    (name `addition_expr_s`)
     (alt
       _
-      ((ref `multiply_s`))
+      ((ref `multiply_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `addition_sk`)
+      ((ref `addition_expr_sk`)
         (ref `addition_op`)
-        (ref `multiply`))
+        (ref `multiply_expr`))
       (node
         `binary`
         (pos `2`)
@@ -3997,17 +3520,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_sk`)
+    (name `addition_expr_sk`)
     (alt
       _
-      ((ref `multiply_sk`))
+      ((ref `multiply_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `addition_sk`)
+      ((ref `addition_expr_sk`)
         (ref `addition_op`)
-        (ref `multiply_k`))
+        (ref `multiply_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4015,17 +3538,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_c`)
+    (name `addition_expr_c`)
     (alt
       _
-      ((ref `multiply_c`))
+      ((ref `multiply_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `addition_ck`)
+      ((ref `addition_expr_ck`)
         (ref `addition_op`)
-        (ref `multiply`))
+        (ref `multiply_expr`))
       (node
         `binary`
         (pos `2`)
@@ -4033,17 +3556,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_ck`)
+    (name `addition_expr_ck`)
     (alt
       _
-      ((ref `multiply_ck`))
+      ((ref `multiply_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `addition_ck`)
+      ((ref `addition_expr_ck`)
         (ref `addition_op`)
-        (ref `multiply_k`))
+        (ref `multiply_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4051,17 +3574,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_p`)
+    (name `addition_expr_p`)
     (alt
       _
-      ((ref `multiply_p`))
+      ((ref `multiply_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `addition_pk`)
+      ((ref `addition_expr_pk`)
         (ref `addition_op`)
-        (ref `multiply`))
+        (ref `multiply_expr`))
       (node
         `binary`
         (pos `2`)
@@ -4069,17 +3592,17 @@
         (pos `3`))
       _))
   (rule
-    (name `addition_pk`)
+    (name `addition_expr_pk`)
     (alt
       _
-      ((ref `multiply_pk`))
+      ((ref `multiply_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `addition_pk`)
+      ((ref `addition_expr_pk`)
         (ref `addition_op`)
-        (ref `multiply_k`))
+        (ref `multiply_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4087,17 +3610,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply`)
+    (name `multiply_expr`)
     (alt
       _
-      ((ref `prefix`))
+      ((ref `prefix_expr`))
       _
       _)
     (alt
       _
-      ((ref `multiply_k`)
+      ((ref `multiply_expr_k`)
         (ref `multiply_op`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `binary`
         (pos `2`)
@@ -4105,17 +3628,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_k`)
+    (name `multiply_expr_k`)
     (alt
       _
-      ((ref `prefix_k`))
+      ((ref `prefix_expr_k`))
       _
       _)
     (alt
       _
-      ((ref `multiply_k`)
+      ((ref `multiply_expr_k`)
         (ref `multiply_op`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4123,17 +3646,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_s`)
+    (name `multiply_expr_s`)
     (alt
       _
-      ((ref `prefix_s`))
+      ((ref `prefix_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `multiply_sk`)
+      ((ref `multiply_expr_sk`)
         (ref `multiply_op`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `binary`
         (pos `2`)
@@ -4141,17 +3664,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_sk`)
+    (name `multiply_expr_sk`)
     (alt
       _
-      ((ref `prefix_sk`))
+      ((ref `prefix_expr_sk`))
       _
       _)
     (alt
       _
-      ((ref `multiply_sk`)
+      ((ref `multiply_expr_sk`)
         (ref `multiply_op`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4159,17 +3682,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_c`)
+    (name `multiply_expr_c`)
     (alt
       _
-      ((ref `prefix_c`))
+      ((ref `prefix_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `multiply_ck`)
+      ((ref `multiply_expr_ck`)
         (ref `multiply_op`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `binary`
         (pos `2`)
@@ -4177,17 +3700,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_ck`)
+    (name `multiply_expr_ck`)
     (alt
       _
-      ((ref `prefix_ck`))
+      ((ref `prefix_expr_ck`))
       _
       _)
     (alt
       _
-      ((ref `multiply_ck`)
+      ((ref `multiply_expr_ck`)
         (ref `multiply_op`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4195,17 +3718,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_p`)
+    (name `multiply_expr_p`)
     (alt
       _
-      ((ref `prefix_p`))
+      ((ref `prefix_expr_p`))
       _
       _)
     (alt
       _
-      ((ref `multiply_pk`)
+      ((ref `multiply_expr_pk`)
         (ref `multiply_op`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `binary`
         (pos `2`)
@@ -4213,17 +3736,17 @@
         (pos `3`))
       _))
   (rule
-    (name `multiply_pk`)
+    (name `multiply_expr_pk`)
     (alt
       _
-      ((ref `prefix_pk`))
+      ((ref `prefix_expr_pk`))
       _
       _)
     (alt
       _
-      ((ref `multiply_pk`)
+      ((ref `multiply_expr_pk`)
         (ref `multiply_op`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `binary`
         (pos `2`)
@@ -4231,10 +3754,10 @@
         (pos `3`))
       _))
   (rule
-    (name `prefix`)
+    (name `prefix_expr`)
     (alt
       _
-      ((ref `primary`))
+      ((ref `primary_expr`))
       _
       _)
     (alt
@@ -4243,10 +3766,10 @@
       _
       _))
   (rule
-    (name `prefix_k`)
+    (name `prefix_expr_k`)
     (alt
       _
-      ((ref `primary_k`))
+      ((ref `primary_expr_k`))
       _
       _)
     (alt
@@ -4255,10 +3778,10 @@
       _
       _))
   (rule
-    (name `prefix_s`)
+    (name `prefix_expr_s`)
     (alt
       _
-      ((ref `primary_s`))
+      ((ref `primary_expr_s`))
       _
       _)
     (alt
@@ -4267,10 +3790,10 @@
       _
       _))
   (rule
-    (name `prefix_sk`)
+    (name `prefix_expr_sk`)
     (alt
       _
-      ((ref `primary_sk`))
+      ((ref `primary_expr_sk`))
       _
       _)
     (alt
@@ -4279,10 +3802,10 @@
       _
       _))
   (rule
-    (name `prefix_c`)
+    (name `prefix_expr_c`)
     (alt
       _
-      ((ref `primary_c`))
+      ((ref `primary_expr_c`))
       _
       _)
     (alt
@@ -4291,10 +3814,10 @@
       _
       _))
   (rule
-    (name `prefix_ck`)
+    (name `prefix_expr_ck`)
     (alt
       _
-      ((ref `primary_ck`))
+      ((ref `primary_expr_ck`))
       _
       _)
     (alt
@@ -4303,17 +3826,17 @@
       _
       _))
   (rule
-    (name `prefix_p`)
+    (name `prefix_expr_p`)
     (alt
       _
-      ((ref `ptr_curly`))
+      ((ref `ptr_curly_suffix_expr`))
       _
       _))
   (rule
-    (name `prefix_pk`)
+    (name `prefix_expr_pk`)
     (alt
       _
-      ((ref `ptr_curly`))
+      ((ref `ptr_curly_suffix_expr`))
       _
       _))
   (rule
@@ -4321,7 +3844,7 @@
     (alt
       _
       ((lit `"!"`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `bool_not`
         (pos `2`))
@@ -4330,7 +3853,7 @@
       _
       ((skip
           (ref `minus`))
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `negation`
         (pos `2`))
@@ -4338,7 +3861,7 @@
     (alt
       _
       ((lit `"~"`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `bit_not`
         (pos `2`))
@@ -4347,7 +3870,7 @@
       _
       ((skip
           (ref `minus_wrap`))
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `negation_wrap`
         (pos `2`))
@@ -4356,7 +3879,7 @@
       _
       ((skip
           (ref `amp`))
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `address_of`
         (pos `2`))
@@ -4364,7 +3887,7 @@
     (alt
       _
       ((lit `"try"`)
-        (ref `prefix`))
+        (ref `prefix_expr`))
       (node
         `try`
         (pos `2`))
@@ -4374,7 +3897,7 @@
     (alt
       _
       ((lit `"!"`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `bool_not`
         (pos `2`))
@@ -4383,7 +3906,7 @@
       _
       ((skip
           (ref `minus`))
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `negation`
         (pos `2`))
@@ -4391,7 +3914,7 @@
     (alt
       _
       ((lit `"~"`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `bit_not`
         (pos `2`))
@@ -4400,7 +3923,7 @@
       _
       ((skip
           (ref `minus_wrap`))
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `negation_wrap`
         (pos `2`))
@@ -4409,7 +3932,7 @@
       _
       ((skip
           (ref `amp`))
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `address_of`
         (pos `2`))
@@ -4417,76 +3940,16 @@
     (alt
       _
       ((lit `"try"`)
-        (ref `prefix_k`))
+        (ref `prefix_expr_k`))
       (node
         `try`
         (pos `2`))
       _))
   (rule
-    (name `minus`)
+    (name `primary_expr`)
     (alt
       _
-      ((lit `"-"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `MINUS_PREFIX`))
-      _
-      _))
-  (rule
-    (name `minus_wrap`)
-    (alt
-      _
-      ((lit `"-%"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `MINUS_PERCENT_PREFIX`))
-      _
-      _))
-  (rule
-    (name `amp`)
-    (alt
-      _
-      ((lit `"&"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `AMPERSAND_PREFIX`))
-      _
-      _))
-  (rule
-    (name `star`)
-    (alt
-      _
-      ((lit `"*"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `ASTERISK_PREFIX`))
-      _
-      _))
-  (rule
-    (name `pipe`)
-    (alt
-      _
-      ((lit `"|"`))
-      _
-      _)
-    (alt
-      _
-      ((tok `PIPE_PAYLOAD`))
-      _
-      _))
-  (rule
-    (name `primary`)
-    (alt
-      _
-      ((ref `primary_k`))
+      ((ref `primary_expr_k`))
       _
       _)
     (alt
@@ -4495,10 +3958,10 @@
       _
       _))
   (rule
-    (name `primary_k`)
+    (name `primary_expr_k`)
     (alt
       _
-      ((ref `curly`))
+      ((ref `curly_suffix_expr`))
       _
       _)
     (alt
@@ -4517,10 +3980,10 @@
       _
       _))
   (rule
-    (name `primary_s`)
+    (name `primary_expr_s`)
     (alt
       _
-      ((ref `primary_sk`))
+      ((ref `primary_expr_sk`))
       _
       _)
     (alt
@@ -4529,10 +3992,10 @@
       _
       _))
   (rule
-    (name `primary_sk`)
+    (name `primary_expr_sk`)
     (alt
       _
-      ((ref `curly_s`))
+      ((ref `curly_suffix_expr_s`))
       _
       _)
     (alt
@@ -4546,10 +4009,10 @@
       _
       _))
   (rule
-    (name `primary_c`)
+    (name `primary_expr_c`)
     (alt
       _
-      ((ref `primary_ck`))
+      ((ref `primary_expr_ck`))
       _
       _)
     (alt
@@ -4558,10 +4021,10 @@
       _
       _))
   (rule
-    (name `primary_ck`)
+    (name `primary_expr_ck`)
     (alt
       _
-      ((ref `curly_c`))
+      ((ref `curly_suffix_expr_c`))
       _
       _)
     (alt
@@ -4642,14 +4105,6 @@
       (node
         `resume`
         (pos `2`))
-      _))
-  (rule
-    (name `break_label`)
-    (alt
-      _
-      ((tok `BREAK_COLON`)
-        (tok `IDENTIFIER`))
-      (pos `2`)
       _))
   (rule
     (name `open_expr`)
@@ -4847,7 +4302,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `expr`))
       (node
         `while`
@@ -4869,7 +4324,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `expr`)
         (lit `"else"`)
         (ref `else_payload`)
@@ -4897,7 +4352,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `expr`))
       (node
         `while`
@@ -4920,7 +4375,7 @@
         (ref `expr`)
         (lit `")"`)
         (ref `ptr_payload`)
-        (ref `while_cont`)
+        (ref `while_continue_expr`)
         (ref `expr`)
         (lit `"else"`)
         (ref `else_payload`)
@@ -4937,7 +4392,7 @@
         (pos `13`))
       _))
   (rule
-    (name `curly`)
+    (name `curly_suffix_expr`)
     (alt
       _
       ((ref `type_e`))
@@ -4985,7 +4440,7 @@
         (spread `3`))
       _))
   (rule
-    (name `curly_s`)
+    (name `curly_suffix_expr_s`)
     (alt
       _
       ((ref `type_s`))
@@ -5033,7 +4488,7 @@
         (spread `3`))
       _))
   (rule
-    (name `curly_c`)
+    (name `curly_suffix_expr_c`)
     (alt
       _
       ((ref `type_c`))
@@ -5081,7 +4536,7 @@
         (spread `3`))
       _))
   (rule
-    (name `ptr_curly`)
+    (name `ptr_curly_suffix_expr`)
     (alt
       _
       ((ref `ptr_led`))
@@ -5129,79 +4584,6 @@
         (spread `3`))
       _))
   (rule
-    (name `field_init`)
-    (alt
-      _
-      ((lit `"."`)
-        (tok `IDENTIFIER`)
-        (lit `"="`)
-        (ref `expr`))
-      (node
-        `field_init`
-        (pos `2`)
-        (pos `4`))
-      _))
-  (rule
-    (name `payload`)
-    (alt
-      _
-      ((skip
-          (ref `pipe`))
-        (tok `IDENTIFIER`)
-        (skip
-          (ref `pipe`)))
-      (pos `2`)
-      _))
-  (rule
-    (name `ptr_payload`)
-    (alt _ () _ _)
-    (alt
-      _
-      ((skip
-          (ref `pipe`))
-        (ref `capture`)
-        (skip
-          (ref `pipe`)))
-      (pos `2`)
-      _))
-  (rule
-    (name `else_payload`)
-    (alt _ () _ _)
-    (alt
-      _
-      ((ref `payload`))
-      _
-      _))
-  (rule
-    (name `ptr_list_payload`)
-    (alt
-      _
-      ((skip
-          (ref `pipe`))
-        (list_req
-          `L`
-          (plain `capture`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (skip
-          (ref `pipe`)))
-      (pos `2`)
-      _))
-  (rule
-    (name `capture`)
-    (alt
-      _
-      ((group
-          opt
-          ((ref `star`)))
-        (tok `IDENTIFIER`))
-      (node
-        `capture`
-        (pos `1`)
-        (pos `2`))
-      _))
-  (rule
     (name `type_expr`)
     (alt
       _
@@ -5210,7 +4592,7 @@
       _)
     (alt
       _
-      ((ref `error_union`))
+      ((ref `error_union_expr`))
       _
       _)
     (alt
@@ -5260,7 +4642,7 @@
       _)
     (alt
       _
-      ((ref `error_union_n`))
+      ((ref `error_union_expr_n`))
       _
       _)
     (alt
@@ -5287,7 +4669,7 @@
       _)
     (alt
       _
-      ((ref `error_union_n`))
+      ((ref `error_union_expr_n`))
       _
       _)
     (alt
@@ -5319,7 +4701,7 @@
       _)
     (alt
       _
-      ((ref `error_union_n`))
+      ((ref `error_union_expr_n`))
       _
       _)
     (alt
@@ -5359,7 +4741,7 @@
       _)
     (alt
       _
-      ((ref `error_union`))
+      ((ref `error_union_expr`))
       _
       _)
     (alt
@@ -5376,7 +4758,7 @@
       _)
     (alt
       _
-      ((ref `error_union_s`))
+      ((ref `error_union_expr_s`))
       _
       _)
     (alt
@@ -5393,7 +4775,7 @@
       _)
     (alt
       _
-      ((ref `error_union_c`))
+      ((ref `error_union_expr_c`))
       _
       _)
     (alt
@@ -6409,15 +5791,15 @@
       _
       _))
   (rule
-    (name `error_union`)
+    (name `error_union_expr`)
     (alt
       _
-      ((ref `suffix`))
+      ((ref `suffix_expr`))
       _
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"!"`)
         (ref `type_expr`))
       (node
@@ -6426,15 +5808,15 @@
         (pos `3`))
       _))
   (rule
-    (name `error_union_s`)
+    (name `error_union_expr_s`)
     (alt
       _
-      ((ref `suffix_s`))
+      ((ref `suffix_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"!"`)
         (ref `type_expr`))
       (node
@@ -6443,15 +5825,15 @@
         (pos `3`))
       _))
   (rule
-    (name `error_union_c`)
+    (name `error_union_expr_c`)
     (alt
       _
-      ((ref `suffix_c`))
+      ((ref `suffix_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"!"`)
         (ref `type_expr`))
       (node
@@ -6460,15 +5842,15 @@
         (pos `3`))
       _))
   (rule
-    (name `error_union_n`)
+    (name `error_union_expr_n`)
     (alt
       _
-      ((ref `suffix_n`))
+      ((ref `suffix_expr_n`))
       _
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"!"`)
         (ref `type_expr`))
       (node
@@ -6477,15 +5859,15 @@
         (pos `3`))
       _))
   (rule
-    (name `suffix`)
+    (name `suffix_expr`)
     (alt
       _
-      ((ref `primary_type`))
+      ((ref `primary_type_expr`))
       _
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"("`)
         (lit `")"`))
       (node
@@ -6494,7 +5876,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"("`)
         (list_req
           `L`
@@ -6510,7 +5892,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `"]"`))
@@ -6521,7 +5903,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"["`)
         (ref `c_ptr_index`)
         (lit `"]"`))
@@ -6532,7 +5914,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `".."`)
@@ -6553,7 +5935,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"."`)
         (tok `IDENTIFIER`))
       (node
@@ -6563,7 +5945,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `".*"`))
       (node
         `deref`
@@ -6571,7 +5953,7 @@
       _)
     (alt
       _
-      ((ref `suffix`)
+      ((ref `suffix_expr`)
         (lit `"."`)
         (lit `"?"`))
       (node
@@ -6579,15 +5961,15 @@
         (pos `1`))
       _))
   (rule
-    (name `suffix_s`)
+    (name `suffix_expr_s`)
     (alt
       _
-      ((ref `primary_type_s`))
+      ((ref `primary_type_expr_s`))
       _
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"("`)
         (lit `")"`))
       (node
@@ -6596,7 +5978,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"("`)
         (list_req
           `L`
@@ -6612,7 +5994,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `"]"`))
@@ -6623,7 +6005,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"["`)
         (ref `c_ptr_index`)
         (lit `"]"`))
@@ -6634,7 +6016,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `".."`)
@@ -6655,7 +6037,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"."`)
         (tok `IDENTIFIER`))
       (node
@@ -6665,7 +6047,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `".*"`))
       (node
         `deref`
@@ -6673,7 +6055,7 @@
       _)
     (alt
       _
-      ((ref `suffix_s`)
+      ((ref `suffix_expr_s`)
         (lit `"."`)
         (lit `"?"`))
       (node
@@ -6681,15 +6063,15 @@
         (pos `1`))
       _))
   (rule
-    (name `suffix_c`)
+    (name `suffix_expr_c`)
     (alt
       _
-      ((ref `primary_type_c`))
+      ((ref `primary_type_expr_c`))
       _
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"("`)
         (lit `")"`))
       (node
@@ -6698,7 +6080,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"("`)
         (list_req
           `L`
@@ -6714,7 +6096,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `"]"`))
@@ -6725,7 +6107,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"["`)
         (ref `c_ptr_index`)
         (lit `"]"`))
@@ -6736,7 +6118,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `".."`)
@@ -6757,7 +6139,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"."`)
         (tok `IDENTIFIER`))
       (node
@@ -6767,7 +6149,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `".*"`))
       (node
         `deref`
@@ -6775,7 +6157,7 @@
       _)
     (alt
       _
-      ((ref `suffix_c`)
+      ((ref `suffix_expr_c`)
         (lit `"."`)
         (lit `"?"`))
       (node
@@ -6783,15 +6165,15 @@
         (pos `1`))
       _))
   (rule
-    (name `suffix_n`)
+    (name `suffix_expr_n`)
     (alt
       _
-      ((ref `primary_type_n`))
+      ((ref `primary_type_expr_n`))
       _
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"("`)
         (lit `")"`))
       (node
@@ -6800,7 +6182,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"("`)
         (list_req
           `L`
@@ -6816,7 +6198,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `"]"`))
@@ -6827,7 +6209,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"["`)
         (ref `c_ptr_index`)
         (lit `"]"`))
@@ -6838,7 +6220,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"["`)
         (ref `index_expr`)
         (lit `".."`)
@@ -6859,7 +6241,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"."`)
         (tok `IDENTIFIER`))
       (node
@@ -6869,7 +6251,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `".*"`))
       (node
         `deref`
@@ -6877,7 +6259,7 @@
       _)
     (alt
       _
-      ((ref `suffix_n`)
+      ((ref `suffix_expr_n`)
         (lit `"."`)
         (lit `"?"`))
       (node
@@ -6901,7 +6283,7 @@
         (pos `2`))
       _))
   (rule
-    (name `primary_type`)
+    (name `primary_type_expr`)
     (alt
       _
       ((ref `atom`))
@@ -6923,14 +6305,14 @@
       _
       _))
   (rule
-    (name `primary_type_s`)
+    (name `primary_type_expr_s`)
     (alt
       _
       ((ref `atom`))
       _
       _))
   (rule
-    (name `primary_type_c`)
+    (name `primary_type_expr_c`)
     (alt
       _
       ((ref `atom`))
@@ -6947,7 +6329,7 @@
       _
       _))
   (rule
-    (name `primary_type_n`)
+    (name `primary_type_expr_n`)
     (alt
       _
       ((ref `atom`))
@@ -7132,253 +6514,6 @@
         (pos `2`))
       _))
   (rule
-    (name `if_type_expr`)
-    (alt
-      `>`
-      ((lit `"if"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`)
-        (ref `ptr_payload`)
-        (ref `type_expr`))
-      (node
-        `if`
-        (pos `3`)
-        (pos `5`)
-        (pos `6`))
-      _)
-    (alt
-      _
-      ((lit `"if"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`)
-        (ref `ptr_payload`)
-        (ref `type_expr`)
-        (lit `"else"`)
-        (ref `else_payload`)
-        (ref `type_expr`))
-      (node
-        `if`
-        (pos `3`)
-        (pos `5`)
-        (pos `6`)
-        (pos `8`)
-        (pos `9`))
-      _))
-  (rule
-    (name `for_type_expr`)
-    (alt
-      `>`
-      ((group
-          opt
-          ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
-        (ref `type_expr`))
-      (node
-        `for`
-        (null)
-        (pos `1`)
-        (pos `4`)
-        (pos `7`)
-        (pos `8`))
-      _)
-    (alt
-      _
-      ((group
-          opt
-          ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
-        (ref `type_expr`)
-        (lit `"else"`)
-        (ref `type_expr`))
-      (node
-        `for`
-        (null)
-        (pos `1`)
-        (pos `4`)
-        (pos `7`)
-        (pos `8`)
-        (pos `10`))
-      _))
-  (rule
-    (name `labeled_for_type_expr`)
-    (alt
-      `>`
-      ((tok `LABEL`)
-        (lit `":"`)
-        (group
-          opt
-          ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
-        (ref `type_expr`))
-      (node
-        `for`
-        (pos `1`)
-        (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`))
-      _)
-    (alt
-      _
-      ((tok `LABEL`)
-        (lit `":"`)
-        (group
-          opt
-          ((lit `"inline"`)))
-        (lit `"for"`)
-        (lit `"("`)
-        (list_req
-          `L`
-          (plain `for_item`))
-        (skip_q
-          (lit `","`)
-          (opt))
-        (lit `")"`)
-        (ref `ptr_list_payload`)
-        (ref `type_expr`)
-        (lit `"else"`)
-        (ref `type_expr`))
-      (node
-        `for`
-        (pos `1`)
-        (pos `3`)
-        (pos `6`)
-        (pos `9`)
-        (pos `10`)
-        (pos `12`))
-      _))
-  (rule
-    (name `while_type_expr`)
-    (alt
-      `>`
-      ((group
-          opt
-          ((lit `"inline"`)))
-        (lit `"while"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`)
-        (ref `ptr_payload`)
-        (ref `while_cont`)
-        (ref `type_expr`))
-      (node
-        `while`
-        (null)
-        (pos `1`)
-        (pos `4`)
-        (pos `6`)
-        (pos `7`)
-        (pos `8`))
-      _)
-    (alt
-      _
-      ((group
-          opt
-          ((lit `"inline"`)))
-        (lit `"while"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`)
-        (ref `ptr_payload`)
-        (ref `while_cont`)
-        (ref `type_expr`)
-        (lit `"else"`)
-        (ref `else_payload`)
-        (ref `type_expr`))
-      (node
-        `while`
-        (null)
-        (pos `1`)
-        (pos `4`)
-        (pos `6`)
-        (pos `7`)
-        (pos `8`)
-        (pos `10`)
-        (pos `11`))
-      _))
-  (rule
-    (name `labeled_while_type_expr`)
-    (alt
-      `>`
-      ((tok `LABEL`)
-        (lit `":"`)
-        (group
-          opt
-          ((lit `"inline"`)))
-        (lit `"while"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`)
-        (ref `ptr_payload`)
-        (ref `while_cont`)
-        (ref `type_expr`))
-      (node
-        `while`
-        (pos `1`)
-        (pos `3`)
-        (pos `6`)
-        (pos `8`)
-        (pos `9`)
-        (pos `10`))
-      _)
-    (alt
-      _
-      ((tok `LABEL`)
-        (lit `":"`)
-        (group
-          opt
-          ((lit `"inline"`)))
-        (lit `"while"`)
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`)
-        (ref `ptr_payload`)
-        (ref `while_cont`)
-        (ref `type_expr`)
-        (lit `"else"`)
-        (ref `else_payload`)
-        (ref `type_expr`))
-      (node
-        `while`
-        (pos `1`)
-        (pos `3`)
-        (pos `6`)
-        (pos `8`)
-        (pos `9`)
-        (pos `10`)
-        (pos `12`)
-        (pos `13`))
-      _))
-  (rule
     (name `container_type`)
     (alt
       _
@@ -7537,6 +6672,253 @@
       _
       _))
   (rule
+    (name `if_type_expr`)
+    (alt
+      `>`
+      ((lit `"if"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `type_expr`))
+      (node
+        `if`
+        (pos `3`)
+        (pos `5`)
+        (pos `6`))
+      _)
+    (alt
+      _
+      ((lit `"if"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `type_expr`)
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `type_expr`))
+      (node
+        `if`
+        (pos `3`)
+        (pos `5`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`))
+      _))
+  (rule
+    (name `for_type_expr`)
+    (alt
+      `>`
+      ((group
+          opt
+          ((lit `"inline"`)))
+        (lit `"for"`)
+        (lit `"("`)
+        (list_req
+          `L`
+          (plain `for_item`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`)
+        (ref `ptr_list_payload`)
+        (ref `type_expr`))
+      (node
+        `for`
+        (null)
+        (pos `1`)
+        (pos `4`)
+        (pos `7`)
+        (pos `8`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((lit `"inline"`)))
+        (lit `"for"`)
+        (lit `"("`)
+        (list_req
+          `L`
+          (plain `for_item`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`)
+        (ref `ptr_list_payload`)
+        (ref `type_expr`)
+        (lit `"else"`)
+        (ref `type_expr`))
+      (node
+        `for`
+        (null)
+        (pos `1`)
+        (pos `4`)
+        (pos `7`)
+        (pos `8`)
+        (pos `10`))
+      _))
+  (rule
+    (name `labeled_for_type_expr`)
+    (alt
+      `>`
+      ((tok `LABEL`)
+        (lit `":"`)
+        (group
+          opt
+          ((lit `"inline"`)))
+        (lit `"for"`)
+        (lit `"("`)
+        (list_req
+          `L`
+          (plain `for_item`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`)
+        (ref `ptr_list_payload`)
+        (ref `type_expr`))
+      (node
+        `for`
+        (pos `1`)
+        (pos `3`)
+        (pos `6`)
+        (pos `9`)
+        (pos `10`))
+      _)
+    (alt
+      _
+      ((tok `LABEL`)
+        (lit `":"`)
+        (group
+          opt
+          ((lit `"inline"`)))
+        (lit `"for"`)
+        (lit `"("`)
+        (list_req
+          `L`
+          (plain `for_item`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`)
+        (ref `ptr_list_payload`)
+        (ref `type_expr`)
+        (lit `"else"`)
+        (ref `type_expr`))
+      (node
+        `for`
+        (pos `1`)
+        (pos `3`)
+        (pos `6`)
+        (pos `9`)
+        (pos `10`)
+        (pos `12`))
+      _))
+  (rule
+    (name `while_type_expr`)
+    (alt
+      `>`
+      ((group
+          opt
+          ((lit `"inline"`)))
+        (lit `"while"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `while_continue_expr`)
+        (ref `type_expr`))
+      (node
+        `while`
+        (null)
+        (pos `1`)
+        (pos `4`)
+        (pos `6`)
+        (pos `7`)
+        (pos `8`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((lit `"inline"`)))
+        (lit `"while"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `while_continue_expr`)
+        (ref `type_expr`)
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `type_expr`))
+      (node
+        `while`
+        (null)
+        (pos `1`)
+        (pos `4`)
+        (pos `6`)
+        (pos `7`)
+        (pos `8`)
+        (pos `10`)
+        (pos `11`))
+      _))
+  (rule
+    (name `labeled_while_type_expr`)
+    (alt
+      `>`
+      ((tok `LABEL`)
+        (lit `":"`)
+        (group
+          opt
+          ((lit `"inline"`)))
+        (lit `"while"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `while_continue_expr`)
+        (ref `type_expr`))
+      (node
+        `while`
+        (pos `1`)
+        (pos `3`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`)
+        (pos `10`))
+      _)
+    (alt
+      _
+      ((tok `LABEL`)
+        (lit `":"`)
+        (group
+          opt
+          ((lit `"inline"`)))
+        (lit `"while"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`)
+        (ref `ptr_payload`)
+        (ref `while_continue_expr`)
+        (ref `type_expr`)
+        (lit `"else"`)
+        (ref `else_payload`)
+        (ref `type_expr`))
+      (node
+        `while`
+        (pos `1`)
+        (pos `3`)
+        (pos `6`)
+        (pos `8`)
+        (pos `9`)
+        (pos `10`)
+        (pos `12`)
+        (pos `13`))
+      _))
+  (rule
     (name `switch_expr`)
     (alt
       _
@@ -7547,7 +6929,7 @@
         (lit `"{"`)
         (group
           opt
-          ((ref `switch_prongs`)))
+          ((ref `switch_prong_list`)))
         (lit `"}"`))
       (node
         `switch`
@@ -7568,7 +6950,7 @@
         (lit `"{"`)
         (group
           opt
-          ((ref `switch_prongs`)))
+          ((ref `switch_prong_list`)))
         (lit `"}"`))
       (node
         `switch`
@@ -7577,7 +6959,462 @@
         (spread `8`))
       _))
   (rule
-    (name `switch_prongs`)
+    (name `asm_expr`)
+    (alt
+      _
+      ((lit `"asm"`)
+        (group
+          opt
+          ((lit `"volatile"`)))
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      (node
+        `asm`
+        (pos `2`)
+        (pos `4`))
+      _)
+    (alt
+      _
+      ((lit `"asm"`)
+        (group
+          opt
+          ((lit `"volatile"`)))
+        (lit `"("`)
+        (ref `expr`)
+        (lit `":"`)
+        (ref `asm_output_list`)
+        (lit `")"`))
+      (node
+        `asm`
+        (pos `2`)
+        (pos `4`)
+        (null)
+        (spread `6`))
+      _)
+    (alt
+      _
+      ((lit `"asm"`)
+        (group
+          opt
+          ((lit `"volatile"`)))
+        (lit `"("`)
+        (ref `expr`)
+        (lit `":"`)
+        (ref `asm_output_list`)
+        (lit `":"`)
+        (ref `asm_input_list`)
+        (lit `")"`))
+      (node
+        `asm`
+        (pos `2`)
+        (pos `4`)
+        (null)
+        (spread `6`)
+        (spread `8`))
+      _)
+    (alt
+      _
+      ((lit `"asm"`)
+        (group
+          opt
+          ((lit `"volatile"`)))
+        (lit `"("`)
+        (ref `expr`)
+        (lit `":"`)
+        (ref `asm_output_list`)
+        (lit `":"`)
+        (ref `asm_input_list`)
+        (lit `":"`)
+        (ref `expr`)
+        (lit `")"`))
+      (node
+        `asm`
+        (pos `2`)
+        (pos `4`)
+        (pos `10`)
+        (spread `6`)
+        (spread `8`))
+      _))
+  (rule
+    (name `asm_output_list`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((list_req
+          `L`
+          (plain `asm_output_item`))
+        (skip_q
+          (lit `","`)
+          (opt)))
+      (pos `1`)
+      _))
+  (rule
+    (name `asm_input_list`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((list_req
+          `L`
+          (plain `asm_input_item`))
+        (skip_q
+          (lit `","`)
+          (opt)))
+      (pos `1`)
+      _))
+  (rule
+    (name `asm_output_item`)
+    (alt
+      _
+      ((lit `"["`)
+        (tok `IDENTIFIER`)
+        (lit `"]"`)
+        (tok `STRING_LITERAL`)
+        (lit `"("`)
+        (lit `"->"`)
+        (ref `type_expr`)
+        (lit `")"`))
+      (node
+        `asm_output`
+        (pos `2`)
+        (pos `4`)
+        (null)
+        (pos `7`))
+      _)
+    (alt
+      _
+      ((lit `"["`)
+        (tok `IDENTIFIER`)
+        (lit `"]"`)
+        (tok `STRING_LITERAL`)
+        (lit `"("`)
+        (tok `IDENTIFIER`)
+        (lit `")"`))
+      (node
+        `asm_output`
+        (pos `2`)
+        (pos `4`)
+        (pos `6`)
+        (null))
+      _))
+  (rule
+    (name `asm_input_item`)
+    (alt
+      _
+      ((lit `"["`)
+        (tok `IDENTIFIER`)
+        (lit `"]"`)
+        (tok `STRING_LITERAL`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      (node
+        `asm_input`
+        (pos `2`)
+        (pos `4`)
+        (pos `6`))
+      _))
+  (rule
+    (name `break_label`)
+    (alt
+      _
+      ((tok `BREAK_COLON`)
+        (tok `IDENTIFIER`))
+      (pos `2`)
+      _))
+  (rule
+    (name `field_init`)
+    (alt
+      _
+      ((lit `"."`)
+        (tok `IDENTIFIER`)
+        (lit `"="`)
+        (ref `expr`))
+      (node
+        `field_init`
+        (pos `2`)
+        (pos `4`))
+      _))
+  (rule
+    (name `while_continue_expr`)
+    (alt _ () _ _)
+    (alt
+      _
+      ((lit `":"`)
+        (lit `"("`)
+        (ref `assign_expr`)
+        (lit `")"`))
+      (pos `3`)
+      _))
+  (rule
+    (name `link_section`)
+    (alt
+      _
+      ((lit `"linksection"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      (pos `3`)
+      _))
+  (rule
+    (name `addr_space`)
+    (alt
+      _
+      ((lit `"addrspace"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      (pos `3`)
+      _))
+  (rule
+    (name `call_conv`)
+    (alt
+      _
+      ((lit `"callconv"`)
+        (lit `"("`)
+        (ref `expr`)
+        (lit `")"`))
+      (pos `3`)
+      _))
+  (rule
+    (name `param_decl_list`)
+    (alt
+      _
+      ((lit `"("`)
+        (lit `")"`))
+      (list)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (list_req
+          `L`
+          (plain `param_decl`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`))
+      (pos `2`)
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (list_req
+          `L`
+          (plain `param_decl`))
+        (lit `","`)
+        (ref `var_args`)
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`))
+      (list
+        (spread `2`)
+        (pos `4`))
+      _)
+    (alt
+      _
+      ((lit `"("`)
+        (ref `var_args`)
+        (skip_q
+          (lit `","`)
+          (opt))
+        (lit `")"`))
+      (list
+        (pos `2`))
+      _))
+  (rule
+    (name `var_args`)
+    (alt
+      _
+      ((group
+          opt
+          ((ref `docs`)))
+        (lit `"..."`))
+      (node
+        `param`
+        (pos `1`)
+        (null)
+        (null)
+        (pos `2`))
+      _))
+  (rule
+    (name `param_decl`)
+    (alt
+      _
+      ((group
+          opt
+          ((ref `docs`)))
+        (group
+          opt
+          ((ref `param_flag`)))
+        (ref `param_name`)
+        (lit `":"`)
+        (ref `param_type`))
+      (node
+        `param`
+        (pos `1`)
+        (pos `2`)
+        (pos `3`)
+        (pos `5`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((ref `docs`)))
+        (ref `param_type_p`))
+      (node
+        `param`
+        (pos `1`)
+        (null)
+        (null)
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((group
+          opt
+          ((ref `docs`)))
+        (ref `param_flag`)
+        (ref `param_type_n`))
+      (node
+        `param`
+        (pos `1`)
+        (pos `2`)
+        (null)
+        (pos `3`))
+      _))
+  (rule
+    (name `param_flag`)
+    (alt
+      _
+      ((lit `"comptime"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"noalias"`))
+      _
+      _))
+  (rule
+    (name `param_name`)
+    (alt
+      _
+      ((tok `IDENTIFIER`))
+      _
+      _)
+    (alt
+      _
+      ((tok `LABEL`))
+      _
+      _))
+  (rule
+    (name `param_type`)
+    (alt
+      _
+      ((lit `"anytype"`))
+      _
+      _)
+    (alt
+      _
+      ((ref `type_expr`))
+      _
+      _))
+  (rule
+    (name `param_type_p`)
+    (alt
+      _
+      ((lit `"anytype"`))
+      _
+      _)
+    (alt
+      _
+      ((ref `type_expr_p`))
+      _
+      _))
+  (rule
+    (name `param_type_n`)
+    (alt
+      _
+      ((lit `"anytype"`))
+      _
+      _)
+    (alt
+      _
+      ((ref `type_expr_n`))
+      _
+      _))
+  (rule
+    (name `payload`)
+    (alt
+      _
+      ((skip
+          (ref `pipe`))
+        (tok `IDENTIFIER`)
+        (skip
+          (ref `pipe`)))
+      (pos `2`)
+      _))
+  (rule
+    (name `ptr_payload`)
+    (alt _ () _ _)
+    (alt
+      _
+      ((skip
+          (ref `pipe`))
+        (ref `capture`)
+        (skip
+          (ref `pipe`)))
+      (pos `2`)
+      _))
+  (rule
+    (name `else_payload`)
+    (alt _ () _ _)
+    (alt
+      _
+      ((ref `payload`))
+      _
+      _))
+  (rule
+    (name `ptr_list_payload`)
+    (alt
+      _
+      ((skip
+          (ref `pipe`))
+        (list_req
+          `L`
+          (plain `capture`))
+        (skip_q
+          (lit `","`)
+          (opt))
+        (skip
+          (ref `pipe`)))
+      (pos `2`)
+      _))
+  (rule
+    (name `capture`)
+    (alt
+      _
+      ((group
+          opt
+          ((ref `star`)))
+        (tok `IDENTIFIER`))
+      (node
+        `capture`
+        (pos `1`)
+        (pos `2`))
+      _))
+  (rule
+    (name `switch_prong_list`)
     (alt
       _
       ((list_req
@@ -7730,168 +7567,331 @@
         (pos `3`))
       _))
   (rule
-    (name `asm_expr`)
+    (name `for_item`)
     (alt
       _
-      ((lit `"asm"`)
-        (group
-          opt
-          ((lit `"volatile"`)))
-        (lit `"("`)
-        (ref `expr`)
-        (lit `")"`))
-      (node
-        `asm`
-        (pos `2`)
-        (pos `4`))
+      ((ref `expr`))
+      _
       _)
     (alt
       _
-      ((lit `"asm"`)
-        (group
-          opt
-          ((lit `"volatile"`)))
-        (lit `"("`)
-        (ref `expr`)
-        (lit `":"`)
-        (ref `asm_outputs`)
-        (lit `")"`))
+      ((ref `expr`)
+        (lit `".."`))
       (node
-        `asm`
-        (pos `2`)
-        (pos `4`)
-        (null)
-        (spread `6`))
+        `for_range`
+        (pos `1`))
       _)
     (alt
       _
-      ((lit `"asm"`)
-        (group
-          opt
-          ((lit `"volatile"`)))
-        (lit `"("`)
-        (ref `expr`)
-        (lit `":"`)
-        (ref `asm_outputs`)
-        (lit `":"`)
-        (ref `asm_inputs`)
-        (lit `")"`))
+      ((ref `expr`)
+        (lit `".."`)
+        (ref `expr`))
       (node
-        `asm`
-        (pos `2`)
-        (pos `4`)
-        (null)
-        (spread `6`)
-        (spread `8`))
-      _)
-    (alt
-      _
-      ((lit `"asm"`)
-        (group
-          opt
-          ((lit `"volatile"`)))
-        (lit `"("`)
-        (ref `expr`)
-        (lit `":"`)
-        (ref `asm_outputs`)
-        (lit `":"`)
-        (ref `asm_inputs`)
-        (lit `":"`)
-        (ref `expr`)
-        (lit `")"`))
-      (node
-        `asm`
-        (pos `2`)
-        (pos `4`)
-        (pos `10`)
-        (spread `6`)
-        (spread `8`))
+        `for_range`
+        (pos `1`)
+        (pos `3`))
       _))
   (rule
-    (name `asm_outputs`)
+    (name `assign_op`)
     (alt
       _
-      ()
-      (list)
+      ((lit `"="`))
+      _
       _)
     (alt
       _
-      ((list_req
-          `L`
-          (plain `asm_output_item`))
-        (skip_q
-          (lit `","`)
-          (opt)))
-      (pos `1`)
-      _))
-  (rule
-    (name `asm_inputs`)
-    (alt
+      ((lit `"*="`))
       _
-      ()
-      (list)
       _)
     (alt
       _
-      ((list_req
-          `L`
-          (plain `asm_input_item`))
-        (skip_q
-          (lit `","`)
-          (opt)))
-      (pos `1`)
-      _))
-  (rule
-    (name `asm_output_item`)
-    (alt
+      ((lit `"*|="`))
       _
-      ((lit `"["`)
-        (tok `IDENTIFIER`)
-        (lit `"]"`)
-        (tok `STRING_LITERAL`)
-        (lit `"("`)
-        (lit `"->"`)
-        (ref `type_expr`)
-        (lit `")"`))
-      (node
-        `asm_output`
-        (pos `2`)
-        (pos `4`)
-        (null)
-        (pos `7`))
       _)
     (alt
       _
-      ((lit `"["`)
-        (tok `IDENTIFIER`)
-        (lit `"]"`)
-        (tok `STRING_LITERAL`)
-        (lit `"("`)
-        (tok `IDENTIFIER`)
-        (lit `")"`))
-      (node
-        `asm_output`
-        (pos `2`)
-        (pos `4`)
-        (pos `6`)
-        (null))
-      _))
-  (rule
-    (name `asm_input_item`)
+      ((lit `"/="`))
+      _
+      _)
     (alt
       _
-      ((lit `"["`)
-        (tok `IDENTIFIER`)
-        (lit `"]"`)
-        (tok `STRING_LITERAL`)
+      ((lit `"%="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"+="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"+|="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-|="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<<="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<<|="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `">>="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"&="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"^="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"|="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"*%="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"+%="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-%="`))
+      _
+      _))
+  (rule
+    (name `compare_op`)
+    (alt
+      _
+      ((lit `"=="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"!="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `">"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<="`))
+      _
+      _)
+    (alt
+      _
+      ((lit `">="`))
+      _
+      _))
+  (rule
+    (name `bitwise_op`)
+    (alt
+      _
+      ((lit `"&"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"^"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"|"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"orelse"`))
+      _
+      _))
+  (rule
+    (name `bit_shift_op`)
+    (alt
+      _
+      ((lit `"<<"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `">>"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"<<|"`))
+      _
+      _))
+  (rule
+    (name `addition_op`)
+    (alt
+      _
+      ((lit `"+"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"++"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"+%"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-%"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"+|"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"-|"`))
+      _
+      _))
+  (rule
+    (name `multiply_op`)
+    (alt
+      _
+      ((lit `"||"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"*"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"/"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"%"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"*%"`))
+      _
+      _)
+    (alt
+      _
+      ((lit `"*|"`))
+      _
+      _))
+  (rule
+    (name `minus`)
+    (alt
+      _
+      ((lit `"-"`))
+      _
+      _)
+    (alt
+      _
+      ((tok `MINUS_PREFIX`))
+      _
+      _))
+  (rule
+    (name `minus_wrap`)
+    (alt
+      _
+      ((lit `"-%"`))
+      _
+      _)
+    (alt
+      _
+      ((tok `MINUS_PERCENT_PREFIX`))
+      _
+      _))
+  (rule
+    (name `amp`)
+    (alt
+      _
+      ((lit `"&"`))
+      _
+      _)
+    (alt
+      _
+      ((tok `AMPERSAND_PREFIX`))
+      _
+      _))
+  (rule
+    (name `star`)
+    (alt
+      _
+      ((lit `"*"`))
+      _
+      _)
+    (alt
+      _
+      ((tok `ASTERISK_PREFIX`))
+      _
+      _))
+  (rule
+    (name `pipe`)
+    (alt
+      _
+      ((lit `"|"`))
+      _
+      _)
+    (alt
+      _
+      ((tok `PIPE_PAYLOAD`))
+      _
+      _))
+  (rule
+    (name `byte_align`)
+    (alt
+      _
+      ((lit `"align"`)
         (lit `"("`)
         (ref `expr`)
         (lit `")"`))
-      (node
-        `asm_input`
-        (pos `2`)
-        (pos `4`)
-        (pos `6`))
+      (pos `3`)
       _))
   (rule
     (name `token`)
