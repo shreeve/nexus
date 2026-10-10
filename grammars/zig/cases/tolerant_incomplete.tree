@@ -1,0 +1,16 @@
+!incomplete
+((var_decl _ _ _ _ _ _ `const` `a` _ _ _ _ `1`)@0..11)@0..11
+(`const` `T` _ _ _ _)@13..20
+`=`
+`struct`
+`{`
+((container_field _ _ `x` `u8` _ _)@36..41)@36..41
+`fn`
+`g`
+`(`
+``
+``
+!tolerant 2 repairs (2 inserted, 0 deleted, 0 dropped)
+!first 5:1: expected a parameter, ')' or '...', got EOF
+
+^

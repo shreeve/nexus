@@ -1,0 +1,8 @@
+(root
+  _
+  (var_decl _ _ _ _ _ _ `const` `a` _ _ _ _ `1`)@0..11
+  (var_decl _ _ _ _ _ _ `const` `s` _ _ _ _ ``)@13..28)@0..28
+!tolerant 3 repairs (2 inserted, 1 deleted, 0 dropped)
+!first 2:11: expected an expression, got invalid bytes
+const s = "abc
+          ^~~~

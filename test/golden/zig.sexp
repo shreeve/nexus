@@ -1300,6 +1300,10 @@
     (name_pair `param_decl` `"a parameter"`)
     (name_pair `field_init` `"a field initializer"`)
     (name_pair `switch_prong` `"a switch prong"`))
+  (repair
+    (repair_line `holes` `IDENTIFIER`)
+    (repair_line `structure` `"}"` `")"` `"]"` `"{"` `"("` `"="` `"=>"` `"|"`)
+    (repair_line `terminator` `";"`))
   (rule
     (start `root`)
     (alt

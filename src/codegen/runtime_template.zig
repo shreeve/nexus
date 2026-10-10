@@ -348,6 +348,10 @@ pub const Failure = struct {
 pub const Tolerant = struct {
     /// The tree; `.nil` when the parse could not be completed.
     sexp: Sexp,
+    /// When the parse could not be completed: what it had built when it
+    /// stopped, in source order (finished subtrees and leaves; nils left
+    /// out). Empty when the parse completed.
+    pieces: []const Sexp = &.{},
     /// The first error, as the strict parse reports it (null when the
     /// input was valid).
     failure: ?Failure,
@@ -357,6 +361,9 @@ pub const Tolerant = struct {
     insertions: u32 = 0,
     /// Offending tokens deleted.
     deletions: u32 = 0,
+    /// Times unfinished constructs were dropped to resume at a real
+    /// terminator or structure token.
+    drops: u32 = 0,
     complete: bool,
 };
 
@@ -678,6 +685,9 @@ pub const BaseParser = struct {
                     result.insertions += 1;
                 } else if (sym == endSymbol) {
                     break;
+                } else if ((repairClass(sym) == .structure or repairClass(sym) == .terminator) and self.dropUntilAccepted(sym)) {
+                    tried.clearRetainingCapacity();
+                    result.drops += 1;
                 } else {
                     try self.deleteToken();
                     tried.clearRetainingCapacity();
@@ -687,7 +697,39 @@ pub const BaseParser = struct {
             }
         }
         result.failure = self.failure;
+        if (!result.complete) result.pieces = try self.piecesOf(self.valueStack.items);
         return result;
+    }
+
+    /// The non-nil values of `stack`, copied out of the parser's stacks.
+    fn piecesOf(self: *BaseParser, stack: []const Sexp) error{OutOfMemory}![]const Sexp {
+        var n: usize = 0;
+        for (stack) |v| n += @intFromBool(v != .nil);
+        const out = try self.allocator().alloc(Sexp, n);
+        n = 0;
+        for (stack) |v| {
+            if (v == .nil) continue;
+            out[n] = v;
+            n += 1;
+        }
+        return out;
+    }
+
+    /// Pops the stack down to the nearest state that accepts `sym`, below
+    /// the top one, dropping the unfinished constructs above it; false when
+    /// no state does.
+    fn dropUntilAccepted(self: *BaseParser, sym: u16) bool {
+        const states = self.stateStack.items;
+        var k = states.len - 1;
+        while (k > 0) {
+            k -= 1;
+            if (self.actionFor(states[k], sym) == 0) continue;
+            @memset(self.spares[k..self.valueStack.items.len], .none);
+            self.stateStack.items.len = k + 1;
+            self.valueStack.items.len = k;
+            return true;
+        }
+        return false;
     }
 
     const RepairKey = struct { depth: u32, state: u16, token: u16 };
@@ -1397,6 +1439,31 @@ pub const BaseParser = struct {
         try w.writeAll(", got ");
         const got = symbolName(f.symbol);
         try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
+    }
+
+    /// The source line holding `at_span.start`, then a line marking the span
+    /// from there to the end of that line with `^~~`. Tabs are kept and
+    /// every other character is one column, so the marker lines up under
+    /// the text in a terminal.
+    pub fn writeExcerpt(self: *const BaseParser, w: *std.Io.Writer, at_span: Span) std.Io.Writer.Error!void {
+        const src = self.source;
+        const at: usize = @min(at_span.start, src.len);
+        const lineStart = if (std.mem.findScalarLast(u8, src[0..at], '\n')) |i| i + 1 else 0;
+        var lineEnd = std.mem.findScalarPos(u8, src, at, '\n') orelse src.len;
+        if (lineEnd > lineStart and src[lineEnd - 1] == '\r') lineEnd -= 1;
+        try w.writeAll(src[lineStart..lineEnd]);
+        try w.writeByte('\n');
+        for (src[lineStart..@min(at, lineEnd)]) |c| {
+            if (c == '\t') try w.writeByte('\t') else if (c & 0xC0 != 0x80) try w.writeByte(' ');
+        }
+        try w.writeByte('^');
+        const stop = @min(@as(usize, at_span.end), lineEnd);
+        if (stop > at + 1) {
+            for (src[at + 1 .. stop]) |c| {
+                if (c & 0xC0 != 0x80) try w.writeByte('~');
+            }
+        }
+        try w.writeByte('\n');
     }
 
     /// `Parse error at ` and `writeError`'s text on standard error.
@@ -2150,6 +2217,24 @@ test "parse errors carry the token span and the expected set" {
     _ = &BaseParser.printError;
 }
 
+test "an excerpt shows the line and marks the span to its end" {
+    var p = BaseParser.init(testing.allocator, "a = 1\n\tb = é + ?? c\r\nd");
+    defer p.deinit();
+    var out: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer out.deinit();
+    // `é` is two bytes and one column; the tab is kept.
+    try p.writeExcerpt(&out.writer, .{ .start = 16, .end = 18 });
+    try testing.expectEqualStrings("\tb = é + ?? c\n\t        ^~\n", out.written());
+    // A span past the end of its line stops there; `\r` is not shown.
+    out.clearRetainingCapacity();
+    try p.writeExcerpt(&out.writer, .{ .start = 17, .end = 22 });
+    try testing.expectEqualStrings("\tb = é + ?? c\n\t         ^~~\n", out.written());
+    // End of input: an empty span after the last character.
+    out.clearRetainingCapacity();
+    try p.writeExcerpt(&out.writer, .{ .start = 23, .end = 23 });
+    try testing.expectEqualStrings("d\n ^\n", out.written());
+}
+
 test "the tolerant driver inserts holes and deletes stray tokens" {
     // `a = ` misses its value before a newline (a terminator, so layout): a
     // zero-width IDENT is inserted.
@@ -2186,6 +2271,7 @@ test "the tolerant driver inserts holes and deletes stray tokens" {
     defer y.deinit();
     const z = try y.parseTolerant(.prog, 8);
     try testing.expect(z.complete and z.failure == null and z.repairs == 0);
+    try testing.expectEqual(@as(usize, 0), z.pieces.len);
 }
 
 test "tolerant parsing never puts a hole in front of real input" {
@@ -2216,6 +2302,10 @@ test "tolerant parsing: end of input takes holes and is never deleted" {
     try testing.expect(!s.complete);
     try testing.expectEqual(@as(u32, 0), s.repairs);
     try testing.expectEqual(TokenCat.eof, s.failure.?.cat);
+    // What it had built: the `(` and the expression after it.
+    try testing.expectEqual(@as(usize, 2), s.pieces.len);
+    try testing.expectEqualStrings("(", try render(&q, s.pieces[0]));
+    try testing.expectEqualStrings("a", try render(&q, s.pieces[1]));
 
     // `a = (`: a hole is inserted though `)` is still missing (the hole
     // makes progress), once; then the parse ends.
@@ -2225,6 +2315,19 @@ test "tolerant parsing: end of input takes holes and is never deleted" {
     try testing.expect(!u.complete);
     try testing.expectEqual(@as(u32, 1), u.insertions);
     try testing.expectEqual(@as(u32, 0), u.deletions);
+}
+
+test "tolerant parsing drops an unfinished construct at a real terminator" {
+    // `(b + ` cannot be finished before the newline (`)` is not
+    // fabricable): instead of deleting the newline and what follows, the
+    // parse drops back to the statement `a` and resumes at the newline.
+    var p = BaseParser.init(testing.allocator, "a = (b +\nc");
+    defer p.deinit();
+    const r = try p.parseTolerant(.prog, 8);
+    try testing.expect(r.complete);
+    try testing.expectEqualStrings("(prog a c)", try render(&p, r.sexp));
+    try testing.expectEqual(@as(u32, 1), r.drops);
+    try testing.expectEqual(@as(u32, 0), r.deletions);
 }
 
 test "tolerant parsing keeps the first error and honors the budget" {

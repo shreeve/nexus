@@ -494,6 +494,10 @@ pub const Failure = struct {
 pub const Tolerant = struct {
     /// The tree; `.nil` when the parse could not be completed.
     sexp: Sexp,
+    /// When the parse could not be completed: what it had built when it
+    /// stopped, in source order (finished subtrees and leaves; nils left
+    /// out). Empty when the parse completed.
+    pieces: []const Sexp = &.{},
     /// The first error, as the strict parse reports it (null when the
     /// input was valid).
     failure: ?Failure,
@@ -503,6 +507,9 @@ pub const Tolerant = struct {
     insertions: u32 = 0,
     /// Offending tokens deleted.
     deletions: u32 = 0,
+    /// Times unfinished constructs were dropped to resume at a real
+    /// terminator or structure token.
+    drops: u32 = 0,
     complete: bool,
 };
 
@@ -827,6 +834,9 @@ pub const BaseParser = struct {
                     result.insertions += 1;
                 } else if (sym == endSymbol) {
                     break;
+                } else if ((repairClass(sym) == .structure or repairClass(sym) == .terminator) and self.dropUntilAccepted(sym)) {
+                    tried.clearRetainingCapacity();
+                    result.drops += 1;
                 } else {
                     try self.deleteToken();
                     tried.clearRetainingCapacity();
@@ -836,7 +846,39 @@ pub const BaseParser = struct {
             }
         }
         result.failure = self.failure;
+        if (!result.complete) result.pieces = try self.piecesOf(self.valueStack.items);
         return result;
+    }
+
+    /// The non-nil values of `stack`, copied out of the parser's stacks.
+    fn piecesOf(self: *BaseParser, stack: []const Sexp) error{OutOfMemory}![]const Sexp {
+        var n: usize = 0;
+        for (stack) |v| n += @intFromBool(v != .nil);
+        const out = try self.allocator().alloc(Sexp, n);
+        n = 0;
+        for (stack) |v| {
+            if (v == .nil) continue;
+            out[n] = v;
+            n += 1;
+        }
+        return out;
+    }
+
+    /// Pops the stack down to the nearest state that accepts `sym`, below
+    /// the top one, dropping the unfinished constructs above it; false when
+    /// no state does.
+    fn dropUntilAccepted(self: *BaseParser, sym: u16) bool {
+        const states = self.stateStack.items;
+        var k = states.len - 1;
+        while (k > 0) {
+            k -= 1;
+            if (self.actionFor(states[k], sym) == 0) continue;
+            @memset(self.spares[k..self.valueStack.items.len], .none);
+            self.stateStack.items.len = k + 1;
+            self.valueStack.items.len = k;
+            return true;
+        }
+        return false;
     }
 
     const RepairKey = struct { depth: u32, state: u16, token: u16 };
@@ -1548,6 +1590,31 @@ pub const BaseParser = struct {
         try w.writeAll(if (f.symbol == errorSymbol or got.len == 0) @tagName(f.cat) else got);
     }
 
+    /// The source line holding `at_span.start`, then a line marking the span
+    /// from there to the end of that line with `^~~`. Tabs are kept and
+    /// every other character is one column, so the marker lines up under
+    /// the text in a terminal.
+    pub fn writeExcerpt(self: *const BaseParser, w: *std.Io.Writer, at_span: Span) std.Io.Writer.Error!void {
+        const src = self.source;
+        const at: usize = @min(at_span.start, src.len);
+        const lineStart = if (std.mem.findScalarLast(u8, src[0..at], '\n')) |i| i + 1 else 0;
+        var lineEnd = std.mem.findScalarPos(u8, src, at, '\n') orelse src.len;
+        if (lineEnd > lineStart and src[lineEnd - 1] == '\r') lineEnd -= 1;
+        try w.writeAll(src[lineStart..lineEnd]);
+        try w.writeByte('\n');
+        for (src[lineStart..@min(at, lineEnd)]) |c| {
+            if (c == '\t') try w.writeByte('\t') else if (c & 0xC0 != 0x80) try w.writeByte(' ');
+        }
+        try w.writeByte('^');
+        const stop = @min(@as(usize, at_span.end), lineEnd);
+        if (stop > at + 1) {
+            for (src[at + 1 .. stop]) |c| {
+                if (c & 0xC0 != 0x80) try w.writeByte('~');
+            }
+        }
+        try w.writeByte('\n');
+    }
+
     /// `Parse error at ` and `writeError`'s text on standard error.
     pub fn printError(self: *const BaseParser) void {
         var buffer: [256]u8 = undefined;
@@ -1748,7 +1815,8 @@ const elemEnds = false;
 /// Lists keep trailing nils: positions are fixed by the schema.
 const keepTrailingNils = false;
 const hasTrivia = false;
-const hasRepair = false;
+/// The grammar has `@repair`: `parseTolerant` is available.
+pub const hasRepair = false;
 /// `@as` groups the promotable token may become (see `promote`).
 const asGroups = 0;
 const numSymbols = 14;
