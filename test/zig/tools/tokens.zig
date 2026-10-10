@@ -36,9 +36,15 @@ const Tok = struct {
 /// A Nexus token as std.zig.Tokenizer would name it. A token longer than
 /// 65535 bytes is an `err` token holding its first 65535; the lexer resumes
 /// after the whole match, so its true end is the lexer's position.
-fn nexusTok(lx: *parser.Lexer, t: parser.Token) Tok {
-    const end: usize = if (t.cat == .err and t.len == std.math.maxInt(u16)) lx.base.pos else @as(usize, t.pos) + t.len;
+fn nexusTok(lx: *parser.BaseLexer, t: parser.Token) Tok {
+    const end: usize = if (t.cat == .err and t.len == std.math.maxInt(u16)) lx.pos else @as(usize, t.pos) + t.len;
     return .{ .tag = @tagName(t.cat), .start = t.pos, .end = end };
+}
+
+/// The generated lexer as the lang module starts it (after a byte order
+/// mark), driven without the lang Lexer's own token rewriting.
+fn baseLexer(src: []const u8) parser.BaseLexer {
+    return parser.Lexer.init(src).base;
 }
 
 fn stdTok(t: std.zig.Token) Tok {
@@ -57,7 +63,7 @@ const Stats = struct {
 /// Compares the two streams of `src`; `name` labels its report lines.
 fn compare(arena: std.mem.Allocator, w: *Io.Writer, st: *Stats, name: []const u8, src: [:0]const u8) !void {
     st.inputs += 1;
-    var lx = parser.Lexer.init(src);
+    var lx = baseLexer(src);
     var tz = std.zig.Tokenizer.init(src);
     var n: usize = 0;
     var long = false;
@@ -173,7 +179,7 @@ pub fn main(init: std.process.Init) !void {
             const src = cwd.readFileAllocOptions(io, path, gpa, .unlimited, .of(u8), 0) catch |err|
                 std.process.fatal("{s}: {t}", .{ path, err });
             defer gpa.free(src);
-            var lx = parser.Lexer.init(src);
+            var lx = baseLexer(src);
             var tz = std.zig.Tokenizer.init(src);
             try w.print("# {s} {d}\n", .{ path, src.len });
             while (true) {

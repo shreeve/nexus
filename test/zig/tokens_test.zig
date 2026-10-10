@@ -8,9 +8,11 @@ const std = @import("std");
 const parser = @import("parser.zig");
 
 /// Fails, printing the input and the first difference, unless both lexers
-/// give `src` the same token stream.
+/// give `src` the same token stream. The generated lexer starts as the
+/// lang module starts it (after a byte order mark) and runs without the
+/// lang Lexer's own token rewriting.
 fn expectSameTokens(src: [:0]const u8) !void {
-    var lx = parser.Lexer.init(src);
+    var lx = parser.Lexer.init(src).base;
     var tz = std.zig.Tokenizer.init(src);
     var n: usize = 0;
     while (true) : (n += 1) {
@@ -90,13 +92,13 @@ test "a token over 65535 bytes is an err token over its first 65535" {
         @memset(src[1 .. n - 1], 'a');
         src[n - 1] = '"';
         @memcpy(src[n..], " x;");
-        var lx = parser.Lexer.init(src);
+        var lx = parser.Lexer.init(src).base;
         const t = lx.next();
         try std.testing.expectEqual(@as(u32, 0), t.pos);
         try std.testing.expectEqual(if (n == 65535) parser.TokenCat.string_literal else .err, t.cat);
         try std.testing.expectEqual(@as(u16, 65535), t.len);
         // The scan goes on after the whole literal, in step with std.zig.Tokenizer.
-        try std.testing.expectEqual(n, lx.base.pos);
+        try std.testing.expectEqual(n, lx.pos);
         const x = lx.next();
         try std.testing.expectEqual(parser.TokenCat.identifier, x.cat);
         try std.testing.expectEqual(@as(u32, @intCast(n + 1)), x.pos);
