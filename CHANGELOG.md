@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Added
+
+- Spreads into fixed roles (schema mode): when element N names a rule
+  whose every alternative builds an untagged list of one length k, a
+  positional `...N` fills the next k roles of a node and `role:...N`
+  fills `role` and the k − 1 after it, so a head shared by several kinds
+  (`if`/`while` conditions and captures, a declaration's modifiers) is
+  written once, in one rule. Generation checks the length, the roles
+  available, and each item's type against its role; an absent optional
+  head leaves its roles nil. Additive: both forms were errors before, and
+  grammars that do not use them generate the same parsers. No migration.
+- Span marks: `-X` on a leading or trailing element of a pattern leaves
+  that element out of the span of the node the alternative builds (and of
+  the nested nodes of its action), so a
+  statement's node can exclude its `;` and the doc comments before it
+  (`stmt = -doc:DOC* "var" name:IDENT "=" value:expr -";" → (var)`). The
+  element keeps its position and value, and the parent node still spans
+  it. Generation rejects a mark inside a group, on a middle element, on an
+  alternative that builds no node, or one that leaves the node no element
+  that is always there. Applies with `@schema`, and with `--spans` without
+  one. Additive: grammars without marks generate the same parsers. No
+  migration.
+
+## 2.1.0 — 2026-10-10
+
 ### Changed
 
 - Faster generated parsers, with the same trees and the same API.

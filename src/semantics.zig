@@ -111,6 +111,17 @@ const Resolver = struct {
     /// Heads and tag literals used but not declared, in first-seen order.
     undeclaredKinds: std.ArrayList(Use) = .empty,
     undeclaredTags: std.ArrayList(TagUse) = .empty,
+    /// The alternative being resolved: where a spread's element is looked
+    /// up (null while placing `@infix` nodes).
+    current: ?Current = null,
+    /// Per rule name: its alternatives' list length when every one builds
+    /// an untagged list of the same length (see `fixedLength`).
+    fixed: std.StringHashMapUnmanaged(Fixed) = .empty,
+
+    const Current = struct { alt: ParsedAlternative, layout: Layout, aliases: *const std.StringHashMapUnmanaged([]const u8) };
+
+    /// Whether a rule's lists have one fixed length, and why not.
+    const Fixed = union(enum) { len: u16, not: []const u8, busy };
 
     /// One construction of an undeclared kind, for the inventory printout.
     const Use = struct { tag: []const u8, list: ActionList, ctx: Ctx };
@@ -206,6 +217,8 @@ const Resolver = struct {
             });
         }
 
+        self.current = .{ .alt = alt, .layout = layout, .aliases = aliases };
+        defer self.current = null;
         var out: Resolved = .{ .tree = alt.actionTree };
         var sides: std.ArrayList(Resolved.SideLabel) = .empty;
         var merged: std.ArrayList([2]u16) = .empty;
@@ -318,7 +331,17 @@ const Resolver = struct {
                 };
                 if (ri < slotCount) {
                     if (elem == .spread) {
-                        self.err(ctx, "role '{s}' of '{s}' takes one value; only the rest role takes a spread", .{ roleName, tag });
+                        // A list of fixed length fills this role and the
+                        // ones after it.
+                        const k = switch (try self.spreadLength(elem.spread)) {
+                            .len => |k| k,
+                            .not => |why| {
+                                self.err(ctx, "role '{s}' of '{s}' takes one value; only the rest role takes a spread, or a list of one fixed length ({s})", .{ roleName, tag, why });
+                                continue;
+                            },
+                            .busy => unreachable,
+                        };
+                        try self.fillFixed(ctx, kind, slots, ri, elem.spread, k);
                         continue;
                     }
                     if (slots[ri] != null) {
@@ -339,8 +362,17 @@ const Resolver = struct {
             }
             if (next < slotCount) {
                 if (elem == .spread) {
-                    self.err(ctx, "a spread cannot fill role '{s}' of '{s}'; only the rest role takes a spread", .{ roles[next].name, tag });
-                    next += 1;
+                    switch (try self.spreadLength(elem.spread)) {
+                        .len => |k| {
+                            try self.fillFixed(ctx, kind, slots, next, elem.spread, k);
+                            next += k;
+                        },
+                        .not => |why| {
+                            self.err(ctx, "a spread cannot fill role '{s}' of '{s}'; only the rest role takes a spread, or a list of one fixed length ({s})", .{ roles[next].name, tag, why });
+                            next += 1;
+                        },
+                        .busy => unreachable,
+                    }
                     continue;
                 }
                 try self.noteTag(ctx, elem, roles[next]);
@@ -412,6 +444,121 @@ const Resolver = struct {
         }
         for (rest.items) |e| try items.append(a, .{ .role = restRole.?.name, .elem = e });
         return .{ .head = l.head, .items = try items.toOwnedSlice(a) };
+    }
+
+    /// Fill the slots from `first` on with the `k` items of element `pos`
+    /// (a list of fixed length).
+    fn fillFixed(self: *Resolver, ctx: Ctx, kind: Schema.Kind, slots: []?ActionElem, first: usize, pos: u16, k: u16) Error!void {
+        if (first + k > slots.len) {
+            const left = slots.len - first;
+            self.err(ctx, "the spread of element {d} fills {d} roles from '{s}', but '{s}' has {d} role{s} from there", .{ pos, k, kind.roles[first].name, kind.tag, left, if (left == 1) "" else "s" });
+            return;
+        }
+        for (0..k) |i| {
+            const ri = first + i;
+            if (slots[ri] != null) {
+                self.err(ctx, "role '{s}' of '{s}' is filled twice", .{ kind.roles[ri].name, kind.tag });
+                continue;
+            }
+            slots[ri] = .{ .item = .{ .pos = pos, .index = @intCast(i) } };
+        }
+    }
+
+    /// The length of the lists element `pos` of the current alternative
+    /// can be, when it is one: the element names a rule (it may be
+    /// optional: absent, its items are nil) whose every alternative builds
+    /// an untagged list of that length.
+    fn spreadLength(self: *Resolver, pos: u16) Error!Fixed {
+        const cur = self.current orelse return .{ .not = "@infix has no elements to spread" };
+        if (pos == 0 or pos > cur.layout.slots.len) return .{ .not = try self.a.print("the pattern has no element {d}", .{pos}) };
+        const e = cur.layout.element(cur.alt.elements, pos);
+        if (cur.layout.whole(pos)) |f| if (f.alts.len > 1 or e.kind != .ident) {
+            return .{ .not = try self.a.print("element {d} is a choice or a group, not a rule", .{pos}) };
+        };
+        return self.ruleElementLength("", e, pos, true, cur.aliases);
+    }
+
+    /// The fixed length of the lists rule element `e` (at `pos`) builds.
+    /// `optional`: the element may be optional (`X?`, `[X]`). `where`
+    /// prefixes a reason it is not one.
+    fn ruleElementLength(self: *Resolver, where: []const u8, e: ParsedElement, pos: u16, optional: bool, aliases: *const std.StringHashMapUnmanaged([]const u8)) Error!Fixed {
+        const a = self.a;
+        if (e.quantifier == .zeroPlus or e.quantifier == .onePlus)
+            return .{ .not = try a.print("{s}element {d} ({f}) is repeated", .{ where, pos, expand.fmtElement(e) }) };
+        if (e.kind != .ident and e.kind != .token) return .{ .not = try a.print("{s}element {d} ({f}) is not a rule", .{ where, pos, expand.fmtElement(e) }) };
+        if (e.quantifier == .optional and !optional)
+            return .{ .not = try a.print("{s}element {d} ({f}) can be absent", .{ where, pos, expand.fmtElement(e) }) };
+        var name = e.value;
+        while (aliases.get(name)) |target| name = target;
+        if (e.kind == .token or isUpper(name)) return .{ .not = try a.print("{s}element {d} ({s}) is a token", .{ where, pos, e.value }) };
+        return self.fixedLength(name);
+    }
+
+    /// Whether every alternative of rule `name` builds an untagged list of
+    /// one length: its items, a `...N` of an always-present rule element
+    /// of fixed length counting that length; or passes through such an
+    /// element.
+    fn fixedLength(self: *Resolver, name: []const u8) Error!Fixed {
+        const a = self.a;
+        if (self.fixed.get(name)) |f| return switch (f) {
+            .busy => .{ .not = try a.print("rule '{s}' builds its list from itself", .{name}) },
+            else => f,
+        };
+        try self.fixed.put(a, name, .busy);
+        var found = false;
+        var len: ?u16 = null;
+        var lenLine: u32 = 0;
+        const result: Fixed = outer: for (self.ir.rules) |rule| {
+            if (!std.mem.eql(u8, rule.name, name)) continue;
+            found = true;
+            for (rule.alternatives) |alt| {
+                const n = switch (try self.altLength(name, alt)) {
+                    .len => |n| n,
+                    else => |f| break :outer f,
+                };
+                if (len) |l| if (l != n) break :outer .{ .not = try a.print("rule '{s}' builds lists of {d} items (line {d}) and of {d} (line {d})", .{ name, l, lenLine, n, alt.line }) };
+                len = n;
+                lenLine = alt.line;
+            }
+        } else if (!found) .{ .not = try a.print("no rule '{s}'", .{name}) } else .{ .len = len.? };
+        try self.fixed.put(a, name, result);
+        return result;
+    }
+
+    fn altLength(self: *Resolver, name: []const u8, alt: ParsedAlternative) Error!Fixed {
+        const a = self.a;
+        const cur = self.current.?;
+        const layout = try Layout.of(a, alt.elements);
+        const tree = alt.actionTree orelse {
+            if (layout.slots.len == 1) return self.alwaysThere(name, alt, layout, 1, cur.aliases);
+            return .{ .not = try a.print("rule '{s}' line {d}: an alternative without an action builds no list of fixed length; write one, `(1 2 ...)`", .{ name, alt.line }) };
+        };
+        switch (tree) {
+            .nil => return .{ .not = try a.print("rule '{s}' line {d} gives nil", .{ name, alt.line }) },
+            .pass => |p| return self.alwaysThere(name, alt, layout, p, cur.aliases),
+            .list => |l| {
+                if (l.head != .none) return .{ .not = try a.print("rule '{s}' line {d} builds a node, not an untagged list", .{ name, alt.line }) };
+                var n: usize = 0;
+                for (l.items) |item| switch (item.elem) {
+                    .spread => |p| switch (try self.alwaysThere(name, alt, layout, p, cur.aliases)) {
+                        .len => |k| n += k,
+                        else => |f| return f,
+                    },
+                    else => n += 1,
+                };
+                if (n > std.math.maxInt(u16)) return .{ .not = try a.print("rule '{s}' builds lists of {d} items", .{ name, n }) };
+                return .{ .len = @intCast(n) };
+            },
+        }
+    }
+
+    /// The fixed length of element `pos` of a rule's alternative, which a
+    /// spread or a pass-through of it needs always there.
+    fn alwaysThere(self: *Resolver, name: []const u8, alt: ParsedAlternative, layout: Layout, pos: u16, aliases: *const std.StringHashMapUnmanaged([]const u8)) Error!Fixed {
+        const where = try self.a.print("rule '{s}' line {d}: ", .{ name, alt.line });
+        if (pos == 0 or pos > layout.length or layout.forms[layout.slots[pos - 1].elem] != null)
+            return .{ .not = try self.a.print("{s}element {d} is not always there", .{ where, pos }) };
+        return self.ruleElementLength(where, layout.element(alt.elements, pos), pos, false, aliases);
     }
 
     fn placeElem(self: *Resolver, ctx: Ctx, e: ActionElem) Error!ActionElem {
@@ -590,6 +737,7 @@ const Resolver = struct {
     fn markElem(e: ActionElem, used: []bool) void {
         switch (e) {
             .ref, .spread, .symId, .litTag => |p| used[p] = true,
+            .item => |it| used[it.pos] = true,
             .node => |n| markList(n.*, used),
             else => {},
         }
@@ -938,7 +1086,55 @@ const TypeChecker = struct {
                 .tag => |t| if (self.kindIndex.get(t)) |k| out.set(Types.firstKind + k) else out.set(Types.list),
                 else => out.set(Types.list),
             },
+            .item => |it| self.itemTypes(sym(rule, it.pos), it.index, out),
         }
+    }
+
+    /// The values item `index` of the lists symbol `s` builds can be. `s`
+    /// builds lists of one fixed length (semantics.resolve checked it), so
+    /// every rule of it has that item.
+    fn itemTypes(self: *TypeChecker, s: u16, index: u16, out: *std.bit_set.Dynamic) void {
+        for (self.g.symbols.items[s].rules.items) |ri| self.ruleItemTypes(self.g.rules.items[ri], index, out);
+    }
+
+    fn ruleItemTypes(self: *TypeChecker, rule: grammar.Rule, index: u16, out: *std.bit_set.Dynamic) void {
+        const tree = rule.actionTree orelse {
+            if (rule.rhs.len == 1) self.itemTypes(rule.rhs[0], index, out);
+            return;
+        };
+        switch (tree) {
+            .pass => |p| self.itemTypes(sym(rule, p), index, out),
+            .nil => {},
+            .list => |l| {
+                var i = index;
+                for (l.items) |item| switch (item.elem) {
+                    .spread => |p| {
+                        const k = self.fixedLength(sym(rule, p));
+                        if (i < k) return self.itemTypes(sym(rule, p), i, out);
+                        i -= k;
+                    },
+                    else => {
+                        if (i == 0) return self.elemInto(rule, item.elem, out);
+                        i -= 1;
+                    },
+                };
+            },
+        }
+    }
+
+    /// The length of the lists symbol `s` builds, one fixed length.
+    fn fixedLength(self: *TypeChecker, s: u16) u16 {
+        const rule = self.g.rules.items[self.g.symbols.items[s].rules.items[0]];
+        const tree = rule.actionTree orelse return self.fixedLength(rule.rhs[0]);
+        return switch (tree) {
+            .pass => |p| self.fixedLength(sym(rule, p)),
+            .nil => 0,
+            .list => |l| blk: {
+                var n: u16 = 0;
+                for (l.items) |item| n += if (item.elem == .spread) self.fixedLength(sym(rule, item.elem.spread)) else 1;
+                break :blk n;
+            },
+        };
     }
 
     fn allowed(self: *TypeChecker, role: Schema.Role, forRest: bool) !std.bit_set.Dynamic {
@@ -994,6 +1190,7 @@ const TypeChecker = struct {
                     source = sym(rule, p);
                     _ = unionInto(&actual, self.result[source.?]);
                 },
+                .item => |it| self.itemTypes(sym(rule, it.pos), it.index, &actual),
                 else => self.elemInto(rule, item.elem, &actual),
             }
             // The values the role does not allow.
@@ -1035,6 +1232,11 @@ const TypeChecker = struct {
                 try writeSymbol(w, g, sym(rule, p));
                 try w.writeAll(")");
             },
+            .item => |it| {
+                try w.print(", but item {d} of the list of element {d} (", .{ it.index + 1, it.pos });
+                try writeSymbol(w, g, sym(rule, it.pos));
+                try w.writeAll(")");
+            },
             .nil => try w.writeAll(", but the action gives nil there (`_`, or an absent [opt] element)"),
             else => try w.writeAll(", but the action"),
         }
@@ -1047,19 +1249,31 @@ const TypeChecker = struct {
             try self.writeTypes(w, bad);
         }
         // Name a production that yields the first offending value.
-        const s = switch (e) {
-            .ref, .spread => |p| sym(rule, p),
-            else => return,
-        };
         var it = bad.iterator(.{});
         const b = it.next() orelse return;
-        if (self.producer(s, b, e == .spread)) |pr| {
+        const found = switch (e) {
+            .ref, .spread => |p| self.producer(sym(rule, p), b, e == .spread),
+            .item => |item| self.itemProducer(sym(rule, item.pos), item.index, b),
+            else => return,
+        };
+        if (found) |pr| {
             try w.writeAll(" (from ");
             try writeRule(w, g, pr);
             const pl = g.rules.items[pr].line;
             if (pl > 0) try w.print(", line {d}", .{pl});
             try w.writeAll(")");
         }
+    }
+
+    /// A rule of nonterminal `s` whose item `index` includes type bit `b`.
+    fn itemProducer(self: *TypeChecker, s: u16, index: u16, b: usize) ?u16 {
+        var one = std.bit_set.Dynamic.initEmpty(self.a, self.width) catch return null;
+        for (self.g.symbols.items[s].rules.items) |ri| {
+            one.unsetAll();
+            self.ruleItemTypes(self.g.rules.items[ri], index, &one);
+            if (one.isSet(b)) return ri;
+        }
+        return null;
     }
 
     /// A rule of nonterminal `s` (or of the nonterminals it passes through)

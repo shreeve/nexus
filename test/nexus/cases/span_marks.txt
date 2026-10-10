@@ -1,0 +1,2 @@
+stmt = -doc:DOC* -!COMMENT? KW IDENT -";"   → (stmt 3)
+     | -(A | B) -[C D] x -L(y) -!z+   → (s 3)

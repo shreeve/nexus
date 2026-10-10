@@ -1,0 +1,84 @@
+# A spread fills fixed roles: a helper rule that builds untagged lists of
+# one fixed length writes a shared head once, and `...N` (positional, or
+# `role:...N` from a named role on) places its items in consecutive roles.
+#   - `if` and `while` share `cond_head` (through a pass-through and a
+#     nested spread); `while` mixes a leading role with the spread, by
+#     position and by role;
+#   - `var_decl` takes four roles from `var_head`, whose optional parts
+#     are nil when absent;
+#   - an absent optional head (`[if_head]`) leaves its roles nil.
+
+@lexer
+tokens
+    ident
+    label
+    kw_if
+    kw_while
+    kw_else
+    kw_var
+    kw_const
+    kw_pub
+    kw_guard
+    lparen
+    rparen
+    lbrace
+    rbrace
+    pipe
+    colon
+    eq
+    semi
+    star
+    eof
+    err
+'\n'                                        → skip, skip
+'('                                         → lparen
+')'                                         → rparen
+'{'                                         → lbrace
+'}'                                         → rbrace
+'|'                                         → pipe
+':'                                         → colon
+'='                                         → eq
+';'                                         → semi
+'*'                                         → star
+"if"                                        → kw_if
+"while"                                     → kw_while
+"else"                                      → kw_else
+"var"                                       → kw_var
+"const"                                     → kw_const
+"pub"                                       → kw_pub
+"guard"                                     → kw_guard
+'#' [a-z]+                                  → label
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@lang = "spread_fixed_roles"
+
+@schema
+    block       ...stmts
+    if          cond capture:capture? then else?
+    while       label:leaf? cond capture:capture? then
+    guard       cond? capture:capture? body
+    var_decl    visib:leaf? mut:leaf name:leaf type? init?
+    capture     ptr:leaf? name:leaf
+    name        id:leaf
+
+top!        = block
+
+stmt        = if_head stmt  >                       → (if ...1 then:2)
+            | if_head stmt "else" stmt              → (if ...1 2 4)
+            | LABEL while_head stmt                 → (while 1 ...2 3)
+            | while_head stmt                       → (while cond:...1 then:2)
+            | "guard" [if_head] block               → (guard ...2 3)
+            | var_head ["=" name] ";"               → (var_decl ...1 init:3)
+            | name ";"                              → 1
+            | block
+
+block       = "{" stmt* "}"                         → (block ...2)
+if_head     = "if" cond_head                        → 2
+while_head  = "while" cond_head                     → (...2)
+cond_head   = "(" name ")" [payload]                → (2 4)
+payload     = "|" ["*"] IDENT "|"                   → (capture 2 3)
+var_head    = ["pub"] mut IDENT [":" name]          → (1 2 3 5)
+mut         = "var" | "const"
+name        = IDENT                                 → (name 1)

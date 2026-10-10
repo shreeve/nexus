@@ -187,7 +187,7 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 | Ruby subset | `test/ruby/ruby.grammar` | 773 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
 | Slash | `test/slash/slash.grammar` | 385 | 156 | 0 | 7 | plain |
 | Nexis (a Clojure reader) | `test/nexis/nexis.grammar` | 98 | 63 | 0 | 27 | plain |
-| Nexus grammar files | `nexus.grammar` | 554 | 359 | 0 | 11 + every grammar in the suite | schema |
+| Nexus grammar files | `nexus.grammar` | 560 | 362 | 0 | 12 + every grammar in the suite | schema |
 
 A declared conflict is one manifest entry; it covers one or more table
 cells. [test/bench/BASELINE.md](test/bench/BASELINE.md) records generation

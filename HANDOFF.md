@@ -6,9 +6,10 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 
 ## State
 
-- **Nexus 2.0.0** (tag `v2.0.0`) is the current release. What it changes
-  from 1.1.0, with migration steps for every downstream repository, is
-  CHANGELOG.md's 2.0.0 section.
+- **Nexus 2.1.0** (tag `v2.1.0`) is the current release: 2.0.0's grammar
+  language and generated API, with faster generated parsers. CHANGELOG.md
+  has each release and the migration steps for every downstream
+  repository.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
   `./test/run` → 731 passed, 0 failed, 0 known; the generated code is byte
   for byte the same on both.

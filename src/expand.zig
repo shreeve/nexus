@@ -142,6 +142,7 @@ pub fn fmtElement(e: ParsedElement) std.fmt.Alt(ParsedElement, writeElement) {
 }
 
 fn writeElement(e: ParsedElement, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    if (e.unspanned) try w.writeByte('-');
     if (e.skip) try w.writeByte('!');
     if (e.label) |l| try w.print("{s}:", .{l});
     switch (e.kind) {
@@ -295,6 +296,29 @@ const PatternChecker = struct {
             .list => |l| try self.action(alt, l, 1),
             else => {},
         };
+        try self.spanMarks(alt);
+    }
+
+    /// Span marks (`-X`) leave a leading and a trailing run of elements
+    /// out of the span of the node the action builds; the node spans at
+    /// least one element in every expanded variant.
+    fn spanMarks(self: PatternChecker, alt: ParsedAlternative) Error!void {
+        const els = alt.elements;
+        const firstMark = for (els) |e| {
+            if (e.unspanned) break e;
+        } else return;
+        var i: usize = 0;
+        while (i < els.len and els[i].unspanned) i += 1;
+        var j = els.len;
+        while (j > i and els[j - 1].unspanned) j -= 1;
+        for (els[i..j]) |e| if (e.unspanned)
+            return self.fail(e.line, e.col, "span mark on '{f}': only leading and trailing elements can be left out of a node's span", .{fmtElement(e)});
+        const node = if (alt.actionTree) |t| t == .list and t.list.head == .tag else false;
+        if (!node) return self.fail(firstMark.line, firstMark.col, "span marks need an action that builds a node, `(kind ...)`", .{});
+        for (els[i..j]) |e| {
+            if (!(inlines(e) and (e.quantifier == .optional or e.kind == .optGroup))) return;
+        }
+        return self.fail(firstMark.line, firstMark.col, "span marks leave the node no element that is always there", .{});
     }
 
     fn children(self: PatternChecker, e: ParsedElement, addressable: bool, depth: usize) Error!void {
@@ -534,6 +558,9 @@ const Expander = struct {
             null;
         const digits = try a.alloc(usize, vars.items.len);
         const posMap = try a.alloc(u16, layout.slots.len + 1);
+        const marked = for (alt.elements) |e| {
+            if (e.unspanned) break true;
+        } else false;
 
         for (0..total) |combo| {
             // Mixed-radix digits, the first inline element least significant.
@@ -547,7 +574,14 @@ const Expander = struct {
             var rhs: std.ArrayList(ParsedElement) = .empty;
             @memset(posMap, absent);
             var d: usize = 0;
+            // The elements the node spans: all but the span-marked ones.
+            var spanned: ?Rule.SpanElems = null;
             for (alt.elements, layout.forms, 0..) |e, form, i| {
+                const before = rhs.items.len;
+                defer if (marked and !e.unspanned and rhs.items.len > before) {
+                    const first: u16 = if (spanned) |s| s.first else @intCast(before);
+                    spanned = .{ .first = first, .last = @intCast(rhs.items.len - 1) };
+                };
                 const f = form orelse {
                     try rhs.append(a, e);
                     posMap[layout.pos[i]] = @intCast(rhs.items.len);
@@ -562,6 +596,8 @@ const Expander = struct {
                 }
                 if (!f.spliced) posMap[layout.pos[i]] = if (f.alts[ai].len == 1) @intCast(rhs.items.len) else multi;
             }
+            // checkPatterns keeps an unmarked element in every variant.
+            std.debug.assert(!marked or spanned != null);
             if (resolved) |r| for (r.merged) |m| {
                 if (posMap[m[0]] == absent) posMap[m[0]] = posMap[m[1]];
             };
@@ -593,6 +629,7 @@ const Expander = struct {
                 .preferShift = alt.preferShift,
                 .kind = if (resolved) |r| r.kind else null,
                 .sideLabels = try sideLabels.toOwnedSlice(a),
+                .spanElems = spanned,
                 .line = alt.line,
                 .col = alt.col,
             });
@@ -693,6 +730,8 @@ const Expander = struct {
                 .spread => |p| if (try self.at(p) != absent) .{ .spread = try self.at(p) } else if (self.schemaless) .nil else null,
                 .node => |l| .{ .node = try self.listPtr(l.*) },
                 .litTag => |p| if (try self.at(p) == absent) .nil else .{ .litTag = try self.at(p) },
+                // An absent list of fixed length leaves its roles nil.
+                .item => |it| if (try self.at(it.pos) == absent) .nil else .{ .item = .{ .pos = try self.at(it.pos), .index = it.index } },
                 .nil, .tagLit => e,
             };
         }
@@ -1070,7 +1109,7 @@ fn trailingCut(original: []const ActionItem, mapped: []const ActionItem) []const
     var lastPresent: ?usize = null;
     var firstRef: ?usize = null;
     for (original, mapped, 0..) |item, m, i| switch (item.elem) {
-        .ref, .spread, .symId, .litTag => {
+        .ref, .spread, .symId, .litTag, .item => {
             if (firstRef == null) firstRef = i;
             if (m.elem != .nil) lastPresent = i;
         },
@@ -1080,7 +1119,7 @@ fn trailingCut(original: []const ActionItem, mapped: []const ActionItem) []const
     const start = firstRef orelse return mapped;
     const cutFrom = if (lastPresent) |lp| blk: {
         for (original[lp + 1 ..], lp + 1..) |item, i| switch (item.elem) {
-            .ref, .spread, .symId, .litTag => break :blk i,
+            .ref, .spread, .symId, .litTag, .item => break :blk i,
             else => {},
         };
         return mapped;

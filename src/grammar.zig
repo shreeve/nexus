@@ -256,6 +256,9 @@ pub const ParsedElement = struct {
     skip: bool = false,
     /// `role:element` pattern label (`_` = explicitly dropped).
     label: ?[]const u8 = null,
+    /// `-element`: left out of the span of the node the alternative
+    /// builds (a leading or trailing top-level element).
+    unspanned: bool = false,
     /// Source position of the element (diagnostics).
     line: u32 = 0,
     col: u32 = 0,
@@ -370,11 +373,17 @@ pub const ActionElem = union(enum) {
     litTag: u16,
     /// A nested `(kind …)` node.
     node: *const ActionList,
+    /// Item `index` of element N's list: one slot of a spread that fills
+    /// fixed roles (schema mode; semantics.zig places it).
+    item: Item,
+
+    pub const Item = struct { pos: u16, index: u16 };
 };
 
 /// The canonical text of an action: `N`, `_`, or `(head item ...)` with
-/// items `N`, `...N`, `~N`, `_`, tags, nested lists, each optionally
-/// prefixed by `role:`. Used in generated-code comments and diagnostics.
+/// items `N`, `...N`, `...N[i]` (item i of a fixed spread), `~N`, `_`,
+/// tags, nested lists, each optionally prefixed by `role:`. Used in
+/// generated-code comments and diagnostics.
 pub fn renderAction(allocator: Allocator, tree: ActionTree) ![]const u8 {
     var out: std.ArrayList(u8) = .empty;
     switch (tree) {
@@ -421,6 +430,7 @@ fn renderElem(allocator: Allocator, out: *std.ArrayList(u8), elem: ActionElem) A
         .tagLit => |t| try out.appendSlice(allocator, t),
         .litTag => |n| try out.print(allocator, "tag({d})", .{n}),
         .node => |l| try renderList(allocator, out, l.*),
+        .item => |it| try out.print(allocator, "...{d}[{d}]", .{ it.pos, it.index }),
     }
 }
 
@@ -549,6 +559,9 @@ pub const Rule = struct {
     kind: ?u16 = null,
     /// Side-band labels: (role, 1-based position) recorded in the role store.
     sideLabels: []const SideLabel = &.{},
+    /// Span marks (`-X`): the node the action builds spans these elements
+    /// (0-based, inclusive), not the whole reduction.
+    spanElems: ?SpanElems = null,
     /// An operator rule `infix → infix op infix` of a folded `@infix`
     /// table: its operator's level and associativity, which decide its
     /// shift/reduce cells against the table's other operators.
@@ -560,6 +573,8 @@ pub const Rule = struct {
 
     /// `pos` is 1-based like action positions.
     pub const SideLabel = struct { role: []const u8, pos: u16 };
+
+    pub const SpanElems = struct { first: u16, last: u16 };
 
     /// Level 1 binds loosest.
     pub const Precedence = struct { level: u16, assoc: InfixOp.Assoc };

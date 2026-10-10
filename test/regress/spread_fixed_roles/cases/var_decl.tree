@@ -1,0 +1,3 @@
+(block
+  (var_decl `pub` `var` `x` (name `t`)@13..14 (name `y`)@17..18)@2..19
+  (var_decl _ `const` `z` _ _)@20..28)@0..30

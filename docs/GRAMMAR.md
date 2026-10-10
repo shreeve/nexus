@@ -478,6 +478,7 @@ g h
 | `L(X?)` `L(X?, sep)` | items may be empty | a list, nil for empty items |
 | `[L(X)]` `[X ...]` `[X, ...]` | an optional list | a list, or nil when absent |
 | `!X` `!X?` ... | `X`, marked as carrying no value | still a position |
+| `-X` | `X`, left out of the span of the node the alternative builds (a leading or trailing element; see [SEMANTICS.md](SEMANTICS.md#span-marks)) | its value |
 | `X "c"` | nothing: a [hint](#conflicts-and-hints) | none |
 | `@infix` | the [operator chain](#infix) | its value |
 
