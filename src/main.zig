@@ -302,6 +302,27 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
             fail();
         };
 
+        // Every check ran on the `@infix` chain; the parser is generated
+        // from the folded table when it parses the same (lr.foldable).
+        if (ir.infix) |decl| if (decl.ops.len > 0 and lr.foldable(&g, &result.table, decl)) {
+            var folded = Grammar.init(allocator);
+            const ok = fold: {
+                expand.processGrammar(&folded, &ir, .{
+                    .path = grammarFile,
+                    .resolved = if (sem) |s| s.resolved else null,
+                    .infix = if (sem) |s| s.infix else null,
+                    .foldInfix = true,
+                }) catch break :fold false;
+                if (sem) |s| folded.schema = s.schema;
+                if ((check.bindTokens(&folded, &lexerSpec, grammarFile) catch break :fold false) > 0) break :fold false;
+                if ((check.resolveHints(&folded, &lexerSpec, grammarFile) catch break :fold false) > 0) break :fold false;
+                const r = lr.runFolded(&folded, &g, &result.table) catch break :fold false;
+                result = r orelse break :fold false;
+                break :fold true;
+            };
+            if (ok) g = folded;
+        };
+
         diag.info("   Generated: {d} symbols, {d} rules, {d} states", .{
             g.symbols.items.len,
             g.rules.items.len,

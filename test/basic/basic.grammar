@@ -1,5 +1,5 @@
 # basic.grammar — Expressions with precedence and associativity
-# Tests: @infix, operator precedence, left/right associativity,
+# Tests: @infix, operator precedence, left/right/none associativity,
 #        parentheses, literals, newlines, multiple start symbols
 
 @lexer
@@ -12,6 +12,7 @@ tokens
     star
     slash
     power
+    eqeq
     lparen
     rparen
     newline
@@ -23,6 +24,7 @@ tokens
 '*'                                         → star
 '/'                                         → slash
 "**"                                        → power
+"=="                                        → eqeq
 '('                                         → lparen
 ')'                                         → rparen
 '\n'                                        → newline
@@ -53,6 +55,7 @@ atom     = name
          | "(" expr ")"                     → 2
 
 @infix unary
+    "==" none
     "+"  left, "-"  left
     "*"  left, "/"  left
     "**" right

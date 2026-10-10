@@ -145,7 +145,8 @@ expander resolves.
   them in place and the parse stack stays flat; their actions keep nils,
   one item per element;
 - `@infix` becomes one rule per precedence level (`infix("+" "-")`) with
-  left, right or no associativity built into the recursion;
+  left, right or no associativity built into the recursion (the chain;
+  see [LR](#lr) for the folded form the parser is generated from);
 - each start symbol `x` gets a marker terminal `x!` and an accept rule
   `$accept_x → x! x $end`; `parseX` pushes the marker first, which selects
   the start symbol without adding conflicts.
@@ -212,6 +213,25 @@ for, then the terminals none of them starts), and `repair.zig` ranks the
 `@repair` insertion candidates per state by class and by the minimum
 number of further tokens the item needs.
 
+Every check runs on the `@infix` chain, which costs the parser one unit
+reduction per level for every operand. When no conflict involves a rule
+of the chain, each level has one associativity and no operator repeats
+(`lr.foldable`), the grammar is expanded again with the table folded:
+`infix → infix op infix` per operator, carrying its level and
+associativity, and `infix → base`. `table.zig` decides a shift of an
+operator against the reduction of one operator rule by precedence, as
+yacc's `%left`, `%right` and `%nonassoc` do (a tighter operator shifts, a
+looser one reduces, the same level goes by its associativity; `none` is
+an error cell, so chains reject). Those cells are not conflicts. An
+operator that could also follow a whole `infix` from outside the table
+would be a conflict of the chain, so every decision precedence makes is
+one the chain makes too; a level mixing `none` with `left` is
+conflict-free as a chain yet has no precedence equivalent, hence the
+associativity condition. `lr.runFolded` builds the folded table and keeps
+it only when its conflicts (by rule text and cell count) and the `X "c"`
+hints it uses match the chain's and it has no reduce loop; the parser, and its rule and
+state numbers, come from the folded grammar, and trees are the chain's.
+
 ### Code generation
 
 `src/codegen/codegen.zig` writes the module in sections: header, the lexer
@@ -223,7 +243,8 @@ takes its value: a rule whose value is nil or one of its elements needs no
 call of `executeAction`. `src/codegen/actions.zig` compiles every other
 action tree into the Zig expression `executeAction` returns for it: a list
 whose items are elements, tags or nil is a comptime-known item array that
-one builder reads, and `(...N x)` extends a left-recursive list in place
+one builder unrolls, a list with spreads is allocated once at its length
+and filled, and `(...N x)` extends a left-recursive list in place
 (amortized O(1) per element). It also decides, per rule, whether an
 untagged list can reach the tree (and needs a node id) or is only ever
 spliced (plumbing, no id).
@@ -245,7 +266,13 @@ store entries (span and rule, 12 bytes) live in chunks of 128 that never
 move. Parse memory comes from a bump allocator over chunks of the arena
 (the arena itself is threadsafe, and the parser needs no atomics). An
 `@as` keyword is looked up once per token, per group; only the table
-checks run again in each state. Every walk of a tree (`write`, `span`,
+checks run again in each state. The strict loop keeps the state, the
+token's symbol and the next action in locals. A pass-through rule (`A →
+B`, the value of its one element) builds nothing, so reducing it only
+replaces the top state, and a run of them (an operand climbing a chain of
+levels) keeps the state below in a register and writes the stack once. A
+cell an `X "c"` hint overrides holds a marker (`hinted`), so no other cell
+pays for the check. Every walk of a tree (`write`, `span`,
 `writeFacts`, placing the empty leaf of `~N`) keeps its frames on an
 explicit stack, so a tree as deep as its input is long never overflows the
 native stack.

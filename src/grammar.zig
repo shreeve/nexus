@@ -549,6 +549,10 @@ pub const Rule = struct {
     kind: ?u16 = null,
     /// Side-band labels: (role, 1-based position) recorded in the role store.
     sideLabels: []const SideLabel = &.{},
+    /// An operator rule `infix → infix op infix` of a folded `@infix`
+    /// table: its operator's level and associativity, which decide its
+    /// shift/reduce cells against the table's other operators.
+    infix: ?Precedence = null,
     /// Source line and column of the alternative this rule came from
     /// (0 for synthesized rules).
     line: u32 = 0,
@@ -556,6 +560,9 @@ pub const Rule = struct {
 
     /// `pos` is 1-based like action positions.
     pub const SideLabel = struct { role: []const u8, pos: u16 };
+
+    /// Level 1 binds loosest.
+    pub const Precedence = struct { level: u16, assoc: InfixOp.Assoc };
 };
 
 /// The desugared grammar: symbols, BNF rules, start/accept bookkeeping, and

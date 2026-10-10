@@ -280,10 +280,19 @@ const NodeStore = struct {
 };
 
 /// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
-/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`.
 inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
+
+/// Whether rule `r` is a pass-through `A → B`: one element, and its value.
+inline fn isPassThrough(r: u16) bool {
+    return ruleLen[r] == 1 and ruleValue[r] == 2;
+}
+
+/// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
+/// decides it (no rule has this number: rules are fewer than 32766).
+const hinted: i16 = std.math.minInt(i16);
 
 /// What `state` expects, reader-named: list `expectedOf[state]` of
 /// `expectedSymbols`.
@@ -292,13 +301,13 @@ fn expectedIn(state: u16) []const u16 {
     return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
 }
 
-/// The `X "c"` override of `state` for `sym`: the state to shift to.
-fn getImmediateShift(state: u16, sym: u16) ?i16 {
-    if (xExcludes.len == 0) return null;
+/// The action of a `hinted` cell: shift to the hint's state when the token
+/// touches the previous one, else the table's reduction.
+fn hintedAction(state: u16, sym: u16, touching: bool) i16 {
     for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-        if (x.sym == sym) return @intCast(x.shift);
+        if (x.sym == sym) return if (touching) @intCast(x.shift) else x.reduce;
     }
-    return null;
+    unreachable; // every hinted cell has its exclude
 }
 
 /// The tokens tolerant repair may insert in `state`, best first.
@@ -407,10 +416,10 @@ pub const BaseParser = struct {
 
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Per value-stack entry, the list `keepList` left there with its
-    /// capacity, for `extendList` to grow in place. Indexed like
+    /// Per value-stack entry, the list `keepExtended` left there with its
+    /// capacity, for `extendBy` to grow in place. Indexed like
     /// `valueStack`, sized to its capacity. An entry only ever describes a
-    /// live buffer: `extendList` clears the one it takes (its buffer may
+    /// live buffer: `extendBy` clears the one it takes (its buffer may
     /// move and be freed), a rule passing a list on moves the entry with
     /// it, and each parse starts with none (its memory is reused).
     spares: []Spare = &.{},
@@ -553,17 +562,45 @@ pub const BaseParser = struct {
 
     // @slot startMethods
 
-    /// Parse the whole input as `start`.
+    /// Parse the whole input as `start`. The state, the current token's
+    /// symbol and the next action live in locals: the symbol changes only
+    /// when a token is shifted, except that `@as` promotion depends on the
+    /// state, so a promotable token is promoted again after each
+    /// reduction. A run of pass-throughs (an operand climbing a chain of
+    /// `A → B` rules) keeps the state below it and writes the stack once.
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
+        // The start marker, which the start state shifts before any input.
+        if (self.injectedToken) |marker| try self.shift(@intCast(getAction(self.stateStack.last().?, marker)));
+        var state = self.stateStack.last().?;
+        var raw = tokenToSymbol(self.current);
+        var sym = self.promoted(raw);
+        var action = self.strictAction(state, sym);
         while (true) {
-            const state = self.stateStack.last().?;
-            const sym = self.lookahead();
-            const action = self.actionFor(state, sym);
             if (action > 0) {
-                try self.shift(@intCast(action));
+                state = @intCast(action);
+                try self.shiftToken(state);
+                raw = tokenToSymbol(self.current);
+                sym = self.promoted(raw);
+                action = self.strictAction(state, sym);
             } else if (action < -1) {
-                try self.reduce(@intCast(-action - 2));
+                var rule: u16 = @intCast(-action - 2);
+                if (isPassThrough(rule) and !(asGroups > 0 and raw == needsPromotion)) {
+                    const states = self.stateStack.items;
+                    const below = states[states.len - 2];
+                    while (true) {
+                        state = @intCast(getAction(below, ruleLhs[rule]));
+                        action = self.strictAction(state, sym);
+                        if (action >= -1) break;
+                        rule = @intCast(-action - 2);
+                        if (!isPassThrough(rule)) break;
+                    }
+                    states[states.len - 1] = state;
+                } else {
+                    state = try self.reduceOrPass(rule);
+                    if (asGroups > 0 and raw == needsPromotion) sym = self.promoted(raw);
+                    action = self.strictAction(state, sym);
+                }
             } else if (action == -1) {
                 return self.valueStack.last().?;
             } else {
@@ -571,6 +608,13 @@ pub const BaseParser = struct {
                 return error.ParseError;
             }
         }
+    }
+
+    /// The symbol of the current token, `raw` from `tokenToSymbol`, after
+    /// `@as` promotion in the current state.
+    inline fn promoted(self: *BaseParser, raw: u16) u16 {
+        if (asGroups > 0 and raw == needsPromotion) return promote(self, self.current);
+        return raw;
     }
 
     /// Parse `start`, repairing syntax errors for an editor: the parse goes
@@ -617,7 +661,7 @@ pub const BaseParser = struct {
                 if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
-                try self.reduce(@intCast(-action - 2));
+                _ = try self.reduceOrPass(@intCast(-action - 2));
             } else if (action == -1) {
                 result.sexp = self.valueStack.last().?;
                 result.complete = true;
@@ -757,9 +801,15 @@ pub const BaseParser = struct {
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null) {
-            if (getImmediateShift(state, sym)) |target| return target;
-        }
+        if (xExcludes.len > 0 and action == hinted)
+            return hintedAction(state, sym, self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null);
+        return action;
+    }
+
+    /// `actionFor` on a token of the input.
+    inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
+        const action = getAction(state, sym);
+        if (xExcludes.len > 0 and action == hinted) return hintedAction(state, sym, self.current.pre == 0);
         return action;
     }
 
@@ -772,18 +822,21 @@ pub const BaseParser = struct {
             try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
             if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
-        } else {
-            const tok = self.current;
-            // The lexer's id is taken even when an `@as` ordinal replaces
-            // it, so it never reaches the next token.
-            const lexerId = takeLexerId(&self.lexer);
-            const id = if (self.lastMatchedId != 0) self.lastMatchedId else lexerId;
-            self.lastMatchedId = 0;
-            const end = tok.pos + tok.len;
-            try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
-            if (nodeStore) self.lastEnd = end;
-            try self.advance();
-        }
+        } else try self.shiftToken(target);
+    }
+
+    /// Shift the current token, a token of the input.
+    inline fn shiftToken(self: *BaseParser, target: u16) !void {
+        const tok = self.current;
+        // The lexer's id is taken even when an `@as` ordinal replaces it,
+        // so it never reaches the next token.
+        const lexerId = takeLexerId(&self.lexer);
+        const id = if (asGroups > 0 and self.lastMatchedId != 0) self.lastMatchedId else lexerId;
+        if (asGroups > 0) self.lastMatchedId = 0;
+        const end = tok.pos + tok.len;
+        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+        if (nodeStore) self.lastEnd = end;
+        try self.advance();
     }
 
     /// Push a state, its value, and (with a node store) where the value
@@ -816,6 +869,23 @@ pub const BaseParser = struct {
     /// reduction in progress.
     fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
         return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
+    }
+
+    /// Reduce by `ruleId`. A pass-through `A → B` (the value of its one
+    /// element) only replaces the top state with the goto on A: the value,
+    /// its start and end, and its spare stay; it builds no node, so it
+    /// places no empty element and records no side-band role.
+    /// It returns the new top state.
+    inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !u16 {
+        if (isPassThrough(ruleId)) {
+            const states = self.stateStack.items;
+            const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
+            std.debug.assert(next > 0); // every reduction has a goto
+            states[states.len - 1] = @intCast(next);
+            return @intCast(next);
+        }
+        try self.reduce(ruleId);
+        return self.stateStack.items[self.stateStack.items.len - 1];
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -1169,40 +1239,53 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of element `n` (a list, else
-    /// nothing) for an action that appends to it. A list `keepList` left
-    /// on the value stack is reused with its spare capacity, so a
-    /// left-recursive list grows in amortized O(1) per element; it keeps
-    /// its node id.
-    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+    /// A list `extendBy` opened for an action that appends to it.
+    const Extension = struct { items: [*]Sexp, len: usize, capacity: usize };
+
+    /// Open a list holding the items of element `n` (a list, else nothing)
+    /// with room for `extra` more. A list `keepExtended` left on the value
+    /// stack is reused with its spare capacity, growing in place when it
+    /// is the allocator's last block, so a left-recursive list grows in
+    /// amortized O(1) per element; it keeps its node id.
+    fn extendBy(self: *BaseParser, pass: []const Sexp, n: usize, extra: usize) error{OutOfMemory}!Extension {
         const base = pass[n];
-        if (base != .list) return .empty;
-        const items = base.list.items();
+        const items: []const Sexp = if (base == .list) base.list.items() else &.{};
+        const need = items.len + extra;
         const spare = &self.spares[self.stackIndex(pass) + n];
         if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
-            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            const buf: [*]Sexp = @constCast(items.ptr);
+            const capacity = spare.capacity;
             spare.* = .none;
-            out.items.len = items.len;
-            return out;
+            if (need <= capacity) return .{ .items = buf, .len = items.len, .capacity = capacity };
+            const start = @intFromPtr(buf);
+            const grown = growCapacity(capacity, need);
+            if (start + capacity * @sizeOf(Sexp) == self.bumpPos and start + grown * @sizeOf(Sexp) <= self.bumpEnd) {
+                self.bumpPos = start + grown * @sizeOf(Sexp);
+                return .{ .items = buf, .len = items.len, .capacity = grown };
+            }
         }
-        var out: std.ArrayList(Sexp) = .empty;
-        try out.appendSlice(self.allocator(), items);
-        return out;
+        const capacity = growCapacity(0, need);
+        const out = try self.allocItems(capacity);
+        @memcpy(out[0..items.len], items);
+        return .{ .items = out.ptr, .len = items.len, .capacity = capacity };
     }
 
-    /// Finish a list from `extendList(pass, n)`, recording its spare
-    /// capacity where the reduction's value goes. It takes over the node
-    /// id of element `n` (still on the value stack), so that nested
-    /// extensions each keep their own.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, pass, n, use);
+    /// A capacity of at least `need`, grown from `capacity` by half plus 2.
+    fn growCapacity(capacity: usize, need: usize) usize {
+        var c = capacity;
+        while (c < need) c += c / 2 + 2;
+        return c;
     }
 
-    /// `keepList` keeping trailing nils: a list of one item per element
-    /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
+    /// Finish a list from `extendBy(pass, n, ...)` holding `len` items,
+    /// without its trailing nils unless `keepNils` (a list of one item per
+    /// element: `X*`, `L(X?)`, ...), recording its spare capacity where
+    /// the reduction's value goes. It takes over the node id of element
+    /// `n` (still on the value stack), so that nested extensions each keep
+    /// their own.
+    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) Sexp {
+        const items = if (keepNils) out.items[0..len] else out.items[0..trimmedLen(out.items[0..len])];
+        self.spares[self.stackIndex(pass)] = .{ .items = items.ptr, .len = @intCast(items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];
@@ -1211,38 +1294,28 @@ pub const BaseParser = struct {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        return .{ .list = List.withId(out.items, id) };
+        return .{ .list = List.withId(items, id) };
     }
 
-    /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items, use);
+    /// Finish a list allocated at its length and filled.
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+        return self.node(out[0..trimmedLen(out)], use);
     }
 
     /// An item of a list an action builds from its elements alone.
     const Item = union(enum) { elem: u16, tag: Tag, nil };
 
-    /// A list node over `items`, static data (so the action function needs
-    /// no temporaries for it); unless positions are fixed (`trim` false,
-    /// or a schema), without its trailing nils.
-    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
-        var len = items.len;
-        if (trim and !keepTrailingNils) {
-            while (len > 0) : (len -= 1) switch (items[len - 1]) {
-                .elem => |i| if (pass[i] != .nil) break,
-                .tag => break,
-                .nil => {},
-            };
-        }
-        const out = self.allocItems(len) catch return self.oomNil();
-        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+    /// A list node over `items`, known at compile time (so each call
+    /// stores its items directly); unless positions are fixed (`trim`
+    /// false, or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        inline for (out[0..items.len], items) |*o, it| o.* = switch (it) {
             .elem => |i| pass[i],
             .tag => |t| .{ .tag = t },
             .nil => .nil,
         };
-        return self.node(out, use);
+        return self.node(if (trim) out[0..trimmedLen(out)] else out, use);
     }
 
     /// `(tag items...)`
@@ -1387,9 +1460,7 @@ pub const BaseParser = struct {
             while (true) {
                 const top = pushed.last() orelse self.stateStack.items[depth - 1];
                 var action = getAction(top, sym);
-                if (i == 1 and xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
-                    if (getImmediateShift(top, sym)) |target| action = target;
-                }
+                if (xExcludes.len > 0 and action == hinted) action = hintedAction(top, sym, i == 1 and self.current.pre == 0);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
@@ -1698,7 +1769,7 @@ const numSymbols = 16;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 const maxExpected = 4;
-const xExcludes = [_]struct { sym: u16, shift: u16 }{};
+const xExcludes = [_]struct { sym: u16, shift: u16, reduce: i16 }{};
 const xExcludeStart = [_]u32{};
 
 // 0 $accept, 1 $end, 2 error, 3 prog, 4 stmts, 5 stmt, 6 expr, 7 term,
@@ -1858,14 +1929,14 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
         0 => self.sexpSpread(.prog, pass[1]),
         1 => blk: {
-            var out: std.ArrayList(Sexp) = .empty;
-            out.append(self.allocator(), pass[0]) catch break :blk self.oomNil();
-            break :blk self.finishList(&out, .spread);
+            const out = self.allocItems(1) catch break :blk self.oomNil();
+            out[0] = pass[0];
+            break :blk self.finishItems(out, .spread);
         },
         2 => blk: {
-            var out = self.extendList(pass, 0) catch break :blk self.oomNil();
-            out.append(self.allocator(), pass[2]) catch break :blk self.oomNil();
-            break :blk self.keepList(&out, pass, 0, .spread);
+            const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil();
+            out.items[out.len] = pass[2];
+            break :blk self.keepExtended(out, out.len + 1, pass, 0, .spread, false);
         },
         3 => self.buildOf(&.{ .{ .tag = .set }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
         6 => self.buildOf(&.{ .{ .tag = .add }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, true),
@@ -1972,9 +2043,9 @@ test "a list that reaches the tree keeps its node id as it grows" {
     const items = [_]Sexp{ .{ .src = .{ .pos = 0, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 2, .len = 1, .id = 0 } }, .{ .src = .{ .pos = 4, .len = 1, .id = 0 } } };
     p.reduction = .{ .rule = 1, .start = 0 };
     p.lastEnd = 1;
-    var out: std.ArrayList(Sexp) = .empty;
-    try out.append(p.allocator(), items[0]);
-    try p.pushEntry(4, p.finishList(&out, .tree), 0, 1);
+    const out = try p.allocItems(1);
+    out[0] = items[0];
+    try p.pushEntry(4, p.finishItems(out, .tree), 0, 1);
     for (items[1..], 1..) |item, i| {
         // The reduction `stmts = stmts IDENT → (...1 2)` with the stack
         // holding the list and the new item.
@@ -1982,11 +2053,11 @@ test "a list that reaches the tree keeps its node id as it grows" {
         p.lastEnd = @intCast(2 * i + 1);
         try p.pushEntry(9, item, item.src.pos, item.src.pos + 1);
         const pass = p.valueStack.items[0..2];
-        var grown = try p.extendList(pass, 0);
+        const grown = try p.extendBy(pass, 0, 1);
         // From the second extension on, the list grows in place.
-        if (i > 1) try testing.expectEqual(pass[0].list.ptr, grown.items.ptr);
-        try grown.append(p.allocator(), pass[1]);
-        const next = p.keepList(&grown, pass, 0, .tree);
+        if (i > 1) try testing.expectEqual(pass[0].list.ptr, grown.items);
+        grown.items[grown.len] = pass[1];
+        const next = p.keepExtended(grown, grown.len + 1, pass, 0, .tree, false);
         try testing.expectEqual(pass[0].list.id, next.list.id);
         p.valueStack.items.len = 1;
         p.stateStack.items.len = 2;
@@ -1999,18 +2070,18 @@ test "a list that reaches the tree keeps its node id as it grows" {
 
     // `(...1 (...2 3))`: an extension nested in another; each list keeps
     // its own id.
-    var out2: std.ArrayList(Sexp) = .empty;
-    try out2.append(p.allocator(), items[1]);
-    try p.pushEntry(4, p.finishList(&out2, .tree), 2, 3);
+    const out2 = try p.allocItems(1);
+    out2[0] = items[1];
+    try p.pushEntry(4, p.finishItems(out2, .tree), 2, 3);
     const pass = p.valueStack.items[0..2];
     const m = pass[1];
     try testing.expectEqual(@as(u32, 2), p.nodeCount());
-    var outer = try p.extendList(pass, 0);
-    var inner = try p.extendList(pass, 1);
-    try inner.append(p.allocator(), items[2]);
-    const innerList = p.keepList(&inner, pass, 1, .tree);
-    try outer.append(p.allocator(), innerList);
-    const outerList = p.keepList(&outer, pass, 0, .tree);
+    const outer = try p.extendBy(pass, 0, 1);
+    const inner = try p.extendBy(pass, 1, 1);
+    inner.items[inner.len] = items[2];
+    const innerList = p.keepExtended(inner, inner.len + 1, pass, 1, .tree, false);
+    outer.items[outer.len] = innerList;
+    const outerList = p.keepExtended(outer, outer.len + 1, pass, 0, .tree, false);
     try testing.expectEqual(m.list.id, innerList.list.id);
     try testing.expectEqual(l.list.id, outerList.list.id);
     try testing.expectEqual(@as(u32, 2), p.nodeCount());

@@ -1384,10 +1384,19 @@ const NodeStore = struct {
 };
 
 /// The parse table's action for `sym` in `state`: 0 = error, > 0 = shift
-/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+/// or goto, -1 = accept, <= -2 = reduce rule (-a - 2), or `hinted`.
 inline fn getAction(state: u16, sym: u16) i16 {
     return parseTable[state][sym];
 }
+
+/// Whether rule `r` is a pass-through `A → B`: one element, and its value.
+inline fn isPassThrough(r: u16) bool {
+    return ruleLen[r] == 1 and ruleValue[r] == 2;
+}
+
+/// The cell of a reduction an `X "c"` hint overrides: `hintedAction`
+/// decides it (no rule has this number: rules are fewer than 32766).
+const hinted: i16 = std.math.minInt(i16);
 
 /// What `state` expects, reader-named: list `expectedOf[state]` of
 /// `expectedSymbols`.
@@ -1396,13 +1405,13 @@ fn expectedIn(state: u16) []const u16 {
     return expectedSymbols[expectedOffsets[i]..expectedOffsets[i + 1]];
 }
 
-/// The `X "c"` override of `state` for `sym`: the state to shift to.
-fn getImmediateShift(state: u16, sym: u16) ?i16 {
-    if (xExcludes.len == 0) return null;
+/// The action of a `hinted` cell: shift to the hint's state when the token
+/// touches the previous one, else the table's reduction.
+fn hintedAction(state: u16, sym: u16, touching: bool) i16 {
     for (xExcludes[xExcludeStart[state]..xExcludeStart[state + 1]]) |x| {
-        if (x.sym == sym) return @intCast(x.shift);
+        if (x.sym == sym) return if (touching) @intCast(x.shift) else x.reduce;
     }
-    return null;
+    unreachable; // every hinted cell has its exclude
 }
 
 /// The tokens tolerant repair may insert in `state`, best first.
@@ -1511,10 +1520,10 @@ pub const BaseParser = struct {
 
     stateStack: std.ArrayList(u16) = .empty,
     valueStack: std.ArrayList(Sexp) = .empty,
-    /// Per value-stack entry, the list `keepList` left there with its
-    /// capacity, for `extendList` to grow in place. Indexed like
+    /// Per value-stack entry, the list `keepExtended` left there with its
+    /// capacity, for `extendBy` to grow in place. Indexed like
     /// `valueStack`, sized to its capacity. An entry only ever describes a
-    /// live buffer: `extendList` clears the one it takes (its buffer may
+    /// live buffer: `extendBy` clears the one it takes (its buffer may
     /// move and be freed), a rule passing a list on moves the entry with
     /// it, and each parse starts with none (its memory is reused).
     spares: []Spare = &.{},
@@ -1676,17 +1685,45 @@ pub const BaseParser = struct {
     }
 
 
-    /// Parse the whole input as `start`.
+    /// Parse the whole input as `start`. The state, the current token's
+    /// symbol and the next action live in locals: the symbol changes only
+    /// when a token is shifted, except that `@as` promotion depends on the
+    /// state, so a promotable token is promoted again after each
+    /// reduction. A run of pass-throughs (an operand climbing a chain of
+    /// `A → B` rules) keeps the state below it and writes the stack once.
     pub fn parse(self: *BaseParser, start: Start) !Sexp {
         try self.begin(start);
+        // The start marker, which the start state shifts before any input.
+        if (self.injectedToken) |marker| try self.shift(@intCast(getAction(self.stateStack.last().?, marker)));
+        var state = self.stateStack.last().?;
+        var raw = tokenToSymbol(self.current);
+        var sym = self.promoted(raw);
+        var action = self.strictAction(state, sym);
         while (true) {
-            const state = self.stateStack.last().?;
-            const sym = self.lookahead();
-            const action = self.actionFor(state, sym);
             if (action > 0) {
-                try self.shift(@intCast(action));
+                state = @intCast(action);
+                try self.shiftToken(state);
+                raw = tokenToSymbol(self.current);
+                sym = self.promoted(raw);
+                action = self.strictAction(state, sym);
             } else if (action < -1) {
-                try self.reduce(@intCast(-action - 2));
+                var rule: u16 = @intCast(-action - 2);
+                if (isPassThrough(rule) and !(asGroups > 0 and raw == needsPromotion)) {
+                    const states = self.stateStack.items;
+                    const below = states[states.len - 2];
+                    while (true) {
+                        state = @intCast(getAction(below, ruleLhs[rule]));
+                        action = self.strictAction(state, sym);
+                        if (action >= -1) break;
+                        rule = @intCast(-action - 2);
+                        if (!isPassThrough(rule)) break;
+                    }
+                    states[states.len - 1] = state;
+                } else {
+                    state = try self.reduceOrPass(rule);
+                    if (asGroups > 0 and raw == needsPromotion) sym = self.promoted(raw);
+                    action = self.strictAction(state, sym);
+                }
             } else if (action == -1) {
                 return self.valueStack.last().?;
             } else {
@@ -1694,6 +1731,13 @@ pub const BaseParser = struct {
                 return error.ParseError;
             }
         }
+    }
+
+    /// The symbol of the current token, `raw` from `tokenToSymbol`, after
+    /// `@as` promotion in the current state.
+    inline fn promoted(self: *BaseParser, raw: u16) u16 {
+        if (asGroups > 0 and raw == needsPromotion) return promote(self, self.current);
+        return raw;
     }
 
     /// Parse `start`, repairing syntax errors for an editor: the parse goes
@@ -1740,7 +1784,7 @@ pub const BaseParser = struct {
                 if (self.pendingInsert == null and self.injectedToken == null) tried.clearRetainingCapacity();
                 try self.shift(@intCast(action));
             } else if (action < -1) {
-                try self.reduce(@intCast(-action - 2));
+                _ = try self.reduceOrPass(@intCast(-action - 2));
             } else if (action == -1) {
                 result.sexp = self.valueStack.last().?;
                 result.complete = true;
@@ -1880,9 +1924,15 @@ pub const BaseParser = struct {
     /// instead. (Never for a start marker or an inserted token.)
     inline fn actionFor(self: *const BaseParser, state: u16, sym: u16) i16 {
         const action = getAction(state, sym);
-        if (xExcludes.len > 0 and action < -1 and self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null) {
-            if (getImmediateShift(state, sym)) |target| return target;
-        }
+        if (xExcludes.len > 0 and action == hinted)
+            return hintedAction(state, sym, self.current.pre == 0 and self.pendingInsert == null and self.injectedToken == null);
+        return action;
+    }
+
+    /// `actionFor` on a token of the input.
+    inline fn strictAction(self: *const BaseParser, state: u16, sym: u16) i16 {
+        const action = getAction(state, sym);
+        if (xExcludes.len > 0 and action == hinted) return hintedAction(state, sym, self.current.pre == 0);
         return action;
     }
 
@@ -1895,18 +1945,21 @@ pub const BaseParser = struct {
             try self.pushEntry(target, .{ .src = .{ .pos = pos, .len = 0, .id = 0 } }, pos, pos);
             if (nodeStore) self.lastEnd = pos;
             self.pendingInsert = null;
-        } else {
-            const tok = self.current;
-            // The lexer's id is taken even when an `@as` ordinal replaces
-            // it, so it never reaches the next token.
-            const lexerId = takeLexerId(&self.lexer);
-            const id = if (self.lastMatchedId != 0) self.lastMatchedId else lexerId;
-            self.lastMatchedId = 0;
-            const end = tok.pos + tok.len;
-            try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
-            if (nodeStore) self.lastEnd = end;
-            try self.advance();
-        }
+        } else try self.shiftToken(target);
+    }
+
+    /// Shift the current token, a token of the input.
+    inline fn shiftToken(self: *BaseParser, target: u16) !void {
+        const tok = self.current;
+        // The lexer's id is taken even when an `@as` ordinal replaces it,
+        // so it never reaches the next token.
+        const lexerId = takeLexerId(&self.lexer);
+        const id = if (asGroups > 0 and self.lastMatchedId != 0) self.lastMatchedId else lexerId;
+        if (asGroups > 0) self.lastMatchedId = 0;
+        const end = tok.pos + tok.len;
+        try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
+        if (nodeStore) self.lastEnd = end;
+        try self.advance();
     }
 
     /// Push a state, its value, and (with a node store) where the value
@@ -1939,6 +1992,23 @@ pub const BaseParser = struct {
     /// reduction in progress.
     fn stackIndex(self: *const BaseParser, pass: []const Sexp) usize {
         return (@intFromPtr(pass.ptr) - @intFromPtr(self.valueStack.items.ptr)) / @sizeOf(Sexp);
+    }
+
+    /// Reduce by `ruleId`. A pass-through `A → B` (the value of its one
+    /// element) only replaces the top state with the goto on A: the value,
+    /// its start and end, and its spare stay; it builds no node, so it
+    /// places no empty element and records no side-band role.
+    /// It returns the new top state.
+    inline fn reduceOrPass(self: *BaseParser, ruleId: u16) !u16 {
+        if (isPassThrough(ruleId)) {
+            const states = self.stateStack.items;
+            const next = getAction(states[states.len - 2], ruleLhs[ruleId]);
+            std.debug.assert(next > 0); // every reduction has a goto
+            states[states.len - 1] = @intCast(next);
+            return @intCast(next);
+        }
+        try self.reduce(ruleId);
+        return self.stateStack.items[self.stateStack.items.len - 1];
     }
 
     fn reduce(self: *BaseParser, ruleId: u16) !void {
@@ -2292,40 +2362,53 @@ pub const BaseParser = struct {
         return self.node(out, use);
     }
 
-    /// Start a list holding the items of element `n` (a list, else
-    /// nothing) for an action that appends to it. A list `keepList` left
-    /// on the value stack is reused with its spare capacity, so a
-    /// left-recursive list grows in amortized O(1) per element; it keeps
-    /// its node id.
-    fn extendList(self: *BaseParser, pass: []const Sexp, n: usize) !std.ArrayList(Sexp) {
+    /// A list `extendBy` opened for an action that appends to it.
+    const Extension = struct { items: [*]Sexp, len: usize, capacity: usize };
+
+    /// Open a list holding the items of element `n` (a list, else nothing)
+    /// with room for `extra` more. A list `keepExtended` left on the value
+    /// stack is reused with its spare capacity, growing in place when it
+    /// is the allocator's last block, so a left-recursive list grows in
+    /// amortized O(1) per element; it keeps its node id.
+    fn extendBy(self: *BaseParser, pass: []const Sexp, n: usize, extra: usize) error{OutOfMemory}!Extension {
         const base = pass[n];
-        if (base != .list) return .empty;
-        const items = base.list.items();
+        const items: []const Sexp = if (base == .list) base.list.items() else &.{};
+        const need = items.len + extra;
         const spare = &self.spares[self.stackIndex(pass) + n];
         if (items.len > 0 and spare.items == items.ptr and spare.len == items.len) {
-            var out: std.ArrayList(Sexp) = .initBuffer(@constCast(items.ptr)[0..spare.capacity]);
+            const buf: [*]Sexp = @constCast(items.ptr);
+            const capacity = spare.capacity;
             spare.* = .none;
-            out.items.len = items.len;
-            return out;
+            if (need <= capacity) return .{ .items = buf, .len = items.len, .capacity = capacity };
+            const start = @intFromPtr(buf);
+            const grown = growCapacity(capacity, need);
+            if (start + capacity * @sizeOf(Sexp) == self.bumpPos and start + grown * @sizeOf(Sexp) <= self.bumpEnd) {
+                self.bumpPos = start + grown * @sizeOf(Sexp);
+                return .{ .items = buf, .len = items.len, .capacity = grown };
+            }
         }
-        var out: std.ArrayList(Sexp) = .empty;
-        try out.appendSlice(self.allocator(), items);
-        return out;
+        const capacity = growCapacity(0, need);
+        const out = try self.allocItems(capacity);
+        @memcpy(out[0..items.len], items);
+        return .{ .items = out.ptr, .len = items.len, .capacity = capacity };
     }
 
-    /// Finish a list from `extendList(pass, n)`, recording its spare
-    /// capacity where the reduction's value goes. It takes over the node
-    /// id of element `n` (still on the value stack), so that nested
-    /// extensions each keep their own.
-    fn keepList(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        return self.keepListNils(out, pass, n, use);
+    /// A capacity of at least `need`, grown from `capacity` by half plus 2.
+    fn growCapacity(capacity: usize, need: usize) usize {
+        var c = capacity;
+        while (c < need) c += c / 2 + 2;
+        return c;
     }
 
-    /// `keepList` keeping trailing nils: a list of one item per element
-    /// (`X*`, `L(X?)`, ...).
-    fn keepListNils(self: *BaseParser, out: *std.ArrayList(Sexp), pass: []const Sexp, n: usize, comptime use: ListUse) Sexp {
-        self.spares[self.stackIndex(pass)] = .{ .items = out.items.ptr, .len = @intCast(out.items.len), .capacity = @intCast(out.capacity) };
+    /// Finish a list from `extendBy(pass, n, ...)` holding `len` items,
+    /// without its trailing nils unless `keepNils` (a list of one item per
+    /// element: `X*`, `L(X?)`, ...), recording its spare capacity where
+    /// the reduction's value goes. It takes over the node id of element
+    /// `n` (still on the value stack), so that nested extensions each keep
+    /// their own.
+    fn keepExtended(self: *BaseParser, out: Extension, len: usize, pass: []const Sexp, n: usize, comptime use: ListUse, comptime keepNils: bool) Sexp {
+        const items = if (keepNils) out.items[0..len] else out.items[0..trimmedLen(out.items[0..len])];
+        self.spares[self.stackIndex(pass)] = .{ .items = items.ptr, .len = @intCast(items.len), .capacity = @intCast(out.capacity) };
         var id: NodeId = 0;
         if (nodeStore and use == .tree) {
             const base = pass[n];
@@ -2334,38 +2417,28 @@ pub const BaseParser = struct {
                 self.nodes.at(id).* = .{ .span = self.reductionSpan(), .rule = self.reduction.rule };
             } else id = self.newNodeId();
         }
-        return .{ .list = List.withId(out.items, id) };
+        return .{ .list = List.withId(items, id) };
     }
 
-    /// Finish a list built from scratch.
-    fn finishList(self: *BaseParser, out: *std.ArrayList(Sexp), comptime use: ListUse) Sexp {
-        out.shrinkRetainingCapacity(trimmedLen(out.items));
-        const items = out.toOwnedSlice(self.allocator()) catch return self.oomNil();
-        return self.node(items, use);
+    /// Finish a list allocated at its length and filled.
+    fn finishItems(self: *BaseParser, out: []Sexp, comptime use: ListUse) Sexp {
+        return self.node(out[0..trimmedLen(out)], use);
     }
 
     /// An item of a list an action builds from its elements alone.
     const Item = union(enum) { elem: u16, tag: Tag, nil };
 
-    /// A list node over `items`, static data (so the action function needs
-    /// no temporaries for it); unless positions are fixed (`trim` false,
-    /// or a schema), without its trailing nils.
-    fn buildOf(self: *BaseParser, items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
-        var len = items.len;
-        if (trim and !keepTrailingNils) {
-            while (len > 0) : (len -= 1) switch (items[len - 1]) {
-                .elem => |i| if (pass[i] != .nil) break,
-                .tag => break,
-                .nil => {},
-            };
-        }
-        const out = self.allocItems(len) catch return self.oomNil();
-        for (out, items[0..len]) |*o, it| o.* = switch (it) {
+    /// A list node over `items`, known at compile time (so each call
+    /// stores its items directly); unless positions are fixed (`trim`
+    /// false, or a schema), without its trailing nils.
+    fn buildOf(self: *BaseParser, comptime items: []const Item, pass: []const Sexp, comptime use: ListUse, comptime trim: bool) Sexp {
+        const out = self.allocItems(items.len) catch return self.oomNil();
+        inline for (out[0..items.len], items) |*o, it| o.* = switch (it) {
             .elem => |i| pass[i],
             .tag => |t| .{ .tag = t },
             .nil => .nil,
         };
-        return self.node(out, use);
+        return self.node(if (trim) out[0..trimmedLen(out)] else out, use);
     }
 
     /// `(tag items...)`
@@ -2510,9 +2583,7 @@ pub const BaseParser = struct {
             while (true) {
                 const top = pushed.last() orelse self.stateStack.items[depth - 1];
                 var action = getAction(top, sym);
-                if (i == 1 and xExcludes.len > 0 and action < -1 and self.current.pre == 0) {
-                    if (getImmediateShift(top, sym)) |target| action = target;
-                }
+                if (xExcludes.len > 0 and action == hinted) action = hintedAction(top, sym, i == 1 and self.current.pre == 0);
                 if (action == 0) return false;
                 if (action == -1) return true;
                 if (action > 0) {
@@ -3517,7 +3588,7 @@ const numSymbols = 279;
 const endSymbol: u16 = 1;
 const errorSymbol: u16 = 2;
 
-fn tokenToSymbol(token: Token) u16 {
+inline fn tokenToSymbol(token: Token) u16 {
     return switch (token.cat) {
         .@"eof" => 1,
         .@"ident" => needsPromotion,
@@ -3593,93 +3664,93 @@ fn promote(self: *BaseParser, token: Token) u16 {
 
 fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
     return switch (ruleId) {
-        3 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"routine" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        3 => blk: { const out = self.allocItems(1 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"routine" }; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
         4 => self.buildOf(&.{ .nil }, pass, .spread, false),
         5 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        6 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
-        7 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
-        8 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"commands" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        9 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"commands" }) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        6 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = .nil; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, false); },
+        7 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, false); },
+        8 => blk: { const out = self.allocItems(1 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"commands" }; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
+        9 => blk: { const out = self.allocItems(1 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"commands" }; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
         10 => self.buildOf(&.{ .{ .tag = .@"commands" }, .{ .elem = 0 } }, pass, .tree, false),
         16 => self.buildOf(&.{ .{ .tag = .@"label" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
         17 => self.buildOf(&.{ .{ .tag = .@"label" }, .{ .elem = 0 }, .{ .elem = 1 }, .nil }, pass, .tree, false),
         18 => self.buildOf(&.{ .{ .tag = .@"label" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
         19 => self.buildOf(&.{ .{ .tag = .@"label" }, .{ .elem = 0 }, .{ .elem = 1 }, .nil }, pass, .tree, false),
-        20 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"label" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        21 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"label" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        20 => blk: { const out = self.allocItems(4 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"label" }; n += 1; out[n] = pass[0]; n += 1; out[n] = .nil; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        21 => blk: { const out = self.allocItems(4 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"label" }; n += 1; out[n] = pass[0]; n += 1; out[n] = pass[1]; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         22 => self.buildOf(&.{ .{ .tag = .@"label" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, false),
-        23 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"label" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        23 => blk: { const out = self.allocItems(4 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"label" }; n += 1; out[n] = pass[0]; n += 1; out[n] = .nil; n += 1; out[n] = pass[2]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         24 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        25 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        25 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         29 => self.buildOf(&.{ .{ .tag = .@"line" }, .{ .elem = 0 } }, pass, .tree, false),
-        30 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"line" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        30 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"line" }; n += 1; out[n] = pass[0]; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         31 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        32 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        32 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         69 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        70 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepList(&out, pass, 0, .spread); },
+        70 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, false); },
         73 => self.buildOf(&.{ .{ .tag = .@"postcond" }, .{ .elem = 1 } }, pass, .tree, false),
         74 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        75 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        76 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        77 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"set" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        75 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        76 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"set" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        77 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"set" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         78 => self.build(&.{ .{ .tag = .@"=" }, self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1), pass[3] }, .tree),
         79 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         80 => self.buildOf(&.{ .{ .tag = .@"=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         81 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        82 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        83 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"setmulti" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        82 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        83 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"setmulti" }; n += 1; out[n] = pass[4]; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         84 => self.buildOf(&.{ .{ .tag = .@"=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         85 => self.build(&.{ .{ .tag = .@"=" }, self.nested(self.buildOf(&.{ .{ .tag = .@"setisv" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1), pass[3] }, .tree),
         87 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         89 => self.buildOf(&.{ .{ .tag = .@"setisv" }, .{ .elem = 1 } }, pass, .tree, false),
         90 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        91 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
-        92 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"setfn" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); for (pass[5].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        91 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
+        92 => blk: { const out = self.allocItems(3 + pass[5].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"setfn" }; n += 1; out[n] = pass[1]; n += 1; out[n] = pass[3]; n += 1; @memcpy(out[n..][0..pass[5].items().len], pass[5].items()); n += pass[5].items().len; break :blk self.finishItems(out, .tree); },
         93 => self.buildOf(&.{ .{ .tag = .@"setfn" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, false),
         94 => self.buildOf(&.{ .{ .tag = .@"new" }, .nil }, pass, .tree, false),
         95 => self.buildOf(&.{ .{ .tag = .@"new" }, .{ .elem = 1 } }, pass, .tree, false),
         96 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        97 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        100 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"new" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        101 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"new" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        97 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        100 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"new" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        101 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"new" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         103 => self.buildOf(&.{ .{ .tag = .@"intrinsic" }, .{ .elem = 1 }, .nil }, pass, .tree, false),
         104 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        105 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        106 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"exclusive" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        105 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        106 => blk: { const out = self.allocItems(1 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"exclusive" }; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         107 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         108 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        109 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        110 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"merge" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        111 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"merge" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        109 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        110 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"merge" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        111 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"merge" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         112 => self.buildOf(&.{ .{ .tag = .@"=" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         113 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         115 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         116 => self.buildOf(&.{ .{ .tag = .@"kill" }, .nil }, pass, .tree, false),
         117 => self.buildOf(&.{ .{ .tag = .@"kill" }, .{ .elem = 1 } }, pass, .tree, false),
         118 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        119 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        122 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kill" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        123 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"kill" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        125 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"exclusive" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        119 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        122 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"kill" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        123 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"kill" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
+        125 => blk: { const out = self.allocItems(1 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"exclusive" }; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         126 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         128 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         129 => self.buildOf(&.{ .{ .tag = .@"if" } }, pass, .tree, false),
-        132 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"if" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        132 => blk: { const out = self.allocItems(1 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"if" }; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
         133 => self.buildOf(&.{ .{ .tag = .@"else" } }, pass, .tree, false),
         134 => self.buildOf(&.{ .{ .tag = .@"for" }, .nil }, pass, .tree, false),
         135 => self.buildOf(&.{ .{ .tag = .@"for" }, .nil }, pass, .tree, false),
         137 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        138 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        139 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"for" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        140 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"for" }) catch break :blk self.oomNil(); out.append(self.allocator(), self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1)) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        138 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        139 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"for" }; n += 1; out[n] = pass[0]; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        140 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"for" }; n += 1; out[n] = self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1); n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         141 => self.buildOf(&.{ .{ .tag = .@"range" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         142 => self.buildOf(&.{ .{ .tag = .@"range" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil }, pass, .tree, false),
         144 => self.buildOf(&.{ .{ .tag = .@"do" }, .nil }, pass, .tree, false),
         145 => self.buildOf(&.{ .{ .tag = .@"do" }, .{ .elem = 1 } }, pass, .tree, false),
         146 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        147 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        150 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"do" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        151 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"do" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        147 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        150 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"do" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        151 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"do" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         152 => self.buildOf(&.{ .{ .tag = .@"call" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
         153 => self.buildOf(&.{ .{ .tag = .@"call" }, .{ .elem = 0 }, .{ .elem = 1 }, .nil }, pass, .tree, false),
         154 => self.buildOf(&.{ .{ .tag = .@"call" }, .{ .elem = 0 }, .nil, .{ .elem = 1 } }, pass, .tree, false),
@@ -3691,9 +3762,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         160 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         161 => self.build(&.{ .{ .tag = .@"call" }, self.nested(self.buildOf(&.{ .{ .tag = .@"@ref" }, .{ .elem = 1 }, .nil, .nil }, pass, .tree, false), 1, 1), .nil, pass[2] }, .tree),
         162 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        163 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        164 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"goto" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        165 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"goto" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        163 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        164 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"goto" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        165 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"goto" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         166 => self.buildOf(&.{ .{ .tag = .@"call" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
         167 => self.buildOf(&.{ .{ .tag = .@"call" }, .{ .elem = 0 }, .nil, .{ .elem = 1 } }, pass, .tree, false),
         168 => self.buildOf(&.{ .{ .tag = .@"call" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
@@ -3716,21 +3787,21 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         185 => self.buildOf(&.{ .{ .tag = .@"break" }, .nil }, pass, .tree, false),
         186 => self.buildOf(&.{ .{ .tag = .@"break" }, .{ .elem = 1 } }, pass, .tree, false),
         187 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        188 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        191 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"break" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        192 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"break" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        188 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        191 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"break" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        192 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"break" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         193 => self.buildOf(&.{ .{ .tag = .@"arg" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         194 => self.buildOf(&.{ .{ .tag = .@"arg" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, false),
         195 => self.buildOf(&.{ .{ .tag = .@"hang" }, .nil }, pass, .tree, false),
         196 => self.buildOf(&.{ .{ .tag = .@"hang" }, .{ .elem = 1 } }, pass, .tree, false),
-        197 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"hang" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        198 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"hang" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        197 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"hang" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        198 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"hang" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         199 => self.buildOf(&.{ .{ .tag = .@"halt" }, .nil }, pass, .tree, false),
         200 => self.buildOf(&.{ .{ .tag = .@"halt" }, .{ .elem = 1 } }, pass, .tree, false),
         201 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        202 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        203 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"job" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        204 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"job" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        202 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        203 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"job" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        204 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"job" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         205 => self.build(&.{ .{ .tag = .@"jobarg" }, pass[3], .nil, .nil, self.nested(self.buildOf(&.{ .{ .elem = 1 } }, pass, .tree, false), 1, 1) }, .tree),
         206 => self.build(&.{ .{ .tag = .@"jobarg" }, pass[3], pass[4], .nil, self.nested(self.buildOf(&.{ .{ .elem = 1 } }, pass, .tree, false), 1, 1) }, .tree),
         207 => self.build(&.{ .{ .tag = .@"jobarg" }, pass[3], .nil, pass[4], self.nested(self.buildOf(&.{ .{ .elem = 1 } }, pass, .tree, false), 1, 1) }, .tree),
@@ -3761,23 +3832,23 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         232 => self.buildOf(&.{ .{ .tag = .@"jobparams" }, .nil, .{ .elem = 1 } }, pass, .tree, false),
         233 => self.buildOf(&.{ .{ .tag = .@"jobparams" }, .{ .elem = 1 }, .{ .elem = 2 } }, pass, .tree, false),
         234 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        235 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        236 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"xecute" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        237 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"xecute" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        235 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        236 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"xecute" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        237 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"xecute" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         238 => self.buildOf(&.{ .{ .tag = .@"arg" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         239 => self.buildOf(&.{ .{ .tag = .@"arg" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, false),
         240 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        241 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        242 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"view" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        243 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"view" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        241 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        242 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"view" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        243 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"view" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         244 => self.buildOf(&.{ .{ .tag = .@"viewarg" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         245 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        246 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        246 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         247 => self.buildOf(&.{ .{ .tag = .@"viewarg" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         248 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        249 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        250 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"open" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        251 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"open" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        249 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        250 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"open" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        251 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"open" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         252 => self.buildOf(&.{ .{ .tag = .@"openarg" }, .{ .elem = 0 }, .nil, .nil, .nil }, pass, .tree, false),
         253 => self.buildOf(&.{ .{ .tag = .@"openarg" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil, .nil }, pass, .tree, false),
         254 => self.buildOf(&.{ .{ .tag = .@"openarg" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 }, .nil }, pass, .tree, false),
@@ -3788,14 +3859,14 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         259 => self.buildOf(&.{ .{ .tag = .@"openarg" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 }, .{ .elem = 6 } }, pass, .tree, false),
         261 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
         262 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        263 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        264 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"use" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        265 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"use" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        263 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        264 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"use" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        265 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"use" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         266 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        267 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        268 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"read" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        269 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"read" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        271 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"control" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        267 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        268 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"read" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        269 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"read" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
+        271 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"control" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         272 => self.buildOf(&.{ .{ .tag = .@"control" }, .{ .elem = 1 } }, pass, .tree, false),
         273 => self.buildOf(&.{ .{ .tag = .@"charindir" }, .{ .elem = 2 }, .nil }, pass, .tree, false),
         274 => self.buildOf(&.{ .{ .tag = .@"charindir" }, .{ .elem = 2 }, .{ .elem = 3 } }, pass, .tree, false),
@@ -3812,37 +3883,37 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         286 => self.buildOf(&.{ .{ .tag = .@"write" }, .nil }, pass, .tree, false),
         287 => self.buildOf(&.{ .{ .tag = .@"write" }, .{ .elem = 1 } }, pass, .tree, false),
         288 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        289 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        292 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"write" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        293 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"write" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        295 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"control" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        289 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        292 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"write" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        293 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"write" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
+        295 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"control" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         296 => self.buildOf(&.{ .{ .tag = .@"control" }, .{ .elem = 1 } }, pass, .tree, false),
         297 => self.buildOf(&.{ .{ .tag = .@"*" }, .{ .elem = 1 } }, pass, .tree, false),
         301 => self.buildOf(&.{ .{ .tag = .@"tab" }, .{ .elem = 1 } }, pass, .tree, false),
         302 => self.buildOf(&.{ .{ .tag = .@"tab" }, .{ .elem = 1 } }, pass, .tree, false),
         303 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        304 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        305 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"posformat" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        306 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"posformat" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[0].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        304 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        305 => blk: { const out = self.allocItems(2 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"posformat" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
+        306 => blk: { const out = self.allocItems(2 + pass[0].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"posformat" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[0].items().len], pass[0].items()); n += pass[0].items().len; break :blk self.finishItems(out, .tree); },
         308 => self.build(&.{ .{ .tag = .@"tab" }, self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1) }, .tree),
-        309 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"close" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        310 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"close" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        309 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"close" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        310 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"close" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         311 => self.buildOf(&.{ .{ .tag = .@"devicearg" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil }, pass, .tree, false),
         312 => self.buildOf(&.{ .{ .tag = .@"devicearg" }, .{ .elem = 0 }, .nil, .{ .elem = 3 } }, pass, .tree, false),
         313 => self.buildOf(&.{ .{ .tag = .@"devicearg" }, .{ .elem = 0 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         314 => self.buildOf(&.{ .{ .tag = .@"devicearg" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
         316 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
         319 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        320 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        320 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         322 => self.buildOf(&.{ .{ .tag = .@"attr" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, false),
         323 => self.buildOf(&.{ .{ .tag = .@"keyword" }, .{ .elem = 1 } }, pass, .tree, false),
         324 => self.buildOf(&.{ .{ .tag = .@"attr" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         327 => self.buildOf(&.{ .{ .tag = .@"lock" }, .nil }, pass, .tree, false),
         328 => self.buildOf(&.{ .{ .tag = .@"lock" }, .{ .elem = 1 } }, pass, .tree, false),
         329 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        330 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        333 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        334 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        330 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        333 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        334 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         335 => self.buildOf(&.{ .{ .tag = .@"lock=" }, .nil, .{ .elem = 0 } }, pass, .tree, false),
         336 => self.buildOf(&.{ .{ .tag = .@"lock=" }, .{ .elem = 1 }, .{ .elem = 0 } }, pass, .tree, false),
         337 => self.build(&.{ .{ .tag = .@"lock=" }, pass[2], self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1) }, .tree),
@@ -3851,13 +3922,13 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         340 => self.buildOf(&.{ .{ .tag = .@"lock-" }, .nil, .{ .elem = 1 } }, pass, .tree, false),
         341 => self.buildOf(&.{ .{ .tag = .@"lock-" }, .{ .elem = 2 }, .{ .elem = 1 } }, pass, .tree, false),
         342 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        343 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        344 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock+" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        345 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock+" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        346 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock-" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        347 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock-" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[4]) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        348 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock=" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        349 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"lock=" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[3]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        343 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        344 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock+" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        345 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock+" }; n += 1; out[n] = pass[4]; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        346 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock-" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        347 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock-" }; n += 1; out[n] = pass[4]; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        348 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock=" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
+        349 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"lock=" }; n += 1; out[n] = pass[3]; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         350 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         352 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         355 => self.buildOf(&.{ .{ .tag = .@"tstart" }, .nil, .nil, .nil }, pass, .tree, false),
@@ -3871,10 +3942,10 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         363 => self.buildOf(&.{ .{ .tag = .@"tstart" }, .nil, .nil, .{ .elem = 3 } }, pass, .tree, false),
         364 => self.buildOf(&.{ .{ .tag = .@"tstart" }, .{ .elem = 1 }, .nil, .{ .elem = 4 } }, pass, .tree, false),
         365 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        366 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        366 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         368 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
         369 => self.buildOf(&.{ .{ .tag = .@"all" } }, pass, .tree, false),
-        372 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"vars" }) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        372 => blk: { const out = self.allocItems(1 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"vars" }; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         374 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         375 => self.buildOf(&.{ .{ .tag = .@"param" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         376 => self.buildOf(&.{ .{ .tag = .@"param" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
@@ -3887,12 +3958,12 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         383 => self.buildOf(&.{ .{ .tag = .@"zwrite" }, .nil }, pass, .tree, false),
         384 => self.buildOf(&.{ .{ .tag = .@"zwrite" }, .{ .elem = 1 } }, pass, .tree, false),
         385 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        386 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        389 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zwrite" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        390 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zwrite" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        386 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        389 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zwrite" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        390 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zwrite" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         392 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        393 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        394 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zwarg" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        393 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        394 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zwarg" }; n += 1; out[n] = pass[0]; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         395 => self.buildOf(&.{ .{ .tag = .@"lvar" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         396 => self.buildOf(&.{ .{ .tag = .@"lvar" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, false),
         397 => self.buildOf(&.{ .{ .tag = .@"prefix" }, .{ .elem = 0 } }, pass, .tree, false),
@@ -3902,7 +3973,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         402 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 1 }, .nil, .nil, .nil }, pass, .tree, false),
         403 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 1 }, .{ .elem = 2 }, .nil, .nil }, pass, .tree, false),
         404 => self.buildOf(&.{ .{ .tag = .@"gprefix" }, .{ .elem = 1 } }, pass, .tree, false),
-        405 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"naked" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        405 => blk: { const out = self.allocItems(1 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"naked" }; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
         406 => self.buildOf(&.{ .{ .tag = .@"@gsubs" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         407 => self.buildOf(&.{ .{ .tag = .@"@gname" }, .{ .elem = 2 } }, pass, .tree, false),
         408 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 4 }, .nil, .{ .elem = 2 }, .nil }, pass, .tree, false),
@@ -3914,7 +3985,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         414 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 6 }, .nil, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         415 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 6 }, .{ .elem = 7 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         418 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        419 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        419 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         422 => self.buildOf(&.{ .{ .tag = .@"all" } }, pass, .tree, false),
         423 => self.buildOf(&.{ .{ .tag = .@"span" }, .nil, .nil }, pass, .tree, false),
         424 => self.buildOf(&.{ .{ .tag = .@"span" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
@@ -3929,8 +4000,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         450 => self.buildOf(&.{ .{ .tag = .@"limit" }, .{ .elem = 1 } }, pass, .tree, false),
         452 => self.buildOf(&.{ .{ .tag = .@"zbreak" }, .nil }, pass, .tree, false),
         453 => self.buildOf(&.{ .{ .tag = .@"zbreak" }, .{ .elem = 1 } }, pass, .tree, false),
-        456 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zbreak" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        457 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zbreak" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        456 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zbreak" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        457 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zbreak" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         458 => self.buildOf(&.{ .{ .tag = .@"zhalt" }, .nil, .nil }, pass, .tree, false),
         459 => self.buildOf(&.{ .{ .tag = .@"zhalt" }, .{ .elem = 1 }, .nil }, pass, .tree, false),
         460 => self.buildOf(&.{ .{ .tag = .@"zhalt" }, .nil, .nil }, pass, .tree, false),
@@ -3938,14 +4009,14 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         462 => self.buildOf(&.{ .{ .tag = .@"zhalt" }, .nil, .{ .elem = 2 } }, pass, .tree, false),
         463 => self.buildOf(&.{ .{ .tag = .@"zhalt" }, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, false),
         464 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        465 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        466 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zkill" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        467 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zkill" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        465 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        466 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zkill" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        467 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zkill" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         469 => self.buildOf(&.{ .{ .tag = .@"@args" }, .{ .elem = 1 } }, pass, .tree, false),
         470 => self.buildOf(&.{ .{ .tag = .@"zsystem" }, .nil }, pass, .tree, false),
         471 => self.buildOf(&.{ .{ .tag = .@"zsystem" }, .{ .elem = 1 } }, pass, .tree, false),
-        472 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zsystem" }) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
-        473 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"zsystem" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        472 => blk: { const out = self.allocItems(2 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zsystem" }; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
+        473 => blk: { const out = self.allocItems(2 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"zsystem" }; n += 1; out[n] = pass[1]; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         474 => self.buildOf(&.{ .{ .tag = .@"ref" }, .{ .elem = 0 }, .nil, .nil }, pass, .tree, false),
         475 => self.buildOf(&.{ .{ .tag = .@"ref" }, .{ .elem = 0 }, .{ .elem = 2 }, .nil }, pass, .tree, false),
         476 => self.buildOf(&.{ .{ .tag = .@"ref" }, .{ .elem = 0 }, .nil, .{ .elem = 2 } }, pass, .tree, false),
@@ -3955,11 +4026,11 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         481 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         482 => self.buildOf(&.{ .{ .tag = .@"lvar" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         488 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        489 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        489 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         493 => self.buildOf(&.{ .{ .tag = .@"byref" }, .{ .elem = 1 } }, pass, .tree, false),
         496 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        497 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        498 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"expr" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        497 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        498 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"expr" }; n += 1; out[n] = pass[0]; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         499 => self.buildOf(&.{ .{ .tag = .@"binop" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, false),
         500 => self.buildOf(&.{ .{ .tag = .@"?" }, .{ .elem = 1 } }, pass, .tree, false),
         501 => self.buildOf(&.{ .{ .tag = .@"'?" }, .{ .elem = 1 } }, pass, .tree, false),
@@ -3969,9 +4040,9 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         505 => self.buildOf(&.{ .{ .tag = .@"unary" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, false),
         506 => self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false),
         542 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        543 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        543 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         545 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false),
-        546 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .tree); },
+        546 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .tree, true); },
         547 => self.buildOf(&.{ .{ .tag = .@"pat" }, .{ .elem = 0 }, .{ .elem = 1 }, .nil, .{ .elem = 3 } }, pass, .tree, false),
         548 => self.buildOf(&.{ .{ .tag = .@"pat" }, .{ .elem = 0 }, .{ .elem = 1 }, .nil, .nil }, pass, .tree, false),
         549 => self.build(&.{ .{ .tag = .@"pat" }, .nil, self.nested(self.buildOf(&.{ .{ .elem = 0 } }, pass, .tree, false), 0, 0), .nil, pass[2] }, .tree),
@@ -3979,8 +4050,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         551 => self.buildOf(&.{ .{ .tag = .@"pat" }, .{ .elem = 0 }, .nil, .{ .elem = 1 }, .{ .elem = 3 } }, pass, .tree, false),
         552 => self.buildOf(&.{ .{ .tag = .@"pat" }, .{ .elem = 0 }, .nil, .{ .elem = 1 }, .nil }, pass, .tree, false),
         553 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        554 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        555 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"pat" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); out.append(self.allocator(), .nil) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        554 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        555 => blk: { const out = self.allocItems(5 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"pat" }; n += 1; out[n] = pass[0]; n += 1; out[n] = .nil; n += 1; out[n] = .nil; n += 1; out[n] = .nil; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
         557 => self.buildOf(&.{ .{ .tag = .@"count" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         558 => self.buildOf(&.{ .{ .tag = .@"count" }, .{ .elem = 0 }, .nil }, pass, .tree, false),
         559 => self.buildOf(&.{ .{ .tag = .@"count" }, .{ .elem = 0 }, .{ .elem = 0 } }, pass, .tree, false),
@@ -3994,7 +4065,7 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         571 => self.buildOf(&.{ .{ .tag = .@"@gname" }, .{ .elem = 2 } }, pass, .tree, false),
         572 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 1 }, .{ .elem = 2 }, .nil, .nil }, pass, .tree, false),
         573 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 1 }, .nil, .nil, .nil }, pass, .tree, false),
-        574 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"naked" }) catch break :blk self.oomNil(); for (pass[2].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        574 => blk: { const out = self.allocItems(1 + pass[2].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"naked" }; n += 1; @memcpy(out[n..][0..pass[2].items().len], pass[2].items()); n += pass[2].items().len; break :blk self.finishItems(out, .tree); },
         575 => self.buildOf(&.{ .{ .tag = .@"@gsubs" }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         576 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 4 }, .nil, .{ .elem = 2 }, .nil }, pass, .tree, false),
         577 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 4 }, .{ .elem = 5 }, .{ .elem = 2 }, .nil }, pass, .tree, false),
@@ -4005,8 +4076,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         582 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 6 }, .nil, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         583 => self.buildOf(&.{ .{ .tag = .@"gvar" }, .{ .elem = 6 }, .{ .elem = 7 }, .{ .elem = 2 }, .{ .elem = 4 } }, pass, .tree, false),
         585 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        586 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[1]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        587 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"expr" }) catch break :blk self.oomNil(); out.append(self.allocator(), pass[0]) catch break :blk self.oomNil(); for (pass[1].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        586 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[1]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        587 => blk: { const out = self.allocItems(2 + pass[1].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"expr" }; n += 1; out[n] = pass[0]; n += 1; @memcpy(out[n..][0..pass[1].items().len], pass[1].items()); n += pass[1].items().len; break :blk self.finishItems(out, .tree); },
         588 => self.buildOf(&.{ .{ .tag = .@"binop" }, .{ .elem = 0 }, .{ .elem = 1 } }, pass, .tree, false),
         589 => self.buildOf(&.{ .{ .tag = .@"?" }, .{ .elem = 1 } }, pass, .tree, false),
         590 => self.buildOf(&.{ .{ .tag = .@"'?" }, .{ .elem = 1 } }, pass, .tree, false),
@@ -4039,8 +4110,8 @@ fn executeAction(self: *BaseParser, ruleId: u16, pass: []Sexp) Sexp {
         654 => self.build(&.{ .{ .tag = .@"extrinsic" }, self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1), .nil, pass[2] }, .tree),
         655 => self.build(&.{ .{ .tag = .@"extrinsic" }, self.nested(self.buildOf(&.{ .{ .tag = .@"@name" }, .{ .elem = 1 } }, pass, .tree, false), 1, 1), pass[3], pass[4] }, .tree),
         656 => self.buildOf(&.{ .{ .elem = 0 } }, pass, .spread, false),
-        657 => blk: { var out = self.extendList(pass, 0) catch break :blk self.oomNil(); out.append(self.allocator(), pass[2]) catch break :blk self.oomNil(); break :blk self.keepListNils(&out, pass, 0, .spread); },
-        658 => blk: { var out: std.ArrayList(Sexp) = .empty; out.append(self.allocator(), .{ .tag = .@"select" }) catch break :blk self.oomNil(); for (pass[3].items()) |item| out.append(self.allocator(), item) catch break :blk self.oomNil(); break :blk self.finishList(&out, .tree); },
+        657 => blk: { const out = self.extendBy(pass, 0, 1) catch break :blk self.oomNil(); var n = out.len; out.items[n] = pass[2]; n += 1; break :blk self.keepExtended(out, n, pass, 0, .spread, true); },
+        658 => blk: { const out = self.allocItems(1 + pass[3].items().len) catch break :blk self.oomNil(); var n: usize = 0; out[n] = .{ .tag = .@"select" }; n += 1; @memcpy(out[n..][0..pass[3].items().len], pass[3].items()); n += pass[3].items().len; break :blk self.finishItems(out, .tree); },
         659 => self.buildOf(&.{ .{ .tag = .@"case" }, .{ .elem = 0 }, .{ .elem = 2 } }, pass, .tree, false),
         660 => self.buildOf(&.{ .{ .tag = .@"text" }, .{ .elem = 3 }, .nil, .nil }, pass, .tree, false),
         661 => self.buildOf(&.{ .{ .tag = .@"text" }, .{ .elem = 3 }, .nil, .nil }, pass, .tree, false),
@@ -4338,7 +4409,8 @@ const ruleLen = [_]u8{ 1, 1, 1, 1, 0, 1, 2, 3, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 2, 
 const ruleValue = [_]u8{ 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 3, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 2, 0, 0, 2, 1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3, 0, 2, 1, 0, 0, 2, 0, 0, 0, 2, 3, 0, 0, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 2, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 1, 0, 0, 3, 2, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 0, 0, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 3, 2, 2, 2, 1, 0, 0, 2, 1, 3, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 3, 2, 2, 2, 2, 2, 2, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 
 // Parse table: 1023 states x 279 symbols. 0 = error, > 0 = shift or
-// goto, -1 = accept, <= -2 = reduce rule (-a - 2).
+// goto, -1 = accept, <= -2 = reduce rule (-a - 2), -32768 = a
+// reduction an `X "c"` hint overrides (`hinted`).
 const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,5,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,6,0,0,0,0,0,0,0},
@@ -4446,7 +4518,7 @@ const parseTable = [_][numSymbols]i16{
     .{0,-634,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-634,-634,-634,-634,0,0,-634,0,0,0,-634,-634,-634,0,0,-634,-634,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-634,-634,0,0,0,0,0,0,0,0,-634,-634,-634,0,0,0,0,0,0,0,0,0,0,0,-634,-634,-634,0,0,0,0,-634,-634,-634,0,-634,0,0,0,0,0,0,-634,0,0,0,0,0,0,0,0,0,0,0,0,0,-634,-634,-634,-634,-634,-634,-634,-634,-634,-634,-634,-634,-634,-634,0,0,0,0,0,0,0,0,0,0,0,-634,-634,-634,-634,-634,-634,-634,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-635,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-635,-635,-635,-635,0,0,-635,0,0,0,-635,-635,-635,0,0,-635,-635,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-635,-635,0,0,0,0,0,0,0,0,-635,-635,-635,0,0,0,0,0,0,0,0,0,0,0,-635,-635,-635,0,0,0,0,-635,-635,-635,0,-635,0,0,0,0,0,0,-635,0,0,0,0,0,0,0,0,0,0,0,0,0,-635,-635,-635,-635,-635,-635,-635,-635,-635,-635,-635,-635,-635,-635,0,0,0,0,0,0,0,0,0,0,0,-635,-635,-635,-635,-635,-635,-635,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,235,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,230,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,228,229,231,232,233,234,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,236,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,-569,0,0,-569,0,0,0,-569,-569,-569,0,0,-569,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-569,-569,0,0,0,0,0,0,0,0,-569,-569,-569,0,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,0,0,0,0,-569,-569,-569,0,-569,0,0,0,0,0,0,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,0,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,-569,-569,-569,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,236,0,0,0,0,0,0,0,0,0,0,-569,-569,-32768,-569,0,0,-569,0,0,0,-569,-569,-569,0,0,-569,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-569,-569,0,0,0,0,0,0,0,0,-569,-569,-569,0,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,0,0,0,0,-569,-569,-569,0,-569,0,0,0,0,0,0,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,-569,0,0,0,0,0,0,0,0,0,0,0,-569,-569,-569,-569,-569,-569,-569,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,241,0,0,0,0,242,0,0,0,0,0,0,0,0,0,0,0,0,240,0,0,238,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,239,243,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-572,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-572,-572,-572,-572,0,0,-572,0,0,0,-572,-572,-572,0,0,-572,-572,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-572,-572,0,0,0,0,0,0,0,0,-572,-572,-572,0,0,0,0,0,0,0,0,0,0,0,-572,-572,-572,0,0,0,0,-572,-572,-572,0,-572,0,0,0,0,0,0,-572,0,0,0,0,0,0,0,0,0,0,0,0,0,-572,-572,-572,-572,-572,-572,-572,-572,-572,-572,-572,-572,-572,-572,0,0,0,0,0,0,0,0,0,0,0,-572,-572,-572,-572,-572,-572,-572,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-629,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-629,0,0,-629,-629,-629,-629,0,0,-629,0,0,-629,-629,-629,-629,0,0,-629,-629,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-629,-629,0,0,0,0,0,0,0,0,-629,-629,-629,0,0,0,0,0,0,0,0,0,0,0,-629,-629,-629,-629,0,0,0,-629,-629,-629,0,-629,0,0,0,0,0,0,-629,0,0,0,0,0,0,0,0,0,0,0,0,0,-629,-629,-629,-629,-629,-629,-629,-629,-629,-629,-629,-629,-629,-629,0,0,0,0,0,0,0,0,0,0,-629,-629,-629,-629,-629,-629,-629,-629,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -4567,21 +4639,21 @@ const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-543,-543,-543,0,0,-543,0,0,0,0,0,0,0,0,0,0,0,0,-543,0,0,-543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-543,-543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-543,0,0,0,0,0,0,0,0,0,0,0,0,-543,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,423,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-507,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-507,-507,-507,-507,0,0,-507,0,0,0,-507,-507,-507,0,0,-507,-507,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-507,-507,0,0,0,0,0,0,0,0,-507,-507,-507,0,0,0,0,0,0,0,0,0,0,0,-507,-507,-507,0,0,0,0,-507,-507,-507,0,-507,0,0,0,0,0,0,-507,0,0,0,0,0,0,0,0,0,0,0,0,0,-507,-507,-507,-507,-507,-507,-507,-507,-507,-507,-507,-507,-507,-507,0,0,0,0,0,0,0,0,0,0,0,-507,-507,-507,-507,-507,-507,-507,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,-508,0,0,-508,0,0,0,-508,-508,-508,0,0,-508,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-508,-508,0,0,0,0,0,0,0,0,-508,-508,-508,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,0,0,0,0,-508,-508,-508,0,-508,0,0,0,0,0,0,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,-508,-508,-508,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,-641,0,0,-641,0,0,0,-641,-641,-641,0,0,-641,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-641,-641,0,0,0,0,0,0,0,0,-641,-641,-641,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,0,0,0,0,-641,-641,-641,0,-641,0,0,0,0,0,0,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,-641,-641,-641,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,-642,0,0,-642,0,0,0,-642,-642,-642,0,0,-642,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-642,-642,0,0,0,0,0,0,0,0,-642,-642,-642,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,0,0,0,0,-642,-642,-642,0,-642,0,0,0,0,0,0,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,-642,-642,-642,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,-508,0,0,-508,0,0,0,-508,-508,-508,0,0,-32768,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-508,-508,0,0,0,0,0,0,0,0,-508,-508,-508,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,0,0,0,0,-508,-508,-508,0,-508,0,0,0,0,0,0,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,-508,0,0,0,0,0,0,0,0,0,0,0,-508,-508,-508,-508,-508,-508,-508,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-32768,-641,0,0,-641,0,0,0,-641,-641,-641,0,0,-641,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-641,-641,0,0,0,0,0,0,0,0,-641,-641,-641,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,0,0,0,0,-641,-641,-641,0,-641,0,0,0,0,0,0,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,-641,0,0,0,0,0,0,0,0,0,0,0,-641,-641,-641,-641,-641,-641,-641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-32768,-642,0,0,-642,0,0,0,-642,-642,-642,0,0,-642,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-642,-642,0,0,0,0,0,0,0,0,-642,-642,-642,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,0,0,0,0,-642,-642,-642,0,-642,0,0,0,0,0,0,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,-642,0,0,0,0,0,0,0,0,0,0,0,-642,-642,-642,-642,-642,-642,-642,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,428,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,427,0,0,0,18,19,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,430,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,429,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,-639,0,0,-639,0,0,0,-639,-639,-639,0,0,-639,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-639,-639,0,0,0,0,0,0,0,0,-639,-639,-639,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,0,0,0,0,-639,-639,-639,0,-639,0,0,0,0,0,0,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,-639,-639,-639,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,-640,0,0,-640,0,0,0,-640,-640,-640,0,0,-640,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-640,-640,0,0,0,0,0,0,0,0,-640,-640,-640,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,0,0,0,0,-640,-640,-640,0,-640,0,0,0,0,0,0,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,-640,-640,-640,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,-643,0,0,-643,0,0,0,-643,-643,-643,0,0,-643,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-643,-643,0,0,0,0,0,0,0,0,-643,-643,-643,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,0,0,0,0,-643,-643,-643,0,-643,0,0,0,0,0,0,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,-643,-643,-643,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-32768,-639,0,0,-639,0,0,0,-639,-639,-639,0,0,-639,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-639,-639,0,0,0,0,0,0,0,0,-639,-639,-639,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,0,0,0,0,-639,-639,-639,0,-639,0,0,0,0,0,0,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,-639,0,0,0,0,0,0,0,0,0,0,0,-639,-639,-639,-639,-639,-639,-639,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-32768,-640,0,0,-640,0,0,0,-640,-640,-640,0,0,-640,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-640,-640,0,0,0,0,0,0,0,0,-640,-640,-640,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,0,0,0,0,-640,-640,-640,0,-640,0,0,0,0,0,0,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,-640,0,0,0,0,0,0,0,0,0,0,0,-640,-640,-640,-640,-640,-640,-640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-32768,-643,0,0,-643,0,0,0,-643,-643,-643,0,0,-643,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-643,-643,0,0,0,0,0,0,0,0,-643,-643,-643,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,0,0,0,0,-643,-643,-643,0,-643,0,0,0,0,0,0,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,-643,0,0,0,0,0,0,0,0,0,0,0,-643,-643,-643,-643,-643,-643,-643,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-644,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-644,-644,-644,-644,0,0,-644,0,0,0,-644,-644,-644,0,0,-644,-644,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-644,-644,0,0,0,0,0,0,0,0,-644,-644,-644,0,0,0,0,0,0,0,0,0,0,0,-644,-644,-644,0,0,0,0,-644,-644,-644,0,-644,0,0,0,0,0,0,-644,0,0,0,0,0,0,0,0,0,0,0,0,0,-644,-644,-644,-644,-644,-644,-644,-644,-644,-644,-644,-644,-644,-644,0,0,0,0,0,0,0,0,0,0,0,-644,-644,-644,-644,-644,-644,-644,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,-647,0,0,-647,0,0,0,-647,-647,-647,0,0,-647,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-647,-647,0,0,0,0,0,0,0,0,-647,-647,-647,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,0,0,0,0,-647,-647,-647,0,-647,0,0,0,0,0,0,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,-647,-647,-647,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-32768,-647,0,0,-647,0,0,0,-647,-647,-647,0,0,-647,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-647,-647,0,0,0,0,0,0,0,0,-647,-647,-647,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,0,0,0,0,-647,-647,-647,0,-647,0,0,0,0,0,0,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,-647,0,0,0,0,0,0,0,0,0,0,0,-647,-647,-647,-647,-647,-647,-647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-570,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-570,-570,-570,-570,0,0,-570,0,0,0,-570,-570,-570,0,0,-570,-570,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-570,-570,0,0,0,0,0,0,0,0,-570,-570,-570,0,0,0,0,0,0,0,0,0,0,0,-570,-570,-570,0,0,0,0,-570,-570,-570,0,-570,0,0,0,0,0,0,-570,0,0,0,0,0,0,0,0,0,0,0,0,0,-570,-570,-570,-570,-570,-570,-570,-570,-570,-570,-570,-570,-570,-570,0,0,0,0,0,0,0,0,0,0,0,-570,-570,-570,-570,-570,-570,-570,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,298,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,435,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,436,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,437,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,438,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,439,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,440,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,-575,0,0,-575,0,0,0,-575,-575,-575,0,0,-575,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-575,-575,0,0,0,0,0,0,0,0,-575,-575,-575,0,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,0,0,0,0,-575,-575,-575,0,-575,0,0,0,0,0,0,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,0,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,-575,-575,-575,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,440,0,0,0,0,0,0,0,0,0,0,-575,-575,-32768,-575,0,0,-575,0,0,0,-575,-575,-575,0,0,-575,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-575,-575,0,0,0,0,0,0,0,0,-575,-575,-575,0,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,0,0,0,0,-575,-575,-575,0,-575,0,0,0,0,0,0,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,-575,0,0,0,0,0,0,0,0,0,0,0,-575,-575,-575,-575,-575,-575,-575,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,298,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,441,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,443,90,0,0,0,0,0,0,92,98,100,108,442,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -4768,7 +4840,7 @@ const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,298,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,621,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,298,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,622,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-638,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-638,-638,-638,-638,0,0,-638,0,0,0,-638,-638,-638,0,0,-638,-638,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-638,-638,0,0,0,0,0,0,0,0,-638,-638,-638,0,0,0,0,0,0,0,0,0,0,0,-638,-638,-638,0,0,0,0,-638,-638,-638,0,-638,0,0,0,0,0,0,-638,0,0,0,0,0,0,0,0,0,0,0,0,0,-638,-638,-638,-638,-638,-638,-638,-638,-638,-638,-638,-638,-638,-638,0,0,0,0,0,0,0,0,0,0,0,-638,-638,-638,-638,-638,-638,-638,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,-651,0,0,-651,0,0,0,-651,-651,-651,0,0,-651,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-651,-651,0,0,0,0,0,0,0,0,-651,-651,-651,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,0,0,0,0,-651,-651,-651,0,-651,0,0,0,0,0,0,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,-651,-651,-651,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-32768,-651,0,0,-651,0,0,0,-651,-651,-651,0,0,-651,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-651,-32768,0,0,0,0,0,0,0,0,-651,-651,-651,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,0,0,0,0,-651,-651,-651,0,-651,0,0,0,0,0,0,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,-651,0,0,0,0,0,0,0,0,0,0,0,-651,-651,-651,-651,-651,-651,-651,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,625,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,253,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,101,629,630,0,103,0,104,627,109,110,0,0,628,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,632,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,631,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,18,19,20,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,635,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,633,634,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -4777,9 +4849,9 @@ const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,298,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,640,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,485,0,0,641,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,642,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,643,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,-626,0,0,-626,0,0,0,-626,-626,-626,0,0,-626,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-626,-626,0,0,0,0,0,0,0,0,-626,-626,-626,0,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,0,0,0,0,-626,-626,-626,0,-626,0,0,0,0,0,0,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,0,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,-626,-626,-626,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,643,0,0,0,0,0,0,0,0,0,0,-626,-626,-32768,-626,0,0,-626,0,0,0,-626,-626,-626,0,0,-626,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-626,-626,0,0,0,0,0,0,0,0,-626,-626,-626,0,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,0,0,0,0,-626,-626,-626,0,-626,0,0,0,0,0,0,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,-626,0,0,0,0,0,0,0,0,0,0,0,-626,-626,-626,-626,-626,-626,-626,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,645,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,644,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,-573,0,0,-573,0,0,0,-573,-573,-573,0,0,-573,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-573,-573,0,0,0,0,0,0,0,0,-573,-573,-573,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,0,0,0,0,-573,-573,-573,0,-573,0,0,0,0,0,0,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,-573,-573,-573,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,-573,0,0,-573,0,0,0,-573,-573,-573,0,0,-32768,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-573,-573,0,0,0,0,0,0,0,0,-573,-573,-573,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,0,0,0,0,-573,-573,-573,0,-573,0,0,0,0,0,0,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,-573,0,0,0,0,0,0,0,0,0,0,0,-573,-573,-573,-573,-573,-573,-573,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-574,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-574,-574,-574,-574,0,0,-574,0,0,0,-574,-574,-574,0,0,-574,-574,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-574,-574,0,0,0,0,0,0,0,0,-574,-574,-574,0,0,0,0,0,0,0,0,0,0,0,-574,-574,-574,0,0,0,0,-574,-574,-574,0,-574,0,0,0,0,0,0,-574,0,0,0,0,0,0,0,0,0,0,0,0,0,-574,-574,-574,-574,-574,-574,-574,-574,-574,-574,-574,-574,-574,-574,0,0,0,0,0,0,0,0,0,0,0,-574,-574,-574,-574,-574,-574,-574,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,485,0,0,647,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,648,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -4965,7 +5037,7 @@ const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,485,0,0,813,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,814,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,253,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,720,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,718,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,-489,0,0,-489,0,0,719,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,717,716,815,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,-653,0,0,-653,0,0,0,-653,-653,-653,0,0,-653,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-653,-653,0,0,0,0,0,0,0,0,-653,-653,-653,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,0,0,0,0,-653,-653,-653,0,-653,0,0,0,0,0,0,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,-653,-653,-653,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-32768,-653,0,0,-653,0,0,0,-653,-653,-653,0,0,-653,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-653,-653,0,0,0,0,0,0,0,0,-653,-653,-653,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,0,0,0,0,-653,-653,-653,0,-653,0,0,0,0,0,0,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,-653,0,0,0,0,0,0,0,0,0,0,0,-653,-653,-653,-653,-653,-653,-653,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-654,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,818,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-654,-654,492,-654,0,0,-654,0,0,0,-654,-654,-654,0,0,-654,-654,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-654,817,0,0,0,0,0,0,0,0,-654,-654,-654,0,0,0,0,0,0,0,0,0,0,0,-654,-654,-654,0,0,0,0,-654,-654,-654,0,-654,0,0,0,0,0,0,-654,0,0,0,0,0,0,0,0,0,0,0,0,0,-654,-654,-654,-654,-654,-654,-654,-654,-654,-654,-654,-654,-654,-654,0,0,0,0,0,0,0,0,0,0,0,-654,-654,-654,-654,-654,-654,-654,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-484,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-484,-484,-484,-484,0,0,-484,0,0,0,-484,-484,-484,0,0,-484,-484,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-484,-484,0,0,0,0,0,0,0,0,-484,-484,-484,0,0,0,0,0,0,0,0,0,0,0,-484,-484,-484,0,0,0,0,-484,-484,-484,0,-484,0,0,0,0,0,0,-484,0,0,0,0,0,0,0,0,0,0,0,0,0,-484,-484,-484,-484,-484,-484,-484,-484,-484,-484,-484,-484,-484,-484,0,0,0,0,0,0,0,0,0,0,0,-484,-484,-484,-484,-484,-484,-484,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,819,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,0,0,0,0,0,0,0,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -5154,7 +5226,7 @@ const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-559,0,0,0,0,-559,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-559,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-559,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-636,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-636,-636,-636,-636,0,0,-636,0,0,0,-636,-636,-636,0,0,-636,-636,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-636,-636,0,0,0,0,0,0,0,0,-636,-636,-636,0,0,0,0,0,0,0,0,0,0,0,-636,-636,-636,0,0,0,0,-636,-636,-636,0,-636,0,0,0,0,0,0,-636,0,0,0,0,0,0,0,0,0,0,0,0,0,-636,-636,-636,-636,-636,-636,-636,-636,-636,-636,-636,-636,-636,-636,0,0,0,0,0,0,0,0,0,0,0,-636,-636,-636,-636,-636,-636,-636,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-637,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-637,-637,-637,-637,0,0,-637,0,0,0,-637,-637,-637,0,0,-637,-637,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-637,-637,0,0,0,0,0,0,0,0,-637,-637,-637,0,0,0,0,0,0,0,0,0,0,0,-637,-637,-637,0,0,0,0,-637,-637,-637,0,-637,0,0,0,0,0,0,-637,0,0,0,0,0,0,0,0,0,0,0,0,0,-637,-637,-637,-637,-637,-637,-637,-637,-637,-637,-637,-637,-637,-637,0,0,0,0,0,0,0,0,0,0,0,-637,-637,-637,-637,-637,-637,-637,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,-649,0,0,-649,0,0,0,-649,-649,-649,0,0,-649,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-649,-649,0,0,0,0,0,0,0,0,-649,-649,-649,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,0,0,0,0,-649,-649,-649,0,-649,0,0,0,0,0,0,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,-649,-649,-649,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-32768,-649,0,0,-649,0,0,0,-649,-649,-649,0,0,-649,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-649,-649,0,0,0,0,0,0,0,0,-649,-649,-649,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,0,0,0,0,-649,-649,-649,0,-649,0,0,0,0,0,0,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,-649,0,0,0,0,0,0,0,0,0,0,0,-649,-649,-649,-649,-649,-649,-649,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,914,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,720,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,718,0,88,90,0,0,0,0,0,0,92,98,100,108,0,0,0,99,0,101,93,94,0,103,0,104,106,109,110,0,0,89,-489,0,0,-489,0,0,719,0,0,0,0,0,91,0,0,105,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,96,107,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,102,0,0,0,0,0,0,0,0,0,0,0,0,0,0,97,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,717,716,915,0,95,0,0,0,0,0,0,0,0,0,0,0,0,111,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,916,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,252,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,253,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -5268,7 +5340,7 @@ const parseTable = [_][numSymbols]i16{
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-659,0,0,-659,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-661,0,0,-661,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-623,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-623,-623,-623,-623,0,0,-623,0,0,0,-623,-623,-623,0,0,-623,-623,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-623,-623,0,0,0,0,0,0,0,0,-623,-623,-623,0,0,0,0,0,0,0,0,0,0,0,-623,-623,-623,0,0,0,0,-623,-623,-623,0,-623,0,0,0,0,0,0,-623,0,0,0,0,0,0,0,0,0,0,0,0,0,-623,-623,-623,-623,-623,-623,-623,-623,-623,-623,-623,-623,-623,-623,0,0,0,0,0,0,0,0,0,0,0,-623,-623,-623,-623,-623,-623,-623,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
-    .{0,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,986,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,-624,0,0,-624,0,0,0,-624,-624,-624,0,0,-624,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-624,-624,0,0,0,0,0,0,0,0,-624,-624,-624,0,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,0,0,0,0,-624,-624,-624,0,-624,0,0,0,0,0,0,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,0,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,-624,-624,-624,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+    .{0,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,986,0,0,0,0,0,0,0,0,0,0,-624,-624,-32768,-624,0,0,-624,0,0,0,-624,-624,-624,0,0,-624,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-624,-624,0,0,0,0,0,0,0,0,-624,-624,-624,0,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,0,0,0,0,-624,-624,-624,0,-624,0,0,0,0,0,0,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,-624,0,0,0,0,0,0,0,0,0,0,0,-624,-624,-624,-624,-624,-624,-624,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-579,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-579,-579,-579,-579,0,0,-579,0,0,0,-579,-579,-579,0,0,-579,-579,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-579,-579,0,0,0,0,0,0,0,0,-579,-579,-579,0,0,0,0,0,0,0,0,0,0,0,-579,-579,-579,0,0,0,0,-579,-579,-579,0,-579,0,0,0,0,0,0,-579,0,0,0,0,0,0,0,0,0,0,0,0,0,-579,-579,-579,-579,-579,-579,-579,-579,-579,-579,-579,-579,-579,-579,0,0,0,0,0,0,0,0,0,0,0,-579,-579,-579,-579,-579,-579,-579,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,987,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
     .{0,-583,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-583,-583,-583,-583,0,0,-583,0,0,0,-583,-583,-583,0,0,-583,-583,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,-583,-583,0,0,0,0,0,0,0,0,-583,-583,-583,0,0,0,0,0,0,0,0,0,0,0,-583,-583,-583,0,0,0,0,-583,-583,-583,0,-583,0,0,0,0,0,0,-583,0,0,0,0,0,0,0,0,0,0,0,0,0,-583,-583,-583,-583,-583,-583,-583,-583,-583,-583,-583,-583,-583,-583,0,0,0,0,0,0,0,0,0,0,0,-583,-583,-583,-583,-583,-583,-583,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
@@ -5367,23 +5439,23 @@ const parseTable = [_][numSymbols]i16{
 
 // X "c" excludes: shift the hinted token instead of reducing when it
 // touches the previous token (pre == 0)
-const xExcludes = [_]struct { sym: u16, shift: u16 }{
-    .{ .sym = 131, .shift = 237 },
-    .{ .sym = 144, .shift = 424 },
-    .{ .sym = 131, .shift = 425 },
-    .{ .sym = 131, .shift = 426 },
-    .{ .sym = 131, .shift = 431 },
-    .{ .sym = 131, .shift = 432 },
-    .{ .sym = 131, .shift = 433 },
-    .{ .sym = 131, .shift = 434 },
-    .{ .sym = 131, .shift = 237 },
-    .{ .sym = 131, .shift = 624 },
-    .{ .sym = 169, .shift = 623 },
-    .{ .sym = 131, .shift = 237 },
-    .{ .sym = 144, .shift = 646 },
-    .{ .sym = 131, .shift = 816 },
-    .{ .sym = 131, .shift = 913 },
-    .{ .sym = 131, .shift = 237 },
+const xExcludes = [_]struct { sym: u16, shift: u16, reduce: i16 }{
+    .{ .sym = 131, .shift = 237, .reduce = -569 },
+    .{ .sym = 144, .shift = 424, .reduce = -508 },
+    .{ .sym = 131, .shift = 425, .reduce = -641 },
+    .{ .sym = 131, .shift = 426, .reduce = -642 },
+    .{ .sym = 131, .shift = 431, .reduce = -639 },
+    .{ .sym = 131, .shift = 432, .reduce = -640 },
+    .{ .sym = 131, .shift = 433, .reduce = -643 },
+    .{ .sym = 131, .shift = 434, .reduce = -647 },
+    .{ .sym = 131, .shift = 237, .reduce = -575 },
+    .{ .sym = 131, .shift = 624, .reduce = -651 },
+    .{ .sym = 169, .shift = 623, .reduce = -651 },
+    .{ .sym = 131, .shift = 237, .reduce = -626 },
+    .{ .sym = 144, .shift = 646, .reduce = -573 },
+    .{ .sym = 131, .shift = 816, .reduce = -653 },
+    .{ .sym = 131, .shift = 913, .reduce = -649 },
+    .{ .sym = 131, .shift = 237, .reduce = -624 },
 };
 /// State s's excludes: xExcludes[xExcludeStart[s]..xExcludeStart[s + 1]].
 const xExcludeStart = [_]u32{

@@ -43,6 +43,9 @@ const repair = @import("repair.zig");
 //     records the runtime shift override) and the rest of R are
 //     reduce/reduce conflicts.
 //   - Accept: always kept; every rule of R without `>` is a conflict.
+//   - Folded `@infix`: a shift of an operator against the reduction of one
+//     operator rule of the same table goes by their precedence (yacc's
+//     %left / %right / %nonassoc); it is not a conflict.
 //
 // =============================================================================
 
@@ -128,6 +131,15 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
     }
     hintStart[g.rules.items.len] = @intCast(hints.items.len);
 
+    // The operator terminals of a folded `@infix` table: their level and
+    // associativity, from the operator rules.
+    const opPrec = try a.alloc(?grammar.Rule.Precedence, numSymbols);
+    defer a.free(opPrec);
+    @memset(opPrec, null);
+    for (g.rules.items) |rule| {
+        if (rule.infix) |p| opPrec[rule.rhs[1]] = p;
+    }
+
     var reduceUnion = try SetArray.init(a, 1, numSymbols);
     defer reduceUnion.deinit(a);
     const cellTerminals = reduceUnion.get(0);
@@ -183,6 +195,18 @@ pub fn build(g: *const Grammar, auto: *const Automaton, la: Lookaheads) !Table {
                     });
                 },
                 .shift => |target| {
+                    // A folded `@infix` operator rule against an operator
+                    // of its table: a tighter operator shifts, a looser one
+                    // reduces, and one of the same level goes by its
+                    // associativity (`none`: an error, so chains reject).
+                    if (cellRules.items.len == 1) if (g.rules.items[cellRules.items[0]].infix) |rp| if (opPrec[t]) |tp| {
+                        if (tp.level < rp.level or (tp.level == rp.level and rp.assoc == .left)) {
+                            cell.* = .{ .reduce = cellRules.items[0] };
+                        } else if (tp.level == rp.level and rp.assoc == .none) {
+                            cell.* = .err;
+                        }
+                        continue;
+                    };
                     // The lowest rule that beats the shift: by `<`, or by an
                     // X "c" hint naming this terminal (that hint is used).
                     const winner: ?u16 = for (cellRules.items) |r| {
