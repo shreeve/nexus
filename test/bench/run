@@ -6,7 +6,7 @@
 # Usage:
 #   test/bench/run [-O mode] [-n rounds] [--nexus BIN] [gen|parse]...
 #
-#   -O mode     optimize mode for nexus and the parsers (default ReleaseFast)
+#   -O mode     optimize mode for nexus and the parsers (default fast)
 #   -n rounds   generation runs per grammar / throughput rounds (default 20 / 5)
 #   --nexus BIN benchmark this generator instead of building the checkout
 #   gen|parse   run only that part (default both)
@@ -24,7 +24,7 @@ cd "$(dirname "$0")/../.."
 ROOT=$(pwd)
 LIB="$ROOT/test/lib"
 OUT="$ROOT/.zig-cache/nexus-test/bench"
-MODE=ReleaseFast GEN_N=20 PARSE_N=5 NEXUS_ARG="" PARTS=()
+MODE=fast GEN_N=20 PARSE_N=5 NEXUS_ARG="" PARTS=()
 while [[ $# -gt 0 ]]; do
     case $1 in
         -O) MODE=$2; shift ;;

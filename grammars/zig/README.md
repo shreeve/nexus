@@ -190,7 +190,7 @@ cannot change:
 
 Measured with `compare-tokens --bench 5` and `compare-accept --bench 5
 [--no-schema]` over the corpus held in memory, single thread,
-ReleaseFast, best of 5 rounds, two interleaved runs, on an Apple M5
+fast mode, best of 5 rounds, two interleaved runs, on an Apple M5
 (10 cores) with the 1-minute load average below 6. Nexus is this
 branch, which includes the parser speed work of Nexus 2.1.0. MB are 10^6
 bytes.

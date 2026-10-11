@@ -4,7 +4,7 @@ The numbers `test/bench/run` produces for this checkout. Re-run it after
 any change that could affect speed, compare with these tables, and update
 this file when a change moves them.
 
-Recorded with `test/bench/run` (ReleaseFast), Apple M5, 10 cores, macOS
+Recorded with `test/bench/run` (fast mode), Apple M5, 10 cores, macOS
 27.0, Zig 0.17.0, under a light load (about 3.6). Two full runs;
 differences between runs are under 0.1% for MUMPS parse throughput, about
 2% for Rig's, and up to 0.4 ms for generation.

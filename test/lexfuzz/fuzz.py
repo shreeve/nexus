@@ -336,9 +336,9 @@ def main():
     ap.add_argument("--specs", type=int, default=60)
     ap.add_argument("--inputs", type=int, default=200)
     ap.add_argument("--keep")
-    ap.add_argument("-O", dest="mode", metavar="MODE", default="Debug",
-                    choices=["Debug", "ReleaseSafe", "ReleaseFast", "ReleaseSmall"],
-                    help="optimize mode of the driver build (default Debug)")
+    ap.add_argument("-O", dest="mode", metavar="MODE", default="debug",
+                    choices=["debug", "safe", "fast", "small"],
+                    help="optimize mode of the driver build (default debug)")
     a = ap.parse_args()
     rng = random.Random(a.seed)
     work = a.keep or tempfile.mkdtemp(prefix="lexfuzz.")

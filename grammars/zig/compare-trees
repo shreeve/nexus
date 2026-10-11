@@ -18,7 +18,7 @@
 #   --fuzz N        compare on N inputs made by token edits of the given
 #                   ones (--seed S, default 0), as compare-accept does
 #   --show          print the canonical form of each input whose trees agree
-#   -O MODE         optimize mode of the tool (default ReleaseSafe)
+#   -O MODE         optimize mode of the tool (default safe)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-trees/ from this
 # checkout's bin/nexus (run `zig build` first). Inputs that either parser
@@ -30,7 +30,7 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT="$ROOT/.zig-cache/nexus-grammars/zig-trees"
-MODE=ReleaseSafe TOOL_ARGS=()
+MODE=safe TOOL_ARGS=()
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
 : >"$LIST.new"

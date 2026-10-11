@@ -201,7 +201,7 @@ Nexus and the parsers it generates need [Zig 0.17](https://ziglang.org/download/
 
 ```bash
 git clone https://github.com/shreeve/nexus && cd nexus
-zig build -Doptimize=ReleaseSafe      # bin/nexus
+zig build -Doptimize=safe            # bin/nexus
 ./test/run                            # the whole suite
 ```
 

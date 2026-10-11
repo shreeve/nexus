@@ -24,7 +24,7 @@ set -uo pipefail
 [[ $# -ge 3 ]] || { awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 2; }
 NEXUS=$1 GRAMMAR=$2 OUT=$3
 shift 3
-MODE=Debug
+MODE=debug
 if [[ "${1:-}" == "-O" ]]; then MODE=$2; shift 2; fi
 
 LIB=$(cd "$(dirname "$0")" && pwd)
