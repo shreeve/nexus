@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `not` `or` `pass` `pub` `raw` `return` `struct` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `unique` `from` `static` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `not` `or` `pass` `pub` `raw` `return` `struct` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
   (lex_rule `"\\\\\\r\\n"` _ `skip`)
@@ -68,6 +68,47 @@
   (lex_rule `','` _ `comma`)
   (lex_rule `':'` _ `colon`)
   (lex_rule `'.'` _ `dot`)
+  (lex_rule `"true"` _ `true`)
+  (lex_rule `"false"` _ `false`)
+  (lex_rule `"and"` _ `and`)
+  (lex_rule `"as"` _ `as`)
+  (lex_rule `"break"` _ `break`)
+  (lex_rule `"catch"` _ `catch`)
+  (lex_rule `"continue"` _ `continue`)
+  (lex_rule `"defer"` _ `defer`)
+  (lex_rule `"drop"` _ `drop`)
+  (lex_rule `"else"` _ `else`)
+  (lex_rule `"enum"` _ `enum`)
+  (lex_rule `"errdefer"` _ `errdefer`)
+  (lex_rule `"error"` _ `error`)
+  (lex_rule `"extern"` _ `extern`)
+  (lex_rule `"for"` _ `for`)
+  (lex_rule `"fun"` _ `fun`)
+  (lex_rule `"if"` _ `if`)
+  (lex_rule `"in"` _ `in`)
+  (lex_rule `"match"` _ `match`)
+  (lex_rule `"not"` _ `not`)
+  (lex_rule `"or"` _ `or`)
+  (lex_rule `"pass"` _ `pass`)
+  (lex_rule `"pub"` _ `pub`)
+  (lex_rule `"raw"` _ `raw`)
+  (lex_rule `"return"` _ `return`)
+  (lex_rule `"struct"` _ `struct`)
+  (lex_rule `"sub"` _ `sub`)
+  (lex_rule `"test"` _ `test`)
+  (lex_rule `"try"` _ `try`)
+  (lex_rule `"type"` _ `type`)
+  (lex_rule `"use"` _ `use`)
+  (lex_rule `"while"` _ `while`)
+  (lex_rule `"zig"` _ `zig`)
+  (lex_rule `"async"` _ `async`)
+  (lex_rule `"await"` _ `await`)
+  (lex_rule `"const"` _ `const`)
+  (lex_rule `"impl"` _ `impl`)
+  (lex_rule `"trait"` _ `trait`)
+  (lex_rule `"when"` _ `when`)
+  (lex_rule `"where"` _ `where`)
+  (lex_rule `"yield"` _ `yield`)
   (lex_rule `[a-zA-Z_][a-zA-Z0-9_]*` _ `ident`)
   (lex_rule `.` _ `err`)
   (section `parser`)
@@ -476,7 +517,7 @@
           _
           `var`
           (type `leaf`)
-          _)
+          opt)
         (role
           _
           `index`
@@ -918,6 +959,12 @@
     (name_pair `params` `"a parameter list"`)
     (name_pair `unary` `"an operand"`)
     (name_pair `step` `"an assignment or a call"`))
+  (keywords
+    (kw_group `ctx` `unique` `from` `static`))
+  (as
+    `IDENT`
+    _
+    (as_entry perm `ctx` _))
   (rule
     (name `name`)
     (alt
@@ -2980,6 +3027,30 @@
         (named
           `mode`
           (tag `iter`)))
+      _)
+    (alt
+      _
+      ((tok `FOR`)
+        (label
+          `source`
+          (ref `value`))
+        (label
+          `body`
+          (ref `block`))
+        (group
+          opt
+          ((tok `ELSE`)
+            (label
+              `else`
+              (ref `block`)))))
+      (node
+        `for`
+        (named
+          `mode`
+          (tag `iter`))
+        (named
+          `var`
+          (null)))
       _))
   (rule
     (name `match`)

@@ -162,58 +162,27 @@ pub fn shadows(op: Sexp) bool {
 // Keywords
 // =============================================================================
 
-/// Every Rig keyword is reserved, except `new`, which is a keyword only
-/// at the start of a statement followed by a name or `const` (`new x =
-/// ...`, `new const x = ...`), so
+/// The categories from `true` to `yield` in rig.grammar's `tokens`
+/// block are Rig's keywords. Every keyword is reserved and is a lexer
+/// rule, so the base lexer gives it its own category, except `new`, which
+/// lexes as a name and is a keyword only at the start of a statement
+/// followed by a name or `const` (`new x = ...`, `new const x = ...`), so
 /// `fun new(...)` and `Point.new(...)` stay ordinary names.
-const keywords = std.StaticStringMap(TokenCat).initComptime(.{
-    .{ "and", .@"and" },
-    .{ "as", .as },
-    .{ "async", .async },
-    .{ "await", .await },
-    .{ "break", .@"break" },
-    .{ "catch", .@"catch" },
-    .{ "const", .@"const" },
-    .{ "continue", .@"continue" },
-    .{ "defer", .@"defer" },
-    .{ "drop", .drop },
-    .{ "else", .@"else" },
-    .{ "enum", .@"enum" },
-    .{ "errdefer", .@"errdefer" },
-    .{ "error", .@"error" },
-    .{ "extern", .@"extern" },
-    .{ "false", .false },
-    .{ "for", .@"for" },
-    .{ "fun", .fun },
-    .{ "if", .@"if" },
-    .{ "impl", .impl },
-    .{ "in", .in },
-    .{ "match", .match },
-    .{ "new", .new },
-    .{ "not", .not },
-    .{ "or", .@"or" },
-    .{ "pass", .pass },
-    .{ "pub", .@"pub" },
-    .{ "raw", .raw },
-    .{ "return", .@"return" },
-    .{ "struct", .@"struct" },
-    .{ "sub", .sub },
-    .{ "test", .@"test" },
-    .{ "trait", .trait },
-    .{ "true", .true },
-    .{ "try", .@"try" },
-    .{ "type", .type },
-    .{ "use", .use },
-    .{ "when", .when },
-    .{ "where", .where },
-    .{ "while", .@"while" },
-    .{ "yield", .yield },
-    .{ "zig", .zig },
-});
+pub fn isKeyword(cat: TokenCat) bool {
+    return @intFromEnum(cat) >= @intFromEnum(TokenCat.true) and @intFromEnum(cat) <= @intFromEnum(TokenCat.yield);
+}
 
-/// The token category of a reserved word, or null for a plain name.
+/// A word the base lexer reads: a name or a reserved word.
+fn isWord(cat: TokenCat) bool {
+    return cat == .ident or isKeyword(cat);
+}
+
+/// The token category of a keyword, or null for a plain name.
 pub fn keyword(word: []const u8) ?TokenCat {
-    return keywords.get(word);
+    if (std.mem.eql(u8, word, "new")) return .new;
+    var base = BaseLexer.init(word);
+    const tok = base.next();
+    return if (tok.len == word.len and isKeyword(tok.cat)) tok.cat else null;
 }
 
 // =============================================================================
@@ -352,15 +321,9 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 //   After a value directly inside [ ], `of` separates a fill literal's
 //   count from its element (`[n of x]`). Elsewhere it is a name.
 //
-// `unique`
-//   After a struct header's name or type parameters, `unique` marks the
-//   struct unique (`struct Random unique`). Elsewhere it is a name.
-//
-// `from`, `static`
-//   After a function's result type, on its header's line, `from` says
-//   what the result views (`-> ?Item from a, b`), and `static` right
-//   after it says the result views only what lives for the whole
-//   program (`-> ?String from static`). Elsewhere each is a name.
+// `unique`, `from`, `static`
+//   Names to the lexer: the parser reads each as a keyword where its
+//   state takes it (rig.grammar, `@keywords`).
 //
 // `..`
 //   Before `]` (past any line break, which is whitespace inside
@@ -420,9 +383,6 @@ pub const Lexer = struct {
     /// The bracket nesting of the `while` header being lexed, whose first
     /// `:` there starts the step; null outside one.
     while_header: ?u32 = null,
-    /// The line is a function's header, past the `->` of its result
-    /// type, where `from` may follow the type (`isResultFrom`).
-    fun_arrow: bool = false,
     /// Start and end of the last real (non-layout) token; an unexpected
     /// end of block or file is reported at its end.
     prev_pos: u32 = 0,
@@ -573,13 +533,6 @@ pub const Lexer = struct {
         switch (tok.cat) {
             .@"while" => self.while_header = self.nesting,
             .newline, .indent, .outdent, .eof, .step_colon => self.while_header = null,
-            else => {},
-        }
-        switch (tok.cat) {
-            .arrow => if (self.nesting == 0 and (self.line_head == .fun or self.line_head == .@"extern")) {
-                self.fun_arrow = true;
-            },
-            .newline, .indent, .outdent, .eof => self.fun_arrow = false,
             else => {},
         }
         if (tok.len > 0 and tok.cat != .err) { // a real token, not layout
@@ -784,7 +737,7 @@ pub const Lexer = struct {
         var probe = self.base;
         probe.pos = pos;
         const tok = probe.next();
-        return tok.cat == .ident and std.mem.eql(u8, self.base.text(tok), "else");
+        return tok.cat == .@"else";
     }
 
     fn endOfInput(self: *Lexer, eof: Token) Token {
@@ -846,7 +799,7 @@ pub const Lexer = struct {
             // `get(k) ?? return none`: a jump as the fallback.
             .nullish => if (self.nextIsJump()) .nullish_jump else .nullish,
             .err => return self.lexError(tok),
-            else => tok.cat,
+            else => if (isKeyword(tok.cat)) self.classifyKeyword(tok.cat) else tok.cat,
         };
         // A prefix sigil touches its operand (`-b`, `<x`, `*T`); `i++`
         // is no increment.
@@ -919,41 +872,22 @@ pub const Lexer = struct {
         return true;
     }
 
+    fn classifyKeyword(self: *const Lexer, kw: TokenCat) TokenCat {
+        if (kw != .@"if") return self.memberName() orelse kw;
+        switch (self.last_cat) {
+            .@"return", .@"break", .@"continue", .pass => return .post_if,
+            else => {},
+        }
+        if (!self.after_value) return .@"if";
+        return if (self.elseFollows()) .ternary_if else .post_if;
+    }
+
     fn classifyWord(self: *const Lexer, tok: Token) TokenCat {
         const word = self.base.text(tok);
-        if (keyword(word)) |kw| switch (kw) {
-            .@"if" => {
-                switch (self.last_cat) {
-                    .@"return", .@"break", .@"continue", .pass => return .post_if,
-                    else => {},
-                }
-                if (!self.after_value) return .@"if";
-                return if (self.elseFollows()) .ternary_if else .post_if;
-            },
-            .new => return if (self.stmtStart() and (self.nextIsName() or self.nextIsConst())) .new else .ident,
-            else => return self.memberName() orelse kw,
-        };
+        if (std.mem.eql(u8, word, "new")) return if (self.stmtStart() and (self.nextIsName() or self.nextIsConst())) .new else .ident;
         if (self.inParens() and self.nextCat() == .colon) return .kwarg_name;
         if (std.mem.eql(u8, word, "of") and self.isFillOf()) return .of;
-        if (std.mem.eql(u8, word, "unique") and self.isStructUnique()) return .unique;
-        if (std.mem.eql(u8, word, "from") and self.isResultFrom()) return .from;
-        if (std.mem.eql(u8, word, "static") and self.last_cat == .from) return .static;
         return .ident;
-    }
-
-    /// `from` after a function's result type says what the result views
-    /// (`fun first(a: ?T, b: ?T) -> ?T from a`); anywhere else it is a
-    /// name.
-    fn isResultFrom(self: *const Lexer) bool {
-        return self.fun_arrow and self.after_value and self.nesting == 0;
-    }
-
-    /// `unique` after a struct header's name or its type parameters marks
-    /// the struct unique (`struct Random unique`, `struct Ring[T] unique`);
-    /// anywhere else it is a name.
-    fn isStructUnique(self: *const Lexer) bool {
-        return self.line_head == .@"struct" and self.nesting == 0 and
-            (self.last_cat == .ident or self.last_cat == .rbracket);
     }
 
     /// `of` after a value directly inside [ ] separates a fill literal's
@@ -983,7 +917,7 @@ pub const Lexer = struct {
     fn isBuiltinCall(self: *const Lexer) bool {
         var probe = self.base;
         const name = probe.next();
-        if (name.cat != .ident) return false;
+        if (!isWord(name.cat)) return false;
         return probe.next().cat == .lparen;
     }
 
@@ -1011,7 +945,7 @@ pub const Lexer = struct {
             if (t.cat == .plus or t.cat == .lt or t.cat == .tilde or t.cat == .question or t.cat == .not_sym) t = probe.next();
             // A keyword entry still makes a bar list, so that the parser
             // reports the keyword (`|when: Int|`).
-            if (t.cat != .ident) return true;
+            if (!isWord(t.cat)) return true;
             var sep = probe.next();
             if (sep.cat == .colon) sep = skipType(&probe) orelse return true;
             switch (sep.cat) {
@@ -1049,7 +983,7 @@ pub const Lexer = struct {
                 .ident, .integer, .dot, .question, .not_sym, .star, .tilde, .caret, .arrow => {},
                 // Arithmetic in an array size: `[N + 1]Int`.
                 .plus, .minus, .slash, .percent => if (depth == 0) return null,
-                else => return null,
+                else => if (!isKeyword(t.cat)) return null,
             }
         }
     }
@@ -1070,7 +1004,7 @@ pub const Lexer = struct {
                     depth -= 1;
                 },
                 .comma => if (depth == 0) return false,
-                .ident => if (depth == 0 and std.mem.eql(u8, self.base.text(t), "else")) return true,
+                .@"else" => if (depth == 0) return true,
                 else => {},
             }
         }
@@ -1112,10 +1046,10 @@ pub const Lexer = struct {
 
     /// The next token is `return`, `break`, or `continue`.
     fn nextIsJump(self: *const Lexer) bool {
-        const t = self.nextJoined();
-        if (t.cat != .ident) return false;
-        const kw = keyword(self.base.text(t)) orelse return false;
-        return kw == .@"return" or kw == .@"break" or kw == .@"continue";
+        return switch (self.nextJoined().cat) {
+            .@"return", .@"break", .@"continue" => true,
+            else => false,
+        };
     }
 
     /// A literal comes next: a number, a string, or an array.
@@ -1129,13 +1063,12 @@ pub const Lexer = struct {
     fn nextIsName(self: *const Lexer) bool {
         var probe = self.base;
         const t = probe.next();
-        return t.cat == .ident and keyword(self.base.text(t)) == null;
+        return t.cat == .ident and !std.mem.eql(u8, self.base.text(t), "new");
     }
 
     fn nextIsConst(self: *const Lexer) bool {
         var probe = self.base;
-        const t = probe.next();
-        return t.cat == .ident and std.mem.eql(u8, self.base.text(t), "const");
+        return probe.next().cat == .@"const";
     }
 
     /// Why the grammar produced an `err` token.
@@ -1253,11 +1186,15 @@ const HiddenName = enum(u16) {
     /// The binding that holds a loop's source. It has a space, so no
     /// program can write it, and a message that names it says what it is.
     iterator = 1,
+    /// The variable of a bare `for`, which binds nothing: `for xs` is
+    /// `for _ in xs`.
+    discard = 2,
 
     fn text(self: HiddenName) []const u8 {
         return switch (self) {
             .next => "next",
             .iterator => "for iterator",
+            .discard => "_",
         };
     }
 };
@@ -1716,7 +1653,7 @@ pub const Parser = struct {
         const n = if (end.cat == .integer) std.fmt.parseInt(i64, text, 0) catch null else null;
         const fix = if (n) |v|
             self.format("`..={s}` is written `..{d}`", .{ text, v + 1 })
-        else if (end.cat == .ident)
+        else if (isWord(end.cat))
             self.format("`..={s}` is written `..{s} + 1`", .{ text, text })
         else
             "`..=b` is written `..b + 1`";
@@ -1764,7 +1701,8 @@ pub const Parser = struct {
             .@"else" => if (in_pattern) "the catch-all arm is `_`, or a name that binds the value" else null,
             .@"try" => "`try` blocks are reserved: propagate with `e!` or handle with `e catch ...`",
             .zig => "inline Zig is reserved: use `raw` blocks and `extern` declarations",
-            .star => if (precededBy(src, tok.pos, "for")) "`for *x in` is reserved: iterate with `for x in xs`, `?xs`, or `!xs`" else null,
+            .star => if (precededBy(src, tok.pos, "for")) reserved_for_star else null,
+            .in => if (forStar(src, tok.pos)) reserved_for_star else null,
             .ident, .not_sym, .question => if (precededBy(src, tok.pos, "drop")) "a drop body takes its receiver in parentheses: `drop(!self)`" else null,
             else => null,
         };
@@ -1844,7 +1782,7 @@ pub const Parser = struct {
         };
         const operand = switch (next.cat) {
             .ident, .integer, .real, .string_sq, .string_dq => src[next.pos .. next.pos + next.len],
-            else => "x",
+            else => if (isKeyword(next.cat)) src[next.pos .. next.pos + next.len] else "x",
         };
         return self.format("a prefix `{c}` touches its operand: write `{c}{s}`", .{ src[tok.pos], src[tok.pos], operand });
     }
@@ -1926,6 +1864,16 @@ pub const Parser = struct {
         return std.mem.endsWith(u8, text, word) and (text.len == word.len or !isIdentCont(text[text.len - word.len - 1]));
     }
 
+    const reserved_for_star = "`for *x in` is reserved: iterate with `for x in xs`, `?xs`, or `!xs`";
+
+    /// Whether the `in` at `pos` closes a `for *x` header, which reads as
+    /// a bare `for` over `*x` until the `in`.
+    fn forStar(src: []const u8, pos: u32) bool {
+        const start = if (std.mem.findScalarLast(u8, src[0..pos], '\n')) |nl| nl + 1 else 0;
+        const line = std.mem.trimStart(u8, src[start..pos], " \t");
+        return std.mem.startsWith(u8, line, "for *");
+    }
+
     /// The word before `pos` is `word`.
     fn precededBy(src: []const u8, pos: u32, word: []const u8) bool {
         return endsWithWord(std.mem.trimEnd(u8, src[0..pos], " "), word);
@@ -1991,6 +1939,7 @@ pub const Parser = struct {
         // receiver rewrite can see it.
         if (sexp.kind() == .@"for") {
             const copy = try self.allocator().dupe(Sexp, items);
+            self.bareFor(sexp, copy);
             normFor(copy);
             items = copy;
         }
@@ -2489,6 +2438,15 @@ pub const Parser = struct {
         return .{ .loop = .{ .list = parser.List.withId(out, loop.list.id) }, .hold = hold };
     }
 
+    /// A bare `for xs` is `for _ in xs`: the variable the grammar left
+    /// out is the discard name, at the `for` keyword.
+    fn bareFor(self: *Parser, loop: Sexp, items: []Sexp) void {
+        const slot = ir.slot(.@"for", .@"var");
+        if (items[slot] != .nil) return;
+        const at = self.span(loop).start;
+        items[slot] = hiddenLeaf(at, .discard);
+    }
+
     /// Promote the source's `?xs` / `!xs` / `<xs` wrapper into the mode.
     fn normFor(items: []Sexp) void {
         const node = Sexp.listOf(items);
@@ -2529,34 +2487,63 @@ test "keywords are reserved; `new` only at statement start" {
         try testing.expect(keyword(w) != null);
     }
     try testing.expect(keyword("var") == null);
+    // Every keyword category but `new` is a lexer rule.
+    for (@intFromEnum(TokenCat.true)..@intFromEnum(TokenCat.yield) + 1) |c| {
+        const cat: TokenCat = @enumFromInt(c);
+        try testing.expectEqual(cat, keyword(@tagName(cat)).?);
+        if (cat != .new) try expectCats(@tagName(cat), &.{cat});
+    }
     try expectCats("new x = 1", &.{ .new, .ident, .assign, .integer });
     try expectCats("p = Point.new(1)", &.{ .ident, .assign, .ident, .dot, .ident, .lparen, .integer, .rparen });
 }
 
+/// The tree of `source`'s first declaration, past any `pub`.
+fn firstDecl(p: *Parser) !Sexp {
+    const decl = ir.Module.decls(try p.parseTree())[0];
+    return if (decl.isKind(.@"pub")) ir.Pub.decl(decl) else decl;
+}
+
+/// Whether `source` declares a unique struct first.
+fn structUnique(source: []const u8) !bool {
+    var p = Parser.init(testing.allocator, source);
+    defer p.deinit();
+    return ir.get(try firstDecl(&p), .unique) != .nil;
+}
+
+/// The origins of `source`'s first declaration, a function: how many
+/// names follow `from`, 0 for `from static`, null for none.
+fn originCount(source: []const u8) !?usize {
+    var p = Parser.init(testing.allocator, source);
+    defer p.deinit();
+    const origins = ir.get(try firstDecl(&p), .origins);
+    return if (origins == .nil) null else origins.items().len;
+}
+
 test "`unique` is a keyword only after a struct header's name or type parameters" {
     try testing.expect(keyword("unique") == null);
-    try expectCats("struct R unique", &.{ .@"struct", .ident, .unique });
-    try expectCats("pub struct R unique # note", &.{ .@"pub", .@"struct", .ident, .unique });
-    try expectCats("struct R[T] unique", &.{ .@"struct", .ident, .lbracket, .ident, .rbracket, .unique });
-    try expectCats("struct R[unique]", &.{ .@"struct", .ident, .lbracket, .ident, .rbracket });
-    try expectCats("struct unique", &.{ .@"struct", .ident });
-    try expectCats("enum E unique", &.{ .@"enum", .ident, .ident });
-    try expectCats("unique = x.unique", &.{ .ident, .assign, .ident, .dot, .ident });
-    try expectCats("struct R\n  unique: Bool", &.{ .@"struct", .ident, .indent, .ident, .colon, .ident });
+    try expectCats("struct R unique", &.{ .@"struct", .ident, .ident });
+    try testing.expect(try structUnique("struct R unique\n  x: Int\n"));
+    try testing.expect(try structUnique("pub struct R unique # note\n  x: Int\n"));
+    try testing.expect(try structUnique("struct R[T] unique\n  x: T\n"));
+    try testing.expect(!try structUnique("struct R[unique]\n  x: Int\n"));
+    try testing.expect(!try structUnique("struct unique\n  x: Int\n"));
+    try testing.expect(!try structUnique("struct R\n  unique: Bool\n"));
+    try testing.expectError(error.ParseError, parses("enum E unique\n  a\n"));
+    try parses("unique = x.unique\n");
     try expectCats("f(unique: 1)", &.{ .ident, .lparen, .kwarg_name, .colon, .integer, .rparen });
 }
 
 test "`from` and `static` are keywords only after a function's result type" {
     try testing.expect(keyword("from") == null and keyword("static") == null);
-    try expectCats("fun f(a: ?T) -> ?T from a", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .question, .ident, .rparen, .arrow, .question, .ident, .from, .ident });
-    try expectCats("pub fun f() -> ?String from static", &.{ .@"pub", .fun, .ident, .lparen, .rparen, .arrow, .question, .ident, .from, .static });
-    try expectCats("fun f() -> T? from a, b", &.{ .fun, .ident, .lparen, .rparen, .arrow, .ident, .question, .from, .ident, .comma, .ident });
-    try expectCats("extern fun f(s: ?String) -> ?String from s", &.{ .@"extern", .fun, .ident, .lparen, .kwarg_name, .colon, .question, .ident, .rparen, .arrow, .question, .ident, .from, .ident });
-    try expectCats("fun span(from: Int) -> Int", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident });
-    try expectCats("from = static", &.{ .ident, .assign, .ident });
-    try expectCats("f = |x: Int| x\nfrom = 1", &.{ .ident, .assign, .bar_capture, .ident, .colon, .ident, .bar_capture, .ident, .newline, .ident });
-    try expectCats("fun f() -> Int\n  from", &.{ .fun, .ident, .lparen, .rparen, .arrow, .ident, .indent, .ident });
-    try expectCats("fun f(g: fun(Int) -> Int, from: Int)", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .fun, .lparen, .ident, .rparen, .arrow, .ident, .comma, .kwarg_name });
+    try testing.expectEqual(@as(?usize, 1), try originCount("fun f(a: ?T) -> ?T from a\n  a\n"));
+    try testing.expectEqual(@as(?usize, 0), try originCount("pub fun f() -> ?String from static\n  s\n"));
+    try testing.expectEqual(@as(?usize, 2), try originCount("fun f() -> T? from a, b\n  a\n"));
+    try testing.expectEqual(@as(?usize, 1), try originCount("extern fun f(s: ?String) -> ?String from s\n"));
+    try testing.expectEqual(@as(?usize, null), try originCount("fun span(from: Int) -> Int\n  from\n"));
+    try testing.expectEqual(@as(?usize, null), try originCount("fun f() -> Int\n  from\n"));
+    try testing.expectEqual(@as(?usize, null), try originCount("fun f(g: fun(Int) -> Int, from: Int) -> Int\n  from\n"));
+    try parses("from = static\n");
+    try parses("f = |x: Int| x\nfrom = 1\n");
 }
 
 test "a prefix sigil touches its operand; after a value it is infix or a suffix" {
