@@ -4,6 +4,10 @@
 
 ### Added
 
+- `Span.text(source)`: the source a span covers, clamped to the source,
+  so a span a lang wrapper builds past the end (or a reversed one) gives
+  the empty string instead of an out-of-bounds slice. Additive; Rig can
+  replace `diag.textOf` and `diag.textBetween` with it.
 - `@keywords`: keyword tables declared in the grammar. Each indented line
   is a group, `name [caseless] [base N] entry ...`, with entries `word`,
   `PRE[REST]` (every prefix of PREREST at least as long as PRE),
