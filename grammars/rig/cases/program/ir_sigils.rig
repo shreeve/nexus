@@ -14,7 +14,7 @@ sub touch(n: !Node)
   print(n.value)
 
 struct Log
-  lines: Vec[Int]
+  lines: List[Int]
 
   sub add(!self, n: Int)
     !self.lines.push(n)
@@ -34,7 +34,7 @@ sub main()
   w = ~t
   <s
 
-  log = Log(lines: Vec())
+  log = Log(lines: List())
   !log.add(1)
   !log.add(2)
   (!log).add(3)

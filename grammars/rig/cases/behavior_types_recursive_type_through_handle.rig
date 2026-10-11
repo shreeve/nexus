@@ -1,4 +1,4 @@
-# A type may refer to itself through a shared handle or a Vec.
+# A type may refer to itself through a shared handle or a List.
 
 struct Node
   n: Int
@@ -6,7 +6,7 @@ struct Node
 
 struct Tree
   n: Int
-  kids: Vec[*Tree]
+  kids: List[*Tree]
 
 fun sum(t: ?*Tree) -> Int
   total = t.n
@@ -18,9 +18,9 @@ sub main()
   a = *Node(n: 1, next: none)
   b = *Node(n: 2, next: +a)
   print(b.n, a.n)
-  leaf1 = *Tree(n: 3, kids: Vec())
-  leaf2 = *Tree(n: 4, kids: Vec())
-  kids: Vec[*Tree] = Vec()
+  leaf1 = *Tree(n: 3, kids: List())
+  leaf2 = *Tree(n: 4, kids: List())
+  kids: List[*Tree] = List()
   !kids.push(<leaf1)
   !kids.push(<leaf2)
   root = *Tree(n: 5, kids: <kids)

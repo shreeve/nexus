@@ -1,13 +1,13 @@
-# A bare alias of a `Cell` holding a shared handle is rejected: both
-# bindings would run the destructor.
+# A bare alias of a `*Cell` handle holding a shared handle is rejected:
+# both bindings would run the destructor.
 
 struct User
   age: Int
 
 sub main()
   u: *User = *User(age: 30)
-  c1: Cell[*User] = Cell(<u)
-  c2: Cell[*User] = c1
+  c1: *Cell[*User] = *Cell(<u)
+  c2: *Cell[*User] = c1
   print(0)
 
-# error: bare use of `Cell` value `c1` in binding would alias an owning value
+# error: 10:22: `c1` is a `*Cell[*User]` handle, which can't be copied by `=`: write `<c1` to move it, `+c1` for another handle, or `?c1` to view it

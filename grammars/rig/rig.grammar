@@ -363,12 +363,12 @@ tokens
     ".."                        left? right?
     neg, not                    operand
 
-    # Ownership sigils (`~T`, `?T`, `!T`, `*T` in type position are the
-    # type kinds below, except `weak`, which is both)
-    move, read, write, clone, share, weak  operand
+    # Ownership sigils (`~T`, `?T`, `!T`, `*T`, `^T` in type position are
+    # the type kinds below, except `weak`, which is both)
+    move, read, write, clone, share, weak, box  operand
 
     # Types
-    optional, error_union, read_view, write_view, shared, slice  type
+    optional, error_union, read_view, write_view, shared, boxed, slice  type
     generic_inst                name ...args
     array_type                  size type
     fun_type                    params:group? returns? fails:tag(fails)?
@@ -585,9 +585,10 @@ zfun     = FUN name:name [tparams:tparams] [params:params] [returns:returns] [or
 # TYPES
 # ==============================================================================
 #
-# The handle sigils `*` and `~` bind to the type after them, tighter than
-# the suffixes: `*User?` is an optional shared handle, and a handle to an
-# optional is `*(User?)`. A view sigil applies to the whole type after
+# The holding sigils `^`, `*` and `~` bind to the type after them,
+# tighter than the suffixes: `^Node?` is an optional box, `*User?` an
+# optional shared handle, and a box or handle of an optional is `^(T?)`,
+# `*(User?)`. A view sigil applies to the whole type after
 # it, suffixes included: `?User?` is a read view of an optional User. The
 # element of a slice or array takes the suffixes too (`[]Int?`), and a
 # function type takes none, so an optional of one is written in
@@ -606,6 +607,8 @@ ptype    = "[" "]" type:type                        → (slice)
          | SUB "(" [params:L(type)] ")" "!"         → (fun_type fails:fails)  # `sub(Int)!`
          | "*" type:ptype                           → (shared)     # `*fun(Int) -> Int`
          | "~" operand:ptype                        → (weak)
+         | "^" type:ptype                           → (boxed)      # `^[4]Int`
+         | "^" "?" type                             → (boxed type:(read_view type:3))  # `^?T`
 
 tsuffix  = type:tsuffix "?"                         → (optional)
          | type:tsuffix "!"                         → (error_union)
@@ -613,6 +616,7 @@ tsuffix  = type:tsuffix "?"                         → (optional)
 
 thandle  = "*" type:thandle                         → (shared)
          | "~" operand:thandle                      → (weak)
+         | "^" type:thandle                         → (boxed)
          | tatom
 
 tatom    = tname
@@ -846,6 +850,7 @@ unary    = "-" operand:unary                        → (neg)
          | "!" operand:unary                        → (write)
          | "*" operand:unary                        → (share)
          | "~" operand:unary                        → (weak)
+         | "^" operand:unary                        → (box)
          | postfix
 
 postfix  = object:postfix "." name:name             → (member)

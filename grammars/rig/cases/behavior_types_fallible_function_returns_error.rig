@@ -4,7 +4,7 @@
 error ParseError
   empty
 
-fun parse_len(s: String) -> Int!
+fun parse_len(s: ?String) -> Int!
   if s == ""
     return ParseError.empty
   s.len

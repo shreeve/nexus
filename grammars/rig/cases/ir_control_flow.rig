@@ -53,7 +53,7 @@ sub main()
   if size > 0
     return
 
-sub optionals(m: Int?, v: !Vec[Int])
+sub optionals(m: Int?, v: !List[Int])
   if m as x
     print(x)
   while v.pop() as y

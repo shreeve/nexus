@@ -1,39 +1,43 @@
 (module
-  (struct `Account` _ (: `owner` `String`)@80..93 (: `balance` `Int`)@96..108)@63..110
+  (struct
+    `Account`
+    _
+    (: `owner` (read_view `String`)@87..94)@80..94
+    (: `balance` `Int`)@97..109)@63..111
   (fun
     `balance_of`
     _
-    ((: `a` (read_view `Account`)@128..136)@125..136)@124..137
+    ((: `a` (read_view `Account`)@129..137)@126..137)@125..138
     `Int`
     _
-    (block (member `a` `balance`)@147..156)@147..158)@110..158
+    (block (member `a` `balance`)@148..157)@148..159)@111..159
   (sub
     `close`
     _
-    ((: `a` `Account`)@168..178)@167..179
+    ((: `a` `Account`)@169..179)@168..180
     _
-    (block (call `print` (member `a` `balance`)@188..197)@182..198)@182..200)@158..200
+    (block (call `print` (member `a` `balance`)@189..198)@183..199)@183..201)@159..201
   (sub
     `main`
     _
-    ()@208..210
+    ()@209..211
     _
     (block
       (set
         _
         `acct`
         _
-        (call `Account` (kwarg `owner` `"ada"`)@228..240 (kwarg `balance` `100`)@242..254)@220..255)@213..255
-      (call `print` (call `balance_of` (read `acct`)@275..280)@264..281)@258..282
-      (set _ `moved` _ (move `acct`)@327..332)@319..332
-      (call `print` (call `balance_of` (read `moved`)@402..408)@391..409)@385..410
+        (call `Account` (kwarg `owner` `"ada"`)@229..241 (kwarg `balance` `100`)@243..255)@221..256)@214..256
+      (call `print` (call `balance_of` (read `acct`)@276..281)@265..282)@259..283
+      (set _ `moved` _ (move `acct`)@328..333)@320..333
+      (call `print` (call `balance_of` (read `moved`)@403..409)@392..410)@386..411
       (set
         _
         `shared`
         _
         (share
-          (call `Account` (kwarg `owner` `"bob"`)@432..444 (kwarg `balance` `7`)@446..456)@424..457)@423..457)@414..457
-      (set _ `other` _ (clone `shared`)@468..475)@460..475
-      (move `shared`)@532..539
-      (call `print` (member `other` `balance`)@621..634)@615..635
-      (call `close` (move `moved`)@645..651)@639..652)@213..742)@200..742)@63..742
+          (call `Account` (kwarg `owner` `"bob"`)@433..445 (kwarg `balance` `7`)@447..457)@425..458)@424..458)@415..458
+      (set _ `other` _ (clone `shared`)@469..476)@461..476
+      (move `shared`)@533..540
+      (call `print` (member `other` `balance`)@622..635)@616..636
+      (call `close` (move `moved`)@646..652)@640..653)@214..743)@201..743)@63..743

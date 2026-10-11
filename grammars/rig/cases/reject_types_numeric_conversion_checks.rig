@@ -15,7 +15,7 @@ sub main()
 # error: integer value `300` does not fit in `U8`
 # error: integer value `-1` does not fit in `U8`
 # error: `200.5` does not fit in `I8`
-# error: `Int(x)` converts a number; `x` has type `String`
+# error: `Int(x)` converts a number; `x` has type `Static`
 # error: `Int(x)` converts one number; it takes exactly one argument
 # error: `Float(x)` converts a number; `x` has type `Bool`
 # error: operator `+` operands have different types `Int` and `I8`

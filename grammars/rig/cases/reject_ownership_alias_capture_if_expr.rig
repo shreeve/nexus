@@ -13,5 +13,5 @@ sub main()
   f()
   f()
 
-# error: 9:7: bare use of captured resource `count` in binding would smuggle the handle out of the closure environment; use `+count` to clone a fresh handle, or `~count` for a weak reference
-# error: 11:7: bare use of captured resource `count` in binding would smuggle the handle out of the closure environment; use `+count` to clone a fresh handle, or `~count` for a weak reference
+# error: 9:7: `count` is captured by the closure, which keeps it for every call, so a binding can't take it; write `+count` for another handle, or `~count` for a weak one
+# error: 11:7: `count` is captured by the closure, which keeps it for every call, so a binding can't take it; write `+count` for another handle, or `~count` for a weak one

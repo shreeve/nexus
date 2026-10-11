@@ -3,37 +3,37 @@
 # compiler checks each body against its clause.
 
 struct Entry
-  key: String
-  value: String
+  key: ?String
+  value: ?String
 
 struct Env
-  entries: Vec[Entry]
+  entries: List[Entry]
 
-  fun get(?self, key: String) -> String? from self
+  fun get(?self, key: ?String) -> (?String)? from self
     for e in ?self.entries
       if e.key == key
         return e.value
     none
 
-fun first(a: ?Vec[Int], b: ?Vec[Int]) -> ?Vec[Int] from a
+fun first(a: ?List[Int], b: ?List[Int]) -> ?List[Int] from a
   a
 
 fun pick[T](a: ?T, b: ?T) -> ?T from a
   a
 
-fun deep(a: ?Vec[Int], b: ?Vec[Int], n: Int) -> ?Vec[Int] from a
+fun deep(a: ?List[Int], b: ?List[Int], n: Int) -> ?List[Int] from a
   if n == 0
     return a
   deep(a, b, n - 1)
 
-fun label(t: String) -> String from static
+fun label(t: ?String) -> ?String from static
   if t.len > 3
     "long"
   else
     "short"
 
-fun mk() -> Vec[Int]
-  v: Vec[Int] = Vec()
+fun mk() -> List[Int]
+  v: List[Int] = List()
   !v.push(9)
   v
 
@@ -41,8 +41,8 @@ fun span(from: Int, to: Int) -> Int
   to - from
 
 sub main()
-  x: Vec[Int] = Vec()
-  y: Vec[Int] = Vec()
+  x: List[Int] = List()
+  y: List[Int] = List()
   !x.push(1)
   r = first(?x, ?y)
   !y.push(2)
@@ -58,13 +58,13 @@ sub main()
   print(d.len)
   t = first(?x, ?mk())
   print(t.len)
-  env = Env(entries: Vec())
+  env = Env(entries: List())
   !env.entries.push(Entry(key: "HOME", value: "/home"))
-  q = Text("HO", "ME")
+  q = String("HO", "ME")
   if env.get(?q) as home
     !q.add("X")
     print(home, q)
-  w = Text("abcd")
+  w = String("abcd")
   l = label(?w)
   <w
   print(l)

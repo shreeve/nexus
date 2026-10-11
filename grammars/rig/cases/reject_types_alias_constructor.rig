@@ -2,7 +2,7 @@
 # the number type it names; an alias of any other type has no
 # constructor, and an alias is not a value.
 
-type S = String
+type S = ?String
 type O = Int?
 type N = Int
 
@@ -12,6 +12,6 @@ sub main()
   n = N
   print(s, o, n)
 
-# error: 10:7: `S` is a type alias for `String`, which has no constructor
+# error: 10:7: `S` is a type alias for `?String`, which has no constructor
 # error: 11:7: `O` is a type alias for `Int?`, which has no constructor
 # error: 12:7: `N` is a type, not a value

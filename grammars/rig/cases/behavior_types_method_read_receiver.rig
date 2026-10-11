@@ -1,9 +1,9 @@
 # `?self` is sugar for `self: ?Self`; `u.greet()` lends `u` implicitly.
 
 struct User
-  name: String
+  name: ?String
 
-  fun greet(?self) -> String
+  fun greet(?self) -> ?String
     self.name
 
 sub main()

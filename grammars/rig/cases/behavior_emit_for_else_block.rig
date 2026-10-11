@@ -1,7 +1,7 @@
 # The `else` block of a `for` runs when the loop ends without `break`.
 
 sub main()
-  v: Vec[Int] = Vec()
+  v: List[Int] = List()
   !v.push(1)
   for n in ?v
     print(n)

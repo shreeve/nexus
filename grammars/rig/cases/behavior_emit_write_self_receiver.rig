@@ -1,13 +1,13 @@
 # A `!self` method mutates the receiver in place.
 
 struct Bag
-  items: Vec[Int]
+  items: List[Int]
 
   sub add(!self, x: Int)
     !self.items.push(x)
 
 sub main()
-  v: Vec[Int] = Vec()
+  v: List[Int] = List()
   b = Bag(items: <v)
   !b.add(4)
   !b.add(5)

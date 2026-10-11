@@ -5,12 +5,12 @@
     ()@80..82
     _
     (block
-      (set _ `v` (generic_inst `Vec` `Int`)@88..96 (call `Vec`)@99..104)@85..104
-      (write (call (member `v` `push`)@108..114 `1`)@108..117)@107..117
+      (set _ `v` (generic_inst `List` `Int`)@88..97 (call `List`)@100..106)@85..106
+      (write (call (member `v` `push`)@110..116 `1`)@110..119)@109..119
       (for
         iter
         `n`
         _
-        (read `v`)@129..131
-        (block (call `print` `n`)@136..144)@136..147
-        (block (call `print` `"done"`)@156..169)@156..192)@120..192)@85..192)@72..192)@72..192
+        (read `v`)@131..133
+        (block (call `print` `n`)@138..146)@138..149
+        (block (call `print` `"done"`)@158..171)@158..194)@122..194)@85..194)@72..194)@72..194

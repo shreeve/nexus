@@ -2,7 +2,7 @@
 # is live: used later.
 
 struct User
-  name: String
+  name: ?String
 
 sub rename(u: !User)
   print("rename")
