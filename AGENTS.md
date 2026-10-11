@@ -93,11 +93,21 @@ directory (`../nexus`, or `-Dnexus=PATH`), and their CI builds Nexus main
 beside them. This checkout's `bin/nexus` is therefore part of every
 build of theirs:
 
-- This checkout stays on main; other work happens in its own worktree.
-- `bin/nexus` is built from a green main, and only after a merge that
-  changes the generator (`src/`, `build.zig`): em's front-end hash
-  covers the binary's bytes, so a rebuild recompiles em's routines.
+- This checkout stays on main; other work, `./test/run` included (it
+  builds `bin/nexus` in Debug mode first), happens in its own worktree.
+- `bin/nexus` is built with `zig build -Doptimize=ReleaseSafe` from a
+  green main, and only after a merge that changes the generator (`src/`,
+  `build.zig`): em's front-end hash covers the binary's bytes, so a
+  rebuild recompiles em's routines.
 - `./test/run`, with the copied cases below, is green before every merge.
+- Before a merge that changes the generator, `test/diff` parses each
+  project's own corpus with the current `bin/nexus` and with the change's
+  build, the project's grammar and lang module on both sides (em:
+  `misc/vista` and `misc/foia/oro`; Rig: `test/` and `examples/`; nexis:
+  `examples/`, `test/` and `stdlib/`). The pull request states the result;
+  a file that differs is explained there and reported to its project
+  before the merge. A downstream's own differential runs use one
+  `bin/nexus` on both sides, so they cannot see a change from Nexus.
 - Rig, em and nexis hear of a change to the generated API or the grammar
   language before it merges; their suites are the final check.
 
