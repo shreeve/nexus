@@ -150,7 +150,13 @@
       `(`
       (symbol `try`)
       (list `(` (symbol `conj`) (symbol `xs`) (int `6`) `)`)
-      (list `(` (symbol `catch`) (symbol `any`) (symbol `e`) (symbol `e`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:kind-mismatch`)
+        (symbol `_`)
+        (keyword `:kind-mismatch`)
+        `)`)
       `)`)
     `)`)
   (list
@@ -161,7 +167,13 @@
       `(`
       (symbol `try`)
       (list `(` (symbol `i64-vector`) (vector `[` (real `1.5`) `]`) `)`)
-      (list `(` (symbol `catch`) (symbol `any`) (symbol `e`) (symbol `e`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:kind-mismatch`)
+        (symbol `_`)
+        (keyword `:kind-mismatch`)
+        `)`)
       `)`)
     `)`)
   (list
@@ -172,7 +184,12 @@
       `(`
       (symbol `try`)
       (list `(` (symbol `nth`) (symbol `xs`) (int `5`) `)`)
-      (list `(` (symbol `catch`) (symbol `any`) (symbol `e`) (symbol `e`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:index-out-of-bounds`)
+        (symbol `_`)
+        (keyword `:index-out-of-bounds`)
+        `)`)
       `)`)
-    `)`)
-  (list `(` (symbol `tv/sum`) (list `(` (symbol `tv/scale`) (symbol `xs`) (int `2`) `)`) `)`))
+    `)`))

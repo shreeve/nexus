@@ -1,0 +1,342 @@
+(program
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `check-age`)
+    (vector `[` (symbol `age`) `]`)
+    (list
+      `(`
+      (symbol `when`)
+      (list `(` (symbol `neg?`) (symbol `age`) `)`)
+      (list `(` (symbol `throw`) (keyword `:negative-age`) `)`)
+      `)`)
+    (symbol `age`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `check-age`) (int `-3`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:negative-age`)
+        (symbol `e`)
+        (vector `[` (keyword `:caught`) (symbol `e`) `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `find-user`)
+    (vector `[` (symbol `users`) (symbol `id`) `]`)
+    (list
+      `(`
+      (symbol `or`)
+      (list `(` (symbol `get`) (symbol `users`) (symbol `id`) `)`)
+      (list
+        `(`
+        (symbol `throw`)
+        (list
+          `(`
+          (symbol `ex-info`)
+          (list `(` (symbol `str`) (string `"no user "`) (symbol `id`) `)`)
+          (map `{` (keyword `:error`) (keyword `:not-found`) (keyword `:id`) (symbol `id`) `}`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `users`) (map `{` (int `1`) (string `"Ada"`) `}`) `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `find-user`) (symbol `users`) (int `7`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:not-found`)
+        (symbol `e`)
+        (vector
+          `[`
+          (list `(` (symbol `ex-message`) (symbol `e`) `)`)
+          (list `(` (keyword `:id`) (list `(` (symbol `ex-data`) (symbol `e`) `)`) `)`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list
+        `(`
+        (symbol `throw`)
+        (map `{` (keyword `:error`) (keyword `:too-large`) (keyword `:limit`) (int `10`) `}`)
+        `)`)
+      (list `(` (symbol `catch`) (keyword `:not-found`) (symbol `_`) (keyword `:not-this-one`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:too-large`)
+        (symbol `e`)
+        (list
+          `(`
+          (symbol `str`)
+          (string `"limit is "`)
+          (list `(` (keyword `:limit`) (symbol `e`) `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `throw`) (string `"a plain string"`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (symbol `any`)
+        (symbol `e`)
+        (list `(` (symbol `str`) (string `"caught: "`) (symbol `e`) `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `ratio`)
+    (vector `[` (symbol `a`) (symbol `b`) `]`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `/`) (symbol `a`) (symbol `b`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (symbol `ArithmeticException`)
+        (symbol `_`)
+        (keyword `:undefined`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `ratio`) (int `10`) (int `4`) `)`)
+    (list `(` (symbol `ratio`) (int `1`) (int `0`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `total`)
+    (vector `[` (symbol `a`) (symbol `b`) `]`)
+    (list `(` (symbol `+`) (symbol `a`) (symbol `b`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `total`) (int `1`) (string `"2"`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:kind-mismatch`)
+        (symbol `e`)
+        (vector
+          `[`
+          (list `(` (keyword `:error`) (symbol `e`) `)`)
+          (list `(` (symbol `ex-message`) (symbol `e`) `)`)
+          (list `(` (keyword `:fn`) (symbol `e`) `)`)
+          (list `(` (keyword `:line`) (symbol `e`) `)`)
+          `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `with-log`)
+    (vector `[` (symbol `f`) `]`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `f`) `)`)
+      (list `(` (symbol `finally`) (list `(` (symbol `println`) (string `"  cleanup ran"`) `)`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `with-log`)
+      (list `(` (symbol `fn`) (vector `[` `]`) (keyword `:done`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list
+        `(`
+        (symbol `with-log`)
+        (list
+          `(`
+          (symbol `fn`)
+          (vector `[` `]`)
+          (list `(` (symbol `throw`) (keyword `:failed`) `)`)
+          `)`)
+        `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:failed`)
+        (symbol `_`)
+        (keyword `:failed-but-cleaned-up`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `parse-line`)
+    (vector `[` (symbol `line`) `]`)
+    (list
+      `(`
+      (symbol `if-let`)
+      (vector
+        `[`
+        (vector `[` (symbol `_`) (symbol `k`) (symbol `v`) `]`)
+        (list `(` (symbol `re-matches`) (regex `#"(\\w+)=(\\d+)"`) (symbol `line`) `)`)
+        `]`)
+      (vector
+        `[`
+        (list `(` (symbol `keyword`) (symbol `k`) `)`)
+        (list `(` (symbol `parse-long`) (symbol `v`) `)`)
+        `]`)
+      (list
+        `(`
+        (symbol `throw`)
+        (list
+          `(`
+          (symbol `ex-info`)
+          (string `"bad line"`)
+          (map `{` (keyword `:error`) (keyword `:parse`) (keyword `:line`) (symbol `line`) `}`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `parse-config`)
+    (vector `[` (symbol `lines`) `]`)
+    (list
+      `(`
+      (symbol `into`)
+      (map `{` `}`)
+      (list `(` (symbol `map`) (symbol `parse-line`) (symbol `lines`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `parse-config`)
+      (vector `[` (string `"port=80"`) (string `"workers=4"`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `parse-config`) (vector `[` (string `"port=80"`) (string `"oops"`) `]`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:parse`)
+        (symbol `e`)
+        (list
+          `(`
+          (symbol `str`)
+          (string `"cannot read "`)
+          (list
+            `(`
+            (symbol `pr-str`)
+            (list `(` (keyword `:line`) (list `(` (symbol `ex-data`) (symbol `e`) `)`) `)`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `load-config`)
+    (vector `[` (symbol `lines`) `]`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `parse-config`) (symbol `lines`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:parse`)
+        (symbol `e`)
+        (list
+          `(`
+          (symbol `throw`)
+          (list
+            `(`
+            (symbol `ex-info`)
+            (string `"config failed"`)
+            (map `{` (keyword `:error`) (keyword `:config`) `}`)
+            (symbol `e`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `load-config`) (vector `[` (string `"x"`) `]`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:config`)
+        (symbol `e`)
+        (vector
+          `[`
+          (list `(` (symbol `ex-message`) (symbol `e`) `)`)
+          (list `(` (symbol `ex-message`) (list `(` (symbol `ex-cause`) (symbol `e`) `)`) `)`)
+          (list
+            `(`
+            (keyword `:line`)
+            (list `(` (symbol `ex-data`) (list `(` (symbol `ex-cause`) (symbol `e`) `)`) `)`)
+            `)`)
+          `]`)
+        `)`)
+      `)`)
+    `)`))

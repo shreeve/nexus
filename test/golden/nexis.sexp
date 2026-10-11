@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `integer` `real` `string` `regex` `char` `keyword` `ident` `lparen` `rparen` `lbracket` `rbracket` `lbrace` `rbrace` `hash_lbrace` `hash_lparen` `hash_discard` `quote_tok` `syntax_quote_tok` `unquote_splicing_tok` `unquote_tok` `deref_tok` `var_quote_tok` `caret` `eof` `err`)
+  (tokens `tokens` `integer` `real` `string` `regex` `char` `keyword` `ident` `lparen` `rparen` `lbracket` `rbracket` `lbrace` `rbrace` `hash_lbrace` `hash_lparen` `hash_discard` `quote_tok` `syntax_quote_tok` `unquote_splicing_tok` `unquote_tok` `deref_tok` `var_quote_tok` `caret` `tag` `eof` `err`)
   (section `parser`)
   (lang `"nexis"`)
   (rule
@@ -241,5 +241,15 @@
         `with-meta-raw`
         (pos `1`)
         (pos `5`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((tok `TAG`)
+        (ref `gap`)
+        (ref `datum`))
+      (node
+        `tagged`
+        (pos `1`)
         (pos `3`))
       _)))

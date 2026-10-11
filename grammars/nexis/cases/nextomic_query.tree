@@ -5878,6 +5878,39 @@
     (symbol `println`)
     (list
       `(`
+      (symbol `t/caught`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?e`)
+            (keyword `:where`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `fulltext`)
+                (symbol `$`)
+                (keyword `:person/bio`)
+                (string
+                  `"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?e`) (symbol `?v`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `ft`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
       (symbol `rows`)
       (list
         `(`
@@ -6491,6 +6524,78 @@
       (symbol `=`)
       (int `22`)
       (list `(` (symbol `d/entid`) (symbol `ft`) (keyword `:db/fulltext`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?a`)
+            (symbol `?b`)
+            (keyword `:where`)
+            (vector
+              `[`
+              (list
+                `(`
+                (symbol `ground`)
+                (vector
+                  `[`
+                  (vector `[` (int `1`) (int `2`) `]`)
+                  (symbol `nil`)
+                  (vector `[` (int `3`) (symbol `nil`) `]`)
+                  (vector `[` (int `4`) (int `5`) `]`)
+                  `]`)
+                `)`)
+              (vector `[` (vector `[` (symbol `?a`) (symbol `?b`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `pairs-and-nil`)
+    (vector `[` (symbol `x`) `]`)
+    (vector `[` (symbol `nil`) (vector `[` (symbol `x`) (int `2`) `]`) `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `rows`)
+      (list
+        `(`
+        (symbol `d/q`)
+        (quote
+          `'`
+          (vector
+            `[`
+            (keyword `:find`)
+            (symbol `?a`)
+            (symbol `?b`)
+            (keyword `:where`)
+            (vector `[` (list `(` (symbol `ground`) (int `7`) `)`) (symbol `?x`) `]`)
+            (vector
+              `[`
+              (list `(` (symbol `user/pairs-and-nil`) (symbol `?x`) `)`)
+              (vector `[` (vector `[` (symbol `?a`) (symbol `?b`) `]`) `]`)
+              `]`)
+            `]`))
+        (symbol `db`)
+        `)`)
       `)`)
     `)`)
   (list `(` (symbol `d/release`) (symbol `c`) `)`)

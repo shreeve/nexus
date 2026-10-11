@@ -117,4 +117,11 @@
       `(`
       (symbol `outer`)
       (syntax-quote `\`` (list `(` (symbol `inner`) (unquote `~` (symbol `x`)) `)`))
-      `)`)))
+      `)`))
+  (tagged `#inst` (string `"2026-10-09T12:30:15.123+02:00"`))
+  (tagged `#inst` (string `"2020"`))
+  (tagged `#uuid` (string `"0123ABCD-4567-89EF-0123-456789ABCDEF"`))
+  (tagged `#uuid` (string `"1-2-3-4-5"`))
+  (tagged `#inst` (string `"1970"`))
+  (quote `'` (tagged `#inst` (string `"1970"`)))
+  (vector `[` (tagged `#inst` (string `"2026"`)) `]`))

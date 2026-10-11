@@ -1,3 +1,23 @@
 (program
-  (list `(` (symbol `defn`) (symbol `greet`) (vector `[` (symbol `name`) `]`) (symbol `name`) `)`)
-  (list `(` (symbol `println`) (list `(` (symbol `greet`) (quote `'` (symbol `world`)) `)`) `)`))
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `greet`)
+    (string `"A greeting for one name."`)
+    (vector `[` (symbol `name`) `]`)
+    (list `(` (symbol `str`) (string `"Hello, "`) (symbol `name`) (string `"!"`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `println`)
+    (list
+      `(`
+      (symbol `greet`)
+      (list
+        `(`
+        (symbol `or`)
+        (list `(` (symbol `first`) (symbol `*command-line-args*`) `)`)
+        (string `"world"`)
+        `)`)
+      `)`)
+    `)`))

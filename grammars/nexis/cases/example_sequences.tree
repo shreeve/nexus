@@ -1,0 +1,217 @@
+(program
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `map`) (symbol `inc`) (vector `[` (int `1`) (int `2`) (int `3`) `]`) `)`)
+    (list `(` (symbol `filter`) (symbol `even?`) (list `(` (symbol `range`) (int `10`) `)`) `)`)
+    (list `(` (symbol `remove`) (symbol `even?`) (list `(` (symbol `range`) (int `10`) `)`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `take`)
+      (int `3`)
+      (vector `[` (keyword `:a`) (keyword `:b`) (keyword `:c`) (keyword `:d`) `]`)
+      `)`)
+    (list
+      `(`
+      (symbol `drop`)
+      (int `3`)
+      (vector `[` (keyword `:a`) (keyword `:b`) (keyword `:c`) (keyword `:d`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `take`) (int `5`) (list `(` (symbol `range`) `)`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `take`)
+      (int `6`)
+      (list
+        `(`
+        (symbol `iterate`)
+        (anon-fn `#(` (symbol `*`) (int `2`) (symbol `%`) `)`)
+        (int `1`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `take`)
+      (int `7`)
+      (list `(` (symbol `cycle`) (vector `[` (keyword `:red`) (keyword `:green`) `]`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `take-while`)
+      (anon-fn `#(` (symbol `<`) (symbol `%`) (int `40`) `)`)
+      (list
+        `(`
+        (symbol `map`)
+        (anon-fn `#(` (symbol `*`) (symbol `%`) (symbol `%`) `)`)
+        (list `(` (symbol `range`) `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `partition`)
+      (int `2`)
+      (vector `[` (int `1`) (int `2`) (int `3`) (int `4`) (int `5`) (int `6`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `partition-all`) (int `3`) (list `(` (symbol `range`) (int `8`) `)`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `interleave`)
+      (vector `[` (keyword `:a`) (keyword `:b`) (keyword `:c`) `]`)
+      (vector `[` (int `1`) (int `2`) (int `3`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `apply`)
+      (symbol `hash-map`)
+      (list
+        `(`
+        (symbol `interleave`)
+        (vector `[` (keyword `:a`) (keyword `:b`) (keyword `:c`) `]`)
+        (vector `[` (int `1`) (int `2`) (int `3`) `]`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `fib`)
+    (list `(` (vector `[` `]`) (list `(` (symbol `fib`) (int `0`) (int `1`) `)`) `)`)
+    (list
+      `(`
+      (vector `[` (symbol `a`) (symbol `b`) `]`)
+      (list
+        `(`
+        (symbol `lazy-seq`)
+        (list
+          `(`
+          (symbol `cons`)
+          (symbol `a`)
+          (list
+            `(`
+            (symbol `fib`)
+            (symbol `b`)
+            (list `(` (symbol `+`) (symbol `a`) (symbol `b`) `)`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `take`) (int `12`) (list `(` (symbol `fib`) `)`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `nth`) (list `(` (symbol `fib`) `)`) (int `100`) `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `seen`) (list `(` (symbol `atom`) (vector `[` `]`) `)`) `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `squares`)
+    (list
+      `(`
+      (symbol `map`)
+      (list
+        `(`
+        (symbol `fn`)
+        (vector `[` (symbol `x`) `]`)
+        (list `(` (symbol `swap!`) (symbol `seen`) (symbol `conj`) (symbol `x`) `)`)
+        (list `(` (symbol `*`) (symbol `x`) (symbol `x`) `)`)
+        `)`)
+      (list `(` (symbol `iterate`) (symbol `inc`) (int `1`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `realized?`) (symbol `squares`) `)`)
+    (deref `@` (symbol `seen`))
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `first`) (symbol `squares`) `)`)
+    (list `(` (symbol `realized?`) (symbol `squares`) `)`)
+    (deref `@` (symbol `seen`))
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `reductions`)
+      (symbol `+`)
+      (vector `[` (int `1`) (int `2`) (int `3`) (int `4`) (int `5`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `xf`)
+    (list
+      `(`
+      (symbol `comp`)
+      (list `(` (symbol `filter`) (symbol `odd?`) `)`)
+      (list `(` (symbol `map`) (anon-fn `#(` (symbol `*`) (symbol `%`) (symbol `%`) `)`) `)`)
+      (list `(` (symbol `take`) (int `4`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `into`) (vector `[` `]`) (symbol `xf`) (list `(` (symbol `range`) `)`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `transduce`) (symbol `xf`) (symbol `+`) (list `(` (symbol `range`) `)`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `sequence`)
+      (list `(` (symbol `map-indexed`) (symbol `vector`) `)`)
+      (vector `[` (keyword `:a`) (keyword `:b`) (keyword `:c`) `]`)
+      `)`)
+    `)`))

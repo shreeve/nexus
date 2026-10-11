@@ -1325,6 +1325,115 @@
         `)`)
       `)`)
     `)`)
+  (list
+    `(`
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      `[`
+      (map
+        `{`
+        (keyword `:db/ident`)
+        (keyword `:person/scores`)
+        (keyword `:db/valueType`)
+        (keyword `:db.type/long`)
+        (keyword `:db/cardinality`)
+        (keyword `:db.cardinality/many`)
+        `}`)
+      `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `d/transact!`)
+    (symbol `c`)
+    (vector
+      `[`
+      (map
+        `{`
+        (keyword `:db/id`)
+        (symbol `ann`)
+        (keyword `:person/scores`)
+        (list `(` (symbol `vec`) (list `(` (symbol `range`) (int `1500`) `)`) `)`)
+        `}`)
+      `]`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `scored`) (list `(` (symbol `d/db`) (symbol `c`) `)`) `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"* cuts a card-many attribute at 1000"`)
+    (list
+      `(`
+      (symbol `=`)
+      (list `(` (symbol `vec`) (list `(` (symbol `range`) (int `1000`) `)`) `)`)
+      (list
+        `(`
+        (keyword `:person/scores`)
+        (list
+          `(`
+          (symbol `d/pull`)
+          (symbol `scored`)
+          (quote `'` (vector `[` (symbol `*`) `]`))
+          (symbol `ann`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `"a bare spec cuts at 1000"`)
+    (list
+      `(`
+      (symbol `=`)
+      (int `1000`)
+      (list
+        `(`
+        (symbol `count`)
+        (list
+          `(`
+          (keyword `:person/scores`)
+          (list
+            `(`
+            (symbol `d/pull`)
+            (symbol `scored`)
+            (quote `'` (vector `[` (keyword `:person/scores`) `]`))
+            (symbol `ann`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `t/check`)
+    (string `":limit nil reads every value"`)
+    (list
+      `(`
+      (symbol `=`)
+      (int `1500`)
+      (list
+        `(`
+        (symbol `count`)
+        (list
+          `(`
+          (keyword `:person/scores`)
+          (list
+            `(`
+            (symbol `d/pull`)
+            (symbol `scored`)
+            (quote
+              `'`
+              (vector
+                `[`
+                (list `(` (keyword `:person/scores`) (keyword `:limit`) (symbol `nil`) `)`)
+                `]`))
+            (symbol `ann`)
+            `)`)
+          `)`)
+        `)`)
+      `)`)
+    `)`)
   (list `(` (symbol `d/release`) (symbol `c`) `)`)
   (list
     `(`

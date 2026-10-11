@@ -1,148 +1,56 @@
-; examples/shapes.nx
+; examples/shapes.nx — protocols and records. A protocol names a set of
+; functions; a record is a map with a type that can implement them; and
+; extend-protocol teaches a protocol to types that already exist.
 ;
-; ============================================================
-; DEMO: shapes + areas via protocols + records.
-; ============================================================
-;
-; Demonstrates the protocols + records surface end-to-end via a
-; non-trivial program. This file is a
-; near-line-for-line port of the canonical Clojure example.
-;
-; Run:
-;   $ ./bin/nexis run examples/shapes.nx
-;
-; Demonstrates:
-;   - defprotocol with multiple methods
-;   - defrecord with inline protocol clauses
-;   - extend-type over a record defined elsewhere
-;   - extend-protocol over a built-in kind (`:fixnum` / `:string`)
-;   - extend-protocol with `:any` default fallback
-;   - satisfies? predicate
-;   - structural record equality (records-as-map-keys)
-;   - atoms + str + case working alongside protocols and records.
+;   bin/nexis run examples/shapes.nx   (examples/shapes-app.nx splits it
+;                                       into namespaces)
 
 (defprotocol Shape
-  (area [s])
-  (describe [s]))
+  (area [shape] "The area of the shape.")
+  (describe [shape] "A short description."))
 
-; -------------------------------------------------------------
-; Records with inline protocol impls
-; -------------------------------------------------------------
-
+; Inside a record's methods its fields are locals.
 (defrecord Circle [radius]
   Shape
-  (area [c]
-    ; Integer areas in centipi-units (radius² × 314) keep the output
-    ; exact; what matters is dispatch correctness.
-    (let [r (get c :radius)]
-      (* 314 r r)))
-  (describe [c] (str "Circle r=" (get c :radius))))
+  (area [_] (* 3.14159 radius radius))
+  (describe [_] (str "a circle of radius " radius)))
 
-(defrecord Rectangle [width height]
+(defrecord Rect [width height]
   Shape
-  (area [r] (* (get r :width) (get r :height)))
-  (describe [r]
-    (str "Rectangle " (get r :width) "x" (get r :height))))
+  (area [_] (* width height))
+  (describe [_] (str "a " width "x" height " rectangle")))
 
-(defrecord Triangle [base height])
-
-; -------------------------------------------------------------
-; extend-type over a record defined elsewhere
-; -------------------------------------------------------------
-
-(extend-type Triangle
-  Shape
-  (area [t] (* (get t :base) (get t :height)))
-  (describe [t]
-    (str "Triangle b=" (get t :base) " h=" (get t :height))))
-
-; -------------------------------------------------------------
-; extend-protocol over built-in kinds
-; -------------------------------------------------------------
-
+; Built-in kinds can implement a protocol too: here a number is the side
+; of a square, a string is a label with no area, and nil is nothing.
 (extend-protocol Shape
-  ; Treat a bare fixnum as a square's side-length.
   :fixnum
   (area [n] (* n n))
-  (describe [n] (str "Square of side " n))
-  ; Strings ship as labels, area zero.
+  (describe [n] (str "a square of side " n))
+
   :string
   (area [_] 0)
-  (describe [s] (str "Label: " s)))
+  (describe [s] (str "the label " (pr-str s)))
 
-; -------------------------------------------------------------
-; :any default fallback for unknown kinds
-; -------------------------------------------------------------
-
-(extend-protocol Shape
-  :any
+  nil
   (area [_] 0)
-  (describe [x] (str "Unknown: " x)))
+  (describe [_] "nothing"))
 
-; -------------------------------------------------------------
-; Structural equality + records-as-map-keys
-; -------------------------------------------------------------
+(def shapes [(->Circle 1) (->Rect 3 4) 5 "north" nil])
 
-(def label-by-shape
-  {(->Circle 5)         :small-circle
-   (->Rectangle 3 4)    :small-rect
-   (->Triangle 6 4)     :triangle
-   42                   :answer
-   "hi"                 :greeting})
-
-; -------------------------------------------------------------
-; Atoms for stateful tracking + case
-; -------------------------------------------------------------
-
-(def total-area (atom 0))
-
-(defn report [shape]
-  (swap! total-area + (area shape))
-  (let [label (get label-by-shape shape :no-label)]
-    (str (describe shape)
-         " => area=" (area shape)
-         " label=" label
-         " satisfies?=" (satisfies? Shape shape))))
-
-; -------------------------------------------------------------
-; Drive the dispatch surface
-; -------------------------------------------------------------
-
-(println "=== shapes + areas demo ===")
-(println "")
-
-(def shapes
-  [(->Circle 5)
-   (->Rectangle 3 4)
-   (->Triangle 6 4)
-   42
-   "hi"
-   :unknown-shape])
-
-(println "Per-shape reports:")
 (doseq [s shapes]
-  (println "  " (report s)))
+  (println (format "%-24s area %.2f" (describe s) (double (area s)))))
 
-(println "")
-(println "Aggregate state (atom):")
-(println "  total area =" (deref total-area))
+(println "total area:" (format "%.2f" (reduce + (map area shapes))))
 
-(println "")
-(println "Equality probes (structural =):")
-(println "  (= (->Circle 5) (->Circle 5)) =>" (= (->Circle 5) (->Circle 5)))
-(println "  (= (->Circle 5) (->Circle 7)) =>" (= (->Circle 5) (->Circle 7)))
-(println "  records-as-map-keys: lookup by fresh constructor:")
-(println "    (get label-by-shape (->Circle 5)) =>"
-         (get label-by-shape (->Circle 5)))
+; satisfies? asks whether a value's type implements a protocol.
+(prn (map #(satisfies? Shape %) [(->Rect 1 1) 7 :keyword]))
 
-(println "")
-(println "Dispatch table snapshot (satisfies?):")
-(println "  Shape ⊇ Circle    ?" (satisfies? Shape (->Circle 5)))
-(println "  Shape ⊇ Triangle  ?" (satisfies? Shape (->Triangle 6 4)))
-(println "  Shape ⊇ :fixnum   ?" (satisfies? Shape 42))
-(println "  Shape ⊇ :string   ?" (satisfies? Shape "hi"))
-(println "  Shape ⊇ :keyword  ? (caught by :any) =>"
-         (satisfies? Shape :anything))
+; ->Rect takes the fields in order; map->Rect takes a map.
+(def r (map->Rect {:width 2 :height 5}))
+(prn r (= r (->Rect 2 5)) (instance? Rect r))
 
-(println "")
-(println "=== demo complete ===")
+; A record is still a map: keywords, assoc, keys and update all work,
+; and the result is still a Rect.
+(prn (:width r) (keys r))
+(prn (assoc r :color :blue))
+(prn (area (update r :width * 10)))
