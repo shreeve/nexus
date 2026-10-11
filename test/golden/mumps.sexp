@@ -414,6 +414,11 @@
     (conflict `shift` `extrinsicref → "@" xatom` _ `2` `# ( after $$@X starts its actual list`)
     (conflict `shift` `extrinsicref → "@" xatom "^" routineref` _ `1` `# ( after $$@X^RTN starts its actual list`)
     (conflict `reduce` `actual? → ε` `L(actual?)? → ε` `4` `# an empty () argument list holds one absent actual`))
+  (keywords
+    (kw_group `cmd` `caseless` `base` `100` `B[REAK]` `C[LOSE]` `D[O]` `E[LSE]` `F[OR]` `G[OTO]` `HALT` `H[ANG]` `I[F]` `J[OB]` `K[ILL]` `L[OCK]` `M[ERGE]` `N[EW]` `O[PEN]` `Q[UIT]` `R[EAD]` `S[ET]` `TC[OMMIT]` `TRE[START]` `TRO[LLBACK]` `TS[TART]` `U[SE]` `V[IEW]` `W[RITE]` `X[ECUTE]` `ZB[REAK]` `ZHALT` `ZK[ILL]` `ZL[INK]` `ZSY[STEM]` `ZW[RITE]` `ZSH[OW]` `ZS[AVE]` `ZI[NSERT]` `ZR[EMOVE]` `ZP[RINT]`)
+    (kw_group `fn` `caseless` `base` `200` `A[SCII]` `C[HAR]` `D[ATA]` `E[XTRACT]` `F[IND]` `FN[UMBER]` `G[ET]` `I[NCREMENT]` `J[USTIFY]` `L[ENGTH]` `NA[ME]` `O[RDER]` `P[IECE]` `QL[ENGTH]` `QS[UBSCRIPT]` `Q[UERY]` `R[ANDOM]` `REPLACE` `RE[VERSE]` `S[ELECT]` `ST[ACK]` `T[EXT]` `TR[ANSLATE]` `V[IEW]` `ZCO[NVERT]` `ZD[ATE]` `ZDATEH` `ZDATETIME` `ZL[ENGTH]` `ZM[ESSAGE]` `ZP[REVIOUS]` `ZSEARCH` `ZTIME` `ZWRITE` `N[EXT]` `ZENV` `ZF` `ZINCR=INCREMENT` `ZINCREMENT=INCREMENT` `ZT=ZTIME` `ZTRNLNM=ZENV`)
+    (kw_group `isv` `caseless` `base` `300` `D[EVICE]` `EC[ODE]` `ES[TACK]` `ET[RAP]` `H[OROLOG]` `I[O]` `J[OB]` `K[EY]` `P[RINCIPAL]` `Q[UIT]` `R[EFERENCE]` `ST[ACK]` `STORAGE` `S=STORAGE` `SY[STEM]` `T[EST]` `TL[EVEL]` `TR[ESTART]` `X` `Y` `ZA` `ZB` `ZEO[F]` `ZE[RROR]` `ZG[BLDIR]` `ZH[OROLOG]` `ZIO` `ZJ[OB]` `ZKEY` `ZL[EVEL]` `ZNS[PACE]` `ZPOS[ITION]` `ZRO[UTINES]` `ZS[TATUS]` `ZSY[STEM]` `ZT[RAP]` `ZUT` `ZV[ERSION]` `ZDIR[ECTORY]` `ZINT[ERRUPT]` `ZINI[NTERRUPT]` `NAMESPACE` `ZTIMESTAMP` `ZTS=ZTIMESTAMP` `ZTIMEZONE` `ZTZ=ZTIMEZONE`)
+    (kw_group `ssvn` `caseless` `base` `400` `G[LOBAL]` `J[OB]` `L[OCK]` `R[OUTINE]` `SYS[TEM]` `ZENVI[RONMENT]`))
   (as
     `ident`
     _
@@ -481,7 +486,13 @@
     (name_pair `ZBREAK` `"a command"`)
     (name_pair `ZHALT` `"a command"`)
     (name_pair `ZKILL` `"a command"`)
-    (name_pair `ZSYSTEM` `"a command"`))
+    (name_pair `ZLINK` `"a command"`)
+    (name_pair `ZSYSTEM` `"a command"`)
+    (name_pair `ZSHOW` `"a command"`)
+    (name_pair `ZSAVE` `"a command"`)
+    (name_pair `ZINSERT` `"a command"`)
+    (name_pair `ZREMOVE` `"a command"`)
+    (name_pair `ZPRINT` `"a command"`))
   (op
     (op_map `"'="` `"noteq"`)
     (op_map `"'<"` `"notlt"`)
@@ -546,7 +557,7 @@
       _
       _)
     (kind_decl
-      (kinds `set` `new` `kill` `merge` `do` `goto` `break` `hang` `job` `xecute` `view` `open` `use` `read` `write` `close` `lock` `zwrite` `zbreak` `zkill` `zsystem`)
+      (kinds `set` `new` `kill` `merge` `do` `goto` `break` `hang` `job` `xecute` `view` `open` `use` `read` `write` `close` `lock` `zwrite` `zbreak` `zkill` `zlink` `zsystem` `zshow` `zsave` `zinsert` `zremove` `zprint`)
       (roles
         (role
           _
@@ -767,6 +778,50 @@
           `params`
           (type `group`)
           opt))
+      _
+      _)
+    (kind_decl
+      (kinds `zshowarg`)
+      (roles
+        (role _ `codes` _ _)
+        (role _ `target` _ opt))
+      _
+      _)
+    (kind_decl
+      (kinds `zinsertarg`)
+      (roles
+        (role _ `value` _ _)
+        (role
+          _
+          `at`
+          (type `lineref`)
+          opt))
+      _
+      _)
+    (kind_decl
+      (kinds `linerange`)
+      (roles
+        (role
+          _
+          `start`
+          (type `lineref`)
+          _)
+        (role
+          _
+          `end`
+          (type `lineref`)
+          opt))
+      _
+      _)
+    (kind_decl
+      (kinds `lineref`)
+      (roles
+        (role
+          _
+          `label`
+          (type `leaf`)
+          opt)
+        (role _ `offset` _ opt))
       _
       _)
     (kind_decl
@@ -1548,7 +1603,37 @@
       _)
     (alt
       _
+      ((ref `zlink`))
+      _
+      _)
+    (alt
+      _
       ((ref `zsystem`))
+      _
+      _)
+    (alt
+      _
+      ((ref `zshow`))
+      _
+      _)
+    (alt
+      _
+      ((ref `zsave`))
+      _
+      _)
+    (alt
+      _
+      ((ref `zinsert`))
+      _
+      _)
+    (alt
+      _
+      ((ref `zremove`))
+      _
+      _)
+    (alt
+      _
+      ((ref `zprint`))
       _
       _))
   (rule
@@ -3937,6 +4022,24 @@
         (pos `2`))
       _))
   (rule
+    (name `zlink`)
+    (alt
+      _
+      ((tok `ZLINK`)
+        (group
+          opt
+          ((ref `postcond`)))
+        (skip
+          (tok `SP`))
+        (list_req
+          `L`
+          (plain `expr`)))
+      (node
+        `zlink`
+        (pos `2`)
+        (spread `4`))
+      _))
+  (rule
     (name `zsystem`)
     (alt
       `>`
@@ -3965,6 +4068,222 @@
         `zsystem`
         (pos `2`)
         (spread `4`))
+      _))
+  (rule
+    (name `zshow`)
+    (alt
+      `>`
+      ((tok `ZSHOW`)
+        (group
+          opt
+          ((ref `postcond`))))
+      (node
+        `zshow`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((tok `ZSHOW`)
+        (group
+          opt
+          ((ref `postcond`)))
+        (skip
+          (tok `SP`))
+        (list_req
+          `L`
+          (plain `zshowarg`)))
+      (node
+        `zshow`
+        (pos `2`)
+        (spread `4`))
+      _))
+  (rule
+    (name `zshowarg`)
+    (alt
+      _
+      ((ref `expr`)
+        (group
+          opt
+          ((lit `":"`)
+            (ref `glvn`))))
+      (node
+        `zshowarg`
+        (pos `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `zsave`)
+    (alt
+      `>`
+      ((tok `ZSAVE`)
+        (group
+          opt
+          ((ref `postcond`))))
+      (node
+        `zsave`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((tok `ZSAVE`)
+        (group
+          opt
+          ((ref `postcond`)))
+        (skip
+          (tok `SP`))
+        (list_req
+          `L`
+          (plain `expr`)))
+      (node
+        `zsave`
+        (pos `2`)
+        (spread `4`))
+      _))
+  (rule
+    (name `zinsert`)
+    (alt
+      _
+      ((tok `ZINSERT`)
+        (group
+          opt
+          ((ref `postcond`)))
+        (skip
+          (tok `SP`))
+        (list_req
+          `L`
+          (plain `zinsertarg`)))
+      (node
+        `zinsert`
+        (pos `2`)
+        (spread `4`))
+      _))
+  (rule
+    (name `zinsertarg`)
+    (alt
+      _
+      ((ref `expr`))
+      (pos `1`)
+      _)
+    (alt
+      _
+      ((ref `expr`)
+        (lit `":"`)
+        (ref `lineref`))
+      (node
+        `zinsertarg`
+        (pos `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `zremove`)
+    (alt
+      `>`
+      ((tok `ZREMOVE`)
+        (group
+          opt
+          ((ref `postcond`))))
+      (node
+        `zremove`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((tok `ZREMOVE`)
+        (group
+          opt
+          ((ref `postcond`)))
+        (skip
+          (tok `SP`))
+        (list_req
+          `L`
+          (plain `linesarg`)))
+      (node
+        `zremove`
+        (pos `2`)
+        (spread `4`))
+      _))
+  (rule
+    (name `zprint`)
+    (alt
+      `>`
+      ((tok `ZPRINT`)
+        (group
+          opt
+          ((ref `postcond`))))
+      (node
+        `zprint`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((tok `ZPRINT`)
+        (group
+          opt
+          ((ref `postcond`)))
+        (skip
+          (tok `SP`))
+        (list_req
+          `L`
+          (plain `linesarg`)))
+      (node
+        `zprint`
+        (pos `2`)
+        (spread `4`))
+      _))
+  (rule
+    (name `linesarg`)
+    (alt
+      _
+      ((ref `lineref`))
+      (node
+        `linerange`
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `lineref`)
+        (lit `":"`)
+        (ref `lineref`))
+      (node
+        `linerange`
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (ref `atom`))
+      (node
+        `@args`
+        (pos `2`))
+      _))
+  (rule
+    (name `lineref`)
+    (alt
+      _
+      ((ref `label`))
+      (node
+        `lineref`
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `label`)
+        (lit `"+"`)
+        (ref `expr`))
+      (node
+        `lineref`
+        (pos `1`)
+        (pos `3`))
+      _)
+    (alt
+      _
+      ((lit `"+"`)
+        (ref `expr`))
+      (node
+        `lineref`
+        (null)
+        (pos `2`))
       _))
   (rule
     (name `entryref`)
