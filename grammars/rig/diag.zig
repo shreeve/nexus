@@ -177,6 +177,21 @@ pub const Lines = struct {
 };
 
 /// The range from the first to the end of the last source token in
+/// The source between `start` and `end`, clamped to the source. A
+/// synthetic span, which a rewrite builds past the end of the source (the
+/// hidden `_` of a closure's omitted parameter), or an empty one, yields
+/// the empty string. Every pass that slices source text by a node's
+/// span reads it through this or `textOf`.
+pub fn textBetween(source: []const u8, start: usize, end: usize) []const u8 {
+    const from = @min(start, source.len);
+    return source[from..@min(@max(end, from), source.len)];
+}
+
+/// The source `span` covers (see `textBetween`).
+pub fn textOf(source: []const u8, span: Span) []const u8 {
+    return textBetween(source, span.start, span.end);
+}
+
 /// `sexp`: a node's span as far as its leaves tell. Keywords and
 /// punctuation are not leaves, so this is a fallback for trees without
 /// the parser's spans; it is empty at 0 for a node without leaves.

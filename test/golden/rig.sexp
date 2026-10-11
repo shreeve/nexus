@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
   (lex_rule `"\\\\\\r\\n"` _ `skip`)
@@ -16,6 +16,7 @@
   (lex_rule `('0' | [1-9] ('_'? [0-9])*) [eE] [+-]? [0-9] ('_'? [0-9])*` _ `real`)
   (lex_rule `'0' | [1-9] ('_'? [0-9])*` _ `integer`)
   (lex_rule `[0-9] [0-9a-zA-Z_]*` _ `err`)
+  (lex_rule `"<<%="` _ `lshift_wrap_assign`)
   (lex_rule `"<<="` _ `lshift_assign`)
   (lex_rule `"+%="` _ `plus_wrap_assign`)
   (lex_rule `"-%="` _ `minus_wrap_assign`)
@@ -44,6 +45,7 @@
   (lex_rule `"=>"` _ `fat_arrow`)
   (lex_rule `"??"` _ `nullish`)
   (lex_rule `".."` _ `dotdot`)
+  (lex_rule `"<<%"` _ `lshift_wrap`)
   (lex_rule `"<<"` _ `lshift`)
   (lex_rule `">>"` _ `rshift`)
   (lex_rule `'+'` _ `plus`)
@@ -449,7 +451,7 @@
           _
           `op`
           (type
-            (tagset `tag` `fixed` `shadow` `shadow_fixed` `"+="` `"-="` `"*="` `"/="` `"%="` `"+%="` `"-%="` `"*%="` `"&="` `"|="` `"^="` `"<<="` `">>="`))
+            (tagset `tag` `fixed` `shadow` `shadow_fixed` `"+="` `"-="` `"*="` `"/="` `"%="` `"+%="` `"-%="` `"*%="` `"&="` `"|="` `"^="` `"<<="` `"<<%="` `">>="`))
           opt)
         (role _ `target` _ _)
         (role _ `type` _ opt)
@@ -764,7 +766,7 @@
       _
       _)
     (kind_decl
-      (kinds `"&"` `"|"` `"^"` `"<<"` `">>"`)
+      (kinds `"&"` `"|"` `"^"` `"<<"` `"<<%"` `">>"`)
       (roles
         (role _ `left` _ _)
         (role _ `right` _ _))
@@ -906,6 +908,7 @@
     (name_pair `"|="` `"\`|=\`"`)
     (name_pair `"^="` `"\`^=\`"`)
     (name_pair `"<<="` `"\`<<=\`"`)
+    (name_pair `"<<%="` `"\`<<%=\`"`)
     (name_pair `">>="` `"\`>>=\`"`)
     (name_pair `"+%="` `"\`+%=\`"`)
     (name_pair `"-%="` `"\`-%=\`"`)
@@ -936,6 +939,7 @@
     (name_pair `"^"` `"\`^\`"`)
     (name_pair `"&"` `"\`&\`"`)
     (name_pair `"<<"` `"\`<<\`"`)
+    (name_pair `"<<%"` `"\`<<%\`"`)
     (name_pair `">>"` `"\`>>\`"`)
     (name_pair `"+"` `"\`+\`"`)
     (name_pair `"-"` `"\`-\`"`)
@@ -1324,6 +1328,7 @@
             ((lit `"|="`))
             ((lit `"^="`))
             ((lit `"<<="`))
+            ((lit `"<<%="`))
             ((lit `">>="`))))
         (label
           `value`
@@ -3892,6 +3897,7 @@
       (infix_op `"&"` `left`))
     (level
       (infix_op `"<<"` `left`)
+      (infix_op `"<<%"` `left`)
       (infix_op `">>"` `left`))
     (level
       (infix_op `"+"` `left`)
