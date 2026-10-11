@@ -1,6 +1,6 @@
 # Comparing a temporary optional handle with `none` drops the temporary.
 
-struct B
+obj B
   n: Int
 
   drop(!self)

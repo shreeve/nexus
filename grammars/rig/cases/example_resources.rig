@@ -2,7 +2,7 @@
 # scope, the `drop` body runs first, then the compiler-generated drop
 # glue releases the `cell` field.
 
-struct Owner
+obj Owner
   cell: *Cell[Int]
 
   drop(!self)

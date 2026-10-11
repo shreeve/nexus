@@ -3,7 +3,7 @@
 use math
 use std.os as o
 
-pub struct User
+pub obj User
   name: ?String
   age: Int = 0
 
@@ -34,7 +34,7 @@ error NetworkError
   timeout
   refused
 
-struct Wrap[T]
+obj Wrap[T]
   value: T
 
   fun get(?self) -> T
@@ -44,16 +44,16 @@ enum Maybe[T]
   some(value: T)
   none
 
-struct Guard
+obj Guard
   id: Int
 
   drop(!self)
     print(self.id)
 
-struct Random unique
+obj Random unique
   seed: Int
 
-struct Ring[T] unique
+obj Ring[T] unique
   item: T
 
 extern fun abs(x: Int) -> Int

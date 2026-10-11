@@ -2,22 +2,22 @@
   (struct
     `B`
     _
-    (: `n` `Int`)@85..91
+    (: `n` `Int`)@82..88
     (drop_decl
-      ((write `self`)@100..105)@99..106
-      (block (call `print` `"drop"` (member `self` `n`)@125..131)@111..132)@111..134)@95..134)@74..134
+      ((write `self`)@97..102)@96..103
+      (block (call `print` `"drop"` (member `self` `n`)@122..128)@108..129)@108..131)@92..131)@74..131
   (sub
     `main`
     _
-    ()@142..144
+    ()@139..141
     _
     (block
-      (set _ `rc` _ (share (call `B` (kwarg `n` `1`)@155..159)@153..160)@152..160)@147..160
-      (set _ `w` _ (weak `rc`)@167..170)@163..170
-      (call `print` (== (call (member `w` `upgrade`)@179..188)@179..190 `none`)@179..198)@173..199
+      (set _ `rc` _ (share (call `B` (kwarg `n` `1`)@152..156)@150..157)@149..157)@144..157
+      (set _ `w` _ (weak `rc`)@164..167)@160..167
+      (call `print` (== (call (member `w` `upgrade`)@176..185)@176..187 `none`)@176..195)@170..196
       (if
-        (!= (call (member `w` `upgrade`)@205..214)@205..216 `none`)@205..224
-        (block (call `print` `"alive"`)@229..243)@229..246
-        _)@202..246
-      (move `rc`)@246..249
-      (call `print` (== (call (member `w` `upgrade`)@258..267)@258..269 `none`)@258..277)@252..278)@147..322)@134..322)@74..322
+        (!= (call (member `w` `upgrade`)@202..211)@202..213 `none`)@202..221
+        (block (call `print` `"alive"`)@226..240)@226..243
+        _)@199..243
+      (move `rc`)@243..246
+      (call `print` (== (call (member `w` `upgrade`)@255..264)@255..266 `none`)@255..274)@249..275)@144..319)@131..319)@74..319

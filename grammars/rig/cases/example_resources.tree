@@ -2,27 +2,27 @@
   (struct
     `Owner`
     _
-    (: `cell` (shared (generic_inst `Cell` `Int`)@199..208)@198..208)@192..208
+    (: `cell` (shared (generic_inst `Cell` `Int`)@196..205)@195..205)@189..205
     (drop_decl
-      ((write `self`)@217..222)@216..223
+      ((write `self`)@214..219)@213..220
       (block
         (call
           `print`
-          (call (member (member `self` `cell`)@234..243 `get`)@234..247)@234..249)@228..250)@228..252)@212..252)@177..252
+          (call (member (member `self` `cell`)@231..240 `get`)@231..244)@231..246)@225..247)@225..249)@209..249)@177..249
   (sub
     `main`
     _
-    ()@260..262
+    ()@257..259
     _
     (block
       (set
         _
         `c`
-        (shared (generic_inst `Cell` `Int`)@269..278)@268..278
-        (share (call `Cell` `42`)@282..290)@281..290)@265..290
+        (shared (generic_inst `Cell` `Int`)@266..275)@265..275
+        (share (call `Cell` `42`)@279..287)@278..287)@262..287
       (set
         _
         `o`
         `Owner`
-        (call `Owner` (kwarg `cell` (move `c`)@316..318)@310..318)@304..319)@293..319
-      (call `print` `0`)@322..330)@265..427)@252..427)@177..427
+        (call `Owner` (kwarg `cell` (move `c`)@313..315)@307..315)@301..316)@290..316
+      (call `print` `0`)@319..327)@262..424)@249..424)@177..424

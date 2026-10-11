@@ -3,8 +3,8 @@
     (struct
       `Noisy`
       _
-      (pub (: `n` `Int`)@23..29)@19..29
+      (pub (: `n` `Int`)@20..26)@16..26
       (drop_decl
-        ((write `self`)@38..43)@37..44
-        (block (call `print` `"drop"` (member `self` `n`)@63..69)@49..70)@49..72)@33..72)@4..72)@0..72
-  (pub (struct `Holder` _ (pub (: `b` (shared `Noisy`)@99..105)@96..105)@92..105)@76..106)@72..106)@0..106
+        ((write `self`)@35..40)@34..41
+        (block (call `print` `"drop"` (member `self` `n`)@60..66)@46..67)@46..69)@30..69)@4..69)@0..69
+  (pub (struct `Holder` _ (pub (: `b` (shared `Noisy`)@93..99)@90..99)@86..99)@73..100)@69..100)@0..100

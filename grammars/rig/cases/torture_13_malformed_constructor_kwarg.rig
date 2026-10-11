@@ -1,4 +1,4 @@
-struct User
+obj User
   name: Str
   age: Int
 

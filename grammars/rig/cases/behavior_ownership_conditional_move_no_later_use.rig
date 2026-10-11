@@ -1,7 +1,7 @@
 # A value moved on one path and not used afterwards is fine; the
 # auto-drop guard releases it only on the path where it was not moved.
 
-struct Wrap
+obj Wrap
   payload: Int
 
   drop(!self)

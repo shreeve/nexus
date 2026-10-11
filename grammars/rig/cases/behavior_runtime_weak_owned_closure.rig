@@ -2,7 +2,7 @@
 # capture, an annotated local, a struct field, a parameter, and a List
 # element; it upgrades while the closure is alive.
 
-struct H
+obj H
   cb: ~sub()
 
 sub call(w: ?~sub())

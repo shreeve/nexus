@@ -1,7 +1,7 @@
 # A resource bound by `as` may be moved out of the branch; then it is not
 # dropped there.
 
-struct Noisy
+obj Noisy
   id: Int
 
   drop(!self)

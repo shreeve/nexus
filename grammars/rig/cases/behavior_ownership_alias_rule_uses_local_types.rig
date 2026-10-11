@@ -2,7 +2,7 @@
 # `rc` is a handle in `holder` but a plain Int in `consumer`, where the
 # bare `print(rc)` is fine.
 
-struct Wrap
+obj Wrap
   value: Int
 
 sub holder(rc: *Wrap)

@@ -1,9 +1,9 @@
 # A view of a field of a view parameter may be returned.
 
-struct Wrap
+obj Wrap
   payload: Int
 
-struct Holder
+obj Holder
   inner: Wrap
 
 fun inner_of(h: ?Holder) -> ?Wrap

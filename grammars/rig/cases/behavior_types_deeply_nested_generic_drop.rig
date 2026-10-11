@@ -1,13 +1,13 @@
 # A resource nested deep inside generic wrappers is dropped once, with
 # the outermost wrapper.
 
-struct P
+obj P
   n: Int
 
   drop(!self)
     print("drop", self.n)
 
-struct Wrap[T]
+obj Wrap[T]
   value: T
 
 sub main()

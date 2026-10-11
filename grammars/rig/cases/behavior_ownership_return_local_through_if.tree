@@ -2,25 +2,25 @@
   (struct
     `Wrap`
     _
-    (: `payload` `Int`)@148..160
+    (: `payload` `Int`)@145..157
     (drop_decl
-      ((write `self`)@169..174)@168..175
-      (block (call `print` (* (member `self` `payload`)@186..198 `10`)@186..203)@180..204)@180..206)@164..206)@134..206
+      ((write `self`)@166..171)@165..172
+      (block (call `print` (* (member `self` `payload`)@183..195 `10`)@183..200)@177..201)@177..203)@161..203)@134..203
   (fun
     `pick`
     _
-    ((: `c` `Bool`)@215..222)@214..223
-    (shared `Wrap`)@227..232
+    ((: `c` `Bool`)@212..219)@211..220
+    (shared `Wrap`)@224..229
     _
     (block
-      (set _ `a` _ (share (call `Wrap` (kwarg `payload` `1`)@245..255)@240..256)@239..256)@235..256
-      (set _ `b` _ (share (call `Wrap` (kwarg `payload` `2`)@269..279)@264..280)@263..280)@259..280
-      (if `c` (block `a`)@292..296 (block `b`)@305..308)@283..308)@235..308)@206..308
+      (set _ `a` _ (share (call `Wrap` (kwarg `payload` `1`)@242..252)@237..253)@236..253)@232..253
+      (set _ `b` _ (share (call `Wrap` (kwarg `payload` `2`)@266..276)@261..277)@260..277)@256..277
+      (if `c` (block `a`)@289..293 (block `b`)@302..305)@280..305)@232..305)@203..305
   (sub
     `main`
     _
-    ()@316..318
+    ()@313..315
     _
     (block
-      (set _ `x` _ (call `pick` `true`)@325..335)@321..335
-      (call `print` (member `x` `payload`)@344..353)@338..354)@321..380)@308..380)@134..380
+      (set _ `x` _ (call `pick` `true`)@322..332)@318..332
+      (call `print` (member `x` `payload`)@341..350)@335..351)@318..377)@305..377)@134..377

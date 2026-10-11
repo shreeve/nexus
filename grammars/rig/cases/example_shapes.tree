@@ -25,56 +25,56 @@
   (struct
     `Canvas`
     _
-    (: `width` `Int`)@291..301
-    (: `height` `Int`)@304..315
+    (: `width` `Int`)@288..298
+    (: `height` `Int`)@301..312
     (fun
       `fits`
       _
-      ((read `self`)@328..333 (: `s` (read_view `Shape`)@338..344)@335..344)@327..345
+      ((read `self`)@325..330 (: `s` (read_view `Shape`)@335..341)@332..341)@324..342
       `Bool`
       _
       (block
         (<=
-          (call `area` `s`)@358..365
-          (* (member `self` `width`)@369..379 (member `self` `height`)@382..393)@369..393)@358..393)@358..395)@319..395)@275..395
-  (generic_struct `Pair` (`T`)@406..409 _ (: `left` `T`)@412..419 (: `right` `T`)@422..430)@395..432
+          (call `area` `s`)@355..362
+          (* (member `self` `width`)@366..376 (member `self` `height`)@379..390)@366..390)@355..390)@355..392)@316..392)@275..392
+  (generic_struct `Pair` (`T`)@400..403 _ (: `left` `T`)@406..413 (: `right` `T`)@416..424)@392..426
   (sub
     `main`
     _
-    ()@440..442
+    ()@434..436
     _
     (block
       (set
         _
         `shapes`
-        (generic_inst `Pair` `Shape`)@453..464
+        (generic_inst `Pair` `Shape`)@447..458
         (call
           `Pair`
-          (kwarg `left` (call (enum_lit `circle`)@478..485 `2`)@478..488)@472..488
+          (kwarg `left` (call (enum_lit `circle`)@472..479 `2`)@472..482)@466..482
           (kwarg
             `right`
             (call
-              (enum_lit `rect`)@497..502
-              (kwarg `w` `3`)@503..507
-              (kwarg `h` `5`)@509..513)@497..514)@490..514)@467..515)@445..515
+              (enum_lit `rect`)@491..496
+              (kwarg `w` `3`)@497..501
+              (kwarg `h` `5`)@503..507)@491..508)@484..508)@461..509)@439..509
       (call
         `print`
-        (call `area` (read (member `shapes` `left`)@530..541)@529..541)@524..542)@518..543
+        (call `area` (read (member `shapes` `left`)@524..535)@523..535)@518..536)@512..537
       (call
         `print`
-        (call `area` (read (member `shapes` `right`)@558..570)@557..570)@552..571)@546..572
+        (call `area` (read (member `shapes` `right`)@552..564)@551..564)@546..565)@540..566
       (set
         _
         `canvas`
         _
-        (call `Canvas` (kwarg `width` `4`)@592..600 (kwarg `height` `3`)@602..611)@585..612)@576..612
+        (call `Canvas` (kwarg `width` `4`)@586..594 (kwarg `height` `3`)@596..605)@579..606)@570..606
       (call
         `print`
         (call
-          (member `canvas` `fits`)@621..632
-          (read (member `shapes` `left`)@634..645)@633..645)@621..646)@615..647
+          (member `canvas` `fits`)@615..626
+          (read (member `shapes` `left`)@628..639)@627..639)@615..640)@609..641
       (call
         `print`
         (call
-          (member `canvas` `fits`)@656..667
-          (read (member `shapes` `right`)@669..681)@668..681)@656..682)@650..683)@445..720)@432..720)@82..720
+          (member `canvas` `fits`)@650..661
+          (read (member `shapes` `right`)@663..675)@662..675)@650..676)@644..677)@439..714)@426..714)@82..714

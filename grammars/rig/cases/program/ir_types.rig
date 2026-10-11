@@ -1,6 +1,6 @@
 # Type expressions in annotations.
 
-struct Node
+obj Node
   value: Int
 
 fun maybe(n: Int) -> Int?
@@ -26,7 +26,7 @@ sub counted[n: Int, T](x: Int)
 
 N = 2
 
-struct Ring[T, n: Int]
+obj Ring[T, n: Int]
   items: [n]T
 
 sub arrays[n: Int](a: [n]Int, b: [N * 2 + 1][n]U8, c: Ring[Int, 4], d: Ring[Int, (N + 1) * 2])

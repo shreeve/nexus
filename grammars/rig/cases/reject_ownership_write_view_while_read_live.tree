@@ -1,18 +1,18 @@
 (module
-  (struct `User` _ (: `name` (read_view `String`)@111..118)@105..118)@91..120
+  (struct `User` _ (: `name` (read_view `String`)@108..115)@102..115)@91..117
   (sub
     `rename`
     _
-    ((: `u` (write_view `User`)@134..139)@131..139)@130..140
+    ((: `u` (write_view `User`)@131..136)@128..136)@127..137
     _
-    (block (call `print` `"rename"`)@143..158)@143..160)@120..160
+    (block (call `print` `"rename"`)@140..155)@140..157)@117..157
   (sub
     `main`
     _
-    ()@168..170
+    ()@165..167
     _
     (block
-      (set _ `user` _ (call `User` (kwarg `name` `"Steve"`)@185..198)@180..199)@173..199
-      (set _ `r` _ (read `user`)@206..211)@202..211
-      (call `rename` (write `user`)@221..226)@214..227
-      (call `print` (member `r` `name`)@236..242)@230..243)@173..308)@160..308)@91..308
+      (set _ `user` _ (call `User` (kwarg `name` `"Steve"`)@182..195)@177..196)@170..196
+      (set _ `r` _ (read `user`)@203..208)@199..208
+      (call `rename` (write `user`)@218..223)@211..224
+      (call `print` (member `r` `name`)@233..239)@227..240)@170..305)@157..305)@91..305

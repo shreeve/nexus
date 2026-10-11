@@ -2,7 +2,7 @@
 # explicitly shadows); elsewhere it is an ordinary name, so a type can
 # have a `new` constructor.
 
-struct Point
+obj Point
   x: Int
 
   fun new(x: Int) -> Point

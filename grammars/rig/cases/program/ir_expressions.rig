@@ -3,7 +3,7 @@
 # (the grammar builds `index` for one argument and `inst` for more; sema
 # tells an index from compile-time arguments).
 
-struct Point
+obj Point
   x: Int
   y: Int
 

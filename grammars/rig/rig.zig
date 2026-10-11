@@ -321,6 +321,17 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 //   After a value directly inside [ ], `of` separates a fill literal's
 //   count from its element (`[n of x]`). Elsewhere it is a name.
 //
+// `obj`
+//   At the start of a statement (after any `pub`), when a name follows
+//   it, `obj` starts a type declaration (`obj Point`). Elsewhere it is a
+//   name (`obj = 5`, `obj.x`, `f(obj: 1)`), and so is `struct`.
+//
+// A leading `.`
+//   A line that starts with `.` and a name, indented deeper than its
+//   statement, continues that statement (`continuesChain`). The
+//   statement must be complete and open no block, so `match` arms and
+//   the members of a type are unchanged.
+//
 // `unique`, `from`, `static`
 //   Names to the lexer: the parser reads each as a keyword where its
 //   state takes it (rig.grammar, `@keywords`).
@@ -343,9 +354,18 @@ pub const Lexer = struct {
     /// Per depth: the block is the member list of a struct, enum, or
     /// error set, where a keyword may name a field or method.
     in_members: [max_indent_depth + 1]bool = @splat(false),
+    /// Per depth: the block is the arm list of a `match`, where each line
+    /// is an arm and a deeper line is its body.
+    in_arms: [max_indent_depth + 1]bool = @splat(false),
     /// The first token of the current statement, after any `pub`, and
     /// where it starts.
     line_head: TokenCat = .eof,
+    /// The logical line has a token that opens a block (`fun`, `if`,
+    /// `match`, `obj`, ...), wherever it stands: `x = match c` opens one
+    /// as `match c` does.
+    line_opens: bool = false,
+    /// The line has a `match`, so the block it opens holds arms.
+    line_match: bool = false,
     head_pos: u32 = 0,
     column: u32 = 0,
     pending_outdents: u32 = 0,
@@ -531,6 +551,13 @@ pub const Lexer = struct {
         self.last2_cat = self.last_cat;
         self.last_cat = tok.cat;
         switch (tok.cat) {
+            .newline, .indent, .outdent => {
+                self.line_opens = false;
+                self.line_match = false;
+            },
+            else => {},
+        }
+        switch (tok.cat) {
             .@"while" => self.while_header = self.nesting,
             .newline, .indent, .outdent, .eof, .step_colon => self.while_header = null,
             else => {},
@@ -689,8 +716,25 @@ pub const Lexer = struct {
                 self.checkIslandClose(p, p - line);
                 return self.closeIsland(p, null) orelse self.produce();
             }
+            if (p - line > self.column and self.continuesChain(src, p)) {
+                self.base.pos = @intCast(p);
+                return self.produce();
+            }
             return self.indentTo(p - line, p, nl);
         }
+    }
+
+    /// The line at `p`, indented deeper than its statement, starts with
+    /// a member access (`.name`) and continues the expression statement
+    /// above it. That statement is complete (its last token ends an
+    /// operand) and its line opens no block (it has none of the tokens
+    /// that open one), and it is not an arm or a member, whose deeper
+    /// `.variant` line is the body. Blank and comment lines between two chain lines are skipped
+    /// before this is asked, so they do not end the chain.
+    fn continuesChain(self: *const Lexer, src: []const u8, p: usize) bool {
+        if (src[p] != '.' or p + 1 >= src.len or !isIdentStart(src[p + 1])) return false;
+        if (!self.after_value or self.nesting > 0 or self.line_opens) return false;
+        return !self.in_members[self.depth] and !self.in_arms[self.depth];
     }
 
     fn indentTo(self: *Lexer, width: u32, pos: u32, nl: Token) Token {
@@ -700,8 +744,9 @@ pub const Lexer = struct {
             self.depth += 1;
             self.column = width;
             self.takes_else[self.depth] = false;
-            self.in_members[self.depth] = switch (self.line_head) {
-                .@"struct", .@"enum", .@"error" => true,
+            self.in_arms[self.depth] = self.line_match;
+            self.in_members[self.depth] = self.line_head == .obj or switch (self.line_head) {
+                .@"enum", .@"error" => true,
                 else => false,
             };
             return synthetic(.indent, pos);
@@ -814,6 +859,11 @@ pub const Lexer = struct {
             .@"if", .@"while", .@"for" => self.takes_else[self.depth] = true,
             else => {},
         }
+        switch (out.cat) {
+            .fun, .sub, .@"enum", .@"error", .@"if", .@"else", .@"while", .@"for", .match, .@"test", .raw, .@"extern", .drop, .obj => self.line_opens = true,
+            else => {},
+        }
+        if (out.cat == .match) self.line_match = true;
         if (self.stmtStart() or self.last_cat == .@"pub") {
             self.line_head = out.cat;
             self.head_pos = tok.pos;
@@ -887,6 +937,7 @@ pub const Lexer = struct {
         if (std.mem.eql(u8, word, "new")) return if (self.stmtStart() and (self.nextIsName() or self.nextIsConst())) .new else .ident;
         if (self.inParens() and self.nextCat() == .colon) return .kwarg_name;
         if (std.mem.eql(u8, word, "of") and self.isFillOf()) return .of;
+        if (std.mem.eql(u8, word, "obj")) return if ((self.stmtStart() or self.last_cat == .@"pub") and self.nextIsName()) .obj else .ident;
         return .ident;
     }
 
@@ -1241,6 +1292,10 @@ pub const Parser = struct {
     /// out their parameter list, each reported, so that one run shows
     /// every header to fix.
     more_failures: std.ArrayList(diag.Diagnostic) = .empty,
+    /// How many hidden parameters `padLambda` has made; each takes the
+    /// next position past the end of the source, which no leaf of the
+    /// source holds, so facts keyed by position stay apart.
+    padded: u32 = 0,
     /// The node ids of the `(read place)`, `(write place)`, and
     /// `(move place)` receivers written in front of the call
     /// (`!v.push(x)`), not in parentheses.
@@ -1606,8 +1661,9 @@ pub const Parser = struct {
         .{ "function", Foreign{ .fix = "declare a function with `fun` (it returns a value) or `sub`" } },
         .{ "let", Foreign{ .fix = "bind a name with `x = 5`, or `const x = 5` for one that never changes" } },
         .{ "var", Foreign{ .fix = "bind a name with `x = 5`, or `const x = 5` for one that never changes" } },
-        .{ "class", Foreign{ .fix = "declare a type with `struct`" } },
-        .{ "impl", Foreign{ .fix = "methods go in the `struct` body", .alone = true } },
+        .{ "class", Foreign{ .fix = "declare a type with `obj`" } },
+        .{ "struct", Foreign{ .fix = "write `obj Name`: `struct` is spelled `obj`" } },
+        .{ "impl", Foreign{ .fix = "methods go in the `obj` body", .alone = true } },
         .{ "switch", Foreign{ .fix = "write `match`" } },
         .{ "case", Foreign{ .fix = "a match arm is `pattern => ...`" } },
         .{ "elif", Foreign{ .fix = "write `else if`" } },
@@ -1625,7 +1681,7 @@ pub const Parser = struct {
         .{ "then", Foreign{ .fix = "a block is the indented lines below the line that opens it", .alone = true } },
     });
 
-    /// `if x:`, `while x:`, `struct S:`: a `:` ending a block's header,
+    /// `if x:`, `while x:`, `obj S:`: a `:` ending a block's header,
     /// as in Python. Reported at the `:`.
     fn headerColon(self: *Parser, tok: Token) ?diag.Diagnostic {
         const lexer = &self.base.lexer;
@@ -1709,7 +1765,7 @@ pub const Parser = struct {
     }
 
     /// Compile-time parameters and arguments written where Rig does not
-    /// take them: in parentheses (`struct Wrap(T)`, `List(Int)` in a type,
+    /// take them: in parentheses (`obj Wrap(T)`, `List(Int)` in a type,
     /// `pre n: Int`), on a type alias, or as a type an expression cannot
     /// spell (`List[[]Int]()`). Also a struct declared with `type`.
     fn bracketHint(self: *Parser, tok: Token) ?[]const u8 {
@@ -1721,15 +1777,15 @@ pub const Parser = struct {
         const declared = std.mem.trimEnd(u8, before[0..start], " ");
         // `type` declares only an alias: `type Name = T`.
         if (word.len > 0 and endsWithWord(declared, "type")) switch (tok.cat) {
-            .indent => return self.format("a struct is declared with `struct`: `struct {s}`", .{word}),
+            .indent => return self.format("a struct is declared with `obj`: `obj {s}`", .{word}),
             .lbracket, .lparen => {
                 const eol = std.mem.findScalarPos(u8, src, tok.pos, '\n') orelse src.len;
                 if (std.mem.findScalar(u8, src[tok.pos..eol], '=') != null) return "a type alias takes no type parameters; generic aliases are not supported";
-                return self.format("a struct is declared with `struct`: `struct {s}[T]`", .{word});
+                return self.format("a struct is declared with `obj`: `obj {s}[T]`", .{word});
             },
             else => {},
         };
-        const decl_kw: ?[]const u8 = for ([_][]const u8{ "struct", "enum", "fun", "sub" }) |kw| {
+        const decl_kw: ?[]const u8 = for ([_][]const u8{ "obj", "enum", "fun", "sub" }) |kw| {
             if (endsWithWord(declared, kw)) break kw;
         } else null;
         switch (tok.cat) {
@@ -2332,6 +2388,28 @@ pub const Parser = struct {
         try mutable.dropTailOf(slot);
     }
 
+    /// A closure that declares fewer parameters than the function type it
+    /// is checked against is the same closure with `_` for each trailing
+    /// parameter it leaves out. The type checker calls it on a closure
+    /// literal before any pass reads the parameters; it changes nothing
+    /// when the closure already has `count` parameters.
+    pub fn padLambda(self: *const Parser, lambda: Sexp, count: usize) std.mem.Allocator.Error!void {
+        const mutable: *Parser = @constCast(self);
+        const slot = &@constCast(lambda.items())[ir.slot(.lambda, .params)];
+        const have = slot.items();
+        if (have.len >= count) return;
+        const out = try mutable.allocator().alloc(Sexp, count);
+        @memcpy(out[0..have.len], have);
+        const at = mutable.span(lambda).start;
+        for (out[have.len..]) |*p| {
+            mutable.padded += 1;
+            var leaf = hiddenLeaf(at, .discard);
+            leaf.src.pos = @intCast(mutable.base.source.len + mutable.padded);
+            p.* = leaf;
+        }
+        slot.* = try mutable.base.newList(out, .{ .start = at, .end = at });
+    }
+
     fn dropTailOf(self: *Parser, slot: *Sexp) std.mem.Allocator.Error!void {
         const kind = slot.kind() orelse return;
         const items = @constCast(slot.items());
@@ -2487,14 +2565,50 @@ test "keywords are reserved; `new` only at statement start" {
         try testing.expect(keyword(w) != null);
     }
     try testing.expect(keyword("var") == null);
-    // Every keyword category but `new` is a lexer rule.
+    // Every keyword category but `new` and `obj` is a lexer rule.
     for (@intFromEnum(TokenCat.true)..@intFromEnum(TokenCat.yield) + 1) |c| {
         const cat: TokenCat = @enumFromInt(c);
+        if (cat == .obj) continue;
         try testing.expectEqual(cat, keyword(@tagName(cat)).?);
         if (cat != .new) try expectCats(@tagName(cat), &.{cat});
     }
     try expectCats("new x = 1", &.{ .new, .ident, .assign, .integer });
     try expectCats("p = Point.new(1)", &.{ .ident, .assign, .ident, .dot, .ident, .lparen, .integer, .rparen });
+}
+
+test "`obj` is a keyword only where a declaration starts; `struct` is a name" {
+    try testing.expect(keyword("obj") == null and keyword("struct") == null);
+    try expectCats("obj P", &.{ .obj, .ident });
+    try expectCats("pub obj P[T] unique", &.{ .@"pub", .obj, .ident, .lbracket, .ident, .rbracket, .ident });
+    try expectCats("obj = 5", &.{ .ident, .assign, .integer });
+    try expectCats("obj.x = obj", &.{ .ident, .dot, .ident, .assign, .ident });
+    try expectCats("f(obj: 1)", &.{ .ident, .lparen, .kwarg_name, .colon, .integer, .rparen });
+    try expectCats("x = obj P", &.{ .ident, .assign, .ident, .ident });
+    try expectCats("struct P", &.{ .ident, .ident });
+    try parses("obj = 5\n");
+    try parses("struct = 5\nobj = struct\n");
+    try parses("fun f(obj: Int, struct: Int) -> Int\n  obj + struct\n");
+    try parses("obj P\n  obj: Int\n  struct: Int\n");
+}
+
+test "a deeper line starting with `.` continues a complete statement" {
+    // The chain joins the lines: no NEWLINE or INDENT between them.
+    try expectCats("b = B()\n  .add(1)\n  .add(2)\nc = 3", &.{
+        .ident, .assign, .ident, .lparen, .rparen, .dot, .ident, .lparen, .integer, .rparen,
+        .dot,   .ident,  .lparen, .integer, .rparen, .newline, .ident, .assign, .integer,
+    });
+    // Blank and comment lines do not end it.
+    try expectCats("b\n  .x\n\n  # c\n  .y", &.{ .ident, .dot, .ident, .dot, .ident });
+    // A line at the statement's own indentation does not continue it.
+    try expectCats("b\n.x", &.{ .ident, .newline, .dot, .ident });
+    // `.5` is a number, not a member.
+    try expectCats("b\n  .5", &.{ .ident, .indent, .real });
+    // A line that opens a block is not continued: its block starts.
+    try expectCats("match c\n  .red", &.{ .match, .ident, .indent, .dot, .ident });
+    try expectCats("fun f() -> Int\n  .x", &.{ .fun, .ident, .lparen, .rparen, .arrow, .ident, .indent, .dot, .ident });
+    try expectCats("obj P\n  x: Int\n    .y", &.{ .obj, .ident, .indent, .ident, .colon, .ident, .indent, .dot, .ident });
+    // An arm written above its body: the body's first line is not a chain.
+    try expectCats("match c\n  .red\n    .blue => 1", &.{ .match, .ident, .indent, .dot, .ident, .indent, .dot, .ident, .fat_arrow, .integer });
 }
 
 /// The tree of `source`'s first declaration, past any `pub`.
@@ -2519,15 +2633,15 @@ fn originCount(source: []const u8) !?usize {
     return if (origins == .nil) null else origins.items().len;
 }
 
-test "`unique` is a keyword only after a struct header's name or type parameters" {
+test "`unique` is a keyword only after an obj header's name or type parameters" {
     try testing.expect(keyword("unique") == null);
-    try expectCats("struct R unique", &.{ .@"struct", .ident, .ident });
-    try testing.expect(try structUnique("struct R unique\n  x: Int\n"));
-    try testing.expect(try structUnique("pub struct R unique # note\n  x: Int\n"));
-    try testing.expect(try structUnique("struct R[T] unique\n  x: T\n"));
-    try testing.expect(!try structUnique("struct R[unique]\n  x: Int\n"));
-    try testing.expect(!try structUnique("struct unique\n  x: Int\n"));
-    try testing.expect(!try structUnique("struct R\n  unique: Bool\n"));
+    try expectCats("obj R unique", &.{ .obj, .ident, .ident });
+    try testing.expect(try structUnique("obj R unique\n  x: Int\n"));
+    try testing.expect(try structUnique("pub obj R unique # note\n  x: Int\n"));
+    try testing.expect(try structUnique("obj R[T] unique\n  x: T\n"));
+    try testing.expect(!try structUnique("obj R[unique]\n  x: Int\n"));
+    try testing.expect(!try structUnique("obj unique\n  x: Int\n"));
+    try testing.expect(!try structUnique("obj R\n  unique: Bool\n"));
     try testing.expectError(error.ParseError, parses("enum E unique\n  a\n"));
     try parses("unique = x.unique\n");
     try expectCats("f(unique: 1)", &.{ .ident, .lparen, .kwarg_name, .colon, .integer, .rparen });
@@ -2768,7 +2882,7 @@ test "parser: every form parses" {
         \\
         \\type Id = U64
         \\
-        \\struct Wrap[T]
+        \\obj Wrap[T]
         \\  value: T
         \\
         \\  fun get(?self) -> T
@@ -2785,16 +2899,16 @@ test "parser: every form parses" {
         \\error Net
         \\  timeout
         \\
-        \\struct P
+        \\obj P
         \\  n: Int
         \\
         \\  drop(!self)
         \\    print(self.n)
         \\
-        \\struct Random unique
+        \\obj Random unique
         \\  seed: Int
         \\
-        \\pub struct Ring[T] unique
+        \\pub obj Ring[T] unique
         \\  item: T
         \\
         \\extern fun abs(n: Int) -> Int
@@ -2870,7 +2984,7 @@ test "parser: a definition writes its parameter list, even when empty" {
         .{ "fun answer -> Int  # the answer\n  42\n", "write `fun answer() -> Int`" },
         .{ "fun first[T, n: Int] -> T?\n  none\n", "write `fun first[T, n: Int]() -> T?`" },
         .{ "sub save!\n  pass\n", "write `sub save()!`" },
-        .{ "struct S\n  n: Int\n\n  pub fun get -> Int\n    1\n", "write `fun get() -> Int`" },
+        .{ "obj S\n  n: Int\n\n  pub fun get -> Int\n    1\n", "write `fun get() -> Int`" },
         .{ "extern fun now -> Int\n", "write `extern fun now() -> Int`" },
         .{ "extern sub halt\n", "write `extern sub halt()`" },
         .{ "extern zig \"z.zig\"\n  pub fun one -> Int\n", "write `fun one() -> Int`" },

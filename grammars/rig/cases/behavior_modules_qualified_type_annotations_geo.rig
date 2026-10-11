@@ -1,4 +1,4 @@
-pub struct Point
+pub obj Point
   pub x: Int
   pub y: Int
 

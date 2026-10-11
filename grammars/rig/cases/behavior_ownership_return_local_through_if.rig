@@ -1,7 +1,7 @@
 # A local returned through an if-expression moves out of the function;
 # the local in the branch not taken is dropped at scope exit.
 
-struct Wrap
+obj Wrap
   payload: Int
 
   drop(!self)

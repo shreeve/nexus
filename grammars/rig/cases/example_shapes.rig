@@ -11,14 +11,14 @@ fun area(s: ?Shape) -> Int
     .rect(w, h) => return w * h
     .point => return 0
 
-struct Canvas
+obj Canvas
   width: Int
   height: Int
 
   fun fits(?self, s: ?Shape) -> Bool
     area(s) <= self.width * self.height
 
-struct Pair[T]
+obj Pair[T]
   left: T
   right: T
 
