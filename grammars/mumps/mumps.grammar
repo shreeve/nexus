@@ -383,6 +383,41 @@ after
     shift  extrinsicref → "@" xatom "^" routineref      1  # ( after $$@X^RTN starts its actual list
     reduce actual? → ε over L(actual?)? → ε             4  # an empty () argument list holds one absent actual
 
+# The keyword tables: commands, functions (the name after `$`), special
+# variables (after `$`) and structured system variables (after `^$`). Each
+# keyword is written as the standard writes it: the bracketed part is
+# optional, so `H[ANG]` is H, HA, HAN or HANG, in any case, and `HALT` must
+# be written in full. `ALIAS=NAME` makes the exact word ALIAS another
+# spelling of NAME. Nexus generates each group's enum (`CmdId`, `FnId`,
+# `IsvId`, `SsvnId`; ids in the order written, from the group's base,
+# aliases taking none) and lookup (`cmdAs`, ...), and rejects two entries
+# that accept one word, so no word is ambiguous. $STORAGE is $S or the full
+# name: $ST... is $STACK.
+@keywords
+    cmd caseless base 100
+        B[REAK] C[LOSE] D[O] E[LSE] F[OR] G[OTO] HALT H[ANG] I[F] J[OB]
+        K[ILL] L[OCK] M[ERGE] N[EW] O[PEN] Q[UIT] R[EAD] S[ET] TC[OMMIT]
+        TRE[START] TRO[LLBACK] TS[TART] U[SE] V[IEW] W[RITE] X[ECUTE]
+        ZB[REAK] ZHALT ZK[ILL] ZL[INK] ZSY[STEM] ZW[RITE] ZSH[OW] ZS[AVE]
+        ZI[NSERT] ZR[EMOVE] ZP[RINT]
+    fn caseless base 200
+        A[SCII] C[HAR] D[ATA] E[XTRACT] F[IND] FN[UMBER] G[ET] I[NCREMENT]
+        J[USTIFY] L[ENGTH] NA[ME] O[RDER] P[IECE] QL[ENGTH] QS[UBSCRIPT]
+        Q[UERY] R[ANDOM] REPLACE RE[VERSE] S[ELECT] ST[ACK] T[EXT]
+        TR[ANSLATE] V[IEW] ZCO[NVERT] ZD[ATE] ZDATEH ZDATETIME ZL[ENGTH]
+        ZM[ESSAGE] ZP[REVIOUS] ZSEARCH ZTIME ZWRITE N[EXT] ZENV ZF
+        ZINCR=INCREMENT ZINCREMENT=INCREMENT ZT=ZTIME ZTRNLNM=ZENV
+    isv caseless base 300
+        D[EVICE] EC[ODE] ES[TACK] ET[RAP] H[OROLOG] I[O] J[OB] K[EY]
+        P[RINCIPAL] Q[UIT] R[EFERENCE] ST[ACK] STORAGE S=STORAGE SY[STEM]
+        T[EST] TL[EVEL] TR[ESTART] X Y ZA ZB ZEO[F] ZE[RROR] ZG[BLDIR]
+        ZH[OROLOG] ZIO ZJ[OB] ZKEY ZL[EVEL] ZNS[PACE] ZPOS[ITION]
+        ZRO[UTINES] ZS[TATUS] ZSY[STEM] ZT[RAP] ZUT ZV[ERSION] ZDIR[ECTORY]
+        ZINT[ERRUPT] ZINI[NTERRUPT] NAMESPACE ZTIMESTAMP ZTS=ZTIMESTAMP
+        ZTIMEZONE ZTZ=ZTIMEZONE
+    ssvn caseless base 400
+        G[LOBAL] J[OB] L[OCK] R[OUTINE] SYS[TEM] ZENVI[RONMENT]
+
 @as ident = [fn, isv, ssvn, self, cmd]
 
 # Reader names for syntax errors: "expected an operator, "," or the end of
@@ -410,7 +445,8 @@ after
     CLOSE: "a command", LOCK: "a command", TSTART: "a command",
     TCOMMIT: "a command", TROLLBACK: "a command", TRESTART: "a command",
     ZWRITE: "a command", ZBREAK: "a command", ZHALT: "a command",
-    ZKILL: "a command", ZSYSTEM: "a command"
+    ZKILL: "a command", ZLINK: "a command", ZSYSTEM: "a command", ZSHOW: "a command",
+    ZSAVE: "a command", ZINSERT: "a command", ZREMOVE: "a command", ZPRINT: "a command"
 
 @op = [
   "'="                                      → "noteq"       , "'<" → "notlt"       , "'>"  → "notgt",
@@ -442,7 +478,7 @@ after
     commands         ...cmds
 
     # Commands; pc is the command's postcondition
-    set, new, kill, merge, do, goto, break, hang, job, xecute, view, open, use, read, write, close, lock, zwrite, zbreak, zkill, zsystem  pc:postcond? ...args
+    set, new, kill, merge, do, goto, break, hang, job, xecute, view, open, use, read, write, close, lock, zwrite, zbreak, zkill, zlink, zsystem, zshow, zsave, zinsert, zremove, zprint  pc:postcond? ...args
     quit, zhalt      pc:postcond? value?
     halt, tcommit, trollback, trestart  pc:postcond?
     tstart           pc:postcond? vars? params:group?
@@ -466,6 +502,10 @@ after
     jobarg           ref:ref|"@ref" args:group? params:jobparams? env:group?
     jobparams        params:group? timeout?
     viewarg          value params:group?
+    zshowarg         codes target?
+    zinsertarg       value at:lineref?
+    linerange        start:lineref end:lineref?
+    lineref          label:leaf? offset?
     openarg          device params:group? timeout? mnemonic?
     devicearg        device params:group? mnemonic?
     attr             name:leaf value
@@ -566,7 +606,8 @@ cmd = set    | new    | merge   | kill
     | break  | hang   | halt    | job       | xecute   | view
     | open   | use    | read    | write     | close
     | lock   | tstart | tcommit | trollback | trestart
-    | zwrite | zbreak | zhalt   | zkill     | zsystem
+    | zwrite | zbreak | zhalt   | zkill     | zlink    | zsystem
+    | zshow  | zsave  | zinsert | zremove   | zprint
 
 # Commands are separated by one space (SP), or by two or more (SPACES) after
 # an argumentless command; the line may end with either. SP after a command
@@ -885,10 +926,43 @@ zkill    = ZKILL [postcond] !SP L(zkillarg) → (zkill 2 ...4)
 zkillarg = glvn
          | "@" atom                         → (@args 2)
 
+# ZLINK - load each argument's routine again from its source, so later
+# calls run what the file holds now
+zlink = ZLINK [postcond] !SP L(expr)        → (zlink 2 ...4)
+
 # ZSYSTEM - run each argument through the shell; with none, an
 # interactive shell
 zsystem = ZSYSTEM [postcond] >              → (zsystem 2)
         | ZSYSTEM [postcond] !SP [L(expr)]  → (zsystem 2 ...4)
+
+# ZSHOW - what this process holds, as lines: each argument its codes (S
+# the stack, D devices, L locks, V local variables, I special variables,
+# * all), and where they go, the current device or an array
+zshow    = ZSHOW [postcond] >               → (zshow 2)
+         | ZSHOW [postcond] !SP L(zshowarg) → (zshow 2 ...4)
+zshowarg = expr [":" glvn]                  → (zshowarg 1 3)
+
+# The routine buffer: ZLINK loads a routine into it, ZSAVE writes it as a
+# routine (its own name with none) and links it, ZINSERT inserts each line
+# after a line reference (none: at the edit pointer), ZREMOVE removes a
+# line or a range (none: everything), and ZPRINT shows one (none: all). A
+# line reference is a label in the buffer, a label and an offset, or an
+# offset from the first line (+0: before it).
+zsave      = ZSAVE [postcond] >                → (zsave 2)
+           | ZSAVE [postcond] !SP L(expr)      → (zsave 2 ...4)
+zinsert    = ZINSERT [postcond] !SP L(zinsertarg) → (zinsert 2 ...4)
+zinsertarg = expr                              → 1
+           | expr ":" lineref                  → (zinsertarg 1 3)
+zremove    = ZREMOVE [postcond] >              → (zremove 2)
+           | ZREMOVE [postcond] !SP L(linesarg) → (zremove 2 ...4)
+zprint     = ZPRINT [postcond] >               → (zprint 2)
+           | ZPRINT [postcond] !SP L(linesarg) → (zprint 2 ...4)
+linesarg   = lineref                           → (linerange 1)
+           | lineref ":" lineref               → (linerange 1 3)
+           | "@" atom                          → (@args 2)
+lineref    = label                             → (lineref 1)
+           | label "+" expr                    → (lineref 1 3)
+           | "+" expr                          → (lineref _ 2)
 
 # ==============================================================================
 # ENTRY REFERENCES (for DO, GOTO, JOB, etc.)
@@ -1078,7 +1152,7 @@ literal = number
 # ==============================================================================
 
 # Intrinsic functions: $LENGTH(), $PIECE(), $GET(), etc.
-# FN matches validated function names via mumps.fnAs (PIECE, LENGTH, ASCII, etc.)
+# FN matches the other function names of @keywords' fn group (PIECE, LENGTH, ASCII, etc.)
 # SELECT and TEXT have special rules due to unique syntax
 fn = select
    | text
