@@ -103,8 +103,10 @@ build of theirs:
 - Before a merge that changes the generator, `test/diff` parses each
   project's own corpus with the current `bin/nexus` and with the change's
   build, the project's grammar and lang module on both sides (em:
-  `misc/vista` and `misc/foia/oro`; Rig: `test/` and `examples/`; nexis:
-  `examples/`, `test/` and `stdlib/`). The pull request states the result;
+  `misc/vista` and `misc/foia/oro`; Rig: `test/`, `examples/`, `std/`,
+  the `rig` fences of its Markdown (`test/equiv.py` extracts them) and the
+  programs `test/matrix.py --emit-only` writes; nexis: `examples/`,
+  `test/` and `stdlib/`). The pull request states the result;
   a file that differs is explained there and reported to its project
   before the merge. A downstream's own differential runs use one
   `bin/nexus` on both sides, so they cannot see a change from Nexus.
