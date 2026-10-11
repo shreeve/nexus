@@ -21,7 +21,7 @@
 #                 a later run with the same DIR replaces the results and
 #                 reuses each build whose inputs did not change
 #   -j N          parallel jobs (default: CPU count)
-#   -O MODE       optimize mode for both parsers (default: ReleaseSafe)
+#   -O MODE       optimize mode for both parsers (default: safe)
 #
 # OLD_NEXUS / NEW_NEXUS are paths to nexus binaries, or `current` for this
 # checkout's bin/nexus (rebuilt first).
@@ -76,7 +76,7 @@ fi
 
 usage() { awk 'NR > 1 { if (!/^#/) exit; sub(/^# ?/, ""); print }' "$0"; exit 2; }
 
-EXT="" START_OLD="" START_NEW="" LANG_OLD="-" LANG_NEW="-" EXPECT="" SPANS="" SHOW=5 KEEP="" MODE=ReleaseSafe
+EXT="" START_OLD="" START_NEW="" LANG_OLD="-" LANG_NEW="-" EXPECT="" SPANS="" SHOW=5 KEEP="" MODE=safe
 JOBS=$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)
 POS=()
 while [[ $# -gt 0 ]]; do

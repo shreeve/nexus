@@ -94,8 +94,8 @@ beside them. This checkout's `bin/nexus` is therefore part of every
 build of theirs:
 
 - This checkout stays on main; other work, `./test/run` included (it
-  builds `bin/nexus` in Debug mode first), happens in its own worktree.
-- `bin/nexus` is built with `zig build -Doptimize=ReleaseSafe` from a
+  builds `bin/nexus` in debug mode first), happens in its own worktree.
+- `bin/nexus` is built with `zig build -Doptimize=safe` from a
   green main, and only after a merge that changes the generator (`src/`,
   `build.zig`): em's front-end hash covers the binary's bytes, so a
   rebuild recompiles em's routines.

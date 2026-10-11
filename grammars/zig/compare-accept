@@ -17,11 +17,11 @@
 #   --messages      also print both syntax errors of every input both
 #                   reject (Nexus's writeError, Ast's renderError)
 #   --bench N       time parsing alone instead, both parsers, best of N
-#                   rounds (ReleaseFast, single thread, files in memory)
+#                   rounds (fast mode, single thread, files in memory)
 #   --no-schema     build the parser from zig.grammar without its @schema
 #                   section (a plain tree, no node kinds or roles), to
 #                   measure what the schema costs with --bench
-#   -O MODE         optimize mode of the tool (default ReleaseFast)
+#   -O MODE         optimize mode of the tool (default fast)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-accept/ from this
 # checkout's bin/nexus (run `zig build` first). It prints one line per
@@ -34,7 +34,7 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT="$ROOT/.zig-cache/nexus-grammars/zig-accept"
-MODE=ReleaseFast TOOL_ARGS=() SCHEMA=1
+MODE=fast TOOL_ARGS=() SCHEMA=1
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
 : >"$LIST.new"

@@ -159,7 +159,7 @@ current behavior only.
 ## Differential testing
 
 `test/diff` generates a parser from each of two (nexus, grammar) pairs,
-parses a corpus with both (parallel chunks, ReleaseSafe), and compares
+parses a corpus with both (parallel chunks, safe mode), and compares
 trees file by file. Each nexus is a path to a binary or `current`, this
 checkout's `bin/nexus` (rebuilt first).
 
@@ -221,13 +221,13 @@ guards never hold together, held
 rules can re-enable each other, ...), and an accepted spec whose held rules
 can loop fails. The DFA itself is also checked
 against a backtracking matcher by the unit tests (`src/lexgen/automaton.zig`).
-`-O` picks the driver's optimize mode (default `Debug`, which also checks
+`-O` picks the driver's optimize mode (default `debug`, which also checks
 the generated lexers' safety). The suite runs a small fixed-seed round in
-`Debug` as `tools/lexfuzz`; larger seeds and counts are run by hand.
+`debug` as `tools/lexfuzz`; larger seeds and counts are run by hand.
 
 ## Benchmarks
 
-`test/bench/run` builds nexus (ReleaseFast by default, `-O` to change,
+`test/bench/run` builds nexus (fast mode by default, `-O` to change,
 `--nexus BIN` to time another generator), times generation of every
 in-repo grammar, and measures lexing and lexing+parsing throughput on the
 full VistA corpus and a synthetic Rig file of about 4 MB (falling back to the

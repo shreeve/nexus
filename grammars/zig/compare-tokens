@@ -17,9 +17,9 @@
 #                   std.zig.Tokenizer's fuzz-test byte weights alternating
 #                   with a mix of token fragments; --seed S, default 0)
 #   --bench N       time tokenizing alone instead, both lexers, best of N
-#                   rounds (ReleaseFast, single thread, files in memory)
+#                   rounds (fast mode, single thread, files in memory)
 #   --dump nexus|std  print one lexer's stream in the zigtok format
-#   -O MODE         optimize mode of the tool (default ReleaseFast)
+#   -O MODE         optimize mode of the tool (default fast)
 #
 # The tool is built in .zig-cache/nexus-grammars/zig-tokens/ from this
 # checkout's bin/nexus (run `zig build` first). Compare prints one line per
@@ -33,7 +33,7 @@ set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 OUT="$ROOT/.zig-cache/nexus-grammars/zig-tokens"
-MODE=ReleaseFast ORACLE="" TOOL_ARGS=() FUZZ=0
+MODE=fast ORACLE="" TOOL_ARGS=() FUZZ=0
 LIST="$OUT/list.txt"
 mkdir -p "$OUT"
 : >"$LIST.new"

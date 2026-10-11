@@ -379,7 +379,7 @@ check_unit_lang() { # check_unit_lang <suite dir>: zig test each lang file with 
 
 check_diff_tool() { # test/diff agrees with itself on the MUMPS cases
     local out
-    out=$(NO_COLOR=1 with_timeout 300 test/diff -O Debug -j 4 --keep "$OUTROOT/diff" "$NEXUS" "$NEXUS" \
+    out=$(NO_COLOR=1 with_timeout 300 test/diff -O debug -j 4 --keep "$OUTROOT/diff" "$NEXUS" "$NEXUS" \
         grammars/mumps/mumps.grammar grammars/mumps/mumps.grammar --ext .m grammars/mumps/cases 2>&1)
     local rc=$?
     echo "$out" >>"$LOG"
@@ -467,7 +467,7 @@ check_fmt() {
 # check_lexfuzz: generated lexers agree with test/lexfuzz/fuzz.py's
 # reference matcher on a fixed seed (a small run; larger ones are manual).
 check_lexfuzz() {
-    local fuzz=test/lexfuzz/fuzz.py args=(--seed 1 --specs 12 --inputs 100 -O Debug --keep "$WORK/out/lexfuzz")
+    local fuzz=test/lexfuzz/fuzz.py args=(--seed 1 --specs 12 --inputs 100 -O debug --keep "$WORK/out/lexfuzz")
     if ! command -v python3 >/dev/null; then REASON="python3 not found"; return 1; fi
     if ! with_timeout 300 python3 "$fuzz" "${args[@]}" >>"$LOG" 2>&1 </dev/null; then
         REASON="$(grep -m1 -E 'MISMATCH|unexpected|error' "$LOG" || tail -1 "$LOG")"
