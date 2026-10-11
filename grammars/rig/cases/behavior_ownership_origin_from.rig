@@ -2,11 +2,11 @@
 # the others are free again after the call, even of the same type. The
 # compiler checks each body against its clause.
 
-struct Entry
+obj Entry
   key: ?String
   value: ?String
 
-struct Env
+obj Env
   entries: List[Entry]
 
   fun get(?self, key: ?String) -> (?String)? from self

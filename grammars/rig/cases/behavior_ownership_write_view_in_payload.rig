@@ -1,7 +1,7 @@
 # A write view held as an optional's payload, in a `(!T)?` binding,
 # still writes through to the viewed value once it is unwrapped.
 
-struct Wrap
+obj Wrap
   n: Int
 
 sub main()

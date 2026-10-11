@@ -1,24 +1,24 @@
 (module
-  (struct `User` _ (: `age` `Int`)@129..137)@115..139
+  (struct `User` _ (: `age` `Int`)@126..134)@115..136
   (sub
     `main`
     _
-    ()@147..149
+    ()@144..146
     _
     (block
       (set
         _
         `u`
-        (shared `User`)@155..160
-        (share (call `User` (kwarg `age` `30`)@169..176)@164..177)@163..177)@152..177
+        (shared `User`)@152..157
+        (share (call `User` (kwarg `age` `30`)@166..173)@161..174)@160..174)@149..174
       (set
         _
         `c1`
-        (shared (generic_inst `Cell` (shared `User`)@190..195)@185..196)@184..196
-        (share (call `Cell` (move `u`)@205..207)@200..208)@199..208)@180..208
+        (shared (generic_inst `Cell` (shared `User`)@187..192)@182..193)@181..193
+        (share (call `Cell` (move `u`)@202..204)@197..205)@196..205)@177..205
       (set
         _
         `c2`
-        (shared (generic_inst `Cell` (shared `User`)@221..226)@216..227)@215..227
-        `c1`)@211..232
-      (call `print` `0`)@235..243)@152..394)@139..394)@115..394
+        (shared (generic_inst `Cell` (shared `User`)@218..223)@213..224)@212..224
+        `c1`)@208..229
+      (call `print` `0`)@232..240)@149..391)@136..391)@115..391

@@ -6,7 +6,7 @@
 
 type Listeners = List[*sub(Int)]
 
-struct IntSource
+obj IntSource
   value: Cell[Int]
   listeners: Cell[Listeners]
 

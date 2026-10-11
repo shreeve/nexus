@@ -1,21 +1,21 @@
 (module
-  (struct `Wrap` _ (: `payload` `Int`)@106..118)@92..120
+  (struct `Wrap` _ (: `payload` `Int`)@103..115)@92..117
   (struct
     `Pair`
     _
-    (: `a` (shared `Wrap`)@137..142)@134..142
+    (: `a` (shared `Wrap`)@131..136)@128..136
     (sub
       `take`
       _
-      ((read `self`)@155..160)@154..161
+      ((read `self`)@149..154)@148..155
       _
       (block
-        (set _ `x` _ (move (member `self` `a`)@171..177)@170..177)@166..177
-        (call `print` (member `x` `payload`)@188..197)@182..198)@166..200)@146..200)@120..200
+        (set _ `x` _ (move (member `self` `a`)@165..171)@164..171)@160..171
+        (call `print` (member `x` `payload`)@182..191)@176..192)@160..194)@140..194)@117..194
   (sub
     `main`
     _
-    ()@208..210
+    ()@202..204
     _
     (block
       (set
@@ -26,6 +26,6 @@
           `Pair`
           (kwarg
             `a`
-            (share (call `Wrap` (kwarg `payload` `1`)@231..241)@226..242)@225..242)@222..242)@217..243)@213..243
-      (call (member `p` `take`)@246..252)@246..254
-      (call `print` `"back"`)@257..270)@213..378)@200..378)@92..378
+            (share (call `Wrap` (kwarg `payload` `1`)@225..235)@220..236)@219..236)@216..236)@211..237)@207..237
+      (call (member `p` `take`)@240..246)@240..248
+      (call `print` `"back"`)@251..264)@207..372)@194..372)@92..372

@@ -1,7 +1,7 @@
 # A struct's `drop(!self)` body runs at scope exit and can read
 # `self`'s fields.
 
-struct File
+obj File
   fd: Int
 
   drop(!self)

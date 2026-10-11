@@ -2,19 +2,19 @@
   (struct
     `User`
     _
-    (: `name` (read_view `String`)@93..100)@87..100
+    (: `name` (read_view `String`)@90..97)@84..97
     (fun
       `greet`
       _
-      ((read `self`)@114..119)@113..120
-      (read_view `String`)@124..131
+      ((read `self`)@111..116)@110..117
+      (read_view `String`)@121..128
       _
-      (block (member `self` `name`)@136..145)@136..147)@104..147)@73..147
+      (block (member `self` `name`)@133..142)@133..144)@101..144)@73..144
   (sub
     `main`
     _
-    ()@155..157
+    ()@152..154
     _
     (block
-      (set _ `u` _ (call `User` (kwarg `name` `"Steve"`)@169..182)@164..183)@160..183
-      (call `print` (call (member `u` `greet`)@192..199)@192..201)@186..202)@160..222)@147..222)@73..222
+      (set _ `u` _ (call `User` (kwarg `name` `"Steve"`)@166..179)@161..180)@157..180
+      (call `print` (call (member `u` `greet`)@189..196)@189..198)@183..199)@157..219)@144..219)@73..219

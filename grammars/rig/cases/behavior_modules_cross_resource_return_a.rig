@@ -1,4 +1,4 @@
-pub struct Wrap
+pub obj Wrap
   pub value: Int
 
 pub fun make_box(v: Int) -> *Wrap

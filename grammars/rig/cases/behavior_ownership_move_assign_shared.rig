@@ -1,7 +1,7 @@
 # `rc2 = <rc` drops rc2's old handle, then moves rc into rc2. Each
 # allocation is dropped exactly once.
 
-struct U
+obj U
   v: Int
 
   drop(!self)

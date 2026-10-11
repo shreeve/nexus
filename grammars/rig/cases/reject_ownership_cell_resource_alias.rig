@@ -1,7 +1,7 @@
 # A bare alias of a `*Cell` handle holding a shared handle is rejected:
 # both bindings would run the destructor.
 
-struct User
+obj User
   age: Int
 
 sub main()

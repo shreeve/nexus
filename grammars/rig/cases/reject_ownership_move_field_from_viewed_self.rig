@@ -1,10 +1,10 @@
 # A field cannot be moved out of a `?self` receiver: the caller still
 # owns and drops it.
 
-struct Wrap
+obj Wrap
   payload: Int
 
-struct Pair
+obj Pair
   a: *Wrap
 
   sub take(?self)

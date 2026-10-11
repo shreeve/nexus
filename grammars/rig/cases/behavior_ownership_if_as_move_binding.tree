@@ -2,28 +2,28 @@
   (struct
     `Noisy`
     _
-    (: `id` `Int`)@107..114
+    (: `id` `Int`)@104..111
     (drop_decl
-      ((write `self`)@123..128)@122..129
-      (block (call `print` `"drop"` (member `self` `id`)@148..155)@134..156)@134..158)@118..158)@92..158
+      ((write `self`)@120..125)@119..126
+      (block (call `print` `"drop"` (member `self` `id`)@145..152)@131..153)@131..155)@115..155)@92..155
   (sub
     `eat`
     _
-    ((: `n` (shared `Noisy`)@169..175)@166..175)@165..176
+    ((: `n` (shared `Noisy`)@166..172)@163..172)@162..173
     _
-    (block (call `print` `"eat"` (member `n` `id`)@192..196)@179..197)@179..199)@158..199
+    (block (call `print` `"eat"` (member `n` `id`)@189..193)@176..194)@176..196)@155..196
   (sub
     `main`
     _
-    ()@207..209
+    ()@204..206
     _
     (block
-      (set _ `rc` _ (share (call `Noisy` (kwarg `id` `1`)@224..229)@218..230)@217..230)@212..230
-      (set _ `w` _ (weak `rc`)@237..240)@233..240
+      (set _ `rc` _ (share (call `Noisy` (kwarg `id` `1`)@221..226)@215..227)@214..227)@209..227
+      (set _ `w` _ (weak `rc`)@234..237)@230..237
       (if
-        (as (call (member `w` `upgrade`)@246..255)@246..257 `n`)@246..262
+        (as (call (member `w` `upgrade`)@243..252)@243..254 `n`)@243..259
         (block
-          (call `eat` (move `n`)@271..273)@267..274
-          (call `print` `"after eat"`)@279..297)@267..300
-        _)@243..300
-      (call `print` `"end"`)@300..312)@212..359)@199..359)@92..359
+          (call `eat` (move `n`)@268..270)@264..271
+          (call `print` `"after eat"`)@276..294)@264..297
+        _)@240..297
+      (call `print` `"end"`)@297..309)@209..356)@196..356)@92..356

@@ -2,7 +2,7 @@
 # method chains may span lines regardless of indentation. A trailing `\`
 # joins the next line anywhere.
 
-struct Counter
+obj Counter
   n: Int
 
   fun get(?self) -> Int

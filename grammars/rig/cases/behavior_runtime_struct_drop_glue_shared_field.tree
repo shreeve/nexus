@@ -2,21 +2,21 @@
   (struct
     `Noisy`
     _
-    (: `id` `Int`)@155..162
+    (: `id` `Int`)@152..159
     (drop_decl
-      ((write `self`)@171..176)@170..177
-      (block (call `print` (member `self` `id`)@188..195)@182..196)@182..198)@166..198)@140..198
-  (struct `Reactor` _ (: `count` (shared `Noisy`)@222..228)@215..228)@198..230
+      ((write `self`)@168..173)@167..174
+      (block (call `print` (member `self` `id`)@185..192)@179..193)@179..195)@163..195)@140..195
+  (struct `Reactor` _ (: `count` (shared `Noisy`)@216..222)@209..222)@195..224
   (sub
     `main`
     _
-    ()@238..240
+    ()@232..234
     _
     (block
-      (set _ `n` _ (share (call `Noisy` (kwarg `id` `9`)@254..259)@248..260)@247..260)@243..260
+      (set _ `n` _ (share (call `Noisy` (kwarg `id` `9`)@248..253)@242..254)@241..254)@237..254
       (set
         _
         `r`
         `Reactor`
-        (call `Reactor` (kwarg `count` (move `n`)@291..293)@284..293)@276..294)@263..294
-      (call `print` `"built"`)@297..311)@243..335)@230..335)@140..335
+        (call `Reactor` (kwarg `count` (move `n`)@285..287)@278..287)@270..288)@257..288
+      (call `print` `"built"`)@291..305)@237..329)@224..329)@140..329

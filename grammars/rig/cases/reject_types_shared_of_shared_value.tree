@@ -1,11 +1,11 @@
 (module
-  (struct `Noisy` _ (: `id` `Int`)@136..143)@121..145
+  (struct `Noisy` _ (: `id` `Int`)@133..140)@121..142
   (sub
     `main`
     _
-    ()@153..155
+    ()@150..152
     _
     (block
-      (set _ `inner` _ (share (call `Noisy` (kwarg `id` `4`)@173..178)@167..179)@166..179)@158..179
-      (set _ `outer` _ (share (move `inner`)@192..198)@190..199)@182..199
-      (call `print` (member `outer` `id`)@208..216)@202..217)@158..252)@145..252)@121..252
+      (set _ `inner` _ (share (call `Noisy` (kwarg `id` `4`)@170..175)@164..176)@163..176)@155..176
+      (set _ `outer` _ (share (move `inner`)@189..195)@187..196)@179..196
+      (call `print` (member `outer` `id`)@205..213)@199..214)@155..249)@142..249)@121..249

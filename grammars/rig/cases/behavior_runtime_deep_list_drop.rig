@@ -2,7 +2,7 @@
 # runtime queues boxes released too deep inside other drops. Every
 # node's drop still runs exactly once, in list order, head first.
 
-struct Node
+obj Node
   value: Int
   seen: *Cell[Int]
   next: *Node?

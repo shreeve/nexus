@@ -1,7 +1,7 @@
 # Yielding a Copy payload field from a match arm does not consume the
 # scrutinee; it is still dropped.
 
-struct B
+obj B
   n: Int
 
   drop(!self)

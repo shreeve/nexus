@@ -1,13 +1,13 @@
 # A struct with a shared-handle field and no user `drop` still gets
 # compiler-generated drop glue: dropping `r` drops the Noisy it holds.
 
-struct Noisy
+obj Noisy
   id: Int
 
   drop(!self)
     print(self.id)
 
-struct Reactor
+obj Reactor
   count: *Noisy
 
 sub main()

@@ -1,6 +1,6 @@
 # A view holding a view keeps it until the view's last use.
 
-struct Wrap
+obj Wrap
   n: Int
 
   sub bump(!self)
@@ -9,7 +9,7 @@ struct Wrap
   drop(!self)
     print("drop", self.n)
 
-struct View
+obj View
   box: ?Wrap
 
 sub main()

@@ -1,7 +1,7 @@
 # A bare variant of an enum whose other variants own resources is a new
 # value: it may be bound, passed, and stored.
 
-struct B
+obj B
   n: Int
 
   drop(!self)

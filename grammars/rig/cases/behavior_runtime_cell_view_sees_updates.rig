@@ -3,17 +3,17 @@
 # function, stored in a view, an optional, an array, a generic field, or
 # an enum payload, or taken from a field of a viewed struct.
 
-struct W[T]
+obj W[T]
   v: T
 
 enum E
   held(c: ?Cell[Int])
   empty
 
-struct View
+obj View
   c: ?Cell[Int]
 
-struct H
+obj H
   c: Cell[Int]
 
   fun cell(?self) -> ?Cell[Int]

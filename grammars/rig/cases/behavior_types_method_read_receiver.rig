@@ -1,6 +1,6 @@
 # `?self` is sugar for `self: ?Self`; `u.greet()` lends `u` implicitly.
 
-struct User
+obj User
   name: ?String
 
   fun greet(?self) -> ?String

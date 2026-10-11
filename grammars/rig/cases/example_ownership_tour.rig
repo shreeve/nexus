@@ -1,6 +1,6 @@
 # Ownership at a glance: each sigil makes a transfer visible.
 
-struct Account
+obj Account
   owner: ?String
   balance: Int
 

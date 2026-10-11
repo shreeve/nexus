@@ -18,8 +18,12 @@
 #   * reads a reserved word (each is a lexer rule) as a name where it
 #     names a member or a builtin: after `.` or `@`, before `:` inside
 #     ( ), and in a member list before `:` or after `fun` / `sub`;
-#   * classifies two contextual words: `new` is a keyword only at the
-#     start of a statement before a name or `const`, and `of` only after
+#   * joins a line that starts with `.` and a name, indented deeper than a
+#     complete statement that opens no block, to that statement (a method
+#     chain written down the page);
+#   * classifies three contextual words: `new` is a keyword only at the
+#     start of a statement before a name or `const`, `obj` only at the
+#     start of a declaration (after any `pub`) before a name, and `of` only after
 #     a value directly inside [ ] (`[n of x]`); each is a name everywhere
 #     else (the other contextual words are the parser's: see @keywords);
 #   * marks a `..` whose next token is `]` as DOTDOT_OPEN, the end of an
@@ -55,8 +59,8 @@ tokens
     string_dq       # "double"
 
     # Keywords, `true` first and `yield` last (src/rig.zig reads the range
-    # as Rig's keywords). Every keyword but `new` is reserved, and is a
-    # lexer rule; `new` is classified by the rewriter.
+    # as Rig's keywords). Every keyword but `new` and `obj` is reserved,
+    # and is a lexer rule; those two are classified by the rewriter.
     true
     false
     and
@@ -77,13 +81,13 @@ tokens
     in
     match
     new             # a keyword only at statement start (`new x = ...`)
+    obj             # a keyword only at the start of a type declaration (`obj Point`)
     not
     or
     pass
     pub
     raw
     return
-    struct
     sub
     test
     try             # reserved; no form uses it
@@ -259,9 +263,9 @@ tokens
 '.'                                         → dot
 
 # Reserved words: a keyword rule ties with the identifier rule on its own
-# text and wins by coming first; a longer word (`iffy`) is a name. `new`
-# and the contextual words (`of`, `unique`, `from`, `static`) lex as
-# names, and the rewriter classifies them.
+# text and wins by coming first; a longer word (`iffy`) is a name. `new`,
+# `obj` and the contextual words (`of`, `unique`, `from`, `static`) lex
+# as names, and the rewriter or the parser classifies them.
 "true"                                      → true
 "false"                                     → false
 "and"                                       → and
@@ -287,7 +291,6 @@ tokens
 "pub"                                       → pub
 "raw"                                       → raw
 "return"                                    → return
-"struct"                                    → struct
 "sub"                                       → sub
 "test"                                      → test
 "try"                                       → try
@@ -425,13 +428,13 @@ tokens
     OUTDENT: "the end of the block"
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
     KWARG_NAME: "a keyword argument"
-    OF: "`of`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
+    OF: "`of`", OBJ: "`obj`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
     DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
     ERROR: "`error`", EXTERN: "`extern`", FOR: "`for`", FUN: "`fun`", IF: "`if`", IN: "`in`"
     MATCH: "`match`", NEW: "`new`", NOT: "`not`", OR: "`or`", PASS: "`pass`", PUB: "`pub`"
-    RAW: "`raw`", RETURN: "`return`", STRUCT: "`struct`", SUB: "`sub`", TEST: "`test`", TRY: "`try`"
+    RAW: "`raw`", RETURN: "`return`", SUB: "`sub`", TEST: "`test`", TRY: "`try`"
     TYPE: "`type`", USE: "`use`", WHILE: "`while`", ZIG: "`zig`"
     ASYNC: "`async`", AWAIT: "`await`", CONST: "`const`", IMPL: "`impl`"
     TRAIT: "`trait`", WHEN: "`when`", WHERE: "`where`", YIELD: "`yield`"
@@ -454,8 +457,8 @@ tokens
     unary: "an operand", step: "an assignment or a call"
 
 # `unique`, `from` and `static` lex as names, and the parser reads one as
-# a keyword where its state takes the keyword: `unique` after a struct
-# header's name or type parameters (`struct Random unique`), `from` after
+# a keyword where its state takes the keyword: `unique` after an obj
+# header's name or type parameters (`obj Random unique`), `from` after
 # a function's result type (`-> ?Item from a`), and `static` right after
 # that `from`. Everywhere else each is a name.
 @keywords
@@ -589,12 +592,12 @@ enum     = ENUM name:name INDENT members:members OUTDENT     → (enum)
          | ENUM name:name tparams:tparams INDENT members:members OUTDENT
                                                     → (generic_enum)
 errors   = ERROR name:name INDENT members:members OUTDENT    → (errors)
-struct   = STRUCT name:name INDENT members:members OUTDENT   → (struct)
-         | STRUCT name:name UNIQUE INDENT members:members OUTDENT
+struct   = OBJ name:name INDENT members:members OUTDENT   → (struct)
+         | OBJ name:name UNIQUE INDENT members:members OUTDENT
                                                     → (struct unique:unique)
-         | STRUCT name:name tparams:tparams INDENT members:members OUTDENT
+         | OBJ name:name tparams:tparams INDENT members:members OUTDENT
                                                     → (generic_struct)
-         | STRUCT name:name tparams:tparams UNIQUE INDENT members:members OUTDENT
+         | OBJ name:name tparams:tparams UNIQUE INDENT members:members OUTDENT
                                                     → (generic_struct unique:unique)
 
 typedef  = TYPE name:name "=" type:type             → (type)

@@ -2,7 +2,7 @@
 # expects: a binding annotation, a parameter of the called function, a
 # List's element type, a struct field, or a function's return type.
 
-struct Button
+obj Button
   label: ?String
   on_click: *sub(Int)
 

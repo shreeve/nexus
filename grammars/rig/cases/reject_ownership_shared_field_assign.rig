@@ -1,6 +1,6 @@
 # Assigning a field through a shared handle is rejected.
 
-struct User
+obj User
   age: Int
 
 sub main()

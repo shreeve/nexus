@@ -1,7 +1,7 @@
 # Every ownership sigil in expression position, plus the binding forms.
 # A `!` or `<` before a method call moves onto its receiver.
 
-struct Node
+obj Node
   value: Int
 
 sub consume(n: Node)
@@ -13,7 +13,7 @@ sub inspect(n: ?Node)
 sub touch(n: !Node)
   print(n.value)
 
-struct Log
+obj Log
   lines: List[Int]
 
   sub add(!self, n: Int)

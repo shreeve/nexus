@@ -1,10 +1,10 @@
 # A type may refer to itself through a shared handle or a List.
 
-struct Node
+obj Node
   n: Int
   next: *Node?
 
-struct Tree
+obj Tree
   n: Int
   kids: List[*Tree]
 

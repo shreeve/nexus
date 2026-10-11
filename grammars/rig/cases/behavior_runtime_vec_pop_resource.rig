@@ -2,7 +2,7 @@
 # the handle, bound by `as` or to a name (and dropped there), or discarded
 # with `_ =`.
 
-struct B
+obj B
   n: Int
 
   drop(!self)

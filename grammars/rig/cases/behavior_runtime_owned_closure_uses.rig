@@ -2,7 +2,7 @@
 # called through it, stored in a List and called for their values, held
 # in an optional, and given several parameters of different types.
 
-struct Button
+obj Button
   on_click: *sub(Int)
 
   sub click(self: ?Button, n: Int)

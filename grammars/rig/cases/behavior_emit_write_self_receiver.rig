@@ -1,6 +1,6 @@
 # A `!self` method mutates the receiver in place.
 
-struct Bag
+obj Bag
   items: List[Int]
 
   sub add(!self, x: Int)

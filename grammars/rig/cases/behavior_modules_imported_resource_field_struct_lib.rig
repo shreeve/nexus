@@ -1,8 +1,8 @@
-pub struct Noisy
+pub obj Noisy
   pub n: Int
 
   drop(!self)
     print("drop", self.n)
 
-pub struct Holder
+pub obj Holder
   pub b: *Noisy

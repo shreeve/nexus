@@ -4,7 +4,7 @@
 # negation, and `<x` alone on a line drops `x`; `@name(...)` is a
 # builtin call.
 
-struct Wrap
+obj Wrap
   v: Int
 
 fun show(b: ?Wrap) -> Int

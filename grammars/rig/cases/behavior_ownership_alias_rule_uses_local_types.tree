@@ -1,23 +1,23 @@
 (module
-  (struct `Wrap` _ (: `value` `Int`)@185..195)@171..197
+  (struct `Wrap` _ (: `value` `Int`)@182..192)@171..194
   (sub
     `holder`
     _
-    ((: `rc` (shared `Wrap`)@212..217)@208..217)@207..218
+    ((: `rc` (shared `Wrap`)@209..214)@205..214)@204..215
     _
-    (block (call `print` (member `rc` `value`)@227..235)@221..236 (move `rc`)@239..242)@221..244)@197..244
+    (block (call `print` (member `rc` `value`)@224..232)@218..233 (move `rc`)@236..239)@218..241)@194..241
   (sub
     `consumer`
     _
-    ((: `rc` `Int`)@257..264)@256..265
+    ((: `rc` `Int`)@254..261)@253..262
     _
-    (block (call `print` `rc`)@268..277)@268..279)@244..279
+    (block (call `print` `rc`)@265..274)@265..276)@241..276
   (sub
     `main`
     _
-    ()@287..289
+    ()@284..286
     _
     (block
-      (set _ `b` _ (share (call `Wrap` (kwarg `value` `1`)@302..310)@297..311)@296..311)@292..311
-      (call `holder` (move `b`)@321..323)@314..324
-      (call `consumer` `42`)@327..339)@292..360)@279..360)@171..360
+      (set _ `b` _ (share (call `Wrap` (kwarg `value` `1`)@299..307)@294..308)@293..308)@289..308
+      (call `holder` (move `b`)@318..320)@311..321
+      (call `consumer` `42`)@324..336)@289..357)@276..357)@171..357

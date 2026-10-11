@@ -4,7 +4,7 @@
 # lend out.
 # release
 
-struct Counter
+obj Counter
   hits: Cell[Int]
   name: ?String
 

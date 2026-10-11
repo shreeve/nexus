@@ -1,70 +1,70 @@
 (module
-  (struct `Node` _ (: `value` `Int`)@148..158)@134..160
+  (struct `Node` _ (: `value` `Int`)@145..155)@134..157
   (sub
     `consume`
     _
-    ((: `n` `Node`)@172..179)@171..180
+    ((: `n` `Node`)@169..176)@168..177
     _
-    (block (call `print` (member `n` `value`)@189..196)@183..197)@183..199)@160..199
+    (block (call `print` (member `n` `value`)@186..193)@180..194)@180..196)@157..196
   (sub
     `inspect`
     _
-    ((: `n` (read_view `Node`)@214..219)@211..219)@210..220
+    ((: `n` (read_view `Node`)@211..216)@208..216)@207..217
     _
-    (block (call `print` (member `n` `value`)@229..236)@223..237)@223..239)@199..239
+    (block (call `print` (member `n` `value`)@226..233)@220..234)@220..236)@196..236
   (sub
     `touch`
     _
-    ((: `n` (write_view `Node`)@252..257)@249..257)@248..258
+    ((: `n` (write_view `Node`)@249..254)@246..254)@245..255
     _
-    (block (call `print` (member `n` `value`)@267..274)@261..275)@261..277)@239..277
+    (block (call `print` (member `n` `value`)@264..271)@258..272)@258..274)@236..274
   (struct
     `Log`
     _
-    (: `lines` (generic_inst `List` `Int`)@297..306)@290..306
+    (: `lines` (generic_inst `List` `Int`)@291..300)@284..300
     (sub
       `add`
       _
-      ((write `self`)@318..323 (: `n` `Int`)@325..331)@317..332
+      ((write `self`)@312..317 (: `n` `Int`)@319..325)@311..326
       _
       (block
         (write
-          (call (member (member `self` `lines`)@338..348 `push`)@338..353 `n`)@338..356)@337..356)@337..360)@310..360
+          (call (member (member `self` `lines`)@332..342 `push`)@332..347 `n`)@332..350)@331..350)@331..354)@304..354
     (fun
       `close`
       _
-      ((move `self`)@370..375)@369..376
+      ((move `self`)@364..369)@363..370
       `Int`
       _
-      (block (member (member `self` `lines`)@388..398 `len`)@388..402)@388..404)@360..404)@277..404
+      (block (member (member `self` `lines`)@382..392 `len`)@382..396)@382..398)@354..398)@274..398
   (sub
     `main`
     _
-    ()@412..414
+    ()@406..408
     _
     (block
-      (set _ `a` _ (call `Node` (kwarg `value` `1`)@426..434)@421..435)@417..435
-      (call `inspect` (read `a`)@446..448)@438..449
-      (call `touch` (write `a`)@458..460)@452..461
-      (set _ `b` _ (move `a`)@468..470)@464..470
-      (call `consume` (move `b`)@481..483)@473..484
-      (set _ `s` _ (share (call `Node` (kwarg `value` `2`)@498..506)@493..507)@492..507)@488..507
-      (set _ `t` _ (clone `s`)@514..516)@510..516
-      (set _ `w` _ (weak `t`)@523..525)@519..525
-      (move `s`)@528..530
-      (set _ `log` _ (call `Log` (kwarg `lines` (call `List`)@551..557)@544..557)@540..558)@534..558
-      (write (call (member `log` `add`)@562..569 `1`)@562..572)@561..572
-      (write (call (member `log` `add`)@576..583 `2`)@576..586)@575..586
-      (call (member (write `log`)@590..594 `add`)@589..599 `3`)@589..602
-      (call `print` (move (call (member `log` `close`)@612..621)@612..623)@611..623)@605..624
-      (set fixed `fixed` _ `10`)@628..644
-      (set fixed `typed` `Int` `fixed`)@647..671
-      (set _ `x` _ `1`)@674..679
-      (set shadow `x` _ (+ `x` `1`)@690..695)@682..695
-      (set shadow `x` `Int` (+ `x` `typed`)@711..720)@698..720
-      (set shadow_fixed `x` _ (+ `x` `1`)@737..742)@723..742
-      (set _ `y` _ (move `x`)@749..751)@745..751
+      (set _ `a` _ (call `Node` (kwarg `value` `1`)@420..428)@415..429)@411..429
+      (call `inspect` (read `a`)@440..442)@432..443
+      (call `touch` (write `a`)@452..454)@446..455
+      (set _ `b` _ (move `a`)@462..464)@458..464
+      (call `consume` (move `b`)@475..477)@467..478
+      (set _ `s` _ (share (call `Node` (kwarg `value` `2`)@492..500)@487..501)@486..501)@482..501
+      (set _ `t` _ (clone `s`)@508..510)@504..510
+      (set _ `w` _ (weak `t`)@517..519)@513..519
+      (move `s`)@522..524
+      (set _ `log` _ (call `Log` (kwarg `lines` (call `List`)@545..551)@538..551)@534..552)@528..552
+      (write (call (member `log` `add`)@556..563 `1`)@556..566)@555..566
+      (write (call (member `log` `add`)@570..577 `2`)@570..580)@569..580
+      (call (member (write `log`)@584..588 `add`)@583..593 `3`)@583..596
+      (call `print` (move (call (member `log` `close`)@606..615)@606..617)@605..617)@599..618
+      (set fixed `fixed` _ `10`)@622..638
+      (set fixed `typed` `Int` `fixed`)@641..665
+      (set _ `x` _ `1`)@668..673
+      (set shadow `x` _ (+ `x` `1`)@684..689)@676..689
+      (set shadow `x` `Int` (+ `x` `typed`)@705..714)@692..714
+      (set shadow_fixed `x` _ (+ `x` `1`)@731..736)@717..736
+      (set _ `y` _ (move `x`)@743..745)@739..745
       (raw_block
         (block
-          (set _ `p` `I32` (builtin `intCast` `y`)@772..783)@763..783
-          (call `print` `p`)@788..796)@763..797)@755..797)@417..797)@404..797)@134..797
+          (set _ `p` `I32` (builtin `intCast` `y`)@766..777)@757..777
+          (call `print` `p`)@782..790)@757..791)@749..791)@411..791)@398..791)@134..791
