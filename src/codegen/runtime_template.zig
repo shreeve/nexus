@@ -48,6 +48,15 @@ pub const Span = struct {
     pub fn isEmpty(self: Span) bool {
         return self.start == self.end;
     }
+
+    /// The source this span covers, clamped to `source`: the part of a
+    /// span past its end is left out, so a span a lang wrapper builds past
+    /// the end (a node the source does not spell) or a reversed one gives
+    /// the empty string.
+    pub fn text(self: Span, source: []const u8) []const u8 {
+        const from = @min(self.start, source.len);
+        return source[from..@max(from, @min(self.end, source.len))];
+    }
 };
 
 /// A source leaf: token position and length, plus the token id attribute
@@ -2046,6 +2055,16 @@ test "Sexp is 24 bytes (16 on 32-bit targets); list helpers" {
     try testing.expect(!s.isKind(.set));
     try testing.expectEqual(@as(?Tag, null), Sexp.listOf(&.{}).kind());
     try testing.expectEqual(@as(usize, 0), (Sexp{ .tag = .set }).items().len);
+}
+
+test "a span's text is clamped to the source" {
+    const source = "let x";
+    try testing.expectEqualStrings("x", (Span{ .start = 4, .end = 5 }).text(source));
+    try testing.expectEqualStrings("let x", (Span{ .start = 0, .end = 5 }).text(source));
+    try testing.expectEqualStrings("x", (Span{ .start = 4, .end = 9 }).text(source));
+    try testing.expectEqualStrings("", (Span{ .start = 7, .end = 9 }).text(source));
+    try testing.expectEqualStrings("", (Span{ .start = 3, .end = 3 }).text(source));
+    try testing.expectEqualStrings("", (Span{ .start = 4, .end = 2 }).text(source));
 }
 
 test "parse builds the tree; the printer shows src ids" {

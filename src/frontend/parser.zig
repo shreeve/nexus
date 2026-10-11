@@ -507,6 +507,15 @@ pub const Span = struct {
     pub fn isEmpty(self: Span) bool {
         return self.start == self.end;
     }
+
+    /// The source this span covers, clamped to `source`: the part of a
+    /// span past its end is left out, so a span a lang wrapper builds past
+    /// the end (a node the source does not spell) or a reversed one gives
+    /// the empty string.
+    pub fn text(self: Span, source: []const u8) []const u8 {
+        const from = @min(self.start, source.len);
+        return source[from..@max(from, @min(self.end, source.len))];
+    }
 };
 
 /// A source leaf: token position and length, plus the token id attribute

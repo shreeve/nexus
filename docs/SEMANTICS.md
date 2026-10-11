@@ -269,7 +269,7 @@ The module exports:
 | `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
 | `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes, 16 on 32-bit targets. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
-| `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()` |
+| `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()`, `text(source)` (the source it covers, clamped to the source, so a span past its end gives what remains of it or the empty string) |
 | `NodeId` | a node's id (`u32`; 0 is none) |
 | `Failure` | a parse error: the offending token's `span`, `symbol` and `cat`, and the `state` that rejected it (`lastError()`) |
 | `Tolerant` | the result of `parseTolerant` (see [Tolerant parsing](#tolerant-parsing)) |
