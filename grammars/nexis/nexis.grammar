@@ -1,8 +1,9 @@
 # nexis.grammar — reader grammar for nexis, the input of the nexus parser generator.
 #
-# `zig build parser` generates src/parser.zig from this file. The parser
-# produces a raw `Sexp` tree that `src/reader.zig` normalizes into the
-# canonical `Form` tree documented in `docs/FORMS.md` (PLAN Appendix C):
+# Every build generates src/parser.zig from this file; `zig build parser`
+# generates it alone. The parser produces a raw `Sexp` tree that
+# `src/reader.zig` normalizes into the canonical `Form` tree documented
+# in `docs/FORMS.md` (PLAN Appendix C):
 #
 #   source.nx ──[src/nexis.zig lexer + this grammar]──► raw Sexp ──[src/reader.zig]──► Form
 #
@@ -14,6 +15,8 @@
 #   - `` `x `` emits `(syntax-quote ` x)`; expansion (auto-qualify, auto-gensym,
 #     unquote handling) is the macroexpander's job.
 #   - `#'x` emits `(var-quote #' x)`; the reader builds the list `(var x)`.
+#   - `#tag x` emits `(tagged #tag x)`; the reader reads `#inst` and `#uuid`
+#     and rejects every other tag.
 #   - `nil`, `true`, `false` arrive as symbols; the reader converts them.
 #   - Duplicate literal keys, odd map counts, nested anon-fns and bare
 #     unquotes are the reader's to reject.
@@ -52,6 +55,7 @@ tokens
     deref_tok
     var_quote_tok
     caret
+    tag
     eof
     err
 
@@ -96,3 +100,4 @@ datum    = INTEGER                               → (int 1)
          | DEREF_TOK gap datum                   → (deref 1 3)
          | VAR_QUOTE_TOK gap datum               → (var-quote 1 3)
          | CARET gap datum gap datum             → (with-meta-raw 1 5 3)
+         | TAG gap datum                         → (tagged 1 3)

@@ -1,0 +1,47 @@
+; examples/sequences.nx — lazy sequences: map, filter and friends compute
+; an element only when something asks for it, so a sequence can be
+; infinite. Transducers compose the same steps without the sequences
+; in between.
+;
+;   bin/nexis run examples/sequences.nx
+
+; The sequence functions take a function first and a collection last.
+(prn (map inc [1 2 3]) (filter even? (range 10)) (remove even? (range 10)))
+(prn (take 3 [:a :b :c :d]) (drop 3 [:a :b :c :d]))
+
+; range, iterate and cycle make infinite sequences; take a prefix.
+(prn (take 5 (range)))
+(prn (take 6 (iterate #(* 2 %) 1)))
+(prn (take 7 (cycle [:red :green])))
+(prn (take-while #(< % 40) (map #(* % %) (range))))
+
+; partition cuts a sequence into groups; interleave merges two.
+(prn (partition 2 [1 2 3 4 5 6]))
+(prn (partition-all 3 (range 8)))
+(prn (interleave [:a :b :c] [1 2 3]))
+(prn (apply hash-map (interleave [:a :b :c] [1 2 3])))
+
+; lazy-seq defers its body: a sequence of every Fibonacci number,
+; defined in terms of itself.
+(defn fib
+  ([] (fib 0 1))
+  ([a b] (lazy-seq (cons a (fib b (+ a b))))))
+(prn (take 12 (fib)))
+(prn (nth (fib) 100))
+
+; Nothing runs until an element is asked for: the side effect inside
+; map runs once, for the one element first realizes.
+(def seen (atom []))
+(def squares (map (fn [x] (swap! seen conj x) (* x x)) (iterate inc 1)))
+(prn (realized? squares) @seen)
+(prn (first squares) (realized? squares) @seen)
+
+; reductions shows every step of a reduce.
+(prn (reductions + [1 2 3 4 5]))
+
+; A transducer is map, filter or take without its collection; comp
+; chains them, and into, transduce and sequence apply them in one pass.
+(def xf (comp (filter odd?) (map #(* % %)) (take 4)))
+(prn (into [] xf (range)))
+(prn (transduce xf + (range)))
+(prn (sequence (map-indexed vector) [:a :b :c]))

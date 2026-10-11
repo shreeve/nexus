@@ -1,4 +1,5 @@
-; examples/quoted-list.nx — quoted compound collections.
+; test/examples/pins/quoted-list.nx — quoted compound collections.
+; A pin, not a teaching example: a quoted list folded into one constant.
 ;
 ; A quoted list is data: every element is quoted too (symbols and
 ; keywords interned), and the compiler folds the whole list into one

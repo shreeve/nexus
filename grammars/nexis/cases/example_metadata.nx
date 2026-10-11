@@ -4,6 +4,8 @@
 ; puts them on its Var, with :arglists; (doc name) prints them.
 ; with-meta returns an equal collection carrying a map that never
 ; takes part in equality, hashing or printing.
+;
+;   bin/nexis run examples/metadata.nx
 
 (defn area
   "The area of a w by h rectangle."

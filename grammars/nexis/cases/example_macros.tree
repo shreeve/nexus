@@ -1,44 +1,231 @@
 (program
   (list
     `(`
-    (symbol `defn`)
-    (symbol `abs`)
-    (vector `[` (symbol `n`) `]`)
+    (symbol `defmacro`)
+    (symbol `unless`)
+    (vector `[` (symbol `test`) (symbol `&`) (symbol `body`) `]`)
+    (syntax-quote
+      `\``
+      (list
+        `(`
+        (symbol `if`)
+        (unquote `~` (symbol `test`))
+        (symbol `nil`)
+        (list `(` (symbol `do`) (unquote-splicing `~@` (symbol `body`)) `)`)
+        `)`))
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `unless`) (symbol `false`) (keyword `:ran`) `)`)
+    (list `(` (symbol `unless`) (symbol `true`) (keyword `:skipped`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
     (list
       `(`
-      (symbol `when-not`)
-      (list `(` (symbol `<`) (symbol `n`) (int `0`) `)`)
-      (symbol `n`)
+      (symbol `macroexpand-1`)
+      (quote
+        `'`
+        (list
+          `(`
+          (symbol `unless`)
+          (list `(` (symbol `empty?`) (symbol `xs`) `)`)
+          (list `(` (symbol `println`) (string `"work"`) `)`)
+          (keyword `:done`)
+          `)`))
       `)`)
     `)`)
   (list
     `(`
-    (symbol `defn`)
-    (symbol `sum-up-to`)
-    (vector `[` (symbol `n`) `]`)
-    (list
-      `(`
-      (symbol `loop`)
-      (vector `[` (symbol `i`) (int `0`) (symbol `acc`) (int `0`) `]`)
+    (symbol `unless`)
+    (symbol `true`)
+    (list `(` (symbol `println`) (string `"this never prints"`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `defmacro`)
+    (symbol `with-retries`)
+    (string
+      `"Runs body, retrying up to n times while it throws; the last try's\n  error propagates."`)
+    (vector `[` (symbol `n`) (symbol `&`) (symbol `body`) `]`)
+    (syntax-quote
+      `\``
       (list
         `(`
-        (symbol `if`)
-        (list `(` (symbol `<`) (symbol `i`) (list `(` (symbol `+`) (symbol `n`) (int `1`) `)`) `)`)
+        (symbol `loop`)
+        (vector `[` (symbol `attempt#`) (int `1`) `]`)
         (list
           `(`
-          (symbol `recur`)
-          (list `(` (symbol `+`) (symbol `i`) (int `1`) `)`)
-          (list `(` (symbol `+`) (symbol `acc`) (symbol `i`) `)`)
+          (symbol `let`)
+          (vector
+            `[`
+            (vector `[` (symbol `ok#`) (symbol `value#`) `]`)
+            (list
+              `(`
+              (symbol `try`)
+              (vector
+                `[`
+                (symbol `true`)
+                (list `(` (symbol `do`) (unquote-splicing `~@` (symbol `body`)) `)`)
+                `]`)
+              (list
+                `(`
+                (symbol `catch`)
+                (symbol `any`)
+                (symbol `e#`)
+                (list
+                  `(`
+                  (symbol `if`)
+                  (list `(` (symbol `<`) (symbol `attempt#`) (unquote `~` (symbol `n`)) `)`)
+                  (vector `[` (symbol `false`) `]`)
+                  (list `(` (symbol `throw`) (symbol `e#`) `)`)
+                  `)`)
+                `)`)
+              `)`)
+            `]`)
+          (list
+            `(`
+            (symbol `if`)
+            (symbol `ok#`)
+            (symbol `value#`)
+            (list `(` (symbol `recur`) (list `(` (symbol `inc`) (symbol `attempt#`) `)`) `)`)
+            `)`)
           `)`)
-        (symbol `acc`)
+        `)`))
+    `)`)
+  (list `(` (symbol `def`) (symbol `calls`) (list `(` (symbol `atom`) (int `0`) `)`) `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `flaky`)
+    (vector `[` `]`)
+    (list
+      `(`
+      (symbol `if`)
+      (list
+        `(`
+        (symbol `<`)
+        (list `(` (symbol `swap!`) (symbol `calls`) (symbol `inc`) `)`)
+        (int `3`)
+        `)`)
+      (list `(` (symbol `throw`) (keyword `:not-yet`) `)`)
+      (keyword `:finally-worked`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `with-retries`) (int `5`) (list `(` (symbol `flaky`) `)`) `)`)
+    (deref `@` (symbol `calls`))
+    `)`)
+  (list `(` (symbol `reset!`) (symbol `calls`) (int `0`) `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `try`)
+      (list `(` (symbol `with-retries`) (int `2`) (list `(` (symbol `flaky`) `)`) `)`)
+      (list
+        `(`
+        (symbol `catch`)
+        (keyword `:not-yet`)
+        (symbol `e`)
+        (vector `[` (keyword `:gave-up-with`) (symbol `e`) `]`)
         `)`)
       `)`)
     `)`)
   (list
     `(`
-    (symbol `defn`)
-    (symbol `first-truthy`)
-    (vector `[` (symbol `a`) (symbol `b`) (symbol `c`) `]`)
-    (list `(` (symbol `or`) (symbol `a`) (symbol `b`) (symbol `c`) `)`)
+    (symbol `defmacro`)
+    (symbol `when-valid`)
+    (string
+      `"Evaluates body with name bound to value when every check, a predicate\n  of name, holds; else returns a map of the checks that failed."`)
+    (vector
+      `[`
+      (vector `[` (symbol `name`) (symbol `value`) `]`)
+      (symbol `checks`)
+      (symbol `&`)
+      (symbol `body`)
+      `]`)
+    (syntax-quote
+      `\``
+      (list
+        `(`
+        (symbol `let`)
+        (vector
+          `[`
+          (unquote `~` (symbol `name`))
+          (unquote `~` (symbol `value`))
+          (symbol `failed#`)
+          (list
+            `(`
+            (symbol `vec`)
+            (list
+              `(`
+              (symbol `remove`)
+              (list
+                `(`
+                (symbol `fn`)
+                (vector `[` (vector `[` (symbol `_#`) (symbol `ok#`) `]`) `]`)
+                (symbol `ok#`)
+                `)`)
+              (unquote
+                `~`
+                (list
+                  `(`
+                  (symbol `mapv`)
+                  (list
+                    `(`
+                    (symbol `fn`)
+                    (vector `[` (symbol `check`) `]`)
+                    (vector
+                      `[`
+                      (list `(` (symbol `list`) (quote `'` (symbol `quote`)) (symbol `check`) `)`)
+                      (list `(` (symbol `list`) (symbol `check`) (symbol `name`) `)`)
+                      `]`)
+                    `)`)
+                  (symbol `checks`)
+                  `)`))
+              `)`)
+            `)`)
+          `]`)
+        (list
+          `(`
+          (symbol `if`)
+          (list `(` (symbol `empty?`) (symbol `failed#`) `)`)
+          (list `(` (symbol `do`) (unquote-splicing `~@` (symbol `body`)) `)`)
+          (map
+            `{`
+            (keyword `:invalid`)
+            (unquote `~` (symbol `name`))
+            (keyword `:failed`)
+            (list `(` (symbol `mapv`) (symbol `first`) (symbol `failed#`) `)`)
+            `}`)
+          `)`)
+        `)`))
     `)`)
-  (list `(` (symbol `println`) (list `(` (symbol `sum-up-to`) (int `10`) `)`) `)`))
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `when-valid`)
+      (vector `[` (symbol `n`) (int `42`) `]`)
+      (vector `[` (symbol `integer?`) (symbol `pos?`) (symbol `even?`) `]`)
+      (list `(` (symbol `*`) (symbol `n`) (int `2`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `when-valid`)
+      (vector `[` (symbol `n`) (int `-3`) `]`)
+      (vector `[` (symbol `integer?`) (symbol `pos?`) (symbol `even?`) `]`)
+      (list `(` (symbol `*`) (symbol `n`) (int `2`) `)`)
+      `)`)
+    `)`))

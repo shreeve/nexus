@@ -1,7 +1,13 @@
-; examples/hello.nx — the smallest nexis program that compiles from
-; source through bin/nexis.
+; examples/hello.nx — the first program: a function, a string, a print.
+;
+;   bin/nexis run examples/hello.nx         prints Hello, world!
+;   bin/nexis run examples/hello.nx Ada     prints Hello, Ada!
 
-(defn greet [name]
-  name)
+(defn greet
+  "A greeting for one name."
+  [name]
+  (str "Hello, " name "!"))
 
-(println (greet 'world))
+; *command-line-args* holds the words after the file name, or nil
+; when there are none.
+(println (greet (or (first *command-line-args*) "world")))

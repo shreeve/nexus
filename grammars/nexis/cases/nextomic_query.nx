@@ -394,6 +394,8 @@
 (println [(:db/fulltext (get (d/schema before-items) :order/items)) (:db/fulltext (get (d/schema ft) :order/items))])
 (println (rows (d/q '[:find ?n :where [(fulltext $ :person/bio "red") [[?e ?v]]] [?e :person/name ?n]] ft)))
 (println (rows (d/q '[:find ?n ?v :where [(fulltext $ :person/bio "RED team") [[?e ?v]]] [?e :person/name ?n]] ft)))
+; A needle token past 255 bytes is refused; it would never match.
+(println (t/caught (d/q '[:find ?e :where [(fulltext $ :person/bio "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") [[?e ?v]]]] ft)))
 (println (rows (d/q '[:find ?n :where [(fulltext $ :person/bio "café") [[?e ?v]]] [?e :person/name ?n]] ft)))
 ; Case folds by Unicode simple case folding, not ASCII alone.
 (println (rows (d/q '[:find ?n :where [(fulltext $ :person/bio "CAFÉ NOIR") [[?e ?v]]] [?e :person/name ?n]] ft)))
@@ -422,6 +424,12 @@
 (println (t/caught (d/transact! c [{:db/ident :person/nick :db/valueType :db.type/keyword :db/cardinality :db.cardinality/one :db/fulltext true}])))
 (println (t/caught (d/transact! c [[:db/retract :person/bio :db/fulltext true]])))
 (t/check ":db/fulltext is a bootstrap attribute" (= 22 (d/entid ft :db/fulltext)))
+
+; A nil element of a relation binding drops that element; a nil
+; inside a tuple drops its tuple (NEXTOMIC.md §5).
+(println (rows (d/q '[:find ?a ?b :where [(ground [[1 2] nil [3 nil] [4 5]]) [[?a ?b]]]] db)))
+(defn pairs-and-nil [x] [nil [x 2]])
+(println (rows (d/q '[:find ?a ?b :where [(ground 7) ?x] [(user/pairs-and-nil ?x) [[?a ?b]]]] db)))
 
 (d/release c)
 (println (t/caught (d/q ages db)))

@@ -39,9 +39,10 @@ pub const Lexer = struct {
     pub fn next(self: *Lexer) Token {
         const src = self.base.source;
 
-        // Skip whitespace (spaces, tabs, CR, LF, commas) and line
-        // comments, and a UTF-8 byte-order mark that starts the source,
-        // which some editors write.
+        // Skip whitespace (spaces, tabs, CR, LF, commas), line
+        // comments (`;` or `#!` to the end of the line, as Clojure's
+        // reader takes both), and a UTF-8 byte-order mark that starts
+        // the source, which some editors write.
         const ws_start: u32 = self.base.pos;
         if (self.base.pos == 0 and std.mem.startsWith(u8, src, "\xEF\xBB\xBF")) self.base.pos = 3;
         while (true) {
@@ -51,7 +52,7 @@ pub const Lexer = struct {
                     else => break,
                 }
             }
-            if (self.base.pos < src.len and src[self.base.pos] == ';') {
+            if (self.base.pos < src.len and (src[self.base.pos] == ';' or std.mem.startsWith(u8, src[self.base.pos..], "#!"))) {
                 while (self.base.pos < src.len and src[self.base.pos] != '\n') : (self.base.pos += 1) {}
                 continue;
             }
@@ -117,13 +118,14 @@ pub const Lexer = struct {
                         // string is, the reader keeps its text.
                         '"' => return self.scanString(start, start + 1, .regex, pre),
                         ' ', '\t', '\r', '\n', ',' => {},
-                        // An unsupported dispatch (`#?`, `#inst`) is
-                        // one err token, so the parse error names the
-                        // construct.
+                        // `#` and a letter is a tag (`#inst`, `#my/tag`),
+                        // which the reader reads or rejects; any other
+                        // dispatch (`#?`, `#=`) is one err token, so the
+                        // parse error names the construct.
                         else => |after| {
                             self.base.pos = start + 2;
                             if (isIdentCont(after)) self.skipConstituents();
-                            return self.finish(.err, start, pre);
+                            return self.finish(if (std.ascii.isAlphabetic(after)) .tag else .err, start, pre);
                         },
                     }
                 }
@@ -135,7 +137,7 @@ pub const Lexer = struct {
             '0'...'9' => return self.scanNumber(start, pre, false),
             '-', '+' => {
                 // A sign followed by a digit begins a number.
-                if (start + 1 < src.len and isAsciiDigit(src[start + 1])) {
+                if (start + 1 < src.len and std.ascii.isDigit(src[start + 1])) {
                     return self.scanNumber(start, pre, true);
                 }
                 return self.scanIdent(start, pre);
@@ -159,18 +161,6 @@ pub const Lexer = struct {
     inline fn single(self: *Lexer, cat: TokenCat, start: u32, pre: u8) Token {
         self.base.pos = start + 1;
         return .{ .cat = cat, .pre = pre, .pos = start, .len = 1 };
-    }
-
-    inline fn isAsciiDigit(c: u8) bool {
-        return c >= '0' and c <= '9';
-    }
-
-    inline fn isHexDigit(c: u8) bool {
-        return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F');
-    }
-
-    inline fn isBinDigit(c: u8) bool {
-        return c == '0' or c == '1';
     }
 
     /// Clojure-style symbol start: letters, underscore, the accepted
@@ -225,7 +215,7 @@ pub const Lexer = struct {
         if (pos >= src.len) return self.single(.err, start, pre);
         if (src[pos] == 'u' and pos + 1 < src.len and src[pos + 1] == '{') {
             pos += 2;
-            while (pos < src.len and isHexDigit(src[pos])) pos += 1;
+            while (pos < src.len and std.ascii.isHex(src[pos])) pos += 1;
             if (pos >= src.len or src[pos] != '}') {
                 self.base.pos = pos;
                 return self.finish(.err, start, pre);
@@ -247,10 +237,8 @@ pub const Lexer = struct {
         // (the top level reserves `-` for negative numbers). After `:`
         // there is no negative-number ambiguity, so `:-foo` is just a
         // keyword whose body starts with `-` — matching Clojure.
+        if (start + 1 >= src.len) return self.single(.err, start, pre);
         self.base.pos = start + 1;
-        if (self.base.pos >= src.len) {
-            return .{ .cat = .err, .pre = pre, .pos = start, .len = 1 };
-        }
         const first = src[self.base.pos];
         if (first == ':') {
             // `::k`, an auto-resolved keyword, is not supported: one err
@@ -259,7 +247,7 @@ pub const Lexer = struct {
             return self.finish(.err, start, pre);
         }
         // `:1` is a keyword, as in Clojure.
-        if (!isIdentStart(first) and first != '-' and !isAsciiDigit(first)) return self.single(.err, start, pre);
+        if (!isIdentStart(first) and first != '-' and !std.ascii.isDigit(first)) return self.single(.err, start, pre);
         self.skipConstituents();
         return self.finish(.keyword, start, pre);
     }
@@ -270,14 +258,14 @@ pub const Lexer = struct {
     }
 
     fn scanIdent(self: *Lexer, start: u32, pre: u8) Token {
-        const src = self.base.source;
         self.base.pos = start + 1;
-        while (self.base.pos < src.len and isIdentCont(src[self.base.pos])) : (self.base.pos += 1) {}
+        self.skipConstituents();
         return self.finish(.ident, start, pre);
     }
 
-    /// A number token: a sign, then `0x`/`0b` and radix digits, or decimal
-    /// digits with an optional fraction and exponent. The token ends
+    /// A number token: a sign, then decimal digits with an optional
+    /// fraction and exponent; `0x`/`0b` and their digits are symbol
+    /// constituents, which the token takes as they come. The token ends
     /// where a symbol would, at whitespace, a delimiter or a reader
     /// macro character; the symbol constituents that follow the digits
     /// belong to the token. `1abc`, `1-2`, `1.5x`, `1/2`, `1N` and `0x`
@@ -288,46 +276,19 @@ pub const Lexer = struct {
         const src = self.base.source;
         self.base.pos = if (signed) start + 1 else start;
         var is_real = false;
-
-        // Hex `0x...` / binary `0b...`.
-        var radix = false;
-        if (self.base.pos + 1 < src.len and src[self.base.pos] == '0') {
-            const d = src[self.base.pos + 1];
-            if (d == 'x' or d == 'X') {
-                radix = true;
-                self.base.pos += 2;
-                while (self.base.pos < src.len and isHexDigit(src[self.base.pos])) : (self.base.pos += 1) {}
-            } else if (d == 'b' or d == 'B') {
-                radix = true;
-                self.base.pos += 2;
-                while (self.base.pos < src.len and isBinDigit(src[self.base.pos])) : (self.base.pos += 1) {}
-            }
+        while (self.base.pos < src.len and std.ascii.isDigit(src[self.base.pos])) : (self.base.pos += 1) {}
+        if (self.base.pos + 1 < src.len and src[self.base.pos] == '.' and std.ascii.isDigit(src[self.base.pos + 1])) {
+            is_real = true;
+            self.base.pos += 1;
+            while (self.base.pos < src.len and std.ascii.isDigit(src[self.base.pos])) : (self.base.pos += 1) {}
         }
-
-        // Decimal integer / real.
-        if (!radix) {
-            while (self.base.pos < src.len and isAsciiDigit(src[self.base.pos])) : (self.base.pos += 1) {}
-            if (self.base.pos < src.len and src[self.base.pos] == '.') {
-                const after = self.base.pos + 1;
-                if (after < src.len and isAsciiDigit(src[after])) {
-                    is_real = true;
-                    self.base.pos = after;
-                    while (self.base.pos < src.len and isAsciiDigit(src[self.base.pos])) : (self.base.pos += 1) {}
-                }
-            }
-            if (self.base.pos < src.len and (src[self.base.pos] == 'e' or src[self.base.pos] == 'E')) {
-                var pp = self.base.pos + 1;
-                if (pp < src.len and (src[pp] == '+' or src[pp] == '-')) pp += 1;
-                if (pp < src.len and isAsciiDigit(src[pp])) {
-                    is_real = true;
-                    self.base.pos = pp + 1;
-                    while (self.base.pos < src.len and isAsciiDigit(src[self.base.pos])) : (self.base.pos += 1) {}
-                }
-            }
+        if (self.base.pos < src.len and (src[self.base.pos] == 'e' or src[self.base.pos] == 'E')) {
+            var pp = self.base.pos + 1;
+            if (pp < src.len and (src[pp] == '+' or src[pp] == '-')) pp += 1;
+            if (pp < src.len and std.ascii.isDigit(src[pp])) is_real = true;
         }
-
         // Whatever symbol constituents follow stay in the token.
-        while (self.base.pos < src.len and isIdentCont(src[self.base.pos])) : (self.base.pos += 1) {}
+        self.skipConstituents();
         return self.finish(if (is_real) .real else .integer, start, pre);
     }
 };

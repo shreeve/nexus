@@ -1,10 +1,12 @@
 ; examples/typed-vectors.nx — typed vectors and the nexis.simd kernels.
 ;
-; A typed vector is an unboxed, contiguous sequence of one numeric
-; element type (i64 or f64), built whole from any seqable of numbers.
-; It prints as #i64[...] / #f64[...]; the reader does not read that
-; syntax back. It is its own kind: never = to a persistent vector,
-; and it has no conj or assoc. docs/TYPED_VECTOR.md is the contract.
+; A typed vector holds numbers of one type, 64-bit integers or doubles,
+; packed together, and is built whole from any collection of numbers.
+; It prints as #i64[...] or #f64[...], which the reader does not read
+; back. It is never = to a vector, and it has no conj or assoc: it is
+; for numeric work. docs/TYPED_VECTOR.md has the details.
+;
+;   bin/nexis run examples/typed-vectors.nx
 
 (require '[nexis.simd :as tv])
 
@@ -31,10 +33,10 @@
          "= f64" (= xs (f64-vector [1 2 3 4 5]))
          "= vector" (= xs [1 2 3 4 5]))
 
-; No update operation, and every element must fit the type.
-(println "conj" (try (conj xs 6) (catch any e e)))
-(println "i64 of a float" (try (i64-vector [1.5]) (catch any e e)))
-(println "nth past the end" (try (nth xs 5) (catch any e e)))
-
-; The last form's value is the program's result: the i64 sum as an integer.
-(tv/sum (tv/scale xs 2))
+; No update operation, and every element must fit the type: each
+; catch below names the error it takes.
+(println "conj" (try (conj xs 6) (catch :kind-mismatch _ :kind-mismatch)))
+(println "i64 of a float"
+         (try (i64-vector [1.5]) (catch :kind-mismatch _ :kind-mismatch)))
+(println "nth past the end"
+         (try (nth xs 5) (catch :index-out-of-bounds _ :index-out-of-bounds)))

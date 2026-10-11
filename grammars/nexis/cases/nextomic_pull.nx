@@ -130,6 +130,15 @@
 (println (t/caught (d/pull-many now '[*] ann)))
 (t/check "a caught error leaves the db usable" (= "Ann" (:person/name (d/pull now '[:person/name] ann))))
 
+; A card-many attribute past the default limit: * and a bare spec cut
+; it at 1000, :limit nil reads it whole.
+(d/transact! c [{:db/ident :person/scores :db/valueType :db.type/long :db/cardinality :db.cardinality/many}])
+(d/transact! c [{:db/id ann :person/scores (vec (range 1500))}])
+(def scored (d/db c))
+(t/check "* cuts a card-many attribute at 1000" (= (vec (range 1000)) (:person/scores (d/pull scored '[*] ann))))
+(t/check "a bare spec cuts at 1000" (= 1000 (count (:person/scores (d/pull scored '[:person/scores] ann)))))
+(t/check ":limit nil reads every value" (= 1500 (count (:person/scores (d/pull scored '[(:person/scores :limit nil)] ann)))))
+
 (d/release c)
 (println (t/caught (d/pull now '[*] ann)))
 (println :pull-done)

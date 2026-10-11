@@ -1,4 +1,5 @@
-; examples/maps-sets.nx — collection literals.
+; test/examples/pins/maps-sets.nx — collection literals.
+; A pin, not a teaching example: literals with computed elements.
 ;
 ; Maps {} and sets #{} are runtime values.
 ; Both quoted compound literals and runtime-computed forms work.

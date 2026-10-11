@@ -1,28 +1,61 @@
-; examples/macros.nx — a small tour of the host macros.
+; examples/macros.nx — macros: functions that run when the code is
+; compiled, take their arguments unevaluated as data, and return the code
+; that takes their place. Syntax-quote (`) writes that code as a template.
 ;
-; `when` / `when-not` short conditional bodies.
-; `and` / `or` short-circuit booleans (with gensym hygiene so
-; expressions evaluate exactly once even when the expansion
-; structurally references the value twice).
-; `cond` for multi-way branches.
-; `let`, `fn`, `loop` rename to the compiler primitives
-; `let*`, `fn*`, `loop*`.
-;
-; All run through bin/nexis with no stdlib required.
+;   bin/nexis run examples/macros.nx
 
-(defn abs [n]
-  (when-not (< n 0) n))
+; ~ (unquote) puts a value into the template, ~@ (unquote-splicing)
+; puts in the elements of a list.
+(defmacro unless [test & body]
+  `(if ~test nil (do ~@body)))
 
-; sum 1..n using loop/recur. `loop` is a rename macro to
-; `loop*`; `recur` is a special form.
-(defn sum-up-to [n]
-  (loop [i 0 acc 0]
-    (if (< i (+ n 1))
-      (recur (+ i 1) (+ acc i))
-      acc)))
+(prn (unless false :ran) (unless true :skipped))
 
-; or with gensym: side-effects evaluate once.
-(defn first-truthy [a b c]
-  (or a b c))
+; macroexpand-1 shows what a call becomes.
+(prn (macroexpand-1 '(unless (empty? xs) (println "work") :done)))
 
-(println (sum-up-to 10))  ; -> 55
+; Because the arguments are not evaluated first, a macro decides whether
+; and how often each one runs.
+(unless true (println "this never prints"))
+
+; Other symbols in a template are qualified with their namespace (loop
+; becomes nexis.core/loop), so the expansion means the same wherever it
+; lands. A name ending in # is an auto-gensym: a fresh symbol in each
+; expansion, so the macro's locals cannot capture the caller's.
+(defmacro with-retries
+  "Runs body, retrying up to n times while it throws; the last try's
+  error propagates."
+  [n & body]
+  `(loop [attempt# 1]
+     (let [[ok# value#] (try [true (do ~@body)]
+                             (catch any e#
+                               (if (< attempt# ~n) [false] (throw e#))))]
+       (if ok# value# (recur (inc attempt#))))))
+
+; A flaky operation: fails twice, then succeeds.
+(def calls (atom 0))
+(defn flaky []
+  (if (< (swap! calls inc) 3)
+    (throw :not-yet)
+    :finally-worked))
+
+(prn (with-retries 5 (flaky)) @calls)
+(reset! calls 0)
+(prn (try (with-retries 2 (flaky)) (catch :not-yet e [:gave-up-with e])))
+
+; The macro body is ordinary code run at compile time: here it turns
+; the list of checks into [quoted-name test] pairs for the expansion.
+(defmacro when-valid
+  "Evaluates body with name bound to value when every check, a predicate
+  of name, holds; else returns a map of the checks that failed."
+  [[name value] checks & body]
+  `(let [~name ~value
+         failed# (vec (remove (fn [[_# ok#]] ok#)
+                              ~(mapv (fn [check] [(list 'quote check) (list check name)])
+                                     checks)))]
+     (if (empty? failed#)
+       (do ~@body)
+       {:invalid ~name :failed (mapv first failed#)})))
+
+(prn (when-valid [n 42] [integer? pos? even?] (* n 2)))
+(prn (when-valid [n -3] [integer? pos? even?] (* n 2)))

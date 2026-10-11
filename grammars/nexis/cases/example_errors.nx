@@ -1,0 +1,79 @@
+; examples/errors.nx — throw, try, catch and finally. In nexis any value
+; can be thrown: a keyword, a map, a string. ex-info builds the usual map
+; with a message and data, and catch selects by tag or by class name.
+;
+;   bin/nexis run examples/errors.nx
+
+; The simplest error is a keyword; catch names the tag it takes.
+(defn check-age [age]
+  (when (neg? age)
+    (throw :negative-age))
+  age)
+
+(prn (try (check-age -3)
+          (catch :negative-age e [:caught e])))
+
+; ex-info carries a message and a map of data; ex-message and ex-data
+; read them back. A catch tag also matches the :error key of that data.
+(defn find-user [users id]
+  (or (get users id)
+      (throw (ex-info (str "no user " id) {:error :not-found :id id}))))
+
+(def users {1 "Ada"})
+
+(prn (try (find-user users 7)
+          (catch :not-found e
+            [(ex-message e) (:id (ex-data e))])))
+
+; A thrown map is caught by its :error key, and clauses are tried in order.
+(prn (try (throw {:error :too-large :limit 10})
+          (catch :not-found _ :not-this-one)
+          (catch :too-large e (str "limit is " (:limit e)))))
+
+; catch any takes every value; :default is the same.
+(prn (try (throw "a plain string") (catch any e (str "caught: " e))))
+
+; Errors from the runtime are caught the same way. A Clojure class name
+; works too: ArithmeticException takes :divide-by-zero.
+(defn ratio [a b]
+  (try (/ a b)
+       (catch ArithmeticException _ :undefined)))
+(prn (ratio 10 4) (ratio 1 0))
+
+; A runtime error caught is a map: its tag under :error, a message, and
+; the function, file, line and column it was raised at.
+(defn total [a b] (+ a b))
+(prn (try (total 1 "2")
+          (catch :kind-mismatch e [(:error e) (ex-message e) (:fn e) (:line e)])))
+
+; finally runs whether the body returns or throws; its value is ignored.
+(defn with-log [f]
+  (try (f)
+       (finally (println "  cleanup ran"))))
+(prn (with-log (fn [] :done)))
+(prn (try (with-log (fn [] (throw :failed)))
+          (catch :failed _ :failed-but-cleaned-up)))
+
+; An error crosses any number of calls to the nearest matching catch.
+(defn parse-line [line]
+  (if-let [[_ k v] (re-matches #"(\w+)=(\d+)" line)]
+    [(keyword k) (parse-long v)]
+    (throw (ex-info "bad line" {:error :parse :line line}))))
+
+(defn parse-config [lines]
+  (into {} (map parse-line lines)))
+
+(prn (parse-config ["port=80" "workers=4"]))
+(prn (try (parse-config ["port=80" "oops"])
+          (catch :parse e (str "cannot read " (pr-str (:line (ex-data e)))))))
+
+; A catch can rethrow, wrapping the original as the cause; ex-cause
+; reads it back.
+(defn load-config [lines]
+  (try (parse-config lines)
+       (catch :parse e
+         (throw (ex-info "config failed" {:error :config} e)))))
+
+(prn (try (load-config ["x"])
+          (catch :config e
+            [(ex-message e) (ex-message (ex-cause e)) (:line (ex-data (ex-cause e)))])))

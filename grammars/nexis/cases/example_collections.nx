@@ -1,0 +1,78 @@
+; examples/collections.nx — vectors, maps and sets: immutable values that
+; every function returns a new version of, sharing structure with the old.
+; It ends with a small report built from nested data.
+;
+;   bin/nexis run examples/collections.nx
+
+; A vector is indexed; conj adds at the end. The original is unchanged.
+(def langs ["Clojure" "nexis"])
+(def more (conj langs "Zig"))
+(prn langs more (get more 2) (count more))
+
+; A map from keys to values. A keyword looks itself up in a map.
+(def ada {:name "Ada" :born 1815 :langs #{"Analytical Engine"}})
+(prn (:name ada) (get ada :died :unknown) (ada :born))
+
+; assoc and dissoc return a new map; update applies a function to a value.
+(prn (assoc ada :died 1852))
+(prn (dissoc ada :langs))
+(prn (update ada :born + 100))
+
+; Nested data: get-in, assoc-in and update-in follow a path of keys.
+(def config {:db {:host "localhost" :port 5432} :debug false})
+(prn (get-in config [:db :port])
+     (assoc-in config [:db :host] "db.internal")
+     (update-in config [:db :port] inc))
+
+; merge combines maps, later keys winning; merge-with combines the values
+; under a key both maps have.
+(prn (merge {:a 1 :b 2} {:b 20 :c 30}))
+(prn (merge-with + {:apples 3 :pears 1} {:apples 2 :plums 4}))
+(prn (select-keys ada [:name :born]))
+
+; A set holds each value once; it is also a function of membership.
+(def tags #{:fast :small})
+(prn (conj tags :fast) (contains? tags :small) (tags :slow))
+
+; into pours one collection into another.
+(prn (into [] '(1 2 3)) (into #{} [1 1 2]) (into {} [[:a 1] [:b 2]]))
+
+(def people
+  [{:name "Ada" :dept :math :age 36}
+   {:name "Grace" :dept :navy :age 85}
+   {:name "Alan" :dept :math :age 41}
+   {:name "Edsger" :dept :cs :age 72}])
+
+; group-by, frequencies, sort-by: three ways to look at the same data.
+(prn (frequencies (map :dept people)))
+(prn (update-vals (group-by :dept people) #(mapv :name %)))
+(prn (map :name (sort-by :age people)))
+(prn (map :name (sort-by :age > people)))
+
+; reduce folds a collection into one value; reduce-kv walks a map.
+(prn (reduce + (map :age people)))
+(prn (reduce-kv (fn [acc k v] (assoc acc v k)) {} {:a 1 :b 2}))
+
+; for builds a lazy sequence, with :when to filter; keep drops the nils.
+(prn (for [p people :when (= :math (:dept p))] (:name p)))
+(prn (for [x [1 2 3] y [:a :b]] [x y]))
+(prn (keep :email [{:email "ada@example.org"} {} {:email "grace@example.org"}]))
+
+; A small report: total spent per customer, largest first.
+(def orders
+  [{:customer "Ada" :items [{:sku "pen" :qty 2 :price 3}
+                            {:sku "ink" :qty 1 :price 12}]}
+   {:customer "Grace" :items [{:sku "lamp" :qty 1 :price 40}]}
+   {:customer "Ada" :items [{:sku "paper" :qty 5 :price 4}]}])
+
+(defn order-total [{:keys [items]}]
+  (reduce + (map (fn [{:keys [qty price]}] (* qty price)) items)))
+
+(def totals
+  (reduce (fn [acc order]
+            (update acc (:customer order) (fnil + 0) (order-total order)))
+          {}
+          orders))
+
+(doseq [[customer total] (sort-by val > totals)]
+  (println (format "%-6s %4d" customer total)))

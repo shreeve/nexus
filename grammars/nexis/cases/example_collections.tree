@@ -1,0 +1,439 @@
+(program
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `langs`)
+    (vector `[` (string `"Clojure"`) (string `"nexis"`) `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `more`)
+    (list `(` (symbol `conj`) (symbol `langs`) (string `"Zig"`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (symbol `langs`)
+    (symbol `more`)
+    (list `(` (symbol `get`) (symbol `more`) (int `2`) `)`)
+    (list `(` (symbol `count`) (symbol `more`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `ada`)
+    (map
+      `{`
+      (keyword `:name`)
+      (string `"Ada"`)
+      (keyword `:born`)
+      (int `1815`)
+      (keyword `:langs`)
+      (set `#{` (string `"Analytical Engine"`) `}`)
+      `}`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (keyword `:name`) (symbol `ada`) `)`)
+    (list `(` (symbol `get`) (symbol `ada`) (keyword `:died`) (keyword `:unknown`) `)`)
+    (list `(` (symbol `ada`) (keyword `:born`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `assoc`) (symbol `ada`) (keyword `:died`) (int `1852`) `)`)
+    `)`)
+  (list `(` (symbol `prn`) (list `(` (symbol `dissoc`) (symbol `ada`) (keyword `:langs`) `)`) `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `update`) (symbol `ada`) (keyword `:born`) (symbol `+`) (int `100`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `config`)
+    (map
+      `{`
+      (keyword `:db`)
+      (map `{` (keyword `:host`) (string `"localhost"`) (keyword `:port`) (int `5432`) `}`)
+      (keyword `:debug`)
+      (symbol `false`)
+      `}`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `get-in`)
+      (symbol `config`)
+      (vector `[` (keyword `:db`) (keyword `:port`) `]`)
+      `)`)
+    (list
+      `(`
+      (symbol `assoc-in`)
+      (symbol `config`)
+      (vector `[` (keyword `:db`) (keyword `:host`) `]`)
+      (string `"db.internal"`)
+      `)`)
+    (list
+      `(`
+      (symbol `update-in`)
+      (symbol `config`)
+      (vector `[` (keyword `:db`) (keyword `:port`) `]`)
+      (symbol `inc`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `merge`)
+      (map `{` (keyword `:a`) (int `1`) (keyword `:b`) (int `2`) `}`)
+      (map `{` (keyword `:b`) (int `20`) (keyword `:c`) (int `30`) `}`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `merge-with`)
+      (symbol `+`)
+      (map `{` (keyword `:apples`) (int `3`) (keyword `:pears`) (int `1`) `}`)
+      (map `{` (keyword `:apples`) (int `2`) (keyword `:plums`) (int `4`) `}`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `select-keys`)
+      (symbol `ada`)
+      (vector `[` (keyword `:name`) (keyword `:born`) `]`)
+      `)`)
+    `)`)
+  (list `(` (symbol `def`) (symbol `tags`) (set `#{` (keyword `:fast`) (keyword `:small`) `}`) `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list `(` (symbol `conj`) (symbol `tags`) (keyword `:fast`) `)`)
+    (list `(` (symbol `contains?`) (symbol `tags`) (keyword `:small`) `)`)
+    (list `(` (symbol `tags`) (keyword `:slow`) `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `into`)
+      (vector `[` `]`)
+      (quote `'` (list `(` (int `1`) (int `2`) (int `3`) `)`))
+      `)`)
+    (list `(` (symbol `into`) (set `#{` `}`) (vector `[` (int `1`) (int `1`) (int `2`) `]`) `)`)
+    (list
+      `(`
+      (symbol `into`)
+      (map `{` `}`)
+      (vector
+        `[`
+        (vector `[` (keyword `:a`) (int `1`) `]`)
+        (vector `[` (keyword `:b`) (int `2`) `]`)
+        `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `people`)
+    (vector
+      `[`
+      (map
+        `{`
+        (keyword `:name`)
+        (string `"Ada"`)
+        (keyword `:dept`)
+        (keyword `:math`)
+        (keyword `:age`)
+        (int `36`)
+        `}`)
+      (map
+        `{`
+        (keyword `:name`)
+        (string `"Grace"`)
+        (keyword `:dept`)
+        (keyword `:navy`)
+        (keyword `:age`)
+        (int `85`)
+        `}`)
+      (map
+        `{`
+        (keyword `:name`)
+        (string `"Alan"`)
+        (keyword `:dept`)
+        (keyword `:math`)
+        (keyword `:age`)
+        (int `41`)
+        `}`)
+      (map
+        `{`
+        (keyword `:name`)
+        (string `"Edsger"`)
+        (keyword `:dept`)
+        (keyword `:cs`)
+        (keyword `:age`)
+        (int `72`)
+        `}`)
+      `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `frequencies`)
+      (list `(` (symbol `map`) (keyword `:dept`) (symbol `people`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `update-vals`)
+      (list `(` (symbol `group-by`) (keyword `:dept`) (symbol `people`) `)`)
+      (anon-fn `#(` (symbol `mapv`) (keyword `:name`) (symbol `%`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `map`)
+      (keyword `:name`)
+      (list `(` (symbol `sort-by`) (keyword `:age`) (symbol `people`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `map`)
+      (keyword `:name`)
+      (list `(` (symbol `sort-by`) (keyword `:age`) (symbol `>`) (symbol `people`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `reduce`)
+      (symbol `+`)
+      (list `(` (symbol `map`) (keyword `:age`) (symbol `people`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `reduce-kv`)
+      (list
+        `(`
+        (symbol `fn`)
+        (vector `[` (symbol `acc`) (symbol `k`) (symbol `v`) `]`)
+        (list `(` (symbol `assoc`) (symbol `acc`) (symbol `v`) (symbol `k`) `)`)
+        `)`)
+      (map `{` `}`)
+      (map `{` (keyword `:a`) (int `1`) (keyword `:b`) (int `2`) `}`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `for`)
+      (vector
+        `[`
+        (symbol `p`)
+        (symbol `people`)
+        (keyword `:when`)
+        (list `(` (symbol `=`) (keyword `:math`) (list `(` (keyword `:dept`) (symbol `p`) `)`) `)`)
+        `]`)
+      (list `(` (keyword `:name`) (symbol `p`) `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `for`)
+      (vector
+        `[`
+        (symbol `x`)
+        (vector `[` (int `1`) (int `2`) (int `3`) `]`)
+        (symbol `y`)
+        (vector `[` (keyword `:a`) (keyword `:b`) `]`)
+        `]`)
+      (vector `[` (symbol `x`) (symbol `y`) `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `prn`)
+    (list
+      `(`
+      (symbol `keep`)
+      (keyword `:email`)
+      (vector
+        `[`
+        (map `{` (keyword `:email`) (string `"ada@example.org"`) `}`)
+        (map `{` `}`)
+        (map `{` (keyword `:email`) (string `"grace@example.org"`) `}`)
+        `]`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `orders`)
+    (vector
+      `[`
+      (map
+        `{`
+        (keyword `:customer`)
+        (string `"Ada"`)
+        (keyword `:items`)
+        (vector
+          `[`
+          (map
+            `{`
+            (keyword `:sku`)
+            (string `"pen"`)
+            (keyword `:qty`)
+            (int `2`)
+            (keyword `:price`)
+            (int `3`)
+            `}`)
+          (map
+            `{`
+            (keyword `:sku`)
+            (string `"ink"`)
+            (keyword `:qty`)
+            (int `1`)
+            (keyword `:price`)
+            (int `12`)
+            `}`)
+          `]`)
+        `}`)
+      (map
+        `{`
+        (keyword `:customer`)
+        (string `"Grace"`)
+        (keyword `:items`)
+        (vector
+          `[`
+          (map
+            `{`
+            (keyword `:sku`)
+            (string `"lamp"`)
+            (keyword `:qty`)
+            (int `1`)
+            (keyword `:price`)
+            (int `40`)
+            `}`)
+          `]`)
+        `}`)
+      (map
+        `{`
+        (keyword `:customer`)
+        (string `"Ada"`)
+        (keyword `:items`)
+        (vector
+          `[`
+          (map
+            `{`
+            (keyword `:sku`)
+            (string `"paper"`)
+            (keyword `:qty`)
+            (int `5`)
+            (keyword `:price`)
+            (int `4`)
+            `}`)
+          `]`)
+        `}`)
+      `]`)
+    `)`)
+  (list
+    `(`
+    (symbol `defn`)
+    (symbol `order-total`)
+    (vector `[` (map `{` (keyword `:keys`) (vector `[` (symbol `items`) `]`) `}`) `]`)
+    (list
+      `(`
+      (symbol `reduce`)
+      (symbol `+`)
+      (list
+        `(`
+        (symbol `map`)
+        (list
+          `(`
+          (symbol `fn`)
+          (vector
+            `[`
+            (map `{` (keyword `:keys`) (vector `[` (symbol `qty`) (symbol `price`) `]`) `}`)
+            `]`)
+          (list `(` (symbol `*`) (symbol `qty`) (symbol `price`) `)`)
+          `)`)
+        (symbol `items`)
+        `)`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `def`)
+    (symbol `totals`)
+    (list
+      `(`
+      (symbol `reduce`)
+      (list
+        `(`
+        (symbol `fn`)
+        (vector `[` (symbol `acc`) (symbol `order`) `]`)
+        (list
+          `(`
+          (symbol `update`)
+          (symbol `acc`)
+          (list `(` (keyword `:customer`) (symbol `order`) `)`)
+          (list `(` (symbol `fnil`) (symbol `+`) (int `0`) `)`)
+          (list `(` (symbol `order-total`) (symbol `order`) `)`)
+          `)`)
+        `)`)
+      (map `{` `}`)
+      (symbol `orders`)
+      `)`)
+    `)`)
+  (list
+    `(`
+    (symbol `doseq`)
+    (vector
+      `[`
+      (vector `[` (symbol `customer`) (symbol `total`) `]`)
+      (list `(` (symbol `sort-by`) (symbol `val`) (symbol `>`) (symbol `totals`) `)`)
+      `]`)
+    (list
+      `(`
+      (symbol `println`)
+      (list `(` (symbol `format`) (string `"%-6s %4d"`) (symbol `customer`) (symbol `total`) `)`)
+      `)`)
+    `)`))
