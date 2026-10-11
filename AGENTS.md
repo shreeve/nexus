@@ -87,10 +87,21 @@ zig fmt --check build.zig src/*.zig src/{codegen,lexgen,lr} src/frontend/{lang,l
 
 ## Downstream
 
-Rig, em (MUMPS) and nexis check in parsers that Nexus generates
-(`zig build parser` in each, using `../nexus/bin/nexus`). A change to
-generated code reaches them when they regenerate; their suites are the
-final check. Slash and nanoruby check in parsers from Nexus 0.10.3;
+Rig, em (MUMPS) and nexis follow Nexus main: every `zig build` in each
+generates its parser with `nexus/bin/nexus` in the nearest parent
+directory (`../nexus`, or `-Dnexus=PATH`), and their CI builds Nexus main
+beside them. This checkout's `bin/nexus` is therefore part of every
+build of theirs:
+
+- This checkout stays on main; other work happens in its own worktree.
+- `bin/nexus` is built from a green main, and only after a merge that
+  changes the generator (`src/`, `build.zig`): em's front-end hash
+  covers the binary's bytes, so a rebuild recompiles em's routines.
+- `./test/run`, with the copied cases below, is green before every merge.
+- Rig, em and nexis hear of a change to the generated API or the grammar
+  language before it merges; their suites are the final check.
+
+Slash and nanoruby check in parsers from Nexus 0.10.3;
 their grammars for this Nexus are `grammars/slash/slash.grammar` and
 `grammars/ruby/ruby.grammar` here. `grammars/rig`, `grammars/mumps` and
 `grammars/nexis` hold the grammar and lang module of Rig, em and nexis

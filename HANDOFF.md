@@ -30,13 +30,13 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
 ## Open work
 
 1. **Keep the downstream copies current.** Rig, em and nexis run Zig 0.17
-   and this Nexus; `grammars/rig`, `grammars/mumps` and `grammars/nexis`
+   and follow this Nexus's main ([AGENTS.md, "Downstream"](AGENTS.md#downstream));
+   `grammars/rig`, `grammars/mumps` and `grammars/nexis`
    hold their grammars and lang modules as their main branches have them, and each
    `test.conf` names the source commit. When one of them changes its
    grammar or lang module, re-sync its copy in its own commit
    ([AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
-   `./test/run` green. Rig's revamp (a contextual `unique`, `const` and
-   `new` forms) is the next change on its way.
+   `./test/run` green. Rig's next grammar change is a `<<%` operator.
 2. **Slash and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
    `grammars/slash` and `grammars/ruby` here. `test/diff` compares the
