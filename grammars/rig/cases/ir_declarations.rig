@@ -4,16 +4,16 @@ use math
 use std.os as o
 
 pub struct User
-  name: String
+  name: ?String
   age: Int = 0
 
-  fun greet(?self) -> String
+  fun greet(?self) -> ?String
     self.name
 
   sub birthday(!self)
     print(self.age)
 
-  fun new(name: String) -> User
+  fun new(name: ?String) -> User
     User(name: name)
 
 enum Color
@@ -57,7 +57,7 @@ struct Ring[T] unique
   item: T
 
 extern fun abs(x: Int) -> Int
-extern sub log_msg(msg: String)
+extern sub log_msg(msg: ?String)
 
 fun add(a: Int, b: Int) -> Int
   a + b

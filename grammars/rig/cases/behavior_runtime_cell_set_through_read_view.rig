@@ -1,46 +1,46 @@
-# A Cell is interior-mutable: `set` and `replace` change it through a
-# read view, and through a `?self` method of a struct holding one. A
-# value holding a Cell is unique: a by-value parameter owns the value
-# moved into it, which it may lend out.
+# A Cell changes by a marked call: `set` and `replace` change it through
+# a `!T` view, and through a `!self` method of a struct holding one. A
+# by-value parameter owns the shared handle moved into it, which it may
+# lend out.
 # release
 
 struct Counter
   hits: Cell[Int]
-  name: String
+  name: ?String
 
-  sub hit(?self)
-    self.hits.set(self.hits.get() + 1)
+  sub hit(!self)
+    !self.hits.set(self.hits.get() + 1)
 
-sub bump(c: ?Cell[Int], by: Int)
-  c.set(c.get() + by)
+sub bump(c: !Cell[Int], by: Int)
+  !c.set(c.get() + by)
 
-fun swap(c: ?Cell[Int], v: Int) -> Int
-  c.replace(v)
+fun swap(c: !Cell[Int], v: Int) -> Int
+  (!c).replace(v)
 
-fun lent(c: Counter) -> Int
-  bump(?c.hits, 100)
+fun lent(c: *Counter) -> Int
+  bump(!c.hits, 100)
   c.hits.get()
 
 sub main()
-  c: Cell[Int] = Cell(1)
-  bump(?c, 10)
+  c: *Cell[Int] = *Cell(1)
+  bump(!c, 10)
   print(c.get())
-  old = swap(?c, 5)
+  old = swap(!c, 5)
   print(old, c.get())
   r = ?c
-  r.set(7)
+  !(+r).set(7)
   print(c.get())
 
-  k = Counter(hits: Cell(0), name: "k")
-  k.hit()
-  k.hit()
+  k = *Counter(hits: Cell(0), name: "k")
+  !k.hit()
+  !k.hit()
   print(k.name, k.hits.get())
   before = k.hits.get()
   print(lent(<k), before)
 
   box = *Counter(hits: Cell(40), name: "shared")
-  box.hit()
-  bump(?box.hits, 1)
+  !box.hit()
+  bump(!box.hits, 1)
   print(box.name, box.hits.get())
 
 # expect:

@@ -9,4 +9,4 @@ sub main()
   o: Option[Int] = .some(value: "hello")
   print("done")
 
-# error: type mismatch: expected `Int`, got `String`
+# error: type mismatch: expected `Int`, got `Static`

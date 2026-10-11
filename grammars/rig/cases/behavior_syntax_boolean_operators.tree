@@ -14,9 +14,9 @@
     (block
       (set _ `a` _ `1`)@247..252
       (set _ `b` _ `2`)@255..260
-      (call `print` (not (== `a` `b`)@273..279)@269..279)@263..280
-      (call `print` (or `true` (and `false` `false`)@297..312)@289..312)@283..313
-      (call `print` (and (or `true` `false`)@323..336 `false`)@322..347)@316..348
-      (call `print` (and `false` (call `loud` `true`)@367..377)@357..377)@351..378
-      (call `print` (or `true` (call `loud` `false`)@395..406)@387..406)@381..407
-      (call `print` (and (not `false`)@416..425 (call `loud` `true`)@430..440)@416..440)@410..441)@247..509)@234..509)@182..509
+      (call `print` (not (== `a` `b`)@274..280)@269..281)@263..282
+      (call `print` (or `true` (and `false` `false`)@299..314)@291..314)@285..315
+      (call `print` (and (or `true` `false`)@325..338 `false`)@324..349)@318..350
+      (call `print` (and `false` (call `loud` `true`)@369..379)@359..379)@353..380
+      (call `print` (or `true` (call `loud` `false`)@397..408)@389..408)@383..409
+      (call `print` (and (not `false`)@418..427 (call `loud` `true`)@432..442)@418..442)@412..443)@247..511)@234..511)@182..511

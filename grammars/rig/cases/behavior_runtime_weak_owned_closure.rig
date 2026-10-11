@@ -1,5 +1,5 @@
 # A weak handle to an owned closure (`~fun(...)`, `~sub()`) works as a
-# capture, an annotated local, a struct field, a parameter, and a Vec
+# capture, an annotated local, a struct field, a parameter, and a List
 # element; it upgrades while the closure is alive.
 
 struct H
@@ -26,7 +26,7 @@ sub main()
   s: *sub() = *|| print("hi")
   holder = H(cb: ~s)
   call(?holder.cb)
-  v: Vec[~sub()] = Vec()
+  v: List[~sub()] = List()
   !v.push(~s)
   for x in ?v
     call(?x)

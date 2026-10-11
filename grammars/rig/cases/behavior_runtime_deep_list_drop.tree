@@ -15,25 +15,26 @@
           (block
             (call `print` `"out of order at"` (member `self` `value`)@352..362)@327..363)@327..368
           _)@284..368
-        (call
-          (member (member `self` `seen`)@368..377 `set`)@368..381
-          (member `self` `value`)@382..392)@368..393)@284..395)@268..395)@206..395
+        (write
+          (call
+            (member (member `self` `seen`)@369..378 `set`)@369..382
+            (member `self` `value`)@383..393)@369..394)@368..394)@284..396)@268..396)@206..396
   (sub
     `main`
     _
-    ()@403..405
+    ()@404..406
     _
     (block
-      (set _ `n` _ `200000`)@408..418
+      (set _ `n` _ `200000`)@409..419
       (set
         _
         `seen`
-        (shared (generic_inst `Cell` `Int`)@428..437)@427..437
-        (share (call `Cell` `n`)@441..448)@440..448)@421..448
-      (set _ `head` (optional (shared `Node`)@457..462)@457..463 `none`)@451..470
-      (set _ `i` _ `0`)@473..478
+        (shared (generic_inst `Cell` `Int`)@429..438)@428..438
+        (share (call `Cell` `n`)@442..449)@441..449)@422..449
+      (set _ `head` (optional (shared `Node`)@458..463)@458..464 `none`)@452..471
+      (set _ `i` _ `0`)@474..479
       (while
-        (< `i` `n`)@487..492
+        (< `i` `n`)@488..493
         _
         (block
           (set
@@ -43,10 +44,10 @@
             (share
               (call
                 `Node`
-                (kwarg `value` `i`)@510..518
-                (kwarg `seen` (clone `seen`)@526..531)@520..531
-                (kwarg `next` (move `head`)@539..544)@533..544)@505..545)@504..545)@497..545
-          (set += `i` _ `1`)@550..556)@497..559
-        _)@481..559
-      (move `head`)@559..564
-      (call `print` `"dropped down to"` (call (member `seen` `get`)@592..600)@592..602)@567..603)@408..635)@395..635)@206..635
+                (kwarg `value` `i`)@511..519
+                (kwarg `seen` (clone `seen`)@527..532)@521..532
+                (kwarg `next` (move `head`)@540..545)@534..545)@506..546)@505..546)@498..546
+          (set += `i` _ `1`)@551..557)@498..560
+        _)@482..560
+      (move `head`)@560..565
+      (call `print` `"dropped down to"` (call (member `seen` `get`)@593..601)@593..603)@568..604)@409..636)@396..636)@206..636

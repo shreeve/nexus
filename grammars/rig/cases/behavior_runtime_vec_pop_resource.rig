@@ -1,4 +1,4 @@
-# `pop` removes a Vec's last element and hands it over: the caller owns
+# `pop` removes a List's last element and hands it over: the caller owns
 # the handle, bound by `as` or to a name (and dropped there), or discarded
 # with `_ =`.
 
@@ -9,14 +9,14 @@ struct B
     print("drop", self.n)
 
 sub main()
-  v: Vec[*B] = Vec()
+  v: List[*B] = List()
   for i in 0..4
     !v.push(*B(n: i))
   x = (!v).pop()
   print(x == none)
   if (!v).pop() as y
     print("y", y.n)
-  _ = (!v).pop()
+  _ = !v.pop()
   while (!v).pop() as z
     print("z", z.n)
   print("end", v.len)

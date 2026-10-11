@@ -2,23 +2,23 @@
   (struct
     `Bag`
     _
-    (: `items` (generic_inst `Vec` `Int`)@71..79)@64..79
+    (: `items` (generic_inst `List` `Int`)@71..80)@64..80
     (sub
       `add`
       _
-      ((write `self`)@91..96 (: `x` `Int`)@98..104)@90..105
+      ((write `self`)@92..97 (: `x` `Int`)@99..105)@91..106
       _
       (block
         (write
-          (call (member (member `self` `items`)@111..121 `push`)@111..126 `x`)@111..129)@110..129)@110..131)@83..131)@51..131
+          (call (member (member `self` `items`)@112..122 `push`)@112..127 `x`)@112..130)@111..130)@111..132)@84..132)@51..132
   (sub
     `main`
     _
-    ()@139..141
+    ()@140..142
     _
     (block
-      (set _ `v` (generic_inst `Vec` `Int`)@147..155 (call `Vec`)@158..163)@144..163
-      (set _ `b` _ (call `Bag` (kwarg `items` (move `v`)@181..183)@174..183)@170..184)@166..184
-      (write (call (member `b` `add`)@188..193 `4`)@188..196)@187..196
-      (write (call (member `b` `add`)@200..205 `5`)@200..208)@199..208
-      (call `print` (member (member `b` `items`)@217..224 `len`)@217..228)@211..229)@144..245)@131..245)@51..245
+      (set _ `v` (generic_inst `List` `Int`)@148..157 (call `List`)@160..166)@145..166
+      (set _ `b` _ (call `Bag` (kwarg `items` (move `v`)@184..186)@177..186)@173..187)@169..187
+      (write (call (member `b` `add`)@191..196 `4`)@191..199)@190..199
+      (write (call (member `b` `add`)@203..208 `5`)@203..211)@202..211
+      (call `print` (member (member `b` `items`)@220..227 `len`)@220..231)@214..232)@145..248)@132..248)@51..248

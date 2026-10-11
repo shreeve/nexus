@@ -5,19 +5,19 @@ sub main()
   n = 1
   count: *Cell[Int] = *Cell(0)
   copied = |+n| print(n)
-  cloned = |+count| count.set(count.get() + 1)
+  cloned = |+count| !count.set(count.get() + 1)
   weak = |~count| print("weak")
   moved = |<n| print(n)
   tick = || print("tick")
   copied()
 
   add: fun(Int, Int) -> Int = |a, b| a + b
-  typed = |+count, a: Int| count.set(a)
+  typed = |+count, a: Int| !count.set(a)
   add(1, 2)
 
-  cb: *sub() = *|+count| count.set(count.get() + 1)
+  cb: *sub() = *|+count| !count.set(count.get() + 1)
   cb()
-  one: *sub(Int) = *|+count, a| count.set(a)
+  one: *sub(Int) = *|+count, a| !count.set(a)
   one(5)
   two: *fun(Int, Int) -> Int = *|a, b| a * b
   print(two(1, 2))

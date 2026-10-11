@@ -1,7 +1,7 @@
 # Ownership at a glance: each sigil makes a transfer visible.
 
 struct Account
-  owner: String
+  owner: ?String
   balance: Int
 
 fun balance_of(a: ?Account) -> Int

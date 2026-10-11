@@ -2,24 +2,24 @@
   (struct
     `Button`
     _
-    (: `on_click` (shared (fun_type (`Int`)@243..246 _ _)@239..247)@238..247)@228..247
+    (: `on_click` (shared (fun_type (`Int`)@244..247 _ _)@240..248)@239..248)@229..248
     (sub
       `click`
       _
-      ((: `self` (read_view `Button`)@267..274)@261..274 (: `n` `Int`)@276..282)@260..283
+      ((: `self` (read_view `Button`)@268..275)@262..275 (: `n` `Int`)@277..283)@261..284
       _
-      (block (call (member `self` `on_click`)@288..301 `n`)@288..304)@288..306)@251..306)@212..306
+      (block (call (member `self` `on_click`)@289..302 `n`)@289..305)@289..307)@252..307)@213..307
   (sub
     `main`
     _
-    ()@314..316
+    ()@315..317
     _
     (block
       (set
         _
         `total`
-        (shared (generic_inst `Cell` `Int`)@327..336)@326..336
-        (share (call `Cell` `0`)@340..347)@339..347)@319..347
+        (shared (generic_inst `Cell` `Int`)@328..337)@327..337
+        (share (call `Cell` `0`)@341..348)@340..348)@320..348
       (set
         _
         `button`
@@ -31,57 +31,60 @@
             (share
               (lambda
                 _
-                ((cap_clone `total`)@378..384 `n`)@377..388
+                ((cap_clone `total`)@379..385 `n`)@378..389
                 (block
-                  (call
-                    (member `total` `set`)@389..398
-                    (+ (call (member `total` `get`)@399..408)@399..410 `n`)@399..414)@389..415)@389..415)@377..415)@376..415)@366..415)@359..416)@350..416
-      (call (member `button` `click`)@419..431 `4`)@419..434
-      (call (member `button` `click`)@437..449 `5`)@437..452
-      (call `print` (call (member `total` `get`)@461..470)@461..472)@455..473
+                  (write
+                    (call
+                      (member `total` `set`)@391..400
+                      (+ (call (member `total` `get`)@401..410)@401..412 `n`)@401..416)@391..417)@390..417)@390..417)@378..417)@377..417)@367..417)@360..418)@351..418
+      (call (member `button` `click`)@421..433 `4`)@421..436
+      (call (member `button` `click`)@439..451 `5`)@439..454
+      (call `print` (call (member `total` `get`)@463..472)@463..474)@457..475
       (set
         _
         `fs`
-        (generic_inst `Vec` (shared (fun_type (`Int`)@490..493 `Int` _)@486..501)@485..501)@481..502
-        (call `Vec`)@505..510)@477..510
+        (generic_inst
+          `List`
+          (shared (fun_type (`Int`)@493..496 `Int` _)@489..504)@488..504)@483..505
+        (call `List`)@508..514)@479..514
       (write
         (call
-          (member `fs` `push`)@514..521
-          (share (lambda _ (`x`)@523..526 (block (+ `x` `1`)@527..532)@527..532)@523..532)@522..532)@514..533)@513..533
+          (member `fs` `push`)@518..525
+          (share (lambda _ (`x`)@527..530 (block (+ `x` `1`)@531..536)@531..536)@527..536)@526..536)@518..537)@517..537
       (write
         (call
-          (member `fs` `push`)@537..544
-          (share (lambda _ (`x`)@546..549 (block (* `x` `10`)@550..556)@550..556)@546..556)@545..556)@537..557)@536..557
+          (member `fs` `push`)@541..548
+          (share (lambda _ (`x`)@550..553 (block (* `x` `10`)@554..560)@554..560)@550..560)@549..560)@541..561)@540..561
       (for
         iter
         `f`
         _
-        (read `fs`)@569..572
-        (block (call `print` (call `f` `3`)@583..587)@577..588)@577..592
-        _)@560..592
+        (read `fs`)@573..576
+        (block (call `print` (call `f` `3`)@587..591)@581..592)@581..596
+        _)@564..596
       (set
         _
         `later`
-        (optional (shared (fun_type _ _ _)@601..606)@600..606)@599..608
+        (optional (shared (fun_type _ _ _)@605..610)@604..610)@603..612
         (share
-          (lambda _ ()@612..614 (block (call `print` `"now set"`)@615..631)@615..631)@612..631)@611..631)@592..631
+          (lambda _ ()@616..618 (block (call `print` `"now set"`)@619..635)@619..635)@616..635)@615..635)@596..635
       (if
-        (as (move `later`)@637..643 `run`)@637..650
-        (block (call `run`)@655..660)@655..664
-        _)@634..664
+        (as (move `later`)@641..647 `run`)@641..654
+        (block (call `run`)@659..664)@659..668
+        _)@638..668
       (set
         _
         `greet`
-        (shared (fun_type (`String` `Int`)@676..687 _ _)@672..688)@671..688
+        (shared (fun_type ((read_view `String`)@680..687 `Int`)@680..692 _ _)@676..693)@675..693
         (share
           (lambda
             _
-            (`name` `times`)@692..705
+            (`name` `times`)@697..710
             (block
-              (set _ `i` _ `0`)@710..715
+              (set _ `i` _ `0`)@715..720
               (while
-                (< `i` `times`)@726..735
-                (set += `i` _ `1`)@738..744
-                (block (call `print` `"hi"` `name`)@751..768)@751..771
-                _)@720..771)@710..771)@692..771)@691..771)@664..771
-      (call `greet` `"ada"` `2`)@771..786)@319..839)@306..839)@212..839
+                (< `i` `times`)@731..740
+                (set += `i` _ `1`)@743..749
+                (block (call `print` `"hi"` `name`)@756..773)@756..776
+                _)@725..776)@715..776)@697..776)@696..776)@668..776
+      (call `greet` `"ada"` `2`)@776..791)@320..844)@307..844)@213..844

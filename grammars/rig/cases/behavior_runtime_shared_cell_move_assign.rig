@@ -4,8 +4,8 @@
 sub main()
   rc1: *Cell[Int] = *Cell(0)
   rc2: *Cell[Int] = *Cell(0)
-  rc1.set(10)
-  rc2.set(20)
+  !rc1.set(10)
+  !rc2.set(20)
   rc1 = <rc2
   print(rc1.get())     # 20: rc1 now refers to rc2's old box
 

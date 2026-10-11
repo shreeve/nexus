@@ -16,15 +16,15 @@ sub twice(f: *sub())
 
 sub main()
   sig: *Signal[Int] = *Signal(0)
-  sig.subscribe(*|~sig|
+  !sig.subscribe(*|~sig|
     if sig.upgrade() as s
       print("got", s.get())
   )
-  sig.set(4)
+  !sig.set(4)
 
   total: *Cell[Int] = *Cell(0)
   each_n(3, *|+total, i|   # the body starts on the next line
-    total.set(total.get() + i)
+    !total.set(total.get() + i)
     print("seen", i)
   )
   print(total.get())
@@ -41,7 +41,7 @@ sub main()
     print("outer")
   )
 
-  handlers: Vec[*sub()] = Vec()
+  handlers: List[*sub()] = List()
   !handlers.push(*|+total|
     n = total.get()
     print("handler", n)

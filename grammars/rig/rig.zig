@@ -254,6 +254,11 @@ const emitter_names = std.StaticStringMap(void).initComptime(.{
 });
 const emitter_prefix = "__rig";
 
+pub fn isPlainName(name: []const u8) bool {
+    for (name) |c| if (!std.ascii.isAlphanumeric(c) and c != '_') return false;
+    return true;
+}
+
 fn isZigIntType(name: []const u8) bool {
     if (name.len < 2 or (name[0] != 'i' and name[0] != 'u')) return false;
     for (name[1..]) |c| if (c < '0' or c > '9') return false;
@@ -268,7 +273,10 @@ fn isZigIntType(name: []const u8) bool {
 ///     `'` suffix, which no Rig identifier can contain: `@"rig'"`;
 ///   * anything else is written as is.
 pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!void {
-    if (emitter_names.has(name) or std.mem.startsWith(u8, name, emitter_prefix)) {
+    if (!isPlainName(name)) {
+        // A name no program writes (`hiddenLeaf`).
+        try w.print("@\"{s}\"", .{name});
+    } else if (emitter_names.has(name) or std.mem.startsWith(u8, name, emitter_prefix)) {
         try w.print("@\"{s}'\"", .{name});
     } else if (zig_keywords.has(name) or zig_primitives.has(name) or isZigIntType(name)) {
         try w.print("@\"{s}\"", .{name});
@@ -352,7 +360,7 @@ pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!vo
 //   After a function's result type, on its header's line, `from` says
 //   what the result views (`-> ?Item from a, b`), and `static` right
 //   after it says the result views only what lives for the whole
-//   program (`-> String from static`). Elsewhere each is a name.
+//   program (`-> ?String from static`). Elsewhere each is a name.
 //
 // `..`
 //   Before `]` (past any line break, which is whitespace inside
@@ -471,6 +479,9 @@ pub const Lexer = struct {
             enum_dot,
             /// A range's `..` apart from its only bound (`.. b`, `a ..]`).
             range_end,
+            /// A call's or index's bracket apart from what it follows
+            /// (`f (x)`, `xs [0]`).
+            call_bracket,
             /// The bracket around a closure body laid out below its bar
             /// list closes on the body's last line (`print(x))`).
             closure_hanging,
@@ -871,6 +882,7 @@ pub const Lexer = struct {
             .dot => if (after_value) (if ((before and !self.startsLine(tok)) or after) .member else null) else if (after) .enum_dot else null,
             .dotdot => if (!after_value) (if (after) .range_end else null) else if (before != after) (if (before) .infix_before else .infix_after) else null,
             .dotdot_open => if (after_value and before) .range_end else null,
+            .lparen, .lbracket => if (after_value and before and !self.startsLine(tok)) .call_bracket else null,
             else => if (after_value and isInfix(cat) and before != after) (if (before) .infix_before else .infix_after) else null,
         };
         if (kind) |k| self.recordLayout(.{ .pos = tok.pos, .len = tok.len, .kind = k });
@@ -1034,7 +1046,7 @@ pub const Lexer = struct {
                     depth -= 1;
                 },
                 .comma, .bar => if (depth == 0) return t,
-                .ident, .integer, .dot, .question, .not_sym, .star, .tilde, .arrow => {},
+                .ident, .integer, .dot, .question, .not_sym, .star, .tilde, .caret, .arrow => {},
                 // Arithmetic in an array size: `[N + 1]Int`.
                 .plus, .minus, .slash, .percent => if (depth == 0) return null,
                 else => return null,
@@ -1188,7 +1200,7 @@ fn isValue(cat: TokenCat) bool {
 /// The characters that start an operand as a prefix sigil.
 fn isSigil(cat: TokenCat) bool {
     return switch (cat) {
-        .minus, .lt, .plus, .star, .question, .not_sym, .tilde => true,
+        .minus, .lt, .plus, .star, .question, .not_sym, .tilde, .caret => true,
         else => false,
     };
 }
@@ -1233,6 +1245,56 @@ fn isIdentCont(c: u8) bool {
 // =============================================================================
 // Parser — post-parse rewrites and diagnostics over the generated BaseParser
 // =============================================================================
+
+/// The names of the leaves a rewrite builds that no source text holds.
+const HiddenName = enum(u16) {
+    /// The method every iterator declares.
+    next = 0,
+    /// The binding that holds a loop's source. It has a space, so no
+    /// program can write it, and a message that names it says what it is.
+    iterator = 1,
+
+    fn text(self: HiddenName) []const u8 {
+        return switch (self) {
+            .next => "next",
+            .iterator => "for iterator",
+        };
+    }
+};
+
+/// A leaf for a name no source text holds, at `pos` inside the `for`
+/// keyword (which holds no leaf); its `id` tells `leafText` which name.
+fn hiddenLeaf(pos: u32, name: HiddenName) Sexp {
+    return .{ .src = .{ .pos = pos, .len = 1, .id = hidden_id_base + @intFromEnum(name) } };
+}
+
+/// Leaf ids from here are hidden names; the lexer's are keyword ordinals.
+const hidden_id_base: u16 = 0xFF00;
+
+/// The text of a leaf: the source it spans, or its name when the rewrite
+/// built it (`hiddenLeaf`). Every pass reads a name through this.
+pub fn leafText(source: []const u8, leaf: parser.Src) []const u8 {
+    if (leaf.id >= hidden_id_base) return @as(HiddenName, @enumFromInt(leaf.id - hidden_id_base)).text();
+    return source[leaf.pos..][0..leaf.len];
+}
+
+/// How a `for` over an iterator walks its source, which decides the
+/// `while` it is rewritten into (docs/INTERNALS.md, "Loops over an
+/// iterator").
+pub const IterSource = enum {
+    /// A place the loop advances where it stands: `for x in it` and
+    /// `for x in !it` are `while (!it).next() as x`.
+    place,
+    /// A value made here, held in a hidden binding for the whole loop.
+    made,
+    /// A place the loop takes (`for x in <it`), moved into the hidden
+    /// binding it holds for the whole loop.
+    moved,
+};
+
+/// A `for` node to rewrite (`Parser.desugarIterLoops`), with how it
+/// walks its source.
+pub const IterLoop = struct { node: parser.NodeId, source: IterSource };
 
 pub const Parser = struct {
     base: BaseParser,
@@ -1308,6 +1370,10 @@ pub const Parser = struct {
                 self.format("`{s} {s}`: a postfix `{s}` touches what it follows; write `{s}{s}`", .{ left, op, op, left, op }),
             .member => self.format("a member `.` touches both sides; write `{s}.{s}`", .{ left, right }),
             .enum_dot => self.format("`.` touches the name after it; write `.{s}`", .{right}),
+            .call_bracket => if (bracketAfter(src, sp.pos)) |args|
+                self.format("`{s} {s}`: a call's or index's bracket touches what it follows; write `{s}{s}`", .{ left, args, left, args })
+            else
+                self.format("`{s} {s}`: a call's or index's bracket touches what it follows; write `{s}{s}`", .{ left, op, left, op }),
             .range_end => if (sp.pos + sp.len < src.len and src[sp.pos + sp.len] == ']')
                 self.format("a range's `..` touches its only bound; write `{s}..`", .{left})
             else
@@ -1393,6 +1459,26 @@ pub const Parser = struct {
         while (s < e and (src[s] == '.' or src[s] == '?' or src[s] == '!')) s += 1;
         if (s == e or e - s > 24) return null;
         return src[s..e];
+    }
+
+    /// The bracketed text that starts at `open`, `(x)` or `[0]`, when it
+    /// closes on its line and is short.
+    fn bracketAfter(src: []const u8, open: u32) ?[]const u8 {
+        const want: u8 = if (src[open] == '(') ')' else ']';
+        var depth: u32 = 0;
+        var e: usize = open;
+        while (e < src.len and e - open <= 24) : (e += 1) {
+            switch (src[e]) {
+                '(', '[' => depth += 1,
+                ')', ']' => {
+                    depth -= 1;
+                    if (depth == 0) return if (src[e] == want) src[open .. e + 1] else null;
+                },
+                '\n' => return null,
+                else => {},
+            }
+        }
+        return null;
     }
 
     /// Where a comment starts on `line`: its first `#` outside a string.
@@ -1685,9 +1771,9 @@ pub const Parser = struct {
     }
 
     /// Compile-time parameters and arguments written where Rig does not
-    /// take them: in parentheses (`struct Wrap(T)`, `Vec(Int)` in a type,
+    /// take them: in parentheses (`struct Wrap(T)`, `List(Int)` in a type,
     /// `pre n: Int`), on a type alias, or as a type an expression cannot
-    /// spell (`Vec[[]Int]()`). Also a struct declared with `type`.
+    /// spell (`List[[]Int]()`). Also a struct declared with `type`.
     fn bracketHint(self: *Parser, tok: Token) ?[]const u8 {
         const src = self.base.source;
         const before = std.mem.trimEnd(u8, src[0..tok.pos], if (tok.cat == .indent) " \r\n" else " ");
@@ -1719,7 +1805,7 @@ pub const Parser = struct {
                 return "an error set takes no type parameters";
             },
             .rbracket => if (before.len > 0 and before[before.len - 1] == '[') {
-                return "empty brackets: give the compile-time arguments, as in `Vec[Int]()`";
+                return "empty brackets: give the compile-time arguments, as in `List[Int]()`";
             },
             .fun, .sub => if (self.base.lexer.nesting > 0 and src[self.base.lexer.brackets[self.base.lexer.nesting - 1]] == '[') {
                 return "a function type has no expression spelling: as a type argument in an expression, name it with a `type` alias, or annotate the binding instead";
@@ -1819,7 +1905,7 @@ pub const Parser = struct {
         } else return null;
         if (!endsWithWord(src[0..open], "sub") and !endsWithWord(src[0..open], "fun")) return null;
         var start = open - 3;
-        while (start > 0 and (src[start - 1] == '*' or src[start - 1] == '~')) start -= 1;
+        while (start > 0 and (src[start - 1] == '*' or src[start - 1] == '~' or src[start - 1] == '^')) start -= 1;
         return self.format("a function type takes no suffix; write `({s}){c}`", .{ src[start..tok.pos], src[tok.pos] });
     }
 
@@ -1925,12 +2011,12 @@ pub const Parser = struct {
             .labeled => try self.dropStatement(&walked[ir.slot(.labeled, .stmt)]),
             .@"??" => return self.nearestFallback(out),
             .read, .write, .move => return self.receiverSigil(out),
-            .share => try self.noteParenSuffix(out),
+            .share, .box => try self.noteParenSuffix(out),
             .weak => {
                 self.touchesOperand(out);
                 try self.noteParenSuffix(out);
             },
-            .read_view, .write_view, .shared => self.touchesOperand(out),
+            .read_view, .write_view, .shared, .boxed => self.touchesOperand(out),
             // The body's value is returned.
             .fun => {
                 try self.paramList(out);
@@ -2074,13 +2160,13 @@ pub const Parser = struct {
         while (true) {
             const at = self.afterSigil(e);
             var op = ir.get(e, .operand);
-            if (op.isKind(.share) or op.isKind(.weak)) {
+            if (op.isKind(.share) or op.isKind(.weak) or op.isKind(.box)) {
                 if (self.span(op).start == at) {
                     e = op;
                     continue;
                 }
                 // `*(~T?)`: a parenthesized handle with a suffix of its own.
-                while (op.isKind(.share) or op.isKind(.weak)) op = ir.get(op, .operand);
+                while (op.isKind(.share) or op.isKind(.weak) or op.isKind(.box)) op = ir.get(op, .operand);
                 if (op.isKind(.propagate_none)) try self.paren_suffixes.put(self.allocator(), node.list.id, {});
                 return;
             }
@@ -2097,6 +2183,9 @@ pub const Parser = struct {
     fn touchesOperand(self: *Parser, node: Sexp) void {
         const at = self.span(node).start;
         const src = self.base.source;
+        // The view inside `^?T` has no sigil of its own: the box's `^?` is
+        // checked as one token pair.
+        if (at >= src.len or std.mem.findScalar(u8, "<+-?!*~^", src[at]) == null) return;
         if (!isSpace(if (at + 1 < src.len) src[at + 1] else 0) or self.failure != null) return;
         self.failure = .{ .severity = .@"error", .pos = at, .end = at + 1, .message = self.detachedPrefix(.{ .cat = .err, .pre = 0, .pos = at, .len = 1 }) };
     }
@@ -2284,6 +2373,122 @@ pub const Parser = struct {
         }
     }
 
+    /// A closure whose type returns nothing has no value: the last line
+    /// `valueTail` kept as a move, and that of each branch ending it, is a
+    /// statement `<e` again, which drops (`dropStatement`). The type
+    /// checker calls it on the body of such a closure before any pass reads
+    /// it, and it changes nothing a second time.
+    pub fn dropTail(self: *const Parser, slot: *Sexp) std.mem.Allocator.Error!void {
+        const mutable: *Parser = @constCast(self);
+        try mutable.dropTailOf(slot);
+    }
+
+    fn dropTailOf(self: *Parser, slot: *Sexp) std.mem.Allocator.Error!void {
+        const kind = slot.kind() orelse return;
+        const items = @constCast(slot.items());
+        switch (kind) {
+            .move => try self.dropStatement(slot),
+            .block => if (items.len > 1) try self.dropTailOf(&items[items.len - 1]),
+            .@"if" => {
+                try self.dropTailOf(&items[ir.slot(.@"if", .then)]);
+                try self.dropTailOf(&items[ir.slot(.@"if", .@"else")]);
+            },
+            .match => for (ir.Match.arms(slot.*)) |arm| try self.dropTailOf(&@constCast(arm.items())[ir.slot(.arm, .body)]),
+            .@"while" => try self.dropTailOf(&items[ir.slot(.@"while", .@"else")]),
+            .@"for" => try self.dropTailOf(&items[ir.slot(.@"for", .@"else")]),
+            .labeled => try self.dropTailOf(&items[ir.slot(.labeled, .stmt)]),
+            .raw_block => try self.dropTailOf(&items[ir.slot(.raw_block, .body)]),
+            else => {},
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Loops over an iterator
+    //
+    // Typecheck finds the `for` loops whose source is an iterator, since
+    // the type of a source is known only there, and the module is checked
+    // again on this rewrite (docs/INTERNALS.md, "Loops over an iterator").
+    // The nodes it builds are IR nodes like the parser's: each spans the
+    // loop's source, and a name no source text holds (a method's `next`,
+    // the hidden binding) is a leaf at a position inside the loop's `for`
+    // keyword, which no other leaf has, with the name's text from
+    // `leafText`. So every position the checkers order by lies in the loop,
+    // as in the loop written by hand.
+    // -------------------------------------------------------------------------
+
+    const IterRewrite = struct {
+        loops: []const IterLoop,
+
+        fn find(self: IterRewrite, node: Sexp) ?usize {
+            if (node != .list or !node.isKind(.@"for")) return null;
+            for (self.loops, 0..) |l, i| if (l.node == node.list.id) return i;
+            return null;
+        }
+    };
+
+    /// Rewrite each `for` of `loops` in `tree` into the `while` it means.
+    /// Every other node keeps its position and id.
+    pub fn desugarIterLoops(self: *Parser, tree: Sexp, loops: []const IterLoop) std.mem.Allocator.Error!void {
+        try self.desugarIn(tree, .{ .loops = loops });
+    }
+
+    fn desugarIn(self: *Parser, node: Sexp, state: IterRewrite) std.mem.Allocator.Error!void {
+        if (node != .list) return;
+        const items = @constCast(node.items());
+        for (items) |*slot| slot.* = try self.desugarChild(slot.*, state);
+    }
+
+    /// `child` with the loops inside it rewritten, or what replaces it
+    /// when it is one: a loop that holds its source is a block of the
+    /// binding and the `while`, around the label when it has one.
+    fn desugarChild(self: *Parser, child: Sexp, state: IterRewrite) std.mem.Allocator.Error!Sexp {
+        const labeled = child.isKind(.labeled);
+        const loop = if (labeled) ir.Labeled.stmt(child) else child;
+        const at = state.find(loop) orelse {
+            try self.desugarIn(child, state);
+            return child;
+        };
+        try self.desugarIn(loop, state);
+        const built = try self.iterWhile(loop, state.loops[at]);
+        if (labeled) {
+            const copy = try self.allocator().dupe(Sexp, child.items());
+            copy[ir.slot(.labeled, .stmt)] = built.loop;
+            const out: Sexp = .{ .list = parser.List.withId(copy, child.list.id) };
+            return if (built.hold) |h| self.base.newNode(.block, &.{ h, out }, self.span(child)) else out;
+        }
+        return if (built.hold) |h| self.base.newNode(.block, &.{ h, built.loop }, self.span(child)) else built.loop;
+    }
+
+    const IterWhile = struct { loop: Sexp, hold: ?Sexp };
+
+    /// `for x in it` as `while (!it).next() as x`; a held source `e` is
+    /// bound first, `h = e` (`h = <e` for a place the loop takes), and
+    /// walked as `(!h)`.
+    fn iterWhile(self: *Parser, loop: Sexp, l: IterLoop) std.mem.Allocator.Error!IterWhile {
+        const source = ir.For.source(loop);
+        const binding = ir.For.@"var"(loop);
+        const at = self.span(source);
+        const key = self.span(loop).start;
+        var hold: ?Sexp = null;
+        var receiver = source;
+        if (l.source != .place) {
+            const value = if (l.source == .moved) try self.base.newNode(.move, &.{source}, at) else source;
+            hold = try self.base.newNode(.set, &.{ .{ .tag = .shadow }, hiddenLeaf(key + 1, .iterator), .nil, value }, at);
+            receiver = hiddenLeaf(key + 2, .iterator);
+        }
+        const lend = try self.base.newNode(.write, &.{receiver}, at);
+        const member = try self.base.newNode(.member, &.{ lend, hiddenLeaf(key, .next) }, at);
+        const call = try self.base.newNode(.call, &.{member}, at);
+        const bound = try self.base.newNode(.as, &.{ call, binding }, .{ .start = self.span(binding).start, .end = at.end });
+        const out = try self.allocator().alloc(Sexp, 5);
+        out[0] = .{ .tag = .@"while" };
+        out[ir.slot(.@"while", .cond)] = bound;
+        out[ir.slot(.@"while", .step)] = .nil;
+        out[ir.slot(.@"while", .body)] = ir.For.body(loop);
+        out[ir.slot(.@"while", .@"else")] = ir.For.@"else"(loop);
+        return .{ .loop = .{ .list = parser.List.withId(out, loop.list.id) }, .hold = hold };
+    }
+
     /// Promote the source's `?xs` / `!xs` / `<xs` wrapper into the mode.
     fn normFor(items: []Sexp) void {
         const node = Sexp.listOf(items);
@@ -2344,9 +2549,9 @@ test "`unique` is a keyword only after a struct header's name or type parameters
 test "`from` and `static` are keywords only after a function's result type" {
     try testing.expect(keyword("from") == null and keyword("static") == null);
     try expectCats("fun f(a: ?T) -> ?T from a", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .question, .ident, .rparen, .arrow, .question, .ident, .from, .ident });
-    try expectCats("pub fun f() -> String from static", &.{ .@"pub", .fun, .ident, .lparen, .rparen, .arrow, .ident, .from, .static });
+    try expectCats("pub fun f() -> ?String from static", &.{ .@"pub", .fun, .ident, .lparen, .rparen, .arrow, .question, .ident, .from, .static });
     try expectCats("fun f() -> T? from a, b", &.{ .fun, .ident, .lparen, .rparen, .arrow, .ident, .question, .from, .ident, .comma, .ident });
-    try expectCats("extern fun f(s: String) -> String from s", &.{ .@"extern", .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident, .from, .ident });
+    try expectCats("extern fun f(s: ?String) -> ?String from s", &.{ .@"extern", .fun, .ident, .lparen, .kwarg_name, .colon, .question, .ident, .rparen, .arrow, .question, .ident, .from, .ident });
     try expectCats("fun span(from: Int) -> Int", &.{ .fun, .ident, .lparen, .kwarg_name, .colon, .ident, .rparen, .arrow, .ident });
     try expectCats("from = static", &.{ .ident, .assign, .ident });
     try expectCats("f = |x: Int| x\nfrom = 1", &.{ .ident, .assign, .bar_capture, .ident, .colon, .ident, .bar_capture, .ident, .newline, .ident });
@@ -2665,7 +2870,7 @@ test "parser: every form parses" {
         \\  n2: *sub(Int, ?Wrap[Int]) = h
         \\  n3: sub() = i
         \\  o2: *Wrap[Int]? = none
-        \\  p2 = Pair[Int, String].make(f[3](1), v[0])
+        \\  p2 = Pair[Int, ?String].make(f[3](1), v[0])
         \\  o3: []~Int = o
         \\  return x
         \\

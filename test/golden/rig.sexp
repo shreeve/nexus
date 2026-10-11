@@ -751,13 +751,13 @@
       _
       _)
     (kind_decl
-      (kinds `move` `read` `write` `clone` `share` `weak`)
+      (kinds `move` `read` `write` `clone` `share` `weak` `box`)
       (roles
         (role _ `operand` _ _))
       _
       _)
     (kind_decl
-      (kinds `optional` `error_union` `read_view` `write_view` `shared` `slice`)
+      (kinds `optional` `error_union` `read_view` `write_view` `shared` `boxed` `slice`)
       (roles
         (role _ `type` _ _))
       _
@@ -2249,6 +2249,29 @@
           `operand`
           (ref `ptype`)))
       (node `weak`)
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (label
+          `type`
+          (ref `ptype`)))
+      (node `boxed`)
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (lit `"?"`)
+        (ref `type`))
+      (node
+        `boxed`
+        (named
+          `type`
+          (node
+            `read_view`
+            (named
+              `type`
+              (pos `3`)))))
       _))
   (rule
     (name `tsuffix`)
@@ -2290,6 +2313,14 @@
           `operand`
           (ref `thandle`)))
       (node `weak`)
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (label
+          `type`
+          (ref `thandle`)))
+      (node `boxed`)
       _)
     (alt
       _
@@ -3450,6 +3481,14 @@
           `operand`
           (ref `unary`)))
       (node `weak`)
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (label
+          `operand`
+          (ref `unary`)))
+      (node `box`)
       _)
     (alt
       _

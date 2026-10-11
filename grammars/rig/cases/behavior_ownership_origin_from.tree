@@ -1,144 +1,148 @@
 (module
-  (struct `Entry` _ (: `key` `String`)@206..217 (: `value` `String`)@220..233)@191..235
+  (struct
+    `Entry`
+    _
+    (: `key` (read_view `String`)@211..218)@206..218
+    (: `value` (read_view `String`)@228..235)@221..235)@191..237
   (struct
     `Env`
     _
-    (: `entries` (generic_inst `Vec` `Entry`)@257..267)@248..267
+    (: `entries` (generic_inst `List` `Entry`)@259..270)@250..270
     (fun
       `get`
       _
-      ((read `self`)@279..284 (: `key` `String`)@286..297)@278..298
-      (optional `String`)@302..309
-      (`self`)@310..319
+      ((read `self`)@282..287 (: `key` (read_view `String`)@294..301)@289..301)@281..302
+      (optional (read_view `String`)@307..314)@306..316
+      (`self`)@317..326
       (block
         (for
           iter
           `e`
           _
-          (read (member `self` `entries`)@334..346)@333..346
+          (read (member `self` `entries`)@341..353)@340..353
           (block
             (if
-              (== (member `e` `key`)@356..361 `key`)@356..368
-              (block (return (member `e` `value`)@384..391)@377..391)@377..396
-              _)@353..396)@353..396
-          _)@324..396
-        `none`)@324..402)@271..402)@235..402
+              (== (member `e` `key`)@363..368 `key`)@363..375
+              (block (return (member `e` `value`)@391..398)@384..398)@384..403
+              _)@360..403)@360..403
+          _)@331..403
+        `none`)@331..409)@274..409)@237..409
   (fun
     `first`
     _
-    ((: `a` (read_view (generic_inst `Vec` `Int`)@416..424)@415..424)@412..424
-      (: `b` (read_view (generic_inst `Vec` `Int`)@430..438)@429..438)@426..438)@411..439
-    (read_view (generic_inst `Vec` `Int`)@444..452)@443..452
-    (`a`)@453..459
-    (block `a`)@462..465)@402..465
+    ((: `a` (read_view (generic_inst `List` `Int`)@423..432)@422..432)@419..432
+      (: `b` (read_view (generic_inst `List` `Int`)@438..447)@437..447)@434..447)@418..448
+    (read_view (generic_inst `List` `Int`)@453..462)@452..462
+    (`a`)@463..469
+    (block `a`)@472..475)@409..475
   (fun
     `pick`
-    (`T`)@473..476
-    ((: `a` (read_view `T`)@480..482)@477..482 (: `b` (read_view `T`)@487..489)@484..489)@476..490
-    (read_view `T`)@494..496
-    (`a`)@497..503
-    (block `a`)@506..509)@465..509
+    (`T`)@483..486
+    ((: `a` (read_view `T`)@490..492)@487..492 (: `b` (read_view `T`)@497..499)@494..499)@486..500
+    (read_view `T`)@504..506
+    (`a`)@507..513
+    (block `a`)@516..519)@475..519
   (fun
     `deep`
     _
-    ((: `a` (read_view (generic_inst `Vec` `Int`)@522..530)@521..530)@518..530
-      (: `b` (read_view (generic_inst `Vec` `Int`)@536..544)@535..544)@532..544
-      (: `n` `Int`)@546..552)@517..553
-    (read_view (generic_inst `Vec` `Int`)@558..566)@557..566
-    (`a`)@567..573
+    ((: `a` (read_view (generic_inst `List` `Int`)@532..541)@531..541)@528..541
+      (: `b` (read_view (generic_inst `List` `Int`)@547..556)@546..556)@543..556
+      (: `n` `Int`)@558..564)@527..565
+    (read_view (generic_inst `List` `Int`)@570..579)@569..579
+    (`a`)@580..586
     (block
-      (if (== `n` `0`)@579..585 (block (return `a`)@590..598)@590..601 _)@576..601
-      (call `deep` `a` `b` (- `n` `1`)@612..617)@601..618)@576..620)@509..620
+      (if (== `n` `0`)@592..598 (block (return `a`)@603..611)@603..614 _)@589..614
+      (call `deep` `a` `b` (- `n` `1`)@625..630)@614..631)@589..633)@519..633
   (fun
     `label`
     _
-    ((: `t` `String`)@630..639)@629..640
-    `String`
-    ()@651..662
+    ((: `t` (read_view `String`)@646..653)@643..653)@642..654
+    (read_view `String`)@658..665
+    ()@666..677
     (block
       (if
-        (> (member `t` `len`)@668..673 `3`)@668..677
-        (block `"long"`)@682..691
-        (block `"short"`)@700..709)@665..709)@665..709)@620..709
+        (> (member `t` `len`)@683..688 `3`)@683..692
+        (block `"long"`)@697..706
+        (block `"short"`)@715..724)@680..724)@680..724)@633..724
   (fun
     `mk`
     _
-    ()@715..717
-    (generic_inst `Vec` `Int`)@721..729
+    ()@730..732
+    (generic_inst `List` `Int`)@736..745
     _
     (block
-      (set _ `v` (generic_inst `Vec` `Int`)@735..743 (call `Vec`)@746..751)@732..751
-      (write (call (member `v` `push`)@755..761 `9`)@755..764)@754..764
-      `v`)@732..770)@709..770
+      (set _ `v` (generic_inst `List` `Int`)@751..760 (call `List`)@763..769)@748..769
+      (write (call (member `v` `push`)@773..779 `9`)@773..782)@772..782
+      `v`)@748..788)@724..788
   (fun
     `span`
     _
-    ((: `from` `Int`)@779..788 (: `to` `Int`)@790..797)@778..798
+    ((: `from` `Int`)@797..806 (: `to` `Int`)@808..815)@796..816
     `Int`
     _
-    (block (- `to` `from`)@808..817)@808..819)@770..819
+    (block (- `to` `from`)@826..835)@826..837)@788..837
   (sub
     `main`
     _
-    ()@827..829
+    ()@845..847
     _
     (block
-      (set _ `x` (generic_inst `Vec` `Int`)@835..843 (call `Vec`)@846..851)@832..851
-      (set _ `y` (generic_inst `Vec` `Int`)@857..865 (call `Vec`)@868..873)@854..873
-      (write (call (member `x` `push`)@877..883 `1`)@877..886)@876..886
-      (set _ `r` _ (call `first` (read `x`)@899..901 (read `y`)@903..905)@893..906)@889..906
-      (write (call (member `y` `push`)@910..916 `2`)@910..919)@909..919
-      (call `print` (member `r` `len`)@928..933 (member `y` `len`)@935..940)@922..941
+      (set _ `x` (generic_inst `List` `Int`)@853..862 (call `List`)@865..871)@850..871
+      (set _ `y` (generic_inst `List` `Int`)@877..886 (call `List`)@889..895)@874..895
+      (write (call (member `x` `push`)@899..905 `1`)@899..908)@898..908
+      (set _ `r` _ (call `first` (read `x`)@921..923 (read `y`)@925..927)@915..928)@911..928
+      (write (call (member `y` `push`)@932..938 `2`)@932..941)@931..941
+      (call `print` (member `r` `len`)@950..955 (member `y` `len`)@957..962)@944..963
       (set
         _
         `s`
         _
         (call
           `first`
-          (kwarg `b` (read `y`)@957..959)@954..959
-          (kwarg `a` (read `x`)@964..966)@961..966)@948..967)@944..967
-      (write (call (member `y` `push`)@971..977 `3`)@971..980)@970..980
-      (call `print` (member `s` `len`)@989..994)@983..995
-      (set _ `p` _ (call `pick` (read `x`)@1007..1009 (read `y`)@1011..1013)@1002..1014)@998..1014
-      (write (call (member `y` `push`)@1018..1024 `4`)@1018..1027)@1017..1027
-      (call `print` (member `p` `len`)@1036..1041)@1030..1042
+          (kwarg `b` (read `y`)@979..981)@976..981
+          (kwarg `a` (read `x`)@986..988)@983..988)@970..989)@966..989
+      (write (call (member `y` `push`)@993..999 `3`)@993..1002)@992..1002
+      (call `print` (member `s` `len`)@1011..1016)@1005..1017
+      (set _ `p` _ (call `pick` (read `x`)@1029..1031 (read `y`)@1033..1035)@1024..1036)@1020..1036
+      (write (call (member `y` `push`)@1040..1046 `4`)@1040..1049)@1039..1049
+      (call `print` (member `p` `len`)@1058..1063)@1052..1064
       (set
         _
         `d`
         _
-        (call `deep` (read `x`)@1054..1056 (read `y`)@1058..1060 `3`)@1049..1064)@1045..1064
-      (write (call (member `y` `push`)@1068..1074 `5`)@1068..1077)@1067..1077
-      (call `print` (member `d` `len`)@1086..1091)@1080..1092
+        (call `deep` (read `x`)@1076..1078 (read `y`)@1080..1082 `3`)@1071..1086)@1067..1086
+      (write (call (member `y` `push`)@1090..1096 `5`)@1090..1099)@1089..1099
+      (call `print` (member `d` `len`)@1108..1113)@1102..1114
       (set
         _
         `t`
         _
-        (call `first` (read `x`)@1105..1107 (read (call `mk`)@1110..1114)@1109..1114)@1099..1115)@1095..1115
-      (call `print` (member `t` `len`)@1124..1129)@1118..1130
+        (call `first` (read `x`)@1127..1129 (read (call `mk`)@1132..1136)@1131..1136)@1121..1137)@1117..1137
+      (call `print` (member `t` `len`)@1146..1151)@1140..1152
       (set
         _
         `env`
         _
-        (call `Env` (kwarg `entries` (call `Vec`)@1152..1157)@1143..1157)@1139..1158)@1133..1158
+        (call `Env` (kwarg `entries` (call `List`)@1174..1180)@1165..1180)@1161..1181)@1155..1181
       (write
         (call
-          (member (member `env` `entries`)@1162..1173 `push`)@1162..1178
+          (member (member `env` `entries`)@1185..1196 `push`)@1185..1201
           (call
             `Entry`
-            (kwarg `key` `"HOME"`)@1185..1196
-            (kwarg `value` `"/home"`)@1198..1212)@1179..1213)@1162..1214)@1161..1214
-      (set _ `q` _ (call `Text` `"HO"` `"ME"`)@1221..1237)@1217..1237
+            (kwarg `key` `"HOME"`)@1208..1219
+            (kwarg `value` `"/home"`)@1221..1235)@1202..1236)@1185..1237)@1184..1237
+      (set _ `q` _ (call `String` `"HO"` `"ME"`)@1244..1262)@1240..1262
       (if
         (as
-          (call (member `env` `get`)@1243..1250 (read `q`)@1251..1253)@1243..1254
-          `home`)@1243..1262
+          (call (member `env` `get`)@1268..1275 (read `q`)@1276..1278)@1268..1279
+          `home`)@1268..1287
         (block
-          (write (call (member `q` `add`)@1268..1273 `"X"`)@1268..1278)@1267..1278
-          (call `print` `home` `q`)@1283..1297)@1267..1300
-        _)@1240..1300
-      (set _ `w` _ (call `Text` `"abcd"`)@1304..1316)@1300..1316
-      (set _ `l` _ (call `label` (read `w`)@1329..1331)@1323..1332)@1319..1332
-      (move `w`)@1335..1337
-      (call `print` `l`)@1340..1348
-      (set _ `from` _ `2`)@1351..1359
-      (call `print` (call `span` `from` `5`)@1368..1381)@1362..1382)@832..1441)@819..1441)@191..1441
+          (write (call (member `q` `add`)@1293..1298 `"X"`)@1293..1303)@1292..1303
+          (call `print` `home` `q`)@1308..1322)@1292..1325
+        _)@1265..1325
+      (set _ `w` _ (call `String` `"abcd"`)@1329..1343)@1325..1343
+      (set _ `l` _ (call `label` (read `w`)@1356..1358)@1350..1359)@1346..1359
+      (move `w`)@1362..1364
+      (call `print` `l`)@1367..1375
+      (set _ `from` _ `2`)@1378..1386
+      (call `print` (call `span` `from` `5`)@1395..1408)@1389..1409)@850..1468)@837..1468)@191..1468

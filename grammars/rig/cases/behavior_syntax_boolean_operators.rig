@@ -9,7 +9,7 @@ fun loud(v: Bool) -> Bool
 sub main()
   a = 1
   b = 2
-  print(not a == b)
+  print(not (a == b))
   print(true or false and false)
   print((true or false) and false)
   print(false and loud(true))

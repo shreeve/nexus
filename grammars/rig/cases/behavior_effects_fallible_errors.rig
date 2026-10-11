@@ -10,7 +10,7 @@ error ParseError
 error NetError
   timeout
 
-fun parse_len(s: String) -> Int!
+fun parse_len(s: ?String) -> Int!
   if s == ""
     return ParseError.empty
   if s.len > 5
@@ -22,7 +22,7 @@ fun fetch(n: Int) -> Int!
   return e if n < 0
   parse_len("ab")! + n
 
-fun describe(s: String) -> String
+fun describe(s: ?String) -> ?String
   n = parse_len(s) catch |err|
     match err
       .empty => return "empty"

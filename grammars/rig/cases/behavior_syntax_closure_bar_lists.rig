@@ -7,7 +7,7 @@
 sub main()
   n = 10
   cell: *Cell[Int] = *Cell(0)
-  v: Vec[Int] = Vec()
+  v: List[Int] = List()
   !v.push(1)
 
   copy = |+n| n + 1

@@ -4,7 +4,7 @@
 
 sub main()
   count: *Cell[Int] = *Cell(0)
-  cb: *sub() = *|+count| count.set(count.get() + 1)
+  cb: *sub() = *|+count| !count.set(count.get() + 1)
   cb2 = +cb
   <cb
   cb2()
