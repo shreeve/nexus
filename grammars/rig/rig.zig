@@ -121,6 +121,7 @@ pub const BindingKind = enum {
     @"|=",
     @"^=",
     @"<<=",
+    @"<<%=",
     @">>=",
 
     comptime {
@@ -1194,9 +1195,9 @@ fn isInfix(cat: TokenCat) bool {
     return switch (cat) {
         .plus, .minus, .star, .slash, .percent, .plus_wrap, .minus_wrap, .star_wrap => true,
         .eq, .ne, .lt, .gt, .le, .ge, .nullish, .nullish_jump => true,
-        .bar, .ampersand, .caret, .lshift, .rshift => true,
+        .bar, .ampersand, .caret, .lshift, .lshift_wrap, .rshift => true,
         .assign, .plus_assign, .minus_assign, .star_assign, .slash_assign, .percent_assign => true,
-        .amp_assign, .bar_assign, .caret_assign, .lshift_assign, .rshift_assign => true,
+        .amp_assign, .bar_assign, .caret_assign, .lshift_assign, .lshift_wrap_assign, .rshift_assign => true,
         .plus_wrap_assign, .minus_wrap_assign, .star_wrap_assign => true,
         else => false,
     };
@@ -1263,7 +1264,7 @@ const hidden_id_base: u16 = 0xFF00;
 /// built it (`hiddenLeaf`). Every pass reads a name through this.
 pub fn leafText(source: []const u8, leaf: parser.Src) []const u8 {
     if (leaf.id >= hidden_id_base) return @as(HiddenName, @enumFromInt(leaf.id - hidden_id_base)).text();
-    return source[leaf.pos..][0..leaf.len];
+    return diag.textBetween(source, leaf.pos, @as(usize, leaf.pos) + leaf.len);
 }
 
 /// How a `for` over an iterator walks its source, which decides the
@@ -1296,6 +1297,9 @@ pub const Parser = struct {
     /// next position past the end of the source, which no leaf of the
     /// source holds, so facts keyed by position stay apart.
     padded: u32 = 0,
+    /// Where each hidden parameter `padLambda` made belongs: the start of
+    /// its closure, so a diagnostic about it points into the closure.
+    pad_homes: std.ArrayList(u32) = .empty,
     /// The node ids of the `(read place)`, `(write place)`, and
     /// `(move place)` receivers written in front of the call
     /// (`!v.push(x)`), not in parentheses.
@@ -1546,7 +1550,16 @@ pub const Parser = struct {
     }
 
     /// The source span of a node (see `BaseParser.span`).
+    /// A hidden parameter of a padded closure spans the start of its
+    /// closure, not the positions past the source's end its leaf holds.
     pub fn span(self: *const Parser, sexp: Sexp) parser.Span {
+        if (sexp == .src and sexp.src.pos >= self.base.source.len) {
+            const k = sexp.src.pos - self.base.source.len;
+            if (k >= 1 and k <= self.pad_homes.items.len) {
+                const home = self.pad_homes.items[k - 1];
+                return .{ .start = home, .end = home };
+            }
+        }
         return self.base.span(sexp);
     }
 
@@ -1705,7 +1718,7 @@ pub const Parser = struct {
         var probe = BaseLexer.init(self.base.source);
         probe.pos = at + 3;
         const end = probe.next();
-        const text = self.base.source[end.pos .. end.pos + end.len];
+        const text = diag.textBetween(self.base.source, end.pos, end.pos + end.len);
         const n = if (end.cat == .integer) std.fmt.parseInt(i64, text, 0) catch null else null;
         const fix = if (n) |v|
             self.format("`..={s}` is written `..{d}`", .{ text, v + 1 })
@@ -2405,6 +2418,7 @@ pub const Parser = struct {
             mutable.padded += 1;
             var leaf = hiddenLeaf(at, .discard);
             leaf.src.pos = @intCast(mutable.base.source.len + mutable.padded);
+            try mutable.pad_homes.append(mutable.allocator(), at);
             p.* = leaf;
         }
         slot.* = try mutable.base.newList(out, .{ .start = at, .end = at });
