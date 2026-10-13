@@ -1,7 +1,8 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (longtokens)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
   (lex_rule `"\\\\\\r\\n"` _ `skip`)
@@ -24,6 +25,10 @@
   (lex_rule `"+%"` _ `plus_wrap`)
   (lex_rule `"-%"` _ `minus_wrap`)
   (lex_rule `"*%"` _ `star_wrap`)
+  (lex_rule `"+|="` _ `plus_sat_assign`)
+  (lex_rule `"-|="` _ `minus_sat_assign`)
+  (lex_rule `"+|"` _ `plus_sat`)
+  (lex_rule `"-|"` _ `minus_sat`)
   (lex_rule `">>="` _ `rshift_assign`)
   (lex_rule `"**"` _ `power`)
   (lex_rule `"=="` _ `eq`)
@@ -159,6 +164,12 @@
           _
           `body`
           (type `block`)
+          opt)
+        (role _ `owner` _ opt)
+        (role
+          _
+          `owner_params`
+          (type `group`)
           opt))
       _
       _)
@@ -190,6 +201,12 @@
           _
           `body`
           (type `block`)
+          opt)
+        (role _ `owner` _ opt)
+        (role
+          _
+          `owner_params`
+          (type `group`)
           opt))
       _
       _)
@@ -451,7 +468,7 @@
           _
           `op`
           (type
-            (tagset `tag` `fixed` `shadow` `shadow_fixed` `"+="` `"-="` `"*="` `"/="` `"%="` `"+%="` `"-%="` `"*%="` `"&="` `"|="` `"^="` `"<<="` `"<<%="` `">>="`))
+            (tagset `tag` `fixed` `shadow` `shadow_fixed` `"+="` `"-="` `"*="` `"/="` `"%="` `"+%="` `"-%="` `"*%="` `"+|="` `"-|="` `"&="` `"|="` `"^="` `"<<="` `"<<%="` `">>="`))
           opt)
         (role _ `target` _ _)
         (role _ `type` _ opt)
@@ -759,6 +776,13 @@
       _
       _)
     (kind_decl
+      (kinds `"+|"` `"-|"`)
+      (roles
+        (role _ `left` _ _)
+        (role _ `right` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `"=="` `"!="` `"<"` `">"` `"<="` `">="`)
       (roles
         (role _ `left` _ _)
@@ -916,6 +940,10 @@
     (name_pair `"+%"` `"\`+%\`"`)
     (name_pair `"-%"` `"\`-%\`"`)
     (name_pair `"*%"` `"\`*%\`"`)
+    (name_pair `"+|="` `"\`+|=\`"`)
+    (name_pair `"-|="` `"\`-|=\`"`)
+    (name_pair `"+|"` `"\`+|\`"`)
+    (name_pair `"-|"` `"\`-|\`"`)
     (name_pair `":"` `"\`:\`"`)
     (name_pair `"->"` `"\`->\`"`)
     (name_pair `"("` `"\`(\`"`)
@@ -1324,6 +1352,8 @@
             ((lit `"+%="`))
             ((lit `"-%="`))
             ((lit `"*%="`))
+            ((lit `"+|="`))
+            ((lit `"-|="`))
             ((lit `"&="`))
             ((lit `"|="`))
             ((lit `"^="`))
@@ -1436,6 +1466,11 @@
       _)
     (alt
       _
+      ((ref `method`))
+      _
+      _)
+    (alt
+      _
       ((ref `enum`))
       _
       _)
@@ -1492,7 +1527,7 @@
       _
       ((label
           `object`
-          (ref `name`))
+          (ref `mpath`))
         (lit `"."`)
         (label
           `name`
@@ -1580,6 +1615,216 @@
         (named
           `fails`
           (tag `fails`)))
+      _))
+  (rule
+    (name `method`)
+    (alt
+      _
+      ((tok `FUN`)
+        (label
+          `owner`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `owner_params`
+              (ref `tparams`))))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (group
+          opt
+          ((label
+              `returns`
+              (ref `returns`))))
+        (group
+          opt
+          ((label
+              `origins`
+              (ref `origins`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `fun`)
+      _)
+    (alt
+      _
+      ((tok `FUN`)
+        (label
+          `owner`
+          (ref `qowner`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (group
+          opt
+          ((label
+              `returns`
+              (ref `returns`))))
+        (group
+          opt
+          ((label
+              `origins`
+              (ref `origins`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `fun`)
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `owner`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `owner_params`
+              (ref `tparams`))))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `sub`)
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `owner`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `owner_params`
+              (ref `tparams`))))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `body`
+          (ref `block`)))
+      (node
+        `sub`
+        (named
+          `fails`
+          (tag `fails`)))
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `owner`
+          (ref `qowner`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (label
+          `body`
+          (ref `block`)))
+      (node `sub`)
+      _)
+    (alt
+      _
+      ((tok `SUB`)
+        (label
+          `owner`
+          (ref `qowner`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`))
+        (group
+          opt
+          ((label
+              `tparams`
+              (ref `tparams`))))
+        (group
+          opt
+          ((label
+              `params`
+              (ref `params`))))
+        (lit `"!"`)
+        (label
+          `body`
+          (ref `block`)))
+      (node
+        `sub`
+        (named
+          `fails`
+          (tag `fails`)))
+      _))
+  (rule
+    (name `qowner`)
+    (alt
+      _
+      ((label
+          `object`
+          (ref `name`))
+        (lit `"."`)
+        (label
+          `name`
+          (ref `name`)))
+      (node `member`)
       _))
   (rule
     (name `returns`)
@@ -3903,7 +4148,9 @@
       (infix_op `"+"` `left`)
       (infix_op `"-"` `left`)
       (infix_op `"+%"` `left`)
-      (infix_op `"-%"` `left`))
+      (infix_op `"-%"` `left`)
+      (infix_op `"+|"` `left`)
+      (infix_op `"-|"` `left`))
     (level
       (infix_op `"*"` `left`)
       (infix_op `"/"` `left`)
