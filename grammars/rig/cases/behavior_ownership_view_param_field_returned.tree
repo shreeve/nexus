@@ -7,7 +7,9 @@
     ((: `h` (read_view `Holder`)@125..132)@122..132)@121..133
     (read_view `Wrap`)@137..142
     _
-    (block (read (member `h` `inner`)@146..153)@145..153)@145..155)@109..155
+    (block (read (member `h` `inner`)@146..153)@145..153)@145..155
+    _
+    _)@109..155
   (sub
     `main`
     _
@@ -22,4 +24,6 @@
           `Holder`
           (kwarg `inner` (call `Wrap` (kwarg `payload` `9`)@191..201)@186..202)@179..202)@172..203)@168..203
       (set _ `b` _ (call `inner_of` (read `h`)@219..221)@210..222)@206..222
-      (call `print` (member `b` `payload`)@231..240)@225..241)@168..257)@155..257)@58..257
+      (call `print` (member `b` `payload`)@231..240)@225..241)@168..257
+    _
+    _)@155..257)@58..257

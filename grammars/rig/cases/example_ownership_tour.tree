@@ -10,13 +10,17 @@
     ((: `a` (read_view `Account`)@126..134)@123..134)@122..135
     `Int`
     _
-    (block (member `a` `balance`)@145..154)@145..156)@108..156
+    (block (member `a` `balance`)@145..154)@145..156
+    _
+    _)@108..156
   (sub
     `close`
     _
     ((: `a` `Account`)@166..176)@165..177
     _
-    (block (call `print` (member `a` `balance`)@186..195)@180..196)@180..198)@156..198
+    (block (call `print` (member `a` `balance`)@186..195)@180..196)@180..198
+    _
+    _)@156..198
   (sub
     `main`
     _
@@ -40,4 +44,6 @@
       (set _ `other` _ (clone `shared`)@466..473)@458..473
       (move `shared`)@530..537
       (call `print` (member `other` `balance`)@619..632)@613..633
-      (call `close` (move `moved`)@643..649)@637..650)@211..740)@198..740)@63..740
+      (call `close` (move `moved`)@643..649)@637..650)@211..740
+    _
+    _)@198..740)@63..740

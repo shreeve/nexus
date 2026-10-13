@@ -13,7 +13,9 @@
         (match
           `self`
           (arm (variant_pattern `circle` `_`)@151..161 _ `false`)@151..170
-          (arm (enum_lit `point`)@177..183 _ `true`)@177..191)@134..193)@134..193)@102..193)@58..193
+          (arm (enum_lit `point`)@177..183 _ `true`)@177..191)@134..193)@134..193
+      _
+      _)@102..193)@58..193
   (sub
     `main`
     _
@@ -27,4 +29,6 @@
         (call (enum_lit `circle`)@217..224 (kwarg `radius` `2`)@225..234)@217..235)@206..235
       (call `print` (call (member `s` `is_point`)@244..254)@244..256)@238..257
       (set _ `p` `Shape` (enum_lit `point`)@271..277)@260..277
-      (call `print` (call (member `p` `is_point`)@286..296)@286..298)@280..299)@206..326)@193..326)@58..326
+      (call `print` (call (member `p` `is_point`)@286..296)@286..298)@280..299)@206..326
+    _
+    _)@193..326)@58..326

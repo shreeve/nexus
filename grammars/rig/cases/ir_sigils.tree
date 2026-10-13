@@ -5,19 +5,25 @@
     _
     ((: `n` `Node`)@169..176)@168..177
     _
-    (block (call `print` (member `n` `value`)@186..193)@180..194)@180..196)@157..196
+    (block (call `print` (member `n` `value`)@186..193)@180..194)@180..196
+    _
+    _)@157..196
   (sub
     `inspect`
     _
     ((: `n` (read_view `Node`)@211..216)@208..216)@207..217
     _
-    (block (call `print` (member `n` `value`)@226..233)@220..234)@220..236)@196..236
+    (block (call `print` (member `n` `value`)@226..233)@220..234)@220..236
+    _
+    _)@196..236
   (sub
     `touch`
     _
     ((: `n` (write_view `Node`)@249..254)@246..254)@245..255
     _
-    (block (call `print` (member `n` `value`)@264..271)@258..272)@258..274)@236..274
+    (block (call `print` (member `n` `value`)@264..271)@258..272)@258..274
+    _
+    _)@236..274
   (struct
     `Log`
     _
@@ -29,14 +35,18 @@
       _
       (block
         (write
-          (call (member (member `self` `lines`)@332..342 `push`)@332..347 `n`)@332..350)@331..350)@331..354)@304..354
+          (call (member (member `self` `lines`)@332..342 `push`)@332..347 `n`)@332..350)@331..350)@331..354
+      _
+      _)@304..354
     (fun
       `close`
       _
       ((move `self`)@364..369)@363..370
       `Int`
       _
-      (block (member (member `self` `lines`)@382..392 `len`)@382..396)@382..398)@354..398)@274..398
+      (block (member (member `self` `lines`)@382..392 `len`)@382..396)@382..398
+      _
+      _)@354..398)@274..398
   (sub
     `main`
     _
@@ -67,4 +77,6 @@
       (raw_block
         (block
           (set _ `p` `I32` (builtin `intCast` `y`)@766..777)@757..777
-          (call `print` `p`)@782..790)@757..791)@749..791)@411..791)@398..791)@134..791
+          (call `print` `p`)@782..790)@757..791)@749..791)@411..791
+    _
+    _)@398..791)@134..791

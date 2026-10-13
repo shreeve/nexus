@@ -8,4 +8,6 @@
     (block
       (set _ `inner` _ (share (call `Noisy` (kwarg `id` `4`)@170..175)@164..176)@163..176)@155..176
       (set _ `outer` _ (share (move `inner`)@189..195)@187..196)@179..196
-      (call `print` (member `outer` `id`)@205..213)@199..214)@155..249)@142..249)@121..249
+      (call `print` (member `outer` `id`)@205..213)@199..214)@155..249
+    _
+    _)@142..249)@121..249
