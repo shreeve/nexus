@@ -477,7 +477,7 @@ const Codegen = struct {
             \\    // The ordinal of a match made in an earlier state (before a
             \\    // reduction) is not this match's.
             \\    self.lastMatchedId = 0;
-            \\    const text = self.source[token.pos..][0..token.len];
+            \\    const text = self.tokenText(token);
             \\    if (text.len == 0) return promotableSymbol;
             \\
         );

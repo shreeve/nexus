@@ -252,6 +252,13 @@ pub const GrammarLowerer = struct {
                 try self.lowerRule(entry);
             },
             .section => try self.lowerSection(entry),
+            .longtokens => {
+                if (self.section != .lexer)
+                    return self.fail(entry, "@longtokens belongs in the @lexer section", .{});
+                if (self.lexer.?.longTokens)
+                    return self.fail(entry, "duplicate @longtokens", .{});
+                self.lexer.?.longTokens = true;
+            },
             .state, .after, .tokens, .code, .lex_rule => {
                 // lang.zig scans these only after `@lexer` (and before `@parser`).
                 const spec = &self.lexer.?;

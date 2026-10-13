@@ -1,0 +1,15 @@
+# @longtokens configures the lexer: it belongs in the @lexer section, not
+# in the @parser section (nor before @lexer).
+# error: longtokens_misplaced.grammar:14:1:
+# error: @longtokens belongs in the @lexer section
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+@longtokens
+top! = IDENT                                → (t 1)

@@ -14,9 +14,7 @@
 //! the first error, as std.zig's own fuzz test runs it. An input is
 //! accepted when it parses with no error. Compare prints one line per
 //! input on which the two disagree, with the first error of the side that
-//! rejects, and a summary. A file that Nexus rejects at an `err` token of
-//! 65535 bytes, a token std.zig.Tokenizer lexes as one longer token while
-//! accepting the file, is listed as LONG, not counted as differing.
+//! rejects, and a summary.
 //!
 //! --inline FILE takes the inputs from the string literals given to
 //! testCanonical, testTransform (both sources), testError and
@@ -53,8 +51,6 @@ const Verdict = struct {
     ok: bool,
     pos: usize = 0,
     what: []const u8 = "",
-    /// Nexus only: the error is at an `err` token of 65535 bytes.
-    long: bool = false,
 };
 
 fn nexusVerdict(p: *parser.Parser, src: []const u8) Verdict {
@@ -62,12 +58,7 @@ fn nexusVerdict(p: *parser.Parser, src: []const u8) Verdict {
     _ = p.parseRoot() catch |err| switch (err) {
         error.ParseError => {
             const f = p.lastError().?;
-            return .{
-                .ok = false,
-                .pos = f.span.start,
-                .what = @tagName(f.cat),
-                .long = f.cat == .err and f.span.len() == std.math.maxInt(u16),
-            };
+            return .{ .ok = false, .pos = f.span.start, .what = @tagName(f.cat) };
         },
         else => std.process.fatal("nexus: {t}", .{err}),
     };
@@ -164,7 +155,6 @@ pub fn main(init: std.process.Init) !void {
     var both_reject: usize = 0;
     var same_pos: usize = 0;
     var differ: usize = 0;
-    var long: usize = 0;
     var bytes: usize = 0;
     var short_msg: usize = 0;
     var same_line_col: usize = 0;
@@ -199,12 +189,6 @@ pub fn main(init: std.process.Init) !void {
             }
             continue;
         }
-        if (a.long and b.ok) {
-            long += 1;
-            const line, const col = lineCol(input.src, a.pos);
-            try w.print("LONG {s}: nexus reject {d}:{d} at a token over 65535 bytes | std accept\n", .{ input.name, line, col });
-            continue;
-        }
         differ += 1;
         try w.print("DIFF {s}: nexus ", .{input.name});
         try writeVerdict(w, input.src, a);
@@ -217,8 +201,8 @@ pub fn main(init: std.process.Init) !void {
             try w.writeByte('\n');
         }
     }
-    try w.print("{d} inputs ({d:.2} MB): {d} accepted by both, {d} rejected by both ({d} at the same byte), {d} differ, {d} with a token over 65535 bytes\n", .{
-        count, @as(f64, @floatFromInt(bytes)) / 1e6, both_accept, both_reject, same_pos, differ, long,
+    try w.print("{d} inputs ({d:.2} MB): {d} accepted by both, {d} rejected by both ({d} at the same byte), {d} differ\n", .{
+        count, @as(f64, @floatFromInt(bytes)) / 1e6, both_accept, both_reject, same_pos, differ,
     });
     if (messages) try w.print("{d} rejected by both: {d} Nexus messages name at most 6 expected items, {d} are at Ast's line and column\n", .{
         both_reject, short_msg, same_line_col,
@@ -256,7 +240,7 @@ fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64
     defer mutator.deinit(gpa);
     var p = parser.Parser.init(gpa, "");
     defer p.deinit();
-    var stats: [3]usize = .{ 0, 0, 0 };
+    var stats: [2]usize = .{ 0, 0 };
     var differ: usize = 0;
     for (0..n) |k| {
         const s, const src = try mutator.next(gpa, seeds);
@@ -264,10 +248,6 @@ fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64
         const b = try stdVerdict(gpa, src);
         if (a.ok == b.ok) {
             stats[if (a.ok) 0 else 1] += 1;
-            continue;
-        }
-        if (a.long and b.ok) {
-            stats[2] += 1;
             continue;
         }
         differ += 1;
@@ -279,8 +259,8 @@ fn fuzzCompare(gpa: std.mem.Allocator, seeds: []const Input, n: usize, seed: u64
         try writeQuoted(w, src);
         try w.writeByte('\n');
     }
-    try w.print("{d} mutants of {d} seeds: {d} accepted by both, {d} rejected by both, {d} differ, {d} with a token over 65535 bytes\n", .{
-        n, seeds.len, stats[0], stats[1], differ, stats[2],
+    try w.print("{d} mutants of {d} seeds: {d} accepted by both, {d} rejected by both, {d} differ\n", .{
+        n, seeds.len, stats[0], stats[1], differ,
     });
     try w.flush();
     if (differ != 0) std.process.exit(1);

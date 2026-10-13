@@ -92,6 +92,7 @@ The suites under `test/`:
 | `basic`, `features`, `lit_tags` | small feature grammars (no `@lang` module) | hand-written |
 | `lists` | `X*`, `X+`, `L(X)`, `L(X, sep)`, `L(X?)` without a schema; its `lists.zig` parses 100,000-item lists in a fixed memory budget | hand-written |
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
+| `long_tokens` | `@longtokens` with `@schema`, `@trivia`, `@repair`, `@keywords` and a lang Lexer that reads ahead and joins tokens; its `long_tokens.zig` tests tokens of 65,534 bytes to 1 MB built in memory: categories, ends, text, spans, facts, tolerant repairs, `error.TokenEndUnknown`, and (in child processes) the panics of the helpers that have no parser | hand-written, short |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |

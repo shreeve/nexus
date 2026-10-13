@@ -213,7 +213,7 @@ test "trivia" {
     defer p.deinit();
     _ = try p.parseProgram();
     const comment = p.trivia()[0];
-    try testing.expectEqualStrings("# seven", source[comment.pos..][0..comment.len]);
+    try testing.expectEqualStrings("# seven", p.tokenText(comment));
 }
 
 test "syntax errors name what was expected" {
@@ -265,9 +265,10 @@ The module exports:
 |---|---|
 | `Tag`, `Role`, `Start` | the kinds and tags, the role names, the start symbols (all generated from the grammar) |
 | `Token`, `TokenCat` | a token (8 bytes: `pos`, `len`, `cat`, `pre`, the count of blanks before it) and the token categories |
+| `longTokens` | whether the grammar has `@longtokens`, so a `len` of 65535 stands for a longer token ([GRAMMAR.md](GRAMMAR.md#long-tokens)); with it, `LongEnds`, the lexer's record of their ends |
 | `BaseLexer` | the generated scanner ([GRAMMAR.md](GRAMMAR.md#the-generated-lexer)) |
 | `Lexer` | the lexer the parser drives: the lang module's `Lexer` wrapper, or `BaseLexer` |
-| `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes, 16 on 32-bit targets. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)`, `listOf(items)` |
+| `Sexp` | `nil`, `tag`, `src` (`pos`, `len`, `id`), `str`, `list` (`items()`, `id`); 24 bytes, 16 on 32-bit targets. `kind()`, `isKind(t)`, `items()`, `getText(source)`, `write(source, w)` (both panic on the leaf of a token over 65534 bytes, whose text is `leafText`'s), `listOf(items)` |
 | `List` | a list node: `items()`, `id`; `List.of(items)` (no id), `List.withId(items, id)` |
 | `Span` | a byte range `start`, `end` of the source: `len()`, `isEmpty()`, `text(source)` (the source it covers, clamped to the source, so a span past its end gives what remains of it or the empty string) |
 | `NodeId` | a node's id (`u32`; 0 is none) |
@@ -291,13 +292,18 @@ trees are gone), `allocator()` (the allocator that holds the trees, freed
 by `deinit` or `reset`), `parse<Start>()`, `parse(start)`,
 `parseTolerant(start, budget)`, `span(sexp)`, `ruleOf(sexp)`, `nodeCount()`,
 `sideRole(sexp, role)`, `newNode(tag, children, span)`, `newList(items, span)`,
-`writeFacts(w, root)`, `trivia()`, `lastError()`, `writeError(w)`,
+`writeFacts(w, root)`, `trivia()`, `tokenEnd(token)`, `tokenText(token)`,
+`leafEnd(src)`, `leafText(sexp)` (the end and text of a token the parser
+read, and of its leaf, whole for a token over 65534 bytes:
+[GRAMMAR.md](GRAMMAR.md#long-tokens)), `lastError()`, `writeError(w)`,
 `printError()`, `writeExcerpt(w, span)`, `lineCol(pos)`, `expected(state)`,
 `expectedNames(state, buf)`, `symbolText(symbol)`; fields `source` and
 `lexer` (the lexer as it stood at the error, for a lang Lexer's own error
 message). A parse fails with `error.ParseError` (see `lastError()`),
-`error.OutOfMemory`, or `error.InputTooLarge` (input over 4 GiB: positions
-are 32-bit).
+`error.OutOfMemory`, `error.InputTooLarge` (input over 4 GiB: positions
+are 32-bit), or, with `@longtokens`, `error.TokenEndUnknown` (a token over
+65534 bytes whose end the lexer did not hold:
+[GRAMMAR.md](GRAMMAR.md#long-tokens)).
 
 `ir.get` and `ir.rest` look the slot up by the node's kind at run time;
 asking for a role the kind lacks panics in safety-checked builds (and names
@@ -745,7 +751,7 @@ reads only these declarations from it, each optional:
 
 | Declaration | Contract |
 |---|---|
-| `Lexer` | a wrapper over the generated scanner: a field `base: BaseLexer`, `pub fn init(source: []const u8) Lexer` and `pub fn next(self: *Lexer) Token`. The parser calls nothing else. Setting `base.aux` before returning a token gives its leaf that id (`src.id`). A token whose length the wrapper computes is built with `BaseLexer.makeToken`, so a match over 65535 bytes is an `err` token as in the scanner. A wrapper without `base: BaseLexer` is a compile error. |
+| `Lexer` | a wrapper over the generated scanner: a field `base: BaseLexer`, `pub fn init(source: []const u8) Lexer` and `pub fn next(self: *Lexer) Token`. The parser calls nothing else. Setting `base.aux` before returning a token gives its leaf that id (`src.id`). A token whose length the wrapper computes is built with `BaseLexer.makeToken` or `base.token(...)`, so a match over 65535 bytes is an `err` token as in the scanner; with `@longtokens` it is built with `base.token(...)`, which records the end of a token over 65534 bytes ([GRAMMAR.md](GRAMMAR.md#long-tokens)). A wrapper without `base: BaseLexer` is a compile error. |
 | `Parser` | a wrapper over the generated parser: a field `base: BaseParser`, `pub fn init(allocator, source) Parser`, `pub fn deinit(self: *Parser) void`, and `pub fn parse<Start>(self: *Parser) !Sexp` per start symbol it offers. Everything it does not forward is `p.base.X`; generic code reaches the generated parser as `if (Parser == BaseParser) &p else &p.base`. It is returned by value from `parseX(allocator, source)`, so it must be movable. |
 | `GId`, `gAs` | per `@as` group `g` that `@keywords` does not declare: an enum whose field names are the group's keyword terminals (values from 1 become the leaf's id), and `pub fn gAs(text: []const u8) ?GId`; see [GRAMMAR.md](GRAMMAR.md#as-keywords-that-are-also-names). For a `@keywords` group, declaring its own is a compile error of the generated parser; re-exporting the generated ones (`pub const GId = parser.GId;`) is not |
 | `lookup` | per `@as ... via lookup`: `pub fn lookup(text: []const u8) ?GId`, the group's lookup (`?parser.GId` for a `@keywords` group) |

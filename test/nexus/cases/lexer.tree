@@ -10,31 +10,32 @@
   (after `after` (assign `beg` `0`)@198..205)@188..205
   (tokens `tokens` `ident` `number` `string` `eof` `err` `comment`)@207..262
   (code `checkMode`)@264..281
-  (lex_rule `[ \\t]+` _ `skip` (lex_action `skip` _)@329..333)@283..333
-  (lex_rule `'#' [^\\n]*` _ `comment`)@334..381
-  (lex_rule `'\\n'` _ `ident` (set_action `beg` `1`)@429..438)@382..438
-  (lex_rule `'('` _ `ident` (step_action `paren` `++`)@486..495)@439..495
+  (longtokens)@282..293
+  (lex_rule `[ \\t]+` _ `skip` (lex_action `skip` _)@341..345)@295..345
+  (lex_rule `'#' [^\\n]*` _ `comment`)@346..393
+  (lex_rule `'\\n'` _ `ident` (set_action `beg` `1`)@441..450)@394..450
+  (lex_rule `'('` _ `ident` (step_action `paren` `++`)@498..507)@451..507
   (lex_rule
     `')'`
-    (guards `@` (guard _ `paren` `>` `0`)@502..511)@500..511
+    (guards `@` (guard _ `paren` `>` `0`)@514..523)@512..523
     `ident`
-    (step_action `paren` `--`)@543..552)@496..552
+    (step_action `paren` `--`)@555..564)@508..564
   (lex_rule
     `'.'+`
-    (guards `@` (guard _ `beg` _ _)@560..563 (guard `!` `flag` _ _)@566..571)@558..571
+    (guards `@` (guard _ `beg` _ _)@572..575 (guard `!` `flag` _ _)@578..583)@570..583
     `ident`
-    (counted `beg` `counted` `'.'`)@600..620
-    (lex_action `hold` _)@622..626)@553..626
+    (counted `beg` `counted` `'.'`)@612..632
+    (lex_action `hold` _)@634..638)@565..638
   (lex_rule
     _
-    (guards `@` (guard _ `pre` `>=` `2`)@629..637 (guard _ `beg` `==` `1`)@640..648)@627..648
+    (guards `@` (guard _ `pre` `>=` `2`)@641..649 (guard _ `beg` `==` `1`)@652..660)@639..660
     `ident`
-    (set_action `flag` `false`)@674..688)@627..688
-  (lex_rule `"<=>"` _ `ident` (lex_action `rewind` `1`)@735..744)@689..744
-  (lex_rule `[0-9]+ / '.' [a-z]` _ `number`)@745..790
-  (lex_rule `'"' ([^"\\\\\\n] | '\\\\' .)* '"'` _ `string`)@791..837
-  (lex_rule `.` _ `err`)@838..881
-  (section `parser`)@883..890
+    (set_action `flag` `false`)@686..700)@639..700
+  (lex_rule `"<=>"` _ `ident` (lex_action `rewind` `1`)@747..756)@701..756
+  (lex_rule `[0-9]+ / '.' [a-z]` _ `number`)@757..802
+  (lex_rule `'"' ([^"\\\\\\n] | '\\\\' .)* '"'` _ `string`)@803..849
+  (lex_rule `.` _ `err`)@850..893
+  (section `parser`)@895..902
   (rule
-    (start `top`)@892..896
-    (alt _ ((tok `IDENT`)@899..904)@899..904 (node `top` (pos `1`)@937..938)@932..939 _)@899..939)@892..939)@77..940
+    (start `top`)@904..908
+    (alt _ ((tok `IDENT`)@911..916)@911..916 (node `top` (pos `1`)@949..950)@944..951 _)@911..951)@904..951)@77..952

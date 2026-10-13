@@ -9,10 +9,8 @@
 //!
 //! Compare prints one line per input whose token streams differ (tag by
 //! name, start, end, up to and including eof), with the first difference,
-//! then a summary with the longest token. A token longer than 65535 bytes,
-//! the most a Nexus token holds, is the one difference it allows: Nexus
-//! lexes it as `err` over the same bytes, and the input is listed as LONG
-//! when everything else is equal. --fuzz draws inputs of up to 511 bytes,
+//! then a summary with the longest token. --fuzz draws inputs of up to
+//! 511 bytes,
 //! alternately from std.zig.Tokenizer's own fuzz-test byte weights and
 //! from a mix of token fragments. --dump prints a stream in the format of
 //! the zigtok oracle (`# path bytes`, then `tag start end`). --bench times
@@ -33,12 +31,10 @@ const Tok = struct {
     }
 };
 
-/// A Nexus token as std.zig.Tokenizer would name it. A token longer than
-/// 65535 bytes is an `err` token holding its first 65535; the lexer resumes
-/// after the whole match, so its true end is the lexer's position.
+/// A Nexus token as std.zig.Tokenizer would name it. The end of a token
+/// over 65534 bytes is the one the lexer recorded (`@longtokens`).
 fn nexusTok(lx: *parser.BaseLexer, t: parser.Token) Tok {
-    const end: usize = if (t.cat == .err and t.len == std.math.maxInt(u16)) lx.pos else @as(usize, t.pos) + t.len;
-    return .{ .tag = @tagName(t.cat), .start = t.pos, .end = end };
+    return .{ .tag = @tagName(t.cat), .start = t.pos, .end = @as(usize, t.pos) + lx.text(t).len };
 }
 
 /// The generated lexer as the lang module starts it (after a byte order
@@ -54,7 +50,6 @@ fn stdTok(t: std.zig.Token) Tok {
 const Stats = struct {
     inputs: usize = 0,
     differ: usize = 0,
-    long: usize = 0,
     tokens: usize = 0,
     longest: Tok = .{ .tag = "none", .start = 0, .end = 0 },
     longest_in: []const u8 = "",
@@ -66,7 +61,6 @@ fn compare(arena: std.mem.Allocator, w: *Io.Writer, st: *Stats, name: []const u8
     var lx = baseLexer(src);
     var tz = std.zig.Tokenizer.init(src);
     var n: usize = 0;
-    var long = false;
     var nexus_done = false;
     var std_done = false;
     defer st.tokens += n;
@@ -82,18 +76,6 @@ fn compare(arena: std.mem.Allocator, w: *Io.Writer, st: *Stats, name: []const u8
                 st.longest_in = try arena.dupe(u8, name);
             }
             if (a.?.eql(t)) continue;
-            // A token longer than a Nexus token can hold: the same extent,
-            // as `err`; the streams go on in step.
-            if (std.mem.eql(u8, a.?.tag, "err") and a.?.start == t.start and a.?.end == t.end and
-                t.end - t.start > std.math.maxInt(u16))
-            {
-                if (!long) st.long += 1;
-                long = true;
-                try w.print("LONG {s}: token {d}: std {s} {d} {d} ({d} bytes) is a Nexus err token\n", .{
-                    name, n, t.tag, t.start, t.end, t.end - t.start,
-                });
-                continue;
-            }
         }
         st.differ += 1;
         try w.print("DIFF {s}: token {d}: nexus ", .{ name, n });
@@ -190,8 +172,8 @@ pub fn main(init: std.process.Init) !void {
         },
     }
     if (mode == .dump_nexus or mode == .dump_std) return;
-    try w.print("{d} inputs, {d} differ, {d} with a token over 65535 bytes, {d} tokens; longest token: {s} of {d} bytes at {s}:{d}\n", .{
-        st.inputs, st.differ, st.long, st.tokens, st.longest.tag, st.longest.end - st.longest.start, st.longest_in, st.longest.start,
+    try w.print("{d} inputs, {d} differ, {d} tokens; longest token: {s} of {d} bytes at {s}:{d}\n", .{
+        st.inputs, st.differ, st.tokens, st.longest.tag, st.longest.end - st.longest.start, st.longest_in, st.longest.start,
     });
     try w.flush();
     if (st.differ != 0) std.process.exit(1);

@@ -11,11 +11,14 @@
 //! grammar (tables produced by Nexus) standing in for the generated
 //! declarations the runtime refers to. None of it is emitted.
 //!
+//! The `longEnds` section is emitted by lexgen, into the lexer of a grammar
+//! with `@longtokens`.
+//!
 //! Generated interface (codegen declares these in every module):
 //!   types      Tag, Role, Start, Token, TokenCat, BaseLexer, Lexer
-//!   config     nodeStore, elemEnds, keepTrailingNils, hasTrivia, hasRepair,
-//!              asGroups, numSymbols, endSymbol, errorSymbol, xExcludes,
-//!              maxExpected
+//!   config     longTokens, nodeStore, elemEnds, keepTrailingNils, hasTrivia,
+//!              hasRepair, asGroups, numSymbols, endSymbol, errorSymbol,
+//!              xExcludes, maxExpected
 //!   tables     ruleLhs, ruleLen, ruleValue, parseTable, xExcludeStart,
 //!              expectedSymbols, expectedOffsets, expectedOf, repairTokens,
 //!              repairOffsets
@@ -24,6 +27,69 @@
 //!              ruleSideLabels, slotOf, restSlotOf, roleAt, restRoleOf
 
 const std = @import("std");
+
+// @section longEnds
+
+// =============================================================================
+// Ends of long tokens
+// =============================================================================
+
+/// The ends of the last `capacity` tokens over 65534 bytes the lexer
+/// scanned or built (`@longtokens`), recorded as it finishes each one:
+/// such a token's `len` is 65535, which stands for "longer", and a later
+/// scan from its position can match differently (state variables,
+/// guards, a lang Lexer), so its end is never found again by scanning.
+/// The parser copies the end of each long token it reads. A position
+/// with two different ends recorded has no one end: a lang Lexer that
+/// scans one position twice before returning the first token gets no
+/// answer, rather than the wrong one.
+pub const LongEnds = struct {
+    entries: [capacity]Entry = undefined,
+    len: u8 = 0,
+
+    pub const capacity = 16;
+
+    /// A long token: where it starts and ends.
+    pub const Entry = struct { pos: u32, end: u32 };
+
+    /// Record a long token the scanner finished, forgetting the oldest
+    /// when all `capacity` entries are taken.
+    pub fn record(self: *LongEnds, pos: u32, end: u32) void {
+        if (self.len == capacity) {
+            std.mem.copyForwards(Entry, self.entries[0 .. capacity - 1], self.entries[1..]);
+            self.len -= 1;
+        }
+        self.entries[self.len] = .{ .pos = pos, .end = end };
+        self.len += 1;
+    }
+
+    /// Record a long token built at `pos` in place of any recorded there
+    /// (a lang Lexer joining tokens into one).
+    pub fn replace(self: *LongEnds, pos: u32, end: u32) void {
+        var n: u8 = 0;
+        for (self.entries[0..self.len]) |e| {
+            if (e.pos == pos) continue;
+            self.entries[n] = e;
+            n += 1;
+        }
+        self.len = n;
+        self.record(pos, end);
+    }
+
+    /// The end of the long token at `pos`: null when none of the last
+    /// `capacity` starts there, or when two of them do with different ends.
+    pub fn find(self: *const LongEnds, pos: u32) ?u32 {
+        var end: ?u32 = null;
+        for (self.entries[0..self.len]) |e| {
+            if (e.pos != pos) continue;
+            if (end) |x| if (x != e.end) return null;
+            end = e.end;
+        }
+        return end;
+    }
+};
+
+// @end
 
 // @section sexp
 
@@ -126,10 +192,12 @@ pub const Sexp = union(enum) {
         return k == t;
     }
 
-    /// The text of a leaf or string; empty otherwise.
+    /// The text of a leaf or string; empty otherwise. A leaf of a token
+    /// over 65534 bytes (`longTokens`) does not hold its end: its text is
+    /// `BaseParser.leafText`'s, and asking a Sexp for it panics.
     pub fn getText(self: Sexp, source: []const u8) []const u8 {
         return switch (self) {
-            .src => |s| source[s.pos..][0..s.len],
+            .src => |s| source[s.pos..][0..leafLen(s, "Sexp.getText")],
             .str => |s| s,
             else => "",
         };
@@ -137,7 +205,8 @@ pub const Sexp = union(enum) {
 
     /// Print the tree on one line: `_`, tags by name, leaves as their text
     /// followed by `#id` when the id attribute is non-zero, strings quoted.
-    /// error.WriteFailed also reports the walk running out of memory.
+    /// error.WriteFailed also reports the walk running out of memory. A
+    /// leaf of a token over 65534 bytes panics, as in `getText`.
     pub fn write(self: Sexp, source: []const u8, w: *std.Io.Writer) std.Io.Writer.Error!void {
         try writeNested(self, w, source, writeAtom);
     }
@@ -147,7 +216,7 @@ pub const Sexp = union(enum) {
             .nil => try w.writeAll("_"),
             .tag => |t| try w.writeAll(nameOf(t)),
             .src => |x| {
-                try w.writeAll(source[x.pos..][0..x.len]);
+                try w.writeAll(source[x.pos..][0..leafLen(x, "Sexp.write")]);
                 if (x.id != 0) try w.print("#{d}", .{x.id});
             },
             .str => |x| try w.print("\"{s}\"", .{x}),
@@ -156,6 +225,15 @@ pub const Sexp = union(enum) {
         return null;
     }
 };
+
+/// The length of a leaf's text. With `longTokens`, a `len` of 65535 stands
+/// for a token over 65534 bytes, whose end only the parser holds: `what`
+/// panics rather than give a part of its text.
+inline fn leafLen(s: Src, comptime what: []const u8) usize {
+    if (longTokens and s.len == std.math.maxInt(u16))
+        @panic(what ++ ": the leaf of a token over 65534 bytes holds no end (BaseParser.leafText has its text)");
+    return s.len;
+}
 
 /// The name of a Tag or Role value, "?" for one the enum does not name
 /// (without a schema Role is empty, and so is Tag when no action builds a
@@ -338,6 +416,9 @@ fn idCount(comptime Id: type) usize {
     return n;
 }
 
+/// Where a token over 65534 bytes starts and ends (`longTokens`).
+const TokenEnd = struct { pos: u32, end: u32 };
+
 /// A side-band role recorded at reduce time (not placed in the tree).
 const SideEntry = struct { node: NodeId, role: Role, span: Span };
 
@@ -460,6 +541,9 @@ pub const BaseParser = struct {
     triviaTokens: std.ArrayList(Token) = .empty,
     failure: ?Failure = null,
     scratch: std.ArrayList(u16) = .empty,
+    /// With `longTokens`: the start and end of every token over 65534
+    /// bytes read from this source, in source order (see `tokenEnd`).
+    longTokenEnds: if (longTokens) std.ArrayList(TokenEnd) else void = if (longTokens) .empty else {},
 
     const Spare = struct {
         items: [*]const Sexp,
@@ -779,6 +863,8 @@ pub const BaseParser = struct {
             self.lastMatchedId = 0;
             self.triviaTokens.clearRetainingCapacity();
         }
+        // The first token, read by `init`, `reset` or just above.
+        if (longTokens) try self.keepTokenEnd();
         self.started = true;
         @memset(self.spares, .none);
         self.stateStack.clearRetainingCapacity();
@@ -885,7 +971,7 @@ pub const BaseParser = struct {
         const lexerId = takeLexerId(&self.lexer);
         const id = if (asGroups > 0 and self.lastMatchedId != 0) self.lastMatchedId else lexerId;
         if (asGroups > 0) self.lastMatchedId = 0;
-        const end = tok.pos + tok.len;
+        const end = self.tokenEnd(tok);
         try self.pushEntry(target, .{ .src = .{ .pos = tok.pos, .len = tok.len, .id = id } }, tok.pos, end);
         if (nodeStore) self.lastEnd = end;
         try self.advance();
@@ -1035,6 +1121,7 @@ pub const BaseParser = struct {
     /// Fetch the next token, moving trivia to the trivia channel.
     fn advance(self: *BaseParser) !void {
         self.setCurrent(self.lexer.next());
+        if (longTokens) try self.keepTokenEnd();
         if (hasTrivia) try self.skipTrivia();
     }
 
@@ -1049,12 +1136,96 @@ pub const BaseParser = struct {
             try self.triviaTokens.append(self.allocator(), self.current);
             _ = takeLexerId(&self.lexer);
             self.setCurrent(self.lexer.next());
+            if (longTokens) try self.keepTokenEnd();
         }
     }
 
     /// Tokens of the grammar's `@trivia` kinds, in source order.
     pub fn trivia(self: *const BaseParser) []const Token {
         return self.triviaTokens.items;
+    }
+
+    // -------------------------------------------------------------------------
+    // Token ends
+    // -------------------------------------------------------------------------
+
+    /// Keep the end of the current token when it is over 65534 bytes
+    /// (`longTokens`): the lexer recorded it as it finished the token, and
+    /// holds only the last few (`LongEnds`). A long token the lexer holds
+    /// no one end for (a lang Lexer read too far ahead, scanned its
+    /// position twice, or built a token of length 65535 without
+    /// `BaseLexer.token`) fails the parse with error.TokenEndUnknown, and
+    /// so does a long token at the position of an earlier one with
+    /// another end, which `tokenEnd` could not tell apart.
+    fn keepTokenEnd(self: *BaseParser) error{ TokenEndUnknown, OutOfMemory }!void {
+        const tok = self.current;
+        if (tok.len != std.math.maxInt(u16)) return;
+        const base: *const BaseLexer = if (Lexer == BaseLexer) &self.lexer else &self.lexer.base;
+        const end = base.longEnds.find(tok.pos) orelse return error.TokenEndUnknown;
+        const ends = &self.longTokenEnds;
+        // Tokens come in source order; a parse that reads the input again
+        // meets the ones it kept.
+        const i = self.tokenEndIndex(tok.pos);
+        if (i < ends.items.len and ends.items[i].pos == tok.pos) {
+            if (ends.items[i].end != end) return error.TokenEndUnknown;
+            return;
+        }
+        try ends.insert(self.allocator(), i, .{ .pos = tok.pos, .end = end });
+    }
+
+    /// The index of the first kept end at or after `pos`.
+    fn tokenEndIndex(self: *const BaseParser, pos: u32) usize {
+        const ends = self.longTokenEnds.items;
+        if (ends.len == 0 or ends[ends.len - 1].pos < pos) return ends.len;
+        var lo: usize = 0;
+        var hi: usize = ends.len;
+        while (lo < hi) {
+            const mid = (lo + hi) / 2;
+            if (ends[mid].pos < pos) lo = mid + 1 else hi = mid;
+        }
+        return lo;
+    }
+
+    /// Where the text of a token or leaf at `pos` of length `len` ends.
+    inline fn endOf(self: *const BaseParser, pos: u32, len: u16) u32 {
+        if (!longTokens or len != std.math.maxInt(u16)) return pos + len;
+        return self.longTokenEnd(pos);
+    }
+
+    /// The kept end of the token over 65534 bytes at `pos`.
+    fn longTokenEnd(self: *const BaseParser, pos: u32) u32 {
+        const ends = self.longTokenEnds.items;
+        const i = self.tokenEndIndex(pos);
+        if (i < ends.len and ends[i].pos == pos) return ends[i].end;
+        @panic("no token over 65534 bytes this parser read starts here");
+    }
+
+    /// The end of `tok`, a token this parser read (`current`, a trivia
+    /// token, a leaf's): `pos + len`, and for a token over 65534 bytes
+    /// (`longTokens`; its `len` is 65535) the end the lexer recorded.
+    /// Asking for the end of a long token the parser did not read panics.
+    pub fn tokenEnd(self: *const BaseParser, tok: Token) u32 {
+        return self.endOf(tok.pos, tok.len);
+    }
+
+    /// The text of `tok`, a token this parser read (see `tokenEnd`).
+    pub fn tokenText(self: *const BaseParser, tok: Token) []const u8 {
+        return self.source[tok.pos..self.tokenEnd(tok)];
+    }
+
+    /// The end of a leaf of a token this parser read (see `tokenEnd`).
+    pub fn leafEnd(self: *const BaseParser, leaf: Src) u32 {
+        return self.endOf(leaf.pos, leaf.len);
+    }
+
+    /// The text of a leaf or string, as `Sexp.getText` gives it, and the
+    /// whole text of a token over 65534 bytes; empty for other values.
+    pub fn leafText(self: *const BaseParser, s: Sexp) []const u8 {
+        return switch (s) {
+            .src => |x| self.source[x.pos..self.leafEnd(x)],
+            .str => |x| x,
+            else => "",
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -1132,7 +1303,7 @@ pub const BaseParser = struct {
     /// for any other non-list; null for a list without a node id.
     fn ownSpan(self: *const BaseParser, s: Sexp) ?Span {
         return switch (s) {
-            .src => |x| .{ .start = x.pos, .end = x.pos + x.len },
+            .src => |x| .{ .start = x.pos, .end = self.leafEnd(x) },
             .list => |l| if (nodeStore and l.id != 0 and l.id < self.nodes.len) self.nodes.at(l.id).span else null,
             else => .empty,
         };
@@ -1406,7 +1577,7 @@ pub const BaseParser = struct {
     fn recordFailure(self: *BaseParser, state: u16, sym: u16) void {
         const tok = self.current;
         self.failure = .{
-            .span = .{ .start = tok.pos, .end = tok.pos + tok.len },
+            .span = .{ .start = tok.pos, .end = self.tokenEnd(tok) },
             .symbol = sym,
             .cat = tok.cat,
             .state = state,
@@ -1600,7 +1771,7 @@ pub const BaseParser = struct {
                 try writeName(w, nameOf(rest.role));
                 for (items[i..]) |child| {
                     try w.writeByte(' ');
-                    try factChild(w, child);
+                    try self.factChild(w, child);
                 }
                 try w.writeAll(")\n");
                 break;
@@ -1609,7 +1780,7 @@ pub const BaseParser = struct {
             try w.print("(role {d} ", .{l.id});
             if (if (k) |t| roleAt(t, i) else null) |role| try writeName(w, nameOf(role)) else try w.print("{d}", .{i});
             try w.writeByte(' ');
-            try factChild(w, items[i]);
+            try self.factChild(w, items[i]);
             try w.writeAll(")\n");
         }
         for (self.sidesOf(l.id)) |e| {
@@ -1619,18 +1790,18 @@ pub const BaseParser = struct {
         }
     }
 
-    fn factChild(w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
-        try writeNested(s, w, {}, factAtom);
+    fn factChild(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!void {
+        try writeNested(s, w, self, factAtom);
     }
 
-    fn factAtom(_: void, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
+    fn factAtom(self: *const BaseParser, w: *std.Io.Writer, s: Sexp) std.Io.Writer.Error!?[]const Sexp {
         switch (s) {
             .nil => try w.writeAll("_"),
             .tag => |t| {
                 try w.writeAll("tag ");
                 try writeName(w, nameOf(t));
             },
-            .src => |x| try w.print("leaf {d} {d}", .{ x.pos, x.len }),
+            .src => |x| try w.print("leaf {d} {d}", .{ x.pos, self.leafEnd(x) - x.pos }),
             .str => |x| {
                 try w.writeAll("str ");
                 try writeQuoted(w, x);
@@ -1836,6 +2007,7 @@ const BaseLexer = struct {
 };
 const Lexer = BaseLexer;
 
+const longTokens = false;
 const nodeStore = true;
 const keepTrailingNils = true;
 const hasTrivia = true;
@@ -2043,6 +2215,47 @@ fn errorText(p: *BaseParser) ![]const u8 {
     var out: std.Io.Writer.Allocating = .init(p.allocator());
     try p.writeError(&out.writer);
     return out.written();
+}
+
+test "LongEnds holds the last ends it recorded; a position has one end or none" {
+    var ends: LongEnds = .{};
+    try testing.expectEqual(@as(?u32, null), ends.find(0));
+    ends.record(10, 70_000);
+    try testing.expectEqual(@as(?u32, 70_000), ends.find(10));
+    try testing.expectEqual(@as(?u32, null), ends.find(11));
+    // The same token scanned again agrees; another end at that position
+    // leaves it without one.
+    ends.record(10, 70_000);
+    try testing.expectEqual(@as(?u32, 70_000), ends.find(10));
+    ends.record(10, 80_000);
+    try testing.expectEqual(@as(?u32, null), ends.find(10));
+    // A token built there replaces them.
+    ends.replace(10, 90_000);
+    try testing.expectEqual(@as(?u32, 90_000), ends.find(10));
+    try testing.expectEqual(@as(u8, 1), ends.len);
+    // `capacity` more push it out, oldest first.
+    for (0..LongEnds.capacity) |i| ends.record(@intCast(100_000 * (i + 1)), @intCast(100_000 * (i + 1) + 65_535));
+    try testing.expectEqual(@as(?u32, null), ends.find(10));
+    try testing.expectEqual(@as(?u32, 165_535), ends.find(100_000));
+    ends.record(1, 70_000);
+    try testing.expectEqual(@as(?u32, null), ends.find(100_000));
+    try testing.expectEqual(@as(?u32, 200_000 + 65_535), ends.find(200_000));
+    try testing.expectEqual(@as(?u32, 70_000), ends.find(1));
+}
+
+test "without longTokens a token's end is pos + len" {
+    var p = BaseParser.init(testing.allocator, "ab = cd");
+    defer p.deinit();
+    const tok: Token = .{ .pos = 5, .len = 2, .cat = .ident, .pre = 1 };
+    try testing.expectEqual(@as(u32, 7), p.tokenEnd(tok));
+    try testing.expectEqualStrings("cd", p.tokenText(tok));
+    try testing.expectEqual(@as(u32, 2), p.leafEnd(.{ .pos = 0, .len = 2, .id = 0 }));
+    try testing.expectEqualStrings("ab", p.leafText(.{ .src = .{ .pos = 0, .len = 2, .id = 0 } }));
+    try testing.expectEqualStrings("s", p.leafText(.{ .str = "s" }));
+    try testing.expectEqualStrings("", p.leafText(.nil));
+    // A len of 65535 is a length like any other (an `err` token's).
+    const long: Token = .{ .pos = 1, .len = 65535, .cat = .err, .pre = 0 };
+    try testing.expectEqual(@as(u32, 65536), p.tokenEnd(long));
 }
 
 test "Sexp is 24 bytes (16 on 32-bit targets); list helpers" {

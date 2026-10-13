@@ -18,6 +18,7 @@ tokens
     comment
 
 @code = checkMode
+@longtokens
 
 [ \t]+                              → skip, skip
 '#' [^\n]*                          → comment

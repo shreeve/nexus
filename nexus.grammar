@@ -75,6 +75,7 @@ tokens
     kw_lexer
     kw_parser
     kw_code
+    kw_longtokens
     kw_state
     kw_after
     kw_tokens
@@ -149,16 +150,16 @@ tokens
     KW_REPAIR: "repair", KW_KEYWORDS: "keywords", KEYWORD: "a keyword",
     KW_WRAPPER: "wrapper", KW_VIA: "via", KW_OVER: "over",
     KW_LEFT: "left", KW_RIGHT: "right", KW_NONE: "none", KW_LEXER: "lexer",
-    KW_PARSER: "parser", KW_CODE: "code", KW_STATE: "state",
-    KW_AFTER: "after", KW_TOKENS: "tokens", KW_X: "X", KW_LIST: "L",
-    KW_NIL: "_"
+    KW_PARSER: "parser", KW_CODE: "code", KW_LONGTOKENS: "longtokens",
+    KW_STATE: "state", KW_AFTER: "after", KW_TOKENS: "tokens", KW_X: "X",
+    KW_LIST: "L", KW_NIL: "_"
 
 # ===========================================================================
 # The tree
 # ===========================================================================
 
 @schema
-    grammar          ...entries:section|state|after|tokens|code|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|rule
+    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|rule
 
     # Section markers: `@lexer`, `@parser`
     section          name:leaf
@@ -168,6 +169,7 @@ tokens
     assign           name:leaf value:leaf
     tokens           keyword:leaf ...names:leaf
     code             name:leaf
+    longtokens
     lex_rule         pattern:leaf? guards:guards? token:leaf ...actions:lex_action|set_action|step_action|counted
     guards           at:leaf ...conds:guard
     guard            neg:leaf? var:leaf op:leaf? value:leaf?
@@ -264,6 +266,7 @@ lexer_entry = keyword:KW_STATE vars:assign_block        → (state)
             | keyword:KW_AFTER vars:assign_block        → (after)
             | keyword:KW_TOKENS names:token_block       → (tokens)
             | "@" KW_CODE "=" name:IDENT                → (code)
+            | "@" KW_LONGTOKENS                         → (longtokens)
             | lex_rule
 
 assign_block =                                          → ()

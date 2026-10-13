@@ -86,6 +86,9 @@ pub const LexerSpec = struct {
     langName: ?[]const u8 = null,
     /// `after` block: assignments applied whenever a token consumes input.
     afterActions: std.ArrayList(Action) = .empty,
+    /// `@longtokens`: a match over 65534 bytes keeps its category, with
+    /// the length 65535 standing for "longer"; its end is recorded.
+    longTokens: bool = false,
     /// Grammar file name, for diagnostics.
     fileName: []const u8 = "",
 };

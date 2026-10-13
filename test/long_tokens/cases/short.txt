@@ -1,0 +1,4 @@
+let x = "hi"   # c
+f("a""b", -"c", 2)
+: "note"
+y = z

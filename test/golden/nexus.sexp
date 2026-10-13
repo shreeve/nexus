@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
   (lex_rule
     `[ \\t\\r]+`
     _
@@ -78,6 +78,7 @@
     (name_pair `KW_LEXER` `"lexer"`)
     (name_pair `KW_PARSER` `"parser"`)
     (name_pair `KW_CODE` `"code"`)
+    (name_pair `KW_LONGTOKENS` `"longtokens"`)
     (name_pair `KW_STATE` `"state"`)
     (name_pair `KW_AFTER` `"after"`)
     (name_pair `KW_TOKENS` `"tokens"`)
@@ -91,7 +92,7 @@
         (role
           rest
           `entries`
-          (type `section` `state` `after` `tokens` `code` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `rule`)
+          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `rule`)
           _))
       _
       _)
@@ -158,6 +159,11 @@
           `name`
           (type `leaf`)
           _))
+      _
+      _)
+    (kind_decl
+      (kinds `longtokens`)
+      (roles)
       _
       _)
     (kind_decl
@@ -1009,6 +1015,12 @@
           `name`
           (tok `IDENT`)))
       (node `code`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_LONGTOKENS`))
+      (node `longtokens`)
       _)
     (alt
       _

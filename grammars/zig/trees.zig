@@ -203,7 +203,7 @@ fn writeAtom(w: *Io.Writer, text: []const u8) !void {
 fn fromSexp(a: Allocator, p: *parser.Parser, s: Sexp) !Item {
     switch (s) {
         .nil => return .nil,
-        .src => |l| return .{ .leaf = .{ .pos = l.pos, .len = l.len } },
+        .src => |l| return .{ .leaf = .{ .pos = l.pos, .len = p.leafEnd(l) - l.pos } },
         .tag => |t| return .{ .tag = t },
         .str => unreachable,
         .list => {
