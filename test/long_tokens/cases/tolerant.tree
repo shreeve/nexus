@@ -1,0 +1,5 @@
+(program (set `x` (str `"s"`)@4..7)@0..7 (set `y` (ref ``)@13..13)@10..13)@0..14
+!tolerant 2 repairs (1 inserted, 1 deleted, 0 dropped)
+!first 1:9: expected end of input or newline, got ")"
+x = "s" )
+        ^

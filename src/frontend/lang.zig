@@ -43,9 +43,10 @@
 //!     `state`, `after` or `tokens` line (`kw_state` ...) opens a block:
 //!     its indented lines are `cont` lines; every other line break is a
 //!     `newline`. A line that opens no block starts with `@code` (`at`
-//!     `kw_code`), with `@` (a zero-width rule), or with a pattern, which
-//!     is scanned verbatim up to an unquoted `@`, arrow, or `#` (`pattern`,
-//!     trailing blanks excluded). The rest of a line is `ident`s, integers
+//!     `kw_code`), with `@longtokens` (`at` `kw_longtokens`), with `@` (a
+//!     zero-width rule), or with a pattern, which is scanned verbatim up
+//!     to an unquoted `@`, arrow, or `#` (`pattern`, trailing blanks
+//!     excluded). The rest of a line is `ident`s, integers
 //!     (with an optional `-`), `quoted` bytes (`'c'`), `compare` (`==` `!=`
 //!     `<` `<=` `>` `>=`), `incdec` (`++` `--`), arrows (`→` `->` `=>`), and
 //!     `= ! & , ( ) { }`. Any other run of characters is `err`. An
@@ -465,7 +466,7 @@ pub const Lexer = struct {
             .{ "infix", .kw_infix },       .{ "schema", .kw_schema },
             .{ "tags", .kw_tags },         .{ "trivia", .kw_trivia },
             .{ "repair", .kw_repair },     .{ "wrapper", .kw_wrapper },
-            .{ "keywords", .kw_keywords },
+            .{ "keywords", .kw_keywords }, .{ "longtokens", .kw_longtokens },
         };
         for (map) |entry| if (eql(t, entry[0])) return entry[1];
         return null;
@@ -511,6 +512,8 @@ pub const Lexer = struct {
             const word = s[p + 1 .. p + 1 + wordLen(s, p + 1)];
             const kw: ?TokenCat = if (eql(word, "code"))
                 .kw_code
+            else if (eql(word, "longtokens"))
+                .kw_longtokens
             else if (eql(word, "parser"))
                 .kw_parser
             else if (eql(word, "lexer"))
@@ -548,7 +551,7 @@ pub const Lexer = struct {
         const end = p + nonBlankLen(s, p);
         self.base.pos = @intCast(end);
         const line = clip(s[p..end]);
-        return self.fail(p, end - p, "unrecognized line in the @lexer section: '{s}{s}' (expected state, after, tokens, @code, or a rule)", .{ line.text, line.more });
+        return self.fail(p, end - p, "unrecognized line in the @lexer section: '{s}{s}' (expected state, after, tokens, @code, @longtokens, or a rule)", .{ line.text, line.more });
     }
 
     /// A rule's pattern: up to an unquoted `@`, arrow, or `#`, or the end

@@ -21,7 +21,6 @@ use to Zig.
 | `zig.grammar` | the grammar: lexer, `@schema` (the tree), conflicts, rules in grammar.peg's sections and names |
 | `zig.zig` | the lang module: a Lexer wrapper that skips a byte order mark and gives the token categories Parse.zig decides by looking past the next token |
 | `cases/` | hand-written inputs and their expected trees (`reject_*`: inputs Ast.parse rejects, one per kind of mistake; `tolerant_*`: broken inputs parsed with `parseTolerant`, run with the `.args` file's `--tolerant N`); `cases/tokens/` the token stream |
-| `known/` | the one known difference (below) |
 | `tokens_test.zig` | the lexer against `std.zig.Tokenizer`, on inputs it holds |
 | `trees_test.zig` | the tree against `std.zig.Ast`, on inputs that use every kind and role |
 | `messages_test.zig` | the wording of syntax errors |
@@ -72,7 +71,7 @@ of its node, and a statement that ends in another one ending in `;`
 (`if (a) b else c;`) takes the `;` at the top, so no node spans it.
 
 The grammar has 130 tokens (333 DFA states) and 218 rules, which expand
-to 984; the parser has 1,872 LR states and 32 conflict cells in 9
+to 983; the parser has 1,871 LR states and 32 conflict cells in 9
 declared entries. Nexus generates the 2.1 MB module in 0.11 s.
 
 ## Equivalence
@@ -84,9 +83,9 @@ every `.zig` file in the Zig 0.17.0 source tree (`lib/`, `src/`, `test/`,
 
 | Check | Inputs | Differences |
 |---|---|---|
-| tokens: tag, start and end of every token, invalid tokens included | the corpus: 12,805,547 tokens; 4,000,000 random inputs (`--fuzz`, seeds 0 and 1) | 0, besides the long token below |
-| accept: a whole file parses, or it does not (`Ast.parse` with `.recover = false`) | 3,134: the corpus, and the 514 sources `parser_test.zig` and `parser_fuzz.zig` pass to `testCanonical`, `testTransform`, `testError` and `checkAgainstOracle`; 150,000 token-edit mutants of them | 0, besides the long token below |
-| trees: every node, its kind, roles and span | the 3,035 of those 3,134 that both accept; 300,000 token-edit mutants, of which 56,114 are accepted by both and compared | 0 |
+| tokens: tag, start and end of every token, invalid tokens included | the corpus: 12,805,547 tokens; 4,000,000 random inputs (`--fuzz`, seeds 0 and 1) | 0 |
+| accept: a whole file parses, or it does not (`Ast.parse` with `.recover = false`) | 3,134: the corpus, and the 514 sources `parser_test.zig` and `parser_fuzz.zig` pass to `testCanonical`, `testTransform`, `testError` and `checkAgainstOracle`; 150,000 token-edit mutants of them | 0 |
+| trees: every node, its kind, roles and span | the 3,036 of those 3,134 that both accept; 300,000 token-edit mutants, of which 56,114 are accepted by both and compared | 0 |
 
 A mutant is a piece of a seed file with one to four token edits (delete,
 duplicate, swap, insert a keyword or operator); most mutants are
@@ -120,15 +119,15 @@ representation, stated in full in `trees.zig`:
   Parse.zig, and each makes `zig fmt` change or break the program it
   formats (`[.x: {}]u8` becomes `[.x.x: {}]u8`).
 
-## The one known difference
+## Long tokens
 
-A Nexus token holds at most 65,535 bytes. `std.zig.Tokenizer` has no such
-limit, and one corpus file has a longer token:
-`test/cases/maximum_sized_integer_literal.zig`, whose integer literal is
-65,537 bytes. Nexus lexes it as an `err` token, which no rule takes, and
-rejects the file; Ast accepts it. The file is a known case
-(`known/maximum_sized_integer_literal.zig`) and the comparison tools list
-it apart (LONG). There is no other difference.
+A Nexus token's length is 16 bits, and `std.zig.Tokenizer` has no limit:
+one corpus file, `test/cases/maximum_sized_integer_literal.zig`, has an
+integer literal of 65,537 bytes. The grammar has `@longtokens`, so a token
+over 65,534 bytes keeps its tag, and the parser has its whole extent: the
+literal is one `number_literal`, as in std.zig, and the file's tokens,
+acceptance and tree are std.zig's (`cases/maximum_sized_integer_literal.zig`,
+and its token stream in `cases/tokens/`).
 
 ## Syntax errors
 
@@ -232,7 +231,7 @@ grammars/zig/compare-accept --fuzz 60000 --seed 13 $Z/lib/std/zig $Z/test/behavi
 grammars/zig/compare-accept --fuzz 30000 --seed 21 $P
 grammars/zig/compare-accept --fuzz 60000 --seed 22 $S
 
-grammars/zig/compare-trees $Z $P                      # trees: the 3,035 inputs both accept
+grammars/zig/compare-trees $Z $P                      # trees: the 3,036 inputs both accept
 grammars/zig/compare-trees --fuzz 30000 --seed 11 $P
 grammars/zig/compare-trees --fuzz 60000 --seed 12 $Z/lib/std/zig $Z/test/behavior
 grammars/zig/compare-trees --fuzz 70000 --seed 31 $P

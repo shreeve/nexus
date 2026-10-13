@@ -27,8 +27,7 @@
 # checkout's bin/nexus (run `zig build` first). It prints one line per
 # input on which the parsers disagree, with the first error of the side
 # that rejects (line:col and the token or Ast error tag), and a summary;
-# it exits 1 when any input differs. A file Nexus rejects only at a token
-# over 65535 bytes, the most a Nexus token holds, is listed as LONG.
+# it exits 1 when any input differs.
 
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)

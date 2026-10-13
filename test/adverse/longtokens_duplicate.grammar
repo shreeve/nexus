@@ -1,0 +1,16 @@
+# @longtokens written twice: the second says nothing.
+# error: longtokens_duplicate.grammar:12:1:
+# error: duplicate @longtokens
+@lexer
+tokens
+    ident
+    eof
+    err
+
+@longtokens
+[a-z]+                                      → ident
+@longtokens
+.                                           → err
+
+@parser
+top! = IDENT                                → (t 1)

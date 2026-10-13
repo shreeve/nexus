@@ -20,10 +20,9 @@
 #            the kinds and roles of the @schema below (compare-trees;
 #            trees.zig lists how the two trees are put in one form).
 #
-# The one known difference: a token longer than 65535 bytes, the most a
-# Nexus token holds, which std.zig.Tokenizer lexes as one token. Nexus
-# makes it an `err` token, which no rule takes; `err` comes from no rule
-# here, as every byte starts one.
+# A token may be any length, as in std.zig.Tokenizer (`@longtokens`: one
+# over 65534 bytes keeps its tag, and its end is recorded). No rule makes
+# `err`, as every byte starts some token.
 #
 # How it is written. Rules follow grammar.peg (doc/langref/grammar.peg),
 # section by section and with its rule names in snake_case (BoolOrExpr is
@@ -93,6 +92,8 @@ tokens
     pipe_payload, bad_operator
 
     eof, err
+
+@longtokens
 
 # The tokenizer's states are cited as tokenizer.zig `.state`. Three ways a
 # token goes wrong recur below, and each rule copies one:
@@ -408,7 +409,7 @@ tokens
     keyword_opaque, keyword_or, keyword_orelse, keyword_packed, keyword_pub, keyword_resume       token:leaf
     keyword_return, keyword_linksection, keyword_struct, keyword_suspend, keyword_switch          token:leaf
     keyword_test, keyword_threadlocal, keyword_try, keyword_union, keyword_unreachable            token:leaf
-    keyword_var, keyword_volatile, keyword_while, err, label, break_colon, ptr_star, c_ptr        token:leaf
+    keyword_var, keyword_volatile, keyword_while, label, break_colon, ptr_star, c_ptr             token:leaf
     enum_tag, bad_doc_comment, minus_prefix, minus_percent_prefix, ampersand_prefix               token:leaf
     asterisk_prefix, pipe_payload, bad_operator                                                   token:leaf
 
@@ -453,7 +454,6 @@ tokens
     ENUM_TAG: "'enum'", MINUS_PREFIX: "'-'", MINUS_PERCENT_PREFIX: "'-%'",
     AMPERSAND_PREFIX: "'&'", PIPE_PAYLOAD: "'|'",
     BAD_OPERATOR: "a binary operator with whitespace on one side only",
-    ERR: "a token over 65535 bytes",
     "!": "'!'", "!=": "'!='", "|": "'|'", "||": "'||'", "|=": "'|='",
     "=": "'='", "==": "'=='", "=>": "'=>'", "(": "'('", ")": "')'",
     ";": "';'", "%": "'%'", "%=": "'%='", "{": "'{'", "}": "'}'",
@@ -1522,7 +1522,6 @@ token       = INVALID                       → (invalid 1)
             | "var"                         → (keyword_var 1)
             | "volatile"                    → (keyword_volatile 1)
             | "while"                       → (keyword_while 1)
-            | ERR                           → (err 1)
             | LABEL                         → (label 1)
             | BREAK_COLON                   → (break_colon 1)
             | PTR_STAR                      → (ptr_star 1)

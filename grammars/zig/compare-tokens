@@ -24,10 +24,7 @@
 # The tool is built in .zig-cache/nexus-grammars/zig-tokens/ from this
 # checkout's bin/nexus (run `zig build` first). Compare prints one line per
 # input whose streams differ, with the first difference, and a summary with
-# the longest token; it exits 1 when any file differs. A token longer than
-# 65535 bytes, the most a Nexus token holds, is lexed as `err` over the
-# same bytes; a file whose only such differences are these is listed as
-# LONG, not counted as differing.
+# the longest token; it exits 1 when any file differs.
 
 set -uo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -91,27 +88,21 @@ perl -e '
     }
     my ($n, $order) = load($ARGV[0]);
     my ($o) = load($ARGV[1]);
-    my ($differ, $long, $tokens) = (0, 0, 0);
+    my ($differ, $tokens) = (0, 0);
     for my $p (@$order) {
         my ($a, $b) = ($n->{$p}, $o->{$p} // []);
         my $len = @$a > @$b ? @$a : @$b;
         for my $i (0 .. $len - 1) {
             my ($x, $y) = ($a->[$i] // "(ended)", $b->[$i] // "(ended)");
             next if $x eq $y;
-            my @x = split / /, $x; my @y = split / /, $y;
-            if ($x[0] eq "err" && @y == 3 && $x[1] == $y[1] && $x[2] == $y[2] && $y[2] - $y[1] > 65535) {
-                print "LONG $p: token $i: oracle $y (", $y[2] - $y[1], " bytes) is a Nexus err token\n";
-                $long++;
-                next;
-            }
             print "DIFF $p: token $i: nexus $x | oracle $y\n";
             $differ++;
             last;
         }
         $tokens += @$b;
     }
-    printf "%d files, %d differ, %d with a token over 65535 bytes, %d tokens (against %s)\n",
-        scalar @$order, $differ, $long, $tokens, $ARGV[2];
+    printf "%d files, %d differ, %d tokens (against %s)\n",
+        scalar @$order, $differ, $tokens, $ARGV[2];
     exit($differ ? 1 : 0);
 ' "$OUT/nexus.tok" "$OUT/oracle.tok" "$ORACLE"
 rc=$?

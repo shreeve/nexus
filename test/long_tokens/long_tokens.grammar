@@ -1,0 +1,79 @@
+# Tokens over 65,534 bytes (`@longtokens`): such a token keeps its
+# category, its `len` is 65535 (standing for "longer"), and the end the
+# lexer recorded as it scanned gives its text, its leaf's end, node and
+# side-band spans, facts, tolerant repairs and keyword lookups around it.
+#
+# The lang module's Lexer wrapper reads one token ahead and joins adjacent
+# strings into one token (built with `BaseLexer.token`). After a leading
+# `>` it reads 40 tokens ahead, more long ones than the lexer keeps ends
+# for; after a leading `<` it scans the first long string again with
+# `cut` set, which ends it at its first `|`, and returns both. Either way
+# the parse fails with error.TokenEndUnknown. long_tokens.zig builds long
+# inputs in memory; the cases are short.
+
+@lexer
+
+state
+    cut = 0
+
+tokens
+    name, number, string, comment, newline
+    eq, colon, comma, minus, lparen, rparen
+    eof, err
+
+@longtokens
+
+'\n'                        → newline
+'#' [^\n]*                  → comment
+'"' [^"\n]* '"' @ cut == 0  → string
+'"' [^"|\n]* @ cut == 1     → string
+'='                         → eq
+':'                         → colon
+','                         → comma
+'-'                         → minus
+'('                         → lparen
+')'                         → rparen
+[0-9]+                      → number
+[a-z]+                      → name
+.                           → err
+
+@parser
+
+@lang = "long_tokens"
+
+@schema
+    program    ...stmts
+    set        name:leaf value | eq
+    call       callee:leaf ...args
+    note       | text
+    neg        value:str
+    str        value:leaf
+    num        value:leaf
+    ref        id:leaf
+
+@keywords
+    kw  let
+
+@as NAME = [kw]
+
+@trivia COMMENT
+
+@repair
+    holes       NAME
+    terminator  NEWLINE
+
+program! = body                                 → (program ...1)
+
+body     = stmt                                 → (1)
+         | body NEWLINE stmt                    → (...1 3)
+         | body NEWLINE                         → 1
+
+stmt     = LET name:NAME eq:"=" value:expr      → (set)
+         | name:NAME eq:"=" value:expr          → (set)
+         | callee:NAME "(" [args:L(expr)] ")"   → (call)
+         | ":" text:STRING                      → (note)
+
+expr     = STRING                               → (str 1)
+         | NUMBER                               → (num 1)
+         | NAME                                 → (ref 1)
+         | "-" STRING                           → (neg value:(str 2))

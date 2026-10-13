@@ -103,7 +103,8 @@ Each call of the lexer's `next()`:
    and a tie goes to the rule written first. With no match, one byte
    becomes an `err` token, and so does a match longer than a token can
    hold (65535 bytes: the token covers its first 65535, the scan resumes
-   after the match);
+   after the match), unless the grammar has
+   [`@longtokens`](#long-tokens);
 5. runs the `after` block (only for a token the DFA matched that consumes
    input, or an `err` byte), then the rule's actions.
 
@@ -115,6 +116,7 @@ winning rule and an example text.
 
 A token is 8 bytes: `pos: u32`, `len: u16`, `cat: TokenCat`, `pre: u8`.
 Its text is a slice of the source; the lexer never allocates.
+[Long tokens](#long-tokens) are longer than `len` can say.
 
 ### Patterns
 
@@ -376,14 +378,140 @@ for a lang `Lexer` wrapper that needs a hand-written lookahead. It requires
 @code = checkPatternMode
 ```
 
+### Long tokens
+
+A token's length is a `u16`. Without `@longtokens`, a match longer than
+65535 bytes is an `err` token of length 65535, and the scan goes on after
+the whole match:
+
+```grammar capped.grammar
+@lexer
+
+tokens
+    word, string, eof, err
+
+'\n'                        → skip, skip
+'"' [^"]* '"'               → string
+[a-z]+                      → word
+.                           → err
+
+@parser
+
+list! = item+                          → (list ...1)
+
+item  = WORD | STRING
+```
+
+```zig test
+const std = @import("std");
+const testing = std.testing;
+const parser = @import("parser.zig");
+
+test "a match over 65535 bytes is an err token" {
+    // `say "aaa…"`, the string 100,000 bytes long.
+    const source = try testing.allocator.alloc(u8, 100_004);
+    defer testing.allocator.free(source);
+    @memcpy(source[0..5], "say \"");
+    @memset(source[5 .. source.len - 1], 'a');
+    source[source.len - 1] = '"';
+
+    var lx = parser.BaseLexer.init(source);
+    _ = lx.next();
+    const t = lx.next();
+    try testing.expectEqual(parser.TokenCat.err, t.cat);
+    try testing.expectEqual(65535, t.len);
+    try testing.expectEqual(source.len, lx.pos);
+}
+```
+
+`@longtokens`, a line of the @lexer section, lifts the limit: a match
+longer than 65534 bytes keeps its category, its `len` is 65535, which
+stands for "longer", and the lexer records where it ends as it finishes
+it. The end is never found again by scanning, as state variables, guards
+and a lang `Lexer` can make a later scan from the token's start match
+differently.
+
+```grammar long.grammar
+@lexer
+
+tokens
+    word, string, eof, err
+
+@longtokens
+
+'\n'                        → skip, skip
+'"' [^"]* '"'               → string
+[a-z]+                      → word
+.                           → err
+
+@parser
+
+list! = item+                          → (list ...1)
+
+item  = WORD | STRING
+```
+
+```input
+say "hi"
+```
+
+```tree
+(list `say` `"hi"`)
+```
+
+```zig test
+const std = @import("std");
+const testing = std.testing;
+const parser = @import("parser.zig");
+
+test "a string of 100,000 bytes is one token" {
+    const source = try testing.allocator.alloc(u8, 100_004);
+    defer testing.allocator.free(source);
+    @memcpy(source[0..5], "say \"");
+    @memset(source[5 .. source.len - 1], 'a');
+    source[source.len - 1] = '"';
+
+    var p = parser.Parser.init(testing.allocator, source);
+    defer p.deinit();
+    const tree = try p.parseList();
+    const string = tree.items()[2];
+    try testing.expectEqual(65535, string.src.len); // "longer"
+    try testing.expectEqual(100_004, p.leafEnd(string.src));
+    try testing.expectEqualStrings(source[4..], p.leafText(string));
+    try testing.expectEqual(parser.Span{ .start = 0, .end = 100_004 }, p.span(tree));
+}
+```
+
+The parser copies the end of each long token it reads, and everything it
+derives from a token uses it: `span`, node spans, side-band roles, facts,
+syntax errors, tolerant repairs, `@as` lookups.
+`BaseParser.tokenEnd(token)` and `tokenText(token)` (for any token it
+read, trivia included), `leafEnd(src)` and `leafText(sexp)` give the end
+and the text. A leaf or a token holds no more than its `len`, so the
+helpers that have no parser never give part of a long token's text:
+`Sexp.getText` and `Sexp.write` panic on a long leaf, and
+`BaseLexer.makeToken` on a range over 65534 bytes.
+`BaseLexer.text(token)` reads the end from the lexer, which holds the
+ends of its last 16 long tokens (`LongEnds`), and panics when it holds no
+one end for the token. A lang `Lexer` builds a token whose length it
+computes with `BaseLexer.token(cat, pre, start, end)`, which records the
+end of a long one in place of any recorded at `start`. A long token the
+lexer holds no one end for when the parser reads it (a wrapper read more
+than 16 long tokens ahead, scanned one position twice, or made a token of
+length 65535 itself), or one at the position of an earlier long token
+with another end, fails the parse with `error.TokenEndUnknown`; the parser
+never guesses an end.
+
 ### The generated lexer
 
 The module exports `TokenCat`, `Token`, `BaseLexer` and `Lexer`.
 `BaseLexer` is the generated scanner: `init(source)`, `next()`,
-`text(token)`, `makeToken(cat, pre, start, end)`, and the fields `source`,
-`pos`, `aux: u16` and the state variables. A token is at most 65535 bytes:
-a longer match is an `err` token of that length, and `makeToken` builds
-tokens the same way. `Lexer` is the lexer the parser drives: the lang
+`text(token)`, `makeToken(cat, pre, start, end)`, `token(cat, pre, start,
+end)`, and the fields `source`, `pos`, `aux: u16` and the state variables
+(and `longEnds` with `@longtokens`; `longTokens` says which). A token is
+at most 65535 bytes: a longer match is an `err` token of that length, and
+`makeToken` and `token` build tokens the same way; with `@longtokens`, see
+[Long tokens](#long-tokens). `Lexer` is the lexer the parser drives: the lang
 module's `Lexer` when it declares one (a wrapper that holds a
 `base: BaseLexer` and rewrites its token stream: indentation, keyword
 classification, synthetic tokens; it has `init(source)` and `next()`),
@@ -1044,6 +1172,7 @@ when it decides a cell for any rule its alternative expands into.
 |---|---|---|
 | `@lang = "name"` | any | the lang module (`name.zig`, imported by the parser; see [SEMANTICS.md](SEMANTICS.md#the-lang-module)) |
 | `@code = fn` | @lexer | a lexer method calling `lang.fn(source, pos)` |
+| `@longtokens` | @lexer | tokens of any length ([Long tokens](#long-tokens)) |
 | `@schema` | any | node kinds and their roles ([SEMANTICS.md](SEMANTICS.md)) |
 | `@tags a b ...` | any | extra `Tag` values for a lang wrapper |
 | `@conflicts` | any | the declared conflicts |
@@ -1056,9 +1185,10 @@ when it decides a cell for any rule its alternative expands into.
 | `@trivia T ...` | any | tokens kept on a side channel, never parsed |
 | `@repair` | any | the tokens tolerant parsing may insert |
 
-"Any" means the preamble or the @parser section. Each directive appears at
-most once (`duplicate @x`), except `@as`, and each name appears once in
-its directive. The fragment below shows the syntax;
+"Any" means the preamble or the @parser section; a directive of the
+@lexer section anywhere else is an error. Each directive appears at most
+once (`duplicate @x`), except `@as` and `@code`, and each name appears
+once in its directive. The fragment below shows the syntax;
 [SEMANTICS.md](SEMANTICS.md#an-example) has a complete, tested grammar
 that uses `@display`, `@errors`, `@trivia` and `@repair`.
 
@@ -1117,7 +1247,8 @@ Exceeding a limit is an error, located where the grammar exceeds it
 
 A generated parser takes input up to 4 GiB (positions are `u32`;
 `error.InputTooLarge` beyond) and tokens up to 65535 bytes (a longer match
-is an `err` token). An `@as` keyword's `GId` value may be any `u16`.
+is an `err` token), or of any length with [`@longtokens`](#long-tokens).
+An `@as` keyword's `GId` value may be any `u16`.
 
 ## Errors
 

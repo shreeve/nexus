@@ -140,8 +140,12 @@ const Printer = struct {
                 if (std.enums.tagName(@TypeOf(t), t)) |n| try self.out.writeAll(n) else try self.out.print("?tag{d}", .{@backingInt(t)});
             },
             .src => |x| {
+                // With `@longtokens` the parser has the end of a token over
+                // 65534 bytes. (test/diff builds this driver with the parsers
+                // of an earlier generator too, which have no `longTokens`.)
+                const end: usize = if (@hasDecl(parser, "longTokens") and parser.longTokens) self.parser.leafEnd(x) else @as(usize, x.pos) + x.len;
                 const lo: usize = @min(@as(usize, x.pos), self.src.len);
-                const hi: usize = @min(lo + @as(usize, x.len), self.src.len);
+                const hi: usize = @min(@max(lo, end), self.src.len);
                 try self.out.writeByte('`');
                 try self.escaped(self.src[lo..hi], '`');
                 try self.out.writeByte('`');

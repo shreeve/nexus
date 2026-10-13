@@ -1,0 +1,14 @@
+# @longtokens before the @lexer section: it belongs in it.
+# error: longtokens_preamble.grammar:4:1:
+# error: @longtokens belongs in the @lexer section
+@longtokens
+@lexer
+tokens
+    ident
+    eof
+    err
+[a-z]+                                      → ident
+.                                           → err
+
+@parser
+top! = IDENT                                → (t 1)

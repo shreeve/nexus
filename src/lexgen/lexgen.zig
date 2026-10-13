@@ -15,7 +15,11 @@
 //!   2. Zero-width rules (empty pattern, guards only) are tried in order.
 //!   3. At end of input the `eof` token is returned.
 //!   4. The longest match among the rules whose guards hold wins; ties go
-//!      to the earlier rule. No match: one byte becomes an `err` token.
+//!      to the earlier rule. No match: one byte becomes an `err` token. A
+//!      match longer than 65535 bytes is an `err` token of length 65535;
+//!      with `@longtokens`, a match longer than 65534 bytes keeps its
+//!      category, its length is 65535, and its end is recorded in the
+//!      lexer's `LongEnds` (the runtime template's `longEnds` section).
 //!   5. The `after` assignments run (only for a DFA token that consumes
 //!      input, or an `err` byte), then the rule's actions; `hold`, `rewind(n)` and trailing context
 //!      `r1 / r2` shorten the token; a `skip` action discards it (its bytes
@@ -31,6 +35,7 @@ const Action = grammar.Action;
 const Allocator = std.mem.Allocator;
 const regex = @import("regex.zig");
 const automaton = @import("automaton.zig");
+const runtime = @import("../codegen/runtime.zig");
 const ByteSet = regex.ByteSet;
 
 test {
@@ -808,6 +813,21 @@ pub const LexerGenerator = struct {
             \\
             \\
         );
+        try self.write(if (self.spec.longTokens)
+            \\/// `@longtokens`: a token over 65534 bytes keeps its category; its
+            \\/// `len` is 65535, which stands for "longer", and its end is the one
+            \\/// the lexer recorded (`BaseParser.tokenEnd`).
+            \\pub const longTokens = true;
+            \\
+            \\
+        else
+            \\/// No `@longtokens`: a match over 65535 bytes is an `err` token of
+            \\/// length 65535.
+            \\pub const longTokens = false;
+            \\
+            \\
+        );
+        if (self.spec.longTokens) try runtime.writeSection(self.w, "longEnds", &.{});
     }
 
     fn emitLexerStruct(self: *LexerGenerator) !void {
@@ -826,6 +846,12 @@ pub const LexerGenerator = struct {
             \\    aux: u16 = 0,
             \\
         );
+        if (self.spec.longTokens) try self.write(
+            \\    /// The ends of the last tokens over 65534 bytes, recorded as they
+            \\    /// are scanned.
+            \\    longEnds: LongEnds = .{},
+            \\
+        );
         if (self.spec.states.items.len > 0) try self.write("    // State variables\n");
         for (self.spec.states.items) |s| try self.print("    {s}: i8,\n", .{s.name});
 
@@ -842,6 +868,55 @@ pub const LexerGenerator = struct {
             \\        };
             \\    }
             \\
+        );
+        try self.write(if (self.spec.longTokens)
+            \\    /// The text of a token (a slice of the source). The end of a token
+            \\    /// over 65534 bytes is the one the lexer recorded; asking for the
+            \\    /// text of one it holds no one end for (see `LongEnds`) panics:
+            \\    /// `BaseParser.tokenText` has it.
+            \\    pub fn text(self: *const Self, tok: Token) []const u8 {
+            \\        const start: usize = tok.pos;
+            \\        var len: usize = tok.len;
+            \\        if (tok.len == std.math.maxInt(u16)) {
+            \\            const end = self.longEnds.find(tok.pos) orelse @panic("BaseLexer.text: the lexer holds no one end for this token over 65534 bytes (BaseParser.tokenText has it)");
+            \\            len = end - start;
+            \\        }
+            \\        const end: usize = @min(start + len, self.source.len);
+            \\        if (start >= self.source.len) return "";
+            \\        return self.source[start..end];
+            \\    }
+            \\
+            \\    /// The token of `cat` from `start` to `end`, for a token of at
+            \\    /// most 65534 bytes: a longer one needs its end recorded, so it
+            \\    /// panics (build such a token with `token`).
+            \\    pub inline fn makeToken(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+            \\        if (end - start >= std.math.maxInt(u16)) @panic("BaseLexer.makeToken: a token over 65534 bytes needs its end recorded (build it with BaseLexer.token)");
+            \\        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
+            \\    }
+            \\
+            \\    /// The token of `cat` from `start` to `end`, for a lang Lexer
+            \\    /// wrapper that computes a token's length: a token over 65534 bytes
+            \\    /// keeps its category, its length is 65535, and its end is recorded
+            \\    /// in `longEnds`, where the parser finds it, in place of any long
+            \\    /// token recorded at `start` (the token built is the one there).
+            \\    pub fn token(self: *Self, cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+            \\        if (end - start < std.math.maxInt(u16)) return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
+            \\        self.longEnds.replace(@intCast(start), @intCast(end));
+            \\        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
+            \\    }
+            \\
+            \\    /// The token the scanner finished: `token`'s, but a long token's
+            \\    /// end is recorded beside any other recorded at `start`.
+            \\    inline fn scanned(self: *Self, cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+            \\        if (end - start >= std.math.maxInt(u16)) {
+            \\            @branchHint(.unlikely);
+            \\            self.longEnds.record(@intCast(start), @intCast(end));
+            \\            return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
+            \\        }
+            \\        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
+            \\    }
+            \\
+        else
             \\    /// The text of a token (a slice of the source).
             \\    pub fn text(self: *const Self, tok: Token) []const u8 {
             \\        const start: usize = tok.pos;
@@ -857,6 +932,12 @@ pub const LexerGenerator = struct {
             \\    pub inline fn makeToken(cat: TokenCat, pre: u8, start: usize, end: usize) Token {
             \\        if (end - start > std.math.maxInt(u16)) return .{ .cat = .@"err", .pre = pre, .pos = @intCast(start), .len = std.math.maxInt(u16) };
             \\        return .{ .cat = cat, .pre = pre, .pos = @intCast(start), .len = @intCast(end - start) };
+            \\    }
+            \\
+            \\    /// `makeToken`, through the lexer (with `@longtokens` it records
+            \\    /// the end of a token over 65534 bytes).
+            \\    pub inline fn token(_: *Self, cat: TokenCat, pre: u8, start: usize, end: usize) Token {
+            \\        return makeToken(cat, pre, start, end);
             \\    }
             \\
         );
@@ -1154,9 +1235,9 @@ pub const LexerGenerator = struct {
             } else {
                 try self.print(
                     \\{s}self.pos = @intCast(p);
-                    \\{s}return makeToken(.@"{s}", pre, wsStart, p);
+                    \\{s}return {s}(.@"{s}", pre, wsStart, p);
                     \\
-                , .{ inner, inner, r.token });
+                , .{ inner, inner, self.tokenFn(), r.token });
             }
             try self.print("{s}}}\n", .{ind});
         }
@@ -1181,12 +1262,30 @@ pub const LexerGenerator = struct {
             return;
         }
         try self.print("{s}self.pos = @intCast(p);\n", .{ind});
-        // `hold` and `rewind(n)` (n <= 65535) are short whatever the match.
-        if (short or self.ends[k] == .start or self.ends[k] == .fromStart) {
+        // `hold`, and `rewind(n)` or a fixed-length head no longer than a
+        // token's length holds, are short whatever the match.
+        const fixed = switch (self.ends[k]) {
+            .start => true,
+            .fromStart => |m| m <= self.maxShort(),
+            else => false,
+        };
+        if (short or fixed) {
             try self.print("{s}return .{{ .cat = .@\"{s}\", .pre = pre, .pos = @intCast(start), .len = @intCast(p - start) }};\n", .{ ind, r.token });
         } else {
-            try self.print("{s}return makeToken(.@\"{s}\", pre, start, p);\n", .{ ind, r.token });
+            try self.print("{s}return {s}(.@\"{s}\", pre, start, p);\n", .{ ind, self.tokenFn(), r.token });
         }
+    }
+
+    /// What the scanner builds a token of any length with: `makeToken`,
+    /// or with `@longtokens` `scanned`, which records a long token's end.
+    fn tokenFn(self: *const LexerGenerator) []const u8 {
+        return if (self.spec.longTokens) "self.scanned" else "makeToken";
+    }
+
+    /// The longest token its `len` holds: 65535, or 65534 with
+    /// `@longtokens` (where 65535 stands for longer).
+    fn maxShort(self: *const LexerGenerator) u32 {
+        return if (self.spec.longTokens) std.math.maxInt(u16) - 1 else std.math.maxInt(u16);
     }
 
     fn hasSelfLoop(self: *const LexerGenerator, s: u32) bool {

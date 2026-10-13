@@ -112,7 +112,14 @@ names: a self-loop becomes a tight loop (a range test, a comptime byte
 table, or a SIMD scan when the loop excludes at most three bytes), and
 transitions into states that cannot continue return the token in place.
 Only a token that ends in a state some DFA cycle reaches can exceed 65535
-bytes, so only those finishes test the length. The DFA is checked against
+bytes (65534 with `@longtokens`), so only those finishes test the length.
+With `@longtokens` such a finish records the token's start and end in the
+lexer's `LongEnds`, a fixed ring of the last 16 (the runtime template's
+`longEnds` section, which lexgen emits), and the parser copies the end of
+each long token it reads into a table sorted by position, in its
+allocator: everything that needs a token's end (spans, facts, `leafText`)
+looks a 65535-byte `len` up there, so the end is never found by
+scanning again. The DFA is checked against
 a backtracking reference matcher by unit tests, and `test/lexfuzz/fuzz.py`
 checks random lexers against a model of the lexer's definition.
 
@@ -266,7 +273,7 @@ spliced (plumbing, no id).
 The runtime is `src/codegen/runtime_template.zig`, a real Zig file that
 compiles and has its own tests against a small hand-written fixture.
 `runtime.zig` extracts its `// @section NAME ... // @end` blocks and fills
-`// @slot NAME` lines; everything outside the sections (the fixture, the
+`// @slot NAME` lines (lexgen emits the `longEnds` section); everything outside the sections (the fixture, the
 tests) is never emitted. The template refers to a fixed set of generated
 names (`parseTable`, `executeAction`, `tokenToSymbol`, `slotOf`, ...), listed
 at its top.

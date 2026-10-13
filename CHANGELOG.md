@@ -4,6 +4,34 @@
 
 ### Added
 
+- `@longtokens`, a line of the @lexer section: a match longer than 65534
+  bytes keeps its category, its `len` is 65535 (standing for "longer"),
+  and the lexer records its end as it finishes it (`LongEnds`, the last
+  16); the parser copies each long token's end when it reads the token.
+  Spans, node and side-band spans, facts, syntax errors, tolerant repairs,
+  `@as` lookups and the `pre` of the next token use the real end. Every
+  generated module has `longTokens` and the new `BaseParser.tokenEnd(tok)`,
+  `tokenText(tok)`, `leafEnd(src)` and `leafText(sexp)` (`pos + len` and
+  the source slice without the directive), and `BaseLexer.token(cat, pre,
+  start, end)` (`makeToken` without it). With the directive,
+  `Sexp.getText`, `Sexp.write` and `BaseLexer.makeToken` panic on a token
+  over 65534 bytes rather than give part of it, `BaseLexer.text` reads the
+  lexer's record, and a long token whose end the lexer does not hold fails
+  the parse with `error.TokenEndUnknown`. Grammars without the directive
+  lex and parse as before. The Zig
+  grammar opts in: `maximum_sized_integer_literal.zig` (a 65,537-byte
+  literal) lexes, parses and builds its tree as std.zig does, and the Zig
+  grammar has no known difference left. Migration:
+  - Rig: add `@longtokens` to `rig.grammar`'s @lexer section; read a
+    token's or leaf's text with `p.tokenText(tok)` / `p.leafText(leaf)` (or
+    `base.text(tok)` in the Lexer wrapper, for its last tokens) instead of
+    slicing `pos..pos + len` or `getText`, build computed tokens with
+    `self.base.token(...)` instead of `BaseLexer.makeToken`, and drop the
+    `too_long` error and the 65535-byte comment skip (a comment of any
+    length is one token); handle `error.TokenEndUnknown` where the parse's
+    errors are switched on.
+  - em, nexis: nothing required.
+
 - `Span.text(source)`: the source a span covers, clamped to the source,
   so a span a lang wrapper builds past the end (or a reversed one) gives
   the empty string instead of an out-of-bounds slice. Additive; Rig can

@@ -18,11 +18,12 @@ fn expectSameTokens(src: [:0]const u8) !void {
     while (true) : (n += 1) {
         const a = lx.next();
         const b = tz.next();
+        const end = @as(usize, a.pos) + lx.text(a).len;
         const same = std.mem.eql(u8, @tagName(a.cat), @tagName(b.tag)) and
-            a.pos == b.loc.start and @as(usize, a.pos) + a.len == b.loc.end;
+            a.pos == b.loc.start and end == b.loc.end;
         if (!same) {
             std.debug.print("input {f}: token {d}: nexus {t} {d} {d}, std {t} {d} {d}\n", .{
-                std.zig.fmtString(src), n, a.cat, a.pos, a.pos + a.len, b.tag, b.loc.start, b.loc.end,
+                std.zig.fmtString(src), n, a.cat, a.pos, end, b.tag, b.loc.start, b.loc.end,
             });
             return error.TestUnexpectedResult;
         }
@@ -83,10 +84,10 @@ test "random inputs" {
     }
 }
 
-test "a token over 65535 bytes is an err token over its first 65535" {
+test "a token over 65534 bytes keeps its tag, and its end is the one recorded" {
     const gpa = std.testing.allocator;
-    for ([_]usize{ 65535, 65536 }) |n| {
-        const src = try gpa.alloc(u8, n + 3);
+    for ([_]usize{ 65534, 65535, 65536, 1 << 20 }) |n| {
+        const src = try gpa.allocSentinel(u8, n + 3, 0);
         defer gpa.free(src);
         src[0] = '"';
         @memset(src[1 .. n - 1], 'a');
@@ -95,13 +96,16 @@ test "a token over 65535 bytes is an err token over its first 65535" {
         var lx = parser.Lexer.init(src).base;
         const t = lx.next();
         try std.testing.expectEqual(@as(u32, 0), t.pos);
-        try std.testing.expectEqual(if (n == 65535) parser.TokenCat.string_literal else .err, t.cat);
-        try std.testing.expectEqual(@as(u16, 65535), t.len);
+        try std.testing.expectEqual(parser.TokenCat.string_literal, t.cat);
+        // A `len` of 65535 stands for "longer"; the text is whole.
+        try std.testing.expectEqual(@as(u16, @intCast(@min(n, 65535))), t.len);
+        try std.testing.expectEqual(n, lx.text(t).len);
         // The scan goes on after the whole literal, in step with std.zig.Tokenizer.
         try std.testing.expectEqual(n, lx.pos);
         const x = lx.next();
         try std.testing.expectEqual(parser.TokenCat.identifier, x.cat);
         try std.testing.expectEqual(@as(u32, @intCast(n + 1)), x.pos);
+        try expectSameTokens(src);
     }
 }
 
