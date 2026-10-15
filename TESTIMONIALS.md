@@ -79,5 +79,54 @@ generation, are Rig's own code, written against those accessors.
 
 ---
 
+# What Nexus does for em
+
+em is a new MUMPS engine for running large-scale healthcare and banking
+applications. Its whole front end is one Nexus grammar, `mumps.grammar`.
+
+## M fits in a grammar
+
+> "M is not an easy language to parse: spaces are syntax, a command's
+> arguments follow rules of their own, and most commands, functions and
+> special variables have a short form. `mumps.grammar` holds the tokens, the
+> lexer states, the keyword tables and the shape of every tree, and Nexus
+> generates em's parser from it at every build. A small lexer wrapper in
+> em's lang module handles the little a rule cannot say."
+>
+> — the em team
+
+## Abbreviations are data
+
+> "M names come in short forms: `$ZR` is `$ZREFERENCE`. Nexus's
+> `@keywords` tables take a name as M writes it, `ZR[EFERENCE]`, in any
+> case, with aliases. When em gained `$ZREFERENCE`, its short forms and its
+> link to `$REFERENCE` were one entry: `ZR[EFERENCE]=REFERENCE`."
+>
+> — the em team
+
+## A corpus, not a hope
+
+> "em's corpus is real M: VistA, a FOIA release, em's own tests and the
+> MUMPS Validation Test Suite, 51,934 routines. Before a front-end change
+> lands, em parses every one with the grammar before and after it and
+> compares the trees with Nexus's `test/diff`; a change meant to leave
+> them alone shows 51,934 the same, 0 differ. Nexus parses em's VistA and
+> FOIA routines with its old and new generator before it merges a change,
+> so a new Nexus never changes em's trees unseen."
+>
+> — the em team
+
+## The compiler asks for roles
+
+> "em's compiler asks a JOB argument for its `ref`, `args`, `params` and
+> `env`, through accessors Nexus generates from the schema. Adding JOB's
+> process parameters needed no grammar change: the grammar already gave
+> them their shape, the trees stayed the same on every routine, and the
+> work was the compiler's alone."
+>
+> — the em team
+
+---
+
 Building a language on Nexus? Add your notes here, in the same spirit:
 what it does for you, and where the line is.
