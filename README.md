@@ -173,6 +173,18 @@ naming the rule.
   unreachable rule, a hint that decides nothing, a value an action drops)
   is reported as `file:line:col: error:`, and nothing is written.
 
+## In use
+
+[Rig](https://github.com/shreeve/rig), a systems language, builds its
+whole front end on one Nexus grammar:
+
+> "When Rig adds syntax, Nexus answers the question every language
+> project dreads: *what else did this change?*"
+
+[TESTIMONIALS.md](TESTIMONIALS.md) has the rest: what one grammar file,
+checkable grammar changes, S-expression trees and role-based accessors do
+for Rig, and where the line between Nexus and Rig's own compiler is.
+
 ## Validated languages
 
 The grammars in `grammars/` generate with this checkout, compile, and parse
