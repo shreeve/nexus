@@ -206,7 +206,7 @@ database, in the same binary. Its reader is one Nexus grammar,
 > thinking about, which is the best thing I can say about a parser
 > generator."
 >
-> — nexis's lead agent
+> — a member of the nexis team
 
 ---
 
