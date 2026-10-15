@@ -417,7 +417,7 @@
   (keywords
     (kw_group `cmd` `caseless` `base` `100` `B[REAK]` `C[LOSE]` `D[O]` `E[LSE]` `F[OR]` `G[OTO]` `HALT` `H[ANG]` `I[F]` `J[OB]` `K[ILL]` `L[OCK]` `M[ERGE]` `N[EW]` `O[PEN]` `Q[UIT]` `R[EAD]` `S[ET]` `TC[OMMIT]` `TRE[START]` `TRO[LLBACK]` `TS[TART]` `U[SE]` `V[IEW]` `W[RITE]` `X[ECUTE]` `ZB[REAK]` `ZHALT` `ZK[ILL]` `ZL[INK]` `ZSY[STEM]` `ZW[RITE]` `ZSH[OW]` `ZS[AVE]` `ZI[NSERT]` `ZR[EMOVE]` `ZP[RINT]`)
     (kw_group `fn` `caseless` `base` `200` `A[SCII]` `C[HAR]` `D[ATA]` `E[XTRACT]` `F[IND]` `FN[UMBER]` `G[ET]` `I[NCREMENT]` `J[USTIFY]` `L[ENGTH]` `NA[ME]` `O[RDER]` `P[IECE]` `QL[ENGTH]` `QS[UBSCRIPT]` `Q[UERY]` `R[ANDOM]` `REPLACE` `RE[VERSE]` `S[ELECT]` `ST[ACK]` `T[EXT]` `TR[ANSLATE]` `V[IEW]` `ZCO[NVERT]` `ZD[ATE]` `ZDATEH` `ZDATETIME` `ZL[ENGTH]` `ZM[ESSAGE]` `ZP[REVIOUS]` `ZSEARCH` `ZTIME` `ZWRITE` `N[EXT]` `ZENV` `ZF` `ZINCR=INCREMENT` `ZINCREMENT=INCREMENT` `ZT=ZTIME` `ZTRNLNM=ZENV`)
-    (kw_group `isv` `caseless` `base` `300` `D[EVICE]` `EC[ODE]` `ES[TACK]` `ET[RAP]` `H[OROLOG]` `I[O]` `J[OB]` `K[EY]` `P[RINCIPAL]` `Q[UIT]` `R[EFERENCE]` `ST[ACK]` `STORAGE` `S=STORAGE` `SY[STEM]` `T[EST]` `TL[EVEL]` `TR[ESTART]` `X` `Y` `ZA` `ZB` `ZEO[F]` `ZE[RROR]` `ZG[BLDIR]` `ZH[OROLOG]` `ZIO` `ZJ[OB]` `ZKEY` `ZL[EVEL]` `ZNS[PACE]` `ZPOS[ITION]` `ZRO[UTINES]` `ZS[TATUS]` `ZSY[STEM]` `ZT[RAP]` `ZUT` `ZV[ERSION]` `ZDIR[ECTORY]` `ZINT[ERRUPT]` `ZINI[NTERRUPT]` `NAMESPACE` `ZTIMESTAMP` `ZTS=ZTIMESTAMP` `ZTIMEZONE` `ZTZ=ZTIMEZONE`)
+    (kw_group `isv` `caseless` `base` `300` `D[EVICE]` `EC[ODE]` `ES[TACK]` `ET[RAP]` `H[OROLOG]` `I[O]` `J[OB]` `K[EY]` `P[RINCIPAL]` `Q[UIT]` `R[EFERENCE]` `ZR[EFERENCE]=REFERENCE` `ST[ACK]` `STORAGE` `S=STORAGE` `SY[STEM]` `T[EST]` `TL[EVEL]` `TR[ESTART]` `X` `Y` `ZA` `ZB` `ZEO[F]` `ZE[RROR]` `ZG[BLDIR]` `ZH[OROLOG]` `ZIO` `ZJ[OB]` `ZKEY` `ZL[EVEL]` `ZNS[PACE]` `ZPOS[ITION]` `ZRO[UTINES]` `ZS[TATUS]` `ZSY[STEM]` `ZT[RAP]` `ZUT` `ZV[ERSION]` `ZDIR[ECTORY]` `ZINT[ERRUPT]` `ZINI[NTERRUPT]` `NAMESPACE` `ZTIMESTAMP` `ZTS=ZTIMESTAMP` `ZTIMEZONE` `ZTZ=ZTIMEZONE`)
     (kw_group `ssvn` `caseless` `base` `400` `G[LOBAL]` `J[OB]` `L[OCK]` `R[OUTINE]` `SYS[TEM]` `ZENVI[RONMENT]`))
   (as
     `ident`
@@ -806,6 +806,22 @@
           `start`
           (type `lineref`)
           _)
+        (role
+          _
+          `end`
+          (type `lineref`)
+          opt))
+      _
+      _)
+    (kind_decl
+      (kinds `zprintref`)
+      (roles
+        (role _ `routine` _ _)
+        (role
+          _
+          `start`
+          (type `lineref`)
+          opt)
         (role
           _
           `end`
@@ -4224,11 +4240,61 @@
           (tok `SP`))
         (list_req
           `L`
-          (plain `linesarg`)))
+          (plain `zprintarg`)))
       (node
         `zprint`
         (pos `2`)
         (spread `4`))
+      _))
+  (rule
+    (name `zprintarg`)
+    (alt
+      _
+      ((ref `linesarg`))
+      (pos `1`)
+      _)
+    (alt
+      _
+      ((ref `lineref`)
+        (lit `"^"`)
+        (ref `routineref`))
+      (node
+        `zprintref`
+        (pos `3`)
+        (pos `1`))
+      _)
+    (alt
+      _
+      ((ref `lineref`)
+        (lit `"^"`)
+        (ref `routineref`)
+        (lit `":"`)
+        (ref `lineref`))
+      (node
+        `zprintref`
+        (pos `3`)
+        (pos `1`)
+        (pos `5`))
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (ref `routineref`))
+      (node
+        `zprintref`
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((lit `"^"`)
+        (ref `routineref`)
+        (lit `":"`)
+        (ref `lineref`))
+      (node
+        `zprintref`
+        (pos `2`)
+        (null)
+        (pos `4`))
       _))
   (rule
     (name `linesarg`)
