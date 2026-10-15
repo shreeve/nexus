@@ -2315,6 +2315,49 @@
           `decl`
           (ref `member`)))
       (node `pub`)
+      _)
+    (alt
+      _
+      ((lit `"?"`)
+        (ref `fname`)
+        (lit `":"`)
+        (ref `type`))
+      (node
+        `read`
+        (named
+          `operand`
+          (node
+            `:`
+            (named
+              `name`
+              (pos `2`))
+            (named
+              `type`
+              (pos `4`)))))
+      _)
+    (alt
+      _
+      ((lit `"?"`)
+        (ref `fname`)
+        (lit `":"`)
+        (ref `type`)
+        (lit `"="`)
+        (ref `expr`))
+      (node
+        `read`
+        (named
+          `operand`
+          (node
+            `default`
+            (named
+              `name`
+              (pos `2`))
+            (named
+              `type`
+              (pos `4`))
+            (named
+              `value`
+              (pos `6`)))))
       _))
   (rule
     (name `test`)

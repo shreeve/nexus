@@ -9,11 +9,11 @@ obj B
 sub main()
   rc = *B(n: 1)
   w = ~rc
-  print(w.upgrade() == none)
-  if w.upgrade() != none
+  print(*w == none)
+  if *w != none
     print("alive")
   <rc
-  print(w.upgrade() == none)
+  print(*w == none)
 
 # expect:
 # false

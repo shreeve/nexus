@@ -659,6 +659,8 @@ member   = field
          | sub
          | DROP params:params body:block            → (drop_decl)  # `drop(!self)`
          | PUB decl:member                          → (pub)        # `pub len: Int`
+         | "?" fname ":" type                       → (read operand:(: name:2 type:4))  # `pub ?len: Int`
+         | "?" fname ":" type "=" expr              → (read operand:(default name:2 type:4 value:6))
 
 test     = TEST name:(STRING_DQ | STRING_SQ) body:block → (test)
 

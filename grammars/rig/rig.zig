@@ -1782,6 +1782,9 @@ pub const Parser = struct {
     /// The node ids of the fields and methods declared `pub`, which the
     /// member list holds without their `(pub ...)` wrapper.
     pub_members: std.AutoHashMapUnmanaged(parser.NodeId, void) = .empty,
+    /// The node ids of the fields declared `pub ?name: T`, which other
+    /// modules read and only their own module writes (`isReadOnlyMember`).
+    read_only_members: std.AutoHashMapUnmanaged(parser.NodeId, void) = .empty,
     /// Where the names of the methods declared outside their type's body
     /// are (`attachMethods`).
     outside_members: std.AutoHashMapUnmanaged(u32, void) = .empty,
@@ -2642,8 +2645,21 @@ pub const Parser = struct {
     fn pubMembers(self: *Parser, node: Sexp) std.mem.Allocator.Error!void {
         const is_enum = node.isKind(.@"enum") or node.isKind(.generic_enum) or node.isKind(.errors);
         for (@constCast(ir.rest(node, .members))) |*m| {
+            // `?len: Int` alone: `?` says who may read a field, and only a
+            // `pub` field is read by anyone but its own module.
+            if (readOnlyField(m.*)) |field| {
+                self.reject(m.*, "`?` before a field means other modules may read it but not write it, which only a `pub` field allows: write `pub ?name: T`, or drop the `?`");
+                m.* = field;
+                continue;
+            }
             if (!m.isKind(.@"pub")) continue;
-            const inner = ir.Pub.decl(m.*);
+            var inner = ir.Pub.decl(m.*);
+            // `pub ?len: Int`: public to read, written only by this module.
+            if (readOnlyField(inner)) |field| {
+                if (is_enum) self.reject(m.*, "an enum has no fields to make read-only");
+                try self.read_only_members.put(self.allocator(), field.list.id, {});
+                inner = field;
+            }
             // A bare name is a variant; in a struct, the checker rejects
             // it, and any other member that is not a field or method.
             switch (inner.kind() orelse .variant) {
@@ -2767,6 +2783,20 @@ pub const Parser = struct {
     /// Whether `member`, a field or method, is declared `pub`.
     pub fn isPubMember(self: *const Parser, member: Sexp) bool {
         return member == .list and self.pub_members.contains(member.list.id);
+    }
+
+    /// Whether `member`, a field, is declared `pub ?name: T`: other
+    /// modules may read it, and only its own module may write it.
+    pub fn isReadOnlyMember(self: *const Parser, member: Sexp) bool {
+        return member == .list and self.read_only_members.contains(member.list.id);
+    }
+
+    /// The field `?name: T` (or `?name: T = v`) declares, or null: the
+    /// grammar reads the `?` as a read sigil around the field.
+    fn readOnlyField(m: Sexp) ?Sexp {
+        if (!m.isKind(.read)) return null;
+        const field = ir.Read.operand(m);
+        return if (field.isKind(.@":") or field.isKind(.default)) field else null;
     }
 
     /// `a ?? b ?? return v`: the grammar reads a jump fallback after the

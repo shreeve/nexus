@@ -6,7 +6,7 @@ obj H
   cb: ~sub()
 
 sub call(w: ?~sub())
-  if w.upgrade() as g
+  if *w as g
     g()
   else
     print("gone")
@@ -14,11 +14,11 @@ sub call(w: ?~sub())
 sub main()
   f: *fun(Int) -> Int = *|a| a + 1
   g: *fun(Int) -> Int = *|~f, a|
-    if f.upgrade() as h
+    if *f as h
       return h(a) * 10
     0
   w: ~fun(Int) -> Int = ~f
-  if w.upgrade() as h
+  if *w as h
     print(h(1), g(1))
   <f
   print(g(1))
