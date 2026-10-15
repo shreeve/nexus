@@ -183,7 +183,7 @@ whole front end on one Nexus grammar:
 
 [TESTIMONIALS.md](TESTIMONIALS.md) has the rest: what one grammar file,
 checkable grammar changes, S-expression trees and role-based accessors do
-for Rig, and where the line between Nexus and Rig's own compiler is.
+for Rig, and how its lang module adds what only Rig knows.
 
 ## Validated languages
 

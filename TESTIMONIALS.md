@@ -57,17 +57,25 @@ Rig's grammar declares no conflicts (see the table in the
 The schema, the roles and the generated accessors are described in
 [docs/SEMANTICS.md](docs/SEMANTICS.md).
 
-## Where the line is
+## Room for what only your language knows
+
+> "Nexus gives us the engine, and leaves us a place for the parts only
+> Rig knows. A few of Rig's words are keywords only in certain places:
+> `new`, `obj` and `of`, and the function markers `called` and `rarely`,
+> which are names everywhere else. Telling them apart takes a look at the
+> next token or the start of a statement. Rig handles that in a small
+> lexer wrapper in its lang module, in plain Zig, and the generated
+> parser just sees the right token. We get the whole generated lexer and
+> parser, and the freedom to add exactly what our language needs."
+>
+> — the Rig compiler team
+
+The engine knows no language; behavior that belongs to one language
+lives in its grammar or its [lang module](docs/SEMANTICS.md#the-lang-module).
 
 Nexus gives Rig its lexer, parser, tree tags and typed accessors. Rig's
 semantic passes, type checking, the ownership checker and code
 generation, are Rig's own code, written against those accessors.
-
-A few of Rig's words are keywords only in certain places: `new`, `obj`
-and `of`, and the function markers `called` and `rarely`. Recognizing
-them takes a look at the next token or the start of a statement, which
-an LALR(1) parser can't take without conflicts. Rig's lexer wrapper
-classifies those words before the parser sees them.
 
 ---
 
