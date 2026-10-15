@@ -6,13 +6,16 @@ is the architecture; [test/README.md](test/README.md) is the suite.
 
 ## State
 
-- **Nexus 2.2.0** (tag `v2.2.0`) is the current release: 2.0.0's grammar
-  language and generated API, with faster generated parsers (2.1.0), and
-  fixed-role spreads and span marks (2.2.0, opt-in). CHANGELOG.md
-  has each release and the migration steps for every downstream
-  repository.
+- **Nexus 2.3.0** (tag `v2.3.0`) is the current release: 2.0.0's grammar
+  language and generated API, with faster generated parsers (2.1.0),
+  fixed-role spreads and span marks (2.2.0), and in 2.3.0 keyword tables
+  in the grammar (`@keywords`), tokens of any length (`@longtokens`), both
+  opt-in, better tolerant parsing, `Span.text` and `writeExcerpt`, and
+  generated parsers that build for 32-bit targets and WebAssembly.
+  CHANGELOG.md has each release and the migration steps for every
+  downstream repository.
 - **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
-  `./test/run` → 731 passed, 0 failed, 0 known; the generated code is byte
+  `./test/run` → 874 passed, 0 failed, 0 known; the generated code is byte
   for byte the same on both.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
 
@@ -20,9 +23,14 @@ Verify before you change anything:
 
 ```bash
 zig version                 # 0.17.0
-zig build && ./test/run
 git log --oneline -4
+git worktree add --detach ../nexus-check main   # never test in this checkout
+cd ../nexus-check && zig build && ./test/run
 ```
+
+This checkout's `bin/nexus` is part of every Rig, em and nexis build, and
+`./test/run` rebuilds it in debug mode first, so the suite runs in a
+worktree ([AGENTS.md, "Downstream"](AGENTS.md#downstream)).
 
 If `zig version` prints an older Zig, the shell's PATH was set before mise
 installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
