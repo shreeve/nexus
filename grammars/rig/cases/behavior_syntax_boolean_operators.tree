@@ -7,6 +7,7 @@
     _
     (block (call `print` `"evaluated"`)@210..228 `v`)@210..234
     _
+    _
     _)@182..234
   (sub
     `main`
@@ -22,5 +23,6 @@
       (call `print` (and `false` (call `loud` `true`)@369..379)@359..379)@353..380
       (call `print` (or `true` (call `loud` `false`)@397..408)@389..408)@383..409
       (call `print` (and (not `false`)@418..427 (call `loud` `true`)@432..442)@418..442)@412..443)@247..511
+    _
     _
     _)@234..511)@182..511
