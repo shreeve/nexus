@@ -12,6 +12,7 @@
     _
     (block (member `a` `balance`)@145..154)@145..156
     _
+    _
     _)@108..156
   (sub
     `close`
@@ -19,6 +20,7 @@
     ((: `a` `Account`)@166..176)@165..177
     _
     (block (call `print` (member `a` `balance`)@186..195)@180..196)@180..198
+    _
     _
     _)@156..198
   (sub
@@ -45,5 +47,6 @@
       (move `shared`)@530..537
       (call `print` (member `other` `balance`)@619..632)@613..633
       (call `close` (move `moved`)@643..649)@637..650)@211..740
+    _
     _
     _)@198..740)@63..740

@@ -23,7 +23,8 @@
 #     chain written down the page);
 #   * classifies three contextual words: `new` is a keyword only at the
 #     start of a statement before a name or `const`, `obj` only at the
-#     start of a declaration (after any `pub`) before a name, and `of` only after
+#     start of a declaration (after any `pub`) before a name, `called`
+#     and `rarely` only there before `fun` or `sub`, and `of` only after
 #     a value directly inside [ ] (`[n of x]`); each is a name everywhere
 #     else (the other contextual words are the parser's: see @keywords);
 #   * marks a `..` whose next token is `]` as DOTDOT_OPEN, the end of an
@@ -59,8 +60,9 @@ tokens
     string_dq       # "double"
 
     # Keywords, `true` first and `yield` last (src/rig.zig reads the range
-    # as Rig's keywords). Every keyword but `new` and `obj` is reserved,
-    # and is a lexer rule; those two are classified by the rewriter.
+    # as Rig's keywords). Every keyword but `new`, `obj`, `called`, and
+    # `rarely` is reserved, and is a lexer rule; those four are classified
+    # by the rewriter.
     true
     false
     and
@@ -82,6 +84,8 @@ tokens
     match
     new             # a keyword only at statement start (`new x = ...`)
     obj             # a keyword only at the start of a type declaration (`obj Point`)
+    rarely          # a keyword only before the `fun` or `sub` of a declaration
+    called          # a keyword only before the `fun` or `sub` of a declaration
     not
     or
     pass
@@ -353,8 +357,8 @@ tokens
     # Declarations
     module                      ...decls
     use                         name alias:leaf?
-    fun                         name:leaf tparams:group? params:group? returns? origins:group? body:block? owner? owner_params:group?
-    sub                         name:leaf tparams:group? params:group? fails:tag(fails)? body:block? owner? owner_params:group?
+    fun                         name:leaf tparams:group? params:group? returns? origins:group? body:block? owner? owner_params:group? mark:called|rarely?
+    sub                         name:leaf tparams:group? params:group? fails:tag(fails)? body:block? owner? owner_params:group? mark:called|rarely?
     lambda                      captures:captures? params:group? body:block
     struct                      name:leaf unique:tag(unique)? ...members
     enum, errors                name:leaf ...members
@@ -367,7 +371,9 @@ tokens
     extern_fun                  name:leaf params:group? returns? origins:group?
     extern_sub                  name:leaf params:group?
     zig_extern                  file:leaf ...decls
+    zig_const                   name:leaf type
     drop_decl                   params:group body:block
+    called, rarely                                  # a function's marker
     labeled                     label:leaf stmt
 
     # Parameters, fields, and enum members
@@ -445,7 +451,7 @@ tokens
     OUTDENT: "the end of the block"
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
     KWARG_NAME: "a keyword argument"
-    OF: "`of`", OBJ: "`obj`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
+    OF: "`of`", OBJ: "`obj`", CALLED: "`called`", RARELY: "`rarely`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
     DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
@@ -563,21 +569,28 @@ mpath    = name
 # A function always writes its parameter list, even when empty
 # (`sub main()`). Every definition parses without one, so that the
 # Parser wrapper can reject it with the header to write.
-fun      = FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
-sub      = SUB name:name [tparams:tparams] [params:params] body:block → (sub)
-         | SUB name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)  # `sub save(p: Page)!`
+#
+# A marker before `fun` or `sub` asks for a speed, never a meaning:
+# `called` keeps every call a call, and `rarely` says it is rarely
+# called, so it stays out of the code that calls it.
+mark     = CALLED                                   → (called)
+         | RARELY                                   → (rarely)
+
+fun      = [mark:mark] FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
+sub      = [mark:mark] SUB name:name [tparams:tparams] [params:params] body:block → (sub)
+         | [mark:mark] SUB name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)  # `sub save(p: Page)!`
 
 # A method declared outside its type's body, in the type's module:
 # `fun Point.norm(?self) -> Float`, `fun Wrap[T].map[U](...)`, with the
 # type's parameters named as its declaration names them. The Parser
 # wrapper moves it into the body (`attachMethods`). A qualified owner,
 # `fun geo.Point.m()`, parses only to be rejected.
-method   = FUN owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
-         | FUN owner:qowner "." name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
-         | SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] body:block → (sub)
-         | SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)
-         | SUB owner:qowner "." name:name [tparams:tparams] [params:params] body:block → (sub)
-         | SUB owner:qowner "." name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)
+method   = [mark:mark] FUN owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
+         | [mark:mark] FUN owner:qowner "." name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] body:block → (fun)
+         | [mark:mark] SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] body:block → (sub)
+         | [mark:mark] SUB owner:name [owner_params:tparams] "." name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)
+         | [mark:mark] SUB owner:qowner "." name:name [tparams:tparams] [params:params] body:block → (sub)
+         | [mark:mark] SUB owner:qowner "." name:name [tparams:tparams] [params:params] "!" body:block → (sub fails:fails)
 
 qowner   = object:name "." name:name                → (member)
 
@@ -656,7 +669,9 @@ ext_sub  = EXTERN SUB name:name [params:params]     → (extern_sub)
 
 # Declarations the Zig file `file` implements (the standard library's
 # only): a `fun` or `sub` without a body, whose file declares a Zig
-# function of the type its signature lowers to.
+# function of the type its signature lowers to, or a constant
+# `name: T`, whose file declares a Zig constant of type `T` that Zig
+# computes for the target it compiles for.
 zig_ext  = EXTERN ZIG file:STRING_DQ INDENT decls:zdecls OUTDENT → (zig_extern)
 
 zdecls   = zdecl                                    → (1)
@@ -664,11 +679,15 @@ zdecls   = zdecl                                    → (1)
          | zdecls NEWLINE                           → 1
 
 zdecl    = zfun
+         | zconst
          | PUB decl:zfun                            → (pub)
+         | PUB decl:zconst                          → (pub)
 
-zfun     = FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] → (fun)
-         | SUB name:name [tparams:tparams] [params:params] → (sub)
-         | SUB name:name [tparams:tparams] [params:params] "!" → (sub fails:fails)
+zconst   = name:name ":" type:type                  → (zig_const)
+
+zfun     = [mark:mark] FUN name:name [tparams:tparams] [params:params] [returns:returns] [origins:origins] → (fun)
+         | [mark:mark] SUB name:name [tparams:tparams] [params:params] → (sub)
+         | [mark:mark] SUB name:name [tparams:tparams] [params:params] "!" → (sub fails:fails)
 
 # ==============================================================================
 # TYPES
@@ -709,6 +728,7 @@ thandle  = "*" type:thandle                         → (shared)
          | tatom
 
 tatom    = tname
+         | ERROR                                    # `error`: an error of any set
          | name:tname "[" args:types ![","] "]"      → (generic_inst)
          | "(" type ")"                             → 2
 
@@ -981,6 +1001,7 @@ callarg  = name:KWARG_NAME ":" value:expr           → (kwarg)
          | expr
 
 atom     = name
+         | ERROR                                    # the type `error`, as a type argument: `List[error]()`
          | INTEGER
          | REAL
          | STRING_SQ

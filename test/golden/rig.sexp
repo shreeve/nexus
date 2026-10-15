@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `rarely` `called` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
   (longtokens)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
@@ -170,6 +170,11 @@
           _
           `owner_params`
           (type `group`)
+          opt)
+        (role
+          _
+          `mark`
+          (type `called` `rarely`)
           opt))
       _
       _)
@@ -207,6 +212,11 @@
           _
           `owner_params`
           (type `group`)
+          opt)
+        (role
+          _
+          `mark`
+          (type `called` `rarely`)
           opt))
       _
       _)
@@ -387,6 +397,17 @@
       _
       _)
     (kind_decl
+      (kinds `zig_const`)
+      (roles
+        (role
+          _
+          `name`
+          (type `leaf`)
+          _)
+        (role _ `type` _ _))
+      _
+      _)
+    (kind_decl
       (kinds `drop_decl`)
       (roles
         (role
@@ -399,6 +420,11 @@
           `body`
           (type `block`)
           _))
+      _
+      _)
+    (kind_decl
+      (kinds `called` `rarely`)
+      (roles)
       _
       _)
     (kind_decl
@@ -875,6 +901,8 @@
     (name_pair `KWARG_NAME` `"a keyword argument"`)
     (name_pair `OF` `"\`of\`"`)
     (name_pair `OBJ` `"\`obj\`"`)
+    (name_pair `CALLED` `"\`called\`"`)
+    (name_pair `RARELY` `"\`rarely\`"`)
     (name_pair `UNIQUE` `"\`unique\`"`)
     (name_pair `FROM` `"\`from\`"`)
     (name_pair `STATIC` `"\`static\`"`)
@@ -1535,10 +1563,27 @@
       (node `member`)
       _))
   (rule
+    (name `mark`)
+    (alt
+      _
+      ((tok `CALLED`))
+      (node `called`)
+      _)
+    (alt
+      _
+      ((tok `RARELY`))
+      (node `rarely`)
+      _))
+  (rule
     (name `fun`)
     (alt
       _
-      ((tok `FUN`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `FUN`)
         (label
           `name`
           (ref `name`))
@@ -1571,7 +1616,12 @@
     (name `sub`)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `name`
           (ref `name`))
@@ -1592,7 +1642,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `name`
           (ref `name`))
@@ -1620,7 +1675,12 @@
     (name `method`)
     (alt
       _
-      ((tok `FUN`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `FUN`)
         (label
           `owner`
           (ref `name`))
@@ -1660,7 +1720,12 @@
       _)
     (alt
       _
-      ((tok `FUN`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `FUN`)
         (label
           `owner`
           (ref `qowner`))
@@ -1695,7 +1760,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `owner`
           (ref `name`))
@@ -1725,7 +1795,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `owner`
           (ref `name`))
@@ -1760,7 +1835,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `owner`
           (ref `qowner`))
@@ -1785,7 +1865,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `owner`
           (ref `qowner`))
@@ -2351,17 +2436,48 @@
       _)
     (alt
       _
+      ((ref `zconst`))
+      _
+      _)
+    (alt
+      _
       ((tok `PUB`)
         (label
           `decl`
           (ref `zfun`)))
       (node `pub`)
+      _)
+    (alt
+      _
+      ((tok `PUB`)
+        (label
+          `decl`
+          (ref `zconst`)))
+      (node `pub`)
+      _))
+  (rule
+    (name `zconst`)
+    (alt
+      _
+      ((label
+          `name`
+          (ref `name`))
+        (lit `":"`)
+        (label
+          `type`
+          (ref `type`)))
+      (node `zig_const`)
       _))
   (rule
     (name `zfun`)
     (alt
       _
-      ((tok `FUN`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `FUN`)
         (label
           `name`
           (ref `name`))
@@ -2389,7 +2505,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `name`
           (ref `name`))
@@ -2407,7 +2528,12 @@
       _)
     (alt
       _
-      ((tok `SUB`)
+      ((group
+          opt
+          ((label
+              `mark`
+              (ref `mark`))))
+        (tok `SUB`)
         (label
           `name`
           (ref `name`))
@@ -2628,6 +2754,11 @@
     (alt
       _
       ((ref `tname`))
+      _
+      _)
+    (alt
+      _
+      ((tok `ERROR`))
       _
       _)
     (alt
@@ -4020,6 +4151,11 @@
     (alt
       _
       ((ref `name`))
+      _
+      _)
+    (alt
+      _
+      ((tok `ERROR`))
       _
       _)
     (alt
