@@ -409,7 +409,8 @@ after
         ZINCR=INCREMENT ZINCREMENT=INCREMENT ZT=ZTIME ZTRNLNM=ZENV
     isv caseless base 300
         D[EVICE] EC[ODE] ES[TACK] ET[RAP] H[OROLOG] I[O] J[OB] K[EY]
-        P[RINCIPAL] Q[UIT] R[EFERENCE] ST[ACK] STORAGE S=STORAGE SY[STEM]
+        P[RINCIPAL] Q[UIT] R[EFERENCE] ZR[EFERENCE]=REFERENCE
+        ST[ACK] STORAGE S=STORAGE SY[STEM]
         T[EST] TL[EVEL] TR[ESTART] X Y ZA ZB ZEO[F] ZE[RROR] ZG[BLDIR]
         ZH[OROLOG] ZIO ZJ[OB] ZKEY ZL[EVEL] ZNS[PACE] ZPOS[ITION]
         ZRO[UTINES] ZS[TATUS] ZSY[STEM] ZT[RAP] ZUT ZV[ERSION] ZDIR[ECTORY]
@@ -505,6 +506,7 @@ after
     zshowarg         codes target?
     zinsertarg       value at:lineref?
     linerange        start:lineref end:lineref?
+    zprintref        routine start:lineref? end:lineref?
     lineref          label:leaf? offset?
     openarg          device params:group? timeout? mnemonic?
     devicearg        device params:group? mnemonic?
@@ -947,7 +949,10 @@ zshowarg = expr [":" glvn]                  → (zshowarg 1 3)
 # after a line reference (none: at the edit pointer), ZREMOVE removes a
 # line or a range (none: everything), and ZPRINT shows one (none: all). A
 # line reference is a label in the buffer, a label and an offset, or an
-# offset from the first line (+0: before it).
+# offset from the first line (+0: before it). ZPRINT also shows a routine's
+# source: ^R all of it, LABEL^R or +N^R one line, and a range to a line
+# reference after the colon (the routine named only before it); with no
+# routine, the routine running it (the buffer in direct mode).
 zsave      = ZSAVE [postcond] >                → (zsave 2)
            | ZSAVE [postcond] !SP L(expr)      → (zsave 2 ...4)
 zinsert    = ZINSERT [postcond] !SP L(zinsertarg) → (zinsert 2 ...4)
@@ -956,7 +961,12 @@ zinsertarg = expr                              → 1
 zremove    = ZREMOVE [postcond] >              → (zremove 2)
            | ZREMOVE [postcond] !SP L(linesarg) → (zremove 2 ...4)
 zprint     = ZPRINT [postcond] >               → (zprint 2)
-           | ZPRINT [postcond] !SP L(linesarg) → (zprint 2 ...4)
+           | ZPRINT [postcond] !SP L(zprintarg) → (zprint 2 ...4)
+zprintarg  = linesarg                          → 1
+           | lineref "^" routineref            → (zprintref 3 1)
+           | lineref "^" routineref ":" lineref → (zprintref 3 1 5)
+           | "^" routineref                    → (zprintref 2)
+           | "^" routineref ":" lineref        → (zprintref 2 _ 4)
 linesarg   = lineref                           → (linerange 1)
            | lineref ":" lineref               → (linerange 1 3)
            | "@" atom                          → (@args 2)
