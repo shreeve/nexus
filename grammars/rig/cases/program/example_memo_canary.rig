@@ -31,7 +31,7 @@ obj IntSource
   fun map(self: !IntSource, f: *fun(Int) -> Int) -> *IntSource
     derived = IntSource.new(f(self.get()))
     !self.subscribe(*|~derived, +f, v|
-      if derived.upgrade() as d
+      if *derived as d
         !d.set(f(v))
     )
     derived

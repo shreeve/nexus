@@ -14,7 +14,7 @@ sub main()
   clone = |+cell| cell.get()
   moved = |<v| v.len
   weak = |~cell|
-    if cell.upgrade() as c
+    if *cell as c
       print("alive", c.get())
   param = |a: Int| a * 2
   both = |+n, a: Int, b: Int| n + a + b

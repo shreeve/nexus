@@ -17,7 +17,7 @@ sub twice(f: *sub())
 sub main()
   sig: *Signal[Int] = *Signal(0)
   !sig.subscribe(*|~sig|
-    if sig.upgrade() as s
+    if *sig as s
       print("got", s.get())
   )
   !sig.set(4)

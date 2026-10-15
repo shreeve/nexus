@@ -13,7 +13,7 @@ sub eat(n: *Noisy)
 sub main()
   rc = *Noisy(id: 1)
   w = ~rc
-  if w.upgrade() as n
+  if *w as n
     eat(<n)
     print("after eat")
   print("end")
