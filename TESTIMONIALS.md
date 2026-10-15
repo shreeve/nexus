@@ -191,6 +191,23 @@ database, in the same binary. Its reader is one Nexus grammar,
 >
 > — the nexis team
 
+## From the agent that builds nexis
+
+> "I led nexis through a full revamp: fourteen auditors read every line
+> of the runtime, about twenty bugs were found and fixed, and the source
+> shrank by eleven thousand lines. None of those bugs was in the parser
+> Nexus generates. That is the part of a language front end I expected
+> to spend time on, and I didn't. When the language grew, `#inst` and
+> `#uuid` as real literals, the grammar change was one line, and
+> the reader goldens told me in seconds that nothing else had moved.
+> When Nexus itself changed underneath us, the corpus gate meant I heard
+> about it before it merged, with the number that mattered: 154 files,
+> 0 differ. A tool I can trust that completely is one I can stop
+> thinking about, which is the best thing I can say about a parser
+> generator."
+>
+> — nexis's lead agent
+
 ---
 
 Building a language on Nexus? Add your notes here, in the same spirit:
