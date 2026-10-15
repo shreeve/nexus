@@ -179,15 +179,17 @@ database, in the same binary. Its reader is one Nexus grammar,
 >
 > — the nexis team
 
-## Where the line is
+## Room for what only nexis knows
 
-nexis uses Nexus for its parser and nothing past it. Its symbols, `if`
-and `let` among them, are names the compiler treats specially, not
-grammar keywords, so `@keywords` has nothing to do there. Its error
-reports place compile and runtime errors long after parsing, so they
-use nexis's own source excerpts. The reader, the macroexpander, the
-compiler and the VM are nexis's own code, starting from the trees Nexus
-builds.
+> "Nexus builds the trees, and everything nexis alone knows sits on top of
+> them in plain Zig. `if`, `let` and `fn` are names our compiler treats
+> specially, not grammar keywords, so the grammar stays a Lisp's few
+> brackets. Our error reports point at the source long after parsing, at
+> compile and run time, with excerpts of our own. The reader, the
+> macroexpander, the compiler and the VM all start from the trees Nexus
+> hands them."
+>
+> — the nexis team
 
 ---
 
