@@ -128,5 +128,68 @@ applications. Its whole front end is one Nexus grammar, `mumps.grammar`.
 
 ---
 
+# What Nexus does for nexis
+
+[nexis](https://github.com/shreeve/nexis) is a Lisp with Clojure's
+semantics on its own Zig runtime, with Nextomic, a Datomic-class
+database, in the same binary. Its reader is one Nexus grammar,
+`nexis.grammar`, 103 lines.
+
+## A small grammar that stays small
+
+> "A Lisp's syntax is small, and Nexus lets the grammar stay that size.
+> `nexis.grammar` names the token categories and the shape of every raw
+> tree: lists, vectors, maps, sets, quote, syntax-quote, metadata,
+> `#()`, `#_`. Nexus turns it into 66 states with no conflicts. The
+> grammar does no normalization at all; merging stacked metadata,
+> rejecting a duplicate literal key, turning `nil` into nil are the
+> reader's job, in plain Zig, on a tree Nexus already built."
+>
+> — the nexis team
+
+## One rule for a new literal
+
+> "When nexis gained `#inst` and `#uuid`, the grammar gained one
+> alternative, `TAG gap datum → (tagged 1 3)`. The reader decides what
+> a tag means, and every other tree stayed as it was: the reader goldens,
+> each source against its expected tree, showed nothing else moved."
+>
+> — the nexis team
+
+## The lexer is ours, the parser is Nexus's
+
+> "Clojure's token boundaries (numbers like `1e3` and `0x1F`, characters
+> like `\newline`, symbols that may hold `/`, `.` and `?`) are easier to
+> write by hand than to declare, so nexis's lang module replaces the
+> generated lexer entirely with a hand-written scanner. The generated
+> parser doesn't mind: it sees the tokens it expects and builds the
+> trees the grammar names."
+>
+> — the nexis team
+
+## Following main, with a corpus to prove it
+
+> "nexis generates `src/parser.zig` at every build and follows Nexus's
+> main, as Rig does. Before Nexus merges a generator change, it parses
+> every nexis source with its old and new build and compares the trees:
+> 154 files, the stdlib, the examples, the tests and the 22 sources
+> written to fail, which must fail with the same error at the same
+> place. Faster generated parsers, error-recovery helpers and new
+> lexer directives have reached nexis that way with no nexis change."
+>
+> — the nexis team
+
+## Where the line is
+
+nexis uses Nexus for its parser and nothing past it. Its symbols, `if`
+and `let` among them, are names the compiler treats specially, not
+grammar keywords, so `@keywords` has nothing to do there. Its error
+reports place compile and runtime errors long after parsing, so they
+use nexis's own source excerpts. The reader, the macroexpander, the
+compiler and the VM are nexis's own code, starting from the trees Nexus
+builds.
+
+---
+
 Building a language on Nexus? Add your notes here, in the same spirit:
 what it does for you, and where the line is.
