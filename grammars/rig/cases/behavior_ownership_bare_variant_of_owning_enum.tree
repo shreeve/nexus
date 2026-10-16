@@ -16,6 +16,7 @@
     ((: `s` `Slot`)@218..225)@217..226
     `Int`
     _
+    _
     (block
       (match
         `s`
@@ -28,6 +29,7 @@
     `main`
     _
     ()@289..291
+    _
     _
     (block
       (set _ `a` `Slot` (member `Slot` `empty`)@304..314)@294..314

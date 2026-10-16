@@ -13,6 +13,7 @@
       ((: `initial` `Int`)@464..476)@463..477
       (shared `IntSource`)@481..491
       _
+      _
       (block
         (share
           (call
@@ -28,6 +29,7 @@
       ((: `self` (read_view `IntSource`)@571..581)@565..581)@564..582
       `Int`
       _
+      _
       (block (call (member (member `self` `value`)@594..604 `get`)@594..608)@594..610)@594..614
       _
       _
@@ -37,6 +39,7 @@
       _
       ((: `self` (write_view `IntSource`)@634..644)@628..644
         (: `listener` (shared (fun_type (`Int`)@661..664 _ _)@657..665)@656..665)@646..665)@627..666
+      _
       _
       (block
         (write
@@ -50,6 +53,7 @@
       `set`
       _
       ((: `self` (write_view `IntSource`)@831..841)@825..841 (: `v` `Int`)@843..849)@824..850
+      _
       _
       (block
         (write
@@ -86,6 +90,7 @@
         (: `f` (shared (fun_type (`Int`)@1054..1057 `Int` _)@1050..1065)@1049..1065)@1046..1065)@1027..1066
       (shared `IntSource`)@1070..1080
       _
+      _
       (block
         (set
           _
@@ -116,6 +121,7 @@
     `main`
     _
     ()@1234..1236
+    _
     _
     (block
       (set _ `count` _ (call (member `IntSource` `new`)@1247..1260 `1`)@1247..1263)@1239..1263

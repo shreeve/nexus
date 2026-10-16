@@ -10,6 +10,7 @@
     ((: `a` (read_view `Account`)@126..134)@123..134)@122..135
     `Int`
     _
+    _
     (block (member `a` `balance`)@145..154)@145..156
     _
     _
@@ -18,6 +19,7 @@
     `close`
     _
     ((: `a` `Account`)@166..176)@165..177
+    _
     _
     (block (call `print` (member `a` `balance`)@186..195)@180..196)@180..198
     _
@@ -28,6 +30,7 @@
     _
     ()@206..208
     _
+    _
     (block
       (set
         _
@@ -35,7 +38,7 @@
         _
         (call `Account` (kwarg `owner` `"ada"`)@226..238 (kwarg `balance` `100`)@240..252)@218..253)@211..253
       (call `print` (call `balance_of` (read `acct`)@273..278)@262..279)@256..280
-      (set _ `moved` _ (move `acct`)@325..330)@317..330
+      (set fixed `moved` _ (move `acct`)@326..331)@317..331
       (call `print` (call `balance_of` (read `moved`)@400..406)@389..407)@383..408
       (set
         _

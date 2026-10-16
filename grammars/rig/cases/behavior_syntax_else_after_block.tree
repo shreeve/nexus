@@ -5,6 +5,7 @@
     _
     ((: `k` `Kind`)@211..218 (: `flag` `Bool`)@220..230)@210..231
     _
+    _
     (block
       (match
         `k`
@@ -24,6 +25,7 @@
     `main`
     _
     ()@365..367
+    _
     _
     (block
       (call `show` (enum_lit `one`)@375..379 `true`)@370..386

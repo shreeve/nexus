@@ -6,6 +6,7 @@
     ((: `b` `Bool`)@172..179)@171..180
     `Color`
     _
+    _
     (block
       (if `b` (block (return (enum_lit `red`)@208..212)@201..212)@201..215 _)@192..215
       (return (enum_lit `green`)@222..228)@215..228)@192..230
@@ -16,6 +17,7 @@
     `main`
     _
     ()@238..240
+    _
     _
     (block
       (match

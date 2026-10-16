@@ -9,6 +9,7 @@
       ((read `self`)@111..116)@110..117
       (read_view `String`)@121..128
       _
+      _
       (block (member `self` `name`)@133..142)@133..144
       _
       _
@@ -17,6 +18,7 @@
     `main`
     _
     ()@152..154
+    _
     _
     (block
       (set _ `u` _ (call `User` (kwarg `name` `"Steve"`)@166..179)@161..180)@157..180
