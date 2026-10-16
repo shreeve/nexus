@@ -22,3 +22,5 @@ total = 1 + \
   2
 not %include
 print "café → ok" é
+retry: x = 10: 2
+42: x.true x.false true(1) false(2) nil(3) x.nil nil true

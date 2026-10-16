@@ -135,3 +135,30 @@
   ^^^^^ keyword
         ^^^^^^^^^^^ string
                     ^ invalid
+> retry: x = 10: 2
+  ^^^^^ label
+       ^ punctuation
+           ^ operator
+             ^^ constant.numeric
+               ^ punctuation
+                 ^ constant.numeric
+> 42: x.true x.false true(1) false(2) nil(3) x.nil nil true
+  ^^ label
+    ^ punctuation
+       ^ punctuation
+              ^ punctuation
+                     ^^^^ function
+                         ^ punctuation
+                          ^ constant.numeric
+                           ^ punctuation
+                             ^^^^^ function
+                                  ^ punctuation
+                                   ^ constant.numeric
+                                    ^ punctuation
+                                      ^^^ function
+                                         ^ punctuation
+                                          ^ constant.numeric
+                                           ^ punctuation
+                                              ^ punctuation
+                                                   ^^^ constant
+                                                       ^^^^ constant

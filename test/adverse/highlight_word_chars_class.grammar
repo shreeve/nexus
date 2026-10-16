@@ -1,0 +1,16 @@
+# `word-chars` is one character class, not a longer pattern.
+# error: `word-chars` takes one character class: word-chars [A-Za-z0-9_]
+@lexer
+tokens
+    word, eof, err
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@highlight
+    language "T"
+    scope-name source.t
+    extensions t
+    word-chars [a-z]+
+    keyword "if"
+list! = WORD*
