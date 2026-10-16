@@ -6,7 +6,7 @@
   "patterns": [
     {"match": "((?:fun|sub)[\\x09 ]+)([A-Z_a-z][0-9A-Z_a-z]*)", "captures": {"1": {"name": "keyword.other.rig"}, "2": {"name": "entity.name.function.rig"}}},
     {"match": "((?:obj|enum|type)[\\x09 ]+)([A-Z_a-z][0-9A-Z_a-z]*)", "captures": {"1": {"name": "keyword.other.rig"}, "2": {"name": "entity.name.type.rig"}}},
-    {"name": "keyword.other.rig", "match": "called|rarely|inline(?=[\\x09 ]+(?:fun|sub))"},
+    {"name": "keyword.other.rig", "match": "(?:called|rarely|inline)(?=[\\x09 ]+(?:fun|sub))"},
     {"name": "keyword.other.rig", "match": "^[\\x09 ]*new(?=[\\x09 ]+[A-Z_a-z])"},
     {"name": "keyword.other.rig", "match": "(?<= )(?<![0-9A-Za-z_])of(?![0-9A-Za-z_])(?= )"},
     {"match": "((?:break|continue)[\\x09 ]+)(:[A-Z_a-z][0-9A-Z_a-z]*)", "captures": {"1": {"name": "keyword.control.rig"}, "2": {"name": "entity.name.label.rig"}}},

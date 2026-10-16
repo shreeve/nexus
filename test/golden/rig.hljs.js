@@ -16,7 +16,7 @@ export default function (hljs) {
     "contains": [
       {"scope": {"1": "keyword", "2": "title.function"}, "match": ["(?:fun|sub)[\\x09 ]+", "[A-Z_a-z][0-9A-Z_a-z]*"]},
       {"scope": {"1": "keyword", "2": "type"}, "match": ["(?:obj|enum|type)[\\x09 ]+", "[A-Z_a-z][0-9A-Z_a-z]*"]},
-      {"scope": "keyword", "match": "called|rarely|inline(?=[\\x09 ]+(?:fun|sub))"},
+      {"scope": "keyword", "match": "(?:called|rarely|inline)(?=[\\x09 ]+(?:fun|sub))"},
       {"scope": "keyword", "match": "^[\\x09 ]*new(?=[\\x09 ]+[A-Z_a-z])"},
       {"scope": "keyword", "match": "(?<= )(?<![0-9A-Za-z_])of(?![0-9A-Za-z_])(?= )"},
       {"scope": {"1": "keyword", "2": "symbol"}, "match": ["(?:break|continue)[\\x09 ]+", ":[A-Z_a-z][0-9A-Z_a-z]*"]},
