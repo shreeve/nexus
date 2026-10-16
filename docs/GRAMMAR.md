@@ -1397,6 +1397,12 @@ earlier rule matches first, and `invalid` naming a token spelled `**`
 loses to the literal `"*"`. Where that matters, list the longer text as
 a literal or a pattern, which come first.
 
+An editor's highlighter has no lexer state: guards are not tested, and a
+guarded rule is tried wherever its pattern matches, in its place in the
+lexer order. So a guarded rule earlier in the order can cut an unguarded
+token short (a pattern-mode `[0-9]+` ahead of the number rule splits
+`1E3`); colour such text with a pattern entry, which comes first.
+
 ### Metadata
 
 | Line | Meaning |
