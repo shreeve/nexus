@@ -27,6 +27,75 @@ second opinion.
 | member completion, hover with types, signature help, import completion | the eight functions |
 | type errors as you type | the eight functions (`analyze`) |
 
+## The whole extension in one command
+
+```bash
+nexus --editor lang.grammar editors
+```
+
+writes everything an editor needs, ready to build and install, with the
+language's meaning left as empty functions to fill in:
+
+```text
+editors/
+├── vscode/                       the VS Code extension
+│   ├── package.json              the language, its grammar, the LANG.lsp.* settings      regenerated
+│   ├── extension.js              the client: starts the server, falls back to colouring  regenerated
+│   ├── language-configuration.json                                                       regenerated
+│   └── syntaxes/LANG.tmLanguage.json                                                     regenerated
+├── vim/syntax/LANG.vim, highlightjs/LANG.js                                              regenerated
+└── server/                       the language server
+    ├── build.zig                 `zig build` → zig-out/bin/LANG-lsp                       regenerated
+    ├── src/parser.zig            the grammar's parser                                    regenerated
+    ├── src/lsp.zig               the server: protocol, sync, tier 1, the dispatch        regenerated
+    ├── src/main.zig              serves stdin and stdout                                 regenerated
+    └── src/hooks.zig             the functions to fill in                                written once
+        (or hooks.ts, types.ts and tree.ts with `--hooks ts`)
+```
+
+A *regenerated* file is Nexus's: running the command again rewrites it
+from the grammar, so a change to the grammar reaches every editor
+file. A file *written once* is the developer's: the command writes it
+when it is missing and never touches it again.
+
+Built and installed as it comes, the extension already colours the
+language, shows its syntax errors as you type, and completes its
+keywords. Every other feature waits behind one function in the hooks
+file. Each function is a stub that answers nothing, with its types, its
+contract and the features it powers in its comment:
+
+```zig fragment
+/// Hover on a name or an expression, the detail of a completion, and
+/// go to type definition. Return the subject's Markdown and, when it has
+/// one, its declaration.
+pub fn describe(a: *Analysis, subject: lsp.Subject) !?lsp.Description {
+    _ = a;
+    _ = subject;
+    return null;
+}
+```
+
+The server advertises a feature only when the function behind it is
+implemented: it tests at compile time whether `hooks.zig` declares the
+function, and a TypeScript hooks process lists the functions it exports
+when it starts. So deleting a stub's body and writing a real one is all
+it takes to turn its feature on; a stub left alone is never called and
+never answers with an empty guess. With `--hooks ts`, `tree.ts` is the
+grammar's tree as typed TypeScript, one accessor per kind and role
+(`Fun.name(node)`, `Call.args(node)`), the same tree `ir` gives Zig, so
+the functions read the parse by role without a parser of their own.
+
+Then:
+
+```bash
+cd editors/server && zig build
+cd ../vscode && npm install && npx -y @vscode/vsce package --skip-license
+code --install-extension vscode-LANG-0.1.0.vsix --force
+```
+
+The extension finds `../server/zig-out/bin/LANG-lsp` by default; the
+`LANG.lsp.path` setting names another.
+
 ## Part 1: colouring
 
 `@highlight` lists how the language is coloured; `nexus --highlight`
@@ -280,7 +349,7 @@ pub const Lsp = struct {
     pub fn members(a: *Analysis, at: lsp.Pos, out: *lsp.Symbols) !bool;
     pub fn visible(a: *Analysis, at: lsp.Pos, out: *lsp.Symbols) !void;
     pub fn signatures(a: *Analysis, at: lsp.Pos) !?lsp.SignatureHelp;
-    pub fn describe(a: *Analysis, subject: lsp.Subject) !lsp.Description;
+    pub fn describe(a: *Analysis, subject: lsp.Subject) !?lsp.Description;
     pub fn modules(a: *Analysis, at: lsp.Pos, out: *lsp.Names) !bool;
 };
 ```
@@ -297,10 +366,8 @@ pub fn main() !void {
 }
 ```
 
-A language without a binary of its own gets one:
-`nexus --lsp-server lang.grammar dir` writes a buildable directory
-(`build.zig`, `main.zig`, the parser and the server), and `zig build`
-there gives `LANG-lsp`.
+A language without a binary of its own uses the `server/` directory
+`nexus --editor` writes, whose `zig build` gives `LANG-lsp`.
 
 ### Writing the functions in TypeScript or JavaScript
 
@@ -357,8 +424,8 @@ and signatures as JSON) before it has a checker at all.
 
 ### The VS Code client
 
-`nexus --highlight vscode lang.grammar editors/vscode` writes
-`package.json` and `extension.js` beside the grammar files: the language,
+`nexus --editor` writes `package.json` and `extension.js` beside the
+grammar files: the language,
 its grammar and configuration, the `LANG.lsp.path` and `LANG.lsp.root`
 settings, and a client that starts the server for the language's files
 and says so when it cannot (the TextMate grammar colours the file either
@@ -394,7 +461,8 @@ does.
 
 ## Phases
 
-1. **Tier 1 and the overrides.** `nexus --lsp` and `--lsp-server`, the
+1. **Tier 1 and the overrides.** `nexus --editor` (the whole extension
+   with the hooks file as stubs) and `nexus --lsp`, the
    protocol and the server's own duties, document sync, the tier-1
    features, the four overrides, and the `lsp/` test scripts; checked
    along the way: that `expected(state)` names a contextual keyword the
@@ -405,15 +473,15 @@ does.
 2. **Tier 2.** `@lsp`, its checks, and scope resolution, for languages
    without a checker.
 3. **Tier 3.** The eight functions, `analyze`'s root and overlay, and the
-   `--hooks` JSON protocol with a TypeScript example. Rig first adds the
+   `--hooks` JSON protocol, and `nexus --editor --hooks ts` (`hooks.ts`,
+   `types.ts`, and `tree.ts`, the typed tree from `@schema`). Rig first adds the
    facts its checker does not record (the member `x.f` resolves to, a
    reference through a module name, the names of `from` and `keeps` as
    references, one table of built-in members that its type checker reads
    too) and its tolerant-analysis contract, then implements the
    functions: member completion, hover with types and ownership facts,
    signature help, `std/` completion.
-4. **The VS Code client** generated with the editor files.
-5. **Formatting**: the language's own `format`, or a printer driven by
+4. **Formatting**: the language's own `format`, or a printer driven by
    the grammar.
 
 Each phase is a change to the generated API, so it lands as
