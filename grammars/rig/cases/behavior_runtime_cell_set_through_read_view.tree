@@ -9,6 +9,7 @@
       _
       ((write `self`)@296..301)@295..302
       _
+      _
       (block
         (write
           (call
@@ -22,6 +23,7 @@
     _
     ((: `c` (write_view (generic_inst `Cell` `Int`)@357..366)@356..366)@353..366
       (: `by` `Int`)@368..375)@352..376
+    _
     _
     (block
       (write
@@ -38,6 +40,7 @@
       (: `v` `Int`)@425..431)@409..432
     `Int`
     _
+    _
     (block (call (member (write `c`)@443..445 `replace`)@442..454 `v`)@442..457)@442..459
     _
     _
@@ -47,6 +50,7 @@
     _
     ((: `c` (shared `Counter`)@471..479)@468..479)@467..480
     `Int`
+    _
     _
     (block
       (call `bump` (write (member `c` `hits`)@496..502)@495..502 `100`)@490..508
@@ -58,6 +62,7 @@
     `main`
     _
     ()@533..535
+    _
     _
     (block
       (set

@@ -5,6 +5,7 @@
     ((: `start` `Int`)@292..302)@291..303
     (shared (fun_type (`Int`)@312..315 `Int` _)@308..323)@307..323
     _
+    _
     (block
       (set
         _
@@ -28,6 +29,7 @@
     _
     ()@437..439
     _
+    _
     (block
       (set
         _
@@ -48,8 +50,8 @@
       (call `bump`)@519..525
       (call `bump`)@528..534
       (call `print` (call (member `count` `get`)@543..552)@543..554)@537..555
-      (set _ `next` _ (call `make_counter` `100`)@566..583)@559..583
-      (call `print` (call `next` `1`)@592..599 (call `next` `10`)@601..609)@586..610)@442..636
+      (set fixed `next` _ (call `make_counter` `100`)@567..584)@559..584
+      (call `print` (call `next` `1`)@593..600 (call `next` `10`)@602..610)@587..611)@442..637
     _
     _
-    _)@429..636)@275..636
+    _)@429..637)@275..637

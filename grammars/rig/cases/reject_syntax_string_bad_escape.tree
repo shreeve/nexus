@@ -4,6 +4,7 @@
     _
     ()@80..82
     _
+    _
     (block
       (call `print` `"bad \\q escape"`)@85..107
       (call `print` `"\\x4g"`)@110..123

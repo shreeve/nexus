@@ -15,6 +15,7 @@
     ((: `t` (read_view (shared `Tree`)@150..155)@149..155)@146..155)@145..156
     `Int`
     _
+    _
     (block
       (set _ `total` _ (member `t` `n`)@174..177)@166..177
       (for
@@ -32,6 +33,7 @@
     `main`
     _
     ()@235..237
+    _
     _
     (block
       (set

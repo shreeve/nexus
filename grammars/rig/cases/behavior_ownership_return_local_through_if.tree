@@ -12,6 +12,7 @@
     ((: `c` `Bool`)@212..219)@211..220
     (shared `Wrap`)@224..229
     _
+    _
     (block
       (set _ `a` _ (share (call `Wrap` (kwarg `payload` `1`)@242..252)@237..253)@236..253)@232..253
       (set _ `b` _ (share (call `Wrap` (kwarg `payload` `2`)@266..276)@261..277)@260..277)@256..277
@@ -23,6 +24,7 @@
     `main`
     _
     ()@313..315
+    _
     _
     (block
       (set _ `x` _ (call `pick` `true`)@322..332)@318..332

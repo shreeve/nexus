@@ -16,7 +16,7 @@ sub main()
   bump()
   print(count.get())
 
-  next = make_counter(100)
+  next =! make_counter(100)
   print(next(1), next(10))
 
 # expect:

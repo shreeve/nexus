@@ -5,6 +5,7 @@
     _
     ((: `u` (write_view `User`)@131..136)@128..136)@127..137
     _
+    _
     (block (call `print` `"rename"`)@140..155)@140..157
     _
     _
@@ -13,6 +14,7 @@
     `main`
     _
     ()@165..167
+    _
     _
     (block
       (set _ `user` _ (call `User` (kwarg `name` `"Steve"`)@182..195)@177..196)@170..196
