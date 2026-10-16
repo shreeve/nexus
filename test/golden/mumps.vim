@@ -32,7 +32,7 @@ syn match mumpsPlain "\v[0-9]*\.[0-9]+"
 syn match mumpsPlain "\v[0-9]+\.=[Ee][+\-]=[0-9]+"
 syn match mumpsPlain "\v[0-9]*\.[0-9]+[Ee][+\-]=[0-9]+"
 syn match mumpsPlain "\v[0-9]+"
-syn region mumpsString start="\v\"" skip="\v[^\x0a\x22]|\"\"" end="\v\"" contains=mumpsStringEscapeInString
+syn region mumpsString matchgroup=mumpsString start="\v\"" skip="\v[^\x0a\x22]|\"\"" end="\v\"" contains=mumpsStringEscapeInString
 syn match mumpsStringEscapeInString "\v\"\"" contained
 syn match mumpsComment "\v\;.*"
 syn match mumpsPlain "\v%x0d*%x0a"

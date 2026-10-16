@@ -24,9 +24,9 @@ syn match rigConstantNumeric "\v%(0|[1-9]%(_=[0-9])*)=\.[0-9]%(_=[0-9])*%([Ee][+
 syn match rigConstantNumeric "\v0o[0-7]%(_=[0-7])*"
 syn match rigConstantNumeric "\v0b[01]%(_=[01])*"
 syn match rigConstantNumeric "\v0x[0-9A-Fa-f]%(_=[0-9A-Fa-f])*"
-syn region rigString start="\v\'" skip="\v[^\x00-\x1f'\x7f]|\'\'" end="\v\'" contains=rigStringEscapeInStringSq
+syn region rigString matchgroup=rigString start="\v\'" skip="\v[^\x00-\x1f'\x7f]|\'\'" end="\v\'" contains=rigStringEscapeInStringSq
 syn match rigStringEscapeInStringSq "\v\'\'" contained
-syn region rigString start="\v\"" skip="\v[^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f]" end="\v\"" contains=rigStringEscapeInStringDq
+syn region rigString matchgroup=rigString start="\v\"" skip="\v[^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f]" end="\v\"" contains=rigStringEscapeInStringDq
 syn match rigStringEscapeInStringDq "\v\\[^\x00-\x1f\x7f]" contained
 syn match rigPlain "\v%x0a"
 syn match rigPlain "\v%x0d%x0a"

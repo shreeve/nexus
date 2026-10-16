@@ -46,6 +46,11 @@
 
 ### Fixed
 
+- The Vim syntax file gives each region a `matchgroup`, so a contained
+  escape can't overlap its opening delimiter. An empty string in a
+  language whose strings double their quote (M's `""`, Rig's `''`) was
+  read as an escape, and the string ran on into the following lines.
+  Migration: regenerate `editors/` (`nexus --highlight all`).
 - A context on an entry with several targets (literals, a `@keywords`
   group) binds to every target: the editor files group the alternation,
   `(?<=…)(?:a|b|…)(?!…)`, where it bound only the first and the last.

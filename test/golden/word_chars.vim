@@ -18,7 +18,7 @@ syn match mintPlain "\v."
 syn match mintPlain "\v%x0a"
 syn match mintPlain "\v[%A-Za-z][0-9A-Za-z]*"
 syn match mintConstantNumeric "\v[0-9]+"
-syn region mintString start="\v\"" skip="\v[^\x0a\x22]|\"\"" end="\v\"" contains=mintStringEscapeInString
+syn region mintString matchgroup=mintString start="\v\"" skip="\v[^\x0a\x22]|\"\"" end="\v\"" contains=mintStringEscapeInString
 syn match mintStringEscapeInString "\v\"\"" contained
 syn match mintComment "\v\;.*"
 syn match mintPlain "\v[\x09 ]+"

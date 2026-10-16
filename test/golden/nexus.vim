@@ -17,7 +17,7 @@ syn sync fromstart
 syn match nexusPlain "\v."
 syn match nexusPlain "\v[A-Z_a-z][0-9A-Z_a-z]*"
 syn match nexusConstantNumeric "\v[0-9]+"
-syn region nexusString start="\v\"" skip="\v[^\x0a\x22\\]|\\." end="\v\"" contains=nexusStringEscapeInString
+syn region nexusString matchgroup=nexusString start="\v\"" skip="\v[^\x0a\x22\\]|\\." end="\v\"" contains=nexusStringEscapeInString
 syn match nexusStringEscapeInString "\v\\%(x[0-9A-Fa-f]{2}|[\x22'0\\nrt])" contained
 syn match nexusPlain "\v\@"
 syn match nexusPlain "\v\>"

@@ -26,10 +26,10 @@ syn match zigInvalid "\v\@\"%([^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f])*%(\\=|[
 syn match zigPlain "\v\@\"%([^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f])*\""
 syn match zigFunctionBuiltin "\v\@[A-Z_a-z][0-9A-Z_a-z]*"
 syn match zigInvalid "\v\'%([^\x00-\x1f'\\\x7f]|\\[^\x00-\x1f\x7f])*%(\\=|[\x00-\x09\x0b-\x1f\x7f].*|\\[\x00-\x09\x0b-\x1f\x7f].*)"
-syn region zigString start="\v\'" skip="\v[^\x00-\x1f'\\\x7f]|\\[^\x00-\x1f\x7f]" end="\v\'" contains=zigStringEscapeInCharLiteral
+syn region zigString matchgroup=zigString start="\v\'" skip="\v[^\x00-\x1f'\\\x7f]|\\[^\x00-\x1f\x7f]" end="\v\'" contains=zigStringEscapeInCharLiteral
 syn match zigStringEscapeInCharLiteral "\v\\%(x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f]+\}|[\x22'\\nrt])" contained
 syn match zigInvalid "\v\"%([^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f])*%(\\=|[\x00-\x09\x0b-\x1f\x7f].*|\\[\x01-\x09\x0b-\x1f\x7f].*)"
-syn region zigString start="\v\"" skip="\v[^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f]" end="\v\"" contains=zigStringEscapeInStringLiteral
+syn region zigString matchgroup=zigString start="\v\"" skip="\v[^\x00-\x1f\x22\\\x7f]|\\[^\x00-\x1f\x7f]" end="\v\"" contains=zigStringEscapeInStringLiteral
 syn match zigStringEscapeInStringLiteral "\v\\%(x[0-9A-Fa-f]{2}|u\{[0-9A-Fa-f]+\}|[\x22'\\nrt])" contained
 syn match zigInvalid "\v\/\/\![^\x00-\x1f\x7f]*%([\x01-\x09\x0b\x0c\x0e-\x1f\x7f]|%x0d).*"
 syn match zigPlain "\v\/\/\![^\x00-\x1f\x7f]*"
