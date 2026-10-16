@@ -1,0 +1,31 @@
+{
+  "format": 1,
+  "nexus": "2.3.0",
+  "grammar": "lit_tags.grammar",
+  "lang": null,
+  "tokens": [
+    {"name": "ident", "terminal": 7, "display": "ident"},
+    {"name": "integer", "terminal": 9, "display": "integer"},
+    {"name": "assign", "terminal": 8, "display": "\"=\""},
+    {"name": "plus_assign", "terminal": 11, "display": "\"+=\""},
+    {"name": "arrow", "terminal": 10, "display": "\"->\""},
+    {"name": "newline", "terminal": 6, "display": "newline"},
+    {"name": "eof", "terminal": 1, "display": "end of input"},
+    {"name": "err", "terminal": null, "display": null}
+  ],
+  "rules": [
+    {"line": 24, "token": "plus_assign", "pattern": "'+='", "regex": "\\+=", "literal": "+=", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 25, "token": "assign", "pattern": "'='", "regex": "=", "literal": "=", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 26, "token": "arrow", "pattern": "'->'", "regex": "->", "literal": "->", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 27, "token": "newline", "pattern": "'\\n'", "regex": "\\x0a", "literal": "\n", "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 28, "token": "integer", "pattern": "[0-9]+", "regex": "[0-9]+", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 29, "token": "ident", "pattern": "[a-zA-Z_][a-zA-Z0-9_]*", "regex": "[A-Z_a-z][0-9A-Z_a-z]*", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []},
+    {"line": 30, "token": "err", "pattern": ".", "regex": "[\\x00-\\xff]", "literal": null, "trail": null, "guards": [], "skip": false, "hold": false, "rewind": null, "actions": []}
+  ],
+  "states": [],
+  "after": [],
+  "keywords": {},
+  "trivia": [],
+  "highlight": null,
+  "schema": null
+}

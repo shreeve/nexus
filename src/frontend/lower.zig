@@ -81,6 +81,7 @@ pub const GrammarLowerer = struct {
     codeNode: ?Sexp = null,
     trivia: std.ArrayList([]const u8) = .empty,
     repair: ?grammar.RepairSpec = null,
+    highlight: ?grammar.HighlightLines = null,
 
     /// Lowers a parsed grammar file.
     pub fn lowerParsed(allocator: Allocator, parsed: *const @import("frontend.zig").Parsed) LowerError!GrammarIR {
@@ -131,6 +132,7 @@ pub const GrammarLowerer = struct {
             .trivia = try self.trivia.toOwnedSlice(allocator),
             .repair = self.repair,
             .keywordGroups = try self.keywordGroups.toOwnedSlice(allocator),
+            .highlight = self.highlight,
             .lexer = self.lexer,
         };
     }
@@ -226,7 +228,7 @@ pub const GrammarLowerer = struct {
         switch (kind) {
             // Each directive but @as (one line per promoted token) appears
             // once; repeated blocks are not merged.
-            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords => {
+            .lang, .manifest, .op, .errors, .display, .infix, .schema, .tags, .trivia, .repair, .keywords, .highlight => {
                 if (self.directives.contains(kind))
                     return self.failAt(self.spans.?.span(entry).start, "duplicate @{s}", .{if (kind == .manifest) "conflicts" else @tagName(kind)});
                 self.directives.insert(kind);
@@ -246,6 +248,7 @@ pub const GrammarLowerer = struct {
             .trivia => try self.lowerNames(ir.Trivia.names(entry), "@trivia", &self.trivia),
             .repair => try self.lowerRepair(entry),
             .keywords => for (ir.Keywords.groups(entry)) |group| try self.lowerKeywordGroup(group),
+            .highlight => try self.lowerHighlight(entry),
             .rule => {
                 if (self.section != .parser)
                     return self.fail(entry, "rules belong in the @parser section", .{});
@@ -688,7 +691,7 @@ pub const GrammarLowerer = struct {
         };
 
         const entries = try self.allocator.alloc(KeywordGroup.Entry, sorted.len);
-        for (sorted, entries) |w, *e| e.* = .{ .word = w.word, .min = w.min, .terminal = @intCast(w.terminal) };
+        for (sorted, entries) |w, *e| e.* = .{ .word = w.word, .min = w.min, .terminal = @intCast(w.terminal), .alias = w.alias != null };
         const at = self.loc(nameNode);
         try self.keywordGroups.append(self.allocator, .{
             .name = name,
@@ -790,6 +793,32 @@ pub const GrammarLowerer = struct {
             } else false;
             if (!used) return self.fail(node, "keyword group `{s}` is the group of no @as", .{group.name});
         }
+    }
+
+    /// `@highlight`: the lines as written (src/highlight/highlight.zig
+    /// checks them against the lexer spec).
+    fn lowerHighlight(self: *GrammarLowerer, node: Sexp) LowerError!void {
+        var lines: std.ArrayList(grammar.HighlightLines.Line) = .empty;
+        for (ir.Highlight.lines(node)) |line| {
+            const key = ir.HlLine.key(line);
+            var joined: std.ArrayList(u8) = .empty;
+            var segments: std.ArrayList(grammar.HighlightLines.Line.Segment) = .empty;
+            for (ir.HlLine.texts(line)) |t| {
+                if (joined.items.len > 0) try joined.append(self.allocator, ' ');
+                try segments.append(self.allocator, .{ .offset = @intCast(joined.items.len), .pos = t.src.pos });
+                try joined.appendSlice(self.allocator, self.text(t));
+            }
+            try lines.append(self.allocator, .{
+                .key = self.text(key),
+                .keyPos = key.src.pos,
+                .text = try joined.toOwnedSlice(self.allocator),
+                .segments = try segments.toOwnedSlice(self.allocator),
+            });
+        }
+        self.highlight = .{
+            .pos = if (self.spans) |p| p.span(node).start else self.posOf(node),
+            .lines = try lines.toOwnedSlice(self.allocator),
+        };
     }
 
     fn lowerOp(self: *GrammarLowerer, node: Sexp) LowerError!void {

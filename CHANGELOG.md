@@ -1,5 +1,53 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `@highlight` (preamble or @parser section): how editors colour the
+  language. Metadata lines (`language "Rig"`, `scope-name source.rig`,
+  `extensions rig`, optional `line-comment`, `block-comment`, `indent`,
+  `dedent`) and entries `SCOPE targets [contexts] [within TOKEN]`, one of
+  19 scopes (each mapped in GRAMMAR.md to a TextMate scope, a
+  highlight.js class and a Vim group). Targets are literals, token names
+  and `@keywords` groups, or one pattern in the @lexer syntax with
+  `scope:( ... )` captures; contexts are `after P`, `not after P`,
+  `before P`, `not before P` (fixed length), `line-start` and
+  `line-end`; `within TOKEN` colours text inside a token, which becomes a
+  region (literal prefix, body, literal-ended suffix). A line indented
+  further than the block's first continues the entry above. Every
+  mistake is a located error (GRAMMAR.md, "Editor support", "Checks").
+  `@highlight` changes nothing in the generated parser: a grammar
+  generates the same module with or without it.
+- `nexus --highlight <target> <grammar> [out]`, targets `textmate`
+  (.tmLanguage.json), `language-configuration` (VS Code),
+  `highlightjs` (an ES module: `export const extensions`, and
+  `export default function (hljs)` returning `name`, `aliases`,
+  `keywords`, `contains`) and `vim` (a syntax file), and
+  `nexus --highlight all <grammar> <dir>`, which writes
+  `vscode/syntaxes/<id>.tmLanguage.json`,
+  `vscode/language-configuration.json`, `vim/syntax/<id>.vim` and
+  `highlightjs/<id>.js`, `<id>` the last part of the scope name. The
+  recommended place is `editors/` beside the grammar.
+- `nexus --describe <grammar> [out]`: the grammar as JSON (`"format": 1`,
+  fixed key order): tokens with their parser terminal and display name,
+  lexer rules with a portable regex, state variables, keyword tables,
+  trivia, `@highlight` and the schema (GRAMMAR.md, "Describing a
+  grammar"). It works with or without `@highlight`.
+- `nexus.grammar` and the Zig grammar have `@highlight`; the suite checks
+  each grammar's editor files by what they colour (`test/lib/highlight`:
+  reference TextMate and highlight.js tokenizers, and Vim itself, which
+  the suite now needs) and pins `--describe` for every grammar.
+
+Additive: no migration required. Downstream:
+- Rig: add `@highlight` to `rig.grammar` (the sample of every token and
+  context Rig needs colours as intended with entries of every kind:
+  captures for `fun`/`sub` names, `after`/`not before` for the contextual
+  `new`, `obj`, `called`, `rarely` and the sigils, `within` for both
+  string styles), and write `editors/` with `nexus --highlight all
+  rig.grammar editors`.
+- em, nexis: optional; the same when wanted.
+
 ## 2.3.0 — 2026-10-15
 
 ### Added

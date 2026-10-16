@@ -1,0 +1,15 @@
+# Bytes that start a UTF-8 character but do not finish it have no editor form.
+# error: this pattern has no editor form: it matches bytes that are not a whole UTF-8 character
+@lexer
+tokens
+    word, eof, err
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@highlight
+    language "T"
+    scope-name source.t
+    extensions t
+    keyword ("\xe2\x86")
+list! = WORD*

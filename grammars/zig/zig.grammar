@@ -314,6 +314,57 @@ tokens
 
 @parser
 
+# How editors colour Zig (`nexus --highlight all zig.grammar editors`).
+# Comments are skipped by the lexer, so a pattern colours them; labels,
+# primitive types and calls are patterns too.
+@highlight
+    language            "Zig"
+    scope-name          source.zig
+    extensions          zig zon
+    line-comment        "//"
+    indent              '{' [ \t]* line-end
+    dedent              line-start [ \t]* '}'
+
+    comment             "//" [^\n]*
+    keyword             "fn" [ \t]+ function:([A-Za-z_] [A-Za-z0-9_]*)
+    label               [A-Za-z_] [A-Za-z0-9_]* after ':' [ \t]* ('{' | "while" | "for" | "inline" | "switch")
+    label               ':' [A-Za-z_] [A-Za-z0-9_]* before "break "
+    label               ':' [A-Za-z_] [A-Za-z0-9_]* before "continue "
+    type                [iu] [0-9]+ not before [A-Za-z0-9_] not after [A-Za-z0-9_]
+    type                [A-Z] [A-Za-z0-9_]* not before [A-Za-z0-9_@.]
+    function            [A-Za-z_] [A-Za-z0-9_]* after '(' not before [A-Za-z0-9_@]
+
+    keyword.control     "if" "else" "while" "for" "switch" "return" "break"
+                        "continue" "try" "catch" "orelse" "defer" "errdefer"
+                        "unreachable" "suspend" "resume" "nosuspend"
+    keyword.operator    "and" "or"
+    keyword             "fn" "const" "var" "struct" "enum" "union" "opaque"
+                        "error" "test" "asm" "comptime" "inline" "noinline"
+                        "anyframe"
+    storage.modifier    "pub" "export" "extern" "packed" "threadlocal"
+                        "volatile" "allowzero" "noalias" "linksection"
+                        "callconv" "addrspace" "align"
+    type                "bool" "void" "type" "anytype" "anyerror" "anyopaque"
+                        "noreturn" "usize" "isize" "comptime_int"
+                        "comptime_float" "f16" "f32" "f64" "f80" "f128"
+                        "c_int" "c_uint" "c_long" "c_ulong" "c_char"
+    constant            "true" "false" "null" "undefined"
+    operator            "==" "!=" "<=" ">=" "<<" ">>" "<<=" ">>=" "<<|" "<<|="
+                        "+=" "-=" "*=" "/=" "%=" "&=" "|=" "^=" "+%" "-%"
+                        "*%" "+|" "-|" "*|" "+%=" "-%=" "*%=" "+|=" "-|="
+                        "*|=" "++" "||" "=>" "->" ".*" "..."
+                        "=" "!" "|" "%" "^" "+" "-" "*" "/" "&" "?" "<"
+                        ">" "~"
+    punctuation         "(" ")" "[" "]" "{" "}" ";" "," "." ".." ":"
+    constant.numeric    NUMBER_LITERAL
+    function.builtin    BUILTIN
+    string              STRING_LITERAL CHAR_LITERAL MULTILINE_STRING_LITERAL_LINE
+    string.escape       '\\' ('x' [0-9a-fA-F]{2} | "u{" [0-9a-fA-F]+ '}' | [nrt'"\\])
+                        within STRING_LITERAL
+    string.escape       '\\' ('x' [0-9a-fA-F]{2} | "u{" [0-9a-fA-F]+ '}' | [nrt'"\\])
+                        within CHAR_LITERAL
+    invalid             INVALID
+
 # The tree (std.zig.Ast, node for node). One kind per Ast.Node.Tag family:
 # the arity, trailing-comma and storage variants of a tag (`call_one`,
 # `call_comma`, `block_two_semicolon`, `simple_var_decl`, `fn_proto_multi`,

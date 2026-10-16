@@ -219,6 +219,8 @@ pub const GrammarIR = struct {
     repair: ?RepairSpec = null,
     /// `@keywords`: the keyword groups, in the order written.
     keywordGroups: []const KeywordGroup = &.{},
+    /// `@highlight`: its lines as written; null when the file has none.
+    highlight: ?HighlightLines = null,
     /// The @lexer section; null when the file has none.
     lexer: ?LexerSpec = null,
 };
@@ -518,6 +520,9 @@ pub const KeywordGroup = struct {
         word: []const u8,
         min: usize,
         terminal: u16,
+        /// Written `word=NAME`: another spelling of a terminal an earlier
+        /// or later entry names.
+        alias: bool = false,
     };
 
     /// Whether `name` is one of the group's terminals.
@@ -525,6 +530,37 @@ pub const KeywordGroup = struct {
         for (self.terminals) |t| if (std.mem.eql(u8, t, name)) return true;
         return false;
     }
+};
+
+/// `@highlight` as written: each line's first word and the rest of the
+/// line, with their source offsets. src/highlight/highlight.zig reads
+/// the entries once the lexer spec is complete.
+pub const HighlightLines = struct {
+    /// The offset of the directive's `@`.
+    pos: u32,
+    lines: []const Line,
+
+    pub const Line = struct {
+        key: []const u8,
+        keyPos: u32,
+        /// The texts after the key (its line's, then each continuation
+        /// line's) joined by a space; empty when there are none.
+        text: []const u8,
+        /// Where each text starts in `text` and in the grammar file.
+        segments: []const Segment,
+
+        pub const Segment = struct { offset: u32, pos: u32 };
+
+        /// The grammar-file offset of `text[offset]`.
+        pub fn at(self: Line, offset: usize) u32 {
+            var pos = self.keyPos + @as(u32, @intCast(self.key.len));
+            for (self.segments) |seg| {
+                if (seg.offset > offset) break;
+                pos = seg.pos + @as(u32, @intCast(offset - seg.offset));
+            }
+            return pos;
+        }
+    };
 };
 
 /// @op directive for operator literal-to-token mappings

@@ -1,0 +1,23 @@
+# A class that holds part of the bytes of UTF-8 characters has no editor form.
+# error: this pattern has no editor form
+@lexer
+tokens
+    word, string, number, arrow, indent, eof, err
+'"' ([^"\\\n] | '\\' .)* '"' → string
+[0-9]+ → number
+"->" [a-z] → arrow, rewind(2)
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@keywords
+    cmd  caseless  S[ET]
+@as WORD = [cmd!]
+@highlight
+    language "T"
+    scope-name source.t
+    extensions t
+    keyword [\x80-\x9f]+
+
+list! = item*
+item = WORD | STRING | NUMBER | ARROW | SET

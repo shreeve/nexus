@@ -1,0 +1,97 @@
+> # A grammar file, coloured by nexus.grammar's @highlight.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> @lexer
+  ^^^^^^ keyword
+> 
+> tokens
+  ^^^^^^ keyword
+>     ident, number, string, eof, err
+           ^ punctuation
+                   ^ punctuation
+                           ^ punctuation
+                                ^ punctuation
+> 
+> '"' ([^"\\\n] | '\\' .)* '"'    → string
+  ^^^ string
+      ^^ punctuation
+         ^ string
+          ^^^^ string.escape
+              ^^^^^ string
+                   ^^ string.escape
+                     ^^^^^^^^ string
+                                  ^ operator
+> [0-9]+                          → number
+  ^ punctuation
+   ^ constant.numeric
+     ^ constant.numeric
+      ^ punctuation
+       ^ operator
+                                  ^ operator
+> '\n'                            → skip, skip
+  ^^^^ string
+                                  ^ operator
+                                    ^^^^ keyword
+                                        ^ punctuation
+                                          ^^^^ keyword
+> [a-z]+ / '('                    → ident, rewind(1)
+  ^ punctuation
+      ^ punctuation
+       ^ operator
+           ^^^ string
+                                  ^ operator
+                                         ^ punctuation
+                                           ^^^^^^ keyword
+                                                 ^ punctuation
+                                                  ^ constant.numeric
+                                                   ^ punctuation
+> .                               → err
+                                  ^ operator
+> 
+> @parser
+  ^^^^^^^ keyword
+> 
+> @display
+  ^^^^^^^^ keyword
+>     IDENT: "a name\tthere", "=": "'='"
+      ^^^^^ type
+           ^ punctuation
+             ^^^^^^^ string
+                    ^^ string.escape
+                      ^^^^^^ string
+                            ^ punctuation
+                              ^^^ string
+                                 ^ punctuation
+                                   ^^^^^ string
+> 
+> list! = item+                   → (list ...1)
+  ^^^^ function
+      ^ operator
+        ^ operator
+              ^ operator
+                                  ^ operator
+                                    ^ punctuation
+                                          ^^^ operator
+                                             ^ constant.numeric
+                                              ^ punctuation
+> item  = name:IDENT "=" NUMBER   → (set 1 3)
+  ^^^^ function
+        ^ operator
+          ^^^^ label
+              ^ punctuation
+               ^^^^^ type
+                     ^^^ string
+                         ^^^^^^ type
+                                  ^ operator
+                                    ^ punctuation
+                                         ^ constant.numeric
+                                           ^ constant.numeric
+                                            ^ punctuation
+>       | STRING? -> (str ~1)
+        ^ operator
+          ^^^^^^ type
+                ^ operator
+                  ^^ operator
+                     ^ punctuation
+                          ^ operator
+                           ^ constant.numeric
+                            ^ punctuation

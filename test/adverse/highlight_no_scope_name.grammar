@@ -1,0 +1,22 @@
+# `scope-name` is required.
+# error: @highlight needs `scope-name
+@lexer
+tokens
+    word, string, number, arrow, indent, eof, err
+'"' ([^"\\\n] | '\\' .)* '"' → string
+[0-9]+ → number
+"->" [a-z] → arrow, rewind(2)
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@keywords
+    cmd  caseless  S[ET]
+@as WORD = [cmd!]
+@highlight
+    language "T"
+    extensions t
+    keyword WORD
+
+list! = item*
+item = WORD | STRING | NUMBER | ARROW | SET

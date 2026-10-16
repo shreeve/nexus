@@ -23,6 +23,12 @@
 //!     symbol syntax, `→`/`->`, `ε`), `over` (`kw_over`) and a second rule
 //!     text, the count (`integer`: the last word), and the rationale
 //!     (`comment`: from `#` to the end of the line).
+//!   - `@highlight` entries. Each indented line of the block is split into
+//!     its first word (`keyword`: a scope or a metadata key) and the rest
+//!     of the line up to a `#` outside quotes and classes (`pattern`,
+//!     trailing blanks excluded; none when the line has only the word). A
+//!     line indented further than the block's first line continues the
+//!     entry above: its text is one more `pattern`.
 //!   - Unicode: `→` is an arrow.
 //!   - Words. An identifier immediately followed by `:` is a `label`
 //!     (`role:element`, `expr: "expression"`); the colon is consumed.
@@ -105,6 +111,10 @@ pub const Lexer = struct {
     /// of the block's first group line (deeper lines continue a group).
     keywordLine: bool = false,
     keywordIndent: usize = 0,
+    /// `@highlight`: the indentation of the block's first line, and
+    /// whether the current line continues the entry above.
+    highlightIndent: usize = 0,
+    highlightMore: bool = false,
     /// The last @lexer-section pattern: a syntax error later on its line is
     /// reported as the pattern's own error when the pattern is invalid.
     lastPattern: ?Token = null,
@@ -115,7 +125,7 @@ pub const Lexer = struct {
     pub const maxTokenLen = std.math.maxInt(@FieldType(Token, "len"));
 
     const Mode = enum { normal, action };
-    const Block = enum { none, as, conflicts, infix, schema, keywords, other };
+    const Block = enum { none, as, conflicts, infix, schema, keywords, highlight, other };
     pub const Section = enum { preamble, lexer, parser };
 
     /// A scanning error the parser reports instead of "unexpected err":
@@ -196,6 +206,13 @@ pub const Lexer = struct {
         }
         if (self.block == .keywords and self.keywordLine and p < s.len and s[p] != '\n' and s[p] != '#') {
             return self.keywordWord(p);
+        }
+        if (self.block == .highlight and p < s.len and s[p] != '\n' and s[p] != '#') {
+            if (self.highlightMore) {
+                self.highlightMore = false;
+                return self.highlightText(p);
+            }
+            if (self.lineStart and !self.afterAt) return self.highlightLine(p);
         }
         // The Unicode arrow is not in the generated lexer.
         if (p + 2 < s.len and s[p] == 0xE2 and s[p + 1] == 0x86 and s[p + 2] == 0x92) {
@@ -329,6 +346,60 @@ pub const Lexer = struct {
         return self.make(cat, w.a, w.b - w.a);
     }
 
+    /// A `@highlight` entry line starting at `p`: its first word
+    /// (`keyword`), then the rest up to a comment (`pattern`, queued).
+    fn highlightLine(self: *Lexer, p: usize) Token {
+        const s = self.src();
+        var keyEnd = p;
+        while (keyEnd < s.len and !isBlank(s[keyEnd]) and s[keyEnd] != '\n') keyEnd += 1;
+        var i = keyEnd;
+        while (i < s.len and isBlank(s[i])) i += 1;
+        const text = self.highlightText(i);
+        if (text.len > 0) self.push(text);
+        return self.make(.keyword, p, keyEnd - p);
+    }
+
+    /// The text of a `@highlight` line from `start` up to a `#` outside
+    /// quotes and classes, trailing blanks excluded (a `pattern`, empty
+    /// when there is none).
+    fn highlightText(self: *Lexer, start: usize) Token {
+        const s = self.src();
+        var i = start;
+        var end = i;
+        var quote: u8 = 0;
+        var class = false;
+        while (i < s.len and s[i] != '\n') : (i += 1) {
+            const c = s[i];
+            if ((quote != 0 or class) and c == '\\' and i + 1 < s.len and s[i + 1] != '\n') {
+                i += 1;
+                end = i + 1;
+                continue;
+            }
+            if (quote != 0) {
+                if (c == quote) quote = 0;
+            } else if (class) {
+                if (c == ']') class = false;
+            } else if (c == '#') {
+                break;
+            } else if (c == '\'' or c == '"') {
+                quote = c;
+            } else if (c == '[') {
+                class = true;
+                // `[]...]` and `[^]...]` start with a literal `]`.
+                if (i + 1 < s.len and s[i + 1] == '^') i += 1;
+                if (i + 1 < s.len and s[i + 1] == ']') i += 1;
+            } else if (c == '\\' and i + 1 < s.len and s[i + 1] != '\n') {
+                i += 1;
+                end = i + 1;
+                continue;
+            }
+            if (!isBlank(s[i])) end = i + 1;
+        }
+        while (i < s.len and s[i] != '\n') i += 1;
+        self.base.pos = @intCast(i);
+        return self.make(.pattern, start, end - start);
+    }
+
     const Word = struct { a: usize, b: usize };
 
     /// The next blank-separated word in `s[from..end]`; a `"..."` string,
@@ -401,6 +472,14 @@ pub const Lexer = struct {
                     }
                     self.keywordLine = true;
                 }
+                if (self.block == .highlight) {
+                    if (self.highlightIndent == 0) self.highlightIndent = i - lineBegin;
+                    if (i - lineBegin > self.highlightIndent) {
+                        self.lineStart = false;
+                        self.highlightMore = true;
+                        return null;
+                    }
+                }
                 return self.make(.cont, pos, 1);
             }
             self.block = .none;
@@ -432,10 +511,12 @@ pub const Lexer = struct {
                     .kw_infix => .infix,
                     .kw_schema => .schema,
                     .kw_keywords => .keywords,
+                    .kw_highlight => .highlight,
                     else => .other,
                 };
                 self.keywordLine = false;
                 self.keywordIndent = 0;
+                self.highlightIndent = 0;
                 return kw;
             }
         }
@@ -460,13 +541,14 @@ pub const Lexer = struct {
 
     fn directiveKeyword(t: []const u8) ?TokenCat {
         const map = [_]struct { []const u8, TokenCat }{
-            .{ "lang", .kw_lang },         .{ "conflicts", .kw_conflicts },
-            .{ "as", .kw_as },             .{ "op", .kw_op },
-            .{ "errors", .kw_errors },     .{ "display", .kw_display },
-            .{ "infix", .kw_infix },       .{ "schema", .kw_schema },
-            .{ "tags", .kw_tags },         .{ "trivia", .kw_trivia },
-            .{ "repair", .kw_repair },     .{ "wrapper", .kw_wrapper },
-            .{ "keywords", .kw_keywords }, .{ "longtokens", .kw_longtokens },
+            .{ "lang", .kw_lang },           .{ "conflicts", .kw_conflicts },
+            .{ "as", .kw_as },               .{ "op", .kw_op },
+            .{ "errors", .kw_errors },       .{ "display", .kw_display },
+            .{ "infix", .kw_infix },         .{ "schema", .kw_schema },
+            .{ "tags", .kw_tags },           .{ "trivia", .kw_trivia },
+            .{ "repair", .kw_repair },       .{ "wrapper", .kw_wrapper },
+            .{ "keywords", .kw_keywords },   .{ "longtokens", .kw_longtokens },
+            .{ "highlight", .kw_highlight },
         };
         for (map) |entry| if (eql(t, entry[0])) return entry[1];
         return null;

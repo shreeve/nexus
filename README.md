@@ -163,7 +163,10 @@ naming the rule.
 - **For editors.** Syntax errors name what was expected (`expected an
   expression or ")", got end of line`), trivia is kept with positions, and
   `parseTolerant` repairs a broken buffer from a table the generator
-  computes.
+  computes. With `@highlight`, the grammar also gives a TextMate grammar,
+  VS Code's language configuration, a highlight.js language and a Vim
+  syntax file ([GRAMMAR.md](docs/GRAMMAR.md#editor-support)), and
+  `--describe` writes the grammar as JSON for other tools.
 - **Extensible in Zig.** A language module can wrap the generated lexer
   (layout, keyword classification) and parser (tree rewrites), through one
   small contract ([the lang module](docs/SEMANTICS.md#the-lang-module)).
@@ -200,7 +203,7 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 | Ruby subset | `grammars/ruby/ruby.grammar` | 780 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
 | Slash | `grammars/slash/slash.grammar` | 388 | 156 | 0 | 7 | plain |
 | Nexis (a Clojure reader) | `grammars/nexis/nexis.grammar` | 103 | 66 | 0 | 26 | plain |
-| Nexus grammar files | `nexus.grammar` | 584 | 372 | 0 | 14 + every grammar in the suite | schema |
+| Nexus grammar files | `nexus.grammar` | 632 | 381 | 0 | 14 + every grammar in the suite | schema |
 
 A declared conflict is one manifest entry; it covers one or more table
 cells. [test/bench/BASELINE.md](test/bench/BASELINE.md) records generation
@@ -221,6 +224,8 @@ zig build -Doptimize=safe            # bin/nexus
 nexus calc.grammar src/parser.zig     # generate (`-` writes to standard output)
 nexus check calc.grammar              # every check, nothing written
 nexus --dump-sexp calc.grammar        # the frontend's tree of the grammar file
+nexus --describe calc.grammar         # the grammar as JSON
+nexus --highlight all x.grammar editors   # editor files, from @highlight
 nexus --help
 ```
 
