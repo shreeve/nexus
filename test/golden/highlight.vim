@@ -22,13 +22,13 @@ syn match lampFunction "\v[_a-z][0-9A-Z_a-z]*%(\()@="
 syn match lampFunctionBuiltin "\v\@[_a-z]+"
 syn match lampConstantNumeric "\v[0-9]+"
 syn match lampConstantNumeric "\v[0-9]+\.[0-9]+"
-syn region lampString start="\v\'" skip="\v[^\x0a']|\'\'" end="\v\'" contains=lampStringEscapeInStringSq
+syn region lampString matchgroup=lampString start="\v\'" skip="\v[^\x0a']|\'\'" end="\v\'" contains=lampStringEscapeInStringSq
 syn match lampStringEscapeInStringSq "\v\'\'" contained
-syn region lampString start="\v\"" skip="\v[^\x0a\x22\\]|\\." end="\v\"" contains=lampStringEscapeInStringDq,lampVariableSpecialInStringDq
+syn region lampString matchgroup=lampString start="\v\"" skip="\v[^\x0a\x22\\]|\\." end="\v\"" contains=lampStringEscapeInStringDq,lampVariableSpecialInStringDq
 syn match lampVariableSpecialInStringDq "\v\{[a-z]+\}" contained
 syn match lampStringEscapeInStringDq "\v\\[\x22\\nt]" contained
 syn match lampPlain "\v\%[a-z]+"
-syn region lampComment start="\v\/\*" skip="\v[^\x0a*]|\*+[^\x0a*/]" end="\v\*+\/" contains=lampKeywordInBlockComment
+syn region lampComment matchgroup=lampComment start="\v\/\*" skip="\v[^\x0a*]|\*+[^\x0a*/]" end="\v\*+\/" contains=lampKeywordInBlockComment
 syn match lampKeywordInBlockComment "\v\w@<!TODO\w@!" contained
 syn match lampComment "\v\#.*"
 syn match lampPlain "\v[\x09 ]+"

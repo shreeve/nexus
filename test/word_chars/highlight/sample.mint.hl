@@ -45,6 +45,15 @@
                    ^ string
                      ^ keyword.control
                         ^ keyword.control
+>  S Y="" W Y
+   ^ keyword.control
+      ^ operator
+       ^^ string
+          ^ keyword.control
+>  S Z=1
+   ^ keyword.control
+      ^ operator
+       ^ constant.numeric
 > EN(S,W) Q:S<W  X "W 1"
   ^^ label
     ^ punctuation

@@ -622,7 +622,7 @@ const Emitter = struct {
                 }
                 const begin = try regexText(self.allocator, .{ .literal = .{ .bytes = r.begin, .min = r.begin.len } }, .vim);
                 const end = try regexText(self.allocator, r.end, .vim);
-                try w.print("syn region {s} start=\"\\v{s}\"", .{ group, begin });
+                try w.print("syn region {s} matchgroup={s} start=\"\\v{s}\"", .{ group, group, begin });
                 if (r.body) |b| try w.print(" skip=\"\\v{s}\"", .{try regexText(self.allocator, b, .vim)});
                 try w.print(" end=\"\\v{s}\" contains={s}\n", .{ end, try std.mem.join(self.allocator, ",", names.items) });
                 var defs: std.ArrayList([]const u8) = .empty;
