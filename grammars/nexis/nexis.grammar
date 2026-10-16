@@ -63,6 +63,32 @@ tokens
 
 @lang = "nexis"
 
+# Editor support (`nexus --highlight all nexis.grammar editors`; see
+# editors/README.md). The scanner is hand-written, so no lexer rule names a
+# token's text: every entry is a pattern that follows `src/nexis.zig`. Each
+# [...] that ends in `-]` is the symbol constituents of `isIdentCont`.
+@highlight
+    language            "nexis"
+    scope-name          source.nexis
+    extensions          nx
+    line-comment        ";"
+
+    comment             ';' [^\n]*
+    comment             line-start "#!" [^\n]*
+    string              "#\"" ([^"\\] | '\\' .)* '"'
+    string              '"' ([^"\\] | '\\' .)* '"'
+    constant            '\\' ("u{" [0-9A-Fa-f]* '}' | [^\n]) [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]*
+    constant.symbol     ':' [A-Za-z0-9_!$%&*+./<=>?-] [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]*
+    constant.numeric    "##Inf" | "##-Inf" | "##NaN"
+    constant.numeric    [+-]? [0-9] [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]* not before [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]
+    keyword             ("defprotocol" | "defrecord" | "defmethod" | "defmulti" | "defmacro" | "defonce" | "deftest" | "defn-" | "defn" | "def") [ \t]+ function:([A-Za-z_!$%&*+./<=>?] [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]*) before '('
+    keyword.control     ("when-not" | "condp" | "throw" | "recur" | "loop*" | "catch" | "finally" | "when" | "cond" | "case" | "loop" | "try" | "and" | "if" | "do" | "or") before '(' not after [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]
+    keyword             ("extend-protocol" | "extend-type" | "require" | "letfn*" | "letfn" | "quote" | "set!" | "let*" | "fn*" | "var" | "let" | "fn" | "ns" | "->>" | "->") before '(' not after [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]
+    constant            "nil" | "true" | "false" not before [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-] not after [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]
+    type                '#' [A-Za-z] [A-Za-z0-9_!$%&*+./:<=>?\x27\x23-]*
+    operator            "~@" | "#'" | "#_" | "'" | "`" | "~" | "@" | "^"
+    punctuation         "#{" | "#(" | "(" | ")" | "[" | "]" | "{" | "}"
+
 # Start symbols:
 #   program — a whole file (zero or more top-level forms)
 #   form    — exactly one form (REPL line, read-string), discards around it

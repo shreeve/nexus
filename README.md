@@ -202,7 +202,7 @@ are em's and nexis's (AGENTS.md, "Downstream"). The suite's
 | MUMPS | `grammars/mumps/mumps.grammar` | 1238 | 1103 | 11 (15) | 62 | schema |
 | Ruby subset | `grammars/ruby/ruby.grammar` | 780 | 518 | 28 (69) | 7 (+ 7 with `--spans`) | plain |
 | Slash | `grammars/slash/slash.grammar` | 388 | 156 | 0 | 7 | plain |
-| Nexis (a Clojure reader) | `grammars/nexis/nexis.grammar` | 103 | 66 | 0 | 26 | plain |
+| Nexis (a Clojure reader) | `grammars/nexis/nexis.grammar` | 129 | 66 | 0 | 26 | plain |
 | Nexus grammar files | `nexus.grammar` | 634 | 381 | 0 | 14 + every grammar in the suite | schema |
 
 A declared conflict is one manifest entry; it covers one or more table
