@@ -3,22 +3,22 @@
     `Option`
     (`T`)@151..154
     (variant `some` ((: `value` `T`)@162..170)@161..171)@157..171
-    `none`)@140..180
+    `empty`)@140..181
   (sub
     `main`
     _
-    ()@188..190
+    ()@189..191
     _
     (block
       (set
         _
         `o`
-        (generic_inst `Option` `Int`)@196..207
-        (call (enum_lit `some`)@210..215 (kwarg `value` `5`)@216..224)@210..225)@193..225
+        (generic_inst `Option` `Int`)@197..208
+        (call (enum_lit `some`)@211..216 (kwarg `value` `5`)@217..225)@211..226)@194..226
       (match
         `o`
-        (arm (variant_pattern `some` `v`)@240..248 _ (call `print` `v`)@252..260)@240..260
-        (arm (enum_lit `none`)@265..270 _ (call `print` `"nothing"`)@274..290)@265..290)@228..306)@193..306
+        (arm (variant_pattern `some` `v`)@241..249 _ (call `print` `v`)@253..261)@241..261
+        (arm (enum_lit `empty`)@266..272 _ (call `print` `"nothing"`)@276..292)@266..292)@229..308)@194..308
     _
     _
-    _)@180..306)@140..306
+    _)@181..308)@140..308

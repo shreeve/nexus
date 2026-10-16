@@ -3,13 +3,13 @@
 
 enum Option[T]
   some(value: T)
-  none
+  empty
 
 sub main()
   o: Option[Int] = .some(value: 5)
   match o
     .some(v) => print(v)
-    .none => print("nothing")
+    .empty => print("nothing")
 
 # expect:
 # 5
