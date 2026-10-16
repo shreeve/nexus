@@ -10,16 +10,20 @@ in VS Code, Vim and highlight.js, and a language server (LSP 3.17) with
 diagnostics, an outline, folding, completion, hover, go to definition,
 references, rename and signature help. The grammar alone gives the
 syntactic half. A short `@lsp` section adds names and scopes. Eight
-functions written beside the language's own checker add types.
+functions written beside the language's own checker add types. Wherever
+the language's compiler already knows an answer, the language supplies
+it and Nexus derives nothing: the grammar's answers are defaults, never a
+second opinion.
 
 | Feature | Comes from |
 |---|---|
 | colouring (TextMate, highlight.js, Vim) | `@highlight` ([GRAMMAR.md](GRAMMAR.md#editor-support)) |
-| syntax errors as you type, with recovery | the grammar and `@repair` |
-| semantic tokens | `@highlight` and the tree |
-| outline, folding, selection ranges | `@schema` and `@lsp` |
+| syntax errors as you type | the grammar, or the language's `parseDiagnostics` |
+| semantic tokens | `@highlight` and the tree, or the language's `tokens` |
+| outline, folding | `@schema` and `@lsp`, or the language's `symbols` and `folds` |
+| selection ranges | `@schema` |
 | keyword completion | the parser's expected tokens at the cursor |
-| definition, references, rename, highlights, names in scope | `@lsp` scopes |
+| definition, references, rename, highlights, names in scope | the eight functions, or `@lsp` scopes for a language without them |
 | member completion, hover with types, signature help, import completion | the eight functions |
 | type errors as you type | the eight functions (`analyze`) |
 
@@ -57,10 +61,12 @@ three engines colour a sample as its `.hl` file says.
 
 ## Part 2: the language server
 
-Nexus generates the server: the protocol, document sync, positions in
-UTF-16 or UTF-8, the error-tolerant tree, and every feature it can
-derive. The language supplies meaning in its own terms (nodes, byte
-spans, its symbols and types) and never speaks LSP.
+Nexus generates the server: the protocol, document sync, positions, the
+error-tolerant tree, and every feature it can derive. The language
+supplies meaning in its own terms (files, byte offsets, its symbols and
+types) and never speaks LSP. Every question has one answerer: when the
+lang module answers it, Nexus never derives its own answer, so the
+server can never disagree with the compiler.
 
 ### Tier 1: from the grammar alone
 
@@ -68,9 +74,10 @@ A grammar with `@schema` (spans and node ids) and `@repair` (tolerant
 parsing, [SEMANTICS.md](SEMANTICS.md#tolerant-parsing)) gets, with no
 other input:
 
-- **Diagnostics.** The strict parse's first error, worded as
-  `writeError` words it, and the tolerant parse's repairs, each at its
-  span.
+- **Diagnostics.** The strict parse's error, worded as `writeError`
+  words it. The tolerant parse's repairs are not published: they serve
+  the features below, and a repair is a guess, not an error the
+  programmer made.
 - **Semantic tokens.** Each token takes the scope `@highlight` gives
   its token name or literal; a name `@lsp` declares takes its
   declaration's kind. The legend is `@highlight`'s scopes.
@@ -82,7 +89,20 @@ other input:
   to outer.
 - **Keyword completion.** The tolerant parse stops at the cursor, and
   `expected(state)` names the tokens the parser accepts there; a
-  keyword or literal among them is offered as written.
+  keyword or literal among them is offered as written, and so is each
+  word of an `@as` group the parser accepts (a contextual keyword that
+  lexes as a name).
+
+A language whose compiler already produces any of these supplies it
+instead, as an optional declaration of the lang module; each takes a
+file and its text:
+
+| Override | Replaces |
+|---|---|
+| `parseDiagnostics` | the parse diagnostics: the language's own wording, hints and notes, as many as it reports |
+| `tokens` | the semantic tokens: kinds the compiler gives, such as a sigil told from an operator by the tree, a contextual keyword, a method told from a function |
+| `symbols` | the outline |
+| `folds` | the folding ranges |
 
 ### Tier 2: `@lsp`, names and scopes
 
@@ -99,9 +119,6 @@ is written like `@highlight`, one entry per line:
     scope       fun body                        # these kinds open a scope
     scope       block
     refer       name    id                      # the `id` of a `name` node uses a symbol
-    member      member  receiver name           # x.name: completed and resolved by type
-    call        call    callee  args            # for signature help
-    import      use     path                    # for import completion
     fold        block
 ```
 
@@ -110,91 +127,133 @@ is written like `@highlight`, one entry per line:
 | `declare KIND ROLE SYMBOLKIND [after]` | a node of `KIND` declares the name in `ROLE`; `SYMBOLKIND` is one of LSP's (`function`, `method`, `struct`, `enum`, `enumMember`, `field`, `variable`, `constant`, `parameter`, `type`, `module`, `label`); visible throughout its scope, or from the declaration on with `after` |
 | `scope KIND [ROLE]` | a node of `KIND` (or its `ROLE` child) opens a scope |
 | `refer KIND ROLE` | the leaf in `ROLE` of a `KIND` node names a symbol |
-| `member KIND RECEIVER NAME` | member access: `NAME` is looked up in the type of `RECEIVER` (tier 3) |
-| `call KIND CALLEE ARGS` | a call, for signature help |
-| `import KIND PATH` | an import, for module completion |
 | `fold KIND` | a node of `KIND` folds |
 
 Every entry is checked against `@schema` at generation time: an unknown
 kind, a role the kind lacks or a duplicate entry is a located error.
 
-From these, with lexical scoping:
+From these, with lexical scoping: **go to definition** (innermost scope
+first), **references** and **document highlights**, **rename** (when
+the new name lexes as the same token as the old one, checked with the
+grammar's own lexer), **names in scope** for completion, and **hover**
+showing a name's declaration line.
 
-- **Go to definition**: the declaration a reference resolves to,
-  innermost scope first.
-- **References** and **document highlights**: every reference that
-  resolves to the same declaration.
-- **Rename**: those references, when the new name lexes as the same
-  token as the old one (checked with the grammar's own lexer).
-- **Names in scope** for completion, and **hover** showing a name's
-  declaration line.
-
-A member, an imported name or anything that needs a type resolves
-through tier 3; without it, a member is left unresolved, never guessed.
+Tier 2 is for a language without a checker of its own. Lexical scoping
+over the parsed tree cannot see what a compiler decides after it: a
+plain assignment that declares or assigns depending on what is already
+bound, a closure's captures that rename with the names they capture, a
+member that needs a type, labels in their own namespace, the shared
+names of a module split over several files. A language that implements
+`symbolAt` writes no `declare`, `scope` or `refer` entries, and tier 2
+does not run for it, not even when `analyze` fails.
 
 ### Tier 3: the eight functions
 
-The language answers eight questions. Each takes an *analysis*, the
-language's own result of checking a program, and nodes of the tree
-Nexus built.
+The language answers eight questions about a program it has checked.
+Every position is a file and a byte offset in it, never a node of
+Nexus's tree: the language's facts are keyed by its own nodes, after its
+own rewrites.
 
 | # | Function | Input → output | Powers |
 |---|---|---|---|
-| 1 | `analyze` | a file's text and tree → an analysis, its diagnostics and the files it read | type errors as you type; the snapshot every other call reads |
-| 2 | `symbolAt` | a name node → the symbol it declares or uses | definition, references, rename, highlights (overriding tier 2) |
-| 3 | `typeOf` | an expression node → its type | hover, member completion, go to type definition |
-| 4 | `members` | a type → its member symbols | completion after `x.` |
-| 5 | `visible` | a node → the symbols in scope there | completion of names, globals and imports included |
-| 6 | `signatures` | a callee node → its signatures | signature help |
-| 7 | `describe` | a symbol or type → its text and declaration | hover, completion detail, go to type definition |
-| 8 | `modules` | an import path prefix → the modules that complete it | import completion (`std/…`) |
+| 1 | `analyze` | a program root and the open files' texts → an analysis: diagnostics per file and the files it read | type errors; the snapshot every other call reads |
+| 2 | `symbolAt` | a file and offset → the symbol declared or used there | definition, references, rename, highlights |
+| 3 | `typeAt` | a file and offset → the type of the innermost expression there | hover, go to type definition |
+| 4 | `members` | a file and offset after a member access (`x.`) → the receiver's members, or none when the offset is not after one | member completion |
+| 5 | `visible` | a file and offset → the symbols in scope there | completion of names, globals and imports included |
+| 6 | `signatures` | a file and offset inside a call → its signatures, the active one and the active parameter | signature help |
+| 7 | `describe` | a symbol or type → its Markdown and its declaration | hover, completion detail, go to type definition |
+| 8 | `modules` | a file and offset in an import path → the modules that complete it, or none when the offset is not in one | import completion (`std/…`) |
 
-Optional: `format(text, tree) → text`, a formatter the language already
-has, and `renamable(symbol) → bool`, which refuses a builtin or a
-library symbol (by default anything declared in an open workspace file
-renames).
+Optional: `references(symbol)`, from an index the language keeps (else
+Nexus asks `symbolAt` at each name token of every file the analysis
+read); `format(file, text)`, a formatter the language has; and
+`renamable(symbol)`, which refuses a builtin or a library symbol (by
+default, a symbol declared in a workspace file renames).
 
-The shapes they return:
+The shapes:
 
-- **Symbol**: `id` (opaque, equal across files for one declaration;
-  "declaring file and span" is enough), `name`, `kind` (a `SYMBOLKIND`
-  as above), `decl` (file and span), `detail` (one line: a signature or
-  a type), `doc` (Markdown, optional).
+- **Symbol**: `id`, `name`, `kind` (a `SYMBOLKIND` as above), `decl`
+  (file and span), `detail` (one line: a signature or a type), `doc`
+  (Markdown, optional). The `id` is the declaring file and the offset of
+  the declaration, followed through re-exports and aliases to the
+  original, so it is equal across files and across edits elsewhere; an
+  index into a compiler's tables is not an id.
 - **Signature**: `label`, `params` (each `name`, `type`, `doc`),
-  `result` (the return type's text), `doc`.
-- **Description**: `markdown`, and `decl` when the subject has a
-  declaration.
-- **Diagnostic**: `span`, `severity` (`error`, `warning`, `info`),
-  `message`, and `related` notes (`span` and `message`).
+  `result`, `doc`.
+- **Description**: `markdown`, the language's own text (a type, a
+  signature, an ownership fact: whatever the language records), and
+  `decl` when the subject has a declaration.
+- **Diagnostic**: `file`, `span`, `severity` (`error`, `warning`,
+  `info`, `hint`), `message`, and `related` notes, each a `file`, `span`
+  and `message`. A note in a file no editor can open (a standard library
+  built into the compiler) is folded into its diagnostic's message with
+  its `path:line:col:`. A cap on the number of errors is the language's,
+  applied before it returns them.
 
-Types are opaque handles: Nexus compares them and passes them back.
+#### The program and when it is checked
+
+`analyze` takes a root and an overlay: the path and text of every open
+file. The language reads an overlaid file from the overlay and every
+other file from disk, so unsaved edits in an imported file count. A
+file is checked as part of its program, not alone, since imports
+resolve from the root and a file of a module split over several files
+needs its siblings. The root is the `LANG.lsp.root` setting when it is
+set, else the file being checked.
+
+The server runs `analyze` when a file opens and when it is saved; a
+language that declares itself fast enough is analysed as you type too.
+While the overlay hashes as it did, the last analysis stands. Its
+diagnostics are published to every file they name, opened or not, and
+cleared from a file when a later analysis names it no more or the file
+closes.
 
 #### How each request is answered
 
 | Request | Answer |
 |---|---|
-| `completion` after a `member` receiver | `members(typeOf(receiver))` |
-| `completion` in an `import` path | `modules(prefix)` |
-| `completion` elsewhere | `visible(node)`, then the keywords the parser expects (tier 1) |
-| `hover` on a name | `describe(symbolAt(node))` |
-| `hover` on an expression | `describe(typeOf(node))` |
-| `definition` | `symbolAt(node).decl` |
-| `typeDefinition` | `describe(typeOf(node)).decl` |
-| `references`, `documentHighlight` | every name node in the program whose `symbolAt` has the same `id` |
+| `completion` | `members(file, offset)` when it answers, else `modules(file, offset)` when it answers, else `visible(file, offset)` and the keywords the parser expects |
+| `hover` | `describe(symbolAt(file, offset))`, else `describe(typeAt(file, offset))` |
+| `definition` | `symbolAt(file, offset).decl` |
+| `typeDefinition` | `describe(typeAt(file, offset)).decl` |
+| `references`, `documentHighlight` | `references(symbol)`, or every name whose `symbolAt` has the same `id` |
 | `rename` | those references, after the lexer check and `renamable` |
-| `signatureHelp` | `signatures(callee)` of the innermost `call` around the cursor; the active parameter is the `args` child holding it |
-| `documentSymbol`, `workspace/symbol` | the `declare` nodes, with `describe` for detail |
-| `publishDiagnostics` | the parse diagnostics, then `analyze`'s |
+| `signatureHelp` | `signatures(file, offset)` |
+| `documentSymbol`, `foldingRange`, `semanticTokens` | the overrides, else tier 1 |
+| `publishDiagnostics` | `parseDiagnostics` (or the strict parse's error) as you type; `analyze`'s on open and save |
 
 #### Broken code and stale analyses
 
-At `x.` the file does not parse. The tolerant parse supplies a tree with
-a zero-width hole where the name goes, and `analyze` must still type
-what it can: a checker that stops at the first error answers nothing
-useful. When `analyze` fails, Nexus answers from the last analysis that
-succeeded, its spans mapped through the edits since, and replaces it
-with the next one that succeeds; a node the edits removed answers
-nothing.
+At `x.` the file does not parse. A language implementing `analyze`
+keeps to a written contract (Rig's lives in its `docs/INTERNALS.md`):
+
+- it analyses the tolerant tree, in which a zero-width hole stands
+  where a token was missing; a hole is a silent poison, typed as
+  unknown, so it raises no error of its own and nothing that depends on
+  it does;
+- an import that fails falls back to its last good analysis, so one
+  broken file does not blank the files that import it;
+- nothing analysed from a tolerant tree reaches code generation.
+
+When `analyze` fails outright, the server answers from the last
+analysis that succeeded, its offsets mapped through the edits since,
+and replaces it with the next that succeeds; a position the edits
+removed answers nothing.
+
+### The server's own duties
+
+Whatever a language supplies, the generated server:
+
+- negotiates positions in UTF-16 or UTF-8 (`positionEncodings`), and
+  reads a byte order mark, a lone `\r` line break and invalid UTF-8
+  without losing its place;
+- serves an `untitled:` document its parse diagnostics only, since it
+  has no path to analyse;
+- advertises exactly the capabilities that exist for the language: a
+  feature with neither an answerer nor a tier-1 default is not
+  advertised;
+- answers with LSP's error codes, and in a safety-checked build exits 1
+  when it leaks memory.
 
 ### Writing the functions in Zig
 
@@ -208,19 +267,27 @@ the lang module, read like `Lexer` and `Parser`
 pub const Lsp = struct {
     pub const Analysis = rig.Program; // the language's own checked program
 
-    pub fn analyze(gpa: std.mem.Allocator, doc: lsp.Document) !lsp.Analyzed(Analysis);
-    pub fn symbolAt(a: *Analysis, node: parser.Sexp) ?lsp.Symbol;
-    pub fn typeOf(a: *Analysis, node: parser.Sexp) ?lsp.TypeId;
-    pub fn members(a: *Analysis, t: lsp.TypeId, out: *lsp.Symbols) !void;
-    pub fn visible(a: *Analysis, node: parser.Sexp, out: *lsp.Symbols) !void;
-    pub fn signatures(a: *Analysis, callee: parser.Sexp, out: *lsp.Signatures) !void;
+    // Tier 1 overrides.
+    pub fn parseDiagnostics(gpa: Allocator, file: lsp.Path, text: []const u8, out: *lsp.Diagnostics) !void;
+    pub fn tokens(gpa: Allocator, file: lsp.Path, text: []const u8, out: *lsp.Tokens) !void;
+    pub fn symbols(gpa: Allocator, file: lsp.Path, text: []const u8, out: *lsp.Outline) !void;
+    pub fn folds(gpa: Allocator, file: lsp.Path, text: []const u8, out: *lsp.Folds) !void;
+
+    // Tier 3.
+    pub fn analyze(gpa: Allocator, root: lsp.Path, overlay: lsp.Overlay) !lsp.Analyzed(Analysis);
+    pub fn symbolAt(a: *Analysis, at: lsp.Pos) ?lsp.Symbol;
+    pub fn typeAt(a: *Analysis, at: lsp.Pos) ?lsp.TypeId;
+    pub fn members(a: *Analysis, at: lsp.Pos, out: *lsp.Symbols) !bool;
+    pub fn visible(a: *Analysis, at: lsp.Pos, out: *lsp.Symbols) !void;
+    pub fn signatures(a: *Analysis, at: lsp.Pos) !?lsp.SignatureHelp;
     pub fn describe(a: *Analysis, subject: lsp.Subject) !lsp.Description;
-    pub fn modules(a: *Analysis, prefix: []const u8, out: *lsp.Names) !void;
+    pub fn modules(a: *Analysis, at: lsp.Pos, out: *lsp.Names) !bool;
 };
 ```
 
-`nexus --lsp lang.grammar lsp.zig` writes the server module; it imports
-`parser.zig` and the lang module, and the language's binary serves it:
+`lsp.Pos` is a file and a byte offset. `nexus --lsp lang.grammar
+lsp.zig` writes the server module; it imports `parser.zig` and the lang
+module, and the language's binary serves it:
 
 ```zig fragment
 // rig's `rig lsp` command.
@@ -238,42 +305,43 @@ there gives `LANG-lsp`.
 ### Writing the functions in TypeScript or JavaScript
 
 For a language whose checker is not Zig, or a prototype, the generated
-server runs the eight functions in another process and talks to it in
-JSON lines on its stdin and stdout:
+server runs the functions in another process and talks to it in JSON
+lines on its stdin and stdout:
 
 ```bash
 LANG-lsp --hooks "bun hooks.ts"
 ```
 
 Each request is one line; each answer is one line with the same `id`.
-Nodes are the node ids of the tree, which `analyze` receives as facts
-([SEMANTICS.md, "Facts"](SEMANTICS.md#facts)); spans are byte offsets.
+Positions are a file and a byte offset. `analyze` also receives each
+overlaid file's tree as facts
+([SEMANTICS.md, "Facts"](SEMANTICS.md#facts)), for a process that has
+no parser of its own.
 
 ```json
-{"id":1,"method":"analyze","params":{"file":"/w/main.tasks","text":"task build: \"make\"\n","facts":"(node 3 tasks 0 19)\n(role 3 items 2)\n(node 2 task 0 18)\n..."}}
+{"id":1,"method":"analyze","params":{"root":"/w/main.tasks","overlay":{"/w/main.tasks":"task build: \"make\"\n"},"facts":{"/w/main.tasks":"(node 3 tasks 0 19)\n(role 3 items 2)\n..."}}}
 {"id":1,"result":{"analysis":"a1","files":["/w/main.tasks"],"diagnostics":[]}}
-{"id":2,"method":"members","params":{"analysis":"a1","type":"t:Task"}}
-{"id":2,"result":[{"id":"s:Task.name","name":"name","kind":"field","decl":{"file":"/w/lib.tasks","start":40,"end":44},"detail":"name: String"}]}
+{"id":2,"method":"members","params":{"analysis":"a1","at":{"file":"/w/main.tasks","offset":31}}}
+{"id":2,"result":[{"id":"/w/lib.tasks:40","name":"name","kind":"field","decl":{"file":"/w/lib.tasks","start":40,"end":44},"detail":"name: String"}]}
 ```
 
 A skeleton:
 
 ```ts
-// hooks.ts: the eight functions for one language, served to LANG-lsp.
+// hooks.ts: the functions for one language, served to LANG-lsp.
 import * as readline from "node:readline";
 
-type Span = { file: string; start: number; end: number };
-type Symbol = { id: string; name: string; kind: string; decl: Span; detail: string; doc?: string };
+type Pos = { file: string; offset: number };
 
 const hooks: Record<string, (p: any) => unknown> = {
-  analyze: ({ file, text, facts }) => ({ analysis: check(file, text, facts), files: [file], diagnostics: [] }),
-  symbolAt: ({ analysis, node }) => resolve(analysis, node),     // Symbol | null
-  typeOf: ({ analysis, node }) => typeOfNode(analysis, node),    // type handle | null
-  members: ({ analysis, type }) => membersOf(analysis, type),    // Symbol[]
-  visible: ({ analysis, node }) => inScope(analysis, node),      // Symbol[]
-  signatures: ({ analysis, callee }) => signaturesOf(analysis, callee),
-  describe: ({ analysis, subject }) => describeOf(analysis, subject),
-  modules: ({ analysis, prefix }) => modulesUnder(analysis, prefix),
+  analyze: ({ root, overlay, facts }) => check(root, overlay, facts), // { analysis, files, diagnostics }
+  symbolAt: ({ analysis, at }) => resolve(analysis, at),              // Symbol | null
+  typeAt: ({ analysis, at }) => typeAtPos(analysis, at),              // type handle | null
+  members: ({ analysis, at }) => membersAfter(analysis, at),          // Symbol[] | null
+  visible: ({ analysis, at }) => inScope(analysis, at),               // Symbol[]
+  signatures: ({ analysis, at }) => callAt(analysis, at),             // SignatureHelp | null
+  describe: ({ analysis, subject }) => describeOf(analysis, subject), // Description
+  modules: ({ analysis, at }) => modulesAt(analysis, at),             // string[] | null
 };
 
 for await (const line of readline.createInterface({ input: process.stdin })) {
@@ -291,10 +359,10 @@ and signatures as JSON) before it has a checker at all.
 
 `nexus --highlight vscode lang.grammar editors/vscode` writes
 `package.json` and `extension.js` beside the grammar files: the language,
-its grammar and configuration, a `LANG.lsp.path` setting, and a client
-that starts the server for the language's files and says so when it
-cannot (the TextMate grammar colours the file either way). Rig's
-`editors/vscode/extension.js` is the model. Then:
+its grammar and configuration, the `LANG.lsp.path` and `LANG.lsp.root`
+settings, and a client that starts the server for the language's files
+and says so when it cannot (the TextMate grammar colours the file either
+way). Rig's `editors/vscode/extension.js` is the model. Then:
 
 ```bash
 cd editors/vscode && npm install && npx -y @vscode/vsce package --skip-license
@@ -326,17 +394,24 @@ does.
 
 ## Phases
 
-1. **Tier 1.** `nexus --lsp` and `--lsp-server`, the protocol, document
-   sync, diagnostics, semantic tokens, outline, folding, selection
-   ranges and keyword completion; the `lsp/` test scripts. Rig's
-   hand-written `rig lsp` moves onto the generated server with its
-   features unchanged; em and nexis get servers from their grammars.
-2. **Tier 2.** `@lsp`, its checks, and scope resolution: definition,
-   references, highlights, rename, names in scope.
-3. **Tier 3.** The eight functions in the lang module, and the `--hooks`
-   JSON protocol with a TypeScript example; Rig implements them around
-   its checker (member completion, hover with types, signature help,
-   `std/` completion).
+1. **Tier 1 and the overrides.** `nexus --lsp` and `--lsp-server`, the
+   protocol and the server's own duties, document sync, the tier-1
+   features, the four overrides, and the `lsp/` test scripts; checked
+   along the way: that `expected(state)` names a contextual keyword the
+   parser accepts, and that a node a repair completes gets a node id.
+   `rig lsp` moves onto the generated server through the overrides and
+   `analyze` when Rig's own `test/cli/lsp_check.sh` and `test/cli/lsp.sh`
+   pass unchanged; em and nexis get servers from their grammars.
+2. **Tier 2.** `@lsp`, its checks, and scope resolution, for languages
+   without a checker.
+3. **Tier 3.** The eight functions, `analyze`'s root and overlay, and the
+   `--hooks` JSON protocol with a TypeScript example. Rig first adds the
+   facts its checker does not record (the member `x.f` resolves to, a
+   reference through a module name, the names of `from` and `keeps` as
+   references, one table of built-in members that its type checker reads
+   too) and its tolerant-analysis contract, then implements the
+   functions: member completion, hover with types and ownership facts,
+   signature help, `std/` completion.
 4. **The VS Code client** generated with the editor files.
 5. **Formatting**: the language's own `format`, or a printer driven by
    the grammar.
