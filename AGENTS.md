@@ -134,6 +134,7 @@ downstream repository are in `CHANGELOG.md`.
 | `test/` | the suite, `test/diff`, `test/bench/`, `test/lexfuzz/` ([test/README.md](test/README.md)) |
 | `docs/GRAMMAR.md` | the grammar-file reference |
 | `docs/SEMANTICS.md` | the semantic layer, the generated API, the lang-module contract |
+| `docs/LSP.md` | editor files from `@highlight`, and the language server: its tiers, `@lsp` and the eight functions (a design) |
 | `docs/INTERNALS.md` | architecture, the bootstrap, invariants, releasing |
 | `docs/index.html` | the project page; `docs/assets/` holds its images and `nexus.fig`, the logo source |
 | `CHANGELOG.md` | every release, and the migration steps for downstream |
