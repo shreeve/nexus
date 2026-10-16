@@ -333,6 +333,86 @@ check_sexp() { # check_sexp <suite dir> <name>
     golden "$tmp" "test/golden/$name.sexp"
 }
 
+check_describe() { # check_describe <suite dir> <name>: --describe equals the golden
+    local dir=$1 name=$2 tmp="$WORK/out/describe_$2.json"
+    suite_conf "$dir"
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --describe "$(basename "$GRAMMAR")" "$tmp") >>"$LOG" 2>&1
+    local rc=$?
+    if [[ $rc -ne 0 || ! -s "$tmp" ]]; then REASON="--describe failed (exit $rc)"; return 1; fi
+    golden "$tmp" "test/golden/$name.describe.json"
+}
+
+# The golden of each editor file: test/golden/<name>.<suffix>.
+hl_suffix() {
+    case $1 in
+        textmate) echo tmLanguage.json ;;
+        language-configuration) echo language-configuration.json ;;
+        highlightjs) echo hljs.js ;;
+        vim) echo vim ;;
+    esac
+}
+
+# check_highlight_all <suite dir> <name>: `--highlight all` writes the
+# four editor files, and only them, each equal to its golden (and to
+# `--highlight <target>` on standard output).
+check_highlight_all() {
+    local dir=$1 name=$2 out="$WORK/out/editors_$2" id t rel
+    suite_conf "$dir"
+    id=$(sed -n 's/^[[:space:]]*scope-name[[:space:]]*[a-z]*\.\([a-z0-9_.]*\).*/\1/p' "$GRAMMAR" | sed 's/.*\.//')
+    (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --highlight all "$(basename "$GRAMMAR")" "$out") >>"$LOG" 2>&1
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then REASON="--highlight all failed (exit $rc)"; return 1; fi
+    local want got
+    want=$(printf '%s\n' "highlightjs/$id.js" "vim/syntax/$id.vim" "vscode/language-configuration.json" "vscode/syntaxes/$id.tmLanguage.json")
+    got=$(cd "$out" && find . -type f | sed 's|^\./||' | LC_ALL=C sort)
+    if [[ $got != "$want" ]]; then REASON="--highlight all wrote: $(tr '\n' ' ' <<<"$got")"; return 1; fi
+    for t in textmate language-configuration highlightjs vim; do
+        case $t in
+            textmate) rel="vscode/syntaxes/$id.tmLanguage.json" ;;
+            language-configuration) rel="vscode/language-configuration.json" ;;
+            highlightjs) rel="highlightjs/$id.js" ;;
+            vim) rel="vim/syntax/$id.vim" ;;
+        esac
+        (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --highlight "$t" "$(basename "$GRAMMAR")" -) >"$out.$t" 2>>"$LOG"
+        if ! cmp -s "$out.$t" "$out/$rel"; then REASON="--highlight $t differs from $rel of --highlight all"; return 1; fi
+        golden "$out/$rel" "test/golden/$name.$(hl_suffix "$t")" || { REASON="$t: $REASON"; return 1; }
+    done
+    # @highlight changes nothing in the generated module.
+    local gd stripped="$WORK/out/nohl_$2"
+    gd=$(dirname "$GRAMMAR")
+    mkdir -p "$stripped"
+    awk '/^@highlight/ { skip = 1; next } skip && /^[^ \t#]/ { skip = 0 } !skip' "$GRAMMAR" >"$stripped/$(basename "$GRAMMAR")"
+    cp ${LANG_FILES[@]+"${LANG_FILES[@]}"} "$stripped/" 2>/dev/null
+    # shellcheck disable=SC2086 # FLAGS: generator options, split on spaces
+    (cd "$gd" && with_timeout "$TIMEOUT" "$NEXUS" $FLAGS "$(basename "$GRAMMAR")" "$stripped/with.zig" &&
+        cd "$stripped" && with_timeout "$TIMEOUT" "$NEXUS" $FLAGS "$(basename "$GRAMMAR")" "$stripped/without.zig") >>"$LOG" 2>&1
+    if ! cmp -s "$stripped/with.zig" "$stripped/without.zig"; then REASON="the generated module differs without @highlight"; return 1; fi
+    return 0
+}
+
+# check_highlight <suite dir> <sample>: the editor files colour the sample
+# as <sample>.hl says (test/lib/highlight).
+check_highlight() {
+    local dir=$1 sample=$2 out
+    out="$WORK/out/hl_$(key_of "$sample")"
+    suite_conf "$dir"
+    if ! command -v vim >/dev/null; then REASON="vim not found"; return 1; fi
+    mkdir -p "$out"
+    local t
+    for t in textmate highlightjs vim; do
+        (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --highlight "$t" "$(basename "$GRAMMAR")" "$out/$t") >>"$LOG" 2>&1 ||
+            { REASON="--highlight $t failed"; return 1; }
+    done
+    local args=(docs/GRAMMAR.md "$out/textmate" "$out/highlightjs" "$out/vim" "$sample" "${sample%.*}.hl")
+    [[ -n "$UPDATE" ]] && args=(--update "${args[@]}")
+    local said
+    said=$(with_timeout 300 python3 "$LIB/highlight" "${args[@]}" 2>&1)
+    local rc=$?
+    echo "$said" >>"$LOG"
+    if [[ $rc -ne 0 ]]; then REASON=$(grep -m1 . <<<"$said"); return 1; fi
+    return 0
+}
+
 check_determinism() { # check_determinism <suite dir> <name>: generated with the suite's flags
     local dir=$1 a="$WORK/out/det_$2_a.zig" b="$WORK/out/det_$2_b.zig"
     local sa="$WORK/out/det_$2_a.sexp" sb="$WORK/out/det_$2_b.sexp"
@@ -347,6 +427,15 @@ check_determinism() { # check_determinism <suite dir> <name>: generated with the
     if [[ ! -s "$sa" || ! -s "$sb" ]]; then REASON="--dump-sexp failed"; return 1; fi
     if ! cmp -s "$a" "$b"; then REASON="two generations differ"; return 1; fi
     if ! cmp -s "$sa" "$sb"; then REASON="two --dump-sexp runs differ"; return 1; fi
+    (cd "$gd" && with_timeout "$TIMEOUT" "$NEXUS" --describe "$gn" "$a.json" && with_timeout "$TIMEOUT" "$NEXUS" --describe "$gn" "$b.json") >>"$LOG" 2>&1
+    if [[ ! -s "$a.json" ]] || ! cmp -s "$a.json" "$b.json"; then REASON="two --describe runs differ"; return 1; fi
+    if grep -q '^@highlight' "$GRAMMAR"; then
+        local t
+        for t in textmate language-configuration highlightjs vim; do
+            (cd "$gd" && with_timeout "$TIMEOUT" "$NEXUS" --highlight "$t" "$gn" "$a.$t" && with_timeout "$TIMEOUT" "$NEXUS" --highlight "$t" "$gn" "$b.$t") >>"$LOG" 2>&1
+            if [[ ! -s "$a.$t" ]] || ! cmp -s "$a.$t" "$b.$t"; then REASON="two --highlight $t runs differ"; return 1; fi
+        done
+    fi
     return 0
 }
 
@@ -407,7 +496,7 @@ check_cli() {
         return 0
     }
     mkdir -p "$dir"
-    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar "$dir/"
+    cp test/regress/no_lang/no_lang.grammar test/adverse/list_tail_conflict.grammar test/highlight/highlight.grammar "$dir/"
     expect 0 "$want" --version || return 1
     expect 0 "$want" -V || return 1
     [[ $(cd "$dir" && "$NEXUS" --version 2>/dev/null) == "$want" ]] || { REASON="--version does not print \"$want\" on stdout"; return 1; }
@@ -424,7 +513,23 @@ check_cli() {
     expect 1 "error: cannot write missing/out.zig" no_lang.grammar missing/out.zig || return 1
     expect 0 "no errors" check no_lang.grammar || return 1
     expect 2 "\`nexus check\` writes nothing; unexpected 'out.zig'" check no_lang.grammar out.zig || return 1
-    if [[ -n $(cd "$dir" && ls | grep -vxE 'no_lang\.grammar|list_tail_conflict\.grammar') ]]; then REASON="a refused or failed run, or check, wrote a file"; return 1; fi
+    expect 2 "--highlight needs a target" --highlight || return 1
+    expect 2 "unknown --highlight target 'bogus'" --highlight bogus no_lang.grammar || return 1
+    expect 1 "no_lang.grammar:1:1: error: the grammar has no @highlight, so it has no editor files" --highlight vim no_lang.grammar || return 1
+    expect 2 "--spans has no effect on --describe" --describe --spans no_lang.grammar || return 1
+    expect 2 "--describe and --dump-sexp are separate commands" --describe --dump-sexp no_lang.grammar || return 1
+    expect 2 "--highlight and check are separate commands" check --highlight vim no_lang.grammar || return 1
+    expect 2 "--highlight all writes a directory: nexus --highlight all" --highlight all highlight.grammar || return 1
+    expect 2 "--highlight all writes a directory, not standard output" --highlight all highlight.grammar - || return 1
+    expect 2 "the output file 'highlight.grammar' is the grammar file" --describe highlight.grammar highlight.grammar || return 1
+    expect 1 "error: cannot create no_lang.grammar/sub" --highlight all highlight.grammar no_lang.grammar/sub || return 1
+    if [[ -n $(cd "$dir" && ls | grep -vxE 'no_lang\.grammar|list_tail_conflict\.grammar|highlight\.grammar') ]]; then REASON="a refused or failed run, or check, wrote a file"; return 1; fi
+    expect 0 '"format": 1' --describe no_lang.grammar || return 1
+    expect 0 "Wrote the description to d.json" --describe no_lang.grammar d.json || return 1
+    expect 0 "Wrote the vim file to h.vim" --highlight vim highlight.grammar h.vim || return 1
+    expect 0 "Wrote editors/vim/syntax/lamp.vim" --highlight all highlight.grammar editors || return 1
+    [[ -s $dir/d.json && -s $dir/h.vim && -s $dir/editors/highlightjs/lamp.js ]] || { REASON="--describe or --highlight wrote no file"; return 1; }
+    rm -rf "$dir/d.json" "$dir/h.vim" "$dir/editors"
     out=$(cd "$dir" && "$NEXUS" no_lang.grammar - 2>/dev/null)
     [[ $out == "//! Generated by nexus"* && ! -e "$dir/-" ]] || { REASON="output file - does not write the module to stdout"; return 1; }
     expect 1 "undeclared conflict" check list_tail_conflict.grammar || return 1
@@ -542,6 +647,9 @@ worker() {
         gen)         check_golden_gen "$a" "$b"; ok=$? ;;
         sexp)        check_sexp "$a" "$b"; ok=$? ;;
         determinism) check_determinism "$a" "$b"; ok=$? ;;
+        describe)    check_describe "$a" "$b"; ok=$? ;;
+        hl-all)      check_highlight_all "$a" "$b"; ok=$? ;;
+        hl)          check_highlight "$a" "$b"; ok=$? ;;
         bootstrap)   check_bootstrap; ok=$? ;;
         unit-lang)   check_unit_lang "$a"; ok=$? ;;
         wasm32)      check_wasm32 "$a"; ok=$? ;;
@@ -664,7 +772,7 @@ add() { # add <id> <kind> [args...]
     local IFS=$'\x1f' to=$EARLY
     case $2 in
         unit-nexus|unit-lang|diff-tool|lexfuzz|messages) to=$LONG ;;
-        case|bug) to=$LATE ;;
+        case|bug|hl) to=$LATE ;;
     esac
     printf '%s\n' "$*" >>"$to"
 }
@@ -694,8 +802,20 @@ for dir in grammars/*/ test/*/; do
     # src/frontend/parser.zig, which bootstrap checks), and the frontend
     # tree of every grammar file, once, under the first suite that uses it.
     [[ $name != nexus ]] && add "gen/$name" gen "$dir" "$name"
-    case $SEXP_SEEN in *"|$GRAMMAR|"*) ;; *) add "sexp/$name" sexp "$dir" "$name" ;; esac
+    # The --describe golden of every grammar file, once; the editor files
+    # of one with @highlight, and the colouring of its samples.
+    case $SEXP_SEEN in *"|$GRAMMAR|"*) ;; *)
+        add "sexp/$name" sexp "$dir" "$name"
+        add "describe/$name" describe "$dir" "$name"
+        grep -q '^@highlight' "$GRAMMAR" && add "highlight/$name/files" hl-all "$dir" "$name"
+        ;;
+    esac
     SEXP_SEEN="$SEXP_SEEN|$GRAMMAR|"
+    for f in "$dir"/highlight/*; do
+        [[ -f $f && $f != *.hl ]] || continue
+        rel=$(basename "$f")
+        add "highlight/$name/${rel%.*}" hl "$dir" "$f"
+    done
     add "determinism/$name" determinism "$dir" "$name"
     add "wasm32/$name" wasm32 "$dir" && need_build "$dir"
     if grep -qE '^test "' ${LANG_FILES[@]+"${LANG_FILES[@]}"} /dev/null 2>/dev/null; then
@@ -747,6 +867,11 @@ fi
 while IFS=$'\t' read -r kind id arg; do
     case $kind in
         suite)
+            for f in "$arg"/highlight/*; do
+                [[ -f $f && $f != *.hl ]] || continue
+                rel=$(basename "$f")
+                add "$id/highlight/${rel%.*}" hl "$arg" "$f"
+            done
             add "$id" bug "$arg" || continue
             suite_conf "$arg"
             grep -qE '^# error:' "$GRAMMAR" || need_build "$arg" ;;

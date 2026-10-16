@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""Check a grammar's editor files against what they colour.
+
+Usage:
+  test/lib/highlight [--update] DOC TEXTMATE HLJS VIM SAMPLE EXPECTED
+
+TEXTMATE, HLJS and VIM are the files `nexus --highlight textmate`,
+`highlightjs` and `vim` wrote for one grammar. Each colours SAMPLE:
+
+  - the TextMate grammar by a reference tokenizer that follows
+    vscode-textmate: line by line, the earliest match wins and a tie goes
+    to the pattern listed first; a begin/end rule pushes a region whose
+    patterns are tried before its end (`applyEndPatternLast`);
+  - the highlight.js definition (its object, which the module returns) by
+    a reference that follows highlight.js 11: over the whole text, the
+    earliest of the current mode's `contains` and its `end` wins, a tie
+    going to the one listed first; `match` arrays colour each part;
+  - the Vim syntax file by Vim itself (`vim -es`), position by position
+    (`synID`).
+
+Every character gets the scope of the innermost item that covers it,
+mapped back to the @highlight scope through the table of docs/GRAMMAR.md
+(DOC), which this check reads: the files must use the documented names.
+The TextMate and Vim colourings must equal EXPECTED; highlight.js, whose
+classes are coarser, must give each character the documented class of
+EXPECTED's scope. With --update, EXPECTED is written from the TextMate
+colouring first.
+
+EXPECTED shows each line of SAMPLE after `> `, then one line per coloured
+run: `^` under its characters and the scope.
+"""
+
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+
+def fail(msg):
+    print(msg)
+    sys.exit(1)
+
+
+def scope_table(doc):
+    """{scope: (textmate, hljs, vim)} from the table in docs/GRAMMAR.md."""
+    rows = {}
+    inside = False
+    for line in open(doc, encoding="utf-8"):
+        if line.startswith("| Scope | TextMate | highlight.js | Vim |"):
+            inside = True
+            continue
+        if inside:
+            if not line.startswith("|"):
+                break
+            cells = [c.strip().strip("`") for c in line.strip().strip("|").split("|")]
+            if cells[0].startswith("---"):
+                continue
+            rows[cells[0]] = (cells[1], cells[2], cells[3])
+    if not rows:
+        fail(f"{doc}: no scope table (| Scope | TextMate | highlight.js | Vim |)")
+    return rows
+
+
+def camel(name, sep):
+    return "".join(p[:1].upper() + p[1:].lower() for p in name.split(sep) if p)
+
+
+# --- TextMate ---------------------------------------------------------------
+
+
+class TextMate:
+    def __init__(self, path, table):
+        self.g = json.load(open(path, encoding="utf-8"))
+        self.suffix = "." + self.g["scopeName"].rsplit(".", 1)[1]
+        self.back = {tm + self.suffix: scope for scope, (tm, _, _) in table.items()}
+        self.root = [self.compile(p) for p in self.g["patterns"]]
+
+    def compile(self, p):
+        rule = dict(p)
+        if "match" in p:
+            rule["re"] = re.compile(p["match"])
+        else:
+            rule["begin_re"] = re.compile(p["begin"])
+            rule["end_re"] = re.compile(p["end"])
+            rule["inner"] = [self.compile(q) for q in p["patterns"]]
+        return rule
+
+    def scope(self, name):
+        if name is None:
+            return None
+        if name not in self.back:
+            fail(f"TextMate scope {name!r} is not in the documented table")
+        return self.back[name]
+
+    def colour(self, lines):
+        out = []
+        stack = []  # open regions
+        for text in lines:
+            line = text + "\n"
+            scopes = [None] * len(line)
+            pos = 0
+            while pos < len(line):
+                region = stack[-1] if stack else None
+                here = region["inner"] if region else self.root
+                outer = self.scope(region.get("name")) if region else None
+                cands = [("rule", r) for r in here]
+                if region:
+                    end = ("end", region)
+                    cands = cands + [end] if region.get("applyEndPatternLast") else [end] + cands
+                best = None
+                for kind, r in cands:
+                    rx = r["end_re"] if kind == "end" else r.get("re") or r["begin_re"]
+                    m = rx.search(line, pos)
+                    if m and (best is None or m.start() < best[0].start()):
+                        best = (m, kind, r)
+                if best is None:
+                    for i in range(pos, len(line)):
+                        scopes[i] = outer
+                    break
+                m, kind, r = best
+                for i in range(pos, m.start()):
+                    scopes[i] = outer
+                if kind == "end":
+                    for i in range(m.start(), m.end()):
+                        scopes[i] = outer
+                    stack.pop()
+                elif "begin_re" in r:
+                    for i in range(m.start(), m.end()):
+                        scopes[i] = self.scope(r.get("name"))
+                    stack.append(r)
+                else:
+                    name = self.scope(r["name"]) if "name" in r else outer
+                    for i in range(m.start(), m.end()):
+                        scopes[i] = name
+                    for n, cap in r.get("captures", {}).items():
+                        a, b = m.span(int(n))
+                        for i in range(max(a, 0), b):
+                            scopes[i] = self.scope(cap["name"])
+                if m.end() == pos:
+                    # No progress: the character keeps the region's scope.
+                    scopes[pos] = outer
+                    pos += 1
+                else:
+                    pos = m.end()
+            out.append(scopes[: len(text)])
+        return out
+
+
+# --- highlight.js ---------------------------------------------------------------
+
+
+class Hljs:
+    def __init__(self, path):
+        text = open(path, encoding="utf-8").read()
+        start = text.index("export default function (hljs) {\n  return ") + len("export default function (hljs) {\n  return ")
+        self.lang = json.JSONDecoder().raw_decode(text, start)[0]
+
+    def compile(self, mode):
+        if "_re" in mode:
+            return mode["_re"]
+        src = mode.get("match", mode.get("begin"))
+        if isinstance(src, list):
+            src = "".join(f"({s})" for s in src)
+        mode["_re"] = re.compile(src, re.M)
+        if "end" in mode:
+            mode["_end"] = re.compile(mode["end"], re.M)
+        return mode["_re"]
+
+    def colour(self, text):
+        scopes = [None] * len(text)
+        stack = [self.lang]
+        pos = 0
+        while pos < len(text):
+            mode = stack[-1]
+            outer = mode.get("scope") if len(stack) > 1 else None
+            best = None
+            for sub in mode["contains"]:
+                m = self.compile(sub).search(text, pos)
+                if m and (best is None or m.start() < best[0].start()):
+                    best = (m, sub)
+            if len(stack) > 1:
+                m = mode["_end"].search(text, pos)
+                if m and (best is None or m.start() < best[0].start()):
+                    best = (m, None)
+            if best is None:
+                for i in range(pos, len(text)):
+                    scopes[i] = outer
+                break
+            m, sub = best
+            for i in range(pos, m.start()):
+                scopes[i] = outer
+            if sub is None:
+                for i in range(m.start(), m.end()):
+                    scopes[i] = outer
+                stack.pop()
+            elif "begin" in sub:
+                for i in range(m.start(), m.end()):
+                    scopes[i] = sub.get("scope")
+                stack.append(sub)
+            else:
+                sc = sub.get("scope")
+                if isinstance(sc, dict):
+                    for i in range(m.start(), m.end()):
+                        scopes[i] = outer
+                    for n, name in sc.items():
+                        a, b = m.span(int(n))
+                        for i in range(a, b):
+                            scopes[i] = name
+                else:
+                    for i in range(m.start(), m.end()):
+                        scopes[i] = sc if sc is not None else outer
+            if m.end() == pos:
+                scopes[pos] = outer
+                pos += 1
+            else:
+                pos = m.end()
+        return scopes
+
+
+# --- Vim ------------------------------------------------------------------------
+
+DUMP = r"""
+let s:out = []
+for s:l in range(1, line('$'))
+  let s:ids = []
+  for s:c in range(1, len(getline(s:l)))
+    let s:name = synIDattr(synID(s:l, s:c, 1), 'name')
+    call add(s:ids, s:name == '' ? '-' : s:name)
+  endfor
+  call add(s:out, join(s:ids, ' '))
+endfor
+call writefile(s:out, g:nexus_out)
+"""
+
+
+def vim_colour(syn, sample, lines, table):
+    text = open(syn, encoding="utf-8").read()
+    links = dict(re.findall(r"^hi def link (\S+) (\S+)$", text, re.M))
+    lang = re.search(r'^let b:current_syntax = "([^"]+)"$', text, re.M).group(1)
+    groups = {lang + camel(scope, "."): scope for scope in table}
+    for group, scope in groups.items():
+        if group in links and links[group] != table[scope][2]:
+            fail(f"{syn}: {group} links to {links[group]}, but the documented Vim group of {scope} is {table[scope][2]}")
+
+    def scope_of(group):
+        seen = group
+        while seen not in groups:
+            if seen not in links:
+                return None
+            seen = links[seen]
+        return groups[seen]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        dump = os.path.join(tmp, "dump.vim")
+        out = os.path.join(tmp, "out.txt")
+        with open(dump, "w") as f:
+            f.write(DUMP)
+        cmd = ["vim", "-u", "NONE", "-i", "NONE", "-N", "-es", "-n", "--cmd", "set encoding=utf-8",
+               "-c", f"let g:nexus_out = '{out}'", "-c", f"source {syn}", "-c", f"source {dump}", "-c", "qa!", sample]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if not os.path.exists(out):
+            fail(f"vim wrote nothing (exit {r.returncode}): {r.stdout}{r.stderr}")
+        rows = open(out, encoding="utf-8").read().split("\n")
+    result = []
+    for n, line in enumerate(lines):
+        ids = rows[n].split(" ") if n < len(rows) and rows[n] else []
+        scopes, byte = [], 0
+        for ch in line:
+            group = ids[byte] if byte < len(ids) else "-"
+            scopes.append(None if group == "-" else scope_of(group))
+            byte += len(ch.encode("utf-8"))
+        result.append(scopes)
+    return result
+
+
+# --- The expected colouring --------------------------------------------------------
+
+
+def show(lines, colours):
+    out = []
+    for line, scopes in zip(lines, colours):
+        out.append("> " + line)
+        i = 0
+        while i < len(line):
+            if scopes[i] is None:
+                i += 1
+                continue
+            j = i
+            while j < len(line) and scopes[j] == scopes[i]:
+                j += 1
+            pad = "".join("\t" if c == "\t" else " " for c in line[:i])
+            out.append("  " + pad + "^" * (j - i) + " " + scopes[i])
+            i = j
+    return "\n".join(out) + "\n"
+
+
+def read_expected(path, lines):
+    colours = []
+    for row in open(path, encoding="utf-8").read().split("\n"):
+        if row.startswith("> "):
+            colours.append([None] * (len(row) - 2))
+        elif row.startswith("  ") and colours:
+            m = re.match(r"^  ([ \t]*)(\^+) (\S+)$", row)
+            if not m:
+                fail(f"{path}: malformed line {row!r}")
+            a = len(m.group(1))
+            for i in range(a, a + len(m.group(2))):
+                colours[-1][i] = m.group(3)
+        elif row:
+            fail(f"{path}: malformed line {row!r}")
+    return colours
+
+
+def diff(want, got, label):
+    import difflib
+    lines = list(difflib.unified_diff(want.splitlines(), got.splitlines(), "expected", label, lineterm="", n=1))
+    return "\n".join(lines[:80])
+
+
+def main(argv):
+    update = False
+    if argv and argv[0] == "--update":
+        update = True
+        argv = argv[1:]
+    if len(argv) != 6:
+        fail(__doc__)
+    doc, tmfile, jsfile, vimfile, sample, expected = argv
+    table = scope_table(doc)
+    text = open(sample, encoding="utf-8").read()
+    lines = text.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+
+    tm = show(lines, TextMate(tmfile, table).colour(lines))
+    if update:
+        with open(expected, "w", encoding="utf-8") as f:
+            f.write(tm)
+    if not os.path.exists(expected):
+        fail(f"missing {expected} (run with --update)")
+    want = open(expected, encoding="utf-8").read()
+    problems = []
+    if tm != want:
+        problems.append("TextMate colouring differs:\n" + diff(want, tm, "textmate"))
+
+    vim = show(lines, vim_colour(vimfile, sample, lines, table))
+    if vim != want:
+        problems.append("Vim colouring differs:\n" + diff(want, vim, "vim"))
+
+    expect = read_expected(expected, lines)
+    js = Hljs(jsfile).colour("\n".join(lines) + "\n")
+    known = {h for _, h, _ in table.values()}
+    pos = 0
+    for n, line in enumerate(lines):
+        for i in range(len(line)):
+            scope = expect[n][i] if n < len(expect) and i < len(expect[n]) else None
+            want_js = table[scope][1] if scope else None
+            if js[pos + i] is not None and js[pos + i] not in known:
+                problems.append(f"highlight.js class {js[pos + i]!r} is not in the documented table")
+                break
+            if js[pos + i] != want_js:
+                problems.append(f"highlight.js colouring differs at {n + 1}:{i + 1}: {js[pos + i]!r}, expected {want_js!r} ({scope})")
+                break
+        pos += len(line) + 1
+        if len(problems) > 4:
+            break
+    if problems:
+        print("\n".join(problems))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

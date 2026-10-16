@@ -1,0 +1,24 @@
+# Each metadata key appears once.
+# error: duplicate `language` in @highlight
+@lexer
+tokens
+    word, string, number, arrow, indent, eof, err
+'"' ([^"\\\n] | '\\' .)* '"' → string
+[0-9]+ → number
+"->" [a-z] → arrow, rewind(2)
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@keywords
+    cmd  caseless  S[ET]
+@as WORD = [cmd!]
+@highlight
+    language "T"
+    scope-name source.t
+    extensions t
+    language "U"
+    keyword WORD
+
+list! = item*
+item = WORD | STRING | NUMBER | ARROW | SET

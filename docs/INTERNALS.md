@@ -15,6 +15,7 @@ grammar file
   │  frontend/lower.zig
   ▼                → LexerSpec + GrammarIR          (meaning checks)
   ├─ lexgen/       regex AST → NFA → DFA → minimized DFA → direct-coded Zig
+  │  highlight/    @highlight read against the lexer spec (checks, order)
   │  semantics.zig resolve: schema, inventory, role placement, coverage
   │  expand.zig    → Grammar (plain BNF: symbols, rules, action trees)
   │  semantics.zig checkTypes: static result types
@@ -23,6 +24,10 @@ grammar file
   ▼  codegen/      generated sections + runtime template
 parser module
 ```
+
+`--describe` and `--highlight` run the same stages, then write the
+grammar's JSON description (`src/describe.zig`) or its editor files
+(`src/highlight/emit.zig`) instead of the parser module.
 
 `src/main.zig` runs the stages in this order. Every stage reports its own
 errors as `file:line:col: error:` and returns an error; the run stops at
@@ -52,6 +57,9 @@ everything that depends on layout or context, turning the generated
 - `@keywords` group lines are split into blank-separated words, quoted
   parts included: the group name, then each option or entry whole (a line
   indented further than the block's first continues the group above);
+- `@highlight` lines are split into the first word and the rest of the
+  line up to a comment (a line indented further than the block's first
+  continues the entry above);
 - a token longer than 65535 bytes, or `(` and `[` nested more than 64
   deep, is an `err` token with a message. This one cap bounds the depth of
   every tree the later stages recurse through.
@@ -76,6 +84,21 @@ body can match nothing, more than 65534 positions in an alternative), each
 reported at its source position as `error.LowerError`. It reads each
 `@keywords` entry from its text, numbers the group's terminals, and checks
 that no two entries accept one word.
+
+### Editor support
+
+`src/highlight/highlight.zig` reads `@highlight` once the lexer spec is
+complete: the metadata, and each entry's targets, contexts, captures and
+`within`, with every check of GRAMMAR.md ("Editor support") a located
+error. It orders what editors match (`Highlight.items`): the contextual
+entries, the literals grouped so that none comes before a longer one it
+could start, a run of blanks, then every lexer rule (unlisted ones
+uncoloured) with the `within` tokens as regions. `render.zig` writes a
+pattern as a regex in four dialects (bytes for `--describe`; Oniguruma,
+JavaScript and Vim very magic, which match characters within a line);
+`emit.zig` writes the four editor files from the items. None of it
+reaches the parser module: a grammar generates the same module with or
+without `@highlight` (`highlight/<grammar>/files` checks it).
 
 ### Lexer generation
 
@@ -339,7 +362,8 @@ check them:
 | tested features, tested docs | every suite, `docs/*` |
 | nothing silent | `adverse/*` (every rejection), `tools/messages` (every message printed by some test), `known/*` |
 | located errors, exit 1, nothing written | `adverse/*`, `tools/cli` |
-| deterministic output | `determinism/*`, `gen/*` (byte-exact goldens) |
+| deterministic output | `determinism/*`, `gen/*`, `describe/*`, `highlight/*/files` (byte-exact goldens) |
+| editor files colour as documented | `highlight/*` (samples through the TextMate and highlight.js references and Vim) |
 | the bootstrap converges | `bootstrap` |
 | LALR is LALR | `unit/nexus` (lookaheads equal merged canonical LR(1)) |
 | every generated parser compiles and runs | every suite and doc example |
@@ -375,6 +399,11 @@ current numbers and how to compare two builds.
 | `src/lexgen/regex.zig` | the pattern language |
 | `src/lexgen/automaton.zig` | byte classes, NFA, DFA, minimization, reference matcher |
 | `src/lexgen/lexgen.zig` | lexer checks and direct-coded emission |
+| `src/highlight/highlight.zig` | `@highlight`: checks against the lexer spec, the order editors match in |
+| `src/highlight/render.zig` | patterns as regexes: bytes, Oniguruma, JavaScript, Vim |
+| `src/highlight/emit.zig` | the TextMate grammar, VS Code language configuration, highlight.js language, Vim syntax file |
+| `src/describe.zig` | `--describe`: the grammar as JSON |
+| `src/json.zig` | JSON strings |
 | `src/semantics.zig` | schema, placement, coverage, static types |
 | `src/expand.zig` | desugaring to BNF |
 | `src/check.zig` | defined symbols, reachable rules, token binding, hint resolution |

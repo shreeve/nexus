@@ -3,14 +3,19 @@
 //! Usage: nexus [options] <grammar-file> <output-file>
 //!        nexus check <grammar-file>
 //!        nexus --dump-sexp <grammar-file> [output-file]
+//!        nexus --describe <grammar-file> [output-file]
+//!        nexus --highlight <target> <grammar-file> [output-file]
 //!        nexus --help | --version
 //!
 //! Pipeline: frontend (the self-hosted grammar-file parser, lowered to the
-//! lexer spec and GrammarIR) -> lexgen (lexer source) -> semantics (with
+//! lexer spec and GrammarIR) -> lexgen (lexer source) -> highlight (with
+//! @highlight: the entries checked against the lexer) -> semantics (with
 //! @schema: actions resolved against the schema) -> expand (desugared
 //! Grammar) -> semantics.checkTypes (with @schema) -> check (defined
 //! symbols, reachable rules, token binding, `X "c"` hint resolution) -> lr
 //! (automaton, lookaheads, table) -> codegen (the parser module).
+//! `--describe` and `--highlight` run the whole pipeline, then write the
+//! grammar's JSON description or one of its editor files.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -20,12 +25,16 @@ const diag = @import("diag.zig");
 const frontend = @import("frontend/frontend.zig");
 const GrammarLowerer = frontend.GrammarLowerer;
 const LexerGenerator = @import("lexgen/lexgen.zig").LexerGenerator;
-const Grammar = @import("grammar.zig").Grammar;
+const grammar = @import("grammar.zig");
+const Grammar = grammar.Grammar;
 const expand = @import("expand.zig");
 const semantics = @import("semantics.zig");
 const check = @import("check.zig");
 const lr = @import("lr/lr.zig");
 const codegen = @import("codegen/codegen.zig");
+const highlight = @import("highlight/highlight.zig");
+const emit = @import("highlight/emit.zig");
+const describe = @import("describe.zig");
 
 const max_grammar_bytes: usize = 1 << 20; // 1 MiB cap for .grammar file reads
 
@@ -38,12 +47,17 @@ test {
     _ = @import("lr/lr.zig");
     _ = @import("codegen/runtime.zig");
     _ = @import("codegen/codegen.zig");
+    _ = @import("highlight/render.zig");
+    _ = @import("highlight/highlight.zig");
+    _ = @import("json.zig");
 }
 
 const usage =
     \\Usage: nexus [options] <grammar-file> <output-file>
     \\       nexus check <grammar-file>
     \\       nexus --dump-sexp <grammar-file> [output-file]
+    \\       nexus --describe <grammar-file> [output-file]
+    \\       nexus --highlight <target> <grammar-file> [output-file]
     \\       nexus --help | --version
     \\
 ;
@@ -62,6 +76,17 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\  check           Check the grammar without writing anything
     \\  --dump-sexp     Write the frontend's S-expression tree of the grammar
     \\                  file to output-file (default: standard output)
+    \\  --describe      Write the grammar as JSON (tokens, lexer rules, keywords,
+    \\                  @highlight, schema) to output-file (default: standard
+    \\                  output)
+    \\  --highlight     Write an editor file from the grammar's @highlight to
+    \\                  output-file (default: standard output); <target> is
+    \\                  textmate, language-configuration, highlightjs or vim.
+    \\                  `--highlight all` writes all four into a directory:
+    \\                  vscode/syntaxes/<id>.tmLanguage.json,
+    \\                  vscode/language-configuration.json,
+    \\                  vim/syntax/<id>.vim, highlightjs/<id>.js (<id>: the
+    \\                  last part of the scope-name)
     \\
     \\An output-file of - is standard output. Output replaces the file
     \\atomically (through a symlink, the file it names), keeping its mode;
@@ -81,6 +106,8 @@ const help = "nexus " ++ version ++ " — one grammar file in, one Zig parser mo
     \\  nexus calc.grammar src/parser.zig
     \\  nexus check calc.grammar
     \\  nexus --dump-sexp nexus.grammar
+    \\  nexus --highlight textmate calc.grammar calc.tmLanguage.json
+    \\  nexus --highlight all calc.grammar editors
     \\
 ;
 
@@ -102,19 +129,31 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(allocator);
 
-    var command: enum { generate, check, dump } = .generate;
+    var command: Command = .generate;
+    // null: `--highlight all`, every editor file into a directory.
+    var target: ?emit.Target = null;
     var opts: Options = .{ .grammarFile = undefined, .outputFile = undefined };
     var positional: [2][]const u8 = undefined;
     var count: usize = 0;
     var generationOption: ?[]const u8 = null;
-    for (args[1..]) |arg| {
+    var a: usize = 1;
+    while (a < args.len) : (a += 1) {
+        const arg = args[a];
         if (eql(arg, "-h") or eql(arg, "--help")) {
             return writeStdout(io, help);
         } else if (eql(arg, "-V") or eql(arg, "--version")) {
             return writeStdout(io, "nexus " ++ version ++ "\n");
-        } else if (eql(arg, "--dump-sexp")) {
-            if (command == .check) usageError("--dump-sexp and check are separate commands", .{});
-            command = .dump;
+        } else if (eql(arg, "--dump-sexp") or eql(arg, "--describe") or eql(arg, "--highlight")) {
+            const next: Command = if (eql(arg, "--dump-sexp")) .dump else if (eql(arg, "--describe")) .describe else .highlight;
+            if (command == .check) usageError("{s} and check are separate commands", .{arg});
+            if (command != .generate) usageError("{s} and {s} are separate commands", .{ command.name(), arg });
+            command = next;
+            if (next == .highlight) {
+                a += 1;
+                if (a == args.len) usageError("--highlight needs a target: textmate, language-configuration, highlightjs, vim or all", .{});
+                if (!eql(args[a], "all")) target = emit.Target.parse(args[a]) orelse
+                    usageError("unknown --highlight target '{s}' (textmate, language-configuration, highlightjs, vim or all)", .{args[a]});
+            }
         } else if (eql(arg, "-c") or eql(arg, "--comments")) {
             opts.emitComments = true;
             generationOption = arg;
@@ -122,7 +161,7 @@ pub fn main(init: std.process.Init) !void {
             opts.spans = true;
             generationOption = arg;
         } else if (count == 0 and eql(arg, "check")) {
-            if (command == .dump) usageError("--dump-sexp and check are separate commands", .{});
+            if (command != .generate) usageError("{s} and check are separate commands", .{command.name()});
             command = .check;
         } else if (arg.len > 1 and arg[0] == '-') {
             usageError("unknown option '{s}'", .{arg});
@@ -138,19 +177,89 @@ pub fn main(init: std.process.Init) !void {
     if (output) |path| if (command != .check) refuseGrammarAsOutput(io, positional[0], path);
 
     switch (command) {
-        .dump => {
-            if (generationOption) |o| usageError("{s} has no effect on --dump-sexp", .{o});
-            return dumpSexp(allocator, io, positional[0], output orelse "-");
-        },
+        .dump, .describe, .highlight => if (generationOption) |o| usageError("{s} has no effect on {s}", .{ o, command.name() }),
+        else => {},
+    }
+    switch (command) {
+        .dump => return dumpSexp(allocator, io, positional[0], output orelse "-"),
         .check => {
             if (output) |path| usageError("`nexus check` writes nothing; unexpected '{s}'", .{path});
             opts.checkMode = true;
         },
+        .describe, .highlight => {
+            opts.checkMode = true;
+            opts.outputFile = output orelse "-";
+            if (command == .highlight and target == null) {
+                const dir = output orelse usageError("--highlight all writes a directory: nexus --highlight all <grammar-file> <directory>", .{});
+                if (eql(dir, "-")) usageError("--highlight all writes a directory, not standard output", .{});
+            }
+        },
         .generate => opts.outputFile = output orelse usageError("no output file given (nexus <grammar-file> <output-file>)", .{}),
     }
     opts.grammarFile = positional[0];
-    return generate(allocator, io, opts);
+    const built = try build(allocator, io, opts);
+    switch (command) {
+        .generate => {
+            try writeOutput(io, opts.outputFile, built.code);
+            diag.info("Generated: {s}", .{if (eql(opts.outputFile, "-")) "standard output" else opts.outputFile});
+        },
+        .check => diag.info("{s}: no errors", .{opts.grammarFile}),
+        .describe => {
+            const bytes = try describe.write(allocator, .{
+                .version = version,
+                .grammarFile = opts.grammarFile,
+                .ir = &built.ir,
+                .spec = &built.spec,
+                .g = if (built.g) |*g| g else null,
+                .highlight = if (built.highlight) |*h| h else null,
+            });
+            try writeOutput(io, opts.outputFile, bytes);
+            if (!eql(opts.outputFile, "-")) diag.info("Wrote the description to {s} ({d} bytes)", .{ opts.outputFile, bytes.len });
+        },
+        .highlight => {
+            const h = if (built.highlight) |*h| h else {
+                diag.errLine(opts.grammarFile, 1, 1, "the grammar has no @highlight, so it has no editor files", .{});
+                fail();
+            };
+            const name = std.fs.path.basename(opts.grammarFile);
+            const one = target orelse {
+                // Every file, into the layout of emit.layout.
+                for (std.enums.values(emit.Target)) |t| {
+                    const path = try std.fs.path.join(allocator, &.{ opts.outputFile, try emit.layoutPath(allocator, h, t) });
+                    std.Io.Dir.cwd().createDirPath(io, std.fs.path.dirname(path).?) catch |err| {
+                        diag.err("cannot create {s}: {s}", .{ std.fs.path.dirname(path).?, @errorName(err) });
+                        fail();
+                    };
+                    try writeOutput(io, path, try emit.emit(allocator, h, t, name, version));
+                    diag.info("Wrote {s}", .{path});
+                }
+                return;
+            };
+            const bytes = try emit.emit(allocator, h, one, name, version);
+            try writeOutput(io, opts.outputFile, bytes);
+            if (!eql(opts.outputFile, "-")) diag.info("Wrote the {s} file to {s} ({d} bytes)", .{ one.name(), opts.outputFile, bytes.len });
+        },
+        .dump => unreachable,
+    }
 }
+
+const Command = enum {
+    generate,
+    check,
+    dump,
+    describe,
+    highlight,
+
+    fn name(self: Command) []const u8 {
+        return switch (self) {
+            .generate => "generation",
+            .check => "check",
+            .dump => "--dump-sexp",
+            .describe => "--describe",
+            .highlight => "--highlight",
+        };
+    }
+};
 
 /// A usage error when `output` names the grammar file itself (by any
 /// spelling or link): writing it would destroy the grammar. Two paths name
@@ -208,9 +317,20 @@ fn dumpSexp(allocator: Allocator, io: Io, grammarFile: []const u8, outputPath: [
     if (!eql(outputPath, "-")) diag.info("Wrote S-expression dump to {s} ({d} bytes)", .{ outputPath, bytes.len });
 }
 
-/// `nexus [check] <grammar>`: run the pipeline and write the parser module
-/// (in check mode, write nothing).
-fn generate(allocator: Allocator, io: Io, opts: Options) !void {
+/// What the pipeline makes of a grammar file.
+const Built = struct {
+    ir: grammar.GrammarIR,
+    spec: grammar.LexerSpec,
+    /// The generated grammar; null without parser rules.
+    g: ?Grammar,
+    highlight: ?highlight.Highlight,
+    /// The parser module; empty in check mode.
+    code: []const u8,
+};
+
+/// Runs the whole pipeline on the grammar file; any error is reported and
+/// exits.
+fn build(allocator: Allocator, io: Io, opts: Options) !Built {
     const grammarFile = opts.grammarFile;
     const sourceText = try readGrammar(allocator, io, grammarFile);
 
@@ -246,13 +366,22 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         lexerGen.dfa.numStates,
     });
 
+    const highlighted: ?highlight.Highlight = if (ir.highlight) |lines|
+        highlight.analyze(allocator, lines, &lexerSpec, ir.keywordGroups, parsed.source) catch |err| {
+            if (err == error.OutOfMemory) diag.err("out of memory", .{});
+            fail();
+        }
+    else
+        null;
+
     diag.info("   Parser: {d} rules, {d} start symbols", .{
         ir.rules.len,
         ir.startSymbols.len,
     });
 
     // Without parser rules the output is the lexer alone
-    var finalCode: []const u8 = undefined;
+    var finalCode: []const u8 = "";
+    var final: ?Grammar = null;
 
     if (ir.rules.len > 0) {
         var g = Grammar.init(allocator);
@@ -331,7 +460,9 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
         if (result.table.conflictList.len > 0)
             diag.info("   {d} conflicts (as declared)", .{result.table.conflictList.len});
 
-        // Emit the combined lexer + parser module
+        final = g;
+        // Emit the combined lexer + parser module (checked in check mode
+        // too: codegen checks names)
         finalCode = codegen.generate(allocator, &g, &result.automaton, &result.table, &lexerSpec, lexerDecls, .{
             .emitComments = opts.emitComments,
             .spans = opts.spans,
@@ -344,13 +475,7 @@ fn generate(allocator: Allocator, io: Io, opts: Options) !void {
     } else {
         finalCode = try codegen.lexerModule(allocator, lexerSpec.langName, lexerDecls);
     }
-
-    if (opts.checkMode) {
-        diag.info("{s}: no errors", .{grammarFile});
-        return;
-    }
-    try writeOutput(io, opts.outputFile, finalCode);
-    diag.info("Generated: {s}", .{if (eql(opts.outputFile, "-")) "standard output" else opts.outputFile});
+    return .{ .ir = ir, .spec = lexerSpec, .g = final, .highlight = highlighted, .code = finalCode };
 }
 
 /// Exit with status 1 after the error has been reported.

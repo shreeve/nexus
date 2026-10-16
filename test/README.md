@@ -13,7 +13,8 @@ The summary line reads `N passed, M failed, K known`. The suite is green
 when nothing fails and no known-failing test has started passing. It
 always rebuilds `bin/nexus` first (`zig build`), so a stale binary is never
 tested. `zig build test` runs it too. It needs bash, perl, python3 (for
-`tools/lexfuzz`) and Zig 0.17, and runs on macOS and Linux with the
+`tools/lexfuzz` and the `highlight/*` checks), Vim with `+syntax` (for
+`highlight/*`) and Zig 0.17, and runs on macOS and Linux with the
 systems' own tools.
 
 ## What is checked
@@ -28,7 +29,10 @@ systems' own tools.
 | `adverse/known/<name>` | same, for a rejection the generator gets wrong |
 | `gen/<grammar>` | the generated parser (with the suite's `flags`) equals `test/golden/<grammar>.zig` byte for byte; every suite has one but `nexus`, whose generated parser is `src/frontend/parser.zig` (`bootstrap`) |
 | `sexp/<grammar>` | `nexus --dump-sexp` (the frontend's tree of the grammar) equals `test/golden/<grammar>.sexp`; every grammar file has one, under the first suite that uses it |
-| `determinism/<grammar>` | two generations (with the suite's `flags`), and two `--dump-sexp` runs, are identical |
+| `determinism/<grammar>` | two generations (with the suite's `flags`), and two runs each of `--dump-sexp`, `--describe` and (with `@highlight`) every `--highlight` target, are identical |
+| `describe/<grammar>` | `nexus --describe` equals `test/golden/<grammar>.describe.json`; every grammar file has one, under the first suite that uses it |
+| `highlight/<grammar>/files` | for a grammar with `@highlight`: `nexus --highlight all` writes exactly its four files, each equal to `--highlight <target>` and to its golden (`test/golden/<grammar>.tmLanguage.json`, `.language-configuration.json`, `.hljs.js`, `.vim`), and the grammar without `@highlight` generates the same parser |
+| `highlight/<grammar>/<sample>` | the grammar's TextMate grammar, highlight.js language and Vim syntax file colour `<suite>/highlight/<sample>` as `<sample>.hl` says (`test/lib/highlight`, see "Highlight checks") |
 | `bootstrap` | regenerating the frontend from `nexus.grammar` reproduces `src/frontend/parser.zig` |
 | `wasm32/<grammar>` | the grammar's parser and the tree driver build for 32-bit WebAssembly (`zig build-exe -target wasm32-wasi -fno-emit-bin`: type checks and comptime asserts, no code generation) |
 | `unit/<grammar>` | `zig test` of each `@lang` module file that has `test` blocks, against the generated parser |
@@ -38,10 +42,11 @@ systems' own tools.
 | `tools/lexfuzz` | `test/lexfuzz/fuzz.py` with a fixed seed: generated lexers agree with its reference matcher (see "Lexer fuzzing") |
 | `tools/messages` | every error the generator's source can print is printed by `nexus check` on some grammar under `grammars/` or `test/` (or in a doc) or by the `tools/cli` commands, unless `test/lib/messages.allow` lists it with a reason; an entry for a message a test prints, or one the source does not have, fails |
 | `tools/readme` | `docs/index.html` shows README.md's tested `calc.grammar`, and every number in README.md's validated-languages table (lines, LR states, declared conflicts and cells, suite cases, mode) is this checkout's (`test/lib/readme`) |
-| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp` |
+| `tools/cli` | the command line: `--version`, `--help`, usage errors (exit 2: no grammar, no output file, the grammar as output, an output file for `check`, a missing or unknown `--highlight` target, `--highlight all` without a directory), unreadable and unwritable files, `-` as standard output, `check`, `--spans`, `--dump-sexp`, `--describe`, `--highlight` (one file, `all`, a grammar without `@highlight`) |
 | `docs/<DOC>/L<line>-<name>` | a complete grammar in a Markdown document (`<DOC>` is its path without `.md` and a leading `docs/`: `GRAMMAR`, `test/README`) generates, compiles, and parses each of its inputs to its tree (or, marked `rejects`, fails with its errors) |
 | `docs/<DOC>/L<line>-<name>/zig` | that grammar's `zig test` blocks pass against its parser |
 | `docs/<DOC>/L<line>` | a grammar fragment parses (or: a malformed doc example) |
+| `docs/<DOC>/L<line>-<name>/highlight/L<n>` | that grammar's editor files colour the ` ```sample ` at line `n` as the ` ```highlight ` after it says |
 
 A compile failure fails every case of that grammar with the first compiler
 error as the reason, so "generated but does not compile" can never pass.
@@ -94,9 +99,10 @@ The suites under `test/`:
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
 | `long_tokens` | `@longtokens` with `@schema`, `@trivia`, `@repair`, `@keywords` and a lang Lexer that reads ahead and joins tokens; its `long_tokens.zig` tests tokens of 65,534 bytes to 1 MB built in memory: categories, ends, text, spans, facts, tolerant repairs, `error.TokenEndUnknown`, and (in child processes) the panics of the helpers that have no parser | hand-written, short |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
+| `highlight` | Lamp, whose `@highlight` uses every construct and scope: metadata, literals and a caseless `@keywords` group, tokens, captures, every context, `line-start`, `line-end`, three regions | `highlight/sample.lamp`, coloured |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
-| `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct |
+| `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |
 
 The suites under `grammars/`:
 
@@ -105,7 +111,7 @@ The suites under `grammars/`:
 | `rig` | Rig's schema-mode grammar and its `rig.zig`, `diag.zig` (copied from Rig's main; `test.conf` names the commit) | 138 programs from Rig's tests and examples (raw tree, `parseTree`); `cases/program/` checks the IR after Rig's `Parser` wrapper |
 | `mumps` | em's schema-mode MUMPS grammar and lang module (copied from em) | hand-written cases, 27 VistA routines, 22 MVTS-derived em compliance routines |
 | `ruby`, `slash`, `nexis` | downstream grammars without a schema (`nexis`: copied from nexis's main; `test.conf` names the commit) | hand-written Ruby and Slash, a sample of Nexis tests and examples |
-| `zig` | Zig 0.17.0: `std.zig.Tokenizer` as Nexus rules and a parser for all of Zig's syntax (lang `Lexer` wrapper for Parse.zig's lookahead and spacing decisions); its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, `grammars/zig/compare-tokens` does so over any corpus, and `grammars/zig/compare-accept` compares acceptance with `std.zig.Ast.parse` over a corpus, std.zig's parser test sources, or token-edit mutants | hand-written: every token kind and every way a token goes invalid; declarations, containers, statements, expressions, types, `asm`; inputs Ast.parse rejects beyond the PEG |
+| `zig` | Zig 0.17.0: `std.zig.Tokenizer` as Nexus rules and a parser for all of Zig's syntax (lang `Lexer` wrapper for Parse.zig's lookahead and spacing decisions); its `tokens_test.zig` compares the lexer with `std.zig.Tokenizer` on the tokenizer's own test inputs, edge cases and random inputs, `grammars/zig/compare-tokens` does so over any corpus, and `grammars/zig/compare-accept` compares acceptance with `std.zig.Ast.parse` over a corpus, std.zig's parser test sources, or token-edit mutants | hand-written: every token kind and every way a token goes invalid; declarations, containers, statements, expressions, types, `asm`; inputs Ast.parse rejects beyond the PEG; `highlight/sample.zig`, coloured |
 
 Parse errors are part of the output (`!error …`), so a case may pin down
 where and how an input fails.
@@ -202,11 +208,51 @@ fence's info string:
 | ` ```zig NAME.zig ` | a file next to the last grammar's parser (its lang module) |
 | ` ```zig test ` | `zig test` against the last grammar's parser |
 | ` ```zig fragment ` | illustration only |
+| ` ```sample ` then ` ```highlight ` | the last complete grammar's editor files colour the sample as shown (the `.hl` format of "Highlight checks") |
 
 A `grammar` or `zig` fence without one of these markers fails, and so does
-an `input` without its `tree`, so nothing in a document goes untested by
+an `input` without its `tree` or a `sample` without its `highlight`, so nothing in a document goes untested by
 accident. Other fences (`text`, `bash`, ...) are not checked. The examples
 are extracted into `.zig-cache/nexus-test/docs/` and run like any suite.
+
+## Highlight checks
+
+A suite whose grammar has `@highlight` may hold samples in
+`<suite>/highlight/` (any file but `*.hl`), each with its expected
+colouring, the same name with `.hl`. `test/lib/highlight` generates the
+grammar's TextMate grammar, highlight.js language and Vim syntax file and
+colours the sample with each:
+
+- the TextMate grammar by a reference tokenizer that follows
+  vscode-textmate (line by line; the earliest match wins, a tie goes to
+  the pattern listed first; a begin/end rule is a region whose patterns are
+  tried before its end with `applyEndPatternLast`), its regexes run by
+  Python's `re`;
+- the highlight.js language by a reference that follows highlight.js 11
+  (over the whole text, the earliest of the mode's `contains` and its
+  `end`, ties to the first listed; a `match` array colours each part), on
+  the object the module's default export returns;
+- the Vim syntax file by Vim itself (`vim -u NONE -es`), each byte's
+  `synID`.
+
+Each character gets the scope of the innermost item covering it, read
+back through the scope table of `docs/GRAMMAR.md`, so the files must use
+the documented names. The TextMate and Vim colourings must equal the
+`.hl` file; highlight.js, whose classes are fewer, must give each
+character the documented class of its expected scope. `--update` writes
+the `.hl` file from the TextMate colouring (then checks the others
+against it). The format: each line of the sample after `> `, then a line
+per coloured run with `^` under its characters and the scope:
+
+```text
+> fun main(x)
+  ^^^ keyword
+      ^^^^ function
+```
+
+The references stand in for the editors' own engines (Oniguruma in VS
+Code, highlight.js's JavaScript): the regexes Nexus writes use only what
+Python's `re`, Oniguruma, JavaScript and Vim agree on.
 
 ## Lexer fuzzing
 
@@ -248,7 +294,8 @@ the current numbers; update it when a change moves them.
 | `test/lib/messages`, `test/lib/messages.allow` | the `tools/messages` check, and the messages no test prints |
 | `test/lib/readme` | the `tools/readme` check |
 | `test/lexfuzz/fuzz.py` | the lexer fuzzer |
-| `test/golden/` | generated-code (`.zig`) and frontend-tree (`.sexp`) goldens |
+| `test/lib/highlight` | the `highlight/*` checks: the TextMate and highlight.js references, the Vim run |
+| `test/golden/` | generated-code (`.zig`), frontend-tree (`.sexp`), description (`.describe.json`) and editor-file goldens |
 
 Builds and scratch output live in `.zig-cache/nexus-test/` (per-suite
 builds in `build/<suite>/`, with `gen.log` and `compile.log`), so a failing

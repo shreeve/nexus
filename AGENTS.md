@@ -66,9 +66,10 @@ zig build unit                              # the generator's unit tests alone
 ./test/run --update gen                     # rewrite goldens after an intended change; review the diff
 ./bin/nexus check some.grammar              # every check, nothing written
 ./bin/nexus --dump-sexp some.grammar        # the frontend's tree of a grammar file
+./bin/nexus --highlight all some.grammar editors   # its editor files, from @highlight
 ./bin/nexus nexus.grammar src/frontend/parser.zig   # regenerate the frontend
 test/bench/run                              # generation time and parse throughput
-zig fmt --check build.zig src/*.zig src/{codegen,lexgen,lr} src/frontend/{lang,lower,frontend}.zig test/lib
+zig fmt --check build.zig src/*.zig src/{codegen,highlight,lexgen,lr} src/frontend/{lang,lower,frontend}.zig test/lib
 ```
 
 - Fixing a bug starts with a failing test that reproduces it (`test/known/`).

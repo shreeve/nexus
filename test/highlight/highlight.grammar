@@ -1,0 +1,125 @@
+# highlight.grammar: Lamp, a small language whose @highlight uses every
+# construct: metadata, each scope, literals (longest first, word
+# boundaries), a caseless @keywords group with abbreviations and an alias,
+# tokens (lexer order, trailing context), patterns with captures, every
+# context, line-start and line-end, and regions with entries within them.
+# The samples in highlight/ are coloured by its TextMate grammar, its
+# highlight.js definition and its Vim syntax file (test/lib/highlight).
+
+@lexer
+
+tokens
+    ident, call, type_name, integer, real, string_dq, string_sq
+    comment, block_comment, directive, builtin
+    plus, minus, star, power, lt, le, shl, shl_assign, assign, eq, arrow
+    lparen, rparen, lbracket, rbracket, lbrace, rbrace, comma, colon, dot
+    bang, question, newline
+    kw_fun, kw_if, kw_else, kw_while, kw_return, kw_pub
+    eof, err
+
+'#' [^\n]*                                  → comment
+'/*' ([^*] | '*'+ [^*/])* '*'+ '/'          → block_comment
+'%' [a-z]+                                  → directive
+'"' ([^"\\\n] | '\\' [^\n])* '"'            → string_dq
+"'" ([^'\n] | "''")* "'"                    → string_sq
+[0-9]+ '.' [0-9]+                           → real
+[0-9]+                                      → integer
+'@' [a-z_]+                                 → builtin
+
+"<<="                                       → shl_assign
+"<<"                                        → shl
+"<="                                        → le
+'<'                                         → lt
+"=="                                        → eq
+'='                                         → assign
+"->"                                        → arrow
+"**"                                        → power
+'+'                                         → plus
+'-'                                         → minus
+'*'                                         → star
+'('                                         → lparen
+')'                                         → rparen
+'['                                         → lbracket
+']'                                         → rbracket
+'{'                                         → lbrace
+'}'                                         → rbrace
+','                                         → comma
+':'                                         → colon
+'.'                                         → dot
+'!'                                         → bang
+'?'                                         → question
+
+"fun"                                       → kw_fun
+"if"                                        → kw_if
+"else"                                      → kw_else
+"while"                                     → kw_while
+"return"                                    → kw_return
+"pub"                                       → kw_pub
+[a-z_] [A-Za-z0-9_]* / '('                  → call
+[A-Z] [A-Za-z0-9_]*                         → type_name
+[a-z_] [A-Za-z0-9_]*                        → ident
+
+'\n'                                        → newline
+.                                           → err
+
+@parser
+
+@keywords
+    stmt  caseless  P[RINT] WR[ITE] ECHO=PRINT
+
+@as IDENT = [stmt!]
+
+@highlight
+    language            "Lamp"
+    scope-name          source.lamp
+    extensions          lamp lmp
+    line-comment        "#"
+    block-comment       "/*" "*/"
+    indent              '{' [ \t]* line-end
+    dedent              line-start [ \t]* '}'
+
+    # Patterns, in this order, before the literals and tokens.
+    keyword             "fun" [ \t]+ function:([a-z_] [A-Za-z0-9_]*)
+    keyword.control     DIRECTIVE line-start
+    operator            '\\' line-end
+    constant            [A-Z] [A-Z0-9_]+ not after [A-Za-z0-9_]
+    type                [a-z_] [a-z0-9_]* before "-> "
+    label               ':' [a-z_]+ after [ \t]* '{'
+    constant.symbol     ':' [a-z_]+ not before [A-Za-z0-9_)]
+    variable.parameter  [a-z_] [a-z0-9_]* after ':' [ \t]
+    storage.modifier    [!?] after [a-z_] not before [A-Za-z0-9_)\]]
+
+    # Literals and groups: longest first; a word does not match inside one.
+    keyword             "fun" stmt
+    keyword.control     "if" "else" "while" "return"
+    keyword.operator    "and" "or" "not"
+    constant            "true" "false" "nil"
+    storage.modifier    "pub"
+    variable.special    "self"
+    operator            "+" "-" "*" "<" "<=" "<<" "<<=" "==" "=" "->" "!" "?"
+    punctuation         "(" ")" "[" "]" "{" "}" "," "." ":"
+
+    # Tokens, in lexer order (REAL before INTEGER; CALL by its trailing
+    # context).
+    constant.numeric    INTEGER REAL
+    function            CALL
+    function.builtin    BUILTIN
+    type                TYPE_NAME
+    invalid             "**" ERR
+
+    # Regions: each token named by `within` opens at its pattern's prefix.
+    string              STRING_DQ STRING_SQ
+    comment             COMMENT BLOCK_COMMENT
+    string.escape       '\\' [nt"\\] within STRING_DQ
+    variable.special    '{' [a-z]+ '}' within STRING_DQ
+    string.escape       "''" within STRING_SQ
+    keyword             "TODO" within BLOCK_COMMENT
+
+program! = item*                            → (program ...1)
+
+item     = IDENT | CALL | TYPE_NAME | INTEGER | REAL | STRING_DQ | STRING_SQ
+         | COMMENT | BLOCK_COMMENT | DIRECTIVE | BUILTIN | PLUS | MINUS
+         | STAR | POWER | LT | LE | SHL | SHL_ASSIGN | ASSIGN | EQ | ARROW
+         | LPAREN | RPAREN | LBRACKET | RBRACKET | LBRACE | RBRACE | COMMA
+         | COLON | DOT | BANG | QUESTION | NEWLINE | KW_FUN | KW_IF
+         | KW_ELSE | KW_WHILE | KW_RETURN | KW_PUB | PRINT | WRITE | ERR

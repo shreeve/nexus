@@ -65,6 +65,7 @@ tokens
     kw_trivia
     kw_repair
     kw_keywords
+    kw_highlight
     keyword
     kw_wrapper
     kw_via
@@ -147,19 +148,45 @@ tokens
     KW_LANG: "lang", KW_CONFLICTS: "conflicts", KW_AS: "as", KW_OP: "op",
     KW_ERRORS: "errors", KW_DISPLAY: "display", KW_INFIX: "infix",
     KW_SCHEMA: "schema", KW_TAGS: "tags", KW_TRIVIA: "trivia",
-    KW_REPAIR: "repair", KW_KEYWORDS: "keywords", KEYWORD: "a keyword",
+    KW_REPAIR: "repair", KW_KEYWORDS: "keywords", KW_HIGHLIGHT: "highlight",
+    KEYWORD: "a keyword",
     KW_WRAPPER: "wrapper", KW_VIA: "via", KW_OVER: "over",
     KW_LEFT: "left", KW_RIGHT: "right", KW_NONE: "none", KW_LEXER: "lexer",
     KW_PARSER: "parser", KW_CODE: "code", KW_LONGTOKENS: "longtokens",
     KW_STATE: "state", KW_AFTER: "after", KW_TOKENS: "tokens", KW_X: "X",
     KW_LIST: "L", KW_NIL: "_"
 
+# How editors colour grammar files (`nexus --highlight all nexus.grammar
+# editors`). Most words of a grammar file are classified by the lexer
+# wrapper, so the entries are patterns: directives, rule names, labels,
+# token names, arrows and single-quoted literals.
+@highlight
+    language            "Nexus grammar"
+    scope-name          source.nexus
+    extensions          grammar
+    line-comment        "#"
+
+    keyword             '@' [a-z]+
+    keyword             line-start ("tokens" | "state" | "after") not after [A-Za-z0-9_]
+    function            line-start [a-z_] [A-Za-z0-9_]* after [ \t]* '!'? [ \t]* '='
+    label               [a-z_] [A-Za-z0-9_]* after ':'
+    type                [A-Z] [A-Za-z0-9_]*
+    operator            "\xe2\x86\x92" | "->" | "=>"
+    string              "'" ([^'\\\n] | '\\' .)* "'"
+    keyword             "skip" "hold" "rewind"
+    operator            "|" "?" "*" "+" "=" "..." "~" "!" "&"
+    punctuation         "(" ")" "[" "]" "," ":"
+    constant.numeric    INTEGER
+    string              STRING
+    string.escape       '\\' ('x' [0-9A-Fa-f]{2} | [nrt0\\'"]) within STRING
+    comment             COMMENT
+
 # ===========================================================================
 # The tree
 # ===========================================================================
 
 @schema
-    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|rule
+    grammar          ...entries:section|state|after|tokens|code|longtokens|lex_rule|lang|manifest|as|op|errors|display|infix|schema|tags|trivia|repair|keywords|highlight|rule
 
     # Section markers: `@lexer`, `@parser`
     section          name:leaf
@@ -203,6 +230,8 @@ tokens
     repair_line      class:leaf ...names:leaf
     keywords         ...groups:kw_group
     kw_group         name:leaf ...words:leaf
+    highlight        ...lines:hl_line
+    hl_line          key:leaf ...texts:leaf
 
     # Rules
     rule             name:start|name ...alts:alt
@@ -332,6 +361,7 @@ directive = "@" KW_LANG "=" name:STRING                 → (lang)
           | "@" KW_TRIVIA names:name_list               → (trivia)
           | "@" KW_REPAIR lines:repair_lines            → (repair)
           | "@" KW_KEYWORDS groups:keyword_lines        → (keywords)
+          | "@" KW_HIGHLIGHT lines:highlight_lines      → (highlight)
 
 # --- @conflicts block: `kind lhs → rhs [over lhs → rhs] count # reason` ---
 #
@@ -472,6 +502,24 @@ keyword_line  = name:IDENT words:keyword_words      → (kw_group)
 
 keyword_words =                                     → ()
               | keyword_words KEYWORD               → (...1 2)
+
+# --- @highlight: one entry per indented line, `key text` ---
+#
+# The lexer wrapper scans each line of the block into its first word
+# (KEYWORD: a scope such as `keyword.control`, or a metadata key such as
+# `scope-name`) and the rest of the line up to a comment (PATTERN); a line
+# indented further than the block's first line continues the entry above
+# (another PATTERN). src/highlight/highlight.zig reads the entry from that
+# text.
+
+highlight_lines = CONT highlight_line               → (2)
+                | highlight_lines CONT highlight_line
+                                                    → (...1 3)
+
+highlight_line  = key:KEYWORD texts:highlight_texts → (hl_line)
+
+highlight_texts =                                   → ()
+                | highlight_texts PATTERN           → (...1 2)
 
 # ===========================================================================
 # Productions

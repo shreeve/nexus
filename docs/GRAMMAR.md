@@ -11,7 +11,9 @@ Contents: [Layout](#layout) · [The @lexer section](#the-lexer-section) ·
 [The @parser section](#the-parser-section) · [Actions](#actions) ·
 [Operators and keywords](#operators-and-keywords) ·
 [Conflicts and hints](#conflicts-and-hints) · [Directives](#directives) ·
-[Limits](#limits) · [Errors](#errors)
+[Editor support](#editor-support) ·
+[Describing a grammar](#describing-a-grammar) · [Limits](#limits) ·
+[Errors](#errors)
 
 The semantic layer (`@schema`, roles, labels, coverage, spans, the generated
 `ir` API) has its own document: [SEMANTICS.md](SEMANTICS.md).
@@ -1184,6 +1186,7 @@ when it decides a cell for any rule its alternative expands into.
 | `@errors` | any | reader names of rules for syntax errors |
 | `@trivia T ...` | any | tokens kept on a side channel, never parsed |
 | `@repair` | any | the tokens tolerant parsing may insert |
+| `@highlight` | any | how editors colour the language ([Editor support](#editor-support)) |
 
 "Any" means the preamble or the @parser section; a directive of the
 @lexer section anywhere else is an error. Each directive appears at most
@@ -1220,6 +1223,313 @@ that uses `@display`, `@errors`, `@trivia` and `@repair`.
 - `@repair` classes: `holes` (value tokens that may be inserted with empty
   text), `structure` (layout tokens), `terminator` (structure that ends a
   statement). See [tolerant parsing](SEMANTICS.md#tolerant-parsing).
+
+## Editor support
+
+`@highlight` (in the preamble or the @parser section, at most once) says
+how editors colour the language. From it, `nexus --highlight` writes a
+TextMate grammar (VS Code and the editors that read TextMate grammars),
+VS Code's language configuration, a highlight.js language and a Vim
+syntax file. `@highlight` changes nothing in the generated parser.
+
+```grammar tasks.grammar
+@lexer
+
+tokens
+    word, number, string, comment, colon, lparen, rparen
+    kw_task, kw_done, eof, err
+
+'#' [^\n]*                      → comment
+'"' ([^"\\\n] | '\\' .)* '"'    → string
+[0-9]+                          → number
+':'                             → colon
+'('                             → lparen
+')'                             → rparen
+"task"                          → kw_task
+"done"                          → kw_done
+[a-z]+                          → word
+'\n'                            → skip, skip
+.                               → err
+
+@parser
+
+@highlight
+    language            "Tasks"
+    scope-name          source.tasks
+    extensions          tasks
+    line-comment        "#"
+
+    keyword             "task" [ \t]+ function:([a-z]+)
+    label               [a-z]+ after [ \t]* ':'
+    keyword             "task" "done"
+    punctuation         ":" "(" ")"
+    constant.numeric    NUMBER
+    string              STRING
+    string.escape       '\\' [n"\\] within STRING
+    comment             COMMENT
+    invalid             ERR
+
+tasks! = item*                          → (tasks ...1)
+
+item   = KW_TASK WORD ":" STRING        → (task 2 4)
+       | KW_DONE WORD                   → (done 2)
+       | WORD ":" "(" NUMBER ")"        → (count 1 4)
+```
+
+Each of the three files that colour text colours this sample the same
+way: under each line, `^` marks a run of characters and names its scope.
+
+```sample
+task shop: "milk\n, \"eggs\"" # today
+shop : (2) $
+done shop
+taskforce: (3)
+```
+
+```highlight
+> task shop: "milk\n, \"eggs\"" # today
+  ^^^^^ keyword
+       ^^^^ function
+           ^ punctuation
+             ^^^^^ string
+                  ^^ string.escape
+                    ^^ string
+                      ^^ string.escape
+                        ^^^^ string
+                            ^^ string.escape
+                              ^ string
+                                ^^^^^^^ comment
+> shop : (2) $
+  ^^^^ label
+       ^ punctuation
+         ^ punctuation
+          ^ constant.numeric
+           ^ punctuation
+             ^ invalid
+> done shop
+  ^^^^ keyword
+> taskforce: (3)
+  ^^^^^^^^^ label
+           ^ punctuation
+             ^ punctuation
+              ^ constant.numeric
+               ^ punctuation
+```
+
+### Entries
+
+Each indented line of `@highlight` is a metadata line or an entry,
+`SCOPE targets [contexts] [within TOKEN]`. A line names one scope; a
+scope may head many lines. The targets are either a list of these, blank
+separated:
+
+| Target | Matches |
+|---|---|
+| `"if"` `'+'` | the literal (escapes as in patterns); it must be text some lexer rule matches whole |
+| `NUMBER` | the text of the token: its lexer rules' patterns (with trailing context as a lookahead) |
+| `cmd` | every word of the `@keywords` group, its abbreviations, in either case when `caseless` |
+
+or one pattern, in the syntax of the @lexer section (without `/`): any
+other text, such as `[a-z]+ '!'`. A literal that ends in a letter, digit
+or `_` does not match where another one follows (`"if"` leaves `iffy`
+alone), nor one that starts with one where one precedes; a pattern
+matches as written.
+
+A pattern may tag parts of itself with scopes: `SCOPE:( pattern )`, at
+its top level, names the text the parenthesized pattern matches. The
+entry's scope colours the parts between. Above, `"task" [ \t]+
+function:([a-z]+)` colours `task` and the blanks as `keyword` and the
+name as `function`. A pattern with captures is a sequence: each part must
+match something, and an alternation goes inside `( )`.
+
+Contexts follow the targets and restrict where they match; none of them
+is part of the match:
+
+| Context | The match |
+|---|---|
+| `after P` | is followed by text `P` matches |
+| `not after P` | is not followed by text `P` matches |
+| `before P` | is preceded by text `P` matches; `P` has one length, as editors require |
+| `not before P` | is not preceded by text `P` matches (`P` of one length) |
+| `line-start` | starts at the start of a line |
+| `line-end` | ends at the end of a line |
+
+`within TOKEN` makes the entry match only inside the token's text. That
+token becomes a region: each of its rules must be a literal prefix, a
+body and a suffix that ends in a literal (`'"' (...)* '"'`). The region
+opens at the prefix; inside it, the entries within it, then one
+repetition of the body, are tried before the suffix, which closes it.
+Above, `\n` and `\"` are escapes, and the `"` after `\` does not end the
+string. The token's own entry (`string STRING`) colours the rest of the
+region; its entry takes no context, and an entry within a region names
+no other region.
+
+Editor patterns match characters within a line: a pattern written as
+UTF-8 bytes matches the character, a class with every byte from 0x80
+matches every non-ASCII character, and no class matches a line break (`.`
+neither). A pattern that matches part of a UTF-8 character has no editor
+form and is an error.
+
+### The order
+
+Editors try what they match in one order, and where two items match at
+one position, the first wins:
+
+1. the entries with a pattern, a context, `line-start` or `line-end`, as
+   written;
+2. the literals and `@keywords` words; a literal that can match the
+   start of a longer one comes after it (`"<"` after `"<="`), and the
+   literals of one scope are tried together, longest first;
+3. a run of blanks, uncoloured (blanks start no token);
+4. every lexer rule, in lexer order: a listed token's rule coloured (a
+   region at its first rule), any other uncoloured, so that no later item
+   colours part of its text.
+
+A token no entry lists gets no colour. The order is not the lexer's
+longest match: at one position, a literal comes before a longer token,
+and an earlier lexer rule before a later one that would match more. So
+an `invalid` entry naming an error token written after the rules it
+catches (`[0-9][0-9A-Za-z_]*` after `[0-9]+`) colours nothing where an
+earlier rule matches first, and `invalid` naming a token spelled `**`
+loses to the literal `"*"`. Where that matters, list the longer text as
+a literal or a pattern, which come first.
+
+### Metadata
+
+| Line | Meaning |
+|---|---|
+| `language "Name"` | the language's name in editors (required) |
+| `scope-name source.x` | the TextMate scope (`source.` or `text.`, then lowercase dot-separated parts; required). Its last part is the language id: the suffix of TextMate scopes, the prefix of Vim groups, the highlight.js name and the file names `--highlight all` writes |
+| `extensions x y` | the file extensions, without the dot (required) |
+| `line-comment "#"` | VS Code's line comment |
+| `block-comment "/*" "*/"` | VS Code's block comment |
+| `indent P` / `dedent P` | VS Code's indentation rules: a line that matches `indent` indents the next line, one that matches `dedent` outdents itself. `P` is a pattern with contexts; the two go together |
+
+### Scopes
+
+Every entry names one of these scopes, written in each file as:
+
+| Scope | TextMate | highlight.js | Vim |
+|---|---|---|---|
+| `keyword` | `keyword.other` | `keyword` | `Keyword` |
+| `keyword.control` | `keyword.control` | `keyword` | `Statement` |
+| `keyword.operator` | `keyword.operator.word` | `keyword` | `Operator` |
+| `constant` | `constant.language` | `literal` | `Constant` |
+| `constant.numeric` | `constant.numeric` | `number` | `Number` |
+| `constant.symbol` | `constant.other.symbol` | `symbol` | `Constant` |
+| `string` | `string.quoted` | `string` | `String` |
+| `string.escape` | `constant.character.escape` | `char.escape` | `SpecialChar` |
+| `comment` | `comment` | `comment` | `Comment` |
+| `operator` | `keyword.operator` | `operator` | `Operator` |
+| `punctuation` | `punctuation` | `punctuation` | `Delimiter` |
+| `type` | `entity.name.type` | `type` | `Type` |
+| `function` | `entity.name.function` | `title.function` | `Function` |
+| `function.builtin` | `support.function` | `built_in` | `Function` |
+| `label` | `entity.name.label` | `symbol` | `Label` |
+| `storage.modifier` | `storage.modifier` | `keyword` | `StorageClass` |
+| `variable.parameter` | `variable.parameter` | `params` | `Identifier` |
+| `variable.special` | `variable.language` | `variable.language` | `Identifier` |
+| `invalid` | `invalid.illegal` | `deletion` | `Error` |
+
+A TextMate scope ends with the language id (`keyword.other.tasks`). A
+Vim group is the id and the scope (`tasksKeyword`, `tasksStringEscape`),
+linked to the Vim group above; groups of entries within a region, and of
+the parts of a pattern with captures after the first, link to those.
+
+### The files
+
+```text
+nexus --highlight textmate tasks.grammar tasks.tmLanguage.json
+nexus --highlight language-configuration tasks.grammar language-configuration.json
+nexus --highlight highlightjs tasks.grammar tasks.js
+nexus --highlight vim tasks.grammar tasks.vim
+nexus --highlight all tasks.grammar editors
+```
+
+The output file defaults to standard output (`-`). `--highlight all`
+writes every file into a directory, each replaced atomically:
+
+```text
+editors/vscode/syntaxes/tasks.tmLanguage.json
+editors/vscode/language-configuration.json
+editors/vim/syntax/tasks.vim
+editors/highlightjs/tasks.js
+```
+
+A language keeps them in `editors/` beside its grammar, written by
+`nexus --highlight all x.grammar editors`. `--highlight` on a grammar
+without `@highlight` is an error.
+
+- The TextMate grammar lists the items in order under `patterns`; a
+  pattern with captures is one regex with `captures`, a region a
+  `begin`/`end` rule with `applyEndPatternLast` and its items and body as
+  `patterns`.
+- The language configuration has the comments, the bracket pairs among
+  `( )`, `[ ]`, `{ }` and `< >` when both are literals listed as
+  `punctuation`, auto-closing and surrounding pairs (the brackets, and
+  the prefix and suffix of each region whose suffix is a literal, not
+  closed inside strings and comments), and the indentation rules.
+- The highlight.js file is an ES module: `export const extensions` (the
+  metadata's extensions) and `export default function (hljs)`, which
+  returns the language: `name`, `aliases` (the extensions), `keywords`
+  (empty: every word is an item) and `contains`, the items in order. A
+  pattern with captures is a `match` array with a `scope` per part, a
+  region a mode with `begin`, `end` and `contains`. It needs highlight.js
+  11 or later.
+- The Vim syntax file defines the items from last to first (where two
+  start together, Vim takes the one defined last); a region is a `syn
+  region` whose `skip` is its body, its entries `contained`; a pattern
+  with captures is a chain of `syn match` items joined by `nextgroup`.
+
+`./test/run` checks each file by what it does: the TextMate grammar
+through a reference tokenizer that follows vscode-textmate, the
+highlight.js language through one that follows highlight.js, and the Vim
+file in Vim itself, on samples of each grammar with `@highlight`; each
+must colour every character as expected (highlight.js, with its fewer
+classes, with the class of the expected scope).
+
+### Checks
+
+Generation (and `nexus check`) rejects, each at its place: a word that
+is no scope or metadata key; a missing `language`, `scope-name` or
+`extensions`; a malformed or repeated metadata line; `indent` without
+`dedent`; an unknown token or `@keywords` group; a literal no lexer rule
+matches whole; a token whose text no rule gives (a lang Lexer makes it,
+or it only rewinds); a target listed twice, or under two scopes; a
+capture inside `( )`, with an unknown scope, or empty; a pattern with
+captures and a top-level `|`, or with a part that matches nothing; a
+pattern or context that matches the empty string; `not` without `after`
+or `before`; a `before` pattern of varying length; trailing context `/`;
+`within` something other than a token, or a token whose rules are not
+regions; a context on a region's entry; a region within a region; a
+pattern with no editor form; and a second `@highlight`.
+
+## Describing a grammar
+
+`nexus --describe grammar [out]` writes the grammar as JSON for other
+tools (editor extensions, language servers, documentation): its tokens,
+lexer rules, keywords and `@highlight`, with or without `@highlight`. It
+runs every check generation runs. Keys come in the order below and lists
+in the grammar's order, so a grammar gives the same bytes every run;
+`format` changes when the format does.
+
+| Key | Value |
+|---|---|
+| `format` | `1` |
+| `nexus` | the version of Nexus |
+| `grammar` | the grammar file as given |
+| `lang` | `@lang`, or null |
+| `tokens` | each token of the `tokens` block: `name`, `terminal` (the parser's symbol id for it, or null when the parser reads no such token) and `display` (its name in syntax errors, or null) |
+| `rules` | each lexer rule: `line`, `token` (null for the built-in `skip`), `pattern` (as written; null for a zero-width rule), `regex` (the pattern in a portable PCRE subset over bytes: `(?:…)`, classes with `\xHH`, `{m,n}`), `literal` (the one text it matches, or null), `trail` (its trailing context as a regex, or null), `guards` (`var`, `negated`, `op` (null for a plain test), `value`), `skip`, `hold`, `rewind`, `actions` (`kind` `set`, `inc`, `dec` or `counted`, `var`, and `value` or `char`) |
+| `states` | each state variable: `name`, `initial` |
+| `after` | the `after` block's actions |
+| `keywords` | each `@keywords` group by name: `caseless`, `base`, `entries` sorted by word: `word` (upper-cased when caseless), `min` (the shortest accepted prefix), `id`, `terminal` (null for an alias) and `alias_of` (the aliased terminal, or null) |
+| `trivia` | the `@trivia` tokens |
+| `highlight` | null, or `language`, `scope_name`, `extensions`, `line_comment`, `block_comment`, `indent`, `dedent` (regexes), and `entries`: `line`, `scope`, `literals`, `tokens`, `groups`, `pattern` (as written, or null), `regex`, `captures` (the parts of a pattern with captures: `scope`, `captured`, `regex`), `line_start`, `line_end`, `contexts` (`kind`, `pattern`, `regex`) and `within` |
+| `schema` | null, or `kinds`: `name`, `roles` (`name`, `type` as written, `optional`, `rest`), `side`, `wrapper` |
+
+`./test/run` pins the description of every grammar in the repository
+(`test/golden/*.describe.json`).
 
 ## Limits
 

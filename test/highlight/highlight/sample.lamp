@@ -1,0 +1,24 @@
+%include "base.lamp"
+# A comment with "quotes" and if
+pub fun area(width: Int, height: Int) -> Int {
+  return width * height
+}
+
+fun scale(x: real) -> real {
+  while x <= 10 { x <<= 1 }
+  if x < 2 and not done { x = x + 3.25 } else { x = 7 }
+  return x
+}
+
+print "tab\tquote\" other\q {name} end"
+Pr 'it''s' ; wri x ; echo y ; w z ; WRITE MAX_SIZE
+iffy funny pubs selfish ifx xif myself _if
+/* a block comment, TODO: more
+   on two lines */ after
+call(1) callme (2) @size(x) :symbol :outer { }
+!flag x! y? ?opt self.size
+a ** b == c -> d $ x1 9abc
+total = 1 + \
+  2
+not %include
+print "café → ok" é

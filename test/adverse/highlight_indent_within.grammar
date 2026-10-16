@@ -1,0 +1,25 @@
+# `indent` is a pattern.
+# error: `indent` is a pattern: it takes no `within`
+@lexer
+tokens
+    word, string, number, arrow, indent, eof, err
+'"' ([^"\\\n] | '\\' .)* '"' → string
+[0-9]+ → number
+"->" [a-z] → arrow, rewind(2)
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@keywords
+    cmd  caseless  S[ET]
+@as WORD = [cmd!]
+@highlight
+    language "T"
+    scope-name source.t
+    extensions t
+    indent '{' within STRING
+    dedent '}'
+    keyword WORD
+
+list! = item*
+item = WORD | STRING | NUMBER | ARROW | SET

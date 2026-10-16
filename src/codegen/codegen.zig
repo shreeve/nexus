@@ -63,6 +63,26 @@ pub fn generate(
 }
 
 /// A module holding only the lexer (a grammar with no parser rules).
+/// The reader-facing name of a symbol in syntax errors: `@display`,
+/// `@errors`, else the literal as written or the token name in lower case.
+pub fn symbolDisplayName(allocator: Allocator, g: *const Grammar, sym: grammar.Symbol) Allocator.Error!?[]const u8 {
+    if (sym.kind == .nonterminal) {
+        // By symbol: an @errors rule may be an alias (`expr = @infix`).
+        for (g.errorNames) |e| if (g.getSymbol(e.rule) == sym.id) return e.name;
+        return null;
+    }
+    if (sym.id == g.errorId) return null;
+    if (sym.id == g.endId) {
+        for (g.displayNames) |d| if (std.ascii.eqlIgnoreCase(d.token, "eof")) return d.name;
+        return "end of input";
+    }
+    if (sym.name.len == 0 or sym.name[0] == '$' or std.mem.endsWith(u8, sym.name, "!")) return null;
+    for (g.displayNames) |d| if (std.mem.eql(u8, d.token, sym.name)) return d.name;
+    for (g.displayNames) |d| if (std.ascii.eqlIgnoreCase(d.token, sym.name)) return d.name;
+    if (sym.name[0] == '"') return sym.name;
+    return try std.ascii.allocLowerString(allocator, sym.name);
+}
+
 pub fn lexerModule(allocator: Allocator, lang: ?[]const u8, lexerDecls: []const u8) ![]const u8 {
     var output: std.Io.Writer.Allocating = .init(allocator);
     const w = &output.writer;
@@ -871,24 +891,8 @@ const Codegen = struct {
     // Diagnostics names
     // -------------------------------------------------------------------------
 
-    /// The reader-facing name of a symbol: `@display`, `@errors`, else the
-    /// literal as written or the token name in lower case.
     fn displayName(self: *const Codegen, sym: grammar.Symbol) !?[]const u8 {
-        if (sym.kind == .nonterminal) {
-            // By symbol: an @errors rule may be an alias (`expr = @infix`).
-            for (self.g.errorNames) |e| if (self.g.getSymbol(e.rule) == sym.id) return e.name;
-            return null;
-        }
-        if (sym.id == self.g.errorId) return null;
-        if (sym.id == self.g.endId) {
-            for (self.g.displayNames) |d| if (std.ascii.eqlIgnoreCase(d.token, "eof")) return d.name;
-            return "end of input";
-        }
-        if (sym.name.len == 0 or sym.name[0] == '$' or std.mem.endsWith(u8, sym.name, "!")) return null;
-        for (self.g.displayNames) |d| if (std.mem.eql(u8, d.token, sym.name)) return d.name;
-        for (self.g.displayNames) |d| if (std.ascii.eqlIgnoreCase(d.token, sym.name)) return d.name;
-        if (sym.name[0] == '"') return sym.name;
-        return try std.ascii.allocLowerString(self.allocator, sym.name);
+        return symbolDisplayName(self.allocator, self.g, sym);
     }
 
     /// Expected sets (from the LR stage) and symbol display names.

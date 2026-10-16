@@ -1,6 +1,6 @@
 (grammar
   (section `lexer`)
-  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
+  (tokens `tokens` `ident` `token` `label` `kw_x` `kw_list` `string` `integer` `word` `eq` `pipe` `union` `arrow` `question` `star` `plus` `minus` `lparen` `rparen` `lbracket` `rbracket` `langle` `rangle` `comma` `colon` `bang` `tilde` `dots` `at` `rule_text` `newline` `cont` `next_alt` `comment` `kw_nil` `kw_lang` `kw_conflicts` `kw_as` `kw_op` `kw_errors` `kw_display` `kw_infix` `kw_schema` `kw_tags` `kw_trivia` `kw_repair` `kw_keywords` `kw_highlight` `keyword` `kw_wrapper` `kw_via` `kw_over` `kw_left` `kw_right` `kw_none` `kw_lexer` `kw_parser` `kw_code` `kw_longtokens` `kw_state` `kw_after` `kw_tokens` `pattern` `quoted` `compare` `amp` `lbrace` `rbrace` `incdec` `eof` `err`)
   (lex_rule
     `[ \\t\\r]+`
     _
@@ -68,6 +68,7 @@
     (name_pair `KW_TRIVIA` `"trivia"`)
     (name_pair `KW_REPAIR` `"repair"`)
     (name_pair `KW_KEYWORDS` `"keywords"`)
+    (name_pair `KW_HIGHLIGHT` `"highlight"`)
     (name_pair `KEYWORD` `"a keyword"`)
     (name_pair `KW_WRAPPER` `"wrapper"`)
     (name_pair `KW_VIA` `"via"`)
@@ -85,6 +86,25 @@
     (name_pair `KW_X` `"X"`)
     (name_pair `KW_LIST` `"L"`)
     (name_pair `KW_NIL` `"_"`))
+  (highlight
+    (hl_line `language` `"Nexus grammar"`)
+    (hl_line `scope-name` `source.nexus`)
+    (hl_line `extensions` `grammar`)
+    (hl_line `line-comment` `"#"`)
+    (hl_line `keyword` `'@' [a-z]+`)
+    (hl_line `keyword` `line-start ("tokens" | "state" | "after") not after [A-Za-z0-9_]`)
+    (hl_line `function` `line-start [a-z_] [A-Za-z0-9_]* after [ \\t]* '!'? [ \\t]* '='`)
+    (hl_line `label` `[a-z_] [A-Za-z0-9_]* after ':'`)
+    (hl_line `type` `[A-Z] [A-Za-z0-9_]*`)
+    (hl_line `operator` `"\\xe2\\x86\\x92" | "->" | "=>"`)
+    (hl_line `string` `"'" ([^'\\\\\\n] | '\\\\' .)* "'"`)
+    (hl_line `keyword` `"skip" "hold" "rewind"`)
+    (hl_line `operator` `"|" "?" "*" "+" "=" "..." "~" "!" "&"`)
+    (hl_line `punctuation` `"(" ")" "[" "]" "," ":"`)
+    (hl_line `constant.numeric` `INTEGER`)
+    (hl_line `string` `STRING`)
+    (hl_line `string.escape` `'\\\\' ('x' [0-9A-Fa-f]{2} | [nrt0\\\\'"]) within STRING`)
+    (hl_line `comment` `COMMENT`))
   (schema
     (kind_decl
       (kinds `grammar`)
@@ -92,7 +112,7 @@
         (role
           rest
           `entries`
-          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `rule`)
+          (type `section` `state` `after` `tokens` `code` `longtokens` `lex_rule` `lang` `manifest` `as` `op` `errors` `display` `infix` `schema` `tags` `trivia` `repair` `keywords` `highlight` `rule`)
           _))
       _
       _)
@@ -637,6 +657,31 @@
         (role
           rest
           `words`
+          (type `leaf`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `highlight`)
+      (roles
+        (role
+          rest
+          `lines`
+          (type `hl_line`)
+          _))
+      _
+      _)
+    (kind_decl
+      (kinds `hl_line`)
+      (roles
+        (role
+          _
+          `key`
+          (type `leaf`)
+          _)
+        (role
+          rest
+          `texts`
           (type `leaf`)
           _))
       _
@@ -1436,6 +1481,15 @@
           `groups`
           (ref `keyword_lines`)))
       (node `keywords`)
+      _)
+    (alt
+      _
+      ((lit `"@"`)
+        (tok `KW_HIGHLIGHT`)
+        (label
+          `lines`
+          (ref `highlight_lines`)))
+      (node `highlight`)
       _))
   (rule
     (name `conflict_lines`)
@@ -2169,6 +2223,51 @@
       _
       ((ref `keyword_words`)
         (tok `KEYWORD`))
+      (list
+        (spread `1`)
+        (pos `2`))
+      _))
+  (rule
+    (name `highlight_lines`)
+    (alt
+      _
+      ((tok `CONT`)
+        (ref `highlight_line`))
+      (list
+        (pos `2`))
+      _)
+    (alt
+      _
+      ((ref `highlight_lines`)
+        (tok `CONT`)
+        (ref `highlight_line`))
+      (list
+        (spread `1`)
+        (pos `3`))
+      _))
+  (rule
+    (name `highlight_line`)
+    (alt
+      _
+      ((label
+          `key`
+          (tok `KEYWORD`))
+        (label
+          `texts`
+          (ref `highlight_texts`)))
+      (node `hl_line`)
+      _))
+  (rule
+    (name `highlight_texts`)
+    (alt
+      _
+      ()
+      (list)
+      _)
+    (alt
+      _
+      ((ref `highlight_texts`)
+        (tok `PATTERN`))
       (list
         (spread `1`)
         (pos `2`))

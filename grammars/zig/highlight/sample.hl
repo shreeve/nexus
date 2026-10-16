@@ -1,0 +1,187 @@
+> //! A module doc comment.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> const std = @import("std");
+  ^^^^^ keyword
+            ^ operator
+              ^^^^^^^ function.builtin
+                     ^ punctuation
+                      ^^^^^ string
+                           ^^ punctuation
+> 
+> /// A point, with a doc comment.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> pub const Point = struct {
+  ^^^ storage.modifier
+      ^^^^^ keyword
+            ^^^^^ type
+                  ^ operator
+                    ^^^^^^ keyword
+                           ^ punctuation
+>     x: i32 = 0,
+       ^ punctuation
+         ^^^ type
+             ^ operator
+               ^ constant.numeric
+                ^ punctuation
+>     y: u8,
+       ^ punctuation
+         ^^ type
+           ^ punctuation
+>     name: []const u8 = "p\tq\x41\u{2192} \"done\"",
+          ^ punctuation
+            ^^ punctuation
+              ^^^^^ keyword
+                    ^^ type
+                       ^ operator
+                         ^^ string
+                           ^^ string.escape
+                             ^ string
+                              ^^^^^^^^^^^^ string.escape
+                                          ^ string
+                                           ^^ string.escape
+                                             ^^^^ string
+                                                 ^^ string.escape
+                                                   ^ string
+                                                    ^ punctuation
+> 
+>     pub fn norm(self: Point) usize {
+      ^^^ storage.modifier
+          ^^^ keyword
+             ^^^^ function
+                 ^ punctuation
+                      ^ punctuation
+                        ^^^^^ type
+                             ^ punctuation
+                               ^^^^^ type
+                                     ^ punctuation
+>         return @intCast(self.x * self.x) +% 1;
+          ^^^^^^ keyword.control
+                 ^^^^^^^^ function.builtin
+                         ^ punctuation
+                              ^ punctuation
+                                 ^ operator
+                                       ^ punctuation
+                                         ^ punctuation
+                                           ^^ operator
+                                              ^ constant.numeric
+                                               ^ punctuation
+>     }
+      ^ punctuation
+> };
+  ^^ punctuation
+> 
+> extern "c" fn puts(s: [*:0]const u8) c_int;
+  ^^^^^^ storage.modifier
+         ^^^ string
+             ^^^ keyword
+                ^^^^ function
+                    ^ punctuation
+                      ^ punctuation
+                        ^ punctuation
+                         ^ operator
+                          ^ punctuation
+                           ^ constant.numeric
+                            ^ punctuation
+                             ^^^^^ keyword
+                                   ^^ type
+                                     ^ punctuation
+                                       ^^^^^ type
+                                            ^ punctuation
+> 
+> test "points" {
+  ^^^^ keyword
+       ^^^^^^^^ string
+                ^ punctuation
+>     var p: Point = .{ .y = 'a', .x = -0x1F };
+      ^^^ keyword
+           ^ punctuation
+             ^^^^^ type
+                   ^ operator
+                     ^^ punctuation
+                        ^ punctuation
+                           ^ operator
+                             ^^^ string
+                                ^ punctuation
+                                  ^ punctuation
+                                     ^ operator
+                                       ^ operator
+                                        ^^^^ constant.numeric
+                                             ^^ punctuation
+>     const c = '\n';
+      ^^^^^ keyword
+              ^ operator
+                ^ string
+                 ^^ string.escape
+                   ^ string
+                    ^ punctuation
+>     outer: while (p.x < 10) : (p.x += 1) {
+      ^^^^^ label
+           ^ punctuation
+             ^^^^^ keyword.control
+                   ^ punctuation
+                     ^ punctuation
+                        ^ operator
+                          ^^ constant.numeric
+                            ^ punctuation
+                              ^ punctuation
+                                ^ punctuation
+                                  ^ punctuation
+                                     ^^ operator
+                                        ^ constant.numeric
+                                         ^ punctuation
+                                           ^ punctuation
+>         if (p.x == 3 and c != 0) continue :outer else break :outer;
+          ^^ keyword.control
+             ^ punctuation
+               ^ punctuation
+                  ^^ operator
+                     ^ constant.numeric
+                       ^^^ keyword.operator
+                             ^^ operator
+                                ^ constant.numeric
+                                 ^ punctuation
+                                   ^^^^^^^^ keyword.control
+                                            ^^^^^^ label
+                                                   ^^^^ keyword.control
+                                                        ^^^^^ keyword.control
+                                                              ^^^^^^ label
+                                                                    ^ punctuation
+>     }
+      ^ punctuation
+>     const s =
+      ^^^^^ keyword
+              ^ operator
+>         \\multiline "string"
+          ^^^^^^^^^^^^^^^^^^^^ string
+>     ;
+      ^ punctuation
+>     _ = s orelse null;
+        ^ operator
+            ^^^^^^ keyword.control
+                   ^^^^ constant
+                       ^ punctuation
+>     try std.testing.expect(p.y >= 1.5e3 or true);
+      ^^^ keyword.control
+             ^ punctuation
+                     ^ punctuation
+                      ^^^^^^ function
+                            ^ punctuation
+                              ^ punctuation
+                                 ^^ operator
+                                    ^^^^^ constant.numeric
+                                          ^^ keyword.operator
+                                             ^^^^ constant
+                                                 ^^ punctuation
+>     const T = ?*anyopaque;
+      ^^^^^ keyword
+            ^ type
+              ^ operator
+                ^^ operator
+                  ^^^^^^^^^ type
+                           ^ punctuation
+>     _ = T;
+        ^ operator
+          ^ type
+           ^ punctuation
+> }
+  ^ punctuation

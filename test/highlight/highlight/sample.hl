@@ -1,0 +1,137 @@
+> %include "base.lamp"
+  ^^^^^^^^ keyword.control
+           ^^^^^^^^^^^ string
+> # A comment with "quotes" and if
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> pub fun area(width: Int, height: Int) -> Int {
+  ^^^ storage.modifier
+      ^^^^ keyword
+          ^^^^ function
+              ^ punctuation
+               ^^^^^ variable.parameter
+                    ^ punctuation
+                      ^^^ type
+                         ^ punctuation
+                           ^^^^^^ variable.parameter
+                                 ^ punctuation
+                                   ^^^ type
+                                      ^ punctuation
+                                        ^^ operator
+                                           ^^^ type
+                                               ^ punctuation
+>   return width * height
+    ^^^^^^ keyword.control
+                 ^ operator
+> }
+  ^ punctuation
+> 
+> fun scale(x: real) -> real {
+  ^^^^ keyword
+      ^^^^^ function
+           ^ punctuation
+            ^ variable.parameter
+             ^ punctuation
+                   ^ punctuation
+                     ^^ operator
+                        ^^^^ type
+                             ^ punctuation
+>   while x <= 10 { x <<= 1 }
+    ^^^^^ keyword.control
+            ^^ operator
+               ^^ constant.numeric
+                  ^ punctuation
+                      ^^^ operator
+                          ^ constant.numeric
+                            ^ punctuation
+>   if x < 2 and not done { x = x + 3.25 } else { x = 7 }
+    ^^ keyword.control
+         ^ operator
+           ^ constant.numeric
+             ^^^ keyword.operator
+                 ^^^ keyword.operator
+                          ^ punctuation
+                              ^ operator
+                                  ^ operator
+                                    ^^^^ constant.numeric
+                                         ^ punctuation
+                                           ^^^^ keyword.control
+                                                ^ punctuation
+                                                    ^ operator
+                                                      ^ constant.numeric
+                                                        ^ punctuation
+>   return x
+    ^^^^^^ keyword.control
+> }
+  ^ punctuation
+> 
+> print "tab\tquote\" other\q {name} end"
+  ^^^^^ keyword
+        ^^^^ string
+            ^^ string.escape
+              ^^^^^ string
+                   ^^ string.escape
+                     ^^^^^^^^^ string
+                              ^^^^^^ variable.special
+                                    ^^^^^ string
+> Pr 'it''s' ; wri x ; echo y ; w z ; WRITE MAX_SIZE
+  ^^ keyword
+     ^^^ string
+        ^^ string.escape
+          ^^ string
+             ^ invalid
+               ^^^ keyword
+                     ^ invalid
+                       ^^^^ keyword
+                              ^ invalid
+                                    ^ invalid
+                                      ^^^^^ constant
+                                            ^^^^^^^^ constant
+> iffy funny pubs selfish ifx xif myself _if
+> /* a block comment, TODO: more
+  ^^^^^^^^^^^^^^^^^^^^ comment
+                      ^^^^ keyword
+                          ^^^^^^ comment
+>    on two lines */ after
+  ^^^^^^^^^^^^^^^^^^ comment
+> call(1) callme (2) @size(x) :symbol :outer { }
+  ^^^^ function
+      ^ punctuation
+       ^ constant.numeric
+        ^ punctuation
+                 ^ punctuation
+                  ^ constant.numeric
+                   ^ punctuation
+                     ^^^^^ function.builtin
+                          ^ punctuation
+                            ^ punctuation
+                              ^^^^^^^ constant.symbol
+                                      ^^^^^^ label
+                                             ^ punctuation
+                                               ^ punctuation
+> !flag x! y? ?opt self.size
+  ^ storage.modifier
+         ^ operator
+            ^ operator
+              ^ storage.modifier
+                   ^^^^ variable.special
+                       ^ punctuation
+> a ** b == c -> d $ x1 9abc
+    ^^ invalid
+         ^^ operator
+              ^^ operator
+                 ^ type
+                   ^ invalid
+                        ^ constant.numeric
+> total = 1 + \
+        ^ operator
+          ^ constant.numeric
+            ^ operator
+              ^ operator
+>   2
+    ^ constant.numeric
+> not %include
+  ^^^ keyword.operator
+> print "café → ok" é
+  ^^^^^ keyword
+        ^^^^^^^^^^^ string
+                    ^ invalid

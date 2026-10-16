@@ -14,9 +14,12 @@ is the architecture; [test/README.md](test/README.md) is the suite.
   generated parsers that build for 32-bit targets and WebAssembly.
   CHANGELOG.md has each release and the migration steps for every
   downstream repository.
-- **The suite is green on macOS (arm64) and Ubuntu 26.04 (x86_64):**
-  `./test/run` → 874 passed, 0 failed, 0 known; the generated code is byte
-  for byte the same on both.
+- **Unreleased on main:** `@highlight` (editor support from the grammar:
+  `nexus --highlight <target|all>`) and `nexus --describe` (the grammar as
+  JSON); CHANGELOG.md, "Unreleased".
+- **The suite is green on macOS (arm64):** `./test/run` → 957 passed, 0
+  failed, 0 known; the generated code is byte for byte the same on Ubuntu
+  26.04 (x86_64). The `highlight/*` checks need Vim with `+syntax`.
 - **Benchmarks** are in [test/bench/BASELINE.md](test/bench/BASELINE.md).
 
 Verify before you change anything:
@@ -44,7 +47,9 @@ installed 0.17; run `export PATH="$(mise where zig@0.17.0):$PATH"`.
    `test.conf` names the source commit. When one of them changes its
    grammar or lang module, re-sync its copy in its own commit
    ([AGENTS.md, "Downstream"](AGENTS.md#downstream)) and keep
-   `./test/run` green. Rig's next grammar change is a `<<%` operator.
+   `./test/run` green. Rig's next grammar change is a `<<%` operator, and
+   its `@highlight` with the sample of its highlighting; its re-sync adds
+   `grammars/rig/highlight/`.
 2. **Slash and nanoruby onto this Nexus.** Their repositories check in
    parsers from Nexus 0.10.3; their grammars and lang modules for this Nexus are
    `grammars/slash` and `grammars/ruby` here. `test/diff` compares the
