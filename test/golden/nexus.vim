@@ -36,7 +36,7 @@ syn match nexusOperator "\v→|\-\>|\=\>"
 syn match nexusType "\v[A-Z][0-9A-Z_a-z]*"
 syn match nexusLabel "\v[_a-z][0-9A-Z_a-z]*%(\:)@="
 syn match nexusFunction "\v^[_a-z][0-9A-Z_a-z]*%([\x09 ]*\!=[\x09 ]*\=)@="
-syn match nexusKeyword "\v^tokens|state|after%([0-9A-Z_a-z])@!"
+syn match nexusKeyword "\v^%(tokens|state|after)%([0-9A-Z_a-z])@!"
 syn match nexusKeyword "\v\@[a-z]+"
 
 hi def link nexusKeyword Keyword

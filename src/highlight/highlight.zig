@@ -1,12 +1,12 @@
 //! highlight.zig: the `@highlight` directive, read against the lexer spec.
 //!
 //! Each line of the block is a metadata line (`language "Rig"`,
-//! `scope-name source.rig`, ...) or an entry, `SCOPE text`: a list of
-//! literals, token names and `@keywords` groups, or one pattern (with
-//! `scope:( ... )` captures at its top level), followed by contexts
-//! (`after P`, `not after P`, `before P`, `not before P`, `line-start`,
-//! `line-end`)
-//! and `within TOKEN`. `analyze` checks every line (each mistake is a
+//! `scope-name source.rig`, `word-chars [A-Za-z0-9_]`, ...) or an entry,
+//! `SCOPE text`: a list of literals, token names and `@keywords` groups,
+//! or one pattern (with `scope:( ... )` captures at its top level),
+//! followed by contexts (`after P`, `not after P`, `before P`,
+//! `not before P`, `line-start`, `line-end`), which bind to the whole
+//! entry, and `within TOKEN`. `analyze` checks every line (each mistake is a
 //! located error) and orders what the editor files match: `Highlight.items`
 //! (emit.zig writes them in each format).
 //!
@@ -98,6 +98,9 @@ pub const Highlight = struct {
     /// lines that outdent themselves.
     indent: ?Pattern = null,
     dedent: ?Pattern = null,
+    /// The characters of words: a literal that starts or ends with one
+    /// does not match next to another.
+    wordChars: regex.ByteSet = render.defaultWordChars,
     /// The entries as written.
     entries: []const Entry,
     /// What the editor files match outside every region, first to last.
@@ -221,6 +224,8 @@ const Analyzer = struct {
     patterns: []const regex.Pattern = &.{},
     /// The line being read: offsets into its text locate errors.
     line: grammar.HighlightLines.Line = undefined,
+    /// `word-chars`, or the default.
+    wordChars: regex.ByteSet = render.defaultWordChars,
 
     const Built = struct {
         entry: usize,
@@ -284,6 +289,7 @@ const Analyzer = struct {
             .blockComment = meta.blockComment,
             .indent = meta.indent,
             .dedent = meta.dedent,
+            .wordChars = self.wordChars,
             .entries = try self.entries.toOwnedSlice(self.allocator),
             .items = items,
         };
@@ -292,16 +298,16 @@ const Analyzer = struct {
     // --- Metadata ---------------------------------------------------------
 
     const scopeList = "keyword, keyword.control, keyword.operator, constant, constant.numeric, constant.symbol, string, string.escape, comment, operator, punctuation, type, function, function.builtin, label, storage.modifier, variable.parameter, variable.special, invalid";
-    const metaList = "language, scope-name, extensions, line-comment, block-comment, indent, dedent";
+    const metaList = "language, scope-name, extensions, line-comment, block-comment, indent, dedent, word-chars";
 
-    const MetaKey = enum { language, scope_name, extensions, line_comment, block_comment, indent, dedent };
+    const MetaKey = enum { language, scope_name, extensions, line_comment, block_comment, indent, dedent, word_chars };
 
     fn metaKey(text: []const u8) ?MetaKey {
         const keys = [_]struct { []const u8, MetaKey }{
             .{ "language", .language },           .{ "scope-name", .scope_name },
             .{ "extensions", .extensions },       .{ "line-comment", .line_comment },
             .{ "block-comment", .block_comment }, .{ "indent", .indent },
-            .{ "dedent", .dedent },
+            .{ "dedent", .dedent },               .{ "word-chars", .word_chars },
         };
         for (keys) |k| if (std.mem.eql(u8, k[0], text)) return k[1];
         return null;
@@ -334,6 +340,15 @@ const Analyzer = struct {
                     meta.dedent = p;
                     meta.dedentPos = line.keyPos;
                 }
+                return;
+            },
+            .word_chars => {
+                const node = try self.parsePattern(line.text, 0);
+                if (node.* != .set)
+                    return self.fail(self.at(0), "`word-chars` takes one character class: word-chars [A-Za-z0-9_]", .{});
+                if (render.checkEditor(.{ .node = node })) |problem|
+                    return self.fail(self.at(0), "this pattern has no editor form: it matches {s}", .{problem});
+                self.wordChars = node.set;
                 return;
             },
             else => {},
@@ -983,7 +998,7 @@ const Analyzer = struct {
                     changed = false;
                     for (lits.items, 0..) |a, x| {
                         if (!batch[x]) continue;
-                        for (lits.items, 0..) |b, y| if (!placed[y] and !batch[y] and prefixOf(a.lit, b.lit)) {
+                        for (lits.items, 0..) |b, y| if (!placed[y] and !batch[y] and self.prefixOf(a.lit, b.lit)) {
                             batch[x] = false;
                             changed = true;
                             break;
@@ -1062,8 +1077,8 @@ const Analyzer = struct {
     /// spelling of `a` is a proper prefix of `b` (ASCII case aside), and
     /// not both are words (a word's boundary keeps it out of a longer
     /// word).
-    fn prefixOf(a: render.Literal, b: render.Literal) bool {
-        if (allWord(a.bytes) and allWord(b.bytes) and a.bounded) return false;
+    fn prefixOf(self: *const Analyzer, a: render.Literal, b: render.Literal) bool {
+        if (self.allWord(a.bytes) and self.allWord(b.bytes) and a.bounded) return false;
         var k = a.min;
         while (k <= a.bytes.len) : (k += 1) {
             if (k < b.bytes.len and std.ascii.eqlIgnoreCase(a.bytes[0..k], b.bytes[0..k])) return true;
@@ -1071,8 +1086,8 @@ const Analyzer = struct {
         return false;
     }
 
-    fn allWord(text: []const u8) bool {
-        for (text) |c| if (!render.isWordByte(c)) return false;
+    fn allWord(self: *const Analyzer, text: []const u8) bool {
+        for (text) |c| if (!self.wordChars.has(c)) return false;
         return true;
     }
 

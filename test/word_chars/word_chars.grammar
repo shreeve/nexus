@@ -1,0 +1,68 @@
+# word_chars.grammar: Mint, a small M-like language whose @highlight sets
+# its word characters (`word-chars [%A-Za-z0-9]`: `_` is an operator, so
+# a literal touches it freely, and `%` is part of a name) and gives
+# contexts to entries with several targets: a caseless @keywords group
+# preceded by one context and not followed by another, a second group
+# between two, and a pattern whose top-level alternation follows
+# line-start. The samples in highlight/ are coloured by its TextMate
+# grammar, its highlight.js definition and its Vim syntax file
+# (test/lib/highlight).
+
+@lexer
+
+tokens
+    name, number, string, comment
+    concat, eq, plus, lt, not, dollar, lparen, rparen, comma, colon, dot
+    newline, eof, err
+
+';' [^\n]*                      → comment
+'"' ([^"\n] | '""')* '"'        → string
+[0-9]+                          → number
+[%A-Za-z] [A-Za-z0-9]*          → name
+'_'                             → concat
+'='                             → eq
+'+'                             → plus
+'<'                             → lt
+"'"                             → not
+'$'                             → dollar
+'('                             → lparen
+')'                             → rparen
+','                             → comma
+':'                             → colon
+'.'                             → dot
+'\n'                            → newline
+.                               → err
+
+@parser
+
+@keywords
+    cmd  caseless base 100  S[ET] W[RITE] I[F] E[LSE] Q[UIT] X[ECUTE] D[O]
+    fn   caseless base 200  E[XTRACT] L[ENGTH] P[IECE] D[ATA]
+
+@as NAME = [cmd!, fn!]
+
+@highlight
+    language            "Mint"
+    scope-name          source.mint
+    extensions          mint
+    line-comment        ";"
+    word-chars          [%A-Za-z0-9]
+
+    label               line-start ([%A-Za-z] [A-Za-z0-9]* | [0-9]+)
+    keyword.control     cmd before [ \t.] not after [^ \t:]
+    function.builtin    fn before '$' after '('
+
+    constant            "TRUE" "FALSE"
+    operator            "_" "=" "+" "<" "'"
+    punctuation         "(" ")" "," ":" "$" "."
+    constant.numeric    NUMBER
+    string              STRING
+    string.escape       '""' within STRING
+    comment             COMMENT
+
+program! = item*                → (program ...1)
+
+item     = NAME | NUMBER | STRING | COMMENT | CONCAT | EQ | PLUS | LT | NOT
+         | DOLLAR | LPAREN | RPAREN | COMMA | COLON | DOT | NEWLINE | ERR
+         | SET | WRITE | IF | ELSE | QUIT | XECUTE | DO
+         | EXTRACT | LENGTH | PIECE | DATA

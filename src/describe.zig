@@ -243,6 +243,8 @@ const Describer = struct {
         if (h.indent) |p| try json.string(w, try emit.patternText(self.allocator, p, .bytes)) else try w.writeAll("null");
         try w.writeAll(",\n    \"dedent\": ");
         if (h.dedent) |p| try json.string(w, try emit.patternText(self.allocator, p, .bytes)) else try w.writeAll("null");
+        try w.writeAll(",\n    \"word_chars\": ");
+        try json.string(w, try self.regexOf(&.{ .set = h.wordChars }));
         try w.writeAll(",\n    \"entries\": [");
         for (h.entries, 0..) |e, i| {
             try w.writeAll(if (i == 0) "\n      " else ",\n      ");

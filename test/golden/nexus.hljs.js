@@ -15,7 +15,7 @@ export default function (hljs) {
     "keywords": {},
     "contains": [
       {"scope": "keyword", "match": "@[a-z]+"},
-      {"scope": "keyword", "match": "^tokens|state|after(?![0-9A-Z_a-z])"},
+      {"scope": "keyword", "match": "^(?:tokens|state|after)(?![0-9A-Z_a-z])"},
       {"scope": "title.function", "match": "^[_a-z][0-9A-Z_a-z]*(?=[\\x09 ]*!?[\\x09 ]*=)"},
       {"scope": "symbol", "match": "[_a-z][0-9A-Z_a-z]*(?=:)"},
       {"scope": "type", "match": "[A-Z][0-9A-Z_a-z]*"},
