@@ -25,6 +25,13 @@
                               ^ keyword.control
                                  ^ punctuation
                                   ^ operator
+>  S Z="" W Z,!
+   ^ keyword.control
+      ^ operator
+       ^^ string
+          ^ keyword.control
+             ^ punctuation
+              ^ operator
 >  S X1=2,A=X1_1,%B=X1 ; names with digits and %
    ^ keyword.control
        ^ operator
