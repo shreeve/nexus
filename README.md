@@ -210,6 +210,36 @@ cells. [test/bench/BASELINE.md](test/bench/BASELINE.md) records generation
 time and lexing and parsing throughput (the MUMPS parser over all 24,704
 VistA routines, the Rig parser over a 4 MB file).
 
+## Editor support
+
+Add an `@highlight` section to the grammar
+([GRAMMAR.md, "Editor support"](docs/GRAMMAR.md#editor-support)), then
+write every editor file at once:
+
+```bash
+nexus --highlight all mylang.grammar editors
+```
+
+That writes `editors/vscode/syntaxes/mylang.tmLanguage.json`,
+`editors/vscode/language-configuration.json`,
+`editors/vim/syntax/mylang.vim` and `editors/highlightjs/mylang.js`
+(the name comes from the grammar's `scope-name`). Then:
+
+- **VS Code:** add an `editors/vscode/package.json` naming the language,
+  its extensions and those two files (Rig's
+  [`editors/vscode`](https://github.com/shreeve/rig/tree/main/editors/vscode)
+  is a complete example), and package it with
+  `npx @vscode/vsce package`, or link the directory into
+  `~/.vscode/extensions/` while developing.
+- **Vim:** add `editors/vim` to `runtimepath`, with an
+  `ftdetect/mylang.vim` holding
+  `autocmd BufNewFile,BufRead *.mylang setfiletype mylang`.
+- **highlight.js:** `import mylang from './editors/highlightjs/mylang.js'`
+  and `hljs.registerLanguage('mylang', mylang)`.
+
+`nexus --describe mylang.grammar` writes the grammar's tokens, rules,
+keyword tables and schema as JSON for other tools.
+
 ## Install
 
 Nexus and the parsers it generates need [Zig 0.17](https://ziglang.org/download/).
