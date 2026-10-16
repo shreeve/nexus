@@ -403,7 +403,7 @@ check_highlight() {
         (cd "$(dirname "$GRAMMAR")" && with_timeout "$TIMEOUT" "$NEXUS" --highlight "$t" "$(basename "$GRAMMAR")" "$out/$t") >>"$LOG" 2>&1 ||
             { REASON="--highlight $t failed"; return 1; }
     done
-    local args=(docs/GRAMMAR.md "$out/textmate" "$out/highlightjs" "$out/vim" "$sample" "${sample%.*}.hl")
+    local args=(docs/GRAMMAR.md "$out/textmate" "$out/highlightjs" "$out/vim" "$sample" "$sample.hl")
     [[ -n "$UPDATE" ]] && args=(--update "${args[@]}")
     local said
     said=$(with_timeout 300 python3 "$LIB/highlight" "${args[@]}" 2>&1)
