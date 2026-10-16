@@ -99,7 +99,8 @@ The suites under `test/`:
 | `lexer` | every @lexer-section construct; tokens printed with their `pre` | hand-written |
 | `long_tokens` | `@longtokens` with `@schema`, `@trivia`, `@repair`, `@keywords` and a lang Lexer that reads ahead and joins tokens; its `long_tokens.zig` tests tokens of 65,534 bytes to 1 MB built in memory: categories, ends, text, spans, facts, tolerant repairs, `error.TokenEndUnknown`, and (in child processes) the panics of the helpers that have no parser | hand-written, short |
 | `semantic` | a schema-mode grammar using every semantic feature; its `semantic.zig` tests the generated API | hand-written |
-| `highlight` | Lamp, whose `@highlight` uses every construct and scope: metadata, literals and a caseless `@keywords` group, tokens, captures, every context, `line-start`, `line-end`, three regions | `highlight/sample.lamp`, coloured |
+| `highlight` | Lamp, whose `@highlight` uses every construct and scope: metadata, literals and a caseless `@keywords` group, tokens, captures, every context (around several literals and a top-level alternation too), `line-start`, `line-end`, three regions | `highlight/sample.lamp`, coloured |
+| `word_chars` | Mint, a small M-like language whose `@highlight` sets `word-chars [%A-Za-z0-9]` (`_` an operator, `%` part of a name) and puts contexts around `@keywords` groups and a `line-start` alternation | `highlight/sample.mint`, coloured |
 | `spans` | the Ruby grammar generated with `--spans` (node spans without a schema) | the Ruby cases |
 | `keywords` | `@keywords` tables: caseless abbreviations, exact words, aliases, a base id, catch-all terminals, quoted words and terminal names; its `keywords.zig` tests the generated lookups | hand-written |
 | `nexus` | `nexus.grammar` with `src/frontend/lang.zig` (the self-hosted frontend) | hand-written `@parser` sections covering every construct; `highlight/sample.txt`, coloured |

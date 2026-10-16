@@ -1,0 +1,86 @@
+> START ; Mint: commands, functions, labels and words
+  ^^^^^ label
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+>  S X=1,Y=TRUE_1 W X_"s",2_Y
+   ^ keyword.control
+      ^ operator
+       ^ constant.numeric
+        ^ punctuation
+          ^ operator
+           ^^^^ constant
+               ^ operator
+                ^ constant.numeric
+                  ^ keyword.control
+                     ^ operator
+                      ^^^ string
+                         ^ punctuation
+                          ^ constant.numeric
+                           ^ operator
+>  S S=S+1,L=$L(X),E=2_E I 'E Q
+   ^ keyword.control
+      ^ operator
+        ^ operator
+         ^ constant.numeric
+          ^ punctuation
+            ^ operator
+             ^ punctuation
+              ^ function.builtin
+               ^ punctuation
+                 ^^ punctuation
+                    ^ operator
+                     ^ constant.numeric
+                      ^ operator
+                         ^ keyword.control
+                           ^ operator
+                              ^ keyword.control
+>  I X=1 W "a ""b""" E  D EN
+   ^ keyword.control
+      ^ operator
+       ^ constant.numeric
+         ^ keyword.control
+           ^^^ string
+              ^^ string.escape
+                ^ string
+                 ^^ string.escape
+                   ^ string
+                     ^ keyword.control
+                        ^ keyword.control
+> EN(S,W) Q:S<W  X "W 1"
+  ^^ label
+    ^ punctuation
+      ^ punctuation
+        ^ punctuation
+          ^ keyword.control
+           ^ punctuation
+             ^ operator
+                 ^ keyword.control
+                   ^^^^^ string
+> 10 S X=10,D=$D(X),Y=$E(X,1,2)
+  ^^ label
+     ^ keyword.control
+        ^ operator
+         ^^ constant.numeric
+           ^ punctuation
+             ^ operator
+              ^ punctuation
+               ^ function.builtin
+                ^ punctuation
+                  ^^ punctuation
+                     ^ operator
+                      ^ punctuation
+                       ^ function.builtin
+                        ^ punctuation
+                          ^ punctuation
+                           ^ constant.numeric
+                            ^ punctuation
+                             ^ constant.numeric
+                              ^ punctuation
+> %Z Q TRUE%
+  ^^ label
+     ^ keyword.control
+>  . W FALSE,X ; a comment
+   ^ punctuation
+     ^ keyword.control
+       ^^^^^ constant
+            ^ punctuation
+               ^^^^^^^^^^^ comment

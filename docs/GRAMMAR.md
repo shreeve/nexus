@@ -1330,10 +1330,11 @@ separated:
 | `cmd` | every word of the `@keywords` group, its abbreviations, in either case when `caseless` |
 
 or one pattern, in the syntax of the @lexer section (without `/`): any
-other text, such as `[a-z]+ '!'`. A literal that ends in a letter, digit
-or `_` does not match where another one follows (`"if"` leaves `iffy`
-alone), nor one that starts with one where one precedes; a pattern
-matches as written.
+other text, such as `[a-z]+ '!'`. A literal that ends in a word
+character (a letter, digit or `_`, unless `word-chars` says otherwise)
+does not match where another one follows (`"if"` leaves `iffy` alone),
+nor one that starts with one where one precedes; a pattern matches as
+written.
 
 A pattern may tag parts of itself with scopes: `SCOPE:( pattern )`, at
 its top level, names the text the parenthesized pattern matches. The
@@ -1343,7 +1344,9 @@ name as `function`. A pattern with captures is a sequence: each part must
 match something, and an alternation goes inside `( )`.
 
 Contexts follow the targets and restrict where they match; none of them
-is part of the match:
+is part of the match. They bind to the whole entry: to each of its
+literals, words and tokens, and to all of its pattern (`line-start ([a-z]+
+| [0-9]+)` matches a number only at the start of a line):
 
 | Context | The match |
 |---|---|
@@ -1394,6 +1397,12 @@ earlier rule matches first, and `invalid` naming a token spelled `**`
 loses to the literal `"*"`. Where that matters, list the longer text as
 a literal or a pattern, which come first.
 
+An editor's highlighter has no lexer state: guards are not tested, and a
+guarded rule is tried wherever its pattern matches, in its place in the
+lexer order. So a guarded rule earlier in the order can cut an unguarded
+token short (a pattern-mode `[0-9]+` ahead of the number rule splits
+`1E3`); colour such text with a pattern entry, which comes first.
+
 ### Metadata
 
 | Line | Meaning |
@@ -1404,6 +1413,7 @@ a literal or a pattern, which come first.
 | `line-comment "#"` | VS Code's line comment |
 | `block-comment "/*" "*/"` | VS Code's block comment |
 | `indent P` / `dedent P` | VS Code's indentation rules: a line that matches `indent` indents the next line, one that matches `dedent` outdents itself. `P` is a pattern with contexts; the two go together |
+| `word-chars [A-Za-z0-9%]` | the characters of words, one character class: a literal that starts or ends with one does not match next to another. By default `[A-Za-z0-9_]` |
 
 ### Scopes
 
@@ -1492,7 +1502,8 @@ classes, with the class of the expected scope).
 
 Generation (and `nexus check`) rejects, each at its place: a word that
 is no scope or metadata key; a missing `language`, `scope-name` or
-`extensions`; a malformed or repeated metadata line; `indent` without
+`extensions`; a malformed or repeated metadata line (a `word-chars`
+that is not one character class with an editor form); `indent` without
 `dedent`; an unknown token or `@keywords` group; a literal no lexer rule
 matches whole; a token whose text no rule gives (a lang Lexer makes it,
 or it only rewinds); a target listed twice, or under two scopes; a
@@ -1511,7 +1522,8 @@ tools (editor extensions, language servers, documentation): its tokens,
 lexer rules, keywords and `@highlight`, with or without `@highlight`. It
 runs every check generation runs. Keys come in the order below and lists
 in the grammar's order, so a grammar gives the same bytes every run;
-`format` changes when the format does.
+`format` changes when a key goes or changes its meaning, not when one is
+added.
 
 | Key | Value |
 |---|---|
@@ -1525,7 +1537,7 @@ in the grammar's order, so a grammar gives the same bytes every run;
 | `after` | the `after` block's actions |
 | `keywords` | each `@keywords` group by name: `caseless`, `base`, `entries` sorted by word: `word` (upper-cased when caseless), `min` (the shortest accepted prefix), `id`, `terminal` (null for an alias) and `alias_of` (the aliased terminal, or null) |
 | `trivia` | the `@trivia` tokens |
-| `highlight` | null, or `language`, `scope_name`, `extensions`, `line_comment`, `block_comment`, `indent`, `dedent` (regexes), and `entries`: `line`, `scope`, `literals`, `tokens`, `groups`, `pattern` (as written, or null), `regex`, `captures` (the parts of a pattern with captures: `scope`, `captured`, `regex`), `line_start`, `line_end`, `contexts` (`kind`, `pattern`, `regex`) and `within` |
+| `highlight` | null, or `language`, `scope_name`, `extensions`, `line_comment`, `block_comment`, `indent`, `dedent` (regexes), `word_chars` (the class as a regex, the default when not given), and `entries`: `line`, `scope`, `literals`, `tokens`, `groups`, `pattern` (as written, or null), `regex`, `captures` (the parts of a pattern with captures: `scope`, `captured`, `regex`), `line_start`, `line_end`, `contexts` (`kind`, `pattern`, `regex`) and `within` |
 | `schema` | null, or `kinds`: `name`, `roles` (`name`, `type` as written, `optional`, `rest`), `side`, `wrapper` |
 
 `./test/run` pins the description of every grammar in the repository

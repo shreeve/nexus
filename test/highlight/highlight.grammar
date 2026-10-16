@@ -2,9 +2,9 @@
 # construct: metadata, each scope, literals (longest first, word
 # boundaries), a caseless @keywords group with abbreviations and an alias,
 # tokens (lexer order, trailing context), patterns with captures, every
-# context, line-start and line-end, and regions with entries within them.
-# The samples in highlight/ are coloured by its TextMate grammar, its
-# highlight.js definition and its Vim syntax file (test/lib/highlight).
+# context (around several literals and an alternation too), line-start,
+# line-end, and regions with entries within them. Its samples are coloured
+# by its TextMate, highlight.js and Vim files (test/lib/highlight).
 
 @lexer
 
@@ -82,6 +82,7 @@ tokens
     keyword             "fun" [ \t]+ function:([a-z_] [A-Za-z0-9_]*)
     keyword.control     DIRECTIVE line-start
     operator            '\\' line-end
+    label               line-start ([a-z_] [a-z0-9_]* | [0-9]+) after ':'
     constant            [A-Z] [A-Z0-9_]+ not after [A-Za-z0-9_]
     type                [a-z_] [a-z0-9_]* before "-> "
     label               ':' [a-z_]+ after [ \t]* '{'
@@ -93,7 +94,7 @@ tokens
     keyword             "fun" stmt
     keyword.control     "if" "else" "while" "return"
     keyword.operator    "and" "or" "not"
-    constant            "true" "false" "nil"
+    constant            "true" "false" "nil" not before '.' not after '('
     storage.modifier    "pub"
     variable.special    "self"
     operator            "+" "-" "*" "<" "<=" "<<" "<<=" "==" "=" "->" "!" "?"

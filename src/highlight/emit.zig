@@ -103,7 +103,9 @@ pub fn patternText(allocator: Allocator, p: highlight.Pattern, dialect: Dialect)
 const Pieces = union(enum) { none, groups, only: usize };
 
 /// `^`, the lookbehinds, the pieces, the lookaheads, `$` (`^` and the
-/// lookbehinds belong to the first piece).
+/// lookbehinds belong to the first piece). The contexts apply to the whole
+/// match: a piece is an element of a sequence (an alternation grouped)
+/// unless it stands alone.
 fn writeMatch(r: *render.Renderer, lineStart: bool, lineEnd: bool, looks: []const highlight.Context, pieces: []const highlight.Piece, how: Pieces) render.Error!void {
     const from = switch (how) {
         .only => |n| n,
@@ -113,8 +115,9 @@ fn writeMatch(r: *render.Renderer, lineStart: bool, lineEnd: bool, looks: []cons
         if (lineStart) try r.lineStart();
         for (looks) |l| if (l.kind == .before or l.kind == .not_before) try r.look(l.kind, l.node);
     }
+    const alone = pieces.len == 1 and !lineStart and !lineEnd and looks.len == 0;
     for (pieces[from..], from..) |p, i| switch (how) {
-        .none => try r.rx(if (pieces.len == 1) p.rx else .{ .seq = &.{p.rx} }),
+        .none => try r.rx(if (alone) p.rx else .{ .seq = &.{p.rx} }),
         .groups => try r.capture(p.rx),
         .only => {
             try r.rx(.{ .seq = &.{p.rx} });
@@ -142,7 +145,7 @@ const Emitter = struct {
 
     fn matchText(self: *Emitter, m: Match, dialect: Dialect, how: Pieces) Error![]const u8 {
         var out: Writer.Allocating = .init(self.allocator);
-        var r: render.Renderer = .{ .w = &out.writer, .dialect = dialect };
+        var r: render.Renderer = .{ .w = &out.writer, .dialect = dialect, .word = self.h.wordChars };
         writeMatch(&r, m.lineStart, m.lineEnd, m.looks, m.pieces, how) catch |err| switch (err) {
             error.WriteFailed => return error.WriteFailed,
             error.Unrenderable => unreachable,

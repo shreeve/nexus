@@ -1,0 +1,17 @@
+# A `word-chars` class with some but not all bytes from 0x80 has no editor
+# form: those bytes are parts of UTF-8 characters.
+# error: this pattern has no editor form: it matches a class that holds some but not all bytes from 0x80
+@lexer
+tokens
+    word, eof, err
+[a-z]+ → word
+'\n' → skip, skip
+. → err
+@parser
+@highlight
+    language "T"
+    scope-name source.t
+    extensions t
+    word-chars [a-z\x80-\x9f]
+    keyword "if"
+list! = WORD*

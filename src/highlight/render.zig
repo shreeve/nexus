@@ -46,8 +46,8 @@ pub const Rx = union(enum) {
 /// A literal word of a highlight target: `bytes[0..n]` for
 /// `min <= n <= bytes.len` (a `@keywords` abbreviation; `min == bytes.len`
 /// for one word), ASCII letters in either case when `caseless`. When
-/// `bounded`, an end that is a word character ([0-9A-Za-z_]) may not touch
-/// another word character.
+/// `bounded`, an end that is a word character (`Renderer.word`) may not
+/// touch another word character.
 pub const Literal = struct {
     bytes: []const u8,
     min: usize,
@@ -73,9 +73,20 @@ pub const Look = enum {
 
 pub const Error = error{ WriteFailed, Unrenderable };
 
+/// The word characters when `@highlight` gives no `word-chars`.
+pub const defaultWordChars: ByteSet = blk: {
+    var s = ByteSet.range('0', '9');
+    s.addRange('A', 'Z');
+    s.addRange('a', 'z');
+    s.add('_');
+    break :blk s;
+};
+
 pub const Renderer = struct {
     w: *Writer,
     dialect: Dialect,
+    /// The word characters a bounded literal's ends may not touch.
+    word: ByteSet = defaultWordChars,
     /// Why the last `error.Unrenderable` was returned.
     problem: []const u8 = "",
 
@@ -157,8 +168,8 @@ pub const Renderer = struct {
     }
 
     fn literal(self: *Renderer, l: Literal, prec: Prec) Error!void {
-        const before = l.bounded and isWordByte(l.bytes[0]);
-        const after = l.bounded and isWordByte(l.bytes[l.bytes.len - 1]);
+        const before = l.bounded and self.word.has(l.bytes[0]);
+        const after = l.bounded and self.word.has(l.bytes[l.bytes.len - 1]);
         const parts = @as(usize, @intFromBool(before)) + @intFromBool(after) + l.bytes.len;
         const group = prec == .atom and parts > 1;
         if (group) try self.open();
@@ -176,8 +187,20 @@ pub const Renderer = struct {
 
     /// A word character may not precede (`not_before`) or follow the match.
     fn wordLook(self: *Renderer, kind: Look) Error!void {
-        if (self.dialect == .vim) return self.w.writeAll(if (kind == .not_before) "\\w@<!" else "\\w@!");
-        try self.w.writeAll(if (kind == .not_before) "(?<![0-9A-Za-z_])" else "(?![0-9A-Za-z_])");
+        if (self.dialect == .vim) {
+            try self.wordClass();
+            return self.w.writeAll(if (kind == .not_before) "@<!" else "@!");
+        }
+        try self.w.writeAll(if (kind == .not_before) "(?<!" else "(?!");
+        try self.wordClass();
+        try self.w.writeByte(')');
+    }
+
+    /// The word characters: the default as `[0-9A-Za-z_]` (Vim's `\w`),
+    /// any other set as a class.
+    fn wordClass(self: *Renderer) Error!void {
+        if (!self.word.eql(defaultWordChars)) return self.set(self.word);
+        try self.w.writeAll(if (self.dialect == .vim) "\\w" else "[0-9A-Za-z_]");
     }
 
     fn nodeAt(self: *Renderer, n: *const Node, prec: Prec) Error!void {
@@ -346,10 +369,6 @@ fn only(n: *const Node) ?u8 {
     return if (n.* == .set) n.set.only() else null;
 }
 
-pub fn isWordByte(b: u8) bool {
-    return std.ascii.isAlphanumeric(b) or b == '_';
-}
-
 /// Why `r` has no editor form, or null when it has one.
 pub fn checkEditor(r: Rx) ?[]const u8 {
     var buf: [256]u8 = undefined;
@@ -458,6 +477,21 @@ test "render: literals with boundaries and abbreviations" {
     var r: Renderer = .{ .w = &w, .dialect = .oniguruma };
     try r.rx(.{ .literal = .{ .bytes = "HANG", .min = 1, .caseless = true, .bounded = true } });
     try testing.expectEqualStrings("(?<![0-9A-Za-z_])[Hh](?:[Aa](?:[Nn](?:[Gg])?)?)?(?![0-9A-Za-z_])", w.buffered());
+}
+
+test "render: boundaries of other word characters" {
+    var buf: [128]u8 = undefined;
+    var word = ByteSet.range('A', 'Z');
+    word.add('%');
+    const rx: Rx = .{ .alt = &.{ .{ .literal = .{ .bytes = "_", .min = 1, .bounded = true } }, .{ .literal = .{ .bytes = "IF", .min = 1, .bounded = true } } } };
+    var w: Writer = .fixed(&buf);
+    var r: Renderer = .{ .w = &w, .dialect = .oniguruma, .word = word };
+    try r.rx(rx);
+    try testing.expectEqualStrings("_|(?<![%A-Z])I(?:F)?(?![%A-Z])", w.buffered());
+    w = .fixed(&buf);
+    r = .{ .w = &w, .dialect = .vim, .word = word };
+    try r.rx(rx);
+    try testing.expectEqualStrings("_|[%A-Z]@<!I%(F)=[%A-Z]@!", w.buffered());
 }
 
 test "render: character lengths" {

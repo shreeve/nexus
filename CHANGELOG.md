@@ -38,8 +38,28 @@
   each grammar's editor files by what they colour (`test/lib/highlight`:
   reference TextMate and highlight.js tokenizers, and Vim itself, which
   the suite now needs) and pins `--describe` for every grammar.
+- `word-chars C`, an optional `@highlight` metadata line: the characters
+  of words, one character class (`word-chars [A-Za-z0-9%]`), by default
+  `[A-Za-z0-9_]`. A literal that starts or ends with one does not match
+  next to another, in every editor file; `--describe` gives it as
+  `highlight.word_chars` (`"format"` stays 1: the key is new).
+
+### Fixed
+
+- A context on an entry with several targets (literals, a `@keywords`
+  group) binds to every target: the editor files group the alternation,
+  `(?<=…)(?:a|b|…)(?!…)`, where it bound only the first and the last.
+- A pattern's top-level alternation stays whole when a context, a token's
+  trailing context, `line-start` or `line-end` stands around it:
+  `line-start ([a-z]+ | [0-9]+)` is `^(?:[a-z]+|[0-9]+)`, where the
+  number matched anywhere.
 
 Additive: no migration required. Downstream:
+- Rig, em, nexis: rewrite `editors/` with `nexus --highlight all`. Rig's
+  files change in one entry, `("called" | "rarely" | "inline") after
+  …`, which coloured `called` and `rarely` anywhere; its sample colours
+  as before. em: add `word-chars [A-Za-z0-9%]` to `mumps.grammar`'s
+  `@highlight`, so that `_` is an operator next to names and numbers.
 - Rig: add `@highlight` to `rig.grammar` (the sample of every token and
   context Rig needs colours as intended with entries of every kind:
   captures for `fun`/`sub` names, `after`/`not before` for the contextual

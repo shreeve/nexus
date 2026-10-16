@@ -115,6 +115,7 @@
     "block_comment": null,
     "indent": null,
     "dedent": null,
+    "word_chars": "[0-9A-Z_a-z]",
     "entries": [
       {"line": 169, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "'@' [a-z]+", "regex": "@[a-z]+", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
       {"line": 170, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "(\"tokens\" | \"state\" | \"after\")", "regex": "tokens|state|after", "captures": [], "line_start": true, "line_end": false, "contexts": [{"kind": "not after", "pattern": "[A-Za-z0-9_]", "regex": "[0-9A-Z_a-z]"}], "within": null},

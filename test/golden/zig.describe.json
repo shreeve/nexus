@@ -281,6 +281,7 @@
     "block_comment": null,
     "indent": "\\{[\\x09 ]*$",
     "dedent": "^[\\x09 ]*\\}",
+    "word_chars": "[0-9A-Z_a-z]",
     "entries": [
       {"line": 328, "scope": "comment", "literals": [], "tokens": [], "groups": [], "pattern": "\"//\" [^\\n]*", "regex": "//[^\\x0a]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
       {"line": 329, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "\"fn\" [ \\t]+ function:([A-Za-z_] [A-Za-z0-9_]*)", "regex": "(fn[\\x09 ]+)([A-Z_a-z][0-9A-Z_a-z]*)", "captures": [{"scope": "keyword", "captured": false, "regex": "fn[\\x09 ]+"}, {"scope": "function", "captured": true, "regex": "[A-Z_a-z][0-9A-Z_a-z]*"}], "line_start": false, "line_end": false, "contexts": [], "within": null},
