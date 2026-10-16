@@ -1,0 +1,10 @@
+{
+  "comments": {"lineComment": "#"},
+  "brackets": [["(", ")"], ["[", "]"]],
+  "autoClosingPairs": [{"open": "(", "close": ")"}, {"open": "[", "close": "]"}, {"open": "\"", "close": "\"", "notIn": ["string", "comment"]}, {"open": "'", "close": "'", "notIn": ["string", "comment"]}],
+  "surroundingPairs": [["(", ")"], ["[", "]"], ["\"", "\""], ["'", "'"]],
+  "indentationRules": {
+    "increaseIndentPattern": "^[\\x09 ]*(?:pub[\\x09 ]+)?(?:called|rarely|inline|fun|sub|obj|enum|if|else|while|for|match|test|raw|extern|defer|errdefer)(?:[\\x09 (].*)?$",
+    "decreaseIndentPattern": "^[\\x09 ]*else"
+  }
+}

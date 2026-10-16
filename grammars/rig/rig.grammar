@@ -480,6 +480,50 @@ tokens
     pattern: "a pattern", arm: "a match arm", params: "a parameter list"
     unary: "an operand", step: "an assignment or a call"
 
+# How editors colour Rig: `nexus --highlight all rig.grammar editors`
+# writes editors/ from this (editors/README.md). Words the lang module
+# classifies by place (`new`, `obj`, `of`, the markers) and the sigils,
+# which it tells apart by spacing, are patterns with context here.
+@highlight
+    language            "Rig"
+    scope-name          source.rig
+    extensions          rig
+    line-comment        "#"
+    indent              line-start [ \t]* ("pub" [ \t]+)? ("called" | "rarely" | "inline" | "fun" | "sub" | "obj" | "enum" | "if" | "else" | "while" | "for" | "match" | "test" | "raw" | "extern" | "defer" | "errdefer") ([ \t(] [^\n]*)? line-end
+    dedent              line-start [ \t]* "else"
+
+    keyword             ("fun" | "sub") [ \t]+ function:([A-Za-z_] [A-Za-z0-9_]*)
+    keyword             ("obj" | "enum" | "type") [ \t]+ type:([A-Za-z_] [A-Za-z0-9_]*)
+    keyword             ("called" | "rarely" | "inline") after [ \t]+ ("fun" | "sub")
+    keyword             line-start [ \t]* "new" after [ \t]+ [A-Za-z_]
+    keyword             "of" before ' ' after ' '
+    keyword.control     ("break" | "continue") [ \t]+ label:(':' [A-Za-z_] [A-Za-z0-9_]*)
+    label               ':' [A-Za-z_] [A-Za-z0-9_]* after [ \t]+ ("for" | "while" | "match" | "raw")
+    function.builtin    '@' [a-z_]+ after '('
+    storage.modifier    [<?!+^*~] not before [A-Za-z0-9_)\]] after [A-Za-z_(\[<]
+    storage.modifier    [!?] before [A-Za-z0-9_)\]] not after [A-Za-z0-9_(\[=?]
+    variable.parameter  [A-Za-z_] [A-Za-z0-9_]* after ':' not before [A-Za-z0-9_.]
+    type                [A-Z] [A-Za-z0-9_]* not before [A-Za-z0-9_]
+
+    keyword.control     "if" "else" "while" "for" "in" "match" "return" "break" "continue"
+                        "pass" "defer" "errdefer" "catch" "try" "await" "yield"
+    keyword             "fun" "sub" "enum" "type" "use" "pub" "const" "extern" "zig" "test"
+                        "raw" "drop" "error" "as" "async" "impl" "trait" "when" "where"
+    keyword             ctx
+    keyword.operator    "and" "or" "not"
+    constant            "true" "false" "none"
+    variable.special    "self"
+    constant.numeric    INTEGER REAL
+    string              STRING_DQ STRING_SQ
+    string.escape       '\\' [^\x00-\x1f\x7f] within STRING_DQ
+    string.escape       "''" within STRING_SQ
+    comment             COMMENT
+    invalid             "**" "&&" "=!"
+    operator            "+" "-" "*" "/" "%" "+%" "-%" "*%" "+|" "-|" "==" "!=" "<" ">" "<=" ">="
+                        "!" "?" "??" "|" "&" "^" "~" "<<" "<<%" ">>" "=" "+=" "-=" "*=" "/=" "%="
+                        "&=" "|=" "^=" "<<=" "<<%=" ">>=" "+%=" "-%=" "*%=" "+|=" "-|=" "->" "=>"
+    punctuation         "(" ")" "[" "]" "," ":" "." ".." "@"
+
 # `unique`, `from` and `static` lex as names, and the parser reads one as
 # a keyword where its state takes the keyword: `unique` after an obj
 # header's name or type parameters (`obj Random unique`), `from` after

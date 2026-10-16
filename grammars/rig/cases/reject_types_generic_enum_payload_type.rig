@@ -3,7 +3,7 @@
 
 enum Option[T]
   some(value: T)
-  none
+  nothing
 
 sub main()
   o: Option[Int] = .some(value: "hello")

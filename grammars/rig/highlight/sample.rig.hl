@@ -1,0 +1,824 @@
+> # Every token and context of Rig's highlighting, for the editor grammars'
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> # goldens. It is read, not run: the last section holds what Rig rejects.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> 
+> use std.hash
+  ^^^ keyword
+         ^ punctuation
+> use std.text
+  ^^^ keyword
+         ^ punctuation
+> 
+> extern zig "math.zig"
+  ^^^^^^ keyword
+         ^^^ keyword
+             ^^^^^^^^^^ string
+>   pub fun sqrt(x: Float) -> Float
+    ^^^ keyword
+        ^^^^ keyword
+            ^^^^ function
+                ^ punctuation
+                 ^ variable.parameter
+                  ^ punctuation
+                    ^^^^^ type
+                         ^ punctuation
+                           ^^ operator
+                              ^^^^^ type
+> 
+> type Byte = U8
+  ^^^^^ keyword
+       ^^^^ type
+            ^ operator
+              ^^ type
+> const LIMIT = 1_000
+  ^^^^^ keyword
+        ^^^^^ type
+              ^ operator
+                ^^^^^ constant.numeric
+> pub PI = 3.141_592
+  ^^^ keyword
+      ^^ type
+         ^ operator
+           ^^^^^^^^^ constant.numeric
+> 
+> enum Shape
+  ^^^^^ keyword
+       ^^^^^ type
+>   circle(radius: Int)
+          ^ punctuation
+           ^^^^^^ variable.parameter
+                 ^ punctuation
+                   ^^^ type
+                      ^ punctuation
+>   rect(w: Int, h: Int)
+        ^ punctuation
+         ^ variable.parameter
+          ^ punctuation
+            ^^^ type
+               ^ punctuation
+                 ^ variable.parameter
+                  ^ punctuation
+                    ^^^ type
+                       ^ punctuation
+>   point
+> 
+> enum Status
+  ^^^^^ keyword
+       ^^^^^^ type
+>   ok = 200
+       ^ operator
+         ^^^ constant.numeric
+>   missing = 404
+            ^ operator
+              ^^^ constant.numeric
+> 
+> obj Point
+  ^^^^ keyword
+      ^^^^^ type
+>   x: Int = 0
+    ^ variable.parameter
+     ^ punctuation
+       ^^^ type
+           ^ operator
+             ^ constant.numeric
+>   pub ?name: String = String("p")
+    ^^^ keyword
+        ^ storage.modifier
+         ^^^^ variable.parameter
+             ^ punctuation
+               ^^^^^^ type
+                      ^ operator
+                        ^^^^^^ type
+                              ^ punctuation
+                               ^^^ string
+                                  ^ punctuation
+> 
+>   fun norm(?self) -> Int
+    ^^^^ keyword
+        ^^^^ function
+            ^ punctuation
+             ^ storage.modifier
+              ^^^^ variable.special
+                  ^ punctuation
+                    ^^ operator
+                       ^^^ type
+>     self.x * self.x
+      ^^^^ variable.special
+          ^ punctuation
+             ^ operator
+               ^^^^ variable.special
+                   ^ punctuation
+> 
+>   sub shift(!self, by: Int)
+    ^^^^ keyword
+        ^^^^^ function
+             ^ punctuation
+              ^ storage.modifier
+               ^^^^ variable.special
+                   ^ punctuation
+                     ^^ variable.parameter
+                       ^ punctuation
+                         ^^^ type
+                            ^ punctuation
+>     self.x += by
+      ^^^^ variable.special
+          ^ punctuation
+             ^^ operator
+> 
+> obj Handle
+  ^^^^ keyword
+      ^^^^^^ type
+>   fd: Int
+    ^^ variable.parameter
+      ^ punctuation
+        ^^^ type
+> 
+>   sub drop(!self)
+    ^^^^ keyword
+        ^^^^ function
+            ^ punctuation
+             ^ storage.modifier
+              ^^^^ variable.special
+                  ^ punctuation
+>     print("closed", self.fd)
+           ^ punctuation
+            ^^^^^^^^ string
+                    ^ punctuation
+                      ^^^^ variable.special
+                          ^ punctuation
+                             ^ punctuation
+> 
+> obj Pair[T]
+  ^^^^ keyword
+      ^^^^ type
+          ^ punctuation
+           ^ type
+            ^ punctuation
+>   left: T
+    ^^^^ variable.parameter
+        ^ punctuation
+          ^ type
+>   right: T
+    ^^^^^ variable.parameter
+         ^ punctuation
+           ^ type
+> 
+>   fun first(?self) -> ?T from self
+    ^^^^ keyword
+        ^^^^^ function
+             ^ punctuation
+              ^ storage.modifier
+               ^^^^ variable.special
+                   ^ punctuation
+                     ^^ operator
+                        ^ storage.modifier
+                         ^ type
+                           ^^^^ keyword
+                                ^^^^ variable.special
+>     ?self.left
+      ^ storage.modifier
+       ^^^^ variable.special
+           ^ punctuation
+> 
+> called fun hot(n: Int) -> Int
+  ^^^^^^ keyword
+         ^^^^ keyword
+             ^^^ function
+                ^ punctuation
+                 ^ variable.parameter
+                  ^ punctuation
+                    ^^^ type
+                       ^ punctuation
+                         ^^ operator
+                            ^^^ type
+>   n *% 3 +% 1
+      ^^ operator
+         ^ constant.numeric
+           ^^ operator
+              ^ constant.numeric
+> 
+> inline fun twice(n: Int) -> Int
+  ^^^^^^ keyword
+         ^^^^ keyword
+             ^^^^^ function
+                  ^ punctuation
+                   ^ variable.parameter
+                    ^ punctuation
+                      ^^^ type
+                         ^ punctuation
+                           ^^ operator
+                              ^^^ type
+>   n * 2
+      ^ operator
+        ^ constant.numeric
+> 
+> rarely sub report(msg: ?String)
+  ^^^^^^ keyword
+         ^^^^ keyword
+             ^^^^^^ function
+                   ^ punctuation
+                    ^^^ variable.parameter
+                       ^ punctuation
+                         ^ storage.modifier
+                          ^^^^^^ type
+                                ^ punctuation
+>   print("error:", msg)
+         ^ punctuation
+          ^^^^^^^^ string
+                  ^ punctuation
+                       ^ punctuation
+> 
+> fun numbers() -> Int
+  ^^^^ keyword
+      ^^^^^^^ function
+             ^^ punctuation
+                ^^ operator
+                   ^^^ type
+>   a = 0xff + 0b1010 + 0o17 + 42
+      ^ operator
+        ^^^^ constant.numeric
+             ^ operator
+               ^^^^^^ constant.numeric
+                      ^ operator
+                        ^^^^ constant.numeric
+                             ^ operator
+                               ^^ constant.numeric
+>   b = 1.0e10 + .5 + 2e-3
+      ^ operator
+        ^^^^^^ constant.numeric
+               ^ operator
+                 ^ punctuation
+                  ^ constant.numeric
+                    ^ operator
+                      ^^^^ constant.numeric
+>   c = a -% 1 *% 2
+      ^ operator
+          ^^ operator
+             ^ constant.numeric
+               ^^ operator
+                  ^ constant.numeric
+>   d = a +| 1 -| 2
+      ^ operator
+          ^^ operator
+             ^ constant.numeric
+               ^^ operator
+                  ^ constant.numeric
+>   e = a << 2 >> 1 <<% 3
+      ^ operator
+          ^ storage.modifier
+           ^ operator
+             ^ constant.numeric
+               ^^ operator
+                  ^ constant.numeric
+                    ^ storage.modifier
+                     ^^ operator
+                        ^ constant.numeric
+>   f = (a & 7) | (a ^ 3)
+      ^ operator
+        ^ punctuation
+           ^ operator
+             ^ constant.numeric
+              ^ punctuation
+                ^ operator
+                  ^ punctuation
+                     ^ operator
+                       ^ constant.numeric
+                        ^ punctuation
+>   g = a.not() % 5 / 2
+      ^ operator
+         ^ punctuation
+          ^^^ keyword.operator
+             ^^ punctuation
+                ^ operator
+                  ^ constant.numeric
+                    ^ operator
+                      ^ constant.numeric
+>   a += 1
+      ^^ operator
+         ^ constant.numeric
+>   a -= 1
+      ^^ operator
+         ^ constant.numeric
+>   a *= 2
+      ^^ operator
+         ^ constant.numeric
+>   a /= 2
+      ^^ operator
+         ^ constant.numeric
+>   a %= 3
+      ^^ operator
+         ^ constant.numeric
+>   a &= 7
+      ^^ operator
+         ^ constant.numeric
+>   a |= 8
+      ^^ operator
+         ^ constant.numeric
+>   a ^= 1
+      ^^ operator
+         ^ constant.numeric
+>   a <<= 1
+      ^ storage.modifier
+       ^^ operator
+          ^ constant.numeric
+>   a >>= 1
+      ^^^ operator
+          ^ constant.numeric
+>   a <<%= 1
+      ^ storage.modifier
+       ^^^ operator
+           ^ constant.numeric
+>   a +%= 1
+      ^^^ operator
+          ^ constant.numeric
+>   a -%= 1
+      ^^^ operator
+          ^ constant.numeric
+>   a *%= 1
+      ^^^ operator
+          ^ constant.numeric
+>   a +|= 1
+      ^^^ operator
+          ^ constant.numeric
+>   a -|= 1
+      ^^^ operator
+          ^ constant.numeric
+>   a + b.to_int() + c + d + e + f + g
+      ^ operator
+         ^ punctuation
+                ^^ punctuation
+                   ^ operator
+                       ^ operator
+                           ^ operator
+                               ^ operator
+                                   ^ operator
+> 
+> fun strings() -> String
+  ^^^^ keyword
+      ^^^^^^^ function
+             ^^ punctuation
+                ^^ operator
+                   ^^^^^^ type
+>   s = "tab\tnewline\nquote\"backslash\\ hex\x41"
+      ^ operator
+        ^^^^ string
+            ^^ string.escape
+              ^^^^^^^ string
+                     ^^ string.escape
+                       ^^^^^ string
+                            ^^ string.escape
+                              ^^^^^^^^^ string
+                                       ^^ string.escape
+                                         ^^^^ string
+                                             ^^ string.escape
+                                               ^^^ string
+>   t = 'single ''quoted'' text'
+      ^ operator
+        ^^^^^^^^ string
+                ^^ string.escape
+                  ^^^^^^ string
+                        ^^ string.escape
+                          ^^^^^^ string
+>   u = String(s, t)
+      ^ operator
+        ^^^^^^ type
+              ^ punctuation
+                ^ punctuation
+                   ^ punctuation
+>   u
+> 
+> fun ownership(p: ^Point, h: *Point, w: ~Point, xs: !List[Int], v: ?Point) -> Int
+  ^^^^ keyword
+      ^^^^^^^^^ function
+               ^ punctuation
+                ^ variable.parameter
+                 ^ punctuation
+                   ^ storage.modifier
+                    ^^^^^ type
+                         ^ punctuation
+                           ^ variable.parameter
+                            ^ punctuation
+                              ^ storage.modifier
+                               ^^^^^ type
+                                    ^ punctuation
+                                      ^ variable.parameter
+                                       ^ punctuation
+                                         ^ storage.modifier
+                                          ^^^^^ type
+                                               ^ punctuation
+                                                 ^^ variable.parameter
+                                                   ^ punctuation
+                                                     ^ storage.modifier
+                                                      ^^^^ type
+                                                          ^ punctuation
+                                                           ^^^ type
+                                                              ^^ punctuation
+                                                                 ^ variable.parameter
+                                                                  ^ punctuation
+                                                                    ^ storage.modifier
+                                                                     ^^^^^ type
+                                                                          ^ punctuation
+                                                                            ^^ operator
+                                                                               ^^^ type
+>   q = +v
+      ^ operator
+        ^ storage.modifier
+>   r = <q
+      ^ operator
+        ^ storage.modifier
+>   !xs.push(1)
+    ^ storage.modifier
+       ^ punctuation
+            ^ punctuation
+             ^ constant.numeric
+              ^ punctuation
+>   n = v.x + xs.len
+      ^ operator
+         ^ punctuation
+            ^ operator
+                ^ punctuation
+>   if *w as strong
+    ^^ keyword.control
+       ^ storage.modifier
+          ^^ keyword
+>     n += strong.x
+        ^^ operator
+                 ^ punctuation
+>   if *<w as last
+    ^^ keyword.control
+       ^^ storage.modifier
+           ^^ keyword
+>     n += last.x
+        ^^ operator
+               ^ punctuation
+>   <r
+    ^ storage.modifier
+>   n
+> 
+> fun fallible(m: ?hash.Map[String, Int], k: ?String) -> Int!
+  ^^^^ keyword
+      ^^^^^^^^ function
+              ^ punctuation
+               ^ variable.parameter
+                ^ punctuation
+                  ^ storage.modifier
+                       ^ punctuation
+                        ^^^ type
+                           ^ punctuation
+                            ^^^^^^ type
+                                  ^ punctuation
+                                    ^^^ type
+                                       ^^ punctuation
+                                          ^ variable.parameter
+                                           ^ punctuation
+                                             ^ storage.modifier
+                                              ^^^^^^ type
+                                                    ^ punctuation
+                                                      ^^ operator
+                                                         ^^^ type
+                                                            ^ storage.modifier
+>   n = m.get(k) ?? 0
+      ^ operator
+         ^ punctuation
+             ^ punctuation
+               ^ punctuation
+                 ^^ operator
+                    ^ constant.numeric
+>   x = text.parse_int("12")!
+      ^ operator
+            ^ punctuation
+                      ^ punctuation
+                       ^^^^ string
+                           ^ punctuation
+                            ^ storage.modifier
+>   y = m.get(k)?
+      ^ operator
+         ^ punctuation
+             ^ punctuation
+               ^ punctuation
+                ^ storage.modifier
+>   z = m.get("z") ?? return 0
+      ^ operator
+         ^ punctuation
+             ^ punctuation
+              ^^^ string
+                 ^ punctuation
+                   ^^ operator
+                      ^^^^^^ keyword.control
+                             ^ constant.numeric
+>   n + x + y + z
+      ^ operator
+          ^ operator
+              ^ operator
+> 
+> fun loops(xs: ?List[Int]) -> Int
+  ^^^^ keyword
+      ^^^^^ function
+           ^ punctuation
+            ^^ variable.parameter
+              ^ punctuation
+                ^ storage.modifier
+                 ^^^^ type
+                     ^ punctuation
+                      ^^^ type
+                         ^^ punctuation
+                            ^^ operator
+                               ^^^ type
+>   total = 0
+          ^ operator
+            ^ constant.numeric
+>   for x in xs
+    ^^^ keyword.control
+          ^^ keyword.control
+>     if x < 0
+      ^^ keyword.control
+           ^ operator
+             ^ constant.numeric
+>       continue
+        ^^^^^^^^ keyword.control
+>     total += x if x > 0 else 0
+            ^^ operator
+                 ^^ keyword.control
+                      ^ operator
+                        ^ constant.numeric
+                          ^^^^ keyword.control
+                               ^ constant.numeric
+>   i = 0
+      ^ operator
+        ^ constant.numeric
+>   while i < 10 : i += 1
+    ^^^^^ keyword.control
+            ^ operator
+              ^^ constant.numeric
+                 ^ punctuation
+                     ^^ operator
+                        ^ constant.numeric
+>     total += i
+            ^^ operator
+>   :outer for row in xs
+    ^^^^^^ label
+           ^^^ keyword.control
+                   ^^ keyword.control
+>     for col in xs
+      ^^^ keyword.control
+              ^^ keyword.control
+>       if col == row
+        ^^ keyword.control
+               ^^ operator
+>         break :outer
+          ^^^^^^ keyword.control
+                ^^^^^^ label
+>       total += 1 if col != row
+              ^^ operator
+                 ^ constant.numeric
+                   ^^ keyword.control
+                          ^^ operator
+>   v = next() ?? continue
+      ^ operator
+            ^^ punctuation
+               ^^ operator
+                  ^^^^^^^^ keyword.control
+>   total
+> 
+> fun closures(xs: !List[Int]) -> Int
+  ^^^^ keyword
+      ^^^^^^^^ function
+              ^ punctuation
+               ^^ variable.parameter
+                 ^ punctuation
+                   ^ storage.modifier
+                    ^^^^ type
+                        ^ punctuation
+                         ^^^ type
+                            ^^ punctuation
+                               ^^ operator
+                                  ^^^ type
+>   count = 0
+          ^ operator
+            ^ constant.numeric
+>   bump = |!count, n| count += n
+         ^ operator
+           ^ operator
+            ^ storage.modifier
+                  ^ punctuation
+                     ^ operator
+                             ^^ operator
+>   quiet = || print(1)
+          ^ operator
+            ^^ operator
+                    ^ punctuation
+                     ^ constant.numeric
+                      ^ punctuation
+>   sort.sort_by(!xs, |a, b| a < b)
+        ^ punctuation
+                ^ punctuation
+                 ^ storage.modifier
+                    ^ punctuation
+                      ^ operator
+                        ^ punctuation
+                           ^ operator
+                               ^ operator
+                                  ^ punctuation
+>   m = hash.Map[Int, Int].new(capacity: 16)
+      ^ operator
+            ^ punctuation
+             ^^^ type
+                ^ punctuation
+                 ^^^ type
+                    ^ punctuation
+                      ^^^ type
+                         ^^ punctuation
+                              ^ punctuation
+                               ^^^^^^^^ variable.parameter
+                                       ^ punctuation
+                                         ^^ constant.numeric
+                                           ^ punctuation
+>   grid = [3 of 0]
+         ^ operator
+           ^ punctuation
+            ^ constant.numeric
+              ^^ keyword
+                 ^ constant.numeric
+                  ^ punctuation
+>   tail = xs[1..]
+         ^ operator
+             ^ punctuation
+              ^ constant.numeric
+               ^^^ punctuation
+>   all = xs[..]
+        ^ operator
+            ^^^^ punctuation
+>   count
+> 
+> fun shapes(s: ?Shape) -> Int
+  ^^^^ keyword
+      ^^^^^^ function
+            ^ punctuation
+             ^ variable.parameter
+              ^ punctuation
+                ^ storage.modifier
+                 ^^^^^ type
+                      ^ punctuation
+                        ^^ operator
+                           ^^^ type
+>   match s
+    ^^^^^ keyword.control
+>     .circle(r) => return 3 * r * r
+      ^ punctuation
+             ^ punctuation
+               ^ punctuation
+                 ^^ operator
+                    ^^^^^^ keyword.control
+                           ^ constant.numeric
+                             ^ operator
+                                 ^ operator
+>     .rect(w, h) if w == h => return w * w
+      ^ punctuation
+           ^ punctuation
+             ^ punctuation
+                ^ punctuation
+                  ^^ keyword.control
+                       ^^ operator
+                            ^^ operator
+                               ^^^^^^ keyword.control
+                                        ^ operator
+>     .rect(w, h) => return w * h
+      ^ punctuation
+           ^ punctuation
+             ^ punctuation
+                ^ punctuation
+                  ^^ operator
+                     ^^^^^^ keyword.control
+                              ^ operator
+>     .point => return 0
+      ^ punctuation
+             ^^ operator
+                ^^^^^^ keyword.control
+                       ^ constant.numeric
+> 
+> sub resources()
+  ^^^^ keyword
+      ^^^^^^^^^ function
+               ^^ punctuation
+>   defer print("done")
+    ^^^^^ keyword.control
+               ^ punctuation
+                ^^^^^^ string
+                      ^ punctuation
+>   errdefer print("failed")
+    ^^^^^^^^ keyword.control
+                  ^ punctuation
+                   ^^^^^^^^ string
+                           ^ punctuation
+>   new x = 1
+  ^^^^^ keyword
+          ^ operator
+            ^ constant.numeric
+>   new const y = x * 2
+  ^^^^^ keyword
+        ^^^^^ keyword
+                ^ operator
+                    ^ operator
+                      ^ constant.numeric
+>   st: Status = .missing
+    ^^ variable.parameter
+      ^ punctuation
+        ^^^^^^ type
+               ^ operator
+                 ^ punctuation
+>   ok = true and not false or none == none
+       ^ operator
+         ^^^^ constant
+              ^^^ keyword.operator
+                  ^^^ keyword.operator
+                      ^^^^^ constant
+                            ^^ keyword.operator
+                               ^^^^ constant
+                                    ^^ operator
+                                       ^^^^ constant
+>   b: Bool = st == .ok
+    ^ variable.parameter
+     ^ punctuation
+       ^^^^ type
+            ^ operator
+                 ^^ operator
+                    ^ punctuation
+>   print(@size(Point), @align(Point), @name(Point), @variants(Status))
+         ^ punctuation
+          ^^^^^ function.builtin
+               ^ punctuation
+                ^^^^^ type
+                     ^^ punctuation
+                        ^^^^^^ function.builtin
+                              ^ punctuation
+                               ^^^^^ type
+                                    ^^ punctuation
+                                       ^^^^^ function.builtin
+                                            ^ punctuation
+                                             ^^^^^ type
+                                                  ^^ punctuation
+                                                     ^^^^^^^^^ function.builtin
+                                                              ^ punctuation
+                                                               ^^^^^^ type
+                                                                     ^^ punctuation
+>   raw
+    ^^^ keyword
+>     pass
+      ^^^^ keyword.control
+>   print(ok, b, y)
+         ^ punctuation
+            ^ punctuation
+               ^ punctuation
+                  ^ punctuation
+> 
+> test "area"
+  ^^^^ keyword
+       ^^^^^^ string
+>   print(shapes(.point))
+         ^ punctuation
+                ^^ punctuation
+                       ^^ punctuation
+> 
+> sub main()
+  ^^^^ keyword
+      ^^^^ function
+          ^^ punctuation
+>   print(LIMIT, PI, Byte.max)
+         ^ punctuation
+          ^^^^^ type
+               ^ punctuation
+                 ^^ type
+                   ^ punctuation
+                     ^^^^ type
+                         ^ punctuation
+                             ^ punctuation
+> 
+> # Below here, nothing compiles: these are tokens an editor still colours.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> 
+> # Reserved words, keywords though no form uses them yet.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> try async await impl trait when where yield
+  ^^^ keyword.control
+      ^^^^^ keyword
+            ^^^^^ keyword.control
+                  ^^^^ keyword
+                       ^^^^^ keyword
+                             ^^^^ keyword
+                                  ^^^^^ keyword
+                                        ^^^^^ keyword.control
+> 
+> # Rejected forms, lexed only so Rig can say why; shown as invalid.
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ comment
+> p = 2 ** 3
+    ^ operator
+      ^ constant.numeric
+        ^^ invalid
+           ^ constant.numeric
+> q = a && b
+    ^ operator
+        ^^ invalid
+> x =! 1
+    ^^ invalid
+       ^ constant.numeric

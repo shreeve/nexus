@@ -3,19 +3,19 @@
     `Option`
     (`T`)@110..113
     (variant `some` ((: `value` `T`)@121..129)@120..130)@116..130
-    `none`)@99..139
+    `nothing`)@99..142
   (sub
     `main`
     _
-    ()@147..149
+    ()@150..152
     _
     (block
       (set
         _
         `o`
-        (generic_inst `Option` `Int`)@155..166
-        (call (enum_lit `some`)@169..174 (kwarg `value` `"hello"`)@175..189)@169..190)@152..190
-      (call `print` `"done"`)@193..206)@152..261
+        (generic_inst `Option` `Int`)@158..169
+        (call (enum_lit `some`)@172..177 (kwarg `value` `"hello"`)@178..192)@172..193)@155..193
+      (call `print` `"done"`)@196..209)@155..264
     _
     _
-    _)@139..261)@99..261
+    _)@142..264)@99..264
