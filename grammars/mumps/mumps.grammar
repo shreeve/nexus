@@ -458,6 +458,42 @@ after
 ]
 
 # ==============================================================================
+# EDITOR SUPPORT
+# ==============================================================================
+#
+# How editors colour M: `nexus --highlight all mumps.grammar editors`
+# writes editors/ from this (editors/README.md). An editor sees no parse and
+# no lexer state, so M's spacing is said with contexts: a command word
+# follows a space, tab or level dot and is followed by its one space, a
+# postcondition's `:`, or the end of the line. test/highlight/sample.m and
+# its .hl hold the expected colouring.
+
+@highlight
+    language            "M"
+    scope-name          source.mumps
+    extensions          m
+    line-comment        ";"
+    word-chars          [A-Za-z0-9%]
+
+    label               line-start ([%A-Za-z] [A-Za-z0-9]* | [0-9]+)
+    function            "$$" [%A-Za-z0-9] [A-Za-z0-9]*
+    label               [%A-Za-z0-9] [A-Za-z0-9]* after '^' [%A-Za-z]
+    type                '^' [%A-Za-z] [A-Za-z0-9]*
+    operator            ("'?" | '?') constant.symbol:(([0-9]* ('.' [0-9]*)? ([ACELNPUacelnpu]+ | '"' ([^"\n] | '""')* '"'))+)
+    constant.numeric    ([0-9]* '.' [0-9]+ | [0-9]+ '.'?) ([Ee] [+-]? [0-9]+)? not before [%A-Za-z0-9]
+    keyword.control     cmd before [ \t.] not after [^ \t:]
+    function.builtin    fn before '$' after '('
+    variable.special    isv before '$' not after [A-Za-z0-9(]
+    variable.special    ssvn before "^$"
+
+    string              STRING
+    string.escape       '""' within STRING
+    comment             COMMENT
+    operator            "+" "-" "*" "/" "\\" "#" "**" "_" "=" "<" ">" "'" "&" "!" "[" "]" "]]"
+                        "'=" "'<" "'>" "'[" "']" "'&" "'!" "'?" "<=" ">=" "]=" "]]=" "']]" "==" "@" "?@"
+    punctuation         "(" ")" "," ":" "^" "$" "|"
+
+# ==============================================================================
 # THE TREE
 # ==============================================================================
 #

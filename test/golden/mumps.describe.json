@@ -158,7 +158,33 @@
     "ssvn": {"caseless": true, "base": 400, "entries": [{"word": "GLOBAL", "min": 1, "id": 400, "terminal": "GLOBAL", "alias_of": null}, {"word": "JOB", "min": 1, "id": 401, "terminal": "JOB", "alias_of": null}, {"word": "LOCK", "min": 1, "id": 402, "terminal": "LOCK", "alias_of": null}, {"word": "ROUTINE", "min": 1, "id": 403, "terminal": "ROUTINE", "alias_of": null}, {"word": "SYSTEM", "min": 3, "id": 404, "terminal": "SYSTEM", "alias_of": null}, {"word": "ZENVIRONMENT", "min": 5, "id": 405, "terminal": "ZENVIRONMENT", "alias_of": null}]}
   },
   "trivia": [],
-  "highlight": null,
+  "highlight": {
+    "language": "M",
+    "scope_name": "source.mumps",
+    "extensions": ["m"],
+    "line_comment": ";",
+    "block_comment": null,
+    "indent": null,
+    "dedent": null,
+    "word_chars": "[%0-9A-Za-z]",
+    "entries": [
+      {"line": 478, "scope": "label", "literals": [], "tokens": [], "groups": [], "pattern": "([%A-Za-z] [A-Za-z0-9]* | [0-9]+)", "regex": "[%A-Za-z][0-9A-Za-z]*|[0-9]+", "captures": [], "line_start": true, "line_end": false, "contexts": [], "within": null},
+      {"line": 479, "scope": "function", "literals": [], "tokens": [], "groups": [], "pattern": "\"$$\" [%A-Za-z0-9] [A-Za-z0-9]*", "regex": "\\$\\$[%0-9A-Za-z][0-9A-Za-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 480, "scope": "label", "literals": [], "tokens": [], "groups": [], "pattern": "[%A-Za-z0-9] [A-Za-z0-9]*", "regex": "[%0-9A-Za-z][0-9A-Za-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "after", "pattern": "'^' [%A-Za-z]", "regex": "\\^[%A-Za-z]"}], "within": null},
+      {"line": 481, "scope": "type", "literals": [], "tokens": [], "groups": [], "pattern": "'^' [%A-Za-z] [A-Za-z0-9]*", "regex": "\\^[%A-Za-z][0-9A-Za-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 482, "scope": "operator", "literals": [], "tokens": [], "groups": [], "pattern": "(\"'?\" | '?') constant.symbol:(([0-9]* ('.' [0-9]*)? ([ACELNPUacelnpu]+ | '\"' ([^\"\\n] | '\"\"')* '\"'))+)", "regex": "('\\?|\\?)((?:[0-9]*(?:\\.[0-9]*)?(?:[ACELNPUacelnpu]+|\"(?:[^\\x0a\"]|\"\")*\"))+)", "captures": [{"scope": "operator", "captured": false, "regex": "'\\?|\\?"}, {"scope": "constant.symbol", "captured": true, "regex": "(?:[0-9]*(?:\\.[0-9]*)?(?:[ACELNPUacelnpu]+|\"(?:[^\\x0a\"]|\"\")*\"))+"}], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 483, "scope": "constant.numeric", "literals": [], "tokens": [], "groups": [], "pattern": "([0-9]* '.' [0-9]+ | [0-9]+ '.'?) ([Ee] [+-]? [0-9]+)?", "regex": "(?:[0-9]*\\.[0-9]+|[0-9]+\\.?)(?:[Ee][+\\-]?[0-9]+)?", "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "not before", "pattern": "[%A-Za-z0-9]", "regex": "[%0-9A-Za-z]"}], "within": null},
+      {"line": 484, "scope": "keyword.control", "literals": [], "tokens": [], "groups": ["cmd"], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "[ \\t.]", "regex": "[\\x09 .]"}, {"kind": "not after", "pattern": "[^ \\t:]", "regex": "[^\\x09 :]"}], "within": null},
+      {"line": 485, "scope": "function.builtin", "literals": [], "tokens": [], "groups": ["fn"], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "'$'", "regex": "\\$"}, {"kind": "after", "pattern": "'('", "regex": "\\("}], "within": null},
+      {"line": 486, "scope": "variable.special", "literals": [], "tokens": [], "groups": ["isv"], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "'$'", "regex": "\\$"}, {"kind": "not after", "pattern": "[A-Za-z0-9(]", "regex": "[(0-9A-Za-z]"}], "within": null},
+      {"line": 487, "scope": "variable.special", "literals": [], "tokens": [], "groups": ["ssvn"], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "\"^$\"", "regex": "\\^\\$"}], "within": null},
+      {"line": 489, "scope": "string", "literals": [], "tokens": ["STRING"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 490, "scope": "string.escape", "literals": ["\"\""], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": "STRING"},
+      {"line": 491, "scope": "comment", "literals": [], "tokens": ["COMMENT"], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 492, "scope": "operator", "literals": ["+", "-", "*", "/", "\\", "#", "**", "_", "=", "<", ">", "'", "&", "!", "[", "]", "]]", "'=", "'<", "'>", "'[", "']", "'&", "'!", "'?", "<=", ">=", "]=", "]]=", "']]", "==", "@", "?@"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 494, "scope": "punctuation", "literals": ["(", ")", ",", ":", "^", "$", "|"], "tokens": [], "groups": [], "pattern": null, "regex": null, "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
+    ]
+  },
   "schema": {"kinds": [
     {"name": "routine", "roles": [{"name": "lines", "type": "label|line", "optional": false, "rest": true}], "side": [], "wrapper": false},
     {"name": "label", "roles": [{"name": "name", "type": "leaf", "optional": false, "rest": false}, {"name": "formals", "type": "group", "optional": true, "rest": false}, {"name": "dots", "type": "group", "optional": true, "rest": false}, {"name": "cmds", "type": "any", "optional": false, "rest": true}], "side": [], "wrapper": false},
