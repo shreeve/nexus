@@ -36,6 +36,32 @@
   "after": [],
   "keywords": {},
   "trivia": [],
-  "highlight": null,
+  "highlight": {
+    "language": "nexis",
+    "scope_name": "source.nexis",
+    "extensions": ["nx"],
+    "line_comment": ";",
+    "block_comment": null,
+    "indent": null,
+    "dedent": null,
+    "word_chars": "[0-9A-Z_a-z]",
+    "entries": [
+      {"line": 76, "scope": "comment", "literals": [], "tokens": [], "groups": [], "pattern": "';' [^\\n]*", "regex": ";[^\\x0a]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 77, "scope": "comment", "literals": [], "tokens": [], "groups": [], "pattern": "\"#!\" [^\\n]*", "regex": "#![^\\x0a]*", "captures": [], "line_start": true, "line_end": false, "contexts": [], "within": null},
+      {"line": 78, "scope": "string", "literals": [], "tokens": [], "groups": [], "pattern": "\"#\\\"\" ([^\"\\\\] | '\\\\' .)* '\"'", "regex": "#\"(?:[^\"\\\\]|\\\\[\\x00-\\xff])*\"", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 79, "scope": "string", "literals": [], "tokens": [], "groups": [], "pattern": "'\"' ([^\"\\\\] | '\\\\' .)* '\"'", "regex": "\"(?:[^\"\\\\]|\\\\[\\x00-\\xff])*\"", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 80, "scope": "constant", "literals": [], "tokens": [], "groups": [], "pattern": "'\\\\' (\"u{\" [0-9A-Fa-f]* '}' | [^\\n]) [A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]*", "regex": "\\\\(?:u\\{[0-9A-Fa-f]*\\}|[^\\x0a])[!#-'*+\\--:<-?A-Z_a-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 81, "scope": "constant.symbol", "literals": [], "tokens": [], "groups": [], "pattern": "':' [A-Za-z0-9_!$%&*+./<=>?-] [A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]*", "regex": ":[!$-&*+\\--9<-?A-Z_a-z][!#-'*+\\--:<-?A-Z_a-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 82, "scope": "constant.numeric", "literals": [], "tokens": [], "groups": [], "pattern": "\"##Inf\" | \"##-Inf\" | \"##NaN\"", "regex": "##Inf|##-Inf|##NaN", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 83, "scope": "constant.numeric", "literals": [], "tokens": [], "groups": [], "pattern": "[+-]? [0-9] [A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]*", "regex": "[+\\-]?[0-9][!#-'*+\\--:<-?A-Z_a-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "not before", "pattern": "[A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]", "regex": "[!#-'*+\\--:<-?A-Z_a-z]"}], "within": null},
+      {"line": 84, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "(\"defprotocol\" | \"defrecord\" | \"defmethod\" | \"defmulti\" | \"defmacro\" | \"defonce\" | \"deftest\" | \"defn-\" | \"defn\" | \"def\") [ \\t]+ function:([A-Za-z_!$%&*+./<=>?] [A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]*)", "regex": "((?:defprotocol|defrecord|defmethod|defmulti|defmacro|defonce|deftest|defn-|defn|def)[\\x09 ]+)([!$-&*+./<-?A-Z_a-z][!#-'*+\\--:<-?A-Z_a-z]*)", "captures": [{"scope": "keyword", "captured": false, "regex": "(?:defprotocol|defrecord|defmethod|defmulti|defmacro|defonce|deftest|defn-|defn|def)[\\x09 ]+"}, {"scope": "function", "captured": true, "regex": "[!$-&*+./<-?A-Z_a-z][!#-'*+\\--:<-?A-Z_a-z]*"}], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "'('", "regex": "\\("}], "within": null},
+      {"line": 85, "scope": "keyword.control", "literals": [], "tokens": [], "groups": [], "pattern": "(\"when-not\" | \"condp\" | \"throw\" | \"recur\" | \"loop*\" | \"catch\" | \"finally\" | \"when\" | \"cond\" | \"case\" | \"loop\" | \"try\" | \"and\" | \"if\" | \"do\" | \"or\")", "regex": "when-not|condp|throw|recur|loop\\*|catch|finally|when|cond|case|loop|try|and|if|do|or", "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "'('", "regex": "\\("}, {"kind": "not after", "pattern": "[A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]", "regex": "[!#-'*+\\--:<-?A-Z_a-z]"}], "within": null},
+      {"line": 86, "scope": "keyword", "literals": [], "tokens": [], "groups": [], "pattern": "(\"extend-protocol\" | \"extend-type\" | \"require\" | \"letfn*\" | \"letfn\" | \"quote\" | \"set!\" | \"let*\" | \"fn*\" | \"var\" | \"let\" | \"fn\" | \"ns\" | \"->>\" | \"->\")", "regex": "extend-protocol|extend-type|require|letfn\\*|letfn|quote|set!|let\\*|fn\\*|var|let|fn|ns|->>|->", "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "before", "pattern": "'('", "regex": "\\("}, {"kind": "not after", "pattern": "[A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]", "regex": "[!#-'*+\\--:<-?A-Z_a-z]"}], "within": null},
+      {"line": 87, "scope": "constant", "literals": [], "tokens": [], "groups": [], "pattern": "\"nil\" | \"true\" | \"false\"", "regex": "nil|true|false", "captures": [], "line_start": false, "line_end": false, "contexts": [{"kind": "not before", "pattern": "[A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]", "regex": "[!#-'*+\\--:<-?A-Z_a-z]"}, {"kind": "not after", "pattern": "[A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]", "regex": "[!#-'*+\\--:<-?A-Z_a-z]"}], "within": null},
+      {"line": 88, "scope": "type", "literals": [], "tokens": [], "groups": [], "pattern": "'#' [A-Za-z] [A-Za-z0-9_!$%&*+./:<=>?\\x27\\x23-]*", "regex": "#[A-Za-z][!#-'*+\\--:<-?A-Z_a-z]*", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 89, "scope": "operator", "literals": [], "tokens": [], "groups": [], "pattern": "\"~@\" | \"#'\" | \"#_\" | \"'\" | \"`\" | \"~\" | \"@\" | \"^\"", "regex": "~@|#'|#_|'|`|~|@|\\^", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null},
+      {"line": 90, "scope": "punctuation", "literals": [], "tokens": [], "groups": [], "pattern": "\"#{\" | \"#(\" | \"(\" | \")\" | \"[\" | \"]\" | \"{\" | \"}\"", "regex": "#\\{|#\\(|\\(|\\)|\\[|\\]|\\{|\\}", "captures": [], "line_start": false, "line_end": false, "contexts": [], "within": null}
+    ]
+  },
   "schema": null
 }

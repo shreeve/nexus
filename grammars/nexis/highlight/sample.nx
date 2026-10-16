@@ -1,0 +1,17 @@
+#!/usr/bin/env nexis
+; Every token and context of nexis's editor colouring; read, not run.
+(ns demo.sample (:require [clojure.string :as str]))
+
+(def answer 42)
+(defn- greet "Greets a name." [name] (str "hi, " name "\n"))
+(defmacro unless [test & body] `(if ~test nil (do ~@body)))
+
+(let [x 1, y -2.5e3 z ##Inf]
+  (if (and (< x y) (not= x 0))
+    (println :ok x 'sym @a ^:private q #'greet)
+    (when-not false (recur (inc x)))))
+
+(def m {:name "nexis" :tags #{:lisp :zig} :re #"a+b*" :c \newline :d \a})
+(map #(* % 2) [1 2 3]) #_ (ignored form) #inst "2026-10-16"
+(try (throw (ex-info "bad" {})) (catch Exception e nil) (finally true))
+(let* [let-x 1 fn-y 2 x-1 3] [let-x fn-y x-1])
