@@ -44,6 +44,14 @@
   next to another, in every editor file; `--describe` gives it as
   `highlight.word_chars` (`"format"` stays 1: the key is new).
 
+### Changed
+
+- An `@highlight` entry with a context, `line-start` or `line-end` may
+  name a literal, token or `@keywords` group that another entry lists
+  (`storage.modifier '*' not before … after …` beside `operator "*"`);
+  only entries without contexts claim a target. Rig's workaround of
+  writing `[*]` (a pattern) keeps working.
+
 ### Fixed
 
 - The Vim syntax file gives each region a `matchgroup`, so a contained

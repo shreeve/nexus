@@ -1336,6 +1336,13 @@ does not match where another one follows (`"if"` leaves `iffy` alone),
 nor one that starts with one where one precedes; a pattern matches as
 written.
 
+A target belongs to one entry without contexts. An entry with a context,
+`line-start` or `line-end` is tried before those (see the order below),
+so it may name a target another entry lists: with `operator "*"` and
+`storage.modifier '*' not before [A-Za-z0-9_)] after [a-z_]`, a `*`
+touching a name after it is a `storage.modifier`, any other `*` an
+`operator`.
+
 A pattern may tag parts of itself with scopes: `SCOPE:( pattern )`, at
 its top level, names the text the parenthesized pattern matches. The
 entry's scope colours the parts between. Above, `"task" [ \t]+
@@ -1506,7 +1513,8 @@ is no scope or metadata key; a missing `language`, `scope-name` or
 that is not one character class with an editor form); `indent` without
 `dedent`; an unknown token or `@keywords` group; a literal no lexer rule
 matches whole; a token whose text no rule gives (a lang Lexer makes it,
-or it only rewinds); a target listed twice, or under two scopes; a
+or it only rewinds); a target listed twice, or under two scopes, by
+entries without contexts; a
 capture inside `( )`, with an unknown scope, or empty; a pattern with
 captures and a top-level `|`, or with a part that matches nothing; a
 pattern or context that matches the empty string; `not` without `after`

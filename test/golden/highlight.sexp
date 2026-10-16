@@ -67,6 +67,7 @@
     (hl_line `constant.symbol` `':' [a-z_]+ not before [A-Za-z0-9_)]`)
     (hl_line `variable.parameter` `[a-z_] [a-z0-9_]* after ':' [ \\t]`)
     (hl_line `storage.modifier` `[!?] after [a-z_] not before [A-Za-z0-9_)\\]]`)
+    (hl_line `storage.modifier` `'*' not before [A-Za-z0-9_)\\]] after [a-z_]`)
     (hl_line `keyword` `"fun" stmt`)
     (hl_line `keyword.control` `"if" "else" "while" "return"`)
     (hl_line `keyword.operator` `"and" "or" "not"`)
