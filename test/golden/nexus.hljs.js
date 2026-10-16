@@ -21,6 +21,7 @@ export default function (hljs) {
       {"scope": "type", "match": "[A-Z][0-9A-Z_a-z]*"},
       {"scope": "operator", "match": "→|->|=>"},
       {"scope": "string", "match": "'(?:[^\\x0a'\\\\]|\\\\.)*'"},
+      {"scope": "literal", "match": "\\[\\^?\\]?(?:[^\\x0a\\\\\\]]|\\\\.)*\\]"},
       {"scope": "keyword", "match": "(?<![0-9A-Za-z_])rewind(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])hold(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])skip(?![0-9A-Za-z_])"},
       {"scope": "operator", "match": "\\.\\.\\.|!|&|\\*|\\+|=|\\?|\\||~"},
       {"scope": "punctuation", "match": "\\(|\\)|,|:|\\[|\\]"},

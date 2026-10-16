@@ -159,7 +159,8 @@ tokens
 # How editors colour grammar files (`nexus --highlight all nexus.grammar
 # editors`). Most words of a grammar file are classified by the lexer
 # wrapper, so the entries are patterns: directives, rule names, labels,
-# token names, arrows and single-quoted literals.
+# token names, arrows, single-quoted literals and character classes (a
+# quote within a class is a byte of it).
 @highlight
     language            "Nexus grammar"
     scope-name          source.nexus
@@ -173,6 +174,7 @@ tokens
     type                [A-Z] [A-Za-z0-9_]*
     operator            "\xe2\x86\x92" | "->" | "=>"
     string              "'" ([^'\\\n] | '\\' .)* "'"
+    constant            '[' '^'? ']'? ([^\]\\\n] | '\\' [^\n])* ']'
     keyword             "skip" "hold" "rewind"
     operator            "|" "?" "*" "+" "=" "..." "~" "!" "&"
     punctuation         "(" ")" "[" "]" "," ":"

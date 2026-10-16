@@ -98,6 +98,7 @@
     (hl_line `type` `[A-Z] [A-Za-z0-9_]*`)
     (hl_line `operator` `"\\xe2\\x86\\x92" | "->" | "=>"`)
     (hl_line `string` `"'" ([^'\\\\\\n] | '\\\\' .)* "'"`)
+    (hl_line `constant` `'[' '^'? ']'? ([^\\]\\\\\\n] | '\\\\' [^\\n])* ']'`)
     (hl_line `keyword` `"skip" "hold" "rewind"`)
     (hl_line `operator` `"|" "?" "*" "+" "=" "..." "~" "!" "&"`)
     (hl_line `punctuation` `"(" ")" "[" "]" "," ":"`)
