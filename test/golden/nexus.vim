@@ -31,6 +31,7 @@ syn match nexusPlain "\v[\x09 ]+"
 syn match nexusPunctuation "\v\(|\)|\,|\:|\[|\]"
 syn match nexusOperator "\v\.\.\.|\!|\&|\*|\+|\=|\?|\||\~"
 syn match nexusKeyword "\v\w@<!rewind\w@!|\w@<!hold\w@!|\w@<!skip\w@!"
+syn match nexusConstant "\v\[\^=\]=%([^\x0a\\\]]|\\.)*\]"
 syn match nexusString "\v\'%([^\x0a'\\]|\\.)*\'"
 syn match nexusOperator "\v→|\-\>|\=\>"
 syn match nexusType "\v[A-Z][0-9A-Z_a-z]*"
@@ -40,6 +41,7 @@ syn match nexusKeyword "\v^%(tokens|state|after)%([0-9A-Z_a-z])@!"
 syn match nexusKeyword "\v\@[a-z]+"
 
 hi def link nexusKeyword Keyword
+hi def link nexusConstant Constant
 hi def link nexusConstantNumeric Number
 hi def link nexusString String
 hi def link nexusStringEscape SpecialChar

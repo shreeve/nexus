@@ -5,6 +5,8 @@ tokens
     ident, number, string, eof, err
 
 '"' ([^"\\\n] | '\\' .)* '"'    → string
+"'" ([^'\n] | "''")* "'"        → string
+[^]A-Z_\]] [A-Za-z0-9_]*        → ident
 [0-9]+                          → number
 '\n'                            → skip, skip
 [a-z]+ / '('                    → ident, rewind(1)

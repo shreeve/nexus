@@ -13,18 +13,31 @@
 > 
 > '"' ([^"\\\n] | '\\' .)* '"'    → string
   ^^^ string
-      ^^ punctuation
-         ^ string
-          ^^^^ string.escape
-              ^^^^^ string
-                   ^^ string.escape
-                     ^^^^^^^^ string
+      ^ punctuation
+       ^^^^^^^^ constant
+                ^ operator
+                  ^^^^ string
+                        ^ punctuation
+                         ^ operator
+                           ^^^ string
+                                  ^ operator
+> "'" ([^'\n] | "''")* "'"        → string
+  ^^^ string
+      ^ punctuation
+       ^^^^^^ constant
+              ^ operator
+                ^^^^ string
+                    ^ punctuation
+                     ^ operator
+                       ^^^ string
+                                  ^ operator
+> [^]A-Z_\]] [A-Za-z0-9_]*        → ident
+  ^^^^^^^^^^ constant
+             ^^^^^^^^^^^^ constant
+                         ^ operator
                                   ^ operator
 > [0-9]+                          → number
-  ^ punctuation
-   ^ constant.numeric
-     ^ constant.numeric
-      ^ punctuation
+  ^^^^^ constant
        ^ operator
                                   ^ operator
 > '\n'                            → skip, skip
@@ -34,8 +47,7 @@
                                         ^ punctuation
                                           ^^^^ keyword
 > [a-z]+ / '('                    → ident, rewind(1)
-  ^ punctuation
-      ^ punctuation
+  ^^^^^ constant
        ^ operator
            ^^^ string
                                   ^ operator
