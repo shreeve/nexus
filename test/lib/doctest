@@ -138,7 +138,7 @@ function finish(    name, dir, flags, i, n, lines, subdir, path) {
         write(sampleBase ".txt", body)
     } else if (lang == "highlight") {
         if (sampleBase == "") { bad(start, "a ```highlight block needs a ```sample block before it"); return }
-        write(sampleBase ".hl", body)
+        write(sampleBase ".txt.hl", body)
         sampleBase = ""
     } else if (lang == "error") {
         if (rejectsLine == "") { bad(start, "an ```error block needs a `rejects` grammar before it"); return }

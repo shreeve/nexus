@@ -47,9 +47,9 @@ syn match rigVariableParameter "\v%([.0-9A-Z_a-z])@<![A-Z_a-z][0-9A-Z_a-z]*%(\:)
 syn match rigStorageModifier "\v%([)0-9A-Z\]_a-z])@<=[!?]%([(0-9=?A-\x5b_a-z])@!"
 syn match rigStorageModifier "\v%([)0-9A-Z\]_a-z])@<![!*+<?\^~]%([(<A-\x5b_a-z])@="
 syn match rigFunctionBuiltin "\v\@[_a-z]+%(\()@="
-syn match rigLabel "\v\:[A-Z_a-z][0-9A-Z_a-z]*%([\x09 ]+%(for|while|match|raw))@="
-syn match rigKeywordControl "\v%(break|continue)[\x09 ]+\ze\:[A-Z_a-z][0-9A-Z_a-z]*" nextgroup=rigSeq3Part2
-syn match rigSeq3Part2 "\v\:[A-Z_a-z][0-9A-Z_a-z]*" contained
+syn match rigLabel "\v\@[A-Z_a-z][0-9A-Z_a-z]*%([\x09 ]+%(for|while|match|raw))@="
+syn match rigKeywordControl "\v%(break|continue)[\x09 ]+\ze\@[A-Z_a-z][0-9A-Z_a-z]*" nextgroup=rigSeq3Part2
+syn match rigSeq3Part2 "\v\@[A-Z_a-z][0-9A-Z_a-z]*" contained
 syn match rigKeyword "\v%( )@<=\w@<!of\w@!%( )@="
 syn match rigKeyword "\v^[\x09 ]*new%([\x09 ]+[A-Z_a-z])@="
 syn match rigKeyword "\v%(called|rarely|inline)%([\x09 ]+%(fun|sub))@="

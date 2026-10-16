@@ -112,10 +112,10 @@ fun loops(xs: ?List[Int]) -> Int
   i = 0
   while i < 10 : i += 1
     total += i
-  :outer for row in xs
+  @outer for row in xs
     for col in xs
       if col == row
-        break :outer
+        break @outer
       total += 1 if col != row
   v = next() ?? continue
   total
@@ -156,6 +156,9 @@ test "area"
 
 sub main()
   print(LIMIT, PI, Byte.max)
+  called = 3
+  rarely = 1
+  print(called + rarely)
 
 # Below here, nothing compiles: these are tokens an editor still colours.
 

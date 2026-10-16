@@ -1,7 +1,7 @@
 (grammar
   (lang `"rig"`)
   (section `lexer`)
-  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `rarely` `called` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `comment` `eof` `err`)
+  (tokens `tokens` `ident` `integer` `real` `string_sq` `string_dq` `true` `false` `and` `as` `break` `catch` `continue` `defer` `drop` `else` `enum` `errdefer` `error` `extern` `for` `fun` `if` `in` `match` `new` `obj` `rarely` `called` `not` `or` `pass` `pub` `raw` `return` `sub` `test` `try` `type` `use` `while` `zig` `async` `await` `const` `impl` `trait` `when` `where` `yield` `plus` `minus` `star` `slash` `percent` `plus_wrap` `minus_wrap` `star_wrap` `plus_sat` `minus_sat` `power` `eq` `ne` `lt` `gt` `le` `ge` `and_sym` `or_sym` `not_sym` `question` `nullish` `bar` `ampersand` `caret` `tilde` `lshift` `lshift_wrap` `rshift` `at` `assign` `fixed_assign` `plus_assign` `minus_assign` `star_assign` `slash_assign` `percent_assign` `amp_assign` `bar_assign` `caret_assign` `lshift_assign` `lshift_wrap_assign` `rshift_assign` `plus_wrap_assign` `minus_wrap_assign` `star_wrap_assign` `plus_sat_assign` `minus_sat_assign` `lparen` `rparen` `lbracket` `rbracket` `comma` `colon` `arrow` `fat_arrow` `dot` `dotdot` `indent` `outdent` `newline` `post_if` `ternary_if` `bar_capture` `bar_empty` `kwarg_name` `of` `dotdot_open` `nullish_jump` `step_colon` `label_at` `comment` `eof` `err`)
   (longtokens)
   (lex_rule `'#' [^\\n]*` _ `comment`)
   (lex_rule `"\\\\\\n"` _ `skip`)
@@ -909,6 +909,7 @@
     (name_pair `DOTDOT_OPEN` `"\`..\`"`)
     (name_pair `NULLISH_JUMP` `"\`??\`"`)
     (name_pair `STEP_COLON` `"\`:\`"`)
+    (name_pair `LABEL_AT` `"\`@\`"`)
     (name_pair `TRUE` `"\`true\`"`)
     (name_pair `FALSE` `"\`false\`"`)
     (name_pair `AND` `"\`and\`"`)
@@ -1030,8 +1031,8 @@
     (hl_line `keyword` `("called" | "rarely" | "inline") after [ \\t]+ ("fun" | "sub")`)
     (hl_line `keyword` `line-start [ \\t]* "new" after [ \\t]+ [A-Za-z_]`)
     (hl_line `keyword` `"of" before ' ' after ' '`)
-    (hl_line `keyword.control` `("break" | "continue") [ \\t]+ label:(':' [A-Za-z_] [A-Za-z0-9_]*)`)
-    (hl_line `label` `':' [A-Za-z_] [A-Za-z0-9_]* after [ \\t]+ ("for" | "while" | "match" | "raw")`)
+    (hl_line `keyword.control` `("break" | "continue") [ \\t]+ label:('@' [A-Za-z_] [A-Za-z0-9_]*)`)
+    (hl_line `label` `'@' [A-Za-z_] [A-Za-z0-9_]* after [ \\t]+ ("for" | "while" | "match" | "raw")`)
     (hl_line `function.builtin` `'@' [a-z_]+ after '('`)
     (hl_line `storage.modifier` `[<?!+^*~] not before [A-Za-z0-9_)\\]] after [A-Za-z_(\\[<]`)
     (hl_line `storage.modifier` `[!?] before [A-Za-z0-9_)\\]] not after [A-Za-z0-9_(\\[=?]`)
@@ -1145,7 +1146,7 @@
       _)
     (alt
       _
-      ((lit `":"`)
+      ((tok `LABEL_AT`)
         (label
           `label`
           (ref `name`))
@@ -1331,7 +1332,7 @@
       ((tok `BREAK`)
         (group
           opt
-          ((lit `":"`)
+          ((tok `LABEL_AT`)
             (label
               `label`
               (ref `name`))))
@@ -1347,7 +1348,7 @@
       ((tok `CONTINUE`)
         (group
           opt
-          ((lit `":"`)
+          ((tok `LABEL_AT`)
             (label
               `label`
               (ref `name`)))))
@@ -3255,7 +3256,7 @@
       ((tok `BREAK`)
         (group
           opt
-          ((lit `":"`)
+          ((tok `LABEL_AT`)
             (label
               `label`
               (ref `name`))))
@@ -3271,7 +3272,7 @@
       ((tok `CONTINUE`)
         (group
           opt
-          ((lit `":"`)
+          ((tok `LABEL_AT`)
             (label
               `label`
               (ref `name`)))))

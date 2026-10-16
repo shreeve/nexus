@@ -29,12 +29,17 @@
 #     else (the other contextual words are the parser's: see @keywords);
 #   * marks a `..` whose next token is `]` as DOTDOT_OPEN, the end of an
 #     open range (`xs[a..]`, `xs[..]`);
+#   * marks an `@` as LABEL_AT, a label, when no `(` touches the name
+#     after it and it stands where a statement starts or after `break` or
+#     `continue` (`@outer for`, `break @outer (x)`); `@size(T)`, with the
+#     `(` touching the name, is a builtin call. After a jump, `@name` is
+#     always a label, and a `(` touching it is an error;
 #   * classifies the tokens the parser cannot tell apart by its own
 #     state, by position, never by spacing:
 #
 #       |+a, b|  ||  *|a|            closure bar list (vs bitwise `|`)
 #       ?? return                    `??` before a jump (vs the operator)
-#       while c : i += 1             a `while` step (vs a label's `:`)
+#       while c : i += 1             a `while` step (vs a keyword argument's `:`)
 #       a if c else b                ternary vs postfix guard `stmt if c`
 #
 #     A character that both starts and continues an operand (`-x` and
@@ -185,6 +190,7 @@ tokens
     dotdot_open     # ..  directly before `]`: an open range `xs[a..]`, `xs[..]`
     nullish_jump    # ??  directly before `return`, `break`, or `continue`
     step_colon      # :   the first `:` of a `while` header: its step
+    label_at        # @   before a name no `(` touches: a label, `@outer for`, `break @outer`
 
     # Misc
     comment
@@ -452,7 +458,7 @@ tokens
     POST_IF: "`if`", TERNARY_IF: "`if`", BAR_CAPTURE: "`|`", BAR_EMPTY: "`||`"
     KWARG_NAME: "a keyword argument"
     OF: "`of`", OBJ: "`obj`", CALLED: "`called`", RARELY: "`rarely`", UNIQUE: "`unique`", FROM: "`from`", STATIC: "`static`"
-    DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`"
+    DOTDOT_OPEN: "`..`", NULLISH_JUMP: "`??`", STEP_COLON: "`:`", LABEL_AT: "`@`"
     TRUE: "`true`", FALSE: "`false`", AND: "`and`", AS: "`as`", BREAK: "`break`", CATCH: "`catch`"
     CONTINUE: "`continue`", DEFER: "`defer`", DROP: "`drop`", ELSE: "`else`", ENUM: "`enum`", ERRDEFER: "`errdefer`"
     ERROR: "`error`", EXTERN: "`extern`", FOR: "`for`", FUN: "`fun`", IF: "`if`", IN: "`in`"
@@ -497,8 +503,8 @@ tokens
     keyword             ("called" | "rarely" | "inline") after [ \t]+ ("fun" | "sub")
     keyword             line-start [ \t]* "new" after [ \t]+ [A-Za-z_]
     keyword             "of" before ' ' after ' '
-    keyword.control     ("break" | "continue") [ \t]+ label:(':' [A-Za-z_] [A-Za-z0-9_]*)
-    label               ':' [A-Za-z_] [A-Za-z0-9_]* after [ \t]+ ("for" | "while" | "match" | "raw")
+    keyword.control     ("break" | "continue") [ \t]+ label:('@' [A-Za-z_] [A-Za-z0-9_]*)
+    label               '@' [A-Za-z_] [A-Za-z0-9_]* after [ \t]+ ("for" | "while" | "match" | "raw")
     function.builtin    '@' [a-z_]+ after '('
     storage.modifier    [<?!+^*~] not before [A-Za-z0-9_)\]] after [A-Za-z_(\[<]
     storage.modifier    [!?] before [A-Za-z0-9_)\]] not after [A-Za-z0-9_(\[=?]
@@ -554,7 +560,7 @@ stmt     = use
          | ext_fun
          | ext_sub
          | zig_ext
-         | ":" label:name stmt:stmt                 → (labeled)
+         | LABEL_AT label:name stmt:stmt            → (labeled)
          | simple
          | simple POST_IF cond:value                → (if then:(block 1))
 
@@ -573,8 +579,8 @@ simple   = tail
          | NEW CONST target:name ":" type:type "=" value:tail → (set op:shadow_fixed)
          | PASS                                     → (pass)
          | RETURN [value:tail]                      → (return)
-         | BREAK [":" label:name] [value:tail]      → (break)
-         | CONTINUE [":" label:name]                → (continue)
+         | BREAK [LABEL_AT label:name] [value:tail] → (break)
+         | CONTINUE [LABEL_AT label:name]           → (continue)
          | DEFER body:(block | simple)              → (defer)
          | ERRDEFER body:(block | simple)           → (errdefer)
          | RAW body:block                           → (raw_block)
@@ -858,14 +864,14 @@ value    = then:logic TERNARY_IF cond:logic ELSE else:value → (if)
          | logic
 
 # A jump as the fallback of `??` or a `catch` handler: `get(k) ?? return
-# none`, `parse(s) catch break :outer`. It takes the rest of the
+# none`, `parse(s) catch break @outer`. It takes the rest of the
 # expression, so its left side is a whole `logic`, as `catch`'s is; the
 # rewriter marks a `??` before a jump as NULLISH_JUMP. In a `while`
 # header, the rewriter marks the `:` that starts the step as STEP_COLON,
-# so a jump there takes no label.
+# and a jump there may name a label (`while a ?? break @outer : i += 1`).
 jump     = RETURN [value:value]                     → (return)
-         | BREAK [":" label:name] [value:value]     → (break)
-         | CONTINUE [":" label:name]                → (continue)
+         | BREAK [LABEL_AT label:name] [value:value] → (break)
+         | CONTINUE [LABEL_AT label:name]           → (continue)
 
 logic    = left:logic OR right:conj                 → (or)
          | conj

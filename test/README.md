@@ -220,7 +220,8 @@ are extracted into `.zig-cache/nexus-test/docs/` and run like any suite.
 
 A suite whose grammar has `@highlight` may hold samples in
 `<suite>/highlight/` (any file but `*.hl`), each with its expected
-colouring, the same name with `.hl`. `test/lib/highlight` generates the
+colouring in the file of its whole name followed by `.hl`
+(`sample.lamp`, `sample.lamp.hl`). `test/lib/highlight` generates the
 grammar's TextMate grammar, highlight.js language and Vim syntax file and
 colours the sample with each:
 

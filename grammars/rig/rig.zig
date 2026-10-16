@@ -520,13 +520,24 @@ const zig_primitives = std.StaticStringMap(void).initComptime(.{
     .{"void"},
 });
 
-/// Names the emitted prelude declares (`panic` is the root module's panic
-/// handler), and the prefix of emitter temporaries. A Rig name that
-/// collides with one of these is renamed.
+/// Names a Rig name may not keep in the emitted Zig: the ones the emitted
+/// prelude declares (`std`, `rig`, and `panic`, the root module's panic
+/// handler), and the ones Zig's standard library looks up in the root
+/// module with `@hasDecl(root, ...)` and uses as hooks (`debug`, `os`,
+/// `std_options`, the entry points of each target). Every one is
+/// renamed wherever it stands, so no hook depends on which module or
+/// scope declares it.
 const emitter_names = std.StaticStringMap(void).initComptime(.{
-    .{"std"}, .{"rig"}, .{"panic"},
+    .{"std"},       .{"rig"},                .{"panic"},
+    .{"debug"},     .{"os"},                 .{"tracy"},
+    .{"_start"},    .{"__start"},            .{"main"},
+    .{"WinMain"},   .{"wWinMain"},           .{"WinMainCRTStartup"},
+    .{"DllMain"},   .{"wWinMainCRTStartup"}, .{"DllMainCRTStartup"},
+    .{"EfiMain"},   .{"_DllMainCRTStartup"},
 });
-const emitter_prefix = "__rig";
+/// The prefixes of the names emitter temporaries take (`__rig_tmp_3`),
+/// and of the `std_options_*` hooks.
+const emitter_prefixes = [_][]const u8{ "__rig", "std_options" };
 
 pub fn isPlainName(name: []const u8) bool {
     for (name) |c| if (!std.ascii.isAlphanumeric(c) and c != '_') return false;
@@ -539,20 +550,43 @@ fn isZigIntType(name: []const u8) bool {
     return true;
 }
 
+/// Whether the Zig spelling of the Rig name `name` is another name: the
+/// name `writeZigIdent` gives it a `'` suffix.
+pub fn zigRenames(name: []const u8) bool {
+    if (!isPlainName(name)) return false;
+    if (emitter_names.has(name)) return true;
+    for (emitter_prefixes) |p| if (std.mem.startsWith(u8, name, p)) return true;
+    return false;
+}
+
+/// How a name is written: a Rig name of the program (`.rig`), or a name
+/// that must be spelled exactly, as the Zig or C it denotes declares it
+/// (`.exact`: a function of a standard library Zig file).
+pub const ZigSpelling = enum { rig, exact };
+
 /// Write `name` as a Zig identifier that denotes the Rig name and nothing
-/// else:
-///   * a Zig keyword or primitive (`var`, `fn`, `u8`, `type`) is quoted:
-///     `@"var"`;
-///   * a name the emitter itself declares (`std`, `rig`, `__rig*`) gets a
-///     `'` suffix, which no Rig identifier can contain: `@"rig'"`;
+/// else. This is the one place a Rig name becomes a Zig name: every
+/// declaration and every use of a local, parameter, capture, field,
+/// method, variant, type, generic parameter, constant, function,
+/// label, or module the program names is written here, so a use is
+/// always spelled as its declaration.
+///   * a name the emitter or Zig's standard library uses
+///     (`zigRenames`: `std`, `rig`, `debug`, `__rig*`) gets a `'`
+///     suffix, which no Rig identifier can contain: `@"rig'"`; an
+///     `.exact` name never does;
+///   * a Zig keyword or primitive (`var`, `fn`, `u8`, `type`), and `_`,
+///     which alone is Zig's discard, are quoted: `@"var"`, `@"_"`;
 ///   * anything else is written as is.
-pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8) std.Io.Writer.Error!void {
+/// The mapping is one to one, so two Rig names never meet in one Zig
+/// name, and the runtime strips the suffix where a name is printed
+/// (`rig.rigName`).
+pub fn writeZigIdent(w: *std.Io.Writer, name: []const u8, spelling: ZigSpelling) std.Io.Writer.Error!void {
     if (!isPlainName(name)) {
         // A name no program writes (`hiddenLeaf`).
         try w.print("@\"{s}\"", .{name});
-    } else if (emitter_names.has(name) or std.mem.startsWith(u8, name, emitter_prefix)) {
+    } else if (spelling == .rig and zigRenames(name)) {
         try w.print("@\"{s}'\"", .{name});
-    } else if (zig_keywords.has(name) or zig_primitives.has(name) or isZigIntType(name)) {
+    } else if (zig_keywords.has(name) or zig_primitives.has(name) or isZigIntType(name) or std.mem.eql(u8, name, "_")) {
         try w.print("@\"{s}\"", .{name});
     } else {
         try w.writeAll(name);
@@ -686,14 +720,14 @@ pub const Lexer = struct {
     /// The last token ends an operand (`isValue`, or a `?` / `!` suffix
     /// after one), so a character after it continues the operand.
     after_value: bool = false,
-    /// The last token is a `:` that starts a statement, and so starts its
-    /// label; the name after it is the label.
-    label_colon: bool = false,
+    /// The last token is an `@` that starts a statement's label; the name
+    /// after it is the label.
+    label_at: bool = false,
     /// The last token is a statement's label: a statement starts after
     /// it, and it ends no operand.
     after_label: bool = false,
-    /// The last token is the label of a jump (`break :outer`): what
-    /// follows it starts the jump's value, though the label is a name.
+    /// The last token is the label of a jump (`break @outer`): what
+    /// follows it starts the jump's value, and ends no operand.
     after_jump_label: bool = false,
     /// The category of the token before the last one.
     last2_cat: TokenCat = .eof,
@@ -804,6 +838,11 @@ pub const Lexer = struct {
         decrement,
         slash_comment,
         pin_sigil,
+        at_detached,
+        label_keyword,
+        label_call,
+        label_touch,
+        colon_label,
         control_in_string,
         lone_cr,
         leading_zero,
@@ -844,7 +883,12 @@ pub const Lexer = struct {
                 .increment => "Rig has no `++`; write `x += 1`",
                 .decrement => "Rig has no `--`; write `x -= 1`",
                 .slash_comment => "comments start with `#`; Rig has no `//` or `/* */` comments",
-                .pin_sigil => "the pin sigil `@x` is reserved; `@` only starts a builtin call, `@name(...)`",
+                .pin_sigil => "the pin sigil `@x` is reserved; `@` starts a builtin call, `@name(...)` with the `(` touching the name, or a label, `@name`, before a statement that starts a line or after `break` or `continue`",
+                .at_detached => "`@` touches the name after it: a label `@outer`, a builtin call `@size(T)`",
+                .label_keyword => "a keyword is not a label name",
+                .label_call => "after `break` or `continue`, `@name` is a label, never a builtin call: put a space before a value, `break @outer (x)`, or break with a builtin's value as `break (@size(T))`",
+                .label_touch => "a jump's label ends at its name: put a space before the value, `break @outer -1`",
+                .colon_label => "a label is written `@name`: `@outer for ...`, `break @outer`, `continue @outer`",
                 .no_inline_marker => "Rig has no `inline` marker yet; write `called fun` or `rarely fun`, or leave the function unmarked for the compiler to decide",
                 .marker_before_pub => "`pub` comes before a function's marker: write `pub called fun` or `pub rarely fun`",
                 .two_markers => "a function takes one marker: `called` (keep every call a call) or `rarely` (rarely called, so kept out of line and cold), and `rarely` already keeps every call a call",
@@ -860,10 +904,10 @@ pub const Lexer = struct {
 
     pub fn next(self: *Lexer) Token {
         const tok = self.produce();
-        self.after_label = self.label_colon and tok.cat == .ident;
-        self.label_colon = tok.cat == .colon and self.stmtStart();
-        self.after_value = !self.after_label and (isValue(tok.cat) or (self.after_value and (tok.cat == .question or tok.cat == .not_sym)));
-        self.after_jump_label = tok.cat == .ident and self.last_cat == .colon and (self.last2_cat == .@"break" or self.last2_cat == .@"continue");
+        self.after_label = self.label_at and tok.cat == .ident;
+        self.label_at = tok.cat == .label_at and !isLabelJump(self.last_cat);
+        self.after_jump_label = tok.cat == .ident and self.last_cat == .label_at and isLabelJump(self.last2_cat);
+        self.after_value = !self.after_label and !self.after_jump_label and (isValue(tok.cat) or (self.after_value and (tok.cat == .question or tok.cat == .not_sym)));
         self.last2_cat = self.last_cat;
         self.last_cat = tok.cat;
         switch (tok.cat) {
@@ -1168,7 +1212,10 @@ pub const Lexer = struct {
                 if (self.nesting > 0) self.nesting -= 1;
                 break :blk tok.cat;
             },
-            .at => if (self.isBuiltinCall()) .at else return self.fail(.pin_sigil, tok.pos),
+            .at => switch (self.classifyAt(tok)) {
+                .cat => |cat| cat,
+                .err => |err| return self.fail(err, tok.pos),
+            },
             .bar => if (self.isCaptureBar(tok, after_value)) .bar_capture else .bar,
             .and_sym => return self.fail(.and_operator, tok.pos),
             // `||` where an operand starts is an empty closure bar list.
@@ -1183,14 +1230,19 @@ pub const Lexer = struct {
             .fixed_assign => return self.fail(.fixed_assign, tok.pos),
             // `xs[a..]`: an open range ends at the `]`.
             .dotdot => if (self.nextJoined().cat == .rbracket) .dotdot_open else .dotdot,
-            // `while i < n : i += 1`: the step; any other `:` in the
-            // header, as after a jump (`?? break :outer`), is a label's.
-            .colon => if (self.while_header == self.nesting) .step_colon else .colon,
+            // `while i < n : i += 1`: the step, even right after a jump
+            // (`while a ?? break : i += 1`). A `:` that starts a statement
+            // or follows a jump anywhere else is a label in the old
+            // spelling (`:outer for`, `break :outer`).
+            .colon => if (self.while_header == self.nesting) (if (isLabelJump(self.last_cat) and self.oldLabelBeforeStep()) return self.fail(.colon_label, tok.pos) else .step_colon) else if (self.stmtStart() or isLabelJump(self.last_cat)) return self.fail(.colon_label, tok.pos) else .colon,
             // `get(k) ?? return none`: a jump as the fallback.
             .nullish => if (self.nextIsJump()) .nullish_jump else .nullish,
             .err => return self.lexError(tok),
             else => if (isKeyword(tok.cat)) self.classifyKeyword(tok.cat) else tok.cat,
         };
+        // A jump's label ends at its name: a value after it stands apart
+        // (`break @outer -1`, not `break @outer-1`).
+        if (self.after_jump_label and tok.pos == self.prev_end and startsOperand(tok.cat)) return self.fail(.label_touch, tok.pos);
         // A prefix sigil touches its operand (`-b`, `<x`, `*T`); `i++`
         // is no increment.
         if (!after_value and isSigil(tok.cat) and isSpace(self.charAfter(tok))) {
@@ -1199,7 +1251,7 @@ pub const Lexer = struct {
             if (twice and tok.cat == .minus) return self.fail(.decrement, tok.pos - 1);
             return self.fail(.detached_prefix, tok.pos);
         }
-        if (self.layout_count < max_layouts) self.checkSpacing(tok, out.cat, after_value and !self.after_jump_label);
+        if (self.layout_count < max_layouts) self.checkSpacing(tok, out.cat, after_value);
         switch (out.cat) {
             .@"if", .@"while", .@"for" => self.takes_else[self.depth] = true,
             else => {},
@@ -1273,14 +1325,17 @@ pub const Lexer = struct {
             .@"return", .@"break", .@"continue", .pass => return .post_if,
             else => {},
         }
+        if (self.after_jump_label) return .post_if;
         if (!self.after_value) return .@"if";
         return if (self.elseFollows()) .ternary_if else .post_if;
     }
 
     fn classifyWord(self: *const Lexer, tok: Token) TokenCat {
         const word = self.base.text(tok);
-        if (std.mem.eql(u8, word, "new")) return if (self.stmtStart() and (self.nextIsName() or self.nextIsConst())) .new else .ident;
+        // A name before `:` inside ( ) names a keyword argument or a
+        // payload field, `new` too (`O(new: 1)`, `.pp(new: x)`).
         if (self.inParens() and self.nextCat() == .colon) return .kwarg_name;
+        if (std.mem.eql(u8, word, "new")) return if (self.stmtStart() and (self.nextIsName() or self.nextIsConst())) .new else .ident;
         if (std.mem.eql(u8, word, "of") and self.isFillOf()) return .of;
         if (std.mem.eql(u8, word, "obj")) return if ((self.stmtStart() or self.last_cat == .@"pub") and self.nextIsName()) .obj else .ident;
         if (isMarker(word)) {
@@ -1346,13 +1401,25 @@ pub const Lexer = struct {
         return if (self.in_members[self.depth] and (self.stmtStart() or self.last_cat == .@"pub")) .ident else null;
     }
 
-    /// `@name(...)` is a builtin call; `@name` alone is the reserved pin
-    /// sigil.
-    fn isBuiltinCall(self: *const Lexer) bool {
+    /// `@name(...)`, the `(` touching the name, is a builtin call. `@name`
+    /// alone is a label where a statement that takes one starts (`@outer
+    /// for`) and after `break` or `continue`, where `@name` is always a
+    /// label (`break @outer (x)` leaves `outer` with the value `(x)`).
+    /// Anywhere else it is the reserved pin sigil. The `@` touches the
+    /// name.
+    fn classifyAt(self: *const Lexer, at: Token) union(enum) { cat: TokenCat, err: LexError } {
         var probe = self.base;
         const name = probe.next();
-        if (!isWord(name.cat)) return false;
-        return probe.next().cat == .lparen;
+        const paren = probe.next();
+        const word = isWord(name.cat);
+        if (word and name.pos != endOf(&self.base, at)) return .{ .err = .at_detached };
+        const call = word and paren.cat == .lparen and paren.pos == endOf(&probe, name);
+        const jump = isLabelJump(self.last_cat);
+        if (call and !jump) return .{ .cat = .at };
+        if (!word or !(jump or self.labelStart())) return .{ .err = .pin_sigil };
+        if (name.cat != .ident) return .{ .err = .label_keyword };
+        if (call) return .{ .err = .label_call };
+        return .{ .cat = .label_at };
     }
 
     /// The character right after `tok`, or 0 at the end of the source.
@@ -1445,10 +1512,20 @@ pub const Lexer = struct {
     }
 
     /// A statement starts here: at the start of a line, after `=>`,
-    /// `defer`, or `errdefer`, or after a statement's label (`:outer`).
+    /// `defer`, or `errdefer`, or after a statement's label (`@outer`).
     fn stmtStart(self: *const Lexer) bool {
         return self.after_label or switch (self.last_cat) {
             .newline, .indent, .outdent, .eof, .fat_arrow, .@"defer", .@"errdefer" => true,
+            else => false,
+        };
+    }
+
+    /// A statement that may take a label starts here: at the start of a
+    /// line, or after another label. The statement after `=>`, `defer`,
+    /// or `errdefer` takes none.
+    fn labelStart(self: *const Lexer) bool {
+        return self.after_label or switch (self.last_cat) {
+            .newline, .indent, .outdent, .eof => true,
             else => false,
         };
     }
@@ -1476,6 +1553,15 @@ pub const Lexer = struct {
                 else => return t,
             }
         }
+    }
+
+    /// `while a ?? break :outer : i += 1`: after a jump in a `while`
+    /// header, a name and a second `:` follow the first `:`, so it was
+    /// meant as a label in the old spelling, not as the step.
+    fn oldLabelBeforeStep(self: *const Lexer) bool {
+        var probe = self.base;
+        if (probe.next().cat != .ident) return false;
+        return probe.next().cat == .colon;
     }
 
     /// The next token is `return`, `break`, or `continue`.
@@ -1566,6 +1652,20 @@ fn isValue(cat: TokenCat) bool {
 }
 
 /// The characters that start an operand as a prefix sigil.
+/// A token that starts an operand and does not continue a name: what may
+/// not touch a jump's label (`break @outer-1`, `break @outer.red`).
+fn startsOperand(cat: TokenCat) bool {
+    return isSigil(cat) or switch (cat) {
+        .lparen, .lbracket, .dot, .dotdot, .bar, .or_sym, .at, .string_sq, .string_dq => true,
+        else => false,
+    };
+}
+
+/// `break` or `continue`: the jumps that name a label.
+fn isLabelJump(cat: TokenCat) bool {
+    return cat == .@"break" or cat == .@"continue";
+}
+
 fn isSigil(cat: TokenCat) bool {
     return switch (cat) {
         .minus, .lt, .plus, .star, .question, .not_sym, .tilde, .caret => true,
@@ -3273,6 +3373,7 @@ test "keywords are reserved; `new` only at statement start" {
     }
     try expectCats("new x = 1", &.{ .new, .ident, .assign, .integer });
     try expectCats("p = Point.new(1)", &.{ .ident, .assign, .ident, .dot, .ident, .lparen, .integer, .rparen });
+    try expectCats("O(new: 1)", &.{ .ident, .lparen, .kwarg_name, .colon, .integer, .rparen });
 }
 
 test "`obj` is a keyword only where a declaration starts; `struct` is a name" {
@@ -3401,7 +3502,7 @@ fn expectLayout(source: []const u8, expected: []const Lexer.Layout.Kind) !void {
 }
 
 test "spacing: an infix operator is balanced; a postfix, a member, and an open range touch" {
-    for ([_][]const u8{ "a < b", "a<b", "a - 1", "a-1", "x = -1", "x=1", "a ?? b", "0..n", "0 .. n", "f()!", "x?", "w.get()", "c = .red", "xs[..2]", "xs[a..]", "a < -b", "a<-b", "f(\n  a\n  .b())", "[]?T", "[2]*T", "break :a !n", "f = |a| a + 1", "while i < n : i += 1" }) |src| {
+    for ([_][]const u8{ "a < b", "a<b", "a - 1", "a-1", "x = -1", "x=1", "a ?? b", "0..n", "0 .. n", "f()!", "x?", "w.get()", "c = .red", "xs[..2]", "xs[a..]", "a < -b", "a<-b", "f(\n  a\n  .b())", "[]?T", "[2]*T", "break @a !n", "break @a (n)", "f = |a| a + 1", "while i < n : i += 1" }) |src| {
         try expectLayout(src, &.{});
     }
     try expectLayout("a <b", &.{.infix_before});
@@ -3427,15 +3528,50 @@ test "`name:` is a keyword argument inside ( ), a name inside [ ]" {
 }
 
 test "a statement label ends no operand" {
-    try expectCats(":a if x", &.{ .colon, .ident, .@"if", .ident });
-    try expectCats(":a -x", &.{ .colon, .ident, .minus, .ident });
+    try expectCats("@a if x", &.{ .label_at, .ident, .@"if", .ident });
+    try expectCats("@a -x", &.{ .label_at, .ident, .minus, .ident });
+    try expectCats("@a (x)", &.{ .label_at, .ident, .lparen, .ident, .rparen });
 }
 
-test "a `while` header's first `:` starts its step; another after a jump is a label's" {
+test "`@name(` with the `(` touching is a builtin; `@name` alone is a label" {
+    try expectCats("@size(T)", &.{ .at, .ident, .lparen, .ident, .rparen });
+    try expectCats("@type(x)", &.{ .at, .ident, .lparen, .ident, .rparen });
+    try expectCats("x = @size(T)", &.{ .ident, .assign, .at, .ident, .lparen, .ident, .rparen });
+    try expectCats("break @a", &.{ .@"break", .label_at, .ident });
+    try expectCats("break @a (x)", &.{ .@"break", .label_at, .ident, .lparen, .ident, .rparen });
+    try expectCats("break @a x if c", &.{ .@"break", .label_at, .ident, .ident, .post_if, .ident });
+    try expectCats("continue @a if c", &.{ .@"continue", .label_at, .ident, .post_if, .ident });
+    try expectCats("break @size(x)", &.{ .@"break", .err });
+    try expectCats("@ a for x in y", &.{.err});
+    try expectCats("@ size(T)", &.{.err});
+    try expectCats("break @a -1", &.{ .@"break", .label_at, .ident, .minus, .integer });
+    try expectCats("break @a-1", &.{ .@"break", .label_at, .ident, .err });
+    try expectCats("break @a.red", &.{ .@"break", .label_at, .ident, .err });
+    try expectCats("break @a - 1", &.{ .@"break", .label_at, .ident, .err });
+    try expectCats("break @a |x| x", &.{ .@"break", .label_at, .ident, .bar_capture, .ident, .bar_capture, .ident });
+    try expectCats("break @a, 1", &.{ .@"break", .label_at, .ident, .comma, .integer });
+    try expectCats("x => @a for y in z", &.{ .ident, .fat_arrow, .err });
+    try expectCats("defer @a for y in z", &.{ .@"defer", .err });
+    try expectCats("@for for x in y", &.{.err});
+    try expectCats("x = @a", &.{ .ident, .assign, .err });
+    try expectCats("f(@a)", &.{ .ident, .lparen, .err });
+}
+
+test "a label in the old spelling, `:name`, is an error" {
+    try expectCats(":a for x in y", &.{.err});
+    try expectCats("break :a", &.{ .@"break", .err });
+    try expectCats("continue : a", &.{ .@"continue", .err });
+    try expectCats("x = a ?? break :b", &.{ .ident, .assign, .ident, .nullish_jump, .@"break", .err });
+}
+
+test "a `while` header's first `:` starts its step, and a jump there may name a label" {
     try expectCats("while x : y", &.{ .@"while", .ident, .step_colon, .ident });
     try expectCats("while f(a: 1) : y", &.{ .@"while", .ident, .lparen, .kwarg_name, .colon, .integer, .rparen, .step_colon, .ident });
-    try expectCats("while x : y = a ?? break :b", &.{ .@"while", .ident, .step_colon, .ident, .assign, .ident, .nullish_jump, .@"break", .colon, .ident });
-    try expectCats("x = a ?? break :b", &.{ .ident, .assign, .ident, .nullish_jump, .@"break", .colon, .ident });
+    try expectCats("while a ?? break : y", &.{ .@"while", .ident, .nullish_jump, .@"break", .step_colon, .ident });
+    try expectCats("while a ?? break @b : y", &.{ .@"while", .ident, .nullish_jump, .@"break", .label_at, .ident, .step_colon, .ident });
+    try expectCats("while a ?? break :b : y", &.{ .@"while", .ident, .nullish_jump, .@"break", .err });
+    try expectCats("while x : y = a ?? break @b", &.{ .@"while", .ident, .step_colon, .ident, .assign, .ident, .nullish_jump, .@"break", .label_at, .ident });
+    try expectCats("x = a ?? break @b", &.{ .ident, .assign, .ident, .nullish_jump, .@"break", .label_at, .ident });
 }
 
 test "minus: infix or negation, never a drop" {
@@ -3535,16 +3671,14 @@ test "layout: a closure body inside brackets is laid out in blocks" {
 }
 
 test "writeZigIdent escapes Zig keywords and emitter names" {
-    var buf: [64]u8 = undefined;
+    var buf: [256]u8 = undefined;
     var w = std.Io.Writer.fixed(&buf);
-    try writeZigIdent(&w, "var");
-    try w.writeAll(" ");
-    try writeZigIdent(&w, "u8");
-    try w.writeAll(" ");
-    try writeZigIdent(&w, "rig");
-    try w.writeAll(" ");
-    try writeZigIdent(&w, "count");
-    try testing.expectEqualStrings("@\"var\" @\"u8\" @\"rig'\" count", w.buffered());
+    for ([_][]const u8{ "var", "u8", "rig", "count", "_", "debug", "std_options_cwd", "__rig_x" }) |n| {
+        try writeZigIdent(&w, n, .rig);
+        try w.writeAll(" ");
+    }
+    try writeZigIdent(&w, "panic", .exact);
+    try testing.expectEqualStrings("@\"var\" @\"u8\" @\"rig'\" count @\"_\" @\"debug'\" @\"std_options_cwd'\" @\"__rig_x'\" panic", w.buffered());
 }
 
 test "a condition's guard parts: each part a binding condition joins, or the whole condition" {
@@ -3826,8 +3960,8 @@ test "parser: every form parses" {
         \\    return
         \\  if m as v
         \\    print(v)
-        \\  :outer while x < 3 : x += 1
-        \\    break :outer
+        \\  @outer while x < 3 : x += 1
+        \\    break @outer
         \\  while m as v
         \\    continue
         \\  else
