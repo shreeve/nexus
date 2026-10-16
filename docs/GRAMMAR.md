@@ -1386,8 +1386,13 @@ one position, the first wins:
    colours part of its text.
 
 A token no entry lists gets no colour. The order is not the lexer's
-longest match: at one position, a literal comes before a longer token.
-Where that matters, list the longer text as a literal or a pattern.
+longest match: at one position, a literal comes before a longer token,
+and an earlier lexer rule before a later one that would match more. So
+an `invalid` entry naming an error token written after the rules it
+catches (`[0-9][0-9A-Za-z_]*` after `[0-9]+`) colours nothing where an
+earlier rule matches first, and `invalid` naming a token spelled `**`
+loses to the literal `"*"`. Where that matters, list the longer text as
+a literal or a pattern, which come first.
 
 ### Metadata
 
