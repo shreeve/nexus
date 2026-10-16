@@ -723,20 +723,20 @@ const Analyzer = struct {
                         return self.fail(pos, "{s} is no token: no lexer rule matches it whole", .{text});
                     const owner = self.literalToken(bytes);
                     const key = if (owner) |o| try std.mem.concat(self.allocator, u8, &.{ "T:", o, withinKey }) else try std.mem.concat(self.allocator, u8, &.{ "L:", bytes, withinKey });
-                    try self.claim(key, text, pos, scope);
+                    if (!b.contextual) try self.claim(key, text, pos, scope);
                     try literals.append(self.allocator, bytes);
                     try lits.append(self.allocator, .{ .bytes = bytes, .min = bytes.len, .bounded = true });
                 } else if (std.ascii.isUpper(text[0])) {
                     const cat = try self.tokenCat(text, pos);
                     _ = try self.tokenRules(cat, text, pos);
-                    try self.claim(try std.mem.concat(self.allocator, u8, &.{ "T:", cat, withinKey }), text, pos, scope);
+                    if (!b.contextual) try self.claim(try std.mem.concat(self.allocator, u8, &.{ "T:", cat, withinKey }), text, pos, scope);
                     try tokens.append(self.allocator, text);
                     try cats.append(self.allocator, cat);
                 } else {
                     const group = for (self.groups) |g| {
                         if (std.mem.eql(u8, g.name, text)) break g;
                     } else return self.fail(pos, "`{s}` is no @keywords group (a lowercase name in a target list names a group; tokens are capitalized)", .{text});
-                    try self.claim(try std.mem.concat(self.allocator, u8, &.{ "G:", text, withinKey }), text, pos, scope);
+                    if (!b.contextual) try self.claim(try std.mem.concat(self.allocator, u8, &.{ "G:", text, withinKey }), text, pos, scope);
                     try groups.append(self.allocator, text);
                     for (group.entries) |ge| try lits.append(self.allocator, .{ .bytes = ge.word, .min = ge.min, .caseless = group.caseless, .bounded = true });
                 }
@@ -818,7 +818,9 @@ const Analyzer = struct {
         return core[0].start;
     }
 
-    /// Records that the entry with `scope` lists the target `key`.
+    /// Records that the entry with `scope` lists the target `key`. Only an
+    /// entry without contexts claims: one with a context, `line-start` or
+    /// `line-end` is tried first, so it may name a target another lists.
     fn claim(self: *Analyzer, key: []const u8, text: []const u8, pos: u32, scope: Scope) Error!void {
         const gop = try self.seen.getOrPut(self.allocator, key);
         if (gop.found_existing) {

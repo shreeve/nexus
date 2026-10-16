@@ -22,6 +22,11 @@
 >   return width * height
     ^^^^^^ keyword.control
                  ^ operator
+>   q = *n * 2
+      ^ operator
+        ^ storage.modifier
+           ^ operator
+             ^ constant.numeric
 > }
   ^ punctuation
 > 

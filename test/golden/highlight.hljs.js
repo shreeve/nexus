@@ -24,6 +24,7 @@ export default function (hljs) {
       {"scope": "symbol", "match": "(?<![)0-9A-Z_a-z]):[_a-z]+"},
       {"scope": "params", "match": "[_a-z][0-9_a-z]*(?=:[\\x09 ])"},
       {"scope": "keyword", "match": "(?<![)0-9A-Z\\]_a-z])[!?](?=[_a-z])"},
+      {"scope": "keyword", "match": "(?<![)0-9A-Z\\]_a-z])\\*(?=[_a-z])"},
       {"scope": "literal", "match": "(?<!\\.)(?:(?<![0-9A-Za-z_])false(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])true(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])nil(?![0-9A-Za-z_]))(?!\\()"},
       {"scope": "keyword", "match": "(?<![0-9A-Za-z_])[Pp](?:[Rr](?:[Ii](?:[Nn](?:[Tt])?)?)?)?(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])[Ww][Rr](?:[Ii](?:[Tt](?:[Ee])?)?)?(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])[Ee][Cc][Hh][Oo](?![0-9A-Za-z_])|(?<![0-9A-Za-z_])fun(?![0-9A-Za-z_])"},
       {"scope": "keyword", "match": "(?<![0-9A-Za-z_])return(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])while(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])else(?![0-9A-Za-z_])|(?<![0-9A-Za-z_])if(?![0-9A-Za-z_])"},

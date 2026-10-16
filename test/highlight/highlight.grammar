@@ -89,6 +89,8 @@ tokens
     constant.symbol     ':' [a-z_]+ not before [A-Za-z0-9_)]
     variable.parameter  [a-z_] [a-z0-9_]* after ':' [ \t]
     storage.modifier    [!?] after [a-z_] not before [A-Za-z0-9_)\]]
+    # A literal another entry lists, with contexts: a prefix `*`.
+    storage.modifier    '*' not before [A-Za-z0-9_)\]] after [a-z_]
 
     # Literals and groups: longest first; a word does not match inside one.
     keyword             "fun" stmt
